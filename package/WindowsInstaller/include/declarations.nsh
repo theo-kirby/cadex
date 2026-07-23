@@ -26,14 +26,14 @@ Configuration and variables of FreeCAD installer
 #!define APP_DIR_USERDATA "${APP_NAME}${APP_VERSION_MAJOR}.${APP_VERSION_MINOR}"
 !define APP_SHORTCUT_INFO "${APP_NAME} - AI-native parametric CAD"
 !define APP_INFO "Install/Uninstall ${APP_NAME}"
-!define APP_WEBPAGE "https://github.com/10-X-eng/vibecad"
+!define APP_WEBPAGE "https://github.com/10-X-eng/cadex"
 !define APP_WEBPAGE_INFO "${APP_NAME} Website"
-!define APP_WIKI "https://github.com/10-X-eng/vibecad"
+!define APP_WIKI "https://github.com/10-X-eng/cadex"
 !define APP_WIKI_INFO "${APP_NAME} Project"
-!define APP_COPYRIGHT "Copyright © 2001-${COPYRIGHT_YEAR} FreeCAD and VibeCAD contributors"
+!define APP_COPYRIGHT "Copyright © 2001-${COPYRIGHT_YEAR} FreeCAD and Cadex contributors"
 
-!define APP_RUN "bin\VibeCAD.exe"
-!define BIN_FREECAD "VibeCAD.exe"
+!define APP_RUN "bin\Cadex.exe"
+!define BIN_FREECAD "Cadex.exe"
 
 !define APP_REGKEY "SOFTWARE\${APP_NAME}${APP_SERIES_KEY}" # like "FreeCAD0180"
 !define APP_REGKEY_SETUP "${APP_REGKEY}\Setup"
@@ -57,9 +57,9 @@ Configuration and variables of FreeCAD installer
 
 !define SETUP_EXE ${ExeFile}
 
-!define SETUP_ICON "icons\VibeCAD.ico"
-!define SETUP_HEADERIMAGE "graphics\vibecad-header.bmp"
-!define SETUP_WIZARDIMAGE "graphics\vibecad-banner.bmp"
+!define SETUP_ICON "icons\Cadex.ico"
+!define SETUP_HEADERIMAGE "graphics\cadex-header.bmp"
+!define SETUP_WIZARDIMAGE "graphics\cadex-banner.bmp"
 !define SETUP_UNINSTALLER "Uninstall-${APP_NAME}.exe"
 !define SETUP_UNINSTALLER_KEY "${APP_NAME}${APP_SERIES_KEY}"
 

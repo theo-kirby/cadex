@@ -17,7 +17,7 @@ ManifestDPIAware true
 # Product identity must be available while Settings.nsh resolves the default
 # installer filename. It can still be overridden from makensis with /DAPP_NAME.
 !ifndef APP_NAME
-!define APP_NAME "VibeCAD"
+!define APP_NAME "Cadex"
 !endif
 
 # installer settings like version numbers

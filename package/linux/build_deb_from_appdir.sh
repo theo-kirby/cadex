@@ -5,7 +5,7 @@ usage() {
     cat <<'EOF'
 Usage: build_deb_from_appdir.sh --appdir PATH --output-dir PATH --version VERSION [--arch ARCH] [--artifact-basename NAME]
 
-Builds an installable VibeCAD Debian package from the Linux AppDir produced by
+Builds an installable Cadex Debian package from the Linux AppDir produced by
 package/rattler-build/linux/create_bundle.sh.
 EOF
 }
@@ -97,32 +97,32 @@ sanitize_version() {
 }
 
 deb_version="$(sanitize_version "$version")"
-package_name="vibecad"
+package_name="cadex"
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
 
 pkgroot="$workdir/${package_name}_${deb_version}_${deb_arch}"
-install_root="$pkgroot/opt/vibecad/freecad"
+install_root="$pkgroot/opt/cadex/freecad"
 mkdir -p "$install_root"
 cp -a "$appdir/." "$install_root/"
 
 mkdir -p "$pkgroot/usr/bin"
-cat > "$pkgroot/usr/bin/vibecad" <<'EOF'
+cat > "$pkgroot/usr/bin/cadex" <<'EOF'
 #!/bin/sh
-exec /opt/vibecad/freecad/AppRun "$@"
+exec /opt/cadex/freecad/AppRun "$@"
 EOF
-chmod 0755 "$pkgroot/usr/bin/vibecad"
+chmod 0755 "$pkgroot/usr/bin/cadex"
 
 mkdir -p "$pkgroot/usr/share/applications"
-cat > "$pkgroot/usr/share/applications/vibecad.desktop" <<'EOF'
+cat > "$pkgroot/usr/share/applications/cadex.desktop" <<'EOF'
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=VibeCAD
+Name=Cadex
 GenericName=AI-native CAD
-Comment=Design 3D parts with VibeCAD
-Exec=vibecad %F
-Icon=vibecad
+Comment=Design 3D parts with Cadex
+Exec=cadex %F
+Icon=cadex
 Terminal=false
 Categories=Graphics;Engineering;Science;
 MimeType=application/x-extension-fcstd;application/x-extension-fcstd1;
@@ -131,9 +131,9 @@ EOF
 
 mkdir -p "$pkgroot/usr/share/icons/hicolor/scalable/apps"
 if [[ -f "$install_root/org.freecad.FreeCAD.svg" ]]; then
-    cp "$install_root/org.freecad.FreeCAD.svg" "$pkgroot/usr/share/icons/hicolor/scalable/apps/vibecad.svg"
+    cp "$install_root/org.freecad.FreeCAD.svg" "$pkgroot/usr/share/icons/hicolor/scalable/apps/cadex.svg"
 elif [[ -f "$install_root/usr/share/icons/hicolor/scalable/apps/org.freecad.FreeCAD.svg" ]]; then
-    cp "$install_root/usr/share/icons/hicolor/scalable/apps/org.freecad.FreeCAD.svg" "$pkgroot/usr/share/icons/hicolor/scalable/apps/vibecad.svg"
+    cp "$install_root/usr/share/icons/hicolor/scalable/apps/org.freecad.FreeCAD.svg" "$pkgroot/usr/share/icons/hicolor/scalable/apps/cadex.svg"
 fi
 
 installed_size="$(du -sk "$pkgroot" | awk '{print $1}')"
@@ -144,11 +144,11 @@ Version: ${deb_version}
 Section: graphics
 Priority: optional
 Architecture: ${deb_arch}
-Maintainer: VibeCAD <support@10x.engineering>
+Maintainer: Cadex <support@10x.engineering>
 Installed-Size: ${installed_size}
 Depends: bash, ca-certificates, fontconfig, libegl1, libgl1, libglib2.0-0, libx11-6, libxcb1, libxkbcommon-x11-0
 Description: AI-native parametric CAD platform
- VibeCAD bundles the integrated AI-native CAD workbench, VibeCAD themes,
+ Cadex bundles the integrated AI-native CAD workbench, Cadex themes,
  bundled Python environment, bundled CAD dependencies, and desktop launch
  integration.
 EOF

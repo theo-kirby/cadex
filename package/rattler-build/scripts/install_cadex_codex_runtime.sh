@@ -3,7 +3,7 @@
 set -euo pipefail
 
 if [[ "$#" -ne 2 ]]; then
-    echo "usage: $0 PYTHON_EXECUTABLE VIBECAD_MODULE_DIRECTORY" >&2
+    echo "usage: $0 PYTHON_EXECUTABLE CADEX_MODULE_DIRECTORY" >&2
     exit 2
 fi
 
@@ -11,7 +11,7 @@ python_executable="$1"
 module_directory="$2"
 script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="$(cd "${script_directory}/../../.." && pwd)"
-download_cache="${VIBECAD_DOWNLOAD_CACHE:-${repository_root}/package/rattler-build/.download-cache}"
+download_cache="${CADEX_DOWNLOAD_CACHE:-${repository_root}/package/rattler-build/.download-cache}"
 runtime_root="${module_directory}/codex_runtime"
 stamp="${runtime_root}/runtime-spec.sha256"
 
@@ -89,7 +89,7 @@ if [[ -f "${stamp}" ]] \
   && [[ -f "${runtime_root}/LICENSE" ]] \
   && [[ -f "${runtime_root}/runtime.json" ]]; then
     smoke_runtime
-    echo "VibeCAD Codex app-server runtime is current"
+    echo "Cadex Codex app-server runtime is current"
     exit 0
 fi
 
@@ -165,7 +165,7 @@ chmod +x "${executable}"
 
 cat > "${runtime_root}/runtime.json" <<EOF
 {
-  "schema": "vibecad-codex-runtime-v1",
+  "schema": "cadex-codex-runtime-v1",
   "version": "${codex_version}",
   "release_tag": "${release_tag}",
   "asset": "${archive}",
@@ -184,4 +184,4 @@ if [[ "${platform}" == "darwin" ]]; then
 fi
 
 smoke_runtime
-echo "VibeCAD Codex app-server ${codex_version} installed"
+echo "Cadex Codex app-server ${codex_version} installed"

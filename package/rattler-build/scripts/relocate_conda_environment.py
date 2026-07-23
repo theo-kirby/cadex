@@ -16,7 +16,7 @@ REQUIRED_FILES = {
     "bin/freecad",
     "bin/freecadcmd",
     "bin/python",
-    "Mod/VibeCAD/Init.py",
+    "Mod/cadex/Init.py",
 }
 PYTHON_RUNTIME_PROBE = (
     "import encodings, pathlib, sys; "

@@ -16,12 +16,12 @@ std::filesystem::path executablePath()
 {
     uint32_t size = 0;
     if (_NSGetExecutablePath(nullptr, &size) != -1 || size == 0) {
-        throw std::runtime_error("Could not determine the VibeCAD launcher path.");
+        throw std::runtime_error("Could not determine the Cadex launcher path.");
     }
 
     std::vector<char> buffer(size);
     if (_NSGetExecutablePath(buffer.data(), &size) != 0) {
-        throw std::runtime_error("Could not read the VibeCAD launcher path.");
+        throw std::runtime_error("Could not read the Cadex launcher path.");
     }
     return std::filesystem::canonical(buffer.data());
 }
@@ -60,11 +60,11 @@ int main(int argc, char* argv[], char* const* envp)
         const auto resources = std::filesystem::canonical(
             launcher.parent_path() / ".." / "Resources");
         const bool launcherSmoke = argc == 2
-            && std::strcmp(argv[1], "--vibecad-launcher-smoke") == 0;
+            && std::strcmp(argv[1], "--cadex-launcher-smoke") == 0;
         const char* runtimeName = launcherSmoke ? "freecadcmd" : "freecad";
         const auto runtime = resources / "bin" / runtimeName;
         if (!std::filesystem::is_regular_file(runtime)) {
-            std::cerr << "VibeCAD runtime executable is missing: " << runtime << '\n';
+            std::cerr << "Cadex runtime executable is missing: " << runtime << '\n';
             return 1;
         }
 
@@ -106,12 +106,12 @@ int main(int argc, char* argv[], char* const* envp)
             runtime.c_str(),
             argumentPointers.data(),
             environmentPointers.data());
-        std::cerr << "Could not launch the VibeCAD runtime: " << std::strerror(errno)
+        std::cerr << "Could not launch the Cadex runtime: " << std::strerror(errno)
                   << '\n';
         return 1;
     }
     catch (const std::exception& error) {
-        std::cerr << "VibeCAD launcher failed: " << error.what() << '\n';
+        std::cerr << "Cadex launcher failed: " << error.what() << '\n';
         return 1;
     }
 }

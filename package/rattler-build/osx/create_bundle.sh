@@ -3,10 +3,10 @@
 set -euo pipefail
 set -x
 
-app_name="VibeCAD.app"
+app_name="Cadex.app"
 default_env="../.pixi/envs/default"
 conda_env="${app_name}/Contents/Resources"
-module_directory="${conda_env}/Mod/VibeCAD"
+module_directory="${conda_env}/Mod/cadex"
 
 rm -rf "${app_name}"
 
@@ -20,31 +20,10 @@ python ../scripts/relocate_conda_environment.py \
     "${default_env_absolute}" \
     "${conda_env_absolute}"
 
-../scripts/install_vibecad_provider_deps.sh "${conda_env}"
-../scripts/install_vibecad_build123d_runtime.sh \
+../scripts/install_cadex_provider_deps.sh "${conda_env}"
+../scripts/install_cadex_codex_runtime.sh \
     "${conda_env}/bin/python" \
     "${module_directory}"
-../scripts/install_vibecad_openscad_runtime.sh \
-    "${conda_env}/bin/python" \
-    "${module_directory}"
-../scripts/install_vibecad_codex_runtime.sh \
-    "${conda_env}/bin/python" \
-    "${module_directory}"
-python ../scripts/relocate_macos_runtime_rpaths.py \
-    "${module_directory}/build123d_runtime/site-packages" \
-    --bundle-prefix "${conda_env_absolute}"
-python ../scripts/relocate_macos_runtime_rpaths.py \
-    "${module_directory}/openscad_runtime/OpenSCAD.app" \
-    --bundle-prefix "${conda_env_absolute}"
-codesign --force --deep --sign - \
-    "${module_directory}/openscad_runtime/OpenSCAD.app"
-codesign --verify --deep --strict \
-    "${module_directory}/openscad_runtime/OpenSCAD.app"
-"${conda_env}/bin/python" \
-    ../scripts/write_vibecad_build123d_manifest.py \
-    "${module_directory}/build123d_runtime" \
-    "${conda_env}" \
-    "${conda_env}/bin/python"
 
 # delete unnecessary stuff
 rm -rf "${conda_env}/include"
@@ -69,10 +48,10 @@ sed -i '1s|.*|#!/usr/bin/env python|' "${conda_env}/bin/pip"
 # copy resources
 cp resources/* "${conda_env}"
 
-iconset="$(mktemp -d)/VibeCAD.iconset"
+iconset="$(mktemp -d)/Cadex.iconset"
 mkdir -p "${iconset}"
 "${conda_env}/bin/python" - \
-    "../../../src/Gui/Icons/vibecad.svg" \
+    "../../../src/Gui/Icons/cadex.svg" \
     "${iconset}" <<'PY'
 from pathlib import Path
 import sys
@@ -83,7 +62,7 @@ source = Path(sys.argv[1])
 destination = Path(sys.argv[2])
 renderer = QtSvg.QSvgRenderer(str(source))
 if not renderer.isValid():
-    raise SystemExit(f"VibeCAD app icon is not a valid SVG: {source}")
+    raise SystemExit(f"Cadex app icon is not a valid SVG: {source}")
 outputs = {
     "icon_16x16.png": 16,
     "icon_16x16@2x.png": 32,
@@ -103,9 +82,9 @@ for name, size in outputs.items():
     renderer.render(painter)
     painter.end()
     if not image.save(str(destination / name), "PNG"):
-        raise SystemExit(f"Could not write VibeCAD app icon: {name}")
+        raise SystemExit(f"Could not write Cadex app icon: {name}")
 PY
-iconutil -c icns --output "${conda_env}/vibecad.icns" "${iconset}"
+iconutil -c icns --output "${conda_env}/cadex.icns" "${iconset}"
 rm -rf "$(dirname "${iconset}")"
 
 # Remove __pycache__ folders and .pyc files
@@ -133,7 +112,7 @@ cp build/FreeCAD "${app_name}/Contents/MacOS/FreeCAD"
 deploy_target="${MACOS_DEPLOYMENT_TARGET:-11.0}"
 artifact_base="$(python ../../../src/Tools/resolve_release_artifact_name.py ../../..)"
 version_name="${artifact_base}-macOS${deploy_target%%.*}-$(uname -m)"
-application_menu_name="VibeCAD"
+application_menu_name="Cadex"
 
 echo -e "\################"
 echo -e "version_name:  ${version_name}"
@@ -153,8 +132,8 @@ short_version="${version_output%%|*}"
 bundle_version="${version_output#*|}"
 
 cp Info.plist.template "${conda_env}/../Info.plist"
-sed -i "s/VIBECAD_SHORT_VERSION/${short_version}/" "${conda_env}/../Info.plist"
-sed -i "s/VIBECAD_BUILD_VERSION/${bundle_version}/" "${conda_env}/../Info.plist"
+sed -i "s/CADEX_SHORT_VERSION/${short_version}/" "${conda_env}/../Info.plist"
+sed -i "s/CADEX_BUILD_VERSION/${bundle_version}/" "${conda_env}/../Info.plist"
 sed -i "s/APPLICATION_MENU_NAME/${application_menu_name}/" "${conda_env}/../Info.plist"
 
 pixi list -e default > "${app_name}/Contents/packages.txt"
@@ -174,7 +153,7 @@ python ../scripts/audit_macos_bundle.py \
     "${app_name}" \
     --forbid-prefix "${default_env_absolute}"
 
-runtime_validator="$(cd ../scripts && pwd)/validate_vibecad_macos_runtime.py"
+runtime_validator="$(cd ../scripts && pwd)/validate_cadex_macos_runtime.py"
 
 run_standalone_runtime_check() {
     local check="$1"
@@ -186,38 +165,38 @@ run_standalone_runtime_check() {
 
 run_freecad_runtime_check() {
     local check="$1"
-    VIBECAD_RUNTIME_PREFIX="${conda_env_absolute}" \
-    VIBECAD_RUNTIME_CHECK="${check}" \
-    VIBECAD_RUNTIME_VALIDATOR="${runtime_validator}" \
+    CADEX_RUNTIME_PREFIX="${conda_env_absolute}" \
+    CADEX_RUNTIME_CHECK="${check}" \
+    CADEX_RUNTIME_VALIDATOR="${runtime_validator}" \
         "${conda_env}/bin/freecadcmd" --safe-mode -c \
-        "import os, runpy, sys; sys.argv = ['validator', '--prefix', os.environ['VIBECAD_RUNTIME_PREFIX'], '--check', os.environ['VIBECAD_RUNTIME_CHECK']]; runpy.run_path(os.environ['VIBECAD_RUNTIME_VALIDATOR'], run_name='__main__')"
+        "import os, runpy, sys; sys.argv = ['validator', '--prefix', os.environ['CADEX_RUNTIME_PREFIX'], '--check', os.environ['CADEX_RUNTIME_CHECK']]; runpy.run_path(os.environ['CADEX_RUNTIME_VALIDATOR'], run_name='__main__')"
 }
 
-echo "Running isolated VibeCAD macOS runtime smoke tests..."
+echo "Running isolated Cadex macOS runtime smoke tests..."
 for check in python openai anthropic keyring jsonschema macos-keyring removed-agents; do
     run_standalone_runtime_check "${check}"
 done
 
 if ! "${conda_env}/bin/freecadcmd" --safe-mode --version; then
-    echo "VibeCAD command-line smoke test failed; the macOS bundle cannot start." >&2
+    echo "Cadex command-line smoke test failed; the macOS bundle cannot start." >&2
     exit 1
 fi
 for check in \
     python pivy openai anthropic keyring jsonschema macos-keyring removed-agents \
-    provider-subprocess build123d openscad codex; do
+    provider-subprocess codex; do
     run_freecad_runtime_check "${check}"
 done
 
-echo "Running VibeCAD app launcher smoke test..."
-"${app_name}/Contents/MacOS/FreeCAD" --vibecad-launcher-smoke
+echo "Running Cadex app launcher smoke test..."
+"${app_name}/Contents/MacOS/FreeCAD" --cadex-launcher-smoke
 
 if [[ "${MACOS_SIGN_RELEASE:-false}" == "true" ]]; then
     # create the signed dmg
     ../../scripts/macos_sign_and_notarize.zsh \
-        -p "${MACOS_KEYCHAIN_PROFILE:-VibeCAD}" \
+        -p "${MACOS_KEYCHAIN_PROFILE:-Cadex}" \
         -k "${MACOS_SIGNING_KEY_ID:?MACOS_SIGNING_KEY_ID is required for signing}" \
         -n "${app_name}" \
-        -v "VibeCAD" \
+        -v "Cadex" \
         -o "${version_name}.dmg"
 else
     # Ad-hoc sign for local builds (required for QuickLook extensions to register)
@@ -237,7 +216,7 @@ else
     fi
     codesign --force --deep --sign - "${app_name}"
     codesign --verify --deep --strict "${app_name}"
-    "${app_name}/Contents/MacOS/FreeCAD" --vibecad-launcher-smoke
+    "${app_name}/Contents/MacOS/FreeCAD" --cadex-launcher-smoke
 
     # create the dmg
     echo "Staged macOS application size before DMG creation:"
@@ -249,7 +228,7 @@ else
         -s dmg_settings.py \
         -Dapp_name="${app_name}" \
         -Dimage_size="${dmg_size}" \
-        "VibeCAD" \
+        "Cadex" \
         "${version_name}.dmg"
 fi
 

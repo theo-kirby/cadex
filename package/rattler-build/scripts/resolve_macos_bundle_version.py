@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resolve VibeCAD's version metadata to valid Apple bundle versions."""
+"""Resolve Cadex's version metadata to valid Apple bundle versions."""
 
 from __future__ import annotations
 

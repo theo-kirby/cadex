@@ -4,8 +4,8 @@ import re
 
 # Ensure default values are set in defines if they are not already provided
 defines.setdefault('containing_folder', '.')
-defines.setdefault('app_name', 'VibeCAD.app')
-defines.setdefault('icon_path', 'Contents/Resources/vibecad.icns')
+defines.setdefault('app_name', 'Cadex.app')
+defines.setdefault('icon_path', 'Contents/Resources/cadex.icns')
 
 
 files = [f"{defines['containing_folder']}/{defines['app_name']}"]

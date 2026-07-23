@@ -13,7 +13,7 @@ from typing import Callable
 
 def _parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run one named VibeCAD macOS runtime validation."
+        description="Run one named Cadex macOS runtime validation."
     )
     parser.add_argument("--prefix", required=True, type=Path)
     parser.add_argument("--check", required=True)
@@ -89,7 +89,7 @@ def _check_pivy(prefix: Path) -> None:
 
 
 def _check_provider_subprocess(prefix: Path) -> None:
-    module = _require_bundle_module("VibeCADProvider", prefix)
+    module = _require_bundle_module("CadexProvider", prefix)
     context = module._provider_multiprocessing_context()
     if context.get_start_method() != "spawn":
         raise RuntimeError(
@@ -100,20 +100,8 @@ def _check_provider_subprocess(prefix: Path) -> None:
     print("provider subprocess: spawn smoke passed", flush=True)
 
 
-def _check_build123d(prefix: Path) -> None:
-    module = _require_bundle_module("VibeCADBuild123d", prefix)
-    result = module.runtime_execution_smoke()
-    print(f"build123d sidecar: {result['version']}", flush=True)
-
-
-def _check_openscad(prefix: Path) -> None:
-    module = _require_bundle_module("VibeCADOpenSCAD", prefix)
-    result = module.runtime_execution_smoke()
-    print(f"OpenSCAD sidecar: {result['version']}", flush=True)
-
-
 def _check_codex(prefix: Path) -> None:
-    module = _require_bundle_module("VibeCADCodex", prefix)
+    module = _require_bundle_module("CadexCodex", prefix)
     result = module.runtime_execution_smoke()
     print(f"Codex app-server: {result['version']}", flush=True)
 
@@ -128,8 +116,6 @@ CHECKS: dict[str, Callable[[Path], None]] = {
     "removed-agents": _check_removed_agents,
     "pivy": _check_pivy,
     "provider-subprocess": _check_provider_subprocess,
-    "build123d": _check_build123d,
-    "openscad": _check_openscad,
     "codex": _check_codex,
 }
 

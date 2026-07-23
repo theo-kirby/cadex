@@ -5,7 +5,7 @@ set -x
 
 conda_env="$(pwd)/../.pixi/envs/default/"
 
-copy_dir="VibeCAD_Windows"
+copy_dir="Cadex_Windows"
 if [[ -z "${BUILD_TAG:-}" || ! "${BUILD_TAG}" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]]; then
   echo "BUILD_TAG must contain only letters, numbers, '.', '_', '+', and '-'." >&2
   exit 1
@@ -122,16 +122,10 @@ PY
   fi
 }
 
-../scripts/install_vibecad_provider_deps.sh "${conda_env}"
-../scripts/install_vibecad_build123d_runtime.sh \
+../scripts/install_cadex_provider_deps.sh "${conda_env}"
+../scripts/install_cadex_codex_runtime.sh \
   "${conda_env}/python.exe" \
-  "${conda_env}/Library/Mod/VibeCAD"
-../scripts/install_vibecad_openscad_runtime.sh \
-  "${conda_env}/python.exe" \
-  "${conda_env}/Library/Mod/VibeCAD"
-../scripts/install_vibecad_codex_runtime.sh \
-  "${conda_env}/python.exe" \
-  "${conda_env}/Library/Mod/VibeCAD"
+  "${conda_env}/Library/Mod/cadex"
 
 # Copy Conda's Python and (U)CRT to FreeCAD/bin
 copy_tree "${conda_env}/DLLs" "${copy_dir}/bin/DLLs"
@@ -155,10 +149,10 @@ copy_matching_files "${conda_env}/Library/bin" "*.dll" "${copy_dir}/bin"
 copy_matching_files "${conda_env}/Library/bin" "freecad*" "${copy_dir}/bin"
 copy_matching_files "${conda_env}/Library/bin" "FreeCAD*" "${copy_dir}/bin"
 # Keep upstream compatibility executables while providing a first-class
-# VibeCAD process name for shortcuts, file associations, and Task Manager.
-cp -a "${copy_dir}/bin/freecad.exe" "${copy_dir}/bin/VibeCAD.exe"
-if [[ ! -x "${copy_dir}/bin/VibeCAD.exe" ]]; then
-    echo "Branded VibeCAD executable was not created." >&2
+# Cadex process name for shortcuts, file associations, and Task Manager.
+cp -a "${copy_dir}/bin/freecad.exe" "${copy_dir}/bin/Cadex.exe"
+if [[ ! -x "${copy_dir}/bin/Cadex.exe" ]]; then
+    echo "Branded Cadex executable was not created." >&2
     exit 1
 fi
 copy_tree "${conda_env}/Library/data" "${copy_dir}/data"
@@ -169,11 +163,6 @@ if [[ ! -x "${copy_dir}/bin/pythonw.exe" ]]; then
   echo "Windowless Python executable is missing: ${copy_dir}/bin/pythonw.exe" >&2
   exit 1
 fi
-"${copy_dir}/bin/python.exe" \
-  ../scripts/write_vibecad_build123d_manifest.py \
-  "${copy_dir}/Mod/VibeCAD/build123d_runtime" \
-  "${copy_dir}/bin" \
-  "${copy_dir}/bin/pythonw.exe"
 mkdir -p ${copy_dir}/doc
 cp -a "${conda_env}"/Library/doc/{ThirdPartyLibraries.html,LICENSE.html} "${copy_dir}/doc"
 
@@ -192,12 +181,12 @@ set +x
 echo '[Paths]' >> ${copy_dir}/bin/qt6.conf
 echo 'Prefix = ../lib/qt6' >> ${copy_dir}/bin/qt6.conf
 
-# Deterministic root launchers built by the same CMake/MSVC recipe as VibeCAD.
+# Deterministic root launchers built by the same CMake/MSVC recipe as Cadex.
 # Do not depend on Chocolatey's runner-global, proprietary shim generator.
-cp -a "${conda_env}/Library/bin/VibeCADPortableLauncher.exe" "${copy_dir}/VibeCAD.exe"
-cp -a "${conda_env}/Library/bin/VibeCADCmdPortableLauncher.exe" "${copy_dir}/FreeCADCmd.exe"
-if [[ ! -x "${copy_dir}/VibeCAD.exe" || ! -x "${copy_dir}/FreeCADCmd.exe" ]]; then
-    echo "Portable VibeCAD launchers were not created." >&2
+cp -a "${conda_env}/Library/bin/CadexPortableLauncher.exe" "${copy_dir}/Cadex.exe"
+cp -a "${conda_env}/Library/bin/CadexCmdPortableLauncher.exe" "${copy_dir}/FreeCADCmd.exe"
+if [[ ! -x "${copy_dir}/Cadex.exe" || ! -x "${copy_dir}/FreeCADCmd.exe" ]]; then
+    echo "Portable Cadex launchers were not created." >&2
     exit 1
 fi
 
@@ -268,37 +257,29 @@ else
   echo "Not logged into Azure -- skipping signing."
 fi
 
-echo "Running VibeCAD command-line smoke test..."
+echo "Running Cadex command-line smoke test..."
 if ! "$SIGN_DIR/bin/freecadcmd.exe" --safe-mode --version; then
-  echo "VibeCAD command-line smoke test failed; the Windows bundle cannot start."
+  echo "Cadex command-line smoke test failed; the Windows bundle cannot start."
   exit 1
 fi
 if ! "$SIGN_DIR/FreeCADCmd.exe" --safe-mode --version; then
-  echo "VibeCAD portable command-line launcher smoke test failed."
+  echo "Cadex portable command-line launcher smoke test failed."
   exit 1
 fi
-if ! "$SIGN_DIR/bin/freecadcmd.exe" --safe-mode -c "import importlib.util, openai, anthropic, keyring, jsonschema; import keyring.backends.Windows; assert importlib.util.find_spec('agents') is None; print('VibeCAD provider SDK, OS keyring backend, and schema validator imports ok')"; then
-  echo "VibeCAD provider SDK/keyring smoke test failed; the Windows bundle is missing AI provider dependencies."
+if ! "$SIGN_DIR/bin/freecadcmd.exe" --safe-mode -c "import importlib.util, openai, anthropic, keyring, jsonschema; import keyring.backends.Windows; assert importlib.util.find_spec('agents') is None; print('Cadex provider SDK, OS keyring backend, and schema validator imports ok')"; then
+  echo "Cadex provider SDK/keyring smoke test failed; the Windows bundle is missing AI provider dependencies."
   exit 1
 fi
-if ! "$SIGN_DIR/bin/freecadcmd.exe" --safe-mode -c "from VibeCADProvider import _provider_subprocess_smoke; _provider_subprocess_smoke(); print('VibeCAD provider subprocess smoke ok')"; then
-  echo "VibeCAD provider subprocess smoke test failed; the Windows bundle cannot run AI providers."
+if ! "$SIGN_DIR/bin/freecadcmd.exe" --safe-mode -c "from CadexProvider import _provider_subprocess_smoke; _provider_subprocess_smoke(); print('Cadex provider subprocess smoke ok')"; then
+  echo "Cadex provider subprocess smoke test failed; the Windows bundle cannot run AI providers."
   exit 1
 fi
-if ! "$SIGN_DIR/bin/freecadcmd.exe" --safe-mode -c "from VibeCADBuild123d import runtime_execution_smoke; result = runtime_execution_smoke(); print('VibeCAD build123d runtime smoke ok', result['version'])"; then
-  echo "VibeCAD build123d runtime smoke test failed; the Windows bundle cannot run build123d models."
+if ! "$SIGN_DIR/bin/freecadcmd.exe" --safe-mode -c "from CadexCodex import runtime_execution_smoke; result = runtime_execution_smoke(); print('Cadex Codex app-server smoke ok', result['version'])"; then
+  echo "Cadex Codex app-server smoke test failed; the Windows bundle cannot use ChatGPT subscriptions."
   exit 1
 fi
-if ! "$SIGN_DIR/bin/freecadcmd.exe" --safe-mode -c "from VibeCADCodex import runtime_execution_smoke; result = runtime_execution_smoke(); print('VibeCAD Codex app-server smoke ok', result['version'])"; then
-  echo "VibeCAD Codex app-server smoke test failed; the Windows bundle cannot use ChatGPT subscriptions."
-  exit 1
-fi
-if ! "$SIGN_DIR/bin/freecadcmd.exe" --safe-mode -c "from VibeCADOpenSCAD import runtime_execution_smoke; result = runtime_execution_smoke(); print('VibeCAD OpenSCAD runtime smoke ok', result['version'])"; then
-  echo "VibeCAD OpenSCAD runtime smoke test failed; the Windows bundle cannot run OpenSCAD models."
-  exit 1
-fi
-if ! "$SIGN_DIR/bin/freecadcmd.exe" --safe-mode -c "from VibeCADProvider import _provider_subprocess_smoke; _provider_subprocess_smoke(prefer_windowless_python=True, require_windowless_python=True); print('VibeCAD windowless provider subprocess smoke ok')"; then
-  echo "VibeCAD windowless provider subprocess smoke test failed; the Windows GUI bundle would show a Python console."
+if ! "$SIGN_DIR/bin/freecadcmd.exe" --safe-mode -c "from CadexProvider import _provider_subprocess_smoke; _provider_subprocess_smoke(prefer_windowless_python=True, require_windowless_python=True); print('Cadex windowless provider subprocess smoke ok')"; then
+  echo "Cadex windowless provider subprocess smoke test failed; the Windows GUI bundle would show a Python console."
   exit 1
 fi
 

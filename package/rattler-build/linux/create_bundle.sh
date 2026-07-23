@@ -50,21 +50,10 @@ fi
 exec "${MAIN}" "$@"
 EOF
 
-    ../scripts/install_vibecad_provider_deps.sh ../.pixi/envs/default
-    ../scripts/install_vibecad_build123d_runtime.sh \
+    ../scripts/install_cadex_provider_deps.sh ../.pixi/envs/default
+    ../scripts/install_cadex_codex_runtime.sh \
         "../.pixi/envs/default/bin/python" \
-        "../.pixi/envs/default/Mod/VibeCAD"
-    ../scripts/install_vibecad_openscad_runtime.sh \
-        "../.pixi/envs/default/bin/python" \
-        "../.pixi/envs/default/Mod/VibeCAD"
-    ../scripts/install_vibecad_codex_runtime.sh \
-        "../.pixi/envs/default/bin/python" \
-        "../.pixi/envs/default/Mod/VibeCAD"
-    "../.pixi/envs/default/bin/python" \
-        ../scripts/write_vibecad_build123d_manifest.py \
-        "../.pixi/envs/default/Mod/VibeCAD/build123d_runtime" \
-        "../.pixi/envs/default" \
-        "../.pixi/envs/default/bin/python"
+        "../.pixi/envs/default/Mod/cadex"
     cp -a ../.pixi/envs/default/* ${conda_env}
 
     echo -e "\nDelete unnecessary stuff"
@@ -111,29 +100,21 @@ EOF
     pixi list -e default > AppDir/packages.txt
     sed -i "1s/.*/\nLIST OF PACKAGES:/" AppDir/packages.txt
 
-    echo "Running VibeCAD command-line smoke test..."
+    echo "Running Cadex command-line smoke test..."
     if ! "${conda_env}/bin/freecadcmd" --safe-mode --version; then
-        echo "VibeCAD command-line smoke test failed; the Linux bundle cannot start."
+        echo "Cadex command-line smoke test failed; the Linux bundle cannot start."
         exit 1
     fi
-    if ! "${conda_env}/bin/freecadcmd" --safe-mode -c "import importlib.util, openai, anthropic, keyring, jsonschema, secretstorage; import keyring.backends.SecretService; assert importlib.util.find_spec('agents') is None; print('VibeCAD provider SDK, OS keyring backend, and schema validator imports ok')"; then
-        echo "VibeCAD provider SDK/keyring smoke test failed; the Linux bundle is missing AI provider dependencies."
+    if ! "${conda_env}/bin/freecadcmd" --safe-mode -c "import importlib.util, openai, anthropic, keyring, jsonschema, secretstorage; import keyring.backends.SecretService; assert importlib.util.find_spec('agents') is None; print('Cadex provider SDK, OS keyring backend, and schema validator imports ok')"; then
+        echo "Cadex provider SDK/keyring smoke test failed; the Linux bundle is missing AI provider dependencies."
         exit 1
     fi
-    if ! "${conda_env}/bin/freecadcmd" --safe-mode -c "from VibeCADProvider import _provider_subprocess_smoke; _provider_subprocess_smoke(); print('VibeCAD provider subprocess smoke ok')"; then
-        echo "VibeCAD provider subprocess smoke test failed; the Linux bundle cannot run AI providers."
+    if ! "${conda_env}/bin/freecadcmd" --safe-mode -c "from CadexProvider import _provider_subprocess_smoke; _provider_subprocess_smoke(); print('Cadex provider subprocess smoke ok')"; then
+        echo "Cadex provider subprocess smoke test failed; the Linux bundle cannot run AI providers."
         exit 1
     fi
-    if ! "${conda_env}/bin/freecadcmd" --safe-mode -c "from VibeCADBuild123d import runtime_execution_smoke; result = runtime_execution_smoke(); print('VibeCAD build123d runtime smoke ok', result['version'])"; then
-        echo "VibeCAD build123d runtime smoke test failed; the Linux bundle cannot run build123d models."
-        exit 1
-    fi
-    if ! "${conda_env}/bin/freecadcmd" --safe-mode -c "from VibeCADOpenSCAD import runtime_execution_smoke; result = runtime_execution_smoke(); print('VibeCAD OpenSCAD runtime smoke ok', result['version'])"; then
-        echo "VibeCAD OpenSCAD runtime smoke test failed; the Linux bundle cannot run OpenSCAD models."
-        exit 1
-    fi
-    if ! "${conda_env}/bin/freecadcmd" --safe-mode -c "from VibeCADCodex import runtime_execution_smoke; result = runtime_execution_smoke(); print('VibeCAD Codex app-server smoke ok', result['version'])"; then
-        echo "VibeCAD Codex app-server smoke test failed; the Linux bundle cannot use ChatGPT subscriptions."
+    if ! "${conda_env}/bin/freecadcmd" --safe-mode -c "from CadexCodex import runtime_execution_smoke; result = runtime_execution_smoke(); print('Cadex Codex app-server smoke ok', result['version'])"; then
+        echo "Cadex Codex app-server smoke test failed; the Linux bundle cannot use ChatGPT subscriptions."
         exit 1
     fi
 
@@ -171,7 +152,7 @@ make_appimage() {
       --comp zstd \
       --mksquashfs-opt -Xcompression-level \
       --mksquashfs-opt 19 \
-      -u "gh-releases-zsync|10-X-eng|vibecad|${GH_UPDATE_TAG}|VibeCAD*$(uname -m)*.AppImage.zsync" \
+      -u "gh-releases-zsync|10-X-eng|cadex|${GH_UPDATE_TAG}|Cadex*$(uname -m)*.AppImage.zsync" \
       AppDir ${version_name}.AppImage
       # -s --sign-key ${GPG_KEY_ID} \
 
@@ -183,7 +164,7 @@ make_appimage() {
     if [ "${UPLOAD_RELEASE}" == "true" ]; then
         gh release upload --clobber ${BUILD_TAG} "${version_name}.AppImage" "${version_name}.AppImage.zsync" "${version_name}.AppImage-SHA256.txt"
         if [ "${GH_UPDATE_TAG}" == "weeklies" ]; then
-            generic_name="VibeCAD_weekly-Linux-$(uname -m)"
+            generic_name="Cadex_weekly-Linux-$(uname -m)"
             mv "${version_name}.AppImage" "${generic_name}.AppImage"
             mv "${version_name}.AppImage.zsync" "${generic_name}.AppImage.zsync"
             mv "${version_name}.AppImage-SHA256.txt" "${generic_name}.AppImage-SHA256.txt"

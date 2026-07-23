@@ -8,7 +8,7 @@ repo_root="$(cd "${rattler_root}/../.." && pwd)"
 
 env_root="${1:-${rattler_root}/.pixi/envs/default}"
 if [[ ! -d "${env_root}" ]]; then
-    echo "VibeCAD runtime environment not found: ${env_root}" >&2
+    echo "Cadex runtime environment not found: ${env_root}" >&2
     exit 1
 fi
 env_root="$(cd "${env_root}" && pwd)"
@@ -19,17 +19,17 @@ if [[ -x "${env_root}/bin/python" ]]; then
 elif [[ -x "${env_root}/python.exe" ]]; then
     python_exe="${env_root}/python.exe"
 else
-    echo "No Python executable found in VibeCAD runtime environment: ${env_root}" >&2
+    echo "No Python executable found in Cadex runtime environment: ${env_root}" >&2
     exit 1
 fi
 
-requirements="${repo_root}/src/Mod/VibeCAD/requirements.txt"
+requirements="${repo_root}/src/Mod/cadex/requirements.txt"
 if [[ ! -f "${requirements}" ]]; then
-    echo "VibeCAD provider requirements file not found: ${requirements}" >&2
+    echo "Cadex provider requirements file not found: ${requirements}" >&2
     exit 1
 fi
 
-echo "Installing VibeCAD provider SDK dependencies into ${env_root}"
+echo "Installing Cadex provider SDK dependencies into ${env_root}"
 "${python_exe}" -m pip uninstall --yes openai-agents
 "${python_exe}" -m pip install \
     --disable-pip-version-check \
@@ -58,5 +58,5 @@ else:
 if importlib.util.find_spec("agents") is not None:
     raise RuntimeError("The removed OpenAI Agents SDK is still present in the runtime.")
 
-print("VibeCAD provider SDK, OS keyring backend, and schema validator imports ok")
+print("Cadex provider SDK, OS keyring backend, and schema validator imports ok")
 PY

@@ -9,7 +9,7 @@
 	<key>CFBundleGetInfoString</key>
 	<string></string>
 	<key>CFBundleIconFile</key>
-	<string>vibecad.icns</string>
+	<string>cadex.icns</string>
 	<key>CFBundleIdentifier</key>
 	<string>org.freecad.FreeCAD</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -21,11 +21,11 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>VIBECAD_SHORT_VERSION</string>
+	<string>CADEX_SHORT_VERSION</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleVersion</key>
-	<string>VIBECAD_BUILD_VERSION</string>
+	<string>CADEX_BUILD_VERSION</string>
 	<key>CSResourcesFileMapped</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
