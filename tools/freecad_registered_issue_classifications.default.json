@@ -1,0 +1,155 @@
+{
+  "schema": "freecad-registered-issue-classifications-v1",
+  "issues": [
+    {
+      "suite": "TestArch",
+      "expected_result": "traceback",
+      "reason": "Known BIM/Arch async GUI lifetime noise: ArchSite updateSunPosition timer touches a deleted view provider.",
+      "required_evidence": [
+        "ReferenceError: Cannot access attribute 'ShowSunPosition' of deleted object",
+        "ArchSite.py"
+      ],
+      "expected_counts": {
+        "deleted_object_reference_errors": 12,
+        "quantity_slot_type_errors": 0,
+        "returncode": 0,
+        "segmentation_fault": false,
+        "timeout": false,
+        "traceback_count": 16
+      },
+      "hard_blocker": true
+    },
+    {
+      "suite": "TestDraftGui",
+      "expected_result": "ok_with_process_errors",
+      "reason": "Known Draft manual input Qt/PySide Base::Quantity slot conversion noise despite suite return code 0.",
+      "required_evidence": [
+        "TypeError: Cannot call meta function \"slot(Base::Quantity)\""
+      ],
+      "expected_counts": {
+        "deleted_object_reference_errors": 0,
+        "quantity_slot_type_errors": 68,
+        "returncode": 0,
+        "segmentation_fault": false,
+        "timeout": false,
+        "traceback_count": 0
+      },
+      "hard_blocker": true
+    },
+    {
+      "suite": "Workbench",
+      "expected_result": "timeout",
+      "reason": "Registered Workbench suite does not finish within the current per-suite timeout under the isolated harness.",
+      "required_evidence": [
+        "TIMEOUT after 180s"
+      ],
+      "expected_counts": {
+        "deleted_object_reference_errors": 0,
+        "quantity_slot_type_errors": 0,
+        "returncode": 124,
+        "segmentation_fault": false,
+        "timeout": true,
+        "traceback_count": 0
+      },
+      "hard_blocker": true
+    },
+    {
+      "suite": "TestRubberbandSelection",
+      "expected_result": "process_failed",
+      "reason": "Known GUI event delivery failure in rubberband/drag selection tests under the current Xvfb/Qt run.",
+      "required_evidence": [
+        "Cubic B\u00e9zier drag should reach button release when selection is disabled",
+        "TestRubberbandSelection.py"
+      ],
+      "expected_counts": {
+        "deleted_object_reference_errors": 0,
+        "returncode": 1,
+        "segmentation_fault": false,
+        "timeout": false
+      },
+      "expected_count_ranges": {
+        "traceback_count": {
+          "min": 1,
+          "max": 3
+        },
+        "quantity_slot_type_errors": {
+          "min": 1,
+          "max": 100
+        }
+      },
+      "hard_blocker": true
+    },
+    {
+      "suite": "TestCoinSelectionVisual",
+      "expected_result": "crash",
+      "reason": "Known hard crash in visual Coin selection snapshot path; any SIGSEGV remains a hard blocker.",
+      "required_evidence": [
+        "Program received signal SIGSEGV",
+        "QImage::width"
+      ],
+      "expected_counts": {
+        "deleted_object_reference_errors": 0,
+        "quantity_slot_type_errors": 0,
+        "returncode": 1,
+        "segmentation_fault": true,
+        "timeout": false,
+        "traceback_count": 0
+      },
+      "hard_blocker": true
+    },
+    {
+      "suite": "TestArchGui",
+      "expected_result": "process_failed",
+      "reason": "Known BIM/Arch covering GUI quantity conversion failure.",
+      "required_evidence": [
+        "RuntimeError: Can't find converter for 'Base::Quantity'",
+        "ArchCoveringGui.py"
+      ],
+      "expected_counts": {
+        "deleted_object_reference_errors": 0,
+        "quantity_slot_type_errors": 0,
+        "returncode": 1,
+        "segmentation_fault": false,
+        "timeout": false,
+        "traceback_count": 9
+      },
+      "hard_blocker": true
+    },
+    {
+      "suite": "TestSketcherGui",
+      "expected_result": "process_failed",
+      "reason": "Known Sketcher GUI test failure from deleted QWidget wrapper during external face preselection.",
+      "required_evidence": [
+        "RuntimeError: libshiboken: Internal C++ object",
+        "TestExternalFacePreselection.py"
+      ],
+      "expected_counts": {
+        "deleted_object_reference_errors": 0,
+        "quantity_slot_type_errors": 0,
+        "returncode": 1,
+        "segmentation_fault": false,
+        "timeout": false,
+        "traceback_count": 5
+      },
+      "hard_blocker": true
+    },
+    {
+      "suite": "TestCAMGui",
+      "expected_result": "process_failed",
+      "reason": "Known CAM toolbit quantity property editor failure.",
+      "required_evidence": [
+        "TestQuantityPropertyEditorWidget.test_update_property",
+        "AssertionError: 0.0 != 10.0"
+      ],
+      "expected_counts": {
+        "deleted_object_reference_errors": 0,
+        "quantity_slot_type_errors": 0,
+        "returncode": 1,
+        "segmentation_fault": false,
+        "timeout": false,
+        "traceback_count": 1
+      },
+      "hard_blocker": true
+    }
+  ]
+}

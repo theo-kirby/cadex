@@ -1,0 +1,21 @@
+{
+  "dependencies": [
+    {
+      "name": "OpenCamLib",
+      "kind": "python_module",
+      "module": "opencamlib",
+      "affects": [
+        "CAM rotary/generator/post registered-test coverage"
+      ]
+    },
+    {
+      "name": "OpenSCAD",
+      "kind": "executable",
+      "executable": "openscad",
+      "version_args": ["--version"],
+      "affects": [
+        "OpenSCAD workbench import/export and executable-backed GUI paths"
+      ]
+    }
+  ]
+}

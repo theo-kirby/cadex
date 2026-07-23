@@ -1,0 +1,70 @@
+name: Report a Problem
+description: Tell us about something that is broken, difficult to use, or missing.
+labels: ["Status: Needs triage", "Status: Needs confirmation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve VibeCAD. Describe the problem in your own words.
+        Screenshots, recordings, CAD files, and logs are useful when available, but
+        you do not need to install another build or know a version number to report an issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem description
+      description: Tell us what happened, what you were trying to do, and what you expected instead. Drag images, videos, logs, or ZIP archives into this field to attach them.
+      placeholder: What went wrong, or what is unnecessarily difficult or missing?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: wb
+    attributes:
+      label: Workbench affected?
+      options:
+        - Assembly
+        - BIM
+        - CAM
+        - Core (App, Gui,...)
+        - Draft
+        - FEM
+        - Material
+        - Measurement
+        - Mesh
+        - Part
+        - Part Design
+        - Sketcher
+        - Spreadsheet
+        - TechDraw
+        - Other (specify in description)
+
+  - type: textarea
+    id: steps_to_reproduce
+    attributes:
+      label: Steps to reproduce (optional)
+      description: If the problem is repeatable, list the shortest sequence that causes it. Attach a ZIP of the affected CAD document when it helps.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Ask VibeCAD to ...
+        4. The problem appears when ...
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Logs or error messages (optional)
+      description: Paste relevant Report view, provider, terminal, or crash output. Remove API keys and other secrets first.
+      placeholder: Paste the relevant error text here.
+      render: text
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment details (optional)
+      description: Add anything relevant that you already know, such as operating system, VibeCAD build, AI provider/model, modeling engine, or whether this worked previously.
+      placeholder: |
+        OS:
+        VibeCAD build, if known:
+        Provider and model, if relevant:
+        Modeling engine, if relevant:

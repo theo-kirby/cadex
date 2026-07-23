@@ -1,0 +1,1386 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""Native FreeCAD preferences for Cadex.
+
+Preferences intentionally store only non-secret settings. API keys are read
+from the process environment, OS keyring, or a user-selected .env file by
+CadexAuth.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+import threading
+
+import FreeCAD as App
+
+from CadexAuth import (
+    DEFAULT_PROVIDER,
+    PROVIDERS,
+    delete_keyring_key,
+    list_provider_models,
+    resolve_auth_credential,
+    resolve_auth_state,
+    store_keyring_key,
+    validate_api_key,
+    validate_configured_auth,
+)
+from CadexDebug import default_capture_directory, resolve_capture_directory
+from CadexPromptStarters import (
+    BUILTIN_PROMPT_STARTERS,
+    CATEGORY_ORDER,
+    PromptStarter,
+    create_custom_prompt_starter,
+    load_custom_prompt_starters,
+    prompt_starters_path,
+    save_custom_prompt_starters,
+)
+
+PREFERENCE_GROUP = "User parameter:BaseApp/Preferences/Mod/cadex"
+DEFAULT_MODEL = "gpt-5.5"
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"
+DEFAULT_CHATGPT_MODEL = ""
+DEFAULT_CLAUDE_CODE_MODEL = "claude-fable-5"
+DEFAULT_MODELS = {
+    "openai": DEFAULT_MODEL,
+    "anthropic": DEFAULT_ANTHROPIC_MODEL,
+    "chatgpt": DEFAULT_CHATGPT_MODEL,
+    "claude-code": DEFAULT_CLAUDE_CODE_MODEL,
+}
+REASONING_EFFORTS = (
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+    "ultra",
+)
+DEFAULT_REASONING_EFFORT = "low"
+DEFAULT_SCRIPTED_TIMEOUT_SECONDS = 300.0
+DEFAULT_SCRIPTED_MEMORY_LIMIT_MB = 6144
+
+
+def normalize_provider(value: str | None) -> str:
+    clean = (value or "").strip().lower()
+    return clean if clean in PROVIDERS else DEFAULT_PROVIDER
+
+
+@dataclass(frozen=True)
+class CadexSettings:
+    experimental_mode: bool = True
+    use_online_provider: bool = True
+    model: str = DEFAULT_MODEL
+    dotenv_path: str = ""
+    reasoning_effort: str = DEFAULT_REASONING_EFFORT
+    provider: str = DEFAULT_PROVIDER
+    anthropic_model: str = DEFAULT_ANTHROPIC_MODEL
+    chatgpt_model: str = DEFAULT_CHATGPT_MODEL
+    claude_code_model: str = DEFAULT_CLAUDE_CODE_MODEL
+    web_search_enabled: bool = False
+    codex_skills_enabled: bool = False
+    openai_base_url: str = ""
+    anthropic_base_url: str = ""
+    xscript_enabled: bool = True
+    scripted_timeout_seconds: float = DEFAULT_SCRIPTED_TIMEOUT_SECONDS
+    scripted_memory_limit_mb: int = DEFAULT_SCRIPTED_MEMORY_LIMIT_MB
+
+    @property
+    def resolved_dotenv_path(self) -> Path | None:
+        if not self.dotenv_path:
+            return None
+        return Path(self.dotenv_path).expanduser()
+
+    @property
+    def active_model(self) -> str:
+        """Model for the selected provider."""
+        provider = normalize_provider(self.provider)
+        if provider == "anthropic":
+            return self.anthropic_model.strip() or DEFAULT_ANTHROPIC_MODEL
+        if provider == "chatgpt":
+            return self.chatgpt_model.strip()
+        if provider == "claude-code":
+            return self.claude_code_model.strip() or DEFAULT_CLAUDE_CODE_MODEL
+        return self.model.strip() or DEFAULT_MODEL
+
+    @property
+    def active_base_url(self) -> str | None:
+        """Base URL override for the selected provider; None means official endpoint."""
+        provider = normalize_provider(self.provider)
+        if provider in {"chatgpt", "claude-code"}:
+            return None
+        if provider == "anthropic":
+            override = self.anthropic_base_url.strip()
+        else:
+            override = self.openai_base_url.strip()
+        return override or None
+
+    def base_url_for(self, provider: str) -> str | None:
+        """Base URL override for ``provider``; None means official endpoint."""
+        clean_provider = normalize_provider(provider)
+        if clean_provider in {"chatgpt", "claude-code"}:
+            return None
+        if clean_provider == "anthropic":
+            override = self.anthropic_base_url.strip()
+        else:
+            override = self.openai_base_url.strip()
+        return override or None
+
+    def model_for(self, provider: str) -> str:
+        """Configured interactive model for ``provider``."""
+        clean_provider = normalize_provider(provider)
+        if clean_provider == "anthropic":
+            return self.anthropic_model.strip() or DEFAULT_ANTHROPIC_MODEL
+        if clean_provider == "chatgpt":
+            return self.chatgpt_model.strip()
+        if clean_provider == "claude-code":
+            return self.claude_code_model.strip() or DEFAULT_CLAUDE_CODE_MODEL
+        return self.model.strip() or DEFAULT_MODEL
+
+
+@dataclass(frozen=True)
+class CadexDebugSettings:
+    context_debug_enabled: bool = False
+    capture_directory: str = ""
+
+    @property
+    def resolved_capture_directory(self) -> Path:
+        return resolve_capture_directory(self.capture_directory)
+
+
+def preferences():
+    return App.ParamGet(PREFERENCE_GROUP)
+
+
+def normalize_reasoning_effort(value: str | None) -> str:
+    clean = (value or "").strip().lower()
+    return clean if clean in REASONING_EFFORTS else DEFAULT_REASONING_EFFORT
+
+
+def _positive_float(value: object, default: float) -> float:
+    try:
+        clean = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    return clean if clean > 0 else default
+
+
+def _positive_int(value: object, default: int) -> int:
+    try:
+        clean = int(value)  # type: ignore[call-overload]
+    except (TypeError, ValueError):
+        return default
+    return clean if clean > 0 else default
+
+
+def load_settings() -> CadexSettings:
+    pref = preferences()
+    return CadexSettings(
+        experimental_mode=pref.GetBool("ExperimentalMode", True),
+        use_online_provider=pref.GetBool("UseOnlineProvider", True),
+        model=pref.GetString("Model", DEFAULT_MODEL) or DEFAULT_MODEL,
+        dotenv_path=pref.GetString("DotenvPath", ""),
+        reasoning_effort=normalize_reasoning_effort(
+            pref.GetString("ReasoningEffort", DEFAULT_REASONING_EFFORT)
+        ),
+        provider=normalize_provider(pref.GetString("Provider", DEFAULT_PROVIDER)),
+        anthropic_model=pref.GetString("AnthropicModel", DEFAULT_ANTHROPIC_MODEL)
+        or DEFAULT_ANTHROPIC_MODEL,
+        chatgpt_model=pref.GetString("ChatGPTModel", DEFAULT_CHATGPT_MODEL),
+        claude_code_model=pref.GetString("ClaudeCodeModel", DEFAULT_CLAUDE_CODE_MODEL)
+        or DEFAULT_CLAUDE_CODE_MODEL,
+        web_search_enabled=pref.GetBool("WebSearchEnabled", False),
+        codex_skills_enabled=pref.GetBool("CodexSkillsEnabled", False),
+        openai_base_url=pref.GetString("OpenAIBaseUrl", ""),
+        anthropic_base_url=pref.GetString("AnthropicBaseUrl", ""),
+        xscript_enabled=pref.GetBool("XScriptEnabled", True),
+        scripted_timeout_seconds=_positive_float(
+            pref.GetFloat("ScriptedTimeoutSeconds", DEFAULT_SCRIPTED_TIMEOUT_SECONDS),
+            DEFAULT_SCRIPTED_TIMEOUT_SECONDS,
+        ),
+        scripted_memory_limit_mb=_positive_int(
+            pref.GetInt("ScriptedMemoryLimitMB", DEFAULT_SCRIPTED_MEMORY_LIMIT_MB),
+            DEFAULT_SCRIPTED_MEMORY_LIMIT_MB,
+        ),
+    )
+
+
+def load_debug_settings() -> CadexDebugSettings:
+    pref = preferences()
+    return CadexDebugSettings(
+        context_debug_enabled=pref.GetBool("ContextDebugEnabled", False),
+        capture_directory=pref.GetString("ContextDebugDirectory", ""),
+    )
+
+
+def save_settings(settings: CadexSettings) -> None:
+    pref = preferences()
+    pref.SetBool("ExperimentalMode", bool(settings.experimental_mode))
+    pref.SetBool("UseOnlineProvider", bool(settings.use_online_provider))
+    pref.SetString("Model", settings.model.strip() or DEFAULT_MODEL)
+    pref.SetString("DotenvPath", settings.dotenv_path.strip())
+    pref.SetString(
+        "ReasoningEffort", normalize_reasoning_effort(settings.reasoning_effort)
+    )
+    pref.SetString("Provider", normalize_provider(settings.provider))
+    pref.SetString(
+        "AnthropicModel", settings.anthropic_model.strip() or DEFAULT_ANTHROPIC_MODEL
+    )
+    pref.SetString("ChatGPTModel", settings.chatgpt_model.strip())
+    pref.SetString(
+        "ClaudeCodeModel",
+        settings.claude_code_model.strip() or DEFAULT_CLAUDE_CODE_MODEL,
+    )
+    pref.SetBool("WebSearchEnabled", bool(settings.web_search_enabled))
+    pref.SetBool("CodexSkillsEnabled", bool(settings.codex_skills_enabled))
+    pref.SetString("OpenAIBaseUrl", settings.openai_base_url.strip())
+    pref.SetString("AnthropicBaseUrl", settings.anthropic_base_url.strip())
+    pref.SetBool("XScriptEnabled", bool(settings.xscript_enabled))
+    pref.SetFloat(
+        "ScriptedTimeoutSeconds",
+        _positive_float(
+            settings.scripted_timeout_seconds, DEFAULT_SCRIPTED_TIMEOUT_SECONDS
+        ),
+    )
+    pref.SetInt(
+        "ScriptedMemoryLimitMB",
+        _positive_int(
+            settings.scripted_memory_limit_mb, DEFAULT_SCRIPTED_MEMORY_LIMIT_MB
+        ),
+    )
+
+
+def save_debug_settings(settings: CadexDebugSettings) -> None:
+    pref = preferences()
+    pref.SetBool("ContextDebugEnabled", bool(settings.context_debug_enabled))
+    pref.SetString("ContextDebugDirectory", settings.capture_directory.strip())
+
+
+def reset_settings() -> None:
+    pref = preferences()
+    pref.RemBool("ExperimentalMode")
+    pref.RemBool("ExperimentalModePrompted")
+    pref.RemBool("UseOnlineProvider")
+    pref.RemString("Model")
+    pref.RemString("DotenvPath")
+    pref.RemString("ReasoningEffort")
+    pref.RemString("Provider")
+    pref.RemString("AnthropicModel")
+    pref.RemString("ChatGPTModel")
+    pref.RemString("ClaudeCodeModel")
+    pref.RemBool("WebSearchEnabled")
+    pref.RemBool("CodexSkillsEnabled")
+    pref.RemString("OpenAIBaseUrl")
+    pref.RemString("AnthropicBaseUrl")
+    pref.RemBool("XScriptEnabled")
+    pref.RemFloat("ScriptedTimeoutSeconds")
+    pref.RemInt("ScriptedMemoryLimitMB")
+    pref.RemBool("ContextDebugEnabled")
+    pref.RemString("ContextDebugDirectory")
+
+
+def configured_dotenv_path() -> Path | None:
+    return load_settings().resolved_dotenv_path
+
+
+def fetch_models_for_provider(
+    provider: str,
+    dotenv_path: Path | None = None,
+    base_url: str | None = None,
+) -> dict:
+    """Resolve the configured key for ``provider`` and query its models endpoint.
+
+    Returns the ``list_provider_models`` payload:
+    {"ok": bool, "models": [str, ...], "error": str | None}.
+    """
+    clean_provider = normalize_provider(provider)
+    if clean_provider == "chatgpt":
+        return list_provider_models(None, provider=clean_provider)
+    credential = resolve_auth_credential(
+        dotenv_path=dotenv_path, provider=clean_provider
+    )
+    if credential is None:
+        spec = PROVIDERS[clean_provider]
+        return {
+            "ok": False,
+            "models": [],
+            "error": f"No {spec.display_name} {spec.credential_label} is configured.",
+        }
+    return list_provider_models(
+        credential.value, provider=clean_provider, base_url=base_url
+    )
+
+
+class CadexPreferencesPage:
+    def __init__(self, parent=None):
+        from PySide import QtCore, QtWidgets
+
+        self.form = QtWidgets.QWidget(parent)
+        self.form.setObjectName("CadexPreferencesPage")
+        self.form.setWindowTitle("Cadex")
+        layout = QtWidgets.QFormLayout(self.form)
+        self._layout = layout
+        self._chatgpt_login_session = None
+        self._chatgpt_task_active = False
+        self._chatgpt_model_details: dict[str, dict] = {}
+        self._chatgpt_default_model = ""
+
+        class _AsyncBridge(QtCore.QObject):
+            event = QtCore.Signal(str, object)
+            finished = QtCore.Signal(str, object)
+
+        self._async_bridge = _AsyncBridge(self.form)
+        self._async_bridge.event.connect(self._chatgpt_task_event)
+        self._async_bridge.finished.connect(self._chatgpt_task_finished)
+
+        self.experimental_mode = QtWidgets.QCheckBox(self.form)
+        self.experimental_mode.setObjectName("CadexPrefExperimentalMode")
+        self.experimental_mode.setToolTip(
+            "Show only the 3D viewport and the Cadex chat. Uncheck for the "
+            "full manual CAD interface with toolbars and panels."
+        )
+        self.experimental_mode.toggled.connect(self._experimental_mode_toggled)
+        layout.addRow("Experimental mode", self.experimental_mode)
+
+        self.experimental_mode_notice = QtWidgets.QLabel(
+            "Takes effect after restarting Cadex.", self.form
+        )
+        self.experimental_mode_notice.setObjectName("CadexPrefExperimentalModeNotice")
+        self.experimental_mode_notice.setVisible(False)
+        layout.addRow("", self.experimental_mode_notice)
+
+        self.use_online = QtWidgets.QCheckBox(self.form)
+        self.use_online.setObjectName("CadexPrefUseOnlineProvider")
+        layout.addRow("Use online provider", self.use_online)
+
+        self.provider = QtWidgets.QComboBox(self.form)
+        self.provider.setObjectName("CadexPrefProvider")
+        for provider_id in sorted(PROVIDERS):
+            self.provider.addItem(PROVIDERS[provider_id].display_name, provider_id)
+        self.provider.currentIndexChanged.connect(self._provider_changed)
+        layout.addRow("Provider", self.provider)
+
+        self.model = QtWidgets.QComboBox(self.form)
+        self.model.setObjectName("CadexPrefModel")
+        self.model.setEditable(True)
+        layout.addRow("OpenAI model", self.model)
+
+        self.anthropic_model = QtWidgets.QComboBox(self.form)
+        self.anthropic_model.setObjectName("CadexPrefAnthropicModel")
+        self.anthropic_model.setEditable(True)
+        layout.addRow("Anthropic model", self.anthropic_model)
+
+        self.chatgpt_model = QtWidgets.QComboBox(self.form)
+        self.chatgpt_model.setObjectName("CadexPrefChatGPTModel")
+        self.chatgpt_model.addItem("Use account default", "")
+        self.chatgpt_model.currentIndexChanged.connect(self._chatgpt_model_changed)
+        layout.addRow("ChatGPT model", self.chatgpt_model)
+
+        self.claude_code_model = QtWidgets.QComboBox(self.form)
+        self.claude_code_model.setObjectName("CadexPrefClaudeCodeModel")
+        self.claude_code_model.setEditable(True)
+        layout.addRow("Claude Code model", self.claude_code_model)
+
+        self.web_search_enabled = QtWidgets.QCheckBox(self.form)
+        self.web_search_enabled.setObjectName("CadexPrefWebSearchEnabled")
+        self.web_search_enabled.setToolTip(
+            "Allow the selected provider to use its hosted web-search tool for "
+            "current engineering facts and sources. Compatible custom endpoints "
+            "must implement the same server-side tool."
+        )
+        layout.addRow("Web research", self.web_search_enabled)
+
+        self.codex_skills_enabled = QtWidgets.QCheckBox(self.form)
+        self.codex_skills_enabled.setObjectName("CadexPrefCodexSkillsEnabled")
+        self.codex_skills_enabled.setToolTip(
+            "Expose enabled Codex skills through one scoped, read-only skill "
+            "resource tool. Shell and general filesystem access remain disabled."
+        )
+        layout.addRow("Codex skills", self.codex_skills_enabled)
+
+        self.openai_base_url = QtWidgets.QLineEdit(self.form)
+        self.openai_base_url.setObjectName("CadexPrefOpenAIBaseUrl")
+        self.openai_base_url.setPlaceholderText("https://api.openai.com/v1")
+        self.openai_base_url.setToolTip(
+            "Override the OpenAI API endpoint (include the /v1 segment). "
+            "Leave blank to use the official endpoint. Use this to point at "
+            "a local server that implements the OpenAI API."
+        )
+        layout.addRow("OpenAI base URL", self.openai_base_url)
+
+        self.anthropic_base_url = QtWidgets.QLineEdit(self.form)
+        self.anthropic_base_url.setObjectName("CadexPrefAnthropicBaseUrl")
+        self.anthropic_base_url.setPlaceholderText("https://api.anthropic.com")
+        self.anthropic_base_url.setToolTip(
+            "Override the Anthropic API endpoint (without the /v1 segment). "
+            "Leave blank to use the official endpoint."
+        )
+        layout.addRow("Anthropic base URL", self.anthropic_base_url)
+
+        self.fetch_models = QtWidgets.QPushButton("Fetch models", self.form)
+        self.fetch_models.setObjectName("CadexPrefFetchModels")
+        self.fetch_models.clicked.connect(self._fetch_models)
+        layout.addRow("", self.fetch_models)
+
+        self.reasoning_effort = QtWidgets.QComboBox(self.form)
+        self.reasoning_effort.setObjectName("CadexPrefReasoningEffort")
+        self.reasoning_effort.addItems(REASONING_EFFORTS)
+        layout.addRow("Reasoning effort", self.reasoning_effort)
+
+        self.xscript_enabled = QtWidgets.QCheckBox(self.form)
+        self.xscript_enabled.setObjectName("CadexPrefXScriptEnabled")
+        self.xscript_enabled.setToolTip(
+            "Make the source-parametric XScript engine available (enabled by "
+            "default). The selected global engine exposes only the active "
+            "workbench's XScript domain. Candidates run in an isolated headless "
+            "worker, and only validated typed outputs are published into the live "
+            "document."
+        )
+        layout.addRow("Enable XScript", self.xscript_enabled)
+
+        self.dotenv_row = QtWidgets.QWidget(self.form)
+        dotenv_row = QtWidgets.QHBoxLayout(self.dotenv_row)
+        dotenv_row.setContentsMargins(0, 0, 0, 0)
+        self.dotenv_path = QtWidgets.QLineEdit(self.form)
+        self.dotenv_path.setObjectName("CadexPrefDotenvPath")
+        browse = QtWidgets.QPushButton("Browse", self.form)
+        browse.setObjectName("CadexPrefBrowseDotenv")
+        browse.clicked.connect(self._browse_dotenv)
+        dotenv_row.addWidget(self.dotenv_path, 1)
+        dotenv_row.addWidget(browse)
+        layout.addRow(".env path", self.dotenv_row)
+
+        self.api_key_row = QtWidgets.QWidget(self.form)
+        api_key_row = QtWidgets.QHBoxLayout(self.api_key_row)
+        api_key_row.setContentsMargins(0, 0, 0, 0)
+        self.api_key = QtWidgets.QLineEdit(self.form)
+        self.api_key.setObjectName("CadexPrefApiKey")
+        self.api_key.setEchoMode(QtWidgets.QLineEdit.Password)
+        self.api_key.setPlaceholderText("Paste an API key for the selected provider")
+        save_key = QtWidgets.QPushButton("Save Key", self.form)
+        save_key.setObjectName("CadexPrefSaveApiKey")
+        save_key.clicked.connect(self._save_api_key)
+        self.api_logout = QtWidgets.QPushButton("Logout", self.form)
+        self.api_logout.setObjectName("CadexPrefLogout")
+        self.api_logout.clicked.connect(self._logout)
+        validate = QtWidgets.QPushButton("Validate", self.form)
+        validate.setObjectName("CadexPrefValidateAuth")
+        validate.clicked.connect(self._validate_auth)
+        api_key_row.addWidget(self.api_key, 1)
+        api_key_row.addWidget(save_key)
+        api_key_row.addWidget(validate)
+        api_key_row.addWidget(self.api_logout)
+        layout.addRow("API key", self.api_key_row)
+
+        self.chatgpt_auth_row = QtWidgets.QWidget(self.form)
+        chatgpt_auth_layout = QtWidgets.QHBoxLayout(self.chatgpt_auth_row)
+        chatgpt_auth_layout.setContentsMargins(0, 0, 0, 0)
+        self.chatgpt_sign_in = QtWidgets.QPushButton("Sign in with ChatGPT", self.form)
+        self.chatgpt_sign_in.setObjectName("CadexPrefChatGPTSignIn")
+        self.chatgpt_sign_in.clicked.connect(
+            lambda: self._start_chatgpt_login("browser")
+        )
+        self.chatgpt_device_sign_in = QtWidgets.QPushButton(
+            "Use device code", self.form
+        )
+        self.chatgpt_device_sign_in.setObjectName("CadexPrefChatGPTDeviceSignIn")
+        self.chatgpt_device_sign_in.clicked.connect(
+            lambda: self._start_chatgpt_login("device")
+        )
+        self.chatgpt_cancel_sign_in = QtWidgets.QPushButton("Cancel", self.form)
+        self.chatgpt_cancel_sign_in.setObjectName("CadexPrefChatGPTCancelSignIn")
+        self.chatgpt_cancel_sign_in.setEnabled(False)
+        self.chatgpt_cancel_sign_in.clicked.connect(self._cancel_chatgpt_login)
+        self.chatgpt_logout = QtWidgets.QPushButton("Logout", self.form)
+        self.chatgpt_logout.setObjectName("CadexPrefChatGPTLogout")
+        self.chatgpt_logout.clicked.connect(self._chatgpt_logout)
+        chatgpt_auth_layout.addWidget(self.chatgpt_sign_in)
+        chatgpt_auth_layout.addWidget(self.chatgpt_device_sign_in)
+        chatgpt_auth_layout.addWidget(self.chatgpt_cancel_sign_in)
+        chatgpt_auth_layout.addWidget(self.chatgpt_logout)
+        layout.addRow("ChatGPT account", self.chatgpt_auth_row)
+
+        self.claude_code_auth_row = QtWidgets.QWidget(self.form)
+        claude_code_auth_layout = QtWidgets.QHBoxLayout(self.claude_code_auth_row)
+        claude_code_auth_layout.setContentsMargins(0, 0, 0, 0)
+        self.claude_code_auth_info = QtWidgets.QLabel(
+            "Uses your existing Claude Code sign-in, read from its credential "
+            "file (or macOS keychain). Run `claude` in a terminal and log in.",
+            self.form,
+        )
+        self.claude_code_auth_info.setObjectName("CadexPrefClaudeCodeAuthInfo")
+        self.claude_code_auth_info.setWordWrap(True)
+        self.claude_code_check_sign_in = QtWidgets.QPushButton(
+            "Check sign-in", self.form
+        )
+        self.claude_code_check_sign_in.setObjectName(
+            "CadexPrefClaudeCodeCheckSignIn"
+        )
+        self.claude_code_check_sign_in.clicked.connect(self._validate_auth)
+        claude_code_auth_layout.addWidget(self.claude_code_auth_info, 1)
+        claude_code_auth_layout.addWidget(self.claude_code_check_sign_in)
+        layout.addRow("Claude Code account", self.claude_code_auth_row)
+
+        self.status = QtWidgets.QLabel(self.form)
+        self.status.setObjectName("CadexPrefAuthStatus")
+        self.status.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        layout.addRow("Auth status", self.status)
+
+        refresh = QtWidgets.QPushButton("Refresh", self.form)
+        refresh.setObjectName("CadexPrefRefreshAuth")
+        refresh.clicked.connect(self._refresh_status)
+        layout.addRow("", refresh)
+
+    def _session_experimental_mode(self) -> bool:
+        """Experimental-mode state the running session was started with."""
+        try:
+            from CadexExperimentalMode import is_experimental_mode_session
+
+            return is_experimental_mode_session()
+        except Exception:
+            return load_settings().experimental_mode
+
+    def _experimental_mode_toggled(self, checked: bool) -> None:
+        self.experimental_mode_notice.setVisible(
+            bool(checked) != self._session_experimental_mode()
+        )
+
+    def _browse_dotenv(self) -> None:
+        from PySide import QtWidgets
+
+        selected, _filter = QtWidgets.QFileDialog.getOpenFileName(
+            self.form,
+            "Select .env file",
+            self.dotenv_path.text() or str(Path.home()),
+            "Environment files (*.env);;All files (*)",
+        )
+        if selected:
+            self.dotenv_path.setText(selected)
+            self._refresh_status()
+
+    def _selected_provider(self) -> str:
+        data = self.provider.currentData()
+        return normalize_provider(data if isinstance(data, str) else None)
+
+    def _set_form_row_visible(self, field, visible: bool) -> None:
+        field.setVisible(bool(visible))
+        label = self._layout.labelForField(field)
+        if label is not None:
+            label.setVisible(bool(visible))
+
+    def _update_provider_visibility(self) -> None:
+        provider = self._selected_provider()
+        self._set_form_row_visible(self.model, provider == "openai")
+        self._set_form_row_visible(self.anthropic_model, provider == "anthropic")
+        self._set_form_row_visible(self.chatgpt_model, provider == "chatgpt")
+        self._set_form_row_visible(self.claude_code_model, provider == "claude-code")
+        self._set_form_row_visible(self.web_search_enabled, True)
+        self._set_form_row_visible(self.codex_skills_enabled, provider == "chatgpt")
+        self._set_form_row_visible(self.openai_base_url, provider == "openai")
+        self._set_form_row_visible(self.anthropic_base_url, provider == "anthropic")
+        api_key_provider = provider in {"openai", "anthropic"}
+        self._set_form_row_visible(self.dotenv_row, api_key_provider)
+        self._set_form_row_visible(self.api_key_row, api_key_provider)
+        self._set_form_row_visible(self.chatgpt_auth_row, provider == "chatgpt")
+        self._set_form_row_visible(
+            self.claude_code_auth_row, provider == "claude-code"
+        )
+        self._refresh_reasoning_efforts()
+
+    def _chatgpt_model_changed(self, _index: int = 0) -> None:
+        if self._selected_provider() == "chatgpt":
+            self._refresh_reasoning_efforts()
+
+    def _refresh_reasoning_efforts(self) -> None:
+        provider = self._selected_provider()
+        current = self.reasoning_effort.currentText().strip()
+        allowed = list(REASONING_EFFORTS)
+        preferred = current or DEFAULT_REASONING_EFFORT
+        if provider == "chatgpt":
+            model_id = str(self.chatgpt_model.currentData() or "").strip()
+            effective_model = model_id or self._chatgpt_default_model
+            detail = self._chatgpt_model_details.get(effective_model, {})
+            advertised = [
+                str(value)
+                for value in detail.get("supported_reasoning_efforts") or []
+                if str(value)
+            ]
+            if advertised:
+                allowed = advertised
+                preferred = str(
+                    detail.get("default_reasoning_effort") or DEFAULT_REASONING_EFFORT
+                )
+        self.reasoning_effort.blockSignals(True)
+        try:
+            self.reasoning_effort.clear()
+            self.reasoning_effort.addItems(allowed)
+            selected = current if current in allowed else preferred
+            index = self.reasoning_effort.findText(selected)
+            self.reasoning_effort.setCurrentIndex(index if index >= 0 else 0)
+        finally:
+            self.reasoning_effort.blockSignals(False)
+        if provider == "chatgpt" and current and current not in allowed:
+            self.status.setText(
+                f"reasoning_adjusted | {current} is unavailable for this model; "
+                f"using {self.reasoning_effort.currentText()}."
+            )
+
+    def _provider_changed(self, _index: int = 0) -> None:
+        self.api_key.clear()
+        self._update_provider_visibility()
+        self._refresh_status()
+
+    def _set_chatgpt_task_controls(self, task: str = "") -> None:
+        busy = bool(task)
+        login_busy = task == "login"
+        self.chatgpt_sign_in.setEnabled(not busy)
+        self.chatgpt_device_sign_in.setEnabled(not busy)
+        self.chatgpt_logout.setEnabled(not busy)
+        self.chatgpt_cancel_sign_in.setEnabled(login_busy)
+        self.fetch_models.setEnabled(not busy)
+
+    def _run_chatgpt_task(self, task: str, operation) -> bool:
+        if self._chatgpt_task_active:
+            self.status.setText(
+                "busy | A ChatGPT account operation is already running."
+            )
+            return False
+        self._chatgpt_task_active = True
+        self._chatgpt_task_name = task
+        self._set_chatgpt_task_controls(task)
+
+        def worker() -> None:
+            try:
+                result = operation()
+                payload = {"ok": True, "result": result}
+            except Exception as exc:
+                payload = {"ok": False, "error": str(exc)}
+            self._async_bridge.finished.emit(task, payload)
+
+        threading.Thread(
+            target=worker,
+            name=f"Cadex-ChatGPT-{task}",
+            daemon=True,
+        ).start()
+        return True
+
+    def _chatgpt_account_status(self, result: object) -> str:
+        payload = result if isinstance(result, dict) else {}
+        account = payload.get("account") if isinstance(payload, dict) else None
+        if not isinstance(account, dict) or account.get("type") != "chatgpt":
+            return "not_configured | No ChatGPT subscription account is signed in."
+        plan = str(account.get("planType") or "subscription")
+        email = str(account.get("email") or "").strip()
+        suffix = f" | {email}" if email else ""
+        return f"verified | ChatGPT {plan}{suffix}"
+
+    def _chatgpt_task_event(self, event: str, payload: object) -> None:
+        if event != "login_started" or not isinstance(payload, dict):
+            return
+        from PySide import QtCore, QtGui
+
+        if payload.get("type") == "chatgpt":
+            url = str(payload.get("authUrl") or "")
+            if url:
+                QtGui.QDesktopServices.openUrl(QtCore.QUrl(url))
+            self.status.setText(
+                "sign_in_pending | Complete ChatGPT sign-in in your browser."
+            )
+            return
+        url = str(payload.get("verificationUrl") or "")
+        code = str(payload.get("userCode") or "")
+        if url:
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl(url))
+        self.status.setText(
+            f"sign_in_pending | Open {url} and enter device code {code}."
+        )
+
+    def _chatgpt_task_finished(self, task: str, payload: object) -> None:
+        self._chatgpt_task_active = False
+        self._chatgpt_task_name = ""
+        self._set_chatgpt_task_controls()
+        clean = payload if isinstance(payload, dict) else {}
+        if not clean.get("ok"):
+            self.status.setText(f"auth_error | {clean.get('error') or 'Unknown error'}")
+            self._chatgpt_login_session = None
+            return
+        result = clean.get("result")
+        if task == "models":
+            model_result = result if isinstance(result, dict) else {}
+            if not model_result.get("ok"):
+                self.status.setText(
+                    f"models_error | {model_result.get('error') or 'Unknown error'}"
+                )
+                return
+            self._chatgpt_model_details = {
+                str(item.get("id")): dict(item)
+                for item in model_result.get("model_details") or []
+                if isinstance(item, dict) and item.get("id")
+            }
+            self._chatgpt_default_model = str(model_result.get("default_model") or "")
+            self._apply_provider_models(
+                "chatgpt", list(model_result.get("models") or [])
+            )
+            self._refresh_reasoning_efforts()
+            return
+        if task == "logout":
+            self.status.setText("not_configured | ChatGPT account signed out.")
+            return
+        self.status.setText(self._chatgpt_account_status(result))
+        self._chatgpt_login_session = None
+
+    def _start_chatgpt_login(self, mode: str) -> None:
+        if self._selected_provider() != "chatgpt":
+            return
+        from CadexCodex import ChatGPTLoginSession
+
+        session = ChatGPTLoginSession()
+        self._chatgpt_login_session = session
+
+        def operation():
+            try:
+                started = session.start(mode)
+                self._async_bridge.event.emit("login_started", started)
+                return session.wait()
+            finally:
+                session.close()
+
+        self.status.setText("sign_in_starting | Starting secure ChatGPT sign-in...")
+        if not self._run_chatgpt_task("login", operation):
+            session.close()
+            self._chatgpt_login_session = None
+
+    def _cancel_chatgpt_login(self) -> None:
+        session = self._chatgpt_login_session
+        if session is not None:
+            session.request_cancel()
+            self.status.setText("sign_in_cancelling | Cancelling ChatGPT sign-in...")
+
+    def _chatgpt_logout(self) -> None:
+        from CadexCodex import logout_account
+
+        self.status.setText("sign_out_pending | Signing out of ChatGPT...")
+        self._run_chatgpt_task("logout", logout_account)
+
+    def _set_combo_text(self, combo, text: str) -> None:
+        index = combo.findText(text)
+        if index >= 0:
+            combo.setCurrentIndex(index)
+        else:
+            combo.setEditText(text)
+
+    def _provider_model_combo(self, provider: str):
+        if provider == "anthropic":
+            return self.anthropic_model
+        if provider == "chatgpt":
+            return self.chatgpt_model
+        if provider == "claude-code":
+            return self.claude_code_model
+        return self.model
+
+    def _apply_provider_models(self, provider: str, models: list[str]) -> None:
+        combo = self._provider_model_combo(provider)
+        current = (
+            str(combo.currentData() or "").strip()
+            if provider == "chatgpt"
+            else combo.currentText().strip()
+        )
+        combo.blockSignals(True)
+        try:
+            combo.clear()
+            if provider == "chatgpt":
+                combo.addItem("Use account default", "")
+                for model_name in models:
+                    combo.addItem(model_name, model_name)
+                index = combo.findData(current)
+                combo.setCurrentIndex(index if index >= 0 else 0)
+            else:
+                combo.addItems(models)
+                if current:
+                    self._set_combo_text(combo, current)
+        finally:
+            combo.blockSignals(False)
+        display = PROVIDERS[provider].display_name
+        self.status.setText(f"models_ok | {display} | {len(models)} models")
+
+    def _fetch_models(self) -> None:
+        provider = self._selected_provider()
+        if provider == "chatgpt":
+            from CadexCodex import list_models
+
+            self.status.setText(
+                "models_pending | Loading ChatGPT subscription models..."
+            )
+            self._run_chatgpt_task("models", list_models)
+            return
+        settings = self._current_settings()
+        result = fetch_models_for_provider(
+            provider,
+            dotenv_path=settings.resolved_dotenv_path,
+            base_url=settings.base_url_for(provider),
+        )
+        if not result["ok"]:
+            self.status.setText(f"models_error | {result['error']}")
+            return
+        self._apply_provider_models(provider, list(result["models"]))
+
+    def _save_api_key(self) -> None:
+        result = store_keyring_key(
+            self.api_key.text(), provider=self._selected_provider()
+        )
+        self.api_key.clear()
+        if not result["stored"]:
+            self.status.setText(f"not_configured | {result['error']}")
+            return
+        self._refresh_status()
+
+    def _logout(self) -> None:
+        if self._selected_provider() == "chatgpt":
+            self._chatgpt_logout()
+            return
+        delete_keyring_key(provider=self._selected_provider())
+        self.api_key.clear()
+        self._refresh_status()
+
+    def _validate_auth(self) -> None:
+        provider = self._selected_provider()
+        if provider == "chatgpt":
+            self._refresh_chatgpt_status()
+            return
+        typed_key = self.api_key.text().strip()
+        settings = self._current_settings()
+        base_url = settings.base_url_for(provider)
+        if typed_key:
+            auth = validate_api_key(
+                typed_key,
+                provider=provider,
+                source="unsaved API key",
+                base_url=base_url,
+            )
+            self.api_key.clear()
+        else:
+            auth = validate_configured_auth(
+                provider=provider,
+                dotenv_path=settings.resolved_dotenv_path,
+                base_url=base_url,
+            )
+        source = f" | {auth.source}" if auth.source else ""
+        key = f" | {auth.redacted_key}" if auth.redacted_key else ""
+        message = f" | {auth.message}" if auth.message else ""
+        self.status.setText(f"{auth.status.value}{source}{key}{message}")
+
+    def _current_settings(self) -> CadexSettings:
+        persisted = load_settings()
+        return CadexSettings(
+            experimental_mode=self.experimental_mode.isChecked(),
+            use_online_provider=self.use_online.isChecked(),
+            model=self.model.currentText().strip() or DEFAULT_MODEL,
+            dotenv_path=self.dotenv_path.text().strip(),
+            reasoning_effort=normalize_reasoning_effort(
+                self.reasoning_effort.currentText()
+            ),
+            provider=self._selected_provider(),
+            anthropic_model=self.anthropic_model.currentText().strip()
+            or DEFAULT_ANTHROPIC_MODEL,
+            chatgpt_model=str(self.chatgpt_model.currentData() or "").strip(),
+            claude_code_model=self.claude_code_model.currentText().strip()
+            or DEFAULT_CLAUDE_CODE_MODEL,
+            web_search_enabled=self.web_search_enabled.isChecked(),
+            codex_skills_enabled=self.codex_skills_enabled.isChecked(),
+            openai_base_url=self.openai_base_url.text().strip(),
+            anthropic_base_url=self.anthropic_base_url.text().strip(),
+            xscript_enabled=self.xscript_enabled.isChecked(),
+            scripted_timeout_seconds=persisted.scripted_timeout_seconds,
+            scripted_memory_limit_mb=persisted.scripted_memory_limit_mb,
+        )
+
+    def _refresh_status(self) -> None:
+        if self._selected_provider() == "chatgpt":
+            self._refresh_chatgpt_status()
+            return
+        settings = self._current_settings()
+        auth = resolve_auth_state(
+            dotenv_path=settings.resolved_dotenv_path,
+            provider=self._selected_provider(),
+        )
+        source = f" | {auth.source}" if auth.source else ""
+        key = f" | {auth.redacted_key}" if auth.redacted_key else ""
+        self.status.setText(f"{auth.status.value}{source}{key}")
+
+    def _refresh_chatgpt_status(self) -> None:
+        if self._chatgpt_task_active:
+            return
+        from CadexCodex import read_account
+
+        self.status.setText("checking | Checking ChatGPT subscription sign-in...")
+        self._run_chatgpt_task("status", lambda: read_account(refresh_token=False))
+
+    def saveSettings(self) -> None:
+        save_settings(self._current_settings())
+        try:
+            import CadexGui
+
+            CadexGui.apply_modeling_preferences()
+        except Exception as exc:
+            App.Console.PrintWarning(
+                f"Cadex modeling preference update failed: {exc}\n"
+            )
+
+    def loadSettings(self) -> None:
+        settings = load_settings()
+        self.experimental_mode.setChecked(settings.experimental_mode)
+        self._experimental_mode_toggled(self.experimental_mode.isChecked())
+        self.use_online.setChecked(settings.use_online_provider)
+        provider_index = self.provider.findData(normalize_provider(settings.provider))
+        self.provider.setCurrentIndex(provider_index if provider_index >= 0 else 0)
+        self._set_combo_text(self.model, settings.model)
+        self._set_combo_text(self.anthropic_model, settings.anthropic_model)
+        self._set_combo_text(self.claude_code_model, settings.claude_code_model)
+        if settings.chatgpt_model:
+            index = self.chatgpt_model.findData(settings.chatgpt_model)
+            if index < 0:
+                self.chatgpt_model.addItem(
+                    settings.chatgpt_model, settings.chatgpt_model
+                )
+                index = self.chatgpt_model.count() - 1
+            self.chatgpt_model.setCurrentIndex(index)
+        else:
+            self.chatgpt_model.setCurrentIndex(0)
+        self.web_search_enabled.setChecked(settings.web_search_enabled)
+        self.codex_skills_enabled.setChecked(settings.codex_skills_enabled)
+        index = self.reasoning_effort.findText(settings.reasoning_effort)
+        self.reasoning_effort.setCurrentIndex(index if index >= 0 else 0)
+        self.dotenv_path.setText(settings.dotenv_path)
+        self.openai_base_url.setText(settings.openai_base_url)
+        self.anthropic_base_url.setText(settings.anthropic_base_url)
+        self.xscript_enabled.setChecked(settings.xscript_enabled)
+        self.api_key.clear()
+        self._update_provider_visibility()
+        self._refresh_status()
+
+
+class CadexPromptStartersPreferencesPage:
+    """Global prompt-starter library management."""
+
+    _NEW_STARTER_CONTENT = """Outcome:
+[describe what should be made or changed]
+
+Driving requirements:
+- Dimensions and units: [values]
+- Interfaces and critical geometry: [details]
+- Material and manufacturing process: [details]
+- Loads, tolerances, and clearances: [details]
+- Must preserve or avoid: [details]
+- Completion criteria: [how the result should be verified]
+"""
+
+    def __init__(self, parent=None):
+        from PySide import QtCore, QtWidgets
+
+        self.form = QtWidgets.QWidget(parent)
+        self.form.setObjectName("CadexPromptStartersPreferencesPage")
+        self.form.setWindowTitle("Prompt Starters")
+        layout = QtWidgets.QVBoxLayout(self.form)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+
+        splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal, self.form)
+        splitter.setObjectName("CadexPrefPromptStarterSplitter")
+        layout.addWidget(splitter, 1)
+
+        self.tree = QtWidgets.QTreeWidget(splitter)
+        self.tree.setObjectName("CadexPrefPromptStarterTree")
+        self.tree.setHeaderHidden(True)
+        self.tree.setMinimumWidth(220)
+        self.tree.setUniformRowHeights(True)
+        self.tree.currentItemChanged.connect(self._selection_changed)
+        splitter.addWidget(self.tree)
+
+        editor = QtWidgets.QWidget(splitter)
+        editor.setObjectName("CadexPrefPromptStarterEditor")
+        editor_layout = QtWidgets.QFormLayout(editor)
+        editor_layout.setContentsMargins(8, 0, 0, 0)
+        editor_layout.setSpacing(8)
+
+        self.source = QtWidgets.QLabel(editor)
+        self.source.setObjectName("CadexPrefPromptStarterSource")
+        editor_layout.addRow("Source", self.source)
+
+        self.name = QtWidgets.QLineEdit(editor)
+        self.name.setObjectName("CadexPrefPromptStarterName")
+        self.name.setMaxLength(80)
+        self.name.textChanged.connect(self._name_changed)
+        editor_layout.addRow("Name", self.name)
+
+        self.category = QtWidgets.QComboBox(editor)
+        self.category.setObjectName("CadexPrefPromptStarterCategory")
+        self.category.addItems(CATEGORY_ORDER)
+        self.category.currentTextChanged.connect(self._category_changed)
+        editor_layout.addRow("Category", self.category)
+
+        self.content = QtWidgets.QPlainTextEdit(editor)
+        self.content.setObjectName("CadexPrefPromptStarterContent")
+        self.content.setLineWrapMode(QtWidgets.QPlainTextEdit.WidgetWidth)
+        self.content.textChanged.connect(self._content_changed)
+        editor_layout.addRow("Prompt", self.content)
+
+        actions = QtWidgets.QWidget(editor)
+        actions.setObjectName("CadexPrefPromptStarterActions")
+        actions_layout = QtWidgets.QHBoxLayout(actions)
+        actions_layout.setContentsMargins(0, 0, 0, 0)
+        actions_layout.setSpacing(6)
+
+        self.new_button = QtWidgets.QPushButton("New", actions)
+        self.new_button.setObjectName("CadexPrefPromptStarterNew")
+        self.new_button.clicked.connect(self._new_custom)
+        actions_layout.addWidget(self.new_button)
+
+        self.duplicate_button = QtWidgets.QPushButton("Duplicate", actions)
+        self.duplicate_button.setObjectName("CadexPrefPromptStarterDuplicate")
+        self.duplicate_button.clicked.connect(self._duplicate_selected)
+        actions_layout.addWidget(self.duplicate_button)
+
+        self.delete_button = QtWidgets.QPushButton("Delete", actions)
+        self.delete_button.setObjectName("CadexPrefPromptStarterDelete")
+        self.delete_button.clicked.connect(self._delete_selected)
+        actions_layout.addWidget(self.delete_button)
+        actions_layout.addStretch(1)
+        editor_layout.addRow("", actions)
+
+        splitter.addWidget(editor)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([250, 520])
+
+        self.status = QtWidgets.QLabel(self.form)
+        self.status.setObjectName("CadexPrefPromptStarterStatus")
+        self.status.setWordWrap(True)
+        self.status.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        layout.addWidget(self.status)
+
+        item_data_role = getattr(QtCore.Qt, "ItemDataRole", QtCore.Qt)
+        self._user_role = item_data_role.UserRole
+        self._starters: dict[str, PromptStarter] = {}
+        self._selected_id = ""
+        self._loading_editor = False
+        self._custom_load_error = ""
+
+    def _selected_starter(self) -> PromptStarter | None:
+        return self._starters.get(self._selected_id)
+
+    def _tree_item_for(self, starter_id: str):
+        from PySide import QtWidgets
+
+        iterator = QtWidgets.QTreeWidgetItemIterator(self.tree)
+        while iterator.value() is not None:
+            item = iterator.value()
+            if str(item.data(0, self._user_role) or "") == starter_id:
+                return item
+            iterator += 1
+        return None
+
+    def _reload_tree(self, selected_id: str = "") -> None:
+        from PySide import QtWidgets
+
+        self.tree.blockSignals(True)
+        try:
+            self.tree.clear()
+            selected_item = None
+            first_item = None
+            for category in CATEGORY_ORDER:
+                starters = sorted(
+                    (
+                        starter
+                        for starter in self._starters.values()
+                        if starter.category == category
+                    ),
+                    key=lambda starter: (not starter.builtin, starter.name.casefold()),
+                )
+                if not starters:
+                    continue
+                group = QtWidgets.QTreeWidgetItem([category])
+                group.setData(0, self._user_role, "")
+                self.tree.addTopLevelItem(group)
+                for starter in starters:
+                    item = QtWidgets.QTreeWidgetItem([starter.name])
+                    item.setData(0, self._user_role, starter.starter_id)
+                    item.setToolTip(
+                        0,
+                        "Built in" if starter.builtin else "Custom prompt starter",
+                    )
+                    group.addChild(item)
+                    if first_item is None:
+                        first_item = item
+                    if starter.starter_id == selected_id:
+                        selected_item = item
+                group.setExpanded(True)
+            self.tree.setCurrentItem(selected_item or first_item)
+        finally:
+            self.tree.blockSignals(False)
+        current = self.tree.currentItem()
+        starter_id = (
+            str(current.data(0, self._user_role) or "") if current is not None else ""
+        )
+        self._show_starter(starter_id)
+
+    def _selection_changed(self, current, _previous) -> None:
+        starter_id = (
+            str(current.data(0, self._user_role) or "") if current is not None else ""
+        )
+        self._show_starter(starter_id)
+
+    def _show_starter(self, starter_id: str) -> None:
+        starter = self._starters.get(starter_id)
+        self._selected_id = starter_id if starter is not None else ""
+        self._loading_editor = True
+        try:
+            self.source.setText(
+                "Built in (read only)"
+                if starter is not None and starter.builtin
+                else ("Custom" if starter is not None else "")
+            )
+            self.name.setText(starter.name if starter is not None else "")
+            category_index = (
+                self.category.findText(starter.category) if starter is not None else -1
+            )
+            self.category.setCurrentIndex(category_index if category_index >= 0 else 0)
+            self.content.setPlainText(starter.content if starter is not None else "")
+        finally:
+            self._loading_editor = False
+
+        editable = (
+            starter is not None
+            and not starter.builtin
+            and not self._custom_load_error
+        )
+        self.name.setReadOnly(not editable)
+        self.category.setEnabled(editable)
+        self.content.setReadOnly(not editable)
+        self.duplicate_button.setEnabled(
+            starter is not None and not self._custom_load_error
+        )
+        self.delete_button.setEnabled(editable)
+
+    def _replace_selected(self, *, name=None, category=None, content=None) -> None:
+        starter = self._selected_starter()
+        if starter is None or starter.builtin or self._loading_editor:
+            return
+        self._starters[starter.starter_id] = PromptStarter(
+            starter_id=starter.starter_id,
+            name=starter.name if name is None else name,
+            category=starter.category if category is None else category,
+            content=starter.content if content is None else content,
+            builtin=False,
+        )
+
+    def _name_changed(self, text: str) -> None:
+        self._replace_selected(name=text)
+        item = self._tree_item_for(self._selected_id)
+        if item is not None and not self._loading_editor:
+            item.setText(0, text.strip() or "Untitled prompt starter")
+
+    def _category_changed(self, category: str) -> None:
+        if self._loading_editor or not self._selected_id:
+            return
+        starter = self._selected_starter()
+        if starter is None or starter.builtin:
+            return
+        self._replace_selected(category=category)
+        self._reload_tree(self._selected_id)
+
+    def _content_changed(self) -> None:
+        self._replace_selected(content=self.content.toPlainText())
+
+    def _unique_name(self, base: str) -> str:
+        existing = {starter.name.casefold() for starter in self._starters.values()}
+        if base.casefold() not in existing:
+            return base
+        index = 2
+        while f"{base} {index}".casefold() in existing:
+            index += 1
+        return f"{base} {index}"
+
+    def _new_custom(self) -> None:
+        if self._custom_load_error:
+            return
+        starter = create_custom_prompt_starter(
+            name=self._unique_name("New prompt starter"),
+            category="General",
+            content=self._NEW_STARTER_CONTENT,
+        )
+        self._starters[starter.starter_id] = starter
+        self._reload_tree(starter.starter_id)
+        self.name.setFocus()
+        self.name.selectAll()
+
+    def _duplicate_selected(self) -> None:
+        if self._custom_load_error:
+            return
+        source = self._selected_starter()
+        if source is None:
+            return
+        starter = create_custom_prompt_starter(
+            name=self._unique_name(f"Copy of {source.name}"),
+            category=source.category,
+            content=source.content,
+        )
+        self._starters[starter.starter_id] = starter
+        self._reload_tree(starter.starter_id)
+        self.name.setFocus()
+        self.name.selectAll()
+
+    def _delete_selected(self) -> None:
+        starter = self._selected_starter()
+        if starter is None or starter.builtin or self._custom_load_error:
+            return
+        del self._starters[starter.starter_id]
+        self._reload_tree()
+
+    def saveSettings(self) -> None:
+        if self._custom_load_error:
+            App.Console.PrintWarning(
+                "Cadex prompt starters were not saved because the existing "
+                f"library could not be loaded: {self._custom_load_error}\n"
+            )
+            return
+        custom = [starter for starter in self._starters.values() if not starter.builtin]
+        try:
+            path = save_custom_prompt_starters(custom)
+        except Exception as exc:
+            self.status.setText(f"Not saved | {exc}")
+            App.Console.PrintWarning(f"Cadex prompt starter save failed: {exc}\n")
+            return
+        self.status.setText(f"{len(custom)} custom | {path}")
+
+    def loadSettings(self) -> None:
+        self._custom_load_error = ""
+        try:
+            custom = load_custom_prompt_starters()
+        except Exception as exc:
+            custom = ()
+            self._custom_load_error = str(exc)
+        self._starters = {
+            starter.starter_id: starter
+            for starter in (*BUILTIN_PROMPT_STARTERS, *custom)
+        }
+        self.new_button.setEnabled(not self._custom_load_error)
+        self._reload_tree(self._selected_id)
+        if self._custom_load_error:
+            self.status.setText(f"Custom library unavailable | {self._custom_load_error}")
+        else:
+            self.status.setText(f"{len(custom)} custom | {prompt_starters_path()}")
+
+
+class CadexDebugPreferencesPage:
+    """Preferences for the opt-in exact provider-request debugger."""
+
+    def __init__(self, parent=None):
+        from PySide import QtCore, QtWidgets
+
+        self.form = QtWidgets.QWidget(parent)
+        self.form.setObjectName("CadexDebugPreferencesPage")
+        self.form.setWindowTitle("Debug")
+        layout = QtWidgets.QFormLayout(self.form)
+
+        self.enabled = QtWidgets.QCheckBox(self.form)
+        self.enabled.setObjectName("CadexPrefContextDebugEnabled")
+        self.enabled.setToolTip(
+            "Capture every exact provider SDK request. Captures contain prompts, "
+            "conversation history, tools, CAD context, and encoded images."
+        )
+        self.enabled.toggled.connect(self._enabled_changed)
+        layout.addRow("Context debugger", self.enabled)
+
+        directory_row = QtWidgets.QHBoxLayout()
+        self.directory = QtWidgets.QLineEdit(self.form)
+        self.directory.setObjectName("CadexPrefContextDebugDirectory")
+        self.directory.setPlaceholderText(str(default_capture_directory()))
+        self.directory.setToolTip(
+            "Directory for timestamped JSON request captures. Leave blank to use "
+            "the Cadex debug directory."
+        )
+        browse = QtWidgets.QPushButton("Browse", self.form)
+        browse.setObjectName("CadexPrefBrowseContextDebugDirectory")
+        browse.clicked.connect(self._browse_directory)
+        directory_row.addWidget(self.directory, 1)
+        directory_row.addWidget(browse)
+        layout.addRow("Capture directory", directory_row)
+
+        actions = QtWidgets.QHBoxLayout()
+        self.open_viewer = QtWidgets.QPushButton("Open Viewer", self.form)
+        self.open_viewer.setObjectName("CadexPrefOpenContextDebugViewer")
+        self.open_viewer.clicked.connect(self._open_viewer)
+        open_folder = QtWidgets.QPushButton("Open Folder", self.form)
+        open_folder.setObjectName("CadexPrefOpenContextDebugFolder")
+        open_folder.clicked.connect(self._open_folder)
+        actions.addWidget(self.open_viewer)
+        actions.addWidget(open_folder)
+        actions.addStretch(1)
+        layout.addRow("", actions)
+
+        self.status = QtWidgets.QLabel(self.form)
+        self.status.setObjectName("CadexPrefContextDebugStatus")
+        self.status.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.status.setWordWrap(True)
+        layout.addRow("Capture status", self.status)
+
+    def _settings(self) -> CadexDebugSettings:
+        return CadexDebugSettings(
+            context_debug_enabled=self.enabled.isChecked(),
+            capture_directory=self.directory.text().strip(),
+        )
+
+    def _enabled_changed(self, enabled: bool) -> None:
+        self.open_viewer.setEnabled(bool(enabled))
+        self._refresh_status()
+
+    def _refresh_status(self) -> None:
+        settings = self._settings()
+        state = "enabled" if settings.context_debug_enabled else "disabled"
+        self.status.setText(f"{state} | {settings.resolved_capture_directory}")
+
+    def _browse_directory(self) -> None:
+        from PySide import QtWidgets
+
+        selected = QtWidgets.QFileDialog.getExistingDirectory(
+            self.form,
+            "Select provider request capture directory",
+            str(self._settings().resolved_capture_directory),
+        )
+        if selected:
+            self.directory.setText(selected)
+            self._refresh_status()
+
+    def _open_folder(self) -> None:
+        from PySide import QtCore, QtGui
+
+        directory = self._settings().resolved_capture_directory
+        directory.mkdir(parents=True, exist_ok=True)
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(directory)))
+
+    def _open_viewer(self) -> None:
+        if not self.enabled.isChecked():
+            return
+        save_debug_settings(self._settings())
+        import CadexGui
+
+        CadexGui.show_context_debugger()
+
+    def saveSettings(self) -> None:
+        save_debug_settings(self._settings())
+        try:
+            import CadexGui
+
+            CadexGui.apply_context_debug_preferences()
+        except Exception as exc:
+            App.Console.PrintWarning(
+                f"Cadex context debugger preference update failed: {exc}\n"
+            )
+
+    def loadSettings(self) -> None:
+        settings = load_debug_settings()
+        self.enabled.setChecked(settings.context_debug_enabled)
+        self.directory.setText(settings.capture_directory)
+        self._enabled_changed(settings.context_debug_enabled)

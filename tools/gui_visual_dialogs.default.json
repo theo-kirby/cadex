@@ -1,0 +1,48 @@
+{
+  "dialog_scenes": [
+    {
+      "name": "preferences",
+      "coverage": ["preferences"],
+      "command": "Std_DlgPreferences",
+      "capture": "top_level_dialog",
+      "required_widget_class_contains": ["Gui::Dialog::DlgPreferencesImp"],
+      "required_visible_text_contains": ["Preferences", "OK"],
+      "wait_ms": 1500,
+      "close_after_capture": true
+    },
+    {
+      "name": "file-open",
+      "coverage": ["file-open"],
+      "command": "Std_Open",
+      "capture": "top_level_dialog",
+      "required_widget_class_contains_any": ["Gui::FileDialog", "QFileDialog"],
+      "required_visible_text_contains_any": ["Files of type:", "Open"],
+      "wait_ms": 1500,
+      "close_after_capture": true
+    },
+    {
+      "name": "file-open-return",
+      "coverage": ["file-open", "file-open-return"],
+      "command": "Std_Open",
+      "capture": "top_level_dialog",
+      "required_widget_class_contains_any": ["Gui::FileDialog", "QFileDialog"],
+      "required_visible_text_contains_any": ["Files of type:", "Open"],
+      "accept_file": "data/examples/PartDesignExample.FCStd",
+      "expect_opened_file": "data/examples/PartDesignExample.FCStd",
+      "wait_ms": 1500,
+      "accept_delay_ms": 800,
+      "close_after_capture": true
+    },
+    {
+      "name": "file-save-as",
+      "coverage": ["file-save"],
+      "new_document": true,
+      "command": "Std_SaveAs",
+      "capture": "top_level_dialog",
+      "required_widget_class_contains_any": ["Gui::FileDialog", "QFileDialog"],
+      "required_visible_text_contains_any": ["Files of type:", "Save"],
+      "wait_ms": 1500,
+      "close_after_capture": true
+    }
+  ]
+}

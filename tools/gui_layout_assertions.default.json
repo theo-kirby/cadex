@@ -1,0 +1,11 @@
+{
+  "required_assertions": [
+    "zero_size",
+    "possible_text_clipping",
+    "missing_button_text_or_icon",
+    "low_text_contrast",
+    "outside_parent_bounds",
+    "obvious_sibling_overlap",
+    "task_panel_no_scroll_path"
+  ]
+}

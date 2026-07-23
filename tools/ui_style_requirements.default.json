@@ -1,0 +1,40 @@
+{
+  "requirements": [
+    {
+      "id": "core_tests_stay_green",
+      "title": "Core tests stay green"
+    },
+    {
+      "id": "registered_freecad_tests_actionable",
+      "title": "Registered FreeCAD tests are made actionable"
+    },
+    {
+      "id": "visual_baselines_cover_real_workflows",
+      "title": "Visual baselines cover real workflows"
+    },
+    {
+      "id": "layout_assertions_exist",
+      "title": "Layout assertions exist"
+    },
+    {
+      "id": "theme_dpi_font_matrix",
+      "title": "Theme/DPI/font matrix"
+    },
+    {
+      "id": "image_diff_workflow",
+      "title": "Image diff workflow"
+    },
+    {
+      "id": "gui_exercise_fixture_based",
+      "title": "GUI exercise is fixture-based"
+    },
+    {
+      "id": "crash_gate",
+      "title": "Crash gate"
+    },
+    {
+      "id": "manual_smoke_pass",
+      "title": "Manual smoke pass"
+    }
+  ]
+}

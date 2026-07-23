@@ -1,0 +1,175 @@
+{
+  "task_scenes": [
+    {
+      "name": "vibecad-part-assistant",
+      "coverage": ["vibecad", "vibecad-cpp-workbench", "part"],
+      "workbench": "PartWorkbench",
+      "file": "data/tests/Crank.fcstd",
+      "command": "VibeCAD_OpenAssistant",
+      "required_widget_object_names": [
+        "VibeCADAssistantPanel",
+        "VibeCADToolPack",
+        "VibeCADScreenshotStatus",
+        "VibeCADRunStatus",
+        "VibeCADCaptureView",
+        "VibeCADPrompt",
+        "VibeCADRunPrompt",
+        "VibeCADStopPrompt"
+      ],
+      "required_visible_text_contains": [
+        "Workbench: PartWorkbench",
+        "Tool pack: PartWorkbench",
+        "Use OpenAI",
+        "Capture View",
+        "Conversation",
+        "Prompt",
+        "Run",
+        "Stop"
+      ],
+      "capture": "main_window",
+      "wait_ms": 1800,
+      "close_after_capture": true
+    },
+    {
+      "name": "vibecad-draft-assistant",
+      "coverage": ["vibecad", "vibecad-python-workbench", "draft"],
+      "workbench": "DraftWorkbench",
+      "file": "data/examples/draft_test_objects.FCStd",
+      "command": "VibeCAD_OpenAssistant",
+      "required_widget_object_names": [
+        "VibeCADAssistantPanel",
+        "VibeCADToolPack",
+        "VibeCADScreenshotStatus",
+        "VibeCADRunStatus",
+        "VibeCADCaptureView",
+        "VibeCADPrompt",
+        "VibeCADRunPrompt",
+        "VibeCADStopPrompt"
+      ],
+      "required_visible_text_contains": [
+        "Workbench: DraftWorkbench",
+        "Tool pack: DraftWorkbench",
+        "Use OpenAI",
+        "Capture View",
+        "Conversation",
+        "Prompt",
+        "Run",
+        "Stop"
+      ],
+      "capture": "main_window",
+      "wait_ms": 1800,
+      "close_after_capture": true
+    },
+    {
+      "name": "sketcher-edit",
+      "coverage": ["sketcher-edit"],
+      "workbench": "SketcherWorkbench",
+      "file": "data/examples/PartDesignExample.FCStd",
+      "edit_object": "Sketch",
+      "required_widget_class_contains": ["SketcherGui::TaskSketcherMessages"],
+      "capture": "main_window",
+      "wait_ms": 1800,
+      "close_after_capture": true
+    },
+    {
+      "name": "partdesign-pad-edit",
+      "coverage": ["partdesign-task"],
+      "workbench": "PartDesignWorkbench",
+      "file": "data/examples/PartDesignExample.FCStd",
+      "edit_object": "Pad",
+      "required_widget_class_contains": ["PartDesignGui::TaskPadParameters"],
+      "capture": "main_window",
+      "wait_ms": 1800,
+      "close_after_capture": true
+    },
+    {
+      "name": "draft-edit-rectangle",
+      "coverage": ["draft-bim-panel"],
+      "workbench": "DraftWorkbench",
+      "file": "data/examples/draft_test_objects.FCStd",
+      "select_object": "Rectangle",
+      "command": "Draft_Edit",
+      "required_widget_class_contains": ["Gui::TaskView::TaskEditControl"],
+      "capture": "main_window",
+      "wait_ms": 1800,
+      "close_after_capture": true
+    },
+    {
+      "name": "bim-edit-window",
+      "coverage": ["draft-bim-panel"],
+      "workbench": "BIMWorkbench",
+      "file": "data/examples/BIMExample.FCStd",
+      "edit_object": "Window",
+      "required_widget_class_contains": ["Gui::TaskView::TaskBox"],
+      "capture": "main_window",
+      "wait_ms": 1800,
+      "close_after_capture": true
+    },
+    {
+      "name": "techdraw-edit-page",
+      "coverage": ["techdraw-page-view"],
+      "workbench": "TechDrawWorkbench",
+      "file": "data/examples/ArchDetail.FCStd",
+      "edit_object": "Page",
+      "required_widget_class_contains": ["TechDrawGui::QGVPage"],
+      "capture": "main_window",
+      "wait_ms": 1800,
+      "close_after_capture": true
+    },
+    {
+      "name": "techdraw-edit-draft-view",
+      "coverage": ["techdraw-page-view"],
+      "workbench": "TechDrawWorkbench",
+      "file": "data/examples/ArchDetail.FCStd",
+      "edit_object": "DraftView",
+      "required_widget_class_contains": ["TechDrawGui::QGVPage"],
+      "capture": "main_window",
+      "wait_ms": 1800,
+      "close_after_capture": true
+    },
+    {
+      "name": "fem-edit-solver",
+      "coverage": ["fem-solver-material"],
+      "workbench": "FemWorkbench",
+      "file": "data/examples/FEMExample.FCStd",
+      "edit_object": "SolverCcxTools",
+      "required_widget_class_contains": ["Gui::TaskView::TaskBox"],
+      "capture": "main_window",
+      "wait_ms": 1800,
+      "close_after_capture": true
+    },
+    {
+      "name": "fem-edit-material",
+      "coverage": ["fem-solver-material"],
+      "workbench": "FemWorkbench",
+      "file": "data/examples/FEMExample.FCStd",
+      "edit_object": "MaterialSolid",
+      "required_widget_class_contains": ["MatGui::MaterialTreeWidget"],
+      "capture": "main_window",
+      "wait_ms": 1800,
+      "close_after_capture": true
+    },
+    {
+      "name": "cam-setup",
+      "coverage": ["cam-setup-tool"],
+      "workbench": "CAMWorkbench",
+      "file": "src/Mod/CAM/CAMTests/test_profile.fcstd",
+      "python": "import Path.Main.Gui.Job as PathJobGui\nbase = [App.ActiveDocument.getObject('Body')]\nPathJobGui.Create(base, None, True)",
+      "required_widget_class_contains": ["Gui::TaskView::TaskPanel"],
+      "capture": "main_window",
+      "wait_ms": 2500,
+      "close_after_capture": true
+    },
+    {
+      "name": "cam-tool",
+      "coverage": ["cam-setup-tool"],
+      "workbench": "CAMWorkbench",
+      "file": "src/Mod/CAM/CAMTests/test_profile.fcstd",
+      "python": "import builtins\nfrom Path.Tool.library.ui.dock import ToolBitLibraryDock\ndock = ToolBitLibraryDock(autoClose=False)\ndock.form.show()\ndock.form.raise_()\nbuiltins._freecad_visual_keepalive = getattr(builtins, '_freecad_visual_keepalive', [])\nbuiltins._freecad_visual_keepalive.append(dock)",
+      "required_widget_class_contains": ["LibraryBrowserWithCombo", "CompactToolBitListWidget"],
+      "capture": "active_window",
+      "wait_ms": 3500,
+      "close_after_capture": true
+    }
+  ]
+}

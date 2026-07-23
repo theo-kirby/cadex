@@ -1,0 +1,44 @@
+{
+  "required_workbenches": [
+    "PartWorkbench",
+    "PartDesignWorkbench",
+    "SketcherWorkbench",
+    "DraftWorkbench",
+    "BIMWorkbench",
+    "TechDrawWorkbench",
+    "FemWorkbench",
+    "CAMWorkbench",
+    "SpreadsheetWorkbench"
+  ],
+  "required_fixture_coverage": [
+    "part",
+    "partdesign",
+    "sketcher",
+    "draft",
+    "bim",
+    "techdraw",
+    "fem",
+    "cam",
+    "spreadsheet"
+  ],
+  "required_dialog_coverage": [
+    "preferences",
+    "file-open",
+    "file-open-return",
+    "file-save"
+  ],
+  "required_task_coverage": [
+    "partdesign-task",
+    "sketcher-edit",
+    "draft-bim-panel",
+    "techdraw-page-view",
+    "fem-solver-material",
+    "cam-setup-tool"
+  ],
+  "fixture_scene_config": "gui_visual_scenes.default.json",
+  "dialog_scene_config": "gui_visual_dialogs.default.json",
+  "task_scene_config": "gui_visual_tasks.default.json",
+  "variant_config": "gui_visual_variants.default.json",
+  "workflow_config": "gui_workflows.default.json",
+  "layout_assertion_config": "gui_layout_assertions.default.json"
+}

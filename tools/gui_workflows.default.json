@@ -1,0 +1,73 @@
+{
+  "required_workflows": [
+    "switch_workbench",
+    "create_body",
+    "reopen_document",
+    "sketcher_cancel_task",
+    "partdesign_accept_task"
+  ],
+  "required_workflow_details": {
+    "switch_workbench": [
+      {
+        "status": "workbench_active",
+        "fields_equal": {
+          "workbench": "PartWorkbench"
+        }
+      },
+      {
+        "status": "workbench_active",
+        "fields_equal": {
+          "workbench": "SketcherWorkbench"
+        }
+      },
+      {
+        "status": "workbench_active",
+        "fields_equal": {
+          "workbench": "PartDesignWorkbench"
+        }
+      },
+      {
+        "status": "workbench_active",
+        "fields_equal": {
+          "workbench": "TechDrawWorkbench"
+        }
+      }
+    ],
+    "create_body": [
+      {
+        "status": "workflow_detail",
+        "fields_equal": {
+          "type_id": "PartDesign::Body"
+        },
+        "fields_present": [
+          "object"
+        ]
+      }
+    ],
+    "reopen_document": [
+      {
+        "status": "workflow_detail",
+        "fields_present": [
+          "file",
+          "object_count"
+        ]
+      }
+    ],
+    "sketcher_cancel_task": [
+      {
+        "status": "workflow_detail",
+        "fields_present": [
+          "close_method"
+        ]
+      }
+    ],
+    "partdesign_accept_task": [
+      {
+        "status": "workflow_detail",
+        "fields_present": [
+          "close_method"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,494 @@
+name: VibeCAD Release
+
+on:
+  schedule:
+    # 08:00 UTC is 03:00 CDT / 02:00 CST.
+    - cron: "0 8 * * 0,3"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to create or update. Leave empty for vibecad-YYYYMMDD-SHA."
+        required: false
+        type: string
+      prerelease:
+        description: "Mark the GitHub release as a prerelease."
+        required: true
+        default: true
+        type: boolean
+      make_windows_installer:
+        description: "Build the Windows NSIS installer in addition to the portable 7z bundle."
+        required: true
+        default: true
+        type: boolean
+  push:
+    tags:
+      - "v*"
+      - "vibecad-*"
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: vibecad-release-${{ github.event_name == 'schedule' && 'nightly' || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'schedule' }}
+
+env:
+  UPLOAD_RELEASE: "false"
+
+jobs:
+  prepare:
+    name: Prepare Release Metadata
+    runs-on: ubuntu-24.04
+    outputs:
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+      build_tag: ${{ steps.meta.outputs.build_tag }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      make_windows_installer: ${{ steps.meta.outputs.make_windows_installer }}
+      source_ref: ${{ steps.meta.outputs.source_ref }}
+      source_sha: ${{ steps.meta.outputs.source_sha }}
+      channel: ${{ steps.meta.outputs.channel }}
+      should_build: ${{ steps.meta.outputs.should_build }}
+      artifact_retention_days: ${{ steps.meta.outputs.artifact_retention_days }}
+    steps:
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_RELEASE_TAG: ${{ github.event.inputs.release_tag || '' }}
+          INPUT_PRERELEASE: ${{ github.event.inputs.prerelease || 'true' }}
+          INPUT_MAKE_WINDOWS_INSTALLER: ${{ github.event.inputs.make_windows_installer || 'true' }}
+        run: |
+          set -euo pipefail
+
+          source_ref="${GITHUB_REF_NAME}"
+          source_sha="${GITHUB_SHA}"
+          channel="release"
+          should_build="true"
+          artifact_retention_days="7"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" ]]; then
+            source_ref="dev"
+            source_sha="$(
+              gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${source_ref}" \
+                --jq '.object.sha'
+            )"
+            if [[ ! "${source_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "Could not resolve ${source_ref} to a commit SHA: ${source_sha}" >&2
+              exit 1
+            fi
+
+            release_tag="vibecad-nightly"
+            build_tag="vibecad-nightly"
+            prerelease="true"
+            make_windows_installer="true"
+            channel="nightly"
+            artifact_retention_days="1"
+
+            current_nightly_sha=""
+            if gh release view "${release_tag}" >/dev/null 2>&1; then
+              current_nightly_sha="$(
+                gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${release_tag}" \
+                  --jq '.object.sha'
+              )"
+            fi
+            if [[ "${current_nightly_sha}" == "${source_sha}" ]]; then
+              should_build="false"
+              echo "Skipping nightly: ${source_ref} is unchanged at ${source_sha}."
+            fi
+
+            month_start="$(date -u +%Y-%m-01T00:00:00Z)"
+            runs_json="$(
+              gh api --method GET \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/vibecad-release.yml/runs" \
+                -f event=schedule \
+                -f status=success \
+                -f per_page=100
+            )"
+            mapfile -t successful_run_ids < <(
+              jq -r --arg month_start "${month_start}" \
+                '.workflow_runs[] | select(.run_started_at >= $month_start) | .id' \
+                <<< "${runs_json}"
+            )
+            successful_nightly_builds=0
+            for run_id in "${successful_run_ids[@]}"; do
+              windows_job_id="$(
+                gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs" \
+                  --jq 'first(.jobs[] | select(.name == "Windows Bundle and Installer" and .conclusion == "success")) | .id // empty'
+              )"
+              if [[ -n "${windows_job_id}" ]]; then
+                successful_nightly_builds=$((successful_nightly_builds + 1))
+              fi
+            done
+            if [[ "${successful_nightly_builds}" -ge 8 ]]; then
+              should_build="false"
+              echo "Skipping nightly: monthly limit of 8 successful builds is already reached."
+            fi
+          elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            release_tag="${GITHUB_REF_NAME}"
+            build_tag="${release_tag//\//-}"
+            build_tag="${build_tag// /-}"
+            prerelease="${INPUT_PRERELEASE}"
+            make_windows_installer="${INPUT_MAKE_WINDOWS_INSTALLER}"
+          elif [[ -n "${INPUT_RELEASE_TAG}" ]]; then
+            release_tag="${INPUT_RELEASE_TAG}"
+            build_tag="${release_tag//\//-}"
+            build_tag="${build_tag// /-}"
+            prerelease="${INPUT_PRERELEASE}"
+            make_windows_installer="${INPUT_MAKE_WINDOWS_INSTALLER}"
+          else
+            short_sha="${GITHUB_SHA:0:12}"
+            release_tag="vibecad-$(date -u +%Y%m%d)-${short_sha}"
+            build_tag="${release_tag}"
+            prerelease="${INPUT_PRERELEASE}"
+            make_windows_installer="${INPUT_MAKE_WINDOWS_INSTALLER}"
+          fi
+
+          echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+          echo "build_tag=${build_tag}" >> "${GITHUB_OUTPUT}"
+          echo "prerelease=${prerelease}" >> "${GITHUB_OUTPUT}"
+          echo "make_windows_installer=${make_windows_installer}" >> "${GITHUB_OUTPUT}"
+          echo "source_ref=${source_ref}" >> "${GITHUB_OUTPUT}"
+          echo "source_sha=${source_sha}" >> "${GITHUB_OUTPUT}"
+          echo "channel=${channel}" >> "${GITHUB_OUTPUT}"
+          echo "should_build=${should_build}" >> "${GITHUB_OUTPUT}"
+          echo "artifact_retention_days=${artifact_retention_days}" >> "${GITHUB_OUTPUT}"
+
+          cat >> "${GITHUB_STEP_SUMMARY}" <<EOF
+          Channel: ${channel}
+
+          Source: ${source_ref} @ ${source_sha}
+
+          Release tag: ${release_tag}
+
+          Build scheduled: ${should_build}
+          EOF
+
+  linux:
+    name: Linux AppImage and Debian Package
+    needs: prepare
+    if: needs.prepare.outputs.should_build == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Install Pixi
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://pixi.sh/install.sh | bash
+          echo "${HOME}/.pixi/bin" >> "${GITHUB_PATH}"
+
+      - name: Restore Pixi and Python caches
+        id: cache-pixi-linux
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            package/rattler-build/.pixi
+            package/rattler-build/.download-cache
+            ~/.cache/pixi
+            ~/.cache/rattler
+            ~/.cache/pip
+          key: pixi-linux-${{ hashFiles('package/rattler-build/pixi.lock', 'package/rattler-build/pixi.toml', 'package/rattler-build/recipe.yaml', 'src/Mod/VibeCAD/requirements.txt', 'src/Mod/VibeCAD/build123d-requirements.txt', 'package/rattler-build/scripts/install_vibecad_provider_deps.sh', 'package/rattler-build/scripts/install_vibecad_build123d_runtime.sh', 'package/rattler-build/scripts/install_vibecad_openscad_runtime.sh', 'package/rattler-build/scripts/install_vibecad_codex_runtime.sh', 'package/rattler-build/scripts/write_vibecad_build123d_manifest.py') }}
+          restore-keys: |
+            pixi-linux-
+
+      - name: Report Linux cache status
+        shell: bash
+        run: |
+          echo "cache-hit=${{ steps.cache-pixi-linux.outputs.cache-hit }}"
+          echo "matched-key=${{ steps.cache-pixi-linux.outputs.cache-matched-key }}"
+          echo "primary-key=${{ steps.cache-pixi-linux.outputs.cache-primary-key }}"
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/ccache
+          # Rolling key: every run saves a fresh entry and restores the most
+          # recent prior one via restore-keys, so ccache updates each build.
+          key: ccache-linux-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ccache-linux-
+
+      - name: Build package environment
+        shell: bash
+        working-directory: package/rattler-build
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/ccache
+          CCACHE_MAXSIZE: "2G"
+        run: |
+          set -euo pipefail
+          pixi install -e default
+          pixi install -e package
+
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/ccache
+          key: ccache-linux-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Build Linux AppImage and Debian package
+        shell: bash
+        working-directory: package/rattler-build
+        env:
+          BUILD_TAG: ${{ needs.prepare.outputs.build_tag }}
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          GH_UPDATE_TAG: ${{ needs.prepare.outputs.build_tag }}
+          UPLOAD_RELEASE: "false"
+        run: |
+          set -euo pipefail
+
+          # Build the shared AppDir once (cheap: ~20s), then compress the AppImage
+          # and the .deb concurrently. Both only read the finalized AppDir and are
+          # independent of each other, so they overlap on the runner's cores.
+          artifact_basename="$(
+            python ../../src/Tools/resolve_release_artifact_name.py ../..
+          )"
+          release_version="$(
+            python ../../src/Tools/resolve_release_artifact_name.py ../.. \
+              --component release-version
+          )"
+          CREATE_BUNDLE_PHASE=appdir pixi run -e package create_bundle
+
+          CREATE_BUNDLE_PHASE=appimage pixi run -e package create_bundle &
+          appimage_pid=$!
+
+          ../linux/build_deb_from_appdir.sh \
+            --appdir linux/AppDir \
+            --output-dir linux \
+            --version "${release_version}" \
+            --artifact-basename "${artifact_basename}" \
+            --arch "$(uname -m)" &
+          deb_pid=$!
+
+          appimage_rc=0
+          deb_rc=0
+          wait "$appimage_pid" || appimage_rc=$?
+          wait "$deb_pid" || deb_rc=$?
+          if [[ "$appimage_rc" -ne 0 || "$deb_rc" -ne 0 ]]; then
+            echo "AppImage exit=$appimage_rc, Debian exit=$deb_rc" >&2
+            exit 1
+          fi
+
+      - name: Save Pixi and Python caches
+        if: always() && steps.cache-pixi-linux.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            package/rattler-build/.pixi
+            package/rattler-build/.download-cache
+            ~/.cache/pixi
+            ~/.cache/rattler
+            ~/.cache/pip
+          key: ${{ steps.cache-pixi-linux.outputs.cache-primary-key }}
+
+      - name: Upload Linux release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: vibecad-linux
+          if-no-files-found: error
+          retention-days: ${{ needs.prepare.outputs.artifact_retention_days }}
+          path: |
+            package/rattler-build/linux/*.AppImage
+            package/rattler-build/linux/*.AppImage.zsync
+            package/rattler-build/linux/*.deb
+            package/rattler-build/linux/*SHA256.txt
+
+  windows:
+    name: Windows Bundle and Installer
+    needs: prepare
+    if: needs.prepare.outputs.should_build == 'true'
+    runs-on: windows-2022
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Install Pixi
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://pixi.sh/install.sh | bash
+          echo "${HOME}/.pixi/bin" >> "${GITHUB_PATH}"
+
+      - name: Restore Pixi and Python caches
+        id: cache-pixi-windows
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            package/rattler-build/.pixi
+            package/rattler-build/.download-cache
+            ~\AppData\Local\pixi
+            ~\AppData\Local\rattler
+            ~\AppData\Local\pip\Cache
+          key: pixi-windows-${{ hashFiles('package/rattler-build/pixi.lock', 'package/rattler-build/pixi.toml', 'package/rattler-build/recipe.yaml', 'src/Mod/VibeCAD/requirements.txt', 'src/Mod/VibeCAD/build123d-requirements.txt', 'package/rattler-build/scripts/install_vibecad_provider_deps.sh', 'package/rattler-build/scripts/install_vibecad_build123d_runtime.sh', 'package/rattler-build/scripts/install_vibecad_openscad_runtime.sh', 'package/rattler-build/scripts/install_vibecad_codex_runtime.sh', 'package/rattler-build/scripts/write_vibecad_build123d_manifest.py') }}
+          restore-keys: |
+            pixi-windows-
+
+      - name: Report Windows cache status
+        shell: bash
+        run: |
+          echo "cache-hit=${{ steps.cache-pixi-windows.outputs.cache-hit }}"
+          echo "matched-key=${{ steps.cache-pixi-windows.outputs.cache-matched-key }}"
+          echo "primary-key=${{ steps.cache-pixi-windows.outputs.cache-primary-key }}"
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}\ccache
+          # Rolling key: every run saves a fresh entry and restores the most
+          # recent prior one via restore-keys, so ccache updates each build.
+          key: ccache-windows-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ccache-windows-
+
+      - name: Build package environment
+        shell: bash
+        working-directory: package/rattler-build
+        env:
+          CCACHE_DIR: ${{ runner.temp }}\ccache
+          CCACHE_MAXSIZE: "2G"
+        run: |
+          set -euo pipefail
+          pixi install -e default
+          pixi install -e package
+
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}\ccache
+          key: ccache-windows-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Build Windows release assets
+        shell: bash
+        working-directory: package/rattler-build
+        env:
+          BUILD_TAG: ${{ needs.prepare.outputs.build_tag }}
+          MAKE_INSTALLER: ${{ needs.prepare.outputs.make_windows_installer }}
+          UPLOAD_RELEASE: "false"
+          WINDOWS_SIGN_RELEASE: "0"
+        run: |
+          set -euo pipefail
+          pixi run -e package create_bundle
+
+      - name: Save Pixi and Python caches
+        if: always() && steps.cache-pixi-windows.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            package/rattler-build/.pixi
+            package/rattler-build/.download-cache
+            ~\AppData\Local\pixi
+            ~\AppData\Local\rattler
+            ~\AppData\Local\pip\Cache
+          key: ${{ steps.cache-pixi-windows.outputs.cache-primary-key }}
+
+      - name: Upload Windows release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: vibecad-windows
+          if-no-files-found: error
+          retention-days: ${{ needs.prepare.outputs.artifact_retention_days }}
+          path: |
+            package/rattler-build/windows/*.7z
+            package/rattler-build/windows/*.exe
+            package/rattler-build/windows/*SHA256.txt
+
+  release:
+    name: Publish GitHub Release
+    needs:
+      - prepare
+      - linux
+      - windows
+    if: needs.prepare.outputs.should_build == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download Linux assets
+        uses: actions/download-artifact@v4
+        with:
+          name: vibecad-linux
+          path: dist/linux
+
+      - name: Download Windows assets
+        uses: actions/download-artifact@v4
+        with:
+          name: vibecad-windows
+          path: dist/windows
+
+      - name: Publish release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.release_tag }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
+          SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+
+          find dist -type f -print | sort
+          mapfile -d '' release_files < <(find dist -type f -print0)
+          if [[ "${#release_files[@]}" -eq 0 ]]; then
+            echo "No release assets were produced." >&2
+            exit 1
+          fi
+
+          release_title="VibeCAD ${RELEASE_TAG}"
+          release_notice="This build was produced by the VibeCAD release pipeline."
+          if [[ "${CHANNEL}" == "nightly" ]]; then
+            release_title="VibeCAD Nightly (${SOURCE_SHA:0:12})"
+            release_notice="Nightly builds are development snapshots and are not production releases."
+          fi
+
+          cat > release-notes.md <<EOF
+          VibeCAD ${CHANNEL} build from ${SOURCE_REF} at ${SOURCE_SHA}.
+
+          ${release_notice}
+
+          Assets:
+          - Linux AppImage for direct execution.
+          - Linux Debian package installable with: sudo apt install ./vibecad_*.deb
+          - Windows portable 7z bundle.
+          - Windows installer executable when make_windows_installer is enabled.
+          - SHA256 files for every produced package.
+          EOF
+
+          release_args=()
+          if [[ "${PRERELEASE}" == "true" ]]; then
+            release_args+=(--prerelease)
+          fi
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload --clobber "${RELEASE_TAG}" "${release_files[@]}"
+            if [[ "${CHANNEL}" == "nightly" ]]; then
+              gh api --method PATCH \
+                "repos/${GITHUB_REPOSITORY}/git/refs/tags/${RELEASE_TAG}" \
+                -f sha="${SOURCE_SHA}" \
+                -F force=true >/dev/null
+              gh release edit "${RELEASE_TAG}" \
+                --target "${SOURCE_SHA}" \
+                --title "${release_title}" \
+                --notes-file release-notes.md \
+                --prerelease
+            fi
+          else
+            gh release create "${RELEASE_TAG}" \
+              --target "${SOURCE_SHA}" \
+              --title "${release_title}" \
+              --notes-file release-notes.md \
+              "${release_args[@]}" \
+              "${release_files[@]}"
+          fi

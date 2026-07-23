@@ -1,0 +1,167 @@
+{
+    "freecad_version": "26.3.0",
+    "machine": {
+        "name": "Generic LinuxCNC Mill",
+        "manufacturer": "Generic",
+        "description": "Generic 3-axis vertical mill running LinuxCNC. 600x400 mm table, 300 mm Z travel, 100-8000 RPM spindle with tool length offsets (G43). Adjust travel limits and spindle range to match your machine.",
+        "units": "metric",
+        "kinematics": {
+            "base_frame": {
+                "origin": [
+                    0,
+                    0,
+                    0
+                ],
+                "orientation_quaternion": [
+                    0,
+                    0,
+                    0,
+                    1
+                ]
+            },
+            "tcp_supported": false,
+            "dwo_supported": false,
+            "notes": ""
+        },
+        "axes": {
+            "X": {
+                "type": "linear",
+                "role": "table_linear",
+                "parent": null,
+                "sequence": 0,
+                "joint": [
+                    [
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        1.0,
+                        0.0,
+                        0.0
+                    ]
+                ],
+                "limits": {
+                    "min": 0,
+                    "max": 600
+                },
+                "max_velocity": 4000
+            },
+            "Y": {
+                "type": "linear",
+                "role": "table_linear",
+                "parent": null,
+                "sequence": 0,
+                "joint": [
+                    [
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0.0,
+                        1.0,
+                        0.0
+                    ]
+                ],
+                "limits": {
+                    "min": 0,
+                    "max": 400
+                },
+                "max_velocity": 4000
+            },
+            "Z": {
+                "type": "linear",
+                "role": "table_linear",
+                "parent": null,
+                "sequence": 0,
+                "joint": [
+                    [
+                        0,
+                        0,
+                        0
+                    ],
+                    [
+                        0.0,
+                        0.0,
+                        1.0
+                    ]
+                ],
+                "limits": {
+                    "min": 0,
+                    "max": 300
+                },
+                "max_velocity": 2000
+            }
+        },
+        "toolheads": [
+            {
+                "name": "Mill Spindle",
+                "toolhead_type": "rotary",
+                "max_power_kw": 5.0,
+                "max_rpm": 8000,
+                "min_rpm": 100,
+                "tool_change": "manual",
+                "coolant_flood": false,
+                "coolant_mist": false,
+                "coolant_delay": 0.0,
+                "toolhead_wait": 0.0,
+                "id": 0
+            }
+        ]
+    },
+    "version": 1,
+    "postprocessor": {
+        "file_name": "linuxcnc",
+        "properties": {}
+    },
+    "output": {
+        "units": "metric",
+        "output_tool_length_offset": true,
+        "remote_post": false,
+        "header": {
+            "output_header": true,
+            "include_date": true,
+            "include_description": true,
+            "include_document_name": true,
+            "include_machine_name": true,
+            "include_project_file": true,
+            "include_units": true,
+            "include_tool_list": true,
+            "include_fixture_list": true
+        },
+        "comments": {
+            "enabled": true,
+            "symbol": "(",
+            "include_operation_labels": false,
+            "include_blank_lines": true,
+            "output_bcnc_comments": false
+        },
+        "formatting": {
+            "line_numbers": false,
+            "line_number_start": 100,
+            "line_number_prefix": "N",
+            "line_increment": 10,
+            "command_space": " ",
+            "end_of_line_chars": "\n"
+        },
+        "precision": {
+            "axis": 3,
+            "feed": 3,
+            "spindle": 0
+        },
+        "duplicates": {
+            "commands": true,
+            "parameters": true
+        }
+    },
+    "processing": {
+        "early_tool_prep": false,
+        "filter_inefficient_moves": false,
+        "split_arcs": false,
+        "tool_change": true,
+        "translate_drill_cycles": false,
+        "translate_rapid_moves": false,
+        "xy_before_z_after_tool_change": false
+    }
+}

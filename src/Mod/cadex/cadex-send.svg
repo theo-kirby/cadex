@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Send to Cadex">
+  <path d="M9 31.5l45-20c1.8-.8 3.5 1 2.6 2.8l-20 41c-.9 1.8-3.5 1.5-4-.5l-3.6-15-15.1-4.2c-2-.5-2.3-3.2-.4-4.1z" fill="#1c7ed6"/>
+  <path d="M29 39.8L55 12" fill="none" stroke="#e8edf2" stroke-width="3.4" stroke-linecap="round"/>
+  <path d="M16 33l13 6.8" fill="none" stroke="#74c0fc" stroke-width="3" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,160 @@
+/* ==========================================================================
+   VibeCAD Light — 3D-view overlay panels
+   Token palette (matches VibeLight.qss):
+     surface-0  #e6eaf0   (deepest / window)
+     surface-1  #f2f4f8   (panels)
+     surface-2  #fbfcfe   (raised)
+     surface-3  #e9edf3   (hover / headers)
+     input      #ffffff   hover #dfe5ec
+     border-1   #d6dce4   border-2 #bcc6d1
+     text-1     #1d2733   text-2  #5c6b7a
+     accent     #1c7ed6   accent-strong #1971c2
+     selection  #d0e5fa
+   ========================================================================== */
+
+* {
+  background-color: #f2f4f8;
+  alternate-background-color: #fbfcfe; }
+
+QTabWidget::pane {
+  background-color: transparent;
+  border: transparent; }
+  QTabWidget::pane QTabBar {
+    background-color: transparent; }
+
+/* The OverlayTabWidget is named as OverlayLeft, OverlayRight, OverlayTop, OverlayBottom.
+  To customize for each overlay docking site, use the following selector
+
+  Gui--OverlayTabWidget#OverlayLeft {}
+  */
+Gui--OverlayTabWidget {
+  qproperty-effectColor: rgba(230, 234, 240, 40%);
+  qproperty-effectBlurRadius: 20.0;
+  qproperty-effectOffsetX: 0.0;
+  qproperty-effectOffsetY: 0.0;
+  qproperty-effectWidth: 1;
+  qproperty-effectHeight: 1;
+  qproperty-enableEffect: 1; }
+
+Gui--OverlayTabWidget::pane {
+  background-color: transparent; }
+
+QHeaderView {
+  background: transparent; }
+
+QHeaderView::section {
+  color: #5c6b7a;
+  background-color: #e9edf3;
+  padding: 2px;
+  padding-left: 8px;
+  border: 1px solid #d6dce4; }
+
+Gui--OverlayToolButton {
+  background-color: transparent;
+  padding: 0px;
+  border: none; }
+
+Gui--OverlayToolButton::hover {
+  background: #dfe5ec;
+  border: 1px solid #1c7ed6; }
+
+QListView {
+  background-color: #fbfcfe; }
+  QListView::indicator {
+    border-radius: 4px;
+    border-color: #bcc6d1; }
+
+QListView::item,
+QTreeView::item {
+  margin: 2px 0px;
+  padding: 1px 2px;
+  border: 1px solid transparent; }
+  QListView::item:selected, QListView::item:hover,
+  QTreeView::item:selected,
+  QTreeView::item:hover {
+    background: none;
+    border: none; }
+
+#DocumentTreeItems::item {
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background-color: #f2f4f8; }
+  #DocumentTreeItems::item:hover {
+    border: 1px solid #d6dce4;
+    background-color: #dfe5ec; }
+  #DocumentTreeItems::item:selected {
+    border: 1px solid #1c7ed6;
+    background-color: #d0e5fa; }
+
+Gui--PropertyEditor--PropertyEditor {
+  qproperty-groupTextColor: #1d2733;
+  qproperty-groupBackground: #e9edf3;
+  qproperty-itemBackground: #f2f4f8; }
+
+Gui--CallTipsList::item {
+  background-color: #f2f4f8; }
+
+Gui--CallTipsList::item::selected {
+  color: #0b1521;
+  background-color: #d0e5fa;
+  border: 1px solid #1c7ed6; }
+  Gui--CallTipsList::item::selected:hover {
+    background-color: #dfe5ec;
+    border: 1px solid #1c7ed6; }
+
+/* Use the following selector to customize title bar for each side */
+/*
+  Gui--OverlayTabWidget#OverlayBottom Gui--OverlayTitleBar,
+  Gui--OverlayTabWidget#OverlayBottom QSplitter Gui--OverlaySplitterHandle {
+    background-color: qlineargradient(
+      spread:pad, x1:0, y1:1, x2:0, y2:0,
+      stop:0 #80202020, stop:1 #00202020);
+  }
+  */
+Gui--OverlayTitleBar,
+Gui--OverlaySplitterHandle {
+  color: #1d2733;
+  background-color: rgba(247, 249, 251, 88%);
+  border: 1px solid #d6dce4; }
+
+QScrollArea#ClippingScrollArea,
+QWidget#ClippingScrollAreaContents {
+  background-color: #f2f4f8; }
+
+QSint--ActionGroup QFrame[class="content"] {
+  background-color: #fbfcfe;
+  /* Task Panel background color */ }
+
+QSint--ActionGroup QFrame[class="content"] > QWidget {
+  background-color: #f2f4f8;
+  /* Task Panel background color */ }
+
+QComboBox QAbstractItemView {
+  background-color: #fbfcfe; }
+
+QTreeView::indicator {
+  border: 1px solid #bcc6d1; }
+
+QTreeView::indicator:checked {
+  image: url(qss:images_dark-light/check_dark.svg); }
+
+QCheckBox,
+QLabel {
+  background-color: transparent; }
+
+QCheckBox::indicator {
+  background-color: #ffffff; }
+
+/* VibeCAD overlay chrome parity */
+Gui--OverlayTabWidget QWidget {
+  selection-background-color: #1864ab;
+  selection-color: #ffffff; }
+
+QTreeView::item:selected,
+QListView::item:selected {
+  color: #0b1521;
+  background-color: #d0e5fa;
+  border: 1px solid #1c7ed6; }
+QDockWidget#VibeCADScriptedModelPanel {
+  background-color: #f1f4f8;
+  border: 1px solid #d6dce4; }

@@ -1,0 +1,67 @@
+{
+  "scenes": [
+    {
+      "name": "part-crank",
+      "coverage": ["part"],
+      "workbench": "PartWorkbench",
+      "file": "data/tests/Crank.fcstd",
+      "fit_view": true
+    },
+    {
+      "name": "partdesign-example",
+      "coverage": ["partdesign"],
+      "workbench": "PartDesignWorkbench",
+      "file": "data/examples/PartDesignExample.FCStd",
+      "fit_view": true
+    },
+    {
+      "name": "sketcher-carbon-copy",
+      "coverage": ["sketcher"],
+      "workbench": "SketcherWorkbench",
+      "file": "src/Mod/Sketcher/SketcherTests/TestSketchCarbonCopyReverseMapping.FCStd",
+      "fit_view": true
+    },
+    {
+      "name": "draft-objects",
+      "coverage": ["draft"],
+      "workbench": "DraftWorkbench",
+      "file": "data/examples/draft_test_objects.FCStd",
+      "fit_view": true
+    },
+    {
+      "name": "bim-example",
+      "coverage": ["bim"],
+      "workbench": "BIMWorkbench",
+      "file": "data/examples/BIMExample.FCStd",
+      "fit_view": true
+    },
+    {
+      "name": "fem-example",
+      "coverage": ["fem"],
+      "workbench": "FemWorkbench",
+      "file": "data/examples/FEMExample.FCStd",
+      "fit_view": true
+    },
+    {
+      "name": "cam-profile",
+      "coverage": ["cam"],
+      "workbench": "CAMWorkbench",
+      "file": "src/Mod/CAM/CAMTests/test_profile.fcstd",
+      "fit_view": true
+    },
+    {
+      "name": "spreadsheet-project",
+      "coverage": ["spreadsheet"],
+      "workbench": "SpreadsheetWorkbench",
+      "file": "data/tests/ProjectTest.FCStd",
+      "fit_view": true
+    },
+    {
+      "name": "techdraw-arch-detail",
+      "coverage": ["techdraw"],
+      "workbench": "TechDrawWorkbench",
+      "file": "data/examples/ArchDetail.FCStd",
+      "fit_view": true
+    }
+  ]
+}
