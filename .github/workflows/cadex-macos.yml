@@ -1,4 +1,4 @@
-name: VibeCAD macOS Build
+name: Cadex macOS Build
 
 on:
   workflow_dispatch:
@@ -23,7 +23,7 @@ on:
         default: false
         type: boolean
       release_tag:
-        description: "Optional release tag. Leave empty for vibecad-macos-YYYYMMDD-SHA."
+        description: "Optional release tag. Leave empty for cadex-macos-YYYYMMDD-SHA."
         required: false
         type: string
 
@@ -31,7 +31,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: vibecad-macos-${{ inputs.source_ref }}-${{ inputs.architecture }}
+  group: cadex-macos-${{ inputs.source_ref }}-${{ inputs.architecture }}
   cancel-in-progress: false
 
 env:
@@ -73,7 +73,7 @@ jobs:
 
           release_tag="${INPUT_RELEASE_TAG}"
           if [[ -z "${release_tag}" ]]; then
-            release_tag="vibecad-macos-$(date -u +%Y%m%d)-${source_sha:0:12}"
+            release_tag="cadex-macos-$(date -u +%Y%m%d)-${source_sha:0:12}"
           fi
           if [[ ! "${release_tag}" =~ ^[A-Za-z0-9._-]+$ ]]; then
             echo "Release tag contains unsupported characters: ${release_tag}" >&2
@@ -145,7 +145,7 @@ jobs:
             ~/.cache/pixi
             ~/.cache/rattler
             ~/Library/Caches/pip
-          key: pixi-${{ matrix.target }}-${{ hashFiles('package/rattler-build/pixi.lock', 'package/rattler-build/pixi.toml', 'package/rattler-build/recipe.yaml', 'src/Mod/VibeCAD/requirements.txt', 'src/Mod/VibeCAD/build123d-requirements.txt', 'package/rattler-build/scripts/install_vibecad_provider_deps.sh', 'package/rattler-build/scripts/install_vibecad_build123d_runtime.sh', 'package/rattler-build/scripts/install_vibecad_openscad_runtime.sh', 'package/rattler-build/scripts/install_vibecad_codex_runtime.sh', 'package/rattler-build/scripts/write_vibecad_build123d_manifest.py', 'package/rattler-build/scripts/relocate_conda_environment.py') }}
+          key: pixi-${{ matrix.target }}-${{ hashFiles('package/rattler-build/pixi.lock', 'package/rattler-build/pixi.toml', 'package/rattler-build/recipe.yaml', 'src/Mod/cadex/requirements.txt', 'package/rattler-build/scripts/install_cadex_provider_deps.sh', 'package/rattler-build/scripts/install_cadex_codex_runtime.sh', 'package/rattler-build/scripts/relocate_conda_environment.py') }}
           restore-keys: |
             pixi-${{ matrix.target }}-
 
@@ -204,7 +204,7 @@ jobs:
           echo "Runner disk space available for macOS packaging:"
           df -h .
 
-      - name: Create and validate VibeCAD DMG
+      - name: Create and validate Cadex DMG
         timeout-minutes: 120
         shell: bash
         working-directory: package/rattler-build
@@ -220,12 +220,12 @@ jobs:
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vibecad-macos-${{ matrix.arch }}
+          name: cadex-macos-${{ matrix.arch }}
           if-no-files-found: error
           retention-days: 7
           path: |
-            package/rattler-build/osx/VibeCAD-*.dmg
-            package/rattler-build/osx/VibeCAD-*.dmg-SHA256.txt
+            package/rattler-build/osx/Cadex-*.dmg
+            package/rattler-build/osx/Cadex-*.dmg-SHA256.txt
 
   publish:
     name: Publish macOS Prerelease
@@ -238,7 +238,7 @@ jobs:
       - name: Download macOS artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: vibecad-macos-*
+          pattern: cadex-macos-*
           path: release-assets
           merge-multiple: true
 
@@ -271,8 +271,8 @@ jobs:
             gh release create "${RELEASE_TAG}" \
               --repo "${GITHUB_REPOSITORY}" \
               --target "${SOURCE_SHA}" \
-              --title "VibeCAD macOS ${RELEASE_TAG}" \
-              --notes "Unsigned VibeCAD macOS test builds. This release contains macOS artifacts only." \
+              --title "Cadex macOS ${RELEASE_TAG}" \
+              --notes "Unsigned Cadex macOS test builds. This release contains macOS artifacts only." \
               --prerelease \
               "${assets[@]}"
           fi

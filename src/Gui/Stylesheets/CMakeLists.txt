@@ -2,9 +2,9 @@
 SET(Stylesheets_Files
     "FreeCAD.qss"
     "defaults.qss"
-    "VibeDark.qss"
-    "VibeLight.qss"
-    "VibeMono.qss"
+    "CadexDark.qss"
+    "CadexLight.qss"
+    "CadexMono.qss"
 )
 
 SET(Parameters_Files
@@ -14,9 +14,9 @@ SET(Parameters_Files
 
 SET(Overlay_Stylesheets_Files
     "overlay/Freecad Overlay.qss"
-    "overlay/VibeDark_Overlay.qss"
-    "overlay/VibeLight_Overlay.qss"
-    "overlay/VibeMono_Overlay.qss"
+    "overlay/CadexDark_Overlay.qss"
+    "overlay/CadexLight_Overlay.qss"
+    "overlay/CadexMono_Overlay.qss"
 )
 
 # Find all the image files

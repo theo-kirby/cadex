@@ -1,4 +1,4 @@
-# Agent Instructions for VibeCAD
+# Agent Instructions for Cadex
 
 These rules apply to coding agents and automated assistants working in this repository. Follow them in addition to `CONTRIBUTING.md`, `AI_POLICY.md`, and the project PR template.
 

@@ -458,7 +458,7 @@ void DlgSettingsGeneral::loadThemes()
     QFileInfo fi(currentStyleSheet);
     currentStyleSheet = fi.baseName();
     QString themeClassic = QStringLiteral("classic");  // handle the upcoming name change
-    QString themeDefault = QStringLiteral("VibeDark");
+    QString themeDefault = QStringLiteral("CadexDark");
     bool foundDefaultTheme = false;
     QString similarTheme;
     QString packName;

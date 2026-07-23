@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-# VibeCAD keeps only the headless CSG-to-OCC conversion core from the former
+# Cadex keeps only the headless CSG-to-OCC conversion core from the former
 # OpenSCAD workbench. The user-facing source workflow lives in PartDesign.
 SET(OpenSCADConversion_SRCS
     Init.py

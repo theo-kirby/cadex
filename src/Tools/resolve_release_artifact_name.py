@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""Resolve the canonical VibeCAD release artifact name."""
+"""Resolve the canonical Cadex release artifact name."""
 
 from __future__ import annotations
 
@@ -55,14 +55,14 @@ def resolve_release_version(repo_root: Path) -> str:
 def resolve_artifact_basename(
     repo_root: Path, *, source_sha: str | None = None
 ) -> str:
-    """Return VibeCAD-<short-sha>-<release-version>."""
+    """Return Cadex-<short-sha>-<release-version>."""
 
     short_sha = (
         normalize_source_sha(source_sha)
         if source_sha is not None
         else resolve_source_sha(repo_root)
     )
-    return f"VibeCAD-{short_sha}-{resolve_release_version(repo_root)}"
+    return f"Cadex-{short_sha}-{resolve_release_version(repo_root)}"
 
 
 def main() -> int:

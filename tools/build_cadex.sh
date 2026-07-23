@@ -6,11 +6,11 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/.." && pwd)"
 
-build_dir="${VIBECAD_BUILD_DIR:-${repo_root}/build/release}"
-build_type="${VIBECAD_BUILD_TYPE:-Release}"
-generator="${VIBECAD_CMAKE_GENERATOR:-Ninja}"
-jobs="${VIBECAD_BUILD_JOBS:-$(nproc)}"
-vibecad_requirements="${repo_root}/src/Mod/VibeCAD/requirements.txt"
+build_dir="${CADEX_BUILD_DIR:-${repo_root}/build/release}"
+build_type="${CADEX_BUILD_TYPE:-Release}"
+generator="${CADEX_CMAKE_GENERATOR:-Ninja}"
+jobs="${CADEX_BUILD_JOBS:-$(nproc)}"
+cadex_requirements="${repo_root}/src/Mod/cadex/requirements.txt"
 
 clean=0
 run_tests=0
@@ -18,7 +18,7 @@ install_prefix=""
 
 usage() {
     cat <<EOF
-Usage: tools/build_vibecad.sh [options]
+Usage: tools/build_cadex.sh [options]
 
 Options:
   --clean                 Explicitly remove the build directory before configuring.
@@ -28,10 +28,10 @@ Options:
   -h, --help              Show this help.
 
 Environment:
-  VIBECAD_BUILD_DIR       Build directory. Default: <repo>/build/release
-  VIBECAD_BUILD_TYPE      CMake build type. Default: Release
-  VIBECAD_CMAKE_GENERATOR CMake generator. Default: Ninja
-  VIBECAD_BUILD_JOBS      Parallel build jobs. Default: nproc
+  CADEX_BUILD_DIR       Build directory. Default: <repo>/build/release
+  CADEX_BUILD_TYPE      CMake build type. Default: Release
+  CADEX_CMAKE_GENERATOR CMake generator. Default: Ninja
+  CADEX_BUILD_JOBS      Parallel build jobs. Default: nproc
 EOF
 }
 
@@ -101,19 +101,19 @@ cmake \
 
 cmake --build "${build_dir}" --parallel "${jobs}"
 
-if [[ -f "${vibecad_requirements}" ]]; then
+if [[ -f "${cadex_requirements}" ]]; then
     mkdir -p "${build_dir}/Ext"
     python3 -m pip install \
         --disable-pip-version-check \
         --upgrade \
         --target "${build_dir}/Ext" \
-        --requirement "${vibecad_requirements}"
+        --requirement "${cadex_requirements}"
     rm -rf -- "${build_dir}/Ext/agents" "${build_dir}"/Ext/openai_agents-*.dist-info
 fi
 
 "${build_dir}/bin/FreeCADCmd" --version
 
-"${build_dir}/bin/FreeCADCmd" -c "import importlib.util, openai, anthropic, keyring, jsonschema; assert importlib.util.find_spec('agents') is None; print('VibeCAD provider dependencies import OK')"
+"${build_dir}/bin/FreeCADCmd" -c "import importlib.util, openai, anthropic, keyring, jsonschema; assert importlib.util.find_spec('agents') is None; print('Cadex provider dependencies import OK')"
 
 if ((run_tests)); then
     ctest --test-dir "${build_dir}" --output-on-failure
@@ -121,14 +121,14 @@ fi
 
 if [[ -n "${install_prefix}" ]]; then
     cmake --install "${build_dir}" --prefix "${install_prefix}"
-    if [[ -f "${vibecad_requirements}" ]]; then
+    if [[ -f "${cadex_requirements}" ]]; then
         mkdir -p "${install_prefix}/Ext"
         python3 -m pip install \
             --disable-pip-version-check \
             --upgrade \
             --target "${install_prefix}/Ext" \
-            --requirement "${vibecad_requirements}"
+            --requirement "${cadex_requirements}"
     fi
 fi
 
-echo "VibeCAD build complete: ${build_dir}"
+echo "Cadex build complete: ${build_dir}"

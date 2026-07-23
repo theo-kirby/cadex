@@ -36,7 +36,7 @@
       <tag>dark</tag>
     </preferencepack>
     <preferencepack>
-      <name>VibeLight</name>
+      <name>CadexLight</name>
       <type>Theme</type>
       <description>Applies the modern light theme for Cadex.</description>
       <version>2026.07.02</version>
@@ -46,7 +46,7 @@
       <tag>cadex-default</tag>
     </preferencepack>
     <preferencepack>
-      <name>VibeDark</name>
+      <name>CadexDark</name>
       <type>Theme</type>
       <description>Applies the modern dark theme for Cadex.</description>
       <version>2026.07.02</version>
@@ -56,7 +56,7 @@
       <tag>cadex-default</tag>
     </preferencepack>
     <preferencepack>
-      <name>VibeMono</name>
+      <name>CadexMono</name>
       <type>Theme</type>
       <description>Applies the monochrome charcoal/grey/black/white theme for Cadex.</description>
       <version>2026.07.02</version>

@@ -1,20 +1,20 @@
 {
   "task_scenes": [
     {
-      "name": "vibecad-part-assistant",
-      "coverage": ["vibecad", "vibecad-cpp-workbench", "part"],
+      "name": "cadex-part-assistant",
+      "coverage": ["cadex", "cadex-cpp-workbench", "part"],
       "workbench": "PartWorkbench",
       "file": "data/tests/Crank.fcstd",
-      "command": "VibeCAD_OpenAssistant",
+      "command": "Cadex_OpenAssistant",
       "required_widget_object_names": [
-        "VibeCADAssistantPanel",
-        "VibeCADToolPack",
-        "VibeCADScreenshotStatus",
-        "VibeCADRunStatus",
-        "VibeCADCaptureView",
-        "VibeCADPrompt",
-        "VibeCADRunPrompt",
-        "VibeCADStopPrompt"
+        "CadexAssistantPanel",
+        "CadexToolPack",
+        "CadexScreenshotStatus",
+        "CadexRunStatus",
+        "CadexCaptureView",
+        "CadexPrompt",
+        "CadexRunPrompt",
+        "CadexStopPrompt"
       ],
       "required_visible_text_contains": [
         "Workbench: PartWorkbench",
@@ -31,20 +31,20 @@
       "close_after_capture": true
     },
     {
-      "name": "vibecad-draft-assistant",
-      "coverage": ["vibecad", "vibecad-python-workbench", "draft"],
+      "name": "cadex-draft-assistant",
+      "coverage": ["cadex", "cadex-python-workbench", "draft"],
       "workbench": "DraftWorkbench",
       "file": "data/examples/draft_test_objects.FCStd",
-      "command": "VibeCAD_OpenAssistant",
+      "command": "Cadex_OpenAssistant",
       "required_widget_object_names": [
-        "VibeCADAssistantPanel",
-        "VibeCADToolPack",
-        "VibeCADScreenshotStatus",
-        "VibeCADRunStatus",
-        "VibeCADCaptureView",
-        "VibeCADPrompt",
-        "VibeCADRunPrompt",
-        "VibeCADStopPrompt"
+        "CadexAssistantPanel",
+        "CadexToolPack",
+        "CadexScreenshotStatus",
+        "CadexRunStatus",
+        "CadexCaptureView",
+        "CadexPrompt",
+        "CadexRunPrompt",
+        "CadexStopPrompt"
       ],
       "required_visible_text_contains": [
         "Workbench: DraftWorkbench",

@@ -49,7 +49,7 @@ class TestReleaseArtifactName(unittest.TestCase):
                     Path(directory),
                     source_sha="ABCDEF1234567890ABCDEF1234567890ABCDEF12",
                 ),
-                "VibeCAD-abcdef123456-26.3.2-RC1",
+                "Cadex-abcdef123456-26.3.2-RC1",
             )
 
     def test_source_sha_must_be_a_git_object_id(self) -> None:

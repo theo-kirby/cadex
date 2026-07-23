@@ -7,10 +7,10 @@ SET(PreferencePacks_Directories
         "Dark behave"
         "FreeCAD Light"
         "FreeCAD Dark"
-        "VibeDark"
-        "VibeLight"
-        "VibeMono"
-        "VibeCAD Preferences"
+        "CadexDark"
+        "CadexLight"
+        "CadexMono"
+        "Cadex Preferences"
 )
 
 SET(PreferencePacks_Config_Files
@@ -18,10 +18,10 @@ SET(PreferencePacks_Config_Files
         "Dark behave/Dark behave.cfg"
         "FreeCAD Light/FreeCAD Light.cfg"
         "FreeCAD Dark/FreeCAD Dark.cfg"
-        "VibeDark/VibeDark.cfg"
-        "VibeLight/VibeLight.cfg"
-        "VibeMono/VibeMono.cfg"
-        "VibeCAD Preferences/VibeCAD Preferences.cfg"
+        "CadexDark/CadexDark.cfg"
+        "CadexLight/CadexLight.cfg"
+        "CadexMono/CadexMono.cfg"
+        "Cadex Preferences/Cadex Preferences.cfg"
 )
 
 ADD_CUSTOM_TARGET(PreferencePacks_data ALL

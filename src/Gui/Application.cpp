@@ -174,13 +174,13 @@ void requestPlatformColorScheme(const QString& qssFile)
     }
 
     const QString lowerName = qssFile.toLower();
-    if (lowerName.contains(QStringLiteral("vibedark"))
+    if (lowerName.contains(QStringLiteral("cadexdark"))
         || lowerName.contains(QStringLiteral("opendark"))
         || lowerName.contains(QStringLiteral("freecad dark"))) {
         hints->setColorScheme(Qt::ColorScheme::Dark);
     }
     else if (
-        lowerName.contains(QStringLiteral("vibelight"))
+        lowerName.contains(QStringLiteral("cadexlight"))
         || lowerName.contains(QStringLiteral("openlight"))
         || lowerName.contains(QStringLiteral("freecad light"))) {
         hints->setColorScheme(Qt::ColorScheme::Light);

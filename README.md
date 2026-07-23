@@ -1,33 +1,33 @@
 <p align="center">
-  <img src="docs/images/vibecad-mark.svg" width="96" alt="VibeCAD mark">
+  <img src="docs/images/cadex-mark.svg" width="96" alt="Cadex mark">
 </p>
 
-# VibeCAD
+# Cadex
 
-VibeCAD is an AI-native parametric CAD platform for designing real 3D parts through conversation, focused modeling tools, and editable geometry history.
+Cadex is an AI-native parametric CAD platform for designing real 3D parts through conversation, focused modeling tools, and editable geometry history.
 
-![VibeCAD workspace showing a turbocharger assembly and the AI assistant](docs/images/vibecad-workspace.png)
+![Cadex workspace showing a turbocharger assembly and the AI assistant](docs/images/cadex-workspace.png)
 
 ## Before You Start
 
-You need either a **ChatGPT subscription** or an **API key** for the provider you select. VibeCAD supports ChatGPT subscription sign-in through its bundled Codex runtime, connects directly to OpenAI and Anthropic APIs, and can use OpenAI-compatible endpoints such as xAI, Ollama, and other local model servers.
+You need either a **ChatGPT subscription** or an **API key** for the provider you select. Cadex supports ChatGPT subscription sign-in through its bundled Codex runtime, connects directly to OpenAI and Anthropic APIs, and can use OpenAI-compatible endpoints such as xAI, Ollama, and other local model servers.
 
 Store the key in one of these places:
 
-- **OS keyring (recommended):** paste the key in VibeCAD Preferences, click **Save Key**, and then click **Validate**.
-- **A selected `.env` file:** create the file yourself, select it in VibeCAD Preferences, and click **Validate**. VibeCAD does not search for `.env` files automatically.
+- **OS keyring (recommended):** paste the key in Cadex Preferences, click **Save Key**, and then click **Validate**.
+- **A selected `.env` file:** create the file yourself, select it in Cadex Preferences, and click **Validate**. Cadex does not search for `.env` files automatically.
 
-API keys are not stored in ordinary application preferences. ChatGPT OAuth credentials are owned and refreshed by the bundled Codex app-server; VibeCAD does not read or copy those tokens.
+API keys are not stored in ordinary application preferences. ChatGPT OAuth credentials are owned and refreshed by the bundled Codex app-server; Cadex does not read or copy those tokens.
 
 ## Install
 
-Download the latest build from [VibeCAD Releases](https://github.com/10-X-eng/vibecad/releases/latest).
+Download the latest build from [Cadex Releases](https://github.com/10-X-eng/cadex/releases/latest).
 
 ### Linux AppImage
 
 ```bash
-chmod +x VibeCAD*.AppImage
-./VibeCAD*.AppImage
+chmod +x Cadex*.AppImage
+./Cadex*.AppImage
 ```
 
 ### Debian Package
@@ -35,20 +35,20 @@ chmod +x VibeCAD*.AppImage
 Run this command from the directory containing the downloaded package:
 
 ```bash
-sudo apt install ./vibecad_*_amd64.deb
+sudo apt install ./cadex_*_amd64.deb
 ```
 
 The leading `./` is required when installing a local package with `apt`.
 
 ### Windows
 
-Download the Windows installer, run it, and launch VibeCAD from the Start menu. A portable archive is also available for installations that should not modify the system.
+Download the Windows installer, run it, and launch Cadex from the Start menu. A portable archive is also available for installations that should not modify the system.
 
 SHA256 files are published beside release artifacts so downloads can be verified before installation.
 
 ## Configure an AI Provider
 
-Open **Preferences**, then select **VibeCAD > VibeCAD**.
+Open **Preferences**, then select **Cadex > Cadex**.
 
 1. Enable **Use online provider**.
 2. Select **ChatGPT subscription**, **OpenAI**, or **Anthropic** under **Provider**.
@@ -61,11 +61,11 @@ Open **Preferences**, then select **VibeCAD > VibeCAD**.
 ### Sign In With a ChatGPT Subscription
 
 1. Select **ChatGPT subscription** as the provider.
-2. Click **Sign in with ChatGPT** and complete the browser flow. Use **Use device code** when the browser callback cannot reach VibeCAD.
+2. Click **Sign in with ChatGPT** and complete the browser flow. Use **Use device code** when the browser callback cannot reach Cadex.
 3. Click **Fetch models** and select a subscription model, or leave **Use account default** selected.
 4. Choose a reasoning effort offered by that model, then click **Apply** or **OK**.
 
-ChatGPT credentials are stored in a private VibeCAD Codex credential directory and refreshed by the bundled, version-pinned app-server. **Logout** asks that runtime to remove the account. VibeCAD never imports credentials from another Codex installation and never falls back to an ambient API key.
+ChatGPT credentials are stored in a private Cadex Codex credential directory and refreshed by the bundled, version-pinned app-server. **Logout** asks that runtime to remove the account. Cadex never imports credentials from another Codex installation and never falls back to an ambient API key.
 
 ChatGPT subscription, OpenAI-compatible, Anthropic, and offline/debug turns all
 use the same global modeling-engine and active-workbench resolver. Select
@@ -78,7 +78,7 @@ active-workbench surface; VibeScript and native CAD tools are never combined.
 
 1. Select the provider first. Keys are stored separately for OpenAI and Anthropic.
 2. Paste the provider key into **API key**.
-3. Click **Save Key**. The field clears after VibeCAD hands the key to the operating system's credential store.
+3. Click **Save Key**. The field clears after Cadex hands the key to the operating system's credential store.
 4. Click **Validate**. A successful check reports `verified` in **Auth status**.
 5. Click **Fetch models** and choose the model to use.
 
@@ -96,7 +96,7 @@ OPENAI_API_KEY=your-key-here
 ANTHROPIC_API_KEY=your-key-here
 ```
 
-In VibeCAD Preferences:
+In Cadex Preferences:
 
 1. Click **Browse** beside **.env path** and select that exact file.
 2. Leave the **API key** field empty; **Save Key** is only for the OS keyring.
@@ -107,7 +107,7 @@ Do not commit a `.env` file containing a real key to source control.
 
 ### Credential Precedence
 
-VibeCAD resolves a key in this order:
+Cadex resolves a key in this order:
 
 1. The provider's process environment variable.
 2. The `.env` file explicitly selected in Preferences.
@@ -117,7 +117,7 @@ This order matters when a valid key appears to be ignored. For example, an old `
 
 ## Configure Grok Through xAI
 
-xAI exposes an OpenAI-compatible API, so Grok uses VibeCAD's OpenAI provider adapter:
+xAI exposes an OpenAI-compatible API, so Grok uses Cadex's OpenAI provider adapter:
 
 1. Obtain an API key from xAI.
 2. Select **OpenAI** as the provider.
@@ -128,17 +128,17 @@ xAI exposes an OpenAI-compatible API, so Grok uses VibeCAD's OpenAI provider ada
 
 When using a `.env` file for xAI, use `OPENAI_API_KEY` because the OpenAI-compatible provider adapter is selected.
 
-![VibeCAD Preferences configured for Grok through the xAI endpoint](docs/images/vibecad-grok-provider-setup.png)
+![Cadex Preferences configured for Grok through the xAI endpoint](docs/images/cadex-grok-provider-setup.png)
 
 ## Start a CAD Conversation
 
-1. Create or open a CAD document and **save it**. VibeCAD keeps the assistant disabled for unsaved documents so the conversation, design record, references, and generated source have a durable project location.
-2. Select the workbench that matches the work you are doing. VibeCAD exposes the focused tool surface for the active workbench.
-3. Open **View > Panels > VibeCAD Assistant** if the assistant is not visible.
+1. Create or open a CAD document and **save it**. Cadex keeps the assistant disabled for unsaved documents so the conversation, design record, references, and generated source have a durable project location.
+2. Select the workbench that matches the work you are doing. Cadex exposes the focused tool surface for the active workbench.
+3. Open **View > Panels > Cadex Assistant** if the assistant is not visible.
 4. Describe the intended result, including the dimensions, interfaces, material, manufacturing process, and constraints that matter.
 5. Use **Attach Image** for a reference design, or paste an image into the message box with `Ctrl+V`. Use **Attach View** to include the current viewport in the next model request only; it is consumed after that delivery.
 6. Click **Send**. While work is running, the same input becomes **Steer**, so corrections stay in the same conversation. **Stop** ends the run after the current provider or CAD step returns.
-7. Save the CAD document normally. Reopening it restores the associated VibeCAD conversations and project records.
+7. Save the CAD document normally. Reopening it restores the associated Cadex conversations and project records.
 
 Be explicit about functional intent, not only appearance. For an existing model, identify what should be preserved and what should change. For a new part, provide mating geometry and critical dimensions whenever they are known.
 
@@ -146,13 +146,13 @@ Be explicit about functional intent, not only appearance. For an existing model,
 
 The conversation selector at the top of the assistant opens prior conversations for the current CAD document. The new-conversation button starts a clean thread without deleting earlier work. This makes it possible to separate a redesign, manufacturing discussion, or analysis task while retaining the project's history.
 
-Saved conversations remain available to the human in this selector, but VibeCAD does not replay the project transcript or persisted tool traces into a model request. The model receives the current message exactly once. **Intent Memory** remains available as an explicit human project record, but it is not compiled after every turn or injected automatically.
+Saved conversations remain available to the human in this selector, but Cadex does not replay the project transcript or persisted tool traces into a model request. The model receives the current message exactly once. **Intent Memory** remains available as an explicit human project record, but it is not compiled after every turn or injected automatically.
 
 Turn-start CAD context is deliberately small: active workbench/engine/domain, document identity and object count, edit object, and the exact explicit selection. Object inventories, properties, programs, domain APIs, geometry, solver state, and old images are read only when the model calls the bounded `core.inspect` tool. Newly attached reference images and **Attach View** are delivered once. Exact active tool declarations have a hard wire-size limit, as do inspection pages and individual tool results.
 
 ## Global Modeling Engine
 
-The modeling-engine selector appears in the VibeCAD panel in every supported user workbench. The human controls this global selection for each saved CAD document; AI tools cannot change it.
+The modeling-engine selector appears in the Cadex panel in every supported user workbench. The human controls this global selection for each saved CAD document; AI tools cannot change it.
 
 - **Native:** only the active workbench's native CAD tools.
 - **VibeScript:** only the active workbench's dedicated source-backed interface; selected by default.
@@ -186,7 +186,7 @@ variants behind selectors or one ordered pipeline instead of advertising
 redundant operations. There are no forwarding wrappers for removed Part
 operations; `core.inspect` presents the only canonical runtime methods. Startup,
 test, unknown, or future unimplemented workbenches resolve to an exact core-only
-unavailable surface; VibeCAD never substitutes another workbench's tools.
+unavailable surface; Cadex never substitutes another workbench's tools.
 
 ## Local Models
 
@@ -203,7 +203,7 @@ The local server must already be running and expose an OpenAI-compatible API. So
 
 ## Troubleshooting
 
-- **`not_configured`:** VibeCAD could not find the selected provider's environment variable, a valid key in the selected `.env` file, or a keyring entry.
+- **`not_configured`:** Cadex could not find the selected provider's environment variable, a valid key in the selected `.env` file, or a keyring entry.
 - **No ChatGPT subscription is signed in:** open Preferences, select **ChatGPT subscription**, and complete browser or device-code sign-in.
 - **No CAD authoring tools are shown:** select a supported modeling workbench and an engine implemented for it. build123d and OpenSCAD are available only in Part Design.
 - **`configured_unverified`:** a key was found but has not been checked against the configured endpoint. Click **Validate**.
@@ -212,15 +212,15 @@ The local server must already be running and expose an OpenAI-compatible API. So
 - **No models are listed:** validate authentication first, then click **Fetch models**.
 - **The model does not support thinking:** set **Reasoning effort** to `none`.
 - **The assistant input is disabled:** save the active CAD document.
-- **The assistant panel was closed:** reopen it from **View > Panels > VibeCAD Assistant**.
+- **The assistant panel was closed:** reopen it from **View > Panels > Cadex Assistant**.
 
 ## Project Status
 
-VibeCAD is under active development. The current focus is reliable, readable AI-assisted part design with explicit human control over the document, workbench, modeling engine, and design direction.
+Cadex is under active development. The current focus is reliable, readable AI-assisted part design with explicit human control over the document, workbench, modeling engine, and design direction.
 
-Release packaging details are documented in [docs/vibecad-release-packaging.md](docs/vibecad-release-packaging.md).
+Release packaging details are documented in [docs/cadex-release-packaging.md](docs/cadex-release-packaging.md).
 
 ## Credits
 
-- The VibeLight and VibeDark themes are based on [OpenTheme by Obelisk79](https://github.com/obelisk79/OpenTheme).
-- VibeCAD is built on the work of the [FreeCAD project](https://github.com/FreeCAD/FreeCAD). Thank you to the contributors and the wider [FreeCAD community](https://forum.freecad.org/) whose CAD engine, workbenches, documentation, and support made this project possible.
+- The CadexLight and CadexDark themes are based on [OpenTheme by Obelisk79](https://github.com/obelisk79/OpenTheme).
+- Cadex is built on the work of the [FreeCAD project](https://github.com/FreeCAD/FreeCAD). Thank you to the contributors and the wider [FreeCAD community](https://forum.freecad.org/) whose CAD engine, workbenches, documentation, and support made this project possible.

@@ -1,6 +1,6 @@
 /* ==========================================================================
-   VibeCAD Light — 3D-view overlay panels
-   Token palette (matches VibeLight.qss):
+   Cadex Light — 3D-view overlay panels
+   Token palette (matches CadexLight.qss):
      surface-0  #e6eaf0   (deepest / window)
      surface-1  #f2f4f8   (panels)
      surface-2  #fbfcfe   (raised)
@@ -145,7 +145,7 @@ QLabel {
 QCheckBox::indicator {
   background-color: #ffffff; }
 
-/* VibeCAD overlay chrome parity */
+/* Cadex overlay chrome parity */
 Gui--OverlayTabWidget QWidget {
   selection-background-color: #1864ab;
   selection-color: #ffffff; }
@@ -155,6 +155,6 @@ QListView::item:selected {
   color: #0b1521;
   background-color: #d0e5fa;
   border: 1px solid #1c7ed6; }
-QDockWidget#VibeCADScriptedModelPanel {
+QDockWidget#CadexScriptedModelPanel {
   background-color: #f1f4f8;
   border: 1px solid #d6dce4; }

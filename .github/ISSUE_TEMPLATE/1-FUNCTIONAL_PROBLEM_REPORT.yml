@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping improve VibeCAD. Describe the problem in your own words.
+        Thanks for helping improve Cadex. Describe the problem in your own words.
         Screenshots, recordings, CAD files, and logs are useful when available, but
         you do not need to install another build or know a version number to report an issue.
 
@@ -47,7 +47,7 @@ body:
       placeholder: |
         1. Open ...
         2. Select ...
-        3. Ask VibeCAD to ...
+        3. Ask Cadex to ...
         4. The problem appears when ...
 
   - type: textarea
@@ -62,9 +62,9 @@ body:
     id: environment
     attributes:
       label: Environment details (optional)
-      description: Add anything relevant that you already know, such as operating system, VibeCAD build, AI provider/model, modeling engine, or whether this worked previously.
+      description: Add anything relevant that you already know, such as operating system, Cadex build, AI provider/model, modeling engine, or whether this worked previously.
       placeholder: |
         OS:
-        VibeCAD build, if known:
+        Cadex build, if known:
         Provider and model, if relevant:
         Modeling engine, if relevant:

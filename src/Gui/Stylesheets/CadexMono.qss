@@ -1,5 +1,5 @@
 /*==================================================================================================
-VibeCAD Mono — a monochrome charcoal / grey / black / white theme for VibeCAD
+Cadex Mono — a monochrome charcoal / grey / black / white theme for Cadex
 ====================================================================================================
 Pure greyscale: no hue anywhere. Emphasis is carried by lightness and white, not color.
 Design tokens (single source of truth — every color below comes from this palette):
@@ -1287,14 +1287,14 @@ QDialog#Gui__Dialog__DlgPreferences QTableWidget#PreferencePacks QHeaderView::se
   padding: 5px 8px; }
 
 /*--------------------------------------------------------------------------------------------------
-VibeCAD assistant panel
+Cadex assistant panel
 --------------------------------------------------------------------------------------------------*/
-QDockWidget#VibeCADAssistantPanel {
+QDockWidget#CadexAssistantPanel {
   color: #ececec;
   background-color: #0d0d0d;
   border-left: 1px solid #333333; }
 
-QDockWidget#VibeCADAssistantPanel::title {
+QDockWidget#CadexAssistantPanel::title {
   min-height: 26px;
   color: #ececec;
   background-color: #0d0d0d;
@@ -1513,7 +1513,7 @@ QLabel#VibeStatusLine {
   background-color: transparent;
   padding: 0px 2px; }
 
-QDockWidget#VibeCADScriptedModelPanel QWidget#VibeScriptedModelRoot {
+QDockWidget#CadexScriptedModelPanel QWidget#VibeScriptedModelRoot {
   color: #ececec;
   background-color: #101010; }
 

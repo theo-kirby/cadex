@@ -113,8 +113,8 @@ void ThemeSelectorWidget::setupButtons(QBoxLayout* layout)
     }
     std::map<Theme, QString> themeMap {
         {Theme::Classic, tr("FreeCAD Classic")},
-        {Theme::Dark, tr("VibeDark")},
-        {Theme::Light, tr("VibeLight")}
+        {Theme::Dark, tr("CadexDark")},
+        {Theme::Light, tr("CadexLight")}
     };
     std::map<Theme, QIcon> iconMap {
         {Theme::Classic, QIcon(QLatin1String(":/thumbnails/Theme_thumbnail_classic.png"))},
@@ -145,7 +145,7 @@ void ThemeSelectorWidget::setupButtons(QBoxLayout* layout)
             theme.first == Theme::Light
             && (
                 styleSheetName.contains(QLatin1String("OpenLight"), Qt::CaseSensitivity::CaseInsensitive)
-                || styleSheetName.contains(QLatin1String("VibeLight"), Qt::CaseSensitivity::CaseInsensitive)
+                || styleSheetName.contains(QLatin1String("CadexLight"), Qt::CaseSensitivity::CaseInsensitive)
                 || styleSheetName.contains(QLatin1String("FreeCAD Light"), Qt::CaseSensitivity::CaseInsensitive)
             )
         ) {
@@ -155,7 +155,7 @@ void ThemeSelectorWidget::setupButtons(QBoxLayout* layout)
             theme.first == Theme::Dark
             && (
                 styleSheetName.contains(QLatin1String("OpenDark"), Qt::CaseSensitivity::CaseInsensitive)
-                || styleSheetName.contains(QLatin1String("VibeDark"), Qt::CaseSensitivity::CaseInsensitive)
+                || styleSheetName.contains(QLatin1String("CadexDark"), Qt::CaseSensitivity::CaseInsensitive)
                 || styleSheetName.contains(QLatin1String("FreeCAD Dark"), Qt::CaseSensitivity::CaseInsensitive)
             )
         ) {
@@ -226,10 +226,10 @@ void ThemeSelectorWidget::themeChanged(Theme newTheme)
             prefPackManager->apply("FreeCAD Classic");
             break;
         case Theme::Dark:
-            prefPackManager->apply("VibeDark");
+            prefPackManager->apply("CadexDark");
             break;
         case Theme::Light:
-            prefPackManager->apply("VibeLight");
+            prefPackManager->apply("CadexLight");
             break;
     }
     ParameterGrp::handle hGrp = App::GetApplication().GetParameterGroupByPath(
@@ -265,7 +265,7 @@ void ThemeSelectorWidget::retranslateUi()
     else {
         _descriptionLabel->hide();
     }
-    _buttons[static_cast<int>(Theme::Dark)]->setText(tr("VibeDark", "Visual theme name"));
-    _buttons[static_cast<int>(Theme::Light)]->setText(tr("VibeLight", "Visual theme name"));
+    _buttons[static_cast<int>(Theme::Dark)]->setText(tr("CadexDark", "Visual theme name"));
+    _buttons[static_cast<int>(Theme::Light)]->setText(tr("CadexLight", "Visual theme name"));
     _buttons[static_cast<int>(Theme::Classic)]->setText(tr("FreeCAD Classic", "Visual theme name"));
 }

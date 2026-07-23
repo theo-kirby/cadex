@@ -1,7 +1,7 @@
 [workspace]
-name = "FreeCAD"
+name = "cadex"
 version = "26.3.2"
-description = "pixi instructions for FreeCAD"
+description = "pixi instructions for cadex"
 authors = ["looooo <sppedflyer@gmail.com>"]
 channels = ["conda-forge"]
 platforms = [ "linux-64", "linux-aarch64", "osx-64", "osx-arm64", "win-64" ]

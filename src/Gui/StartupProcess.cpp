@@ -334,7 +334,7 @@ void StartupPostProcess::applyStartupTheme()
 
     if (theme.empty() && style.empty()) {
         auto prefPackManager = Application::Instance->prefPackManager();
-        prefPackManager->apply("VibeDark");
+        prefPackManager->apply("CadexDark");
         return;
     }
 
@@ -368,10 +368,10 @@ void StartupPostProcess::migrateOldTheme(const std::string& style)
     auto prefPackManager = Application::Instance->prefPackManager();
 
     if (style == "FreeCAD Light.qss" || style == "OpenLight.qss") {
-        prefPackManager->apply("VibeLight");
+        prefPackManager->apply("CadexLight");
     }
     else if (style == "FreeCAD Dark.qss" || style == "OpenDark.qss") {
-        prefPackManager->apply("VibeDark");
+        prefPackManager->apply("CadexDark");
     }
 }
 

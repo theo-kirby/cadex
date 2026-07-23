@@ -7,5 +7,5 @@
   "version_suffix": "RC1",
   "version_suffix_note": "either 'dev' for development snapshot, 'RC1' etc. for release candidate, or empty string for release",
   "build_version": 0,
-  "build_version_note": "used when the same VibeCAD version is re-released (for example using an updated LibPack)"
+  "build_version_note": "used when the same Cadex version is re-released (for example using an updated LibPack)"
 }

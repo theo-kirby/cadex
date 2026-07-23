@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""Generate Windows and Qt branding assets from the canonical VibeCAD mark."""
+"""Generate Windows and Qt branding assets from the canonical Cadex mark."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ from PySide6.QtSvg import QSvgRenderer
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MASTER_MARK = ROOT / "src" / "Mod" / "VibeCAD" / "preferences-vibecad.svg"
+MASTER_MARK = ROOT / "src" / "Mod" / "Cadex" / "preferences-cadex.svg"
 GUI_ICONS = ROOT / "src" / "Gui" / "Icons"
 MAIN_DIR = ROOT / "src" / "Main"
 INSTALLER_DIR = ROOT / "package" / "WindowsInstaller"
@@ -128,11 +128,11 @@ def _render_icon(renderer: QSvgRenderer, size: int) -> QImage:
 
 
 def _write_icon(renderer: QSvgRenderer) -> None:
-    png_path = GUI_ICONS / "vibecad-icon-256.png"
+    png_path = GUI_ICONS / "cadex-icon-256.png"
     _save_png(_render_icon(renderer, 256), png_path)
     with Image.open(png_path) as source:
         rgba = source.convert("RGBA")
-        ico_path = MAIN_DIR / "vibecad.ico"
+        ico_path = MAIN_DIR / "cadex.ico"
         rgba.save(
             ico_path,
             format="ICO",
@@ -148,7 +148,7 @@ def _write_icon(renderer: QSvgRenderer) -> None:
                 (256, 256),
             ],
         )
-    installer_icon = INSTALLER_DIR / "icons" / "VibeCAD.ico"
+    installer_icon = INSTALLER_DIR / "icons" / "Cadex.ico"
     installer_icon.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ico_path, installer_icon)
 
@@ -160,9 +160,9 @@ def _write_header(renderer: QSvgRenderer) -> None:
     _draw_logo(painter, renderer, QRectF(7, 5, 47, 47))
     painter.setFont(_font(19, bold=True))
     painter.setPen(TEXT)
-    painter.drawText(QRectF(59, 0, 88, 57), Qt.AlignmentFlag.AlignVCenter, "VibeCAD")
+    painter.drawText(QRectF(59, 0, 88, 57), Qt.AlignmentFlag.AlignVCenter, "Cadex")
     painter.end()
-    _save_bmp(image, INSTALLER_DIR / "graphics" / "vibecad-header.bmp")
+    _save_bmp(image, INSTALLER_DIR / "graphics" / "cadex-header.bmp")
 
 
 def _write_banner(renderer: QSvgRenderer) -> None:
@@ -175,7 +175,7 @@ def _write_banner(renderer: QSvgRenderer) -> None:
     painter.drawText(
         QRectF(8, 150, 148, 42),
         Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-        "VibeCAD",
+        "Cadex",
     )
     painter.setPen(LIGHT_BLUE)
     painter.setFont(_font(14, bold=True))
@@ -192,7 +192,7 @@ def _write_banner(renderer: QSvgRenderer) -> None:
         "Powered by FreeCAD",
     )
     painter.end()
-    _save_bmp(image, INSTALLER_DIR / "graphics" / "vibecad-banner.bmp")
+    _save_bmp(image, INSTALLER_DIR / "graphics" / "cadex-banner.bmp")
 
 
 def _splash(renderer: QSvgRenderer, width: int, height: int) -> QImage:
@@ -209,7 +209,7 @@ def _splash(renderer: QSvgRenderer, width: int, height: int) -> QImage:
     painter.drawText(
         QRectF(text_x, round(62 * scale), width - text_x - margin, round(78 * scale)),
         Qt.AlignmentFlag.AlignVCenter,
-        "VibeCAD",
+        "Cadex",
     )
     painter.setPen(LIGHT_BLUE)
     painter.setFont(_font(round(22 * scale), bold=True))
@@ -237,8 +237,8 @@ def _splash(renderer: QSvgRenderer, width: int, height: int) -> QImage:
 
 
 def _write_splash(renderer: QSvgRenderer) -> None:
-    _save_png(_splash(renderer, 568, 368), GUI_ICONS / "vibecadsplash.png")
-    _save_png(_splash(renderer, 1136, 736), GUI_ICONS / "vibecadsplash_2x.png")
+    _save_png(_splash(renderer, 568, 368), GUI_ICONS / "cadexsplash.png")
+    _save_png(_splash(renderer, 1136, 736), GUI_ICONS / "cadexsplash_2x.png")
 
 
 def _about(renderer: QSvgRenderer, *, development: bool) -> QImage:
@@ -249,7 +249,7 @@ def _about(renderer: QSvgRenderer, *, development: bool) -> QImage:
     _draw_logo(painter, renderer, QRectF(24, 24, 141, 141))
     painter.setPen(TEXT)
     painter.setFont(_font(48, bold=True))
-    painter.drawText(QRectF(190, 26, 335, 62), Qt.AlignmentFlag.AlignVCenter, "VibeCAD")
+    painter.drawText(QRectF(190, 26, 335, 62), Qt.AlignmentFlag.AlignVCenter, "Cadex")
     painter.setPen(LIGHT_BLUE)
     painter.setFont(_font(18, bold=True))
     painter.drawText(
@@ -279,8 +279,8 @@ def _about(renderer: QSvgRenderer, *, development: bool) -> QImage:
 
 
 def _write_about(renderer: QSvgRenderer) -> None:
-    _save_png(_about(renderer, development=False), GUI_ICONS / "vibecadabout.png")
-    _save_png(_about(renderer, development=True), GUI_ICONS / "vibecadaboutdev.png")
+    _save_png(_about(renderer, development=False), GUI_ICONS / "cadexabout.png")
+    _save_png(_about(renderer, development=True), GUI_ICONS / "cadexaboutdev.png")
 
 
 def main() -> None:
@@ -288,14 +288,14 @@ def main() -> None:
     _load_fonts()
     renderer = QSvgRenderer(str(MASTER_MARK))
     if not renderer.isValid():
-        raise RuntimeError(f"Invalid VibeCAD master mark: {MASTER_MARK}")
-    shutil.copyfile(MASTER_MARK, GUI_ICONS / "vibecad.svg")
+        raise RuntimeError(f"Invalid Cadex master mark: {MASTER_MARK}")
+    shutil.copyfile(MASTER_MARK, GUI_ICONS / "cadex.svg")
     _write_icon(renderer)
     _write_header(renderer)
     _write_banner(renderer)
     _write_splash(renderer)
     _write_about(renderer)
-    print("Generated VibeCAD branding assets.")
+    print("Generated Cadex branding assets.")
 
 
 if __name__ == "__main__":

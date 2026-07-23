@@ -953,7 +953,7 @@ void ensureSWIGModuleLoaded(const char* moduleName)
 {
     throw Base::RuntimeError(
         std::string("SWIG wrapper module '") + moduleName
-        + "' did not register a runtime compatible with this VibeCAD build"
+        + "' did not register a runtime compatible with this Cadex build"
     );
 }
 }  // namespace
@@ -996,7 +996,7 @@ PyObject* InterpreterSingleton::createSWIGPointerObj(
 #if (defined(HAVE_SWIG) && (HAVE_SWIG == 1))
     throwIncompatibleSWIGRuntime(Module);
 #else
-    throw Base::RuntimeError("This VibeCAD build was compiled without SWIG support");
+    throw Base::RuntimeError("This Cadex build was compiled without SWIG support");
 #endif
 }
 
@@ -1030,7 +1030,7 @@ bool InterpreterSingleton::convertSWIGPointerObj(
 #if (defined(HAVE_SWIG) && (HAVE_SWIG == 1))
     throwIncompatibleSWIGRuntime(Module);
 #else
-    throw Base::RuntimeError("This VibeCAD build was compiled without SWIG support");
+    throw Base::RuntimeError("This Cadex build was compiled without SWIG support");
 #endif
 }
 
@@ -1066,6 +1066,6 @@ PyTypeObject* InterpreterSingleton::getSWIGPointerTypeObj(const char* Module, co
 #if (defined(HAVE_SWIG) && (HAVE_SWIG == 1))
     throwIncompatibleSWIGRuntime(Module);
 #else
-    throw Base::RuntimeError("This VibeCAD build was compiled without SWIG support");
+    throw Base::RuntimeError("This Cadex build was compiled without SWIG support");
 #endif
 }

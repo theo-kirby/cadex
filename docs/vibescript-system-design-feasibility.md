@@ -2,7 +2,7 @@
 
 ## Scope
 
-VibeCAD has one human-selected global modeling engine per saved project. The
+Cadex has one human-selected global modeling engine per saved project. The
 engine and active FreeCAD workbench resolve to exactly one CAD authoring
 surface. The resolver is shared by ChatGPT subscription, OpenAI-compatible,
 Anthropic, offline/debug, and editor paths.
@@ -49,7 +49,7 @@ manifests that stored `partdesign_engine` are read once and rewritten with
 The selector is visible in every supported user workbench. Native and
 VibeScript are global choices. build123d and OpenSCAD are listed only in Part
 Design and only when their preference and runtime are ready. If the human
-leaves Part Design with either selected, VibeCAD visibly persists VibeScript
+leaves Part Design with either selected, Cadex visibly persists VibeScript
 before the next provider turn. Returning to Part Design does not restore the
 old engine.
 
@@ -254,7 +254,7 @@ recomputes it, rejects invalid native state, and returns deterministic assigned
 state plus bounded evaluated-value readback. Live publication replays that
 validated batch without recompute and must reproduce the worker digest. Because
 FreeCAD document transactions do not restore the sheet's internal cell store,
-VibeCAD also captures the accepted definition before mutation and explicitly
+Cadex also captures the accepted definition before mutation and explicitly
 replays it after an aborted publication; the restored digest must match. A live
 sheet edited outside its accepted VibeScript revision is detected before
 mutation rather than silently overwritten.

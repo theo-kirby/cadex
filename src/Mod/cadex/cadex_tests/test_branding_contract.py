@@ -452,10 +452,8 @@ def test_assistant_panel_uses_cadex_product_name() -> None:
 
 
 def test_cadex_preferences_keep_user_workbenches_enabled() -> None:
-    # NOTE: the shipped preference pack directory is renamed to the cadex product
-    # brand in the packaging pass; this rename covers only the module/binary
-    # identity, so the pack still lives under its original directory name.
-    config = ROOT / "src/Gui/PreferencePacks/VibeCAD Preferences/VibeCAD Preferences.cfg"
+    # The shipped preference pack directory carries the cadex product brand.
+    config = ROOT / "src/Gui/PreferencePacks/Cadex Preferences/Cadex Preferences.cfg"
     root = ET.parse(config).getroot()
     assert not any(
         node.get("Name") == "BackgroundAutoloadModules" for node in root.iter("FCText")
