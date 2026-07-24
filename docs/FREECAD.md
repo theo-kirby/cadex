@@ -52,26 +52,25 @@ Everything in this file is `[FreeCAD-inherited]` unless noted.
 
 ## 3. Slated for removal (Phase 1) — present but unused
 
-These trees still exist under `src/Mod/` but no runtime domain, tool, or UI
-path reaches them (the 18-domain surface was culled to 4 in the teardown;
+Remaining candidates (no runtime domain, tool, or UI path reaches them;
 `test_tool_surface_guardrails.py` asserts the culled worker modules stay
 gone):
 
-`AddonManager`, `BIM`, `CAM`, `Draft`, `Fem`, `Inspection`, `OpenSCAD`*,
-`Plot`, `Points`, `ReverseEngineering`, `Robot`, `Spreadsheet`, `Surface`,
-`TechDraw`, `TemplatePyMod`, `Tux`, `Web`.
+`Draft`, `Points`, `Spreadsheet`, `TechDraw`.
 
-\* `OpenSCAD`: the workbench registers no commands; its headless CSG modules
-served the retired OpenSCAD engine and are now unreachable.
+Ordering: the cadex grid loses its Draft dependency first (cadex-owned
+tracker), the assembly BOM feature is dropped (`Assembly` links against
+`Spreadsheet` only for it), then Draft → TechDraw → Spreadsheet → Points
+disable and delete.
+
+Batch A (`AddonManager`, `BIM`, `CAM`, `Fem`, `Inspection`, `OpenSCAD`,
+`Plot`, `ReverseEngineering`, `Robot`, `Surface`, `TemplatePyMod`, `Tux`,
+`Web`) was deleted 2026-07-24 (ADR-007).
 
 Removal protocol (per tree, two commits, logged in `docs/DECISIONS.md`):
 
 1. Disable in `src/Mod/CMakeLists.txt`; build, launch, run tests.
 2. Delete the tree; build, launch, run tests again.
-
-Dependency audit first — some kept trees link against removal candidates
-(e.g. Draft utilities imported by other Python modules); the audit decides
-order and may move a tree to "kept" with justification.
 
 ## 4. Already deleted (VibeCAD teardown) — do not resurrect
 
@@ -105,6 +104,6 @@ nibbling at imports.
 
 - Does `src/Mod/Material` reduce to just the property types the four domains
   touch, or stay whole?
-- `src/Mod/Help`, `AddonManager` UI hooks: any startup references that need
-  unpicking before deletion?
+- `src/Mod/Help`: any startup references that need unpicking before
+  deletion?
 - Which `tests/` subtrees cover removed workbenches and go with them?

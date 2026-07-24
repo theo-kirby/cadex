@@ -63,10 +63,6 @@
         "hidden": true,
         "generator": "Ninja",
         "cacheVariables": {
-          "BUILD_FEM_NETGEN": {
-            "type": "BOOL",
-            "value": "ON"
-          },
           "BUILD_WITH_CONDA": {
             "type": "BOOL",
             "value": "ON"

@@ -104,3 +104,25 @@ lazy `xscript_*` imports inside unreachable helpers in
 catalogued in `docs/FREECAD.md` §4 and scheduled for Phase 1. Deliberately
 not swept in Phase 0: removing them means deleting whole functions across a
 16k-line file, which needs its own audited, test-verified pass.
+
+## ADR-007 — Phase 1 batch A: 13 unused trees deleted (2026-07-24)
+
+**Decision.** Deleted `src/Mod/{AddonManager, BIM, CAM, Fem, Inspection,
+OpenSCAD, Plot, ReverseEngineering, Robot, Surface, Tux, Web}` and the
+never-built `src/Mod/TemplatePyMod`, following the two-commit protocol
+(disable commit `8f98463`, then delete). Their `BUILD_*` options,
+`REQUIRES_MODS` lines, `src/Mod/CMakeLists.txt` blocks, and satellite
+references (NETGEN find logic, `SetupLark.cmake`, PySide6 QtSvgWidgets
+BIM consumer, final-report lines, FEM/CAM/BIM visual-test scenes, the
+Start view's Draft/BIM tiles) went with them. The AddonManager submodule
+entry was removed from `.gitmodules`.
+
+**Rationale.** No runtime domain, tool, or UI path reaches these trees
+(`docs/FREECAD.md` §3); the product ships four domains. Remove more than
+we add.
+
+**Consequences.** Batch B (Draft, Points, TechDraw, Spreadsheet) follows
+after the cadex grid is reimplemented without Draft and the assembly BOM
+feature is dropped (see ADR-008/ADR-009). `pixi run configure` on an
+existing build dir needs the removed `BUILD_*` cache entries purged
+(`cmake -U`) or a fresh build directory.
