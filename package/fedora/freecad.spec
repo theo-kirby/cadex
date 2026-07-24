@@ -16,7 +16,7 @@
 
 Name:           freecad
 Epoch:          1
-Version:        26.3.2~RC1
+Version:        0.0.1
 Release:        1%{?dist}
 
 Summary:        A general purpose 3D CAD modeler

@@ -8,7 +8,7 @@ preview = ["pixi-build"]
 
 [package]
 name = "freecad"
-version = "26.3.2RC1"
+version = "0.0.1"
 homepage = "https://freecad.org"
 repository = "https://github.com/FreeCAD/FreeCAD"
 description = "FreeCAD"

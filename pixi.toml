@@ -1,6 +1,6 @@
 [workspace]
 name = "cadex"
-version = "26.3.2"
+version = "0.0.1"
 description = "pixi instructions for cadex"
 authors = ["looooo <sppedflyer@gmail.com>"]
 channels = ["conda-forge"]

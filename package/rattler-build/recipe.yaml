@@ -1,5 +1,5 @@
 context:
-  version: "26.3.2RC1"
+  version: "0.0.1"
 
 package:
   name: freecad
