@@ -1964,6 +1964,13 @@ def _handle_progress_event(
                 CadexParametersPanel.automated_model_update_finished(*arguments)
         except Exception as exc:
             _warn(f"Cadex parameters panel synchronization failed: {exc}")
+        if event_name == "scripted_model_update_finished":
+            try:
+                import CadexScriptView
+
+                CadexScriptView.automated_model_update_finished(*arguments)
+            except Exception as exc:
+                _warn(f"Cadex script view synchronization failed: {exc}")
         return
     if event.get("event") == "provider_text_delta":
         if _EXPERIMENTAL_MODE:
@@ -4028,5 +4035,13 @@ def ensure_commands_registered() -> None:
         ensure_parameters_panel_registered()
     except Exception as exc:
         _warn(f"Cadex parameters panel registration failed: {exc}")
+    try:
+        from CadexScriptView import ensure_script_view_registered
+
+        # After the parameters panel: registration order fixes the right-side
+        # stacking (chat, parameters, tree, script).
+        ensure_script_view_registered()
+    except Exception as exc:
+        _warn(f"Cadex script view registration failed: {exc}")
     _connect_workbench_activation()
     _commands_registered = True

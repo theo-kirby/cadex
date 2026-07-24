@@ -30,25 +30,37 @@ TASKS_DOCK_NAME = "Tasks"
 # inherits the inner widget's object name ("Tree view").
 TREE_DOCK_NAME = "Tree view"
 
-# Docks the end user is allowed to see in experimental mode: the assistant chat, the
-# XScript parameter sliders, and the model tree (each manages its own
-# visibility below).
+# Single source of truth for the dock name lives in the view module.
+from CadexScriptView import DOCK_NAME as SCRIPT_VIEW_DOCK_NAME  # noqa: E402
+
+# Docks the end user is allowed to see in experimental mode: the assistant
+# chat, the XScript parameter sliders, the model tree, and the read-only
+# script view (each manages its own visibility below).
 ALLOWED_DOCK_NAMES = frozenset(
-    {ASSISTANT_DOCK_NAME, PARAMETERS_DOCK_NAME, TREE_DOCK_NAME}
+    {
+        ASSISTANT_DOCK_NAME,
+        PARAMETERS_DOCK_NAME,
+        TREE_DOCK_NAME,
+        SCRIPT_VIEW_DOCK_NAME,
+    }
 )
 EXPERIMENTAL_MODE_WORKBENCH = "PartDesignWorkbench"
 
 _SUPPRESSED_PROPERTY = "VibeExperimentalModeSuppressed"
 _REHIDE_PENDING_PROPERTY = "VibeExperimentalModeRehidePending"
 
-ASSISTANT_DOCK_WIDTH = 420
 ASSISTANT_DOCK_MINIMUM_WIDTH = 360
+# Target split: right dock column takes this fraction of the window width
+# (docs/ROADMAP.md Phase 3 — 50/50 viewport / panels).
+RIGHT_COLUMN_FRACTION = 0.5
 
 
 _activated = False
 _hide_on_show_filter: Any = None
 _launch_screen_active = False
 _document_observer: Any = None
+_half_layout_filter: Any = None
+_half_layout_pending = False
 
 
 def is_experimental_mode_session() -> bool:
@@ -96,6 +108,7 @@ def activate() -> None:
     # this first pass, so schedule follow-up hides to catch late-built chrome.
     _schedule_deferred_hide_chrome()
     _connect_workbench_guard(main_window)
+    _install_half_layout_filter(main_window)
     # The launch/parts state controller decides when the assistant dock is
     # pinned (documents open) or hidden behind the launch screen (none).
     _connect_document_observer()
@@ -157,7 +170,7 @@ def _pin_assistant_dock(main_window: Any) -> None:
     dock.setMinimumWidth(ASSISTANT_DOCK_MINIMUM_WIDTH)
     dock.show()
     dock.raise_()
-    main_window.resizeDocks([dock], [ASSISTANT_DOCK_WIDTH], QtCore.Qt.Horizontal)
+    _schedule_half_layout()
 
 
 def _hide_chrome() -> None:
@@ -331,6 +344,7 @@ def _sync_launch_state() -> None:
             _repair_assistant_panel()
             _sync_parameters_dock()
             _pin_tree_dock(main_window)
+            _sync_script_view_dock()
         except Exception as exc:
             _warn(f"Cadex experimental mode could not pin the workspace: {exc}")
     else:
@@ -338,6 +352,7 @@ def _sync_launch_state() -> None:
             _hide_assistant_dock(main_window)
             _hide_parameters_dock(main_window)
             _hide_tree_dock(main_window)
+            _hide_script_view_dock(main_window)
             # Idempotent find-or-create; also raises an existing StartView.
             Gui.runCommand("Start_Start", 0)
         except Exception as exc:
@@ -358,6 +373,24 @@ def _hide_parameters_dock(main_window: Any) -> None:
     from PySide import QtWidgets
 
     dock = main_window.findChild(QtWidgets.QDockWidget, PARAMETERS_DOCK_NAME)
+    if dock is not None:
+        dock.hide()
+
+
+def _sync_script_view_dock() -> None:
+    """Show the read-only script view once the project script has content."""
+    try:
+        import CadexScriptView
+
+        CadexScriptView.sync_experimental_mode_dock()
+    except Exception as exc:
+        _warn(f"Cadex experimental mode could not sync the script view: {exc}")
+
+
+def _hide_script_view_dock(main_window: Any) -> None:
+    from PySide import QtWidgets
+
+    dock = main_window.findChild(QtWidgets.QDockWidget, SCRIPT_VIEW_DOCK_NAME)
     if dock is not None:
         dock.hide()
 
@@ -420,6 +453,87 @@ def _close_start_view(main_window: Any) -> None:
             widget.close()
             return
         widget = widget.parentWidget()
+
+
+# ---------------------------------------------------------------------------
+# 50/50 layout (viewport left, panel column right)
+# ---------------------------------------------------------------------------
+
+
+def _right_column_docks(main_window: Any) -> list[Any]:
+    """Visible right-area docks, in the fixed registration order."""
+    from PySide import QtCore, QtWidgets
+
+    docks = []
+    for name in (
+        ASSISTANT_DOCK_NAME,
+        PARAMETERS_DOCK_NAME,
+        TREE_DOCK_NAME,
+        SCRIPT_VIEW_DOCK_NAME,
+    ):
+        dock = main_window.findChild(QtWidgets.QDockWidget, name)
+        if (
+            dock is not None
+            and dock.isVisible()
+            and not dock.isFloating()
+            and main_window.dockWidgetArea(dock) == QtCore.Qt.RightDockWidgetArea
+        ):
+            docks.append(dock)
+    return docks
+
+
+def _apply_half_layout() -> None:
+    """Resize the right dock column to half the window width.
+
+    resizeDocks only — QMainWindow.addDockWidget/splitDockWidget on
+    FreeCAD-managed docks at runtime severs the other panels' Python signal
+    connections (verified on the parameters panel), so the split is enforced
+    purely by re-issuing sizes on the docks where registration put them.
+    """
+    from PySide import QtCore
+
+    global _half_layout_pending
+    _half_layout_pending = False
+    main_window = _main_window()
+    if main_window is None or in_launch_state():
+        return
+    docks = _right_column_docks(main_window)
+    if not docks:
+        return
+    width = max(
+        int(main_window.width() * RIGHT_COLUMN_FRACTION),
+        ASSISTANT_DOCK_MINIMUM_WIDTH,
+    )
+    main_window.resizeDocks(docks, [width] * len(docks), QtCore.Qt.Horizontal)
+
+
+def _schedule_half_layout() -> None:
+    """Coalesce layout passes onto the next event-loop turn."""
+    from PySide import QtCore
+
+    global _half_layout_pending
+    if _half_layout_pending:
+        return
+    _half_layout_pending = True
+    QtCore.QTimer.singleShot(0, _apply_half_layout)
+
+
+def _install_half_layout_filter(main_window: Any) -> None:
+    """Re-assert the 50/50 split whenever the window shows or resizes."""
+    global _half_layout_filter
+    from PySide import QtCore
+
+    if _half_layout_filter is not None:
+        return
+
+    class _HalfLayout(QtCore.QObject):
+        def eventFilter(self, _watched: Any, event: Any) -> bool:
+            if event.type() in (QtCore.QEvent.Show, QtCore.QEvent.Resize):
+                _schedule_half_layout()
+            return False
+
+    _half_layout_filter = _HalfLayout(main_window)
+    main_window.installEventFilter(_half_layout_filter)
 
 
 def _connect_workbench_guard(main_window: Any) -> None:

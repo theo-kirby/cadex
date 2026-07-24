@@ -30,6 +30,7 @@ set(Cadex_Scripts
     CadexScriptedDomains.py
     CadexScriptedRuntime.py
     CadexScriptedDomainPublication.py
+    CadexScriptView.py
     cadex_assembly_api.py
     cadex_assembly_worker.py
     CadexAssemblyHierarchy.py
@@ -41,6 +42,7 @@ set(Cadex_Scripts
     cadex_partdesign_worker.py
     cadex_project_api.py
     cadex_project_worker.py
+    cadex_rebuild.py
     cadex_sketcher_api.py
     cadex_sketcher_worker.py
     CadexDigest.py
