@@ -27,7 +27,6 @@ set(PartDesign_OtherScripts
     Scripts/DistanceBolt.py
     Scripts/Epitrochoid.py
     Scripts/FilletArc.py
-    Scripts/Gear.py
     Scripts/Parallelepiped.py
     Scripts/RadialCopy.py
     Scripts/Spring.py

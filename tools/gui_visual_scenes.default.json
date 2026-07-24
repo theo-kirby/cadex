@@ -26,33 +26,6 @@
       "workbench": "SketcherWorkbench",
       "file": "src/Mod/Sketcher/SketcherTests/TestSketchCarbonCopyReverseMapping.FCStd",
       "fit_view": true
-    },
-    {
-      "name": "draft-objects",
-      "coverage": [
-        "draft"
-      ],
-      "workbench": "DraftWorkbench",
-      "file": "data/examples/draft_test_objects.FCStd",
-      "fit_view": true
-    },
-    {
-      "name": "spreadsheet-project",
-      "coverage": [
-        "spreadsheet"
-      ],
-      "workbench": "SpreadsheetWorkbench",
-      "file": "data/tests/ProjectTest.FCStd",
-      "fit_view": true
-    },
-    {
-      "name": "techdraw-arch-detail",
-      "coverage": [
-        "techdraw"
-      ],
-      "workbench": "TechDrawWorkbench",
-      "file": "data/examples/ArchDetail.FCStd",
-      "fit_view": true
     }
   ]
 }

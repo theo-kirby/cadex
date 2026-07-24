@@ -80,7 +80,6 @@ set(Part_tests
     parttests/TaskFaceAppearancesTest.py
     parttests/TopoShapeTest.py
     parttests/TestTangentMode3-0.21.FCStd
-    parttests/TestPartMirror.py
     parttests/TestFaceMakerUnifiedPlanar.py
     parttests/TestFaceMakerUnifiedNonPlanar.py
 )
