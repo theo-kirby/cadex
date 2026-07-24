@@ -633,33 +633,3 @@ def register_project_tools(registry: Any) -> None:
 
     for raw_spec in project_tool_specs():
         registry.register_spec(raw_spec, None)
-
-
-# ---------------------------------------------------------------------------
-# Parameters-panel compatibility (dies in Phase 2.5)
-#
-# CadexParametersPanel still imports these two functions by name to populate
-# its program selector. Per-domain programs no longer exist on the project
-# surface, so the index is always empty; Phase 2.5 rewires the panel to the
-# project script's param_specs and deletes these.
-# ---------------------------------------------------------------------------
-
-
-def domain_program_index_snapshot(service: Any, domain: str) -> dict[str, Any]:
-    scope = service.project_scope_snapshot()
-    return {
-        "_cadex_deferred_xscript_program_index": True,
-        "domain": str(domain or "").strip().lower(),
-        "project_root": str(scope.get("root") or ""),
-    }
-
-
-def complete_domain_program_index(snapshot: Mapping[str, Any]) -> dict[str, Any]:
-    if snapshot.get("_cadex_deferred_xscript_program_index") is not True:
-        raise RuntimeError("Invalid deferred XScript program index snapshot.")
-    return {
-        "ok": True,
-        "domain": str(snapshot.get("domain") or ""),
-        "program_count": 0,
-        "programs": [],
-    }

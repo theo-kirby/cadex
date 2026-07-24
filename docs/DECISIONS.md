@@ -348,3 +348,42 @@ surface lists no per-domain programs. Phase 2.5 rewires the panel to the
 project script's `param_specs` and deletes these compatibility symbols.
 Resurrecting any per-domain lifecycle machinery is a direction change and
 needs a new ADR.
+
+## ADR-014 — Phase 2.5 Parameters panel bound to the project script (2026-07-24)
+
+**Decision.** `CadexParametersPanel.py` reads its rows from the project
+script's declared parameters and commits changes through
+`xscript.project.set_params`. The heuristic control-guessing layer dies.
+
+- Row source: `script.json` `param_specs` (declaration order) +
+  `param_values`, read via `CadexProjectScriptStore` (`_project_parameters`).
+  The pure `spec_control(spec, value)` helper resolves each declared spec to
+  slider metadata — declared `label`/`unit`/`min`/`max`/`step`/`description`
+  win per-field; missing bounds fall back to a value-bracketing band widened
+  so the stored value is always reachable, rounded outward onto the step
+  grid.
+- Commit: `CadexSession.run_project_xscript_operation` (the
+  `run_domain_xscript_operation` retirement stub replaced by this public
+  wrapper over `_run_project_xscript_tool`) with
+  `{"values": {name: value}, "expected_revision": working_revision}`.
+  `STALE_PROGRAM_REVISION` re-guards from `observed.current_revision` and
+  retries once; failures track `model_state.next_write_expected_revision`
+  (a failed rebuild advances the working revision on disk) and revert the
+  row — accepted live geometry is never touched by a failed commit.
+- Deleted: `heuristic_control`, `resolve_control`, the name-token
+  unit/angle/count heuristics, the program-selector combo box and its
+  `_active_xscript_surface`/`_list_xscript_programs` plumbing, and the
+  ADR-013 compatibility symbols
+  (`domain_program_index_snapshot`/`complete_domain_program_index` in
+  `CadexScriptedDomains.py`). One project script — there is nothing to
+  select.
+
+**Rationale.** D6 (plan): parameter controls are declared in the script
+(`params(width=num(...))`), so guessing ranges from parameter names is dead
+vocabulary; the panel must ride the same guarded rebuild path as the
+provider tools so a slider drag and an assistant edit are
+indistinguishable to the store.
+
+**Consequences.** Undeclared parameters no longer get invented sliders —
+the panel shows exactly what the script declares. Resurrecting the
+heuristics needs a new ADR.

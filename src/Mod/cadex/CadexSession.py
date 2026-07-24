@@ -1535,7 +1535,7 @@ def _run_project_xscript_tool(
         )
 
 
-def run_domain_xscript_operation(
+def run_project_xscript_operation(
     service: CadexService,
     tool_name: str,
     args: dict[str, Any],
@@ -1544,23 +1544,20 @@ def run_domain_xscript_operation(
     cancellation_check: CancellationCheck | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
-    """Compatibility bridge kept only for CadexParametersPanel (dies in 2.5).
+    """Public entry to the project XScript lifecycle.
 
-    The per-domain multi-program lifecycle was dissolved by the Phase 2.4
-    tool-surface swap (ADR-013), so a per-domain rebuild request now returns a
-    structured failure. The panel lists zero per-domain programs on the
-    project surface, so this is unreachable in practice; Phase 2.5 rewires
-    the panel to the project script's parameters and removes this symbol.
+    The Parameters panel uses this to commit slider changes through
+    ``xscript.project.set_params`` — the same guarded rebuild path the
+    provider tools take.
     """
 
-    del service, document_thread_dispatch, cancellation_check, progress_callback
-    return tool_failure(
+    return _run_project_xscript_tool(
+        service,
         tool_name,
-        "DOMAIN_TOOLS_RETIRED",
-        "surface",
-        "Per-domain XScript programs were retired; the project script is the "
-        "only mutation surface (xscript.project.*).",
-        requested=dict(args),
+        args,
+        document_thread_dispatch=document_thread_dispatch,
+        cancellation_check=cancellation_check,
+        progress_callback=progress_callback,
     )
 
 

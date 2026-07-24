@@ -64,8 +64,8 @@ from facts instead of re-exploration.
       `CadexScriptedRuntime.py`.
 - [x] Project-level parameters declared and bound (`params`/`num` in the
       script, values patched via `xscript.project.set_params`; the retired
-      per-program controls tool is gone, ADR-013). The Parameters-panel
-      slider rewire to `param_specs` lands in Phase 2.5.
+      per-program controls tool is gone, ADR-013). Parameters-panel sliders
+      read `param_specs` and commit via `set_params` (ADR-014).
 - [x] Publisher lint: reject any untagged object; orphan GC for objects with
       no owning script region. (`publish_project_candidate` — one
       transaction, `CadexScriptedOwnership` closure/lint/orphans, ADR-012.)

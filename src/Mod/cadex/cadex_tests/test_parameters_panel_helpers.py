@@ -3,8 +3,9 @@
 """Pure control-resolution helpers of the Parameters panel (no Qt required).
 
 The panel module keeps its slider-metadata helpers Qt-free at module scope so
-sliders can be reasoned about headlessly: heuristics for undeclared
-parameters, declared-over-heuristic merging, bound widening, and the integer
+sliders can be reasoned about headlessly: declared project-script specs
+(``params``/``num``) resolved to slider controls, gap-filling bands around
+the current value, bound widening, row-model assembly, and the integer
 slider scaling round-trip.
 """
 
@@ -17,94 +18,114 @@ import pytest
 import CadexParametersPanel as panel
 
 
-class TestHeuristicControl:
-    def test_positive_length_brackets_value(self) -> None:
-        control = panel.heuristic_control("mug_diameter", 80.0)
+class TestSpecControl:
+    def test_declared_fields_win(self) -> None:
+        spec = {
+            "name": "bowl_diameter",
+            "label": "Bowl Ø",
+            "unit": "mm",
+            "min": 40.0,
+            "max": 200.0,
+            "step": 5.0,
+            "description": "Outer diameter.",
+        }
+        control = panel.spec_control(spec, 120.0)
+        assert control["label"] == "Bowl Ø"
         assert control["unit"] == "mm"
-        # 0.1x-3x band, nice-rounded outward onto the step grid.
-        assert control["min"] == pytest.approx(5.0)
-        assert control["max"] == pytest.approx(240.0)
+        assert control["min"] == 40.0
+        assert control["max"] == 200.0
+        assert control["step"] == 5.0
+        assert control["description"] == "Outer diameter."
+
+    def test_missing_bounds_bracket_positive_value(self) -> None:
+        control = panel.spec_control({"name": "width"}, 80.0)
+        assert control["min"] <= 0.0
+        assert control["max"] >= 240.0
         assert control["step"] > 0
         assert control["min"] <= 80.0 <= control["max"]
-        assert control["label"] == "Mug Diameter"
+        assert control["label"] == "Width"
+        assert control["unit"] == ""
 
     def test_zero_value_gets_usable_range(self) -> None:
-        control = panel.heuristic_control("offset", 0.0)
+        control = panel.spec_control({"name": "offset"}, 0.0)
         assert control["min"] <= 0.0 <= control["max"]
         assert control["min"] < control["max"]
         assert control["step"] > 0
 
     def test_negative_value_brackets_value(self) -> None:
-        control = panel.heuristic_control("depth", -20.0)
-        assert control["min"] <= -20.0 <= control["max"]
+        control = panel.spec_control({"name": "depth"}, -20.0)
+        assert control["min"] <= -20.0
+        assert control["max"] >= 0.0
         assert control["min"] < control["max"]
-        assert control["min"] == pytest.approx(-60.0)
-
-    def test_angle_like_names_get_degrees(self) -> None:
-        for name in (
-            "handle_angle",
-            "rotation",
-            "tilt",
-            "twist_deg",
-            "taper_top",
-            "bladeRotation",
-        ):
-            control = panel.heuristic_control(name, 15.0)
-            assert control["unit"] == "°", name
-            assert (control["min"], control["max"]) == (0.0, 360.0), name
-            assert control["step"] == 1.0, name
-
-    def test_count_like_names_get_integer_steps(self) -> None:
-        for name in ("blade_count", "num_spokes", "teeth", "sides", "segments"):
-            control = panel.heuristic_control(name, 12.0)
-            assert control["min"] == 1.0, name
-            assert control["step"] == 1.0, name
-            assert control["max"] >= 12.0, name
-
-    def test_count_words_do_not_hijack_length_names(self) -> None:
-        # "hole_diameter" contains no count token; it must stay a length.
-        control = panel.heuristic_control("hole_diameter", 6.0)
-        assert control["unit"] == "mm"
-        assert control["step"] != 1.0 or control["min"] != 1.0
-
-
-class TestResolveControl:
-    def test_declared_fields_win_per_field(self) -> None:
-        declared = {"label": "Bowl Ø", "min": 40.0, "max": 200.0, "unit": "mm"}
-        control = panel.resolve_control("bowl_diameter", 120.0, declared)
-        assert control["label"] == "Bowl Ø"
-        assert control["min"] == 40.0
-        assert control["max"] == 200.0
-        # Heuristic fills the undeclared step.
-        assert control["step"] > 0
-
-    def test_heuristic_fills_all_gaps_when_nothing_declared(self) -> None:
-        for declared in (None, {}, "not-a-dict"):
-            control = panel.resolve_control("height", 90.0, declared)
-            assert set(control) >= {"label", "unit", "min", "max", "step"}
-            assert control["min"] < control["max"]
 
     def test_bounds_widen_to_include_current_value(self) -> None:
-        declared = {"min": 10.0, "max": 50.0}
-        low = panel.resolve_control("width", 2.0, declared)
-        assert low["min"] == 2.0
+        spec = {"name": "width", "min": 10.0, "max": 50.0}
+        low = panel.spec_control(spec, 2.0)
+        assert low["min"] <= 2.0
         assert low["max"] == 50.0
-        high = panel.resolve_control("width", 400.0, declared)
+        high = panel.spec_control(spec, 400.0)
         assert high["min"] == 10.0
-        assert high["max"] == 400.0
+        assert high["max"] >= 400.0
 
-    def test_declared_angle_step_overrides_heuristic(self) -> None:
-        control = panel.resolve_control("handle_angle", 15.0, {"step": 5.0})
-        assert control["step"] == 5.0
-        assert control["unit"] == "°"
+    def test_label_falls_back_to_titled_name(self) -> None:
+        control = panel.spec_control({"name": "blade_count"}, 6.0)
+        assert control["label"] == "Blade Count"
 
     def test_invalid_declared_step_falls_back(self) -> None:
-        control = panel.resolve_control("width", 10.0, {"step": 0.0})
+        control = panel.spec_control({"name": "width", "step": 0.0}, 10.0)
         assert control["step"] > 0
 
     def test_degenerate_declared_range_is_padded(self) -> None:
-        control = panel.resolve_control("width", 10.0, {"min": 10.0, "max": 10.0})
+        control = panel.spec_control({"name": "width", "min": 10.0, "max": 10.0}, 10.0)
         assert control["min"] < 10.0 < control["max"]
+
+    def test_bounds_land_on_step_grid(self) -> None:
+        control = panel.spec_control({"name": "width", "step": 2.0}, 33.0)
+        assert control["min"] / 2.0 == pytest.approx(round(control["min"] / 2.0))
+        assert control["max"] / 2.0 == pytest.approx(round(control["max"] / 2.0))
+        assert control["min"] <= 33.0 <= control["max"]
+
+
+class TestParameterRows:
+    def test_rows_follow_declaration_order(self) -> None:
+        parameters = {
+            "specs": [
+                {"name": "width", "default": 30.0},
+                {"name": "height", "default": 12.0},
+            ],
+            "values": {},
+        }
+        rows = panel.parameter_rows(parameters)
+        assert [row["name"] for row in rows] == ["width", "height"]
+        assert rows[0]["value"] == 30.0
+        assert rows[1]["value"] == 12.0
+
+    def test_stored_value_wins_over_default(self) -> None:
+        parameters = {
+            "specs": [{"name": "width", "default": 30.0, "min": 10.0, "max": 90.0}],
+            "values": {"width": 55.0},
+        }
+        (row,) = panel.parameter_rows(parameters)
+        assert row["value"] == 55.0
+        assert row["control"]["min"] == 10.0
+        assert row["control"]["max"] == 90.0
+
+    def test_malformed_entries_are_skipped(self) -> None:
+        parameters = {
+            "specs": [
+                "not-a-dict",
+                {"default": 5.0},  # no name
+                {"name": "ok", "default": 5.0},
+            ],
+            "values": {"ok": True},  # bool stored value is ignored
+        }
+        rows = panel.parameter_rows(parameters)
+        assert [row["name"] for row in rows] == ["ok"]
+        assert rows[0]["value"] == 5.0
+
+    def test_empty_parameters_give_no_rows(self) -> None:
+        assert panel.parameter_rows({}) == []
+        assert panel.parameter_rows({"specs": [], "values": {}}) == []
 
 
 class TestSliderScaling:

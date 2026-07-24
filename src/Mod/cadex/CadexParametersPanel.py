@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""End-user parameter slider dock for XScript models.
+"""End-user parameter slider dock for THE project script.
 
-The panel lets a person tweak a model's driving inputs with sliders and
-see the geometry rebuild — no assistant round-trip. Ranges come from
-agent-declared ``input_controls`` metadata when present, with a naming
-heuristic filling every gap, so a controls-less model still gets usable
-sliders. Commits reuse the exact rebuild path the agent uses
-(``xscript.<domain>.set_inputs``), so a failed rebuild leaves the
-guarded live geometry untouched.
+The panel lets a person tweak the project script's declared parameters
+(``params``/``num`` declarations in the script) with sliders and see the
+geometry rebuild — no assistant round-trip. Ranges come from the declared
+parameter specs, with a value-bracketing band filling every gap, so a
+spec with no bounds still gets a usable slider. Commits go through
+``xscript.project.set_params`` — the same rebuild path the agent uses —
+so a failed rebuild leaves the accepted live geometry untouched.
 
 The resolution helpers at the top of this module are pure (no Qt, no
 FreeCAD) so headless tests can import them; all Qt imports are lazy.
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Any
+from typing import Any, Mapping
 
 DOCK_NAME = "CadexParametersPanel"
 DOCK_MINIMUM_WIDTH = 280
@@ -32,29 +32,6 @@ _refresh_pending = False
 # ---------------------------------------------------------------------------
 # Pure control-resolution helpers (no Qt, no FreeCAD)
 # ---------------------------------------------------------------------------
-
-_ANGLE_PREFIXES = ("angle", "rot", "tilt", "twist", "taper")
-_COUNT_TOKENS = frozenset(
-    {
-        "count",
-        "counts",
-        "num",
-        "number",
-        "teeth",
-        "sides",
-        "segments",
-        "copies",
-        "qty",
-        "quantity",
-        "instances",
-        "blades",
-        "spokes",
-        "divisions",
-        "turns",
-    }
-)
-
-CONTROL_FIELDS = ("label", "unit", "min", "max", "step", "description")
 
 
 def _name_tokens(name: str) -> list[str]:
@@ -93,68 +70,91 @@ def _round_to_step(value: float, step: float, *, up: bool) -> float:
     return round(rounded * step, 9)
 
 
-def heuristic_control(name: str, value: Any) -> dict[str, Any]:
-    """Guess slider metadata for a parameter with no declared control."""
+def _spec_number(spec: Mapping[str, Any], field: str) -> float | None:
+    value = spec.get(field)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
     number = float(value)
-    tokens = _name_tokens(name)
-    label = parameter_title(name)
-    if any(
-        token.startswith(prefix) for token in tokens for prefix in _ANGLE_PREFIXES
-    ):
-        return {
-            "label": label,
-            "unit": "°",
-            "min": 0.0,
-            "max": 360.0,
-            "step": 1.0,
-        }
-    if any(token in _COUNT_TOKENS for token in tokens):
-        upper = max(10.0, float(math.ceil(abs(number) * 3.0)))
-        return {"label": label, "unit": "", "min": 1.0, "max": upper, "step": 1.0}
-    # Length-like default: a nice-rounded 0.1x-3x band around the value.
-    if number == 0.0:
-        return {"label": label, "unit": "mm", "min": 0.0, "max": 10.0, "step": 0.1}
-    if number > 0.0:
-        low_raw, high_raw = number * 0.1, number * 3.0
+    return number if math.isfinite(number) else None
+
+
+def spec_control(spec: Mapping[str, Any], value: float) -> dict[str, Any]:
+    """Slider metadata for one declared project parameter spec.
+
+    Declared fields win per-field. Missing bounds fall back to a usable
+    band bracketing the current value; bounds are widened (never rejected)
+    so the current value is always on the slider, then rounded outward
+    onto the step grid.
+    """
+    number = float(value)
+    name = str(spec.get("name") or "")
+    label = str(spec.get("label") or "") or parameter_title(name)
+    unit = str(spec.get("unit") or "")
+    description = str(spec.get("description") or "")
+
+    # Default band bracketing the current value (0 gets 0..10).
+    if number >= 0.0:
+        default_min, default_max = 0.0, max(3.0 * number, 10.0)
     else:
-        low_raw, high_raw = number * 3.0, number * 0.1
-    step = nice_step(high_raw - low_raw)
+        default_min, default_max = min(3.0 * number, -10.0), 0.0
+    declared_min = _spec_number(spec, "min")
+    declared_max = _spec_number(spec, "max")
+    minimum = declared_min if declared_min is not None else default_min
+    maximum = declared_max if declared_max is not None else default_max
+
+    # Widen so the current (possibly out-of-band) stored value stays reachable.
+    if number < minimum:
+        minimum = number
+    if number > maximum:
+        maximum = number
+    if minimum >= maximum:
+        pad = max(abs(number), 1.0)
+        minimum = min(minimum, number - pad)
+        maximum = max(maximum, number + pad)
+
+    step = _spec_number(spec, "step")
+    if step is None or step <= 0:
+        step = nice_step(maximum - minimum)
+    minimum = _round_to_step(minimum, step, up=False)
+    maximum = _round_to_step(maximum, step, up=True)
+
     return {
         "label": label,
-        "unit": "mm",
-        "min": _round_to_step(low_raw, step, up=False),
-        "max": _round_to_step(high_raw, step, up=True),
+        "unit": unit,
+        "min": minimum,
+        "max": maximum,
         "step": step,
+        "description": description,
     }
 
 
-def resolve_control(name: str, value: Any, declared: Any) -> dict[str, Any]:
-    """Merge declared metadata over the heuristic and widen to fit the value.
+def parameter_rows(parameters: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Row models for the declared specs, in declaration order.
 
-    Declared fields win per-field; the heuristic fills every gap; bounds are
-    widened (never rejected) so the current value is always on the slider.
+    ``parameters`` is the ``_project_parameters`` shape ({specs, values, ...});
+    each row's value is the stored value when present, else the spec default.
     """
-    control = heuristic_control(name, value)
-    control.setdefault("description", "")
-    if isinstance(declared, dict):
-        for field in CONTROL_FIELDS:
-            if field in declared and declared[field] is not None:
-                control[field] = declared[field]
-    control["min"] = float(control["min"])
-    control["max"] = float(control["max"])
-    control["step"] = float(control["step"])
-    number = float(value)
-    if number < control["min"]:
-        control["min"] = number
-    if number > control["max"]:
-        control["max"] = number
-    if control["min"] >= control["max"]:
-        pad = max(abs(number), 1.0)
-        control["min"] = min(control["min"], number - pad)
-        control["max"] = max(control["max"], number + pad)
-    if not math.isfinite(control["step"]) or control["step"] <= 0:
-        control["step"] = nice_step(control["max"] - control["min"])
-    return control
+    values = parameters.get("values") or {}
+    rows: list[dict[str, Any]] = []
+    for spec in parameters.get("specs") or []:
+        if not isinstance(spec, dict):
+            continue
+        name = str(spec.get("name") or "")
+        if not name:
+            continue
+        stored = values.get(name) if isinstance(values, Mapping) else None
+        if isinstance(stored, (int, float)) and not isinstance(stored, bool):
+            value = float(stored)
+        else:
+            default = spec.get("default")
+            if isinstance(default, (int, float)) and not isinstance(default, bool):
+                value = float(default)
+            else:
+                value = 0.0
+        rows.append(
+            {"name": name, "value": value, "control": spec_control(spec, value)}
+        )
+    return rows
 
 
 def slider_steps(control: dict[str, Any]) -> int:
@@ -192,33 +192,25 @@ def _warn(message: str) -> None:
     App.Console.PrintWarning(f"Cadex parameters panel: {message}\n")
 
 
-def _active_xscript_surface(service: Any) -> tuple[str, str]:
-    """Return the (engine, domain) of the live modeling surface.
+def _project_parameters(service: Any) -> dict[str, Any]:
+    """Read the project script's declared parameter state from the store."""
+    from CadexProject import CadexProjectScriptStore
 
-    ``domain`` is only meaningful — and only returned — when the active engine
-    is XScript and the surface is available; otherwise it is empty.
-    """
-    from CadexModelingSurface import resolve_modeling_surface
-
-    try:
-        engine = service.modeling_engine()
-        workbench = service.active_workbench_name()
-        resolution = resolve_modeling_surface(workbench, engine)
-    except Exception:
-        return "", ""
-    resolved_engine = str(getattr(resolution, "engine", "") or "")
-    if resolved_engine != "xscript" or not getattr(resolution, "available", False):
-        return resolved_engine, ""
-    return resolved_engine, str(resolution.domain or "")
-
-
-def _list_xscript_programs(service: Any, domain: str) -> list[dict[str, Any]]:
-    """Read the domain's bounded program index (identities, inputs, controls)."""
-    import CadexScriptedDomains as dc
-
-    snapshot = dc.domain_program_index_snapshot(service, domain)
-    completed = dc.complete_domain_program_index(snapshot)
-    return list(completed.get("programs") or [])
+    scope = service.project_scope_snapshot()
+    root = str(scope.get("root") or "")
+    if not root:
+        return {"specs": [], "values": {}, "working_revision": "", "has_script": False}
+    store = CadexProjectScriptStore(root)
+    state = store.read_state()
+    specs = [
+        dict(spec) for spec in (state.get("param_specs") or []) if isinstance(spec, dict)
+    ]
+    return {
+        "specs": specs,
+        "values": dict(state.get("param_values") or {}),
+        "working_revision": str(state.get("working_revision") or ""),
+        "has_script": bool(store.read_source().strip()),
+    }
 
 
 _slot_bridge = None
@@ -290,13 +282,6 @@ def _build_widget():
     layout = QtWidgets.QVBoxLayout(root)
     layout.setContentsMargins(8, 8, 8, 8)
     layout.setSpacing(6)
-
-    selector = QtWidgets.QComboBox(root)
-    selector.setObjectName("VibeParametersModelSelector")
-    selector.setSizePolicy(
-        QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
-    )
-    layout.addWidget(selector)
 
     scroll = QtWidgets.QScrollArea(root)
     scroll.setObjectName("VibeParametersScroll")
@@ -461,31 +446,16 @@ class ParametersPanelController:
         self.QtWidgets = QtWidgets
         self.dock = dock
         self.root = dock.widget()
-        self.model_id = ""
-        self.model_label = ""
-        self.domain = ""
+        self.model_label = "Project script"
+        self.has_script = False
         self.working_revision = ""
         self.rows: list[_ParameterRow] = []
-        self.loading = False
         self._rebuilding = False
-        self._summaries: dict[str, dict[str, Any]] = {}
         self._bridges = [
-            _connect_slot(
-                self.selector.currentIndexChanged,
-                "invoke_int",
-                self._select_model,
-                dock,
-            ),
             _connect_slot(
                 dock.visibilityChanged, "invoke_bool", self._visibility_changed, dock
             ),
         ]
-
-    @property
-    def selector(self):
-        return self.root.findChild(
-            self.QtWidgets.QComboBox, "VibeParametersModelSelector"
-        )
 
     @property
     def status(self):
@@ -502,70 +472,42 @@ class ParametersPanelController:
 
     # -- refresh ------------------------------------------------------------
 
-    def refresh(self, preferred_model_id: str = "") -> None:
+    def refresh(self) -> None:
         if self._rebuilding:
             return
         from CadexCore import get_service
 
-        service = get_service()
-        engine, domain = _active_xscript_surface(service)
-        self.domain = domain
-        models: list[dict[str, Any]] = []
-        if engine == "xscript" and domain:
-            try:
-                models = _list_xscript_programs(service, domain)
-            except Exception as exc:
-                _warn(f"could not list XScript programs: {exc}")
-        self._summaries = {
-            str(item.get("program_id") or ""): item
-            for item in models
-            if item.get("program_id")
-        }
-        target = preferred_model_id or self.model_id
-        self.loading = True
         try:
-            self.selector.clear()
-            self.selector.addItem("None", "")
-            for model_id, item in self._summaries.items():
-                label = str(item.get("label") or model_id)
-                self.selector.addItem(label, model_id)
-            index = self.selector.findData(target) if target else -1
-            if index < 0:
-                # Auto-select the only model so the common case needs no click.
-                index = 1 if len(self._summaries) == 1 else 0
-            self.selector.setCurrentIndex(index)
-        finally:
-            self.loading = False
-        if engine != "xscript":
-            self._clear_rows()
-            self.model_id = ""
-            self.status.setText(
-                "Parameter sliders drive XScript models. Switch the modeling "
-                "engine to XScript to use them."
+            parameters = _project_parameters(get_service())
+        except Exception as exc:
+            _warn(f"could not read the project script parameters: {exc}")
+            parameters = {
+                "specs": [],
+                "values": {},
+                "working_revision": "",
+                "has_script": False,
+            }
+        self.has_script = bool(parameters.get("has_script"))
+        self.working_revision = str(parameters.get("working_revision") or "")
+        self._clear_rows()
+        layout = self.rows_layout
+        for position, model in enumerate(parameter_rows(parameters)):
+            row = _ParameterRow(
+                self, model["name"], model["value"], model["control"]
             )
-            return
-        model_id = str(self.selector.currentData() or "")
-        if model_id:
-            self._load_model(model_id)
-        else:
-            self._clear_rows()
-            self.model_id = ""
+            layout.insertWidget(position, row.widget)
+            self.rows.append(row)
+        if self.rows:
             self.status.setText(
-                "No XScript models yet. Ask the assistant to build one."
-                if not self._summaries
-                else "Select a model to edit its parameters."
+                f"{len(self.rows)} parameters | "
+                f"revision {self.working_revision[:10]}"
             )
-
-    def _select_model(self, index: int) -> None:
-        if self.loading or index < 0:
-            return
-        model_id = str(self.selector.itemData(index) or "")
-        if model_id:
-            self._load_model(model_id)
+        elif self.has_script:
+            self.status.setText("The project script declares no parameters.")
         else:
-            self._clear_rows()
-            self.model_id = ""
-            self.status.setText("Select a model to edit its parameters.")
+            self.status.setText(
+                "No project script yet. Ask the assistant to build one."
+            )
 
     def _clear_rows(self) -> None:
         layout = self.rows_layout
@@ -573,39 +515,6 @@ class ParametersPanelController:
             layout.removeWidget(row.widget)
             row.widget.deleteLater()
         self.rows = []
-
-    def _load_model(self, model_id: str) -> None:
-        summary = self._summaries.get(model_id)
-        if summary is None:
-            return
-        self.model_id = model_id
-        self.model_label = str(summary.get("label") or model_id)
-        self.working_revision = str(summary.get("working_revision") or "")
-        inputs = summary.get("inputs")
-        declared = summary.get("input_controls")
-        if not isinstance(inputs, dict):
-            inputs = {}
-        if not isinstance(declared, dict):
-            declared = {}
-        self._clear_rows()
-        layout = self.rows_layout
-        numeric = [
-            (name, value)
-            for name, value in sorted(inputs.items())
-            if isinstance(value, (int, float)) and not isinstance(value, bool)
-        ]
-        for position, (name, value) in enumerate(numeric):
-            control = resolve_control(name, value, declared.get(name))
-            row = _ParameterRow(self, name, float(value), control)
-            layout.insertWidget(position, row.widget)
-            self.rows.append(row)
-        if numeric:
-            self.status.setText(
-                f"{self.model_label} | revision {self.working_revision[:10]} | "
-                f"{len(numeric)} parameters"
-            )
-        else:
-            self.status.setText(f"{self.model_label} has no numeric parameters.")
 
     # -- commit -------------------------------------------------------------
 
@@ -618,7 +527,7 @@ class ParametersPanelController:
             row.debounce.stop()
 
     def commit(self, row: _ParameterRow, value: float) -> None:
-        if self._rebuilding or not self.model_id:
+        if self._rebuilding:
             return
         value = float(value)
         if value == row.committed_value:
@@ -627,21 +536,22 @@ class ParametersPanelController:
 
     def _commit(self, row: _ParameterRow, value: float, *, allow_retry: bool) -> None:
         from CadexCore import get_service
-        from CadexSession import run_domain_xscript_operation
+        from CadexSession import run_project_xscript_operation
 
         self._stop_pending_edits()
         self._rebuilding = True
         self._set_rows_enabled(False)
-        self.status.setText(f"Rebuilding {self.model_label}: {row.name} = {value}...")
+        self.status.setText(
+            f"Rebuilding the {self.model_label.lower()}: {row.name} = {value}..."
+        )
         try:
             try:
-                result = run_domain_xscript_operation(
+                result = run_project_xscript_operation(
                     get_service(),
-                    f"xscript.{self.domain}.set_inputs",
+                    "xscript.project.set_params",
                     {
-                        "program_id": self.model_id,
+                        "values": {row.name: value},
                         "expected_revision": self.working_revision,
-                        "patch": {row.name: value},
                     },
                 )
             except Exception as exc:
@@ -650,11 +560,11 @@ class ParametersPanelController:
                 return
             if result.get("ok"):
                 self.working_revision = str(
-                    result.get("working_revision") or self.working_revision
+                    result.get("revision") or self.working_revision
                 )
                 row.committed_value = value
                 self.status.setText(
-                    f"{self.model_label} rebuilt | {row.name} = {value} | "
+                    f"{row.name} = {value} | "
                     f"revision {self.working_revision[:10]}"
                 )
                 return
@@ -663,22 +573,22 @@ class ParametersPanelController:
             if code == "STALE_PROGRAM_REVISION" and allow_retry:
                 current = str(observed.get("current_revision") or "")
                 if current:
-                    # The program advanced under us; re-guard and retry once.
+                    # The script advanced under us; re-guard and retry once.
                     self.working_revision = current
                     self._rebuilding = False
                     self._commit(row, value, allow_retry=False)
                     return
-            failed = result.get("failed_candidate") or {}
-            advanced = str(failed.get("revision") or "")
+            model_state = result.get("model_state") or {}
+            advanced = str(model_state.get("next_write_expected_revision") or "")
             if advanced:
-                # A failed rebuild advances the working revision on disk; track it
-                # so the next commit does not trip the stale check.
+                # A failed rebuild advances the working revision on disk; track
+                # it so the next commit does not trip the stale check.
                 self.working_revision = advanced
             row.revert()
             self.status.setText(
                 f"{code or 'REBUILD_FAILED'}: "
                 f"{result.get('error') or 'parameter change rejected.'} "
-                "The guarded live geometry is unchanged."
+                "The accepted live geometry is unchanged."
             )
         finally:
             self._rebuilding = False
@@ -686,17 +596,16 @@ class ParametersPanelController:
 
     # -- assistant coordination ---------------------------------------------
 
-    def automated_update_started(self, document_name: str, model_id: str) -> None:
+    def automated_update_started(self, document_name: str) -> None:
         import FreeCAD as App
 
         if document_name != str(getattr(App.ActiveDocument, "Name", "") or ""):
             return
         self._stop_pending_edits()
         self._set_rows_enabled(False)
-        if model_id == self.model_id:
-            self.status.setText(f"AI is updating {self.model_label}...")
+        self.status.setText(f"AI is updating the {self.model_label.lower()}...")
 
-    def automated_update_finished(self, document_name: str, model_id: str) -> None:
+    def automated_update_finished(self, document_name: str) -> None:
         import FreeCAD as App
 
         if document_name != str(getattr(App.ActiveDocument, "Name", "") or ""):
@@ -794,36 +703,35 @@ def schedule_refresh() -> None:
 def automated_model_update_started(
     engine: str, document_name: str, model_id: str
 ) -> None:
+    del model_id  # One project script; there is nothing to select.
     if engine == "xscript" and _controller is not None:
-        _controller.automated_update_started(document_name, model_id)
+        _controller.automated_update_started(document_name)
 
 
 def automated_model_update_finished(
     engine: str, document_name: str, model_id: str
 ) -> None:
+    del model_id  # One project script; there is nothing to select.
     if engine == "xscript" and _controller is not None:
-        _controller.automated_update_finished(document_name, model_id)
+        _controller.automated_update_finished(document_name)
 
 
-def _has_xscript_models() -> bool:
+def _project_has_parameters() -> bool:
     from CadexCore import get_service
 
-    service = get_service()
-    engine, domain = _active_xscript_surface(service)
-    if engine != "xscript" or not domain:
-        return False
     try:
-        return bool(_list_xscript_programs(service, domain))
+        parameters = _project_parameters(get_service())
     except Exception:
         return False
+    return bool(parameters.get("has_script")) and bool(parameters.get("specs"))
 
 
 def sync_experimental_mode_dock() -> None:
-    """Experimental mode: show the panel under the assistant when models exist.
+    """Experimental mode: show the panel under the assistant when params exist.
 
     Experimental mode hides all manual chrome, so the panel manages its own
-    visibility there: visible below the assistant dock while the open
-    document has XScript models, hidden otherwise.
+    visibility there: visible below the assistant dock while the project
+    script declares parameters, hidden otherwise.
     """
     import FreeCADGui as Gui
     from PySide import QtWidgets
@@ -840,7 +748,7 @@ def sync_experimental_mode_dock() -> None:
     except Exception:
         pass
     if (
-        _has_xscript_models()
+        _project_has_parameters()
         and assistant is not None
         and assistant.isVisible()
     ):
