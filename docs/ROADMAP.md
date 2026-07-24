@@ -69,8 +69,11 @@ from facts instead of re-exploration.
 - [x] Publisher lint: reject any untagged object; orphan GC for objects with
       no owning script region. (`publish_project_candidate` — one
       transaction, `CadexScriptedOwnership` closure/lint/orphans, ADR-012.)
-- [ ] Headless rebuild command with content digest over produced geometry.
-- [ ] CI test: delete document → rebuild from script → digest matches.
+- [x] Headless rebuild command with content digest over produced geometry
+      (`cadex_rebuild.py`, `pixi run rebuild <root>`).
+- [x] CI test: delete document → rebuild from script → digest matches
+      (`test_project_rebuild.py`, ctest `CadexProjectRebuildDigest`;
+      rebuild-vs-accepted and rebuild-vs-rebuild equality verified).
 
 **Exit criteria:** the digest CI test passes; no user-visible multi-program
 concept remains.

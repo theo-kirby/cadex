@@ -2,55 +2,85 @@
 
 Verified against source: 2026-07-24
 
-xscript is the single scripted modeling engine: the AI writes declarative
-Python programs; programs run in sandboxed headless workers; only validated
-results reach the live document. This document has two halves — **what runs
-today** (per-domain programs, `[VibeCAD-era]`) and **the target** (one
-project script, `[Cadex-new]`, Phase 2 in `docs/ROADMAP.md`). Keep them
-straight: the target is a product decision (`docs/DECISIONS.md`), not yet
-code.
+xscript is the single scripted modeling engine: the AI writes ONE
+declarative Python project script; the script runs in a sandboxed headless
+worker; only validated results reach the live document. The one-script
+system below landed in Phase 2 (`docs/ROADMAP.md`, ADR-011..014) and
+replaced the VibeCAD-era per-domain multi-program surface `[Cadex-new]`.
 
 ---
 
-## Part I — Today: per-domain programs `[VibeCAD-era]`
+## Part I — One project script
 
-### Programs and schema
+### THE script and its store
 
-- A program belongs to exactly one domain (`partdesign`, `sketcher`, `part`,
-  `assembly`) and lives in the project store:
-  `<project>/xscript/<domain>/<program_id>/program.json` plus source and
-  revision artifacts (`docs/ARCHITECTURE.md` §3, project store).
-- Manifest schema: `cadex-xscript-program-v2`
-  (`XSCRIPT_PROGRAM_SCHEMA`, `src/Mod/cadex/CadexScriptedDomains.py:24-27`).
-- Program source receives the domain API as the global `x`
-  (`XScriptWorkbenchPack.api_global`, `CadexScriptedDomains.py:140`); the
-  per-domain APIs are `src/Mod/cadex/cadex_<domain>_api.py`.
-- Each program declares named outputs; published objects are tagged with
-  `CadexXScriptProgramId/Domain/Workbench/Revision/OutputName` properties so
-  ownership is recoverable from the document alone.
+- A project has exactly one script: `<project>/script.py`. It composes all
+  four capability domains and is the sole source of truth — the user can
+  open it, read it, and diff it; nothing model-shaped exists outside it.
+- Sidecar state: `<project>/script.json` (schema `cadex-project-script-v1`,
+  `CadexProject.py:CadexProjectScriptStore`) — cached `param_specs`,
+  `param_values`, working/accepted revision, accepted contract (output
+  names/types/domains), `accepted_digest`, latest candidate/failure.
+  Writes are atomic; unknown fields are rejected.
+- Execution artifacts live under `<project>/script_artifacts/<revision>/`.
+- Revision = `project_script_revision` over `{schema, domain: "project",
+  source, param_specs, param_values}` (`CadexScriptedDomains.py`) —
+  content-addressed, key-order independent. Every mutation tool carries an
+  `expected_revision` guard; a mismatch returns `STALE_PROGRAM_REVISION`
+  with the observed current revision.
+
+### Script vocabulary
+
+The exec namespace carries the four domain APIs plus the parameter
+vocabulary (`cadex_project_api.py`, `cadex_project_worker.py`):
+
+```python
+p = params(width=num(100, unit="mm", min=10, max=500, step=1, label="Width"))
+
+profile = sketcher.sketch(...)           # sketcher API
+plate   = part.box(p.width, 20, 5)       # part API
+body    = partdesign.body(...)           # partdesign API (sketcher/part co-staged)
+base    = assembly.component(plate, grounded=True)
+asm     = assembly.assembly([base, ...])
+
+result = {"plate": plate, "asm": asm}    # named outputs, grouped by domain
+```
+
+- `params(...)` may be called at most once; `num(...)` declares one numeric
+  control (`default`, optional `min`/`max`/`step`, `unit`/`label`/
+  `description` — the `CONTROL_FIELDS` vocabulary). Collected specs are
+  cached in `script.json`; **values** live there too and are patched by
+  `set_params` without touching source.
+- `assembly.component()` accepts same-script part/partdesign values: the
+  worker records the source payload under a deterministic inline token
+  (`document_uid: "xscript-project"`) and requires the value to ALSO be a
+  declared output, so publication can bind each live component to a
+  published stable object. Cross-document component references are retired;
+  v0.0.1 assemblies are rigid, same-script solids (ADR-011).
+- Outputs are evaluated per domain in fixed order sketcher → part →
+  partdesign → assembly, reusing the per-domain evaluators and serializers.
 
 ### Lifecycle tools
 
-`LIFECYCLE_OPERATIONS` (`CadexScriptedDomains.py:74`) defines eight
-operations: `describe_api`, `inspect_program`, `create_program`,
-`edit_source`, `set_inputs`, `set_parameter_controls`,
-`reconfigure_program`, `delete_program`. The provider-facing mutation
-surface per domain is
+The provider-facing surface is exactly four tools
+(`PROJECT_LIFECYCLE_OPERATIONS`, pinned by
+`cadex_tests/test_tool_surface_guardrails.py`; ADR-013):
 
 ```
-xscript.<domain>.create_program        author a new program (source + inputs + outputs)
-xscript.<domain>.edit_source           targeted source edit; whole source re-validated
-xscript.<domain>.set_inputs            change input values; re-run without touching source
-xscript.<domain>.set_parameter_controls  declare which inputs surface as sliders
-xscript.<domain>.reconfigure_program   rename/re-declare outputs, references
-xscript.<domain>.delete_program        delete program + owned objects
+xscript.project.describe_api   composed API description for all domains
+xscript.project.write_script   whole-script rewrite
+xscript.project.edit_script    unique-match find/replace; whole source re-validated
+xscript.project.set_params     values-only patch; re-run without touching source
 ```
 
-(pinned exactly in
-`src/Mod/cadex/cadex_tests/test_tool_surface_guardrails.py:605`), while
-reads go through the bounded **`core.inspect`** tool
-(`src/Mod/cadex/CadexInspection.py`) — API descriptions, program state,
-document inventory, solver diagnostics, all size-capped.
+The dissolved per-domain operations (`create_program`, `edit_source`,
+`set_inputs`, `set_parameter_controls`, `reconfigure_program`,
+`delete_program`, `inspect_program`) stay gone — the guardrail test
+asserts no registered tool may carry them again. Reads go through the
+bounded **`core.inspect`** tool (`CadexInspection.py`; scopes `document`,
+`selection`, `object`, `script`, `api`, `image` — `script` pages the
+source and reports specs/values, revisions, accepted contract + digest,
+and the latest candidate).
 
 ### Sandbox rules
 
@@ -58,99 +88,110 @@ Source is validated before any worker runs (AST policy in
 `CadexScriptedRuntime.py` / `CadexScriptedDomains.py`):
 
 - Blocked names include `__import__`, `eval`, `exec`, `compile`,
-  `breakpoint`, `globals`, `help`, … (`_BLOCKED_NAMES`,
-  `CadexScriptedDomains.py:4082`); no dunder access; size and syntax limits;
-  NUL bytes and unsafe project-relative paths rejected.
+  `breakpoint`, `globals`, `help`, … (`_BLOCKED_NAMES`); no dunder access;
+  size and syntax limits; NUL bytes and unsafe project-relative paths
+  rejected.
 - Violations return `SOURCE_POLICY_VIOLATION` with offending line numbers —
   structured failure payloads, not exceptions.
 
 ### Worker isolation
 
 - One attempt = one windowless `FreeCADCmd --safe-mode -c …` subprocess
-  (`CadexScriptedRuntime.py:2163`, runner in `CadexScriptedProcess.py`).
-- Attempts are self-contained: only the domain's own bundle files are staged
-  (`_DOMAIN_WORKER_BUNDLES`, `CadexScriptedRuntime.py:65`) so a program
-  cannot reach another domain's implementation.
+  (runner in `CadexScriptedProcess.py`). The project bundle stages all four
+  `cadex_<domain>_{api,worker}.py` modules with entry
+  `cadex_project_worker.py` (`_DOMAIN_WORKER_BUNDLES["project"]`,
+  `CadexScriptedRuntime.py`).
 - Hard bounds from preferences (`ScriptedTimeoutSeconds`,
-  `ScriptedMemoryLimitMB`); a parent-side watchdog kills over-budget workers
-  and reports `MEMORY_LIMIT_EXCEEDED` with observed usage.
-- The worker produces **detached** results (BREP bytes, meshes, records) on
-  the `cadex-xscript-domain-worker-v2` wire schema; it never touches the
-  live document.
+  `ScriptedMemoryLimitMB`); a parent-side watchdog kills over-budget
+  workers and reports `MEMORY_LIMIT_EXCEEDED` with observed usage.
+- The worker executes the script ONCE, evaluates outputs per domain, and
+  produces **detached** results (BREP artifacts, records, collected
+  `param_specs`, per-output validations, the content digest) on the
+  `cadex-xscript-project-worker-v1` wire schema; it never touches the live
+  document.
 
-### Publication, ownership, revisions
+### Publication, ownership, lint, GC
 
-- The publisher validates candidates (including BREP checks via
-  `CadexGeometryWorker`) and applies them under a document transaction;
-  rollback restores accepted state explicitly when FreeCAD's transaction
-  rollback is incomplete.
-- Revisions are content-addressed: hashes are stable, ignore parameter key
-  order, and change with every hashed field; stale artifacts are rejected
-  (`MODEL_ARTIFACT_REVISION_MISMATCH`).
+`publish_project_candidate` (`CadexScriptedDomainPublication.py`) applies
+one validated candidate under **ONE** document transaction — one undo step:
+
+- Per-domain sub-publishes run through the existing domain publishers with
+  `manage_transaction=False` (the project publisher owns the transaction
+  and runs the document-revision guard once, before opening it).
+- Inline assembly source tokens are rewritten to the live object names
+  published earlier in the same pass.
+- Published objects are tagged
+  `CadexXScriptProgramId/Domain/Workbench/Revision/OutputName`; ownership
+  is recoverable from the document alone (`CadexScriptedOwnership.py`,
+  closure over Group+OutList).
+- **Lint**: any document object outside the owned closure aborts the
+  transaction with `PUBLICATION_UNTAGGED_OBJECT` (ADR-012).
+- **GC**: owned objects whose outputs left the accepted contract are
+  deleted in the same transaction and recorded in the result.
 - Output identity is durable: an output keeps its object across edits when
   unchanged; removed outputs' identities are never recycled.
 
+### Digest and headless rebuild
+
+- **Content digest** (D8): SHA-256 over the name-sorted output entries
+  `{output_name, domain, output_type, shape_sha256|payload_sha256,
+  placement (rounded 1e-9)}`, schema `cadex-project-digest-v1`, computed
+  worker-side from serialized artifacts; recorded as `accepted_digest` on
+  accept. `CadexDigest.py:document_digest` recomputes a diagnostic digest
+  from the live tagged objects (schema `cadex-document-digest-v1`; a
+  different quantity — do not compare across schemas).
+- **Headless rebuild** (D9): `cadex_rebuild.py` re-runs THE script into a
+  fresh document under FreeCADCmd and compares digests
+  (`pixi run rebuild <project_root>`; exit 0 match / 2 mismatch / 1
+  failure).
+- **CI** (Phase 2 exit criterion): `cadex_tests/test_project_rebuild.py`
+  (ctest `CadexProjectRebuildDigest`) seeds a multi-domain project, accepts
+  it, deletes the document, rebuilds twice, and asserts
+  rebuild-vs-accepted AND rebuild-vs-rebuild digest equality.
+
 ### The slider path
 
-`src/Mod/cadex/CadexParametersPanel.py`: inputs declared via
-`set_parameter_controls` render as sliders; a drag calls the same
-`set_inputs` lifecycle path directly — **no provider turn** — debounced
-600 ms. This is the seed of the product's "parameters without the AI" loop.
+`CadexParametersPanel.py` (ADR-014): the panel renders the script's
+declared specs as sliders (declaration order; declared fields win, missing
+bounds get a value-bracketing band). A drag commits through
+`xscript.project.set_params` with the working-revision guard — the same
+rebuild path the assistant uses, debounced 600 ms, **no provider turn**. A
+failed rebuild reverts the row; accepted live geometry is untouched.
 
 ### Reference pins
 
-`src/Mod/cadex/CadexReferenceContracts.py`: chat and programs refer to
-geometry as `@edge-1` / `@face-2`. A pin carries the shared handle, owning
-object, subelement hint, and a **geometric fingerprint** (center of mass,
-direction/normal/radius/length). The fingerprint is authoritative: when the
-document revision has moved since capture, the pin is re-resolved by
-fingerprint search (e.g. `partdesign.find_subelements`) rather than trusting
-the stored subelement name.
+`CadexReferenceContracts.py`: chat and scripts refer to geometry as
+`@edge-1` / `@face-2`. A pin carries the shared handle, owning object,
+subelement hint, and a **geometric fingerprint** (center of mass,
+direction/normal/radius/length). The fingerprint is authoritative: when
+the document revision has moved since capture, the pin is re-resolved by
+fingerprint search rather than trusting the stored subelement name — so
+pins survive rebuilds that churn object names.
 
 ---
 
-## Part II — Target: one project script `[Cadex-new — not yet built]`
+## Part II — Direction
 
-Decision (`docs/DECISIONS.md`): the product-level artifact is **one
-top-level project script**, `model.py`-style, as prototyped in the mesh
-repo's `mesh_agent` (`docs/BLENDER.md`).
-
-- **One script is the whole truth.** It composes the domain APIs (partdesign
-  + sketcher + part + assembly, later mesh) in a single readable program.
-  The user can open it, read it, and diff it. Nothing exists outside it.
-- **Project-level parameters** declared at the top of the script (compare
-  `mesh_model.params()`), bound to sliders; per-program
-  `set_parameter_controls` folds into this.
-- **Document as cache.** The FreeCAD document (later the Blender scene) is a
-  rebuildable artifact: a deterministic headless rebuild command re-runs the
-  script from scratch and a **content digest** over the produced geometry
-  must match the live document. CI test: delete document → rebuild → digest
-  matches (Phase 2 exit criterion).
-- **Publisher lint** rejects untagged objects; an orphan GC removes objects
-  whose owning script region is gone.
-- **Pins survive rebuilds** via the existing fingerprint contracts — pins
-  bind to fingerprints, not to object names that a rebuild would churn.
-- The multi-program runtime may remain **internally** as a staging detail
-  (per-domain workers executing regions of the one script), but no
-  program-level concept stays user-visible.
-
-### Open questions
-
-- Composition mechanism for assemblies-of-parts within one script (flat
-  script vs importable sub-modules under the project root).
-- Incremental re-execution: whole-script re-run per slider tick vs cached
-  per-region revisions keyed by content hash (today's revision machinery
-  points the way).
-- Whether `edit_source` survives as a line-targeted edit tool on the one
-  script or the AI always rewrites whole script sections.
+- **Incremental re-execution**: today every mutation re-runs the whole
+  script (one worker attempt). Cached per-region revisions keyed by content
+  hash are a possible optimization; the revision machinery points the way.
+- **Sub-modules**: whether large projects split into importable sub-modules
+  under the project root, or stay one flat script.
+- **Mesh domain**: the Blender-side `mesh_agent` prototype
+  (`docs/BLENDER.md`) suggests the same one-script shape with a `mesh` API
+  joining the namespace after the engine/shell split
+  (`docs/INTEGRATION.md`).
 
 ---
 
 ## Historical note
 
-The VibeCAD-era verification record for the retired multi-engine runtime
-(build123d/OpenSCAD, 18 domains) is preserved at
-`docs/history/RUNTIME_VERIFICATION.md`. Still-current facts from it —
-structured failure envelopes, transactional parity, resource budgets,
-revision integrity — are folded into Part I above and enforced by
-`src/Mod/cadex/cadex_tests/`.
+The VibeCAD-era per-domain multi-program surface (eight lifecycle
+operations × four domains, program manifests `cadex-xscript-program-v2`)
+was dissolved by the Phase 2.4 tool-surface swap (ADR-013); existing v2
+program stores were not migrated (ADR-011 — conversations preserved,
+scripts start empty). The verification record for the still-earlier
+multi-engine runtime is preserved at
+`docs/history/RUNTIME_VERIFICATION.md`. Still-current facts — structured
+failure envelopes, transactional parity, resource budgets, revision
+integrity — are enforced by `src/Mod/cadex/cadex_tests/`.
