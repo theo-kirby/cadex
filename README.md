@@ -4,223 +4,84 @@
 
 # Cadex
 
-Cadex is an AI-native parametric CAD platform for designing real 3D parts through conversation, focused modeling tools, and editable geometry history.
+**Cadex is an AI-native CAD application.** You describe the part; the AI
+authors a declarative **xscript** Python program; the program runs in a
+sandboxed headless worker and only validated geometry reaches your document.
+The script is the model — parameters surface as sliders you can drag without
+the AI in the loop, and the document is rebuildable from the script.
+
+Cadex is a FreeCAD fork distilled to a single engine and four capability
+areas: **Part, Part Design, Sketcher, Assembly** (a minimal mesh area is
+planned). There are no modeling toolbars and no workbench concept to learn —
+chat, sliders, model tree, script.
+
+> **Status:** under active development, pre-release. The current Qt shell is
+> interim; the long-term shell is a Blender fork fed by a headless geometry
+> service. See `docs/VISION.md` and `docs/ROADMAP.md`.
 
 ![Cadex workspace showing a turbocharger assembly and the AI assistant](docs/images/cadex-workspace.png)
 
-## Before You Start
+## Build and run
 
-You need either a **ChatGPT subscription** or an **API key** for the provider you select. Cadex supports ChatGPT subscription sign-in through its bundled Codex runtime, connects directly to OpenAI and Anthropic APIs, and can use OpenAI-compatible endpoints such as xAI, Ollama, and other local model servers.
-
-Store the key in one of these places:
-
-- **OS keyring (recommended):** paste the key in Cadex Preferences, click **Save Key**, and then click **Validate**.
-- **A selected `.env` file:** create the file yourself, select it in Cadex Preferences, and click **Validate**. Cadex does not search for `.env` files automatically.
-
-API keys are not stored in ordinary application preferences. ChatGPT OAuth credentials are owned and refreshed by the bundled Codex app-server; Cadex does not read or copy those tokens.
-
-## Install
-
-Download the latest build from [Cadex Releases](https://github.com/10-X-eng/cadex/releases/latest).
-
-### Linux AppImage
+Requires [pixi](https://pixi.sh). From the repo root:
 
 ```bash
-chmod +x Cadex*.AppImage
-./Cadex*.AppImage
+pixi run initialize        # git submodules (first time)
+pixi run configure         # CMake configure (debug; use configure-release for release)
+pixi run build             # build (debug) — or: pixi run build-release
+pixi run freecad           # launch (debug) — or: pixi run freecad-release
 ```
 
-### Debian Package
+Artifacts land in `build/<config>/bin/`: `FreeCAD` (the app), `FreeCADCmd`
+(headless — also the xscript worker host), `CadexGeometryWorker`.
 
-Run this command from the directory containing the downloaded package:
+Tests:
 
 ```bash
-sudo apt install ./cadex_*_amd64.deb
+pixi run test                                            # ctest suite
+pixi run python -m pytest src/Mod/cadex/cadex_tests      # cadex engine tests (headless, FreeCAD stubbed)
 ```
 
-The leading `./` is required when installing a local package with `apt`.
+## Set up an AI provider
 
-### Windows
+You need an API key (Anthropic or OpenAI), a ChatGPT subscription (via the
+bundled Codex runtime), or an OpenAI-compatible endpoint (xAI, Ollama, other
+local servers).
 
-Download the Windows installer, run it, and launch Cadex from the Start menu. A portable archive is also available for installations that should not modify the system.
+Open **Preferences → Cadex**, choose a provider, then either:
 
-SHA256 files are published beside release artifacts so downloads can be verified before installation.
+- **OS keyring (recommended):** paste the key, **Save Key**, **Validate**; or
+- **A `.env` file** you select explicitly (`ANTHROPIC_API_KEY=` /
+  `OPENAI_API_KEY=`); Cadex never searches for `.env` files.
 
-## Configure an AI Provider
+Then **Fetch models**, pick a model and a supported reasoning effort, and
+**Apply**. Key resolution order: process environment variable → selected
+`.env` file → OS keyring (an exported shell variable overrides the others).
+For xAI/Ollama, select the OpenAI provider and set the base URL
+(`https://api.x.ai/v1` / `http://localhost:11434/v1`).
 
-Open **Preferences**, then select **Cadex > Cadex**.
+## Use it
 
-1. Enable **Use online provider**.
-2. Select **ChatGPT subscription**, **OpenAI**, or **Anthropic** under **Provider**.
-3. For ChatGPT, use the account sign-in controls described below. For an API provider, configure its key and leave the base URL blank unless you use a compatible or local endpoint.
-4. Configure the selected provider's authentication.
-5. Click **Fetch models**, then select a returned model.
-6. Choose a supported **Reasoning effort**. Use `none` when a model does not support thinking or reasoning parameters.
-7. Click **Apply** or **OK** to save the provider, model, endpoint, and `.env` path settings.
+1. Create or open a document and **save it** (the assistant needs a durable
+   project home; conversations and program source live with the project).
+2. Describe the part — dimensions, interfaces, material, constraints. Attach
+   reference images or the current view if useful.
+3. **Send.** While a turn runs, the input becomes **Steer**; **Stop** ends
+   the run after the current step.
+4. Drag parameter sliders to explore the design space — sliders re-run the
+   program directly, no AI turn.
 
-### Sign In With a ChatGPT Subscription
+## Documentation
 
-1. Select **ChatGPT subscription** as the provider.
-2. Click **Sign in with ChatGPT** and complete the browser flow. Use **Use device code** when the browser callback cannot reach Cadex.
-3. Click **Fetch models** and select a subscription model, or leave **Use account default** selected.
-4. Choose a reasoning effort offered by that model, then click **Apply** or **OK**.
-
-ChatGPT credentials are stored in a private Cadex Codex credential directory and refreshed by the bundled, version-pinned app-server. **Logout** asks that runtime to remove the account. Cadex never imports credentials from another Codex installation and never falls back to an ambient API key.
-
-ChatGPT subscription, OpenAI-compatible, Anthropic, and offline/debug turns all
-use the same global modeling-engine and active-workbench resolver. Select
-**Native** or **VibeScript** in any supported modeling workbench before sending
-a request. Part Design additionally offers **build123d** and **OpenSCAD** when
-those engines are enabled. A turn receives only the selected engine's exact
-active-workbench surface; VibeScript and native CAD tools are never combined.
-
-### Save a Key in the OS Keyring
-
-1. Select the provider first. Keys are stored separately for OpenAI and Anthropic.
-2. Paste the provider key into **API key**.
-3. Click **Save Key**. The field clears after Cadex hands the key to the operating system's credential store.
-4. Click **Validate**. A successful check reports `verified` in **Auth status**.
-5. Click **Fetch models** and choose the model to use.
-
-**Logout** removes only the selected provider's keyring entry. It does not remove a process environment variable or edit a selected `.env` file.
-
-### Use a `.env` File
-
-Create a text file containing the variable for the selected provider:
-
-```dotenv
-# OpenAI and OpenAI-compatible providers, including xAI
-OPENAI_API_KEY=your-key-here
-
-# Anthropic
-ANTHROPIC_API_KEY=your-key-here
-```
-
-In Cadex Preferences:
-
-1. Click **Browse** beside **.env path** and select that exact file.
-2. Leave the **API key** field empty; **Save Key** is only for the OS keyring.
-3. Click **Validate**, then **Fetch models**.
-4. Click **Apply** or **OK** so the selected path is used by future sessions.
-
-Do not commit a `.env` file containing a real key to source control.
-
-### Credential Precedence
-
-Cadex resolves a key in this order:
-
-1. The provider's process environment variable.
-2. The `.env` file explicitly selected in Preferences.
-3. The OS keyring.
-
-This order matters when a valid key appears to be ignored. For example, an old `OPENAI_API_KEY` exported by the shell overrides both the selected `.env` file and a newer key saved in the keyring.
-
-## Configure Grok Through xAI
-
-xAI exposes an OpenAI-compatible API, so Grok uses Cadex's OpenAI provider adapter:
-
-1. Obtain an API key from xAI.
-2. Select **OpenAI** as the provider.
-3. Set **OpenAI base URL** to `https://api.x.ai/v1`.
-4. Paste the xAI key, click **Save Key**, and then click **Validate**.
-5. Click **Fetch models** and select the Grok model returned by xAI.
-6. Choose a reasoning effort supported by that model, then click **Apply** or **OK**.
-
-When using a `.env` file for xAI, use `OPENAI_API_KEY` because the OpenAI-compatible provider adapter is selected.
-
-![Cadex Preferences configured for Grok through the xAI endpoint](docs/images/cadex-grok-provider-setup.png)
-
-## Start a CAD Conversation
-
-1. Create or open a CAD document and **save it**. Cadex keeps the assistant disabled for unsaved documents so the conversation, design record, references, and generated source have a durable project location.
-2. Select the workbench that matches the work you are doing. Cadex exposes the focused tool surface for the active workbench.
-3. Open **View > Panels > Cadex Assistant** if the assistant is not visible.
-4. Describe the intended result, including the dimensions, interfaces, material, manufacturing process, and constraints that matter.
-5. Use **Attach Image** for a reference design, or paste an image into the message box with `Ctrl+V`. Use **Attach View** to include the current viewport in the next model request only; it is consumed after that delivery.
-6. Click **Send**. While work is running, the same input becomes **Steer**, so corrections stay in the same conversation. **Stop** ends the run after the current provider or CAD step returns.
-7. Save the CAD document normally. Reopening it restores the associated Cadex conversations and project records.
-
-Be explicit about functional intent, not only appearance. For an existing model, identify what should be preserved and what should change. For a new part, provide mating geometry and critical dimensions whenever they are known.
-
-## Conversations
-
-The conversation selector at the top of the assistant opens prior conversations for the current CAD document. The new-conversation button starts a clean thread without deleting earlier work. This makes it possible to separate a redesign, manufacturing discussion, or analysis task while retaining the project's history.
-
-Saved conversations remain available to the human in this selector, but Cadex does not replay the project transcript or persisted tool traces into a model request. The model receives the current message exactly once. **Intent Memory** remains available as an explicit human project record, but it is not compiled after every turn or injected automatically.
-
-Turn-start CAD context is deliberately small: active workbench/engine/domain, document identity and object count, edit object, and the exact explicit selection. Object inventories, properties, programs, domain APIs, geometry, solver state, and old images are read only when the model calls the bounded `core.inspect` tool. Newly attached reference images and **Attach View** are delivered once. Exact active tool declarations have a hard wire-size limit, as do inspection pages and individual tool results.
-
-## Global Modeling Engine
-
-The modeling-engine selector appears in the Cadex panel in every supported user workbench. The human controls this global selection for each saved CAD document; AI tools cannot change it.
-
-- **Native:** only the active workbench's native CAD tools.
-- **VibeScript:** only the active workbench's dedicated source-backed interface; selected by default.
-- **build123d:** optional Part Design-only Python modeling.
-- **OpenSCAD:** optional Part Design-only OpenSCAD modeling.
-
-Native and VibeScript authoring tools are never combined, and tools from different workbenches are never combined. Leaving Part Design while build123d or OpenSCAD is selected visibly changes and persists the global engine as VibeScript. Returning to Part Design does not restore the previous engine.
-
-Scripted engines keep source, inputs, diagnostics, revisions, and accepted outputs with the project. VibeScript runs in an isolated windowless worker and publishes only validated results. The **Model Code Editor** lists programs for the active workbench domain and opens with no program selected.
-
-All 18 supported user-workbench VibeScript interfaces are production-ready:
-Part Design, Sketcher, Part, Draft, Surface, Assembly, Spreadsheet, Material,
-BIM, Mesh, MeshPart, Points, Reverse Engineering, Inspection, Robot, FEM, CAM,
-and TechDraw. Every domain, including Part Design, exposes the same five
-provider-facing mutation tools plus the shared `core.inspect` read interface.
-API inspection and program source contain only that workbench's canonical
-runtime operations and typed outputs.
-
-Geometry, solver, mesh, reconstruction, projection, and toolpath work runs in
-the isolated worker. The live document receives only independently validated,
-precomputed native state under stable program/output identities. This includes
-native sketches and Draft/BIM proxies, Assembly links and joints, sheets and
-material assignments, meshes and point clouds, reconstruction and inspection
-records, Robot trajectories, FEM analyses/results, Path jobs/toolpaths, and
-TechDraw pages/views/dimensions. Failed candidates remain inspectable without
-replacing the accepted revision, and publication/deletion paths explicitly
-restore accepted state when FreeCAD transaction rollback is incomplete.
-
-Part, MeshPart, Points, CAM, and TechDraw deliberately collapse equivalent
-variants behind selectors or one ordered pipeline instead of advertising
-redundant operations. There are no forwarding wrappers for removed Part
-operations; `core.inspect` presents the only canonical runtime methods. Startup,
-test, unknown, or future unimplemented workbenches resolve to an exact core-only
-unavailable surface; Cadex never substitutes another workbench's tools.
-
-## Local Models
-
-For Ollama or another local OpenAI-compatible server, select the OpenAI provider and configure its endpoint. A common Ollama setup is:
-
-```text
-OpenAI base URL: http://localhost:11434/v1
-Model: select a model returned by Fetch models
-API key: any non-empty value accepted by the local server
-Reasoning effort: none
-```
-
-The local server must already be running and expose an OpenAI-compatible API. Some local models reject reasoning parameters even when the server supports the endpoint; use `none` for those models.
-
-## Troubleshooting
-
-- **`not_configured`:** Cadex could not find the selected provider's environment variable, a valid key in the selected `.env` file, or a keyring entry.
-- **No ChatGPT subscription is signed in:** open Preferences, select **ChatGPT subscription**, and complete browser or device-code sign-in.
-- **No CAD authoring tools are shown:** select a supported modeling workbench and an engine implemented for it. build123d and OpenSCAD are available only in Part Design.
-- **`configured_unverified`:** a key was found but has not been checked against the configured endpoint. Click **Validate**.
-- **`invalid`:** the endpoint rejected the key. Confirm the selected provider, base URL, credential precedence, and account access.
-- **`offline`:** the key could not be verified because the configured endpoint could not be reached.
-- **No models are listed:** validate authentication first, then click **Fetch models**.
-- **The model does not support thinking:** set **Reasoning effort** to `none`.
-- **The assistant input is disabled:** save the active CAD document.
-- **The assistant panel was closed:** reopen it from **View > Panels > Cadex Assistant**.
-
-## Project Status
-
-Cadex is under active development. The current focus is reliable, readable AI-assisted part design with explicit human control over the document, workbench, modeling engine, and design direction.
-
-Release packaging details are documented in [docs/cadex-release-packaging.md](docs/cadex-release-packaging.md).
+Start with [`CLAUDE.md`](CLAUDE.md) (repo map, commands, change policy) and
+the doc set under [`docs/`](docs/):
+[VISION](docs/VISION.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) ·
+[XSCRIPT](docs/XSCRIPT.md) · [FREECAD](docs/FREECAD.md) ·
+[BLENDER](docs/BLENDER.md) · [INTEGRATION](docs/INTEGRATION.md) ·
+[ROADMAP](docs/ROADMAP.md) · [DECISIONS](docs/DECISIONS.md).
+Release packaging: [docs/cadex-release-packaging.md](docs/cadex-release-packaging.md).
 
 ## Credits
 
 - The CadexLight and CadexDark themes are based on [OpenTheme by Obelisk79](https://github.com/obelisk79/OpenTheme).
-- Cadex is built on the work of the [FreeCAD project](https://github.com/FreeCAD/FreeCAD). Thank you to the contributors and the wider [FreeCAD community](https://forum.freecad.org/) whose CAD engine, workbenches, documentation, and support made this project possible.
+- Cadex is built on the work of the [FreeCAD project](https://github.com/FreeCAD/FreeCAD) and the wider [FreeCAD community](https://forum.freecad.org/), whose CAD engine made this project possible.
