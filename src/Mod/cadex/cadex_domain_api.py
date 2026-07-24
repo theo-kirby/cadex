@@ -92,7 +92,6 @@ _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
         "motion": "motion",
         "simulation": "simulation",
         "exploded_view": "exploded_view",
-        "bill_of_materials": "bom",
     },
     "material": {
         "material": "material_assignment",

@@ -29,8 +29,6 @@
 #include "Commands.h"
 #include "ViewProviderAssembly.h"
 #include "ViewProviderAssemblyLink.h"
-#include "ViewProviderBom.h"
-#include "ViewProviderBomGroup.h"
 #include "ViewProviderJointGroup.h"
 #include "ViewProviderViewGroup.h"
 #include "ViewProviderSimulationGroup.h"
@@ -43,15 +41,6 @@ extern PyObject* initModule();
 /* Python entry */
 PyMOD_INIT_FUNC(AssemblyGui)
 {
-    // load dependent module
-    try {
-        Base::Interpreter().runString("import SpreadsheetGui");
-    }
-    catch (const Base::Exception& e) {
-        PyErr_SetString(PyExc_ImportError, e.what());
-        PyMOD_Return(nullptr);
-    }
-
     PyObject* mod = AssemblyGui::initModule();
     Base::Console().log("Loading AssemblyGui module... done\n");
 
@@ -63,8 +52,6 @@ PyMOD_INIT_FUNC(AssemblyGui)
 
     AssemblyGui::ViewProviderAssembly::init();
     AssemblyGui::ViewProviderAssemblyLink::init();
-    AssemblyGui::ViewProviderBom::init();
-    AssemblyGui::ViewProviderBomGroup::init();
     AssemblyGui::ViewProviderJointGroup::init();
     AssemblyGui::ViewProviderViewGroup::init();
     AssemblyGui::ViewProviderSimulationGroup::init();

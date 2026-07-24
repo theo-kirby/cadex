@@ -20,7 +20,6 @@ endif(BUILD_GUI)
 set(Assembly_Scripts
     Init.py
     CommandCreateAssembly.py
-    CommandCreateBom.py
     CommandInsertLink.py
     CommandInsertNewPart.py
     CommandSolveAssembly.py

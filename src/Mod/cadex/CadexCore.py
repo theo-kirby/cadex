@@ -3846,7 +3846,6 @@ class CadexService:
             "joints": 0,
             "grounded_count": 0,
             "joint_groups": 0,
-            "bom_groups": 0,
             "view_groups": 0,
             "simulation_groups": 0,
         }
@@ -3863,8 +3862,6 @@ class CadexService:
                         counts["grounded_count"] += 1
                     else:
                         counts["joints"] += 1
-            elif type_id == "Assembly::BomGroup":
-                counts["bom_groups"] += 1
             elif type_id == "Assembly::ViewGroup":
                 counts["view_groups"] += 1
             elif type_id == "Assembly::SimulationGroup":
@@ -3888,7 +3885,6 @@ class CadexService:
             type_id = getattr(child, "TypeId", "")
             if type_id in {
                 "Assembly::JointGroup",
-                "Assembly::BomGroup",
                 "Assembly::ViewGroup",
                 "Assembly::SimulationGroup",
             }:

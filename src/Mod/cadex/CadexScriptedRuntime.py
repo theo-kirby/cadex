@@ -78,7 +78,6 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         "cadex_assembly_api.py",
         "cadex_assembly_worker.py",
         "cadex_part_worker.py",
-        "CadexAssemblyBOM.py",
     ),
     "sketcher": (
         "cadex_sketcher_api.py",
@@ -336,7 +335,6 @@ def _assembly_live_output_state(obj: Any) -> dict[str, Any]:
             "CadexSimulationTracePreview",
         ),
         "exploded_view": ("CadexAssemblyExplodedViewValidation",),
-        "bom": ("CadexAssemblyBOMValidation",),
         "solver_diagnostics": ("CadexSolverDiagnostics",),
     }.get(output_type, ())
     result: dict[str, Any] = {"output_type": output_type} if output_type else {}
@@ -7127,179 +7125,6 @@ def _validate_assembly_exploded_views(
     return summaries
 
 
-def _validate_assembly_boms(
-    boms: Sequence[dict[str, Any]],
-    *,
-    assembly_item: Mapping[str, Any],
-    assembly_definition: Mapping[str, Any],
-    component_names: Sequence[str],
-    component_sources: Mapping[str, Mapping[str, Any]],
-) -> list[dict[str, Any]]:
-    """Replan every BOM from host-authenticated references and compare evidence."""
-
-    if not boms:
-        return []
-    if len(boms) > 8:
-        raise ValueError("An Assembly candidate may contain at most eight BOM outputs.")
-    from CadexAssemblyBOM import (
-        ASSEMBLY_BOM_SCHEMA,
-        AssemblyBOMError,
-        bom_summary,
-        plan_assembly_bom,
-    )
-
-    planner_sources = [
-        {
-            "output_name": name,
-            "reference": dict(component_sources[name]),
-        }
-        for name in component_names
-    ]
-    summaries: list[dict[str, Any]] = []
-    for item in boms:
-        output_name = str(item["name"])
-        definition = item.get("definition")
-        if (
-            not isinstance(definition, dict)
-            or definition.get("domain") != "assembly"
-            or definition.get("operation") != "bill_of_materials"
-            or definition.get("output_type") != "bom"
-            or definition.get("arguments") != [assembly_definition]
-        ):
-            raise ValueError(
-                f"BOM output {output_name!r} does not consume the exact returned "
-                "assembly graph."
-            )
-        properties = definition.get("properties")
-        required_properties = {
-            "columns",
-            "detail_subassemblies",
-            "detail_parts",
-            "only_parts",
-            "row_overrides",
-        }
-        if (
-            not isinstance(properties, dict)
-            or not required_properties <= set(properties)
-            or set(properties) - required_properties not in (set(), {"label"})
-        ):
-            raise ValueError(
-                f"BOM output {output_name!r} has malformed definition properties."
-            )
-        if "label" in properties and (
-            not isinstance(properties["label"], str)
-            or not properties["label"]
-            or properties["label"] != properties["label"].strip()
-            or len(properties["label"]) > 120
-        ):
-            raise ValueError(f"BOM output {output_name!r} has an invalid label.")
-        try:
-            contract = plan_assembly_bom(
-                planner_sources,
-                columns=properties["columns"],
-                detail_subassemblies=properties["detail_subassemblies"],
-                detail_parts=properties["detail_parts"],
-                only_parts=properties["only_parts"],
-                row_overrides=properties["row_overrides"],
-            )
-        except AssemblyBOMError as exc:
-            raise ValueError(
-                f"BOM output {output_name!r} cannot be replanned from the "
-                f"authenticated host snapshot: {exc}"
-            ) from exc
-        data = item.get("assembly_data")
-        required_data = {
-            *contract,
-            "assembly_output",
-            "native_readback",
-        }
-        if not isinstance(data, dict) or set(data) != required_data:
-            raise ValueError(
-                f"BOM output {output_name!r} has malformed native evidence fields."
-            )
-        if str(data.get("assembly_output") or "") != str(assembly_item["name"]):
-            raise ValueError(f"BOM output {output_name!r} belongs to another assembly.")
-        for field, expected in contract.items():
-            if data.get(field) != expected:
-                raise ValueError(
-                    f"BOM output {output_name!r} field {field!r} changed after "
-                    "host-authenticated planning."
-                )
-        if data.get("schema") != ASSEMBLY_BOM_SCHEMA:
-            raise ValueError(f"BOM output {output_name!r} has an unsupported schema.")
-        native = data.get("native_readback")
-        native_fields = {
-            "group_type_id",
-            "object_type_id",
-            "auto_generate",
-            "columns_names",
-            "settings",
-            "used_range",
-            "row_count",
-            "normalized_cells",
-            "substituted_headings",
-            "mirrored_names_normalized",
-            "sha256",
-        }
-        if not isinstance(native, dict) or set(native) != native_fields:
-            raise ValueError(
-                f"BOM output {output_name!r} has malformed native readback."
-            )
-        columns = list(contract["columns"])
-        substituted = [
-            str(column["heading"])
-            for column in columns
-            if column["kind"] == "custom"
-            or (column["kind"] == "builtin" and column.get("key") == "file_name")
-        ]
-        normalized_cells = []
-        for row in list(contract["rows"]):
-            cells = {}
-            for column in columns:
-                heading = str(column["heading"])
-                cells[heading] = (
-                    "" if heading in substituted else str(row["cells"][heading])
-                )
-            normalized_cells.append(cells)
-        expected_native = {
-            "group_type_id": "Assembly::BomGroup",
-            "object_type_id": "Assembly::BomObject",
-            "auto_generate": True,
-            "columns_names": [str(column["native_name"]) for column in columns],
-            "settings": dict(contract["settings"]),
-            "used_range": list(contract["used_range"]),
-            "row_count": int(contract["row_count"]),
-            "normalized_cells": normalized_cells,
-            "substituted_headings": substituted,
-            "mirrored_names_normalized": any(
-                bool(row["mirrored"]) for row in list(contract["rows"])
-            ),
-        }
-        if any(
-            native.get(field) != expected for field, expected in expected_native.items()
-        ):
-            raise ValueError(
-                f"BOM output {output_name!r} native readback disagrees with its "
-                "authenticated table."
-            )
-        digest_payload = {key: native[key] for key in native_fields - {"sha256"}}
-        digest = hashlib.sha256(
-            json.dumps(
-                digest_payload,
-                ensure_ascii=True,
-                sort_keys=True,
-                separators=(",", ":"),
-                allow_nan=False,
-            ).encode("utf-8")
-        ).hexdigest()
-        if str(native.get("sha256") or "") != digest:
-            raise ValueError(
-                f"BOM output {output_name!r} native readback digest changed."
-            )
-        summaries.append(bom_summary(contract, output_name=output_name))
-    return summaries
-
-
 def _assembly_hierarchy_contract(
     resolved_reference: Mapping[str, Any], *, context: str
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
@@ -7502,7 +7327,6 @@ def _validate_assembly_execution(
     motions = by_type.get("motion", [])
     simulations = by_type.get("simulation", [])
     exploded_views = by_type.get("exploded_view", [])
-    boms = by_type.get("bom", [])
     if not components:
         raise ValueError(
             "An Assembly candidate must contain at least one component_link."
@@ -7584,21 +7408,6 @@ def _validate_assembly_execution(
             )
     elif "exploded_view_outputs" in assembly_data:
         raise ValueError("The assembly graph reports an undeclared exploded view.")
-    returned_bom_names = [str(item["name"]) for item in boms]
-    if boms:
-        graph_bom_names = [
-            str(item) for item in list(assembly_data.get("bom_outputs") or [])
-        ]
-        if (
-            len(graph_bom_names) != len(set(graph_bom_names))
-            or graph_bom_names != returned_bom_names
-        ):
-            raise ValueError(
-                "The assembly graph BOMs do not exactly match returned bom outputs "
-                "in declaration order."
-            )
-    elif "bom_outputs" in assembly_data:
-        raise ValueError("The assembly graph reports an undeclared BOM.")
     graph_component_definitions = assembly_properties.get("components")
     graph_joint_definitions = assembly_properties.get("joints")
     if not isinstance(graph_component_definitions, list) or len(
@@ -8314,13 +8123,6 @@ def _validate_assembly_execution(
         component_placements=component_placements,
         component_sources=component_sources,
     )
-    bom_summaries = _validate_assembly_boms(
-        boms,
-        assembly_item=assembly_item,
-        assembly_definition=assembly_definition,
-        component_names=component_names,
-        component_sources=component_sources,
-    )
 
     simulation_summary = None
     if simulations:
@@ -8707,16 +8509,6 @@ def _validate_assembly_execution(
             )
     elif "exploded_views" in diagnostics or "exploded_views" in validation:
         raise ValueError("The Assembly diagnostics report undeclared exploded views.")
-    if bom_summaries:
-        if (
-            diagnostics.get("boms") != bom_summaries
-            or validation.get("boms") != bom_summaries
-        ):
-            raise ValueError(
-                "The Assembly BOM summaries are inconsistent across worker outputs."
-            )
-    elif "boms" in diagnostics or "boms" in validation:
-        raise ValueError("The Assembly diagnostics report undeclared BOM outputs.")
     expected_status = (
         "solved"
         if solver_code == 0 and not conflicts and not dependency_issues
@@ -8766,8 +8558,6 @@ def _validate_assembly_execution(
         expected_validation["simulation"] = simulation_summary
     if exploded_view_summaries:
         expected_validation["exploded_views"] = exploded_view_summaries
-    if bom_summaries:
-        expected_validation["boms"] = bom_summaries
     for field, expected_value in expected_validation.items():
         if validation.get(field) != expected_value:
             raise ValueError(
@@ -21017,9 +20807,9 @@ class AssemblyDomainAdapter(DeclarativeDomainAdapter):
                     "API calls build one immutable assembly graph. Component source Shapes "
                     "are authenticated snapshots of stable input references. FreeCADCmd "
                     "creates real native links, grounds components, derives connector frames, "
-                    "creates native joints, solves, and derives simulations, exploded-view "
-                    "moves, and native bills of materials from that exact graph. It returns "
-                    "placements, line endpoints, table cells, and diagnostics. The document "
+                    "creates native joints, solves, and derives simulations and exploded-view "
+                    "moves from that exact graph. It returns placements, line endpoints, "
+                    "and diagnostics. The document "
                     "thread only applies independently reauthorized, precomputed state."
                 ),
                 "input_reference_contract": {
@@ -21063,8 +20853,7 @@ class AssemblyDomainAdapter(DeclarativeDomainAdapter):
                         "also return every api.motion value exactly once and exactly one "
                         "api.simulation value that consumes the returned assembly. If an "
                         "exploded presentation is requested, return each api.exploded_view "
-                        "value exactly once. If a bill of materials is requested, return each "
-                        "api.bill_of_materials value exactly once. Every derived value must "
+                        "value exactly once. Every derived value must "
                         "consume that same assembly variable."
                     ),
                 },
@@ -21077,7 +20866,6 @@ class AssemblyDomainAdapter(DeclarativeDomainAdapter):
                     "one_driven_degree_of_freedom": "api.motion",
                     "time_series_kinematics": "api.simulation",
                     "named_disassembly_presentation": "api.exploded_view",
-                    "named_parts_table": "api.bill_of_materials",
                     "redundancy_contract": (
                         "These are the only canonical operations. There are no aliases or "
                         "separate add/update/refresh variants. Create each immutable value once, "
@@ -21094,7 +20882,7 @@ class AssemblyDomainAdapter(DeclarativeDomainAdapter):
                             "Choose only entries with eligible_component_shape=true and "
                             "copy each candidate's reference object into program inputs. "
                             "Use flexible=True only when eligible_flexible_subassembly=true. "
-                            "For internal connectors or detailed BOMs, require "
+                            "For internal connectors, require "
                             "eligible_detailed_bom_hierarchy=true and copy exact "
                             "assembly_hierarchy.occurrence_paths[].path values. Never infer a "
                             "path from labels or generated AssemblyLink child names."
@@ -21150,19 +20938,6 @@ class AssemblyDomainAdapter(DeclarativeDomainAdapter):
                     },
                     {
                         "step": 7,
-                        "action": "document",
-                        "instruction": (
-                            "Use one api.bill_of_materials call for each requested named table. "
-                            "Choose built-in, native-property, and custom columns in that call; "
-                            "do not build rows manually. A top-level row path is its returned "
-                            "component output name. A nested row path is that output name plus "
-                            "'/' plus an exact component_candidates assembly_hierarchy "
-                            "occurrence_paths[].path. Copy accepted or failure-reported paths "
-                            "verbatim into row_overrides."
-                        ),
-                    },
-                    {
-                        "step": 8,
                         "action": "repair",
                         "instruction": (
                             "On failure, keep expected_outputs and stable output names unchanged. "
@@ -21173,7 +20948,7 @@ class AssemblyDomainAdapter(DeclarativeDomainAdapter):
                         ),
                     },
                     {
-                        "step": 9,
+                        "step": 8,
                         "action": "verify",
                         "instruction": (
                             "Inspect the accepted program and confirm accepted_revision equals "
@@ -21182,9 +20957,7 @@ class AssemblyDomainAdapter(DeclarativeDomainAdapter):
                             "simulation, also confirm native_code=0, nonzero motion effect, and "
                             "the retained trace digest/frame count. For an exploded view, "
                             "confirm every move and component has a nonzero authenticated line "
-                            "and the live native view retains the same accepted evidence. For "
-                            "a BOM, confirm its settings, row and path counts, table digest, "
-                            "and copy-ready occurrence paths match the requested table."
+                            "and the live native view retains the same accepted evidence."
                         ),
                     },
                 ],
@@ -21257,64 +21030,6 @@ class AssemblyDomainAdapter(DeclarativeDomainAdapter):
                         "stable index identities across compatible regeneration. Publication "
                         "sets precomputed transforms/references only and never calculates an "
                         "explosion on the document thread."
-                    ),
-                },
-                "bills_of_materials": {
-                    "single_operation_rule": (
-                        "api.bill_of_materials owns the complete table definition: columns, "
-                        "hierarchy detail settings, filtering, and custom row values. There "
-                        "are no separate add-column, set-cell, aggregate, or refresh aliases."
-                    ),
-                    "columns": {
-                        "built_in": ["index", "name", "quantity", "file_name"],
-                        "native_property": (
-                            "Use {'property':'PartNumber','heading':'Part Number'}. The property "
-                            "must be a native scalar BOM property; keep one best column for each "
-                            "native property identity."
-                        ),
-                        "custom": (
-                            "Use {'heading':'Description'}, then assign JSON scalar values only "
-                            "through row_overrides for that declared heading. 'name' is always "
-                            "required so every retained row remains identifiable."
-                        ),
-                    },
-                    "occurrence_paths": (
-                        "For a returned component named Module and source hierarchy path "
-                        "Gearbox/GearLeft, use Module/Gearbox/GearLeft. Top-level component "
-                        "rows use only the returned output name. Paths contain stable source "
-                        "FreeCAD object names, never generated AssemblyLink child names."
-                    ),
-                    "quantity_aggregation": (
-                        "Including 'quantity' combines sibling occurrences with the same "
-                        "authenticated source identity and mirror state. The accepted row "
-                        "retains every equivalent occurrence path. Custom overrides for two "
-                        "paths that aggregate into one row must use the same value; otherwise "
-                        "omit 'quantity' to retain separate rows."
-                    ),
-                    "hierarchy_settings": {
-                        "detail_subassemblies": (
-                            "Expand authenticated native Assembly children."
-                        ),
-                        "detail_parts": "Expand authenticated native App::Part children.",
-                        "only_parts": (
-                            "Exclude leaf shape rows while retaining native Assembly/App::Part "
-                            "container rows, matching the native Assembly BOM contract."
-                        ),
-                    },
-                    "safety_and_publication": (
-                        "The worker creates and reads an actual Assembly::BomObject. File Name "
-                        "cells expose only a source document basename, never a raw path. The "
-                        "host independently re-derives every row from authenticated snapshots, "
-                        "then sets native autoGenerate=False, publishes the literal validated "
-                        "table, and freezes it. Recompute and save/reopen therefore cannot run "
-                        "native BOM generation; a managed restore guard verifies and replays "
-                        "only the accepted literal cells after document restoration."
-                    ),
-                    "inspection": (
-                        "Accepted live evidence includes settings, normalized columns, row/path "
-                        "counts, used range, table SHA-256, a bounded row preview, and exact "
-                        "copy-ready occurrence paths. Failed overrides include the requested "
-                        "path, current settings, and bounded available_occurrence_paths."
                     ),
                 },
                 "nested_subassemblies": {
@@ -21493,18 +21208,6 @@ class AssemblyDomainAdapter(DeclarativeDomainAdapter):
                             "stable native move identities across regeneration and reopen",
                         ],
                     },
-                    "bills_of_materials": {
-                        "status": "supported",
-                        "features": [
-                            "native Assembly::BomObject publication",
-                            "built-in, native-property, and custom columns",
-                            "hierarchical Assembly and App::Part detail controls",
-                            "quantity aggregation with retained equivalent paths",
-                            "authenticated row overrides and table digest",
-                            "stable frozen identity across regeneration and reopen",
-                            "nested-source invalidation for labels, placements, and BOM properties",
-                        ],
-                    },
                     "not_yet_provider_exposed": [],
                 },
                 "solver_codes": {
@@ -21529,25 +21232,23 @@ class AssemblyDomainAdapter(DeclarativeDomainAdapter):
                             "stable ExplodedView App::FeaturePython in Assembly::ViewGroup "
                             "with managed native ExplodedViewStep children"
                         ),
-                        "bom": "stable frozen Assembly::BomObject in Assembly::BomGroup",
                         "diagnostics": "stable App::FeaturePython report",
                     },
                     "identity": (
                         "Program/output ids update the same assembly, component, joint, motion, "
-                        "simulation, exploded-view, BOM, and diagnostics objects in place. "
+                        "simulation, exploded-view, and diagnostics objects in place. "
                         "Compatible exploded moves retain stable index identities. A component "
                         "cannot change between App::Link and Assembly::AssemblyLink without a "
                         "new output identity."
                     ),
                     "asynchronous_boundary": (
                         "BREP transfer, connector derivation, presolve, solver work, and "
-                        "kinematic trace, exploded-view, and native BOM generation run in the "
+                        "kinematic trace and exploded-view generation run in the "
                         "isolated worker. Live joints receive detached precomputed JCS placements "
                         "and live simulations receive only authenticated settings and previews. "
                         "Live exploded views receive only precomputed move transforms and stable "
-                        "references; live BOMs receive only literal precomputed cells. Publication "
-                        "sets native autoGenerate=False, so publication, recompute, and reopen never "
-                        "invoke a solver, derive bounds, calculate an explosion, generate a BOM, "
+                        "references. Publication, recompute, and reopen never "
+                        "invoke a solver, derive bounds, calculate an explosion, "
                         "recompute the document, or read an artifact."
                     ),
                 },
@@ -21580,13 +21281,12 @@ class AssemblyDomainAdapter(DeclarativeDomainAdapter):
                             "component toolpaths"
                         ),
                         "TechDraw": (
-                            "document accepted assembly/component views, dimensions, notes, "
-                            "and BOM evidence"
+                            "document accepted assembly/component views, dimensions, and notes"
                         ),
                     },
                     "boundary": (
                         "Assembly owns occurrences, connectors, joints, solve evidence, motion, "
-                        "exploded views, and BOMs. It does not author component solids, material "
+                        "and exploded views. It does not author component solids, material "
                         "cards, robot trajectories, FEM loads, CAM paths, or drawing projections."
                     ),
                 },
@@ -21660,32 +21360,6 @@ class AssemblyDomainAdapter(DeclarativeDomainAdapter):
                         ],
                     },
                     {
-                        "goal": "publish one native service BOM with model-authored descriptions",
-                        "source": (
-                            "base = api.component(inputs['base'], grounded=True, label='Base')\n"
-                            "arm = api.component(inputs['arm'], label='Arm')\n"
-                            "hinge = api.joint('revolute', api.connector(base), "
-                            "api.connector(arm), label='Hinge')\n"
-                            "model = api.assembly([base, arm], [hinge], label='Robot Arm')\n"
-                            "diagnostics = api.solve(model)\n"
-                            "bill = api.bill_of_materials(model, columns=['index','name',"
-                            "'quantity',{'property':'PartNumber','heading':'Part Number'},"
-                            "{'heading':'Description'}], row_overrides=["
-                            "{'occurrence_path':'Arm','values':{'Description':'Moving link'}}], "
-                            "label='Service BOM')\n"
-                            "result = {'Model':model,'Base':base,'Arm':arm,'Hinge':hinge,"
-                            "'Bill':bill,'Diagnostics':diagnostics}"
-                        ),
-                        "expected_outputs": [
-                            {"name": "Model", "type": "assembly"},
-                            {"name": "Base", "type": "component_link"},
-                            {"name": "Arm", "type": "component_link"},
-                            {"name": "Hinge", "type": "joint"},
-                            {"name": "Bill", "type": "bom"},
-                            {"name": "Diagnostics", "type": "solver_diagnostics"},
-                        ],
-                    },
-                    {
                         "goal": "simulate a revolute mechanism with a retained trace",
                         "source": (
                             "base = api.component(inputs['base'], grounded=True, label='Base')\n"
@@ -21739,12 +21413,6 @@ class AssemblyDomainAdapter(DeclarativeDomainAdapter):
                         "selected components, changed and unchanged components, native readback "
                         "stage, and a direct transform/radial correction. Failed candidates do "
                         "not replace the still-live accepted view."
-                    ),
-                    "bill_of_materials": (
-                        "Failures identify the stable BOM output, failing column/setting/path, "
-                        "requested and available occurrence paths, active detail/filter settings, "
-                        "aggregated override conflicts, bounded budget, and a direct correction. "
-                        "Failed candidates do not replace the accepted frozen native table."
                     ),
                 },
             }

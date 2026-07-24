@@ -5,8 +5,6 @@ set(AssemblyGui_LIBS
     Assembly
     PartDesign
     PartGui
-    Spreadsheet
-    SpreadsheetGui
     FreeCADGui
 )
 
@@ -23,7 +21,6 @@ SOURCE_GROUP("Resources" FILES ${AssemblyResource_SRCS})
 generate_from_py(ViewProviderAssembly)
 
 set(AssemblyGui_UIC_SRCS
-    TaskAssemblyCreateBom.ui
     TaskAssemblyCreateJoint.ui
     TaskAssemblyCreateSimulation.ui
     TaskAssemblyCreateView.ui
@@ -49,10 +46,6 @@ SET(AssemblyGui_SRCS_Module
     ViewProviderAssembly.h
     ViewProviderAssemblyLink.cpp
     ViewProviderAssemblyLink.h
-    ViewProviderBom.cpp
-    ViewProviderBom.h
-    ViewProviderBomGroup.cpp
-    ViewProviderBomGroup.h
     ViewProviderJointGroup.cpp
     ViewProviderJointGroup.h
     ViewProviderViewGroup.cpp

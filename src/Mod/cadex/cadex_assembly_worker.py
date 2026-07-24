@@ -50,7 +50,6 @@ _REFERENCE_METADATA: Mapping[tuple[str, str], Mapping[str, Any]] = MappingProxyT
 _SIMULATION_TRACE_SCHEMA = "cadex-assembly-simulation-trace-v1"
 _MAX_SIMULATION_TRACE_BYTES = 64 * 1024 * 1024
 _EXPLODED_VIEW_SCHEMA = "cadex-assembly-exploded-view-v1"
-_ASSEMBLY_BOM_SCHEMA = "cadex-assembly-bom-v1"
 _ASSEMBLY_HIERARCHY_SCHEMA = "cadex-assembly-source-hierarchy-v1"
 _MAX_HIERARCHY_NODES = 512
 _MAX_HIERARCHY_OCCURRENCES = 2048
@@ -1867,50 +1866,6 @@ def _exploded_view_contract(
     return views
 
 
-def _bom_contract(
-    raw_result: Mapping[str, Any],
-    *,
-    assembly_value: DomainValue,
-) -> list[tuple[str, DomainValue]]:
-    boms = [
-        (name, value)
-        for name, value in raw_result.items()
-        if isinstance(value, DomainValue) and value.output_type == "bom"
-    ]
-    if len(boms) > 8:
-        raise AssemblyCandidateError(
-            "An Assembly program may publish at most eight named BOM views.",
-            details={
-                "stage": "bom_graph",
-                "bom_outputs": [name for name, _value in boms],
-                "maximum_bom_outputs": 8,
-                "correction": (
-                    "Keep only the BOM views needed by downstream consumers; vary "
-                    "columns and detail settings in those named outputs."
-                ),
-            },
-        )
-    for output_name, value in boms:
-        if (
-            value.operation != "bill_of_materials"
-            or len(value.arguments) != 1
-            or value.arguments[0] is not assembly_value
-        ):
-            raise AssemblyCandidateError(
-                f"BOM output {output_name!r} must come from api.bill_of_materials "
-                "using the exact returned assembly variable.",
-                details={
-                    "stage": "bom_graph",
-                    "bom_output": output_name,
-                    "correction": (
-                        f"Use {output_name.lower()} = api.bill_of_materials(model, ...) "
-                        f"and return {output_name!r}: {output_name.lower()}."
-                    ),
-                },
-            )
-    return boms
-
-
 def _compact_placement(placement: Any) -> dict[str, list[float]]:
     quaternion = [float(value) for value in placement.Rotation.Q]
     magnitude = math.sqrt(sum(value * value for value in quaternion))
@@ -2247,283 +2202,6 @@ def _execute_native_exploded_view(
         },
     }
     return data
-
-
-def _bom_component_sources(
-    component_values: list[DomainValue],
-    component_outputs: Mapping[int, str],
-) -> list[dict[str, Any]]:
-    """Bind planner inputs to the exact returned component graph."""
-
-    result: list[dict[str, Any]] = []
-    for value in component_values:
-        output_name = component_outputs[id(value)]
-        if value.operation != "component" or len(value.arguments) != 1:
-            raise AssemblyCandidateError(
-                f"BOM component output {output_name!r} must come from api.component.",
-                details={"stage": "bom_graph", "component_output": output_name},
-            )
-        source = _reference(
-            value.arguments[0],
-            context=f"BOM component output {output_name!r} source",
-        )
-        key = (source["document_uid"], source["object_name"])
-        metadata = _REFERENCE_METADATA[key]
-        reference: dict[str, Any] = {
-            **source,
-            "label": str(metadata.get("label") or source["object_name"]),
-            "source_kind": str(metadata.get("source_kind") or "shape"),
-            "document_file_name": str(metadata.get("document_file_name") or ""),
-            "bom_properties": list(metadata.get("bom_properties") or []),
-        }
-        hierarchy = _REFERENCE_HIERARCHIES.get(key)
-        if hierarchy is not None:
-            reference["assembly_hierarchy"] = dict(hierarchy["descriptor"])
-        result.append({"output_name": output_name, "reference": reference})
-    return result
-
-
-def _spreadsheet_column(number: int) -> str:
-    result = ""
-    value = number
-    while value:
-        value, remainder = divmod(value - 1, 26)
-        result = chr(ord("A") + remainder) + result
-    return result
-
-
-def _spreadsheet_content(sheet: Any, address: str) -> str:
-    try:
-        value = str(sheet.getContents(address) or "")
-    except ValueError:
-        return ""
-    # Spreadsheet string cells preserve a leading quote used to force literal
-    # text.  Native BomObject::getText applies the same one-character removal.
-    return value[1:] if value.startswith("'") else value
-
-
-def _execute_native_bom(
-    *,
-    document: Any,
-    assembly: Any,
-    assembly_output: str,
-    output_name: str,
-    value: DomainValue,
-    component_sources: list[dict[str, Any]],
-    bom_index: int,
-) -> dict[str, Any]:
-    """Generate and read one native BOM entirely inside the isolated worker."""
-
-    import FreeCAD as App
-
-    from CadexAssemblyBOM import (
-        ASSEMBLY_BOM_SCHEMA,
-        AssemblyBOMError,
-        plan_assembly_bom,
-    )
-
-    properties = _properties(value, "bill_of_materials")
-    try:
-        contract = plan_assembly_bom(
-            component_sources,
-            columns=properties.get("columns"),
-            detail_subassemblies=properties.get("detail_subassemblies"),
-            detail_parts=properties.get("detail_parts"),
-            only_parts=properties.get("only_parts"),
-            row_overrides=properties.get("row_overrides"),
-        )
-    except AssemblyBOMError as exc:
-        raise AssemblyCandidateError(str(exc), details=exc.details) from exc
-    if str(contract.get("schema") or "") != _ASSEMBLY_BOM_SCHEMA or (
-        ASSEMBLY_BOM_SCHEMA != _ASSEMBLY_BOM_SCHEMA
-    ):
-        raise AssemblyCandidateError(
-            f"BOM output {output_name!r} planner returned an unsupported schema.",
-            details={"stage": "bom_planner", "bom_output": output_name},
-        )
-
-    group = assembly.newObject(
-        "Assembly::BomGroup", f"CandidateBOMGroup{bom_index}"
-    )
-    if group is None:
-        raise AssemblyCandidateError(
-            f"FreeCAD did not create a native BOM group for output {output_name!r}.",
-            details={"stage": "bom_native_creation", "bom_output": output_name},
-        )
-    bom = group.newObject("Assembly::BomObject", f"CandidateBOM{bom_index}")
-    if bom is None:
-        raise AssemblyCandidateError(
-            f"FreeCAD did not create Assembly::BomObject for output {output_name!r}.",
-            details={"stage": "bom_native_creation", "bom_output": output_name},
-        )
-    columns = list(contract["columns"])
-    native_names = [str(column["native_name"]) for column in columns]
-    settings = dict(contract["settings"])
-    bom.columnsNames = native_names
-    bom.detailSubAssemblies = bool(settings["detail_subassemblies"])
-    bom.detailParts = bool(settings["detail_parts"])
-    bom.onlyParts = bool(settings["only_parts"])
-    document.recompute()
-
-    if (
-        str(getattr(group, "TypeId", "") or "") != "Assembly::BomGroup"
-        or str(getattr(bom, "TypeId", "") or "") != "Assembly::BomObject"
-        or "autoGenerate" not in set(getattr(bom, "PropertiesList", []) or [])
-        or bool(getattr(bom, "autoGenerate", False)) is not True
-        or list(getattr(bom, "columnsNames", []) or []) != native_names
-        or bool(getattr(bom, "detailSubAssemblies", False))
-        is not settings["detail_subassemblies"]
-        or bool(getattr(bom, "detailParts", False)) is not settings["detail_parts"]
-        or bool(getattr(bom, "onlyParts", False)) is not settings["only_parts"]
-    ):
-        raise AssemblyCandidateError(
-            f"Native BOM output {output_name!r} changed its declared type or settings.",
-            details={
-                "stage": "bom_native_readback",
-                "bom_output": output_name,
-            },
-        )
-    raw_used_range = bom.getUsedRange()
-    used_range = (
-        [str(item) for item in raw_used_range]
-        if isinstance(raw_used_range, tuple) and len(raw_used_range) == 2
-        else []
-    )
-    if used_range != list(contract["used_range"]):
-        raise AssemblyCandidateError(
-            f"Native BOM output {output_name!r} returned used range {used_range}; "
-            f"expected {contract['used_range']}.",
-            details={
-                "stage": "bom_native_readback",
-                "bom_output": output_name,
-                "observed_used_range": used_range,
-                "expected_used_range": list(contract["used_range"]),
-            },
-        )
-    headers = [
-        _spreadsheet_content(bom, f"{_spreadsheet_column(index + 1)}1")
-        for index in range(len(columns))
-    ]
-    if headers != native_names:
-        raise AssemblyCandidateError(
-            f"Native BOM output {output_name!r} returned altered column headers.",
-            details={
-                "stage": "bom_native_readback",
-                "bom_output": output_name,
-                "observed_headers": headers,
-                "expected_headers": native_names,
-            },
-        )
-    mirrored_suffix = str(
-        App.ParamGet("User parameter:BaseApp/Preferences/Mod/Assembly").GetString(
-            "BomMirroredSuffix", " (mirrored)"
-        )
-        or ""
-    )
-    if len(mirrored_suffix) > 256:
-        raise AssemblyCandidateError(
-            "The native Assembly mirrored BOM suffix exceeds 256 characters.",
-            details={
-                "stage": "bom_native_readback",
-                "correction": (
-                    "Shorten Preferences > Assembly > BOM mirrored suffix and retry."
-                ),
-            },
-        )
-    normalized_native_rows: list[dict[str, str]] = []
-    substituted_headings = [
-        str(column["heading"])
-        for column in columns
-        if column["kind"] == "custom"
-        or (column["kind"] == "builtin" and column.get("key") == "file_name")
-    ]
-    for row_index, expected_row in enumerate(list(contract["rows"]), start=2):
-        normalized: dict[str, str] = {}
-        for column_index, column in enumerate(columns, start=1):
-            heading = str(column["heading"])
-            observed = _spreadsheet_content(
-                bom, f"{_spreadsheet_column(column_index)}{row_index}"
-            )
-            expected = str(expected_row["cells"][heading])
-            if column["kind"] == "custom":
-                if observed:
-                    raise AssemblyCandidateError(
-                        f"Native BOM output {output_name!r} unexpectedly retained a "
-                        f"custom value in row {row_index - 1}, column {heading!r}.",
-                        details={"stage": "bom_native_readback", "bom_output": output_name},
-                    )
-                normalized[heading] = ""
-                continue
-            if column["kind"] == "builtin" and column.get("key") == "file_name":
-                # Reconstructed sources intentionally live in one unsaved worker
-                # document.  The authenticated original basename is substituted by
-                # the planner and the raw worker path is never returned.
-                normalized[heading] = ""
-                continue
-            native_expected = expected
-            if (
-                column["kind"] == "builtin"
-                and column.get("key") == "name"
-                and bool(expected_row["mirrored"])
-            ):
-                label = expected.removesuffix(" (mirrored)")
-                native_expected = f"{label}{mirrored_suffix}"
-            numeric_equivalent = False
-            if observed != native_expected and column["kind"] == "property":
-                try:
-                    observed_number = float(observed)
-                    expected_number = float(native_expected)
-                    numeric_equivalent = math.isclose(
-                        observed_number,
-                        expected_number,
-                        rel_tol=1.0e-12,
-                        abs_tol=1.0e-12,
-                    )
-                except (TypeError, ValueError):
-                    numeric_equivalent = False
-            if observed != native_expected and not numeric_equivalent:
-                raise AssemblyCandidateError(
-                    f"Native BOM output {output_name!r} row {row_index - 1} column "
-                    f"{heading!r} disagrees with authenticated source data.",
-                    details={
-                        "stage": "bom_native_readback",
-                        "bom_output": output_name,
-                        "row_index": row_index - 1,
-                        "heading": heading,
-                        "observed": observed,
-                        "expected": native_expected,
-                    },
-                )
-            normalized[heading] = expected
-        normalized_native_rows.append(normalized)
-    native_readback: dict[str, Any] = {
-        "group_type_id": str(group.TypeId),
-        "object_type_id": str(bom.TypeId),
-        "auto_generate": bool(getattr(bom, "autoGenerate", True)),
-        "columns_names": native_names,
-        "settings": settings,
-        "used_range": used_range,
-        "row_count": len(normalized_native_rows),
-        "normalized_cells": normalized_native_rows,
-        "substituted_headings": substituted_headings,
-        "mirrored_names_normalized": any(
-            bool(row["mirrored"]) for row in list(contract["rows"])
-        ),
-    }
-    native_readback["sha256"] = hashlib.sha256(
-        json.dumps(
-            native_readback,
-            ensure_ascii=True,
-            sort_keys=True,
-            separators=(",", ":"),
-            allow_nan=False,
-        ).encode("utf-8")
-    ).hexdigest()
-    return {
-        **contract,
-        "assembly_output": assembly_output,
-        "native_readback": native_readback,
-    }
 
 
 def _execute_native_simulation(
@@ -3376,11 +3054,9 @@ def validate_and_solve_assembly(
         assembly_value=assembly_value,
         component_outputs=component_outputs,
     )
-    bom_contract = _bom_contract(raw_result, assembly_value=assembly_value)
     assembly_properties = _properties(assembly_value, "assembly")
     component_values = list(assembly_properties.get("components") or [])
     joint_values = list(assembly_properties.get("joints") or [])
-    bom_sources = _bom_component_sources(component_values, component_outputs)
 
     assembly = document.addObject("Assembly::AssemblyObject", "CandidateAssembly")
     if assembly is None:
@@ -3857,23 +3533,6 @@ def validate_and_solve_assembly(
         )
     if exploded_view_summaries:
         diagnostics["exploded_views"] = exploded_view_summaries
-    bom_summaries: list[dict[str, Any]] = []
-    if bom_contract:
-        from CadexAssemblyBOM import bom_summary
-
-        for bom_index, (bom_output, bom_value) in enumerate(bom_contract):
-            bom_data = _execute_native_bom(
-                document=document,
-                assembly=assembly,
-                assembly_output=assembly_output,
-                output_name=bom_output,
-                value=bom_value,
-                component_sources=bom_sources,
-                bom_index=bom_index,
-            )
-            by_name[bom_output]["assembly_data"] = bom_data
-            bom_summaries.append(bom_summary(bom_data, output_name=bom_output))
-        diagnostics["boms"] = bom_summaries
     by_name[assembly_output]["assembly_data"] = {
         "component_outputs": [component_outputs[id(value)] for value in component_values],
         "joint_outputs": [joint_outputs[id(value)] for value in joint_values],
@@ -3889,10 +3548,6 @@ def validate_and_solve_assembly(
     if exploded_view_summaries:
         by_name[assembly_output]["assembly_data"]["exploded_view_outputs"] = [
             item["exploded_view_output"] for item in exploded_view_summaries
-        ]
-    if bom_summaries:
-        by_name[assembly_output]["assembly_data"]["bom_outputs"] = [
-            item["bom_output"] for item in bom_summaries
         ]
     for output_name, data in component_data.items():
         data["solved_placement"] = component_placements[output_name]
@@ -3927,8 +3582,6 @@ def validate_and_solve_assembly(
         result["simulation"] = simulation_summary
     if exploded_view_summaries:
         result["exploded_views"] = exploded_view_summaries
-    if bom_summaries:
-        result["boms"] = bom_summaries
     return result
 
 

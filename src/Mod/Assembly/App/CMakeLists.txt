@@ -3,15 +3,12 @@
 set(Assembly_LIBS
     Part
     PartDesign
-    Spreadsheet
     FreeCADApp
     OndselSolver
 )
 
 generate_from_py(AssemblyObject)
 generate_from_py(AssemblyLink)
-generate_from_py(BomObject)
-generate_from_py(BomGroup)
 generate_from_py(JointGroup)
 generate_from_py(ViewGroup)
 generate_from_py(SimulationGroup)
@@ -22,10 +19,6 @@ SET(Python_SRCS
     AssemblyObjectPyImp.cpp
     AssemblyLink.pyi
     AssemblyLinkPyImp.cpp
-    BomObject.pyi
-    BomObjectPyImp.cpp
-    BomGroup.pyi
-    BomGroupPyImp.cpp
     JointGroup.pyi
     JointGroupPyImp.cpp
     ViewGroup.pyi
@@ -49,10 +42,6 @@ SET(Assembly_SRCS
     AssemblyLink.h
     AssemblyUtils.cpp
     AssemblyUtils.h
-    BomObject.cpp
-    BomObject.h
-    BomGroup.cpp
-    BomGroup.h
     JointGroup.cpp
     JointGroup.h
     ViewGroup.cpp

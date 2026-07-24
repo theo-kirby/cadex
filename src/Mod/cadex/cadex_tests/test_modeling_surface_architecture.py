@@ -582,13 +582,9 @@ def test_assembly_api_is_explicit_graph_based_and_generated_from_runtime() -> No
         "solve",
         "simulate",
         "present",
-        "document",
         "repair",
         "verify",
     ]
-    assert description["operation_selection"]["named_parts_table"] == (
-        "api.bill_of_materials"
-    )
     assert "no aliases" in description["operation_selection"]["redundancy_contract"]
     assert "failed_segment_index" in description["nested_subassemblies"]["repair"]
     assert any(
@@ -611,24 +607,10 @@ def test_assembly_api_is_explicit_graph_based_and_generated_from_runtime() -> No
         "supported"
     )
     assert (
-        description["capability_inventory"]["bills_of_materials"]["status"]
-        == "supported"
-    )
-    assert (
         "exploded views"
         not in description["capability_inventory"]["not_yet_provider_exposed"]
     )
     assert description["capability_inventory"]["not_yet_provider_exposed"] == []
-    assert (
-        "no separate add-column"
-        in description["bills_of_materials"]["single_operation_rule"]
-    )
-    assert (
-        "available_occurrence_paths" in description["bills_of_materials"]["inspection"]
-    )
-    assert description["publication_contract"]["native_types"]["bom"].startswith(
-        "stable frozen Assembly::BomObject"
-    )
     assert description["units"]["angular_motion_formula"] == "radians"
     assert description["units"]["linear_motion_formula"] == "millimetres"
     assert any(
@@ -671,24 +653,6 @@ def test_assembly_api_is_explicit_graph_based_and_generated_from_runtime() -> No
         ],
         label="Service View",
     )
-    bill = api.bill_of_materials(
-        model,
-        columns=[
-            "index",
-            "name",
-            "quantity",
-            {"property": "PartNumber", "heading": "Part Number"},
-            {"heading": "Description"},
-        ],
-        row_overrides=[
-            {
-                "occurrence_path": "Arm",
-                "values": {"Description": "Moving link"},
-            }
-        ],
-        label="Service BOM",
-    )
-
     assert base.properties["grounded"] is True
     assert arm.properties["placement"]["rotation"] == (0.0, 0.0, 0.0, 1.0)
     assert model.properties["components"] == (base, arm)
@@ -709,51 +673,6 @@ def test_assembly_api_is_explicit_graph_based_and_generated_from_runtime() -> No
     )
     assert exploded.properties["moves"][1]["kind"] == "radial"
     assert exploded.properties["moves"][1]["radial_distance_mm"] == 15.0
-    assert bill.arguments == (model,)
-    assert bill.output_type == "bom"
-    assert [dict(column) for column in bill.properties["columns"]] == [
-        {
-            "kind": "builtin",
-            "key": "index",
-            "heading": "Index",
-            "native_name": "Index",
-        },
-        {
-            "kind": "builtin",
-            "key": "name",
-            "heading": "Name",
-            "native_name": "Name",
-        },
-        {
-            "kind": "builtin",
-            "key": "quantity",
-            "heading": "Quantity",
-            "native_name": "Quantity",
-        },
-        {
-            "kind": "property",
-            "property": "PartNumber",
-            "heading": "Part Number",
-            "native_name": ".PartNumber",
-        },
-        {
-            "kind": "custom",
-            "heading": "Description",
-            "native_name": "Description",
-        },
-    ]
-    assert [
-        {
-            "occurrence_path": str(item["occurrence_path"]),
-            "values": dict(item["values"]),
-        }
-        for item in bill.properties["row_overrides"]
-    ] == [
-        {
-            "occurrence_path": "Arm",
-            "values": {"Description": "Moving link"},
-        }
-    ]
     with pytest.raises(TypeError):
         model.properties["components"][0] = arm
 
@@ -980,322 +899,6 @@ def test_assembly_api_rejects_ambiguous_graphs_and_wrong_joint_parameters() -> N
             mechanism,
             [{"components": [first], "radial_distance_mm": 0}],
         )
-    with pytest.raises(ValueError, match=r"api\.bill_of_materials.*include the 'name'"):
-        api.bill_of_materials(mechanism, columns=["quantity"])
-    with pytest.raises(
-        ValueError,
-        match=r"api\.bill_of_materials.*duplicates column identity.*keep one best version",
-    ):
-        api.bill_of_materials(
-            mechanism,
-            columns=[
-                "name",
-                {"property": "PartNumber", "heading": "Part Number"},
-                {"property": "PartNumber", "heading": "PN"},
-            ],
-        )
-    with pytest.raises(
-        ValueError, match=r"api\.bill_of_materials.*undeclared custom headings"
-    ):
-        api.bill_of_materials(
-            mechanism,
-            columns=["name", {"heading": "Description"}],
-            row_overrides=[{"occurrence_path": "First", "values": {"Notes": "Base"}}],
-        )
-    with pytest.raises(ValueError, match=r"api\.bill_of_materials.*is duplicated"):
-        api.bill_of_materials(
-            mechanism,
-            columns=["name", {"heading": "Description"}],
-            row_overrides=[
-                {"occurrence_path": "First", "values": {"Description": "Base"}},
-                {"occurrence_path": "First", "values": {"Description": "Fixed"}},
-            ],
-        )
-    with pytest.raises(ValueError, match=r"api\.bill_of_materials.*assembly"):
-        api.bill_of_materials(first)
-
-
-def test_assembly_bom_planner_keeps_model_paths_exact_and_actionable() -> None:
-    from CadexAssemblyBOM import AssemblyBOMError, plan_assembly_bom
-
-    root_identity = {"document_uid": "source-document", "object_name": "Module"}
-    gear_identity = {"document_uid": "source-document", "object_name": "Gear"}
-    hierarchy = {
-        "schema": "cadex-assembly-source-hierarchy-v1",
-        "root_node_id": "node-module",
-        "nodes": [
-            {
-                "node_id": "node-module",
-                "identity": root_identity,
-                "kind": "assembly",
-                "label": "Drive Module",
-                "document_file_name": "drive-module.FCStd",
-                "bom_properties": [
-                    {
-                        "name": "PartNumber",
-                        "property_type": "App::PropertyString",
-                        "kind": "string",
-                        "value": "MOD-001",
-                    }
-                ],
-                "occurrences": [
-                    {
-                        "name": "GearLeft",
-                        "source_node_id": "node-gear",
-                        "scale": 1.0,
-                    },
-                    {
-                        "name": "GearRight",
-                        "source_node_id": "node-gear",
-                        "scale": 1.0,
-                    },
-                ],
-            },
-            {
-                "node_id": "node-gear",
-                "identity": gear_identity,
-                "kind": "shape",
-                "label": "Gear",
-                "document_file_name": "gear.FCStd",
-                "bom_properties": [
-                    {
-                        "name": "PartNumber",
-                        "property_type": "App::PropertyString",
-                        "kind": "string",
-                        "value": "GEAR-020",
-                    }
-                ],
-                "occurrences": [],
-            },
-        ],
-    }
-    component_sources = [
-        {
-            "output_name": "Module",
-            "reference": {
-                **root_identity,
-                "assembly_hierarchy": hierarchy,
-            },
-        }
-    ]
-    columns = [
-        {
-            "kind": "builtin",
-            "key": "index",
-            "heading": "Index",
-            "native_name": "Index",
-        },
-        {
-            "kind": "builtin",
-            "key": "name",
-            "heading": "Name",
-            "native_name": "Name",
-        },
-        {
-            "kind": "builtin",
-            "key": "quantity",
-            "heading": "Quantity",
-            "native_name": "Quantity",
-        },
-        {
-            "kind": "property",
-            "property": "PartNumber",
-            "heading": "Part Number",
-            "native_name": ".PartNumber",
-        },
-        {
-            "kind": "custom",
-            "heading": "Description",
-            "native_name": "Description",
-        },
-    ]
-    contract = plan_assembly_bom(
-        component_sources,
-        columns=columns,
-        detail_subassemblies=True,
-        detail_parts=True,
-        only_parts=False,
-        row_overrides=[
-            {
-                "occurrence_path": "Module/GearLeft",
-                "values": {"Description": "Matched gear"},
-            }
-        ],
-    )
-    assert contract["row_count"] == 2
-    assert contract["used_range"] == ["A1", "E3"]
-    assert contract["rows"][0]["occurrence_paths"] == ["Module"]
-    assert contract["rows"][1]["occurrence_paths"] == [
-        "Module/GearLeft",
-        "Module/GearRight",
-    ]
-    assert contract["rows"][1]["cells"] == {
-        "Index": "1.1",
-        "Name": "Gear",
-        "Quantity": "2",
-        "Part Number": "GEAR-020",
-        "Description": "Matched gear",
-    }
-    assert len(contract["table_sha256"]) == 64
-    assert contract == plan_assembly_bom(
-        component_sources,
-        columns=columns,
-        detail_subassemblies=True,
-        detail_parts=True,
-        only_parts=False,
-        row_overrides=[
-            {
-                "occurrence_path": "Module/GearLeft",
-                "values": {"Description": "Matched gear"},
-            }
-        ],
-    )
-
-    with pytest.raises(AssemblyBOMError) as conflict:
-        plan_assembly_bom(
-            component_sources,
-            columns=columns,
-            detail_subassemblies=True,
-            detail_parts=True,
-            only_parts=False,
-            row_overrides=[
-                {
-                    "occurrence_path": "Module/GearLeft",
-                    "values": {"Description": "Left gear"},
-                },
-                {
-                    "occurrence_path": "Module/GearRight",
-                    "values": {"Description": "Right gear"},
-                },
-            ],
-        )
-    assert conflict.value.details["stage"] == "bom_row_overrides"
-    assert conflict.value.details["heading"] == "Description"
-    assert conflict.value.details["conflicting_occurrence_paths"] == [
-        "Module/GearLeft",
-        "Module/GearRight",
-    ]
-    assert "omit 'quantity'" in conflict.value.details["correction"]
-
-    with pytest.raises(AssemblyBOMError) as unknown:
-        plan_assembly_bom(
-            component_sources,
-            columns=columns,
-            detail_subassemblies=True,
-            detail_parts=True,
-            only_parts=False,
-            row_overrides=[
-                {
-                    "occurrence_path": "Module/GearCenter",
-                    "values": {"Description": "Center gear"},
-                }
-            ],
-        )
-    assert unknown.value.details["requested_path"] == "Module/GearCenter"
-    assert unknown.value.details["available_occurrence_paths"] == [
-        "Module",
-        "Module/GearLeft",
-        "Module/GearRight",
-    ]
-    assert unknown.value.details["settings"] == {
-        "detail_subassemblies": True,
-        "detail_parts": True,
-        "only_parts": False,
-    }
-
-    separate_columns = [column for column in columns if column.get("key") != "quantity"]
-    separate = plan_assembly_bom(
-        component_sources,
-        columns=separate_columns,
-        detail_subassemblies=True,
-        detail_parts=True,
-        only_parts=False,
-        row_overrides=[
-            {
-                "occurrence_path": "Module/GearLeft",
-                "values": {"Description": "Left gear"},
-            },
-            {
-                "occurrence_path": "Module/GearRight",
-                "values": {"Description": "Right gear"},
-            },
-        ],
-    )
-    assert [row["occurrence_paths"] for row in separate["rows"]] == [
-        ["Module"],
-        ["Module/GearLeft"],
-        ["Module/GearRight"],
-    ]
-    assert [row["cells"]["Description"] for row in separate["rows"][1:]] == [
-        "Left gear",
-        "Right gear",
-    ]
-
-    only_containers = plan_assembly_bom(
-        component_sources,
-        columns=columns,
-        detail_subassemblies=True,
-        detail_parts=True,
-        only_parts=True,
-        row_overrides=[],
-    )
-    assert [row["occurrence_paths"] for row in only_containers["rows"]] == [["Module"]]
-
-    with pytest.raises(AssemblyBOMError) as unavailable_hierarchy:
-        plan_assembly_bom(
-            [
-                {
-                    "output_name": "Module",
-                    "reference": {
-                        **root_identity,
-                        "source_kind": "assembly",
-                        "label": "Drive Module",
-                        "document_file_name": "drive-module.FCStd",
-                        "bom_properties": [],
-                    },
-                }
-            ],
-            columns=columns,
-            detail_subassemblies=True,
-            detail_parts=True,
-            only_parts=False,
-            row_overrides=[],
-        )
-    assert unavailable_hierarchy.value.details["stage"] == "bom_source_hierarchy"
-    assert unavailable_hierarchy.value.details["occurrence_path"] == "Module"
-    assert (
-        "detail_subassemblies=False"
-        in unavailable_hierarchy.value.details["correction"]
-    )
-
-    with pytest.raises(AssemblyBOMError) as oversized:
-        plan_assembly_bom(
-            [
-                {
-                    "output_name": f"Component{index:03d}",
-                    "reference": {
-                        "document_uid": "source-document",
-                        "object_name": f"Source{index:03d}",
-                        "source_kind": "shape",
-                        "label": "X" * 4096,
-                        "document_file_name": "large-module.FCStd",
-                        "bom_properties": [],
-                    },
-                }
-                for index in range(100)
-            ],
-            columns=[columns[1]],
-            detail_subassemblies=False,
-            detail_parts=False,
-            only_parts=False,
-            row_overrides=[],
-        )
-    assert oversized.value.details["stage"] == "bom_budget"
-    assert (
-        oversized.value.details["observed_contract_bytes"]
-        > (oversized.value.details["maximum_contract_bytes"])
-    )
-    assert "split the design" in oversized.value.details["correction"]
 
 
 def test_assembly_occurrence_global_placement_failure_is_never_silently_local() -> None:
@@ -1877,7 +1480,6 @@ def test_part_reference_capture_only_detaches_live_shapes() -> None:
         (
             "assembly",
             {
-                "CadexAssemblyBOM.py",
                 "cadex_assembly_api.py",
                 "cadex_assembly_worker.py",
                 "cadex_part_worker.py",

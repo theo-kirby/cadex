@@ -64,7 +64,7 @@ class AssemblyWorkbench(Workbench):
         import AssemblyGui
         from PySide import QtCore, QtGui
         from PySide.QtCore import QT_TRANSLATE_NOOP
-        import CommandCreateAssembly, CommandInsertLink, CommandInsertNewPart, CommandCreateJoint, CommandSolveAssembly, CommandExportASMT, CommandCreateView, CommandCreateSimulation, CommandCreateBom
+        import CommandCreateAssembly, CommandInsertLink, CommandInsertNewPart, CommandCreateJoint, CommandSolveAssembly, CommandExportASMT, CommandCreateView, CommandCreateSimulation
         import Preferences
 
         FreeCADGui.addLanguagePath(":/translations")
@@ -81,7 +81,6 @@ class AssemblyWorkbench(Workbench):
             "Assembly_SolveAssembly",
             "Assembly_CreateView",
             "Assembly_CreateSimulation",
-            "Assembly_CreateBom",
         ]
 
         cmdListMenuOnly = [
@@ -227,7 +226,7 @@ class AssemblyWorkbench(Workbench):
                 )
 
         class AssemblyJointsWatcher(AssemblyBaseWatcher):
-            """Shows Joint, View, and BOM tools when there are enough parts."""
+            """Shows joint tools when there are enough parts."""
 
             def __init__(self):
                 super().__init__()
@@ -251,13 +250,12 @@ class AssemblyWorkbench(Workbench):
                 return UtilsAssembly.assembly_has_at_least_n_parts(2)
 
         class AssemblyToolsWatcher(AssemblyBaseWatcher):
-            """Shows Joint, View, and BOM tools when there are enough parts."""
+            """Shows view tools when there are enough parts."""
 
             def __init__(self):
                 super().__init__()
                 self.commands = [
                     "Assembly_CreateView",
-                    "Assembly_CreateBom",
                 ]
                 self.title = translate("Assembly", "Tools")
 

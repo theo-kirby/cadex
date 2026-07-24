@@ -69,7 +69,6 @@ _IGNORED_PROPERTY_NAMES = frozenset(
 )
 _IGNORED_CONTAINER_TYPES = frozenset(
     {
-        "Assembly::BomGroup",
         "Assembly::JointGroup",
         "Assembly::SimulationGroup",
         "Assembly::ViewGroup",

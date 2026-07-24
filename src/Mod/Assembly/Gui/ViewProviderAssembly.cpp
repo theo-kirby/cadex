@@ -73,7 +73,6 @@
 #include <Mod/Assembly/App/AssemblyUtils.h>
 #include <Mod/Assembly/App/JointGroup.h>
 #include <Mod/Assembly/App/ViewGroup.h>
-#include <Mod/Assembly/App/BomGroup.h>
 #include <Mod/PartDesign/App/Body.h>
 
 #include "TaskAssemblyMessages.h"
@@ -1272,8 +1271,7 @@ bool ViewProviderAssembly::onDelete(const std::vector<std::string>& subNames)
 {
     // Delete the assembly groups when assembly is deleted
     for (auto obj : getObject()->getOutList()) {
-        if (obj->is<Assembly::JointGroup>() || obj->is<Assembly::ViewGroup>()
-            || obj->is<Assembly::BomGroup>()) {
+        if (obj->is<Assembly::JointGroup>() || obj->is<Assembly::ViewGroup>()) {
 
             // Delete the group content first.
             Gui::Command::doCommand(

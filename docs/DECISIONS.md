@@ -126,3 +126,24 @@ after the cadex grid is reimplemented without Draft and the assembly BOM
 feature is dropped (see ADR-008/ADR-009). `pixi run configure` on an
 existing build dir needs the removed `BUILD_*` cache entries purged
 (`cmake -U`) or a fresh build directory.
+
+## ADR-008 — Assembly bill of materials dropped (2026-07-24)
+
+**Decision.** The assembly BOM feature is removed end to end:
+`api.bill_of_materials` and the `bom` output type from the cadex assembly
+domain (API, worker, runtime validation, publication, prompt text, tests,
+`CadexAssemblyBOM.py`), and the native substrate from the Assembly module
+(`Assembly::BomObject`/`BomGroup` + Python bindings, `ViewProviderBom*`,
+`CommandCreateBom.py`, task panel, icons, `Assembly_CreateBom`
+registration). Assembly no longer links or imports Spreadsheet;
+`REQUIRES_MODS(BUILD_ASSEMBLY …)` drops `BUILD_SPREADSHEET`.
+
+**Rationale.** `Assembly::BomObject` inherits `Spreadsheet::Sheet` — the
+BOM was the only thing keeping the Spreadsheet tree alive. Owner chose
+dropping the feature over keeping Spreadsheet as substrate (v0.0.1
+planning, 2026-07-24). v0.0.1 assemblies are geometry + joints; a parts
+table can return later on a cadex-owned substrate if wanted.
+
+**Consequences.** Spreadsheet becomes removable (batch B). The assembly
+source-hierarchy snapshot keeps its `bom_properties` field name — it feeds
+the reference-contract hash; renaming it is a schema bump left for later.

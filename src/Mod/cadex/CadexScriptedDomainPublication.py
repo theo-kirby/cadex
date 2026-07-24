@@ -38,9 +38,6 @@ PROP_ROBOT_VALIDATION = "CadexRobotValidation"
 PROP_FEM_VALIDATION = "CadexFEMValidation"
 PROP_CAM_VALIDATION = "CadexCAMValidation"
 PROP_TECHDRAW_VALIDATION = "CadexTechDrawValidation"
-PROP_ASSEMBLY_BOM_VALIDATION = "CadexAssemblyBOMValidation"
-PROP_ASSEMBLY_BOM_RESTORE_TARGET = "CadexAssemblyBOMRestoreTarget"
-PROP_ASSEMBLY_BOM_RESTORE_ERROR = "CadexAssemblyBOMRestoreError"
 MATERIAL_OWNERSHIP_SCHEMA = "cadex-material-ownership-v1"
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9_]")
 _ASSEMBLY_DEPENDENCY_SUFFIX = "__dependencies"
@@ -80,7 +77,6 @@ _NATIVE_TYPE_BY_OUTPUT: dict[str, str] = {
     "joint": "App::FeaturePython",
     "motion": "App::FeaturePython",
     "exploded_view": "App::FeaturePython",
-    "bom": "Assembly::BomObject",
     "solver_diagnostics": "App::FeaturePython",
     "material_assignment": "App::FeaturePython",
     "appearance": "App::FeaturePython",
@@ -574,85 +570,6 @@ class AssemblySimulationProxy:
         return None
 
 
-def _ensure_assembly_bom_restore_properties(obj: Any) -> None:
-    _add_property(
-        obj,
-        "App::PropertyLink",
-        PROP_ASSEMBLY_BOM_RESTORE_TARGET,
-        "The accepted frozen Assembly BOM restored without native regeneration.",
-    )
-    _add_string_property(
-        obj,
-        PROP_ASSEMBLY_BOM_RESTORE_ERROR,
-        "A precise failure if the accepted BOM table could not be restored.",
-    )
-
-
-class AssemblyBOMRestoreProxy:
-    """Restore an accepted literal BOM after native document-load generation.
-
-    ``Assembly::BomObject`` rebuilds its native table while an FCStd document is
-    loaded, before the persisted frozen state is effective.  This managed proxy
-    runs after document restoration, replays only the already-authenticated
-    literal cells, and freezes the BOM again.  It never traverses sources,
-    recomputes, or invokes native BOM generation.
-    """
-
-    def __init__(self, obj: Any | None = None) -> None:
-        if obj is not None:
-            obj.Proxy = self
-            _ensure_assembly_bom_restore_properties(obj)
-
-    def onDocumentRestored(self, obj: Any) -> None:  # noqa: N802
-        _ensure_assembly_bom_restore_properties(obj)
-        try:
-            target = getattr(obj, PROP_ASSEMBLY_BOM_RESTORE_TARGET, None)
-            if target is None or str(getattr(target, "TypeId", "") or "") != (
-                "Assembly::BomObject"
-            ):
-                raise RuntimeError("The managed Assembly BOM target is unavailable.")
-            if str(getattr(target, contracts.PROP_PROGRAM_ID, "") or "") != str(
-                getattr(obj, contracts.PROP_PROGRAM_ID, "") or ""
-            ):
-                raise RuntimeError("The managed Assembly BOM target belongs to another program.")
-            encoded = str(getattr(target, PROP_ASSEMBLY_BOM_VALIDATION, "") or "")
-            if not encoded or len(encoded.encode("utf-8")) > 1_000_000:
-                raise RuntimeError(
-                    "The accepted Assembly BOM validation is missing or exceeds 1 MB."
-                )
-            data = json.loads(encoded)
-            if not isinstance(data, dict) or str(data.get("schema") or "") != (
-                "cadex-assembly-bom-v1"
-            ):
-                raise RuntimeError("The accepted Assembly BOM validation schema is invalid.")
-            _unfreeze_object(target, "Assembly BOM")
-            _populate_assembly_bom_without_recomputing(target, data)
-            if _assembly_bom_live_readback(
-                target, data
-            ) != _assembly_bom_expected_readback(data):
-                raise RuntimeError(
-                    "The accepted Assembly BOM literal table did not restore exactly."
-                )
-            _freeze_object(target, "Assembly BOM")
-            setattr(obj, PROP_ASSEMBLY_BOM_RESTORE_ERROR, "")
-        except Exception as exc:
-            setattr(
-                obj,
-                PROP_ASSEMBLY_BOM_RESTORE_ERROR,
-                f"{type(exc).__name__}: {exc}",
-            )
-            raise
-
-    def execute(self, _obj: Any) -> None:
-        return None
-
-    def dumps(self) -> None:
-        return None
-
-    def loads(self, _state: Any) -> None:
-        return None
-
-
 def _object_is_frozen(obj: Any, contract: str) -> bool:
     checker = getattr(obj, "isFrozen", None)
     if not callable(checker):
@@ -935,11 +852,6 @@ def mark_programs_stale_from_source(source: Any, property_name: str) -> list[str
                 and str(getattr(output, "TypeId", "") or "")
                 == "Inspection::Feature"
             )
-            assembly_bom = (
-                domain == "assembly"
-                and str(getattr(output, "TypeId", "") or "")
-                == "Assembly::BomObject"
-            )
             already_stale = (
                 str(getattr(output, reference_contracts.PROP_DERIVED_STATE, "") or "")
                 == "stale"
@@ -947,8 +859,6 @@ def mark_programs_stale_from_source(source: Any, property_name: str) -> list[str
             if not already_stale:
                 if inspection_feature:
                     _unfreeze_inspection_feature(output)
-                elif assembly_bom:
-                    _unfreeze_object(output, "Assembly BOM")
                 revision = str(
                     getattr(output, contracts.PROP_PROGRAM_REVISION, "") or ""
                 )
@@ -963,12 +873,8 @@ def mark_programs_stale_from_source(source: Any, property_name: str) -> list[str
                 finally:
                     if inspection_feature:
                         _freeze_inspection_feature(output)
-                    elif assembly_bom:
-                        _freeze_object(output, "Assembly BOM")
             elif inspection_feature and not _inspection_feature_is_frozen(output):
                 _freeze_inspection_feature(output)
-            elif assembly_bom and not _object_is_frozen(output, "Assembly BOM"):
-                _freeze_object(output, "Assembly BOM")
             if not already_stale:
                 marked.append(str(getattr(output, "Name", "") or ""))
     return sorted(set(marked))
@@ -1022,9 +928,6 @@ def _retired_program_objects(
             view_group = _assembly_view_group(obj)
             if view_group is not None:
                 internal.append(view_group)
-            bom_group = _assembly_bom_group(obj)
-            if bom_group is not None:
-                internal.append(bom_group)
     retired = []
     for obj in owned:
         output_name = str(getattr(obj, contracts.PROP_PROGRAM_OUTPUT, "") or "")
@@ -1461,15 +1364,6 @@ def _create_object(
         if view_group is None:
             view_group = assembly.newObject("Assembly::ViewGroup", "Exploded Views")
         obj = view_group.newObject(native_type, name)
-    elif (
-        prepared["pack"].domain == "assembly"
-        and output_type == "bom"
-        and assembly is not None
-    ):
-        bom_group = _assembly_bom_group(assembly)
-        if bom_group is None:
-            bom_group = assembly.newObject("Assembly::BomGroup", "Bills of Materials")
-        obj = bom_group.newObject(native_type, name)
     else:
         obj = doc.addObject(native_type, name)
     if obj is None:
@@ -1614,16 +1508,6 @@ def _assembly_view_group(assembly: Any) -> Any | None:
             return child
     for child in list(getattr(assembly, "OutList", []) or []):
         if str(getattr(child, "TypeId", "")) == "Assembly::ViewGroup":
-            return child
-    return None
-
-
-def _assembly_bom_group(assembly: Any) -> Any | None:
-    for child in list(getattr(assembly, "Group", []) or []):
-        if str(getattr(child, "TypeId", "")) == "Assembly::BomGroup":
-            return child
-    for child in list(getattr(assembly, "OutList", []) or []):
-        if str(getattr(child, "TypeId", "")) == "Assembly::BomGroup":
             return child
     return None
 
@@ -2499,299 +2383,6 @@ def _configure_assembly_exploded_view(
         separators=(",", ":"),
         allow_nan=False,
     )
-
-
-def _assembly_bom_column(number: int) -> str:
-    result = ""
-    value = number
-    while value:
-        value, remainder = divmod(value - 1, 26)
-        result = chr(ord("A") + remainder) + result
-    return result
-
-
-def _assembly_bom_content(obj: Any, address: str) -> str:
-    try:
-        value = str(obj.getContents(address) or "")
-    except ValueError:
-        return ""
-    return value[1:] if value.startswith("'") else value
-
-
-def _assembly_bom_live_readback(
-    obj: Any, data: Mapping[str, Any]
-) -> dict[str, Any]:
-    columns = list(data.get("columns") or [])
-    rows = list(data.get("rows") or [])
-    settings = dict(data.get("settings") or {})
-    native_names = [str(column.get("native_name") or "") for column in columns]
-    raw_range = obj.getUsedRange()
-    used_range = (
-        [str(value) for value in raw_range]
-        if isinstance(raw_range, tuple) and len(raw_range) == 2
-        else []
-    )
-    return {
-        "type_id": str(getattr(obj, "TypeId", "") or ""),
-        "auto_generate": bool(getattr(obj, "autoGenerate", True)),
-        "columns_names": list(getattr(obj, "columnsNames", []) or []),
-        "settings": {
-            "detail_subassemblies": bool(
-                getattr(obj, "detailSubAssemblies", False)
-            ),
-            "detail_parts": bool(getattr(obj, "detailParts", False)),
-            "only_parts": bool(getattr(obj, "onlyParts", False)),
-        },
-        "used_range": used_range,
-        "headers": [
-            _assembly_bom_content(obj, f"{_assembly_bom_column(index + 1)}1")
-            for index in range(len(columns))
-        ],
-        "rows": [
-            {
-                str(column["heading"]): _assembly_bom_content(
-                    obj,
-                    f"{_assembly_bom_column(column_index + 1)}{row_index + 2}",
-                )
-                for column_index, column in enumerate(columns)
-            }
-            for row_index, _row in enumerate(rows)
-        ],
-        "expected_native_names": native_names,
-        "expected_settings": settings,
-    }
-
-
-def _assembly_bom_expected_readback(data: Mapping[str, Any]) -> dict[str, Any]:
-    columns = list(data.get("columns") or [])
-    return {
-        "type_id": "Assembly::BomObject",
-        "auto_generate": False,
-        "columns_names": [str(column["native_name"]) for column in columns],
-        "settings": dict(data.get("settings") or {}),
-        "used_range": list(data.get("used_range") or []),
-        "headers": [str(column["heading"]) for column in columns],
-        "rows": [dict(row["cells"]) for row in list(data.get("rows") or [])],
-        "expected_native_names": [
-            str(column["native_name"]) for column in columns
-        ],
-        "expected_settings": dict(data.get("settings") or {}),
-    }
-
-
-def _populate_assembly_bom_without_recomputing(
-    obj: Any, data: Mapping[str, Any]
-) -> None:
-    """Replay only authenticated cells/properties; never execute native generation."""
-
-    columns = list(data.get("columns") or [])
-    rows = list(data.get("rows") or [])
-    settings = dict(data.get("settings") or {})
-    if (
-        str(data.get("schema") or "") != "cadex-assembly-bom-v1"
-        or not columns
-        or int(data.get("row_count", -1)) != len(rows)
-        or set(settings)
-        != {"detail_subassemblies", "detail_parts", "only_parts"}
-    ):
-        raise RuntimeError("The authenticated Assembly BOM publication data is malformed.")
-    if "autoGenerate" not in _properties(obj):
-        raise RuntimeError(
-            "This FreeCAD build cannot disable synchronous native Assembly BOM "
-            "generation; rebuild the Assembly module before publication."
-        )
-    obj.autoGenerate = False
-    obj.clearAll()
-    obj.columnsNames = [str(column["native_name"]) for column in columns]
-    obj.detailSubAssemblies = bool(settings["detail_subassemblies"])
-    obj.detailParts = bool(settings["detail_parts"])
-    obj.onlyParts = bool(settings["only_parts"])
-
-    def set_literal(address: str, value: Any) -> None:
-        text = str(value)
-        if text:
-            obj.set(address, f"'{text}")
-
-    for column_index, column in enumerate(columns, start=1):
-        set_literal(
-            f"{_assembly_bom_column(column_index)}1", str(column["heading"])
-        )
-    for row_index, row in enumerate(rows, start=2):
-        cells = row.get("cells")
-        if not isinstance(cells, Mapping):
-            raise RuntimeError(
-                f"Authenticated Assembly BOM row {row_index - 1} has no cells."
-            )
-        for column_index, column in enumerate(columns, start=1):
-            heading = str(column["heading"])
-            if heading not in cells:
-                raise RuntimeError(
-                    f"Authenticated Assembly BOM row {row_index - 1} omits "
-                    f"column {heading!r}."
-                )
-            set_literal(
-                f"{_assembly_bom_column(column_index)}{row_index}", cells[heading]
-            )
-
-
-def _configure_assembly_bom(
-    obj: Any,
-    item: Mapping[str, Any],
-    outputs: Mapping[str, Any],
-    prepared: Mapping[str, Any],
-) -> None:
-    data = item.get("assembly_data")
-    if not isinstance(data, Mapping):
-        raise RuntimeError("An Assembly BOM has no authenticated native data.")
-    data = dict(data)
-    if str(getattr(obj, "TypeId", "") or "") != "Assembly::BomObject":
-        raise RuntimeError("A stable Assembly BOM output changed native type.")
-    assembly_name = str(data.get("assembly_output") or "")
-    assembly = outputs.get(assembly_name)
-    if assembly is None or str(getattr(assembly, "TypeId", "") or "") != (
-        "Assembly::AssemblyObject"
-    ):
-        raise RuntimeError(
-            f"Assembly BOM {item['name']!r} assembly {assembly_name!r} is unavailable."
-        )
-    group = _assembly_bom_group(assembly)
-    if group is None or obj not in list(getattr(group, "Group", []) or []):
-        raise RuntimeError(
-            f"Assembly BOM {item['name']!r} is not owned by the live native BOM group."
-        )
-    _populate_assembly_bom_without_recomputing(obj, data)
-    readback = _assembly_bom_live_readback(obj, data)
-    expected = _assembly_bom_expected_readback(data)
-    if readback != expected:
-        raise RuntimeError(
-            f"Live Assembly BOM {item['name']!r} disagrees with the authenticated "
-            "precomputed table; publication was aborted without native generation."
-        )
-    _add_string_property(
-        obj,
-        PROP_ASSEMBLY_BOM_VALIDATION,
-        "Authenticated precomputed native Assembly BOM table and worker readback.",
-    )
-    setattr(
-        obj,
-        PROP_ASSEMBLY_BOM_VALIDATION,
-        json.dumps(
-            data,
-            ensure_ascii=True,
-            sort_keys=True,
-            separators=(",", ":"),
-            allow_nan=False,
-        ),
-    )
-    guard_output = f"{item['name']}.__bom_restore"
-    guard = next(
-        (
-            child
-            for child in list(getattr(group, "Group", []) or [])
-            if str(getattr(child, contracts.PROP_PROGRAM_OUTPUT, "") or "")
-            == guard_output
-        ),
-        None,
-    )
-    if guard is None:
-        guard = group.newObject(
-            "App::FeaturePython",
-            _SAFE_NAME.sub("_", f"Restore_{item['name']}"),
-        )
-    if guard is None or str(getattr(guard, "TypeId", "") or "") != (
-        "App::FeaturePython"
-    ):
-        raise RuntimeError(
-            f"Assembly BOM {item['name']!r} could not create its managed restore guard."
-        )
-    AssemblyBOMRestoreProxy(guard)
-    setattr(guard, PROP_ASSEMBLY_BOM_RESTORE_TARGET, obj)
-    setattr(guard, PROP_ASSEMBLY_BOM_RESTORE_ERROR, "")
-    guard.Label = f"{item['name']} accepted table restore"
-    _set_metadata(
-        guard,
-        prepared,
-        guard_output,
-        "bom_restore_guard",
-        {
-            "operation": "restore_accepted_bom",
-            "bom_output": str(item["name"]),
-            "table_sha256": str(data.get("table_sha256") or ""),
-        },
-    )
-
-
-def _assembly_bom_rollback_states(objects: list[Any]) -> list[dict[str, Any]]:
-    """Authenticate accepted frozen BOM tables before any live mutation."""
-
-    states: list[dict[str, Any]] = []
-    for obj in objects:
-        if str(getattr(obj, "TypeId", "") or "") != "Assembly::BomObject":
-            continue
-        name = str(getattr(obj, "Name", "") or "")
-        if not _object_is_frozen(obj, "Assembly BOM"):
-            raise RuntimeError(
-                f"Cannot regenerate Assembly BOM {name!r}: its accepted native object "
-                "is not frozen. Restore the accepted program revision before retrying."
-            )
-        try:
-            data = json.loads(
-                str(getattr(obj, PROP_ASSEMBLY_BOM_VALIDATION, "") or "")
-            )
-        except (TypeError, ValueError, json.JSONDecodeError) as exc:
-            raise RuntimeError(
-                f"Cannot regenerate Assembly BOM {name!r}: its accepted validation "
-                f"contract is missing or malformed ({exc})."
-            ) from exc
-        if not isinstance(data, dict) or str(data.get("schema") or "") != (
-            "cadex-assembly-bom-v1"
-        ):
-            raise RuntimeError(
-                f"Cannot regenerate Assembly BOM {name!r}: its accepted validation "
-                "schema is unavailable."
-            )
-        if _assembly_bom_live_readback(obj, data) != _assembly_bom_expected_readback(
-            data
-        ):
-            raise RuntimeError(
-                f"Cannot regenerate Assembly BOM {name!r}: its cells, columns, or "
-                "detail settings changed outside the accepted XScript revision. "
-                "Restore or explicitly accept the manual edits before regeneration."
-            )
-        states.append(
-            {
-                "object": obj,
-                "data": data,
-                "label": str(getattr(obj, "Label", "") or ""),
-            }
-        )
-    return states
-
-
-def _restore_assembly_bom_rollback_states(states: list[dict[str, Any]]) -> None:
-    for state in states:
-        obj = state["object"]
-        _unfreeze_object(obj, "Assembly BOM")
-        _populate_assembly_bom_without_recomputing(obj, state["data"])
-        obj.Label = str(state["label"])
-        setattr(
-            obj,
-            PROP_ASSEMBLY_BOM_VALIDATION,
-            json.dumps(
-                state["data"],
-                ensure_ascii=True,
-                sort_keys=True,
-                separators=(",", ":"),
-                allow_nan=False,
-            ),
-        )
-        if _assembly_bom_live_readback(
-            obj, state["data"]
-        ) != _assembly_bom_expected_readback(state["data"]):
-            raise RuntimeError(
-                f"Assembly BOM rollback failed for {getattr(obj, 'Name', '')!r}."
-            )
-        _freeze_object(obj, "Assembly BOM")
 
 
 def _configure_sheet(obj: Any, item: Mapping[str, Any]) -> None:
@@ -7890,8 +7481,6 @@ def _configure_object(
         _configure_assembly_simulation(obj, item, outputs)
     elif prepared["pack"].domain == "assembly" and output_type == "exploded_view":
         _configure_assembly_exploded_view(doc, obj, item, outputs, prepared)
-    elif prepared["pack"].domain == "assembly" and output_type == "bom":
-        _configure_assembly_bom(obj, item, outputs, prepared)
     elif output_type == "sheet":
         _configure_sheet(obj, item)
     elif output_type == "solver_diagnostics":
@@ -10116,30 +9705,6 @@ def _assembly_model_evidence(item: Mapping[str, Any]) -> dict[str, Any] | None:
     if not isinstance(data, Mapping):
         return None
     output_type = str(item.get("type") or "")
-    if output_type == "bom":
-        rows = [dict(row) for row in list(data.get("rows") or [])]
-        preview = rows[:128]
-        all_paths = [
-            str(path)
-            for row in rows
-            for path in list(row.get("occurrence_paths") or [])
-        ]
-        return {
-            "schema": str(data.get("schema") or ""),
-            "assembly_output": str(data.get("assembly_output") or ""),
-            "columns": [dict(column) for column in list(data.get("columns") or [])],
-            "settings": dict(data.get("settings") or {}),
-            "row_count": int(data.get("row_count", 0)),
-            "occurrence_path_count": int(data.get("occurrence_path_count", 0)),
-            "table_sha256": str(data.get("table_sha256") or ""),
-            "used_range": list(data.get("used_range") or []),
-            "rows": preview,
-            "rows_truncated": len(rows) > len(preview),
-            "rows_omitted": max(0, len(rows) - len(preview)),
-            "available_row_override_paths": all_paths[:256],
-            "override_paths_truncated": len(all_paths) > 256,
-            "override_paths_omitted": max(0, len(all_paths) - 256),
-        }
     if output_type == "component_link":
         raw_states = list(data.get("solved_occurrences") or [])
         states = [
@@ -10630,7 +10195,6 @@ def publish_candidate(
                 _assembly_joint_group(candidate),
                 _assembly_simulation_group(candidate),
                 _assembly_view_group(candidate),
-                _assembly_bom_group(candidate),
             ):
                 if group is not None and group not in internal_objects:
                     internal_objects.append(group)
@@ -10666,11 +10230,6 @@ def publish_candidate(
     spreadsheet_rollbacks = (
         _spreadsheet_rollback_states(updated_objects)
         if prepared["pack"].domain == "spreadsheet"
-        else []
-    )
-    assembly_bom_rollbacks = (
-        _assembly_bom_rollback_states(updated_objects)
-        if prepared["pack"].domain == "assembly"
         else []
     )
     bim_rollbacks = (
@@ -10835,8 +10394,7 @@ def publish_candidate(
                 "motion": 3,
                 "simulation": 4,
                 "exploded_view": 5,
-                "bom": 6,
-                "solver_diagnostics": 7,
+                "solver_diagnostics": 6,
             }
             configure_order.sort(key=lambda item: priority.get(str(item["type"]), 7))
         elif prepared["pack"].domain == "draft":
@@ -10901,12 +10459,6 @@ def publish_candidate(
             )
             if robot_dressup:
                 _unfreeze_robot_dressup(obj)
-            assembly_bom = (
-                prepared["pack"].domain == "assembly"
-                and str(getattr(obj, "TypeId", "")) == "Assembly::BomObject"
-            )
-            if assembly_bom:
-                _unfreeze_object(obj, "Assembly BOM")
             obj.Label = _label(item, output_name)
             if prepared["pack"].domain == "bim":
                 _configure_bim(obj, item, outputs, bim_bases, bim_graph)
@@ -10930,8 +10482,6 @@ def publish_candidate(
                 _freeze_inspection_feature(obj)
             if robot_dressup:
                 _freeze_robot_dressup(obj)
-            if assembly_bom:
-                _freeze_object(obj, "Assembly BOM")
         if assembly_dependency_anchor is not None and assembly_item is not None:
             assembly_output = str(assembly_item["name"])
             assembly_dependency_anchor.Label = "XScript Assembly dependencies"
@@ -10964,14 +10514,6 @@ def publish_candidate(
                 doc.abortTransaction()
             except Exception:
                 pass
-        if assembly_bom_rollbacks:
-            try:
-                _restore_assembly_bom_rollback_states(assembly_bom_rollbacks)
-            except Exception as rollback_error:
-                raise RuntimeError(
-                    f"{publication_error} Explicit Assembly BOM rollback failure: "
-                    f"{rollback_error}"
-                ) from publication_error
         if spreadsheet_rollbacks:
             try:
                 _restore_spreadsheet_rollback_states(spreadsheet_rollbacks)
@@ -11553,9 +11095,6 @@ def delete_live_program(service: Any, prepared: Mapping[str, Any]) -> dict[str, 
             view_group = _assembly_view_group(obj)
             if view_group is not None:
                 internal.append(view_group)
-            bom_group = _assembly_bom_group(obj)
-            if bom_group is not None:
-                internal.append(bom_group)
     external = _external_uses(doc, objects, internal)
     if external:
         raise _reference_error(

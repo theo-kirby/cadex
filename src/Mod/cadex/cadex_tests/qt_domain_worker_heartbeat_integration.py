@@ -155,7 +155,7 @@ def _reference_schema() -> dict:
 
 
 def _assembly_candidate(root: Path, index: int):
-    """Solve, simulate, and generate a native BOM entirely off-thread."""
+    """Solve and simulate a native assembly entirely off-thread."""
 
     import FreeCAD as App
     import Part
@@ -180,10 +180,8 @@ def _assembly_candidate(root: Path, index: int):
         "drive = x.motion(hinge, 'initialValue + pi*time', label='Drive')\n"
         "simulation = x.simulation(model, [drive], end_time_s=.5, "
         "time_step_s=.01, label='Heartbeat Simulation')\n"
-        "bill = x.bill_of_materials(model, columns=['name','quantity'], "
-        "label='Heartbeat BOM')\n"
         "result = {'Model':model,'Base':base,'Arm':arm,'Hinge':hinge,"
-        "'Drive':drive,'Simulation':simulation,'Bill':bill,"
+        "'Drive':drive,'Simulation':simulation,"
         "'Diagnostics':diagnostics}\n"
     )
     prepared = prepare_candidate(
@@ -210,7 +208,6 @@ def _assembly_candidate(root: Path, index: int):
                     {"name": "Hinge", "type": "joint"},
                     {"name": "Drive", "type": "motion"},
                     {"name": "Simulation", "type": "simulation"},
-                    {"name": "Bill", "type": "bom"},
                     {"name": "Diagnostics", "type": "solver_diagnostics"},
                 ],
             },

@@ -317,12 +317,10 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "motion",
             "simulation",
             "exploded_view",
-            "bom",
         ),
         "Define native assembly links, grounding, connector references, joints, "
         "solved placements, structured solver diagnostics, and worker-generated "
-        "kinematic simulations, exploded views, flexible source hierarchies, and "
-        "authenticated native bills of materials.",
+        "kinematic simulations, exploded views, and flexible source hierarchies.",
         (
             "assembly",
             "component",
@@ -332,7 +330,6 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "motion",
             "simulation",
             "exploded_view",
-            "bill_of_materials",
         ),
         production_ready=True,
     ),

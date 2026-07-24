@@ -28,7 +28,6 @@ _PUBLISHABLE_TYPES = frozenset(
         "motion",
         "simulation",
         "exploded_view",
-        "bom",
     }
 )
 _JOINT_TYPES = (
@@ -53,33 +52,6 @@ _MOTION_NAMES = frozenset({"time", "initialValue", "pi"})
 _OCCURRENCE_PATH = re.compile(
     r"^[A-Za-z_][A-Za-z0-9_]*(?:/[A-Za-z_][A-Za-z0-9_]*){0,15}$"
 )
-_BOM_PROPERTY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
-_BOM_BUILTINS = {
-    "index": {
-        "kind": "builtin",
-        "key": "index",
-        "heading": "Index",
-        "native_name": "Index",
-    },
-    "name": {
-        "kind": "builtin",
-        "key": "name",
-        "heading": "Name",
-        "native_name": "Name",
-    },
-    "quantity": {
-        "kind": "builtin",
-        "key": "quantity",
-        "heading": "Quantity",
-        "native_name": "Quantity",
-    },
-    "file_name": {
-        "kind": "builtin",
-        "key": "file_name",
-        "heading": "File Name",
-        "native_name": "File Name",
-    },
-}
 
 
 def _error(operation: str, parameter: str, message: str, value: Any = None) -> ValueError:
@@ -131,199 +103,6 @@ def _occurrence_path(operation: str, value: Any) -> str:
             "FreeCAD object-name segments",
             value,
         )
-    return result
-
-
-def _bom_heading(operation: str, parameter: str, value: Any) -> str:
-    result = str(value or "").strip()
-    if not result or len(result) > 80 or result.startswith("."):
-        raise _error(
-            operation,
-            parameter,
-            "must contain 1-80 characters and must not start with '.'",
-            value,
-        )
-    return result
-
-
-def _bom_columns(
-    value: Sequence[str | Mapping[str, str]],
-) -> tuple[list[dict[str, str]], set[str]]:
-    operation = "bill_of_materials"
-    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
-        raise _error(
-            operation,
-            "columns",
-            "expected a sequence of built-in names or column objects",
-            value,
-        )
-    if not 1 <= len(value) <= 32:
-        raise _error(operation, "columns", "must contain 1-32 columns", value)
-    columns: list[dict[str, str]] = []
-    custom_headings: set[str] = set()
-    seen_headings: set[str] = set()
-    seen_native_names: set[str] = set()
-    seen_builtins: set[str] = set()
-    for index, raw in enumerate(value):
-        parameter = f"columns[{index}]"
-        if isinstance(raw, str):
-            alias = raw.strip().lower().replace("-", "_").replace(" ", "_")
-            column = _BOM_BUILTINS.get(alias)
-            if column is None:
-                raise _error(
-                    operation,
-                    parameter,
-                    "string columns must be one of index, name, quantity, or file_name; "
-                    "use {'property':'PartNumber','heading':'Part Number'} for a native "
-                    "property or {'heading':'Description'} for custom row values",
-                    raw,
-                )
-            if alias in seen_builtins:
-                raise _error(operation, parameter, f"duplicates built-in column {alias!r}")
-            seen_builtins.add(alias)
-            clean = dict(column)
-        elif isinstance(raw, Mapping):
-            keys = set(raw)
-            if keys in ({"property"}, {"property", "heading"}):
-                property_name = str(raw.get("property") or "").strip()
-                if not _BOM_PROPERTY.fullmatch(property_name):
-                    raise _error(
-                        operation,
-                        f"{parameter}.property",
-                        "must be one exact FreeCAD scalar property name",
-                        raw.get("property"),
-                    )
-                heading = _bom_heading(
-                    operation,
-                    f"{parameter}.heading",
-                    raw.get("heading") or property_name,
-                )
-                clean = {
-                    "kind": "property",
-                    "property": property_name,
-                    "heading": heading,
-                    "native_name": f".{property_name}",
-                }
-            elif keys == {"heading"}:
-                heading = _bom_heading(
-                    operation,
-                    f"{parameter}.heading",
-                    raw.get("heading"),
-                )
-                clean = {
-                    "kind": "custom",
-                    "heading": heading,
-                    "native_name": heading,
-                }
-                custom_headings.add(heading)
-            else:
-                raise _error(
-                    operation,
-                    parameter,
-                    "column objects must contain exactly property with optional heading, "
-                    "or exactly heading for a custom column",
-                    raw,
-                )
-        else:
-            raise _error(
-                operation,
-                parameter,
-                "expected a built-in string or column object",
-                raw,
-            )
-        heading = str(clean["heading"])
-        native_name = str(clean["native_name"])
-        if heading in seen_headings or native_name in seen_native_names:
-            duplicate = heading if heading in seen_headings else native_name
-            raise _error(
-                operation,
-                parameter,
-                f"duplicates column identity {duplicate!r}; keep one best version",
-            )
-        seen_headings.add(heading)
-        seen_native_names.add(native_name)
-        columns.append(clean)
-    if "name" not in seen_builtins:
-        raise _error(
-            operation,
-            "columns",
-            "must include the 'name' built-in so native BOM rows and retained custom "
-            "values have an unambiguous identity",
-        )
-    return columns, custom_headings
-
-
-def _bom_overrides(
-    value: Sequence[Mapping[str, Any]],
-    *,
-    custom_headings: set[str],
-) -> list[dict[str, Any]]:
-    operation = "bill_of_materials"
-    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
-        raise _error(operation, "row_overrides", "expected a sequence of objects", value)
-    if len(value) > 512:
-        raise _error(operation, "row_overrides", "must contain at most 512 entries")
-    result = []
-    seen_paths: set[str] = set()
-    for index, raw in enumerate(value):
-        parameter = f"row_overrides[{index}]"
-        if not isinstance(raw, Mapping) or set(raw) != {"occurrence_path", "values"}:
-            raise _error(
-                operation,
-                parameter,
-                "must contain exactly occurrence_path and values",
-                raw,
-            )
-        path = _occurrence_path(operation, raw.get("occurrence_path"))
-        if path in seen_paths:
-            raise _error(operation, f"{parameter}.occurrence_path", "is duplicated", path)
-        seen_paths.add(path)
-        values = raw.get("values")
-        if not isinstance(values, Mapping) or not 1 <= len(values) <= 32:
-            raise _error(
-                operation,
-                f"{parameter}.values",
-                "must contain 1-32 custom heading/value pairs",
-                values,
-            )
-        unknown = set(str(key) for key in values) - custom_headings
-        if unknown:
-            raise _error(
-                operation,
-                f"{parameter}.values",
-                f"uses undeclared custom headings {sorted(unknown)}",
-            )
-        clean_values: dict[str, str | bool | int | float] = {}
-        for heading, raw_value in values.items():
-            if raw_value is None or isinstance(raw_value, (list, tuple, Mapping)):
-                raise _error(
-                    operation,
-                    f"{parameter}.values[{heading!r}]",
-                    "must be a JSON string, boolean, integer, or finite number",
-                    raw_value,
-                )
-            if isinstance(raw_value, float) and not math.isfinite(raw_value):
-                raise _error(
-                    operation,
-                    f"{parameter}.values[{heading!r}]",
-                    "must be finite",
-                    raw_value,
-                )
-            if isinstance(raw_value, str) and len(raw_value) > 4096:
-                raise _error(
-                    operation,
-                    f"{parameter}.values[{heading!r}]",
-                    "must contain at most 4096 characters",
-                )
-            if not isinstance(raw_value, (str, bool, int, float)):
-                raise _error(
-                    operation,
-                    f"{parameter}.values[{heading!r}]",
-                    "must be a JSON string, boolean, integer, or finite number",
-                    raw_value,
-                )
-            clean_values[str(heading)] = raw_value
-        result.append({"occurrence_path": path, "values": clean_values})
     return result
 
 
@@ -719,7 +498,6 @@ class AssemblyDomainAPI:
         "motion",
         "simulation",
         "exploded_view",
-        "bill_of_materials",
     )
 
     def __init__(self, exports: Iterable[str], output_types: Iterable[str]) -> None:
@@ -1352,51 +1130,5 @@ class AssemblyDomainAPI:
             "exploded_view",
             model,
             moves=normalized_moves,
-            label=label,
-        )
-
-    def bill_of_materials(
-        self,
-        assembly: DomainValue,
-        *,
-        columns: Sequence[str | Mapping[str, str]] = ("index", "name", "quantity"),
-        detail_subassemblies: bool = True,
-        detail_parts: bool = True,
-        only_parts: bool = False,
-        row_overrides: Sequence[Mapping[str, Any]] = (),
-        label: str = "",
-    ) -> DomainValue:
-        """Create one native, stable, authenticated Assembly bill of materials.
-
-        Built-in columns are ``index``, ``name``, ``quantity``, and ``file_name``.
-        A property column is ``{'property':'PartNumber','heading':'Part Number'}``;
-        a custom column is ``{'heading':'Description'}``. Custom values are set
-        with copy-ready occurrence paths in ``row_overrides``. The Quantity
-        column aggregates repeated identical sources among siblings; every
-        aggregated row retains all contributing occurrence paths for inspection.
-        """
-
-        operation = "bill_of_materials"
-        value = _domain_value(operation, "assembly", assembly, output_type="assembly")
-        for parameter, raw in (
-            ("detail_subassemblies", detail_subassemblies),
-            ("detail_parts", detail_parts),
-            ("only_parts", only_parts),
-        ):
-            if not isinstance(raw, bool):
-                raise _error(operation, parameter, "expected a boolean", raw)
-        clean_columns, custom_headings = _bom_columns(columns)
-        return self._value(
-            operation,
-            "bom",
-            value,
-            columns=clean_columns,
-            detail_subassemblies=detail_subassemblies,
-            detail_parts=detail_parts,
-            only_parts=only_parts,
-            row_overrides=_bom_overrides(
-                row_overrides,
-                custom_headings=custom_headings,
-            ),
             label=label,
         )
