@@ -79,6 +79,21 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         "cadex_sketcher_worker.py",
         "cadex_part_worker.py",
     ),
+    # The project domain stages every capability domain plus the shared
+    # domain-worker helpers; its entry module replaces cadex_domain_worker as
+    # the staged worker.py (see _stage_worker_bundle).
+    "project": (
+        "cadex_domain_worker.py",
+        "cadex_project_api.py",
+        "cadex_sketcher_api.py",
+        "cadex_sketcher_worker.py",
+        "cadex_part_api.py",
+        "cadex_part_worker.py",
+        "cadex_partdesign_api.py",
+        "cadex_partdesign_worker.py",
+        "cadex_assembly_api.py",
+        "cadex_assembly_worker.py",
+    ),
 }
 _SKETCHER_GEOMETRY_OPERATIONS = frozenset(
     {
@@ -207,8 +222,12 @@ def _stage_worker_bundle(
         raise RuntimeError(
             f"XScript domain {clean_domain!r} has duplicate worker dependencies."
         )
+    entry_module = (
+        "cadex_project_worker.py" if clean_domain == "project"
+        else "cadex_domain_worker.py"
+    )
     copied = ("worker.py", *filenames)
-    sources = ("cadex_domain_worker.py", *filenames)
+    sources = (entry_module, *filenames)
     for source_name, target_name in zip(sources, copied, strict=True):
         source = module_root / source_name
         if source.parent != module_root or not source.is_file():
@@ -7744,6 +7763,407 @@ class AssemblyDomainAdapter(DeclarativeDomainAdapter):
             }
         )
         return description
+
+
+# ---------------------------------------------------------------------------
+# Project script lifecycle — ONE script composing all four capability domains
+# ---------------------------------------------------------------------------
+
+PROJECT_WORKER_SCHEMA = "cadex-xscript-project-worker-v1"
+_PROJECT_OPERATIONS = frozenset({"write_script", "edit_script", "set_params"})
+
+
+def parse_project_tool(tool_name: str) -> str | None:
+    """Return the project lifecycle operation for xscript.project.* tools."""
+
+    parts = str(tool_name or "").split(".")
+    if len(parts) != 3 or parts[0] != "xscript" or parts[1] != "project":
+        return None
+    operation = parts[2]
+    if operation not in _PROJECT_OPERATIONS and operation != "describe_api":
+        return None
+    return operation
+
+
+def _project_api_contracts() -> dict[str, dict[str, list[str]]]:
+    by_domain = {
+        pack.domain: pack for pack in contracts.XSCRIPT_WORKBENCH_PACKS.values()
+    }
+    return {
+        domain: {
+            "exports": list(pack.api_exports),
+            "output_types": list(pack.output_types),
+        }
+        for domain, pack in by_domain.items()
+    }
+
+
+def capture_project_state(
+    service: Any,
+    tool_name: str,
+    arguments: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Capture document-affine state for one project script operation."""
+
+    operation = parse_project_tool(tool_name)
+    if operation is None:
+        _raise(tool_name, "UNKNOWN_DOMAIN_TOOL", "surface", "Unknown project tool.")
+    doc = service._active_document()
+    if doc is None:
+        _raise(tool_name, "NO_DOCUMENT", "precondition", "No active FreeCAD document.")
+    scope = service.project_scope_snapshot()
+    from CadexPreferences import load_settings
+
+    settings = load_settings()
+    timeout = float(getattr(settings, "scripted_timeout_seconds", 0.0) or 0.0)
+    memory_mb = int(getattr(settings, "scripted_memory_limit_mb", 0) or 0)
+    if timeout <= 0.0 or memory_mb <= 0:
+        _raise(
+            tool_name,
+            "INVALID_SCRIPTED_BUDGET",
+            "precondition",
+            "XScript requires positive worker timeout and memory limits.",
+            observed={"timeout_seconds": timeout, "memory_limit_mb": memory_mb},
+        )
+    try:
+        import FreeCAD as App
+
+        freecad_home = str(App.getHomePath())
+    except Exception as exc:
+        _raise(
+            tool_name,
+            "FREECAD_UNAVAILABLE",
+            "precondition",
+            f"FreeCAD is unavailable: {exc}",
+        )
+    return {
+        "tool_name": tool_name,
+        "operation": operation,
+        "arguments": dict(arguments),
+        "pack": contracts.PROJECT_PACK,
+        "project_root": str(scope.get("root") or ""),
+        "project_id": str(scope.get("project_id") or ""),
+        "document_name": str(getattr(doc, "Name", "") or ""),
+        "document_uid": str(getattr(doc, "Uid", "") or ""),
+        "document_revision": str(service.provider_document_revision()),
+        "document_objects": _document_objects(doc),
+        "freecad_home": freecad_home,
+        "timeout_seconds": timeout,
+        "memory_limit_bytes": memory_mb * 1024 * 1024,
+    }
+
+
+def _project_param_values(
+    state: Mapping[str, Any], patch: Any, tool_name: str
+) -> dict[str, float]:
+    """Apply one values-only RFC 7396 patch against the declared parameters."""
+
+    declared = {
+        str(spec.get("name") or ""): spec
+        for spec in list(state.get("param_specs") or [])
+    }
+    merged = _merge_patch(dict(state.get("param_values") or {}), patch)
+    cleaned: dict[str, float] = {}
+    for name, value in merged.items():
+        if name not in declared:
+            _raise(
+                tool_name,
+                "UNKNOWN_PROJECT_PARAMETER",
+                "precondition",
+                f"The project script declares no parameter named {name!r}.",
+                requested={"values": patch},
+                observed={"declared": sorted(declared)},
+            )
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            _raise(
+                tool_name,
+                "INVALID_PROJECT_PARAMETER_VALUE",
+                "precondition",
+                f"Parameter {name!r} must be a finite number.",
+                requested={name: value},
+            )
+        cleaned[name] = float(value)
+    return cleaned
+
+
+def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
+    """Persist the working script state and stage one project candidate."""
+
+    from CadexProject import CadexProjectScriptStore
+
+    tool_name = str(captured["tool_name"])
+    operation = str(captured["operation"])
+    arguments = dict(captured["arguments"])
+    project_root = str(captured["project_root"] or "")
+    if not project_root:
+        _raise(
+            tool_name,
+            "NO_PROJECT_ROOT",
+            "precondition",
+            "The active document has no durable Cadex project root.",
+        )
+    store = CadexProjectScriptStore(project_root)
+    state = store.read_state()
+    current_source = store.read_source()
+
+    expected_revision = str(arguments.get("expected_revision") or "")
+    working_revision = str(state.get("working_revision") or "")
+    if expected_revision != working_revision:
+        _raise(
+            tool_name,
+            "STALE_PROGRAM_REVISION",
+            "precondition",
+            "The project script changed after inspection.",
+            requested={"expected_revision": expected_revision},
+            observed={"current_revision": working_revision},
+            required_changes=[{"inspect": "core.inspect scope=script"}],
+        )
+
+    param_values = dict(state.get("param_values") or {})
+    if operation == "write_script":
+        source = str(arguments.get("source") or "")
+        if not source.strip():
+            _raise(
+                tool_name,
+                "EMPTY_PROJECT_SCRIPT",
+                "precondition",
+                "write_script requires a complete non-empty script source.",
+            )
+    elif operation == "edit_script":
+        if not current_source:
+            _raise(
+                tool_name,
+                "NO_PROJECT_SCRIPT",
+                "precondition",
+                "There is no project script to edit yet; use write_script.",
+            )
+        try:
+            source = _apply_replacements(
+                current_source, arguments.get("replacements")
+            )
+        except ValueError as exc:
+            _raise(
+                tool_name,
+                "REPLACEMENT_NOT_UNIQUE",
+                "precondition",
+                str(exc),
+                requested={"replacements": arguments.get("replacements")},
+            )
+    elif operation == "set_params":
+        if not current_source:
+            _raise(
+                tool_name,
+                "NO_PROJECT_SCRIPT",
+                "precondition",
+                "There is no project script yet; use write_script first.",
+            )
+        source = current_source
+        try:
+            param_values = _project_param_values(
+                state, arguments.get("values"), tool_name
+            )
+        except ValueError as exc:
+            _raise(tool_name, "INVALID_PROJECT_PARAMETER_VALUE", "precondition", str(exc))
+    else:
+        _raise(tool_name, "UNKNOWN_DOMAIN_TOOL", "surface", "Unknown project tool.")
+
+    try:
+        contracts.validate_program_source(source)
+    except ValueError as exc:
+        _raise(
+            tool_name,
+            "INVALID_PROGRAM_SOURCE",
+            "precondition",
+            str(exc),
+        )
+
+    freecadcmd_executable = _freecadcmd(str(captured["freecad_home"]))
+    # Pre-run revision over the stored spec cache; validate_project_result
+    # recomputes it with the worker-collected specs and records that as the
+    # durable working revision.
+    revision = contracts.project_script_revision(
+        source=source,
+        param_specs=list(state.get("param_specs") or []),
+        param_values=param_values,
+    )
+    attempt_id = f"{int(time.time() * 1000):013d}-{uuid.uuid4().hex[:12]}"
+    staging = store.artifacts_dir(revision) / f"attempt-{attempt_id}"
+    staging.mkdir(parents=True, exist_ok=False)
+    module_root = Path(__file__).resolve().parent
+    try:
+        _stage_worker_bundle(module_root, staging, "project")
+        request = {
+            "schema": PROJECT_WORKER_SCHEMA,
+            "source": source,
+            "inputs": {},
+            "param_values": param_values,
+            "api_contracts": _project_api_contracts(),
+            "document_name": str(captured["document_name"]),
+            "document_uid": str(captured["document_uid"]),
+            "document_objects": list(captured["document_objects"]),
+            "max_operations": 400_000,
+            "max_seconds": float(captured["timeout_seconds"]),
+            "memory_limit_bytes": int(captured["memory_limit_bytes"]),
+            "cpu_limit_seconds": max(1, int(float(captured["timeout_seconds"]))),
+            "output_limit_bytes": 256 * 1024 * 1024,
+        }
+        _atomic_json(staging / "request.json", request)
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+
+    # The script file IS the working artifact: persist before execution.
+    store.write(
+        source=source,
+        state_updates={
+            "param_values": param_values,
+            "working_revision": revision,
+        },
+    )
+    return {
+        "tool_name": tool_name,
+        "operation": operation,
+        "pack": captured["pack"],
+        "program_id": "project",
+        "revision": revision,
+        "accepted_revision_before": str(state.get("accepted_revision") or ""),
+        "accepted_contract_before": state.get("accepted_contract"),
+        "accepted_digest_before": str(state.get("accepted_digest") or ""),
+        "source": source,
+        "param_values": param_values,
+        "param_specs_before": list(state.get("param_specs") or []),
+        "project_root": project_root,
+        "staging": str(staging),
+        "attempt_id": attempt_id,
+        "freecadcmd_executable": str(freecadcmd_executable),
+        "timeout_seconds": float(captured["timeout_seconds"]),
+        "memory_limit_bytes": int(captured["memory_limit_bytes"]),
+        "document_name": str(captured["document_name"]),
+        "document_uid": str(captured["document_uid"]),
+        "document_revision": str(captured["document_revision"]),
+        "document_objects": list(captured["document_objects"]),
+    }
+
+
+def record_project_candidate_failure(
+    prepared: Mapping[str, Any], failure: Mapping[str, Any]
+) -> None:
+    """Persist the failed candidate summary; the accepted state stays live."""
+
+    from CadexProject import CadexProjectScriptStore
+
+    store = CadexProjectScriptStore(str(prepared["project_root"]))
+    store.write(
+        state_updates={
+            "latest_candidate": {
+                "status": "failed",
+                "revision": str(prepared["revision"]),
+                "attempt_id": str(prepared["attempt_id"]),
+                "failure_code": str(failure.get("failure_code") or ""),
+                "error": str(failure.get("error") or ""),
+            },
+        }
+    )
+
+
+def validate_project_result(
+    prepared: dict[str, Any], execution: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Check the worker report, record the contract, persist working state."""
+
+    from CadexProject import CadexProjectScriptStore
+
+    tool_name = str(prepared["tool_name"])
+    if execution.get("schema") != PROJECT_WORKER_SCHEMA:
+        _raise(
+            tool_name,
+            "DOMAIN_WORKER_RESULT_INVALID",
+            "postcondition",
+            f"Unexpected project worker schema {execution.get('schema')!r}.",
+        )
+    outputs = list(execution.get("outputs") or [])
+    if not outputs:
+        _raise(
+            tool_name,
+            "DOMAIN_RESULT_INVALID",
+            "postcondition",
+            "The project worker returned no outputs.",
+        )
+    digest = str(execution.get("digest") or "")
+    if not re.fullmatch(r"[0-9a-f]{64}", digest):
+        _raise(
+            tool_name,
+            "DOMAIN_RESULT_INVALID",
+            "postcondition",
+            "The project worker returned no content digest.",
+        )
+    param_specs = list(execution.get("param_specs") or [])
+    contract: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in outputs:
+        if not isinstance(item, Mapping):
+            _raise(
+                tool_name,
+                "DOMAIN_RESULT_INVALID",
+                "postcondition",
+                "Every project worker output must be an object.",
+            )
+        name = str(item.get("name") or "")
+        domain = str(item.get("domain") or "")
+        output_type = str(item.get("type") or "")
+        if not name or name in seen or domain not in {
+            "sketcher",
+            "part",
+            "partdesign",
+            "assembly",
+        }:
+            _raise(
+                tool_name,
+                "DOMAIN_RESULT_INVALID",
+                "postcondition",
+                f"Project output {name!r} has an invalid identity.",
+                observed={"name": name, "domain": domain, "type": output_type},
+            )
+        seen.add(name)
+        if str(item.get("artifact_kind") or "") == "brep":
+            _staged_artifact_path(
+                prepared,
+                item.get("artifact_path"),
+                context=f"Project output {name!r}",
+            )
+        contract.append({"name": name, "type": output_type, "domain": domain})
+
+    # Durable working revision binds the worker-collected parameter specs.
+    final_revision = contracts.project_script_revision(
+        source=str(prepared["source"]),
+        param_specs=param_specs,
+        param_values=dict(prepared["param_values"]),
+    )
+    store = CadexProjectScriptStore(str(prepared["project_root"]))
+    store.write(
+        state_updates={
+            "param_specs": param_specs,
+            "working_revision": final_revision,
+            "latest_candidate": {
+                "status": "validated",
+                "revision": final_revision,
+                "attempt_id": str(prepared["attempt_id"]),
+                "digest": digest,
+                "output_count": len(contract),
+            },
+        }
+    )
+    prepared["revision"] = final_revision
+    return {
+        "ok": True,
+        "outputs": outputs,
+        "contract": contract,
+        "digest": digest,
+        "param_specs": param_specs,
+        "validations": dict(execution.get("validations") or {}),
+        "stdout": str(execution.get("stdout") or ""),
+        "budget": dict(execution.get("budget") or {}),
+    }
 
 
 def install_builtin_adapters() -> None:

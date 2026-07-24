@@ -26,6 +26,7 @@ PROGRAM_SCHEMA = "cadex-program-v2"
 # tag differs so a program manifest can be attributed to its authoring engine.
 XSCRIPT_PROGRAM_SCHEMA = "cadex-xscript-program-v2"
 PROGRAM_SCHEMAS = frozenset({PROGRAM_SCHEMA, XSCRIPT_PROGRAM_SCHEMA})
+PROJECT_SCRIPT_SCHEMA = "cadex-xscript-project-v1"
 PROGRAM_VERSION = 2
 XSCRIPT_VERSION = "2"
 PARTDESIGN_V1_SCHEMA = "cadex-model-v1"
@@ -80,6 +81,15 @@ LIFECYCLE_OPERATIONS: tuple[str, ...] = (
 
 #: Operations surfaced and registered only for production-ready domains.
 PRODUCTION_ONLY_OPERATIONS: frozenset[str] = frozenset({"set_parameter_controls"})
+
+#: The project domain's tool surface: one script, whole-rewrite or targeted
+#: edit, plus a values-only parameter patch. Reads live in core.inspect.
+PROJECT_LIFECYCLE_OPERATIONS: tuple[str, ...] = (
+    "describe_api",
+    "write_script",
+    "edit_script",
+    "set_params",
+)
 
 
 @runtime_checkable
@@ -136,12 +146,13 @@ class XScriptWorkbenchPack:
     api_global: str = "x"
     program_schema: str = XSCRIPT_PROGRAM_SCHEMA
     artifact_subdir: str = "xscript"
+    operations: tuple[str, ...] = LIFECYCLE_OPERATIONS
 
     @property
     def tool_names(self) -> tuple[str, ...]:
         return tuple(
             f"{self.engine}.{self.domain}.{operation}"
-            for operation in LIFECYCLE_OPERATIONS
+            for operation in self.operations
             if self.production_ready or operation not in PRODUCTION_ONLY_OPERATIONS
         )
 
@@ -331,6 +342,62 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
     ),
 }
 
+#: The fifth internal domain: ONE project script composing all four capability
+#: domains in a single execution. Not a workbench pack - it is keyed by no
+#: workbench and its api_exports are empty because the script receives one API
+#: object per capability domain (sketcher/part/partdesign/assembly) plus the
+#: params/num parameter vocabulary.
+PROJECT_PACK = XScriptWorkbenchPack(
+    workbench="CadexProject",
+    domain="project",
+    title="Project",
+    output_types=tuple(
+        dict.fromkeys(
+            output_type
+            for pack in XSCRIPT_WORKBENCH_PACKS.values()
+            for output_type in pack.output_types
+        )
+    ),
+    instructions=(
+        "One project script is the sole source of truth for this document. "
+        "The script runs once per change with the sketcher, part, partdesign "
+        "and assembly APIs staged as same-named globals plus params/num for "
+        "declaring slider parameters; assign every kept value to the result "
+        "dictionary. Outputs may mix domains; assembly components take part or "
+        "partdesign values created in the same script."
+    ),
+    api_exports=(),
+    production_ready=True,
+    program_schema=PROJECT_SCRIPT_SCHEMA,
+    artifact_subdir="project",
+    operations=PROJECT_LIFECYCLE_OPERATIONS,
+)
+
+
+def project_script_revision(
+    *,
+    source: str,
+    param_specs: list[dict[str, Any]],
+    param_values: Mapping[str, Any],
+) -> str:
+    """Content revision of the project script + its parameter state (D7)."""
+
+    payload = {
+        "schema": PROJECT_SCRIPT_SCHEMA,
+        "domain": "project",
+        "source": str(source),
+        "param_specs": list(param_specs),
+        "param_values": dict(param_values),
+    }
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
 
 _ADAPTERS: dict[str, XScriptDomainAdapter] = {}
 _INSTALLING_BUILTINS = False
@@ -356,6 +423,8 @@ def register_domain_adapter(domain: str, adapter: XScriptDomainAdapter) -> None:
     packs = [
         pack for pack in XSCRIPT_WORKBENCH_PACKS.values() if pack.domain == clean
     ]
+    if clean == PROJECT_PACK.domain:
+        packs = [PROJECT_PACK]
     if len(packs) != 1:
         raise ValueError(f"Unknown XScript domain: {domain!r}.")
     missing = [

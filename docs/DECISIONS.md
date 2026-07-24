@@ -217,3 +217,32 @@ helper code that touches only kept trees (mesh/points/fem/inspection/
 robot snapshot+rollback helpers, TechDraw page summaries in
 `CadexCore.py`) is never dispatched but still present — follow-up sweep
 material, tracked in `docs/FREECAD.md` §4.
+
+## ADR-011 — One project script: store + lifecycle, no v2 migration (2026-07-24)
+
+**Decision.** The project domain becomes the fifth internal domain: ONE
+script per project executed by one multi-domain worker
+(`cadex_project_worker.py`), with `sketcher`/`part`/`partdesign`/
+`assembly` APIs plus `params`/`num` staged as script globals. The store
+(`cadex-project-script-v1`) lives at `<project>/script.py` (the sole
+source of truth) + `<project>/script.json` (param spec cache, values,
+working/accepted revision, accepted contract, accepted digest, latest
+candidate) + `script_artifacts/<revision>/`. Revision =
+`project_script_revision` over `{schema, domain:"project", source,
+param_specs, param_values}`. Tools: `xscript.project.{write_script,
+edit_script, set_params}`; `edit_script` reuses the unique-match
+replacement machinery; `set_params` patches values only. Expected
+outputs are recorded from the executed result (accepted contract), not
+pre-declared. Assembly components take part/partdesign values created
+in the same script, resolved worker-side to in-run serialized BREPs;
+cross-document component references retire (rigid same-script solids in
+v0.0.1; flexible subassemblies out of scope).
+
+**Rationale.** docs/VISION.md: one project script as the sole source of
+truth. The per-domain v2 program surface forced the model to shard one
+design across programs and pre-declare outputs.
+
+**Consequences.** Existing v2 per-domain program stores are NOT
+migrated (pre-release; owner decision 2026-07-24): conversations are
+preserved by their own store, scripts start empty. The per-domain
+lifecycle tools dissolve in the Phase 2 tool-surface swap.

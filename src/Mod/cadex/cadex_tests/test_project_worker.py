@@ -214,3 +214,67 @@ def test_project_digest_rounds_placements_below_tolerance(tmp_path) -> None:
     outputs[1]["solved_placement_matrix"] = [1.001, 0.0, 0.25, 5.0]
     moved = project_worker.compute_project_digest(tmp_path, outputs)
     assert moved != base
+
+
+# -- script store -----------------------------------------------------------
+
+
+def test_script_store_round_trip(tmp_path) -> None:
+    from CadexProject import CadexProjectScriptStore
+
+    store = CadexProjectScriptStore(tmp_path)
+    assert store.read_source() == ""
+    assert store.read_state()["working_revision"] == ""
+
+    state = store.write(
+        source="result = {}",
+        state_updates={"working_revision": "a" * 64, "param_values": {"w": 3.0}},
+    )
+    assert state["working_revision"] == "a" * 64
+    assert state["updated_at"]
+    assert store.read_source() == "result = {}"
+    reloaded = store.read_state()
+    assert reloaded["param_values"] == {"w": 3.0}
+    assert reloaded["accepted_revision"] == ""
+
+
+def test_script_store_rejects_unknown_state_fields(tmp_path) -> None:
+    from CadexProject import CadexProjectScriptStore
+
+    store = CadexProjectScriptStore(tmp_path)
+    with pytest.raises(ValueError):
+        store.write(state_updates={"bogus": 1})
+    with pytest.raises(ValueError):
+        store.write(state_updates={"schema": "x"})
+
+
+def test_script_store_artifacts_dir_requires_hex_revision(tmp_path) -> None:
+    from CadexProject import CadexProjectScriptStore
+
+    store = CadexProjectScriptStore(tmp_path)
+    path = store.artifacts_dir("ab12" * 16)
+    assert path.parent == store.artifacts_root
+    with pytest.raises(ValueError):
+        store.artifacts_dir("not-hex!")
+    with pytest.raises(ValueError):
+        store.artifacts_dir("")
+
+
+def test_project_script_revision_is_content_addressed() -> None:
+    import types, sys as _sys
+
+    from CadexScriptedDomains import project_script_revision
+
+    base = project_script_revision(
+        source="result = {}", param_specs=[], param_values={}
+    )
+    assert len(base) == 64
+    assert base == project_script_revision(
+        source="result = {}", param_specs=[], param_values={}
+    )
+    assert base != project_script_revision(
+        source="result = {}", param_specs=[], param_values={"w": 1.0}
+    )
+    assert base != project_script_revision(
+        source="result = {'a': 1}", param_specs=[], param_values={}
+    )
