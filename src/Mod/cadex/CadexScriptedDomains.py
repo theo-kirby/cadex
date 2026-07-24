@@ -3429,19 +3429,10 @@ def complete_domain_context(snapshot: Mapping[str, Any]) -> dict[str, Any]:
                 "targets",
             )
         }
-        try:
-            from xscript_material_worker import material_catalog_index
-
-            result["material_catalog"] = {
-                "available": True,
-                **material_catalog_index(),
-            }
-        except Exception as exc:
-            result["material_catalog"] = {
-                "available": False,
-                "error": f"{type(exc).__name__}: {exc}",
-                "correction": "Repair or install the native FreeCAD Material catalog.",
-            }
+        result["material_catalog"] = {
+            "available": False,
+            "error": "The material domain worker was removed.",
+        }
     raw_bim = snapshot.get("bim_document")
     if domain == "bim" and isinstance(raw_bim, Mapping):
         result["document_bim_objects"] = {
@@ -4073,15 +4064,10 @@ def complete_domain_context(snapshot: Mapping[str, Any]) -> dict[str, Any]:
                     "error": "The active project has no artifact root.",
                 }
     if domain == "reverse_engineering":
-        try:
-            from xscript_reverse_engineering_worker import native_capabilities
-
-            result["native_reverse_engineering_capabilities"] = native_capabilities()
-        except Exception as exc:
-            result["native_reverse_engineering_capabilities"] = {
-                "available": False,
-                "error": f"{type(exc).__name__}: {exc}",
-            }
+        result["native_reverse_engineering_capabilities"] = {
+            "available": False,
+            "error": "The reverse-engineering domain worker was removed.",
+        }
     return result
 
 

@@ -1,3 +1,5 @@
+> **SUPERSEDED (2026-07-24).** Historical document from the VibeCAD era. It describes the pre-teardown 18-domain, multi-engine "VibeScript" design. Cadex now ships a single xscript engine with 4 domains (partdesign, sketcher, part, assembly). Current documentation lives in `docs/` — start with `docs/ARCHITECTURE.md` and `docs/XSCRIPT.md`. Kept for design rationale and history only.
+
 # Workbench-specific native and VibeScript architecture
 
 ## Scope

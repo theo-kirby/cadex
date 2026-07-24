@@ -1,3 +1,5 @@
+> **SUPERSEDED (2026-07-24).** Historical verification record from the VibeCAD era; it references the retired build123d/OpenSCAD engines and culled domains (CAM, FEM, TechDraw, …). Current runtime behavior is documented in `docs/XSCRIPT.md`; tests live in `src/Mod/cadex/cadex_tests/`. Kept for history only.
+
 # Cadex Tool Runtime Verification
 
 Updated: 2026-07-14
