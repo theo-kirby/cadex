@@ -4,23 +4,22 @@
 
 from __future__ import annotations
 
-import sys
-from types import SimpleNamespace
-
 import pytest
 
 import CadexGrid as grid
 
 
-class _WorkingPlane:
-    position = (0.0, 0.0, 0.0)
-    axis = (0.0, 0.0, 1.0)
-
-
 class _Grid:
+    space = 10.0
+    mainlines = 10
+
     @staticmethod
-    def _get_wp() -> _WorkingPlane:
-        return _WorkingPlane()
+    def plane_origin() -> tuple[float, float, float]:
+        return (0.0, 0.0, 0.0)
+
+    @staticmethod
+    def plane_normal() -> tuple[float, float, float]:
+        return (0.0, 0.0, 1.0)
 
 
 class _OrthographicView:
@@ -38,20 +37,6 @@ class _OrthographicView:
     def getPointOnFocalPlane(pixel: tuple[int, int]) -> tuple[float, float, float]:
         x, y = pixel
         return (0.5 * x, 0.25 * y, 0.0)
-
-
-def test_snapper_initializes_drafts_active_working_plane(monkeypatch) -> None:
-    calls: list[bool] = []
-    snapper = object()
-    monkeypatch.setitem(sys.modules, "FreeCADGui", SimpleNamespace(Snapper=snapper))
-    monkeypatch.setitem(
-        sys.modules,
-        "WorkingPlane",
-        SimpleNamespace(get_working_plane=lambda *, update: calls.append(bool(update))),
-    )
-
-    assert grid._get_snapper() is snapper
-    assert calls == [False]
 
 
 def test_metric_spacing_uses_125_engineering_series() -> None:
@@ -112,14 +97,22 @@ def test_world_units_per_pixel_uses_grid_plane_projection() -> None:
     )
 
 
+def test_grid_plane_point_projects_viewport_pixels() -> None:
+    point = grid._grid_plane_point(_OrthographicView(), _Grid(), (400, 300))
+    assert point == pytest.approx((200.0, 75.0, 0.0))
+
+
 def test_final_subwindow_close_disposes_coin_sensors_without_rescheduling(
     monkeypatch,
 ) -> None:
     class _Controller:
         disposed = False
 
-        def dispose(self) -> None:
+        def dispose(self, remove_from_scene: bool = False) -> None:
             self.disposed = True
+
+        def matches(self, view) -> bool:
+            return False
 
     controller = _Controller()
     monkeypatch.setattr(grid, "_adaptive_controllers", [controller])
@@ -140,8 +133,11 @@ def test_main_window_close_stops_timer_and_disposes_coin_sensors(monkeypatch) ->
     class _Controller:
         disposed = False
 
-        def dispose(self) -> None:
+        def dispose(self, remove_from_scene: bool = False) -> None:
             self.disposed = True
+
+        def matches(self, view) -> bool:
+            return False
 
     timer = _Timer()
     controller = _Controller()

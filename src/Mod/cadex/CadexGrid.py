@@ -2,23 +2,21 @@
 
 """Fusion-style always-on 3D grid for Cadex.
 
-Reuses the Draft workbench grid machinery (``Gui.Snapper`` + ``gridTracker``)
-to keep a reference grid visible in every 3D view regardless of the active
-workbench, similar to Fusion 360's viewport grid.
+Cadex-owned viewport grid: every 3D view gets a two-tier (minor/major) line
+grid on the global XY plane, rendered from a Coin ``SoSeparator`` that this
+module builds and inserts into the view's scene graph. No Draft machinery is
+involved.
 
 Behavior:
 
-- Draft grid preferences (``alwaysShowGrid`` and ``GridHideInOtherWorkbenches``)
-  are seeded exactly once, guarded by a flag parameter, so later manual
-  changes made by the user in Draft preferences are never overridden.
 - A lightweight observer on the MDI area initializes the grid for each 3D
   view at most once. A per-view camera observer keeps minor lines within a
   readable screen-space range and displays the minor/major spacing in the
-  viewport. Manually toggling the grid off is respected.
-- The native ``Cadex_ToggleGrid`` command owns the View-menu action. This
-  module only updates the global preference and existing per-view trackers;
-  when no GUI document is open it updates the preference without creating the
-  Draft Snapper or attempting to render a grid.
+  viewport.
+- Grid visibility is stored in the ``Mod/cadex`` ``ShowGrid`` boolean
+  preference (default: enabled) so views opened later follow suit. The
+  native ``Cadex_ToggleGrid`` command owns the View-menu action and calls
+  :func:`toggle_grid`.
 - The automatic always-on-at-startup behavior sits behind the ``Mod/cadex``
   ``AlwaysShowGrid`` boolean preference (default: enabled) as a master
   kill-switch.
@@ -39,8 +37,6 @@ except ImportError:  # pragma: no cover - only outside FreeCAD (tooling/tests)
 
 _PARAM_ROOT = "User parameter:BaseApp/Preferences/"
 _CADEX_PARAM_PATH = _PARAM_ROOT + "Mod/cadex"
-_DRAFT_PARAM_PATH = _PARAM_ROOT + "Mod/Draft"
-_SEED_FLAG = "GridPreferencesSeeded"
 
 _TARGET_GRID_PIXELS = 28.0
 _MIN_GRID_PIXELS = 18.0
@@ -52,12 +48,13 @@ _FRACTIONAL_INCH_SCHEMAS = frozenset({2, 5})
 _FOOT_BASED_SCHEMAS = frozenset({5, 7})
 _MM_PER_INCH = 25.4
 
-# Identity record used for diagnostics and recycled-wrapper protection. The
-# authoritative "grid already exists for this view" check is membership in
-# ``Gui.Snapper.trackers[0]`` (equality-based across Python wrappers).
-_seen_views: set[int] = set()
-_observer_installed = False
+_MINOR_COLOR = (0.44, 0.47, 0.51)
+_MAJOR_COLOR = (0.60, 0.64, 0.68)
+_MINOR_TRANSPARENCY = 0.55
+_MAJOR_TRANSPARENCY = 0.25
+
 _adaptive_controllers: list[Any] = []
+_observer_installed = False
 _maintenance_timer: Any = None
 _main_window_filter: Any = None
 _close_suspended = False
@@ -137,7 +134,7 @@ def _ray_plane_intersection(
     plane_origin: Any,
     plane_normal: Any,
 ) -> tuple[float, float, float] | None:
-    """Intersect one viewport projection line with the active grid plane."""
+    """Intersect one viewport projection line with the grid plane."""
     start = _xyz(ray_start)
     end = _xyz(ray_end)
     origin = _xyz(plane_origin)
@@ -171,9 +168,8 @@ def _world_units_per_pixel(view: Any, grid: Any) -> float:
     center_x = width // 2
     center_y = height // 2
     sample_pixels = max(4, min(24, min(width, height) // 16))
-    working_plane = grid._get_wp()
-    origin = working_plane.position
-    normal = working_plane.axis
+    origin = grid.plane_origin()
+    normal = grid.plane_normal()
 
     intersections: list[tuple[float, float, float] | None] = []
     for x, y in (
@@ -208,6 +204,14 @@ def _world_units_per_pixel(view: Any, grid: Any) -> float:
     if not math.isfinite(measured) or measured <= 0:
         raise ValueError("camera scale could not be measured")
     return measured
+
+
+def _grid_plane_point(view: Any, grid: Any, pixel: tuple[int, int]) -> Any:
+    """Project one viewport pixel onto the grid plane (None off-plane)."""
+    ray_start, ray_end = view.projectPointToLine(pixel)
+    return _ray_plane_intersection(
+        ray_start, ray_end, grid.plane_origin(), grid.plane_normal()
+    )
 
 
 def _warn(message: str) -> None:
@@ -249,8 +253,158 @@ def _active_view_parent() -> Any:
         return None
 
 
+class _GridTracker:
+    """Cadex-owned Coin line grid on the global XY plane for one 3D view.
+
+    Builds a two-tier (minor/major) ``SoIndexedLineSet``-free line grid from
+    plain ``SoCoordinate3`` + ``SoLineSet`` nodes under one unpickable
+    ``SoSeparator`` and inserts it into the view's scene graph. Line
+    positions are always integer multiples of ``space`` in world
+    coordinates; the tracker recenters by whole major-cell quanta so lines
+    never drift as the camera pans.
+    """
+
+    def __init__(self, view: Any) -> None:
+        from pivy import coin
+
+        self.view = view
+        self.space = 10.0
+        self.numlines = 100
+        self.mainlines = _major_every()
+        self.center = (0.0, 0.0)
+        self._built_key: tuple | None = None
+        self._in_scene = False
+
+        self._root = coin.SoSeparator()
+        self._root.setName("CadexGrid")
+        pick_style = coin.SoPickStyle()
+        pick_style.style = coin.SoPickStyle.UNPICKABLE
+        self._root.addChild(pick_style)
+        light_model = coin.SoLightModel()
+        light_model.model = coin.SoLightModel.BASE_COLOR
+        self._root.addChild(light_model)
+
+        self._switch = coin.SoSwitch()
+        self._switch.whichChild = coin.SO_SWITCH_NONE
+        self._root.addChild(self._switch)
+
+        content = coin.SoSeparator()
+        self._translation = coin.SoTranslation()
+        content.addChild(self._translation)
+        self._minor_coords, minor_group = self._make_line_group(
+            coin, _MINOR_COLOR, _MINOR_TRANSPARENCY, 1.0
+        )
+        self._major_coords, major_group = self._make_line_group(
+            coin, _MAJOR_COLOR, _MAJOR_TRANSPARENCY, 2.0
+        )
+        self._minor_lines = minor_group[-1]
+        self._major_lines = major_group[-1]
+        content.addChild(minor_group[0])
+        content.addChild(major_group[0])
+        self._switch.addChild(content)
+
+        view.getSceneGraph().addChild(self._root)
+        self._in_scene = True
+
+    @staticmethod
+    def _make_line_group(
+        coin: Any, color: tuple, transparency: float, line_width: float
+    ) -> tuple:
+        group = coin.SoSeparator()
+        material = coin.SoMaterial()
+        material.diffuseColor = color
+        material.transparency = transparency
+        group.addChild(material)
+        style = coin.SoDrawStyle()
+        style.lineWidth = line_width
+        group.addChild(style)
+        coords = coin.SoCoordinate3()
+        group.addChild(coords)
+        lines = coin.SoLineSet()
+        group.addChild(lines)
+        return coords, (group, lines)
+
+    # -- grid plane -----------------------------------------------------
+
+    def plane_origin(self) -> tuple[float, float, float]:
+        return (self.center[0], self.center[1], 0.0)
+
+    @staticmethod
+    def plane_normal() -> tuple[float, float, float]:
+        return (0.0, 0.0, 1.0)
+
+    # -- geometry -------------------------------------------------------
+
+    def recenter(self, x: float, y: float) -> None:
+        """Move the grid to the major-cell quantum nearest ``(x, y)``."""
+        quantum = self.space * max(1, int(self.mainlines))
+        if not (math.isfinite(quantum) and quantum > 0):
+            return
+        snapped = (round(x / quantum) * quantum, round(y / quantum) * quantum)
+        if snapped != self.center:
+            self.center = snapped
+
+    def update(self) -> None:
+        """Rebuild the line sets when spacing, extent or center changed."""
+        key = (self.space, self.numlines, self.mainlines, self.center)
+        if key == self._built_key:
+            return
+        half = max(1, int(self.numlines) // 2)
+        major_every = max(1, int(self.mainlines))
+        spacing = float(self.space)
+        extent = half * spacing
+
+        minor_points: list[tuple[float, float, float]] = []
+        major_points: list[tuple[float, float, float]] = []
+        for index in range(-half, half + 1):
+            offset = index * spacing
+            target = major_points if index % major_every == 0 else minor_points
+            target.append((offset, -extent, 0.0))
+            target.append((offset, extent, 0.0))
+            target.append((-extent, offset, 0.0))
+            target.append((extent, offset, 0.0))
+
+        self._translation.translation = (self.center[0], self.center[1], 0.0)
+        self._set_lines(self._minor_coords, self._minor_lines, minor_points)
+        self._set_lines(self._major_coords, self._major_lines, major_points)
+        self._built_key = key
+
+    @staticmethod
+    def _set_lines(coords: Any, lines: Any, points: list) -> None:
+        coords.point.setValues(0, len(points), points)
+        coords.point.setNum(len(points))
+        counts = [2] * (len(points) // 2)
+        lines.numVertices.setValues(0, len(counts), counts)
+        lines.numVertices.setNum(len(counts))
+
+    # -- visibility -----------------------------------------------------
+
+    @property
+    def Visible(self) -> bool:
+        from pivy import coin
+
+        return int(self._switch.whichChild.getValue()) == coin.SO_SWITCH_ALL
+
+    def set_visible(self, visible: bool) -> None:
+        from pivy import coin
+
+        self._switch.whichChild = (
+            coin.SO_SWITCH_ALL if visible else coin.SO_SWITCH_NONE
+        )
+
+    def detach_from_scene(self) -> None:
+        """Remove the grid node from a still-alive view scene graph."""
+        if not self._in_scene:
+            return
+        self._in_scene = False
+        try:
+            self.view.getSceneGraph().removeChild(self._root)
+        except (AttributeError, ReferenceError, RuntimeError):
+            pass
+
+
 class _AdaptiveGridController:
-    """Keep one Draft grid legible and report its scale for one 3D view."""
+    """Keep one grid tracker legible and report its scale for one 3D view."""
 
     def __init__(self, view: Any, grid: Any, parent: Any) -> None:
         self.view = view
@@ -390,15 +544,15 @@ class _AdaptiveGridController:
             spacing = _select_grid_spacing(units_per_pixel, current, schema)
             line_count = self._desired_line_count(spacing, units_per_pixel)
 
-            tracker_spacing = float(getattr(self.grid, "space", 0.0))
-            tracker_lines = int(getattr(self.grid, "numlines", 0))
-            if (
-                not math.isclose(tracker_spacing, spacing, rel_tol=1.0e-12)
-                or tracker_lines != line_count
-            ):
-                self.grid.space = spacing
-                self.grid.numlines = line_count
-                self.grid.update()
+            self.grid.space = spacing
+            self.grid.numlines = line_count
+            width, height = (int(value) for value in self.view.getSize())
+            look_at = _grid_plane_point(
+                self.view, self.grid, (width // 2, height // 2)
+            )
+            if look_at is not None:
+                self.grid.recenter(look_at[0], look_at[1])
+            self.grid.update()
 
             self.spacing_mm = spacing
             self.unit_schema = schema
@@ -439,7 +593,7 @@ class _AdaptiveGridController:
         except (ReferenceError, RuntimeError):
             return False
 
-    def dispose(self) -> None:
+    def dispose(self, remove_from_scene: bool = False) -> None:
         if self.disposed:
             return
         self.disposed = True
@@ -448,6 +602,8 @@ class _AdaptiveGridController:
                 self.camera_sensor.detach()
             except (AttributeError, RuntimeError):
                 pass
+        if remove_from_scene and self.grid is not None:
+            self.grid.detach_from_scene()
         if self.label is not None:
             try:
                 self.label.deleteLater()
@@ -465,8 +621,8 @@ def _live_3d_views() -> list[Any]:
     Closing a document frees its Coin scene graph synchronously while the
     Python view proxy and Qt widget can outlive it, so per-view liveness
     probes (getSize()/objectName()) pass on a dead view. Touching Coin
-    through such a view (SoNodeSensor.attach on its camera) segfaults;
-    document membership is the authoritative liveness test.
+    through such a view segfaults; document membership is the authoritative
+    liveness test.
     """
     views: list[Any] = []
     try:
@@ -495,14 +651,18 @@ def _update_adaptive_controllers() -> None:
         alive = any(controller.matches(view) for view in live_views)
         if alive and controller.maintain():
             continue
-        controller.dispose()
+        # A dead view already freed its Coin scene; only a still-alive view
+        # that failed maintenance may have its grid node detached safely.
+        controller.dispose(remove_from_scene=alive)
         _adaptive_controllers.remove(controller)
 
 
 def _dispose_adaptive_controllers() -> None:
     """Detach every per-view Coin sensor before its native view disappears."""
+    live_views = _live_3d_views()
     for controller in list(_adaptive_controllers):
-        controller.dispose()
+        alive = any(controller.matches(view) for view in live_views)
+        controller.dispose(remove_from_scene=alive)
     _adaptive_controllers.clear()
 
 
@@ -595,18 +755,31 @@ def _ensure_maintenance_timer() -> None:
         _warn(f"adaptive grid timer unavailable: {exc}")
 
 
-def _ensure_adaptive_controller(view: Any, grid: Any) -> None:
-    if _close_suspended:
-        return
-    parent = _active_view_parent()
+def _find_controller(view: Any) -> Any:
     for controller in _adaptive_controllers:
         if controller.matches(view):
-            controller.grid = grid
-            controller.ensure_parent(parent)
-            controller.schedule_update()
-            return
-    _adaptive_controllers.append(_AdaptiveGridController(view, grid, parent))
+            return controller
+    return None
+
+
+def _ensure_adaptive_controller(view: Any) -> Any:
+    if _close_suspended:
+        return None
+    parent = _active_view_parent()
+    controller = _find_controller(view)
+    if controller is not None:
+        controller.ensure_parent(parent)
+        controller.schedule_update()
+        return controller
+    try:
+        grid = _GridTracker(view)
+    except Exception as exc:
+        _warn(f"grid tracker creation failed: {exc}")
+        return None
+    controller = _AdaptiveGridController(view, grid, parent)
+    _adaptive_controllers.append(controller)
     _ensure_maintenance_timer()
+    return controller
 
 
 def is_enabled() -> bool:
@@ -616,66 +789,34 @@ def is_enabled() -> bool:
     return App.ParamGet(_CADEX_PARAM_PATH).GetBool("AlwaysShowGrid", True)
 
 
-def seed_grid_preferences() -> None:
-    """Seed Draft grid preferences once so the grid shows app-wide.
-
-    Write-once: guarded by a flag in the Cadex parameter group. If the user
-    later disables the grid via Draft preferences, we never force it back on.
-    """
+def _major_every() -> int:
+    """Number of minor cells per major cell (``Mod/cadex`` preference)."""
     if App is None:
-        return
-    cadex_params = App.ParamGet(_CADEX_PARAM_PATH)
-    if cadex_params.GetBool(_SEED_FLAG, False):
-        return
-    draft_params = App.ParamGet(_DRAFT_PARAM_PATH)
-    draft_params.SetBool("alwaysShowGrid", True)
-    draft_params.SetBool("GridHideInOtherWorkbenches", False)
-    cadex_params.SetBool(_SEED_FLAG, True)
-
-
-def _get_snapper() -> Any:
-    """Return the shared Draft Snapper, creating it if it does not exist."""
-    import FreeCADGui as Gui
-    import WorkingPlane
-
-    # Draft's tracker classes still read the compatibility
-    # ``FreeCAD.DraftWorkingPlane`` attribute. The supported working-plane
-    # API creates and synchronizes that attribute for the active 3D view;
-    # importing gui_snapper alone does not.
-    WorkingPlane.get_working_plane(update=False)
-
-    snapper = getattr(Gui, "Snapper", None)
-    if snapper is None:
-        from draftguitools import gui_snapper
-
-        snapper = gui_snapper.Snapper()
-        Gui.Snapper = snapper
-    return snapper
+        return 10
+    return max(1, App.ParamGet(_CADEX_PARAM_PATH).GetInt("GridMajorEvery", 10))
 
 
 def _grid_should_always_show() -> bool:
-    """Return the current value of the Draft ``alwaysShowGrid`` preference."""
+    """Return the persisted grid visibility preference."""
     if App is None:
         return False
-    return App.ParamGet(_DRAFT_PARAM_PATH).GetBool("alwaysShowGrid", False)
+    return App.ParamGet(_CADEX_PARAM_PATH).GetBool("ShowGrid", True)
 
 
 def is_grid_visible() -> bool:
     """Return True when the grid is visible in at least one 3D view.
 
-    Reads the actual tracker state so the answer stays correct even when the
-    grid was toggled through Draft's own command. Falls back to the
-    ``alwaysShowGrid`` preference before any tracker exists (e.g. at startup).
+    Reads the actual tracker state so the answer stays correct even when a
+    tracker was toggled directly. Falls back to the ``ShowGrid`` preference
+    before any tracker exists (e.g. at startup).
     """
     if App is None or not App.GuiUp:
         return False
     try:
-        import FreeCADGui as Gui
-
-        snapper = getattr(Gui, "Snapper", None)
-        if snapper is not None and snapper.trackers[1]:
+        if _adaptive_controllers:
             return any(
-                bool(getattr(grid, "Visible", False)) for grid in snapper.trackers[1]
+                bool(getattr(controller.grid, "Visible", False))
+                for controller in _adaptive_controllers
             )
     except Exception as exc:
         _warn(f"grid visibility query failed: {exc}")
@@ -685,9 +826,9 @@ def is_grid_visible() -> bool:
 def toggle_grid(show: bool | None = None) -> None:
     """Show or hide the grid in every 3D view, current and future.
 
-    Writes the Draft ``alwaysShowGrid`` preference (so views opened later
-    follow suit) and flips all existing grid trackers. With ``show=None`` the
-    current visibility is inverted.
+    Writes the ``ShowGrid`` preference (so views opened later follow suit)
+    and flips all existing grid trackers. With ``show=None`` the current
+    visibility is inverted.
     """
     if App is None or not App.GuiUp:
         return
@@ -695,34 +836,21 @@ def toggle_grid(show: bool | None = None) -> None:
         if show is None:
             show = not is_grid_visible()
         show = bool(show)
-        App.ParamGet(_DRAFT_PARAM_PATH).SetBool("alwaysShowGrid", show)
+        App.ParamGet(_CADEX_PARAM_PATH).SetBool("ShowGrid", show)
 
         import FreeCADGui as Gui
 
         # A native View-menu command remains available before a document is
-        # opened. In that state the preference is all that should change:
-        # creating Draft's Snapper would attempt to initialize view trackers
-        # without a 3D view.
+        # opened. In that state the preference is all that should change.
         if Gui.activeDocument() is None:
             return
 
-        snapper = _get_snapper()
+        for controller in _adaptive_controllers:
+            controller.grid.set_visible(show)
+            controller.schedule_update()
         if show:
-            for grid in snapper.trackers[1]:
-                grid.show_always = True
-            # Turn on every grid tracker, then make sure the active view has
-            # one at all (creates it if needed) and align it to the working
-            # plane.
-            snapper.show()
-            snapper.setTrackers()
-            view = getattr(snapper, "activeview", None)
-            if view in snapper.trackers[0]:
-                index = snapper.trackers[0].index(view)
-                _ensure_adaptive_controller(view, snapper.trackers[1][index])
+            _show_grid_in_active_view()
         else:
-            for grid in snapper.trackers[1]:
-                grid.show_always = False
-                grid.off()
             _update_adaptive_controllers()
     except Exception as exc:
         _warn(f"grid toggle failed: {exc}")
@@ -733,42 +861,44 @@ def toggle_grid(show: bool | None = None) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _active_3d_view() -> Any:
+    """Return the active ``View3DInventor`` or None."""
+    try:
+        import FreeCADGui as Gui
+
+        gui_document = Gui.activeDocument()
+        if gui_document is None:
+            return None
+        view = gui_document.activeView()
+        if view is not None and hasattr(view, "getCameraNode"):
+            return view
+    except (AttributeError, RuntimeError):
+        pass
+    return None
+
+
 def _show_grid_in_active_view() -> None:
     """Initialize and show the grid for the active 3D view, at most once.
 
-    Only acts while the Draft ``alwaysShowGrid`` preference is set (i.e. the
-    grid is toggled on). Views whose grid tracker already exists are skipped
-    so a manual grid toggle by the user is never fought.
+    Only acts while the ``ShowGrid`` preference is set (i.e. the grid is
+    toggled on). Views that already have a controller are only refreshed so
+    a manual grid toggle by the user is never fought.
     """
     if App is None or not App.GuiUp or _close_suspended or _document_restore_active():
         return
     if not _grid_should_always_show():
         return
     try:
-        from draftutils import gui_utils
-
-        view = gui_utils.get_3d_view()
+        view = _active_3d_view()
         if view is None:
             return
-        key = id(view)
-        snapper = _get_snapper()
-        if view in snapper.trackers[0]:
-            # Grid tracker already exists (e.g. created by Draft itself or a
-            # previous wrapper of the same view); respect its current state.
-            _seen_views.add(key)
-            index = snapper.trackers[0].index(view)
-            _ensure_adaptive_controller(view, snapper.trackers[1][index])
+        already_tracked = _find_controller(view) is not None
+        controller = _ensure_adaptive_controller(view)
+        if controller is None:
             return
-        # A recycled Python id must never suppress initialization of a new
-        # native view; tracker membership is the authoritative identity test.
-        _seen_views.discard(key)
-        # Creates the per-view trackers; because alwaysShowGrid is set, the
-        # new grid gets show_always=True and is displayed immediately.
-        snapper.setTrackers()
-        _seen_views.add(key)
-        if view in snapper.trackers[0]:
-            index = snapper.trackers[0].index(view)
-            _ensure_adaptive_controller(view, snapper.trackers[1][index])
+        if not already_tracked:
+            controller.grid.set_visible(True)
+            controller.schedule_update()
     except Exception as exc:
         _warn(f"unable to show grid in active view: {exc}")
 
@@ -819,13 +949,12 @@ def _install_view_observer() -> None:
 def setup() -> None:
     """Install the grid feature (idempotent).
 
-    Preference seeding is gated by the ``AlwaysShowGrid`` kill-switch, so the
-    grid only turns itself on at startup when the feature is enabled. The view
-    observer follows the Draft ``alwaysShowGrid`` preference for current and
-    future 3D views. View-menu ownership remains entirely native.
+    Gated by the ``AlwaysShowGrid`` kill-switch. The view observer follows
+    the ``ShowGrid`` preference for current and future 3D views. View-menu
+    ownership remains entirely native.
     """
     if App is None or not App.GuiUp:
         return
-    if is_enabled():
-        seed_grid_preferences()
+    if not is_enabled():
+        return
     _install_view_observer()
