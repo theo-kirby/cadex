@@ -6048,7 +6048,12 @@ def publish_candidate(
         raise RuntimeError(
             "The active document identity changed while the domain worker ran."
         )
-    if str(service.provider_document_revision()) != prepared["document_revision"]:
+    if manage_transaction and (
+        str(service.provider_document_revision()) != prepared["document_revision"]
+    ):
+        # With manage_transaction=False the enclosing caller has already run
+        # this guard and holds the one open transaction — whose booked id is
+        # part of the revision token, so recomputing it here can never match.
         raise RuntimeError(
             "The document changed while the domain worker ran; regenerate on the live state."
         )
