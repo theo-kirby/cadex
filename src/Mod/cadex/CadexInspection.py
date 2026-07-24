@@ -173,70 +173,6 @@ def _edit_object() -> dict[str, Any] | None:
     }
 
 
-def _capture_scripted_domain(service: Any, resolution: Any) -> dict[str, Any]:
-    engine = str(resolution.engine)
-    doc = service._active_document()
-    from CadexScriptedDomains import capture_domain_programs, get_xscript_pack
-
-    if engine == "xscript":
-        from CadexScriptedDomains import get_xscript_pack
-
-        pack = get_xscript_pack(str(resolution.workbench or ""))
-    else:
-        pack = get_xscript_pack(str(resolution.workbench or ""))
-    return {
-        "kind": "domain_v2",
-        "domain": str(resolution.domain or ""),
-        "workbench": str(resolution.workbench or ""),
-        "project_root": str(service.project_scope_snapshot().get("root") or ""),
-        "native_programs": (
-            capture_domain_programs(doc, str(resolution.domain or ""))
-            if doc is not None
-            else []
-        ),
-        "contract": {
-            "program_schema": (
-                pack.program_schema
-                if pack is not None
-                else "cadex-xscript-program-v2"
-            ),
-            "output_types": list(pack.output_types) if pack is not None else [],
-            "api_exports": list(pack.api_exports) if pack is not None else [],
-        },
-    }
-
-
-def _capture_program(service: Any, resolution: Any, target: str) -> dict[str, Any]:
-    if not target:
-        raise ValueError("program scope requires an exact stable program or model id.")
-    engine = str(resolution.engine)
-    from CadexScriptedDomains import capture_domain_programs, get_xscript_pack
-
-    if engine == "xscript":
-        from CadexScriptedDomains import get_xscript_pack
-
-        pack = get_xscript_pack(str(resolution.workbench or ""))
-    else:
-        pack = get_xscript_pack(str(resolution.workbench or ""))
-    if pack is None:
-        raise ValueError("The active scripted domain is unavailable.")
-    doc = service._active_document()
-    return {
-        "kind": "domain_v2_program",
-        "captured": {
-            "tool_name": f"{engine}.{resolution.domain}.inspect_program",
-            "pack": pack,
-            "project_root": str(service.project_scope_snapshot().get("root") or ""),
-            "program_id": target,
-            "live_programs": (
-                capture_domain_programs(doc, str(resolution.domain or ""))
-                if doc is not None
-                else []
-            ),
-        },
-    }
-
-
 def capture_inspection(service: Any, arguments: Mapping[str, Any]) -> dict[str, Any]:
     """Capture only document-affine state; artifact reads happen in complete()."""
 
@@ -254,7 +190,7 @@ def capture_inspection(service: Any, arguments: Mapping[str, Any]) -> dict[str, 
         raise ValueError("target and path are each limited to 512 characters.")
     if attach and scope != "image":
         raise ValueError("attach=true is valid only for image scope.")
-    if scope in {"object", "program"} and not target:
+    if scope == "object" and not target:
         raise ValueError(f"{scope} scope requires an exact target.")
     if scope == "image" and attach and not target:
         raise ValueError("image scope requires an exact target when attach=true.")
@@ -307,14 +243,15 @@ def capture_inspection(service: Any, arguments: Mapping[str, Any]) -> dict[str, 
         if obj is None:
             raise ValueError(f"Object not found by exact internal name: {target!r}.")
         return {**common, "kind": "captured", "raw": _object_detail(obj)}
-    if scope == "domain":
-        if not resolution.available:
-            raise ValueError(
-                str(resolution.unavailable_reason or "The active domain is unavailable.")
-            )
-        return {**common, **_capture_scripted_domain(service, resolution)}
-    if scope == "program":
-        return {**common, **_capture_program(service, resolution, target)}
+    if scope == "script":
+        # THE project script: source text, parameter specs/values, revisions,
+        # accepted contract/digest, latest candidate. Artifact reads happen in
+        # complete_inspection, off the document thread.
+        return {
+            **common,
+            "kind": "script",
+            "project_root": str(service.project_scope_snapshot().get("root") or ""),
+        }
     if scope == "api":
         schemas = [
             service.registry.get(name).to_schema(active_workbench=workbench)
@@ -333,22 +270,46 @@ def capture_inspection(service: Any, arguments: Mapping[str, Any]) -> dict[str, 
 
 def _complete_api(captured: Mapping[str, Any]) -> Any:
     surface = captured["surface"]
-    engine = str(surface.get("engine") or "")
-    if engine not in {"xscript", "xscript"}:
+    if str(surface.get("engine") or "") != "xscript":
         return {"surface": surface, "tools": list(captured.get("schemas") or [])}
-    from CadexScriptedRuntime import describe_api
+    from CadexScriptedRuntime import describe_project_api
 
-    if engine == "xscript":
-        from CadexScriptedDomains import get_xscript_pack
+    return describe_project_api()
 
-        pack = get_xscript_pack(str(surface.get("workbench") or ""))
-    else:
-        from CadexScriptedDomains import get_xscript_pack
 
-        pack = get_xscript_pack(str(surface.get("workbench") or ""))
-    if pack is None:
-        return {"ok": False, "error": "The active scripted domain is unavailable."}
-    return describe_api(pack)
+def _complete_script(captured: Mapping[str, Any]) -> Any:
+    """Read THE project script's persisted state; paged by _bounded_page."""
+
+    root = str(captured.get("project_root") or "")
+    if not root:
+        return {
+            "ok": False,
+            "error": "The active document has no durable Cadex project root.",
+        }
+    from CadexProject import CadexProjectScriptStore
+
+    store = CadexProjectScriptStore(root)
+    state = store.read_state()
+    source = store.read_source()
+    return {
+        "script_present": bool(source),
+        "source": source,
+        "source_characters": len(source),
+        "params": {
+            "specs": list(state.get("param_specs") or []),
+            "values": dict(state.get("param_values") or {}),
+        },
+        "revisions": {
+            "working_revision": str(state.get("working_revision") or ""),
+            "accepted_revision": str(state.get("accepted_revision") or ""),
+        },
+        "accepted": {
+            "contract": state.get("accepted_contract"),
+            "digest": str(state.get("accepted_digest") or ""),
+        },
+        "latest_candidate": state.get("latest_candidate"),
+        "updated_at": str(state.get("updated_at") or ""),
+    }
 
 
 def _complete_image(captured: Mapping[str, Any]) -> tuple[Any, dict[str, Any] | None]:
@@ -595,27 +556,8 @@ def complete_inspection(captured: Mapping[str, Any]) -> dict[str, Any]:
             raw = captured.get("raw")
         elif kind == "document_objects_page":
             return _bounded_document_objects_page(captured)
-        elif kind == "domain_v2":
-            from CadexScriptedDomains import complete_domain_context
-
-            raw = complete_domain_context(
-                {
-                    "_cadex_deferred_xscript_domain_context": True,
-                    "domain": captured["domain"],
-                    "workbench": captured["workbench"],
-                    "project_root": captured["project_root"],
-                    "native_programs": list(captured.get("native_programs") or []),
-                    "contract": dict(captured.get("contract") or {}),
-                }
-            )
-        elif kind == "scripted_engine_domain":
-            raw = _complete_scripted_engine_domain(captured)
-        elif kind == "domain_v2_program":
-            from CadexScriptedRuntime import complete_inspection as complete_program
-
-            raw = complete_program(captured["captured"])
-        elif kind == "scripted_engine_program":
-            raw = _complete_scripted_engine_program(captured)
+        elif kind == "script":
+            raw = _complete_script(captured)
         elif kind == "api":
             raw = _complete_api(captured)
         elif kind == "image":

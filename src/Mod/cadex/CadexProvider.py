@@ -21,18 +21,15 @@ from typing import Any, Callable
 
 from CadexDebug import capture_provider_request
 from CadexModelingSurface import resolve_modeling_surface, validate_surface_names
-from CadexScriptedDomains import get_xscript_pack
 
 
-def _scripted_pack_for(engine: str, workbench: str):
-    """Resolve the scripted-engine pack for a workbench across both engines."""
-    if engine == "xscript":
-        try:
-            from CadexScriptedDomains import get_xscript_pack
-        except Exception:
-            return None
-        return get_xscript_pack(workbench)
-    return get_xscript_pack(workbench)
+def _project_pack():
+    """The single global authoring surface: THE project script's pack."""
+    try:
+        from CadexScriptedDomains import PROJECT_PACK
+    except Exception:
+        return None
+    return PROJECT_PACK
 
 
 MAX_PROVIDER_IMAGE_BYTES = 2_000_000
@@ -142,70 +139,36 @@ def _xscript_engine_active(context: dict[str, Any]) -> bool:
     return False
 
 
-def _xscript_domain(context: dict[str, Any]) -> str | None:
-    surface = context.get("modeling_surface")
-    if isinstance(surface, dict) and surface.get("engine") in {
-        "xscript",
-        "xscript",
-    }:
-        domain = str(surface.get("domain") or "").strip()
-        if domain:
-            return domain
-    domains: set[str] = set()
-    for schema in context.get("provider_tool_schemas") or []:
-        if not isinstance(schema, dict):
-            continue
-        parts = str(schema.get("name") or "").split(".")
-        if not parts or parts[0] not in {"xscript", "xscript"}:
-            continue
-        if len(parts) == 3:
-            domains.add(parts[1])
-    return next(iter(domains)) if len(domains) == 1 else None
-
-
 def _xscript_authoring_instruction(context: dict[str, Any]) -> str:
-    domain = _xscript_domain(context)
-    workbench = str(context.get("workbench") or "")
-    surface = context.get("modeling_surface")
-    engine = (
-        str(surface.get("engine") or "") if isinstance(surface, dict) else "xscript"
-    )
-    pack = _scripted_pack_for(engine, workbench)
-    if pack is None or pack.domain != domain:
+    del context
+    pack = _project_pack()
+    if pack is None:
         return ""
     return (
-        f"{pack.engine.upper()} {pack.title.upper()} AUTHORING\n"
-        f"The selected global engine is {pack.engine} and the only CAD authoring "
-        f"domain is {pack.title}. {pack.instructions}\n\n"
-        "Use core.inspect scope='domain' to discover existing programs and exact "
-        "document references before creating one; inspect and update a matching "
-        "program instead of creating a duplicate.\n\n"
-        "Call core.inspect with scope='api' before writing the first program. Programs "
-        f"receive only doc, validated inputs, and the returned domain api bound to the "
-        f"global name '{pack.api_global}' (call {pack.api_global}.<operation>(...)). Inputs "
-        "are bounded JSON scalars, arrays, enums, or stable document references; "
-        "raw filesystem paths and arbitrary Python objects are forbidden. Every "
-        "output must have a stable declared name and one of these types: "
-        + ", ".join(pack.output_types)
-        + ". Choose the narrowest lifecycle mutation: edit_source for source-only "
-        "changes, set_inputs for value-only changes, and reconfigure_program only "
-        "when source, input schema, inputs, or declared outputs must change together. "
-        "Use core.inspect scope='program' for source, live identity, and the latest "
-        "working_revision before mutation. A failed candidate "
-        "becomes the working revision while the previous accepted revision stays live; "
-        "inspect it, repair the smallest exact cause, and verify the accepted/live state "
-        "after success.\n\n"
-        "For inputs a person would naturally tweak (overall sizes, wall thicknesses, "
-        "counts, angles), call "
-        + f"{pack.engine}.{pack.domain}.set_parameter_controls"
-        + " to declare per-input slider metadata (label, unit, min, max, step, "
-        "description) so the Parameters panel shows real sliders instead of guessed "
-        "ranges. Declared ranges are a promise: the user drags a slider and reruns the "
-        "unchanged source at any in-range value without you in the loop, so choose "
-        "min/max the source tolerates across the whole range (walls stay positive, "
-        "features still fit, fused solids still overlap). It changes no geometry and "
-        "leaves the working_revision unchanged. "
-        "Never call native workbench tools from this mode."
+        "XSCRIPT PROJECT AUTHORING\n"
+        f"{pack.instructions}\n\n"
+        "The only mutation surface is xscript.project.*: write_script replaces "
+        "the whole script; edit_script applies exact replacements where every "
+        "old string must occur exactly once; set_params patches only the "
+        "values of parameters the script declares. Every mutation is guarded "
+        "by expected_revision - the working revision from core.inspect "
+        "scope='script' or the previous write result; use an empty string "
+        "only when no script exists yet.\n\n"
+        "Call core.inspect scope='api' (or xscript.project.describe_api) "
+        "before the first write for the exact sketcher/part/partdesign/"
+        "assembly API exports and the params/num vocabulary; never guess "
+        "signatures or output types. Use core.inspect scope='script' for the "
+        "current source, parameters, revisions, and latest candidate before "
+        "mutating. A failed candidate becomes the working revision while the "
+        "previous accepted revision stays live; repair the smallest exact "
+        "cause and verify after success.\n\n"
+        "For dimensions a person would naturally tweak (overall sizes, wall "
+        "thicknesses, counts, angles), declare them with params(name=num("
+        "default, unit=..., min=..., max=..., step=..., label=...)) so the "
+        "Parameters panel shows real sliders. Declared ranges are a promise: "
+        "the user rebuilds the unchanged source at any in-range value without "
+        "you in the loop, so choose min/max the script tolerates across the "
+        "whole range. Never call native workbench tools from this mode."
     )
 
 

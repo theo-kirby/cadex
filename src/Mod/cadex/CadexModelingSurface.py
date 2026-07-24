@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""Exact modeling-engine/workbench surface resolution.
+"""Exact modeling-engine surface resolution.
 
 This is the single authority for deciding which CAD authoring surface exists.
-It deliberately returns one pack, never a union or fallback.  Runtime filters
-may remove tools for document/edit-state reasons, but they may not add tools to
-the resolved tuple.
+Since the Phase 2.4 tool-surface swap (ADR-013) the surface is GLOBAL: the
+xscript engine serves exactly one authoring surface — the four
+``xscript.project.*`` tools of the single project script — regardless of the
+active FreeCAD workbench. The workbench no longer selects a domain. Runtime
+filters may remove tools for document/edit-state reasons, but they may not add
+tools to the resolved tuple.
 """
 
 from __future__ import annotations
@@ -14,10 +17,9 @@ from dataclasses import dataclass
 import hashlib
 from typing import Any, Iterable
 
-from CadexScriptedDomains import domain_availability, get_xscript_pack
+from CadexScriptedDomains import PROJECT_PACK
 
 MODELING_ENGINES = frozenset({"xscript"})
-UNSUPPORTED_WORKBENCHES = frozenset({"NoneWorkbench", "TestWorkbench"})
 
 CORE_CONVERSATION_VIEW_TOOLS = frozenset(
     {
@@ -37,27 +39,6 @@ CORE_CONVERSATION_VIEW_TOOLS = frozenset(
     }
 )
 
-# Domain-specific read entry points stay available to the application, but are
-# not duplicated in provider declarations. ``core.inspect`` is the one
-# model-facing read interface and remains bound to the resolved
-# workbench/engine tuple.
-HIDDEN_PROVIDER_INSPECTION_TOOLS = frozenset(
-    {
-        "assembly.list_structure",
-    }
-)
-
-
-def _provider_cad_tool_names(names: Iterable[str]) -> tuple[str, ...]:
-    return tuple(
-        dict.fromkeys(
-            str(name)
-            for name in names
-            if str(name) not in HIDDEN_PROVIDER_INSPECTION_TOOLS
-            and not str(name).endswith(".describe_api")
-            and not str(name).endswith(".inspect_program")
-        )
-    )
 
 @dataclass(frozen=True)
 class ModelingSurface:
@@ -88,12 +69,14 @@ class ModelingSurface:
         }
 
 
-def _surface_id(*, workbench: str | None, engine: str, domain: str | None, generation: str) -> str:
+def _surface_id(*, engine: str, domain: str | None, generation: str) -> str:
+    # The surface is global: the workbench deliberately does not participate,
+    # so switching workbenches never changes the surface identity.
     readable = "/".join(
         (
             "cadex",
             "surface",
-            str(workbench or "none"),
+            "global",
             engine,
             str(domain or "unavailable"),
             generation,
@@ -107,18 +90,15 @@ def _unavailable(
     workbench: str | None,
     engine: str,
     reason: str,
-    *,
-    domain: str | None = None,
 ) -> ModelingSurface:
     return ModelingSurface(
         workbench=workbench,
         engine=engine,
-        domain=domain,
+        domain=None,
         surface_id=_surface_id(
-            workbench=workbench,
             engine=engine,
-            domain=domain,
-            generation="v2-unavailable",
+            domain=None,
+            generation="project-v1-unavailable",
         ),
         core_tool_names=tuple(sorted(CORE_CONVERSATION_VIEW_TOOLS)),
         cad_tool_names=(),
@@ -131,76 +111,29 @@ def resolve_modeling_surface(
     workbench: str | None,
     engine: str,
 ) -> ModelingSurface:
-    """Resolve exactly one CAD pack for ``(workbench, engine)``."""
+    """Resolve the one global project surface for ``engine``."""
 
     clean_engine = str(engine or "").strip().lower()
+    clean_workbench = str(workbench or "").strip() or None
     if clean_engine not in MODELING_ENGINES:
         return _unavailable(
-            workbench,
+            clean_workbench,
             clean_engine or "unknown",
             f"Unknown modeling engine: {clean_engine or '<missing>'}.",
         )
-    clean_workbench = str(workbench or "").strip() or None
-    if clean_workbench is None:
-        return _unavailable(
-            clean_workbench,
-            clean_engine,
-            "No active FreeCAD workbench has a CAD authoring surface.",
-        )
-    if clean_workbench in UNSUPPORTED_WORKBENCHES:
-        return _unavailable(
-            clean_workbench,
-            clean_engine,
-            f"{clean_workbench} intentionally has no CAD authoring surface.",
-        )
-    # Reachability guard: an unknown workbench has no CAD authoring surface.
-    # The scripted pack registry is the single authority for which workbenches
-    # exist.
-    if get_xscript_pack(clean_workbench) is None:
-        return _unavailable(
-            clean_workbench,
-            clean_engine,
-            f"Unknown FreeCAD workbench {clean_workbench!r}; no fallback surface is permitted.",
-        )
-
-    if clean_engine == "xscript":
-        from CadexScriptedDomains import xscript_domain_availability
-
-        xscript_pack = get_xscript_pack(clean_workbench)
-        if xscript_pack is None:
-            return _unavailable(
-                clean_workbench,
-                clean_engine,
-                f"No xscript domain is registered for {clean_workbench}.",
-            )
-        available, reason = xscript_domain_availability(clean_workbench)
-        if not available:
-            return _unavailable(
-                clean_workbench,
-                clean_engine,
-                reason,
-                domain=xscript_pack.domain,
-            )
-        return ModelingSurface(
-            workbench=clean_workbench,
+    return ModelingSurface(
+        workbench=clean_workbench,
+        engine=clean_engine,
+        domain=PROJECT_PACK.domain,
+        surface_id=_surface_id(
             engine=clean_engine,
-            domain=xscript_pack.domain,
-            surface_id=_surface_id(
-                workbench=clean_workbench,
-                engine=clean_engine,
-                domain=xscript_pack.domain,
-                generation="domain-v4-unified-lifecycle",
-            ),
-            core_tool_names=tuple(sorted(CORE_CONVERSATION_VIEW_TOOLS)),
-            cad_tool_names=_provider_cad_tool_names(xscript_pack.tool_names),
-            available=True,
-            unavailable_reason="",
-        )
-
-    return _unavailable(
-        clean_workbench,
-        clean_engine,
-        f"Unknown modeling engine: {clean_engine}.",
+            domain=PROJECT_PACK.domain,
+            generation="project-v1-single-script",
+        ),
+        core_tool_names=tuple(sorted(CORE_CONVERSATION_VIEW_TOOLS)),
+        cad_tool_names=tuple(PROJECT_PACK.tool_names),
+        available=True,
+        unavailable_reason="",
     )
 
 
@@ -241,8 +174,9 @@ def validate_surface_names(
     names: Iterable[str],
     allowed_names: Iterable[str] | None = None,
 ) -> None:
-    """Reject mixed engines, workbenches, domains, or undeclared names."""
+    """Reject mixed engines, foreign namespaces, or undeclared names."""
 
+    del workbench  # The surface is global; the workbench carries no authority.
     clean_names = [str(name or "").strip() for name in names]
     if any(not name for name in clean_names):
         raise ValueError("Every provider tool must have a non-empty name.")
@@ -284,9 +218,9 @@ def validate_surface_names(
                 + ", ".join(sorted(native_cad))
             )
         domains = _scripted_domains(clean_names, engine)
-        if len(domains) != 1:
+        if domains != {PROJECT_PACK.domain}:
             raise ValueError(
-                f"A {engine} surface must contain exactly one domain namespace."
+                f"A {engine} surface must contain exactly the project namespace."
             )
     if allowed is not None:
         undeclared = sorted(set(clean_names) - allowed)

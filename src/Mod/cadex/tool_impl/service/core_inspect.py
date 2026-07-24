@@ -10,10 +10,11 @@ RUNNER_HANDLED = True
 TOOL_SPEC = {
     "name": "core.inspect",
     "description": (
-        "Read only the live CAD or scripted state needed for the current task, "
-        "inside the active workbench and modeling engine. Start with document, "
-        "selection, or domain; use object/program/api for exact detail. Results "
-        "are deterministic pages and never switch workbenches or engines."
+        "Read only the live CAD or scripted state needed for the current task. "
+        "Use scope='script' for THE project script (source, parameters, "
+        "revisions, accepted contract, latest candidate), document/selection/"
+        "object for live document state, and api for the exact runtime "
+        "contract. Results are deterministic pages."
     ),
     "contextual": True,
     "safety": "READ",
@@ -28,8 +29,7 @@ TOOL_SPEC = {
                     "document",
                     "selection",
                     "object",
-                    "domain",
-                    "program",
+                    "script",
                     "api",
                     "image",
                 ],
@@ -40,9 +40,9 @@ TOOL_SPEC = {
                 "maxLength": 512,
                 "default": "",
                 "description": (
-                    "Exact internal object name, stable program/model id, image id, "
-                    "sheet name, or domain filter required by the selected scope; "
-                    "use an empty string when that scope needs no target."
+                    "Exact internal object name or image id required by the "
+                    "selected scope; use an empty string when that scope needs "
+                    "no target."
                 ),
             },
             "path": {
@@ -51,7 +51,7 @@ TOOL_SPEC = {
                 "default": "",
                 "description": (
                     "JSON Pointer into this scope's deterministic result, such as "
-                    "'/program/source'; use an empty string for its root."
+                    "'/source' in script scope; use an empty string for its root."
                 ),
             },
             "offset": {

@@ -57,39 +57,15 @@ PROVIDER_SAFE_LEVELS = {
 
 CORE_PROVIDER_TOOLS = set(CORE_CONVERSATION_VIEW_TOOLS)
 
+#: The complete xscript authoring surface: core/conversation/file tools plus
+#: the four xscript.project.* tools. The per-domain lifecycle surface was
+#: dissolved by the Phase 2.4 tool-surface swap (ADR-013).
 XSCRIPT_PROVIDER_TOOLS = {
     *CORE_CONVERSATION_VIEW_TOOLS,
-    *(
-        name
-        for pack in xscript_domains.XSCRIPT_WORKBENCH_PACKS.values()
-        for name in pack.tool_names
-        if not name.endswith(".describe_api")
-        and not name.endswith(".inspect_program")
-    ),
+    *xscript_domains.PROJECT_PACK.tool_names,
 }
 
 ISOLATED_GEOMETRY_TOOLS = {"partdesign.measure"}
-
-
-def _xscript_provider_tools() -> set[str]:
-    """The xscript authoring surface: the xscript.<domain>.* lifecycle tools."""
-    try:
-        from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
-    except Exception:
-        return set(CORE_CONVERSATION_VIEW_TOOLS)
-    return {
-        *CORE_CONVERSATION_VIEW_TOOLS,
-        *(
-            name
-            for pack in XSCRIPT_WORKBENCH_PACKS.values()
-            for name in pack.tool_names
-            if not name.endswith(".describe_api")
-            and not name.endswith(".inspect_program")
-        ),
-    }
-
-
-XSCRIPT_PROVIDER_TOOLS = _xscript_provider_tools()
 
 SCRIPTED_ENGINE_PROVIDER_TOOLS = {
     "xscript": XSCRIPT_PROVIDER_TOOLS,
@@ -125,18 +101,6 @@ def _experimental_mode_session() -> bool:
     except Exception:
         return False
     return bool(is_experimental_mode_session())
-
-
-def _scripted_domain_tool_domain(tool_name: str) -> str:
-    """Return the domain of a scripted-engine domain tool, or "" if not one.
-
-    Covers both the xscript and xscript engines; the domain adapter is keyed
-    by domain (engine-agnostic), so both route through the same runtime.
-    """
-    parts = str(tool_name or "").split(".")
-    if len(parts) == 3 and parts[0] in {"xscript", "xscript"}:
-        return parts[1]
-    return ""
 
 
 def _budget_notice_level() -> int:
@@ -1399,7 +1363,7 @@ def _trace_result(payload: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _run_domain_xscript_tool(
+def _run_project_xscript_tool(
     service: CadexService,
     tool_name: str,
     args: dict[str, Any],
@@ -1408,44 +1372,55 @@ def _run_domain_xscript_tool(
     cancellation_check: CancellationCheck | None,
     progress_callback: ProgressCallback | None,
 ) -> dict[str, Any]:
-    """Run one schema-v2 domain lifecycle without blocking the document thread."""
+    """Run one xscript.project.* lifecycle without blocking the document thread.
 
+    Capture and publication run on the document thread; script persistence,
+    the sandboxed worker, and result validation run off-thread. A failed
+    candidate is recorded on the script store while the previous accepted
+    revision stays live.
+    """
+
+    from CadexScriptedDomainPublication import publish_project_candidate
     from CadexScriptedRuntime import (
         DomainRuntimeFailure,
-        accept_candidate,
-        abandon_prepared_candidate,
-        apply_parameter_controls,
-        capture_inspection_state,
-        capture_operation_state,
-        capture_reference_inputs,
-        complete_inspection,
-        describe_api,
-        finalize_candidate,
-        finish_delete,
-        parse_domain_tool,
-        prepare_candidate,
-        prepare_delete,
-        restore_prepared_delete,
-        retain_candidate,
+        accept_project_candidate,
+        capture_project_state,
+        describe_project_api,
+        execute_candidate,
+        parse_project_tool,
+        prepare_project_candidate,
+        record_project_candidate_failure,
+        validate_project_result,
     )
 
     def candidate_model_state(prepared: Mapping[str, Any]) -> dict[str, Any]:
-        domain = prepared["pack"].domain
-        program_id = str(prepared["program_id"])
-        working_revision = str(prepared["revision"])
-        accepted_revision = str(prepared.get("accepted_revision_before") or "")
+        # next_write_expected_revision is the durable working revision from
+        # the script store (validate_project_result may have re-bound it with
+        # the worker-collected parameter specs).
+        try:
+            from CadexProject import CadexProjectScriptStore
+
+            working = str(
+                CadexProjectScriptStore(str(prepared["project_root"]))
+                .read_state()
+                .get("working_revision")
+                or ""
+            )
+        except Exception:
+            working = str(prepared["revision"])
+        accepted = str(prepared.get("accepted_revision_before") or "")
         return {
             "status": "working_candidate_not_accepted",
-            "program_id": program_id,
-            "working_revision": working_revision,
-            "accepted_revision": accepted_revision,
-            "accepted_live_state_preserved": bool(accepted_revision),
-            "next_write_expected_revision": working_revision,
+            "program_id": "project",
+            "working_revision": working,
+            "accepted_revision": accepted,
+            "accepted_live_state_preserved": bool(accepted),
+            "next_write_expected_revision": working,
             "inspection_call": {
                 "tool": "core.inspect",
                 "arguments": {
-                    "scope": "program",
-                    "target": program_id,
+                    "scope": "script",
+                    "target": "",
                     "path": "",
                     "offset": 0,
                     "limit": 50,
@@ -1453,111 +1428,50 @@ def _run_domain_xscript_tool(
                 },
             },
             "repair_rule": (
-                "Inspect when the source or latest revision is uncertain, then repair the "
-                "smallest exact cause. Use edit_source for source-only changes, set_inputs "
-                "for value-only changes, and reconfigure_program only for contract or "
-                "declared-output changes."
+                "Inspect the script when the source or latest revision is "
+                "uncertain, then repair the smallest exact cause. Use "
+                "edit_script for unique targeted replacements, write_script "
+                "for a full rewrite, and set_params for value-only parameter "
+                "changes."
             ),
         }
 
-    parsed = parse_domain_tool(tool_name)
-    if parsed is None:
+    operation = parse_project_tool(tool_name)
+    if operation is None:
         return tool_failure(
             tool_name,
-            "UNKNOWN_DOMAIN_TOOL",
+            "UNKNOWN_PROJECT_TOOL",
             "surface",
-            f"Unknown workbench-qualified XScript tool: {tool_name}.",
-            requested=args,
-        )
-    pack, operation = parsed
-    adapter = xscript_domains.get_domain_adapter(pack.domain)
-    if adapter is None:
-        return tool_failure(
-            tool_name,
-            "DOMAIN_UNAVAILABLE",
-            "surface",
-            f"The {pack.title} XScript adapter is unavailable.",
+            f"Unknown project XScript tool: {tool_name}.",
             requested=args,
         )
     if operation == "describe_api":
-        return describe_api(pack)
-    if operation == "set_parameter_controls":
-        # Metadata-only: patches slider metadata on the persisted manifest without
-        # capturing document state, preparing a candidate, or touching geometry.
-        try:
-            result = apply_parameter_controls(service, pack, args)
-        except DomainRuntimeFailure as exc:
-            return exc.payload
-        if result.get("ok"):
-            _schedule_parameters_panel_refresh(document_thread_dispatch)
-        return result
+        return describe_project_api()
+    prepared = None
     try:
-        if operation == "inspect_program":
-            captured = _on_document_thread(
-                document_thread_dispatch,
-                lambda: capture_inspection_state(service, tool_name, str(args["program_id"])),
-            )
-            return complete_inspection(captured)
         captured = _on_document_thread(
             document_thread_dispatch,
-            lambda: capture_operation_state(service, tool_name, args),
+            lambda: capture_project_state(service, tool_name, args),
         )
-        if operation == "delete_program":
-            prepared_delete = prepare_delete(captured)
-            try:
-                publication = _on_document_thread(
-                    document_thread_dispatch,
-                    lambda: adapter.delete(
-                        service,
-                        prepared_delete,
-                        dict(prepared_delete["manifest"]),
-                    ),
-                )
-            except Exception:
-                restore_prepared_delete(prepared_delete)
-                raise
-            return finish_delete(prepared_delete, publication)
-        prepared = prepare_candidate(captured)
-        if prepared.get("reference_requirements") and not prepared.get("finalized"):
-            try:
-                snapshots = _on_document_thread(
-                    document_thread_dispatch,
-                    lambda: capture_reference_inputs(service, prepared),
-                )
-                prepared = finalize_candidate(prepared, snapshots)
-            except Exception:
-                abandon_prepared_candidate(prepared)
-                raise
+        prepared = prepare_project_candidate(captured)
         _emit(
             progress_callback,
             {
                 "event": "cadex_domain_worker_started",
-                "domain": pack.domain,
-                "program_id": prepared["program_id"],
+                "domain": "project",
+                "program_id": "project",
                 "revision": prepared["revision"],
             },
         )
-        execution = adapter.execute_candidate(prepared, cancellation_check=cancellation_check)
+        execution = execute_candidate(prepared, cancellation_check=cancellation_check)
         if execution.get("ok") is not True:
-            retained = retain_candidate(prepared, status="failed", failure=execution)
-            execution["failed_candidate"] = {
-                "program_id": prepared["program_id"],
-                "revision": prepared["revision"],
-                "attempt_directory": retained["attempt_directory"],
-                "accepted_revision": prepared["accepted_revision_before"],
-            }
+            record_project_candidate_failure(prepared, execution)
             execution["model_state"] = candidate_model_state(prepared)
             return execution
         try:
-            validated = adapter.validate_result(prepared, execution)
+            validated = validate_project_result(prepared, execution)
         except DomainRuntimeFailure as exc:
-            retained = retain_candidate(prepared, status="validation_failed", failure=exc.payload)
-            exc.payload["failed_candidate"] = {
-                "program_id": prepared["program_id"],
-                "revision": prepared["revision"],
-                "attempt_directory": retained["attempt_directory"],
-                "accepted_revision": prepared["accepted_revision_before"],
-            }
+            record_project_candidate_failure(prepared, exc.payload)
             exc.payload["model_state"] = candidate_model_state(prepared)
             return exc.payload
         except Exception as exc:
@@ -1569,20 +1483,13 @@ def _run_domain_xscript_tool(
                 requested=args,
                 observed={"exception_type": exc.__class__.__name__},
             )
-            retained = retain_candidate(prepared, status="validation_failed", failure=failure)
-            failure["failed_candidate"] = {
-                "program_id": prepared["program_id"],
-                "revision": prepared["revision"],
-                "attempt_directory": retained["attempt_directory"],
-                "accepted_revision": prepared["accepted_revision_before"],
-            }
+            record_project_candidate_failure(prepared, failure)
             failure["model_state"] = candidate_model_state(prepared)
             return failure
-        retain_candidate(prepared, status="validated")
         try:
             publication = _on_document_thread(
                 document_thread_dispatch,
-                lambda: adapter.publish(service, prepared, validated),
+                lambda: publish_project_candidate(service, prepared, validated),
             )
         except Exception as exc:
             failure = tool_failure(
@@ -1593,28 +1500,29 @@ def _run_domain_xscript_tool(
                 requested=args,
                 observed={"exception_type": exc.__class__.__name__},
             )
-            retained = retain_candidate(prepared, status="publication_failed", failure=failure)
-            failure["failed_candidate"] = {
-                "program_id": prepared["program_id"],
-                "revision": prepared["revision"],
-                "attempt_directory": retained["attempt_directory"],
-                "accepted_revision": prepared["accepted_revision_before"],
-            }
+            record_project_candidate_failure(prepared, failure)
             failure["model_state"] = candidate_model_state(prepared)
             return failure
-        payload = accept_candidate(prepared, publication)
+        payload = accept_project_candidate(prepared, publication, validated)
+        _schedule_parameters_panel_refresh(document_thread_dispatch)
         _emit(
             progress_callback,
             {
                 "event": "xscript_domain_publication_completed",
-                "domain": pack.domain,
-                "program_id": prepared["program_id"],
+                "domain": "project",
+                "program_id": "project",
                 "revision": prepared["revision"],
                 "output_count": len(payload.get("outputs") or []),
             },
         )
         return payload
     except DomainRuntimeFailure as exc:
+        if prepared is not None:
+            try:
+                record_project_candidate_failure(prepared, exc.payload)
+                exc.payload["model_state"] = candidate_model_state(prepared)
+            except Exception:
+                pass
         return exc.payload
     except Exception as exc:
         return tool_failure(
@@ -1636,237 +1544,24 @@ def run_domain_xscript_operation(
     cancellation_check: CancellationCheck | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
-    """Public editor bridge for one workbench-qualified v2 operation."""
+    """Compatibility bridge kept only for CadexParametersPanel (dies in 2.5).
 
-    if (
-        xscript_domains.get_domain_adapter(
-            _scripted_domain_tool_domain(tool_name)
-        )
-        is None
-    ):
-        raise ValueError(f"No XScript v2 domain adapter owns {tool_name!r}.")
-    return _run_domain_xscript_tool(
-        service,
+    The per-domain multi-program lifecycle was dissolved by the Phase 2.4
+    tool-surface swap (ADR-013), so a per-domain rebuild request now returns a
+    structured failure. The panel lists zero per-domain programs on the
+    project surface, so this is unreachable in practice; Phase 2.5 rewires
+    the panel to the project script's parameters and removes this symbol.
+    """
+
+    del service, document_thread_dispatch, cancellation_check, progress_callback
+    return tool_failure(
         tool_name,
-        dict(args),
-        document_thread_dispatch=document_thread_dispatch,
-        cancellation_check=cancellation_check,
-        progress_callback=progress_callback,
+        "DOMAIN_TOOLS_RETIRED",
+        "surface",
+        "Per-domain XScript programs were retired; the project script is the "
+        "only mutation surface (xscript.project.*).",
+        requested=dict(args),
     )
-
-
-
-def build_domain_xscript_editor_candidate(
-    service: CadexService,
-    tool_name: str,
-    args: dict[str, Any],
-    *,
-    document_thread_dispatch: DocumentThreadDispatch | None = None,
-    cancellation_check: CancellationCheck | None = None,
-) -> dict[str, Any]:
-    """Build and retain one editor candidate without publishing live objects."""
-
-    from CadexScriptedRuntime import (
-        DomainRuntimeFailure,
-        abandon_prepared_candidate,
-        capture_operation_state,
-        capture_reference_inputs,
-        finalize_candidate,
-        parse_domain_tool,
-        prepare_candidate,
-        retain_candidate,
-    )
-
-    parsed = parse_domain_tool(tool_name)
-    if parsed is None:
-        return tool_failure(
-            tool_name,
-            "UNKNOWN_DOMAIN_TOOL",
-            "surface",
-            f"Unknown workbench-qualified XScript tool: {tool_name}.",
-            requested=args,
-        )
-    pack, operation = parsed
-    if operation not in {"edit_source", "set_inputs", "reconfigure_program"}:
-        return tool_failure(
-            tool_name,
-            "EDITOR_OPERATION_UNSUPPORTED",
-            "precondition",
-            "The editor candidate path accepts only existing-program mutations.",
-            requested=args,
-        )
-    adapter = xscript_domains.get_domain_adapter(pack.domain)
-    if adapter is None:
-        return tool_failure(
-            tool_name,
-            "DOMAIN_UNAVAILABLE",
-            "surface",
-            f"The {pack.title} XScript adapter is unavailable.",
-            requested=args,
-        )
-    prepared = None
-    try:
-        if cancellation_check is not None and cancellation_check():
-            return tool_failure(
-                tool_name,
-                "RUN_CANCELLED",
-                "precondition",
-                "The editor build was superseded before capture.",
-                requested=args,
-                cancelled=True,
-            )
-        captured = _on_document_thread(
-            document_thread_dispatch,
-            lambda: capture_operation_state(service, tool_name, args),
-        )
-        prepared = prepare_candidate(captured)
-        if prepared.get("reference_requirements") and not prepared.get("finalized"):
-            try:
-                snapshots = _on_document_thread(
-                    document_thread_dispatch,
-                    lambda: capture_reference_inputs(service, prepared),
-                )
-                prepared = finalize_candidate(prepared, snapshots)
-            except Exception:
-                abandon_prepared_candidate(prepared)
-                raise
-        execution = adapter.execute_candidate(
-            prepared,
-            cancellation_check=cancellation_check,
-        )
-        if execution.get("ok") is not True:
-            retained = retain_candidate(prepared, status="failed", failure=execution)
-            execution["failed_candidate"] = {
-                "program_id": prepared["program_id"],
-                "revision": prepared["revision"],
-                "attempt_directory": retained["attempt_directory"],
-                "accepted_revision": prepared["accepted_revision_before"],
-            }
-            return execution
-        try:
-            validated = adapter.validate_result(prepared, execution)
-        except DomainRuntimeFailure as exc:
-            retained = retain_candidate(
-                prepared,
-                status="validation_failed",
-                failure=exc.payload,
-            )
-            exc.payload["failed_candidate"] = {
-                "program_id": prepared["program_id"],
-                "revision": prepared["revision"],
-                "attempt_directory": retained["attempt_directory"],
-                "accepted_revision": prepared["accepted_revision_before"],
-            }
-            return exc.payload
-        except Exception as exc:
-            failure = tool_failure(
-                tool_name,
-                "DOMAIN_RESULT_INVALID",
-                "postcondition",
-                str(exc),
-                requested=args,
-                observed={"exception_type": exc.__class__.__name__},
-            )
-            retained = retain_candidate(
-                prepared,
-                status="validation_failed",
-                failure=failure,
-            )
-            failure["failed_candidate"] = {
-                "program_id": prepared["program_id"],
-                "revision": prepared["revision"],
-                "attempt_directory": retained["attempt_directory"],
-                "accepted_revision": prepared["accepted_revision_before"],
-            }
-            return failure
-        retained = retain_candidate(prepared, status="validated")
-        return {
-            "ok": True,
-            "program_id": str(prepared["program_id"]),
-            "program_name": str(prepared["program_name"]),
-            "domain": pack.domain,
-            "working_revision": str(prepared["revision"]),
-            "accepted_revision": str(prepared.get("accepted_revision_before") or ""),
-            "attempt_directory": retained["attempt_directory"],
-            "output_count": len(validated.get("outputs") or []),
-            "stdout": str(validated.get("stdout") or ""),
-            "budget": dict(validated.get("budget") or {}),
-            "_editor_candidate": {
-                "prepared": prepared,
-                "validated": validated,
-            },
-        }
-    except DomainRuntimeFailure as exc:
-        return exc.payload
-    except Exception as exc:
-        if prepared is not None:
-            try:
-                abandon_prepared_candidate(prepared)
-            except Exception:
-                pass
-        return tool_failure(
-            tool_name,
-            "DOMAIN_EDITOR_BUILD_FAILED",
-            "external_process",
-            str(exc),
-            requested=args,
-            observed={"exception_type": exc.__class__.__name__},
-        )
-
-
-def apply_domain_xscript_editor_candidate(
-    service: CadexService,
-    candidate: Mapping[str, Any],
-    *,
-    document_thread_dispatch: DocumentThreadDispatch | None = None,
-    cancellation_check: CancellationCheck | None = None,
-) -> dict[str, Any]:
-    """Publish a previously validated editor candidate, then accept its manifest."""
-
-    from CadexScriptedRuntime import accept_candidate, retain_candidate
-
-    prepared = candidate.get("prepared")
-    validated = candidate.get("validated")
-    if not isinstance(prepared, Mapping) or not isinstance(validated, Mapping):
-        return tool_failure(
-            "xscript.editor.apply",
-            "INVALID_EDITOR_CANDIDATE",
-            "precondition",
-            "The editor has no complete validated candidate to apply.",
-        )
-    tool_name = str(prepared.get("tool_name") or "xscript.editor.apply")
-    if cancellation_check is not None and cancellation_check():
-        return tool_failure(
-            tool_name,
-            "RUN_CANCELLED",
-            "precondition",
-            "The editor apply was superseded before publication.",
-            cancelled=True,
-        )
-    adapter = xscript_domains.get_domain_adapter(prepared["pack"].domain)
-    if adapter is None:
-        return tool_failure(
-            tool_name,
-            "DOMAIN_UNAVAILABLE",
-            "surface",
-            "The candidate's XScript domain is no longer available.",
-        )
-    try:
-        publication = _on_document_thread(
-            document_thread_dispatch,
-            lambda: adapter.publish(service, dict(prepared), dict(validated)),
-        )
-    except Exception as exc:
-        failure = tool_failure(
-            tool_name,
-            "DOMAIN_PUBLICATION_FAILED",
-            "native_call",
-            str(exc),
-            observed={"exception_type": exc.__class__.__name__},
-        )
-        retain_candidate(prepared, status="publication_failed", failure=failure)
-        return failure
-    return accept_candidate(prepared, publication)
 
 
 def make_provider_tool_runner(
@@ -2124,14 +1819,11 @@ def make_provider_tool_runner(
         if edit_block is not None:
             edit_block["requested"] = args
             return finalize(edit_block)
-        if (
-            xscript_domains.get_domain_adapter(
-                _scripted_domain_tool_domain(tool_name)
-            )
-            is not None
-        ):
+        from CadexScriptedRuntime import parse_project_tool
+
+        if parse_project_tool(tool_name) is not None:
             return finalize(
-                _run_domain_xscript_tool(
+                _run_project_xscript_tool(
                     service,
                     tool_name,
                     args,

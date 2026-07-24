@@ -46,14 +46,14 @@ def _surface_context(*names: str, workbench: str = "PartDesignWorkbench") -> dic
 
 def _scripted_context() -> dict:
     return _surface_context(
-        "core.inspect", "xscript.partdesign.create_program"
+        "core.inspect", "xscript.project.write_script"
     )
 
 
 def _part_xscript_context() -> dict:
     return _surface_context(
         "core.inspect",
-        "xscript.part.create_program",
+        "xscript.project.set_params",
         workbench="PartWorkbench",
     )
 
@@ -71,9 +71,9 @@ def test_turn_start_surface_accepts_one_workbench_xscript_domain() -> None:
     assert surface["kind"] == "turn_start_snapshot"
     assert surface["frozen"] is True
     assert surface["engine"] == "xscript"
-    assert surface["domain"] == "part"
+    assert surface["domain"] == "project"
     assert surface["workbench"] == "PartWorkbench"
-    assert surface["tool_names"] == ["core.inspect", "xscript.part.create_program"]
+    assert surface["tool_names"] == ["core.inspect", "xscript.project.set_params"]
     assert surface["schema_count"] == 2
     assert surface["schema_sha256"] == provider.provider_tool_schema_digest(schemas)
     assert surface["available"] is True
@@ -87,18 +87,18 @@ def test_turn_start_surface_preserves_pure_xscript_behavior() -> None:
     schemas = [_tool_schema(name) for name in resolution.tool_names]
     surface = session._turn_start_tool_surface("PartDesignWorkbench", schemas)
     assert surface["engine"] == "xscript"
-    assert surface["domain"] == "partdesign"
+    assert surface["domain"] == "project"
     assert surface["tool_names"] == [schema["name"] for schema in schemas]
 
 
-def test_turn_start_surface_rejects_mixing_scripted_domains() -> None:
-    # xscript is the only scripted engine; a single turn surface must still carry
-    # exactly one domain namespace, so two xscript domains are rejected.
+def test_turn_start_surface_rejects_foreign_scripted_domains() -> None:
+    # The surface is global: only the project namespace may carry xscript
+    # tools, so a retired per-domain namespace is rejected.
     schemas = [
-        _tool_schema("xscript.partdesign.create_program"),
-        _tool_schema("xscript.assembly.create_program"),
+        _tool_schema("xscript.project.write_script"),
+        _tool_schema("xscript.assembly.write_script"),
     ]
-    with pytest.raises(ValueError, match="exactly one domain namespace"):
+    with pytest.raises(ValueError, match="exactly the project namespace"):
         session._turn_start_tool_surface("AssemblyWorkbench", schemas)
 
 
@@ -121,8 +121,8 @@ def test_codex_dynamic_tools_preserve_cadex_namespaces_and_schema() -> None:
         ("core", "inspect"): "core.inspect",
         (
             "xscript",
-            "partdesign_create_program",
-        ): "xscript.partdesign.create_program",
+            "project_write_script",
+        ): "xscript.project.write_script",
     }
     assert [namespace["name"] for namespace in tools] == ["core", "xscript"]
     inspect_tool = tools[0]["tools"][0]
@@ -136,7 +136,7 @@ def test_codex_dynamic_tools_accept_one_domain_qualified_namespace() -> None:
     tools, names = provider._codex_dynamic_tool_surface(_part_xscript_context())
     assert names == {
         ("core", "inspect"): "core.inspect",
-        ("xscript", "part_create_program"): "xscript.part.create_program",
+        ("xscript", "project_set_params"): "xscript.project.set_params",
     }
     assert [namespace["name"] for namespace in tools] == ["core", "xscript"]
 
@@ -144,7 +144,7 @@ def test_codex_dynamic_tools_accept_one_domain_qualified_namespace() -> None:
 def test_turn_start_surface_rejects_mixed_native_and_xscript_namespaces() -> None:
     schemas = [
         _tool_schema("part.measure"),
-        _tool_schema("xscript.part.create_program"),
+        _tool_schema("xscript.project.set_params"),
     ]
     with pytest.raises(ValueError, match="cannot contain native"):
         session._turn_start_tool_surface("PartWorkbench", schemas)
@@ -275,7 +275,7 @@ def test_tool_runner_revalidates_each_call_against_the_live_surface(
         question_callback=None,
     )
 
-    result = runner("xscript.part.inspect_program", "{}")
+    result = runner("xscript.project.describe_api", "{}")
 
     assert result["ok"] is False
     assert result["failure_code"] == "TOOL_NOT_ON_ACTIVE_SURFACE"

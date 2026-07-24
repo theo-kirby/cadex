@@ -104,20 +104,19 @@ def test_clean_exit_drains_delayed_final_pipe_message(monkeypatch) -> None:
 
 def _xscript_mode_context(
     workbench: str = "PartDesignWorkbench",
-    domain: str = "partdesign",
 ) -> dict[str, object]:
     return {
         "workbench": workbench,
         "modeling_surface": {
             "workbench": workbench,
             "engine": "xscript",
-            "domain": domain,
+            "domain": "project",
             "available": True,
         },
         "provider_tool_schemas": [
             {
-                "name": f"xscript.{domain}.create_program",
-                "description": "Create a XScript model.",
+                "name": "xscript.project.write_script",
+                "description": "Write THE project script.",
                 "parameters": {"type": "object"},
             }
         ]
@@ -178,26 +177,27 @@ def test_xscript_guidance_contains_only_cad_authoring_text() -> None:
         assert foreign_term not in text, (
             f"XScript guidance must stay CAD-only; found {foreign_term!r}"
         )
-    for removed_contract in ("params", "new_body", "new_sketch", "sketchbuilder"):
+    for removed_contract in ("new_body", "new_sketch", "sketchbuilder"):
         assert removed_contract not in text
-    assert "validated inputs" in text
     assert "scope='api'" in text
+    assert "scope='script'" in text
+    assert "expected_revision" in text
 
 
-def test_partdesign_uses_the_same_model_operating_template_as_other_domains() -> None:
+def test_project_guidance_is_workbench_independent() -> None:
     partdesign = provider._xscript_authoring_instruction(
         _xscript_mode_context()
     )
     assembly = provider._xscript_authoring_instruction(
-        _xscript_mode_context("AssemblyWorkbench", "assembly")
+        _xscript_mode_context("AssemblyWorkbench")
     )
+    assert partdesign == assembly
     for instruction in (partdesign, assembly):
-        assert "scope='domain'" in instruction
         assert "scope='api'" in instruction
-        assert "scope='program'" in instruction
-        assert "edit_source" in instruction
-        assert "set_inputs" in instruction
-        assert "reconfigure_program" in instruction
+        assert "scope='script'" in instruction
+        assert "write_script" in instruction
+        assert "edit_script" in instruction
+        assert "set_params" in instruction
         assert "Never call native workbench tools" in instruction
 
 
@@ -246,7 +246,7 @@ def test_xscript_model_context_is_not_eagerly_snapshotted(
 ) -> None:
     schemas = [
         _context_schema("core.inspect"),
-        _context_schema("xscript.part.create_program"),
+        _context_schema("xscript.project.write_script"),
     ]
     monkeypatch.setattr(
         session,
@@ -256,23 +256,6 @@ def test_xscript_model_context_is_not_eagerly_snapshotted(
     service = _ProviderContextService(
         "PartWorkbench",
         {"cad_state": {}},
-    )
-    monkeypatch.setattr(
-        session.xscript_domains,
-        "domain_context_snapshot",
-        lambda _service, domain: {
-            "_cadex_deferred_xscript_domain_context": True,
-            "domain": domain,
-            "programs": [{"program_id": "a" * 32, "label": "Fixture"}],
-        },
-    )
-    monkeypatch.setattr(
-        session.xscript_domains,
-        "complete_domain_context",
-        lambda snapshot: {
-            "domain": snapshot["domain"],
-            "programs": list(snapshot["programs"]),
-        },
     )
 
     context = session._context_for_provider(service)
@@ -310,7 +293,7 @@ def test_partdesign_does_not_inject_a_model_manifest_at_turn_start(
         "provider_tool_schemas",
         lambda _service, _wb, **_kwargs: [
             _context_schema("core.inspect"),
-            _context_schema("xscript.partdesign.create_program"),
+            _context_schema("xscript.project.write_script"),
         ],
     )
     service = _ProviderContextService(

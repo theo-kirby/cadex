@@ -188,13 +188,17 @@ def test_cadex_docks_are_registered_before_native_window_restore() -> None:
     startup = _source("src/Gui/StartupProcess.cpp")
 
     assert "QtCore.QTimer.singleShot(0, apply_context_debug_preferences)" not in gui
-    assert "QtCore.QTimer.singleShot(0, ensure_scripted_model_editor_registered)" not in gui
-    assert "ensure_scripted_model_editor_registered()" in gui
+    # The Model Code Editor dock was deleted with the Phase 2.4 tool-surface
+    # swap (ADR-013); the Parameters panel dock keeps the same registration
+    # lifecycle: registered inside ensure_commands_registered, not deferred.
+    assert "ensure_scripted_model_editor_registered" not in gui
+    assert "QtCore.QTimer.singleShot(0, ensure_parameters_panel_registered)" not in gui
+    assert "ensure_parameters_panel_registered()" in gui
     assert "QtCore.QTimer.singleShot(0, _register_startup_assistant)" not in init_gui
     assert "CadexGui.ensure_commands_registered()" in init_gui
     shared_initialization = gui.split("def ensure_commands_registered()", 1)[1]
     assert shared_initialization.index("register_startup_assistant()") < (
-        shared_initialization.index("ensure_scripted_model_editor_registered()")
+        shared_initialization.index("ensure_parameters_panel_registered()")
     )
     assert freecad_gui_init.index("InitApplications()") < freecad_gui_init.index(
         'Gui.activateWorkbench("NoneWorkbench")'

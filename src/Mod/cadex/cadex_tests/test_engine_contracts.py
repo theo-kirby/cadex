@@ -39,7 +39,7 @@ class TestStageAwareFailureRendering:
                 {
                     "event": "tool_call_completed",
                     "ok": False,
-                    "tool_name": "xscript.partdesign.create_program",
+                    "tool_name": "xscript.project.write_script",
                     "result": {"error": "bad input", "failure_stage": stage},
                 }
             )
@@ -54,7 +54,7 @@ class TestStageAwareFailureRendering:
                 {
                     "event": "tool_call_completed",
                     "ok": False,
-                    "tool_name": "xscript.partdesign.create_program",
+                    "tool_name": "xscript.project.write_script",
                     "result": {"error": "recompute failed", "failure_stage": stage},
                 }
             )
@@ -81,7 +81,7 @@ class TestStageAwareFailureRendering:
                 {
                     "event": "tool_call_completed",
                     "ok": False,
-                    "tool_name": "xscript.partdesign.create_program",
+                    "tool_name": "xscript.project.write_script",
                     "result": result,
                 }
             )
@@ -116,7 +116,7 @@ class TestStageAwareFailureRendering:
             {
                 "event": "provider_tool_result_sent",
                 "ok": False,
-                "tool_name": "xscript.partdesign.create_program",
+                "tool_name": "xscript.project.write_script",
                 "error": "schema mismatch",
                 "failure_stage": "schema",
             }
@@ -126,7 +126,7 @@ class TestStageAwareFailureRendering:
             {
                 "event": "provider_tool_result_sent",
                 "ok": False,
-                "tool_name": "xscript.partdesign.create_program",
+                "tool_name": "xscript.project.write_script",
                 "error": "boolean failed",
                 "failure_stage": "native_recompute",
             }
@@ -136,7 +136,7 @@ class TestStageAwareFailureRendering:
             {
                 "event": "provider_tool_result_sent",
                 "ok": False,
-                "tool_name": "xscript.partdesign.create_program",
+                "tool_name": "xscript.project.write_script",
                 "error": "anything",
             }
         )

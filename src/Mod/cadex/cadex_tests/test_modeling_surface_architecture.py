@@ -1,11 +1,16 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""Exact modeling-surface and XScript v2 architecture contracts."""
+"""Global project-surface and XScript architecture contracts (Phase 2.4).
+
+The tool surface is GLOBAL: any workbench with the xscript engine resolves to
+the four ``xscript.project.*`` tools plus the core/conversation/file tools.
+The per-domain multi-program surface was dissolved (ADR-013); the worker-side
+capability APIs (part/partdesign/sketcher/assembly) and the publication
+boundary contracts remain and stay pinned here.
+"""
 
 from __future__ import annotations
 
-import ast
-import hashlib
 import inspect
 import json
 from pathlib import Path
@@ -14,378 +19,191 @@ import pytest
 
 from CadexModelingSurface import (
     CORE_CONVERSATION_VIEW_TOOLS,
-    HIDDEN_PROVIDER_INSPECTION_TOOLS,
     resolve_modeling_surface,
     validate_surface_names,
 )
-from CadexTools import ToolSpec
+from CadexTools import SafetyLevel, ToolSpec
 import CadexScriptedDomains as domains
 
-USER_WORKBENCHES = tuple(
-    workbench
-    for workbench in domains.XSCRIPT_WORKBENCH_PACKS
-    if workbench not in {"NoneWorkbench", "TestWorkbench"}
-)
-PRODUCTION_READY_XSCRIPT_WORKBENCHES = frozenset(
-    {
-        "PartDesignWorkbench",
-        "SketcherWorkbench",
-        "PartWorkbench",
-        "AssemblyWorkbench",
-    }
+PROJECT_TOOL_NAMES = (
+    "xscript.project.describe_api",
+    "xscript.project.write_script",
+    "xscript.project.edit_script",
+    "xscript.project.set_params",
 )
 
 
-def test_complete_xscript_surface_matrix() -> None:
-    assert len(USER_WORKBENCHES) == 4
-    observed_ready = set()
-    for workbench in USER_WORKBENCHES:
-        scripted = resolve_modeling_surface(workbench, "xscript")
-        domain_pack = domains.get_xscript_pack(workbench)
-        assert domain_pack is not None
-        assert scripted.domain == domain_pack.domain
-        assert set(scripted.core_tool_names) == set(CORE_CONVERSATION_VIEW_TOOLS)
-        if domain_pack.production_ready:
-            observed_ready.add(workbench)
-            assert scripted.available is True
-            assert scripted.unavailable_reason == ""
-            assert scripted.cad_tool_names == tuple(
-                name
-                for name in domain_pack.tool_names
-                if name not in HIDDEN_PROVIDER_INSPECTION_TOOLS
-                and not name.endswith(".describe_api")
-                and not name.endswith(".inspect_program")
-            )
-            assert len(scripted.cad_tool_names) == 6
-            assert len(scripted.tool_names) <= 15
-            assert "core.inspect" in scripted.tool_names
-            assert not set(scripted.tool_names) & set(HIDDEN_PROVIDER_INSPECTION_TOOLS)
-            namespaces = {
-                name.split(".")[1]
-                for name in scripted.cad_tool_names
-                if name.count(".") == 2
-            }
-            assert namespaces == {domain_pack.domain}
-        else:
-            assert scripted.available is False
-            assert scripted.cad_tool_names == ()
-            assert scripted.tool_names == scripted.core_tool_names
-            assert "production-readiness gate" in scripted.unavailable_reason
-            assert not any(
-                name.startswith("xscript.") for name in scripted.tool_names
-            )
-    assert observed_ready == PRODUCTION_READY_XSCRIPT_WORKBENCHES
+def test_global_surface_is_project_for_every_workbench() -> None:
+    surfaces = [
+        resolve_modeling_surface(workbench, "xscript")
+        for workbench in (
+            *domains.XSCRIPT_WORKBENCH_PACKS,
+            None,
+            "TestWorkbench",
+            "NoneWorkbench",
+            "UnknownWorkbench",
+        )
+    ]
+    surface_ids = {surface.surface_id for surface in surfaces}
+    assert len(surface_ids) == 1, "The project surface must be global."
+    for surface in surfaces:
+        assert surface.available is True
+        assert surface.unavailable_reason == ""
+        assert surface.engine == "xscript"
+        assert surface.domain == "project"
+        assert surface.cad_tool_names == PROJECT_TOOL_NAMES
+        assert set(surface.core_tool_names) == set(CORE_CONVERSATION_VIEW_TOOLS)
+        assert "core.inspect" in surface.tool_names
+    assert "project-v1-single-script" in surfaces[0].surface_id
 
 
-@pytest.mark.parametrize(
-    "workbench",
-    (None, "NoneWorkbench", "TestWorkbench", "UnregisteredWorkbench"),
-)
-@pytest.mark.parametrize("engine", ("xscript", "xscript"))
-def test_unsupported_surfaces_are_precise_and_core_only(
-    workbench: str | None, engine: str
-) -> None:
-    surface = resolve_modeling_surface(workbench, engine)
-    assert surface.available is False
-    assert surface.cad_tool_names == ()
-    assert surface.unavailable_reason
-    assert set(surface.tool_names) == set(CORE_CONVERSATION_VIEW_TOOLS)
+def test_project_pack_tool_names_are_the_authority() -> None:
+    assert domains.PROJECT_PACK.tool_names == PROJECT_TOOL_NAMES
+    # Capability packs are execution contracts only: no tool surface.
+    for pack in domains.XSCRIPT_WORKBENCH_PACKS.values():
+        assert pack.tool_names == ()
 
 
-def test_mixed_and_cross_domain_surfaces_are_rejected() -> None:
-    part = resolve_modeling_surface("PartWorkbench", "xscript")
+def test_unknown_engine_is_unavailable_and_core_only() -> None:
+    for engine in ("", "native", "build123d", "openscad"):
+        surface = resolve_modeling_surface("PartWorkbench", engine)
+        assert surface.available is False
+        assert surface.cad_tool_names == ()
+        assert surface.unavailable_reason
+        assert set(surface.tool_names) == set(CORE_CONVERSATION_VIEW_TOOLS)
+
+
+def test_mixed_and_foreign_namespace_surfaces_are_rejected() -> None:
+    project = resolve_modeling_surface("PartWorkbench", "xscript")
     native_part_tool = "part.box"
     with pytest.raises(ValueError, match="cannot contain native"):
         validate_surface_names(
             workbench="PartWorkbench",
             engine="xscript",
-            names=[*part.tool_names, native_part_tool],
-            allowed_names=[*part.tool_names, native_part_tool],
+            names=[*project.tool_names, native_part_tool],
+            allowed_names=[*project.tool_names, native_part_tool],
         )
-    with pytest.raises(ValueError, match="exactly one domain"):
+    with pytest.raises(ValueError, match="exactly the project namespace"):
         validate_surface_names(
             workbench="PartWorkbench",
             engine="xscript",
-            names=[
-                "xscript.part.inspect_program",
-                "xscript.assembly.inspect_program",
-            ],
+            names=["xscript.part.write_script"],
         )
+    validate_surface_names(
+        workbench=None,
+        engine="xscript",
+        names=list(project.tool_names),
+        allowed_names=list(project.tool_names),
+    )
 
 
-def test_domain_lifecycle_schemas_are_stable_and_domain_specific() -> None:
-    for workbench in USER_WORKBENCHES:
-        pack = domains.get_xscript_pack(workbench)
-        assert pack is not None
-        specs = domains.domain_tool_specs(pack)
-        assert tuple(spec["name"] for spec in specs) == pack.tool_names
-        assert len(specs) == 8
-        for raw in specs:
-            spec = ToolSpec.from_mapping(raw)
-            assert spec.workbench == workbench
-            assert spec.parameters["additionalProperties"] is False
-        create = next(spec for spec in specs if spec["name"].endswith("create_program"))
-        output_enum = create["parameters"]["properties"]["expected_outputs"]["items"][
-            "properties"
-        ]["type"]["enum"]
-        assert output_enum == list(pack.output_types)
-
-
-def test_shared_xscript_lifecycle_is_unambiguous_for_the_operating_model() -> None:
-    for workbench in USER_WORKBENCHES:
-        pack = domains.get_xscript_pack(workbench)
-        assert pack is not None
-        specs = {
-            spec["name"].rsplit(".", 1)[-1]: spec
-            for spec in domains.domain_tool_specs(pack)
-        }
-        program_id_description = specs["inspect_program"]["parameters"]["properties"][
-            "program_id"
-        ]["description"]
-        assert "create_program" in program_id_description
-        assert "core.inspect" in program_id_description
-        assert "source-only" in specs["edit_source"]["description"]
-        assert "value-only" in specs["set_inputs"]["description"]
-        assert (
-            "prefer edit_source or set_inputs"
-            in specs["reconfigure_program"]["description"]
+def test_project_tool_specs_are_exact_and_guarded() -> None:
+    specs = {
+        spec.name: spec
+        for spec in (
+            ToolSpec.from_mapping(raw) for raw in domains.project_tool_specs()
         )
-
-        adapter = domains.get_domain_adapter(pack.domain)
-        assert adapter is not None
-        description = adapter.describe_api()
-        operating = description["model_operating_contract"]
-        assert [item["action"] for item in operating["authoring_sequence"]] == [
-            "discover",
-            "learn_api",
-            "author",
-            "repair",
-            "verify",
-        ]
-        assert set(operating["mutation_selection"]) == {
-            "edit_source",
-            "set_inputs",
-            "reconfigure_program",
-        }
-        assert "failed candidate revision" in operating["revision_rule"]
-        reference_schema = operating["input_schema_templates"][
-            "stable_reference_property"
-        ]
-        assert reference_schema["x-cadex-reference"] is True
-        assert reference_schema["required"] == ["document_uid", "object_name"]
+    }
+    assert tuple(specs) == PROJECT_TOOL_NAMES
+    describe = specs["xscript.project.describe_api"]
+    assert describe.safety is SafetyLevel.READ
+    assert describe.requires_document is False
+    for name in PROJECT_TOOL_NAMES[1:]:
+        spec = specs[name]
+        assert spec.safety is SafetyLevel.SAFE_WRITE
+        assert spec.requires_document is True
+        revision = spec.parameters["properties"]["expected_revision"]
+        assert revision["pattern"] == "^([0-9a-f]{64})?$"
+        assert "expected_revision" in spec.parameters["required"]
+    source = specs["xscript.project.write_script"].parameters["properties"]["source"]
+    assert source["maxLength"] == domains.MAX_SOURCE_BYTES
+    replacements = specs["xscript.project.edit_script"].parameters["properties"][
+        "replacements"
+    ]
+    assert replacements["items"]["required"] == ["old", "new"]
+    values = specs["xscript.project.set_params"].parameters["properties"]["values"]
+    assert values["minProperties"] == 1
 
 
-def test_every_domain_description_is_copy_ready_for_the_operating_model() -> None:
-    for workbench in USER_WORKBENCHES:
-        pack = domains.get_xscript_pack(workbench)
-        assert pack is not None
-        adapter = domains.get_domain_adapter(pack.domain)
-        assert adapter is not None
-        description = adapter.describe_api()
+def test_describe_project_api_is_json_safe_and_complete() -> None:
+    from CadexScriptedRuntime import describe_project_api
 
-        exports = description["runtime_exports"]
-        export_names = [item["name"] for item in exports]
+    payload = describe_project_api()
+    assert json.loads(json.dumps(payload)) == payload
+    assert payload["ok"] is True
+    assert payload["domain"] == "project"
+    assert payload["program_schema"] == domains.PROJECT_SCRIPT_SCHEMA
+    listings = payload["domains"]
+    assert set(listings) == {"part", "partdesign", "sketcher", "assembly"}
+    for pack in domains.XSCRIPT_WORKBENCH_PACKS.values():
+        listing = listings[pack.domain]
+        export_names = [item["name"] for item in listing["exports"]]
         assert export_names == list(pack.api_exports)
         assert len(export_names) == len(set(export_names))
-        assert all(item["description"] for item in exports)
+        assert all(item["description"] for item in listing["exports"])
         assert all(
             "*args" not in item["signature"] and "**" not in item["signature"]
-            for item in exports
+            for item in listing["exports"]
         )
-        assert description["accepted_output_types"] == list(pack.output_types)
-        assert "exactly match expected_outputs" in description["result_contract"]
-        assert "redundan" in json.dumps(description).lower()
-        assert len(json.dumps(description, separators=(",", ":")).encode()) < 48_000
-
-        handoffs = json.dumps(description["workbench_handoffs"]).lower()
-        assert "human" in handoffs and "switch" in handoffs
-        error_contract = json.dumps(description["error_contract"]).lower()
-        assert "correct" in error_contract
-
-        patterns = description["recommended_patterns"]
-        assert patterns
-        for pattern in patterns:
-            source = pattern["source"]
-            expected_outputs = pattern["expected_outputs"]
-            assert pattern["goal"]
-            assert expected_outputs
-            domains.validate_program_source(source)
-            tree = ast.parse(source)
-            result_assignments = [
-                node
-                for node in tree.body
-                if isinstance(node, ast.Assign)
-                and any(
-                    isinstance(target, ast.Name) and target.id == "result"
-                    for target in node.targets
-                )
-            ]
-            assert len(result_assignments) == 1
-            result_value = result_assignments[0].value
-            assert isinstance(result_value, ast.Dict)
-            result_names = [ast.literal_eval(key) for key in result_value.keys]
-            expected_names = [item["name"] for item in expected_outputs]
-            assert result_names == expected_names
-            assert all(item["type"] in pack.output_types for item in expected_outputs)
-
-            api_calls = {
-                node.func.attr
-                for node in ast.walk(tree)
-                if isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "api"
-            }
-            assert api_calls <= set(pack.api_exports)
-
-
-def test_inspect_program_returns_machine_readable_model_state() -> None:
-    pack = domains.get_xscript_pack("AssemblyWorkbench")
-    assert pack is not None
-    adapter = domains.get_domain_adapter(pack.domain)
-    assert adapter is not None
-    program_id = "a" * 32
-    accepted_revision = "b" * 64
-    accepted = adapter.inspect(
-        {},
-        {
-            "program_id": program_id,
-            "domain": pack.domain,
-            "workbench": pack.workbench,
-            "working_revision": accepted_revision,
-            "accepted_revision": accepted_revision,
-            "latest_candidate": {"status": "accepted"},
-        },
-    )
-    assert accepted["model_state"] == {
-        "status": "accepted_current",
-        "candidate_status": "accepted",
-        "accepted_is_current": True,
-        "accepted_live_state_preserved": True,
-        "next_write_expected_revision": accepted_revision,
-        "mutation_selection": {
-            "source_only": "xscript.assembly.edit_source",
-            "input_values_only": "xscript.assembly.set_inputs",
-            "contract_or_outputs": "xscript.assembly.reconfigure_program",
-        },
-        "instruction": (
-            "The accepted contract is current; verify domain-specific live evidence."
-        ),
+        assert listing["accepted_output_types"] == list(pack.output_types)
+    assert set(payload["source_globals"]) == {
+        "sketcher",
+        "part",
+        "partdesign",
+        "assembly",
+        "params",
+        "num",
     }
-
-    failed_revision = "c" * 64
-    failed = adapter.inspect(
-        {},
-        {
-            "program_id": program_id,
-            "domain": pack.domain,
-            "workbench": pack.workbench,
-            "working_revision": failed_revision,
-            "accepted_revision": accepted_revision,
-            "latest_candidate": {"status": "failed", "failure": {"error": "bad"}},
-        },
-    )
-    assert failed["model_state"]["status"] == "working_candidate_not_accepted"
-    assert failed["model_state"]["accepted_live_state_preserved"] is True
-    assert failed["model_state"]["next_write_expected_revision"] == failed_revision
-    assert failed["program"]["latest_candidate"]["failure"]["error"] == "bad"
+    assert "params" in payload["parameters"]
+    assert "num" in payload["parameters"]
+    assert "result" in payload["result_contract"]
+    assert set(payload["mutation_selection"]) == {
+        "write_script",
+        "edit_script",
+        "set_params",
+    }
+    assert "expected_revision" in payload["revision_rule"]
 
 
-def test_partdesign_xscript_schema_golden_fixture() -> None:
-    fixture_path = Path(__file__).with_name("partdesign_xscript_schema_sha256.json")
-    expected = json.loads(fixture_path.read_text(encoding="utf-8"))
-    pack = domains.get_xscript_pack("PartDesignWorkbench")
-    assert pack is not None
-    assert pack.program_schema == "cadex-xscript-program-v2"
-    assert pack.api_global == "x"
-    observed: dict[str, str] = {}
-    for raw in domains.domain_tool_specs(pack):
-        schema = ToolSpec.from_mapping(raw).to_schema(
-            active_workbench="PartDesignWorkbench"
-        )
-        digest = hashlib.sha256(
-            json.dumps(schema, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()
-        observed[str(schema["name"])] = digest
-    assert observed == expected
-    assert all(name.startswith("xscript.partdesign.") for name in observed)
-
-
-def test_schema_v1_migrates_to_partdesign_without_relocation(tmp_path: Path) -> None:
-    v1_directory = tmp_path / "xscript" / ("a" * 32)
-    migrated = domains.migrate_program_manifest(
-        {
-            "schema": domains.PARTDESIGN_V1_SCHEMA,
-            "model_id": "a" * 32,
-            "model_name": "Saved v1 model",
-            "source": "result = {}",
-            "parameters": {"Length": 10.0},
-            "expected_outputs": ["Body"],
-            "revision": "b" * 64,
-        },
-        artifact_directory=v1_directory,
-    )
-    assert migrated["schema"] == domains.PROGRAM_SCHEMA
-    assert migrated["version"] == 2
-    assert migrated["domain"] == "partdesign"
-    assert migrated["workbench"] == "PartDesignWorkbench"
-    assert migrated["artifact_directory"] == str(v1_directory)
-    assert migrated["expected_outputs"] == [{"name": "Body", "type": "solid"}]
-    assert migrated["migration_required"] is True
-    assert migrated["migration_action"] == "xscript.partdesign.reconfigure_program"
-
-    v1_directory.mkdir(parents=True)
-    (v1_directory / "model.py").write_text("result = {}\n", encoding="utf-8")
-    (v1_directory / "parameters.json").write_text('{"Length":12}', encoding="utf-8")
-    artifact_backed = domains.migrate_program_manifest(
-        {
-            "schema": domains.PARTDESIGN_V1_SCHEMA,
-            "model_id": "a" * 32,
-            "model_name": "Saved v1 model",
-            "expected_outputs": ["Body"],
-            "revision": "b" * 64,
-        },
-        artifact_directory=v1_directory,
-    )
-    assert artifact_backed["source"] == "result = {}\n"
-    assert artifact_backed["inputs"] == {"Length": 12}
-    assert artifact_backed["artifact_directory"] == str(v1_directory)
-
-
-def test_source_and_input_policy_blocks_escape_hatches() -> None:
+def test_source_policy_blocks_escape_hatches() -> None:
     for source in (
         "import os\nresult = {}",
         "result = open('/tmp/value')",
         "result = {'x': doc.saveAs('x.FCStd')}",
-        "result = {'x': api._domain}",
+        "result = {'x': part._domain}",
     ):
         with pytest.raises(ValueError, match="policy violation"):
             domains.validate_program_source(source)
-    with pytest.raises(ValueError, match="raw filesystem path"):
-        domains.validate_inputs({"source": "/tmp/cloud.xyz"})
-    with pytest.raises(ValueError, match="arbitrary object"):
-        domains.validate_inputs({"source": {"path": "artifact.xyz"}})
-    assert domains.validate_inputs(
-        {"source": {"document_uid": "uid", "object_name": "Cloud"}}
+
+
+def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None:
+    import CadexScriptedRuntime as runtime
+
+    staging = tmp_path / "project"
+    staging.mkdir()
+    copied = runtime._stage_worker_bundle(
+        Path(runtime.__file__).resolve().parent,
+        staging,
+        "project",
     )
-    with pytest.raises(ValueError, match="must require"):
-        domains.validate_input_schema(
-            {
-                "type": "object",
-                "properties": {
-                    "source": {
-                        "type": "object",
-                        "x-cadex-reference": True,
-                        "properties": {
-                            "document_uid": {"type": "string"},
-                            "object_name": {"type": "string"},
-                        },
-                        "additionalProperties": False,
-                    }
-                },
-                "additionalProperties": False,
-            }
-        )
+    expected = {
+        "worker.py",
+        "cadex_domain_api.py",
+        "cadex_domain_worker.py",
+        "cadex_project_api.py",
+        "cadex_sketcher_api.py",
+        "cadex_sketcher_worker.py",
+        "cadex_part_api.py",
+        "cadex_part_worker.py",
+        "cadex_partdesign_api.py",
+        "cadex_partdesign_worker.py",
+        "cadex_assembly_api.py",
+        "cadex_assembly_worker.py",
+    }
+    assert set(copied) == expected
+    assert {path.name for path in staging.iterdir()} == expected
+    # The project bundle is the only bundle: per-domain staging was retired.
+    assert set(runtime._DOMAIN_WORKER_BUNDLES) == {"project"}
 
 
 def test_worker_result_values_must_come_from_the_active_domain_api() -> None:
@@ -400,79 +218,6 @@ def test_worker_result_values_must_come_from_the_active_domain_api() -> None:
     }
     with pytest.raises(TypeError, match="active domain api"):
         _payload(forged)
-
-
-def test_part_api_is_explicit_documented_and_generated_from_the_runtime() -> None:
-    from cadex_domain_api import create_domain_api
-
-    pack = domains.get_xscript_pack("PartWorkbench")
-    assert pack is not None and pack.production_ready
-    api = create_domain_api(pack.domain, pack.api_exports, pack.output_types)
-    adapter = domains.get_domain_adapter(pack.domain)
-    assert adapter is not None and adapter.production_ready
-    description = adapter.describe_api()
-    exports = description["runtime_exports"]
-
-    assert description["api_contract"] == "cadex-xscript-part-api-v2"
-    assert description["units"] == {
-        "length": "millimetres",
-        "angle": "degrees",
-        "tolerance": "millimetres",
-    }
-    assert description["topology_selection"]["index_base"] == 1
-    assert [item["name"] for item in exports] == list(pack.api_exports)
-    assert tuple(api.exported_names) == pack.api_exports
-    assert len(exports) == 49
-    sweep_export = next(item for item in exports if item["name"] == "sweep")
-    assert "DomainValue | Sequence[DomainValue]" in sweep_export["signature"]
-    assert "one or more ordered wire profiles" in sweep_export["description"]
-    assert "long_helix" not in pack.api_exports
-    assert "project_parallel" not in pack.api_exports
-    assert "project_perspective" not in pack.api_exports
-    assert {"helix", "project"} <= set(pack.api_exports)
-    assert all(item["description"] for item in exports)
-    assert all("*args" not in item["signature"] for item in exports)
-    assert all("**properties" not in item["signature"] for item in exports)
-    grouped = {
-        name for names in description["operation_groups"].values() for name in names
-    }
-    assert grouped == set(pack.api_exports)
-    selection = description["operation_selection"]
-    assert selection["one_or_more_profiles_along_path"].startswith("api.sweep")
-    assert selection["intersection_edges_only"] == "api.section"
-    assert selection["parallel_planar_cross_sections"] == "api.slice"
-    assert selection["all_touching_boolean_fragments_with_provenance"] == (
-        "api.general_fuse"
-    )
-    assert selection["join_touching_faces_or_shells"] == "api.sew"
-    assert selection["remove_redundant_boolean_splitters"] == "api.refine"
-    assert "one helix operation" in selection["redundancy_contract"]
-    assert "one projection operation" in selection["redundancy_contract"]
-    assert "There are no model-facing" in selection["redundancy_contract"]
-    assert description["composition_contract"]["construction_order"][-1].startswith(
-        "Return only semantic publication outputs"
-    )
-    assert (
-        "never cycle through guessed indexes"
-        in description["model_verification_contract"]["selection_repair"]
-    )
-    assert (
-        "cannot switch workbench or engine" in description["workbench_handoffs"]["rule"]
-    )
-    assert (
-        len(
-            json.dumps(description, sort_keys=True, separators=(",", ":")).encode(
-                "utf-8"
-            )
-        )
-        < 32_000
-    )
-    assert len(description["recommended_patterns"]) >= 2
-
-    assert not hasattr(api, "long_helix")
-    assert not hasattr(api, "project_parallel")
-    assert not hasattr(api, "project_perspective")
-
 
 def test_part_api_reports_operation_and_parameter_before_kernel_execution() -> None:
     from cadex_domain_api import create_domain_api
@@ -537,145 +282,6 @@ def test_part_api_reports_operation_and_parameter_before_kernel_execution() -> N
     for invoke, pattern in cases:
         with pytest.raises(ValueError, match=pattern):
             invoke()
-
-
-def test_assembly_api_is_explicit_graph_based_and_generated_from_runtime() -> None:
-    from cadex_domain_api import create_domain_api
-
-    pack = domains.get_xscript_pack("AssemblyWorkbench")
-    assert pack is not None
-    api = create_domain_api(pack.domain, pack.api_exports, pack.output_types)
-    adapter = domains.get_domain_adapter(pack.domain)
-    assert adapter is not None
-    description = adapter.describe_api()
-
-    assert description["api_contract"] == "cadex-xscript-assembly-api-v1"
-    assert tuple(api.exported_names) == pack.api_exports
-    assert [item["name"] for item in description["runtime_exports"]] == list(
-        pack.api_exports
-    )
-    assert all(item["description"] for item in description["runtime_exports"])
-    assert all(
-        "*args" not in item["signature"] and "**properties" not in item["signature"]
-        for item in description["runtime_exports"]
-    )
-    assert set(description["joint_types"]["coupled_motion"]) == {
-        "rack_pinion",
-        "screw",
-        "gears",
-        "belt",
-    }
-    assert description["solver_codes"]["-6"] == "no_grounded_component"
-    assert description["capability_inventory"]["joint_graph"]["status"] == "supported"
-    assert any(
-        "vertex anchors" in feature
-        for feature in description["capability_inventory"]["joint_graph"]["features"]
-    )
-    assert (
-        "Slider joint"
-        in description["joint_types"]["coupled_joint_dependencies"]["screw"]
-    )
-    assert [step["action"] for step in description["model_workflow"]] == [
-        "discover",
-        "plan_frames",
-        "author_graph",
-        "solve",
-        "simulate",
-        "present",
-        "repair",
-        "verify",
-    ]
-    assert "no aliases" in description["operation_selection"]["redundancy_contract"]
-    assert "failed_segment_index" in description["nested_subassemblies"]["repair"]
-    assert any(
-        "nested flexible links" in feature
-        for feature in description["capability_inventory"]["component_occurrences"][
-            "features"
-        ]
-    )
-    assert (
-        "collinear slider"
-        in description["joint_selection_guide"]["couple_linear_rack_to_rotation"]
-    )
-    assert "axis" in description["coordinate_system"]["placement"]["rotation"]
-    assert "angle_degrees" in description["coordinate_system"]["placement"]["rotation"]
-    assert (
-        description["capability_inventory"]["kinematic_simulation"]["status"]
-        == "supported"
-    )
-    assert description["capability_inventory"]["exploded_views"]["status"] == (
-        "supported"
-    )
-    assert (
-        "exploded views"
-        not in description["capability_inventory"]["not_yet_provider_exposed"]
-    )
-    assert description["capability_inventory"]["not_yet_provider_exposed"] == []
-    assert description["units"]["angular_motion_formula"] == "radians"
-    assert description["units"]["linear_motion_formula"] == "millimetres"
-    assert any(
-        pattern["goal"] == "joint to a nested occurrence in a flexible subassembly"
-        for pattern in description["recommended_patterns"]
-    )
-    for pattern in description["recommended_patterns"]:
-        domains.validate_program_source(pattern["source"])
-
-    def reference(name: str) -> dict[str, str]:
-        return {"document_uid": "document", "object_name": name}
-
-    base = api.component(reference("BaseSource"), grounded=True, label="Base")
-    arm = api.component(
-        reference("ArmSource"),
-        placement={"position": [0, 0, 20], "rotation": [0, 0, 0, 2]},
-        label="Arm",
-    )
-    hinge = api.joint(
-        "revolute",
-        api.connector(base, "Face1"),
-        api.connector(arm, {"type": "exact_subelement", "subelement": "Face2"}),
-        angle_limits_degrees=[-90, 90],
-        label="Hinge",
-    )
-    model = api.assembly([base, arm], [hinge], label="Robot Arm")
-    diagnostics = api.solve(model)
-    drive = api.motion(hinge, "initialValue + pi/2*time")
-    simulation = api.simulation(
-        model,
-        [drive],
-        end_time_s=2,
-        time_step_s=0.1,
-    )
-    exploded = api.exploded_view(
-        model,
-        [
-            {"components": [arm], "transform": [0, 0, 40]},
-            {"components": [base, arm], "radial_distance_mm": 15},
-        ],
-        label="Service View",
-    )
-    assert base.properties["grounded"] is True
-    assert arm.properties["placement"]["rotation"] == (0.0, 0.0, 0.0, 1.0)
-    assert model.properties["components"] == (base, arm)
-    assert model.properties["joints"] == (hinge,)
-    assert diagnostics.arguments == (model,)
-    assert drive.arguments == (hinge,)
-    assert drive.properties["motion_type"] == "angular"
-    assert simulation.arguments == (model,)
-    assert simulation.properties["motions"] == (drive,)
-    assert simulation.properties["estimated_frame_limit"] == 22
-    assert exploded.arguments == (model,)
-    assert exploded.properties["moves"][0]["kind"] == "normal"
-    assert exploded.properties["moves"][0]["components"] == (arm,)
-    assert exploded.properties["moves"][0]["transform"]["position"] == (
-        0.0,
-        0.0,
-        40.0,
-    )
-    assert exploded.properties["moves"][1]["kind"] == "radial"
-    assert exploded.properties["moves"][1]["radial_distance_mm"] == 15.0
-    with pytest.raises(TypeError):
-        model.properties["components"][0] = arm
-
 
 def test_assembly_api_exposes_native_signed_parameters_anchors_and_open_limits() -> (
     None
@@ -744,7 +350,6 @@ def test_assembly_api_exposes_native_signed_parameters_anchors_and_open_limits()
     assert distance.properties["parameters"]["distance_mm"] == -8.0
     assert rack.properties["parameters"]["pitch_radius_mm"] == -4.0
     assert screw.properties["parameters"]["thread_pitch_mm"] == -2.0
-
 
 def test_assembly_api_rejects_ambiguous_graphs_and_wrong_joint_parameters() -> None:
     from cadex_domain_api import create_domain_api
@@ -900,7 +505,6 @@ def test_assembly_api_rejects_ambiguous_graphs_and_wrong_joint_parameters() -> N
             [{"components": [first], "radial_distance_mm": 0}],
         )
 
-
 def test_assembly_occurrence_global_placement_failure_is_never_silently_local() -> None:
     from cadex_assembly_worker import (
         AssemblyCandidateError,
@@ -922,79 +526,6 @@ def test_assembly_occurrence_global_placement_failure_is_never_silently_local() 
     assert failure.value.details["stage"] == "assembly_occurrence_placement"
     assert failure.value.details["native_object"] == "NestedGear"
     assert "same stable occurrence_path" in failure.value.details["correction"]
-
-
-def test_sketcher_api_is_explicit_complete_and_generated_from_runtime() -> None:
-    from cadex_domain_api import create_domain_api
-
-    pack = domains.get_xscript_pack("SketcherWorkbench")
-    assert pack is not None
-    api = create_domain_api(pack.domain, pack.api_exports, pack.output_types)
-    adapter = domains.get_domain_adapter(pack.domain)
-    assert adapter is not None
-    description = adapter.describe_api()
-
-    assert description["api_contract"] == "cadex-xscript-sketcher-api-v1"
-    assert tuple(api.exported_names) == pack.api_exports
-    exports = description["runtime_exports"]
-    assert [item["name"] for item in exports] == list(pack.api_exports)
-    assert len(exports) == 12
-    assert all(item["description"] for item in exports)
-    assert all(
-        "*args" not in item["signature"] and "**properties" not in item["signature"]
-        for item in exports
-    )
-    assert len(json.dumps(description, separators=(",", ":"))) < 32 * 1024
-    selection = description["operation_selection"]
-    assert selection["any_geometric_dimensional_or_annotation_relation"].startswith(
-        "api.constraint"
-    )
-    assert "one api.constraint operation" in selection["redundancy_contract"]
-    assert "no model-facing rectangle" in selection["redundancy_contract"]
-    assert description["constraint_forms"]["coincident"] == "[point, point]"
-    assert "value required" in description["constraint_forms"]["angle_via_point"]
-    assert description["model_verification_contract"]["underconstrained"].endswith(
-        "Never apply every suggestion in one edit."
-    )
-    assert "cannot switch workbench" in description["workbench_handoffs"]["rule"]
-    assert set(description["geometry"]) >= {
-        "point",
-        "line",
-        "arc",
-        "circle",
-        "ellipse",
-        "elliptic_arc",
-        "hyperbolic_arc",
-        "parabolic_arc",
-        "bspline",
-        "external_geometry",
-        "construction",
-    }
-    external_contract = description["external_geometry_contract"]
-    assert "x-cadex-reference" in external_contract["input"]
-    assert external_contract["regenerating_selection"]["schema"] == {
-        "type": "published_interface",
-        "interface_name": "DatumEdge",
-    }
-    assert "-3, -4" in external_contract["identity"]
-    internal = description["constraints"]["internal_alignment"]
-    assert set(internal["hyperbola"]) == {
-        "hyperbola_major_diameter",
-        "hyperbola_minor_diameter",
-        "hyperbola_focus",
-    }
-    assert set(internal["parabola"]) == {
-        "parabola_focus",
-        "parabola_focal_axis",
-    }
-    rectangle_source = description["recommended_patterns"][0]["source"]
-    domains.validate_program_source(rectangle_source)
-    assert "constraints = [" in rectangle_source
-    assert "# Add coincidence" not in rectangle_source
-    external_source = description["recommended_patterns"][2]["source"]
-    domains.validate_program_source(external_source)
-    assert "api.external_geometry" in external_source
-
 
 def test_sketcher_api_reports_exact_source_errors_before_native_execution() -> None:
     from cadex_domain_api import create_domain_api
@@ -1076,7 +607,6 @@ def test_sketcher_api_reports_exact_source_errors_before_native_execution() -> N
     with pytest.raises(ValueError, match=r"api\.sketch.*not listed"):
         api.sketch([line], [foreign_constraint])
 
-
 def test_sketcher_live_publication_boundary_never_solves_or_recomputes() -> None:
     import CadexScriptedDomainPublication as publication
     from cadex_sketcher_worker import populate_sketch_without_solving
@@ -1089,7 +619,6 @@ def test_sketcher_live_publication_boundary_never_solves_or_recomputes() -> None
         assert "subprocess" not in source
     assert "addConstraint(native_constraints)" in populate_source
     assert populate_source.count("addConstraint(") == 1
-
 
 def test_rollback_property_digest_ignores_zip_timestamp_not_content() -> None:
     from io import BytesIO
@@ -1114,34 +643,6 @@ def test_rollback_property_digest_ignores_zip_timestamp_not_content() -> None:
     assert publication._property_content_sha256(first) != (
         publication._property_content_sha256(changed)
     )
-
-
-def test_reference_revision_binds_assembly_semantic_connector_contract() -> None:
-    base = {
-        "document_uid": "document",
-        "object_name": "Arm",
-        "brep_sha256": "a" * 64,
-    }
-    geometry_only = domains.program_revision_with_references(
-        contract_revision="b" * 64,
-        references=[base],
-    )
-    first_contract = domains.program_revision_with_references(
-        contract_revision="b" * 64,
-        references=[{**base, "reference_contract_sha256": "c" * 64}],
-    )
-    second_contract = domains.program_revision_with_references(
-        contract_revision="b" * 64,
-        references=[{**base, "reference_contract_sha256": "d" * 64}],
-    )
-
-    assert len({geometry_only, first_contract, second_contract}) == 3
-    with pytest.raises(ValueError, match="reference contracts require a SHA-256"):
-        domains.program_revision_with_references(
-            contract_revision="b" * 64,
-            references=[{**base, "reference_contract_sha256": "not-a-digest"}],
-        )
-
 
 def test_domain_api_graph_and_worker_inputs_are_deeply_immutable() -> None:
     from cadex_domain_api import create_domain_api
@@ -1195,7 +696,6 @@ def test_domain_api_graph_and_worker_inputs_are_deeply_immutable() -> None:
             max_seconds=1.0,
         )
 
-
 def test_source_operation_budget_excludes_trusted_domain_api_frames() -> None:
     from cadex_domain_worker import _execute_source
 
@@ -1235,209 +735,6 @@ def test_source_operation_budget_excludes_trusted_domain_api_frames() -> None:
             max_seconds=1.0,
         )
 
-
-def test_domain_context_merges_live_identity_without_losing_persisted_facts(
-    tmp_path: Path,
-) -> None:
-    program_id = "a" * 32
-    directory = tmp_path / "xscript" / "part" / program_id
-    directory.mkdir(parents=True)
-    (directory / "program.json").write_text(
-        json.dumps(
-            {
-                "schema": domains.PROGRAM_SCHEMA,
-                "version": domains.PROGRAM_VERSION,
-                "program_id": program_id,
-                "domain": "part",
-                "workbench": "PartWorkbench",
-                "label": "Context fixture",
-                "source": "result = {}",
-                "input_schema": {},
-                "inputs": {},
-                "expected_outputs": [{"name": "Body", "type": "solid"}],
-                "working_revision": "b" * 64,
-                "accepted_revision": "b" * 64,
-                "live_outputs": {
-                    "Body": {
-                        "object_name": "OldBody",
-                        "label": "Old label",
-                        "type_id": "Part::Feature",
-                        "output_type": "solid",
-                        "facts": {"shape_type": "Solid", "volume_mm3": 24.0},
-                    }
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-    context = domains.complete_domain_context(
-        {
-            "_cadex_deferred_xscript_domain_context": True,
-            "domain": "part",
-            "workbench": "PartWorkbench",
-            "surface_id": "xscript:part:v2",
-            "project_root": str(tmp_path),
-            "contract": {},
-            "native_programs": [
-                {
-                    "program_id": program_id,
-                    "domain": "part",
-                    "workbench": "PartWorkbench",
-                    "working_revision": "b" * 64,
-                    "live_outputs": [
-                        {
-                            "name": "Body",
-                            "object_name": "LiveBody",
-                            "label": "Live label",
-                            "type_id": "Part::Feature",
-                        }
-                    ],
-                }
-            ],
-        }
-    )
-    output = context["programs"][0]["live_outputs"]["Body"]
-    assert output["object_name"] == "LiveBody"
-    assert output["label"] == "Live label"
-    assert output["output_type"] == "solid"
-    assert output["facts"] == {"shape_type": "Solid", "volume_mm3": 24.0}
-
-
-def test_domain_context_is_aggregate_bounded_and_points_to_exact_inspection(
-    tmp_path: Path,
-) -> None:
-    target_program_id = f"{1:032x}"
-    root = tmp_path / "xscript" / "part"
-    for index in range(35):
-        program_id = f"{index + 1:032x}"
-        directory = root / program_id
-        directory.mkdir(parents=True)
-        manifest = {
-            "schema": domains.PROGRAM_SCHEMA,
-            "version": domains.PROGRAM_VERSION,
-            "program_id": program_id,
-            "domain": "part",
-            "workbench": "PartWorkbench",
-            "label": f"Program {index + 1}",
-            "source": "result = {}",
-            "input_schema": {},
-            "inputs": {},
-            "expected_outputs": [{"name": "Body", "type": "solid"}],
-            "working_revision": "b" * 64,
-            "accepted_revision": "b" * 64,
-            "live_outputs": {},
-        }
-        if program_id == target_program_id:
-            manifest["inputs"] = {"values": ["x" * 1_000 for _ in range(20)]}
-            manifest["resolved_references"] = [
-                {
-                    "document_uid": "document",
-                    "object_name": f"Source{reference_index}",
-                    "facts": {
-                        "shape_type": "Solid",
-                        "face_details": [{"index": 1}],
-                        "edge_details": [{"index": 1}],
-                    },
-                }
-                for reference_index in range(20)
-            ]
-            manifest["live_outputs"] = {
-                "Body": {
-                    "object_name": "Body",
-                    "output_type": "solid",
-                    "facts": {
-                        "shape_type": "Solid",
-                        "faces": 6,
-                        "edges": 12,
-                        "face_details": [{"index": 1}],
-                        "edge_details": [{"index": 1}],
-                    },
-                }
-            }
-        (directory / "program.json").write_text(json.dumps(manifest), encoding="utf-8")
-
-    context = domains.complete_domain_context(
-        {
-            "_cadex_deferred_xscript_domain_context": True,
-            "domain": "part",
-            "workbench": "PartWorkbench",
-            "surface_id": "xscript:part:v2",
-            "project_root": str(tmp_path),
-            "contract": {},
-            "native_program_count": 1,
-            "native_programs": [
-                {
-                    "program_id": target_program_id,
-                    "domain": "part",
-                    "workbench": "PartWorkbench",
-                    "live_outputs": [],
-                }
-            ],
-        }
-    )
-    assert context["program_limit"] == domains.MAX_DOMAIN_CONTEXT_PROGRAMS == 32
-    assert context["program_count"] == 35
-    assert len(context["programs"]) == 32
-    assert context["programs_truncated"] is True
-    assert context["programs_omitted"] == 3
-    target = next(
-        item for item in context["programs"] if item["program_id"] == target_program_id
-    )
-    assert target["inputs"]["_cadex_context_omitted"] is True
-    assert len(target["resolved_references"]) == 16
-    assert target["resolved_references_omitted"] == 4
-    output_facts = target["live_outputs"]["Body"]["facts"]
-    assert "face_details" not in output_facts
-    assert "edge_details" not in output_facts
-    assert output_facts["subelement_details_context_omitted"] is True
-    assert "core.inspect" in output_facts["subelement_details_guidance"]
-
-
-def test_generic_prototype_adapters_cannot_surface_unfinished_domains() -> None:
-    for workbench, pack in domains.XSCRIPT_WORKBENCH_PACKS.items():
-        if pack.production_ready:
-            continue
-        adapter = domains.get_domain_adapter(pack.domain)
-        assert adapter is not None
-        assert adapter.production_ready is False
-        available, reason = domains.domain_availability(workbench)
-        assert available is False
-        assert "production-readiness gate" in reason
-        surface = resolve_modeling_surface(workbench, "xscript")
-        assert surface.cad_tool_names == ()
-        assert surface.tool_names == surface.core_tool_names
-
-
-def test_nested_stable_inputs_are_reauthorized_against_the_live_document() -> None:
-    from CadexScriptedRuntime import _validate_stable_references
-
-    captured = {
-        "document_uid": "live-document",
-        "document_objects": [{"name": "Body"}],
-    }
-    _validate_stable_references(
-        {
-            "source": {
-                "document_uid": "live-document",
-                "object_name": "Body",
-            }
-        },
-        captured,
-        "inputs",
-    )
-    with pytest.raises(ValueError, match="different document uid"):
-        _validate_stable_references(
-            {
-                "source": {
-                    "document_uid": "stale-document",
-                    "object_name": "Body",
-                }
-            },
-            captured,
-            "inputs",
-        )
-
-
 def test_domain_publication_has_no_worker_or_artifact_io_fallback() -> None:
     import CadexScriptedDomainPublication as publication
 
@@ -1455,71 +752,6 @@ def test_domain_publication_has_no_worker_or_artifact_io_fallback() -> None:
     ):
         assert forbidden not in source
 
-
-def test_part_reference_capture_only_detaches_live_shapes() -> None:
-    import CadexScriptedRuntime as runtime
-
-    source = inspect.getsource(runtime.capture_reference_inputs)
-    for forbidden in (
-        "exportBrep(",
-        "importBrep(",
-        "part_shape_facts(",
-        "read_text(",
-        "write_text(",
-        "subprocess.",
-        ".wait(",
-    ):
-        assert forbidden not in source
-    assert ".copy()" in source
-
-
-@pytest.mark.parametrize(
-    ("domain", "domain_files"),
-    (
-        ("part", {"cadex_part_api.py", "cadex_part_worker.py"}),
-        (
-            "assembly",
-            {
-                "cadex_assembly_api.py",
-                "cadex_assembly_worker.py",
-                "cadex_part_worker.py",
-            },
-        ),
-        (
-            "sketcher",
-            {
-                "cadex_sketcher_api.py",
-                "cadex_sketcher_worker.py",
-                "cadex_part_worker.py",
-            },
-        ),
-    ),
-)
-def test_worker_staging_contains_only_the_active_domain_bundle(
-    tmp_path: Path,
-    domain: str,
-    domain_files: set[str],
-) -> None:
-    import CadexScriptedRuntime as runtime
-
-    staging = tmp_path / domain
-    staging.mkdir()
-    copied = runtime._stage_worker_bundle(
-        Path(runtime.__file__).resolve().parent,
-        staging,
-        domain,
-    )
-    expected = {"worker.py", "cadex_domain_api.py", *domain_files}
-    assert set(copied) == expected
-    assert {path.name for path in staging.iterdir()} == expected
-    assert not any(
-        path.name.startswith("xscript_")
-        and path.name.endswith(("_api.py", "_worker.py"))
-        and path.name not in expected
-        for path in staging.iterdir()
-    )
-
-
 def test_worker_staging_rejects_an_undeclared_domain(tmp_path: Path) -> None:
     import CadexScriptedRuntime as runtime
 
@@ -1529,60 +761,6 @@ def test_worker_staging_rejects_an_undeclared_domain(tmp_path: Path) -> None:
             tmp_path,
             "not-a-domain",
         )
-
-
-def test_point_artifact_input_schema_is_explicit_and_bounded() -> None:
-    schema = {
-        "type": "object",
-        "properties": {
-            "source": {
-                "oneOf": [
-                    {
-                        "type": "object",
-                        "x-cadex-reference": True,
-                        "properties": {
-                            "document_uid": {"type": "string"},
-                            "object_name": {"type": "string"},
-                        },
-                        "required": ["document_uid", "object_name"],
-                        "additionalProperties": False,
-                    },
-                    {
-                        "type": "object",
-                        "x-cadex-point-artifact": True,
-                        "properties": {
-                            "artifact_id": {
-                                "type": "string",
-                                "pattern": "^[0-9a-f]{32}$",
-                            }
-                        },
-                        "required": ["artifact_id"],
-                        "additionalProperties": False,
-                    },
-                ]
-            }
-        },
-        "required": ["source"],
-        "additionalProperties": False,
-    }
-    assert domains.validate_input_schema(schema) == schema
-    assert domains.validate_inputs({"source": {"artifact_id": "a" * 32}})
-    malformed = json.loads(json.dumps(schema))
-    malformed["properties"]["source"]["oneOf"][1]["properties"]["artifact_id"][
-        "pattern"
-    ] = ".*"
-    with pytest.raises(ValueError, match="exact bounded"):
-        domains.validate_input_schema(malformed)
-    with pytest.raises(ValueError, match="invalid stable artifact"):
-        domains.validate_inputs({"source": {"artifact_id": "not-an-id"}})
-    with pytest.raises(ValueError, match="only one bounded oneOf"):
-        domains.validate_input_schema(
-            {
-                **schema,
-                "anyOf": [{"type": "string"}],
-            }
-        )
-
 
 def test_point_artifact_registry_authenticates_guards_and_rolls_back(
     tmp_path: Path,
@@ -1652,7 +830,6 @@ def test_point_artifact_registry_authenticates_guards_and_rolls_back(
     assert removed["artifact_copy_deleted"] is True
     assert artifacts.point_artifacts_summary(tmp_path)["artifact_count"] == 0
 
-
 def test_gui_document_observer_marks_xscript_dependencies_stale(monkeypatch) -> None:
     import CadexGui as gui
     import CadexScriptedDomainPublication as publication
@@ -1674,7 +851,6 @@ def test_gui_document_observer_marks_xscript_dependencies_stale(monkeypatch) -> 
     gui._CadexDocumentObserver().slotChangedObject(source, "Shape")
     assert observed == [(source, "Shape")]
     assert refreshed == [True]
-
 
 def test_gui_document_observer_ignores_properties_restored_from_file(
     monkeypatch,

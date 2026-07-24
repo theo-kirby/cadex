@@ -45,7 +45,6 @@ def _write_manifest(root: Path, domain: str, program_id: str, schema: str) -> No
 
 def test_plain_document_has_no_programs(tmp_path: Path) -> None:
     assert xdomains.document_engine(_Doc([]), str(tmp_path)) == "plain"
-    assert xdomains.is_fully_xscript_document(_Doc([]), str(tmp_path)) is True
 
 
 def test_classifies_legacy_and_xscript_and_mixed(tmp_path: Path) -> None:
@@ -61,8 +60,6 @@ def test_classifies_legacy_and_xscript_and_mixed(tmp_path: Path) -> None:
     assert xdomains.document_engine(only_legacy, str(tmp_path)) == "legacy"
     assert xdomains.document_engine(only_xs, str(tmp_path)) == "xscript"
     assert xdomains.document_engine(both, str(tmp_path)) == "mixed"
-    assert xdomains.is_fully_xscript_document(only_xs, str(tmp_path)) is True
-    assert xdomains.is_fully_xscript_document(only_legacy, str(tmp_path)) is False
 
 
 def test_convert_retags_legacy_programs_to_xscript(tmp_path: Path) -> None:

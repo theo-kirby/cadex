@@ -22,7 +22,6 @@ set(Cadex_Scripts
     CadexSession.py
     CadexExperimentalChat.py
     CadexExperimentalMode.py
-    CadexScriptedEditor.py
     CadexScriptedOwnership.py
     CadexScriptedProcess.py
     CadexScriptedPublication.py

@@ -278,3 +278,73 @@ the script no longer produces.
 **Consequences.** Undeclared component sources now fail worker-side with
 a correction message; project publication carries no per-domain surface
 check (there is no workbench surface for the project domain).
+
+## ADR-013 — Phase 2.4 tool-surface swap: one project script is the only mutation surface (2026-07-24)
+
+**Decision.** The per-domain multi-program tool surface dissolves. The ONLY
+mutation surface is `xscript.project.{write_script, edit_script, set_params}`
+plus the read-only `xscript.project.describe_api`; every other model-facing
+read lives in `core.inspect` (new scope `script` for source, params,
+revisions, accepted contract/digest, and the latest candidate; scopes
+`domain` and `program` are removed; scope `api` now returns the project
+describe payload). The surface is GLOBAL: `resolve_modeling_surface` returns
+the project surface for any workbench (surface generation
+`project-v1-single-script`); the workbench no longer selects a domain and
+`UNSUPPORTED_WORKBENCHES` is dropped. Removed in the same swap:
+
+- The dissolved per-domain lifecycle tools
+  (`xscript.<domain>.{create_program, edit_source, set_inputs,
+  set_parameter_controls, reconfigure_program, delete_program,
+  inspect_program, describe_api}`) and their spec builder
+  (`domain_tool_specs`); `register_project_tools` registers the four
+  project tools instead.
+- The editable Model Code Editor `CadexScriptedEditor.py` (3223 lines) with
+  all of its `CadexGui.py` registration/menu/command wiring (Python-only; no
+  C++ referenced it).
+- The per-domain host lifecycle in `CadexScriptedRuntime.py` (8254 → ~950
+  lines): capture/prepare/finalize/validate/accept/retain per-domain
+  candidates, reference capture, per-domain host validators
+  (part/sketcher/assembly execution validation), inspection/delete/controls
+  plumbing, and the domain adapter registry + the four adapter classes. The
+  project path keeps `_stage_worker_bundle` (project bundle only),
+  `execute_candidate`, `_worker_environment`, `_staged_artifact_path`,
+  `_apply_replacements`, `_merge_patch`, and the project lifecycle;
+  `describe_project_api` composes the project describe payload from the
+  live capability APIs.
+- The per-domain provider context/document snapshots and program-contract
+  validation in `CadexScriptedDomains.py` (4695 → ~660 lines): domain
+  context snapshots for every workbench, `complete_domain_context`,
+  manifest migration (`migrate_program_manifest`), `program_revision*`,
+  input/schema/output validation, and the adapter registry. The capability
+  packs remain as worker execution/publication contracts with an empty tool
+  surface.
+- The session domain dispatch and editor-candidate bridges in
+  `CadexSession.py`, replaced by `_run_project_xscript_tool`
+  (capture → prepare → execute → validate → publish → accept with the
+  existing thread-dispatch/cancellation/progress plumbing; failures persist
+  via `record_project_candidate_failure` and return `model_state` with
+  `next_write_expected_revision` = the store's working revision).
+- Test suites superseded by `project_xscript_api_integration.py`: the four
+  per-domain integration suites, `domain_xscript_worker_integration.py`,
+  `test_partdesign_xscript_v2.py`, `test_xscript_parameter_controls.py`,
+  `test_scripted_editor_architecture.py`, and the partdesign schema golden
+  fixture. `qt_domain_worker_heartbeat_integration.py` was adapted to the
+  project lifecycle. `test_tool_surface_guardrails.py` pins the new exact
+  surface and asserts the dissolved operations stay gone.
+
+Net: ~24.8k lines deleted, ~1.3k added.
+
+**Rationale.** docs/VISION.md and ADR-011: one project script is the sole
+source of truth; a per-domain multi-program surface contradicts it and
+carries an order of magnitude more host machinery than the project path
+uses.
+
+**Consequences.** `CadexParametersPanel.py` is intentionally untouched: it
+still imports `CadexSession.run_domain_xscript_operation` (now a structured
+`DOMAIN_TOOLS_RETIRED` failure stub) and
+`domain_program_index_snapshot`/`complete_domain_program_index` (now an
+always-empty index), both unreachable in practice because the project
+surface lists no per-domain programs. Phase 2.5 rewires the panel to the
+project script's `param_specs` and deletes these compatibility symbols.
+Resurrecting any per-domain lifecycle machinery is a direction change and
+needs a new ADR.

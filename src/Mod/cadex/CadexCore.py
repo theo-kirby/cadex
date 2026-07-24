@@ -5133,7 +5133,7 @@ class CadexService:
     def _register_core_tools(self) -> None:
         service_tools.register_tools(self._registry, self)
         sketcher_tools.register_tools(self._registry, self)
-        xscript_domains.register_domain_tools(self._registry, self)
+        xscript_domains.register_project_tools(self._registry)
 
 
 _service: CadexService | None = None

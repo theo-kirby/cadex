@@ -43,18 +43,11 @@ def _collect_specs() -> dict[str, ToolSpec]:
             module = import_module(f"{package_name}.{module_name}")
             spec = ToolSpec.from_mapping(module.TOOL_SPEC)
             specs[spec.name] = spec
-    # The experimental surface now resolves scripted-engine (xscript/xscript)
-    # domain tools, so the fake registry must carry their specs too.
-    from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
-
-    for pack in domains.XSCRIPT_WORKBENCH_PACKS.values():
-        for raw_spec in domains.domain_tool_specs(pack):
-            spec = ToolSpec.from_mapping(raw_spec)
-            specs[spec.name] = spec
-    for pack in XSCRIPT_WORKBENCH_PACKS.values():
-        for raw_spec in domains.domain_tool_specs(pack):
-            spec = ToolSpec.from_mapping(raw_spec)
-            specs[spec.name] = spec
+    # The surface resolves the global project tools, so the fake registry
+    # must carry their specs too.
+    for raw_spec in domains.project_tool_specs():
+        spec = ToolSpec.from_mapping(raw_spec)
+        specs[spec.name] = spec
     return specs
 
 
@@ -99,7 +92,7 @@ def test_manual_xscript_surface_is_unchanged(specs, monkeypatch) -> None:
     names = session._surface_tool_names(service, "PartDesignWorkbench")
     # Manual mode resolves exactly the PartDesign xscript domain surface.
     assert names == _resolved_surface_names("PartDesignWorkbench", "xscript")
-    assert "xscript.partdesign.create_program" in names
+    assert "xscript.project.write_script" in names
 
 
 def test_experimental_xscript_surface_is_the_resolved_surface(
@@ -110,7 +103,7 @@ def test_experimental_xscript_surface_is_the_resolved_surface(
     names = session._surface_tool_names(service, "PartDesignWorkbench")
     # Experimental mode serves exactly the resolved xscript authoring surface.
     assert names == _resolved_surface_names("PartDesignWorkbench", "xscript")
-    assert "xscript.partdesign.create_program" in names
+    assert "xscript.project.write_script" in names
 
 
 def test_turn_start_surface_accepts_experimental_xscript_surface(monkeypatch) -> None:

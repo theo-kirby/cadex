@@ -306,8 +306,7 @@ def test_core_inspect_schema_is_one_low_friction_read_interface() -> None:
         "document",
         "selection",
         "object",
-        "domain",
-        "program",
+        "script",
         "api",
         "image",
     }
@@ -363,8 +362,8 @@ def test_core_inspect_pages_are_deterministic_and_exactly_size_accounted() -> No
 
 def test_core_inspect_shrinks_large_string_pages_below_the_hard_limit() -> None:
     captured = {
-        "scope": "program",
-        "target": "program-id",
+        "scope": "script",
+        "target": "",
         "path": "/source",
         "offset": 0,
         "limit": 50,

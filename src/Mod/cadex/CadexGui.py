@@ -1348,29 +1348,11 @@ def _modeling_engine_changed(index: int) -> None:
         return
     _set_status_line(f"Modeling engine: {engine}", dock=dock)
     _refresh_modeling_engine_selector(dock)
-    try:
-        from CadexScriptedEditor import (
-            refresh_scripted_model_editor,
-            show_scripted_model_editor,
-        )
-
-        if engine in {"xscript", "xscript"}:
-            show_scripted_model_editor()
-        else:
-            refresh_scripted_model_editor()
-    except Exception as exc:
-        _warn(f"Cadex scripted editor engine refresh failed: {exc}")
 
 
 def apply_modeling_preferences() -> None:
     """Refresh engine availability after the Preferences page is applied."""
     _refresh_modeling_engine_selector(_find_dock())
-    try:
-        from CadexScriptedEditor import refresh_scripted_model_editor
-
-        refresh_scripted_model_editor()
-    except Exception as exc:
-        _warn(f"Cadex scripted editor preference refresh failed: {exc}")
 
 
 def _clear_conversation_transients(dock: Any) -> None:
@@ -1973,18 +1955,6 @@ def _handle_progress_event(
             str(event.get("document_name") or ""),
             str(event.get("model_id") or ""),
         )
-        try:
-            from CadexScriptedEditor import (
-                automated_model_update_finished,
-                automated_model_update_started,
-            )
-
-            if event_name == "scripted_model_update_started":
-                automated_model_update_started(*arguments)
-            else:
-                automated_model_update_finished(*arguments)
-        except Exception as exc:
-            _warn(f"Cadex scripted editor synchronization failed: {exc}")
         try:
             import CadexParametersPanel
 
@@ -2808,12 +2778,6 @@ def _execute_assistant_run(
                 text=terminal_status or None,
             )
             _refresh_modeling_engine_selector(current_dock)
-            try:
-                from CadexScriptedEditor import refresh_scripted_model_editor
-
-                refresh_scripted_model_editor()
-            except Exception as exc:
-                _warn(f"Cadex scripted editor completion refresh failed: {exc}")
             _refresh_view_status(current_dock)
             _render_questions(current_dock)
         except Exception as exc:
@@ -3116,12 +3080,6 @@ def _refresh_assistant_for_document_change() -> None:
     except Exception as exc:
         _warn(f"Cadex assistant panel connection check failed: {exc}")
     try:
-        from CadexScriptedEditor import refresh_scripted_model_editor
-
-        refresh_scripted_model_editor()
-    except Exception as exc:
-        _warn(f"Cadex scripted editor document refresh failed: {exc}")
-    try:
         import CadexParametersPanel
 
         CadexParametersPanel.schedule_refresh()
@@ -3259,21 +3217,9 @@ class _CadexDocumentObserver:
 
     def slotStartSaveDocument(self, doc, filepath) -> None:
         _snapshot_active_document_conversation(doc)
-        try:
-            from CadexScriptedEditor import suspend_preview_for_save
-
-            suspend_preview_for_save(doc)
-        except Exception as exc:
-            _warn(f"Cadex preview cleanup before save failed: {exc}")
 
     def slotFinishSaveDocument(self, doc, filepath) -> None:
         _move_saved_document_conversation(doc, str(filepath))
-        try:
-            from CadexScriptedEditor import restore_preview_after_save
-
-            restore_preview_after_save(doc)
-        except Exception as exc:
-            _warn(f"Cadex preview restore after save failed: {exc}")
         _schedule_assistant_document_refresh()
 
     def slotUndoDocument(self, doc) -> None:
@@ -3289,12 +3235,6 @@ class _CadexDocumentObserver:
         _sketch_close_continuation_controller.clear_for_document(document_key)
         _document_save_conversations.pop(document_key, None)
         _document_save_references.pop(document_key, None)
-        try:
-            from CadexScriptedEditor import remove_all_previews
-
-            remove_all_previews(doc)
-        except Exception as exc:
-            _warn(f"Cadex preview cleanup for deleted document failed: {exc}")
         _schedule_assistant_document_refresh()
 
 
@@ -3935,12 +3875,6 @@ def _on_workbench_activated(workbench_name: str) -> None:
                         "global modeling engine changed to XScript.",
                         dock=dock,
                     )
-                try:
-                    from CadexScriptedEditor import refresh_scripted_model_editor
-
-                    refresh_scripted_model_editor()
-                except Exception as exc:
-                    _warn(f"Cadex scripted editor workbench refresh failed: {exc}")
             return
         if _registered_assistant_widget is not None:
             return
@@ -4032,17 +3966,6 @@ class OpenPreferencesCommand(_BaseCommand):
             _show_panel(f"Cadex preferences could not be opened: {exc}")
 
 
-class OpenScriptedModelCommand(_BaseCommand):
-    menu_text = "Model Code Editor"
-    tooltip = "Open the XScript model code editor"
-    pixmap = ICON_ACTIVITY
-
-    def Activated(self) -> None:
-        from CadexScriptedEditor import show_scripted_model_editor
-
-        show_scripted_model_editor()
-
-
 class OpenParametersPanelCommand(_BaseCommand):
     menu_text = "Model Parameters"
     tooltip = "Open the XScript model parameter sliders"
@@ -4095,18 +4018,8 @@ def ensure_commands_registered() -> None:
     Gui.addCommand("Cadex_ExplainSelection", ExplainSelectionCommand())
     Gui.addCommand("Cadex_OpenAssistant", OpenAssistantCommand())
     Gui.addCommand("Cadex_OpenPreferences", OpenPreferencesCommand())
-    Gui.addCommand("Cadex_OpenScriptedModel", OpenScriptedModelCommand())
     Gui.addCommand("Cadex_OpenParametersPanel", OpenParametersPanelCommand())
     Gui.addCommand("Cadex_AuthStatus", AuthStatusCommand())
-    try:
-        from CadexScriptedEditor import ensure_scripted_model_editor_registered
-
-        # InitGui runs before startup workbench setup and the one native
-        # MainWindow.loadWindowSettings() pass. Register the real dock now,
-        # matching the lifecycle of FreeCAD's built-in dock widgets.
-        ensure_scripted_model_editor_registered()
-    except Exception as exc:
-        _warn(f"Cadex scripted editor registration failed: {exc}")
     try:
         from CadexParametersPanel import ensure_parameters_panel_registered
 

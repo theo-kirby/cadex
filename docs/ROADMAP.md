@@ -57,13 +57,15 @@ from facts instead of re-exploration.
 **Goal:** a single top-level script is the sole source of truth
 (`docs/XSCRIPT.md` Part II).
 
-- [ ] Design: script layout, project-level params, domain-API composition,
-      assembly composition (open question in `docs/XSCRIPT.md`).
-- [ ] Runtime: execute the project script (may stage per-domain workers
-      internally) — evolve `CadexScriptedRuntime.py`.
-- [ ] Project-level parameters bound to sliders
-      (`CadexParametersPanel.py`), replacing per-program
-      `set_parameter_controls`.
+- [x] Design: script layout, project-level params, domain-API composition,
+      assembly composition (ADR-011).
+- [x] Runtime: execute the project script (one multi-domain worker; the
+      per-domain tool surface dissolved in the Phase 2.4 swap, ADR-013) —
+      `CadexScriptedRuntime.py`.
+- [x] Project-level parameters declared and bound (`params`/`num` in the
+      script, values patched via `xscript.project.set_params`; the retired
+      per-program controls tool is gone, ADR-013). The Parameters-panel
+      slider rewire to `param_specs` lands in Phase 2.5.
 - [x] Publisher lint: reject any untagged object; orphan GC for objects with
       no owning script region. (`publish_project_candidate` — one
       transaction, `CadexScriptedOwnership` closure/lint/orphans, ADR-012.)
