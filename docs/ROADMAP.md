@@ -38,11 +38,13 @@ from facts instead of re-exploration.
 
 **Goal:** `src/Mod/` contains only what the product uses.
 
-- [ ] Dependency audit of removal candidates (`docs/FREECAD.md` §3) against
-      kept trees; record order.
-- [ ] Per tree, two commits: (1) disable in `src/Mod/CMakeLists.txt`, verify
-      build + launch + tests; (2) delete the tree, verify again.
-- [ ] Log each removal in `docs/DECISIONS.md`.
+- [x] Dependency audit of removal candidates (`docs/FREECAD.md` §3) against
+      kept trees; record order — grid de-Drafted first (Phase 1.3), assembly
+      BOM dropped (ADR-008), then batch A / batch B.
+- [x] Per tree, two commits: (1) disable in `src/Mod/CMakeLists.txt`, verify
+      build + launch + tests; (2) delete the tree, verify again — ADR-007
+      (batch A), ADR-009 (batch B).
+- [x] Log each removal in `docs/DECISIONS.md` — ADR-007…ADR-010.
 - [x] Sweep the dead culled-domain branches inside `src/Mod/cadex/`
       (`CadexScriptedDomainPublication.py`, domain-name checks in
       `CadexScriptedRuntime.py` / `CadexScriptedDomains.py`) — ADR-010.
