@@ -72,24 +72,16 @@ experimental-mode-only UI → single xscript engine → rebrand. Consult that
 branch's log for why anything is missing; nothing from it comes back without
 a `docs/DECISIONS.md` entry.
 
-Known residue inside `src/Mod/cadex/` `[VibeCAD-era]`: dead culled-domain
-code remains in three places, all unreachable because only four domain packs
-exist (`XSCRIPT_WORKBENCH_PACKS`, `CadexScriptedDomains.py:194`):
-
-- `CadexScriptedRuntime.py` — ~24 lazy `from xscript_*_worker import …`
-  statements inside validation/publication helpers for culled domains
-  (spreadsheet, material, bim, mesh, points, reverse_engineering,
-  inspection, robot, fem, cam, techdraw, surface), plus domain-name checks
-  that can never match.
-- `CadexScriptedDomains.py` — domain-name branches for culled domains in the
-  inspection snapshot builder.
-- `CadexScriptedDomainPublication.py` — unreachable publication paths still
-  importing deleted `xscript_*` workers (lines ~2798–8727).
-
-The stale `_DOMAIN_WORKER_BUNDLES` entries and two self-contained lazy
-imports were pruned on 2026-07-24 (ADR-006). The rest is Phase 1 cleanup:
-delete the whole dead functions/branches in one audited sweep rather than
-nibbling at imports.
+The `[VibeCAD-era]` culled-domain residue inside `src/Mod/cadex/` was
+swept 2026-07-24 (ADR-010): `CadexScriptedRuntime.py`,
+`CadexScriptedDomainPublication.py`, and `CadexScriptedDomains.py` no
+longer reference any deleted tree (`draftutils`, `ArchSite`,
+`xscript_*` workers, `CadexXScriptCAM`), and only the four domain
+packs' publication/validation code remains on those paths. Some
+never-dispatched helper code for culled domains that touches only
+kept trees (mesh/points/fem/inspection/robot snapshot and rollback
+helpers, TechDraw page summaries in `CadexCore.py`) is still present
+and is follow-up sweep material.
 
 ## 5. Open questions
 

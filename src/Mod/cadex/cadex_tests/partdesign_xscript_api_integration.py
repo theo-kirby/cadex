@@ -364,11 +364,6 @@ def _document_consumers(document, published):
     whole.SourceObject = published
     specifications = (
         ("Assembly::AssemblyObject", "AssemblyConsumer"),
-        ("Fem::FeaturePython", "FemConsumer"),
-        ("Path::FeaturePython", "CamConsumer"),
-        ("TechDraw::DrawViewPart", "TechDrawConsumer"),
-        ("Robot::RobotObject", "RobotConsumer"),
-        ("Inspection::Feature", "InspectionConsumer"),
     )
     consumers = [whole]
     for type_id, name in specifications:

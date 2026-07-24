@@ -828,11 +828,6 @@ def _exercise_isolated_lifecycle(root: Path, pack) -> dict:
     )
     housing_object.HumanMaterialCard = "urn:material:human-assigned-steel"
     engineering_consumer_specs = (
-        ("Fem::FeaturePython", "FemConsumer", True),
-        ("Path::FeaturePython", "CamConsumer", True),
-        ("TechDraw::DrawViewPart", "TechDrawConsumer", True),
-        ("Robot::RobotObject", "RobotConsumer", True),
-        ("Inspection::Feature", "InspectionConsumer", True),
         ("Assembly::AssemblyObject", "AssemblyConsumer", False),
     )
     engineering_consumers = []

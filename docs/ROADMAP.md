@@ -43,9 +43,9 @@ from facts instead of re-exploration.
 - [ ] Per tree, two commits: (1) disable in `src/Mod/CMakeLists.txt`, verify
       build + launch + tests; (2) delete the tree, verify again.
 - [ ] Log each removal in `docs/DECISIONS.md`.
-- [ ] Sweep the dead culled-domain branches inside `src/Mod/cadex/`
+- [x] Sweep the dead culled-domain branches inside `src/Mod/cadex/`
       (`CadexScriptedDomainPublication.py`, domain-name checks in
-      `CadexScriptedRuntime.py` / `CadexScriptedDomains.py`).
+      `CadexScriptedRuntime.py` / `CadexScriptedDomains.py`) — ADR-010.
 
 **Exit criteria:** every tree under `src/Mod/` is listed as "kept" in
 `docs/FREECAD.md`; full build, launch, and test pass.

@@ -170,3 +170,50 @@ Part, PartDesign, Sketcher, Assembly (domains); Import, Material,
 Measure, Mesh, MeshPart, Show, Start, Test, Help (support); cadex (the
 engine). Residual culled-domain code inside cadex referencing
 draftutils/Points dies in the Phase 1 dead-code sweep.
+
+## ADR-010 — Phase 1 dead-code sweep of src/Mod/cadex (2026-07-24)
+
+**Decision.** Deleted the remaining unreachable culled-domain code paths
+from the engine, completing the residue sweep promised in ADR-009.
+`CadexScriptedRuntime.py` was swept from ~21.4k to ~7.8k lines in the
+first pass. This pass swept the other two files:
+
+- `CadexScriptedDomainPublication.py` (11,202 → 6,732 lines): the whole
+  draft, BIM, spreadsheet, material-card, TechDraw, and CAM publication
+  chains — `_create_draft_object`/`_configure_draft`/
+  `_draft_object_compatible`/`_draft_configure_order` (~365 lines), the
+  `_create_bim_object`/`_configure_bim`/`_bim_*` family incl. rollback
+  (~760 lines), `_configure_sheet` + spreadsheet rollback (~145 lines),
+  `_material_card_state` + the full material carrier/appearance chain
+  incl. `_publish_material_candidate` and `_delete_material_program`
+  (~1,050 lines), the `_techdraw_*` family incl.
+  `_publish_techdraw_candidate` and `_delete_techdraw_program`
+  (~1,030 lines), the `_cam_*` family incl. `_publish_cam_candidate`
+  and `_delete_cam_program` (~1,010 lines), plus the culled branches in
+  `_native_type`/`_create_object`/`_configure_object`/
+  `publish_candidate`/`delete_live_program`, the culled entries in
+  `_NATIVE_TYPE_BY_OUTPUT`, orphaned `PROP_MATERIAL_*`/
+  `PROP_APPEARANCE_*`/`PROP_CAM_VALIDATION`/`PROP_TECHDRAW_VALIDATION`/
+  `MATERIAL_OWNERSHIP_SCHEMA` constants, `_BIM_ASSIGNED_PROPERTIES`/
+  `_BIM_LINK_PROPERTY_TYPES`, and the orphaned
+  `_set_native_property`/`_require_native_property` helpers.
+- `CadexScriptedDomains.py` (4,904 → 4,626 lines):
+  `_draft_document_snapshot` (138 lines), `_bim_document_snapshot`
+  (120 lines), their `domain_context_snapshot` entries, and the
+  now-unreferenced `MAX_DRAFT_CONTEXT_*`/`MAX_BIM_CONTEXT_*` constants.
+
+**Method.** Grep for imports of deleted trees (`draftutils`, `ArchSite`,
+`xscript_spreadsheet_worker`, `xscript_material_worker`,
+`xscript_techdraw_worker`, `xscript_cam_worker`, `CadexXScriptCAM`);
+delete each containing function whole; chase callers recursively with an
+AST reference graph until only the four-domain dispatchers remained;
+delete newly unreferenced module constants. Verified with the full
+engine pytest suite green (387 passed, 1 skipped) after each file, and a
+final zero-hit grep gate over `src/Mod/cadex` (guardrail tests that
+assert the culled modules stay gone excepted).
+
+**Consequences.** No engine file references a deleted tree. Culled-domain
+helper code that touches only kept trees (mesh/points/fem/inspection/
+robot snapshot+rollback helpers, TechDraw page summaries in
+`CadexCore.py`) is never dispatched but still present — follow-up sweep
+material, tracked in `docs/FREECAD.md` §4.

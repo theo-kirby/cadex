@@ -38,13 +38,9 @@ MAX_PART_CONTEXT_SHAPES = 24
 MAX_PART_CONTEXT_SUBELEMENTS = 32
 MAX_SKETCHER_CONTEXT_SKETCHES = 32
 MAX_SKETCHER_CONTEXT_ITEMS = 128
-MAX_DRAFT_CONTEXT_OBJECTS = 64
-MAX_DRAFT_CONTEXT_POINTS = 128
 MAX_SPREADSHEET_CONTEXT_SHEETS = 32
 MAX_SPREADSHEET_CONTEXT_CELLS = 128
 MAX_MATERIAL_CONTEXT_TARGETS = 512
-MAX_BIM_CONTEXT_OBJECTS = 256
-MAX_BIM_CONTEXT_RELATIONSHIPS = 64
 MAX_MESH_CONTEXT_OBJECTS = 128
 MAX_POINTS_CONTEXT_OBJECTS = 128
 MAX_POINTS_CONTEXT_SAMPLE = 8
@@ -952,144 +948,6 @@ def _sketcher_document_snapshot(doc: Any) -> dict[str, Any]:
     }
 
 
-def _draft_document_snapshot(doc: Any) -> dict[str, Any]:
-    """Capture bounded editable Draft properties without recompute or topology work."""
-
-    try:
-        from draftutils.utils import get_type
-    except Exception:
-        get_type = lambda _obj: ""  # noqa: E731
-    supported = {"Wire", "Circle", "Rectangle", "BSpline", "Array", "Text"}
-    all_objects: list[tuple[Any, str]] = []
-    for obj in list(getattr(doc, "Objects", []) or []):
-        try:
-            draft_type = str(get_type(obj) or "")
-        except Exception:
-            draft_type = ""
-        if draft_type in supported:
-            all_objects.append((obj, draft_type))
-    captured = []
-    for obj, draft_type in all_objects[:MAX_DRAFT_CONTEXT_OBJECTS]:
-        placement = getattr(obj, "Placement", None)
-        position = getattr(placement, "Base", None)
-        rotation = getattr(placement, "Rotation", None)
-        item: dict[str, Any] = {
-            "name": str(getattr(obj, "Name", "") or ""),
-            "label": str(getattr(obj, "Label", "") or ""),
-            "type_id": str(getattr(obj, "TypeId", "") or ""),
-            "draft_type": draft_type,
-            "proxy_class": type(getattr(obj, "Proxy", None)).__name__,
-            "placement": {
-                "position": [
-                    float(getattr(position, axis, 0.0)) for axis in ("x", "y", "z")
-                ],
-                "rotation": [
-                    float(value)
-                    for value in getattr(rotation, "Q", (0.0, 0.0, 0.0, 1.0))
-                ],
-            },
-            "program_id": str(getattr(obj, PROP_PROGRAM_ID, "") or ""),
-            "program_output": str(getattr(obj, PROP_PROGRAM_OUTPUT, "") or ""),
-            "program_revision": str(getattr(obj, PROP_PROGRAM_REVISION, "") or ""),
-        }
-        if draft_type in {"Wire", "BSpline"}:
-            points = list(getattr(obj, "Points", []) or [])
-            item.update(
-                {
-                    "point_count": len(points),
-                    "points": [
-                        [float(point.x), float(point.y), float(point.z)]
-                        for point in points[:MAX_DRAFT_CONTEXT_POINTS]
-                    ],
-                    "points_truncated": len(points) > MAX_DRAFT_CONTEXT_POINTS,
-                    "closed": bool(getattr(obj, "Closed", False)),
-                    "make_face": bool(getattr(obj, "MakeFace", False)),
-                }
-            )
-            if draft_type == "BSpline":
-                item["parameterization"] = float(getattr(obj, "Parameterization", 1.0))
-        elif draft_type == "Circle":
-            item.update(
-                {
-                    "radius": float(getattr(obj, "Radius", 0.0)),
-                    "start_angle": float(getattr(obj, "FirstAngle", 0.0)),
-                    "end_angle": float(getattr(obj, "LastAngle", 0.0)),
-                    "make_face": bool(getattr(obj, "MakeFace", False)),
-                }
-            )
-        elif draft_type == "Rectangle":
-            item.update(
-                {
-                    "length": float(getattr(obj, "Length", 0.0)),
-                    "height": float(getattr(obj, "Height", 0.0)),
-                    "make_face": bool(getattr(obj, "MakeFace", False)),
-                }
-            )
-        elif draft_type == "Array":
-            base = getattr(obj, "Base", None)
-            item.update(
-                {
-                    "base": {
-                        "name": str(getattr(base, "Name", "") or ""),
-                        "label": str(getattr(base, "Label", "") or ""),
-                    },
-                    "array_kind": str(getattr(obj, "ArrayType", "") or ""),
-                    "use_link": bool(
-                        getattr(getattr(obj, "Proxy", None), "use_link", False)
-                    ),
-                    "fuse": bool(getattr(obj, "Fuse", False)),
-                    "count": int(getattr(obj, "Count", 0)),
-                    "number_x": int(getattr(obj, "NumberX", 0)),
-                    "number_y": int(getattr(obj, "NumberY", 0)),
-                    "number_z": int(getattr(obj, "NumberZ", 0)),
-                    "number_polar": int(getattr(obj, "NumberPolar", 0)),
-                    "angle_degrees": float(getattr(obj, "Angle", 0.0)),
-                    "interval_x": [
-                        float(value) for value in getattr(obj, "IntervalX", (0, 0, 0))
-                    ],
-                    "interval_y": [
-                        float(value) for value in getattr(obj, "IntervalY", (0, 0, 0))
-                    ],
-                    "interval_z": [
-                        float(value) for value in getattr(obj, "IntervalZ", (0, 0, 0))
-                    ],
-                    "center": [
-                        float(value) for value in getattr(obj, "Center", (0, 0, 0))
-                    ],
-                    "axis": [float(value) for value in getattr(obj, "Axis", (0, 0, 1))],
-                }
-            )
-        else:
-            lines = [str(value) for value in list(getattr(obj, "Text", []) or [])]
-            view = getattr(obj, "ViewObject", None)
-            item.update(
-                {
-                    "line_count": len(lines),
-                    "lines": lines[:MAX_DRAFT_CONTEXT_POINTS],
-                    "lines_truncated": len(lines) > MAX_DRAFT_CONTEXT_POINTS,
-                    "display_mode": str(getattr(view, "DisplayMode", "") or ""),
-                    "height": (
-                        float(getattr(view, "FontSize"))
-                        if view is not None and hasattr(view, "FontSize")
-                        else None
-                    ),
-                    "line_spacing": (
-                        float(getattr(view, "LineSpacing"))
-                        if view is not None and hasattr(view, "LineSpacing")
-                        else None
-                    ),
-                }
-            )
-        captured.append(item)
-    return {
-        "object_count": len(all_objects),
-        "object_limit": MAX_DRAFT_CONTEXT_OBJECTS,
-        "objects_truncated": len(all_objects) > len(captured),
-        "objects_omitted": max(0, len(all_objects) - len(captured)),
-        "objects": captured,
-    }
-
-
 _SPREADSHEET_ADDRESS = re.compile(r"^([A-Z]{1,2})([1-9][0-9]{0,4})$")
 
 
@@ -1385,126 +1243,6 @@ def _material_document_snapshot(doc: Any) -> dict[str, Any]:
         "targets_truncated": len(capable) > len(targets),
         "targets_omitted": max(0, len(capable) - len(targets)),
         "targets": targets,
-    }
-
-
-def _bim_document_snapshot(doc: Any) -> dict[str, Any]:
-    """Capture bounded native hierarchy and editable BIM properties without recompute."""
-
-    try:
-        from draftutils.utils import get_type
-    except Exception:
-        get_type = lambda _obj: ""  # noqa: E731
-    supported = {"Site", "BuildingPart", "Wall", "Structure", "Window"}
-    all_objects: list[tuple[Any, str]] = []
-    for obj in list(getattr(doc, "Objects", []) or []):
-        try:
-            arch_type = str(get_type(obj) or "")
-        except Exception:
-            arch_type = ""
-        if arch_type in supported and str(getattr(obj, "IfcType", "") or "") in {
-            "Site",
-            "Building",
-            "Building Storey",
-            "Wall",
-            "Slab",
-            "Column",
-            "Beam",
-            "Member",
-            "Opening Element",
-        }:
-            all_objects.append((obj, arch_type))
-    captured = []
-    for obj, arch_type in all_objects[:MAX_BIM_CONTEXT_OBJECTS]:
-        placement = getattr(obj, "Placement", None)
-        position = getattr(placement, "Base", None)
-        rotation = getattr(placement, "Rotation", None)
-        group = list(getattr(obj, "Group", []) or [])
-        hosts = list(getattr(obj, "Hosts", []) or [])
-        parents = [
-            parent
-            for parent in list(getattr(obj, "InList", []) or [])
-            if hasattr(parent, "Group")
-            and obj in list(getattr(parent, "Group", []) or [])
-        ]
-        base = getattr(obj, "Base", None) if hasattr(obj, "Base") else None
-        item: dict[str, Any] = {
-            "name": str(getattr(obj, "Name", "") or ""),
-            "label": str(getattr(obj, "Label", "") or ""),
-            "type_id": str(getattr(obj, "TypeId", "") or ""),
-            "proxy_class": type(getattr(obj, "Proxy", None)).__name__,
-            "arch_type": arch_type,
-            "ifc_type": str(getattr(obj, "IfcType", "") or ""),
-            "placement": {
-                "position": [
-                    float(getattr(position, axis, 0.0)) for axis in ("x", "y", "z")
-                ],
-                "rotation": [
-                    float(value)
-                    for value in getattr(rotation, "Q", (0.0, 0.0, 0.0, 1.0))
-                ],
-            },
-            "group_count": len(group),
-            "group": [
-                str(getattr(child, "Name", "") or "")
-                for child in group[:MAX_BIM_CONTEXT_RELATIONSHIPS]
-            ],
-            "group_truncated": len(group) > MAX_BIM_CONTEXT_RELATIONSHIPS,
-            "parent_groups": [
-                str(getattr(parent, "Name", "") or "")
-                for parent in parents[:MAX_BIM_CONTEXT_RELATIONSHIPS]
-            ],
-            "parent_groups_truncated": len(parents) > MAX_BIM_CONTEXT_RELATIONSHIPS,
-            "host_count": len(hosts),
-            "hosts": [
-                str(getattr(host, "Name", "") or "")
-                for host in hosts[:MAX_BIM_CONTEXT_RELATIONSHIPS]
-            ],
-            "hosts_truncated": len(hosts) > MAX_BIM_CONTEXT_RELATIONSHIPS,
-            "base": (
-                {
-                    "name": str(getattr(base, "Name", "") or ""),
-                    "label": str(getattr(base, "Label", "") or ""),
-                    "type_id": str(getattr(base, "TypeId", "") or ""),
-                    "proxy_class": type(getattr(base, "Proxy", None)).__name__,
-                }
-                if base is not None
-                else None
-            ),
-            "shape_present": bool(
-                hasattr(obj, "Shape") and not getattr(obj, "Shape").isNull()
-            ),
-            "program_id": str(getattr(obj, PROP_PROGRAM_ID, "") or ""),
-            "program_output": str(getattr(obj, PROP_PROGRAM_OUTPUT, "") or ""),
-            "program_revision": str(getattr(obj, PROP_PROGRAM_REVISION, "") or ""),
-        }
-        dimensions = {}
-        for property_name in (
-            "Length",
-            "Width",
-            "Height",
-            "Offset",
-            "LevelOffset",
-            "Elevation",
-            "HoleDepth",
-        ):
-            if not hasattr(obj, property_name):
-                continue
-            try:
-                value = getattr(obj, property_name)
-                dimensions[property_name] = float(getattr(value, "Value", value))
-            except Exception as exc:
-                dimensions[f"{property_name}Error"] = str(exc)
-        if dimensions:
-            item["dimensions_mm"] = dimensions
-        captured.append(item)
-    return {
-        "object_count": len(all_objects),
-        "object_limit": MAX_BIM_CONTEXT_OBJECTS,
-        "objects_truncated": len(all_objects) > len(captured),
-        "objects_omitted": max(0, len(all_objects) - len(captured)),
-        "relationship_limit_per_object": MAX_BIM_CONTEXT_RELATIONSHIPS,
-        "objects": captured,
     }
 
 
@@ -2547,16 +2285,6 @@ def domain_context_snapshot(service: Any, domain: str) -> dict[str, Any]:
             if clean_domain == "sketcher" and doc is not None
             else None
         ),
-        "draft_document": (
-            _draft_document_snapshot(doc)
-            if clean_domain == "draft" and doc is not None
-            else None
-        ),
-        "draft_array_source_shapes": (
-            _part_document_shape_snapshot(service, doc)
-            if clean_domain == "draft" and doc is not None
-            else None
-        ),
         "surface_input_shapes": (
             _part_document_shape_snapshot(
                 service,
@@ -2574,11 +2302,6 @@ def domain_context_snapshot(service: Any, domain: str) -> dict[str, Any]:
         "material_document": (
             _material_document_snapshot(doc)
             if clean_domain == "material" and doc is not None
-            else None
-        ),
-        "bim_document": (
-            _bim_document_snapshot(doc)
-            if clean_domain == "bim" and doc is not None
             else None
         ),
         "mesh_document": (
@@ -2681,7 +2404,6 @@ def domain_context_snapshot(service: Any, domain: str) -> dict[str, Any]:
             "instructions": pack.instructions,
         },
     }
-
 
 
 def domain_program_index_snapshot(service: Any, domain: str) -> dict[str, Any]:
