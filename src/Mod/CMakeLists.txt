@@ -2,10 +2,6 @@ if(BUILD_ASSEMBLY)
   add_subdirectory(Assembly)
 endif(BUILD_ASSEMBLY)
 
-if(BUILD_DRAFT)
-  add_subdirectory(Draft)
-endif(BUILD_DRAFT)
-
 if(BUILD_HELP)
   add_subdirectory(Help)
 endif(BUILD_HELP)
@@ -38,10 +34,6 @@ if(BUILD_PART_DESIGN)
   add_subdirectory(PartDesign)
 endif(BUILD_PART_DESIGN)
 
-if(BUILD_POINTS)
-  add_subdirectory(Points)
-endif(BUILD_POINTS)
-
 if(BUILD_SHOW)
     add_subdirectory(Show)
 endif(BUILD_SHOW)
@@ -54,10 +46,6 @@ if(BUILD_SKETCHER)
     endif(EIGEN3_FOUND)
 endif(BUILD_SKETCHER)
 
-if(BUILD_SPREADSHEET)
-  add_subdirectory(Spreadsheet)
-endif(BUILD_SPREADSHEET)
-
 if(BUILD_START)
     add_subdirectory(Start)
 endif(BUILD_START)
@@ -65,10 +53,6 @@ endif(BUILD_START)
 if(BUILD_MEASURE)
     add_subdirectory(Measure)
 endif(BUILD_MEASURE)
-
-if(BUILD_TECHDRAW)
-    add_subdirectory(TechDraw)
-endif(BUILD_TECHDRAW)
 
 add_subdirectory(cadex)
 

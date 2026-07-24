@@ -52,25 +52,16 @@ Everything in this file is `[FreeCAD-inherited]` unless noted.
 
 ## 3. Slated for removal (Phase 1) — present but unused
 
-Remaining candidates (no runtime domain, tool, or UI path reaches them;
-`test_tool_surface_guardrails.py` asserts the culled worker modules stay
-gone):
+Empty. Phase 1 removals are complete: batch A (`AddonManager`, `BIM`,
+`CAM`, `Fem`, `Inspection`, `OpenSCAD`, `Plot`, `ReverseEngineering`,
+`Robot`, `Surface`, `TemplatePyMod`, `Tux`, `Web`) deleted per ADR-007;
+batch B (`Draft`, `Points`, `Spreadsheet`, `TechDraw`) deleted per
+ADR-009 after the grid lost its Draft dependency (Phase 1.3) and the
+assembly BOM was dropped (ADR-008). Every tree under `src/Mod/` is now
+in §1.
 
-`Draft`, `Points`, `Spreadsheet`, `TechDraw`.
-
-Ordering: the cadex grid loses its Draft dependency first (cadex-owned
-tracker), the assembly BOM feature is dropped (`Assembly` links against
-`Spreadsheet` only for it), then Draft → TechDraw → Spreadsheet → Points
-disable and delete.
-
-Batch A (`AddonManager`, `BIM`, `CAM`, `Fem`, `Inspection`, `OpenSCAD`,
-`Plot`, `ReverseEngineering`, `Robot`, `Surface`, `TemplatePyMod`, `Tux`,
-`Web`) was deleted 2026-07-24 (ADR-007).
-
-Removal protocol (per tree, two commits, logged in `docs/DECISIONS.md`):
-
-1. Disable in `src/Mod/CMakeLists.txt`; build, launch, run tests.
-2. Delete the tree; build, launch, run tests again.
+Future removals follow the same protocol (per tree, two commits, logged
+in `docs/DECISIONS.md`): disable, verify; delete, verify.
 
 ## 4. Already deleted (VibeCAD teardown) — do not resurrect
 

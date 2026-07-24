@@ -147,3 +147,26 @@ table can return later on a cadex-owned substrate if wanted.
 **Consequences.** Spreadsheet becomes removable (batch B). The assembly
 source-hierarchy snapshot keeps its `bom_properties` field name — it feeds
 the reference-contract hash; renaming it is a schema bump left for later.
+
+## ADR-009 — Phase 1 batch B: Draft, Points, TechDraw, Spreadsheet deleted (2026-07-24)
+
+**Decision.** Deleted `src/Mod/{Draft, Points, TechDraw, Spreadsheet}`
+and `tests/src/Mod/{Points, Spreadsheet, TechDraw}` following the
+two-commit protocol (disable commit `237d5d8`, then delete). Options,
+`REQUIRES_MODS` lines, `src/Mod/CMakeLists.txt` and test gates,
+final-report lines, and the Draft/TechDraw/Spreadsheet visual-test
+scenes went with them. Kept-tree residue removed in the disable commit:
+Part's `TestPartMirror.py` and PartDesign's `Scripts/Gear.py` (both
+imported Draft); Part's two `BUILD_SPREADSHEET`-gated tests
+(`testIssue2671`, `testIssue2876`) deleted with the tree.
+
+**Rationale.** Unreachable from the four-domain product surface. The two
+former dependents were unwound first: the viewport grid is cadex-owned
+as of Phase 1.3 (no Draft), and the assembly BOM was dropped in ADR-008
+(no Spreadsheet).
+
+**Consequences.** Every tree under `src/Mod/` is now kept:
+Part, PartDesign, Sketcher, Assembly (domains); Import, Material,
+Measure, Mesh, MeshPart, Show, Start, Test, Help (support); cadex (the
+engine). Residual culled-domain code inside cadex referencing
+draftutils/Points dies in the Phase 1 dead-code sweep.
