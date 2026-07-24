@@ -64,8 +64,9 @@ from facts instead of re-exploration.
 - [ ] Project-level parameters bound to sliders
       (`CadexParametersPanel.py`), replacing per-program
       `set_parameter_controls`.
-- [ ] Publisher lint: reject any untagged object; orphan GC for objects with
-      no owning script region.
+- [x] Publisher lint: reject any untagged object; orphan GC for objects with
+      no owning script region. (`publish_project_candidate` — one
+      transaction, `CadexScriptedOwnership` closure/lint/orphans, ADR-012.)
 - [ ] Headless rebuild command with content digest over produced geometry.
 - [ ] CI test: delete document → rebuild from script → digest matches.
 

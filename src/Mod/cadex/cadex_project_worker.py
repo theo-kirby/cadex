@@ -35,7 +35,6 @@ from cadex_domain_worker import (
     _immutable_input,
     _payload,
     _serialize_output,
-    _shape_from_payload,
     _write_json,
     _resource_limits,
 )
@@ -203,42 +202,44 @@ def _resolve_inline_sources(
     root: Path,
     inline_sources: dict[str, dict[str, Any]],
     artifact_by_definition: dict[str, dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Turn same-script component sources into staged reference entries."""
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """Turn same-script component sources into staged reference entries.
 
-    references_dir = root / "references"
+    Every component source must match a DECLARED part/partdesign output of the
+    same script: publication links live components to the published output
+    objects, so an undeclared source would have no stable live identity.
+    Returns the staged reference entries plus ``{token: output_name}`` so the
+    publisher can rewrite each token to the live published object.
+    """
+
     entries: list[dict[str, Any]] = []
+    component_sources: dict[str, str] = {}
     for token, payload in inline_sources.items():
         key = _canonical_json(payload)
         matched = artifact_by_definition.get(key)
-        if matched is not None:
-            artifact_path = str(matched["artifact_path"])
-            label = str(matched.get("name") or token)
-        elif str(payload.get("domain") or "") == "part":
-            references_dir.mkdir(parents=True, exist_ok=True)
-            shape = _shape_from_payload(payload)
-            relative = Path("references") / f"{token}.brep"
-            shape.exportBrep(str(root / relative))
-            artifact_path = str(relative)
-            label = str(dict(payload.get("properties") or {}).get("label") or token)
-        else:
+        if matched is None:
+            domain = str(payload.get("domain") or "part")
             raise ValueError(
-                "A partdesign component source must also be returned as an "
-                "output of this script so its body is built and serialized."
+                f"A {domain} component source must also be returned as an "
+                "output of this script so its shape is built, serialized, and "
+                "published under a stable output name."
             )
+        artifact_path = str(matched["artifact_path"])
+        output_name = str(matched.get("name") or token)
+        component_sources[token] = output_name
         entries.append(
             {
                 "document_uid": INLINE_SOURCE_UID,
                 "object_name": token,
                 "artifact_path": artifact_path,
                 "brep_sha256": _file_sha256(root / artifact_path),
-                "label": label,
+                "label": output_name,
                 "type_id": "Part::Feature",
                 "source_kind": "shape",
                 "published_interfaces": {},
             }
         )
-    return entries
+    return entries, component_sources
 
 
 def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
@@ -328,15 +329,16 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
             item["domain"] = domain
             return item
 
-        # sketcher — one native solve per sketch output
+        # sketcher — one native solve per sketch output; each item carries its
+        # own solver validation so native sketch publication can verify it
         sketch_validations = []
         for name, value in grouped["sketcher"].items():
             from cadex_sketcher_worker import validate_and_solve_sketch
 
             item = serialize(name, value, "sketcher")
-            sketch_validations.append(
-                validate_and_solve_sketch(document, {name: value}, [item])
-            )
+            validation = validate_and_solve_sketch(document, {name: value}, [item])
+            item["sketch_validation"] = validation
+            sketch_validations.append(validation)
             outputs.append(item)
         if sketch_validations:
             validations["sketcher"] = sketch_validations
@@ -369,13 +371,14 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
 
         # assembly — same-script sources become staged references, then the
         # existing native assembly candidate build/solve runs unchanged
+        component_sources: dict[str, str] = {}
         if grouped["assembly"]:
             from cadex_assembly_worker import (
                 configure_assembly_references,
                 validate_and_solve_assembly,
             )
 
-            references = _resolve_inline_sources(
+            references, component_sources = _resolve_inline_sources(
                 root, inline_sources, artifact_by_definition
             )
             configure_assembly_references(root, references)
@@ -402,6 +405,7 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
             "param_specs": collector.specs,
             "digest": digest,
             "validations": validations,
+            "component_sources": component_sources,
         }
     finally:
         App.closeDocument(document.Name)

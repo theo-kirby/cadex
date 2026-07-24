@@ -138,6 +138,13 @@ def test_resolve_inline_sources_requires_declared_partdesign_output(tmp_path) ->
         project_worker._resolve_inline_sources(tmp_path, {token: payload}, {})
 
 
+def test_resolve_inline_sources_requires_declared_part_output(tmp_path) -> None:
+    payload = _value("part").to_payload()
+    token = project_api.inline_source_token(payload)
+    with pytest.raises(ValueError, match="also be returned as an output"):
+        project_worker._resolve_inline_sources(tmp_path, {token: payload}, {})
+
+
 def test_resolve_inline_sources_reuses_declared_artifacts(tmp_path) -> None:
     payload = _value("partdesign", "body").to_payload()
     token = project_api.inline_source_token(payload)
@@ -151,9 +158,10 @@ def test_resolve_inline_sources_reuses_declared_artifacts(tmp_path) -> None:
             "artifact_path": "outputs/output-000.brep",
         }
     }
-    entries = project_worker._resolve_inline_sources(
+    entries, component_sources = project_worker._resolve_inline_sources(
         tmp_path, {token: payload}, index
     )
+    assert component_sources == {token: "body"}
     assert len(entries) == 1
     entry = entries[0]
     assert entry["document_uid"] == project_api.INLINE_SOURCE_UID

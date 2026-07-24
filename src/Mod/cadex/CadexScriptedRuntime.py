@@ -8126,11 +8126,25 @@ def validate_project_result(
             )
         seen.add(name)
         if str(item.get("artifact_kind") or "") == "brep":
-            _staged_artifact_path(
+            path = _staged_artifact_path(
                 prepared,
                 item.get("artifact_path"),
                 context=f"Project output {name!r}",
             )
+            # Import the detached shape off the document thread now so
+            # publication applies validated values without artifact I/O.
+            import Part
+
+            shape = Part.Shape()
+            shape.importBrep(str(path))
+            if shape.isNull() or not shape.isValid():
+                _raise(
+                    tool_name,
+                    "DOMAIN_RESULT_INVALID",
+                    "postcondition",
+                    f"Project output {name!r} BREP artifact is invalid.",
+                )
+            item["detached_shape"] = shape
         contract.append({"name": name, "type": output_type, "domain": domain})
 
     # Durable working revision binds the worker-collected parameter specs.
@@ -8161,8 +8175,57 @@ def validate_project_result(
         "digest": digest,
         "param_specs": param_specs,
         "validations": dict(execution.get("validations") or {}),
+        "component_sources": dict(execution.get("component_sources") or {}),
         "stdout": str(execution.get("stdout") or ""),
         "budget": dict(execution.get("budget") or {}),
+    }
+
+
+def accept_project_candidate(
+    prepared: Mapping[str, Any],
+    publication: Mapping[str, Any],
+    validated: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Persist the accepted project revision/contract/digest; return the tool payload."""
+
+    from CadexProject import CadexProjectScriptStore
+
+    revision = str(prepared["revision"])
+    digest = str(validated["digest"])
+    contract = [dict(item) for item in list(validated["contract"])]
+    store = CadexProjectScriptStore(str(prepared["project_root"]))
+    store.write(
+        state_updates={
+            "accepted_revision": revision,
+            "accepted_contract": contract,
+            "accepted_digest": digest,
+            "latest_candidate": {
+                "status": "accepted",
+                "revision": revision,
+                "attempt_id": str(prepared["attempt_id"]),
+                "digest": digest,
+                "output_count": len(contract),
+            },
+        }
+    )
+    return {
+        "ok": True,
+        "tool": str(prepared["tool_name"]),
+        "outputs": contract,
+        "live_outputs": dict(publication.get("live_outputs") or {}),
+        "digest": digest,
+        "revision": revision,
+        "accepted_revision": revision,
+        "removed": list(publication.get("removed") or []),
+        "model_state": {
+            "status": "accepted",
+            "accepted_is_current": True,
+            "next_write_expected_revision": revision,
+            "verification_goal": (
+                "Confirm accepted_revision equals working_revision and every "
+                "declared output has a live published object."
+            ),
+        },
     }
 
 
@@ -8187,4 +8250,5 @@ def install_builtin_adapters() -> None:
 from CadexScriptedDomainPublication import (  # noqa: E402
     delete_live_program,
     publish_candidate,
+    publish_project_candidate,
 )

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from array import array
+import copy
 import hashlib
 from io import BytesIO
 import json
@@ -858,20 +859,26 @@ def _retired_program_objects(
 
 
 def _remove_owned_objects(doc: Any, objects: list[Any]) -> list[str]:
-    remaining = {str(obj.Name): obj for obj in objects}
+    # Work from live name lookups: removing one object can cascade-delete
+    # another in the set (group/origin internals), leaving stale proxies that
+    # raise ReferenceError on attribute access.
+    remaining = {str(obj.Name) for obj in objects}
     removed: list[str] = []
     while remaining:
+        live = {name: doc.getObject(name) for name in sorted(remaining)}
+        remaining = {name for name, obj in live.items() if obj is not None}
+        if not remaining:
+            break
         children = [
-            obj
-            for obj in remaining.values()
+            name
+            for name in sorted(remaining)
             if not any(
                 str(getattr(parent, "Name", "") or "") in remaining
-                for parent in list(getattr(obj, "InList", []) or [])
+                for parent in list(getattr(live[name], "InList", []) or [])
             )
         ]
-        obj = children[0] if children else next(iter(remaining.values()))
-        name = str(obj.Name)
-        remaining.pop(name, None)
+        name = children[0] if children else next(iter(sorted(remaining)))
+        remaining.discard(name)
         if doc.getObject(name) is not None:
             doc.removeObject(name)
             removed.append(name)
@@ -5820,8 +5827,15 @@ def _publish_partdesign_candidate(
     prepared: Mapping[str, Any],
     validated: Mapping[str, Any],
     doc: Any,
+    *,
+    manage_transaction: bool = True,
 ) -> dict[str, Any]:
-    """Publish one v2 Part Design candidate through the shared stable boundary."""
+    """Publish one v2 Part Design candidate through the shared stable boundary.
+
+    With ``manage_transaction=False`` no transaction is opened, committed, or
+    aborted here; the caller owns exactly one enclosing transaction and
+    exceptions propagate to it.
+    """
 
     program_id = str(prepared["program_id"])
     root = _partdesign_program_root(doc, program_id)
@@ -5873,7 +5887,7 @@ def _publish_partdesign_candidate(
     created: list[str] = []
     removed: list[str] = []
     try:
-        if hasattr(doc, "openTransaction"):
+        if manage_transaction and hasattr(doc, "openTransaction"):
             doc.openTransaction(
                 f"Publish Part Design XScript: {prepared['program_name']}"
             )
@@ -6013,10 +6027,20 @@ def publish_candidate(
     service: Any,
     prepared: dict[str, Any],
     validated: dict[str, Any],
+    *,
+    manage_transaction: bool = True,
+    check_surface: bool = True,
 ) -> dict[str, Any]:
-    """Apply detached, validated values without process waits or artifact I/O."""
+    """Apply detached, validated values without process waits or artifact I/O.
 
-    _surface_still_matches(service, prepared)
+    ``check_surface=False`` skips the workbench/engine surface match (project
+    publication has no per-domain surface). ``manage_transaction=False`` opens
+    no transaction and never commits or aborts; the caller owns exactly one
+    enclosing transaction and exceptions propagate to it.
+    """
+
+    if check_surface:
+        _surface_still_matches(service, prepared)
     doc = service._active_document()
     if doc is None or str(getattr(doc, "Name", "") or "") != prepared["document_name"]:
         raise RuntimeError("The active document changed while the domain worker ran.")
@@ -6029,7 +6053,13 @@ def publish_candidate(
             "The document changed while the domain worker ran; regenerate on the live state."
         )
     if prepared["pack"].domain == "partdesign":
-        return _publish_partdesign_candidate(service, prepared, validated, doc)
+        return _publish_partdesign_candidate(
+            service,
+            prepared,
+            validated,
+            doc,
+            manage_transaction=manage_transaction,
+        )
     existing = _objects_by_output(doc, prepared)
     desired_output_names = {str(item["name"]) for item in validated["outputs"]}
     retired = _retired_program_objects(doc, prepared, desired_output_names)
@@ -6115,7 +6145,7 @@ def publish_candidate(
     retired_robot_trajectories: list[dict[str, Any]] = []
     transaction_open = False
     try:
-        if hasattr(doc, "openTransaction"):
+        if manage_transaction and hasattr(doc, "openTransaction"):
             doc.openTransaction(
                 f"Publish {prepared['pack'].title} XScript: {prepared['program_name']}"
             )
@@ -6508,6 +6538,241 @@ def publish_candidate(
             ),
             **downstream_refresh,
         },
+        "recompute_deferred": True,
+        "stdout": str(validated.get("stdout") or ""),
+        "budget": dict(validated.get("budget") or {}),
+    }
+
+
+_PROJECT_PROGRAM_ID = "project"
+_PROJECT_PROGRAM_NAME = "Project Script"
+_PROJECT_DOMAIN_ORDER = ("sketcher", "part", "partdesign", "assembly")
+
+
+def _clone_output_item(item: Mapping[str, Any]) -> dict[str, Any]:
+    """Deep copy of one validated output item, sharing its detached shape.
+
+    The plain JSON evidence is copied so per-domain rewrites never mutate the
+    caller's validated result; the imported ``detached_shape`` (attached by
+    validation, not deep-copyable) is shared by reference.
+    """
+
+    clone = copy.deepcopy(
+        {key: value for key, value in dict(item).items() if key != "detached_shape"}
+    )
+    if "detached_shape" in item:
+        clone["detached_shape"] = item["detached_shape"]
+    return clone
+
+
+def _rewrite_inline_source_refs(
+    value: Any,
+    document_uid: str,
+    live_by_token: Mapping[str, str],
+    context: str,
+) -> None:
+    """Rewrite worker inline-source tokens to live published object identities.
+
+    The worker records same-script component sources as ``{document_uid:
+    "xscript-project", object_name: <token>}``; publication resolves each
+    token to the object just published for the declared source output.
+    Mutates ``value`` (a deep copy of one validated output item) in place.
+    """
+
+    from cadex_project_api import INLINE_SOURCE_UID
+
+    if isinstance(value, dict):
+        if str(value.get("document_uid") or "") == INLINE_SOURCE_UID:
+            token = str(value.get("object_name") or "")
+            live_name = live_by_token.get(token)
+            if not live_name:
+                raise RuntimeError(
+                    f"{context} references inline source {token!r} that no "
+                    "published part/partdesign output provides."
+                )
+            value["document_uid"] = document_uid
+            value["object_name"] = live_name
+            return
+        for child in value.values():
+            _rewrite_inline_source_refs(child, document_uid, live_by_token, context)
+    elif isinstance(value, list):
+        for child in value:
+            _rewrite_inline_source_refs(child, document_uid, live_by_token, context)
+
+
+def _project_domain_prepared(
+    prepared: Mapping[str, Any],
+    pack: Any,
+) -> dict[str, Any]:
+    return {
+        "tool_name": str(prepared.get("tool_name") or ""),
+        "pack": pack,
+        "program_id": _PROJECT_PROGRAM_ID,
+        "program_name": _PROJECT_PROGRAM_NAME,
+        "revision": str(prepared["revision"]),
+        "staging": str(prepared["staging"]),
+        "attempt_id": str(prepared.get("attempt_id") or ""),
+        "document_name": str(prepared["document_name"]),
+        "document_uid": str(prepared["document_uid"]),
+        "document_revision": str(prepared["document_revision"]),
+        "resolved_references": [],
+    }
+
+
+def publish_project_candidate(
+    service: Any,
+    prepared: dict[str, Any],
+    validated: dict[str, Any],
+) -> dict[str, Any]:
+    """Publish ONE validated multi-domain project script under ONE transaction.
+
+    Sub-publishes each capability domain that has outputs in the validated
+    contract (sketcher -> part -> partdesign -> assembly) through the
+    existing per-domain publishers with ``manage_transaction=False``, rewrites
+    same-script assembly component sources to the live objects published in
+    the same pass, garbage-collects owned objects whose outputs left the
+    contract, and refuses to commit while any document object stays outside
+    the project's owned closure (PUBLICATION_UNTAGGED_OBJECT).
+    """
+
+    import CadexScriptedOwnership as ownership
+
+    doc = service._active_document()
+    if doc is None or str(getattr(doc, "Name", "") or "") != prepared["document_name"]:
+        raise RuntimeError("The active document changed while the project worker ran.")
+    if str(getattr(doc, "Uid", "") or "") != prepared["document_uid"]:
+        raise RuntimeError(
+            "The active document identity changed while the project worker ran."
+        )
+    if str(service.provider_document_revision()) != prepared["document_revision"]:
+        raise RuntimeError(
+            "The document changed while the project worker ran; regenerate on the live state."
+        )
+    packs_by_domain = {
+        pack.domain: pack for pack in contracts.XSCRIPT_WORKBENCH_PACKS.values()
+    }
+    contract = [dict(item) for item in list(validated.get("contract") or [])]
+    items_by_domain: dict[str, list[Mapping[str, Any]]] = {}
+    for item in list(validated.get("outputs") or []):
+        items_by_domain.setdefault(str(item.get("domain") or ""), []).append(item)
+    unsupported = sorted(set(items_by_domain) - set(_PROJECT_DOMAIN_ORDER))
+    if unsupported:
+        raise RuntimeError(
+            f"Project outputs claim unsupported domains: {unsupported}."
+        )
+    component_sources = {
+        str(token): str(output_name)
+        for token, output_name in dict(
+            validated.get("component_sources") or {}
+        ).items()
+    }
+    outputs_map: dict[str, str] = {}
+    live_outputs: dict[str, dict[str, Any]] = {}
+    created: list[str] = []
+    removed: list[str] = []
+    transaction_open = False
+    try:
+        if hasattr(doc, "openTransaction"):
+            doc.openTransaction("Publish Cadex project script")
+            transaction_open = True
+        for domain in _PROJECT_DOMAIN_ORDER:
+            items = items_by_domain.get(domain) or []
+            if not items:
+                continue
+            sub_prepared = _project_domain_prepared(prepared, packs_by_domain[domain])
+            sub_items: list[dict[str, Any]] = []
+            for item in items:
+                clone = _clone_output_item(item)
+                if (
+                    str(clone.get("artifact_kind") or "") == "brep"
+                    and clone.get("detached_shape") is None
+                ):
+                    raise RuntimeError(
+                        f"Project output {clone.get('name')!r} has no detached "
+                        "validated shape; run validate_project_result first."
+                    )
+                sub_items.append(clone)
+            if domain == "assembly":
+                live_by_token: dict[str, str] = {}
+                for token, output_name in component_sources.items():
+                    live_name = outputs_map.get(output_name)
+                    if not live_name:
+                        raise RuntimeError(
+                            f"Assembly component source output {output_name!r} was "
+                            "not published before the assembly pass."
+                        )
+                    live_by_token[token] = live_name
+                for clone in sub_items:
+                    _rewrite_inline_source_refs(
+                        clone,
+                        str(getattr(doc, "Uid", "") or ""),
+                        live_by_token,
+                        f"Project output {clone.get('name')!r}",
+                    )
+            sub_validated = {
+                "outputs": sub_items,
+                "stdout": "",
+                "budget": {},
+            }
+            result = publish_candidate(
+                service,
+                sub_prepared,
+                sub_validated,
+                manage_transaction=False,
+                check_surface=False,
+            )
+            for name, row in dict(result.get("live_outputs") or {}).items():
+                outputs_map[str(name)] = str(row.get("object_name") or "")
+                live_outputs[str(name)] = {
+                    "object_name": str(row.get("object_name") or ""),
+                    "label": str(row.get("label") or ""),
+                    "type_id": str(row.get("type_id") or ""),
+                    "output_type": str(row.get("output_type") or ""),
+                    "domain": domain,
+                }
+            created.extend(
+                str(name) for name in list(result.get("created_objects") or [])
+            )
+            removed.extend(
+                str(name) for name in list(result.get("retired_objects") or [])
+            )
+        # Orphan GC: whole domains (and any stragglers) whose outputs left the
+        # accepted contract are removed inside the same transaction.
+        orphans = ownership.orphaned_outputs(doc, _PROJECT_PROGRAM_ID, contract)
+        removed.extend(_remove_owned_objects(doc, orphans))
+        # Ownership lint: the project script is the sole source of truth, so
+        # every remaining document object must be inside the owned closure.
+        untagged = ownership.untagged_objects(doc, _PROJECT_PROGRAM_ID)
+        if untagged:
+            names = sorted(
+                str(getattr(obj, "Name", "") or "") for obj in untagged
+            )
+            error = RuntimeError(
+                "PUBLICATION_UNTAGGED_OBJECT: the document contains objects the "
+                f"project script does not own: {names}. Delete them or model "
+                "them in the project script, then publish again."
+            )
+            error.details = {  # type: ignore[attr-defined]
+                "failure_code": "PUBLICATION_UNTAGGED_OBJECT",
+                "untagged_objects": names,
+            }
+            raise error
+        if transaction_open and hasattr(doc, "commitTransaction"):
+            doc.commitTransaction()
+            transaction_open = False
+    except Exception:
+        if transaction_open and hasattr(doc, "abortTransaction"):
+            try:
+                doc.abortTransaction()
+            except Exception:
+                pass
+        raise
+    return {
+        "ok": True,
+        "outputs": outputs_map,
+        "live_outputs": live_outputs,
+        "created": sorted(set(created)),
+        "removed": removed,
         "recompute_deferred": True,
         "stdout": str(validated.get("stdout") or ""),
         "budget": dict(validated.get("budget") or {}),

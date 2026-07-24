@@ -40,8 +40,11 @@ set(Cadex_Scripts
     cadex_part_worker.py
     cadex_partdesign_api.py
     cadex_partdesign_worker.py
+    cadex_project_api.py
+    cadex_project_worker.py
     cadex_sketcher_api.py
     cadex_sketcher_worker.py
+    CadexDigest.py
     CadexPointArtifacts.py
     requirements.txt
 )

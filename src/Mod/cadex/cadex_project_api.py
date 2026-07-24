@@ -196,8 +196,11 @@ def create_project_assembly_api(
     ``assembly.component(part_or_body_value, ...)`` records the source payload
     in ``inline_sources`` keyed by its deterministic token and rewrites the
     component reference to ``{document_uid: INLINE_SOURCE_UID, object_name:
-    token}``. Cross-document references are retired in the project domain:
-    v0.0.1 assemblies are rigid, same-script solids.
+    token}``. Every component source value must ALSO be returned as a declared
+    part/partdesign output of the same script: the worker refuses undeclared
+    sources so publication can link each live component to a published stable
+    output object. Cross-document references are retired in the project
+    domain: v0.0.1 assemblies are rigid, same-script solids.
     """
 
     from cadex_assembly_api import AssemblyDomainAPI

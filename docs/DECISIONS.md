@@ -246,3 +246,35 @@ design across programs and pre-declare outputs.
 migrated (pre-release; owner decision 2026-07-24): conversations are
 preserved by their own store, scripts start empty. The per-domain
 lifecycle tools dissolve in the Phase 2 tool-surface swap.
+
+## ADR-012 — Project-script publication: one transaction, ownership lint, orphan GC (2026-07-24)
+
+**Decision.** `publish_project_candidate`
+(`CadexScriptedDomainPublication.py`) applies ONE validated multi-domain
+project result to the live document under ONE transaction ("Publish Cadex
+project script"), reusing the per-domain publishers with new keyword-only
+`manage_transaction`/`check_surface` flags (defaults preserve the
+per-domain behavior). Same-script assembly component sources are
+tightened: every source must be a DECLARED part/partdesign output (the
+worker's build-on-demand path for undeclared part payloads is removed);
+the worker reports `component_sources: {token: output_name}` and
+publication rewrites each token to the live object published in the same
+pass. After the sub-publishes, still inside the transaction: orphan GC
+removes owned objects whose (domain, base output name) left the accepted
+contract (`CadexScriptedOwnership.orphaned_outputs`), and an ownership
+lint aborts the transaction with `PUBLICATION_UNTAGGED_OBJECT` if any
+document object falls outside the program's owned closure
+(`owned_closure`/`untagged_objects`). `accept_project_candidate`
+(`CadexScriptedRuntime.py`) persists accepted revision/contract/digest to
+the script store. `CadexDigest.document_digest` adds a diagnostic
+document-side digest (`cadex-document-digest-v1`) that is deterministic
+across publishes of one revision (it intentionally does not equal the
+worker digest).
+
+**Rationale.** docs/VISION.md: the script is the sole source of truth, so
+publication must be atomic, own every document object, and collect what
+the script no longer produces.
+
+**Consequences.** Undeclared component sources now fail worker-side with
+a correction message; project publication carries no per-domain surface
+check (there is no workbench surface for the project domain).

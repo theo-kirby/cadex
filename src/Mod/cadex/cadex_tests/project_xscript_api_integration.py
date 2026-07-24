@@ -11,14 +11,18 @@ Runs under FreeCADCmd:
 Covers: write_script through prepare -> staged worker execution ->
 validation (multi-domain script: params + part + partdesign + assembly of
 same-script solids), edit_script unique-match replacement, set_params
-value patch with revision guard, digest stability, and the script store's
-persisted state transitions.
+value patch with revision guard, digest stability, the script store's
+persisted state transitions, and the publication path: one transaction
+publishing every domain into the live document, orphan GC when outputs
+leave the contract, the untagged-object ownership lint with transaction
+rollback, and the document-side diagnostic digest.
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 import shutil
 import sys
 import tempfile
@@ -27,9 +31,16 @@ MODULE_ROOT = Path(__file__).resolve().parent.parent
 if str(MODULE_ROOT) not in sys.path:
     sys.path.insert(0, str(MODULE_ROOT))
 
+import CadexDigest  # noqa: E402
 from CadexProject import CadexProjectScriptStore  # noqa: E402
+from CadexScriptedDomainPublication import publish_project_candidate  # noqa: E402
+from CadexScriptedDomains import (  # noqa: E402
+    PROP_PROGRAM_DOMAIN,
+    PROP_PROGRAM_ID,
+)
 from CadexScriptedRuntime import (  # noqa: E402
     DomainRuntimeFailure,
+    accept_project_candidate,
     capture_project_state,
     execute_candidate,
     prepare_project_candidate,
@@ -79,6 +90,28 @@ result = {
 """
 
 
+#: The same project without the sketcher profile and the partdesign block:
+#: publishing it must garbage-collect the dropped domains' live objects.
+DROPPED_SCRIPT = """
+p = params(
+    width=num(40, unit="mm", min=10, max=120, step=1, label="Plate Width"),
+    thickness=num(6, unit="mm", min=2, max=20),
+)
+plate = part.box(p.width, 30, p.thickness)
+base = assembly.component(plate, grounded=True)
+lid = assembly.component(plate, placement=[0, 0, p.thickness])
+asm = assembly.assembly([base, lid])
+diag = assembly.solve(asm)
+result = {
+    "plate": plate,
+    "base": base,
+    "lid": lid,
+    "main_assembly": asm,
+    "diagnostics": diag,
+}
+"""
+
+
 class _Service:
     """Minimal document-affine service protocol for the project lifecycle."""
 
@@ -96,6 +129,18 @@ class _Service:
     @staticmethod
     def provider_document_revision() -> str:
         return "fixture-document-revision"
+
+    @staticmethod
+    def active_workbench_name() -> str:
+        return "CadexProject"
+
+    @staticmethod
+    def modeling_engine() -> str:
+        return "xscript"
+
+    @staticmethod
+    def _partdesign_body_for_feature(_obj):
+        return None
 
 
 def _run_lifecycle(service, tool: str, arguments: dict) -> tuple[dict, dict]:
@@ -235,12 +280,111 @@ def main() -> int:
             validated3["digest"],
         )
 
+        # 8. publication: ONE transaction publishes every domain live
+        publication = publish_project_candidate(service, prepared4, validated4)
+        accepted = accept_project_candidate(prepared4, publication, validated4)
+        assert accepted["ok"] is True, accepted
+        expected_domains = {
+            "plate": "part",
+            "profile": "sketcher",
+            "block": "partdesign",
+            "main_assembly": "assembly",
+        }
+        for output_name, domain in expected_domains.items():
+            live_name = publication["outputs"][output_name]
+            obj = document.getObject(live_name)
+            assert obj is not None, (output_name, live_name)
+            assert str(getattr(obj, PROP_PROGRAM_ID)) == "project", output_name
+            assert str(getattr(obj, PROP_PROGRAM_DOMAIN)) == domain, output_name
+        state = store.read_state()
+        assert state["accepted_revision"] == state["working_revision"]
+        assert state["accepted_revision"] == prepared4["revision"]
+        assert state["accepted_digest"] == validated4["digest"]
+        assert state["latest_candidate"]["status"] == "accepted"
+        digest_first = CadexDigest.document_digest(document)
+        assert re.fullmatch(r"[0-9a-f]{64}", digest_first), digest_first
+
+        # 9. republishing the same revision leaves the document digest stable
+        working = store.read_state()["working_revision"]
+        prepared5, validated5 = _run_lifecycle(
+            service,
+            "xscript.project.write_script",
+            {"source": store.read_source(), "expected_revision": working},
+        )
+        assert validated5["digest"] == validated4["digest"]
+        publication5 = publish_project_candidate(service, prepared5, validated5)
+        accept_project_candidate(prepared5, publication5, validated5)
+        assert publication5["outputs"] == publication["outputs"]
+        digest_second = CadexDigest.document_digest(document)
+        assert digest_second == digest_first, (digest_first, digest_second)
+
+        # 10. dropping outputs (whole partdesign + sketcher domains) GCs them
+        block_live = publication["outputs"]["block"]
+        profile_live = publication["outputs"]["profile"]
+        working = store.read_state()["working_revision"]
+        prepared6, validated6 = _run_lifecycle(
+            service,
+            "xscript.project.write_script",
+            {"source": DROPPED_SCRIPT, "expected_revision": working},
+        )
+        assert sorted(item["name"] for item in validated6["contract"]) == [
+            "base",
+            "diagnostics",
+            "lid",
+            "main_assembly",
+            "plate",
+        ], validated6["contract"]
+        publication6 = publish_project_candidate(service, prepared6, validated6)
+        accepted6 = accept_project_candidate(prepared6, publication6, validated6)
+        assert block_live in publication6["removed"], publication6["removed"]
+        assert profile_live in publication6["removed"], publication6["removed"]
+        assert block_live in accepted6["removed"]
+        assert document.getObject(block_live) is None
+        assert document.getObject(profile_live) is None
+        plate_live = publication6["outputs"]["plate"]
+        assembly_live = publication6["outputs"]["main_assembly"]
+        assert document.getObject(plate_live) is not None
+        assert document.getObject(assembly_live) is not None
+        assert store.read_state()["accepted_digest"] == validated6["digest"]
+
+        # 11. an untagged object fails the ownership lint and aborts cleanly
+        rogue = document.addObject("Part::Feature", "Rogue")
+        rogue_name = str(rogue.Name)
+        working = store.read_state()["working_revision"]
+        prepared7, validated7 = _run_lifecycle(
+            service,
+            "xscript.project.write_script",
+            {"source": DROPPED_SCRIPT, "expected_revision": working},
+        )
+        try:
+            publish_project_candidate(service, prepared7, validated7)
+        except RuntimeError as exc:
+            assert "PUBLICATION_UNTAGGED_OBJECT" in str(exc), exc
+            assert rogue_name in str(exc), exc
+        else:
+            raise AssertionError("The untagged object lint did not fire.")
+        # transaction aborted: previous outputs stay intact, the rogue object
+        # (created before the transaction) survives
+        assert document.getObject(plate_live) is not None
+        assert document.getObject(assembly_live) is not None
+        assert document.getObject(rogue_name) is not None
+        assert store.read_state()["accepted_digest"] == validated6["digest"]
+
+        # 12. removing the rogue object lets the same candidate publish again
+        document.removeObject(rogue_name)
+        publication8 = publish_project_candidate(service, prepared7, validated7)
+        accept_project_candidate(prepared7, publication8, validated7)
+        assert publication8["outputs"]["plate"] == plate_live
+        assert document.getObject(plate_live) is not None
+
         print(
             json.dumps(
                 {
                     "ok": True,
-                    "outputs": len(validated4["contract"]),
-                    "digest": validated4["digest"],
+                    "outputs": len(validated7["contract"]),
+                    "digest": validated7["digest"],
+                    "document_digest": CadexDigest.document_digest(document),
+                    "removed_on_drop": sorted(publication6["removed"]),
                 },
                 sort_keys=True,
             )
