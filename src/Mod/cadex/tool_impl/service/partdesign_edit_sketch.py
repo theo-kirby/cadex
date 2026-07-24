@@ -139,6 +139,14 @@ def run(service: Any, sketch_name: str) -> dict[str, Any]:
         )
 
     try:
+        # Sanction this tool-driven edit session so the experimental-mode
+        # watchdog (which resets user-initiated native edits) lets it live.
+        import CadexExperimentalMode
+
+        CadexExperimentalMode.sanction_native_edit(sketch.Name)
+    except Exception:
+        pass
+    try:
         set_edit(sketch.Name)
     except Exception as exc:
         return _invalid(

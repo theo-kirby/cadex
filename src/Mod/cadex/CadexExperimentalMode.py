@@ -109,6 +109,7 @@ def activate() -> None:
     _schedule_deferred_hide_chrome()
     _connect_workbench_guard(main_window)
     _install_half_layout_filter(main_window)
+    _connect_edit_lockdown_observer()
     # The launch/parts state controller decides when the assistant dock is
     # pinned (documents open) or hidden behind the launch screen (none).
     _connect_document_observer()
@@ -197,6 +198,11 @@ def _hide_chrome() -> None:
         _suppress_dock(dock)
     _hide_overlay_containers(main_window)
     _hide_mdi_tab_bar(main_window)
+    # Native-route lockdown re-applies with the chrome pass: workbench
+    # activation rebuilds menus and re-registers shortcuts.
+    _apply_minimal_menu(main_window)
+    _strip_native_shortcuts(main_window)
+    _lock_tree_interactions(main_window)
 
 
 def _hide_overlay_containers(main_window: Any) -> None:
@@ -453,6 +459,206 @@ def _close_start_view(main_window: Any) -> None:
             widget.close()
             return
         widget = widget.parentWidget()
+
+
+# ---------------------------------------------------------------------------
+# Native-route lockdown (Phase 3.2)
+#
+# The AI drives all modeling; the only sanctioned interactions are chat,
+# sliders, tree selection, the read-only script view, and viewport
+# navigation. Everything else — menus, shortcuts, tree context menus,
+# double-click edit sessions — is blocked. Preferences stays reachable:
+# the API keys live there.
+# ---------------------------------------------------------------------------
+
+# Our own menu actions carry object names so the shortcut strip spares them.
+_MINIMAL_MENU_PROPERTY = "CadexMinimalMenuAction"
+_ALLOWED_SHORTCUT_ACTIONS = frozenset(
+    {
+        "Std_Quit",
+        "Std_About",
+        "Cadex_OpenPreferences",
+    }
+)
+
+_tree_lockdown_filter: Any = None
+_edit_lockdown_observer: Any = None
+_edit_watchdog_pending = False
+_sanctioned_edit_names: set[str] = set()
+
+
+def sanction_native_edit(object_name: str) -> None:
+    """Mark one upcoming native edit session (e.g. sketch edit) as tool-driven.
+
+    Called by the xscript edit tools right before ``setEdit``; the edit
+    watchdog resets every edit session that was not sanctioned this way
+    (viewport double-clicks, stray native routes). The sanction is consumed
+    when the edit session closes.
+    """
+    name = str(object_name or "").strip()
+    if name:
+        _sanctioned_edit_names.add(name)
+
+
+def _menu_command(command_name: str) -> Any:
+    def run() -> None:
+        try:
+            Gui.runCommand(command_name, 0)
+        except Exception as exc:
+            _warn(f"Cadex experimental mode could not run {command_name}: {exc}")
+
+    return run
+
+
+def _apply_minimal_menu(main_window: Any) -> None:
+    """One minimal menu: About, Preferences, Quit — rebuilt after menu churn.
+
+    MenuManager rebuilds the native menus on every workbench activation, so
+    this reruns with each chrome pass instead of trying to hide the menu bar
+    (macOS keeps a global menu bar regardless). The menu roles relocate the
+    entries into the macOS application menu.
+    """
+    from PySide import QtGui
+    from CadexParametersPanel import _connect_slot
+
+    menu_bar = main_window.menuBar()
+    if menu_bar is None:
+        return
+    actions = menu_bar.actions()
+    if len(actions) == 1 and bool(actions[0].property(_MINIMAL_MENU_PROPERTY)):
+        return  # Already minimal; nothing rebuilt the menus since.
+    menu_bar.clear()
+    menu = menu_bar.addMenu("Cadex")
+    menu_action = menu.menuAction()
+    menu_action.setProperty(_MINIMAL_MENU_PROPERTY, True)
+
+    about = menu.addAction("About Cadex")
+    about.setMenuRole(QtGui.QAction.AboutRole)
+    _connect_slot(about.triggered, "invoke", _menu_command("Std_About"), menu)
+
+    preferences = menu.addAction("Preferences…")
+    preferences.setMenuRole(QtGui.QAction.PreferencesRole)
+    preferences.setObjectName("Cadex_OpenPreferences")
+    preferences.setShortcut(QtGui.QKeySequence("Ctrl+,"))
+    _connect_slot(
+        preferences.triggered, "invoke", _menu_command("Cadex_OpenPreferences"), menu
+    )
+
+    quit_action = menu.addAction("Quit")
+    quit_action.setMenuRole(QtGui.QAction.QuitRole)
+    quit_action.setObjectName("Std_Quit")
+    quit_action.setShortcut(QtGui.QKeySequence("Ctrl+Q"))
+    _connect_slot(quit_action.triggered, "invoke", _menu_command("Std_Quit"), menu)
+
+
+def _strip_native_shortcuts(main_window: Any) -> None:
+    """Clear every keyboard shortcut except the allow-listed ones.
+
+    Workbench activation re-registers command shortcuts, so this reruns with
+    each chrome pass. Text-editing shortcuts inside the chat input are
+    widget-internal (not main-window QActions) and stay functional.
+    """
+    from PySide import QtGui
+
+    for action in main_window.findChildren(QtGui.QAction):
+        if str(action.objectName() or "") in _ALLOWED_SHORTCUT_ACTIONS:
+            continue
+        try:
+            if not action.shortcut().isEmpty():
+                action.setShortcut(QtGui.QKeySequence())
+        except Exception:
+            continue
+
+
+def _lock_tree_interactions(main_window: Any) -> None:
+    """Block the tree's context menu and double-click edit routes.
+
+    Selection and expansion stay; right-click command menus and
+    double-click-to-edit are native modeling routes and are blocked.
+    """
+    global _tree_lockdown_filter
+    from PySide import QtCore, QtWidgets
+
+    if _tree_lockdown_filter is None:
+
+        class _TreeLockdown(QtCore.QObject):
+            def eventFilter(self, _watched: Any, event: Any) -> bool:
+                return event.type() in (
+                    QtCore.QEvent.ContextMenu,
+                    QtCore.QEvent.MouseButtonDblClick,
+                )
+
+        _tree_lockdown_filter = _TreeLockdown(main_window)
+    dock = main_window.findChild(QtWidgets.QDockWidget, TREE_DOCK_NAME)
+    if dock is None:
+        return
+    for tree in dock.findChildren(QtWidgets.QTreeWidget):
+        for target in (tree, tree.viewport()):
+            if target is None:
+                continue
+            target.removeEventFilter(_tree_lockdown_filter)
+            target.installEventFilter(_tree_lockdown_filter)
+
+
+class _EditLockdownObserver:
+    """Reset native edit sessions that no tool sanctioned (D11 watchdog)."""
+
+    def slotInEdit(self, _view_provider: Any) -> None:
+        _schedule_edit_watchdog()
+
+    def slotResetEdit(self, _view_provider: Any) -> None:
+        # One edit session at a time: closing it consumes the sanction.
+        _sanctioned_edit_names.clear()
+
+
+def _schedule_edit_watchdog() -> None:
+    """Defer: slotInEdit fires inside setEdit; never resetEdit reentrantly."""
+    global _edit_watchdog_pending
+    from PySide import QtCore
+
+    if _edit_watchdog_pending:
+        return
+    _edit_watchdog_pending = True
+    QtCore.QTimer.singleShot(0, _run_edit_watchdog)
+
+
+def _run_edit_watchdog() -> None:
+    global _edit_watchdog_pending
+    _edit_watchdog_pending = False
+    try:
+        from CadexEditState import active_edit_state
+
+        gui_document = getattr(Gui, "editDocument", lambda: None)() or getattr(
+            Gui, "ActiveDocument", None
+        )
+        state = active_edit_state(gui_document)
+        if not state.active:
+            return
+        name = str(getattr(state.document_object, "Name", "") or "")
+        if name and name in _sanctioned_edit_names:
+            return
+        reset_edit = getattr(gui_document, "resetEdit", None)
+        if callable(reset_edit):
+            reset_edit()
+            _warn(
+                f"Cadex closed an unsanctioned edit session on {name or 'an object'}; "
+                "modeling goes through the assistant."
+            )
+    except Exception as exc:
+        _warn(f"Cadex edit watchdog failed: {exc}")
+
+
+def _connect_edit_lockdown_observer() -> None:
+    global _edit_lockdown_observer
+    if _edit_lockdown_observer is not None:
+        return
+    observer = _EditLockdownObserver()
+    try:
+        Gui.addDocumentObserver(observer)
+    except Exception as exc:
+        _warn(f"Cadex experimental mode could not watch edit sessions: {exc}")
+        return
+    _edit_lockdown_observer = observer
 
 
 # ---------------------------------------------------------------------------
