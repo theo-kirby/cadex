@@ -136,3 +136,13 @@ foreach (exe ${TestExecutables})
         gtest_discover_tests(${exe})
     endif()
 endforeach()
+
+# Cadex Phase 2 digest CI (docs/ROADMAP.md): create -> accept -> delete
+# document -> headless rebuild from script.py -> content digests match.
+# The pytest module skips itself when no FreeCADCmd binary is available.
+add_test(
+    NAME CadexProjectRebuildDigest
+    COMMAND ${Python3_EXECUTABLE} -m pytest -q
+            ${CMAKE_SOURCE_DIR}/src/Mod/cadex/cadex_tests/test_project_rebuild.py
+)
+set_tests_properties(CadexProjectRebuildDigest PROPERTIES TIMEOUT 900)

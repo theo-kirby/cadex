@@ -204,5 +204,8 @@ install-debug = { cmd = ["cmake", "--install", "build/debug"]}
 install-release = { cmd = ["cmake", "--install", "build/release"]}
 test-debug = { cmd = ["ctest", "--test-dir", "build/debug"]}
 test-release = { cmd = ["ctest", "--test-dir", "build/release"]}
+# Headless project rebuild: re-run THE script into a fresh document and
+# verify the content digest against the accepted one (docs/XSCRIPT.md).
+rebuild = { cmd = [".pixi/envs/default/bin/FreeCADCmd", "-c", "import sys; sys.path.insert(0, 'src/Mod/cadex'); import cadex_rebuild; raise SystemExit(cadex_rebuild.main(['{{ root }}']))"], args = [{ "arg" = "root" }]}
 freecad-debug = "build/debug/bin/FreeCAD"
 freecad-release = "build/release/bin/FreeCAD"
