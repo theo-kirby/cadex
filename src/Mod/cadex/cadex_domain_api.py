@@ -76,7 +76,6 @@ _OPERATION_OUTPUT_TYPES: dict[str, str] = {
 }
 
 _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
-    "mesh": {"from_object": "mesh"},
     "surface": {
         # Boundary builders are intermediate domain values; only the pack's
         # declared output types may appear at the top-level result contract.
@@ -302,4 +301,8 @@ def create_domain_api(
         from cadex_sketcher_api import SketcherDomainAPI
 
         return SketcherDomainAPI(exports, output_types)
+    if clean_domain == "mesh":
+        from cadex_mesh_api import MeshDomainAPI
+
+        return MeshDomainAPI(exports, output_types)
     return DomainAPI(clean_domain, exports, output_types)

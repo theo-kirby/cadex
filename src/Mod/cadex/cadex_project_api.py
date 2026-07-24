@@ -3,8 +3,8 @@
 """Project-script parameter declaration and multi-domain API composition.
 
 The project domain executes ONE script with every capability domain staged:
-the exec namespace carries ``sketcher``, ``part``, ``partdesign`` and
-``assembly`` API objects plus the ``params``/``num`` parameter vocabulary.
+the exec namespace carries ``sketcher``, ``part``, ``partdesign``, ``mesh``
+and ``assembly`` API objects plus the ``params``/``num`` parameter vocabulary.
 This module is FreeCAD-free; it runs inside the sandboxed worker and is
 importable by host-side tests.
 """
@@ -21,7 +21,7 @@ from typing import Any, Mapping
 from cadex_domain_api import DomainValue
 
 PROJECT_DOMAIN = "project"
-EVALUATION_ORDER = ("sketcher", "part", "partdesign", "assembly")
+EVALUATION_ORDER = ("sketcher", "part", "partdesign", "mesh", "assembly")
 CONTROL_FIELDS = ("label", "unit", "min", "max", "step", "description")
 INLINE_SOURCE_UID = "xscript-project"
 

@@ -134,7 +134,7 @@ def test_describe_project_api_is_json_safe_and_complete() -> None:
     assert payload["domain"] == "project"
     assert payload["program_schema"] == domains.PROJECT_SCRIPT_SCHEMA
     listings = payload["domains"]
-    assert set(listings) == {"part", "partdesign", "sketcher", "assembly"}
+    assert set(listings) == {"part", "partdesign", "sketcher", "mesh", "assembly"}
     for pack in domains.XSCRIPT_WORKBENCH_PACKS.values():
         listing = listings[pack.domain]
         export_names = [item["name"] for item in listing["exports"]]
@@ -150,6 +150,7 @@ def test_describe_project_api_is_json_safe_and_complete() -> None:
         "sketcher",
         "part",
         "partdesign",
+        "mesh",
         "assembly",
         "params",
         "num",
@@ -197,6 +198,8 @@ def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None
         "cadex_part_worker.py",
         "cadex_partdesign_api.py",
         "cadex_partdesign_worker.py",
+        "cadex_mesh_api.py",
+        "cadex_mesh_worker.py",
         "cadex_assembly_api.py",
         "cadex_assembly_worker.py",
     }

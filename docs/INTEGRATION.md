@@ -1,6 +1,6 @@
 # INTEGRATION.md — Engine/Shell Split and the Blender Endpoint
 
-Verified against source: 2026-07-24
+Verified against source: 2026-07-25
 
 How the three repos converge into one product. The decision below was
 confirmed by the owner on 2026-07-24 (`docs/DECISIONS.md`).
@@ -82,6 +82,35 @@ Measured with a real cadexd prototype streaming into Blender:
 If the gate fails, the fallback is continuing on the Qt shell (Phase 3
 result) while the gaps are fixed — the engine work is endpoint-neutral either
 way.
+
+### Gate status (2026-07-25, engine-side evidence after Phase 4)
+
+Criteria 1–2 need the cadexd→Blender prototype (they measure the shell
+half); the engine-side halves were measured now so the prototype only has
+to validate the transport and shell side:
+
+1. **Tessellation & ID maps — engine half READY.** Per-face tessellation
+   (`face.tessellate`) covers 100% of faces on the probe corpus (box, cone,
+   torus, 98-face drilled+filleted plate: 0 faces without triangles), and
+   every edge discretizes to a polyline — the per-face/per-edge ID map the
+   protocol needs exists engine-side. Pin re-resolution machinery
+   (`CadexReferenceContracts.resolve_interface`, fingerprint-based) is in
+   place. Remaining: attribute transport into Blender + viewport picking
+   fidelity (needs the prototype). Note: deflection 0.3 on the filleted
+   plate produced 409k triangles in 1.2 s — the protocol should carry an
+   adaptive/coarser deflection for interactive drags.
+2. **Slider-drag latency — baseline measured.** Today's in-process path on
+   a mid-size part (24-hole boolean + full fillet + mesh skin): ~0.57 s per
+   set_params cycle end-to-end, of which ~0.55 s is spawning the fresh
+   `FreeCADCmd` worker process. A persistent cadexd process eliminates the
+   spawn cost per drag, so matching the baseline is the floor, not the
+   ceiling.
+3. **Rebuild determinism — PASSED engine-side.** Same script + params →
+   identical content digest across process restarts and across two FreeCAD
+   builds; 60+ consecutive seed/rebuild worker cycles clean, all five
+   domains including mesh (canonical ordering + vertex-set fingerprints +
+   definition-identified approximating ops, ADR-016). Each rebuild is a
+   fresh process, which is exactly the cadexd-restart condition.
 
 ## Open questions
 

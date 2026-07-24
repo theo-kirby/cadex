@@ -6551,22 +6551,24 @@ def publish_candidate(
 
 _PROJECT_PROGRAM_ID = "project"
 _PROJECT_PROGRAM_NAME = "Project Script"
-_PROJECT_DOMAIN_ORDER = ("sketcher", "part", "partdesign", "assembly")
+_PROJECT_DOMAIN_ORDER = ("sketcher", "part", "partdesign", "mesh", "assembly")
 
 
 def _clone_output_item(item: Mapping[str, Any]) -> dict[str, Any]:
-    """Deep copy of one validated output item, sharing its detached shape.
+    """Deep copy of one validated output item, sharing its detached values.
 
     The plain JSON evidence is copied so per-domain rewrites never mutate the
-    caller's validated result; the imported ``detached_shape`` (attached by
-    validation, not deep-copyable) is shared by reference.
+    caller's validated result; the imported ``detached_shape``/``detached_mesh``
+    (attached by validation, not deep-copyable) are shared by reference.
     """
 
+    detached_keys = ("detached_shape", "detached_mesh")
     clone = copy.deepcopy(
-        {key: value for key, value in dict(item).items() if key != "detached_shape"}
+        {key: value for key, value in dict(item).items() if key not in detached_keys}
     )
-    if "detached_shape" in item:
-        clone["detached_shape"] = item["detached_shape"]
+    for key in detached_keys:
+        if key in item:
+            clone[key] = item[key]
     return clone
 
 
@@ -6695,6 +6697,14 @@ def publish_project_candidate(
                     raise RuntimeError(
                         f"Project output {clone.get('name')!r} has no detached "
                         "validated shape; run validate_project_result first."
+                    )
+                if (
+                    str(clone.get("artifact_kind") or "") == "mesh"
+                    and clone.get("detached_mesh") is None
+                ):
+                    raise RuntimeError(
+                        f"Project output {clone.get('name')!r} has no detached "
+                        "validated mesh; run validate_project_result first."
                     )
                 sub_items.append(clone)
             if domain == "assembly":

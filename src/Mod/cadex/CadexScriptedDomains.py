@@ -2,7 +2,7 @@
 
 """XScript domain contracts for THE project script (Phase 2.4).
 
-The four capability packs (partdesign/sketcher/part/assembly) describe the
+The capability packs (partdesign/sketcher/part/mesh/assembly) describe the
 worker execution and publication contracts of each domain. They no longer
 carry a tool surface: the only mutation surface is the project pack's
 ``xscript.project.*`` tools (docs/DECISIONS.md ADR-013), and reads live in
@@ -228,6 +228,24 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
         ),
         production_ready=True,
     ),
+    "MeshWorkbench": _pack(
+        "MeshWorkbench",
+        "mesh",
+        "Mesh",
+        ("mesh",),
+        "Tessellate part shapes, import STL/OBJ/PLY assets, apply native mesh "
+        "set operations, and decimate. Every published output is exactly one "
+        "validated triangle mesh.",
+        (
+            "from_shape",
+            "import_file",
+            "union",
+            "difference",
+            "intersection",
+            "decimate",
+        ),
+        production_ready=True,
+    ),
     "AssemblyWorkbench": _pack(
         "AssemblyWorkbench",
         "assembly",
@@ -258,10 +276,10 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
     ),
 }
 
-#: The fifth internal domain: ONE project script composing all four capability
+#: The internal project domain: ONE project script composing every capability
 #: domains in a single execution. Not a workbench pack - it is keyed by no
 #: workbench and its api_exports are empty because the script receives one API
-#: object per capability domain (sketcher/part/partdesign/assembly) plus the
+#: object per capability domain (sketcher/part/partdesign/mesh/assembly) plus the
 #: params/num parameter vocabulary.
 PROJECT_PACK = XScriptWorkbenchPack(
     workbench="CadexProject",
@@ -276,11 +294,12 @@ PROJECT_PACK = XScriptWorkbenchPack(
     ),
     instructions=(
         "One project script is the sole source of truth for this document. "
-        "The script runs once per change with the sketcher, part, partdesign "
-        "and assembly APIs staged as same-named globals plus params/num for "
-        "declaring slider parameters; assign every kept value to the result "
-        "dictionary. Outputs may mix domains; assembly components take part or "
-        "partdesign values created in the same script."
+        "The script runs once per change with the sketcher, part, partdesign, "
+        "mesh and assembly APIs staged as same-named globals plus params/num "
+        "for declaring slider parameters; assign every kept value to the "
+        "result dictionary. Outputs may mix domains; assembly components take "
+        "part or partdesign values created in the same script, and mesh "
+        "tessellation takes part values created in the same script."
     ),
     api_exports=(),
     production_ready=True,
@@ -540,9 +559,9 @@ def project_tool_specs() -> tuple[dict[str, Any], ...]:
             "describe_api",
             description=(
                 "Describe the project-script runtime: the sketcher, part, "
-                "partdesign, and assembly APIs staged as same-named globals, "
-                "the params/num parameter vocabulary, the result contract, "
-                "and the revision rule."
+                "partdesign, mesh, and assembly APIs staged as same-named "
+                "globals, the params/num parameter vocabulary, the result "
+                "contract, and the revision rule."
             ),
             properties={},
             required=(),
@@ -561,7 +580,8 @@ def project_tool_specs() -> tuple[dict[str, Any], ...]:
             properties={
                 "source": _property_schema(
                     "Complete project script source using only the staged "
-                    "sketcher/part/partdesign/assembly APIs plus params/num.",
+                    "sketcher/part/partdesign/mesh/assembly APIs plus "
+                    "params/num.",
                     type="string",
                     minLength=1,
                     maxLength=MAX_SOURCE_BYTES,

@@ -16,8 +16,9 @@ Cadex is a FreeCAD fork stripped to a single AI-native modeling engine. The
 user chats with an assistant in a Qt panel; the assistant authors **ONE
 declarative xscript project script** through four lifecycle tools
 (`xscript.project.*`); the script executes in a sandboxed, windowless
-`FreeCADCmd` subprocess that produces detached BREP for all four capability
-domains — **partdesign, sketcher, part, assembly** — in one pass; a
+`FreeCADCmd` subprocess that produces detached BREP (and mesh) artifacts for
+all five capability domains — **partdesign, sketcher, part, mesh, assembly**
+— in one pass; a
 publisher validates the result and applies it to the live document under ONE
 transaction. The document is a rebuildable artifact: a headless rebuild from
 the script must reproduce the accepted content digest. The Qt app is the
@@ -53,11 +54,12 @@ service (`docs/INTEGRATION.md`).
   via `src/Mod/cadex/CadexScriptedProcess.py` (`run_process`: no console
   window, new session, stdin closed, hard timeout + memory watchdog;
   budgets from preferences `ScriptedTimeoutSeconds` /
-  `ScriptedMemoryLimitMB`). The project bundle stages all four domain
+  `ScriptedMemoryLimitMB`). The project bundle stages all five domain
   api/worker modules with entry `cadex_project_worker.py`; the script
   executes once, outputs are grouped by domain and evaluated sketcher →
-  part → partdesign → assembly. Wire schema:
-  `cadex-xscript-project-worker-v1`.
+  part → partdesign → mesh → assembly. Mesh assets (`assets/*.stl|obj|ply`
+  under the project root) are staged beside the worker for
+  `mesh.import_file`. Wire schema: `cadex-xscript-project-worker-v1`.
 - **Publisher** (`src/Mod/cadex/CadexScriptedDomainPublication.py`,
   `CadexScriptedPublication.py`): `publish_project_candidate` applies all
   domains under ONE transaction (per-domain sub-publishes with
@@ -84,14 +86,15 @@ Ownership closure, lint, and orphan queries live in
 | File | Role |
 |---|---|
 | `CadexScriptedRuntime.py` | The project lifecycle: store persistence, source policy, worker staging/exec, validation, acceptance. `[Cadex-new]` |
-| `CadexScriptedDomains.py` | `PROJECT_PACK` + the four capability packs (worker/publication contracts), project tool specs, `project_script_revision`, object-tag constants, source sandbox rules. `[Cadex-new]` |
+| `CadexScriptedDomains.py` | `PROJECT_PACK` + the five capability packs (worker/publication contracts), project tool specs, `project_script_revision`, object-tag constants, source sandbox rules. `[Cadex-new]` |
 | `cadex_project_api.py` / `cadex_project_worker.py` | The project domain: `params`/`num` vocabulary, inline assembly-source tokens, multi-domain exec namespace, per-domain evaluation, worker-side content digest. `[Cadex-new]` |
 | `CadexScriptedDomainPublication.py` / `CadexScriptedPublication.py` | Project publication (one transaction, lint, GC) over the per-domain apply routines. `[VibeCAD-era]`, reshaped `[Cadex-new]` |
 | `CadexScriptedOwnership.py` | Ownership tagging, owned closure, untagged/orphan queries. |
 | `CadexScriptedProcess.py` | Bounded subprocess runner (timeout, memory watchdog, cancellation). `[VibeCAD-era]` |
 | `CadexDigest.py` | Document-side diagnostic digest (`cadex-document-digest-v1`). `[Cadex-new]` |
 | `cadex_rebuild.py` | Headless rebuild + digest comparison (`pixi run rebuild <root>`). `[Cadex-new]` |
-| `cadex_{partdesign,sketcher,part,assembly}_{api,worker}.py` | The four domain APIs (staged into the project worker) and worker implementations. `[VibeCAD-era]` |
+| `cadex_{partdesign,sketcher,part,assembly}_{api,worker}.py` | The original four domain APIs (staged into the project worker) and worker implementations. `[VibeCAD-era]` |
+| `cadex_mesh_api.py` / `cadex_mesh_worker.py` | The Phase 4 mesh domain on `Mod/Mesh`+`Mod/MeshPart`: tessellate/import/boolean/decimate, canonical vertex/facet ordering + vertex-set digest fingerprint (ADR-016). `[Cadex-new]` |
 | `cadex_domain_api.py` / `cadex_domain_worker.py` | Shared domain API/worker plumbing (`_execute_source` is the composition substrate). `[VibeCAD-era]` |
 | `CadexGeometryWorker.cpp` | Isolated C++ BREP validation / distance worker. `[VibeCAD-era]` |
 
@@ -178,9 +181,10 @@ What the engine stands on (details and the removal ledger in
   the persistence and undo model the publisher relies on.
 - `src/Gui` — Qt6 main window, Coin3D/Quarter viewport (interim shell only).
 - `src/Base` — units, vectors, persistence primitives.
-- `src/Mod/{Part,PartDesign,Sketcher,Assembly}` — the four capability areas.
+- `src/Mod/{Part,PartDesign,Sketcher,Assembly}` — the original capability
+  areas; `src/Mod/{Mesh,MeshPart}` — the Phase 4 mesh domain substrate.
 - Support trees: `Import`, `Material`, `Measure`, `Show`, `Start`, `Test`,
-  `Mesh`, `MeshPart`, `Help`.
+  `Help`.
 - The 17 unused workbench trees were removed in Phase 1 (ADR-007..010;
   `docs/FREECAD.md` §3 is empty).
 

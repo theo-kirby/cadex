@@ -429,3 +429,66 @@ Verified by adversarial GUI probe: minimal menu and empty shortcut table
 before and after workbench-switch attempts; hidden toolbars; blocked tree
 context menu; unsanctioned sketch edit reset while the sanctioned one
 survives; 50/50 held at three window sizes.
+
+## ADR-016 — Phase 4 minimal mesh domain (2026-07-24)
+
+**Decision.** Mesh joins the project script as the fifth capability domain
+(`cadex_mesh_api.py` / `cadex_mesh_worker.py` on `Mod/Mesh` + `Mod/MeshPart`),
+scoped to the roadmap's minimal surface:
+
+- **API** (`MeshDomainAPI`, staged as the `mesh` global): `from_shape`
+  (tessellate a same-script part value via `MeshPart.meshFromShape`),
+  `import_file` (one flat STL/OBJ/PLY from `<project>/assets/`), `union` /
+  `difference` / `intersection` (native mesh set operations), `decimate`.
+  One output type: `mesh`. Export needs no new tool — `file.export_model`
+  already meshes and writes `Mesh::Feature` objects.
+- **Pipeline**: evaluation order becomes sketcher → part → partdesign →
+  mesh → assembly; mesh outputs export one binary PLY artifact and a
+  vertex-set geometry fingerprint that joins the content digest
+  (`mesh_sha256`; brep entries unchanged, so existing digests stay
+  stable); validation imports the detached native mesh off-thread;
+  publication reuses the pre-existing `mesh`-domain apply routine
+  (`_configure_mesh` → `Mesh::Feature`) inside the ONE project
+  transaction. The tool surface is unchanged: capability packs carry no
+  tools (ADR-013).
+- **Asset staging**: `prepare_project_candidate` copies the project's flat
+  `assets/` mesh files (64 files / 128 MB cap, known suffixes, no symlinks)
+  into the worker staging dir; `mesh.import_file` resolves only against
+  that staged copy, so the sandbox never reads the durable tree.
+- **Mesh determinism, measured and handled in two layers.** The native set
+  operations are non-deterministic at the representation level — measured
+  run to run (even within one process): (a) identical point sets returned
+  in permuted vertex/facet order, and (b) occasionally a *different
+  triangulation* of the same coplanar cut region (same surface and vertex
+  set, facet count 371 vs 372). Layer 1: the worker rebuilds every mesh in
+  canonical order (vertices sorted, facet cycles rotated to the smallest
+  index, facets sorted) — immediately after each boolean, so downstream
+  consumers like decimate see one deterministic input, and again before
+  export. Layer 2: the content digest identifies a mesh output by a
+  SHA-256 over its sorted exact vertex set (`geometry_sha256` →
+  `mesh_sha256`), not artifact bytes — triangulation-invariant, exact (no
+  rounding, so no quantization boundary flips). Layer 3: `decimate` is an
+  *approximating* kernel (GTS-derived edge collapse with
+  address-dependent tie order — measured ≥3 distinct results across runs
+  of identical input), so decimate outputs and every value built on one
+  carry no geometry fingerprint and are digest-identified by their
+  canonical definition instead (`payload_sha256`;
+  `payload_tree_is_deterministic`). Verified: an 8-output mixed
+  part/assembly/mesh script (tessellation, boolean union, decimation, STL
+  import) rebuilds digest-stable across repeated headless runs on both
+  the release and pixi FreeCAD builds (20+ seed+rebuild+rebuild cycles);
+  union vertex sets were exact across ~100 measured worker runs.
+- **Removal**: the stale generic-builder entry
+  `_DOMAIN_OPERATION_OUTPUT_TYPES["mesh"] = {"from_object": "mesh"}`
+  (culled-domain residue) is deleted; the mesh domain now has an explicit
+  production API class like the other four.
+
+**Rationale.** docs/ROADMAP.md Phase 4: the fourth-plus capability area
+through the same pipeline, with rebuild determinism intact. No interactive
+mesh editing — that waits for BMesh in the Blender shell (Phase 6).
+
+**Consequences.** Mesh booleans inherit the native kernel's geometric
+behavior (set operations, not exact CSG); partdesign/sketcher values are
+not tessellatable in v1 (only part values — partdesign Bodies build through
+their own document machinery). Both are candidates for the cadexd protocol
+era if needed.

@@ -39,7 +39,7 @@ Everything in this file is `[FreeCAD-inherited]` unless noted.
 | `src/Mod/Show` | Visibility automation used by TreeView/ViewProviders. |
 | `src/Mod/Start` | Launch screen shown by Experimental Mode when no document is open. |
 | `src/Mod/Test` | Test framework harness. |
-| `src/Mod/Mesh`, `src/Mod/MeshPart` | Substrate for the planned minimal `mesh` domain (Phase 4): import, tessellate, boolean, decimate, export. |
+| `src/Mod/Mesh`, `src/Mod/MeshPart` | Substrate for the minimal `mesh` domain (landed, Phase 4 / ADR-016): import, tessellate, boolean, decimate, export. |
 | `src/Mod/Help` | In-app help plumbing; cheap to keep until Phase 1 audits it. |
 | `src/Mod/cadex` | `[Cadex-new]` — the engine itself (`docs/ARCHITECTURE.md`). |
 

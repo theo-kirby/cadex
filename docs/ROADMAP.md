@@ -94,21 +94,35 @@ rendering work** — this shell is disposable (`docs/INTEGRATION.md`).
 **Exit criteria:** a user session touches only chat, sliders, tree, script
 view, viewport.
 
-## Phase 4 — Minimal mesh domain
+## Phase 4 — Minimal mesh domain `(landed 2026-07-24, ADR-016)`
 
 **Goal:** the fourth-plus capability area, through the same pipeline.
 
-- [ ] `src/Mod/cadex/cadex_mesh_api.py` / `cadex_mesh_worker.py` on
-      `Mod/Mesh` + `Mod/MeshPart`: import, tessellate, boolean, decimate,
-      export. No interactive mesh editing (that waits for BMesh in the
-      Blender shell).
-- [ ] Register the domain pack + worker bundle; guardrail tests updated.
+- [x] `src/Mod/cadex/cadex_mesh_api.py` / `cadex_mesh_worker.py` on
+      `Mod/Mesh` + `Mod/MeshPart`: import (`mesh.import_file` from the
+      project `assets/` dir), tessellate (`mesh.from_shape`), boolean
+      (`union`/`difference`/`intersection`), decimate; export via the
+      existing `file.export_model` mesh path. No interactive mesh editing
+      (that waits for BMesh in the Blender shell).
+- [x] Register the domain pack + worker bundle; guardrail tests updated
+      (`test_mesh_domain.py`; tool surface unchanged — capability packs
+      carry no tools).
 
 **Exit criteria:** mesh programs run/publish/rebuild like the other domains.
+Verified 2026-07-24: mixed part/assembly/mesh scripts (tessellate, boolean
+union, decimate, STL import) publish `Mesh::Feature` objects and rebuild
+digest-stable across repeated headless runs on both FreeCAD builds — via
+canonical vertex/facet reordering plus a vertex-set digest fingerprint,
+since the native mesh set operations return run-dependent orderings and
+triangulations (ADR-016; the digest CI now seeds mesh outputs too).
 
 > **Decision gate before Phase 5:** re-confirm the Blender-shell endpoint
 > against the measured criteria in `docs/INTEGRATION.md` (tessellation and
 > picking fidelity, slider-drag latency, rebuild determinism).
+> Status 2026-07-25: engine-side evidence gathered (determinism passed;
+> latency baseline and ID-map readiness measured — `docs/INTEGRATION.md`
+> gate-status section). Owner decision: **hold at Phase 4**; the two
+> shell-side criteria await a cadexd→Blender prototype when Phase 5 opens.
 
 ## Phase 5 — Engine/shell split (`cadexd`)
 

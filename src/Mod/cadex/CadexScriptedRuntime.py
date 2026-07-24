@@ -43,10 +43,17 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         "cadex_part_worker.py",
         "cadex_partdesign_api.py",
         "cadex_partdesign_worker.py",
+        "cadex_mesh_api.py",
+        "cadex_mesh_worker.py",
         "cadex_assembly_api.py",
         "cadex_assembly_worker.py",
     ),
 }
+
+#: Mesh assets stageable into the isolated worker (mesh.import_file).
+_ASSET_SUFFIXES = frozenset({".stl", ".obj", ".ply"})
+_MAX_ASSET_FILES = 64
+_MAX_ASSET_BYTES = 128 * 1024 * 1024
 
 
 class DomainRuntimeFailure(RuntimeError):
@@ -148,6 +155,37 @@ def _stage_worker_bundle(
             )
         shutil.copyfile(source, staging / target_name)
     return copied
+
+
+def _stage_project_assets(project_root: Path, staging: Path) -> list[str]:
+    """Copy the project's mesh asset files beside the isolated worker.
+
+    ``mesh.import_file`` resolves names against ``<staging>/assets`` only, so
+    the sandboxed worker never reads the durable project tree. Bounded: flat
+    directory, known mesh suffixes, capped file count and total bytes.
+    """
+
+    source_dir = project_root / "assets"
+    if not source_dir.is_dir():
+        return []
+    staged: list[str] = []
+    total_bytes = 0
+    target_dir = staging / "assets"
+    for path in sorted(source_dir.iterdir()):
+        if path.is_symlink() or not path.is_file():
+            continue
+        if path.suffix.lower() not in _ASSET_SUFFIXES:
+            continue
+        total_bytes += path.stat().st_size
+        if len(staged) >= _MAX_ASSET_FILES or total_bytes > _MAX_ASSET_BYTES:
+            raise ValueError(
+                f"Project assets exceed the staging budget of {_MAX_ASSET_FILES} "
+                f"mesh files / {_MAX_ASSET_BYTES} bytes."
+            )
+        target_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, target_dir / path.name)
+        staged.append(path.name)
+    return staged
 
 
 def _document_objects(doc: Any) -> list[dict[str, str]]:
@@ -609,6 +647,7 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
     module_root = Path(__file__).resolve().parent
     try:
         _stage_worker_bundle(module_root, staging, "project")
+        _stage_project_assets(Path(project_root), staging)
         request = {
             "schema": PROJECT_WORKER_SCHEMA,
             "source": source,
@@ -732,6 +771,7 @@ def validate_project_result(
             "sketcher",
             "part",
             "partdesign",
+            "mesh",
             "assembly",
         }:
             _raise(
@@ -762,6 +802,26 @@ def validate_project_result(
                     f"Project output {name!r} BREP artifact is invalid.",
                 )
             item["detached_shape"] = shape
+        elif str(item.get("artifact_kind") or "") == "mesh":
+            path = _staged_artifact_path(
+                prepared,
+                item.get("artifact_path"),
+                context=f"Project output {name!r}",
+            )
+            # Import the detached native mesh off the document thread now so
+            # publication applies validated values without artifact I/O.
+            import Mesh
+
+            mesh = Mesh.Mesh()
+            mesh.read(Filename=str(path))
+            if int(mesh.CountFacets) <= 0:
+                _raise(
+                    tool_name,
+                    "DOMAIN_RESULT_INVALID",
+                    "postcondition",
+                    f"Project output {name!r} mesh artifact is empty.",
+                )
+            item["detached_mesh"] = mesh
         contract.append({"name": name, "type": output_type, "domain": domain})
 
     # Durable working revision binds the worker-collected parameter specs.
@@ -872,6 +932,11 @@ def _capability_api_listing() -> dict[str, dict[str, Any]]:
             "exports": exports,
             "accepted_output_types": list(pack.output_types),
         }
+    listing["mesh"]["notes"] = (
+        "In a project script mesh.from_shape(shape, ...) takes a part value "
+        "created in the same script, and mesh.import_file(name) reads one "
+        "STL/OBJ/PLY file placed directly in the project assets directory."
+    )
     listing["assembly"]["notes"] = (
         "In a project script assembly.component(source, ...) takes a part or "
         "partdesign value created in the same script; cross-document component "
@@ -899,6 +964,7 @@ def describe_project_api() -> dict[str, Any]:
             "sketcher",
             "part",
             "partdesign",
+            "mesh",
             "assembly",
             "params",
             "num",
@@ -927,7 +993,7 @@ def describe_project_api() -> dict[str, Any]:
         "result_contract": (
             "Assign result to a dict. Every kept value must be a key: keys "
             "become the stable published output names, values must come from "
-            "the sketcher/part/partdesign/assembly APIs (assembly.solve "
+            "the sketcher/part/partdesign/mesh/assembly APIs (assembly.solve "
             "diagnostics included). Outputs may mix domains."
         ),
         "mutation_selection": {

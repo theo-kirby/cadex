@@ -15,8 +15,10 @@ replaced the VibeCAD-era per-domain multi-program surface `[Cadex-new]`.
 ### THE script and its store
 
 - A project has exactly one script: `<project>/script.py`. It composes all
-  four capability domains and is the sole source of truth — the user can
+  five capability domains and is the sole source of truth — the user can
   open it, read it, and diff it; nothing model-shaped exists outside it.
+  Mesh assets the script imports live under `<project>/assets/` (flat,
+  `.stl`/`.obj`/`.ply`).
 - Sidecar state: `<project>/script.json` (schema `cadex-project-script-v1`,
   `CadexProject.py:CadexProjectScriptStore`) — cached `param_specs`,
   `param_values`, working/accepted revision, accepted contract (output
@@ -31,7 +33,7 @@ replaced the VibeCAD-era per-domain multi-program surface `[Cadex-new]`.
 
 ### Script vocabulary
 
-The exec namespace carries the four domain APIs plus the parameter
+The exec namespace carries the five domain APIs plus the parameter
 vocabulary (`cadex_project_api.py`, `cadex_project_worker.py`):
 
 ```python
@@ -40,10 +42,11 @@ p = params(width=num(100, unit="mm", min=10, max=500, step=1, label="Width"))
 profile = sketcher.sketch(...)           # sketcher API
 plate   = part.box(p.width, 20, 5)       # part API
 body    = partdesign.body(...)           # partdesign API (sketcher/part co-staged)
+hull    = mesh.from_shape(plate)         # mesh API (tessellate/import/boolean/decimate)
 base    = assembly.component(plate, grounded=True)
 asm     = assembly.assembly([base, ...])
 
-result = {"plate": plate, "asm": asm}    # named outputs, grouped by domain
+result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
 ```
 
 - `params(...)` may be called at most once; `num(...)` declares one numeric
@@ -57,8 +60,19 @@ result = {"plate": plate, "asm": asm}    # named outputs, grouped by domain
   declared output, so publication can bind each live component to a
   published stable object. Cross-document component references are retired;
   v0.0.1 assemblies are rigid, same-script solids (ADR-011).
+- `mesh.from_shape()` tessellates a same-script part value (`Mod/MeshPart`);
+  `mesh.import_file()` reads one flat asset file; `mesh.union`/`difference`/
+  `intersection` and `mesh.decimate` run on the native mesh kernel. Every
+  mesh output is rebuilt in canonical vertex/facet order (booleans
+  immediately, all outputs before export), and the digest identifies a mesh
+  by its exact sorted vertex set (`geometry_sha256`) — the native set
+  operations return run-dependent orderings and occasionally re-triangulate
+  coplanar regions differently for identical geometry. `decimate` is
+  approximating (run-dependent result), so decimate trees are
+  digest-identified by their canonical definition instead (ADR-016).
 - Outputs are evaluated per domain in fixed order sketcher → part →
-  partdesign → assembly, reusing the per-domain evaluators and serializers.
+  partdesign → mesh → assembly, reusing the per-domain evaluators and
+  serializers.
 
 ### Lifecycle tools
 
@@ -97,15 +111,16 @@ Source is validated before any worker runs (AST policy in
 ### Worker isolation
 
 - One attempt = one windowless `FreeCADCmd --safe-mode -c …` subprocess
-  (runner in `CadexScriptedProcess.py`). The project bundle stages all four
+  (runner in `CadexScriptedProcess.py`). The project bundle stages all five
   `cadex_<domain>_{api,worker}.py` modules with entry
   `cadex_project_worker.py` (`_DOMAIN_WORKER_BUNDLES["project"]`,
-  `CadexScriptedRuntime.py`).
+  `CadexScriptedRuntime.py`), plus the project's flat mesh `assets/`
+  directory (bounded: 64 files / 128 MB, known suffixes only).
 - Hard bounds from preferences (`ScriptedTimeoutSeconds`,
   `ScriptedMemoryLimitMB`); a parent-side watchdog kills over-budget
   workers and reports `MEMORY_LIMIT_EXCEEDED` with observed usage.
 - The worker executes the script ONCE, evaluates outputs per domain, and
-  produces **detached** results (BREP artifacts, records, collected
+  produces **detached** results (BREP and mesh artifacts, records, collected
   `param_specs`, per-output validations, the content digest) on the
   `cadex-xscript-project-worker-v1` wire schema; it never touches the live
   document.
@@ -134,8 +149,9 @@ one validated candidate under **ONE** document transaction — one undo step:
 ### Digest and headless rebuild
 
 - **Content digest** (D8): SHA-256 over the name-sorted output entries
-  `{output_name, domain, output_type, shape_sha256|payload_sha256,
-  placement (rounded 1e-9)}`, schema `cadex-project-digest-v1`, computed
+  `{output_name, domain, output_type,
+  shape_sha256|mesh_sha256|payload_sha256, placement (rounded 1e-9)}`,
+  schema `cadex-project-digest-v1`, computed
   worker-side from serialized artifacts; recorded as `accepted_digest` on
   accept. `CadexDigest.py:document_digest` recomputes a diagnostic digest
   from the live tagged objects (schema `cadex-document-digest-v1`; a
@@ -177,10 +193,10 @@ pins survive rebuilds that churn object names.
   hash are a possible optimization; the revision machinery points the way.
 - **Sub-modules**: whether large projects split into importable sub-modules
   under the project root, or stay one flat script.
-- **Mesh domain**: the Blender-side `mesh_agent` prototype
-  (`docs/BLENDER.md`) suggests the same one-script shape with a `mesh` API
-  joining the namespace after the engine/shell split
-  (`docs/INTEGRATION.md`).
+- **Interactive mesh editing**: the Phase 4 `mesh` domain is deliberately
+  minimal (tessellate/import/boolean/decimate). Interactive mesh editing
+  waits for BMesh in the Blender shell (`docs/BLENDER.md`,
+  `docs/INTEGRATION.md`).
 
 ---
 

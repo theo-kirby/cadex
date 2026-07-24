@@ -57,10 +57,51 @@ base = assembly.component(plate, grounded=True)
 top = assembly.component(plate, placement=[0, 0, 4])
 asm = assembly.assembly([base, top])
 diag = assembly.solve(asm)
-result = {"plate": plate, "base": base, "top": top, "asm": asm, "diag": diag}
+hull = mesh.union(
+    mesh.from_shape(plate, linear_deflection=0.4),
+    mesh.from_shape(part.sphere(6.0, center=[0.0, 9.0, 4.0]), linear_deflection=0.4),
+)
+lite = mesh.decimate(hull, tolerance=0.5, reduction=0.5)
+scan = mesh.import_file("tetra.stl")
+result = {"plate": plate, "base": base, "top": top, "asm": asm, "diag": diag,
+          "hull": hull, "lite": lite, "scan": scan}
+'''
+
+TETRA_STL = '''solid tetra
+facet normal 0 0 -1
+ outer loop
+  vertex 0 0 0
+  vertex 4 0 0
+  vertex 0 4 0
+ endloop
+endfacet
+facet normal 0 -1 0
+ outer loop
+  vertex 0 0 0
+  vertex 0 0 4
+  vertex 4 0 0
+ endloop
+endfacet
+facet normal -1 0 0
+ outer loop
+  vertex 0 0 0
+  vertex 0 4 0
+  vertex 0 0 4
+ endloop
+endfacet
+facet normal 1 1 1
+ outer loop
+  vertex 4 0 0
+  vertex 0 0 4
+  vertex 0 4 0
+ endloop
+endfacet
+endsolid tetra
 '''
 
 root = Path(tempfile.mkdtemp(prefix="cadex-rebuild-ci-"))
+(root / "assets").mkdir(parents=True)
+(root / "assets" / "tetra.stl").write_text(TETRA_STL, encoding="utf-8")
 report = {}
 try:
     # create + accept in a live document

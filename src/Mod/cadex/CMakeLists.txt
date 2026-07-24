@@ -36,6 +36,8 @@ set(Cadex_Scripts
     CadexAssemblyHierarchy.py
     cadex_domain_api.py
     cadex_domain_worker.py
+    cadex_mesh_api.py
+    cadex_mesh_worker.py
     cadex_part_api.py
     cadex_part_worker.py
     cadex_partdesign_api.py

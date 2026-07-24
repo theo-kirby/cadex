@@ -3,11 +3,12 @@
 """Windowless worker executing ONE multi-domain project script.
 
 The project domain runs the whole project script in a single sandboxed pass
-with all four capability APIs staged (``sketcher``, ``part``, ``partdesign``,
-``assembly``) plus the ``params``/``num`` parameter vocabulary. The script's
-``result`` dictionary may mix outputs from every domain; the worker groups
-them by domain and evaluates in the fixed order sketcher → part → partdesign
-→ assembly, reusing each domain's existing evaluator and serializer. One
+with every capability API staged (``sketcher``, ``part``, ``partdesign``,
+``mesh``, ``assembly``) plus the ``params``/``num`` parameter vocabulary. The
+script's ``result`` dictionary may mix outputs from every domain; the worker
+groups them by domain and evaluates in the fixed order sketcher → part →
+partdesign → mesh → assembly, reusing each domain's existing evaluator and
+serializer. One
 execution produces one output set, one parameter-spec collection, and one
 content digest over the serialized artifacts.
 """
@@ -166,6 +167,17 @@ def compute_project_digest(root: Path, outputs: list[dict[str, Any]]) -> str:
         artifact = str(item.get("artifact_path") or "")
         if artifact and str(item.get("artifact_kind") or "") == "brep":
             entry["shape_sha256"] = _file_sha256(root / artifact)
+        elif (
+            artifact
+            and str(item.get("artifact_kind") or "") == "mesh"
+            and item.get("geometry_sha256")
+        ):
+            # Vertex-set fingerprint, not artifact bytes: the native set
+            # operations re-triangulate coplanar regions non-deterministically
+            # while the vertex set stays exact. Approximating mesh outputs
+            # (decimate trees) carry no fingerprint and fall through to the
+            # canonical-definition hash (see cadex_mesh_worker, ADR-016).
+            entry["mesh_sha256"] = str(item["geometry_sha256"])
         else:
             entry["payload_sha256"] = hashlib.sha256(
                 _canonical_json(item.get("definition") or {}).encode("utf-8")
@@ -368,6 +380,21 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
                 item["domain"] = "partdesign"
                 outputs.append(item)
                 artifact_by_definition[_canonical_json(item["definition"])] = item
+
+        # mesh — native Mesh/MeshPart kernels; artifacts are hashed binaries
+        for name, value in grouped["mesh"].items():
+            from cadex_mesh_worker import serialize_mesh_output
+
+            payload = _payload(value)
+            item = serialize_mesh_output(
+                root,
+                output_index,
+                {"name": name, "type": str(payload.get("output_type") or "")},
+                value,
+            )
+            output_index += 1
+            item["domain"] = "mesh"
+            outputs.append(item)
 
         # assembly — same-script sources become staged references, then the
         # existing native assembly candidate build/solve runs unchanged
