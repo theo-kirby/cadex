@@ -83,10 +83,13 @@ concept remains.
 **Goal:** the interim Qt shell approximates the product layout. **No Coin3D
 rendering work** — this shell is disposable (`docs/INTEGRATION.md`).
 
-- [ ] Finish the 50/50 layout in `CadexExperimentalMode.py` /
+- [x] Finish the 50/50 layout in `CadexExperimentalMode.py` /
       `CadexGui.py`: left viewport; right chat + sliders + tree + script
-      view.
-- [ ] Remove every route to native modeling tools and workbench switching.
+      view (read-only `CadexScriptView.py`; `resizeDocks` event filter,
+      ADR-015).
+- [x] Remove every route to native modeling tools and workbench switching
+      (minimal menu, shortcut strip, tree lockdown, edit watchdog —
+      ADR-015).
 
 **Exit criteria:** a user session touches only chat, sliders, tree, script
 view, viewport.

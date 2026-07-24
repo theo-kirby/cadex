@@ -387,3 +387,45 @@ indistinguishable to the store.
 **Consequences.** Undeclared parameters no longer get invented sliders —
 the panel shows exactly what the script declares. Resurrecting the
 heuristics needs a new ADR.
+
+## ADR-015 — Phase 3 shell: 50/50 layout + native-route lockdown (2026-07-24)
+
+**Decision.** The interim Qt shell converges on the product layout within
+the capped-investment rule (no Coin3D work, no new workbench-style UI):
+
+- **Read-only script view** (`CadexScriptView.py`): a QPlainTextEdit dock
+  rendering `script.py` from the store. Not an editor — mutations go
+  through `xscript.project.*` or the sliders. The editable Model Code
+  Editor died in ADR-013.
+- **50/50 split**: a main-window event filter re-issues `resizeDocks` on
+  every Show/Resize, sizing the visible right-column docks to half the
+  window width. The signal-severing constraint is load-bearing:
+  `QMainWindow.addDockWidget`/`splitDockWidget` on FreeCAD-managed docks
+  at runtime severs other panels' Python signal connections, so docks are
+  never repositioned after registration. Consequence: the stable
+  top-to-bottom order is tree / parameters / script / chat (creation
+  order — the C++ tree dock exists first, the assistant pin appends
+  last), not the nominal chat-first order; reordering would require the
+  forbidden runtime repositioning.
+- **Native-route lockdown** (re-applied on every chrome pass, since
+  workbench activation rebuilds menus and shortcuts): the menu bar is
+  rebuilt to one Cadex menu (About / Preferences / Quit — Preferences
+  stays reachable because the API keys live there); every non-allowlisted
+  QAction shortcut is stripped; a tree event filter swallows ContextMenu
+  and MouseButtonDblClick; a Gui document observer resets any native edit
+  session that no tool sanctioned (`sanction_native_edit`, called by
+  `partdesign.edit_sketch`; the sanction is consumed when the session
+  closes).
+
+**Rationale.** docs/VISION.md: a user session touches only chat, sliders,
+tree, script view, viewport. Blocking routes beats hiding chrome the next
+workbench activation would re-show.
+
+**Consequences.** Manual FreeCAD modeling is unreachable in the shell;
+resurrecting any native route is a direction change and needs an ADR. The
+whole layer is disposable with the Qt shell (docs/INTEGRATION.md).
+
+Verified by adversarial GUI probe: minimal menu and empty shortcut table
+before and after workbench-switch attempts; hidden toolbars; blocked tree
+context menu; unsanctioned sketch edit reset while the sanctioned one
+survives; 50/50 held at three window sizes.

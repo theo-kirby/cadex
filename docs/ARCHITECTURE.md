@@ -113,7 +113,8 @@ Ownership closure, lint, and orphan queries live in
 | File | Role |
 |---|---|
 | `CadexGui.py` | Assistant chat panel (conversations, attach image/view, send/steer/stop). |
-| `CadexExperimentalMode.py` | The only mode (`is_experimental_mode_session()` returns `True`): hides all toolbars/status bar/MDI tabs, right-docks Assistant (420 px) + Parameters + Tree view, forces `PartDesignWorkbench`, launch screen when no document. ~80% of the target 50/50 layout. |
+| `CadexExperimentalMode.py` | The only mode (`is_experimental_mode_session()` returns `True`): hides all toolbars/status bar/MDI tabs, forces `PartDesignWorkbench`, launch screen when no document. 50/50 split (viewport left, panel column right — tree/parameters/script/chat) held by a `resizeDocks` event filter; native-route lockdown (minimal About/Preferences/Quit menu, shortcut strip, tree context/double-click block, unsanctioned-edit watchdog) re-applied on every chrome pass (ADR-015). |
+| `CadexScriptView.py` | Read-only dock rendering THE project script; refreshes on assistant updates and visibility changes. Deliberately not an editor. |
 | `CadexExperimentalChat.py`, `CadexPromptStarters.py` | Experimental-mode chat surface and starters. |
 | `CadexParametersPanel.py` | Sliders for the project script's declared parameters (`params`/`num` specs from `script.json`); a drag commits through `xscript.project.set_params` with the working-revision guard, no provider turn, debounced 600 ms (ADR-014). |
 | `CadexPreferences.py` | Preferences page (provider, model, keys, budgets). Pref group `User parameter:BaseApp/Preferences/Mod/cadex`. |
