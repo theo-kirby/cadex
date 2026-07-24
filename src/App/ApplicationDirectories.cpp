@@ -506,7 +506,10 @@ std::string ApplicationDirectories::versionStringForPath(int major, int minor)
 }
 
 bool ApplicationDirectories::isVersionedPath(const fs::path &startingPath) const {
-    for (int major = std::get<0>(_currentVersion); major >= 1; --major) {
+    // major >= 0: Cadex versions itself 0.x, so v0-* directories must be
+    // recognized or the config path never resolves and the migration dialog
+    // re-prompts on every start.
+    for (int major = std::get<0>(_currentVersion); major >= 0; --major) {
         constexpr int largestPossibleMinor = 99;  // We have to start someplace
         int startingMinor = largestPossibleMinor;
         if (major == std::get<0>(_currentVersion)) {
@@ -522,7 +525,8 @@ bool ApplicationDirectories::isVersionedPath(const fs::path &startingPath) const
 }
 
 std::string ApplicationDirectories::mostRecentAvailableConfigVersion(const fs::path &startingPath) const {
-    for (int major = std::get<0>(_currentVersion); major >= 1; --major) {
+    // major >= 0: see isVersionedPath.
+    for (int major = std::get<0>(_currentVersion); major >= 0; --major) {
         constexpr int largestPossibleMinor = 99;  // We have to start someplace
         int startingMinor = largestPossibleMinor;
         if (major == std::get<0>(_currentVersion)) {
