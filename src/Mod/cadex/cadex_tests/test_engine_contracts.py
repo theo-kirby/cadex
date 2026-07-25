@@ -71,78 +71,6 @@ class TestFailureEnvelopeContract:
 
 
 
-def test_private_xscript_carriers_are_not_provider_document_objects() -> None:
-    from CadexCore import CadexService
-
-    for role in ("implementation", "publication_target", "parameters"):
-        assert CadexService._is_private_scripted_object(
-            SimpleNamespace(CadexScriptedRole=role)
-        )
-    for role in ("model", "publication", ""):
-        assert not CadexService._is_private_scripted_object(
-            SimpleNamespace(CadexScriptedRole=role)
-        )
-    native = SimpleNamespace(Name="Native", Label="Native", TypeId="Part::Box")
-    published = SimpleNamespace(
-        Name="Published",
-        Label="Published",
-        TypeId="App::Link",
-        CadexScriptedRole="publication",
-        CadexScriptedEngine="xscript",
-        CadexScriptedModelId="a" * 32,
-        CadexScriptedOutputKey="Housing",
-    )
-    private_target = SimpleNamespace(
-        Name="PrivateTarget",
-        Label="Private Target",
-        TypeId="Part::Feature",
-        CadexScriptedRole="publication_target",
-    )
-    service = object.__new__(CadexService)
-    service._active_document = lambda: SimpleNamespace(
-        Name="ContextDoc",
-        Objects=[native, published, private_target],
-    )
-
-    summary = service.provider_part_summary()
-
-    assert [item["name"] for item in summary["objects"]] == [
-        "Native",
-        "Published",
-    ]
-    assert summary["objects"][1]["published_output_key"] == "Housing"
-
-
-def test_view_attachment_is_one_shot_and_identity_guarded() -> None:
-    from CadexCore import CadexService
-
-    service = object.__new__(CadexService)
-    service._last_view_screenshot = {
-        "captured": True,
-        "path": "/project/screenshots/current.png",
-        "pending_attachment": True,
-    }
-
-    pending = service.view_screenshot_summary()
-    assert pending["pending_attachment"] is True
-    stale = service.consume_view_screenshot_attachment(
-        {"captured": True, "path": "/project/screenshots/older.png"}
-    )
-    assert stale["consumed"] is False
-    assert service.view_screenshot_summary()["captured"] is True
-
-    consumed = service.consume_view_screenshot_attachment(pending)
-    assert consumed == {
-        "consumed": True,
-        "path": "/project/screenshots/current.png",
-    }
-    assert service.view_screenshot_summary() == {"captured": False, "path": None}
-
-
-# ---------------------------------------------------------------------------
-# XScript default preferences
-# ---------------------------------------------------------------------------
-
 
 class _UnsetPreferences:
     """Stub ParamGet group where every key is unset: each getter echoes the
@@ -203,109 +131,65 @@ class _RecordingPreferences(_UnsetPreferences):
         self.values.pop(name, None)
 
 
-class TestXScriptDefaults:
-    """Lock the out-of-box defaults: the XScript preference is enabled and
-    xscript is the default global modeling engine. These tests fail if either
-    default silently regresses."""
+class TestEngineSettingDefaults:
+    """The engine's own settings, split out of the Qt preferences (ADR-021).
 
-    _SCOPE = {"project_id": "f" * 32, "title": "Default Test", "document": {}}
+    Phase 6 asserted an "XScript enabled" opt-in here. xscript is now the
+    only engine there is, so the defaults that still mean something are the
+    sandbox budgets a worker run is given.
+    """
 
-    def test_settings_dataclass_enables_xscript_by_default(self) -> None:
-        import CadexPreferences as prefs
-
-        assert prefs.CadexSettings().xscript_enabled is True
-        assert not hasattr(prefs.CadexSettings(), "xscript_on_bim_enabled")
-
-    def test_load_settings_with_unset_key_enables_xscript(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        import CadexPreferences as prefs
-
-        monkeypatch.setattr(prefs, "preferences", lambda: _UnsetPreferences())
-        settings = prefs.load_settings()
-        assert settings.xscript_enabled is True
-        assert not hasattr(settings, "xscript_on_bim_enabled")
-
-    def test_removed_bim_opt_in_is_not_written_or_reset(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        import CadexPreferences as prefs
-
-        stored = _RecordingPreferences()
-        monkeypatch.setattr(prefs, "preferences", lambda: stored)
-        prefs.save_settings(prefs.CadexSettings())
-        assert "XScriptOnBIMEnabled" not in stored.values
-        prefs.reset_settings()
-        assert "XScriptOnBIMEnabled" not in stored.values
-
-    def test_default_engine_constant_is_xscript_and_valid(self) -> None:
-        from CadexProject import DEFAULT_MODELING_ENGINE, MODELING_ENGINES
-
-        assert DEFAULT_MODELING_ENGINE == "xscript"
-        assert DEFAULT_MODELING_ENGINE in MODELING_ENGINES
-
-    def test_fresh_manifest_seeds_xscript_engine(self, tmp_path: Path) -> None:
-        from CadexProject import CadexProjectStore
-
-        store = CadexProjectStore("test-session", index_path=tmp_path / "index.db")
-        manifest = store._default_manifest(dict(self._SCOPE))
-        assert manifest["modeling_engine"] == "xscript"
-        assert "partdesign_engine" not in manifest
-
-    def test_merge_preserves_explicit_engine_choices(self, tmp_path: Path) -> None:
-        from CadexProject import MODELING_ENGINES, CadexProjectStore
-
-        store = CadexProjectStore("test-session", index_path=tmp_path / "index.db")
-        for engine in sorted(MODELING_ENGINES):
-            merged = store._merge_manifest_defaults(
-                {"partdesign_engine": engine}, dict(self._SCOPE)
-            )
-            assert merged["modeling_engine"] == engine
-            assert "partdesign_engine" not in merged
-
-    def test_merge_defaults_missing_or_none_engine_to_xscript(
-        self, tmp_path: Path
-    ) -> None:
-        from CadexProject import CadexProjectStore
-
-        store = CadexProjectStore("test-session", index_path=tmp_path / "index.db")
-        for manifest in ({}, {"modeling_engine": None}, {"partdesign_engine": None}):
-            merged = store._merge_manifest_defaults(dict(manifest), dict(self._SCOPE))
-            assert merged["modeling_engine"] == "xscript"
-
-    def test_modeling_engine_accessor_falls_back_to_xscript(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-    ) -> None:
-        from CadexProject import CadexProjectStore
-
-        store = CadexProjectStore("test-session", index_path=tmp_path / "index.db")
-        monkeypatch.setattr(store, "load_manifest", lambda: {})
-        assert store.modeling_engine() == "xscript"
-        assert not hasattr(store, "partdesign_engine")
-        assert not hasattr(store, "set_partdesign_engine")
-
-    def test_engine_only_manifest_reader_supports_legacy_field(
-        self, tmp_path: Path
-    ) -> None:
-        from CadexProject import PROJECT_SCHEMA, CadexProjectStore
-
-        manifest_path = tmp_path / "project.cadex.json"
-        manifest_path.write_text(
-            json.dumps(
-                {
-                    "schema": PROJECT_SCHEMA,
-                    "version": 1,
-                    "partdesign_engine": "xscript",
-                }
-            ),
-            encoding="utf-8",
+    def test_budget_defaults_are_positive(self) -> None:
+        from CadexEngineSettings import (
+            DEFAULT_SCRIPTED_MEMORY_LIMIT_MB,
+            DEFAULT_SCRIPTED_TIMEOUT_SECONDS,
         )
 
-        assert (
-            CadexProjectStore.read_modeling_engine_manifest(manifest_path)
-            == "xscript"
-        )
-        assert (
-            CadexProjectStore.read_modeling_engine_manifest(tmp_path / "missing.json")
-            == "xscript"
-        )
+        assert DEFAULT_SCRIPTED_TIMEOUT_SECONDS > 0
+        assert DEFAULT_SCRIPTED_MEMORY_LIMIT_MB > 0
+
+    def test_unset_preferences_fall_back_to_the_defaults(self, monkeypatch) -> None:
+        import CadexEngineSettings as settings
+
+        class _Unset:
+            @staticmethod
+            def GetFloat(_name, default):
+                return default
+
+            @staticmethod
+            def GetInt(_name, default):
+                return default
+
+        monkeypatch.setattr(settings, "preferences", lambda: _Unset())
+        assert settings.load_engine_budgets() == {
+            "timeout_seconds": settings.DEFAULT_SCRIPTED_TIMEOUT_SECONDS,
+            "memory_limit_mb": settings.DEFAULT_SCRIPTED_MEMORY_LIMIT_MB,
+        }
+
+    def test_a_nonsense_preference_value_falls_back(self, monkeypatch) -> None:
+        """A zero or negative budget is not a budget."""
+        import CadexEngineSettings as settings
+
+        class _Nonsense:
+            @staticmethod
+            def GetFloat(_name, _default):
+                return -1.0
+
+            @staticmethod
+            def GetInt(_name, _default):
+                return 0
+
+        monkeypatch.setattr(settings, "preferences", lambda: _Nonsense())
+        assert settings.load_engine_budgets() == {
+            "timeout_seconds": settings.DEFAULT_SCRIPTED_TIMEOUT_SECONDS,
+            "memory_limit_mb": settings.DEFAULT_SCRIPTED_MEMORY_LIMIT_MB,
+        }
+
+    def test_caller_budgets_win_when_complete(self) -> None:
+        from CadexEngineSettings import resolve_budgets
+
+        assert resolve_budgets(
+            {"timeout_seconds": 12.0, "memory_limit_mb": 256}
+        ) == {"timeout_seconds": 12.0, "memory_limit_mb": 256}
+
+

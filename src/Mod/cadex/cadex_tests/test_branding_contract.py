@@ -88,13 +88,9 @@ def test_module_directory_and_preference_group_are_lowercase_cadex() -> None:
     main_window = _source("src/Gui/MainWindow.cpp")
     assert "User parameter:BaseApp/Preferences/Mod/cadex" in main_window
     assert "Mod/VibeCAD" not in main_window
-    for reader in (
-        "src/Mod/cadex/CadexEngineSettings.py",
-        "src/Mod/cadex/CadexPreferences.py",
-    ):
-        source = _source(reader)
-        assert "Mod/cadex" in source
-        assert "Mod/VibeCAD" not in source
+    source = _source("src/Mod/cadex/CadexEngineSettings.py")
+    assert "Mod/cadex" in source
+    assert "Mod/VibeCAD" not in source
 
 
 

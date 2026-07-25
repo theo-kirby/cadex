@@ -44,9 +44,6 @@ NO_RESIDUE_EVER = frozenset({"PySide", "PySide2", "PySide6"})
 
 #: (module, forbidden root) -> the Phase 7 commit that removes the edge.
 KNOWN_RESIDUE: dict[tuple[str, str], str] = {
-    # ToolRegistry is jsonschema's only user and the provider stack is its
-    # only importer; both go in C4 and requirements.txt drops to zero.
-    ("CadexTools", "jsonschema"): "C4",
 }
 
 #: The engine, module by module. Not a summary of the closure — the closure

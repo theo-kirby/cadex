@@ -2,33 +2,22 @@
 
 set(Cadex_Scripts
     Init.py
-    CadexAuth.py
-    CadexCodex.py
-    CadexCore.py
-    CadexDebug.py
-    CadexEditState.py
     CadexEngineSettings.py
-    CadexGeometry.py
     CadexInspection.py
     CadexModelingSurface.py
     CadexPinResolution.py
-    CadexPreferences.py
-    CadexProvider.py
     CadexReferenceContracts.py
     CadexProject.py
     CadexScriptStore.py
-    CadexSession.py
     CadexScriptedOwnership.py
     CadexScriptedProcess.py
     CadexScriptedPublication.py
     CadexTools.py
-    CadexTransactions.py
     CadexScriptedDomains.py
     CadexScriptedRuntime.py
     CadexScriptedDomainPublication.py
     cadex_assembly_api.py
     cadex_assembly_worker.py
-    CadexAssemblyHierarchy.py
     cadex_domain_api.py
     cadex_domain_worker.py
     cadex_mesh_api.py
@@ -48,26 +37,18 @@ set(Cadex_Scripts
     CadexdProtocol.py
     CadexShellHydration.py
     CadexDigest.py
-    CadexPointArtifacts.py
-    requirements.txt
 )
 
-
-file(GLOB_RECURSE Cadex_ToolImplScripts
-    CONFIGURE_DEPENDS
-    RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
-    tool_impl/*.py
-)
 
 add_custom_target(CadexScripts ALL
-    SOURCES ${Cadex_Scripts} ${Cadex_ToolImplScripts}
+    SOURCES ${Cadex_Scripts}
 )
 
 fc_target_copy_resource(CadexScripts
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_BINARY_DIR}/Mod/cadex
     ${Cadex_Scripts}
-    ${Cadex_ToolImplScripts}
+   
    
 )
 
@@ -77,15 +58,6 @@ install(
        
     DESTINATION
         Mod/cadex
-)
-
-install(
-    DIRECTORY
-        tool_impl
-    DESTINATION
-        Mod/cadex
-    FILES_MATCHING
-        PATTERN "*.py"
 )
 
 add_executable(CadexGeometryWorker

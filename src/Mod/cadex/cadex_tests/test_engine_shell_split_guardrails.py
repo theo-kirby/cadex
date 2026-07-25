@@ -19,7 +19,6 @@ MODULE_DIR = Path(__file__).resolve().parent.parent
 #: this list in C3 (ADR-021); the rest of the file goes in C5, when the
 #: last shell module in this repo does.
 SHELL_MODULES = (
-    "CadexSession.py",
     "CadexShellHydration.py",
     "CadexdClient.py",
 )
@@ -87,7 +86,3 @@ def test_engine_side_users_of_the_pipeline_are_the_known_ones() -> None:
     }, users
 
 
-def test_session_project_tools_route_through_the_cadexd_client() -> None:
-    source = (MODULE_DIR / "CadexSession.py").read_text(encoding="utf-8")
-    assert "CadexdClient" in source
-    assert "client_for_project" in source
