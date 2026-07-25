@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="docs/images/cadex-mark.svg" width="96" alt="Cadex mark">
-</p>
+
 
 # Cadex
 
