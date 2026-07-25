@@ -809,3 +809,133 @@ file. Discovery order (shell side): explicit preference → `MESH_FREECADCMD`
 one. `docs/VISION.md`'s Qt open question is answered and its Qt non-goal
 becomes historical. `docs/INTEGRATION.md` becomes the two-repo contract
 document.
+
+## ADR-021 — The Qt shell and the provider stack are deleted (2026-07-25)
+
+**Decision.** Phase 7 track C removes the Qt shell and everything that
+existed to serve it. This repository stops being an application.
+
+**Inventory.** UI layer (C3): `CadexGui`, `CadexExperimentalMode`,
+`CadexParametersPanel`, `CadexScriptView`, `CadexGrid`,
+`CadexExperimentalChat`, `CadexPromptStarters`, `InitGui`, nine SVGs, the
+`Cadex_Resources` install set, and the three Qt preference pages.
+Provider/session stack (C4): `CadexSession`, `CadexProvider`, `CadexCore`,
+`CadexAuth`, `CadexCodex`, `CadexDebug`, `CadexTransactions`,
+`CadexPointArtifacts`, `CadexGeometry`, `CadexAssemblyHierarchy`,
+`CadexEditState`, `CadexPreferences`, the whole `tool_impl` package,
+`requirements.txt`. Protocol seam (C5): `CadexdClient`,
+`CadexShellHydration`. `src/Mod/cadex` went from 57 Python modules to 34.
+
+**No API-key provider path survives.** The product's model loop is the
+Claude Code CLI inside Blender; a second one here was duplication.
+
+**The four splits that made it possible (C1, C2).**
+
+1. `CadexEngineSettings.py` — the engine needed exactly two numbers out of
+   `CadexPreferences`, which imported `CadexAuth`/`CadexDebug`/
+   `CadexPromptStarters` at module scope.
+2. `CadexScriptStore.py` — `CadexProject` was two stores in one module;
+   only the script store is engine state. Measured effect: cadexd's
+   transitive closure lost `CadexProject`.
+3. `test_engine_purity_guardrails.py` — an AST closure walk with a
+   `KNOWN_RESIDUE` ledger that named each remaining forbidden edge and the
+   commit that would remove it, and failed when an entry stopped being
+   true. It guarded C3/C4 as they happened and is now empty.
+4. C2 cut `CadexReferenceContracts`'s dead `tool_impl` edge, established by
+   instrumenting a real publication (`managed: []`, `_rebind_one` never
+   entered), not by reading.
+
+**`requirements.txt` is deleted, not emptied.** `jsonschema` had one
+importer (`ToolRegistry`) and one other user (`ToolSpec.validate_arguments`),
+both provider machinery. The engine now needs FreeCAD's own runtime and
+nothing else — which is what lets ADR-023's payload be a directory of files
+rather than an environment.
+
+**Test reshaping.** 36 files / 425 tests → 20 files / 154 tests, inside the
+declared acceptance band of **150–200**: above 200 would mean something
+Qt-shaped survived, below 150 that an engine contract was dropped. Two
+files the plan expected to survive in half did not:
+`test_geometry_references` died whole (all 12 tests drive `CadexCore`'s
+viewport-selection capture; the fingerprint contract is produced by the
+workers, matched by `CadexPinResolution`, and covered by
+`test_pin_resolution` plus `pin_resolution_integration`), and
+`test_model_context_contract` kept 4 of 20 rather than ~10. Three files
+were renamed in C7 (`test_project_tool_surface`,
+`test_engine_identity_contract`, `test_engine_defaults_and_envelopes`) and
+`CLAUDE.md`'s "not subject to relaxation" clause was updated in the same
+commit, so the guardrail it names still exists.
+
+Contracts asserted through the UI were preserved, not dropped:
+`TestStageAwareFailureRendering` (which tested `CadexGui`'s transcript
+renderer) became `TestFailureEnvelopeContract`, asserting every
+`FAILURE_STAGES` value round-trips and the `tool_failure` envelope's keys
+are stable — the Blender shell parses exactly those keys, across a
+repository boundary.
+
+**The successor evidence (C0).** `cadexd_latency_integration.py` re-established
+the switchover measurement client-agnostically **before** C5 deleted the
+client that produced it: the same 24-hole/fillet/mesh-skin baseline and ten
+`set_params` drags over raw NDJSON. Measured 0.457 s engine-only (Qt-era
+0.479 s) and 0.557 s with the draft display block (Blender-era 0.548 s).
+The bar survives the client.
+
+**Consequences.** `docs/INTEGRATION.md` becomes the two-repo contract
+document, and `test_engine_purity_guardrails` now asserts
+`CadexdProtocol.OP_ARG_SPECS` equals its op table — with the shell in
+another repository, the document is the contract and a doc↔code
+cross-check is the only thing that catches cross-repo drift.
+
+## ADR-022 — GUI build off; `isVibeExperimentalModeSession` reverted (2026-07-25)
+
+**Decision.** Release and package builds set `BUILD_GUI=OFF`. The
+`isVibeExperimentalModeSession` hook is reverted to stock FreeCAD. The
+`src/Gui` tree is **not** deleted in Phase 7.
+
+**The hook (C6a).** It let a Cadex "experimental mode" session suppress
+stock chrome — toolbars, docks, the status bar, overlay state, the Start
+page's first-start view and workbench autoload. Its UI died in C3, and the
+preference defaults **true**, so keeping it would have meant a FreeCAD that
+hides its own interface for a shell that no longer exists.
+
+Fifteen sites: `src/Gui/MainWindow.cpp` (7 uses + the definition),
+`MainWindow.h` (the declaration), `ToolBarManager.cpp` (2),
+`DockWindowManager.cpp` (1), `OverlayWidgets.cpp` (1),
+`src/Mod/Start/Gui/StartView.cpp` (3), `AppStartGui.cpp` (1).
+
+**Conservative-zone justification.** `CLAUDE.md` asks for the smallest
+possible diff in inherited core. This change *reduces* the fork's delta
+against upstream FreeCAD to zero in every file it touches — it is the most
+conservative-zone-friendly change available, because it removes fork code
+rather than adding any. The "Vibe" identity leaves the tree entirely and
+`_ALLOWLISTED_VIBE_RESIDUE` empties. The lowercase-preference-group test
+inverts accordingly: it now asserts the inherited GUI core reads *nothing*
+of ours, across five files.
+
+**`BUILD_GUI=OFF` (C6b).** Two blockers, found by a throwaway configure
+spike, each fixed in three lines without changing GUI-on behavior:
+`LinguistTools` was gated behind `BUILD_GUI` although `src/App` compiles
+translations with the GUI off (it is a build tool, not a runtime library);
+and the `Gui` test suite plus `setup_qt_test(InventorBuilder)` link
+`FreeCADGui`, so both are now guarded the way every kept workbench already
+guards its own `Gui` subdirectory.
+
+Scope is narrow on purpose: only the `conda-release` preset and
+`package/rattler-build/build.sh`. `pixi run configure` (debug) still builds
+the GUI, so a breakage here cannot block daily work.
+
+**Measured**, GUI build vs GUI-less build of this tree: `lib/` 43 MB →
+8.3 MB, `Mod/` 49 MB → 22 MB, files matching `*Gui*` 93 → 8, and `bin/`
+reduced to `FreeCADCmd` + `CadexGeometryWorker`. 61 MB off this
+repository's own output; the larger saving (Qt6 ~85 MB, PySide6 ~52 MB,
+Coin ~7 MB) is dependency weight the payload no longer carries, realised
+in ADR-023.
+
+**`src/Gui` is deferred, not kept.** It is 66 MB / 729 files plus every
+`src/Mod/*/Gui`, and `BUILD_GUI=OFF` captures 100% of the size and
+build-time benefit with a zero-line conservative-zone diff. Per
+`docs/FREECAD.md` §3's removal protocol, **this is the disable commit**;
+the delete commit is Phase 8.
+
+**Gate.** Both cadex ctests pass against the GUI-less build
+(`CadexProjectRebuildDigest` 1.64 s, `CadexdLifecycle` 3.75 s), with zero
+new failures against the environmental baseline.
