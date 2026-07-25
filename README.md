@@ -28,9 +28,12 @@ pixi run setup      # check out the shell's prebuilt libraries (~1.3 GB)
 pixi run app        # build the engine, the payload and the shell, then launch
 ```
 
-The first build compiles two large C++ projects and takes hours. After that
-it is incremental. `pixi run app` re-runs each step, so it is also the
-everyday "build what changed and launch it" command.
+The first build compiles two large C++ projects. On a machine with a cold
+compiler cache that takes hours; measured end to end on an M-series Mac with
+a warm `ccache` it is about 21 minutes (clone 9 s, setup 43 s, engine
+5 min 27 s, payload 42 s, shell 14 min). After that it is incremental.
+`pixi run app` re-runs each step, so it is also the everyday "build what
+changed and launch it" command.
 
 If you want the steps separately:
 

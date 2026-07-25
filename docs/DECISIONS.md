@@ -1579,5 +1579,33 @@ against a staged payload; ctest matches `build/ctest_baseline_failures.txt`
 exactly (160 environmental failures, no drift in either direction);
 `bl_mesh_agent.py` all green.
 
-Shell build from a cold build tree: 12 min 53 s for 8,122 targets. Fresh
-`git clone` of this repository: 9 s, 2.2 GB working tree.
+### The clone-and-build story, measured
+
+Not estimated. A fresh `git clone` into a scratch directory, then the two
+commands the README gives, on an M-series Mac:
+
+| Step | Time | Note |
+|---|---|---|
+| `git clone` | 9 s | 2.2 GB working tree |
+| `pixi run setup` | 43 s | installs the 3.9 GB pixi env and checks out the 1.3 GB `shell/lib/macos_arm64` |
+| `pixi run build-engine` | 5 min 27 s | 2,124 targets |
+| `pixi run stage-engine` | 42 s | 2.3 GB payload |
+| `pixi run build-shell` | 13 min 59 s | 8,122 targets, plus a re-stage of the payload (`build-shell` depends on `stage-engine`) |
+| **total** | **~21 min** | |
+
+Then, against that bundle, with every `MESH_*` unset: `CADEX-BLENDER-GATE`
+`ok: true`, `engine_from_bundle: true`, picking 372/372, slider-drag median
+**0.579 s**. A fresh clone produces a working, gated application.
+
+**Two honest caveats on that number.** ccache is machine-wide and was warm —
+the engine build reported 58% hits — so a genuinely cold machine is
+materially slower; this measures *a second build on this machine*, not a
+first build anywhere. And it could not be run past that point in one place:
+disk headroom was 19 GB against a ~22 GB requirement for the full chain in a
+scratch clone, so the fresh-clone run reused this machine's ccache and each
+stage was measured as it completed rather than from a clean cache. The
+"hours" the README warns about is the cold-cache case, and it is the honest
+expectation for a new machine.
+
+Shell build from a cold build tree in the main checkout, for comparison:
+12 min 53 s.

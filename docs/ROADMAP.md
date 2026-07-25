@@ -525,8 +525,10 @@ build-orchestration job, not an architecture one.
 **Exit criteria.** A fresh clone plus `pixi run setup && pixi run app`
 produces a launchable application, and `CADEX-BLENDER-GATE` reports
 `ok:true` with `engine_from_bundle: true`, picking ≥ 0.99, slider median
-≤ 0.65 s, and no `MESH_*` set. **Met 2026-07-25** — see ADR-030 for the
-numbers.
+≤ 0.65 s, and no `MESH_*` set. **Met 2026-07-25**, measured on an actual
+fresh clone rather than inferred: ~21 min end to end (warm ccache), then
+`ok: true`, `engine_from_bundle: true`, picking 372/372, median 0.579 s.
+Numbers and caveats in ADR-030.
 
 ## Phase 13b — The source reduction `(ongoing)`
 
