@@ -715,3 +715,97 @@ still dominates drag latency; the warm-standby worker remains the named
 lever for sub-100 ms drags. Blender remains display-only: engine truth
 lives in the cadexd project store, and the mirrored `model.py` text block
 is read-only context, not a rebuild input.
+
+## ADR-020 — Phase 7 shape: the Blender shell is the product (2026-07-25, owner)
+
+**Decision.** Phase 7 converges the two shells into one product. Six
+sub-decisions, all owner-approved:
+
+1. **The Qt shell is retired outright** — not kept as a headless harness.
+   This closes the open question at `docs/VISION.md` (Qt shell's fate). The
+   deletion covers the UI *and* the provider stack it exists to serve:
+   `CadexGui`, `CadexSession`, `CadexProvider`, `CadexCore`, `tool_impl/`,
+   the conversation store, prompt starters. **No API-key provider path
+   survives**: the product's model loop is the Claude Code CLI running
+   inside Blender (`mesh_agent`'s `backend.py`), and a second model loop in
+   a second shell is exactly the duplication this phase removes.
+2. **Scope** is three tracks in order: close the seven blocking Blender
+   gaps (M) → delete the Qt shell (C) → packaging, onboarding, docs (P/O).
+3. **One bundle.** The Blender application carries the cadex engine as a
+   payload; the add-on defaults to it. A user installs one thing. This is
+   affordable because `BUILD_GUI=OFF` takes ~250 MB (Qt6, PySide6, Coin,
+   `lib*Gui*`) off the engine payload — see ADR-022/ADR-023.
+4. **Conversation history lives in the `.blend`**, alongside the Claude Code
+   `session_id`. This ratifies Phase 6's `history.py` and **explicitly
+   reverses** `docs/INTEGRATION.md`'s open-question lean toward the cadexd
+   project store / `$CADEX_HOME`. Rationale: the conversation is shell
+   state, not engine state; the engine has no notion of a turn. One file
+   the user can move, copy, and mail is worth more than a second store.
+5. **Local (mesh-native) modes stay**; `CADEX` becomes the default mode.
+   General and Part Design modes remain for mesh-native work. This is a
+   knowing exception to ADR-003 and `docs/VISION.md`'s "one project script
+   is THE user-visible artifact": in Cadex mode the project script is the
+   artifact, and the local modes are a *different product surface* (direct
+   BMesh authoring) that happens to share a chat panel. Recorded rather
+   than silently kept; revisit if the two script formats start leaking into
+   each other.
+6. **The mesh repo's additive-only upstream policy ends here.** Phase 7
+   modifies upstream Blender files for the first time — the default app
+   template and the engine install rules. `docs/mesh/UPSTREAM_DIFFS.md`
+   gains its first "Modified upstream files" rows. (See ADR-024.)
+
+**Rationale.** Phase 6's gate closed in the real shell (ADR-019: 372/372
+picks, 0.548 s drag median). Carrying two shells for one engine past that
+point costs a second model loop, a second hydration path, a second
+packaging story, and a doc set that has to describe both. The exit
+criterion — *a new user only ever sees the Blender shell* — is not
+reachable while the cadex repo still ships a user-facing application.
+
+**Ordering.** Blender gaps first, Qt deletion second. Deleting Qt first
+would turn five working reference implementations into archaeology while
+the mesh work is in flight: cancellation polling through the protocol,
+budget resolution, contract-driven GC with document-close lifetime, and
+the revision-guard commit path. The latency-evidence objection is handled
+by landing C0 (a client-agnostic engine benchmark) before the Qt client is
+deleted.
+
+### The engine discovery contract `cadex-engine-v1` `[Cadex-new]`
+
+Fixed here so both repos can code against it before either implements it.
+A packaged engine payload is a directory containing a manifest file named
+**`cadex-engine.json`** at its root:
+
+```json
+{
+  "schema": "cadex-engine-v1",
+  "version": "0.0.2",
+  "protocol": "cadex-cadexd-v1",
+  "freecadcmd": "bin/freecadcmd",
+  "module_dir": "Mod/cadex"
+}
+```
+
+- `schema` — literal `"cadex-engine-v1"`. A shell that does not recognise
+  the value must refuse the payload, not guess.
+- `version` — the cadex engine version the payload was built from.
+- `protocol` — the cadexd wire protocol the payload speaks
+  (`docs/INTEGRATION.md`). A shell checks this, not `version`.
+- `freecadcmd` — path to the command-line FreeCAD binary, **relative to the
+  manifest's directory**, using forward slashes on every platform.
+- `module_dir` — path to the directory that must be on `sys.path` for
+  `import cadexd` to work, same relative-path rule.
+
+**The manifest is the point.** Shell-side discovery becomes "find
+`cadex-engine.json`, read two paths out of it" instead of guessing at
+`<prefix>/Mod/cadex` vs `<prefix>/../Mod/cadex` vs a macOS `.app` interior.
+That retires the layout-guessing bug class permanently, on all three
+platforms, and it lets a developer point at a dev build by dropping one
+file. Discovery order (shell side): explicit preference → `MESH_FREECADCMD`
+→ bundled manifest → `PATH`.
+
+**Consequences.** Phase 7 in `docs/ROADMAP.md`; a new Phase 8 for the
+`src/Gui` tree removal that ADR-022 defers. ADR-021 (Qt deletion), ADR-022
+(GUI build off), ADR-023 (one bundle), ADR-024 (onboarding) implement this
+one. `docs/VISION.md`'s Qt open question is answered and its Qt non-goal
+becomes historical. `docs/INTEGRATION.md` becomes the two-repo contract
+document.
