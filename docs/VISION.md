@@ -16,14 +16,16 @@ but not dependent on either FreeCAD or Blender (ADR-025), combining:
   OCCT is the kernel and it stays; FreeCAD is the application layer around
   it, and that layer is being removed.
 - **Blender-class UX** — the look, feel, viewport and interaction quality of
-  the `/Users/theo/mesh` prototype, rebuilt as our own Rust + wgpu + egui
-  shell. Blender is the reference, not the host.
+  the shell under `shell/`, in the long run rebuilt as our own Rust + wgpu +
+  egui shell. Blender is the reference, not the permanent host.
 - **The xscript methodology** — the AI authors a declarative Python program;
   the program is the model.
 
-Until the replacements land, both forks remain the working substrate: this
-repository is the engine and `/Users/theo/mesh` is the shell. The staging is
-in `docs/ROADMAP.md`; every resting place in it is shippable.
+Until the replacements land, both forks remain the working substrate, and
+since ADR-030 both live **in this repository**: the engine at the root, the
+shell under `shell/`. Replacing either is unscheduled and unblocked; what is
+live is deleting from both, in place. The staging is in `docs/ROADMAP.md`;
+every resting place in it is shippable.
 
 ### Everything is driven by the script
 
@@ -45,7 +47,7 @@ in `docs/ROADMAP.md`; every resting place in it is shippable.
 
 - **Left half: viewport. Right half: chat, parameter sliders, model tree,
   script view.** That's the whole app. The UX north star is the working
-  prototype in the mesh repo: `scripts/addons_core/mesh_agent/` plus the
+  shell: `shell/scripts/addons_core/mesh_agent/` plus the
   `Mesh` app template (50/50 split, chat input docked at the bottom right) —
   detailed in `docs/BLENDER.md`. That prototype is the **specification** for
   the Rust shell, not its permanent home (ADR-025).

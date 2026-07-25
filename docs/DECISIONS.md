@@ -1426,3 +1426,158 @@ contract and out of scope. No migration path exists for saved scripts using
 the index form: they now fail loudly at the API boundary with the reason,
 which is the intended behaviour for a form that could silently build the
 wrong solid.
+
+## ADR-030 — Phase 13a: one repository, pulled to the front (2026-07-25)
+
+**Decision.** The Blender shell moves into this repository under `shell/`,
+as a squashed snapshot. Clone cadex, `pixi run setup && pixi run app`, and
+you have a running application. ROADMAP Phase 13's merge item is pulled to
+the front of Phases 11 and 12, which become **unscheduled internal swaps**
+rather than prerequisites for anything.
+
+**Rationale.** Cloning cadex gave you an NDJSON service and no way to use
+it. The product lived in `/Users/theo/mesh`, which fetched a digest-pinned
+engine tarball from this repository's releases and installed it into its own
+bundle. Everything about that arrangement was overhead: two checkouts, two
+CI systems, a release cadence between them, and a per-platform SHA256 pin
+whose entire job was to notice if a file got corrupted crossing between two
+directories on the same disk.
+
+Merging never needed Phase 11 or Phase 12. The seam was already a real
+process boundary — NDJSON over stdio, pinned on requests (`OP_ARG_SPECS`)
+and on responses (the ADR-027 goldens) — so nothing about the runtime
+architecture had to change. The delta on top of stock Blender was 34 files
+and ~6,500 lines. This was a repo-layout and build-orchestration job, and
+doing it first is what makes every later resting place shippable.
+
+**What this reverses, and what it keeps.** ADR-023's *mechanism* is gone:
+the engine is built in place, not fetched by digest. The digest pin existed
+to guard a cross-repository transfer that no longer happens, so
+`fetch_cadex_engine.py`, `build_files/cadex_engine.txt` and the
+release-publication job that fed them are deleted. ADR-023's *substance* is
+untouched and is the part that mattered: one bundle, discovery by manifest,
+and a payload gate that runs the lifecycle test against the packaged tree
+because a source tree that passes proves nothing about a payload.
+
+ADR-025's direction is unchanged. Phases 11 and 12 are not cancelled; they
+are unscheduled and unblocked, which is a better place for them to be. The
+test-pinned protocol is exactly what keeps them available, and it gets *more*
+valuable in one repository, not less — distance used to enforce the boundary
+and now only discipline does.
+
+### The import
+
+Squashed deliberately: Blender's 163,789 commits and 3.1 GB of history stayed
+behind. We delete from this tree; we do not track upstream. Provenance is
+recorded instead of history — `/Users/theo/mesh` @ `ac5af55948d` (branch
+`mesh-main`), plus one uncommitted working-tree change to
+`source/creator/CMakeLists.txt`. `/Users/theo/mesh` is kept as a read-only
+archive.
+
+The tree lands under `shell/` with the FreeCAD tree left at the root, so no
+existing CMake path, pixi task, test or doc reference had to change. Four
+pieces of bookkeeping were the only non-mechanical part:
+
+- `lib/*` are submodules, not content — 1.3 GB of prebuilt binaries per
+  platform. Re-pointed at `shell/lib/<platform>` in the root `.gitmodules`,
+  keeping `update = none`.
+- **`.github/workflows/mesh-build.yml` had never been committed.** Blender's
+  `.gitignore` opens with `.*`, which swallowed it silently. Force-added
+  rather than lost — and the same rule is why the import commit is
+  `git add -Af`.
+- The nested `.gitmodules` dropped in favour of the merged root one.
+- `.gitignore` gained the shell's build trees.
+
+### The one real technical risk: two toolchains
+
+The engine builds inside the pixi/conda-forge environment (OCCT 7.8.1, Qt6,
+conda compilers, a conda sysroot). The shell builds against
+`shell/lib/<platform>` with Xcode and a homebrew `cmake`/`ninja`. They
+overlap on names — zlib, libpng, OpenSSL and Python exist in both at
+different versions — so conda on `PATH` during a shell configure resolves the
+wrong ones and either fails at link time or produces a binary that
+misbehaves at runtime.
+
+`package/app/build_app.sh` owns the fix, and that is why `pixi run
+build-shell` is a script rather than a `cmd = ["cmake", ...]` task: pixi
+would otherwise hand cmake the exact environment being removed. It filters
+pixi and conda entries out of `PATH` and unsets the ~50 variables conda
+activation exports.
+
+**Verified by construction, not asserted.** The resulting
+`shell/build_darwin/CMakeCache.txt` is identical to a configure run from the
+standalone shell repository apart from the source path: five differing lines,
+all accounted for — two blanks and two flags the old invocation passed
+explicitly. Python resolves to `shell/lib/macos_arm64/python`, the compilers
+are `/usr/bin/cc` and `/usr/bin/c++`, and the cache holds zero references to
+`.pixi`.
+
+### One application, one backend
+
+`Cadex.app`, executable `Cadex`, bundle id `dev.cadex.Cadex`, icon built from
+the cadex mark. One CMake variable (`CADEX_APP_NAME`) replaces the
+`Blender.app` string literals. The `.app` skeleton keeps its inherited
+directory name — renaming it would churn every file underneath for no product
+benefit. `CFBundleIconName` is *removed* rather than repointed: it resolves
+into `Assets.car` and wins over `CFBundleIconFile` on macOS 11+, so leaving
+it would have meant shipping our icns and never showing it.
+
+Behind it, ROADMAP Phase 9's shell items land. `modes.py` offered three modes
+from a dropdown and two of them ran the model script with `exec()` against
+`bpy`. The local pair goes, and with it `cad_api.py` (431), `validation.py`
+(183), `scene_graph.py` (47), `bl_mesh_agent_cad.py` (472), most of
+`model_api.py`, the local half of `model.py`, and the branches in `tools.py`
+/ `ui.py` / `agent.py` / `cadex_pick.py`. Net −1,953 lines, and the largest
+single block of deep Blender coupling in the tree: BOOLEAN and BEVEL
+modifiers, the depsgraph, BVHTree, `orphans_purge`, and a
+`sys.modules["mesh_cad"]` alias installed at add-on registration.
+
+The app template is **not** deleted. It is still what suppresses Blender's
+UI, and since ADR-024 a fresh profile already starts in it, so it is already
+the startup configuration rather than something a user selects. It retires
+when a startup config replaces it, as its own commit.
+
+### Three things this turned up
+
+1. **The relocating payload path cannot run on a development machine, and
+   `conda_pack` was a red herring.** `build_engine_payload.sh`'s default path
+   failed with `ModuleNotFoundError: conda_pack`; adding the dependency moved
+   the failure one step to *"the package-managed environment is
+   incomplete"*. Relocation rewrites Mach-O load commands from conda's
+   package manifests, so it only works when the engine's own files are
+   package-managed — i.e. inside a rattler build, exactly as the script's own
+   header says. The dependency was removed again rather than left in as
+   cargo. `pixi run stage-engine` therefore stages (correct on the machine
+   that built it, and nowhere else) and `stage-engine-release` relocates.
+   **Every payload verified during this work was a staged one; the
+   relocation path remains untested by it.**
+2. **The agent suites do not run out of the installed bundle**, though the
+   CI workflow said they did. They import the add-on from the source tree —
+   which is how they resolve it, and what makes an edit testable without a
+   reinstall. What comes from the bundle is the *engine*, discovered through
+   `bpy.app.binary_path`, which is what `engine_from_bundle: true` asserts
+   and the only part that has to come from the install. The workflow now says
+   what actually happens.
+3. **The staged payload carries GUI libraries the leak gate does not
+   catch.** `lib/FreeCADGui.so`, `FemGui.so`, `InspectionGui.so` and
+   friends, plus modules from workbenches deleted in Phase 1, are present in
+   `.pixi/envs/default/lib` from older installs and get copied. The payload
+   gate greps for `libFreeCADGui*` and `*Gui.so` **under `Mod/`**, so these
+   pass. Pre-existing, unrelated to the merge, and left alone deliberately —
+   but it means the "no GUI in the payload" assertion is narrower than it
+   reads, and it belongs on the Phase 13b list.
+
+**Evidence.** `CADEX-BLENDER-GATE` against `Cadex.app` built entirely from
+this repository, with `MESH_FREECADCMD`, `MESH_CADEXD_MODULE` and
+`MESH_CADEX_ENGINE` all unset: `ok: true`, `engine_from_bundle: true`,
+picking 372/372 (fidelity 1.0, bar 0.99), slider-drag median **0.576 s**
+(bar 0.65; the pre-merge baseline measured 0.629 s on this machine in the
+same session, and the ROADMAP records 0.572 s), restore performed and
+digest-matched, cancellation answered, 127 main-thread ticks during a 1.59 s
+rebuild. Engine suite 204 passed; the packaged `CadexdLifecycle` gate passes
+against a staged payload; ctest matches `build/ctest_baseline_failures.txt`
+exactly (160 environmental failures, no drift in either direction);
+`bl_mesh_agent.py` all green.
+
+Shell build from a cold build tree: 12 min 53 s for 8,122 targets. Fresh
+`git clone` of this repository: 9 s, 2.2 GB working tree.

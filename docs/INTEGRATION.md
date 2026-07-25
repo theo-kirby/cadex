@@ -1,30 +1,46 @@
-# INTEGRATION.md — The Two-Repository Contract
+# INTEGRATION.md — The Process Contract
 
 Verified against source: 2026-07-25
 
-**This document is the contract between two codebases.** Since Phase 7
-(ADR-020) the shell lives in another repository, under another licence, and
-is written against what is written here. Two things below are therefore
-enforced by tests rather than trusted:
+**This document is the contract between the two halves of the product.**
+They live in one repository (ADR-030) and in two processes, under two
+licences, and neither is written against the other's source — both are
+written against what is written here.
+
+**One repository makes this document more load-bearing, not less.** When the
+shell lived elsewhere, distance enforced the boundary; now nothing does
+except discipline and the tests below. The reason to keep the boundary
+sharp is not tidiness — it is that ROADMAP Phases 11 and 12 replace the
+engine and the shell *independently, behind this protocol*. Every shortcut
+across it (a direct import, a shared file, a peeked-at internal) is a
+Phase 11 blocker bought for an afternoon's convenience. Do not take one.
+
+Three things are therefore enforced by tests rather than trusted:
 
 - the **protocol op table** is asserted equal to
   `CadexdProtocol.OP_ARG_SPECS` by
-  `cadex_tests/test_engine_purity_guardrails.py`. Nothing else in either
-  tree notices when the prose and the code disagree, and a shell calling an
-  op the engine does not serve fails at the user, not at a test.
+  `cadex_tests/test_engine_purity_guardrails.py`. Nothing else notices when
+  the prose and the code disagree, and a shell calling an op the engine does
+  not serve fails at the user, not at a test.
+- the **response shapes** are pinned by golden shape-only fixtures per op
+  (`cadex_tests/test_response_schemas.py`, ADR-027). `OP_ARG_SPECS` pins
+  requests; the shell reads ~50 response keys, and without these nothing
+  asserted that half.
 - the **engine discovery manifest** (`cadex-engine.json`, ADR-020) is
-  validated by ctest `CadexEnginePayloadSmoke` here and by
-  `fetch_cadex_engine.py` in the shell repo.
+  validated by ctest `CadexEnginePayloadSmoke`, and by the `app` job's
+  bundle check in `.github/workflows/cadex-app.yml`.
 
-Repos:
+The two halves:
 
-- **cadex** (`/Users/theo/cadex`) — this repo. FreeCAD fork; the xscript
-  engine, headless. Builds `FreeCADCmd` and `CadexGeometryWorker` and
-  **no application** (ADR-021/022).
-- **mesh** (`/Users/theo/mesh`) — Blender fork; the product shell
+- **the engine** (repo root) — FreeCAD fork; the xscript engine, headless.
+  Builds `FreeCADCmd` and `CadexGeometryWorker` and **no application**
+  (ADR-021/022). LGPL-2.1+.
+- **the shell** (`shell/`) — Blender fork; the product UI
   (`docs/BLENDER.md`). Carries the engine payload inside its bundle.
+  GPL-2.0+.
 - **vibecad** — parent fork; historical reference only (teardown history on
-  its `cadex-teardown` branch).
+  its `cadex-teardown` branch). **mesh** (`/Users/theo/mesh`) — the shell's
+  former home, kept as a read-only archive of the pre-merge history.
 
 ## Options considered
 
@@ -49,14 +65,22 @@ A and D's interim state are now history, not plan.
 
 ## License reasoning
 
-- cadex is LGPL-2.1+ (FreeCAD lineage); OCCT is LGPL-2.1. Blender is GPL-2+.
+- The engine is LGPL-2.1+ (FreeCAD lineage); OCCT is LGPL-2.1. The shell is
+  GPL-2+ (Blender lineage).
 - Direction of flow is LGPL engine → GPL shell, across a **process boundary**
   (cadexd subprocess speaking a JSON protocol; no linking). This is clean:
   the GPL shell may talk to an LGPL service; neither codebase's license
   contaminates the other.
-- The inverse (embedding GPL Blender code inside the LGPL app) would not be
-  clean — one more reason the shell endpoint is Blender hosting the service,
-  not cadex absorbing Blender code.
+- **One repository does not change this.** What matters for the GPL is
+  linking and derivation, not directory layout: the two halves are separate
+  programs communicating over a documented protocol, exactly as before. The
+  concrete rules that keep it that way — nothing under
+  `shell/scripts/addons_core/mesh_agent/` imports from `src/`,
+  `cadexd_client.py` stays a plain NDJSON client with no cadex imports, and
+  the payload is carried as data — are unchanged and are why they are worth
+  keeping.
+- The inverse (embedding GPL Blender code inside the LGPL engine) would not
+  be clean. The engine must never gain a `shell/` import.
 
 ## cadexd protocol `cadex-cadexd-v1` `[Cadex-new — implemented, ADR-017]`
 
@@ -168,9 +192,16 @@ protocol error.
 
 Shell-side resolution order: explicit preference → `MESH_FREECADCMD` →
 bundled manifest → `PATH`. Install locations:
-`Blender.app/Contents/Resources/cadex` on macOS, `<install>/cadex`
-elsewhere. The shell pins a version and a per-platform SHA256
-(`build_files/cadex_engine.txt`) and refuses to stage an unpinned payload.
+`Cadex.app/Contents/Resources/cadex` on macOS, `<install>/cadex` in a
+portable install, `<install>/<version>/cadex` in a system install.
+
+The payload is **built in this repository** by `pixi run stage-engine` and
+installed by the shell's own CMake (ADR-030). There is no download and no
+digest pin: both existed to guard a payload crossing a repository boundary,
+and there is no such crossing. What survives is the part that was never
+about transport — one bundle, discovery by manifest, and a payload gate that
+runs the lifecycle test against the *packaged* tree, because a source tree
+that passes proves nothing about a payload.
 
 Non-GUI Qt (Core, Xml, Concurrent, Network) is unavoidable — FreeCAD's App
 layer links it and `FreeCADCmd` inherits that. Qt **GUI**, PySide and Coin
@@ -195,9 +226,20 @@ way. *(Historical: the gate passed, and the Qt shell no longer exists.)*
 
 ### Gate status (2026-07-25, closed with Phase 6 — ALL CRITERIA MET)
 
+**Re-confirmed after the merge (ADR-030).** The same gate, against
+`Cadex.app` built entirely from this repository, with `MESH_FREECADCMD`,
+`MESH_CADEXD_MODULE` and `MESH_CADEX_ENGINE` all unset: `ok: true`,
+`engine_from_bundle: true`, picking 372/372 (fidelity 1.0), slider-drag
+median **0.576 s**, restore performed and digest-matched, cancellation
+answered, 127 main-thread ticks during a 1.59 s rebuild. The pre-merge
+baseline measured on the same machine in the same session was 0.629 s, so
+nothing regressed; the spread between 0.548, 0.572, 0.576 and 0.629 across
+runs is machine load, not change, and a comparison should be made against a
+number measured the same day.
+
 Phase 6 (ADR-019) supplied the shell halves in the real Blender shell
-(`/Users/theo/mesh`, `tests/python/bl_mesh_agent_cadex.py`, headless
-Blender 5.3.0-alpha against release cadexd):
+(then `/Users/theo/mesh`, now `shell/tests/python/bl_mesh_agent_cadex.py`,
+headless Blender 5.3.0-alpha against release cadexd):
 
 1. **Tessellation & picking fidelity — PASSED.** ID maps land as
    `cadex_face` INT face attributes, byte-identical to the sidecar

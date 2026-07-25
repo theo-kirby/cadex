@@ -1,6 +1,6 @@
 # IDEAS.md — Parking Lot
 
-Verified against source: 2026-07-24 (paths only; the ideas are uncommitted)
+Verified against source: 2026-07-25 (paths only; the ideas are uncommitted)
 
 Uncommitted ideas surfaced during exploration. Nothing here is planned or
 approved — promoting an idea means writing a `docs/DECISIONS.md` entry and a
@@ -13,7 +13,7 @@ roadmap item. Add freely, prune ruthlessly.
   geometry-nodes UI is right there in the shell.
 
 - **RNA-like reflection for params.** Blender's DNA/RNA
-  (`/Users/theo/mesh/source/blender/makesrna/`) generates UI, animation, and
+  (`shell/source/blender/makesrna/`) generates UI, animation, and
   Python access from one property definition. Cadex params could get the
   same treatment: one declaration in the script drives slider, protocol
   schema, and inspection output. (Today: `mesh_model.params()` on the shell

@@ -2,10 +2,11 @@
 
 Verified against source: 2026-07-25
 
-Cadex is a FreeCAD fork. This is the ledger of what we keep, what is slated
-for removal, and what is already gone. The change policy for inherited code
-is in `CLAUDE.md`; removals execute in Phase 1 (`docs/ROADMAP.md`) and are
-logged in `docs/DECISIONS.md`.
+Cadex's **engine** is a FreeCAD fork. This is the ledger of what we keep,
+what is slated for removal, and what is already gone. Its peer for the shell
+half is `docs/BLENDER-TREE.md`, in the same format and under the same rules.
+The change policy for inherited code is in `CLAUDE.md`; removals execute
+under the two-commit protocol in §3 and are logged in `docs/DECISIONS.md`.
 
 Everything in this file is `[FreeCAD-inherited]` unless noted.
 

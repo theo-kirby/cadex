@@ -1,17 +1,20 @@
-# The Engine Payload
+# Packaging — One Bundle
 
 Verified against source: 2026-07-25
 
-**This repository does not package an application.** Since Phase 7
-(ADR-020/023) it packages an *engine payload*: a relocatable directory that
-the Blender shell carries inside its own bundle and finds by manifest. The
-user installs Mesh; the engine comes with it.
+**One repository builds one application** (ADR-030). `pixi run app` produces
+the bundle, and the *engine payload* — a relocatable directory the shell
+carries inside that bundle and finds by manifest — is now an intermediate
+artifact of the same build rather than a release the shell downloads.
 
-The Qt app packaging — `.app`/DMG, AppImage, `.deb`, the portable 7z and the
-NSIS installer, together with `cadex-macos.yml` and
-`cadex-windows-installer.yml` — was deleted with the application it packaged
-(ADR-021/023). `cadex-release.yml` became `cadex-engine.yml`, with the same
-triggers.
+Two rounds of deletion got here. The Qt app packaging (`.app`/DMG, AppImage,
+`.deb`, the portable 7z, the NSIS installer, `cadex-macos.yml`,
+`cadex-windows-installer.yml`) went with the application it packaged
+(ADR-021/023). The payload's *distribution* machinery — release-tag
+publication here, SHA256 pinning and fetching in the shell — went with the
+repository boundary it existed to cross (ADR-030). What is left is the part
+that was always about the product: one bundle, discovery by manifest, and a
+gate that runs against the packaged tree.
 
 ## What ships
 
@@ -60,8 +63,7 @@ verification. **Not shippable** — the build prefix survives — but enough to
 run the gate.
 
 Full relocation requires a rattler-built conda package, where the engine's
-own files are package-managed; that path lives in
-`.github/workflows/cadex-engine.yml`.
+own files are package-managed — see "Staged, or relocated" below.
 
 ## What is deliberately in the payload
 
@@ -102,30 +104,49 @@ launcher smoke did) would have shipped it.
 
 Rule of thumb: **a source tree that passes proves nothing about a payload.**
 
-## Releasing
+## Staged, or relocated
 
-`.github/workflows/cadex-engine.yml` runs on a nightly schedule, on manual
-dispatch, and on tags matching `v*` or `cadex-*`:
+`package/engine/build_engine_payload.sh` has two modes and the difference is
+not a quality setting.
 
-```bash
-git tag cadex-2026.07.25
-git push origin cadex-2026.07.25
-```
+- **Relocated** (`pixi run stage-engine-release`, the default path of the
+  script) rewrites Mach-O load commands and Python metadata using conda's
+  package manifests. It only works when the engine's own files are
+  package-managed — i.e. inside a rattler build. Against a `cmake
+  --install`ed development environment it fails outright with *"the
+  package-managed environment is incomplete"*. This is what a release ships.
+- **Staged** (`pixi run stage-engine`, `CADEX_ENGINE_STAGE_ONLY=1`) copies
+  the environment without relocating. The build prefix stays baked into load
+  commands, so the result is correct **on the machine that built it and
+  nowhere else**. That is exactly what `pixi run app` needs and exactly what
+  a release must not contain.
 
-It builds the payload per platform, runs the gate, and publishes tarballs
-plus `.sha256` files. The digests are the point: the mesh repository pins a
-version and a per-platform SHA256 and verifies on fetch.
+`pixi run app` uses the staged path deliberately: a developer bundle that
+runs here is the goal, and the honest alternative — requiring a rattler
+build before you can launch the app you just edited — is not a build loop
+anyone would use.
 
-## Shell side
+## Building and releasing
 
-The mesh repository pins the engine in `build_files/cadex_engine.txt`,
-verifies on fetch, refuses an unpinned platform, and installs under
-`WITH_CADEX_ENGINE`. See `docs/mesh/CADEX_ENGINE.md` there.
+`.github/workflows/cadex-app.yml` runs on a nightly schedule, on manual
+dispatch, on `main`, and on tags matching `v*` or `cadex-*`. Its `app` job
+builds the engine, stages the payload, gates it through
+`test_cadexd_lifecycle` against the *packaged* tree, builds the shell with
+the payload installed, checks that `cadex-engine.json` really is inside the
+bundle, and runs the agent suites and `CADEX-BLENDER-GATE` out of it with
+every `MESH_*` variable unset. The artifact is the application.
+
+The `engine` job builds and gates the engine on Linux. We do not build a
+Linux shell yet; keeping that job is a decision, not an oversight.
 
 ## Open
 
 - **macOS notarization of the embedded engine.** Hardened runtime plus
   per-binary entitlements: `freecadcmd` spawns subprocesses and dlopens
   OCCT. Not yet exercised end to end.
-- **Linux and Windows.** The payload builds for both; only macOS arm64 has
-  shell CI (`mesh-build.yml` in the mesh repo).
+- **Linux and Windows.** The payload builds for both; only macOS arm64
+  builds a shell bundle, in CI or anywhere else.
+- **A relocated payload has never been built on this machine.** The
+  relocating path needs a rattler build, so every payload verified during
+  the merge (ADR-030) was a staged one. The relocation code is unchanged and
+  untested by that work.

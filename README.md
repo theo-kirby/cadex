@@ -6,82 +6,102 @@
 
 **Cadex is an AI-native CAD application.** You describe the part; the AI
 authors a declarative **xscript** Python program; the program runs in a
-sandboxed headless worker and only validated geometry reaches your document.
-The script is the model — parameters surface as sliders you can drag without
-the AI in the loop, and the document is rebuildable from the script.
+sandboxed headless worker, and only validated geometry reaches your model.
+The script *is* the model — parameters surface as sliders you can drag
+without the AI in the loop, and the model is rebuildable from the script at
+any time.
 
-Cadex is a FreeCAD fork distilled to a single engine and four capability
-areas: **Part, Part Design, Sketcher, Assembly** (a minimal mesh area is
-planned). There are no modeling toolbars and no workbench concept to learn —
-chat, sliders, model tree, script.
+There are no modeling toolbars and no workbench concept to learn. Chat,
+sliders, model tree, script, viewport.
 
-> **Status:** under active development, pre-release. The current Qt shell is
-> interim; the long-term shell is a Blender fork fed by a headless geometry
-> service. See `docs/VISION.md` and `docs/ROADMAP.md`.
-
-![Cadex workspace showing a turbocharger assembly and the AI assistant](docs/images/cadex-workspace.png)
+> **Status:** under active development, pre-release.
 
 ## Build and run
 
-Requires [pixi](https://pixi.sh). From the repo root:
+Requires [pixi](https://pixi.sh), plus a host toolchain for the shell — on
+macOS that is the Xcode command line tools and `brew install cmake ninja
+git-lfs`.
 
 ```bash
-pixi run initialize        # git submodules (first time)
-pixi run configure         # CMake configure (debug; use configure-release for release)
-pixi run build             # build (debug) — or: pixi run build-release
-pixi run freecad           # launch (debug) — or: pixi run freecad-release
+git clone <this repo> && cd cadex
+pixi run setup      # check out the shell's prebuilt libraries (~1.3 GB)
+pixi run app        # build the engine, the payload and the shell, then launch
 ```
 
-Artifacts land in `build/<config>/bin/`: `FreeCAD` (the app), `FreeCADCmd`
-(headless — also the xscript worker host), `CadexGeometryWorker`.
+The first build compiles two large C++ projects and takes hours. After that
+it is incremental. `pixi run app` re-runs each step, so it is also the
+everyday "build what changed and launch it" command.
 
-Tests:
+If you want the steps separately:
 
 ```bash
-pixi run test                                            # ctest suite
-pixi run python -m pytest src/Mod/cadex/cadex_tests      # cadex engine tests (headless, FreeCAD stubbed)
+pixi run build-engine   # the headless engine (BUILD_GUI=OFF)
+pixi run stage-engine   # -> build/engine/cadex-engine-<version>-<os>-<arch>/
+pixi run build-shell    # the shell, with that engine installed into the bundle
+pixi run gate           # the product gate against the built bundle
 ```
 
-## Set up an AI provider
+## How it fits together
 
-You need an API key (Anthropic or OpenAI), a ChatGPT subscription (via the
-bundled Codex runtime), or an OpenAI-compatible endpoint (xAI, Ollama, other
-local servers).
+Two halves in one repository, separated by a process boundary:
 
-Open **Preferences → Cadex**, choose a provider, then either:
+- **the engine** (repo root, a FreeCAD fork) — `cadexd`, a per-project
+  headless service speaking newline-delimited JSON over stdio. It runs
+  xscript programs in sandboxed workers, produces BREP, and streams
+  tessellation with face and edge ID maps back.
+- **the shell** (`shell/`, a Blender fork) — the application. It carries
+  the engine inside its own bundle and finds it by reading a
+  `cadex-engine.json` manifest, so a built application needs no
+  configuration at all.
 
-- **OS keyring (recommended):** paste the key, **Save Key**, **Validate**; or
-- **A `.env` file** you select explicitly (`ANTHROPIC_API_KEY=` /
-  `OPENAI_API_KEY=`); Cadex never searches for `.env` files.
+The protocol between them is pinned by tests on both the request and the
+response side (`docs/INTEGRATION.md`), which is what keeps either half
+replaceable.
 
-Then **Fetch models**, pick a model and a supported reasoning effort, and
-**Apply**. Key resolution order: process environment variable → selected
-`.env` file → OS keyring (an exported shell variable overrides the others).
-For xAI/Ollama, select the OpenAI provider and set the base URL
-(`https://api.x.ai/v1` / `http://localhost:11434/v1`).
+The AI is the Claude Code CLI, driven from inside the shell. There is no
+API-key configuration.
 
 ## Use it
 
-1. Create or open a document and **save it** (the assistant needs a durable
-   project home; conversations and program source live with the project).
-2. Describe the part — dimensions, interfaces, material, constraints. Attach
+1. Create or open a file and **save it** — the assistant needs a durable
+   project home; conversations and the model script live with the project.
+2. Describe the part: dimensions, interfaces, material, constraints. Attach
    reference images or the current view if useful.
-3. **Send.** While a turn runs, the input becomes **Steer**; **Stop** ends
-   the run after the current step.
+3. **Send.** Click a face in the viewport to pin it; pins attach to your
+   next message as ground truth for which face you mean.
 4. Drag parameter sliders to explore the design space — sliders re-run the
-   program directly, no AI turn.
+   script through the engine directly, with no AI turn.
+
+## Tests
+
+```bash
+pixi run python -m pytest src/Mod/cadex/cadex_tests   # engine suite, no build needed
+pixi run test-release                                 # ctest (diff against
+                                                      # build/ctest_baseline_failures.txt)
+pixi run gate                                         # CADEX-BLENDER-GATE, the product gate
+```
 
 ## Documentation
 
 Start with [`CLAUDE.md`](CLAUDE.md) (repo map, commands, change policy) and
 the doc set under [`docs/`](docs/):
 [VISION](docs/VISION.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) ·
-[XSCRIPT](docs/XSCRIPT.md) · [FREECAD](docs/FREECAD.md) ·
-[BLENDER](docs/BLENDER.md) · [INTEGRATION](docs/INTEGRATION.md) ·
+[XSCRIPT](docs/XSCRIPT.md) · [INTEGRATION](docs/INTEGRATION.md) ·
+[BLENDER](docs/BLENDER.md) ·
+[FREECAD](docs/FREECAD.md) · [BLENDER-TREE](docs/BLENDER-TREE.md) ·
 [ROADMAP](docs/ROADMAP.md) · [DECISIONS](docs/DECISIONS.md).
-Release packaging: [docs/cadex-release-packaging.md](docs/cadex-release-packaging.md).
+Packaging: [docs/cadex-release-packaging.md](docs/cadex-release-packaging.md).
 
 ## Credits
 
-- The CadexLight and CadexDark themes are based on [OpenTheme by Obelisk79](https://github.com/obelisk79/OpenTheme).
-- Cadex is built on the work of the [FreeCAD project](https://github.com/FreeCAD/FreeCAD) and the wider [FreeCAD community](https://forum.freecad.org/), whose CAD engine made this project possible.
+Cadex is a derivative work of two projects, and keeps importing from
+neither's release stream — we delete from these trees rather than track them.
+
+- The geometry kernel is [OCCT](https://dev.opencascade.org/) (LGPL-2.1),
+  reached through a fork of the [FreeCAD
+  project](https://github.com/FreeCAD/FreeCAD) and built on the work of the
+  wider [FreeCAD community](https://forum.freecad.org/).
+- The application shell is a fork of
+  [Blender](https://projects.blender.org/blender/blender) (GPL-2.0+).
+- The CadexLight and CadexDark themes are based on [OpenTheme by
+  Obelisk79](https://github.com/obelisk79/OpenTheme).

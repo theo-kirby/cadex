@@ -12,9 +12,10 @@ Provenance tags: `[FreeCAD-inherited]` upstream FreeCAD code we build on;
 
 ## 1. The one-paragraph picture
 
-Cadex is a FreeCAD fork stripped to a single AI-native modeling engine, and
-since Phase 7 that is **all** it is: this repository builds `FreeCADCmd`
-and `CadexGeometryWorker` and no application (ADR-021/022). The engine runs
+Cadex is one application built from two forks in **one repository**
+(ADR-030). The **engine** is a FreeCAD fork at the repo root, stripped to a
+single AI-native modeling engine and building `FreeCADCmd` and
+`CadexGeometryWorker` and no application of its own (ADR-021/022). It runs
 as **cadexd** — a persistent headless `FreeCADCmd` service, one child per
 open project, speaking `cadex-cadexd-v1` NDJSON over stdio (ADR-017/018).
 cadexd owns the script store, executes **ONE declarative xscript project
@@ -24,16 +25,23 @@ part, mesh, assembly** — in one pass, validates the result, and publishes
 it into its own *ephemeral* `App::Document` (lint, contract GC, output
 identity) with an accepted content digest. Every `open_project` re-runs the
 accepted script and asserts digest equality, so restart determinism is
-proven on every open rather than once per audit. The **shell is the Blender
-fork** (`/Users/theo/mesh`): it is a protocol client that hydrates the
-tessellated results into its scene, and it carries this engine inside its
-own bundle as a payload it finds by manifest (`docs/INTEGRATION.md`,
-ADR-023).
+proven on every open rather than once per audit. The **shell is a Blender
+fork under `shell/`**: a protocol client that hydrates the tessellated
+results into its scene, and the thing a user actually launches. It carries
+the engine inside its own bundle as a payload it finds by manifest
+(`docs/INTEGRATION.md`, ADR-023) — a payload now built two directories away
+rather than downloaded (ADR-030).
+
+The boundary between them is a **process boundary, not a repository
+boundary**, and it did not move when the repositories merged. Nothing links
+across it; nothing shares memory; the only thing that crosses is the
+protocol. That is what keeps either half replaceable (ROADMAP Phases 11 and
+12) and it is what the tests pin.
 
 ## 2. The xscript pipeline `[Cadex-new]`
 
 ```
- Blender shell (mesh repo)              cadexd child (per project)
+ shell/  (the application)              cadexd child (per project)
  ────────────────────────────           ─────────────────────────────────────────────
  chat / sliders / picking               cadexd.py → CadexScriptedRuntime
  mesh_agent/cadex_backend.py  ══NDJSON══▶ (serial dispatch; persist source, spawn ONE
@@ -43,14 +51,17 @@ ADR-023).
   face/edge ID maps into the scene)
 ```
 
-The whole left-hand column lives in the **other repository**. What crosses
-the boundary is the protocol in `docs/INTEGRATION.md` and nothing else: no
-shared code, no shared process, no shared licence obligation.
+The whole left-hand column lives under `shell/scripts/addons_core/`. What
+crosses the boundary is the protocol in `docs/INTEGRATION.md` and nothing
+else: no shared code, no shared process, no shared licence obligation. Being
+in one repository does not relax that — the left column may not `import`
+anything from `src/`, and `cadexd_client.py` is deliberately a plain GPL
+NDJSON client with no cadex imports.
 
 - **cadexd** (`src/Mod/cadex/cadexd.py`, protocol
   `src/Mod/cadex/CadexdProtocol.py`): one `FreeCADCmd` child per open
   project (no `--safe-mode` — trusted engine code), spawned/owned by the
-  shell (the Blender add-on's `cadexd_client.py`, in the mesh repo);
+  shell (the Blender add-on's `cadexd_client.py`, under `shell/`);
   `pixi run cadexd` for a standalone instance. Serial dispatch, `CADEXD_BUSY` refusal for a second
   modeling request, mid-run `cancel`, stdin-EOF lifetime, fd-1 hijack so
   only protocol frames reach the parent. Hosts the persistent ephemeral
@@ -137,13 +148,13 @@ Ownership closure, lint, and orphan queries live in
 
 ### The shell
 
-There is no shell in this repository. `CadexGui`, `CadexSession`,
+There is no shell under `src/`. `CadexGui`, `CadexSession`,
 `CadexProvider`, `CadexCore`, `CadexAuth`, `CadexCodex`, `CadexPreferences`,
 `CadexTransactions`, `CadexEditState`, `CadexGrid`, `CadexParametersPanel`,
 `CadexScriptView`, the `tool_impl` package, `CadexdClient` and
 `CadexShellHydration` were all deleted in Phase 7 (ADR-021). The shell is
-`scripts/addons_core/mesh_agent/` in the mesh repository, and it speaks the
-protocol in `docs/INTEGRATION.md`.
+`shell/scripts/addons_core/mesh_agent/`, and it speaks the protocol in
+`docs/INTEGRATION.md` — a different process, not a different import path.
 
 `test_engine_purity_guardrails.py` keeps it that way: nothing under
 `src/Mod/cadex/**` may import `PySide*`, `FreeCADGui`, `tool_impl` or
@@ -187,7 +198,8 @@ macOS). Layout:
 
 **cadexd is the sole writer and the sole reader.** The shell never touches
 the store: it asks the engine (`inspect`), which is why the store's layout
-is not part of the two-repository contract.
+is not part of the contract in `docs/INTEGRATION.md` — and why it must not
+become one now that both halves are in one tree.
 
 In practice the root is chosen by the shell, not by `$CADEX_HOME`: the
 Blender shell passes `<blend-dir>/<stem>.cadex` as `project_root`, so a
@@ -256,19 +268,49 @@ What the engine stands on (details and the removal ledger in
 
 ## 5. Build & run
 
-- Toolchain: pixi + CMake, OCCT, Qt6 (non-GUI: Core/Xml/Concurrent/Network).
-  Tasks in `pixi.toml`: `configure`/`build`/`test` (debug default, GUI on),
-  the `*-release` variants (**GUI off**, ADR-022), `rebuild` (headless
-  digest check), and `cadexd` (standalone engine service on stdio).
-- Artifacts, release: `build/release/bin/FreeCADCmd` and
+`pixi run setup && pixi run app` builds everything and launches it. What
+that runs, and why it is not one CMake project:
+
+**Two toolchains, deliberately isolated.** The engine builds inside the
+pixi/conda-forge environment — OCCT 7.8.1, Qt6, conda compilers, a conda
+sysroot. The shell builds against `shell/lib/<platform>`, Blender's own
+prebuilt library set, with Xcode and a homebrew `cmake`/`ninja`. The two
+overlap on names: zlib, libpng, OpenSSL, Python all exist in both, at
+different versions. Put `.pixi/envs/default/bin` on `PATH` during a shell
+configure and CMake silently resolves the conda ones, which fails at link
+time or, worse, produces a binary that misbehaves at runtime.
+
+`package/app/build_app.sh` is what keeps them apart. It filters the pixi and
+conda entries out of `PATH` and unsets the ~50 variables conda activation
+exports (`CONDA_PREFIX`, `CMAKE_PREFIX_PATH`, `CFLAGS`, `SDKROOT`, `CC`,
+`PKG_CONFIG_PATH`, …) before invoking `cmake` on `shell/`. That is why
+`pixi run build-shell` shells out to a script instead of being a
+`cmd = ["cmake", ...]` task: pixi would otherwise hand cmake the exact
+environment being removed. *Verified by construction:* the resulting
+`shell/build_darwin/CMakeCache.txt` is identical to a configure run from the
+old standalone shell repository apart from the source path — zero references
+to `.pixi`, Python resolved out of `shell/lib/macos_arm64`, compilers
+`/usr/bin/cc` and `/usr/bin/c++`.
+
+The steps:
+
+| Task | Builds | With |
+|---|---|---|
+| `pixi run setup` | — | `git submodule update` for `shell/lib/<platform>` (1.3 GB, git-lfs) |
+| `pixi run build-engine` | `build/release/bin/{FreeCADCmd,CadexGeometryWorker}` | pixi env, `BUILD_GUI=OFF` |
+| `pixi run stage-engine` | `build/engine/cadex-engine-<v>-<os>-<arch>/` + its manifest | pixi env |
+| `pixi run build-shell` | `shell/build_darwin/bin/Cadex.app`, engine inside it | **scrubbed** env, `shell/lib` |
+
+- Artifacts, engine: `build/release/bin/FreeCADCmd` and
   `build/release/bin/CadexGeometryWorker`. **There is no `FreeCAD` binary
   in a release build** — that is the point of Phase 7. Debug builds still
   produce one, as an engineering convenience only.
 - Run the engine's own tests with `pixi run python -m pytest
   src/Mod/cadex/cadex_tests` (no build needed; FreeCAD is stubbed).
   `pixi run python src/Mod/cadex/cadex_tests/cadexd_latency_integration.py`
-  is the slider-drag latency bar, driven over raw NDJSON.
-- Packaging: `docs/cadex-release-packaging.md` — the engine payload.
+  is the slider-drag latency bar, driven over raw NDJSON. `pixi run gate`
+  is the product gate against the built bundle.
+- Packaging: `docs/cadex-release-packaging.md` — one bundle.
 
 ## 6. Open questions
 

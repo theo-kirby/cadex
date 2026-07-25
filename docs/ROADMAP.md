@@ -6,12 +6,22 @@ Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
 `docs/INTEGRATION.md`.
 
-Phases 0–7 built the engine/shell split on two forks. Phases 8–13 replace
-both forks with one application we own, keeping OCCT (ADR-025).
+Phases 0–7 built the engine/shell split on two forks. Phases 8–13 reduce
+both forks toward one application we own, keeping OCCT (ADR-025).
+
+**Phase 13a came early (ADR-030).** Merging the repositories never depended
+on owning the engine or the shell — it was a repo-layout and
+build-orchestration job, and doing it first is what turns "clone, build,
+run" into one flow. Its consequence is that **11 and 12 are no longer on
+anyone's critical path**: they become optional internal swaps behind the
+unchanged protocol, unscheduled and unblocked, while 13b — deleting from
+both inherited trees, in place — is the work that actually pays down size
+and coupling. They are not cancelled; the test-pinned protocol is precisely
+what keeps them available.
 
 Dependencies: 0 → 1 → 2 strict; 3 and 4 run in parallel after 2; 5 needs 2;
-6 needs 4 + 5; 7 needs 6. Then 8 and 9 are independent; **10 gates 11**;
-12 needs 11; 13 needs 12.
+6 needs 4 + 5; 7 needs 6. Then 8, 9 and **13a** are independent; **10 gates
+11**; 12 needs 11; 13b needs 13a and otherwise runs forever.
 
 ```
 0 truth ─► 1 shrink ─► 2 one-script ─┬─► 3 Qt UX (capped)
@@ -20,12 +30,14 @@ Dependencies: 0 → 1 → 2 strict; 3 and 4 run in parallel after 2; 5 needs 2;
                                                                                     │
    ┌────────────────────────────────────────────────────────────────────────────────┘
    ├─► 8 delete src/Gui
-   └─► 9 one surface ─► 10 probe + characterize ═► 11 our engine ─► 12 our shell ─► 13 one project
-                                    (go/no-go)
+   ├─► 13a MERGE (done) ─► 13b source reduction, ongoing ──────────────┐
+   └─► 9 one surface ─► 10 probe + characterize ═► 11 our engine ─► 12 our shell
+                                    (go/no-go)      └── unscheduled, behind the unchanged protocol ──┘
 ```
 
-**Every resting place is shippable.** A stall after 11 leaves a working
-product on the Blender shell; that ordering is the point (ADR-025).
+**Every resting place is shippable.** A stall anywhere after 13a leaves a
+working, buildable, launchable product; that ordering is the point
+(ADR-025, ADR-030).
 
 ---
 
@@ -260,15 +272,21 @@ depends on. Independent of Phase 8.
 
 - [x] **ADR-025** — the direction change: one project, OCCT kept, FreeCAD
       and Blender dropped.
-- [ ] **Delete the local bpy modes** (mesh repo): `cad_api.py` (431),
-      `validation.py` (183), `scene_graph.py` (47), most of `model_api.py`,
-      `modes.py`'s CAD overlay, the local branches of `tools.py` /
-      `model.py`, and `tests/python/bl_mesh_agent_cad.py` (472). Collapse
-      `modes.py`; drop the mode dropdown. This is where nearly all the deep
-      Blender coupling lives (BOOLEAN/BEVEL modifiers, depsgraph, BVHTree,
-      `orphans_purge`), so it is also the largest single decoupling win.
+- [x] **Delete the local bpy modes**: `cad_api.py` (431), `validation.py`
+      (183), `scene_graph.py` (47), most of `model_api.py`, `modes.py`'s CAD
+      overlay, the local branches of `tools.py` / `model.py`, and
+      `tests/python/bl_mesh_agent_cad.py` (472). `modes.py` collapsed; mode
+      dropdown dropped. *Landed 2026-07-25 with the merge (ADR-030): net
+      −1,953 lines, and with them the BOOLEAN/BEVEL modifiers, depsgraph,
+      BVHTree and `orphans_purge` coupling — the largest single decoupling
+      win available on the shell side. Four tests in `bl_mesh_agent.py` that
+      drove the deleted path went too.*
 - [ ] **Delete the app template** (294 lines) that exists purely to suppress
-      Blender's UI.
+      Blender's UI. *Not done with ADR-030, deliberately: it is still what
+      suppresses the UI, and a fresh profile already starts in it (ADR-024),
+      so it is already the startup configuration rather than something a user
+      selects. It retires when a startup config replaces it, as its own
+      commit.*
 - [x] **Delete the dead publication paths** in
       `CadexScriptedDomainPublication.py` — the robot / FEM / inspection /
       points branches no live domain can reach. *Landed 2026-07-25
@@ -279,8 +297,11 @@ depends on. Independent of Phase 8.
       independently" true rather than assumed. *Engine side landed
       2026-07-25 (ADR-027); wiring the validator into the live lifecycle
       found three shapes the recording missed.*
-- [ ] **Assert the same fixtures from the shell side** (mesh repo) — the
-      other half of "asserted in both repos".
+- [ ] **Assert the same fixtures from the shell side**
+      (`shell/tests/python/`) — the other half of "asserted at both ends".
+      More valuable since ADR-030, not less: one repository removed the
+      distance that used to enforce the boundary, so the tests are now the
+      only thing that does.
 - [x] **Pin the OCCT version and gate subshape enumeration.** BOPAlgo's
       ordering is not a documented contract and has changed across OCCT
       releases; today one `pixi update` silently re-indexes every saved
@@ -364,10 +385,16 @@ topology-change boundaries live.
 > archaeology before a line of the new engine exists. That number — not the
 > size of the binding — decides whether Phase 11 starts.
 
-## Phase 11 — The engine becomes ours
+## Phase 11 — The engine becomes ours `(unscheduled since ADR-030)`
 
 **Goal:** direct-OCCT workers behind the **unchanged** protocol, one domain
 at a time. Each domain ships on its own; the shell never notices.
+
+**Not cancelled, and not scheduled.** Phase 13a removed the reason to hurry:
+the product builds and ships from one repository on the inherited engine, so
+this is now an internal swap taken when the 10c gate says the economics
+work, not a milestone anything waits on. Everything below stands; only the
+deadline pressure is gone.
 
 - [ ] **11a — Binding + oracle.** A pybind11 module over the ~120 OCCT
       symbols actually used. The differential oracle is built from
@@ -421,10 +448,17 @@ Only the publication residue is left over at the end.
 differential harness green per domain; `CADEX-BLENDER-GATE` still ok on the
 unchanged protocol.
 
-## Phase 12 — The shell becomes ours
+## Phase 12 — The shell becomes ours `(unscheduled since ADR-030)`
 
 **Goal:** Rust + wgpu + egui against the now-ours engine, over the
 **unchanged** protocol.
+
+Same status as Phase 11, and the same reasoning. Note one thing the merge
+*did* change here: the exit criterion used to end "then delete
+`/Users/theo/mesh`". The Blender shell is now `shell/` in this repository,
+so finishing this phase means deleting `shell/` — a much larger and more
+visible act than dropping a sibling checkout, and correspondingly one that
+needs the gate ported first, not promised.
 
 Beyond the obvious (mesh upload with a face-ID channel, camera navigation,
 chat / sliders / transcript, Claude Code subprocess + MCP bridge, protocol
@@ -458,16 +492,59 @@ client), the items that are secretly expensive:
       diverge; it dies here.
 
 **Exit criteria:** `CADEX-BLENDER-GATE` ported — fidelity ≥ 0.99, median
-≤ 0.65 s. Then delete `/Users/theo/mesh`.
+≤ 0.65 s. Then delete `shell/`.
 
-## Phase 13 — One project
+## Phase 13a — One repository `(landed 2026-07-25, ADR-030)`
 
-**Goal:** merge the two repositories, delete the FreeCAD tree, one build,
-one installer, one name.
+**Goal:** clone, build, run — one flow.
 
-- [ ] Merge; delete the inherited FreeCAD source tree.
-- [ ] One build, one installer, one name; NOTICE file carries the vendored
-      LGPL attributions (ADR-025).
+Pulled to the front. It needed neither Phase 11 nor Phase 12: the seam
+between the two repositories was already a process boundary (NDJSON, pinned
+on requests *and* responses), so this was a repo-layout and
+build-orchestration job, not an architecture one.
+
+- [x] The shell imported under `shell/` as a squashed snapshot of
+      `/Users/theo/mesh` @ `ac5af55948d`. `lib/*` stay submodules; the
+      FreeCAD tree stays at the root, so no CMake path, pixi task, test or
+      doc reference moved. `/Users/theo/mesh` kept as a read-only archive.
+- [x] One build: `pixi run setup && pixi run app`, via `setup` /
+      `build-engine` / `stage-engine` / `build-shell`. The shell configures
+      in a **scrubbed environment** (`package/app/build_app.sh`) — the one
+      real technical risk in the merge, since conda on `PATH` resolves the
+      wrong zlib/png/OpenSSL/Python. Verified by construction: the shell's
+      `CMakeCache.txt` is identical to a pre-merge one apart from the source
+      path.
+- [x] The cross-repo payload machinery deleted: `fetch_cadex_engine.py`,
+      `cadex_engine.txt`, and `mesh-build.yml` + `cadex-engine.yml` folded
+      into one in-tree `cadex-app.yml`.
+- [x] One application identity: `Cadex.app`, product name and bundle id.
+- [x] Docs reconciled: `docs/INTEGRATION.md` is the *process* contract,
+      `docs/BLENDER-TREE.md` is the shell's inherited-tree ledger,
+      `README.md` is clone-and-build.
+
+**Exit criteria.** A fresh clone plus `pixi run setup && pixi run app`
+produces a launchable application, and `CADEX-BLENDER-GATE` reports
+`ok:true` with `engine_from_bundle: true`, picking ≥ 0.99, slider median
+≤ 0.65 s, and no `MESH_*` set. **Met 2026-07-25** — see ADR-030 for the
+numbers.
+
+## Phase 13b — The source reduction `(ongoing)`
+
+**Goal:** what the merge exists to enable. Both inherited trees shrink in
+place, under the two-commit protocol (`docs/FREECAD.md` §3), one tree per
+pair of commits, each independently verifiable against the same gates.
+
+Not a phase that "completes" — a standing mode of work.
+
+- [ ] Shell side (`docs/BLENDER-TREE.md` §4), where the disable commit is
+      nearly free because these are already CMake options: `WITH_CYCLES`
+      (`shell/intern/cycles`), the VSE, grease pencil, the compositor,
+      `shell/locale/` (80 MB), most of `shell/tests/files/` (784 MB), the
+      unused `shell/release/datafiles`.
+- [ ] Engine side: Phase 8 (`src/Gui`, 66 MB) and Phase 9's warm-standby
+      worker are unchanged and still pending.
+- [ ] One installer, one name; NOTICE file carries the vendored LGPL
+      attributions (ADR-025).
 - [ ] Delete `/Users/theo/vibecad` — the dead predecessor of cadex. Not
       blocked by anything; do it any time.
 
@@ -478,13 +555,16 @@ Every phase keeps the existing gates green and adds one.
 ```bash
 # unchanged throughout
 pixi run python -m pytest src/Mod/cadex/cadex_tests
-bash package/engine/build_engine_payload.sh && \
-  CADEX_ENGINE_ROOT=<payload> pixi run python -m pytest -q \
+pixi run stage-engine && \
+  CADEX_ENGINE_ROOT=build/engine/cadex-engine-<v>-<os>-<arch> \
+  pixi run python -m pytest -q \
   src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py
 
-# through Phase 11, still the product gate
-<blender> --background --factory-startup --python tests/python/bl_mesh_agent_cadex.py
-#   -> CADEX-BLENDER-GATE {"ok":true, picking>=0.99, median<=0.65}
+# new in Phase 13a — the whole thing, from one place
+pixi run setup && pixi run app       # builds engine + payload + shell, launches
+pixi run gate                        # CADEX-BLENDER-GATE against the built bundle
+#   -> {"ok":true, "engine_from_bundle":true, picking>=0.99, median<=0.65}
+#   and no MESH_FREECADCMD / MESH_CADEXD_MODULE / MESH_CADEX_ENGINE set
 
 # new in Phase 9  (also ctest CadexResponseSchemas / CadexSubshapeEnumeration)
 pytest src/Mod/cadex/cadex_tests/test_response_schemas.py      # golden per-op response shapes
