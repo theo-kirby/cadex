@@ -1,0 +1,199 @@
+name: Cadex
+
+# One repository, one build (ADR-030).
+#
+# This replaces two workflows that existed only because the product was split
+# across two repositories: `cadex-engine.yml` here, which built an engine
+# payload and published it as a digest-pinned release tarball, and
+# `mesh-build.yml` there, which downloaded that tarball, verified its SHA256
+# and installed it into a bundle. There is no repository boundary for the
+# payload to cross any more, so the download, the digest pin and the release
+# publication are all gone -- the shell job builds the engine it ships.
+#
+# What the `app` job proves, in order: the engine builds and its unit suite
+# passes; the payload stages and answers the protocol when discovered through
+# its own manifest; the shell builds against that payload; and the agent
+# suites pass headless out of the installed bundle with **no MESH_*
+# environment variable set**, which is the zero-configuration criterion.
+#
+# The `engine` job keeps Linux honest. We do not build a Linux shell yet
+# (ROADMAP, "Later"), but the engine is meant to build there, and losing that
+# coverage along with the release job it used to feed would be an accident
+# rather than a decision.
+
+on:
+  schedule:
+    # 08:00 UTC is 03:00 CDT / 02:00 CST.
+    - cron: "0 8 * * 0,3"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags:
+      - "v*"
+      - "cadex-*"
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cadex-${{ github.event_name == 'schedule' && 'nightly' || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
+jobs:
+  app:
+    name: Application (macOS arm64)
+    runs-on: macos-14
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          run-install: false
+
+      - name: Cache pixi environment
+        uses: actions/cache@v4
+        with:
+          path: .pixi
+          key: >-
+            pixi-${{ runner.os }}-${{ hashFiles(
+              'pixi.lock',
+              'pixi.toml',
+              'package/engine/build_engine_payload.sh') }}
+
+      # 1.3 GB of prebuilt libraries, and the single slowest step on a cold
+      # runner. Keyed on the recorded gitlink so a library bump busts it.
+      - name: Cache the shell libraries
+        uses: actions/cache@v4
+        with:
+          path: shell/lib/macos_arm64
+          key: >-
+            shell-lib-macos-arm64-${{ hashFiles('.gitmodules') }}-${{
+              hashFiles('.git/modules/shell/lib/macos_arm64/HEAD') }}
+
+      - name: Install the shell's host toolchain
+        # Deliberately homebrew, deliberately not the pixi env: the shell is
+        # built with the conda environment scrubbed off PATH. See
+        # package/app/build_app.sh.
+        run: brew install cmake ninja git-lfs
+
+      - name: Set up
+        run: pixi run setup
+
+      - name: Build the engine
+        run: pixi run build-engine
+
+      - name: Engine unit suite
+        run: pixi run python -m pytest src/Mod/cadex/cadex_tests
+
+      - name: Stage the engine payload
+        run: pixi run stage-engine
+
+      - name: Gate -- the packaged engine answers the protocol
+        # The same cadexd lifecycle test the source tree runs, driven against
+        # the staged payload and discovered through its cadex-engine.json
+        # manifest exactly as the shell discovers it. A source tree that
+        # passes proves nothing about a payload (ADR-023).
+        run: |
+          payload="$(ls -d build/engine/cadex-engine-*/ | head -1)"
+          CADEX_ENGINE_ROOT="$(cd "${payload}" && pwd)" \
+            pixi run python -m pytest -q \
+            src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py
+
+      - name: Build the shell
+        run: pixi run build-shell
+
+      - name: Gate -- the bundle carries the engine
+        run: |
+          app="$(bash package/app/build_app.sh path)"
+          resources="$(dirname "$(dirname "${app}")")/Resources"
+          test -f "${resources}/cadex/cadex-engine.json" \
+            || { echo "FAIL: no engine inside the bundle"; exit 1; }
+          cat "${resources}/cadex/cadex-engine.json"
+
+      - name: Agent suites
+        run: |
+          app="$(bash package/app/build_app.sh path)"
+          cd shell
+          for suite in bl_mesh_agent bl_mesh_modifiers; do
+            "${app}" --background --factory-startup \
+              --python "tests/python/${suite}.py"
+          done
+
+      # The criterion. No MESH_FREECADCMD, no MESH_CADEXD_MODULE, no
+      # MESH_CADEX_ENGINE: the add-on must find the engine inside the bundle
+      # by reading its manifest, or this fails.
+      - name: Gate -- CADEX-BLENDER-GATE with zero configuration
+        env:
+          MESH_FREECADCMD: ""
+          MESH_CADEXD_MODULE: ""
+          MESH_CADEX_ENGINE: ""
+        run: |
+          app="$(bash package/app/build_app.sh path)"
+          cd shell
+          "${app}" --background --factory-startup \
+            --python tests/python/bl_mesh_agent_cadex.py | tee ../gate.txt
+          grep -q '"ok": true' ../gate.txt
+          grep -q '"engine_from_bundle": true' ../gate.txt
+
+      - name: Bundle
+        run: |
+          app="$(bash package/app/build_app.sh path)"
+          bundle="$(dirname "$(dirname "$(dirname "${app}")")")"
+          tar -C "$(dirname "${bundle}")" -czf cadex-macos-arm64.tar.gz \
+            "$(basename "${bundle}")"
+          shasum -a 256 cadex-macos-arm64.tar.gz | tee cadex-macos-arm64.tar.gz.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cadex-macos-arm64
+          path: |
+            cadex-macos-arm64.tar.gz
+            cadex-macos-arm64.tar.gz.sha256
+            gate.txt
+          if-no-files-found: error
+
+  engine:
+    name: Engine only (Linux x64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          run-install: false
+
+      - name: Cache pixi environment
+        uses: actions/cache@v4
+        with:
+          path: .pixi
+          key: >-
+            pixi-${{ runner.os }}-${{ hashFiles(
+              'pixi.lock',
+              'pixi.toml',
+              'package/engine/build_engine_payload.sh') }}
+
+      - name: Build the engine
+        run: pixi run build-engine
+
+      - name: Engine unit suite
+        run: pixi run python -m pytest src/Mod/cadex/cadex_tests
+
+      - name: Stage the engine payload
+        run: pixi run stage-engine
+
+      - name: Gate -- the packaged engine answers the protocol
+        run: |
+          payload="$(ls -d build/engine/cadex-engine-*/ | head -1)"
+          CADEX_ENGINE_ROOT="$(cd "${payload}" && pwd)" \
+            pixi run python -m pytest -q \
+            src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py

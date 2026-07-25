@@ -227,16 +227,16 @@ installs to PYTHON_SITE_PACKAGES (or CMAKE_INSTALL_PREFIX if WITH_INSTALL_PORTAB
 )
 
 # ---------------------------------------------------------------------------
-# Cadex engine (cadex ADR-023)
+# Cadex engine (cadex ADR-023, ADR-030)
 #
-# Mesh ships the headless cadex CAD engine inside its own bundle so that
-# Cadex mode works with zero configuration. The payload is fetched and
-# SHA256-verified by build_files/utils/fetch_cadex_engine.py; the install
-# rules live in source/creator/CMakeLists.txt.
+# The shell ships the headless cadex CAD engine inside its own bundle so that
+# Cadex mode works with zero configuration. The payload is built in this same
+# repository by `pixi run stage-engine`; the install rules live in
+# source/creator/CMakeLists.txt.
 option(WITH_CADEX_ENGINE "\
-Bundle the pinned cadex engine payload into the installed application, so \
-Cadex mode needs no configuration. Requires the payload to have been staged \
-into CADEX_ENGINE_DIR first."
+Bundle the cadex engine payload into the installed application, so Cadex \
+mode needs no configuration. Requires the payload to have been staged into \
+CADEX_ENGINE_DIR first (pixi run stage-engine)."
   OFF
 )
 set(CADEX_ENGINE_DIR "${CMAKE_BINARY_DIR}/cadex_engine" CACHE PATH

@@ -482,17 +482,18 @@ if(WITH_PYTHON)
     PATTERN "addons_core/bl_pkg/example_extension" EXCLUDE
   )
 
-  # The cadex engine payload (cadex ADR-023). Mesh ships the headless CAD
-  # engine inside its own bundle so Cadex mode works with no configuration:
-  # the add-on finds it by reading cadex-engine.json relative to
-  # bpy.app.binary_path. Staged by build_files/utils/fetch_cadex_engine.py,
-  # which verifies the pinned SHA256 before anything reaches a bundle.
+  # The cadex engine payload (cadex ADR-023, ADR-030). The shell ships the
+  # headless CAD engine inside its own bundle so Cadex mode works with no
+  # configuration: the add-on finds it by reading cadex-engine.json relative
+  # to bpy.app.binary_path. Built in this repository by `pixi run
+  # stage-engine` -- there is no download and no digest to verify, because
+  # there is no longer a repository boundary for the payload to cross.
   if(WITH_CADEX_ENGINE)
     if(NOT EXISTS "${CADEX_ENGINE_DIR}/cadex-engine.json")
       message(FATAL_ERROR
         "WITH_CADEX_ENGINE is ON but ${CADEX_ENGINE_DIR} holds no "
-        "cadex-engine.json. Run:\n"
-        "  python build_files/utils/fetch_cadex_engine.py --stage ${CADEX_ENGINE_DIR}")
+        "cadex-engine.json. Run, from the repository root:\n"
+        "  pixi run stage-engine")
     endif()
     # Where the add-on's `bundle_roots()` probe looks, per layout: beside the
     # bundled resources on macOS, beside the executable in a portable install,
