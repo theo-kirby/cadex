@@ -26,9 +26,30 @@ import math
 import FreeCAD as App
 import Part
 
-from PySide import QtCore
-from PySide.QtCore import QT_TRANSLATE_NOOP
 from collections.abc import Sequence
+
+try:
+    from PySide import QtCore
+    from PySide.QtCore import QT_TRANSLATE_NOOP
+except ImportError:
+    # A headless engine build ships no Qt Python bindings (cadex ADR-022).
+    # The document-object classes in this module -- Joint, GroundedJoint,
+    # JointTypes -- are pure App-level features and must stay importable
+    # there; only the task-panel classes need real Qt, and nothing headless
+    # instantiates them.
+    class _QtCoreUnavailable:
+        QObject = object
+
+        def __getattr__(self, name):
+            raise RuntimeError(
+                "PySide is not available in this build; "
+                f"QtCore.{name} is GUI-only."
+            )
+
+    QtCore = _QtCoreUnavailable()
+
+    def QT_TRANSLATE_NOOP(_context, text):
+        return text
 
 if App.GuiUp:
     import FreeCADGui as Gui
@@ -38,11 +59,18 @@ __title__ = "Assembly Joint object"
 __author__ = "Ondsel"
 __url__ = "https://www.freecad.org"
 
-from pivy import coin
 import UtilsAssembly
-import Preferences
 
-from SoSwitchMarker import SoSwitchMarker
+try:
+    from pivy import coin
+    import Preferences
+    from SoSwitchMarker import SoSwitchMarker
+except ImportError:
+    # Coin scene graphs and the preferences page are view-provider concerns;
+    # see the QtCore fallback above.
+    coin = None
+    Preferences = None
+    SoSwitchMarker = None
 
 translate = App.Qt.translate
 

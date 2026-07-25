@@ -23,17 +23,48 @@ import time
 
 import pytest
 
-CADEX_ROOT = Path(__file__).resolve().parent.parent
 REPO_ROOT = Path(__file__).resolve().parents[4]
+
+
+def _packaged_engine():
+    """Resolve a packaged engine payload from ``CADEX_ENGINE_ROOT``.
+
+    Set by ctest ``CadexEnginePayloadSmoke`` (ADR-023) so this same test
+    runs against the *shipped* tree -- reading its manifest exactly as the
+    Blender shell does, which is strictly stronger than running it against
+    a build directory that happens to be laid out correctly.
+    """
+    root = os.environ.get("CADEX_ENGINE_ROOT", "").strip()
+    if not root:
+        return None, None
+    manifest_path = Path(root) / "cadex-engine.json"
+    if not manifest_path.is_file():
+        raise AssertionError(
+            f"CADEX_ENGINE_ROOT={root!r} has no cadex-engine.json; the "
+            "payload's manifest is its discovery contract (ADR-020)."
+        )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest.get("schema") == "cadex-engine-v1", manifest
+    assert manifest.get("protocol") == SCHEMA, manifest
+    base = manifest_path.parent
+    binary = base.joinpath(*str(manifest["freecadcmd"]).split("/"))
+    module_dir = base.joinpath(*str(manifest["module_dir"]).split("/"))
+    assert binary.is_file(), binary
+    assert module_dir.is_dir(), module_dir
+    return binary, module_dir
+
+
+SCHEMA = "cadex-cadexd-v1"
+
+_PACKAGED_BINARY, _PACKAGED_MODULE_DIR = _packaged_engine()
+CADEX_ROOT = _PACKAGED_MODULE_DIR or Path(__file__).resolve().parent.parent
 _FREECADCMD_CANDIDATES = (
     REPO_ROOT / ".pixi" / "envs" / "default" / "bin" / "FreeCADCmd",
     REPO_ROOT / "build" / "release" / "bin" / "FreeCADCmd",
 )
-FREECADCMD = next(
+FREECADCMD = _PACKAGED_BINARY or next(
     (candidate for candidate in _FREECADCMD_CANDIDATES if candidate.is_file()), None
 )
-
-SCHEMA = "cadex-cadexd-v1"
 
 MIXED_SCRIPT = """
 p = params(width=num(30, unit="mm", min=10, max=90, step=1))

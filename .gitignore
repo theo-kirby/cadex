@@ -76,3 +76,4 @@ tsupdate_stdout.log
 goals.md
 #explicitly ignore local env
 .env
+build/engine/

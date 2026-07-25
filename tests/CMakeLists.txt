@@ -157,3 +157,22 @@ add_test(
             ${CMAKE_SOURCE_DIR}/src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py
 )
 set_tests_properties(CadexdLifecycle PROPERTIES TIMEOUT 900)
+
+# Cadex Phase 7 packaging CI (docs/ROADMAP.md, ADR-023): build the engine
+# payload and drive the SAME cadexd lifecycle test against the packaged
+# tree, discovered through its cadex-engine.json manifest exactly as the
+# Blender shell discovers it. Strictly stronger than the launcher smoke it
+# replaces, which only ran `freecadcmd --version`.
+#
+# Opt-in: the payload takes minutes to relocate, so the test is only
+# registered when CADEX_ENGINE_ROOT names an already-built payload.
+if(DEFINED ENV{CADEX_ENGINE_ROOT})
+    add_test(
+        NAME CadexEnginePayloadSmoke
+        COMMAND ${Python3_EXECUTABLE} -m pytest -q
+                ${CMAKE_SOURCE_DIR}/src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py
+    )
+    set_tests_properties(CadexEnginePayloadSmoke PROPERTIES
+        TIMEOUT 900
+        ENVIRONMENT "CADEX_ENGINE_ROOT=$ENV{CADEX_ENGINE_ROOT}")
+endif()

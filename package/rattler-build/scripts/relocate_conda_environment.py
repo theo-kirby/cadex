@@ -12,8 +12,9 @@ from conda_pack.core import CondaEnv, File, Packer
 from conda_pack.formats import NoArchive
 
 
+# The engine payload has no GUI binary (cadex ADR-022): bin/freecad is not
+# produced by a BUILD_GUI=OFF build, so it cannot be required here.
 REQUIRED_FILES = {
-    "bin/freecad",
     "bin/freecadcmd",
     "bin/python",
     "Mod/cadex/Init.py",
