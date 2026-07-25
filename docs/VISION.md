@@ -9,14 +9,21 @@ in `docs/ARCHITECTURE.md`; the path from here to there is `docs/ROADMAP.md`.
 
 ## The product
 
-One ultimate agentic CAD app, combining:
+One ultimate agentic CAD app — **one application we own**, a derivative of
+but not dependent on either FreeCAD or Blender (ADR-025), combining:
 
-- **FreeCAD capability** — real parametric BREP modeling on OCCT (the cadex
-  engine, this repo);
-- **Blender UX** — the `/Users/theo/mesh` fork's look, feel, viewport, and
-  interaction quality (the shell endpoint, see `docs/INTEGRATION.md`);
+- **FreeCAD-class capability** — real parametric BREP modeling **on OCCT**.
+  OCCT is the kernel and it stays; FreeCAD is the application layer around
+  it, and that layer is being removed.
+- **Blender-class UX** — the look, feel, viewport and interaction quality of
+  the `/Users/theo/mesh` prototype, rebuilt as our own Rust + wgpu + egui
+  shell. Blender is the reference, not the host.
 - **The xscript methodology** — the AI authors a declarative Python program;
   the program is the model.
+
+Until the replacements land, both forks remain the working substrate: this
+repository is the engine and `/Users/theo/mesh` is the shell. The staging is
+in `docs/ROADMAP.md`; every resting place in it is shippable.
 
 ### Everything is driven by the script
 
@@ -40,7 +47,8 @@ One ultimate agentic CAD app, combining:
   script view.** That's the whole app. The UX north star is the working
   prototype in the mesh repo: `scripts/addons_core/mesh_agent/` plus the
   `Mesh` app template (50/50 split, chat input docked at the bottom right) —
-  detailed in `docs/BLENDER.md`.
+  detailed in `docs/BLENDER.md`. That prototype is the **specification** for
+  the Rust shell, not its permanent home (ADR-025).
 - **No user-accessible modeling tools.** No fillet button, no extrude button,
   no sketch editor toolbar. The user talks; the AI writes script; sliders
   tweak declared parameters without the AI in the loop.
@@ -63,17 +71,29 @@ Robot, Spreadsheet, …) is out of scope. Deleted in the VibeCAD teardown at
 the runtime level; the remaining source trees are slated for removal
 (`docs/FREECAD.md`).
 
+**Interchange is in scope and first-class.** A parametric CAD app that
+cannot emit STEP is not a product; STEP import/export is an engine
+deliverable (Phase 11), not a shell convenience (ADR-025).
+
 ## Non-goals
 
 - A general-purpose FreeCAD distribution or a FreeCAD-compatible fork.
 - Manual CAD workflows of any kind; feature parity with FreeCAD's UI.
 - Supporting all FreeCAD workbenches, file formats, or addons.
 - Multi-engine scripting (build123d, OpenSCAD — retired in the teardown).
-- A second shell of any kind. The Qt/Coin3D shell was interim and was
-  deleted in Phase 7 (ADR-021); this repository builds the engine, and the
-  interface is the Blender shell (`docs/INTEGRATION.md`).
+- **Two of anything in the finished product**: one shell, one engine, one
+  script format, one document, one model loop, one installer. The Qt/Coin3D
+  shell was interim and was deleted in Phase 7 (ADR-021). The Blender shell
+  is the working substrate until the Rust shell replaces it (ADR-025) — the
+  Rust shell is not a second shell, it is the first one we own, and the
+  Blender fork is deleted when it lands.
 - A second model loop. The AI runs as the Claude Code CLI inside the shell;
-  there is no API-key provider path in this repository (ADR-020).
+  there is no API-key provider path (ADR-020).
+- **Dependence on FreeCAD or Blender.** OCCT stays as the geometry kernel.
+  Vendored LGPL components (OCCT, planegcs, OndselSolver, `modelRefine`)
+  keep their attribution obligation in the NOTICE file; "references to
+  neither" applies to dependencies, API names and runtime, and never to
+  attribution (ADR-025).
 
 ## Guiding principles
 
@@ -100,8 +120,15 @@ the runtime level; the remaining source trees are slated for removal
   engineering harness after Phase 7~~ — answered 2026-07-25 (ADR-020/021):
   **retired outright**, together with the provider stack it served. This
   repository is the engine; it builds no application.
-- How far the local (mesh-native) modes and the one-project-script model
-  should converge. Cadex mode holds to "one project script is THE
-  user-visible artifact"; General and Part Design are a different surface
-  — direct BMesh authoring — that shares a chat panel. ADR-020 decision 5
-  records the tension deliberately rather than resolving it.
+- ~~How far the local (mesh-native) modes and the one-project-script model
+  should converge~~ — answered 2026-07-25 (ADR-025 decision 3): **the local
+  modes are deleted.** One script format, one source of truth; ADR-020
+  decision 5's knowing exception is resolved rather than carried.
+- ~~Whether parameter sliders count as "human edit controls"~~ — answered
+  2026-07-25 (ADR-025): **no.** Principle 5 has humans steer via chat *and*
+  sliders; sliders move declared parameters, they do not author geometry.
+- **The time shape of the FreeCAD replacement.** Not knowable before Phase
+  10's enumeration probe and characterization time-box. The binding is
+  weeks; the characterization corpus is the unknown that sets the scale.
+- macOS notarization of a Rust app bundling an OCCT engine that spawns
+  subprocesses (inherited open item, ADR-023).

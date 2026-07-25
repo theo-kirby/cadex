@@ -1,19 +1,31 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-07-24
+Verified against source: 2026-07-25
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
 `docs/INTEGRATION.md`.
 
+Phases 0–7 built the engine/shell split on two forks. Phases 8–13 replace
+both forks with one application we own, keeping OCCT (ADR-025).
+
 Dependencies: 0 → 1 → 2 strict; 3 and 4 run in parallel after 2; 5 needs 2;
-6 needs 4 + 5; 7 needs 6.
+6 needs 4 + 5; 7 needs 6. Then 8 and 9 are independent; **10 gates 11**;
+12 needs 11; 13 needs 12.
 
 ```
 0 truth ─► 1 shrink ─► 2 one-script ─┬─► 3 Qt UX (capped)
                                      ├─► 4 mesh domain ──┐  (gate: confirm
                                      └─► 5 cadexd split ─┴─► 6 Blender shell ─► 7 convergence
+                                                                                    │
+   ┌────────────────────────────────────────────────────────────────────────────────┘
+   ├─► 8 delete src/Gui
+   └─► 9 one surface ─► 10 probe + characterize ═► 11 our engine ─► 12 our shell ─► 13 one project
+                                    (go/no-go)
 ```
+
+**Every resting place is shippable.** A stall after 11 leaves a working
+product on the Blender shell; that ordering is the point (ADR-025).
 
 ---
 
@@ -226,6 +238,10 @@ this phase.
 
 - [ ] Dependency audit: `src/Gui` (66 MB, 729 files) plus every
       `src/Mod/*/Gui`, `tests/src/Gui`, and the `setup_qt_test` helper.
+- [ ] **`cadex_assembly_worker.py:2038` imports `CommandCreateView`** —
+      GUI-lineage code used headlessly for exploded views, and the one
+      import that makes this deletion more than mechanical. Resolve it
+      here, not in Phase 11 (ADR-025).
 - [ ] Delete, with the `BUILD_GUI` guards that Phase 7 added removed rather
       than left dangling.
 - [ ] `docs/FREECAD.md` §1 row moves from "present, not built" to deleted;
@@ -237,16 +253,233 @@ this phase.
 **Not in scope:** re-adding a GUI of any kind. The product's interface is
 the Blender shell.
 
+## Phase 9 — One surface, and make the contract real
+
+**Goal:** subtraction, plus three cheap items that everything downstream
+depends on. Independent of Phase 8.
+
+- [x] **ADR-025** — the direction change: one project, OCCT kept, FreeCAD
+      and Blender dropped.
+- [ ] **Delete the local bpy modes** (mesh repo): `cad_api.py` (431),
+      `validation.py` (183), `scene_graph.py` (47), most of `model_api.py`,
+      `modes.py`'s CAD overlay, the local branches of `tools.py` /
+      `model.py`, and `tests/python/bl_mesh_agent_cad.py` (472). Collapse
+      `modes.py`; drop the mode dropdown. This is where nearly all the deep
+      Blender coupling lives (BOOLEAN/BEVEL modifiers, depsgraph, BVHTree,
+      `orphans_purge`), so it is also the largest single decoupling win.
+- [ ] **Delete the app template** (294 lines) that exists purely to suppress
+      Blender's UI.
+- [ ] **Delete the dead publication paths** in
+      `CadexScriptedDomainPublication.py` — the robot / FEM / inspection /
+      points branches no live domain can reach.
+- [ ] **Response-schema fixtures.** `OP_ARG_SPECS` pins *requests* only; the
+      shell reads ~50 response keys that nothing asserts. A golden
+      shape-only fixture per op, asserted in both repos. This is what makes
+      "replace either side independently" true rather than assumed.
+- [ ] **Pin the OCCT version and gate subshape enumeration.** BOPAlgo's
+      ordering is not a documented contract and has changed across OCCT
+      releases; today one `pixi update` silently re-indexes every saved
+      script.
+- [ ] **Warm-standby worker.** The per-drag `FreeCADCmd --safe-mode` spawn
+      (~0.4–0.5 s) dominates the ~0.55 s slider median. The only
+      user-visible improvement available at any price this year: weeks of
+      work for ~5× on the only interactive number the product has.
+
+**Exit criteria:** one script format across the product; both new gates
+green; slider median materially below 0.548 s; `CADEX-BLENDER-GATE` still
+ok.
+
+## Phase 10 — Probe, then characterize `(the go/no-go gate)`
+
+**Goal:** find out, in month 1 rather than month 20, whether Phase 11 has a
+known shape — and what it costs.
+
+**10a — The enumeration probe (2 days, first).** One throwaway C++ binary
+against the OCCT we already link: build `box → cut(cylinder×4) → fillet`
+through raw `BRepPrimAPI` / `BRepAlgoAPI` / `BRepFilletAPI` in three
+variants (no refine, `ShapeUpgrade_UnifySameDomain`, vendored
+`BRepBuilderAPI_RefineModel`), dump `TopExp::MapShapes` order with per-face
+`BRepGProp` mass / COM / normal, and diff against today's engine's
+`face_details`.
+
+- *Vendored-refine variant matches ordinal-for-ordinal* → the contract is
+  reproducible, `modelRefine` is the only special case, Phase 11 has a known
+  shape.
+- *Nothing matches, or it drifts after the fillet* → the pin/index contract
+  must change before anything else and saved scripts are invalidated. That
+  reorders the whole roadmap, and finding it now is the entire value of the
+  probe.
+
+**10b — Kill index arguments.** Replace the five index-taking ops'
+(`subshape`, `defeature`, `fillet`, `chamfer`, `thicken`) `Sequence[int]`
+with the fingerprint-query vocabulary `resolve_pin` already speaks
+(`_query_subelements`). Add a stable per-face fingerprint key alongside each
+`face_ranges` span in the tessellation sidecar — one field, one consumer.
+**Worth doing on its own merits** even if the migration stops here: those
+indices break today on any parameter change that alters topology.
+
+**10c — Characterization corpus, time-boxed.** Record golden outputs from
+the *current* engine before it is touched. Three tiers: ~500 op
+characterizations generated mechanically from the API signatures (including
+failure envelopes — the agent reads `failure_code` / `observed` /
+`correction` and acts on them); ~50 composition scripts with deliberate
+index chains; parametric sweeps across declared ranges, which is where the
+topology-change boundaries live.
+
+> **Gate.** Characterize 10 of the deepest ops (`loft`, `sweep`, `thicken`,
+> `offset2d`, `slice`, `project`, `repair`, `defeature`, `general_fuse`,
+> `sew`) and **time it**. If 10 ops take a week, 94 take 2–3 months of
+> archaeology before a line of the new engine exists. That number — not the
+> size of the binding — decides whether Phase 11 starts.
+
+## Phase 11 — The engine becomes ours
+
+**Goal:** direct-OCCT workers behind the **unchanged** protocol, one domain
+at a time. Each domain ships on its own; the shell never notices.
+
+- [ ] **11a — Binding + oracle.** A pybind11 module over the ~120 OCCT
+      symbols actually used. The differential oracle is built from
+      `CadexGeometryWorker.cpp`'s BVH and includes a **two-sided Hausdorff
+      check** — the only thing that catches the compounding-index failure
+      mode, where counts, volume and COM all match while a face is in the
+      wrong place. Vendor `modelRefine.{h,cpp}` here as an explicit
+      deliverable. **Extract `_subshape_geometry` / `_query_subelements` out
+      of `cadex_partdesign_worker` into a kernel-neutral module**: pin
+      resolution currently lives inside the partdesign worker, so without
+      this every earlier domain is secretly still on FreeCAD for pins. Both
+      implementations run in-process in `FreeCADCmd`, so the harness is a
+      pytest fixture, not a pipeline.
+- [ ] **11b — `mesh` (6 ops).** The cheapest place to prove the process.
+      Swap to **manifold**; ADR-016's determinism workaround layers 1 and 3
+      become unnecessary. *Contract change to flag:* manifold requires
+      manifold input, and `mesh.import_file` accepts arbitrary user
+      STL/OBJ/PLY.
+- [ ] **11c — `part` (49 ops).** Proves the binding. Not "nearly all direct
+      OCCT": `removeSplitter` (default-on for every boolean), `slice`,
+      `offset2d` and the angular-deflection constant are FreeCAD-original —
+      ~2,200 lines to vendor or re-derive.
+- [ ] **11d — `sketcher` (12 ops, 32 constraint variants).** Vendor
+      planegcs; rewrite the translation layer. *The oracle is weaker here by
+      nature:* underconstrained sketches have no unique solution, and the
+      redundant/conflicting index sets come from an ordering-sensitive
+      rank-revealing QR. Compare DoF exactly, solver-code category, solved
+      geometry only for fully-constrained sketches, and set **cardinality**
+      rather than membership.
+- [ ] **11e — `partdesign` (19 ops).** Hard-depends on 11d
+      (`cadex_partdesign_api.py:311` instantiates `SketcherDomainAPI`; the
+      worker imports from `cadex_sketcher_worker`). ~6k lines of new
+      feature-history semantics plus a documentless execution model.
+- [ ] **11f — `assembly` (8 ops, 13 joints).** The largest. Vendor
+      OndselSolver; rewrite the 2,218-line bridge and ~4,900 lines of
+      FreeCAD Python whose joints are `App::FeaturePython` proxies driven by
+      the document's recompute graph. *Oracle:* compare **joint residuals**
+      and relative transforms, never absolute placements — with residual DoF
+      the solution is gauge-free.
+- [ ] **STEP import/export.** `file.export_model` / `file.import_model` are
+      named in `CadexModelingSurface.py` with no implementation and no
+      cadexd op; the only export today is `bpy.ops.wm.stl_export` of
+      *display tessellation*. First-class engine deliverable (ADR-025).
+
+There is no "11g". Removing `App::Document` is not a final phase — 11d, 11e
+and 11f each carry their own "invent a documentless execution model" clause.
+Only the publication residue is left over at the end.
+
+**Exit criteria:** no `import FreeCAD` anywhere under `src/Mod/cadex/`; the
+differential harness green per domain; `CADEX-BLENDER-GATE` still ok on the
+unchanged protocol.
+
+## Phase 12 — The shell becomes ours
+
+**Goal:** Rust + wgpu + egui against the now-ours engine, over the
+**unchanged** protocol.
+
+Beyond the obvious (mesh upload with a face-ID channel, camera navigation,
+chat / sliders / transcript, Claude Code subprocess + MCP bridge, protocol
+client), the items that are secretly expensive:
+
+- [ ] **Undo is a distributed subsystem, not a widget.** Today one
+      `bpy.ops.ed.undo_push` covers script, params, geometry and transcript.
+      In Rust, undoing a parameter change must push `set_params` back
+      through the engine's `expected_revision` guard without tripping
+      `STALE_PROGRAM_REVISION`.
+- [ ] **Headless mode, architected from day one.** The gate suite runs today
+      only because `blender --background --python` exists. Offscreen wgpu, a
+      scriptable driver and deterministic frame stepping must precede the
+      first widget; retrofitting this is painful.
+- [ ] **Parameter panel (~2–3k lines).** Unit-aware formatting,
+      drag-vs-commit feeding the draft/standard two-tier request,
+      persistence by id across script edits, and the debounce +
+      background-refine state machine.
+- [ ] **Picking via an ID-buffer pass, not a BVH raycast.** We already ship
+      a per-triangle face ID; render it to an `R32Uint` attachment and
+      picking is one texel read — exactly consistent with what is on screen
+      (a BVH is not, at silhouettes and thin faces), plus free hover
+      highlight, in ~50 lines.
+- [ ] Depth-biased wireframe (Blender's `display_type='WIRE'` child hides
+      z-fighting silently), streaming transcript text layout, file dialogs,
+      image pipeline + clipboard paste, preferences store, engine-crash UI.
+- [ ] **An MCP shim with no bundled Python** — point the MCP `command` at
+      our own binary with a `--mcp-server` flag (~150 lines).
+- [ ] **One document.** A directory or zip replacing `.blend` + `.cadex`
+      sidecar. `on_file_changed` exists solely to apologise when those two
+      diverge; it dies here.
+
+**Exit criteria:** `CADEX-BLENDER-GATE` ported — fidelity ≥ 0.99, median
+≤ 0.65 s. Then delete `/Users/theo/mesh`.
+
+## Phase 13 — One project
+
+**Goal:** merge the two repositories, delete the FreeCAD tree, one build,
+one installer, one name.
+
+- [ ] Merge; delete the inherited FreeCAD source tree.
+- [ ] One build, one installer, one name; NOTICE file carries the vendored
+      LGPL attributions (ADR-025).
+- [ ] Delete `/Users/theo/vibecad` — the dead predecessor of cadex. Not
+      blocked by anything; do it any time.
+
+## Verification
+
+Every phase keeps the existing gates green and adds one.
+
+```bash
+# unchanged throughout
+pixi run python -m pytest src/Mod/cadex/cadex_tests
+bash package/engine/build_engine_payload.sh && \
+  CADEX_ENGINE_ROOT=<payload> pixi run python -m pytest -q \
+  src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py
+
+# through Phase 11, still the product gate
+<blender> --background --factory-startup --python tests/python/bl_mesh_agent_cadex.py
+#   -> CADEX-BLENDER-GATE {"ok":true, picking>=0.99, median<=0.65}
+
+# new in Phase 9  (also ctest CadexResponseSchemas / CadexSubshapeEnumeration)
+pytest src/Mod/cadex/cadex_tests/test_response_schemas.py      # golden per-op response shapes
+pytest src/Mod/cadex/cadex_tests/test_subshape_enumeration.py  # OCCT ordering fingerprint
+
+# new in Phase 11 — the differential harness, both engines in one FreeCADCmd
+pytest src/Mod/cadex/cadex_tests/differential/ --domain=<mesh|part|sketcher|partdesign|assembly>
+#   volume (rel 1e-9) / area (rel 1e-6) / COM / bbox, counts, ordering,
+#   two-sided Hausdorff; tolerances reported, not asserted
+```
+
+## Risks
+
+| Risk | Mitigation |
+|---|---|
+| **Unverifiability** — 84% of the `part` surface has no recorded behaviour | Characterization corpus recorded *before* porting; the Phase 10c time-box is the go/no-go |
+| Subshape enumeration not reproducible | 2-day probe first; if it fails, the contract changes before anything else |
+| Index arguments silently build wrong geometry | Kill them in 10b — worth doing regardless of the migration |
+| Phase 11 grind with no "done" signal | Per-domain gates; each domain ships behind the unchanged protocol |
+| Response shape is unpinned | Golden fixtures in Phase 9 |
+| Assembly is the biggest single item | Scheduled last; oracle on joint residuals, not placements |
+| OCCT version drift re-indexes saved scripts | Pin the version; gate the enumeration |
+| Stall midway | Order chosen so every resting place is shippable: engine done + Blender shell is a product |
+
 ## Later — identified, not scheduled
 
-- **Warm-standby worker.** The per-drag `FreeCADCmd --safe-mode` spawn
-  (~0.4–0.5 s) dominates the ~0.55 s slider median. A warm worker inside
-  cadexd is the named lever for sub-100 ms drags.
 - **A1: `display` on `open_project`.** Would fold the restore pass and the
   hydration rebuild into one script run; measured cost of not having it is
   0.49 s per project open.
 - **Linux and Windows shell bundles.** The engine payload builds for both;
-  only macOS arm64 has shell CI.
-- **macOS notarization of the embedded engine.** Hardened runtime and
-  per-binary entitlements for a `freecadcmd` that spawns subprocesses and
-  dlopens OCCT.
+  only macOS arm64 has shell CI. Moot once Phase 12 lands — revisit then.

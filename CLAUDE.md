@@ -3,19 +3,29 @@
 Verified against source: 2026-07-25. This file replaces the retired
 `AGENTS.md` (see `docs/DECISIONS.md` ADR-005).
 
-Cadex is an AI-native CAD app. **This repository is the engine, and only
-the engine** (Phase 7, ADR-020/021): the AI authors declarative **xscript**
-Python programs, and `cadexd` — a per-project headless service, NDJSON over
-stdio — runs them in sandboxed `FreeCADCmd` workers that produce detached
-BREP, publishes into its own ephemeral document, and streams tessellation
-back. Five domains: partdesign, sketcher, part, mesh, assembly.
+Cadex is an AI-native CAD app. **Today this repository is the engine, and
+only the engine** (Phase 7, ADR-020/021): the AI authors declarative
+**xscript** Python programs, and `cadexd` — a per-project headless service,
+NDJSON over stdio — runs them in sandboxed `FreeCADCmd` workers that produce
+detached BREP, publishes into its own ephemeral document, and streams
+tessellation back. Five domains: partdesign, sketcher, part, mesh, assembly.
 
-**The shell is elsewhere.** The product UI is the Blender fork at
+**The shell is elsewhere, for now.** The product UI is the Blender fork at
 `/Users/theo/mesh` (`scripts/addons_core/mesh_agent/`), which talks to this
 engine over the protocol in `docs/INTEGRATION.md` and ships it inside its
 own bundle. There is no Qt shell here, no provider stack, and no API-key
 model loop — the AI runs as the Claude Code CLI inside the shell. A release
 build produces `FreeCADCmd` and `CadexGeometryWorker` and no application.
+
+**Where this is going (ADR-025).** The product becomes **one application we
+own** — a derivative of but not dependent on either FreeCAD or Blender.
+**OCCT stays** as the geometry kernel; FreeCAD's application layer is
+replaced by our own pybind11 binding (Phase 11, engine stays Python), and
+the Blender shell by our own Rust + wgpu + egui shell (Phase 12), both
+behind the *unchanged* cadexd protocol. Phase 10 is a go/no-go gate, not a
+formality. Until those land, both forks are the working substrate and the
+rules below apply unchanged — **do not start writing the replacement in
+this tree ahead of its phase.**
 
 Read `docs/VISION.md` before designing anything.
 

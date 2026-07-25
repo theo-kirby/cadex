@@ -1059,3 +1059,122 @@ listed here, kept minimal, and justified".
 that had been relying on `GENERAL` being it. They now state which path they
 exercise instead of inheriting a default. Tests that depend on an unstated
 default are exactly what a default change should find.
+
+## ADR-025 — One project: OCCT kept, FreeCAD and Blender dropped (2026-07-25, owner)
+
+**Decision.** Cadex becomes **one application** — a derivative of, but not
+dependent on, either FreeCAD or Blender. Parametric BREP parts and
+assemblies, mixing parametrics and meshes over time, in a body that acts and
+feels like Blender, entirely agentic and script-driven, with no human edit
+controls. Four owner decisions settle the shape:
+
+1. **Keep OCCT, drop FreeCAD.** OCCT is the geometry kernel; FreeCAD is the
+   application layer around it, and that layer is what we have spent seven
+   phases removing. What remains of it — `App::Document`, the recompute
+   graph, the property system, `Part::TopoShape` — is the part we still pay
+   for and no longer want.
+2. **The shell is Rust + wgpu + egui.**
+3. **The local bpy modes (GENERAL, PART_DESIGN) are deleted**, resolving
+   ADR-020 decision 5's knowing exception in favour of one script format.
+4. **The engine stays Python**, calling OCCT through our own pybind11
+   binding rather than through FreeCAD's.
+
+**What this reverses.** ADR-002 (Blender as the product shell) and ADR-020
+(the Blender shell *is* the product) — the shell becomes ours. ADR-023 (the
+engine ships inside the shell bundle) — there is one bundle because there is
+one application, not because one hosts the other. ADR-001 survives in
+substance and not in mechanism: xscript remains the single scripted modeling
+engine, but the substrate under it stops being FreeCAD. `docs/VISION.md`'s
+non-goals lose "a second shell of any kind" — the Rust shell is not a second
+shell, it is the first one we own.
+
+**What we actually own** (measured against source, not estimated).
+**5,840 lines of domain API** (`cadex_{part,sketcher,partdesign,mesh,assembly,project}_api.py`)
+define the xscript vocabulary — 94 user-facing ops — and import FreeCAD zero
+times; 17 of 34 engine modules are already FreeCAD-free. The protocol
+(`CadexdProtocol.py`, 187 lines, zero FreeCAD imports) is a real process
+boundary. **Pins resolve by geometric fingerprint, not `TopoDS` name** — the
+most kernel-portable decision in the codebase. In the shell, `backend.py`,
+`bridge.py`, `mcp_shim.py` and `cadexd_client.py` carry zero `bpy`.
+`CadexGeometryWorker.cpp` (1,031 lines) is pure-OCCT, FreeCAD-free, and
+currently has no caller; its `TriangleBvh` + `meshDistance` + `BRepGProp` +
+`BRepCheck` is roughly 80% of the differential oracle Phase 11 needs. It is
+the **oracle seed, not the binding seed**: 20 OCCT headers, zero
+construction API.
+
+**What must be rebuilt or vendored.** planegcs (13,311 lines, LGPL-2.1+)
+vendored, with the 5,772-line `Sketch.cpp` translation rewritten for the 32
+exposed constraint variants. OndselSolver (41,385 lines, LGPL-2.1) vendored,
+with its 2,218-line bridge and ~4,900 lines of FreeCAD Python rewritten.
+`modelRefine.cpp` (1,491 lines, two strippable FreeCAD headers) vendored
+as-is. PartDesign feature semantics for the 19 exposed ops (~6k lines) is
+genuinely new code. The mesh kernel and decimator — FreeCAD-native and
+non-deterministic, per ADR-016 — are replaced by **manifold** (MIT).
+
+**Licensing.** Dropping Blender *removes* a GPL obligation; that is a
+simplification, not a cost. Vendored LGPL code (OCCT, planegcs,
+OndselSolver, `modelRefine`) carries an attribution obligation that cannot
+be erased by rewriting around it. "References to neither" is achievable for
+dependencies, API names and runtime; it is **not** achievable for the NOTICE
+file, and we do not pretend otherwise.
+
+**Rationale for the order: engine first, not shell first.** The plan was
+shell-first. Auditing, rather than reasoning, reversed it on three counts.
+
+*Subshape enumeration is a model input, not a display contract.* Five ops —
+`subshape`, `defeature`, `fillet`, `chamfer`, `thicken` — take 1-based
+`TopExp::MapShapes` ordinals as **script arguments**, saved in
+agent-authored programs. An enumeration shift does not break a pin the way a
+missing pin breaks: it silently builds *different geometry* that passes
+`isValid()`, then shifts every downstream index, and compounds with no
+alarm. This is a latent bug **today**, independent of any migration — those
+indices break on any parameter change that alters topology, which is the
+entire point of parametric CAD.
+
+*The real risk is unverifiability, not difficulty.* 41 of 49 `part` ops, 32
+constraint variants, 13 joint types and 19 PartDesign features have no
+recorded expected behaviour anywhere; a spot check of 15 ops (`loft`,
+`sweep`, `thicken`, `slice`, `project`, `repair`, `sew`, `general_fuse`,
+`helix`, …) found zero test hits across both repositories. The content
+digest is defined not to match across kernels for BREP — **and not for mesh
+either**: `mesh_sha256` is triangulation-invariant but not
+kernel-invariant, and manifold's boolean vertices are neither bit-identical
+to FreeCAD's nor equal in count. So Phase 11's failure mode is not a wall,
+it is a grind with no "done" signal. The counter is **characterization
+testing recorded from the current engine before it is touched**.
+
+*Shell-first has no measurable payoff and the worst stall state.* The
+0.548 s slider median is dominated by the per-drag `FreeCADCmd --safe-mode`
+spawn; a new shell inherits that cost and cannot beat it. Picking is already
+372/372. A stall after a shell-first phase leaves us maintaining a new Rust
+application *and* a 500k-line FreeCAD fork taking no upstream merges, having
+deleted the shell we got for free. A stall after the engine phase leaves a
+shippable product on a working Blender shell.
+
+**Consequences.** `docs/ROADMAP.md` gains Phases 9–13 and Phase 8 gains one
+item (`cadex_assembly_worker.py` imports `CommandCreateView` — GUI-lineage
+code used headlessly; that dependency is verified during the `src/Gui`
+deletion, not in Phase 11). Phase 10 is a **go/no-go gate**, not a
+formality: a two-day enumeration probe, then a time-boxed characterization
+of ten of the deepest ops. If ten ops take a week, ninety-four take two to
+three months of archaeology before a line of the new engine exists — and
+that number, not the size of the binding, decides whether Phase 11 starts.
+Two new gates land in Phase 9 (`test_response_schemas.py`, and an OCCT
+enumeration fingerprint) because everything downstream assumes contracts
+that are currently assumed rather than asserted.
+
+**STEP import/export is promoted to a first-class engine deliverable.**
+`file.export_model` / `file.import_model` are named in
+`CadexModelingSurface.py` with no implementation and no cadexd op; the only
+export today is `bpy.ops.wm.stl_export` of *display tessellation*. A
+parametric CAD application that cannot emit STEP is not a product. It is
+scheduled in Phase 11, not left to the shell.
+
+**Open.** The honest time shape is not knowable before Phase 10's probe and
+time-box; the binding is weeks, the characterization is the unknown that
+sets the scale. Whether parameter sliders count as "human edit controls" is
+resolved in favour of *no* — `docs/VISION.md` principle 5 has humans steer
+via chat **and** sliders. macOS notarization of a Rust application bundling
+an OCCT engine that spawns subprocesses remains unexercised (inherited open
+item from ADR-023).
+
