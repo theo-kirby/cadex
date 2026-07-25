@@ -89,10 +89,24 @@ class _Point:
 
 
 class _Face:
-    def __init__(self, points, triangles, orientation="Forward") -> None:
+    """A face stub carrying what the sidecar's fingerprint key reads.
+
+    ``Area``/``CenterOfMass`` are not decoration: since Phase 10b
+    ``tessellate_shape`` fingerprints every face, so a stub without them is
+    not a face.
+    """
+
+    def __init__(self, points, triangles, orientation="Forward", *, area=0.5) -> None:
         self._points = points
         self._triangles = triangles
         self.Orientation = orientation
+        self.Area = area
+        count = max(len(points), 1)
+        self.CenterOfMass = _Point(
+            sum(point.x for point in points) / count,
+            sum(point.y for point in points) / count,
+            sum(point.z for point in points) / count,
+        )
 
     def tessellate(self, _deflection):
         return list(self._points), list(self._triangles)
@@ -141,6 +155,10 @@ def test_tessellate_shape_builds_global_arrays_and_ranges() -> None:
     assert result["face_ranges"] == [[0, 1], [1, 1]]
     assert result["edge_polylines"] == [[0, 2]]
     assert len(result["edge_vertices"]) == 6
+    # One fingerprint key per span, describing the face rather than its slot.
+    assert len(result["face_keys"]) == len(result["face_ranges"])
+    assert result["face_keys"][0].startswith("face|")
+    assert "area_mm2=0.500" in result["face_keys"][0]
 
 
 def test_tessellate_shape_flips_reversed_face_winding() -> None:
@@ -173,6 +191,7 @@ def test_write_display_artifact_layout_roundtrip(tmp_path: Path) -> None:
         "vertices": [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
         "triangles": [0, 1, 2],
         "face_ranges": [[0, 1]],
+        "face_keys": ["face|Plane|0.333,0.333,0.000|area_mm2=0.500"],
         "edge_vertices": [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
         "edge_polylines": [[0, 2]],
     }
@@ -197,6 +216,7 @@ def test_write_display_artifact_layout_roundtrip(tmp_path: Path) -> None:
     edges = struct.unpack_from("<6f", binary, layout["edge_vertices"]["offset"])
     assert edges == (0.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     assert sidecar["face_ranges"] == [[0, 1]]
+    assert sidecar["face_keys"] == ["face|Plane|0.333,0.333,0.000|area_mm2=0.500"]
     assert sidecar["edge_polylines"] == [[0, 2]]
     assert sidecar["counts"] == {
         "vertices": 3,

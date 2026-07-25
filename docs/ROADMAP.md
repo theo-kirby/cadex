@@ -324,13 +324,31 @@ and the pin/index contract stands. Three things the probe turned up:
 - `modelRefine.{h,cpp}` vendors cheaply — raw OCCT plus two stub headers, no
   other FreeCAD dependency. Probe output is deterministic across runs.
 
-**10b — Kill index arguments.** Replace the five index-taking ops'
-(`subshape`, `defeature`, `fillet`, `chamfer`, `thicken`) `Sequence[int]`
-with the fingerprint-query vocabulary `resolve_pin` already speaks
-(`_query_subelements`). Add a stable per-face fingerprint key alongside each
-`face_ranges` span in the tessellation sidecar — one field, one consumer.
-**Worth doing on its own merits** even if the migration stops here: those
-indices break today on any parameter change that alters topology.
+**10b — Kill index arguments.** `[x] Landed 2026-07-25 — ADR-029.` The five
+index-taking ops (`subshape`, `defeature`, `fillet`, `chamfer`, `thicken`)
+take a geometric selector; the `Sequence[int]` form is deleted. The
+tessellation sidecar gained `face_keys`, one fingerprint per `face_ranges`
+span. Worth doing on its own merits, as expected — those indices broke on
+any parameter change that altered topology.
+
+Three things the work turned up:
+
+- The vocabulary had to be **extracted first, and there was no choice**:
+  `cadex_partdesign_worker` imports `cadex_part_worker`, so the part domain
+  could not reach `_query_subelements` without a cycle. That is why the ops
+  still took integers. Phase 11a's extraction item is therefore **done** —
+  `CadexSubshapeQuery.py` — and `resolve_pin` no longer pulls the partdesign
+  feature stack into cadexd to fingerprint one face.
+- **Cylindrical faces carried no `radius_mm`**, so "the four 3 mm holes"
+  matched nothing while looking reasonable. Fixed; the ADR-027 golden was
+  regenerated only after proving the change field-additive.
+- **The payload gate did not notice a missing module.** `CMakeLists.txt` is
+  hand-maintained and the new module was absent from the shipped payload
+  while every source-tree gate stayed green. Now pinned by
+  `test_every_engine_module_is_installed_by_cmake`.
+
+Still open for the shell (mesh repo): nothing yet *writes* a selector into a
+script from a click, so click → durable argument is half built.
 
 **10c — Characterization corpus, time-boxed.** Record golden outputs from
 the *current* engine before it is touched. Three tiers: ~500 op
@@ -357,12 +375,13 @@ at a time. Each domain ships on its own; the shell never notices.
       check** — the only thing that catches the compounding-index failure
       mode, where counts, volume and COM all match while a face is in the
       wrong place. Vendor `modelRefine.{h,cpp}` here as an explicit
-      deliverable. **Extract `_subshape_geometry` / `_query_subelements` out
-      of `cadex_partdesign_worker` into a kernel-neutral module**: pin
-      resolution currently lives inside the partdesign worker, so without
-      this every earlier domain is secretly still on FreeCAD for pins. Both
-      implementations run in-process in `FreeCADCmd`, so the harness is a
-      pytest fixture, not a pipeline.
+      deliverable — ADR-028 confirmed it is load-bearing, not housekeeping,
+      and that the oracle must include a **refine-firing shape** or it will
+      not detect a wrong refine. ~~Extract `_subshape_geometry` /
+      `_query_subelements` out of `cadex_partdesign_worker`~~ — **done in
+      Phase 10b** (`CadexSubshapeQuery.py`, ADR-029); 10b could not proceed
+      without it. Both implementations run in-process in `FreeCADCmd`, so
+      the harness is a pytest fixture, not a pipeline.
 - [ ] **11b — `mesh` (6 ops).** The cheapest place to prove the process.
       Swap to **manifold**; ADR-016's determinism workaround layers 1 and 3
       become unnecessary. *Contract change to flag:* manifold requires
@@ -471,6 +490,11 @@ bash package/engine/build_engine_payload.sh && \
 pytest src/Mod/cadex/cadex_tests/test_response_schemas.py      # golden per-op response shapes
 pytest src/Mod/cadex/cadex_tests/test_subshape_enumeration.py  # OCCT ordering fingerprint
 
+# new in Phase 10b
+pytest src/Mod/cadex/cadex_tests/test_subshape_selectors.py    # selectors resolve, indices rejected
+#   the real-kernel case also runs against a payload:
+#   CADEX_ENGINE_ROOT=<payload> pytest .../test_subshape_selectors.py
+
 # new in Phase 11 — the differential harness, both engines in one FreeCADCmd
 pytest src/Mod/cadex/cadex_tests/differential/ --domain=<mesh|part|sketcher|partdesign|assembly>
 #   volume (rel 1e-9) / area (rel 1e-6) / COM / bbox, counts, ordering,
@@ -484,7 +508,7 @@ pytest src/Mod/cadex/cadex_tests/differential/ --domain=<mesh|part|sketcher|part
 | **Unverifiability** — 84% of the `part` surface has no recorded behaviour | Characterization corpus recorded *before* porting; the Phase 10c time-box is the go/no-go |
 | Subshape enumeration not reproducible | **Retired 2026-07-25 (ADR-028)** — the probe ran; raw OCCT reproduces it ordinal-for-ordinal with `modelRefine` vendored |
 | A *substituted* refine silently re-indexes every saved script | ADR-028: `UnifySameDomain` matches counts but not order. Vendor `modelRefine`; the Phase 11 oracle must include a refine-firing shape |
-| Index arguments silently build wrong geometry | Kill them in 10b — worth doing regardless of the migration |
+| Index arguments silently build wrong geometry | **Retired 2026-07-25 (ADR-029)** — the five ops take geometric selectors; the index form is deleted |
 | Phase 11 grind with no "done" signal | Per-domain gates; each domain ships behind the unchanged protocol |
 | Response shape is unpinned | Golden fixtures in Phase 9 |
 | Assembly is the biggest single item | Scheduled last; oracle on joint residuals, not placements |

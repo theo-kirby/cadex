@@ -126,8 +126,9 @@ Ownership closure, lint, and orphan queries live in
 | `CadexDigest.py` | Document-side diagnostic digest (`cadex-document-digest-v1`). `[Cadex-new]` |
 | `cadexd.py` | The headless engine service: per-project `FreeCADCmd` child, serial dispatch, ephemeral document, restore pass, cancel (`pixi run cadexd`, ADR-017). `[Cadex-new]` |
 | `CadexdProtocol.py` | `cadex-cadexd-v1` NDJSON codec, op registry + arg schemas, **response schemas** (`OP_RESPONSE_SPECS`, `NESTED_RESPONSE_SPECS`, the tool-level and server-level failure envelopes, `validate_response`), server failure codes; pure Python, zero FreeCAD imports. `[Cadex-new]` |
-| `cadex_tessellation.py` | Phase 5.1 display tessellation: adaptive deflection, per-face triangle ranges + per-edge polylines (`cadex-tessellation-v1` buffer + sidecar), digest-neutral. Staged into the worker bundle. `[Cadex-new]` |
-| `CadexPinResolution.py` | Headless pin resolution against the accepted revision's staged BREP: `_query_subelements` fingerprints or direct `{element_type, index}`. `[Cadex-new]` |
+| `cadex_tessellation.py` | Phase 5.1 display tessellation: adaptive deflection, per-face triangle ranges + `face_keys` fingerprints + per-edge polylines (`cadex-tessellation-v1` buffer + sidecar), digest-neutral. Staged into the worker bundle. `[Cadex-new]` |
+| `CadexSubshapeQuery.py` | **The one subshape vocabulary** (Phase 10b, ADR-029): `subshape_geometry` fingerprints, `query_subelements` / `resolve_selected_subshapes` resolve a selector against a shape, `SELECTOR_KEYS` is the closed key set, `fingerprint_key` is the sidecar handle. Kernel-neutral — no FreeCAD import — and staged into the worker bundle. Extracted from `cadex_partdesign_worker` (Phase 11a's item, forced forward: the part domain could not reach it without an import cycle). `[Cadex-new]` |
+| `CadexPinResolution.py` | Headless pin resolution against the accepted revision's staged BREP: `CadexSubshapeQuery` fingerprints or direct `{element_type, index}`. `[Cadex-new]` |
 | `cadex_rebuild.py` | Headless rebuild + digest comparison (`pixi run rebuild <root>`); drives the shared `run_project_lifecycle`. `[Cadex-new]` |
 | `cadex_{partdesign,sketcher,part,assembly}_{api,worker}.py` | The original four domain APIs (staged into the project worker) and worker implementations. `[VibeCAD-era]` |
 | `cadex_mesh_api.py` / `cadex_mesh_worker.py` | The Phase 4 mesh domain on `Mod/Mesh`+`Mod/MeshPart`: tessellate/import/boolean/decimate, canonical vertex/facet ordering + vertex-set digest fingerprint (ADR-016). `[Cadex-new]` |
@@ -160,6 +161,7 @@ list.
 | `CadexInspection.py` | The bounded `inspect` read surface (scopes `document`, `object`, `script`, `api`, `image`; `selection` was shell-only and is gone). |
 | `CadexReferenceContracts.py` | Geometry pins: shared handle + owner + subelement hint + geometric fingerprint, and fingerprint re-resolution when the revision moved. |
 | `CadexPinResolution.py` | Resolves a pick or fingerprint against the accepted revision's staged BREP. |
+| `CadexSubshapeQuery.py` | The selector vocabulary a pin *and* a script argument both speak — since Phase 10b the five index-taking part ops resolve through it, so naming geometry means the same thing in chat and in the script. |
 | `CadexModelingSurface.py` | The global project surface id (any workbench, one script). |
 
 ### Project store `[Cadex-new]`

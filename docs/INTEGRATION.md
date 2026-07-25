@@ -127,7 +127,16 @@ Geometry responses carry the BREP artifact path **and** the opt-in
 polylines + sidecar `face_ranges`/`edge_polylines` mapping spans to the
 exact 1-based Face/Edge enumeration of `face_details`), so a shell can
 draw immediately and export/measure exactly; picking round-trips
-triangle → `face_ranges` → `resolve_pin {element_type, index}`. Quality
+triangle → `face_ranges` → `resolve_pin {element_type, index}`.
+
+Since Phase 10b (ADR-029) the sidecar also carries **`face_keys`**: one
+geometric fingerprint key per `face_ranges` span, same length and same
+order. The span index locates a face *in this artifact*; the key describes
+the face itself. A shell that wants a click to become something durable —
+a script argument rather than a transient highlight — reads `face_keys[i]`
+alongside the `resolve_pin` details and writes a selector, because the
+five index-taking part ops no longer accept ordinals at all. Purely
+additive: `face_ranges` and the index picking path are unchanged. Quality
 presets `draft`/`coarse`/`standard`/`fine` (relative deflection 0.05 /
 0.02 / 0.005 / 0.001 × bbox diagonal, clamped): `draft` exists for
 progressive display — the Blender shell requests it during slider drags

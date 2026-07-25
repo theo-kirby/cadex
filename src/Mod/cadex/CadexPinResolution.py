@@ -12,9 +12,10 @@ selections resolve on the same topology that ``face_details`` /
 
 Two selection forms:
 
-- **Fingerprint query** — the exact ``_query_subelements`` vocabulary from
-  ``cadex_partdesign_worker`` (geometry_type, normal, radius, areas,
-  near_point, expected_count, ``{"type": "all_edges"}``), reused by import.
+- **Fingerprint query** — the shared ``CadexSubshapeQuery`` vocabulary
+  (geometry_type, normal, radius, areas, near_point, expected_count,
+  ``{"type": "all_edges"}``). Since Phase 10b the five index-taking part ops
+  speak it too, so a pin and a script argument name geometry the same way.
 - **Direct index** — ``{"element_type": "face"|"edge", "index": N}`` for
   the client picking path (triangle → face_ranges → index happens
   client-side against the 5.1 tessellation sidecar).
@@ -95,7 +96,7 @@ def _import_staged_shape(staging: Path, item: Mapping[str, Any]) -> Any:
 def _resolve_direct_index(
     shape: Any, selection: Mapping[str, Any]
 ) -> tuple[list[str], list[dict[str, Any]]]:
-    from cadex_partdesign_worker import _subshape_geometry
+    from CadexSubshapeQuery import subshape_geometry
 
     kind = str(selection.get("element_type") or "")
     if kind not in _ELEMENT_TYPES:
@@ -109,7 +110,7 @@ def _resolve_direct_index(
             f"selection.index {raw_index} is outside 1..{len(collection)} "
             f"for this shape's {kind}s."
         )
-    detail = _subshape_geometry(
+    detail = subshape_geometry(
         shape, kind, raw_index, collection[raw_index - 1]
     )
     return [str(detail["name"])], [detail]
@@ -123,10 +124,7 @@ def resolve_pin(
     """Resolve one selection against the accepted revision's staged BREP."""
 
     from CadexScriptStore import CadexProjectScriptStore
-    from cadex_partdesign_worker import (
-        PartDesignCandidateError,
-        _query_subelements,
-    )
+    from CadexSubshapeQuery import SubshapeSelectionError, query_subelements
 
     root = Path(str(project_root))
     clean_output = str(output or "")
@@ -193,8 +191,8 @@ def resolve_pin(
         if direct_index:
             subelements, details = _resolve_direct_index(shape, selection)
         else:
-            subelements, details = _query_subelements(shape, dict(selection))
-    except PartDesignCandidateError as exc:
+            subelements, details = query_subelements(shape, dict(selection))
+    except SubshapeSelectionError as exc:
         return _failure(
             "PIN_SELECTION_UNRESOLVED",
             str(exc),

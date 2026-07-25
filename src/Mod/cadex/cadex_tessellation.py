@@ -9,6 +9,11 @@ spans back to the exact 1-based Face/Edge enumeration that ``face_details``
 and ``edge_details`` report (cadex_part_worker.part_shape_facts). Mesh
 outputs emit their own triangle buffer with a trivial one-range map.
 
+Since Phase 10b the sidecar also carries ``face_keys``: one geometric
+fingerprint key per face span. The span index locates a face *in this
+artifact*; the key identifies the face itself, which is what a click has to
+become before it can be written into a script that survives an edit.
+
 Display artifacts are opt-in per request and digest-neutral: the content
 digest is computed before any display artifact exists and never reads the
 ``display/`` directory.
@@ -134,12 +139,21 @@ def tessellate_shape(
     Face ``i+1``; ``edge_polylines[j]`` is the ``[first_point, point_count]``
     span of Edge ``j+1`` inside ``edge_vertices``. Reversed faces have their
     triangle winding flipped so triangle normals consistently face outward.
+
+    ``face_keys[i]`` is Face ``i+1``'s geometric fingerprint key (Phase 10b).
+    The span index is a *position*, valid only for the shape that produced
+    this artifact; the key describes the face itself, so a click can be
+    turned into a durable selector rather than an ordinal that the next
+    parameter change invalidates.
     """
+
+    from CadexSubshapeQuery import fingerprint_key, subshape_geometry
 
     vertices: list[float] = []
     triangles: list[int] = []
     face_ranges: list[list[int]] = []
-    for face in list(getattr(shape, "Faces", []) or []):
+    face_keys: list[str] = []
+    for index, face in enumerate(list(getattr(shape, "Faces", []) or []), start=1):
         face_vertices, face_triangles = face.tessellate(float(deflection))
         base = len(vertices) // 3
         start = len(triangles) // 3
@@ -150,6 +164,7 @@ def tessellate_shape(
             a, b, c = (int(tri[0]) + base, int(tri[1]) + base, int(tri[2]) + base)
             triangles.extend((a, c, b) if flip else (a, b, c))
         face_ranges.append([start, len(face_triangles)])
+        face_keys.append(fingerprint_key(subshape_geometry(shape, "face", index, face)))
     edge_vertices: list[float] = []
     edge_polylines: list[list[int]] = []
     if include_edges:
@@ -165,6 +180,7 @@ def tessellate_shape(
         "vertices": vertices,
         "triangles": triangles,
         "face_ranges": face_ranges,
+        "face_keys": face_keys,
         "edge_vertices": edge_vertices,
         "edge_polylines": edge_polylines,
     }
@@ -183,6 +199,9 @@ def trivial_mesh_tessellation(points: Any, facets: Any) -> dict[str, Any]:
         "vertices": vertices,
         "triangles": triangles,
         "face_ranges": [[0, len(triangles) // 3]],
+        # A mesh has no BREP faces to fingerprint; the single span is the whole
+        # buffer, so its key says exactly that rather than pretending otherwise.
+        "face_keys": ["mesh|whole"],
         "edge_vertices": [],
         "edge_polylines": [],
     }
@@ -252,6 +271,7 @@ def write_display_artifact(
             },
         },
         "face_ranges": [list(item) for item in tessellation["face_ranges"]],
+        "face_keys": [str(item) for item in tessellation.get("face_keys") or []],
         "edge_polylines": [list(item) for item in tessellation["edge_polylines"]],
     }
     (Path(root) / sidecar_relative).write_text(
@@ -274,9 +294,14 @@ def read_sidecar(path: Path) -> dict[str, Any]:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(data, dict) or data.get("schema") != TESSELLATION_SCHEMA:
         raise ValueError(f"{path} is not a {TESSELLATION_SCHEMA} sidecar.")
-    for key in ("counts", "layout", "face_ranges", "edge_polylines"):
+    for key in ("counts", "layout", "face_ranges", "face_keys", "edge_polylines"):
         if key not in data:
             raise ValueError(f"{path} sidecar is missing {key!r}.")
+    if len(data["face_keys"]) != len(data["face_ranges"]):
+        raise ValueError(
+            f"{path} sidecar has {len(data['face_keys'])} face keys for "
+            f"{len(data['face_ranges'])} face ranges; they index the same faces."
+        )
     return data
 
 

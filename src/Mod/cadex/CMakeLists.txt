@@ -9,6 +9,7 @@ set(Cadex_Scripts
     CadexReferenceContracts.py
     CadexProject.py
     CadexScriptStore.py
+    CadexSubshapeQuery.py
     CadexScriptedOwnership.py
     CadexScriptedProcess.py
     CadexScriptedPublication.py

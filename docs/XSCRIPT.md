@@ -74,6 +74,52 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   partdesign → mesh → assembly, reusing the per-domain evaluators and
   serializers.
 
+### Naming geometry: selectors, not indices `[Phase 10b, ADR-029]`
+
+Five part ops — `subshape`, `defeature`, `fillet`, `chamfer`, `thicken` —
+choose subshapes of a shape. They take a **geometric selector**, never an
+ordinal:
+
+```python
+drilled = part.cut(part.box(40, 30, 10), holes)
+
+rounded = part.fillet(drilled, 0.5,
+    edges={"geometry_type": "Circle", "radius": 3.0, "expected_count": 8})
+healed  = part.defeature(drilled,
+    {"geometry_type": "Cylinder", "radius": 3.0, "expected_count": 4})
+top     = part.subshape(drilled, "face", {"normal": [0, 0, 1]})
+cup     = part.thicken(part.box(20, 20, 10),
+    {"normal": [0, 0, 1], "expected_count": 1}, -1.5)
+```
+
+`fillet` and `chamfer` also accept `edges="all"`. Everything else must be a
+selector; `subshape` fixes `expected_count` to 1.
+
+**Why the index form is gone.** It named a position in the kernel's
+`TopExp::MapShapes` enumeration. ADR-028 proved that ordering is
+*reproducible*; it is not *stable across edits*. Any parameter change that
+alters topology renumbers every subshape after it, so a saved `edges=[3, 7]`
+keeps validating and silently starts filleting different edges. A selector
+either keeps meaning the same thing or fails loudly.
+
+Selector keys (the closed set — an unrecognised key is rejected rather than
+ignored, because a typo would otherwise widen the match):
+
+| key | matches |
+|---|---|
+| `expected_count` | **required** — the declared cardinality; a mismatch fails |
+| `geometry_type` | `Plane`, `Cylinder`, `Sphere`, `Toroid`, `Line`, `Circle`, … |
+| `normal` / `direction` | face normal / edge tangent, within `normal_tolerance_degrees` / `direction_tolerance_degrees` (default 1.0) |
+| `radius` | circular edges **and** cylindrical/spherical faces, within `radius_tolerance` (default 1e-6) |
+| `min_area` / `max_area` / `min_length` / `max_length` | size bands |
+| `near_point` | centre of mass within `max_distance` (default 1e-6) |
+
+This is the same vocabulary `resolve_pin` speaks, so a pin captured from a
+click and an argument written into the script name geometry identically
+(`CadexSubshapeQuery.py`). When a selector fails, the envelope carries
+`expected_count`, `actual_count` and the full `available` list, so the next
+attempt is a re-query rather than a guess.
+
 ### Lifecycle tools
 
 The provider-facing surface is exactly four tools

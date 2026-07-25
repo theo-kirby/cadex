@@ -10,6 +10,12 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
 
+from CadexSubshapeQuery import (
+    SUBSHAPE_COLLECTIONS,
+    SubshapeSelectionError,
+    resolve_selected_subshapes,
+)
+
 
 class PartOperationError(ValueError):
     """Model-facing Part operation failure with precise operation context."""
@@ -228,10 +234,11 @@ def part_shape_facts(
 
 
 def _error(operation: str, parameter: str, message: str) -> PartOperationError:
-    selection_failure = parameter in {"edges", "faces", "index"} or "outside 1.." in message
+    selection_failure = parameter in {"edges", "faces", "where"}
     correction = (
-        "Copy a valid 1-based selector from the latest accepted face_details or "
-        "edge_details for this exact shape, then change only the rejected selector."
+        "Build the selector from the latest accepted face_details or edge_details "
+        "for this exact shape — match on geometry_type, normal/direction, radius "
+        "or near_point, and declare expected_count."
         if selection_failure
         else (
             f"Correct api.{operation} parameter {parameter!r} using the exact "
@@ -312,35 +319,38 @@ def _shape_list(
     return [_shape(operation, f"{parameter}[{index}]", item) for index, item in enumerate(value)]
 
 
-def _indexed_subshapes(
+def _selected_subshapes(
     operation: str,
     parameter: str,
     shape: Any,
     requested: Any,
-    collection_name: str,
+    kind: str,
 ) -> list[Any]:
-    collection = list(getattr(shape, collection_name, []) or [])
-    if requested == "all":
-        if not collection:
-            raise _error(operation, parameter, f"shape contains no {collection_name.lower()}")
-        return collection
-    if not isinstance(requested, list) or not requested:
-        raise _error(operation, parameter, "expected 'all' or a non-empty array of indices")
-    result = []
-    for index in requested:
-        if (
-            not isinstance(index, int)
-            or isinstance(index, bool)
-            or index < 1
-            or index > len(collection)
-        ):
-            raise _error(
-                operation,
-                parameter,
-                f"index {index!r} is outside 1..{len(collection)} for this shape",
-            )
-        result.append(collection[index - 1])
-    return result
+    """Resolve a geometric selector (or ``"all"``) to concrete subshapes.
+
+    Phase 10b: the index form is gone. A failed selector reports the declared
+    and actual counts plus the subshapes that *were* available, so the agent
+    can re-query rather than guess an ordinal.
+    """
+
+    try:
+        selected, _details = resolve_selected_subshapes(shape, kind, requested)
+    except SubshapeSelectionError as exc:
+        raise PartOperationError(
+            f"api.{operation}: {parameter}: {exc}",
+            stage="part_topology_selection",
+            operation=operation,
+            parameter=parameter,
+            observed=exc.details,
+            correction=(
+                "Re-read the available subshapes in observed.available and write a "
+                "selector that matches exactly expected_count of them; widen or "
+                "narrow the fingerprint rather than guessing an ordinal."
+            ),
+        ) from exc
+    except ValueError as exc:
+        raise _error(operation, parameter, str(exc)) from exc
+    return selected
 
 
 def _refine(shape: Any, enabled: bool, *, operation: str) -> Any:
@@ -739,22 +749,14 @@ def _build(
     if operation == "subshape":
         shape = _shape(operation, "shape", _argument(payload, 0, "shape"))
         kind = str(_argument(payload, 1, "kind") or "").lower()
-        collections = {
-            "edge": "Edges",
-            "wire": "Wires",
-            "face": "Faces",
-            "shell": "Shells",
-            "solid": "Solids",
-        }
-        collection = collections.get(kind)
-        if collection is None:
+        if kind not in SUBSHAPE_COLLECTIONS:
             raise _error(operation, "kind", f"unsupported subshape kind {kind!r}")
-        return _indexed_subshapes(
+        return _selected_subshapes(
             operation,
-            "index",
+            "where",
             shape,
-            [int(_argument(payload, 2, "index"))],
-            collection,
+            _argument(payload, 2, "where"),
+            kind,
         )[0]
     if operation == "extrude":
         shape = _shape(operation, "shape", _argument(payload, 0, "shape"))
@@ -898,12 +900,12 @@ def _build(
         return Part.makeCompound(slices)
     if operation == "defeature":
         shape = _shape(operation, "shape", _argument(payload, 0, "shape"))
-        faces = _indexed_subshapes(
+        faces = _selected_subshapes(
             operation,
             "faces",
             shape,
             _argument(payload, 1, "faces"),
-            "Faces",
+            "face",
         )
         return shape.defeaturing(faces)
     if operation == "to_nurbs":
@@ -945,12 +947,12 @@ def _build(
         return shape
     if operation in {"fillet", "chamfer"}:
         shape = _shape(operation, "shape", _argument(payload, 0, "shape"))
-        selected = _indexed_subshapes(
+        selected = _selected_subshapes(
             operation,
             "edges",
             shape,
             properties.get("edges", "all"),
-            "Edges",
+            "edge",
         )
         distance = float(_argument(payload, 1, "radius" if operation == "fillet" else "distance"))
         method = shape.makeFillet if operation == "fillet" else shape.makeChamfer
@@ -979,12 +981,12 @@ def _build(
         )
     if operation == "thicken":
         shape = _shape(operation, "shape", _argument(payload, 0, "shape"))
-        faces = _indexed_subshapes(
+        faces = _selected_subshapes(
             operation,
             "faces",
             shape,
             _argument(payload, 1, "faces"),
-            "Faces",
+            "face",
         )
         joins = {"arc": 0, "tangent": 1, "intersection": 2}
         return shape.makeThickness(

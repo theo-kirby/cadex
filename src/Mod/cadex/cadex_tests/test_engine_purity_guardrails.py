@@ -54,6 +54,15 @@ KNOWN_RESIDUE: dict[tuple[str, str], str] = {
 #: The engine, module by module. Not a summary of the closure — the closure
 #: is asserted to equal it, so an accidental new engine dependency is a test
 #: failure rather than a silent widening of the payload.
+#:
+#: Domain *workers* are staged into the sandbox by filename
+#: (``_DOMAIN_WORKER_BUNDLES``), not imported, so they are outside this
+#: closure by design — ``cadex_mesh_worker`` and ``cadex_assembly_worker``
+#: always were. ``cadex_partdesign_worker`` joined them in Phase 10b: it was
+#: here only because ``CadexPinResolution`` imported it to borrow
+#: ``_subshape_geometry``, which meant resolving one pin dragged the whole
+#: partdesign feature-building stack (and through it sketcher and part) into
+#: cadexd. That vocabulary is now ``CadexSubshapeQuery``.
 DECLARED_ENGINE_MODULES = frozenset(
     {
         # entry points
@@ -78,6 +87,7 @@ DECLARED_ENGINE_MODULES = frozenset(
         # inspection, pins, tessellation
         "CadexInspection",
         "CadexPinResolution",
+        "CadexSubshapeQuery",
         "cadex_tessellation",
         # the five domain APIs and the host-side workers they pull in
         "cadex_domain_api",
@@ -85,7 +95,6 @@ DECLARED_ENGINE_MODULES = frozenset(
         "cadex_part_api",
         "cadex_part_worker",
         "cadex_partdesign_api",
-        "cadex_partdesign_worker",
         "cadex_sketcher_api",
         "cadex_sketcher_worker",
         "cadex_mesh_api",
@@ -169,6 +178,38 @@ def test_engine_closure_is_the_declared_module_list() -> None:
         f"  lost:   {sorted(DECLARED_ENGINE_MODULES - closure)}\n"
         "This list is the packaged payload's contents (ADR-023): update it "
         "deliberately, in the commit that changes the engine's shape."
+    )
+
+
+def test_every_engine_module_is_installed_by_cmake() -> None:
+    """The closure is what the engine imports; CMake is what the payload ships.
+
+    Phase 10b added a module, and every source-tree gate stayed green while
+    the payload silently lacked it — the packaged lifecycle test does not
+    exercise the part ops that import it. That is exactly the failure ADR-023
+    records ("a source tree that passes proves nothing about a payload"), so
+    the two lists are pinned to each other here rather than discovered at a
+    user.
+    """
+
+    cmake = (MODULE_DIR / "CMakeLists.txt").read_text(encoding="utf-8")
+    installed = set(re.findall(r"([A-Za-z_][A-Za-z0-9_]*\.py)", cmake))
+
+    from CadexScriptedRuntime import _DOMAIN_WORKER_BUNDLES
+
+    needed = {f"{name}.py" for name in DECLARED_ENGINE_MODULES}
+    needed.update(
+        filename for bundle in _DOMAIN_WORKER_BUNDLES.values() for filename in bundle
+    )
+    # Staged into the sandbox as worker.py, and the API module every bundle
+    # gets for free; both are real files that have to ship.
+    needed.update({"cadex_domain_api.py", "cadex_project_worker.py"})
+
+    missing = sorted(needed - installed)
+    assert not missing, (
+        f"{missing} are imported or staged by the engine but not listed in "
+        "src/Mod/cadex/CMakeLists.txt, so they would be absent from the "
+        "packaged payload."
     )
 
 

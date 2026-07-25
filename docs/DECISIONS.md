@@ -1334,3 +1334,95 @@ coplanar shape to `test_subshape_enumeration.py` would widen the ADR-027 gate
 to cover refine, and is worth doing, but it is a test change with its own
 golden data. 10c's timing gate — the number that actually decides whether
 Phase 11 starts — has not been run.
+
+## ADR-029 — Phase 10b: subshapes are named by geometry, not by ordinal (2026-07-25)
+
+**Decision.** The five index-taking part ops — `subshape`, `defeature`,
+`fillet`, `chamfer`, `thicken` — take a **geometric selector**. The
+`Sequence[int]` form is deleted, not deprecated.
+
+```python
+part.fillet(drilled, 0.5,
+    edges={"geometry_type": "Circle", "radius": 3.0, "expected_count": 8})
+```
+
+**Rationale.** An index named a position in `TopExp::MapShapes`. ADR-028
+proved that ordering is *reproducible*; it never made it *stable across
+edits*. Any parameter change that alters topology renumbers every subshape
+after it, so a saved `edges=[3, 7]` keeps passing `isValid()` and silently
+fillets different edges. The roadmap called this "worth doing on its own
+merits even if the migration stops here", and it is: this is a correctness
+fix for today's product, not migration scaffolding.
+
+The vocabulary was not invented here — `resolve_pin` has spoken it since
+Phase 5.2. A pin captured from a click and an argument written into the
+script now name geometry identically.
+
+**The extraction came first, and was forced.** `CadexSubshapeQuery.py` holds
+`subshape_geometry` / `query_subelements` / `resolve_selected_subshapes` /
+`SELECTOR_KEYS` / `fingerprint_key`, kernel-neutral and staged into the
+worker bundle. This is Phase 11a's "extract pin resolution out of
+`cadex_partdesign_worker`" item, pulled forward with no choice about it:
+`cadex_partdesign_worker` imports `cadex_part_worker`, so the part domain
+could not reach the vocabulary without an import cycle. That is *why* the
+five ops still took integers. Two consequences beyond 10b:
+
+- `resolve_pin` no longer drags the entire partdesign feature-building stack
+  (and through it sketcher and part) into cadexd to fingerprint one face.
+  `cadex_partdesign_worker` accordingly leaves `DECLARED_ENGINE_MODULES` and
+  joins the other sandbox-staged workers.
+- `PartDesignCandidateError` is now an alias of `SubshapeSelectionError`.
+  Aliased rather than subclassed so every existing `except` still catches;
+  the two classes had identical shape.
+
+**Three things the work turned up.**
+
+1. **Cylindrical faces had no `radius_mm`.** Only *edges* were ever
+   fingerprinted with a radius, so `{"geometry_type": "Cylinder",
+   "radius": 3.0}` — the most natural way to name four drilled holes —
+   matched nothing while looking entirely reasonable. Faces now carry it.
+   This changes the ADR-027 enumeration golden, so the regeneration was
+   gated on a proof that the change was *field-additive only*: every
+   recorded ordinal kept its identity and `radius_mm` was the sole new key.
+   A future reader must not mistake that diff for the enumeration moving.
+2. **An unrecognised selector key is rejected.** `SELECTOR_KEYS` is closed.
+   A typo like `radius_tolerence` would otherwise be ignored, widening the
+   match to every radius and building wrong geometry that validates.
+   `expected_count` is required for the same reason: declared cardinality is
+   what turns a wrong selector into a failure instead of less work.
+3. **The payload gate did not notice a missing module.** `CMakeLists.txt`
+   lists engine modules by hand, `CadexSubshapeQuery.py` was not in it, and
+   every source-tree gate stayed green while the shipped payload lacked a
+   module the part ops import — `test_cadexd_lifecycle` never exercises
+   those ops. This is exactly ADR-023's "a source tree that passes proves
+   nothing about a payload", caught by inspection rather than by a test.
+   `test_every_engine_module_is_installed_by_cmake` now pins the closure and
+   the worker bundles against the install list, verified by construction.
+
+**Tessellation sidecar.** `face_keys`: one fingerprint key per `face_ranges`
+span, same length and order, so a click can become a durable selector rather
+than an ordinal. Purely additive; `face_ranges` and the index picking path
+are untouched. Mesh outputs emit `"mesh|whole"` for their single span.
+
+**Evidence.** 203 engine tests green (14 new in
+`test_subshape_selectors.py`, including a real-kernel run asserting that
+selectors pick the geometry they name: the plate is 6 planes + 4 cylinders,
+filleting the eight radius-3 rims adds exactly 8 toroids, defeaturing the
+four holes by radius heals back to a bare box, thickening with the top face
+removed leaves a 6+5 hollow box). All four cadex ctests pass. The packaged
+gate passes, and the selector suite was re-run against the payload — then
+verified by construction, by removing the module from the payload and
+confirming it fails. Slider-drag median 0.554 s display / 0.471 s raw
+against the 0.65 s bar, unchanged by the per-face fingerprinting (Phase 6
+measured 0.548 s, Phase 7 0.572 s).
+
+**Not done in this change, and not silently:** the shell (mesh repo) still
+sends `resolve_pin {element_type, index}` for picking, which is unchanged
+and still correct — but nothing there yet *writes* a selector into a script,
+so the round trip from click to durable argument is only half built; that is
+the shell's commit. `partdesign`'s own selections were already fingerprint
+queries and are untouched. `sketcher` geometry indices are a different
+contract and out of scope. No migration path exists for saved scripts using
+the index form: they now fail loudly at the API boundary with the reason,
+which is the intended behaviour for a form that could silently build the
+wrong solid.

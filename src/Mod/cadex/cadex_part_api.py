@@ -13,6 +13,7 @@ from collections.abc import Mapping
 import math
 from typing import Any, Iterable, Sequence
 
+from CadexSubshapeQuery import SELECTOR_KEYS
 from cadex_domain_api import DomainValue
 
 
@@ -205,22 +206,89 @@ def _inferred_result_type(
     return clean
 
 
-def _indices(operation: str, parameter: str, value: Any) -> str | list[int]:
+_SELECTOR_HINT = (
+    "a selector names geometry, not an ordinal: "
+    "{'geometry_type': 'Cylinder', 'radius': 3.0, 'expected_count': 4}. "
+    "Keys: " + ", ".join(sorted(SELECTOR_KEYS))
+)
+
+
+def _selector(
+    operation: str,
+    parameter: str,
+    value: Any,
+    *,
+    allow_all: bool = False,
+    fixed_count: int | None = None,
+) -> str | dict[str, Any]:
+    """Validate one geometric selector (Phase 10b — ADR-029).
+
+    Indices are gone: they addressed a subshape by its position in the kernel
+    enumeration, which is stable for a given shape but *not* across any edit
+    that changes topology. A saved ``edges=[3, 7]`` silently starts filleting
+    different edges the moment a parameter adds a hole. A selector states what
+    the geometry *is*, so the same statement either keeps meaning the same
+    thing or fails loudly.
+    """
+
     if value == "all":
-        return "all"
-    if not isinstance(value, (list, tuple)) or not value:
-        raise _error(
-            operation, parameter, "expected 'all' or a non-empty array of 1-based indices", value
-        )
-    result: list[int] = []
-    for index, item in enumerate(value):
-        if isinstance(item, bool) or not isinstance(item, int) or item < 1:
+        if not allow_all:
             raise _error(
-                operation, f"{parameter}[{index}]", "expected a positive 1-based integer", item
+                operation,
+                parameter,
+                f"does not accept 'all'; {_SELECTOR_HINT}",
+                value,
             )
-        if item in result:
-            raise _error(operation, parameter, "contains duplicate indices", value)
-        result.append(item)
+        return "all"
+    if isinstance(value, (list, tuple)):
+        raise _error(
+            operation,
+            parameter,
+            (
+                "1-based index lists were removed in Phase 10b because they "
+                f"break on any change that alters topology — {_SELECTOR_HINT}"
+            ),
+            value,
+        )
+    if not isinstance(value, Mapping) or not value:
+        raise _error(
+            operation, parameter, f"expected a non-empty selector mapping; {_SELECTOR_HINT}", value
+        )
+
+    unknown = sorted(set(map(str, value)) - SELECTOR_KEYS)
+    if unknown:
+        raise _error(
+            operation,
+            parameter,
+            f"has unrecognised selector keys {unknown}; allowed: {sorted(SELECTOR_KEYS)}",
+            value,
+        )
+
+    result = {str(key): item for key, item in value.items()}
+    count = result.get("expected_count")
+    if fixed_count is not None:
+        if count is not None and count != fixed_count:
+            raise _error(
+                operation,
+                f"{parameter}.expected_count",
+                f"must be {fixed_count} for {operation}, which returns one subshape",
+                count,
+            )
+        result["expected_count"] = fixed_count
+        return result
+    if count is None:
+        raise _error(
+            operation,
+            parameter,
+            (
+                "must declare expected_count — the cardinality is what makes a "
+                "wrong selector fail instead of silently doing less work"
+            ),
+            value,
+        )
+    result["expected_count"] = _integer(
+        operation, f"{parameter}.expected_count", count, minimum=1
+    )
     return result
 
 
@@ -902,11 +970,17 @@ class PartDomainAPI:
         self,
         shape: DomainValue,
         kind: str,
-        index: int,
+        where: Mapping[str, Any],
         *,
         label: str = "",
     ) -> DomainValue:
-        """Extract one 1-based edge, wire, face, shell, or solid from a Part value."""
+        """Extract the one edge, wire, face, shell, or solid a selector names.
+
+        ``where`` is a geometric selector, e.g.
+        ``{"geometry_type": "Plane", "normal": [0, 0, 1]}``. It must match
+        exactly one subshape or the operation fails with the candidates it
+        did see.
+        """
 
         operation = "subshape"
         clean_kind = str(kind or "").strip().lower()
@@ -917,7 +991,7 @@ class PartDomainAPI:
             clean_kind,
             _shape(operation, "shape", shape),
             clean_kind,
-            _integer(operation, "index", index, minimum=1),
+            _selector(operation, "where", where, fixed_count=1),
             label=label,
         )
 
@@ -1247,11 +1321,15 @@ class PartDomainAPI:
     def defeature(
         self,
         shape: DomainValue,
-        faces: Sequence[int],
+        faces: Mapping[str, Any],
         *,
         label: str = "",
     ) -> DomainValue:
-        """Heal a solid after removing selected 1-based feature faces."""
+        """Heal a solid after removing the feature faces a selector names.
+
+        ``faces`` is a geometric selector, e.g. removing four drilled holes:
+        ``{"geometry_type": "Cylinder", "radius": 3.0, "expected_count": 4}``.
+        """
 
         operation = "defeature"
         clean_shape = _shape(operation, "shape", shape, allowed={"solid"})
@@ -1259,7 +1337,7 @@ class PartDomainAPI:
             operation,
             "solid",
             clean_shape,
-            _indices(operation, "faces", faces),
+            _selector(operation, "faces", faces),
             label=label,
         )
 
@@ -1282,10 +1360,14 @@ class PartDomainAPI:
         shape: DomainValue,
         radius: float,
         *,
-        edges: str | Sequence[int] = "all",
+        edges: str | Mapping[str, Any] = "all",
         label: str = "",
     ) -> DomainValue:
-        """Round selected 1-based edges of a solid; use edges='all' deliberately."""
+        """Round the edges a selector names, or every edge with edges='all'.
+
+        ``edges`` is ``'all'`` or a geometric selector, e.g.
+        ``{"geometry_type": "Circle", "radius": 3.0, "expected_count": 8}``.
+        """
 
         operation = "fillet"
         clean_shape = _shape(operation, "shape", shape, allowed={"solid", "shell"})
@@ -1294,7 +1376,7 @@ class PartDomainAPI:
             clean_shape.output_type,
             clean_shape,
             _number(operation, "radius", radius, minimum=0.0, strict=True),
-            edges=_indices(operation, "edges", edges),
+            edges=_selector(operation, "edges", edges, allow_all=True),
             label=label,
         )
 
@@ -1383,10 +1465,14 @@ class PartDomainAPI:
         shape: DomainValue,
         distance: float,
         *,
-        edges: str | Sequence[int] = "all",
+        edges: str | Mapping[str, Any] = "all",
         label: str = "",
     ) -> DomainValue:
-        """Chamfer selected 1-based edges of a solid; use edges='all' deliberately."""
+        """Chamfer the edges a selector names, or every edge with edges='all'.
+
+        ``edges`` is ``'all'`` or a geometric selector, e.g.
+        ``{"direction": [0, 0, 1], "expected_count": 4}``.
+        """
 
         operation = "chamfer"
         clean_shape = _shape(operation, "shape", shape, allowed={"solid", "shell"})
@@ -1395,7 +1481,7 @@ class PartDomainAPI:
             clean_shape.output_type,
             clean_shape,
             _number(operation, "distance", distance, minimum=0.0, strict=True),
-            edges=_indices(operation, "edges", edges),
+            edges=_selector(operation, "edges", edges, allow_all=True),
             label=label,
         )
 
@@ -1471,14 +1557,18 @@ class PartDomainAPI:
     def thicken(
         self,
         shape: DomainValue,
-        faces: Sequence[int],
+        faces: Mapping[str, Any],
         thickness: float,
         *,
         tolerance: float = 1.0e-7,
         join: str = "arc",
         label: str = "",
     ) -> DomainValue:
-        """Remove selected 1-based faces and thicken the remaining shell into a solid."""
+        """Remove the faces a selector names and thicken the rest into a solid.
+
+        ``faces`` is a geometric selector, e.g. opening the top of a box:
+        ``{"normal": [0, 0, 1], "expected_count": 1}``.
+        """
 
         operation = "thicken"
         clean_join = str(join or "").strip().lower()
@@ -1488,7 +1578,7 @@ class PartDomainAPI:
             operation,
             "solid",
             _shape(operation, "shape", shape, allowed={"solid", "shell"}),
-            _indices(operation, "faces", faces),
+            _selector(operation, "faces", faces),
             _nonzero_number(operation, "thickness", thickness),
             tolerance=_number(operation, "tolerance", tolerance, minimum=0.0, strict=True),
             join=clean_join,

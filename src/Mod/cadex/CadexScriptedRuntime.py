@@ -36,6 +36,7 @@ from cadex_domain_api import create_domain_api
 _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
     "project": (
         "cadex_domain_worker.py",
+        "CadexSubshapeQuery.py",
         "cadex_project_api.py",
         "cadex_sketcher_api.py",
         "cadex_sketcher_worker.py",
