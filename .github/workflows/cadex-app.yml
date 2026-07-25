@@ -13,8 +13,15 @@ name: Cadex
 # What the `app` job proves, in order: the engine builds and its unit suite
 # passes; the payload stages and answers the protocol when discovered through
 # its own manifest; the shell builds against that payload; and the agent
-# suites pass headless out of the installed bundle with **no MESH_*
-# environment variable set**, which is the zero-configuration criterion.
+# suites pass headless, driven by the built binary, with **no MESH_*
+# environment variable set** -- the zero-configuration criterion.
+#
+# Precisely: the suites run under the installed Blender binary and import the
+# add-on from the source tree (that is how they resolve it, and it is what
+# makes an edit testable without a reinstall). What they take from the bundle
+# is the *engine*, discovered through bpy.app.binary_path -- which is what
+# `engine_from_bundle: true` asserts and the only part that has to come from
+# the install.
 #
 # The `engine` job keeps Linux honest. We do not build a Linux shell yet
 # (ROADMAP, "Later"), but the engine is meant to build there, and losing that
@@ -116,14 +123,8 @@ jobs:
             || { echo "FAIL: no engine inside the bundle"; exit 1; }
           cat "${resources}/cadex/cadex-engine.json"
 
-      - name: Agent suites
-        run: |
-          app="$(bash package/app/build_app.sh path)"
-          cd shell
-          for suite in bl_mesh_agent bl_mesh_modifiers; do
-            "${app}" --background --factory-startup \
-              --python "tests/python/${suite}.py"
-          done
+      - name: Agent suite (no engine needed)
+        run: bash package/app/build_app.sh gate tests/python/bl_mesh_agent.py
 
       # The criterion. No MESH_FREECADCMD, no MESH_CADEXD_MODULE, no
       # MESH_CADEX_ENGINE: the add-on must find the engine inside the bundle
@@ -134,12 +135,9 @@ jobs:
           MESH_CADEXD_MODULE: ""
           MESH_CADEX_ENGINE: ""
         run: |
-          app="$(bash package/app/build_app.sh path)"
-          cd shell
-          "${app}" --background --factory-startup \
-            --python tests/python/bl_mesh_agent_cadex.py | tee ../gate.txt
-          grep -q '"ok": true' ../gate.txt
-          grep -q '"engine_from_bundle": true' ../gate.txt
+          pixi run gate | tee gate.txt
+          grep -q '"ok": true' gate.txt
+          grep -q '"engine_from_bundle": true' gate.txt
 
       - name: Bundle
         run: |

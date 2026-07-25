@@ -25,8 +25,10 @@ _API_DOMAIN_CHARS = 16384
 # Tools whose execution mutates the scene (drives per-turn undo batching).
 MUTATING_TOOLS = {"write_script", "set_params", "edit_script"}
 
-# Tools that reach the cadex engine when the scene is in Cadex mode; these
-# are preflighted so a missing engine reports itself once, in a sentence.
+# Tools that reach the cadex engine; these are preflighted so a missing
+# engine reports itself once, in a sentence, rather than as a traceback from
+# deep inside process spawning. (Before ADR-030 this set was conditional on
+# the scene's mode; there is one backend now.)
 _ENGINE_TOOLS = {"get_script", "write_script", "set_params",
                  "edit_script", "inspect_model", "describe_cad_api",
                  "scene_summary"}
@@ -285,26 +287,6 @@ def _truncate(text, limit=MAX_RESULT_CHARS):
     return text
 
 
-def _with_geometry_report(report):
-    """Append the Part Design geometry check to a successful rebuild report.
-
-    Gated on the scene's mode here — not inside model.rebuild() — so slider
-    drags (the debounced rebuild path) never pay for validation and model.py
-    stays agent-agnostic. The geometry report is truncated independently
-    (validation.MAX_REPORT_CHARS) so it survives even when the rebuild report
-    fills its share of the result budget.
-    """
-    import bpy
-    from . import modes
-
-    if not modes.validation_enabled(bpy.context.scene):
-        return _truncate(report)
-    from . import validation
-    geometry = validation.report()
-    budget = max(0, MAX_RESULT_CHARS - len(geometry) - 1)
-    return _truncate(report, budget) + "\n" + geometry
-
-
 def execute(name, tool_input, agent=None):
     """Execute a tool on the main thread. Returns (content_blocks, is_error).
     ``agent`` is the calling Agent, for tools that need per-session state
@@ -312,7 +294,7 @@ def execute(name, tool_input, agent=None):
     handler = _HANDLERS.get(name)
     if handler is None:
         return _text("Unknown tool: {:s}".format(name)), True
-    if name in _ENGINE_TOOLS and _cadex_active():
+    if name in _ENGINE_TOOLS:
         from . import cadex_backend
         ok, reason, remedy = cadex_backend.preflight()
         if not ok:
@@ -350,30 +332,12 @@ def execute_blocking(name, tool_input, agent=None):
     return result.wait() if isinstance(result, Pending) else result
 
 
-def _cadex_active():
-    import bpy
-    from . import modes
-    return modes.backend_kind(bpy.context.scene) == "cadexd"
-
-
 def _tool_get_script(_tool_input):
     import bpy
-    from . import model
+    from . import cadex_backend
 
-    if _cadex_active():
-        from . import cadex_backend
-        ok, report = cadex_backend.get_script_report(bpy.context.scene)
-        return _text(_truncate(report)), not ok
-
-    source = model.get_script()
-    if not source.strip():
-        return _text("(the model script is empty — no model yet)"), False
-    scene = bpy.context.scene
-    values = model.get_values(scene)
-    lines = [source]
-    if values:
-        lines.append("\nCurrent parameter values: " + json.dumps(values))
-    return _text(_truncate("\n".join(lines))), False
+    ok, report = cadex_backend.get_script_report(bpy.context.scene)
+    return _text(_truncate(report)), not ok
 
 
 def _deferred(started, render):
@@ -421,62 +385,44 @@ def _render_write_script(ok, report):
 
 
 def _tool_write_script(tool_input, agent=None):
-    from . import model
+    import bpy
+    from . import cadex_backend
 
     source = tool_input.get("content", "")
-    if _cadex_active():
-        import bpy
-        from . import cadex_backend
-        started = cadex_backend.begin_write_script(
-            bpy.context.scene, source,
-            cancelled=_cancellation_check(agent))
-        if not isinstance(started, cadex_backend.Lifecycle):
-            # Keep the attempted source visible when the engine never ran.
-            cadex_backend.mirror_script_text(source)
-        return _deferred(started, _render_write_script)
-
-    model.set_script(source)
-    ok, report = model.rebuild()
-    if not ok:
-        return _text(_truncate("Script saved, but the rebuild FAILED:\n" + report)), True
-    return _text(_with_geometry_report(report)), False
+    started = cadex_backend.begin_write_script(
+        bpy.context.scene, source,
+        cancelled=_cancellation_check(agent))
+    if not isinstance(started, cadex_backend.Lifecycle):
+        # Keep the attempted source visible when the engine never ran.
+        cadex_backend.mirror_script_text(source)
+    return _deferred(started, _render_write_script)
 
 
 def _render_set_params(ok, report):
     if not ok:
         _status("Engine rejected the parameter change: " + _first_line(report))
         return _text(_truncate(report)), True
-    return _text(_with_geometry_report(report)), False
+    return _text(_truncate(report)), False
 
 
 def _tool_set_params(tool_input, agent=None):
-    from . import model
+    import bpy
+    from . import cadex_backend
 
     updates = tool_input.get("params") or {}
     if not isinstance(updates, dict) or not updates:
         return _text("set_params needs a non-empty `params` object."), True
-    if _cadex_active():
-        import bpy
-        from . import cadex_backend
-        return _deferred(
-            cadex_backend.begin_set_params(
-                bpy.context.scene, updates,
-                cancelled=_cancellation_check(agent)),
-            _render_set_params)
-
-    ok, report = model.set_values(updates)
-    if not ok:
-        return _text(_truncate(report)), True
-    return _text(_with_geometry_report(report)), False
+    return _deferred(
+        cadex_backend.begin_set_params(
+            bpy.context.scene, updates,
+            cancelled=_cancellation_check(agent)),
+        _render_set_params)
 
 
 def _tool_edit_script(tool_input, agent=None):
     import bpy
     from . import cadex_backend
 
-    if not _cadex_active():
-        return _text("edit_script applies to Cadex mode only; use "
-                     "write_script for the bpy model script."), True
     return _deferred(
         cadex_backend.begin_edit_script(
             bpy.context.scene, tool_input.get("replacements"),
@@ -488,9 +434,6 @@ def _tool_inspect_model(tool_input):
     import bpy
     from . import cadex_backend
 
-    if not _cadex_active():
-        return _text("inspect_model applies to Cadex mode only; use "
-                     "scene_summary in this mode."), True
     scope = str(tool_input.get("scope") or "").strip()
     if scope not in {"script", "document", "object"}:
         return _text("inspect_model scope must be script, document or "
@@ -512,9 +455,6 @@ def _tool_describe_cad_api(tool_input):
     import bpy
     from . import cadex_backend
 
-    if not _cadex_active():
-        return _text("describe_cad_api applies to Cadex mode only; this "
-                     "scene builds its model with bpy in Blender."), True
     ok, payload = cadex_backend.describe_api(bpy.context.scene)
     if not ok:
         return _text("The engine could not describe its API:\n"
@@ -548,24 +488,20 @@ def _tool_get_attached_image(tool_input, agent):
 
 
 def _tool_scene_summary(_tool_input):
-    """The scene, as the active backend defines it.
+    """The scene, as the engine defines it.
 
-    In cadex mode the Blender objects are tessellated display copies of the
-    engine's outputs -- reporting them as "the scene" invites the model to
-    reason about the mirror instead of the model. So this reports engine
-    truth there, and says what the mirror is separately.
+    The Blender objects are tessellated display copies of the engine's
+    outputs -- reporting them as "the scene" would invite the model to reason
+    about the mirror instead of the model. So this reports engine truth, and
+    says what the mirror is separately.
     """
-    if _cadex_active():
-        import bpy
-        from . import cadex_backend
-        ok, summary = cadex_backend.engine_summary(bpy.context.scene)
-        if not ok:
-            return _text(_truncate(str(summary))), True
-        return _text(_truncate(json.dumps(summary, indent=1, sort_keys=True,
-                                          default=str))), False
-    from . import scene_graph
-    summary = scene_graph.summarize()
-    return _text(_truncate(json.dumps(summary, indent=1))), False
+    import bpy
+    from . import cadex_backend
+    ok, summary = cadex_backend.engine_summary(bpy.context.scene)
+    if not ok:
+        return _text(_truncate(str(summary))), True
+    return _text(_truncate(json.dumps(summary, indent=1, sort_keys=True,
+                                      default=str))), False
 
 
 def _tool_viewport_screenshot(tool_input):

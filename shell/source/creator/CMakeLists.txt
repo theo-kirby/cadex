@@ -434,9 +434,9 @@ elseif(APPLE)
       set(TARGETDIR_LIB ${PYTHON_SITE_PACKAGES}/bpy/lib)
     endif()
   else()
-    set(TARGETDIR_VER "Blender.app/Contents/Resources/${BLENDER_VERSION}")
-    set(TARGETDIR_LIB "Blender.app/Contents/Resources/lib")
-    set(TARGETDIR_TEXT "Blender.app/Contents/Resources/text")
+    set(TARGETDIR_VER "${CADEX_APP_NAME}.app/Contents/Resources/${BLENDER_VERSION}")
+    set(TARGETDIR_LIB "${CADEX_APP_NAME}.app/Contents/Resources/lib")
+    set(TARGETDIR_TEXT "${CADEX_APP_NAME}.app/Contents/Resources/text")
   endif()
   set(TARGETDIR_SITE_PACKAGES "${TARGETDIR_VER}/python/lib/python${PYTHON_VERSION}/site-packages")
   # Skip re-linking on CPACK / install.
@@ -499,7 +499,7 @@ if(WITH_PYTHON)
     # bundled resources on macOS, beside the executable in a portable install,
     # and under the versioned resource directory in a system install.
     if(APPLE)
-      set(CADEX_ENGINE_TARGETDIR "Blender.app/Contents/Resources/cadex")
+      set(CADEX_ENGINE_TARGETDIR "${CADEX_APP_NAME}.app/Contents/Resources/cadex")
     elseif(WITH_INSTALL_PORTABLE)
       set(CADEX_ENGINE_TARGETDIR "cadex")
     else()
@@ -1718,9 +1718,12 @@ elseif(WIN32)
 elseif(APPLE)
   if(NOT WITH_PYTHON_MODULE)
     # Uppercase name for app bundle.
-    set_target_properties(blender PROPERTIES OUTPUT_NAME Blender)
+    set_target_properties(blender PROPERTIES OUTPUT_NAME ${CADEX_APP_NAME})
   endif()
 
+  # The .app skeleton keeps its inherited directory name; only what we ship
+  # is renamed. Renaming the source directory would churn every file under it
+  # for no product benefit (cadex ADR-030).
   set(OSX_APP_SOURCEDIR ${CMAKE_SOURCE_DIR}/release/darwin/Blender.app)
 
   # Setup `Info.plist`.
@@ -1762,11 +1765,11 @@ elseif(APPLE)
   # Give the bundle actual creation/modification date.
   #
   # Note that the directory might not yet exist, which happens when CMAKE is first run.
-  if(NOT EXISTS ${EXECUTABLE_OUTPUT_PATH}/Blender.app)
-    file(MAKE_DIRECTORY ${EXECUTABLE_OUTPUT_PATH}/Blender.app)
+  if(NOT EXISTS ${EXECUTABLE_OUTPUT_PATH}/${CADEX_APP_NAME}.app)
+    file(MAKE_DIRECTORY ${EXECUTABLE_OUTPUT_PATH}/${CADEX_APP_NAME}.app)
   endif()
   execute_process(
-    COMMAND SetFile -d ${SETFILE_DATE} -m ${SETFILE_DATE} ${EXECUTABLE_OUTPUT_PATH}/Blender.app
+    COMMAND SetFile -d ${SETFILE_DATE} -m ${SETFILE_DATE} ${EXECUTABLE_OUTPUT_PATH}/${CADEX_APP_NAME}.app
   )
 
   set(BLENDER_BIN "bin/blender")
@@ -1777,18 +1780,18 @@ elseif(APPLE)
 
   install(
     FILES ${OSX_APP_SOURCEDIR}/Contents/PkgInfo
-    DESTINATION "Blender.app/Contents"
+    DESTINATION "${CADEX_APP_NAME}.app/Contents"
   )
 
   install_dir(
     ${OSX_APP_SOURCEDIR}/Contents/Resources
-    "Blender.app/Contents"
+    "${CADEX_APP_NAME}.app/Contents"
   )
 
   if(WITH_BLENDER_THUMBNAILER)
     install(
       TARGETS blender-thumbnailer
-      DESTINATION "./Blender.app/Contents/PlugIns"
+      DESTINATION "./${CADEX_APP_NAME}.app/Contents/PlugIns"
     )
   endif()
 
@@ -1847,7 +1850,7 @@ elseif(APPLE)
     unset(PYTHON_EXECUTABLE_NAME_ONLY)
     install(
       PROGRAMS ${CMAKE_BINARY_DIR}/release/darwin/scripts/blender-system-info.sh
-      DESTINATION "Blender.app/Contents/Resources"
+      DESTINATION "${CADEX_APP_NAME}.app/Contents/Resources"
     )
   endif()
 

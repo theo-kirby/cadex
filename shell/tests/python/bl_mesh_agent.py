@@ -12,6 +12,14 @@ Uses the mock backend (no network, no `claude` needed) but exercises the real
 TCP bridge and the real MCP shim subprocess. Set MESH_AGENT_LIVE=1 to also run
 one live end-to-end turn through `claude -p` (requires a logged-in Claude Code
 install; makes a real API call).
+
+Scope note (ADR-030): this suite covers the agent loop, the bridge, the MCP
+shim, transcript persistence and engine discovery -- everything that does not
+need a running engine. Four tests that drove the *local* bpy model path
+(script -> exec() -> scene -> sliders) went with that path. What they proved
+that still matters -- one undo push per turn, a rejected script reported as an
+error, parameters surviving save and load -- is proved against the real engine
+in bl_mesh_agent_cadex.py, which is the suite that speaks for the product.
 """
 
 import json
@@ -38,19 +46,6 @@ from mesh_agent.mock_backend import MockBackend  # noqa: E402
 
 FAILURES = []
 
-CUBE_MODEL = """\
-from mesh_model import params, Float
-
-p = params(
-    size=Float(1.0, min=0.2, max=4.0, name="Size",
-               description="Cube edge length"),
-)
-
-import bpy
-bpy.ops.mesh.primitive_cube_add(size=p.size)
-bpy.context.active_object.name = "ParamCube"
-"""
-
 
 def check(condition, label):
     status = "ok" if condition else "FAIL"
@@ -61,10 +56,6 @@ def check(condition, label):
 
 def reset_scene():
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    # These tests exercise the *local* model path (exec() in Blender). Cadex
-    # is the default mode since cadex ADR-024, so say which path is under
-    # test rather than depending on the default staying put.
-    bpy.context.scene.mesh_agent_mode = 'GENERAL' 
 
 
 def run_turn(agent, prompt, timeout=30.0):
@@ -92,153 +83,6 @@ def make_agent(script, tool_cap=None):
     undo_pushes = []
     agent._undo_push = undo_pushes.append
     return agent, holder, undo_pushes
-
-
-def test_model_rebuild_and_params():
-    """The parametric core, without the agent: script -> scene -> sliders."""
-    print("test_model_rebuild_and_params")
-    reset_scene()
-    scene = bpy.context.scene
-
-    model_module.set_script(CUBE_MODEL)
-    ok, report = model_module.rebuild()
-    check(ok, "rebuild succeeds ({:s})".format(report.splitlines()[0] if report else ""))
-    cube = bpy.data.objects.get("ParamCube")
-    check(cube is not None, "script created the cube")
-    check(cube is not None and abs(cube.dimensions.x - 1.0) < 1e-4,
-          "default parameter value applied")
-    check(cube is not None
-          and any(c.name == model_module.COLLECTION_NAME
-                  for c in cube.users_collection),
-          "cube lives in the Model collection")
-
-    specs = model_module.load_specs(scene)
-    check(len(specs) == 1 and specs[0]["id"] == "size"
-          and specs[0]["type"] == 'FLOAT',
-          "parameter spec saved to the scene")
-    check(hasattr(scene, "mesh_params") and hasattr(scene.mesh_params, "size"),
-          "slider property group registered")
-
-    # Change the value the way the set_params tool / a slider would.
-    ok, _report = model_module.set_values({"size": 2.0})
-    check(ok, "set_values rebuild succeeds")
-    cube = bpy.data.objects.get("ParamCube")
-    check(cube is not None and abs(cube.dimensions.x - 2.0) < 1e-4,
-          "rebuild used the new value")
-    check(len(bpy.data.objects) == 1, "rebuild replaced, not duplicated")
-
-    # Out-of-range values clamp to the declared max.
-    ok, _report = model_module.set_values({"size": 99.0})
-    cube = bpy.data.objects.get("ParamCube")
-    check(ok and cube is not None and abs(cube.dimensions.x - 4.0) < 1e-4,
-          "values clamp to the declared range")
-
-    ok, _report = model_module.set_values({"nope": 1.0})
-    check(not ok, "unknown parameter rejected")
-
-    # Edit the script (same param id, extra object): stored value persists.
-    model_module.set_script(CUBE_MODEL + "\n"
-                            "bpy.ops.mesh.primitive_uv_sphere_add(radius=p.size / 2)\n"
-                            "bpy.context.active_object.name = 'ParamBall'\n")
-    ok, _report = model_module.rebuild()
-    cube = bpy.data.objects.get("ParamCube")
-    check(ok and "ParamBall" in bpy.data.objects,
-          "edited script rebuilds with new object")
-    check(cube is not None and abs(cube.dimensions.x - 4.0) < 1e-4,
-          "stored value survives a script edit with a stable id")
-
-
-def test_params_persist_through_save_load():
-    """Script, specs and user-set values must round-trip through the .blend."""
-    print("test_params_persist_through_save_load")
-    reset_scene()
-    model_module.set_script(CUBE_MODEL)
-    ok, _report = model_module.rebuild()
-    check(ok, "initial rebuild succeeds")
-    ok, _report = model_module.set_values({"size": 2.5})
-    check(ok, "value change rebuild succeeds")
-
-    path = os.path.join(tempfile.gettempdir(), "mesh_param_persist.blend")
-    bpy.ops.wm.save_as_mainfile(filepath=path)
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    bpy.ops.wm.open_mainfile(filepath=path)
-    try:
-        scene = bpy.context.scene
-        check(model_module.get_script().strip() != "", "model script restored")
-        specs = model_module.load_specs(scene)
-        check(any(spec["id"] == "size" for spec in specs),
-              "parameter specs restored")
-        stored = model_module.stored_values(scene).get("size", 0.0)
-        check(abs(stored - 2.5) < 1e-4,
-              "user-set value restored (got {!s})".format(stored))
-        cube = bpy.data.objects.get("ParamCube")
-        check(cube is not None and abs(cube.dimensions.x - 2.5) < 1e-4,
-              "geometry restored from the file")
-        ok, _report = model_module.rebuild()
-        cube = bpy.data.objects.get("ParamCube")
-        check(ok and cube is not None and abs(cube.dimensions.x - 2.5) < 1e-4,
-              "rebuild after load reproduces the model")
-    finally:
-        if os.path.exists(path):
-            os.remove(path)
-
-
-def test_mock_turn_builds_model_with_single_undo():
-    print("test_mock_turn_builds_model_with_single_undo")
-    reset_scene()
-    script = [[
-        ("text", "Building a cube.\n"),
-        ("tool", "write_script", {"content": CUBE_MODEL}),
-        ("tool", "scene_summary", {}),
-        ("text", "Done."),
-        ("result", False, "Done."),
-    ]]
-    agent, holder, undo_pushes = make_agent(script)
-    try:
-        check(run_turn(agent, "build a cube"), "turn completes")
-        check("ParamCube" in bpy.data.objects, "cube exists in scene")
-        check(len(undo_pushes) == 1, "exactly one undo push per turn")
-        check(undo_pushes and undo_pushes[0].startswith("Mesh: "),
-              "undo push is labelled")
-
-        backend = holder["backend"]
-        write_reply = backend.tool_results[0][1]
-        check(write_reply["is_error"] is False, "write_script succeeded")
-        check("Rebuilt OK" in write_reply["content"][0]["text"]
-              and "size=" in write_reply["content"][0]["text"],
-              "rebuild report includes objects and parameters")
-        summary_reply = backend.tool_results[1][1]
-        summary = json.loads(summary_reply["content"][0]["text"])
-        check(any(entry["name"] == "ParamCube" for entry in summary["objects"]),
-              "scene_summary reports the cube")
-
-        texts = [message.text for message in agent.history.messages]
-        check(any("Building a cube." in text for text in texts),
-              "streamed text reached the transcript")
-        check(agent.history.messages[0].role == "user",
-              "transcript starts with the user prompt")
-    finally:
-        agent.shutdown()
-
-
-def test_script_error_roundtrip():
-    print("test_script_error_roundtrip")
-    reset_scene()
-    script = [[
-        ("tool", "write_script", {"content": "1/0\n"}),
-        ("text", "That failed."),
-        ("result", False, "That failed."),
-    ]]
-    agent, holder, undo_pushes = make_agent(script)
-    try:
-        check(run_turn(agent, "divide by zero"), "turn completes")
-        reply = holder["backend"].tool_results[0][1]
-        check(reply["is_error"] is True, "tool result flagged is_error")
-        check("ZeroDivisionError" in reply["content"][0]["text"],
-              "traceback returned to the model")
-        check(len(undo_pushes) == 0, "no undo push when the rebuild failed")
-    finally:
-        agent.shutdown()
 
 
 def test_image_attachment_roundtrip():
@@ -417,20 +261,21 @@ def test_mcp_shim_protocol():
         names = [tool["name"] for tool in tools_reply["result"]["tools"]]
         check("write_script" in names, "tools/list relayed from Blender")
 
+        # focus_view rather than write_script: this test is about the MCP
+        # round trip, and every modelling tool now needs a running engine
+        # (ADR-030) which this suite deliberately does not have. The reply
+        # text is proof enough that the call landed inside Blender -- only
+        # code with `bpy` can read bpy.app.background, and the shim
+        # subprocess has no bpy at all.
         send({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
-              "params": {"name": "write_script",
-                         "arguments": {"content":
-                                       "import bpy\n"
-                                       "bpy.ops.mesh.primitive_uv_sphere_add()\n"
-                                       "bpy.context.active_object.name = 'ShimSphere'\n"
-                                       "print('sphere ok')"}}})
+              "params": {"name": "focus_view", "arguments": {}}})
         call_reply = wait_for(3)
         check(call_reply is not None
-              and call_reply["result"]["isError"] is False
-              and "sphere ok" in call_reply["result"]["content"][0]["text"],
-              "tools/call rebuilt the model in Blender and returned stdout")
-        check("ShimSphere" in bpy.data.objects,
-              "object created on the Blender main thread")
+              and call_reply["result"]["isError"] is False,
+              "tools/call round-trips shim -> bridge -> main thread -> shim")
+        check(call_reply is not None
+              and "background mode" in call_reply["result"]["content"][0]["text"],
+              "the reply was produced by bpy on the Blender main thread")
     finally:
         process.stdin.close()
         process.terminate()
@@ -774,11 +619,7 @@ def main():
     mesh_agent.register()
     try:
         test_bridge_chunked_request()
-        test_model_rebuild_and_params()
-        test_params_persist_through_save_load()
-        test_mock_turn_builds_model_with_single_undo()
         test_image_attachment_roundtrip()
-        test_script_error_roundtrip()
         test_tool_call_cap()
         test_transcript_persistence()
         test_session_id_round_trips_and_is_per_file()

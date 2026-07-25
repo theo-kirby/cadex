@@ -28,7 +28,6 @@ from . import agent as agent_module
 from . import cadex_backend as cadex_backend_module
 from . import cadex_pick as cadex_pick_module
 from . import model as model_module
-from . import modes as modes_module
 from . import ui
 
 
@@ -177,7 +176,6 @@ classes = (
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
-    modes_module.register()
     model_module.register()
     cadex_backend_module.register()
     cadex_pick_module.register()
@@ -198,7 +196,6 @@ def unregister():
     cadex_pick_module.unregister()
     cadex_backend_module.unregister()
     model_module.unregister()
-    modes_module.unregister()
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
     agent_module.shutdown_agent()

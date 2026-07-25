@@ -103,7 +103,6 @@ def check(condition, label):
 def reset_scene(root):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
-    scene.mesh_agent_mode = 'CADEX'
     scene[cadex_backend.ROOT_PROP] = root
 
 
@@ -575,7 +574,6 @@ def test_save_as_and_multi_file_lifecycle(workdir):
     second = os.path.join(workdir, "b.blend")
 
     bpy.ops.wm.read_homefile(use_empty=True)
-    bpy.context.scene.mesh_agent_mode = 'CADEX'
     bpy.ops.wm.save_as_mainfile(filepath=first)
     scene = bpy.context.scene
 

@@ -227,6 +227,19 @@ installs to PYTHON_SITE_PACKAGES (or CMAKE_INSTALL_PREFIX if WITH_INSTALL_PORTAB
 )
 
 # ---------------------------------------------------------------------------
+# Cadex application identity (cadex ADR-030)
+#
+# The product is Cadex, not Blender-with-an-add-on. This name is what the
+# bundle, the executable and the install destinations are built from, in one
+# place, so the rename is one variable rather than a dozen string literals.
+# `Info.plist` (release/darwin/Blender.app/Contents/) carries the matching
+# CFBundleName / CFBundleExecutable / CFBundleIdentifier; the skeleton
+# directory keeps its inherited name deliberately.
+set(CADEX_APP_NAME "Cadex" CACHE STRING
+  "Name of the installed application, its executable and its macOS bundle."
+)
+
+# ---------------------------------------------------------------------------
 # Cadex engine (cadex ADR-023, ADR-030)
 #
 # The shell ships the headless cadex CAD engine inside its own bundle so that

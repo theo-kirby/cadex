@@ -32,21 +32,19 @@
 		</dict>
 	</array>
 	<key>CFBundleExecutable</key>
-	<string>Blender</string>
+	<string>Cadex</string>
 	<key>CFBundleGetInfoString</key>
 	<string>${MACOSX_BUNDLE_LONG_VERSION_STRING}, Blender Foundation</string>
 	<!-- Legacy, non-Liquid Glass icon, used on pre-Tahoe / 26 macOS versions. -->
 	<key>CFBundleIconFile</key>
-	<string>blender_icon_legacy.icns</string>
+	<string>cadex_icon.icns</string>
 	<!-- Modern Liquid Glass icon, the app bundle Asset.car file needs to be regenerated in Xcode on modification -->
-	<key>CFBundleIconName</key>
-	<string>blender_liquid_glass</string>
 	<key>CFBundleIdentifier</key>
-	<string>org.blenderfoundation.blender</string>
+	<string>dev.cadex.Cadex</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Blender</string>
+	<string>Cadex</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

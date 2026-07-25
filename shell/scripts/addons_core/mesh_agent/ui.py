@@ -172,31 +172,29 @@ class VIEW3D_PT_mesh_chat(Panel):
         layout = self.layout
         agent = agent_module.get_agent()
 
-        # Assistant mode (General, Part Design, ...) and model selectors.
-        # Both take effect at the next turn; the conversation itself
-        # continues. The model dropdown edits the add-on preference, so it is
-        # also the default for future sessions.
+        # The model selector. It takes effect at the next turn; the
+        # conversation itself continues. It edits the add-on preference, so it
+        # is also the default for future sessions. (The mode dropdown that sat
+        # above it is gone with the local modes -- ADR-030.)
         selectors = layout.column(align=True)
-        selectors.prop(context.scene, "mesh_agent_mode", text="")
         prefs = agent_module.get_prefs()
         if prefs is not None:
             selectors.prop(prefs, "model", text="")
 
-        # Cadex mode: face picking feeds BREP pins to the next message.
-        from . import cadex_backend, cadex_pick, modes
-        if modes.backend_kind(context.scene) == "cadexd":
-            pending = cadex_pick.pending_pin_count()
-            selectors.operator(
-                "mesh_agent.pick_pin", icon='EYEDROPPER',
-                text="Pin Face" if not pending
-                else "Pin Face ({:d} pinned)".format(pending))
-            # One warning row, not a wall of text: the remedy lives in the
-            # add-on preferences, which is where the fix is applied.
-            ok, reason, _remedy = cadex_backend.preflight()
-            if not ok:
-                warning = layout.row()
-                warning.alert = True
-                warning.label(text=reason, icon='ERROR')
+        # Face picking feeds BREP pins to the next message.
+        from . import cadex_backend, cadex_pick
+        pending = cadex_pick.pending_pin_count()
+        selectors.operator(
+            "mesh_agent.pick_pin", icon='EYEDROPPER',
+            text="Pin Face" if not pending
+            else "Pin Face ({:d} pinned)".format(pending))
+        # One warning row, not a wall of text: the remedy lives in the
+        # add-on preferences, which is where the fix is applied.
+        ok, reason, _remedy = cadex_backend.preflight()
+        if not ok:
+            warning = layout.row()
+            warning.alert = True
+            warning.label(text=reason, icon='ERROR')
 
         # Rough character wrap width from the region width (~7 px per char,
         # minus panel padding). blf-measured wrapping can come later.

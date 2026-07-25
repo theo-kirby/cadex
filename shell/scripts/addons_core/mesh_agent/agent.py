@@ -116,8 +116,6 @@ class Agent:
         # can request any of them across turns via get_attached_image.
         self.attachments = []
         self._sent_attachments = 0
-        # Mode the current backend's system prompt was assembled for.
-        self._mode = None
         # Test/injection hooks.
         self.backend_factory = None
         self.tool_cap_override = None
@@ -209,32 +207,11 @@ class Agent:
         return ClaudeCodeBackend(
             claude_path=claude_path,
             model=model,
-            system_prompt=modes.system_prompt_for(modes.get_mode(bpy.context.scene)),
+            system_prompt=modes.system_prompt(),
             tool_names=[tool["name"] for tool in tools.list_tools()],
             bridge_port=bridge.port,
             bridge_token=bridge.token,
         )
-
-    def _sync_mode(self):
-        """Adopt the scene's mode before a turn starts. Main thread only.
-
-        The backend, if it already exists, gets the newly assembled system
-        prompt in place: `claude -p` rebuilds its argv from
-        ``backend.system_prompt`` every turn, while ``session_id`` is left
-        untouched so ``--resume`` conversation continuity survives the mode
-        switch. Backends without a ``system_prompt`` attribute (the mock) are
-        left alone.
-        """
-        import bpy
-        mode_id = modes.get_mode(bpy.context.scene)
-        if mode_id == self._mode:
-            return
-        if self._mode is not None:
-            self.history.add("status",
-                             "Mode: " + modes.mode_label(mode_id))
-        if self.backend is not None and hasattr(self.backend, "system_prompt"):
-            self.backend.system_prompt = modes.system_prompt_for(mode_id)
-        self._mode = mode_id
 
     def _sync_model(self):
         """Adopt the preferences' model before a turn starts. Like the mode,
@@ -289,7 +266,6 @@ class Agent:
             prompt = "See the attached image(s)."
 
         self.history.add("user", prompt)
-        self._sync_mode()
         self._sync_model()
 
         if self.backend is None:

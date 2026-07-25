@@ -119,12 +119,7 @@ def _make_operator():
         bl_idname = "mesh_agent.pick_pin"
         bl_label = "Pin Face"
         bl_description = ("Click a face of the model to pin it for the "
-                          "assistant (cadex mode)")
-
-        @classmethod
-        def poll(cls, context):
-            from . import modes
-            return modes.backend_kind(context.scene) == "cadexd"
+                          "assistant")
 
         def invoke(self, context, event):
             if context.area is None or context.area.type != 'VIEW_3D':
