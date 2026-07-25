@@ -187,11 +187,6 @@ public:
     void loadWindowSettings();
     /// Saves the main window settings.
     void saveWindowSettings(bool canDelay = false);
-    /// True while this session runs the Cadex chat-only experimental mode.
-    /// Read once per session: experimental-mode sessions must never overwrite the
-    /// user's saved manual layout, and the preference itself only takes
-    /// effect after a restart.
-    static bool isVibeExperimentalModeSession();
     //@}
 
     /** @name Menu

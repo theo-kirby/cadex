@@ -900,12 +900,6 @@ void OverlayTabWidget::saveTabs()
         return;
     }
 
-    // A Cadex experimental-mode session hides overlay containers; persisting
-    // their state would clobber the user's manual overlay layout.
-    if (MainWindow::isVibeExperimentalModeSession()) {
-        return;
-    }
-
     std::ostringstream os, os2;
     _sizemap.clear();
     auto sizes = splitter->sizes();

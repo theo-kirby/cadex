@@ -26,13 +26,11 @@ SUPPORTED_WORKBENCHES = (
 
 # "Vibe" residue that intentionally survives the rename (migration property
 # names / a session-check method that carry "Vibe" but not "VibeCAD").
-_ALLOWLISTED_VIBE_RESIDUE = (
-    "VibeExperimentalBadge",
-    "VibeExperimentalModeSuppressed",
-    "VibeExperimentalModeRehidePending",
-    "isVibeExperimentalModeSession",
-    "VibeContextDebugPollTimer",
-)
+#: Migration residue from the VibeCAD fork that was allowed to keep its old
+#: name. Empty since Phase 7 C6a reverted isVibeExperimentalModeSession to
+#: stock (ADR-022): the "Vibe" identity has left the tree entirely, and the
+#: sweep below is now unconditional.
+_ALLOWLISTED_VIBE_RESIDUE: tuple[str, ...] = ()
 
 
 def _source(relative_path: str) -> str:
@@ -83,14 +81,23 @@ def test_module_directory_and_preference_group_are_lowercase_cadex() -> None:
     mod_cmake = _source("src/Mod/CMakeLists.txt")
     assert "add_subdirectory(cadex)" in mod_cmake
 
-    # The runtime preference group C++ reads and the Python readers agree on the
-    # lowercase Mod/cadex namespace.
-    main_window = _source("src/Gui/MainWindow.cpp")
-    assert "User parameter:BaseApp/Preferences/Mod/cadex" in main_window
-    assert "Mod/VibeCAD" not in main_window
+    # The engine owns its preference group, in the lowercase namespace.
     source = _source("src/Mod/cadex/CadexEngineSettings.py")
-    assert "Mod/cadex" in source
+    assert "User parameter:BaseApp/Preferences/Mod/cadex" in source
     assert "Mod/VibeCAD" not in source
+
+    # And the inherited GUI core reads nothing of ours. Phase 6 asserted the
+    # opposite -- that MainWindow.cpp read the cadex group -- because
+    # isVibeExperimentalModeSession lived there. C6a reverted that hook to
+    # stock (ADR-022), so the fork's delta against upstream FreeCAD in this
+    # file is now zero, and this assertion is what keeps it there.
+    for inherited in ("src/Gui/MainWindow.cpp", "src/Gui/MainWindow.h",
+                      "src/Gui/ToolBarManager.cpp",
+                      "src/Gui/DockWindowManager.cpp",
+                      "src/Gui/OverlayWidgets.cpp"):
+        text = _source(inherited)
+        assert "Preferences/Mod/cadex" not in text, inherited
+        assert "Vibe" not in text, inherited
 
 
 

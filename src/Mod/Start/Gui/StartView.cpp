@@ -74,26 +74,22 @@ StartView::StartView(QWidget* parent)
     , _showOnStartupCheckBox {nullptr}
 {
     setObjectName(QLatin1String("StartView"));
-    // A Cadex experimental-mode session trims the launch screen to recent-file
-    // thumbnails plus New File / Open File: no first-start page, examples,
-    // custom folder, or footer.
-    const bool experimentalSession = Gui::MainWindow::isVibeExperimentalModeSession();
     auto hGrp = App::GetApplication().GetParameterGroupByPath(
         "User parameter:BaseApp/Preferences/Mod/Start"
     );
     auto cardSpacing = hGrp->GetInt("FileCardSpacing", 15);  // NOLINT
-    auto showExamples = hGrp->GetBool("ShowExamples", true) && !experimentalSession;
+    auto showExamples = hGrp->GetBool("ShowExamples", true);
 
     // Verify that the folder specified in preferences is available before showing it
     std::string customFolder(hGrp->GetASCII("CustomFolder", ""));
     bool showCustomFolder = false;
-    if (!customFolder.empty() && !experimentalSession) {
+    if (!customFolder.empty()) {
         showCustomFolder = true;
     }
 
     // First start page
     QScrollArea* firstStartScrollArea = nullptr;
-    if (!experimentalSession) {
+    {
         firstStartScrollArea = gsl::owner<QScrollArea*>(new QScrollArea());
         auto firstStartScrollWidget = gsl::owner<QWidget*>(new QWidget(firstStartScrollArea));
         firstStartScrollArea->setWidget(firstStartScrollWidget);
@@ -168,7 +164,7 @@ StartView::StartView(QWidget* parent)
 
 
     // Documents page footer
-    if (!experimentalSession) {
+    {
         auto footerLayout = gsl::owner<QHBoxLayout*>(new QHBoxLayout());
         documentsMainLayout->addLayout(footerLayout);
 
@@ -190,9 +186,8 @@ StartView::StartView(QWidget* parent)
 
     setCentralWidget(_contents);
 
-    // Set startup widget according to the first start parameter; an experimental
-    // session always starts on the documents page (FirstStart2024 ignored).
-    auto firstStart = hGrp->GetBool("FirstStart2024", true) && !experimentalSession;
+    // Set startup widget according to the first start parameter
+    auto firstStart = hGrp->GetBool("FirstStart2024", true);
     _contents->setCurrentWidget(firstStart ? firstStartScrollArea : documentsWidget);
     if (customFolderListWidget) {
         configureCustomFolderListWidget(customFolderListWidget);
@@ -222,25 +217,6 @@ StartView::StartView(QWidget* parent)
 
 void StartView::configureNewFileButtons(QLayout* layout) const
 {
-    if (Gui::MainWindow::isVibeExperimentalModeSession()) {
-        // Experimental mode has no workbench choice: exactly two tiles.
-        auto newFile = gsl::owner<NewFileButton*>(new NewFileButton(
-            {tr("New File"),
-             tr("Starts a new part with the Cadex assistant"),
-             QLatin1String(":/icons/document-new.svg")}
-        ));
-        auto openExperimentalFile = gsl::owner<NewFileButton*>(new NewFileButton(
-            {tr("Open File"),
-             tr("Opens an existing CAD file or 3D model"),
-             QLatin1String(":/icons/document-open.svg")}
-        ));
-        layout->addWidget(newFile);
-        layout->addWidget(openExperimentalFile);
-        connect(newFile, &QPushButton::clicked, this, &StartView::newExperimentalFile);
-        connect(openExperimentalFile, &QPushButton::clicked, this, &StartView::openExistingFile);
-        return;
-    }
-
     auto newEmptyFile = gsl::owner<NewFileButton*>(new NewFileButton(
         {tr("Empty File"),
          tr("Creates a new empty FreeCAD file"),
@@ -376,12 +352,11 @@ bool StartView::onHasMsg(const char* pMsg) const
 
 void StartView::postStart(PostStartBehavior behavior)
 {
-    const bool experimentalSession = Gui::MainWindow::isVibeExperimentalModeSession();
     auto hGrp = App::GetApplication().GetParameterGroupByPath(
         "User parameter:BaseApp/Preferences/Mod/Start"
     );
 
-    if (behavior == PostStartBehavior::switchWorkbench && !experimentalSession) {
+    if (behavior == PostStartBehavior::switchWorkbench) {
         auto wb = hGrp->GetASCII("AutoloadModule", "");
         if (wb == "$LastModule") {
             wb = App::GetApplication()
@@ -392,26 +367,10 @@ void StartView::postStart(PostStartBehavior behavior)
             Gui::Application::Instance->activateWorkbench(wb.c_str());
         }
     }
-    if (experimentalSession || hGrp->GetBool("closeStart", false)) {
+    if (hGrp->GetBool("closeStart", false)) {
         for (QWidget* w = this; w != nullptr; w = w->parentWidget()) {
             if (auto mdiSub = qobject_cast<QMdiSubWindow*>(w)) {
-                if (experimentalSession) {
-                    // Defer the close so the Start view is never torn down
-                    // synchronously while a document is still opening. The
-                    // experimental launch-state controller also closes it once
-                    // the document finishes restoring, so a deferred close here
-                    // avoids the intermittent open-file race without leaving the
-                    // launch screen behind.
-                    QPointer<QMdiSubWindow> guarded(mdiSub);
-                    QTimer::singleShot(0, mdiSub, [guarded]() {
-                        if (guarded) {
-                            guarded->close();
-                        }
-                    });
-                }
-                else {
-                    mdiSub->close();
-                }
+                mdiSub->close();
                 return;
             }
         }

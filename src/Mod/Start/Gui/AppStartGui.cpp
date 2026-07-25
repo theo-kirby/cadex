@@ -91,12 +91,6 @@ public:
             "User parameter:BaseApp/Preferences/Mod/Start"
         );
         bool showOnStartup = hGrp->GetBool("ShowOnStartup", true);
-        if (Gui::MainWindow::isVibeExperimentalModeSession()) {
-            // Experimental mode always starts on the launch screen, regardless of
-            // ShowOnStartup — unless documents were opened from the command
-            // line, in which case the session goes straight to Parts mode.
-            showOnStartup = App::GetApplication().getDocuments().empty();
-        }
         if (showOnStartup) {
             Gui::Application::Instance->commandManager().runCommandByName("Start_Start");
             QTimer::singleShot(100, [this] { EnsureLaunched(); });

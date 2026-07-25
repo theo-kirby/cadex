@@ -844,15 +844,6 @@ bool MainWindow::updateTreeView(bool show)
                                          ->GetGroup("DockWindows")
                                          ->GetGroup("TreeView");
         bool enabled = group->GetBool("Enabled", false);
-        // Experimental mode hides the ComboView and every left-area dock, so the user
-        // has no model tree at all. Force the standalone tree view on the right
-        // instead; it becomes an independent TreeWidget instance (multiple are
-        // supported and all sync to selection) that CadexExperimentalMode shows and
-        // hides alongside the assistant sidebar.
-        if (isVibeExperimentalModeSession()) {
-            enabled = true;
-            show = true;
-        }
         _updateDockWidget("Std_TreeView", enabled, show, Qt::RightDockWidgetArea, [](QWidget* widget) {
             if (widget) {
                 return widget;
@@ -2242,13 +2233,8 @@ void MainWindow::loadWindowSettings()
 
     Base::StateLocker guard(d->_restoring);
 
-    // The saved MainWindowState encodes the manual dock/toolbar layout;
-    // applying it in an experimental-mode session would re-show hidden chrome.
-    // Geometry (position/size) above is still restored.
-    if (!isVibeExperimentalModeSession()) {
-        d->restoreWindowState(windowState);
-        std::clog << "Main window restored" << std::endl;
-    }
+    d->restoreWindowState(windowState);
+    std::clog << "Main window restored" << std::endl;
 
     switch (windowMode) {
         case PersistedWindowMode::FullScreen:
@@ -2276,20 +2262,14 @@ void MainWindow::loadWindowSettings()
 # endif
 #endif
 
-    // Experimental-mode sessions hide all manual chrome; the saved manual status
-    // bar state must not re-show it.
-    statusBar()->setVisible(showStatusBar && !isVibeExperimentalModeSession());
+    statusBar()->setVisible(showStatusBar);
 
     setAttribute(Qt::WA_AlwaysShowToolTips);
 
     ToolBarManager::getInstance()->restoreState();
     std::clog << "Toolbars restored" << std::endl;
 
-    // Restoring overlay-parked docks would resurrect manual chrome that a
-    // experimental-mode session keeps hidden.
-    if (!isVibeExperimentalModeSession()) {
-        OverlayManager::instance()->restore();
-    }
+    OverlayManager::instance()->restore();
 
     // Workbench modules can create their dock widgets after the first restoreState() pass.
     // Run duplicate-state repair after the startup workbench docks are present, but before the
@@ -2348,15 +2328,6 @@ void MainWindowP::restoreWindowState(const QByteArray& windowState)
     hGrp->SetBool("WindowStateRestored", !hGrp->GetBool("WindowStateRestored", false));
 }
 
-bool MainWindow::isVibeExperimentalModeSession()
-{
-    static const bool experimentalMode = App::GetApplication()
-                                       .GetParameterGroupByPath(
-                                           "User parameter:BaseApp/Preferences/Mod/cadex")
-                                       ->GetBool("ExperimentalMode", true);
-    return experimentalMode;
-}
-
 void MainWindow::saveWindowSettings(bool canDelay)
 {
     if (isRestoringWindowState()) {
@@ -2371,12 +2342,8 @@ void MainWindow::saveWindowSettings(bool canDelay)
     Base::ConnectionBlocker block(d->connParam);
     d->hGrp->SetASCII("WindowMode", windowModeName(this));
     d->hGrp->RemoveBool("Maximized");
-    // Experimental-mode sessions hide all manual chrome; persisting their state
-    // would irreversibly clobber the user's saved manual layout.
-    if (!isVibeExperimentalModeSession()) {
-        d->hGrp->SetBool("StatusBar", this->statusBar()->isVisible());
-        d->hGrp->SetASCII("MainWindowState", this->saveState().toBase64().constData());
-    }
+    d->hGrp->SetBool("StatusBar", this->statusBar()->isVisible());
+    d->hGrp->SetASCII("MainWindowState", this->saveState().toBase64().constData());
 
     const QRect rect = isFullScreen() || isMaximized() ? normalGeometry()
                                                        : QRect(this->pos(), this->size());
@@ -2386,11 +2353,9 @@ void MainWindow::saveWindowSettings(bool canDelay)
         d->hGrp->SetASCII("Geometry", ss.str().c_str());
     }
 
-    if (!isVibeExperimentalModeSession()) {
-        DockWindowManager::instance()->saveState();
-        OverlayManager::instance()->save();
-        ToolBarManager::getInstance()->saveState();
-    }
+    DockWindowManager::instance()->saveState();
+    OverlayManager::instance()->save();
+    ToolBarManager::getInstance()->saveState();
 }
 
 void MainWindow::startSplasher()
@@ -3153,10 +3118,6 @@ void MainWindow::setWindowTitle(const QString& string)
 
     if (SafeMode::SafeModeEnabled()) {
         title = QStringLiteral("%1 (%2)").arg(title, tr("Safe Mode"));
-    }
-
-    if (isVibeExperimentalModeSession()) {
-        title = QStringLiteral("%1 — %2").arg(title, tr("Experimental Mode"));
     }
 
     if (!string.isEmpty()) {

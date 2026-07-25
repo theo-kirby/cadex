@@ -825,12 +825,6 @@ void DockWindowManager::tabifyDockWidgets(DockWindowItems* items)
 
 void DockWindowManager::saveState()
 {
-    // A Cadex experimental-mode session hides every manual dock; saving its
-    // visibility would clobber the user's manual layout.
-    if (MainWindow::isVibeExperimentalModeSession()) {
-        return;
-    }
-
     const QList<DockWindowItem>& dockItems = d->_dockWindowItems.dockWidgets();
     for (QList<DockWindowItem>::ConstIterator it = dockItems.begin(); it != dockItems.end(); ++it) {
         QDockWidget* dw = findDockWidget(d->_dockedWindows, it->name);

@@ -852,12 +852,6 @@ void ToolBarManager::onTimer()
 
 void ToolBarManager::saveState() const
 {
-    // A Cadex experimental-mode session hides every toolbar; saving that state
-    // would clobber the user's manual layout.
-    if (MainWindow::isVibeExperimentalModeSession()) {
-        return;
-    }
-
     auto ignoreSave = [](QAction* action) {
         // Only save state for toolbars whose toggle action is user-visible.
         return !action->isVisible();
@@ -880,13 +874,6 @@ void ToolBarManager::saveState() const
 
 void ToolBarManager::restoreState() const
 {
-    // A Cadex experimental-mode session hides every toolbar; restoring the
-    // manual-mode visibility prefs (startup, param changes, the deferred
-    // 100ms timer) would re-show them over the hidden chrome.
-    if (MainWindow::isVibeExperimentalModeSession()) {
-        return;
-    }
-
     std::map<int, QToolBar*> sbToolBars;
     std::map<int, QToolBar*> mbRightToolBars;
     std::map<int, QToolBar*> mbLeftToolBars;
