@@ -286,7 +286,7 @@ def _complete_script(captured: Mapping[str, Any]) -> Any:
             "ok": False,
             "error": "The active document has no durable Cadex project root.",
         }
-    from CadexProject import CadexProjectScriptStore
+    from CadexScriptStore import CadexProjectScriptStore
 
     store = CadexProjectScriptStore(root)
     state = store.read_state()

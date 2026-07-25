@@ -116,18 +116,9 @@ class _CadexdService:
 
 
 def _resolve_budgets(raw: Mapping[str, Any] | None) -> dict[str, Any]:
-    budgets = dict(raw or {})
-    timeout = float(budgets.get("timeout_seconds") or 0.0)
-    memory_mb = int(budgets.get("memory_limit_mb") or 0)
-    if timeout > 0.0 and memory_mb > 0:
-        return {"timeout_seconds": timeout, "memory_limit_mb": memory_mb}
-    from CadexPreferences import load_settings
+    from CadexEngineSettings import resolve_budgets
 
-    settings = load_settings()
-    return {
-        "timeout_seconds": float(settings.scripted_timeout_seconds),
-        "memory_limit_mb": int(settings.scripted_memory_limit_mb),
-    }
+    return resolve_budgets(raw)
 
 
 def _display_block(
@@ -305,7 +296,7 @@ class CadexdServer:
     ) -> dict[str, Any]:
         import FreeCAD as App
 
-        from CadexProject import CadexProjectScriptStore
+        from CadexScriptStore import CadexProjectScriptStore
 
         root = Path(str(args["project_root"])).expanduser()
         root.mkdir(parents=True, exist_ok=True)
@@ -443,7 +434,7 @@ class CadexdServer:
         not_open = self._require_open()
         if not_open is not None:
             return not_open
-        from CadexProject import CadexProjectScriptStore
+        from CadexScriptStore import CadexProjectScriptStore
 
         store = CadexProjectScriptStore(self._project_root)
         source = store.read_source()

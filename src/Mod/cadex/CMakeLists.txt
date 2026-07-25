@@ -7,6 +7,7 @@ set(Cadex_Scripts
     CadexCodex.py
     CadexCore.py
     CadexDebug.py
+    CadexEngineSettings.py
     CadexEditState.py
     CadexGrid.py
     CadexGeometry.py
@@ -19,6 +20,7 @@ set(Cadex_Scripts
     CadexProvider.py
     CadexReferenceContracts.py
     CadexProject.py
+    CadexScriptStore.py
     CadexParametersPanel.py
     CadexSession.py
     CadexExperimentalChat.py

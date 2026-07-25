@@ -479,11 +479,11 @@ def capture_project_state(
         timeout = float(budgets.get("timeout_seconds") or 0.0)
         memory_mb = int(budgets.get("memory_limit_mb") or 0)
     if timeout <= 0.0 or memory_mb <= 0:
-        from CadexPreferences import load_settings
+        from CadexEngineSettings import load_engine_budgets
 
-        settings = load_settings()
-        timeout = float(getattr(settings, "scripted_timeout_seconds", 0.0) or 0.0)
-        memory_mb = int(getattr(settings, "scripted_memory_limit_mb", 0) or 0)
+        settings = load_engine_budgets()
+        timeout = float(settings.get("timeout_seconds") or 0.0)
+        memory_mb = int(settings.get("memory_limit_mb") or 0)
     if timeout <= 0.0 or memory_mb <= 0:
         _raise(
             tool_name,
@@ -556,7 +556,7 @@ def _project_param_values(
 def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
     """Persist the working script state and stage one project candidate."""
 
-    from CadexProject import CadexProjectScriptStore
+    from CadexScriptStore import CadexProjectScriptStore
 
     tool_name = str(captured["tool_name"])
     operation = str(captured["operation"])
@@ -733,7 +733,7 @@ def record_project_candidate_failure(
 ) -> None:
     """Persist the failed candidate summary; the accepted state stays live."""
 
-    from CadexProject import CadexProjectScriptStore
+    from CadexScriptStore import CadexProjectScriptStore
 
     store = CadexProjectScriptStore(str(prepared["project_root"]))
     store.write(
@@ -754,7 +754,7 @@ def validate_project_result(
 ) -> dict[str, Any]:
     """Check the worker report, record the contract, persist working state."""
 
-    from CadexProject import CadexProjectScriptStore
+    from CadexScriptStore import CadexProjectScriptStore
 
     tool_name = str(prepared["tool_name"])
     if execution.get("schema") != PROJECT_WORKER_SCHEMA:
@@ -914,7 +914,7 @@ def accept_project_candidate(
 ) -> dict[str, Any]:
     """Persist the accepted project revision/contract/digest; return the tool payload."""
 
-    from CadexProject import CadexProjectScriptStore
+    from CadexScriptStore import CadexProjectScriptStore
 
     revision = str(prepared["revision"])
     digest = str(validated["digest"])
@@ -974,7 +974,7 @@ def candidate_model_state(prepared: Mapping[str, Any]) -> dict[str, Any]:
     """
 
     try:
-        from CadexProject import CadexProjectScriptStore
+        from CadexScriptStore import CadexProjectScriptStore
 
         working = str(
             CadexProjectScriptStore(str(prepared["project_root"]))

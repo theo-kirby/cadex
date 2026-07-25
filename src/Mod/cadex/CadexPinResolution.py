@@ -122,7 +122,7 @@ def resolve_pin(
 ) -> dict[str, Any]:
     """Resolve one selection against the accepted revision's staged BREP."""
 
-    from CadexProject import CadexProjectScriptStore
+    from CadexScriptStore import CadexProjectScriptStore
     from cadex_partdesign_worker import (
         PartDesignCandidateError,
         _query_subelements,

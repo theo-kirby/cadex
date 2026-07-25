@@ -63,7 +63,7 @@ def rebuild_project(project_root: str | Path) -> dict[str, Any]:
     if str(module_root) not in sys.path:
         sys.path.insert(0, str(module_root))
 
-    from CadexProject import CadexProjectScriptStore
+    from CadexScriptStore import CadexProjectScriptStore
     from CadexScriptedRuntime import run_project_lifecycle
 
     root = Path(str(project_root)).expanduser().resolve()
