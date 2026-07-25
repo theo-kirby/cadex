@@ -63,6 +63,7 @@ argument-parsing code conflicts as logic. The same escape hatch
 | `shell/source/creator/` | entry point and the install rules that place the engine in the bundle. |
 | `shell/intern/ghost` | windowing and input. |
 | `shell/lib/<platform>` | submodules, never content — 1.3 GB of prebuilt libraries per platform from `projects.blender.org`. `update = none` in `.gitmodules`; `pixi run setup` checks out the one this platform needs. |
+| binary assets in **git-LFS** | 6,712 files, ~790 MB, declared by extension in `shell/.gitattributes` (`*.dat`, `*.blend`, images, `*.a`, `*.dylib`, …). See §7. |
 | `shell/build_files/` | the CMake platform layer the shell configures through. |
 | `shell/release/darwin/` | the `.app` skeleton, `Info.plist`, icons. Keeps its inherited directory name (`Blender.app`) deliberately — renaming it would churn every file underneath for no product benefit; only what is *installed* is renamed. |
 
@@ -114,3 +115,42 @@ shrinkage are in one place.
   move a payload between two repositories.
 - **`.github/workflows/mesh-build.yml`** (ADR-030): folded into the root
   `.github/workflows/cadex-app.yml`, which builds the engine it ships.
+
+## 7. git-LFS, and what it costs
+
+Blender's `.gitattributes` tracks binaries **by extension** — `*.dat`,
+`*.blend`, `*.png`, `*.exr`, `*.a`, `*.dylib`, `*.whl` and ~40 more — so
+importing the tree brought git-LFS with it. Measured at the first push
+(2026-07-25): **6,712 objects, ~790 MB**, against a plain-git pack of only
+81 MB. Where it lives:
+
+| Path | LFS files |
+|---|---|
+| `shell/tests/files/` | 6,351 |
+| `shell/release/datafiles/`, `release/windows/`, `release/darwin/` | 340 |
+| `shell/assets/` | 15 |
+
+Three things follow, and none of them are obvious from the tree:
+
+- **git-lfs is required to clone**, not optional. `release/datafiles/icons/`
+  is LFS, and the build installs those into the bundle for the application
+  to read — a clone without git-lfs puts pointer *text* files there. The
+  test fixtures failing would be tolerable; corrupt runtime datafiles are
+  not. `README.md` says so first, before the clone line.
+- **It is close to GitHub's free ceiling.** The free tier is 1 GB of LFS
+  storage and 1 GB of bandwidth *per month*; we are at ~790 MB of storage,
+  and every full clone spends ~790 MB of bandwidth. Two clones in a month
+  exceeds it. This is a quota to watch, not a hypothetical.
+- **The fix is already the top of §4.** `shell/tests/files/` is 6,351 of the
+  6,712 objects and the single biggest line item in the working tree.
+  Removing it under the normal protocol takes LFS from ~790 MB to ~50 MB and
+  the problem stops existing. That was already the #1 Phase 13b candidate on
+  size grounds; the LFS quota is a second, sharper reason.
+
+The first push also **failed once** before succeeding: the LFS upload
+completed, then the ref update died with *"Connection to github.com closed
+by remote host"*. A plain retry worked, since the LFS objects were already
+server-side by then. Worth knowing so the next person does not go hunting —
+and worth noting that the shell script idiom `git push … | tail` reports
+`tail`'s exit status, not the push's, which is how a failed push can look
+like a clean one.

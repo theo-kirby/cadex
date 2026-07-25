@@ -78,6 +78,8 @@ shell/                    the shell — a Blender fork (conservative zone;
 shell/scripts/addons_core/mesh_agent/   the add-on: ours, subtractive
                           changes encouraged (docs/BLENDER.md)
 shell/lib/<platform>      submodules, NEVER content (1.3 GB prebuilt each)
+                          NOTE: shell/ also carries ~790 MB in git-LFS
+                          (binary assets, per shell/.gitattributes)
 package/engine/           the engine payload build (ADR-023)
 package/app/build_app.sh  the shell build, with the conda env scrubbed off
                           PATH — read its header before touching the build
@@ -90,6 +92,7 @@ shell/build_darwin/       the shell build tree and the installed bundle
 ## Commands
 
 ```bash
+git lfs install               # once per machine, BEFORE cloning
 pixi run setup                # first time: check out shell/lib/<platform>
 pixi run app                  # build engine + payload + shell, then launch
 

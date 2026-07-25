@@ -18,11 +18,18 @@ sliders, model tree, script, viewport.
 
 ## Build and run
 
-Requires [pixi](https://pixi.sh), plus a host toolchain for the shell — on
-macOS that is the Xcode command line tools and `brew install cmake ninja
-git-lfs`.
+Requires [pixi](https://pixi.sh) and **git-lfs**, plus a host toolchain for
+the shell — on macOS that is the Xcode command line tools and
+`brew install cmake ninja git-lfs`.
+
+Install git-lfs *before* cloning. The shell tree keeps binary assets in LFS
+(~790 MB, mostly `shell/tests/files/`, but also
+`shell/release/datafiles/icons/` which the build installs and the
+application reads). Clone without it and you get pointer text files where
+those should be.
 
 ```bash
+git lfs install
 git clone <this repo> && cd cadex
 pixi run setup      # check out the shell's prebuilt libraries (~1.3 GB)
 pixi run app        # build the engine, the payload and the shell, then launch
