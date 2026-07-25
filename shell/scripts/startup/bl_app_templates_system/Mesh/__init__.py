@@ -14,6 +14,14 @@ Python shortly after load:
 - every screen area closed except the 3D viewport, which is then split 50/50
   with a Properties editor pinned to the Tool tab — that editor hosts the chat
   panel as a full-height column (other tool-tab panels are hidden)
+- a parameters area split off the bottom of the viewport: a second Properties
+  editor on the same Tool tab, headerless, hosting the parameter sliders and
+  nothing else (the two panels sort themselves out by area — see
+  ``mesh_agent.ui._column_role``). It is an area rather than a panel in the
+  chat column so the user can close and reopen it; the chat input bar carries
+  the toggle. Opening it lives in the add-on
+  (``mesh_agent.ui.open_params_area``) because the toggle operator needs the
+  same code.
 - scene emptied, grid floor off, axis lines kept
 
 All of this runs from a deferred, retrying timer because neither the add-on
@@ -24,8 +32,8 @@ A hand-authored startup.blend can replace the layout part in Phase 2.
 import bpy
 from bpy.app.handlers import persistent
 
-# Panels that make up the chat column; everything else in the Tool category
-# gets hidden.
+# Panels that make up the chat column and the parameters area; everything
+# else in the Tool category gets hidden.
 MESH_PANELS = {"VIEW3D_PT_mesh_chat", "VIEW3D_PT_mesh_params"}
 
 # Original poll functions of foreign panels hidden in Simple mode, kept for
@@ -97,7 +105,7 @@ def _all_panel_classes():
 def _hide_foreign_tool_panels():
     """Hide the other "Tool"-category panels (Active Tool options, Workspace,
     Custom Properties, ...) that the Properties editor's Tool tab mirrors, so
-    the chat column stays clean."""
+    the chat column and the parameters area stay clean."""
     for cls in list(_all_panel_classes()):
         if (getattr(cls, "bl_space_type", None) != 'VIEW_3D'
                 or getattr(cls, "bl_region_type", None) != 'UI'
@@ -249,6 +257,10 @@ def _apply_simple_ui():
             _override_headers()
             _style_viewport(window, left)
             _style_props(window, right)
+            # Last, so the two-area checks above are done with: this adds a
+            # third area under the viewport. It finishes on its own timer.
+            from mesh_agent import ui as mesh_ui
+            mesh_ui.open_params_area(window)
             _applied[0] = True
             if _debug:
                 print("mesh-template: applied")

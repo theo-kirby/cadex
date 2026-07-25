@@ -196,9 +196,19 @@ def _progress(event):
         print("cadexd:", kind)
 
 
-def _adopt_script_state(scene, script_state):
+def _adopt_script_state(scene, script_state, preserve_local=False):
     """Cache revision/specs/values from one engine script-state block and
-    mirror them into the scene (sliders + script text)."""
+    mirror them into the scene (sliders + script text).
+
+    ``preserve_local`` is for the open path. Opening a project that holds no
+    script at all must not erase what the .blend remembers: a duplicated or
+    Save-As'd file names a project root that does not exist, the engine
+    creates it empty (``open_project`` mkdirs), and bridging that emptiness
+    back would overwrite the saved specs with ``[]`` and unregister the
+    slider group -- destroying the only copy of the parameter declarations
+    the file still had. An engine that *has* a script is always authoritative,
+    including when that script declares no parameters.
+    """
     root = project_root(scene)
     state = _state_for(root)
     params = dict(script_state.get("params") or {})
@@ -208,6 +218,13 @@ def _adopt_script_state(scene, script_state):
     state.values = {str(key): value
                     for key, value in dict(params.get("values") or {}).items()}
     state.script_present = bool(script_state.get("script_present"))
+    if preserve_local and not state.script_present \
+            and scene_remembers_a_model(scene):
+        # Nothing to adopt, and everything to lose. The block for an empty
+        # project carries source="" -- a str, so it would clear the script
+        # mirror as well as the specs, and the mirror is exactly what
+        # adopt_saved_script() rebuilds the project from.
+        return
     source = script_state.get("source")
     if isinstance(source, str):
         mirror_script_text(source)
@@ -306,7 +323,8 @@ def ensure_open(scene):
         return False, _failure_report("open_project", opened)
     state.opened = True
     state.restore = dict(opened.get("restore") or {})
-    _adopt_script_state(scene, dict(opened.get("script") or {}))
+    _adopt_script_state(scene, dict(opened.get("script") or {}),
+                        preserve_local=True)
     if state.script_present:
         # The restore pass proved the model; this second run is purely to
         # get the tessellation for the viewport. cadexd's open_project has
@@ -876,19 +894,73 @@ def open_roots():
     return sorted(_states)
 
 
+def scene_remembers_a_model(scene):
+    """Does the .blend itself still carry a model the engine has lost?
+
+    The specs cache and the ``model.py`` mirror both save with the file, so
+    either one is enough to rebuild the project from what is in front of us.
+    """
+    from . import model
+    try:
+        if model.load_specs(scene):
+            return True
+        return bool((model.get_script() or "").strip())
+    except Exception:
+        return False
+
+
+def orphaned_project(scene):
+    """The engine is open on this file's project and that project is empty.
+
+    True only after an open, which is the point: before the open we cannot
+    know, and after it ``os.path.isdir`` is useless because ``open_project``
+    creates the root it was handed. ``script_present`` comes over the
+    protocol, so this asks the engine rather than reaching into its store.
+    """
+    try:
+        state = _states.get(project_root(scene))
+    except Exception:
+        return False
+    if state is None or not state.opened or state.script_present:
+        return False
+    return scene_remembers_a_model(scene)
+
+
+def adopt_saved_script(scene):
+    """Rebuild this file's engine project from the script saved in the .blend.
+
+    For the duplicated / Save-As'd file: the new project root is empty, but
+    the file still carries the script mirror. Writing it back through the
+    normal ``write_script`` path gives the new project its own accepted
+    revision and digest -- a genuine sibling of the original, not a copy of
+    its artifacts. Returns (ok, report).
+    """
+    from . import model
+    source = (model.get_script() or "").strip()
+    if not source:
+        return False, "This file carries no saved script to adopt."
+    return write_script(scene, source)
+
+
 def on_file_changed(scene=None):
     """A different .blend is now current: file load, or Save-As.
 
-    Returns a status line for the chat when the previous engine project is
-    being left behind, else "". Every cadexd child is closed and all cached
-    engine state is dropped, so the next request opens the project the
-    current file actually names -- rather than reusing the child that was
-    spawned for the previous one.
+    Returns a status line for the chat when this file has no engine project,
+    else "". Every cadexd child is closed and all cached engine state is
+    dropped, so the next request opens the project the current file actually
+    names -- rather than reusing the child that was spawned for the previous
+    one.
 
     The old ``.cadex`` directory is deliberately **not** copied to the new
     name. Copying an engine project on Save-As would duplicate BREP
     artifacts behind the user's back and silently fork the model's history;
-    saying what happened and letting them copy it is the honest option.
+    saying what happened and offering to re-run the saved script is the
+    honest option.
+
+    The check is on the *current* file, not on whether some previous root
+    happened to be open. Gating on that missed the commonest case entirely:
+    duplicate a .blend in the file manager, open it in a fresh session, and
+    there is no previous root to compare against.
     """
     previous = [root for root in open_roots() if os.path.isdir(root)]
     close_all()
@@ -898,13 +970,17 @@ def on_file_changed(scene=None):
         current = project_root(scene)
     except Exception:
         return ""
+    if os.path.isdir(current) or not scene_remembers_a_model(scene):
+        return ""
     stale = [root for root in previous
              if os.path.abspath(root) != os.path.abspath(current)]
-    if not stale or os.path.isdir(current):
-        return ""
-    return ("This file has no engine project yet; the model stays in {:s}. "
-            "Copy that directory to {:s} to carry the model over.".format(
-                os.path.basename(stale[0]), os.path.basename(current)))
+    where = (" The original model stays in {:s}.".format(
+        os.path.basename(stale[0])) if stale else "")
+    return ("This file has no engine project yet ({:s}).{:s} Press "
+            "\"Rebuild From Saved Script\" to re-run the script saved in this "
+            "file into a new project, or copy the original project directory "
+            "across to carry its history over.".format(
+                os.path.basename(current), where))
 
 
 def register():

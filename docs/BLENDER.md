@@ -73,7 +73,7 @@ that `docs/VISION.md` describes, and the protocol client that
 | `mcp_shim.py` | Standalone MCP stdio server spawned by the Claude CLI via `--mcp-config`. No `bpy` import; relays MCP tool calls to the bridge over TCP. |
 | `backend.py` | Spawns `claude -p` as a subprocess per turn; writes the MCP config (shim path/port/token); session continuity via `--resume <session-id>`. |
 | `tools.py` | Tool definitions/executors. Tools: `get_script`, `write_script`, `edit_script`, `set_params`, `inspect_model`, `describe_cad_api`, `get_attached_image`, `scene_summary`, `viewport_screenshot`, `export_stl`, `focus_view`. Marks `write_script`/`edit_script`/`set_params` as mutating for undo counting, and preflights the engine-reaching ones so a missing engine reads as one sentence. |
-| `ui.py` | Chat panel in the 3D-viewport sidebar plus operators (send, cancel, attach image, paste); the chat input bar is rewired into the Properties header at the bottom of the right panel. |
+| `ui.py` | Chat panel in the 3D-viewport sidebar plus operators (send, cancel, attach image, paste, toggle parameters); the chat input bar is rewired into the Properties header at the bottom of the right panel. Also owns the parameters area — the panel, and the split/close/configure helpers the app template and the toggle operator share. |
 | `history.py` | Chat transcript as JSON in `bpy.data.texts["mesh_chat.json"]`; persists inside the .blend file. |
 | `capture.py` | Viewport screenshot (base64 PNG) and attached-image loading (downscaled, default max 768 px). |
 | `modes.py` | The Cadex system-prompt overlay and `system_prompt()`. What remains of a three-mode registry after ADR-030 collapsed it to one. |
@@ -100,12 +100,26 @@ that `docs/VISION.md` describes, and the protocol client that
   keep ids stable. The spec JSON is cached in a scene property so sliders
   restore on file load without asking the engine, and the PropertyGroup class
   is only re-registered when the spec JSON changes (prevents a class swap
-  mid-drag).
+  mid-drag). The sliders are drawn by `VIEW3D_PT_mesh_params` in the
+  parameters area — its own screen area, not part of the chat column; see
+  the app template below.
 - Slider drag → `_on_param_update()` → `_schedule_rebuild()` → 0.15 s
   `bpy.app.timers` debounce → one revision-guarded `set_params` to the engine,
   draft-quality tessellation while dragging with a background standard
   refine → `bpy.ops.ed.undo_push()` on success. In background mode the
   rebuild runs immediately (no timer).
+- **A .blend and its `.cadex` are two halves of one model.** The file carries
+  the baked tessellation, the `model.py` mirror, the specs JSON and the
+  values; `<stem>.cadex/` carries the xscript source, the BREP artifacts and
+  the accepted digest. `project_root()` derives the root from the file name
+  every time, so duplicating a .blend (file manager or Save-As) names a
+  project that does not exist — deliberately, since copying `.cadex` would
+  fork the model's history behind the user's back. `open_project` **mkdirs
+  the root it is handed**, so that missing project opens empty and `ok`;
+  `_adopt_script_state(..., preserve_local=True)` is what stops that
+  emptiness from erasing the specs and the mirror, and
+  `cadex_backend.orphaned_project()` drives the **Rebuild From Saved Script**
+  offer in the chat panel (ADR-033).
 - **There is one backend.** Until ADR-030 there were two, chosen by a mode
   dropdown: this one, and a local path that `exec()`d the script against
   `bpy`. The local path and everything serving it — `cad_api.py` (the
@@ -134,12 +148,33 @@ that `docs/VISION.md` describes, and the protocol client that
 - Removes all workspaces but one; collapses all areas to a single 3D viewport;
   then splits **50/50 vertical** — left half 3D viewport (headers hidden,
   solid shading, toon matcap), right half a Properties editor pinned to the
-  Tool tab hosting the chat and param panels.
+  Tool tab hosting the chat panel.
+- Splits the bottom **30%** off the viewport for the **parameters area**: a
+  second Properties editor on the same Tool tab, header and tab strip hidden,
+  hosting `VIEW3D_PT_mesh_params` alone. Three areas, not two.
 - Blanks the top menu bar; flips the Properties header (which hosts the chat
   input bar) to the bottom of the right panel; hides foreign Tool-category
   panels while keeping `VIEW3D_PT_mesh_chat` / `VIEW3D_PT_mesh_params`.
 - Applied via a repeating `bpy.app.timers` state machine because area
   geometry only settles between redraws.
+
+The parameters area is an **area** rather than a second panel in the chat
+column so it can be closed and reopened on its own — the `OPTIONS` toggle at
+the end of the chat input bar (`mesh_agent.toggle_params`), which shows
+depressed while the area is open.
+
+Both columns are pinned to the **Tool** tab, and the two panels sort
+themselves out by area (`mesh_agent.ui._column_role`) rather than by tab. Tool
+is not an arbitrary choice: every other Properties tab draws Blender's
+C-registered `PROPERTIES_PT_context` breadcrumb, whose poll is
+`sbuts->mainb != BCONTEXT_TOOL` (`buttons_context.cc`). Being a C panel it is
+absent from `bpy.types`, so the template's hide pass cannot reach it, and on
+any other tab it puts a stray context row above the sliders.
+
+`VIEW3D_PT_mesh_params`'s `poll` is about *where* it draws, never about
+whether there is anything to show. The old one hid the panel whenever the
+script declared no parameters, which is what made it appear and disappear on
+its own; an empty model now says so instead (ADR-032).
 
 ## 3. Blender internals relevant to the shell integration
 

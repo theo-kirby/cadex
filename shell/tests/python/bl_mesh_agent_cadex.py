@@ -621,6 +621,64 @@ def test_save_as_and_multi_file_lifecycle(workdir):
           "reopened file rehydrates its own geometry")
 
 
+def test_duplicated_file_keeps_its_parameters(workdir):
+    """A copy names an empty project; that must not erase what the file holds.
+
+    ``open_project`` mkdirs the root it is handed, so a duplicated or
+    Save-As'd .blend opens a project with no script in it. Adopting that
+    emptiness used to overwrite scene["mesh_model_specs"] with "[]" and
+    unregister the slider group -- destroying the only surviving copy of the
+    parameter declarations, while the baked mesh stayed in the viewport and
+    made the file look fine.
+    """
+    print("test_duplicated_file_keeps_its_parameters")
+
+    first = os.path.join(workdir, "orig.blend")
+    copy = os.path.join(workdir, "orig-copy.blend")
+
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.wm.save_as_mainfile(filepath=first)
+    scene = bpy.context.scene
+    ok, report = run_tool("write_script", {"content": BASELINE_SCRIPT})
+    check(ok, "parametric model accepted in orig.blend ({:s})".format(
+        report[:60]))
+    specs_before = model_module.load_specs(scene)
+    check(len(specs_before) == 1 and specs_before[0]["id"] == "hole",
+          "the original file has its spec")
+
+    bpy.ops.wm.save_as_mainfile(filepath=copy)
+    scene = bpy.context.scene
+    root_copy = cadex_backend.project_root(scene)
+    check(not os.path.isdir(root_copy),
+          "the copy names a project that does not exist yet")
+    check(cadex_backend.scene_remembers_a_model(scene),
+          "the .blend still carries the model (specs and script mirror)")
+
+    # The open that used to do the damage.
+    ok, report = cadex_backend.ensure_open(scene)
+    check(ok, "the empty project opens ({:s})".format(report or "clean"))
+    specs_after = model_module.load_specs(scene)
+    check(len(specs_after) == 1 and specs_after[0]["id"] == "hole",
+          "opening an empty project did NOT wipe the saved specs")
+    check(getattr(scene, "mesh_params", None) is not None,
+          "the slider group survived the open")
+    check(cadex_backend.orphaned_project(scene),
+          "the empty project is reported as orphaned")
+
+    # Recovery: re-run the script the .blend carries.
+    ok, report = cadex_backend.adopt_saved_script(scene)
+    check(ok, "the saved script rebuilds the project ({:s})".format(
+        report[:60] if report else "clean"))
+    check(not cadex_backend.orphaned_project(scene),
+          "the project is no longer orphaned once adopted")
+    check(bpy.data.objects.get("plate") is not None,
+          "adopting the saved script hydrated the geometry")
+    specs_final = model_module.load_specs(scene)
+    check(len(specs_final) == 1 and specs_final[0]["id"] == "hole",
+          "the adopted project declares the same parameter")
+    check(os.path.isdir(os.path.join(workdir, "orig.cadex")),
+          "the original project is left intact, not moved or copied")
+
 
 # -- M5: the restore pass runs on every open --------------------------------
 
@@ -826,6 +884,7 @@ def main():
     threading_root = tempfile.mkdtemp(prefix="mesh-cadex-thread-")
     cancel_root = tempfile.mkdtemp(prefix="mesh-cadex-cancel-")
     saveas_root = tempfile.mkdtemp(prefix="mesh-cadex-saveas-")
+    duplicate_root = tempfile.mkdtemp(prefix="mesh-cadex-duplicate-")
     restore_root = tempfile.mkdtemp(prefix="mesh-cadex-restore-")
     corrupt_root = tempfile.mkdtemp(prefix="mesh-cadex-corrupt-")
     describe_root = tempfile.mkdtemp(prefix="mesh-cadex-describe-")
@@ -842,6 +901,7 @@ def main():
         test_cancel_reaches_the_engine(cancel_root)
         test_cadex_turn_single_undo(turn_root)
         test_save_as_and_multi_file_lifecycle(saveas_root)
+        test_duplicated_file_keeps_its_parameters(duplicate_root)
         test_reopen_restores(reopen_root)
         test_open_runs_the_restore_pass(restore_root)
         test_restore_failure_is_first_class(corrupt_root)
@@ -858,6 +918,7 @@ def main():
         import shutil
         for root in (corpus_root, baseline_root, turn_root, reopen_root,
                      threading_root, cancel_root, saveas_root,
+                     duplicate_root,
                      restore_root, corrupt_root, describe_root, edit_root):
             shutil.rmtree(root, ignore_errors=True)
 

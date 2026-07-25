@@ -1665,3 +1665,120 @@ say seven.
 The `docs/images/` screenshots remain stale (they show VibeCAD branding and
 a provider settings page deleted in ADR-021) but contain no credentials —
 the audit opened both. Replacing them is not this entry's job.
+
+## ADR-032 — The parameters get an area of their own (2026-07-25)
+
+**Decision.** The parameter sliders move out of the chat column and into
+their own screen area: a second Properties editor split off the bottom 30% of
+the viewport, headerless, hosting `VIEW3D_PT_mesh_params` alone. Both columns
+stay pinned to the Tool tab and the two panels sort themselves out by area.
+The user opens and closes the parameters area from a toggle at the end of the
+chat input bar. The panel's `poll` stops being about whether there is
+anything to show.
+
+**Rationale.** The panel appeared and disappeared on its own, and the reason
+was invisible from the UI. `VIEW3D_PT_mesh_params` was a `"Tool"`-category
+sidebar panel sharing one region with the chat — the Properties editor's
+Tool tab mirrors those panels (`space_buttons.cc` calls
+`ED_view3d_buttons_region_layout_ex(C, region, "Tool")`), which is how one
+Properties editor hosted both. Its `poll` returned false whenever
+`model.load_specs()` was empty, so any script that declared no parameters,
+or any state where the specs had not been bridged back yet, silently removed
+the sliders. A control the user cannot summon is not a control.
+
+Making it an area rather than fixing the `poll` is the point of the change:
+a panel is a resident of someone else's region and comes and goes with it,
+an area is a thing the user owns. Blender does not let a Python add-on
+register a new editor type, so the area is an existing editor pinned to a
+tab — the same trick the chat column already uses. This keeps the whole
+change in `mesh_agent/ui.py` and the Mesh app template; **`shell/`'s
+seven-file delta against upstream Blender is untouched**
+(`docs/BLENDER-TREE.md` §2).
+
+**Consequences.** The Simple-mode layout is three areas, not two.
+
+**Both columns are pinned to the Tool tab, and that is load-bearing.** The
+first attempt hosted the parameters on the Scene tab and emptied it the way
+the template already empties the Tool tab. It rendered a stray "Scene" row
+above the sliders that no amount of Python panel-hiding removed, because it
+is not a Python panel: `PROPERTIES_PT_context` is registered in C
+(`buttons_context.cc`, `buttons_context_register`) with the comment *"C panels
+unavailable through RNA bpy.types!"*, and its poll is
+`sbuts->mainb != BCONTEXT_TOOL`. Every Properties tab except Tool draws that
+breadcrumb, and nothing in Python can poll it out. So Tool is the only tab a
+column of ours can sit on, and `_column_role()` decides which panel belongs
+to which area instead. A corollary for anyone adding a third column later:
+the tab is not free real estate.
+
+The split direction is load-bearing too, and documented at `PARAMS_SPLIT`:
+with `factor <= 0.5`, `area_split` (`screen_edit.cc`) gives the *new* area the
+bottom half, which is what lets `open_params_area()` identify it by pointer
+diff instead of waiting for `area.x`/`area.y` to settle. Pinning the tab and
+stripping the chrome still needs a timer, because `area.spaces.active` can
+lag its `area.type` by a tick.
+
+`draw_chat_input_header` now serves two Properties areas, so it identifies
+the chat column by geometry (right-most) rather than by pinned tab — which it
+must, since both are on the same tab now. Keying off `space.context` would
+also have deleted the chat input bar the moment a user switched tabs, exactly
+when they need it to switch back.
+
+With the `poll` reduced to a layout question, an empty model reads as "No
+parameters in this model" instead of an empty strip.
+
+## ADR-033 — A duplicated file must not lose what it remembers (2026-07-25)
+
+**Decision.** Opening an engine project that holds no script no longer
+overwrites the scene's parameter specs or the `model.py` mirror. The
+"this file has no engine project" notice is keyed on the current file rather
+than on whether some previous root happened to be open, and it now comes with
+a way out: **Rebuild From Saved Script** (`mesh_agent.adopt_script`) re-runs
+the script the .blend carries into the new project. The `.cadex` directory is
+still **not** copied on Save-As — ADR unchanged on that point.
+
+**Rationale.** A .blend and its engine project are two halves of one model:
+the file carries the baked tessellation, the `model.py` mirror, the specs
+JSON and the parameter values; `<stem>.cadex/` carries the xscript source,
+the BREP artifacts and the accepted digest. `project_root()` derives the root
+from the file name every time, so duplicating a .blend — in the file manager
+or through Save-As — names a project that does not exist. That much is by
+design.
+
+What was not by design is what happened next. `open_project` does
+`root.mkdir(parents=True, exist_ok=True)` (`cadexd.py`), so a missing project
+is created **empty and returns ok** — no error, no signal. `ensure_open` then
+called `_adopt_script_state` unconditionally, and an empty project's script
+block is `script_present: False` with `source: ""`. Adopting it wrote
+`scene["mesh_model_specs"] = "[]"`, unregistered the slider PropertyGroup,
+and — because `""` is a `str` and the mirror is written on any `str` — cleared
+`bpy.data.texts["model.py"]` too. The file kept its baked mesh, so it still
+*looked* right, while the last copies of both the parameter declarations and
+the script were destroyed by the act of opening it.
+
+This is also the likeliest cause of the vanishing parameters panel that
+prompted ADR-032: the old poll was `bool(model.load_specs(scene))`, so wiping
+the specs deleted the panel.
+
+**Consequences.** `_adopt_script_state` grows a `preserve_local` flag, set
+only on the open path. An engine that *has* a script stays authoritative,
+including when that script declares no parameters — the guard is specifically
+about adopting emptiness, not about preferring local state.
+
+The guard has to run **before** the mirror write, not after. The first cut
+placed it after and would have cleared `model.py` anyway, taking with it the
+one thing `adopt_saved_script()` reads.
+
+`orphaned_project()` asks the engine (`script_present`, over the protocol)
+rather than looking inside `<root>` for `script.py`. Once `ensure_open` has
+run, `os.path.isdir` cannot answer the question — the engine created the
+directory — and reaching into the store's layout would cross the process
+boundary the protocol exists to keep (CLAUDE.md methodology 6).
+
+Recovery writes the mirrored script through the normal `write_script` path,
+so the new project earns its own accepted revision and digest. It is a
+genuine sibling of the original, not a copy of its artifacts, which is the
+same principle that keeps Save-As from copying `.cadex`.
+
+Regression-tested by `test_duplicated_file_keeps_its_parameters` in
+`shell/tests/python/bl_mesh_agent_cadex.py`; verified to fail with the guard
+removed.
