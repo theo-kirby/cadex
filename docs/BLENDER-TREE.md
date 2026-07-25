@@ -14,12 +14,13 @@ delete, verify) and are logged in `docs/DECISIONS.md`.
 
 Everything in this file is `[Blender-inherited]` unless noted.
 
-**Provenance.** Imported 2026-07-25 as a squashed snapshot of
-`/Users/theo/mesh` at `ac5af55948d` (branch `mesh-main`), plus one
-uncommitted working-tree change to `source/creator/CMakeLists.txt`
-(ADR-030). Blender's own 163,789-commit history stayed behind, deliberately:
-we delete from this tree, we do not track upstream. `/Users/theo/mesh` is
-kept as a read-only archive.
+**Provenance.** Imported 2026-07-25 as a squashed snapshot of the `mesh`
+repository at `ac5af55948d` (branch `mesh-main`), plus one working-tree
+change to `source/creator/CMakeLists.txt` since committed there as
+`f7e85e80039` (ADR-030). Blender's own 163,789-commit history stayed behind,
+deliberately: we delete from this tree, we do not track upstream. The
+pre-merge history lives at `github.com/theo-kirby/mesh` (branch
+`mesh-main`); the local working copy was deleted 2026-07-25.
 
 ## 1. Ours, inside the fork `[Cadex-new]`
 
@@ -37,7 +38,8 @@ these as of that date, not as a contract.
 
 ## 2. Modified upstream files — the whole delta
 
-Six files, and that is the entire edit surface against stock Blender. Keep
+Seven files in six changes, and that is the entire edit surface against
+stock Blender. Keep
 it that way: every addition here is a future merge conflict, and the reason
 the shell was cheap to absorb is that this table is short.
 

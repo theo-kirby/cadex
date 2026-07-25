@@ -39,8 +39,11 @@ The two halves:
   (`docs/BLENDER.md`). Carries the engine payload inside its bundle.
   GPL-2.0+.
 - **vibecad** — parent fork; historical reference only (teardown history on
-  its `cadex-teardown` branch). **mesh** (`/Users/theo/mesh`) — the shell's
-  former home, kept as a read-only archive of the pre-merge history.
+  its `cadex-teardown` branch, at `github.com/theo-kirby/vibecad`).
+  **mesh** — the shell's former home; its pre-merge history is at
+  `github.com/theo-kirby/mesh` (branch `mesh-main`). Neither has a local
+  working copy any more: both were deleted 2026-07-25, remotes verified
+  first.
 
 ## Options considered
 

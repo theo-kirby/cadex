@@ -49,8 +49,9 @@ Read `docs/VISION.md` before designing anything.
 | `docs/XSCRIPT.md` | The scripting model — today (per-domain programs) vs target (one project script). |
 | `docs/ROADMAP.md` | Phases 0–13, status checkboxes, exit criteria. Living status lives here. |
 | `docs/DECISIONS.md` | ADR log. Append an entry for every removal or direction change. |
+| `docs/PROVENANCE.md` | Which code came from FreeCAD, from Blender, and from VibeCAD; licences, credit, and how two licences share one repo. |
 | `docs/FREECAD.md` | Inherited-tree ledger for the **engine**: kept / disabled / already-deleted. |
-| `docs/BLENDER-TREE.md` | The same ledger for **`shell/`**, plus the three-file diff against upstream Blender. |
+| `docs/BLENDER-TREE.md` | The same ledger for **`shell/`**, plus the seven-file diff against upstream Blender. |
 | `docs/INTEGRATION.md` | **The process contract**: the cadexd protocol (test-enforced on both requests and responses) and the engine payload. |
 | `docs/BLENDER.md` | The shell: `mesh_agent`'s file map, its tools, and how to run its suites. |
 | `docs/IDEAS.md` | Parking lot for uncommitted ideas. |
@@ -139,7 +140,7 @@ The philosophy is **remove more than we add** (`docs/VISION.md`). Zones:
   diff, no drive-by cleanup, call it out in the PR. A change that *reduces*
   the fork's delta against upstream is the exception worth making (ADR-022).
 - **The rest of `shell/**` — inherited Blender, same conservative rules.**
-  The entire delta against upstream Blender is **three files**
+  The entire delta against upstream Blender is **seven files**
   (`docs/BLENDER-TREE.md` §2); every line added there is a future merge
   conflict, and that table staying short is why the shell was cheap to
   absorb. Removals go through the two-commit protocol in

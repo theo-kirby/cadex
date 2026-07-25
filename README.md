@@ -99,8 +99,10 @@ the doc set under [`docs/`](docs/):
 [XSCRIPT](docs/XSCRIPT.md) · [INTEGRATION](docs/INTEGRATION.md) ·
 [BLENDER](docs/BLENDER.md) ·
 [FREECAD](docs/FREECAD.md) · [BLENDER-TREE](docs/BLENDER-TREE.md) ·
+[PROVENANCE](docs/PROVENANCE.md) ·
 [ROADMAP](docs/ROADMAP.md) · [DECISIONS](docs/DECISIONS.md).
 Packaging: [docs/cadex-release-packaging.md](docs/cadex-release-packaging.md).
+Policies: [PRIVACY_POLICY](PRIVACY_POLICY.md) · [SECURITY](SECURITY.md).
 
 ## Credits
 
@@ -115,3 +117,7 @@ neither's release stream — we delete from these trees rather than track them.
   [Blender](https://projects.blender.org/blender/blender) (GPL-2.0+).
 - The CadexLight and CadexDark themes are based on [OpenTheme by
   Obelisk79](https://github.com/obelisk79/OpenTheme).
+
+Cadex is not affiliated with or endorsed by either project. Which code came
+from where, under which licence, and what we changed is spelled out in
+[docs/PROVENANCE.md](docs/PROVENANCE.md).

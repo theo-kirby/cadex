@@ -513,9 +513,11 @@ on requests *and* responses), so this was a repo-layout and
 build-orchestration job, not an architecture one.
 
 - [x] The shell imported under `shell/` as a squashed snapshot of
-      `/Users/theo/mesh` @ `ac5af55948d`. `lib/*` stay submodules; the
+      the `mesh` repository @ `ac5af55948d`. `lib/*` stay submodules; the
       FreeCAD tree stays at the root, so no CMake path, pixi task, test or
-      doc reference moved. `/Users/theo/mesh` kept as a read-only archive.
+      doc reference moved. Pre-merge history at
+      `github.com/theo-kirby/mesh` (branch `mesh-main`); local working copy
+      deleted 2026-07-25.
 - [x] One build: `pixi run setup && pixi run app`, via `setup` /
       `build-engine` / `stage-engine` / `build-shell`. The shell configures
       in a **scrubbed environment** (`package/app/build_app.sh`) — the one
@@ -562,8 +564,11 @@ Not a phase that "completes" — a standing mode of work.
       `*Gui.so` and misses stale ones in `lib/`.
 - [ ] One installer, one name; NOTICE file carries the vendored LGPL
       attributions (ADR-025).
-- [ ] Delete `/Users/theo/vibecad` — the dead predecessor of cadex. Not
-      blocked by anything; do it any time.
+- [x] Delete `/Users/theo/vibecad` — the dead predecessor of cadex
+      (5.9 GB), together with `/Users/theo/mesh` (5.4 GB) now that the shell
+      is in-tree. Both branch tips were pushed and verified against their
+      GitHub remotes first (`cadex-teardown` was local-only until then);
+      history is recoverable, the disks are not carrying it.
 
 ## Verification
 

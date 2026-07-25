@@ -1469,10 +1469,11 @@ and now only discipline does.
 
 Squashed deliberately: Blender's 163,789 commits and 3.1 GB of history stayed
 behind. We delete from this tree; we do not track upstream. Provenance is
-recorded instead of history — `/Users/theo/mesh` @ `ac5af55948d` (branch
-`mesh-main`), plus one uncommitted working-tree change to
-`source/creator/CMakeLists.txt`. `/Users/theo/mesh` is kept as a read-only
-archive.
+recorded instead of history — the `mesh` repository @ `ac5af55948d` (branch
+`mesh-main`), plus one working-tree change to
+`source/creator/CMakeLists.txt`, since committed there as `f7e85e80039`.
+That history lives at `github.com/theo-kirby/mesh`; the local working copy
+was deleted 2026-07-25 once the remote tip was verified to match.
 
 The tree lands under `shell/` with the FreeCAD tree left at the root, so no
 existing CMake path, pixi task, test or doc reference had to change. Four
@@ -1609,3 +1610,58 @@ expectation for a new machine.
 
 Shell build from a cold build tree in the main checkout, for comparison:
 12 min 53 s.
+
+## ADR-031 — The inherited policy files were FreeCAD's, and said the wrong thing (2026-07-25)
+
+**Decision.** `PRIVACY_POLICY.md` and `SECURITY.md` are rewritten for Cadex,
+and a new `docs/PROVENANCE.md` states which code came from FreeCAD, from
+Blender, and from VibeCAD, under which licence.
+
+**Rationale.** A repository audit found no secrets anywhere in the tree or
+in the history — but it did find that both root policy files were still
+upstream FreeCAD's, published verbatim from a public repository, and that
+both were now false in ways that matter:
+
+- The privacy policy stated that the application "does not collect,
+  transmit, share or use any Personal Data." Cadex spawns the Claude Code
+  CLI per chat turn, which transmits the user's message, the project script,
+  scene structure, geometry measurements, attached images and **viewport
+  screenshots** to Anthropic. Publishing a policy that denies this is a
+  liability, and cheaper to fix before release than after.
+- The security policy routed vulnerability reports to FreeCAD's advisory
+  page and the FPA. A researcher finding a bug in `src/Mod/cadex` or
+  `mesh_agent` had no correct address, and FreeCAD would have received mail
+  about software that is not theirs.
+
+The provenance doc is the third leg of the same problem. `README.md` credited
+both upstreams in five lines; that is enough for attribution and not enough
+for a reader asking which half is whose, why two licences coexist here, or
+what the process boundary has to do with the GPL. It also settles the
+VibeCAD question honestly: cadex is not *inspired by* VibeCAD, it is
+**descended from** it — `src/Mod/cadex/` was imported from the
+`cadex-teardown` branch, and `[VibeCAD-era]` tags in `ARCHITECTURE.md` mark
+the code that came with it.
+
+**Consequences.** Both policies now name the file that backs each claim, so
+they can be re-verified rather than trusted: the no-telemetry claim rests on
+there being no outbound network call under `src/Mod/cadex/` or
+`mesh_agent/`, the sandbox claims on `CadexScriptedRuntime.py` and
+`CadexScriptedProcess.py`, the loopback-and-token claim on `bridge.py`. Two
+disclosures are new and deliberate — that a `.blend` carries its own chat
+transcript and Claude Code session id (`history.py`), and that a Cadex
+project *is* a program, so opening an untrusted one runs untrusted code.
+
+`SECURITY.md` splits scope explicitly: ours is `src/Mod/cadex/**`,
+`mesh_agent/**`, the protocol, and packaging; inherited FreeCAD and Blender
+bugs go upstream where they can be fixed for everyone. **This depends on
+GitHub private security advisories being enabled on the repository** — the
+reporting URL is dead until they are.
+
+Two stale counts were corrected in passing: `CLAUDE.md` said the delta
+against upstream Blender was "three files" and `BLENDER-TREE.md` §2 said
+"six", while its own table lists seven paths across six changes. Both now
+say seven.
+
+The `docs/images/` screenshots remain stale (they show VibeCAD branding and
+a provider settings page deleted in ADR-021) but contain no credentials —
+the audit opened both. Replacing them is not this entry's job.
