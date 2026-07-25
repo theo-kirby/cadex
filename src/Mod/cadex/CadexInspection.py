@@ -9,7 +9,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from CadexEditState import active_edit_state
 from CadexModelingSurface import resolve_service_surface
 
 
@@ -136,41 +135,16 @@ def _object_detail(obj: Any) -> dict[str, Any]:
     return result
 
 
-def _selection_snapshot() -> dict[str, Any]:
-    try:
-        import FreeCADGui as Gui
+def _edit_object() -> None:
+    """Always None: interactive edit state was a Qt shell concept.
 
-        raw = list(Gui.Selection.getSelectionEx() or [])
-    except Exception as exc:
-        return {"selection_count": 0, "items": [], "error": str(exc)}
-    items = []
-    for selected in raw:
-        try:
-            subelements = [str(name) for name in list(selected.SubElementNames or [])]
-            items.append(
-                {
-                    **_identity(selected.Object),
-                    "subelement_count": len(subelements),
-                    "subelements": subelements,
-                }
-            )
-        except Exception:
-            continue
-    return {"selection_count": len(raw), "items": items}
+    The engine's document is cadexd's ephemeral one — nothing is ever "in
+    edit" in it, because no user interacts with it. Kept as a field of the
+    document inspection so the payload shape does not change for clients
+    (ADR-021).
+    """
 
-
-def _edit_object() -> dict[str, Any] | None:
-    state = active_edit_state()
-    if state.document_object is not None:
-        return _identity(state.document_object)
-    if not state.active:
-        return None
-    return {
-        "name": "",
-        "label": "",
-        "type": type(state.view_provider).__name__,
-        "resolved": False,
-    }
+    return None
 
 
 def capture_inspection(service: Any, arguments: Mapping[str, Any]) -> dict[str, Any]:
@@ -234,8 +208,6 @@ def capture_inspection(service: Any, arguments: Mapping[str, Any]) -> dict[str, 
             },
         }
         return {**common, "kind": "captured", "raw": raw}
-    if scope == "selection":
-        return {**common, "kind": "captured", "raw": _selection_snapshot()}
     if scope == "object":
         if doc is None:
             raise ValueError("No active document.")

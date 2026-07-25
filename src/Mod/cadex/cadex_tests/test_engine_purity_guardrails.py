@@ -44,10 +44,6 @@ NO_RESIDUE_EVER = frozenset({"PySide", "PySide2", "PySide6"})
 
 #: (module, forbidden root) -> the Phase 7 commit that removes the edge.
 KNOWN_RESIDUE: dict[tuple[str, str], str] = {
-    # CadexInspection's selection scope and edit-object probe are shell
-    # concerns; cadexd already rejects scope='selection'. Dropped in C3.
-    ("CadexInspection", "FreeCADGui"): "C3",
-    ("CadexEditState", "FreeCADGui"): "C3",
     # ToolRegistry is jsonschema's only user and the provider stack is its
     # only importer; both go in C4 and requirements.txt drops to zero.
     ("CadexTools", "jsonschema"): "C4",
@@ -79,7 +75,6 @@ DECLARED_ENGINE_MODULES = frozenset(
         "CadexDigest",
         # inspection, pins, tessellation
         "CadexInspection",
-        "CadexEditState",
         "CadexPinResolution",
         "cadex_tessellation",
         # the five domain APIs and the host-side workers they pull in

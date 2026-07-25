@@ -2,29 +2,22 @@
 
 set(Cadex_Scripts
     Init.py
-    InitGui.py
     CadexAuth.py
     CadexCodex.py
     CadexCore.py
     CadexDebug.py
-    CadexEngineSettings.py
     CadexEditState.py
-    CadexGrid.py
+    CadexEngineSettings.py
     CadexGeometry.py
-    CadexGui.py
     CadexInspection.py
     CadexModelingSurface.py
     CadexPinResolution.py
     CadexPreferences.py
-    CadexPromptStarters.py
     CadexProvider.py
     CadexReferenceContracts.py
     CadexProject.py
     CadexScriptStore.py
-    CadexParametersPanel.py
     CadexSession.py
-    CadexExperimentalChat.py
-    CadexExperimentalMode.py
     CadexScriptedOwnership.py
     CadexScriptedProcess.py
     CadexScriptedPublication.py
@@ -33,7 +26,6 @@ set(Cadex_Scripts
     CadexScriptedDomains.py
     CadexScriptedRuntime.py
     CadexScriptedDomainPublication.py
-    CadexScriptView.py
     cadex_assembly_api.py
     cadex_assembly_worker.py
     CadexAssemblyHierarchy.py
@@ -60,17 +52,6 @@ set(Cadex_Scripts
     requirements.txt
 )
 
-set(Cadex_Resources
-    preferences-cadex.svg
-    cadex-open-assistant.svg
-    cadex-send.svg
-    cadex-stop.svg
-    cadex-activity.svg
-    cadex-attach-image.svg
-    cadex-attach-view.svg
-    cadex-new-conversation.svg
-    cadex-prompt-starters.svg
-)
 
 file(GLOB_RECURSE Cadex_ToolImplScripts
     CONFIGURE_DEPENDS
@@ -79,7 +60,7 @@ file(GLOB_RECURSE Cadex_ToolImplScripts
 )
 
 add_custom_target(CadexScripts ALL
-    SOURCES ${Cadex_Scripts} ${Cadex_ToolImplScripts} ${Cadex_Resources}
+    SOURCES ${Cadex_Scripts} ${Cadex_ToolImplScripts}
 )
 
 fc_target_copy_resource(CadexScripts
@@ -87,13 +68,13 @@ fc_target_copy_resource(CadexScripts
     ${CMAKE_BINARY_DIR}/Mod/cadex
     ${Cadex_Scripts}
     ${Cadex_ToolImplScripts}
-    ${Cadex_Resources}
+   
 )
 
 install(
     FILES
         ${Cadex_Scripts}
-        ${Cadex_Resources}
+       
     DESTINATION
         Mod/cadex
 )

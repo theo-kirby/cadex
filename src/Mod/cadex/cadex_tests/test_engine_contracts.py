@@ -22,143 +22,53 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-class TestStageAwareFailureRendering:
-    """Transcript lines state whether a failed call was rejected pre-execution
-    or executed and rolled back, based on the payload's failure_stage."""
+class TestFailureEnvelopeContract:
+    """The stage vocabulary and the ``tool_failure`` envelope, unrendered.
 
-    @staticmethod
-    def _gui():
-        import CadexGui
+    Phase 6 asserted this through ``CadexGui._format_progress_event``: eight
+    tests that a transcript line said "rejected before execution" or
+    "executed and rolled back" for each stage. The renderer was Qt and dies
+    with it (ADR-021), but the contract it rendered is engine-side and
+    load-bearing — the Blender shell's ``_failure_report`` reads the same
+    fields. So the contract is asserted directly instead of through a UI.
+    """
 
-        return CadexGui
+    def test_every_declared_stage_is_accepted_by_tool_failure(self) -> None:
+        from CadexTools import FAILURE_STAGES, tool_failure
 
-    def test_pre_execution_stages_render_as_rejected(self) -> None:
-        gui = self._gui()
-        for stage in ("schema", "surface", "edit_state", "precondition"):
-            text = gui._format_progress_event(
-                {
-                    "event": "tool_call_completed",
-                    "ok": False,
-                    "tool_name": "xscript.project.write_script",
-                    "result": {"error": "bad input", "failure_stage": stage},
-                }
-            )
-            assert "rejected before execution" in text
-            assert stage in text
-            assert "rolled back" not in text
+        assert FAILURE_STAGES, "the stage vocabulary must not be empty"
+        for stage in sorted(FAILURE_STAGES):
+            envelope = tool_failure(
+                "xscript.project.write_script", "SOME_CODE", stage,
+                "Something went wrong.")
+            assert envelope["failure_stage"] == stage
+            assert envelope["ok"] is False
 
-    def test_rolled_back_stages_render_as_executed_and_rolled_back(self) -> None:
-        gui = self._gui()
-        for stage in ("native_call", "native_recompute", "postcondition"):
-            text = gui._format_progress_event(
-                {
-                    "event": "tool_call_completed",
-                    "ok": False,
-                    "tool_name": "xscript.project.write_script",
-                    "result": {"error": "recompute failed", "failure_stage": stage},
-                }
-            )
-            assert "failed during execution, rolled back" in text
-            assert stage in text
-            assert "rejected" not in text
+    def test_an_undeclared_stage_is_refused(self) -> None:
+        from CadexTools import tool_failure
 
-    def test_external_process_stage_renders_document_unchanged(self) -> None:
-        gui = self._gui()
-        text = gui._format_progress_event(
-            {
-                "event": "tool_call_completed",
-                "ok": False,
-                "result": {"error": "worker died", "failure_stage": "external_process"},
-            }
-        )
-        assert "external process" in text
-        assert "document unchanged" in text
+        with pytest.raises(Exception):
+            tool_failure("xscript.project.write_script", "CODE",
+                         "not_a_stage", "Something went wrong.")
 
-    def test_missing_stage_degrades_to_blocked(self) -> None:
-        gui = self._gui()
-        for result in ({"error": "no stage"}, {}, None, "not-a-dict"):
-            text = gui._format_progress_event(
-                {
-                    "event": "tool_call_completed",
-                    "ok": False,
-                    "tool_name": "xscript.project.write_script",
-                    "result": result,
-                }
-            )
-            assert "blocked" in text
+    def test_the_envelope_shape_is_stable(self) -> None:
+        """Shell clients parse these keys by name, across a process
+        boundary and a repository boundary; they are the contract."""
+        from CadexTools import tool_failure
 
-    def test_unknown_stage_degrades_to_blocked(self) -> None:
-        gui = self._gui()
-        text = gui._format_progress_event(
-            {
-                "event": "tool_call_completed",
-                "ok": False,
-                "result": {"error": "x", "failure_stage": "weird_future_stage"},
-            }
-        )
-        assert "blocked" in text
+        envelope = tool_failure(
+            "xscript.project.set_params", "STALE_PROGRAM_REVISION",
+            "precondition", "The revision guard refused the write.",
+            requested={"values": {"hole": 3.0}},
+            observed={"expected_revision": "abc"})
+        assert envelope["ok"] is False
+        assert envelope["tool"] == "xscript.project.set_params"
+        assert envelope["failure_code"] == "STALE_PROGRAM_REVISION"
+        assert envelope["failure_stage"] == "precondition"
+        assert envelope["error"] == "The revision guard refused the write."
+        assert envelope["requested"] == {"values": {"hole": 3.0}}
+        assert envelope["observed"] == {"expected_revision": "abc"}
 
-    def test_successful_call_still_renders_ok(self) -> None:
-        gui = self._gui()
-        text = gui._format_progress_event(
-            {
-                "event": "tool_call_completed",
-                "ok": True,
-                "result": {"title": "Created Body"},
-            }
-        )
-        assert "ok" in text
-        assert "blocked" not in text
-
-    def test_provider_tool_result_sent_is_stage_aware(self) -> None:
-        gui = self._gui()
-        rejected = gui._format_progress_event(
-            {
-                "event": "provider_tool_result_sent",
-                "ok": False,
-                "tool_name": "xscript.project.write_script",
-                "error": "schema mismatch",
-                "failure_stage": "schema",
-            }
-        )
-        assert "rejected before execution" in rejected
-        rolled_back = gui._format_progress_event(
-            {
-                "event": "provider_tool_result_sent",
-                "ok": False,
-                "tool_name": "xscript.project.write_script",
-                "error": "boolean failed",
-                "failure_stage": "native_recompute",
-            }
-        )
-        assert "failed during execution, rolled back" in rolled_back
-        missing = gui._format_progress_event(
-            {
-                "event": "provider_tool_result_sent",
-                "ok": False,
-                "tool_name": "xscript.project.write_script",
-                "error": "anything",
-            }
-        )
-        assert "blocked" in missing
-
-    def test_every_declared_failure_stage_has_specific_rendering(self) -> None:
-        """New stages added to CadexTools.FAILURE_STAGES must not silently
-        degrade to the generic 'blocked' rendering."""
-        import CadexTools
-
-        gui = self._gui()
-        covered = (
-            gui._PRE_EXECUTION_FAILURE_STAGES
-            | gui._ROLLED_BACK_FAILURE_STAGES
-            | {"external_process"}
-        )
-        assert covered == CadexTools.FAILURE_STAGES
-
-
-# ---------------------------------------------------------------------------
-# Service: private scripted carriers and one-shot view attachment
-# ---------------------------------------------------------------------------
 
 
 def test_private_xscript_carriers_are_not_provider_document_objects() -> None:

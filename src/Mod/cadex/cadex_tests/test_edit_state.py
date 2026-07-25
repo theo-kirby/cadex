@@ -38,55 +38,6 @@ def _install_gui(monkeypatch: pytest.MonkeyPatch, gui_document: object) -> None:
     monkeypatch.setitem(sys.modules, "FreeCADGui", gui)
 
 
-def test_native_edit_info_resolves_assembly_before_touching_view_provider(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    assembly = _assembly_object()
-    view_provider = _AssemblyViewProvider()
-    fallback_calls: list[str] = []
-
-    class _GuiDocument:
-        @property
-        def getInEditInfo(self):
-            return (assembly, "Assembly.", "", 0)
-
-        def getInEdit(self):
-            fallback_calls.append("getInEdit")
-            return view_provider
-
-    gui_document = _GuiDocument()
-    _install_gui(monkeypatch, gui_document)
-
-    state = active_edit_state(gui_document)
-    assert state.active is True
-    assert state.document_object is assembly
-    assert state.subname == "Assembly."
-    assert state.subelement == ""
-    assert state.mode == 0
-    assert fallback_calls == []
-
-    service = object.__new__(CadexService)
-    assert service.provider_edit_object_summary() == {
-        "name": "Assembly",
-        "label": "Crank Assembly",
-        "type": "Assembly::AssemblyObject",
-    }
-    assert session._minimal_runtime_state(service) == {
-        "edit_mode": True,
-        "edit_object": {
-            "name": "Assembly",
-            "label": "Crank Assembly",
-            "type": "Assembly::AssemblyObject",
-        },
-        "active_sketch": None,
-    }
-    assert service.task_panel_summary()["edit_object"]["name"] == "Assembly"
-    assert inspection._edit_object() == {
-        "name": "Assembly",
-        "label": "Crank Assembly",
-        "type": "Assembly::AssemblyObject",
-    }
-
 
 def test_opaque_edit_view_provider_is_active_but_never_masquerades_as_object(
     monkeypatch: pytest.MonkeyPatch,

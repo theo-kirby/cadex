@@ -15,11 +15,11 @@ from pathlib import Path
 
 MODULE_DIR = Path(__file__).resolve().parent.parent
 
-#: Shell-side modules that must stay protocol clients.
+#: Shell-side modules that must stay protocol clients. The Qt UI layer left
+#: this list in C3 (ADR-021); the rest of the file goes in C5, when the
+#: last shell module in this repo does.
 SHELL_MODULES = (
     "CadexSession.py",
-    "CadexGui.py",
-    "CadexParametersPanel.py",
     "CadexShellHydration.py",
     "CadexdClient.py",
 )
