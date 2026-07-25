@@ -103,39 +103,70 @@ If the gate fails, the fallback is continuing on the Qt shell (Phase 3
 result) while the gaps are fixed — the engine work is endpoint-neutral either
 way.
 
-### Gate status (2026-07-25, engine-side evidence after Phase 4)
+### Gate status (2026-07-25, closed with Phase 6 — ALL CRITERIA MET)
 
-Criteria 1–2 need the cadexd→Blender prototype (they measure the shell
-half); the engine-side halves were measured now so the prototype only has
-to validate the transport and shell side:
+Phase 6 (ADR-019) supplied the shell halves in the real Blender shell
+(`/Users/theo/mesh`, `tests/python/bl_mesh_agent_cadex.py`, headless
+Blender 5.3.0-alpha against release cadexd):
 
-1. **Tessellation & ID maps — engine half READY.** Per-face tessellation
-   (`face.tessellate`) covers 100% of faces on the probe corpus (box, cone,
-   torus, 98-face drilled+filleted plate: 0 faces without triangles), and
-   every edge discretizes to a polyline — the per-face/per-edge ID map the
-   protocol needs exists engine-side. Pin re-resolution machinery
-   (`CadexReferenceContracts.resolve_interface`, fingerprint-based) is in
-   place. Remaining: attribute transport into Blender + viewport picking
-   fidelity (needs the prototype). Note: deflection 0.3 on the filleted
-   plate produced 409k triangles in 1.2 s — the protocol should carry an
-   adaptive/coarser deflection for interactive drags.
-2. **Slider-drag latency — baseline measured.** Today's in-process path on
-   a mid-size part (24-hole boolean + full fillet + mesh skin): ~0.57 s per
-   set_params cycle end-to-end, of which ~0.55 s is spawning the fresh
-   `FreeCADCmd` worker process. A persistent cadexd process eliminates the
-   spawn cost per drag, so matching the baseline is the floor, not the
-   ceiling.
-3. **Rebuild determinism — PASSED engine-side.** Same script + params →
-   identical content digest across process restarts and across two FreeCAD
-   builds; 60+ consecutive seed/rebuild worker cycles clean, all five
-   domains including mesh (canonical ordering + vertex-set fingerprints +
-   definition-identified approximating ops, ADR-016). Each rebuild is a
-   fresh process, which is exactly the cadexd-restart condition.
+1. **Tessellation & picking fidelity — PASSED.** ID maps land as
+   `cadex_face` INT face attributes, byte-identical to the sidecar
+   ranges, 100% face coverage; 372/372 ray-cast picks (bar ≥ 99%)
+   resolved through `resolve_pin {element_type, index}` to faces whose
+   tessellation aggregates (area, centroid, planar residual) match the
+   engine's geometric truth on the corpus (box, cone, torus,
+   drilled+filleted plate); mesh-domain outputs refuse pins.
+2. **Slider-drag latency — PASSED.** Median **0.548 s** over 10
+   `set_params` drags on the 24-hole/fillet/mesh-skin baseline through
+   Blender → cadexd → worker → tessellation → hydration (bar ≤ 0.65 s) —
+   *including* the display streaming the Qt 0.479 s measurement did not
+   carry, via the `draft` drag preset + background standard refine
+   (1.38 s at rest).
+3. **Rebuild determinism — PASSED** (unchanged; re-proven continuously by
+   the restore pass and ctest `CadexdLifecycle`).
+
+Engine-half history (pre-Phase 6 evidence):
+
+1. **Tessellation & ID maps — engine half SHIPPED (ADR-017).**
+   `cadex-tessellation-v1` display artifacts ride every lifecycle response
+   on request: per-face triangle ranges + per-edge polylines mapping to
+   the exact 1-based Face/Edge enumeration, 100% face coverage asserted on
+   the corpus CI (`tessellation_id_map_integration.py`), adaptive
+   deflection `clamp(rel × bbox_diagonal, 0.05, 5.0)` with
+   coarse/standard/fine presets (the 409k-triangle fixed-deflection
+   failure mode is designed out). Headless `resolve_pin` resolves
+   fingerprints and picked indices against the accepted staged BREP
+   (`pin_resolution_integration.py` proves fingerprint↔index↔face_details
+   agreement and re-resolution across a `set_params` move). Remaining:
+   attribute transport into Blender + viewport picking fidelity (needs the
+   prototype).
+2. **Slider-drag latency — parity MEASURED THROUGH THE PROTOCOL.**
+   10 `set_params` drags on the 24-hole/fillet/mesh-skin baseline part
+   through the full client → cadexd → worker → hydrate path: **median
+   0.479 s** (`cadexd_shell_switchover_integration.py`; bar ≤ 0.65 s,
+   in-process baseline 0.57 s). Protocol framing + shell hydration cost
+   less than the in-process publication they replaced. The per-drag
+   `FreeCADCmd --safe-mode` worker spawn (~0.4–0.5 s) still dominates; a
+   **warm-standby worker** inside cadexd is the identified (not yet
+   built) lever for sub-100 ms drags.
+3. **Rebuild determinism — PASSED, now re-proven continuously.** Same
+   script + params → identical content digest across process restarts and
+   across two FreeCAD builds (ADR-016 evidence stands). Since Phase 5
+   every `open_project` runs a restore pass that re-executes THE script
+   and asserts digest equality against the accepted digest, and ctest
+   `CadexdLifecycle` kills cadexd with SIGKILL and verifies the respawned
+   restore digest — restart determinism is exercised on every open, not
+   once per audit.
 
 ## Open questions
 
-- Exact transport (stdio vs socket) and whether cadexd is per-project or a
-  daemon multiplexing projects.
+- ~~Exact transport (stdio vs socket); per-project vs multiplexing~~ —
+  decided 2026-07-25 (ADR-017): stdio NDJSON, one cadexd per project,
+  spawned/owned by the shell.
 - Where conversation history lives post-split (cadexd project store, as
   today, vs the shell's .blend — leaning cadexd/`$CADEX_HOME`, shell caches).
-- Progressive tessellation (stream coarse then refine) for slider latency.
+- ~~Progressive tessellation (stream coarse then refine)~~ — shipped
+  2026-07-25 (ADR-019): drag requests `draft` quality, a cancellable
+  background `rebuild` restores `standard` after the drag settles.
+- The warm-standby worker for sub-100 ms slider drags (the per-drag
+  `FreeCADCmd --safe-mode` spawn still dominates the 0.548 s median).

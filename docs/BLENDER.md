@@ -1,6 +1,6 @@
 # BLENDER.md — The mesh Fork and the Future Shell
 
-Verified against source: 2026-07-24 (repo: `/Users/theo/mesh`, branch `mesh-main`)
+Verified against source: 2026-07-25 (repo: `/Users/theo/mesh`, branch `mesh-main`)
 
 Cadex's confirmed endpoint is a Blender shell (see `docs/INTEGRATION.md` and
 `docs/DECISIONS.md`). The shell lives in a separate repository: **mesh**, a
@@ -54,6 +54,10 @@ cadex (`docs/VISION.md`) and the concrete integration point for the future
 | `modes.py` | Mode system (currently a CAD overlay): mode-specific system-prompt overlays and a validation flag, stored in a scene property. |
 | `cad_api.py` | `mesh_cad` module importable inside scripts: millimeter-based solid-modeling helpers (boxes, cylinders, gears, booleans with cleanup). |
 | `mock_backend.py` | Test harness that replays scripted turns through the real bridge without spawning Claude. |
+| `cadexd_client.py` | **Phase 6 (ADR-019).** Dependency-free NDJSON stdio client for cadexd; spawns `FreeCADCmd` (add-on preference / `MESH_FREECADCMD` / PATH), ready banner, serialized requests, cancel, crash envelopes. No `bpy`, no cadex imports. |
+| `cadex_backend.py` | Per-scene cadexd session: project root beside the .blend (`<stem>.cadex/`), revision-guarded `write_script`/`set_params` with stale-revision self-heal, engine params bridged into `scene.mesh_params`, draft-while-dragging + background standard refine. |
+| `cadex_hydrate.py` | `cadex-tessellation-v1` buffers → Model-collection mesh objects: `cadex_face` INT face attribute (1-based BREP ids), `cadex_edge` wire children, placements, contract-driven GC by `cadex_output` property. |
+| `cadex_pick.py` | Viewport pick → polygon → `cadex_face` → `resolve_pin`; resolved pins queue onto the next chat message (like image attachments). Operator `mesh_agent.pick_pin`. |
 
 ### The model.py loop (source of truth)
 
@@ -118,19 +122,30 @@ All upstream Blender code, listed here as orientation for Phase 6 work
 
 ## 4. Working-state note
 
-As of 2026-07-24 the mesh working tree is **dirty**: modifications to
-`mesh_agent/{__init__,agent,model,tools,ui}.py` and untracked
-`cad_api.py`, `modes.py`, `validation.py`, `tests/eval/`,
-`tests/python/bl_mesh_agent_cad.py` — active development of the CAD
-mode/validation layer. Verify current state before building on it.
+As of 2026-07-25 the mesh working tree is **dirty**: the CAD
+mode/validation layer (`cad_api.py`, `modes.py`, `validation.py`,
+`tests/eval/`, `bl_mesh_agent_cad.py`) and the Phase 6 cadex backend
+(`cadexd_client.py`, `cadex_backend.py`, `cadex_hydrate.py`,
+`cadex_pick.py`, `bl_mesh_agent_cadex.py`, small routing edits to
+`model/tools/agent/ui/modes/__init__`) are uncommitted. All three
+headless suites (`bl_mesh_agent`, `bl_mesh_agent_cad`,
+`bl_mesh_agent_cadex`) pass. Verify current state before building on it.
 
-## 5. What carries from mesh_agent into the cadex integration
+## 5. What carried from mesh_agent into the cadex integration (Phase 6, landed)
 
-| mesh_agent concept | cadex counterpart (Phase 6) |
+Implemented 2026-07-25 (ADR-019) as the "Cadex CAD" assistant mode — the
+local-exec path stays alongside; `modes.py` selects the backend per scene:
+
+| mesh_agent concept | cadex counterpart (shipped) |
 |---|---|
-| `model.py` in `bpy.data.texts` as sole source of truth | The single project script (`docs/XSCRIPT.md`, target) |
-| `mesh_model.params()` → `scene.mesh_params` sliders | Project-level xscript params bridged into `scene.mesh_params` |
-| Local `exec()` of the script | Proxy to `cadexd run/rebuild`; results streamed back as tessellated BREP + ID maps into the Model collection |
-| `scene_summary` / `viewport_screenshot` tools | Same tools, plus BREP-aware inspection via cadexd |
-| Picking a Blender face | Resolve ID-map attribute → BREP pin (`@face-N`) via `cadexd resolve_pin` |
-| One `undo_push` per turn | Unchanged |
+| `model.py` in `bpy.data.texts` as sole source of truth | THE xscript project script in the cadexd store; the text block is a read-only mirror |
+| `mesh_model.params()` → `scene.mesh_params` sliders | Engine `param_specs` bridged into the same `scene.mesh_params` group (`cadex_backend._bridge_params`) |
+| Local `exec()` of the script | `write_script`/`set_params` through cadexd; tessellated BREP + ID maps hydrated into the Model collection (`cadex_hydrate.py`) |
+| `scene_summary` / `viewport_screenshot` tools | Unchanged (they read the hydrated scene) |
+| Picking a Blender face | `mesh_agent.pick_pin`: ray-cast → `cadex_face` attribute → `resolve_pin` → `@face-N` pin on the next message |
+| One `undo_push` per turn | Unchanged (verified in cadex mode) |
+
+Gate evidence lives in `tests/python/bl_mesh_agent_cadex.py` (run:
+`MESH_FREECADCMD=<cadex>/build/release/bin/FreeCADCmd blender --background
+--factory-startup --python tests/python/bl_mesh_agent_cadex.py`) and is
+summarized in `docs/INTEGRATION.md` gate status + ADR-019.

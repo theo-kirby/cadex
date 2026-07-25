@@ -645,3 +645,73 @@ feature edits; engine-truth inspection reflects cadexd's ephemeral
 document. Resurrecting an in-process modeling path is a direction change
 requiring an ADR and owner sign-off.
 
+## ADR-019 — Phase 6: the Blender shell speaks cadexd (2026-07-25)
+
+**Context.** Phase 5 left cadexd as the sole modeling path with the Qt
+shell as its first protocol client. The confirmed endpoint (ADR-006,
+`docs/INTEGRATION.md`) is the Blender shell: the `mesh_agent` prototype in
+`/Users/theo/mesh`. Two decision-gate criteria still needed shell-side
+evidence: ID-map/picking fidelity in a real viewport, and slider-drag
+latency through the full shell path.
+
+**Decision.** `mesh_agent` gains a cadex backend as a third assistant mode
+("Cadex CAD", `modes.py backend: "cadexd"`) **alongside** the local-exec
+path — same chat, same tool names (`get_script`/`write_script`/
+`set_params`), routed per mode. All integration code is new files in the
+mesh repo (additive-only policy holds; ledger updated):
+
+- `cadexd_client.py` — GPL, dependency-free NDJSON stdio client; spawns
+  `FreeCADCmd -c "import cadexd…"` per project root (found via add-on
+  preference / `MESH_FREECADCMD` / PATH; module dir `<prefix>/Mod/cadex`).
+  No cadex imports: the process boundary is the integration contract and
+  the LGPL↔GPL seam. Crash → `CADEXD_CRASHED` envelope, respawn + reopen
+  on next request.
+- `cadex_backend.py` — per-scene session (project root beside the .blend,
+  `<stem>.cadex/`), revision-guarded lifecycle ops with one
+  `STALE_PROGRAM_REVISION` self-heal retry, engine `param_specs` bridged
+  into the same `scene.mesh_params` PropertyGroup the local path uses
+  (slider drag → debounced `set_params` via `model.rebuild()` backend
+  dispatch — the only edit to the local loop).
+- `cadex_hydrate.py` — `cadex-tessellation-v1` buffers → mesh objects in
+  the Model collection: per-triangle **`cadex_face` INT face attribute**
+  (1-based BREP face ids from `face_ranges`), `cadex_edge` wire child,
+  placement matrices, contract-driven GC keyed by a `cadex_output`
+  custom property (mirrors ADR-018's Qt hydration).
+- `cadex_pick.py` — viewport pick: ray-cast → polygon → `cadex_face` →
+  `resolve_pin {element_type, index}`; resolved pins are queued and
+  attached to the next chat message like image attachments.
+- One `undo_push` per chat turn is unchanged (verified through the real
+  bridge in cadex mode).
+
+**Progressive display (engine-side addition).** Streaming standard-quality
+tessellation on every drag cost ~0.86 s extra on the baseline part. New
+`"draft"` quality preset (relative deflection 0.05) in
+`cadex_tessellation.py`; the Blender shell requests
+`{quality: "draft", edges: false}` while a drag is in flight and issues a
+background `rebuild` at `standard` once the drag settles (cancelled by the
+next drag; revisions are content-derived so the refine keeps the accepted
+revision). Verified by `cadex_tests` (424 passed).
+
+**Measured** (`tests/python/bl_mesh_agent_cadex.py`, headless Blender
+5.3.0-alpha against the release cadexd; gate report
+`CADEX-BLENDER-GATE`):
+
+- **Picking fidelity 100%** (372/372 ray-cast picks; bar ≥ 99%) on the
+  tessellation corpus (box, cone, torus, drilled+filleted plate), with
+  every one of the 40 BREP faces' tessellation aggregates (area,
+  centroid, planar residual) matching the engine's `resolve_pin` truth;
+  ID-map attributes byte-identical to the sidecar ranges; mesh-domain
+  outputs refuse pins.
+- **Slider-drag median 0.548 s** (bar ≤ 0.65 s) on the 24-hole/fillet/
+  mesh-skin baseline — through Blender → cadexd → worker → tessellation
+  → numpy hydration, i.e. *including* the display streaming the Qt
+  measurement (0.479 s) did not carry. Post-drag refine: 1.38 s.
+- Engine restart: reopen rehydrates geometry, params, and script text
+  from the store.
+
+**Consequences.** The decision gate's shell-side criteria are met in the
+real shell; Phase 7 (convergence) is unblocked. The per-drag worker spawn
+still dominates drag latency; the warm-standby worker remains the named
+lever for sub-100 ms drags. Blender remains display-only: engine truth
+lives in the cadexd project store, and the mirrored `model.py` text block
+is read-only context, not a rebuild input.
