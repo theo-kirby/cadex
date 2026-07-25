@@ -1,0 +1,153 @@
+name: Cadex Engine
+
+# Builds the cadex engine payload (cadex ADR-023): the headless xscript
+# engine, its discovery manifest, and nothing else. This repository stopped
+# producing a user-facing application in Phase 7 (ADR-020) -- the product is
+# the Blender shell in the mesh repository, which carries this payload.
+#
+# Replaces cadex-release.yml. The AppImage, .deb, portable 7z and NSIS
+# installer jobs are gone with the application they packaged, and so are
+# cadex-macos.yml and cadex-windows-installer.yml. Triggers are unchanged:
+# nightly schedule, manual dispatch, and release tags.
+
+on:
+  schedule:
+    # 08:00 UTC is 03:00 CDT / 02:00 CST.
+    - cron: "0 8 * * 0,3"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to create or update. Leave empty for cadex-engine-YYYYMMDD-SHA."
+        required: false
+        type: string
+      prerelease:
+        description: "Mark the GitHub release as a prerelease."
+        required: true
+        default: true
+        type: boolean
+  push:
+    tags:
+      - "v*"
+      - "cadex-*"
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: cadex-engine-${{ github.event_name == 'schedule' && 'nightly' || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'schedule' }}
+
+env:
+  UPLOAD_RELEASE: "false"
+
+jobs:
+  payload:
+    name: Engine payload (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Sequenced per ADR-023: macOS arm64 first, because it is the only
+          # platform whose shell bundle is built today (mesh P4).
+          - target: macos-arm64
+            runner: macos-14
+          - target: linux-x64
+            runner: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          run-install: false
+
+      # The provider-install scripts are gone (ADR-021), so they no longer
+      # contribute to this key -- and neither does requirements.txt, which
+      # was deleted when the engine lost its last third-party dependency.
+      - name: Cache pixi environment
+        uses: actions/cache@v4
+        with:
+          path: .pixi
+          key: >-
+            pixi-engine-${{ matrix.target }}-${{ hashFiles(
+              'pixi.lock',
+              'pixi.toml',
+              'package/rattler-build/scripts/relocate_conda_environment.py',
+              'package/engine/build_engine_payload.sh') }}
+
+      - name: Configure and build (GUI off)
+        run: |
+          pixi run configure-release
+          pixi run build-release
+          pixi run install-release
+
+      - name: Engine unit tests
+        run: pixi run python -m pytest src/Mod/cadex/cadex_tests
+
+      - name: Build the engine payload
+        run: |
+          pixi run -e package python -m pip install --quiet conda-pack==0.9.2 || true
+          bash package/engine/build_engine_payload.sh
+
+      - name: Gate -- CadexEnginePayloadSmoke
+        # The same cadexd lifecycle test the source tree runs, driven against
+        # the packaged tree and discovered through its cadex-engine.json
+        # manifest exactly as the Blender shell discovers it.
+        run: |
+          payload="$(ls -d build/engine/cadex-engine-*/ | head -1)"
+          CADEX_ENGINE_ROOT="$(cd "${payload}" && pwd)" \
+            pixi run python -m pytest -q \
+            src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py
+
+      - name: Archive the payload
+        run: |
+          payload="$(ls -d build/engine/cadex-engine-*/ | head -1)"
+          name="$(basename "${payload}")"
+          tar -C build/engine -czf "${name}.tar.gz" "${name}"
+          shasum -a 256 "${name}.tar.gz" | tee "${name}.tar.gz.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cadex-engine-${{ matrix.target }}
+          path: |
+            cadex-engine-*.tar.gz
+            cadex-engine-*.tar.gz.sha256
+          if-no-files-found: error
+
+  release:
+    name: Publish
+    needs: payload
+    if: github.event_name != 'schedule' || github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Resolve the tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.release_tag }}" ]; then
+            echo "name=${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=cadex-engine-$(date -u +%Y%m%d)-$(echo ${{ github.sha }} | cut -c1-8)" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The SHA256 files are the point of publishing: the mesh repository
+      # pins an engine version and its per-platform digest in
+      # build_files/cadex_engine.txt, and verifies on fetch (ADR-023).
+      - name: Publish the release
+        if: env.UPLOAD_RELEASE == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          prerelease: ${{ inputs.prerelease || true }}
+          files: artifacts/*
+          fail_on_unmatched_files: true

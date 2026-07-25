@@ -26,7 +26,9 @@ ucrt = "==10.0.20348.0"
 python = ">=3.11,<3.12"
 
 [feature.package.tasks]
-create_bundle = 'bash -c "cd $(bash scripts/get_os.bash) && bash create_bundle.sh"'
+# The .app/AppImage/7z bundles died with the Qt application (cadex ADR-021).
+# What this repository packages now is the engine payload (ADR-023).
+build_engine_payload = 'bash ../../package/engine/build_engine_payload.sh'
 
 ## Linux (x86-64)
 [feature.package.target.linux-64.dependencies]
