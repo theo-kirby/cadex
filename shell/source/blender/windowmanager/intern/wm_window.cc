@@ -610,7 +610,8 @@ static std::string wm_window_title_text(
     if (is_single && area && area->spacetype != SPACE_EMPTY) {
       return IFACE_(ED_area_name(area).c_str());
     }
-    return "Blender";
+    /* cadex ADR-030: the product name, here and below. */
+    return "Cadex";
   }
 
   /* This path may contain invalid UTF8 byte sequences on UNIX systems,
@@ -693,7 +694,11 @@ static std::string wm_window_title_text(
     }
   }
 
-  win_title.append(fmt::format(" - Blender {}", BKE_blender_version_string()));
+  /* cadex ADR-030: the product name. The upstream version string is dropped
+   * rather than relabelled -- "Cadex 5.3.0 Alpha" would be a lie about which
+   * version of what. The shell's version stays visible in the status bar and
+   * in the About dialog. */
+  win_title.append(" - Cadex");
 
   return win_title;
 }
