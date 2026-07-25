@@ -1,6 +1,6 @@
 # FREECAD.md — Inherited Substrate Inventory
 
-Verified against source: 2026-07-24
+Verified against source: 2026-07-25
 
 Cadex is a FreeCAD fork. This is the ledger of what we keep, what is slated
 for removal, and what is already gone. The change policy for inherited code
@@ -17,7 +17,7 @@ Everything in this file is `[FreeCAD-inherited]` unless noted.
 |---|---|
 | `src/App` | `App::Document`, `DocumentObject`, properties, expressions, **transactions** — the persistence/undo substrate the publisher and `CadexTransactions.py` rely on. |
 | `src/Base` | Units, vectors, matrices, persistence primitives, Python bindings glue. |
-| `src/Gui` | Qt6 main window + Coin3D/Quarter viewport. Kept for the **interim** Qt shell only (`docs/INTEGRATION.md`); no new rendering investment (Phase 3 cap). |
+| `src/Gui` | Qt6 main window + Coin3D/Quarter viewport. **Present but not built** — release and package configs set `BUILD_GUI=OFF` (ADR-022). Debug builds still compile it, so the tree stays healthy until Phase 8 deletes it. See §3. |
 | `src/Main` | `FreeCAD` / `FreeCADCmd` entry points. `FreeCADCmd` is load-bearing: every xscript worker is a `FreeCADCmd --safe-mode` subprocess. |
 
 ### Capability workbenches (the product's four areas)
@@ -50,9 +50,28 @@ Everything in this file is `[FreeCAD-inherited]` unless noted.
 - `src/Tools`, `tests/` — upstream tooling and native test trees (audited,
   not blanket-kept, during Phase 1).
 
-## 3. Slated for removal (Phase 1) — present but unused
+## 3. Disabled, awaiting removal
 
-Empty. Phase 1 removals are complete: batch A (`AddonManager`, `BIM`,
+### `src/Gui` (+ every `src/Mod/*/Gui`, `tests/src/Gui`) — Phase 8
+
+**Disable commit: Phase 7 C6b (ADR-022).** Release and package
+configurations set `BUILD_GUI=OFF`; nothing the product ships compiles a
+line of it. Measured effect on this tree: `lib/` 43 MB → 8.3 MB, `Mod/`
+49 MB → 22 MB, files matching `*Gui*` 93 → 8, and `bin/` reduced to
+`FreeCADCmd` + `CadexGeometryWorker`.
+
+Not deleted yet because it is 66 MB across 729 files plus every
+`src/Mod/*/Gui`, and `BUILD_GUI=OFF` already captures 100% of the size and
+build-time benefit with a zero-line diff in the conservative zone. The
+delete commit is Phase 8 (`docs/ROADMAP.md`), and it must also remove the
+`BUILD_GUI` guards Phase 7 added to `tests/src/CMakeLists.txt` and
+`tests/src/Base/CMakeLists.txt` rather than leave them dangling.
+
+Until then: **do not add to it, do not fix it, do not partially delete it.**
+
+### Phase 1 workbench trees — complete
+
+Phase 1 removals are complete: batch A (`AddonManager`, `BIM`,
 `CAM`, `Fem`, `Inspection`, `OpenSCAD`, `Plot`, `ReverseEngineering`,
 `Robot`, `Surface`, `TemplatePyMod`, `Tux`, `Web`) deleted per ADR-007;
 batch B (`Draft`, `Points`, `Spreadsheet`, `TechDraw`) deleted per
@@ -60,8 +79,9 @@ ADR-009 after the grid lost its Draft dependency (Phase 1.3) and the
 assembly BOM was dropped (ADR-008). Every tree under `src/Mod/` is now
 in §1.
 
-Future removals follow the same protocol (per tree, two commits, logged
-in `docs/DECISIONS.md`): disable, verify; delete, verify.
+The protocol (per tree, two commits, logged in `docs/DECISIONS.md`):
+**disable, verify; delete, verify.** `src/Gui` is mid-protocol — disabled
+in Phase 7, delete scheduled for Phase 8.
 
 ## 4. Already deleted (VibeCAD teardown) — do not resurrect
 

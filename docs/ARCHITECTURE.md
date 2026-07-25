@@ -12,48 +12,46 @@ Provenance tags: `[FreeCAD-inherited]` upstream FreeCAD code we build on;
 
 ## 1. The one-paragraph picture
 
-Cadex is a FreeCAD fork stripped to a single AI-native modeling engine. The
-user chats with an assistant in a Qt panel; the assistant authors **ONE
-declarative xscript project script** through four lifecycle tools
-(`xscript.project.*`). Since Phase 5 the engine runs behind **cadexd** — a
-persistent headless `FreeCADCmd` service, one child per open project,
-speaking `cadex-cadexd-v1` NDJSON over stdio (ADR-017/018). cadexd persists
-the script store, executes the script in a sandboxed windowless worker that
-produces detached BREP (and mesh) artifacts for all five capability domains
-— **partdesign, sketcher, part, mesh, assembly** — in one pass, validates
-the result, and publishes it into its own *ephemeral* `App::Document`
-(lint, contract GC, output identity) with an accepted content digest. The
-Qt shell is a protocol client: it hydrates the accepted artifacts into the
-document of record (.FCStd) as tagged display objects in one transaction.
-Both documents are rebuildable artifacts — a headless rebuild from the
-script must reproduce the accepted content digest, and every cadexd open
-re-proves it. The Qt app is the interim shell; the endpoint is a Blender
-shell speaking the same protocol (`docs/INTEGRATION.md`).
+Cadex is a FreeCAD fork stripped to a single AI-native modeling engine, and
+since Phase 7 that is **all** it is: this repository builds `FreeCADCmd`
+and `CadexGeometryWorker` and no application (ADR-021/022). The engine runs
+as **cadexd** — a persistent headless `FreeCADCmd` service, one child per
+open project, speaking `cadex-cadexd-v1` NDJSON over stdio (ADR-017/018).
+cadexd owns the script store, executes **ONE declarative xscript project
+script** in a sandboxed windowless worker that produces detached BREP (and
+mesh) artifacts for all five capability domains — **partdesign, sketcher,
+part, mesh, assembly** — in one pass, validates the result, and publishes
+it into its own *ephemeral* `App::Document` (lint, contract GC, output
+identity) with an accepted content digest. Every `open_project` re-runs the
+accepted script and asserts digest equality, so restart determinism is
+proven on every open rather than once per audit. The **shell is the Blender
+fork** (`/Users/theo/mesh`): it is a protocol client that hydrates the
+tessellated results into its scene, and it carries this engine inside its
+own bundle as a payload it finds by manifest (`docs/INTEGRATION.md`,
+ADR-023).
 
 ## 2. The xscript pipeline `[Cadex-new]`
 
 ```
- chat panel         session                 cadexd child (per project)                                shell hydration
- CadexGui.py  →  CadexSession.py  →  CadexdClient  ══NDJSON══▶  cadexd.py → CadexScriptedRuntime  →  CadexShellHydration.py
- (user turn)     (provider loop,     (spawn/own child,           (serial dispatch; persist source,    (ONE transaction into the
-                  tool dispatch)      cancel poll, crash          spawn ONE --safe-mode worker,        .FCStd of record: tagged
-                                      respawn + reopen)           validate, publish into the           Part::/Mesh::Feature
-                                                                  ephemeral App::Document, accept)     mirrors, contract GC)
+ Blender shell (mesh repo)              cadexd child (per project)
+ ────────────────────────────           ─────────────────────────────────────────────
+ chat / sliders / picking               cadexd.py → CadexScriptedRuntime
+ mesh_agent/cadex_backend.py  ══NDJSON══▶ (serial dispatch; persist source, spawn ONE
+ mesh_agent/cadexd_client.py             --safe-mode worker, validate, publish into the
+ mesh_agent/cadex_hydrate.py  ◀═════════ ephemeral App::Document, accept, tessellate)
+ (hydrates tessellation +
+  face/edge ID maps into the scene)
 ```
 
-- **Session** (`src/Mod/cadex/CadexSession.py`): one provider turn at a
-  time; dispatches the project lifecycle to the project's cadexd
-  (`_run_project_xscript_tool` → `CadexdClient.request`; public entry
-  `run_project_xscript_operation`, also used by the Parameters panel — the
-  panel and provider dispatch are unchanged by the split). Engine-truth
-  `core.inspect` scopes (`document/object/script/api/image`) route to
-  cadexd; `selection` stays shell-local. There is **no in-process modeling
-  fallback** (guardrail: `test_engine_shell_split_guardrails.py`).
+The whole left-hand column lives in the **other repository**. What crosses
+the boundary is the protocol in `docs/INTEGRATION.md` and nothing else: no
+shared code, no shared process, no shared licence obligation.
+
 - **cadexd** (`src/Mod/cadex/cadexd.py`, protocol
   `src/Mod/cadex/CadexdProtocol.py`): one `FreeCADCmd` child per open
   project (no `--safe-mode` — trusted engine code), spawned/owned by the
-  shell via `src/Mod/cadex/CadexdClient.py`; `pixi run cadexd` for a
-  standalone instance. Serial dispatch, `CADEXD_BUSY` refusal for a second
+  shell (the Blender add-on's `cadexd_client.py`, in the mesh repo);
+  `pixi run cadexd` for a standalone instance. Serial dispatch, `CADEXD_BUSY` refusal for a second
   modeling request, mid-run `cancel`, stdin-EOF lifetime, fd-1 hijack so
   only protocol frames reach the parent. Hosts the persistent ephemeral
   document and runs a digest-verified **restore pass** on every open.
@@ -93,17 +91,15 @@ shell speaking the same protocol (`docs/INTEGRATION.md`).
   **only inside cadexd's ephemeral document** (and `cadex_rebuild`) — the
   split is process-level, so the pipeline modules stay in-tree, but shell
   modules must not import them (ADR-018).
-- **Shell hydration** (`src/Mod/cadex/CadexShellHydration.py`): on the Qt
-  document thread, ONE transaction (one undo step) mirrors the accepted
-  contract into the .FCStd of record — find-or-create `Part::Feature`
-  (importBrep + solved placement) / `Mesh::Feature` (Mesh.read) keyed by
-  the xscript ownership tags, revision tag updated, contract-driven GC of
-  leavers (robust across cadexd restarts and across the switchover from
-  publication-era native objects). Qt hydration uses BREP only — the Coin
-  providers tessellate natively; the tessellation buffers serve tests and
-  the Phase 6 Blender shell. A hydration failure returns
-  `SHELL_HYDRATION_FAILED` while the engine state is already accepted (the
-  next success self-heals).
+- **Display, not hydration.** The engine's side of the shell boundary ends
+  at the response: each accepted output carries a `display` block with
+  absolute artifact paths and, on request, `cadex-tessellation-v1` buffers
+  plus face/edge ID maps (`cadex_tessellation.py`, digest-neutral, quality
+  presets `draft`/`coarse`/`standard`/`fine`). What a shell does with them
+  is its own business — the Blender shell hydrates them into its scene with
+  per-triangle `cadex_face` attributes so picking round-trips through
+  `resolve_pin`. The Qt hydration that used to live here died with the Qt
+  shell (ADR-021).
 - **Geometry checks**: `src/Mod/cadex/CadexGeometryWorker.cpp` — an
   isolated C++ helper (built to `build/release/bin/CadexGeometryWorker`)
   for BREP validation (`BOPAlgo_ArgumentAnalyzer`) and exact
@@ -138,32 +134,33 @@ Ownership closure, lint, and orphan queries live in
 | `cadex_domain_api.py` / `cadex_domain_worker.py` | Shared domain API/worker plumbing (`_execute_source` is the composition substrate). `[VibeCAD-era]` |
 | `CadexGeometryWorker.cpp` | Isolated C++ BREP validation / distance worker. `[VibeCAD-era]` |
 
-### Session, providers, tools `[VibeCAD-era]`
+### The shell
+
+There is no shell in this repository. `CadexGui`, `CadexSession`,
+`CadexProvider`, `CadexCore`, `CadexAuth`, `CadexCodex`, `CadexPreferences`,
+`CadexTransactions`, `CadexEditState`, `CadexGrid`, `CadexParametersPanel`,
+`CadexScriptView`, the `tool_impl` package, `CadexdClient` and
+`CadexShellHydration` were all deleted in Phase 7 (ADR-021). The shell is
+`scripts/addons_core/mesh_agent/` in the mesh repository, and it speaks the
+protocol in `docs/INTEGRATION.md`.
+
+`test_engine_purity_guardrails.py` keeps it that way: nothing under
+`src/Mod/cadex/**` may import `PySide*`, `FreeCADGui`, `tool_impl` or
+`jsonschema`, and cadexd's transitive module closure must equal a declared
+list.
+
+### Contracts and surfaces `[Cadex-new]`
 
 | File | Role |
 |---|---|
-| `CadexSession.py` | Turn orchestration, tool surface resolution, provider loop, project tool dispatch to cadexd. |
-| `CadexdClient.py` | Shell-side cadexd owner: lazy spawn, request/progress/cancel, crash → `CADEXD_CRASHED` + respawn/reopen, per-project registry, killed on document close/app exit. `[Cadex-new]` |
-| `CadexShellHydration.py` | One-transaction hydration of accepted results into the .FCStd of record; contract-driven GC. `[Cadex-new]` |
-| `CadexProvider.py` | Providers: `AnthropicProvider`, `OpenAIProvider` (also serves xAI/Ollama/OpenAI-compatible endpoints via base URL), `ChatGPTSubscriptionProvider` (bundled Codex app-server), `OfflineProvider`. |
-| `CadexCodex.py`, `CadexAuth.py` | Codex app-server integration; keyring/.env/env-var credential handling. |
-| `CadexTools.py`, `tool_impl/` (`service/`, `sketcher/`) | Tool registry and implementations (`core.*`, `file.*`, `xscript.project.*`). |
-| `CadexInspection.py` | The bounded `core.inspect` read surface (scopes `document`, `selection`, `object`, `script`, `api`, `image`). |
-| `CadexReferenceContracts.py` | Geometry pins (`@edge-1`, `@face-2`): shared handle + owner + subelement hint + geometric fingerprint; fingerprint-based re-resolution when the document revision moved. |
-| `CadexTransactions.py` | Transaction wrapper for tool execution. |
-| `CadexModelingSurface.py` | The global project surface id (any workbench, one script). `[Cadex-new]` |
-
-### UI `[VibeCAD-era]`, being reshaped `[Cadex-new]`
-
-| File | Role |
-|---|---|
-| `CadexGui.py` | Assistant chat panel (conversations, attach image/view, send/steer/stop). |
-| `CadexExperimentalMode.py` | The only mode (`is_experimental_mode_session()` returns `True`): hides all toolbars/status bar/MDI tabs, forces `PartDesignWorkbench`, launch screen when no document. 50/50 split (viewport left, panel column right — tree/parameters/script/chat) held by a `resizeDocks` event filter; native-route lockdown (minimal About/Preferences/Quit menu, shortcut strip, tree context/double-click block, unsanctioned-edit watchdog) re-applied on every chrome pass (ADR-015). |
-| `CadexScriptView.py` | Read-only dock rendering THE project script; refreshes on assistant updates and visibility changes. Deliberately not an editor. |
-| `CadexExperimentalChat.py`, `CadexPromptStarters.py` | Experimental-mode chat surface and starters. |
-| `CadexParametersPanel.py` | Sliders for the project script's declared parameters (`params`/`num` specs from `script.json`); a drag commits through `xscript.project.set_params` with the working-revision guard, no provider turn, debounced 600 ms (ADR-014). |
-| `CadexPreferences.py` | Preferences page (provider, model, keys, budgets). Pref group `User parameter:BaseApp/Preferences/Mod/cadex`. |
-| `CadexEditState.py`, `CadexGrid.py` | Edit-state tracking; cadex-owned adaptive viewport grid (pivy line grid, ADR from Phase 1.3). |
+| `CadexdProtocol.py` | The wire protocol: NDJSON codec, op registry (`OP_ARG_SPECS`), failure codes. Its op table is asserted equal to `docs/INTEGRATION.md`'s. |
+| `cadexd.py` | The service: serial dispatch, cancel, busy, the ephemeral document, the restore pass, the per-output `display` block. |
+| `CadexTools.py` | `FAILURE_STAGES`, the `tool_failure` envelope every refusal is shaped as (and every shell parses), `unchanged_state`, `ToolSpec` as a declaration. |
+| `CadexEngineSettings.py` | The engine's own preference group and sandbox budget defaults. Split from the Qt preferences in C1. |
+| `CadexInspection.py` | The bounded `inspect` read surface (scopes `document`, `object`, `script`, `api`, `image`; `selection` was shell-only and is gone). |
+| `CadexReferenceContracts.py` | Geometry pins: shared handle + owner + subelement hint + geometric fingerprint, and fingerprint re-resolution when the revision moved. |
+| `CadexPinResolution.py` | Resolves a pick or fingerprint against the accepted revision's staged BREP. |
+| `CadexModelingSurface.py` | The global project surface id (any workbench, one script). |
 
 ### Project store `[Cadex-new]`
 
@@ -174,7 +171,6 @@ macOS). Layout:
 ```
 <root>/projects/<slug>-<hash8>/
   project.cadex.json            project manifest
-  conversations/…               chat transcripts per conversation
   script.py                     THE project script (sole source of truth)
   script.json                   schema cadex-project-script-v1: param specs
                                 cache + values, working/accepted revision,
@@ -187,20 +183,26 @@ macOS). Layout:
                                 requested)
 ```
 
-Post-split, **cadexd is the sole writer** of the script store; the shell
-may still read it (the Parameters panel reads `script.json` specs).
+**cadexd is the sole writer and the sole reader.** The shell never touches
+the store: it asks the engine (`inspect`), which is why the store's layout
+is not part of the two-repository contract.
 
-`CadexProjectScriptStore` owns `script.py`/`script.json` (atomic writes,
-schema-checked). Documents reopen with their conversations and script
-attached; the assistant is disabled for unsaved documents so records have a
-durable home. VibeCAD-era per-domain program stores
-(`xscript/<domain>/<program_id>/`) are not migrated (ADR-011).
+In practice the root is chosen by the shell, not by `$CADEX_HOME`: the
+Blender shell passes `<blend-dir>/<stem>.cadex` as `project_root`, so a
+model lives beside the file that displays it.
+
+`CadexProjectScriptStore` (`CadexScriptStore.py`, split out of
+`CadexProject.py` in C1) owns `script.py`/`script.json` with atomic,
+schema-checked writes. **Conversation history is no longer here**: it lives
+in the `.blend` with the Claude Code session id (ADR-020, decision 4), and
+the engine's conversation store died with the Qt shell. VibeCAD-era
+per-domain program stores are not migrated (ADR-011).
 
 ### Support
 
-`CadexCore.py`, `CadexDebug.py`, `CadexGeometry.py`,
-`CadexAssemblyHierarchy.py`, `CadexPointArtifacts.py`, `Init.py`,
-`InitGui.py`, icons (`cadex-*.svg`).
+`CadexDigest.py`, `CadexScriptedOwnership.py`, `cadex_tessellation.py`,
+`cadex_rebuild.py` (the headless rebuild entry), `Init.py`. No icons, no
+`InitGui.py`: this module registers no workbench.
 
 ### Tests
 
@@ -237,29 +239,45 @@ What the engine stands on (details and the removal ledger in
 
 - `src/App` — `App::Document`, properties, expressions, **transactions** —
   the persistence and undo model the publisher relies on.
-- `src/Gui` — Qt6 main window, Coin3D/Quarter viewport (interim shell only).
+- `src/Gui` — Qt6 main window, Coin3D/Quarter viewport. **Present but not
+  built**: release and package configs set `BUILD_GUI=OFF` (ADR-022), which
+  is the disable commit for this tree under `docs/FREECAD.md` §3. Deleting
+  it is Phase 8. Debug builds still build it, so the tree stays compilable.
 - `src/Base` — units, vectors, persistence primitives.
 - `src/Mod/{Part,PartDesign,Sketcher,Assembly}` — the original capability
   areas; `src/Mod/{Mesh,MeshPart}` — the Phase 4 mesh domain substrate.
 - Support trees: `Import`, `Material`, `Measure`, `Show`, `Start`, `Test`,
   `Help`.
-- The 17 unused workbench trees were removed in Phase 1 (ADR-007..010;
-  `docs/FREECAD.md` §3 is empty).
+- The 17 unused workbench trees were removed in Phase 1 (ADR-007..010).
+  `docs/FREECAD.md` §3 now carries one entry: `src/Gui`, disabled and
+  awaiting deletion.
 
 ## 5. Build & run
 
-- Toolchain: pixi + CMake, Qt6/PySide6, Coin3D, OCCT. Tasks in `pixi.toml`:
-  `configure`/`build`/`test`/`freecad` (debug default), `*-release`
-  variants, `rebuild` (headless digest check), and `cadexd` (standalone
-  engine service on stdio).
-- Artifacts: `build/release/bin/FreeCAD`, `build/release/bin/FreeCADCmd`,
-  `build/release/bin/CadexGeometryWorker`. On macOS the app runs from the
-  installed tree — run `pixi run install-release` after building.
-- Packaging: `docs/cadex-release-packaging.md`.
+- Toolchain: pixi + CMake, OCCT, Qt6 (non-GUI: Core/Xml/Concurrent/Network).
+  Tasks in `pixi.toml`: `configure`/`build`/`test` (debug default, GUI on),
+  the `*-release` variants (**GUI off**, ADR-022), `rebuild` (headless
+  digest check), and `cadexd` (standalone engine service on stdio).
+- Artifacts, release: `build/release/bin/FreeCADCmd` and
+  `build/release/bin/CadexGeometryWorker`. **There is no `FreeCAD` binary
+  in a release build** — that is the point of Phase 7. Debug builds still
+  produce one, as an engineering convenience only.
+- Run the engine's own tests with `pixi run python -m pytest
+  src/Mod/cadex/cadex_tests` (no build needed; FreeCAD is stubbed).
+  `pixi run python src/Mod/cadex/cadex_tests/cadexd_latency_integration.py`
+  is the slider-drag latency bar, driven over raw NDJSON.
+- Packaging: `docs/cadex-release-packaging.md` — the engine payload.
 
 ## 6. Open questions
 
+- **The warm-standby worker.** The per-drag `FreeCADCmd --safe-mode` spawn
+  (~0.4–0.5 s) dominates the ~0.5 s slider median. A warm worker inside
+  cadexd is the identified lever for sub-100 ms drags; nothing else in the
+  measured path is close to it in cost.
+- **`display` on `open_project`** (A1). Would fold the restore pass and the
+  hydration rebuild into one script run; the measured cost of not having it
+  is 0.49 s per project open.
 - Whether `CadexModelingSurface.py`'s surface resolution collapses further
-  now that one global project surface exists.
-- How much of `CadexProject.py`'s store becomes the `cadexd` project store
-  verbatim in Phase 5.
+  now that one global project surface exists and no provider consumes it.
+- What remains of `CadexProject.py` once the conversation store is gone —
+  the script store already moved to `CadexScriptStore.py`.

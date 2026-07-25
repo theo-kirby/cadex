@@ -939,3 +939,123 @@ the delete commit is Phase 8.
 **Gate.** Both cadex ctests pass against the GUI-less build
 (`CadexProjectRebuildDigest` 1.64 s, `CadexdLifecycle` 3.75 s), with zero
 new failures against the environmental baseline.
+
+## ADR-023 — One bundle: the engine ships inside the shell (2026-07-25)
+
+**Decision.** This repository stops producing a user-facing application and
+starts producing an **engine payload**. The Blender shell carries it and
+finds it by manifest. A user installs one thing.
+
+**The payload** (`package/engine/build_engine_payload.sh`):
+
+```
+cadex-engine-<version>-<os>-<arch>/
+  cadex-engine.json     the discovery manifest (schema in ADR-020)
+  bin/{freecadcmd,CadexGeometryWorker,python}
+  lib/                  no Qt GUI, no PySide, no Coin
+  Mod/{cadex,Part,PartDesign,Sketcher,Assembly,Mesh,MeshPart,Import,
+       Material,Measure,Show}
+```
+
+Descended from `osx/create_bundle.sh` minus the `.app` wrapper, icon
+pipeline, DMG and the two provider-install scripts — none of which survive
+ADR-021.
+
+**The manifest is the point.** Shell-side discovery becomes "find
+`cadex-engine.json`, read two paths out of it" rather than guessing at
+`<prefix>/Mod/cadex` vs `<dir>/../Mod/cadex` vs a macOS `.app` interior.
+That retires the layout-guessing bug class on all three platforms at once,
+and lets a developer point at a dev build by setting one variable.
+
+**Correction to the plan's Qt claim.** "The audit reports zero
+Qt/PySide/Coin" is not achievable: FreeCAD's App layer links **Qt6Core and
+Qt6Xml**, and `FreeCADCmd` inherits that (verified with `otool -L`). The
+gate implemented is the one that matters — no widget toolkit, no Qt Python
+bindings, no scene-graph renderer — and the build script *prints* the Qt
+libraries it does carry, so the exception is visible rather than silent.
+Verified on the first payload: Qt6Core, Qt6Xml, Qt6Concurrent, Qt6Network,
+Qt6DBus, and none of Gui/Widgets/Quick/Qml/OpenGL/Svg/PrintSupport/UiTools,
+no PySide, no shiboken, no Coin/Quarter/SoQt, no `libFreeCADGui`.
+
+**The gate: ctest `CadexEnginePayloadSmoke`.** It runs
+`test_cadexd_lifecycle.py` against the *packaged* tree, discovered through
+its manifest exactly as the shell discovers it. Strictly stronger than the
+`--cadex-launcher-smoke` it replaces (which ran `freecadcmd --version`),
+and it reuses a test that already existed.
+
+**It immediately earned its keep.** The first packaged engine could not
+model at all: `DOMAIN_CANDIDATE_FAILED`, `No module named 'PySide'`.
+`src/Mod/Assembly/JointObject.py` imported PySide, `pivy.coin` and its
+preferences page at module scope, and the cadex assembly worker imports
+that module for `Joint`, `GroundedJoint` and `JointTypes` — pure
+App-level document classes. Every test to date had passed because the
+development environment happens to have Qt installed. Those imports are now
+guarded: the feature classes import headlessly; the task-panel and
+view-provider classes, which nothing headless instantiates, raise clearly if
+touched. **No packaging gate weaker than "run the real lifecycle against
+the real payload" would have caught this.**
+
+**Shell side (mesh repo).** `build_files/cadex_engine.txt` pins the version
+and a SHA256 per platform; `fetch_cadex_engine.py` verifies and stages, and
+**refuses an unpinned platform** rather than downloading it. The install
+rules live behind `WITH_CADEX_ENGINE` in `source/creator/CMakeLists.txt`:
+`Blender.app/Contents/Resources/cadex` on macOS, `<install>/cadex`
+elsewhere.
+
+**Workflows.** `cadex-macos.yml` and `cadex-windows-installer.yml` deleted;
+`cadex-release.yml` rewritten as `cadex-engine.yml` (same triggers; no
+AppImage, deb, 7z or NSIS). `src/Main/CadexPortableLauncher.cpp` is **kept**
+against the plan: it is also the source for `CadexCmdPortableLauncher`, a
+Windows launcher for `FreeCADCmd` that belongs to the engine.
+
+**Verified** with `MESH_FREECADCMD` unset, against a payload placed where a
+bundle carries it: preflight green with zero configuration, and
+`CADEX-BLENDER-GATE` ok with `engine_from_bundle: true` — picking 372/372,
+slider median 0.572 s, restore performed, cancel honoured.
+
+**Open.** macOS notarization of the embedded engine (hardened runtime,
+per-binary entitlements for a `freecadcmd` that spawns subprocesses and
+dlopens OCCT) is not yet exercised. Linux and Windows payloads build but
+have no shell CI.
+
+## ADR-024 — Onboarding: Cadex is what a new user meets (2026-07-25)
+
+**Decision.** The Mesh app template is the default, Cadex is the default
+mode, the engine needs no configuration, and engine failures are visible to
+the user.
+
+**Default app template.** `UserDef::app_template`'s DNA default changes
+from `""` to `"Mesh"`. Chosen over editing `creator_args.cc`: a data default
+in a header conflicts as a data blob on upstream merges, argument-parsing
+code conflicts as logic, and `--app-template default` escapes to stock
+Blender either way. Only a fresh profile takes the default.
+
+**Default mode.** `modes.DEFAULT_MODE` becomes `CADEX` and it leads the
+mode list. The local modes (General, Part Design) remain for mesh-native
+work — the tension with `docs/VISION.md`'s "one project script is THE
+user-visible artifact" is recorded in ADR-020 decision 5, not silently kept.
+
+**Zero configuration.** The engine-path preference now reads "leave empty
+to use the cadex engine bundled with Mesh". `preflight()` — written in
+Phase 6 and never once called — reports from three surfaces: the
+preferences panel (with the resolved path when green), the chat panel in
+Cadex mode, and the first cadex tool call, where the model previously
+received a raw subprocess traceback and now gets a sentence plus "do not
+retry".
+
+**Error surfaces.** `cadex_backend`'s failure reports are written for the
+model: structured, detailed, and invisible to the person watching the
+panel. A rejected script, a rejected parameter change and an unavailable
+engine each add one line to the transcript, because otherwise a rejected
+revision looks exactly like a hang.
+
+**The additive-only upstream policy ends here** (ADR-020, decision 6).
+`docs/mesh/UPSTREAM_DIFFS.md` gains its first "Modified upstream files"
+rows — three, each with what changed, why, and what a conflict in it would
+mean — and its policy text changes from "never edit" to "every edit is
+listed here, kept minimal, and justified".
+
+**Consequence worth recording.** Flipping the default broke three tests
+that had been relying on `GENERAL` being it. They now state which path they
+exercise instead of inheriting a default. Tests that depend on an unstated
+default are exactly what a default change should find.

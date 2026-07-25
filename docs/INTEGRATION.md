@@ -1,16 +1,28 @@
-# INTEGRATION.md — Engine/Shell Split and the Blender Endpoint
+# INTEGRATION.md — The Two-Repository Contract
 
 Verified against source: 2026-07-25
 
-How the three repos converge into one product. The decision below was
-confirmed by the owner on 2026-07-24 (`docs/DECISIONS.md`).
+**This document is the contract between two codebases.** Since Phase 7
+(ADR-020) the shell lives in another repository, under another licence, and
+is written against what is written here. Two things below are therefore
+enforced by tests rather than trusted:
+
+- the **protocol op table** is asserted equal to
+  `CadexdProtocol.OP_ARG_SPECS` by
+  `cadex_tests/test_engine_purity_guardrails.py`. Nothing else in either
+  tree notices when the prose and the code disagree, and a shell calling an
+  op the engine does not serve fails at the user, not at a test.
+- the **engine discovery manifest** (`cadex-engine.json`, ADR-020) is
+  validated by ctest `CadexEnginePayloadSmoke` here and by
+  `fetch_cadex_engine.py` in the shell repo.
 
 Repos:
 
 - **cadex** (`/Users/theo/cadex`) — this repo. FreeCAD fork; the xscript
-  engine; today also a Qt shell.
-- **mesh** (`/Users/theo/mesh`) — Blender 5.0.3-alpha fork with the
-  `mesh_agent` prototype (`docs/BLENDER.md`).
+  engine, headless. Builds `FreeCADCmd` and `CadexGeometryWorker` and
+  **no application** (ADR-021/022).
+- **mesh** (`/Users/theo/mesh`) — Blender fork; the product shell
+  (`docs/BLENDER.md`). Carries the engine payload inside its bundle.
 - **vibecad** — parent fork; historical reference only (teardown history on
   its `cadex-teardown` branch).
 
@@ -23,9 +35,10 @@ Repos:
 | **C. Two-app bridge** | Both apps stay full apps; a live bridge syncs geometry. | Rejected: two documents of record, two undo systems, permanent sync complexity. |
 | **D. Staged** | Keep working engine-side in cadex now; split engine from shell; then adopt a shell endpoint. | **Confirmed path**, with B as the endpoint. Near-term work stays in `src/Mod/cadex/**` and carries over unchanged. |
 
-**Decision: D with B as the endpoint.** Cadex becomes **cadexd**, a headless
-xscript geometry service; the mesh fork becomes the product shell. The Qt
-shell remains the interim harness until Phase 7 (`docs/ROADMAP.md`).
+**Decision: D with B as the endpoint.** Cadex became **cadexd**, a headless
+xscript geometry service; the mesh fork is the product shell. The Qt shell
+was the interim harness and was **deleted in Phase 7** (ADR-021) — options
+A and D's interim state are now history, not plan.
 
 ### Why this is safe to commit to now
 
@@ -86,6 +99,39 @@ progressive display — the Blender shell requests it during slider drags
 and re-requests `standard` in a background `rebuild` once the drag
 settles (ADR-019).
 
+## The engine payload and its discovery `cadex-engine-v1` `[Cadex-new — ADR-023]`
+
+The shell does not build the engine; it carries a payload built here
+(`package/engine/build_engine_payload.sh`, ctest
+`CadexEnginePayloadSmoke`):
+
+```
+cadex-engine-<version>-<os>-<arch>/
+  cadex-engine.json     {schema, version, protocol, freecadcmd, module_dir}
+  bin/{freecadcmd,CadexGeometryWorker,python}
+  lib/                  Qt6 Core/Xml/Concurrent/Network only — no Qt GUI,
+                        no PySide, no Coin
+  Mod/{cadex,Part,PartDesign,Sketcher,Assembly,Mesh,MeshPart,Import,
+       Material,Measure,Show}
+```
+
+**Finding the manifest is the whole of discovery.** `freecadcmd` and
+`module_dir` are manifest-relative with forward slashes on every platform,
+so no shell guesses at a layout. A manifest whose `schema` or `protocol` a
+shell does not recognise must be **refused**, not attempted: a version
+mismatch should fail at preflight with a sentence, not mid-request with a
+protocol error.
+
+Shell-side resolution order: explicit preference → `MESH_FREECADCMD` →
+bundled manifest → `PATH`. Install locations:
+`Blender.app/Contents/Resources/cadex` on macOS, `<install>/cadex`
+elsewhere. The shell pins a version and a per-platform SHA256
+(`build_files/cadex_engine.txt`) and refuses to stage an unpinned payload.
+
+Non-GUI Qt (Core, Xml, Concurrent, Network) is unavoidable — FreeCAD's App
+layer links it and `FreeCADCmd` inherits that. Qt **GUI**, PySide and Coin
+are absent, and asserted absent by the payload build.
+
 ## Decision gate (before Phase 5 commits to the split)
 
 Measured with a real cadexd prototype streaming into Blender:
@@ -101,7 +147,7 @@ Measured with a real cadexd prototype streaming into Blender:
 
 If the gate fails, the fallback is continuing on the Qt shell (Phase 3
 result) while the gaps are fixed — the engine work is endpoint-neutral either
-way.
+way. *(Historical: the gate passed, and the Qt shell no longer exists.)*
 
 ### Gate status (2026-07-25, closed with Phase 6 — ALL CRITERIA MET)
 
@@ -163,8 +209,13 @@ Engine-half history (pre-Phase 6 evidence):
 - ~~Exact transport (stdio vs socket); per-project vs multiplexing~~ —
   decided 2026-07-25 (ADR-017): stdio NDJSON, one cadexd per project,
   spawned/owned by the shell.
-- Where conversation history lives post-split (cadexd project store, as
-  today, vs the shell's .blend — leaning cadexd/`$CADEX_HOME`, shell caches).
+- ~~Where conversation history lives post-split~~ — decided 2026-07-25
+  (ADR-020, decision 4): **the `.blend`**, together with the Claude Code
+  `session_id`. This **reverses** the `$CADEX_HOME` lean recorded here
+  earlier. The conversation is shell state — the engine has no notion of a
+  turn — and one file a user can move, copy and mail beats a second store
+  beside it. The engine's conversation store was deleted with the Qt shell
+  (ADR-021).
 - ~~Progressive tessellation (stream coarse then refine)~~ — shipped
   2026-07-25 (ADR-019): drag requests `draft` quality, a cancellable
   background `rebuild` restores `standard` after the drag settles.

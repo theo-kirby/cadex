@@ -172,12 +172,81 @@ slider-drag median 0.548 s ≤ 0.65 s including tessellation streaming;
 restart rehydration. Evidence in ADR-019 and
 `docs/INTEGRATION.md` gate status.
 
-## Phase 7 — Convergence
+## Phase 7 — Convergence `(landed 2026-07-25, ADR-020…024)`
 
 **Goal:** one product.
 
-- [ ] Blender shell is the product; Qt shell demoted to engineering harness
-      or removed (open question in `docs/VISION.md`).
-- [ ] Packaging, onboarding, and docs follow the shell.
+- [x] **Blender shell gaps closed** (mesh repo, M1–M8): manifest-based
+      engine discovery + `preflight()`; deferred tool replies so a rebuild
+      no longer freezes Blender, with cancellation reaching the engine;
+      sandbox budgets; an engine project that follows Save-As and does not
+      leak across files; the restore pass on every open; `describe_cad_api`
+      replacing a hand-written API listing in the prompt; `edit_script`,
+      `inspect_model`, and a `scene_summary` that reports engine truth;
+      conversation history and Claude session id in the `.blend`.
+- [x] **Qt shell deleted** (C1–C7, ADR-021): the UI layer, the provider and
+      session stack, and the protocol seam. 57 Python modules → 34; 36 test
+      files / 425 tests → 20 / 154. `requirements.txt` deleted — the engine
+      has no third-party Python dependency left.
+- [x] **GUI build off** (C6b, ADR-022): `BUILD_GUI=OFF` for release and
+      package configs; `isVibeExperimentalModeSession` reverted to stock,
+      which *reduces* the fork's delta against upstream FreeCAD.
+- [x] **One bundle** (P1–P4, ADR-023): an engine payload with a
+      `cadex-engine.json` discovery manifest, gated by ctest
+      `CadexEnginePayloadSmoke`; the Qt app packaging retired; the mesh
+      repo carries, verifies and installs the payload, and gained its first
+      CI.
+- [x] **Onboarding** (O1–O3, ADR-024): Mesh is the default app template,
+      Cadex the default mode, the engine needs no configuration, and engine
+      failures reach the user.
+- [x] Docs follow the shell: `docs/INTEGRATION.md` becomes the two-repo
+      contract (its op table is now test-enforced against
+      `CadexdProtocol.OP_ARG_SPECS`), `docs/BLENDER.md` the primary
+      integration reference, `docs/cadex-release-packaging.md` the
+      engine-payload doc.
 
 **Exit criteria:** a new user only ever sees the Blender shell.
+**Met 2026-07-25** — with `MESH_FREECADCMD`, `MESH_CADEXD_MODULE` and
+`MESH_CADEX_ENGINE` all unset, against an engine payload placed where the
+bundle carries it: Cadex-mode preflight is green with zero configuration,
+and `tests/python/bl_mesh_agent_cadex.py` reports `CADEX-BLENDER-GATE` ok
+with `engine_from_bundle: true` — picking 372/372 (bar ≥ 99%), slider-drag
+median 0.572 s (bar ≤ 0.65 s), restore performed and digest-matched,
+cancellation answered `RUN_CANCELLED`, and 120 main-thread ticks during a
+1.52 s rebuild. This repository no longer builds a product: `bin/` is
+`FreeCADCmd` and `CadexGeometryWorker`.
+
+## Phase 8 — Remove the `src/Gui` tree
+
+**Goal:** delete what Phase 7 stopped building.
+
+`BUILD_GUI=OFF` was the **disable commit** for `src/Gui` under
+`docs/FREECAD.md` §3's removal protocol (ADR-022). The delete commit is
+this phase.
+
+- [ ] Dependency audit: `src/Gui` (66 MB, 729 files) plus every
+      `src/Mod/*/Gui`, `tests/src/Gui`, and the `setup_qt_test` helper.
+- [ ] Delete, with the `BUILD_GUI` guards that Phase 7 added removed rather
+      than left dangling.
+- [ ] `docs/FREECAD.md` §1 row moves from "present, not built" to deleted;
+      DECISIONS entry.
+
+**Exit criteria:** the tree contains no GUI source, `pixi run configure`
+(debug) still configures, and both cadex ctests stay green.
+
+**Not in scope:** re-adding a GUI of any kind. The product's interface is
+the Blender shell.
+
+## Later — identified, not scheduled
+
+- **Warm-standby worker.** The per-drag `FreeCADCmd --safe-mode` spawn
+  (~0.4–0.5 s) dominates the ~0.55 s slider median. A warm worker inside
+  cadexd is the named lever for sub-100 ms drags.
+- **A1: `display` on `open_project`.** Would fold the restore pass and the
+  hydration rebuild into one script run; measured cost of not having it is
+  0.49 s per project open.
+- **Linux and Windows shell bundles.** The engine payload builds for both;
+  only macOS arm64 has shell CI.
+- **macOS notarization of the embedded engine.** Hardened runtime and
+  per-binary entitlements for a `freecadcmd` that spawns subprocesses and
+  dlopens OCCT.

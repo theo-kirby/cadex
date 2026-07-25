@@ -1,31 +1,58 @@
-# BLENDER.md — The mesh Fork and the Future Shell
+# BLENDER.md — The Shell
 
 Verified against source: 2026-07-25 (repo: `/Users/theo/mesh`, branch `mesh-main`)
 
-Cadex's confirmed endpoint is a Blender shell (see `docs/INTEGRATION.md` and
-`docs/DECISIONS.md`). The shell lives in a separate repository: **mesh**, a
-Blender 5.0.3-alpha fork at `/Users/theo/mesh`. This document records what
-exists there today and which Blender internals matter for the integration, so
-future agents do not have to re-explore that repo.
+**The Blender fork is the product.** Since Phase 7 (ADR-020/021) this
+repository has no UI at all, so this document is the primary reference for
+where the interface actually lives: **mesh**, a Blender fork at
+`/Users/theo/mesh`, whose `mesh_agent` add-on is the shell.
+
+The wire contract between the two repositories is `docs/INTEGRATION.md`.
+This document is the shell's own map: its files, its tools, how to run its
+suites, and which Blender internals the integration depends on — so an
+agent working engine-side does not have to re-explore that repo.
+
+**How to run the shell's tests** (from `/Users/theo/mesh`):
+
+```bash
+BLENDER=/Users/theo/build_darwin/bin/Blender.app/Contents/MacOS/Blender
+
+# local (bpy) model path — no engine needed
+"$BLENDER" --background --factory-startup --python tests/python/bl_mesh_agent.py
+"$BLENDER" --background --factory-startup --python tests/python/bl_mesh_agent_cad.py
+
+# the cadex path; prints one CADEX-BLENDER-GATE {...} line
+MESH_FREECADCMD=/Users/theo/cadex/build/release/bin/FreeCADCmd \
+  "$BLENDER" --background --factory-startup \
+  --python tests/python/bl_mesh_agent_cadex.py
+```
+
+Engine changes must be built into `build/release/Mod/cadex`
+(`pixi run build-release`) before that last suite sees them.
 
 Everything here is `[Cadex-new]` unless marked as upstream Blender.
 
 ---
 
-## 1. Repo policy: additive-only
+## 1. Repo policy: every upstream edit is listed
 
 - Branch: `mesh-main`. Merge strategy: `git merge <upstream tag>` (never
   rebase) to keep the conflict surface minimal.
-- Policy through the fork's Phase 3 (from `docs/mesh/UPSTREAM_DIFFS.md`):
-  **additive only** — new files, zero edits to upstream Blender code. As of
-  2026-07-24 the modified-upstream-files ledger reads "(none yet)"; the first
-  upstream edits are expected in the fork's Phase 4 (default app template
-  selection, branding).
-- New files so far: the `mesh_agent` add-on, the Mesh app template, tests, and
-  `docs/mesh/`.
+- **The additive-only policy ended with Phase 7** (ADR-020 decision 6,
+  ADR-024). Shipping one application that works with no configuration
+  needed three upstream edits: the default app template
+  (`DNA_userdef_types.h`), the `WITH_CADEX_ENGINE` option (root
+  `CMakeLists.txt`), and the payload install rules
+  (`source/creator/CMakeLists.txt`).
+- The rule now is **"every edit is listed in `docs/mesh/UPSTREAM_DIFFS.md`,
+  kept minimal, and justified"** — each row says what changed, why, and
+  what a merge conflict in it would mean.
+- New files: the `mesh_agent` add-on, the Mesh app template, the three test
+  suites, the engine pin + fetch script, `mesh-build.yml`, and `docs/mesh/`.
 
-This mirrors cadex's own conservative stance toward inherited FreeCAD core
-(see `CLAUDE.md`).
+This mirrors cadex's own stance toward inherited FreeCAD core (see
+`CLAUDE.md`), which likewise moved from "don't touch" to "reduce the delta
+where you can, and say what you did" (ADR-022).
 
 ## 2. The prototype: `scripts/addons_core/mesh_agent/`
 
@@ -120,16 +147,21 @@ All upstream Blender code, listed here as orientation for Phase 6 work
 | Window manager / editors | `source/blender/windowmanager/`, `source/blender/editors/` | Layout, operators, event handling — what the app template scripts against. |
 | Undo | `source/blender/blenkernel/intern/undo_system.cc`, `blender_undo.cc` (memfile), headers `BKE_undo_system.hh` / `BKE_blender_undo.hh` | Memfile snapshot undo; why one `undo_push` per turn is cheap and sufficient. |
 
-## 4. Working-state note
+## 4. The shell's own machinery (Phase 7)
 
-As of 2026-07-25 the mesh working tree is **dirty**: the CAD
-mode/validation layer (`cad_api.py`, `modes.py`, `validation.py`,
-`tests/eval/`, `bl_mesh_agent_cad.py`) and the Phase 6 cadex backend
-(`cadexd_client.py`, `cadex_backend.py`, `cadex_hydrate.py`,
-`cadex_pick.py`, `bl_mesh_agent_cadex.py`, small routing edits to
-`model/tools/agent/ui/modes/__init__`) are uncommitted. All three
-headless suites (`bl_mesh_agent`, `bl_mesh_agent_cad`,
-`bl_mesh_agent_cadex`) pass. Verify current state before building on it.
+Added in Phase 7 (ADR-023/024); details in the mesh repo's
+`docs/mesh/CADEX_ENGINE.md`.
+
+| Concern | Where |
+|---|---|
+| Engine discovery | `cadexd_client.find_freecadcmd` / `read_engine_manifest` / `preflight` — preference → `MESH_FREECADCMD` → bundled manifest → `PATH` |
+| Bundled payload | `cadex_backend.bundle_roots()` from `bpy.app.binary_path`; installed by `WITH_CADEX_ENGINE` |
+| Version pin | `build_files/cadex_engine.txt` + `build_files/utils/fetch_cadex_engine.py` (SHA256, refuses unpinned) |
+| Off-thread modeling | `cadex_backend.Lifecycle` + `tools.Pending`; the agent's drain loop polls, so Blender stays live during a rebuild |
+| Cancellation | a per-turn `threading.Event` bound into the client's `cancellation_check`; the engine answers `RUN_CANCELLED` |
+| API truth | the `describe_cad_api` tool; the mode prompt carries **no** API names |
+| Conversation | transcript + Claude `session_id` in the `.blend` (`history.py`) |
+| CI | `.github/workflows/mesh-build.yml` — build, stage the engine, run all three suites against the bundle with no engine env set |
 
 ## 5. What carried from mesh_agent into the cadex integration (Phase 6, landed)
 

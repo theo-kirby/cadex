@@ -1,6 +1,6 @@
 # VISION.md — What Cadex Is Becoming
 
-Verified against source: 2026-07-24
+Verified against source: 2026-07-25
 
 This document is the product vision. It is authoritative: when a change
 conflicts with this document, the change is wrong or the vision needs an
@@ -69,8 +69,11 @@ the runtime level; the remaining source trees are slated for removal
 - Manual CAD workflows of any kind; feature parity with FreeCAD's UI.
 - Supporting all FreeCAD workbenches, file formats, or addons.
 - Multi-engine scripting (build123d, OpenSCAD — retired in the teardown).
-- Long-term investment in the Qt/Coin3D shell (it is interim; the endpoint is
-  the Blender shell — `docs/INTEGRATION.md`).
+- A second shell of any kind. The Qt/Coin3D shell was interim and was
+  deleted in Phase 7 (ADR-021); this repository builds the engine, and the
+  interface is the Blender shell (`docs/INTEGRATION.md`).
+- A second model loop. The AI runs as the Claude Code CLI inside the shell;
+  there is no API-key provider path in this repository (ADR-020).
 
 ## Guiding principles
 
@@ -93,5 +96,12 @@ the runtime level; the remaining source trees are slated for removal
   imports? one flat script?) — Phase 2 design work.
 - Where the boundary between "parameter" (slider, no AI) and "change request"
   (chat turn) sits for things like suppressing a feature.
-- Whether the Qt shell is retired outright or kept headless-only as an
-  engineering harness after Phase 7.
+- ~~Whether the Qt shell is retired outright or kept headless-only as an
+  engineering harness after Phase 7~~ — answered 2026-07-25 (ADR-020/021):
+  **retired outright**, together with the provider stack it served. This
+  repository is the engine; it builds no application.
+- How far the local (mesh-native) modes and the one-project-script model
+  should converge. Cadex mode holds to "one project script is THE
+  user-visible artifact"; General and Part Design are a different surface
+  — direct BMesh authoring — that shares a chat panel. ADR-020 decision 5
+  records the tension deliberately rather than resolving it.

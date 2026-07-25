@@ -128,9 +128,9 @@ Source is validated before any worker runs (AST policy in
 ### Publication, ownership, lint, GC
 
 Since Phase 5 (ADR-017/018) publication runs inside **cadexd's ephemeral
-document** (and the headless rebuild driver) — the Qt shell hydrates the
-accepted artifacts into the document of record as tagged display objects
-(`CadexShellHydration.py`, one transaction, contract-driven GC).
+document** (and the headless rebuild driver); the shell receives the
+accepted artifacts as a `display` block and draws them however it likes
+(the Blender shell hydrates tessellation + ID maps into its scene).
 `publish_project_candidate` (`CadexScriptedDomainPublication.py`) applies
 one validated candidate under **ONE** document transaction — one undo step:
 
