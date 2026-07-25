@@ -1,14 +1,16 @@
 # CLAUDE.md — Agent Entry Point
 
-Verified against source: 2026-07-24. This file replaces the retired
+Verified against source: 2026-07-25. This file replaces the retired
 `AGENTS.md` (see `docs/DECISIONS.md` ADR-005).
 
 Cadex is an AI-native CAD app: the AI authors declarative **xscript** Python
-programs; sandboxed headless `FreeCADCmd` workers produce detached BREP; a
-publisher applies validated results to the live document under a
-transaction. Four domains: partdesign, sketcher, part, assembly. Endpoint:
-headless engine (`cadexd`) behind a Blender shell. Read `docs/VISION.md`
-before designing anything.
+programs; the engine runs as **cadexd**, a per-project headless service
+(NDJSON over stdio, ADR-017) whose sandboxed `FreeCADCmd` workers produce
+detached BREP; publication runs in cadexd's ephemeral document and the Qt
+shell hydrates accepted results into the document of record (ADR-018).
+Five domains: partdesign, sketcher, part, mesh, assembly. Endpoint: the
+same protocol behind a Blender shell. Read `docs/VISION.md` before
+designing anything.
 
 ## Read this first (doc index, in order)
 

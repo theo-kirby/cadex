@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-07-24
+Verified against source: 2026-07-25
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -127,6 +127,10 @@ Source is validated before any worker runs (AST policy in
 
 ### Publication, ownership, lint, GC
 
+Since Phase 5 (ADR-017/018) publication runs inside **cadexd's ephemeral
+document** (and the headless rebuild driver) — the Qt shell hydrates the
+accepted artifacts into the document of record as tagged display objects
+(`CadexShellHydration.py`, one transaction, contract-driven GC).
 `publish_project_candidate` (`CadexScriptedDomainPublication.py`) applies
 one validated candidate under **ONE** document transaction — one undo step:
 

@@ -1363,6 +1363,77 @@ def _trace_result(payload: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _capture_project_identity(service: CadexService) -> dict[str, Any]:
+    """Read the active project's identity + budgets on the document thread."""
+
+    doc = service._active_document()
+    scope = service.project_scope_snapshot() if doc is not None else {}
+    from CadexPreferences import load_settings
+
+    settings = load_settings()
+    return {
+        "has_document": doc is not None,
+        "root": str(scope.get("root") or ""),
+        "budgets": {
+            "timeout_seconds": float(
+                getattr(settings, "scripted_timeout_seconds", 0.0) or 0.0
+            ),
+            "memory_limit_mb": int(
+                getattr(settings, "scripted_memory_limit_mb", 0) or 0
+            ),
+        },
+    }
+
+
+def _project_cadexd_client(
+    service: CadexService,
+    tool_name: str,
+    args: dict[str, Any],
+    document_thread_dispatch: DocumentThreadDispatch | None,
+) -> tuple[Any | None, dict[str, Any] | None]:
+    """The active project's cadexd client, or a failure envelope."""
+
+    identity = _on_document_thread(
+        document_thread_dispatch,
+        lambda: _capture_project_identity(service),
+    )
+    if not identity["has_document"]:
+        return None, tool_failure(
+            tool_name,
+            "NO_DOCUMENT",
+            "precondition",
+            "No active FreeCAD document.",
+            requested=args,
+        )
+    if not identity["root"]:
+        return None, tool_failure(
+            tool_name,
+            "NO_PROJECT_ROOT",
+            "precondition",
+            "The active document has no durable Cadex project root.",
+            requested=args,
+        )
+    import CadexdClient
+
+    return (
+        CadexdClient.client_for_project(
+            identity["root"], budgets=identity["budgets"]
+        ),
+        None,
+    )
+
+
+def _hydrate_accepted_payload(
+    service: CadexService, payload: Mapping[str, Any]
+) -> dict[str, Any]:
+    import CadexShellHydration
+
+    doc = service._active_document()
+    if doc is None:
+        raise RuntimeError("The active document disappeared before hydration.")
+    return CadexShellHydration.hydrate_accepted_state(doc, payload)
+
+
 def _run_project_xscript_tool(
     service: CadexService,
     tool_name: str,
@@ -1372,69 +1443,17 @@ def _run_project_xscript_tool(
     cancellation_check: CancellationCheck | None,
     progress_callback: ProgressCallback | None,
 ) -> dict[str, Any]:
-    """Run one xscript.project.* lifecycle without blocking the document thread.
+    """Run one xscript.project.* lifecycle through the project's cadexd.
 
-    Capture and publication run on the document thread; script persistence,
-    the sandboxed worker, and result validation run off-thread. A failed
-    candidate is recorded on the script store while the previous accepted
-    revision stays live.
+    Phase 5.4: the engine (store writes, sandboxed worker, validation,
+    publication into cadexd's ephemeral document) runs out of process; the
+    shell hydrates display objects from the accepted response in one
+    transaction on the document thread. A hydration failure yields
+    ``SHELL_HYDRATION_FAILED`` while the engine state is already accepted —
+    a documented asymmetry; the next successful lifecycle self-heals.
     """
 
-    from CadexScriptedDomainPublication import publish_project_candidate
-    from CadexScriptedRuntime import (
-        DomainRuntimeFailure,
-        accept_project_candidate,
-        capture_project_state,
-        describe_project_api,
-        execute_candidate,
-        parse_project_tool,
-        prepare_project_candidate,
-        record_project_candidate_failure,
-        validate_project_result,
-    )
-
-    def candidate_model_state(prepared: Mapping[str, Any]) -> dict[str, Any]:
-        # next_write_expected_revision is the durable working revision from
-        # the script store (validate_project_result may have re-bound it with
-        # the worker-collected parameter specs).
-        try:
-            from CadexProject import CadexProjectScriptStore
-
-            working = str(
-                CadexProjectScriptStore(str(prepared["project_root"]))
-                .read_state()
-                .get("working_revision")
-                or ""
-            )
-        except Exception:
-            working = str(prepared["revision"])
-        accepted = str(prepared.get("accepted_revision_before") or "")
-        return {
-            "status": "working_candidate_not_accepted",
-            "program_id": "project",
-            "working_revision": working,
-            "accepted_revision": accepted,
-            "accepted_live_state_preserved": bool(accepted),
-            "next_write_expected_revision": working,
-            "inspection_call": {
-                "tool": "core.inspect",
-                "arguments": {
-                    "scope": "script",
-                    "target": "",
-                    "path": "",
-                    "offset": 0,
-                    "limit": 50,
-                    "attach": False,
-                },
-            },
-            "repair_rule": (
-                "Inspect the script when the source or latest revision is "
-                "uncertain, then repair the smallest exact cause. Use "
-                "edit_script for unique targeted replacements, write_script "
-                "for a full rewrite, and set_params for value-only parameter "
-                "changes."
-            ),
-        }
+    from CadexScriptedRuntime import describe_project_api, parse_project_tool
 
     operation = parse_project_tool(tool_name)
     if operation is None:
@@ -1446,93 +1465,50 @@ def _run_project_xscript_tool(
             requested=args,
         )
     if operation == "describe_api":
+        # Pure authoring metadata; identical on both sides of the protocol.
         return describe_project_api()
-    prepared = None
-    try:
-        captured = _on_document_thread(
-            document_thread_dispatch,
-            lambda: capture_project_state(service, tool_name, args),
-        )
-        prepared = prepare_project_candidate(captured)
-        _emit(
-            progress_callback,
-            {
-                "event": "cadex_domain_worker_started",
-                "domain": "project",
-                "program_id": "project",
-                "revision": prepared["revision"],
-            },
-        )
-        execution = execute_candidate(prepared, cancellation_check=cancellation_check)
-        if execution.get("ok") is not True:
-            record_project_candidate_failure(prepared, execution)
-            execution["model_state"] = candidate_model_state(prepared)
-            return execution
-        try:
-            validated = validate_project_result(prepared, execution)
-        except DomainRuntimeFailure as exc:
-            record_project_candidate_failure(prepared, exc.payload)
-            exc.payload["model_state"] = candidate_model_state(prepared)
-            return exc.payload
-        except Exception as exc:
-            failure = tool_failure(
-                tool_name,
-                "DOMAIN_RESULT_INVALID",
-                "postcondition",
-                str(exc),
-                requested=args,
-                observed={"exception_type": exc.__class__.__name__},
-            )
-            record_project_candidate_failure(prepared, failure)
-            failure["model_state"] = candidate_model_state(prepared)
-            return failure
-        try:
-            publication = _on_document_thread(
-                document_thread_dispatch,
-                lambda: publish_project_candidate(service, prepared, validated),
-            )
-        except Exception as exc:
-            failure = tool_failure(
-                tool_name,
-                "DOMAIN_PUBLICATION_FAILED",
-                "native_call",
-                str(exc),
-                requested=args,
-                observed={"exception_type": exc.__class__.__name__},
-            )
-            record_project_candidate_failure(prepared, failure)
-            failure["model_state"] = candidate_model_state(prepared)
-            return failure
-        payload = accept_project_candidate(prepared, publication, validated)
-        _schedule_parameters_panel_refresh(document_thread_dispatch)
-        _emit(
-            progress_callback,
-            {
-                "event": "xscript_domain_publication_completed",
-                "domain": "project",
-                "program_id": "project",
-                "revision": prepared["revision"],
-                "output_count": len(payload.get("outputs") or []),
-            },
-        )
+    client, envelope = _project_cadexd_client(
+        service, tool_name, args, document_thread_dispatch
+    )
+    if envelope is not None:
+        return envelope
+    payload = client.request(
+        operation,
+        args,
+        cancellation_check=cancellation_check,
+        progress_callback=(
+            (lambda event: _emit(progress_callback, event))
+            if progress_callback is not None
+            else None
+        ),
+    )
+    if not payload.get("ok"):
         return payload
-    except DomainRuntimeFailure as exc:
-        if prepared is not None:
-            try:
-                record_project_candidate_failure(prepared, exc.payload)
-                exc.payload["model_state"] = candidate_model_state(prepared)
-            except Exception:
-                pass
-        return exc.payload
+    display_payload = dict(payload)
+    # The provider-visible payload stays exactly the pre-split contract;
+    # the display block (absolute artifact paths) is shell-side detail.
+    payload.pop("display", None)
+    try:
+        _on_document_thread(
+            document_thread_dispatch,
+            lambda: _hydrate_accepted_payload(service, display_payload),
+        )
     except Exception as exc:
         return tool_failure(
             tool_name,
-            "DOMAIN_LIFECYCLE_FAILED",
-            "external_process",
-            str(exc),
+            "SHELL_HYDRATION_FAILED",
+            "native_call",
+            f"The engine accepted revision {payload.get('revision')} but the "
+            f"shell could not hydrate it: {exc}",
             requested=args,
-            observed={"exception_type": exc.__class__.__name__},
+            observed={
+                "exception_type": exc.__class__.__name__,
+                "engine_state": "accepted",
+                "accepted_revision": str(payload.get("revision") or ""),
+            },
         )
+    _schedule_parameters_panel_refresh(document_thread_dispatch)
+    return payload
 
 
 def run_project_xscript_operation(
@@ -1769,9 +1745,21 @@ def make_provider_tool_runner(
                 )
             return finalize(payload)
         if tool_name == "core.inspect":
+            # Phase 5.4: engine-truth scopes (document/object/script/api/
+            # image) route to the project's cadexd; selection stays local —
+            # the viewport selection only exists in the shell. Without an
+            # open project (no document/root) the local read-only path
+            # answers as before.
+            scope = str(args.get("scope") or "")
+            if scope != "selection":
+                client, envelope = _project_cadexd_client(
+                    service, tool_name, args, document_thread_dispatch
+                )
+                if envelope is None:
+                    return finalize(client.request("inspect", args))
             from CadexInspection import capture_inspection, complete_inspection
 
-            if str(args.get("scope") or "") not in {"api", "image"}:
+            if scope not in {"api", "image"}:
                 idle_state = _wait_for_document_idle(
                     service,
                     document_thread_dispatch,

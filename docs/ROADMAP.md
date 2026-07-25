@@ -128,27 +128,49 @@ triangulations (ADR-016; the digest CI now seeds mesh outputs too).
 
 **Goal:** the engine runs as a headless service.
 
-- [ ] Extract project store + runtime + workers behind a JSON stdio/socket
-      protocol (`docs/INTEGRATION.md` protocol sketch: `open_project`,
-      `run`, `set_params`, `rebuild`, `resolve_pin`, `inspect`).
-- [ ] Responses carry BREP + tessellation + face/edge ID maps.
-- [ ] The Qt shell becomes the first protocol client (proves the boundary).
+- [x] Extract project store + runtime + workers behind a JSON stdio
+      protocol (`cadex-cadexd-v1`, `docs/INTEGRATION.md`: `open_project`,
+      `describe_api`, `write_script`/`edit_script`/`set_params` (the
+      sketch's `run` dissolved into the real lifecycle ops), `rebuild`,
+      `resolve_pin`, `inspect`, `cancel`, `shutdown`). ADR-017.
+- [x] Responses carry BREP + tessellation + face/edge ID maps
+      (`cadex-tessellation-v1`, digest-neutral, adaptive deflection;
+      headless `resolve_pin` closes the loop). ADR-017.
+- [x] The Qt shell becomes the first protocol client (proves the
+      boundary): `CadexdClient` + one-transaction `CadexShellHydration`;
+      in-process path removed and guardrailed. ADR-018.
 
 **Exit criteria:** the Qt app drives all modeling through cadexd with no
-in-process fallback.
+in-process fallback. **Met 2026-07-25** — ctest `CadexdLifecycle`
+(kill -9 → respawn → restore digest equality, mid-run cancel) and the
+switchover integration (median set_params drag 0.479 s ≤ 0.65 s bar) are
+the evidence; `test_engine_shell_split_guardrails.py` pins the boundary.
 
-## Phase 6 — Blender shell (in `/Users/theo/mesh`)
+## Phase 6 — Blender shell (in `/Users/theo/mesh`) `(landed 2026-07-25, ADR-019)`
 
 **Goal:** `mesh_agent` gets a cadex backend (`docs/BLENDER.md` §5).
 
-- [ ] Backend proxying to cadexd (alongside the existing local-exec path).
-- [ ] Tessellated outputs into the Model collection with ID-map attributes.
-- [ ] Params bridged to `scene.mesh_params`; slider drags → `set_params`.
-- [ ] Viewport picking → ID map → BREP pins (`resolve_pin`).
-- [ ] One `undo_push` per chat turn (already mesh_agent policy).
+- [x] Backend proxying to cadexd (alongside the existing local-exec path) —
+      "Cadex CAD" mode; `cadexd_client.py` (GPL NDJSON client, no cadex
+      imports) + `cadex_backend.py` in the mesh repo.
+- [x] Tessellated outputs into the Model collection with ID-map attributes
+      (`cadex_hydrate.py`: `cadex_face` INT face attribute, edge-wire
+      children, placement, contract-driven GC).
+- [x] Params bridged to `scene.mesh_params`; slider drags → `set_params`
+      (revision-guarded, draft-quality display while dragging + background
+      standard refine — engine gained the `"draft"` tessellation preset).
+- [x] Viewport picking → ID map → BREP pins (`resolve_pin`) —
+      `cadex_pick.py`; pins attach to the next chat message.
+- [x] One `undo_push` per chat turn (verified through the real bridge in
+      cadex mode).
 
 **Exit criteria:** the decision-gate fidelity/latency criteria pass in the
-real shell.
+real shell. **Met 2026-07-25** — `tests/python/bl_mesh_agent_cadex.py`
+(headless Blender against release cadexd): picking fidelity 100%
+(372/372, bar ≥ 99%) with per-face aggregates matching engine truth;
+slider-drag median 0.548 s ≤ 0.65 s including tessellation streaming;
+restart rehydration. Evidence in ADR-019 and
+`docs/INTEGRATION.md` gate status.
 
 ## Phase 7 — Convergence
 

@@ -3067,18 +3067,11 @@ def _document_restore_active() -> bool:
 
 
 def _refresh_assistant_for_document_change() -> None:
-    document = App.ActiveDocument
-    if document is not None:
-        try:
-            from CadexScriptedDomainPublication import (
-                compact_persisted_input_snapshots,
-                migrate_assembly_dependency_anchors,
-            )
-
-            compact_persisted_input_snapshots(document)
-            migrate_assembly_dependency_anchors(document)
-        except Exception as exc:
-            _warn(f"Cadex input-snapshot compaction failed: {exc}")
+    # Publication-era document maintenance (input-snapshot compaction,
+    # assembly dependency-anchor migration) left with the in-process
+    # publication path: the shell document now holds only hydrated display
+    # objects, and the engine's ephemeral document is rebuilt from the
+    # script on every cadexd open (ADR-018).
     try:
         repair_assistant_panel_if_needed()
         # The severing can also happen after this refresh (late dock-layout
@@ -3192,6 +3185,21 @@ def _move_saved_document_conversation(doc: Any, filepath: str) -> None:
             _warn(f"Cadex saved-document references write failed: {exc}")
 
 
+def _close_document_cadexd(doc) -> None:
+    """Kill the closed document's cadexd child (the shell owns its lifetime)."""
+
+    try:
+        file_path = str(getattr(doc, "FileName", "") or "")
+        if not file_path:
+            return
+        import CadexdClient
+        from CadexProject import project_root_for_document_file
+
+        CadexdClient.close_project(project_root_for_document_file(file_path))
+    except Exception as exc:
+        _warn(f"Cadex could not stop the project's cadexd process: {exc}")
+
+
 class _CadexDocumentObserver:
     def slotCreatedDocument(self, doc) -> None:
         _schedule_assistant_document_refresh()
@@ -3202,25 +3210,6 @@ class _CadexDocumentObserver:
         if pending and pending.get("document_uid") != active_uid:
             _sketch_close_continuation_controller.clear()
         _schedule_assistant_document_refresh()
-
-    def slotChangedObject(self, obj, property_name) -> None:
-        is_restoring = getattr(App, "isRestoring", None)
-        if callable(is_restoring) and bool(is_restoring()):
-            return
-        document = getattr(obj, "Document", None)
-        if document is not None and bool(getattr(document, "Restoring", False)):
-            return
-        try:
-            from CadexScriptedDomainPublication import (
-                mark_programs_stale_from_source,
-            )
-
-            marked = mark_programs_stale_from_source(obj, str(property_name or ""))
-        except Exception as exc:
-            _warn(f"Cadex XScript dependency observer failed: {exc}")
-            return
-        if marked:
-            _schedule_assistant_document_refresh()
 
     def slotStartSaveDocument(self, doc, filepath) -> None:
         _snapshot_active_document_conversation(doc)
@@ -3242,6 +3231,7 @@ class _CadexDocumentObserver:
         _sketch_close_continuation_controller.clear_for_document(document_key)
         _document_save_conversations.pop(document_key, None)
         _document_save_references.pop(document_key, None)
+        _close_document_cadexd(doc)
         _schedule_assistant_document_refresh()
 
 

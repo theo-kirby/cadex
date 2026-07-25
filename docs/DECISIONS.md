@@ -574,3 +574,74 @@ module name (`cadexd.py` — the service's product name). The worker staging
 bundle grew by `cadex_tessellation.py`. Progressive tessellation and the
 warm-standby worker remain future work under the Phase 6 gate.
 
+## ADR-018 — Phase 5.4–5.5: shell switchover; the in-process path is removed (2026-07-25)
+
+**Decision.** The Qt shell drives **all** modeling through cadexd; the
+in-process capture→execute→publish path inside `CadexSession` is gone.
+
+- **Seam**: `run_project_xscript_operation` kept its signature — the
+  Parameters panel and provider dispatch are byte-for-byte unchanged
+  callers. `_run_project_xscript_tool` now resolves the project's client
+  (`CadexdClient.client_for_project`, budgets read from preferences on the
+  document thread), sends the lifecycle op, forwards progress events to
+  the chat UI, and polls cancellation every 50 ms (a `cancel` frame
+  reaches the running worker). `describe_api` stays local — it is pure
+  authoring metadata, identical on both sides of the protocol.
+- **Hydration** (`CadexShellHydration.py`): on the Qt document thread, ONE
+  transaction (one undo step) mirrors the accepted contract into the
+  .FCStd of record — find-or-create `Part::Feature`/`Mesh::Feature`
+  display objects keyed by the existing xscript ownership tags, solved
+  assembly placements applied, revision tag updated, **contract-driven
+  GC** (tagged objects whose output left the accepted contract are deleted
+  with their closure — robust across cadexd restarts, and it sweeps
+  publication-era native objects on first hydration after the
+  switchover). Hydration failure returns `SHELL_HYDRATION_FAILED` while
+  the engine state is already accepted — a documented asymmetry; the next
+  success self-heals. The per-output `display` block is consumed
+  shell-side and stripped from the provider-visible payload, which
+  therefore stays exactly the pre-split contract.
+- **Crash policy**: child death or timeout mid-request →
+  `CADEXD_CRASHED` envelope, client marked dead, next request respawns
+  and replays `open_project` (the panel already self-heals via
+  `STALE_PROGRAM_REVISION` / `next_write_expected_revision`). Clients are
+  killed on document close (`slotDeletedDocument`) and at exit.
+- **Inspect routing**: `core.inspect` scopes `document/object/script/api/
+  image` route to cadexd (engine truth: the ephemeral document and the
+  store); `selection` stays shell-local. Without an open project the
+  local read-only path answers as before.
+- **Removals**: the in-process lifecycle body in `CadexSession` (replaced
+  by the client call); `CadexGui`'s publication-internal hooks —
+  `slotChangedObject` → `mark_programs_stale_from_source` (shell objects
+  are display mirrors; human edits no longer feed engine dependency
+  state) and the document-open input-snapshot compaction / assembly
+  dependency-anchor migration (publication metadata no longer lives in
+  the shell document). Verified by build + tests in this change.
+- **What stays shell-side and why**: viewport + selection (the only
+  viewport), the .FCStd document of record (persistence + undo), the
+  provider loop and chat UI, the Parameters panel (reads `script.json`
+  specs; commits through the same guarded seam), reference-image store
+  access. The pipeline modules stay in-tree — the split is
+  **process-level**, cadexd and `cadex_rebuild` run them — and the new
+  guardrail `test_engine_shell_split_guardrails.py` pins that
+  `CadexSession`/`CadexGui`/`CadexParametersPanel`/`CadexShellHydration`/
+  `CadexdClient` never import `CadexScriptedDomainPublication`,
+  `CadexScriptedProcess`, or the pipeline entry points.
+
+**Measured.** `cadexd_shell_switchover_integration.py` (client → cadexd →
+worker → hydrate on the 24-hole/fillet/mesh-skin baseline part): median
+set_params drag **0.479 s** over 10 drags (bar ≤ 0.65 s; in-process
+baseline 0.57 s) — protocol framing + hydration cost less than the
+in-process publication it replaced, with the per-drag worker spawn still
+dominating (warm-standby worker remains future work). GUI smoke (probe
+script in the real `freecad-release` shell, tools on a worker thread with
+document-thread dispatch): write_script hydrates one `Part::Feature` +
+one `Mesh::Feature`, a set_params drag updates the geometry, each
+accepted revision is exactly ONE undo step, and undo restores the prior
+accepted geometry.
+
+**Consequences.** Undo in the shell now spans exactly one hydration
+transaction per accepted revision (display mirrors), not per-domain native
+feature edits; engine-truth inspection reflects cadexd's ephemeral
+document. Resurrecting an in-process modeling path is a direction change
+requiring an ADR and owner sign-off.
+

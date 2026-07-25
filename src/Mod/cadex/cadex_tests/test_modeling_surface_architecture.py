@@ -834,42 +834,10 @@ def test_point_artifact_registry_authenticates_guards_and_rolls_back(
     assert removed["artifact_copy_deleted"] is True
     assert artifacts.point_artifacts_summary(tmp_path)["artifact_count"] == 0
 
-def test_gui_document_observer_marks_xscript_dependencies_stale(monkeypatch) -> None:
+def test_gui_document_observer_no_longer_hooks_publication_internals() -> None:
+    # The stale-dependency observer left with the in-process publication
+    # path (ADR-018): the shell document holds hydrated display mirrors,
+    # so human edits to shell objects never feed the engine.
     import CadexGui as gui
-    import CadexScriptedDomainPublication as publication
 
-    observed = []
-    refreshed = []
-    source = object()
-
-    def mark(obj, property_name):
-        observed.append((obj, property_name))
-        return ["DependentOutput"]
-
-    monkeypatch.setattr(publication, "mark_programs_stale_from_source", mark)
-    monkeypatch.setattr(
-        gui,
-        "_schedule_assistant_document_refresh",
-        lambda: refreshed.append(True),
-    )
-    gui._CadexDocumentObserver().slotChangedObject(source, "Shape")
-    assert observed == [(source, "Shape")]
-    assert refreshed == [True]
-
-def test_gui_document_observer_ignores_properties_restored_from_file(
-    monkeypatch,
-) -> None:
-    import CadexGui as gui
-    import CadexScriptedDomainPublication as publication
-
-    observed = []
-    monkeypatch.setattr(gui.App, "isRestoring", lambda: True, raising=False)
-    monkeypatch.setattr(
-        publication,
-        "mark_programs_stale_from_source",
-        lambda obj, property_name: observed.append((obj, property_name)),
-    )
-
-    gui._CadexDocumentObserver().slotChangedObject(object(), "Shape")
-
-    assert observed == []
+    assert not hasattr(gui._CadexDocumentObserver, "slotChangedObject")
