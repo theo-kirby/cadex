@@ -214,7 +214,7 @@ pixi run python -m pytest src/Mod/cadex/cadex_tests
 
 (422 passing / 1 skipped as of 2026-07-25.)
 
-`test_tool_surface_guardrails.py` pins the exact `xscript.project.*` tool
+`test_project_tool_surface.py` pins the exact `xscript.project.*` tool
 surface and asserts dissolved per-domain operations and culled modules stay
 gone; `test_engine_shell_split_guardrails.py` pins the process boundary
 (shell modules never import the publication/pipeline internals) and

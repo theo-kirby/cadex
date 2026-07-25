@@ -78,7 +78,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
 
 The provider-facing surface is exactly four tools
 (`PROJECT_LIFECYCLE_OPERATIONS`, pinned by
-`cadex_tests/test_tool_surface_guardrails.py`; ADR-013):
+`cadex_tests/test_project_tool_surface.py`; ADR-013):
 
 ```
 xscript.project.describe_api   composed API description for all domains

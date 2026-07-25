@@ -102,9 +102,17 @@ def test_module_directory_and_preference_group_are_lowercase_cadex() -> None:
 
 
 def test_every_runtime_entry_point_uses_only_the_cadex_config_namespace() -> None:
+    """ExeName is not branding; it decides where the engine's data lives.
+
+    ``App::Application::Config()["ExeName"]`` determines FreeCAD's per-user
+    application-data directory. Since Phase 7 the only entry point the
+    product runs is MainCmd (FreeCADCmd hosting cadexd, ADR-022), so that
+    file is where this contract has to hold: change "cadex" there and every
+    project store that fell back to the appdata path moves.
+    """
     for relative_path in (
+        "src/Main/MainCmd.cpp",   # the engine entry point; load-bearing
         "src/Main/MainGui.cpp",
-        "src/Main/MainCmd.cpp",
         "src/Main/MainPy.cpp",
     ):
         source = _source(relative_path)

@@ -76,7 +76,7 @@ The philosophy is **remove more than we add** (`docs/VISION.md`). Zones:
   DECISIONS entry.
 
 Not subject to relaxation: don't break the provider tool-surface contracts
-pinned by `cadex_tests/test_tool_surface_guardrails.py` without updating the
+pinned by `cadex_tests/test_project_tool_surface.py` without updating the
 tests and logging the decision; don't commit secrets or machine paths.
 
 ## Methodology
