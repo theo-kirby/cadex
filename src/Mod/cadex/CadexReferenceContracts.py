@@ -536,35 +536,30 @@ def _reference_graph(
 
 
 def _rebind_one(service: Any, obj: Any, contract: dict[str, Any]) -> dict[str, Any]:
-    domain = str(contract.get("domain") or "")
-    if domain == "assembly_joint":
-        from tool_impl.service import assembly_create_joint as handler
-    elif domain == "fem_constraint":
-        from tool_impl.service import fem_add_constraint as handler
-    elif domain == "techdraw_dimension":
-        from tool_impl.service import techdraw_add_dimension as handler
-    elif domain == "cam_reference":
-        from tool_impl.service import cam_add_operation as handler
-    elif domain == "part_edge_finish":
-        from tool_impl.service import part_fillet as handler
-    else:
-        raise ReferenceContractError(
-            f"No rebinding implementation exists for managed reference domain {domain!r}.",
-            details={"object": obj.Name, "contract": contract},
-        )
-    rebind = getattr(handler, "rebind_scripted_reference", None)
-    if not callable(rebind):
-        raise ReferenceContractError(
-            f"Reference domain {domain!r} does not implement regeneration rebinding.",
-            details={"object": obj.Name},
-        )
-    result = rebind(service, obj, contract)
-    if not isinstance(result, dict) or not result.get("ok"):
-        raise ReferenceContractError(
-            f"Managed references on {obj.Name} could not be rebound.",
-            details={"object": obj.Name, "domain": domain, "result": result},
-        )
-    return result
+    """No rebinding implementation exists on the xscript surface.
+
+    Managed reference contracts were written by exactly two provider tools
+    (``tool_impl.service.assembly_create_joint`` and ``part_fillet``), and
+    both die with the provider stack (ADR-021). Three of this function's
+    five branches already imported modules deleted in Phase 1 — fem, techdraw
+    and cam — so they could only ever have raised ImportError.
+
+    Reaching this function means a document carries a contract nothing in the
+    engine can have written, which is a state to report, not to guess at.
+    The caller's surrounding machinery stays live and load-bearing: the
+    ``unsafe`` check in :func:`refresh_after_publication` still refuses to
+    regenerate over unmanaged Face/Edge/Vertex references.
+    """
+
+    raise ReferenceContractError(
+        "No rebinding implementation exists for managed reference domain "
+        f"{str(contract.get('domain') or '')!r}; managed reference contracts "
+        "are not written on the xscript surface (ADR-021).",
+        details={
+            "object": str(getattr(obj, "Name", "") or ""),
+            "contract": dict(contract),
+        },
+    )
 
 
 def _native_part_carriers(carriers: list[Any]) -> list[Any]:
@@ -744,22 +739,6 @@ def mark_stale(obj: Any, revision: str, reason: str) -> None:
     setattr(obj, PROP_DERIVED_STATE, "stale")
     setattr(obj, PROP_STALE_REASON, reason)
     setattr(obj, PROP_SOURCE_REVISION, revision)
-
-
-def rebind_managed_reference(
-    service: Any, obj: Any, *, revision: str
-) -> dict[str, Any]:
-    """Rebind one persisted semantic contract without recomputing the document."""
-
-    contract = read_contract(obj)
-    if contract is None:
-        raise ReferenceContractError(
-            "The requested downstream object has no managed reference contract.",
-            details={"object": str(getattr(obj, "Name", "") or "")},
-        )
-    effective = dict(contract)
-    effective["source_revision"] = revision
-    return _rebind_one(service, obj, effective)
 
 
 def validate_native_part_refresh(

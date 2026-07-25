@@ -44,9 +44,6 @@ NO_RESIDUE_EVER = frozenset({"PySide", "PySide2", "PySide6"})
 
 #: (module, forbidden root) -> the Phase 7 commit that removes the edge.
 KNOWN_RESIDUE: dict[tuple[str, str], str] = {
-    # CadexReferenceContracts imports three tool_impl.service handlers whose
-    # trees were deleted in Phase 1 — a dead edge, cut in C2.
-    ("CadexReferenceContracts", "tool_impl"): "C2",
     # CadexInspection's selection scope and edit-object probe are shell
     # concerns; cadexd already rejects scope='selection'. Dropped in C3.
     ("CadexInspection", "FreeCADGui"): "C3",
