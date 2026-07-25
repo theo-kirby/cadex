@@ -146,3 +146,14 @@ add_test(
             ${CMAKE_SOURCE_DIR}/src/Mod/cadex/cadex_tests/test_project_rebuild.py
 )
 set_tests_properties(CadexProjectRebuildDigest PROPERTIES TIMEOUT 900)
+
+# Cadex Phase 5 cadexd CI (docs/ROADMAP.md): drive a real cadexd child over
+# the cadex-cadexd-v1 stdio protocol — open/write/set_params/inspect/
+# resolve_pin, kill -9 + respawn restore-digest equality, mid-run cancel.
+# The pytest module skips itself when no FreeCADCmd binary is available.
+add_test(
+    NAME CadexdLifecycle
+    COMMAND ${Python3_EXECUTABLE} -m pytest -q
+            ${CMAKE_SOURCE_DIR}/src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py
+)
+set_tests_properties(CadexdLifecycle PROPERTIES TIMEOUT 900)

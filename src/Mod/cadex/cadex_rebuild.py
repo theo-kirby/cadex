@@ -64,15 +64,7 @@ def rebuild_project(project_root: str | Path) -> dict[str, Any]:
         sys.path.insert(0, str(module_root))
 
     from CadexProject import CadexProjectScriptStore
-    from CadexScriptedDomainPublication import publish_project_candidate
-    from CadexScriptedRuntime import (
-        accept_project_candidate,
-        capture_project_state,
-        execute_candidate,
-        prepare_project_candidate,
-        record_project_candidate_failure,
-        validate_project_result,
-    )
+    from CadexScriptedRuntime import run_project_lifecycle
 
     root = Path(str(project_root)).expanduser().resolve()
     store = CadexProjectScriptStore(root)
@@ -85,7 +77,7 @@ def rebuild_project(project_root: str | Path) -> dict[str, Any]:
     document = App.newDocument("CadexRebuild")
     try:
         service = _RebuildService(root, document)
-        captured = capture_project_state(
+        payload = run_project_lifecycle(
             service,
             "xscript.project.write_script",
             {
@@ -93,28 +85,22 @@ def rebuild_project(project_root: str | Path) -> dict[str, Any]:
                 "expected_revision": str(state.get("working_revision") or ""),
             },
         )
-        prepared = prepare_project_candidate(captured)
-        execution = execute_candidate(prepared, cancellation_check=None)
-        if execution.get("ok") is not True:
-            record_project_candidate_failure(prepared, execution)
+        if payload.get("ok") is not True:
             raise RuntimeError(
-                f"Rebuild execution failed: {execution.get('error')!r} "
-                f"({execution.get('failure_code')})"
+                f"Rebuild execution failed: {payload.get('error')!r} "
+                f"({payload.get('failure_code')})"
             )
-        validated = validate_project_result(prepared, execution)
-        publication = publish_project_candidate(service, prepared, validated)
-        accept_project_candidate(prepared, publication, validated)
 
         import CadexDigest
 
         return {
             "ok": True,
             "project_root": str(root),
-            "outputs": len(validated["contract"]),
-            "digest": str(validated["digest"]),
+            "outputs": len(payload["outputs"]),
+            "digest": str(payload["digest"]),
             "accepted_digest_before": accepted_digest_before,
             "digest_matches_accepted": (
-                str(validated["digest"]) == accepted_digest_before
+                str(payload["digest"]) == accepted_digest_before
                 if accepted_digest_before
                 else None
             ),

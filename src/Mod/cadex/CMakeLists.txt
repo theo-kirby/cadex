@@ -13,6 +13,7 @@ set(Cadex_Scripts
     CadexGui.py
     CadexInspection.py
     CadexModelingSurface.py
+    CadexPinResolution.py
     CadexPreferences.py
     CadexPromptStarters.py
     CadexProvider.py
@@ -47,6 +48,9 @@ set(Cadex_Scripts
     cadex_rebuild.py
     cadex_sketcher_api.py
     cadex_sketcher_worker.py
+    cadex_tessellation.py
+    cadexd.py
+    CadexdProtocol.py
     CadexDigest.py
     CadexPointArtifacts.py
     requirements.txt

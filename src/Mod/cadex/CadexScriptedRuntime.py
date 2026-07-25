@@ -47,6 +47,7 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         "cadex_mesh_worker.py",
         "cadex_assembly_api.py",
         "cadex_assembly_worker.py",
+        "cadex_tessellation.py",
     ),
 }
 
@@ -467,11 +468,22 @@ def capture_project_state(
     if doc is None:
         _raise(tool_name, "NO_DOCUMENT", "precondition", "No active FreeCAD document.")
     scope = service.project_scope_snapshot()
-    from CadexPreferences import load_settings
+    # Budgets come from the service when it carries them (cadexd resolves
+    # them once at open_project); the preferences fallback is preserved for
+    # the interactive shell and headless rebuild (Phase 5.3).
+    timeout = 0.0
+    memory_mb = 0
+    budgets_reader = getattr(service, "scripted_budgets", None)
+    if callable(budgets_reader):
+        budgets = dict(budgets_reader() or {})
+        timeout = float(budgets.get("timeout_seconds") or 0.0)
+        memory_mb = int(budgets.get("memory_limit_mb") or 0)
+    if timeout <= 0.0 or memory_mb <= 0:
+        from CadexPreferences import load_settings
 
-    settings = load_settings()
-    timeout = float(getattr(settings, "scripted_timeout_seconds", 0.0) or 0.0)
-    memory_mb = int(getattr(settings, "scripted_memory_limit_mb", 0) or 0)
+        settings = load_settings()
+        timeout = float(getattr(settings, "scripted_timeout_seconds", 0.0) or 0.0)
+        memory_mb = int(getattr(settings, "scripted_memory_limit_mb", 0) or 0)
     if timeout <= 0.0 or memory_mb <= 0:
         _raise(
             tool_name,
@@ -632,6 +644,19 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
             str(exc),
         )
 
+    from cadex_tessellation import validate_display_request
+
+    try:
+        display_request = validate_display_request(arguments.get("display"))
+    except ValueError as exc:
+        _raise(
+            tool_name,
+            "INVALID_DISPLAY_REQUEST",
+            "precondition",
+            str(exc),
+            requested={"display": arguments.get("display")},
+        )
+
     freecadcmd_executable = _freecadcmd(str(captured["freecad_home"]))
     # Pre-run revision over the stored spec cache; validate_project_result
     # recomputes it with the worker-collected specs and records that as the
@@ -663,6 +688,8 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
             "cpu_limit_seconds": max(1, int(float(captured["timeout_seconds"]))),
             "output_limit_bytes": 256 * 1024 * 1024,
         }
+        if display_request is not None:
+            request["display"] = display_request
         _atomic_json(staging / "request.json", request)
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
@@ -822,6 +849,28 @@ def validate_project_result(
                     f"Project output {name!r} mesh artifact is empty.",
                 )
             item["detached_mesh"] = mesh
+        display = item.get("display")
+        if isinstance(display, Mapping):
+            # Display artifacts are derived data (Phase 5.1): verify both the
+            # buffer and its sidecar are real staged files, nothing more.
+            try:
+                _staged_artifact_path(
+                    prepared,
+                    display.get("artifact_path"),
+                    context=f"Project output {name!r} display buffer",
+                )
+                _staged_artifact_path(
+                    prepared,
+                    display.get("sidecar_path"),
+                    context=f"Project output {name!r} display sidecar",
+                )
+            except ValueError as exc:
+                _raise(
+                    tool_name,
+                    "DOMAIN_RESULT_INVALID",
+                    "postcondition",
+                    str(exc),
+                )
         contract.append({"name": name, "type": output_type, "domain": domain})
 
     # Durable working revision binds the worker-collected parameter specs.
@@ -871,11 +920,21 @@ def accept_project_candidate(
     digest = str(validated["digest"])
     contract = [dict(item) for item in list(validated["contract"])]
     store = CadexProjectScriptStore(str(prepared["project_root"]))
+    staging_relative = (
+        Path(str(prepared["staging"]))
+        .relative_to(Path(str(prepared["project_root"])))
+        .as_posix()
+    )
     store.write(
         state_updates={
             "accepted_revision": revision,
             "accepted_contract": contract,
             "accepted_digest": digest,
+            "accepted_attempt": {
+                "attempt_id": str(prepared["attempt_id"]),
+                "staging": staging_relative,
+                "revision": revision,
+            },
             "latest_candidate": {
                 "status": "accepted",
                 "revision": revision,
@@ -904,6 +963,176 @@ def accept_project_candidate(
             ),
         },
     }
+
+
+def candidate_model_state(prepared: Mapping[str, Any]) -> dict[str, Any]:
+    """Model-facing state block attached to every failed candidate payload.
+
+    ``next_write_expected_revision`` is the durable working revision from the
+    script store (validate_project_result may have re-bound it with the
+    worker-collected parameter specs).
+    """
+
+    try:
+        from CadexProject import CadexProjectScriptStore
+
+        working = str(
+            CadexProjectScriptStore(str(prepared["project_root"]))
+            .read_state()
+            .get("working_revision")
+            or ""
+        )
+    except Exception:
+        working = str(prepared["revision"])
+    accepted = str(prepared.get("accepted_revision_before") or "")
+    return {
+        "status": "working_candidate_not_accepted",
+        "program_id": "project",
+        "working_revision": working,
+        "accepted_revision": accepted,
+        "accepted_live_state_preserved": bool(accepted),
+        "next_write_expected_revision": working,
+        "inspection_call": {
+            "tool": "core.inspect",
+            "arguments": {
+                "scope": "script",
+                "target": "",
+                "path": "",
+                "offset": 0,
+                "limit": 50,
+                "attach": False,
+            },
+        },
+        "repair_rule": (
+            "Inspect the script when the source or latest revision is "
+            "uncertain, then repair the smallest exact cause. Use "
+            "edit_script for unique targeted replacements, write_script "
+            "for a full rewrite, and set_params for value-only parameter "
+            "changes."
+        ),
+    }
+
+
+def run_project_lifecycle(
+    service: Any,
+    tool_name: str,
+    args: Mapping[str, Any],
+    *,
+    cancellation_check: Callable[[], bool] | None = None,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    result_sink: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """One complete inline project lifecycle: capture → prepare → execute →
+    validate → publish → accept.
+
+    This is the single engine-side entry shared by cadexd and the headless
+    rebuild driver (Phase 5.3). Everything runs on the calling thread — the
+    caller owns any document-thread marshalling. Payloads (accept payload /
+    ``tool_failure`` envelope) are exactly what the in-process session tool
+    produced, so protocol clients see an unchanged contract. When
+    ``result_sink`` is given, ``prepared`` and ``validated`` are stored in it
+    on success so the caller can reach staged artifacts (display buffers).
+    """
+
+    from CadexScriptedDomainPublication import publish_project_candidate
+
+    args = dict(args)
+
+    def emit(event: dict[str, Any]) -> None:
+        if progress_callback is not None:
+            progress_callback(event)
+
+    operation = parse_project_tool(tool_name)
+    if operation is None:
+        return tool_failure(
+            tool_name,
+            "UNKNOWN_PROJECT_TOOL",
+            "surface",
+            f"Unknown project XScript tool: {tool_name}.",
+            requested=args,
+        )
+    if operation == "describe_api":
+        return describe_project_api()
+    prepared = None
+    try:
+        captured = capture_project_state(service, tool_name, args)
+        prepared = prepare_project_candidate(captured)
+        emit(
+            {
+                "event": "cadex_domain_worker_started",
+                "domain": "project",
+                "program_id": "project",
+                "revision": prepared["revision"],
+            }
+        )
+        execution = execute_candidate(prepared, cancellation_check=cancellation_check)
+        if execution.get("ok") is not True:
+            record_project_candidate_failure(prepared, execution)
+            execution["model_state"] = candidate_model_state(prepared)
+            return execution
+        try:
+            validated = validate_project_result(prepared, execution)
+        except DomainRuntimeFailure as exc:
+            record_project_candidate_failure(prepared, exc.payload)
+            exc.payload["model_state"] = candidate_model_state(prepared)
+            return exc.payload
+        except Exception as exc:
+            failure = tool_failure(
+                tool_name,
+                "DOMAIN_RESULT_INVALID",
+                "postcondition",
+                str(exc),
+                requested=args,
+                observed={"exception_type": exc.__class__.__name__},
+            )
+            record_project_candidate_failure(prepared, failure)
+            failure["model_state"] = candidate_model_state(prepared)
+            return failure
+        try:
+            publication = publish_project_candidate(service, prepared, validated)
+        except Exception as exc:
+            failure = tool_failure(
+                tool_name,
+                "DOMAIN_PUBLICATION_FAILED",
+                "native_call",
+                str(exc),
+                requested=args,
+                observed={"exception_type": exc.__class__.__name__},
+            )
+            record_project_candidate_failure(prepared, failure)
+            failure["model_state"] = candidate_model_state(prepared)
+            return failure
+        payload = accept_project_candidate(prepared, publication, validated)
+        if result_sink is not None:
+            result_sink["prepared"] = prepared
+            result_sink["validated"] = validated
+        emit(
+            {
+                "event": "xscript_domain_publication_completed",
+                "domain": "project",
+                "program_id": "project",
+                "revision": prepared["revision"],
+                "output_count": len(payload.get("outputs") or []),
+            }
+        )
+        return payload
+    except DomainRuntimeFailure as exc:
+        if prepared is not None:
+            try:
+                record_project_candidate_failure(prepared, exc.payload)
+                exc.payload["model_state"] = candidate_model_state(prepared)
+            except Exception:
+                pass
+        return exc.payload
+    except Exception as exc:
+        return tool_failure(
+            tool_name,
+            "DOMAIN_LIFECYCLE_FAILED",
+            "external_process",
+            str(exc),
+            requested=args,
+            observed={"exception_type": exc.__class__.__name__},
+        )
 
 
 def _capability_api_listing() -> dict[str, dict[str, Any]]:

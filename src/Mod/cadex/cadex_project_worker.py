@@ -46,6 +46,7 @@ from cadex_project_api import (
     create_project_assembly_api,
     num,
 )
+from cadex_tessellation import generate_display_artifacts, validate_display_request
 
 REQUEST_ENV = "CADEX_XSCRIPT_DOMAIN_REQUEST"
 RESULT_ENV = "CADEX_XSCRIPT_DOMAIN_RESULT"
@@ -421,7 +422,12 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
                 root,
             )
 
+        # Digest first, display second: display artifacts are opt-in derived
+        # data and must never feed the content digest (Phase 5.1).
         digest = compute_project_digest(root, outputs)
+        display_request = validate_display_request(request.get("display"))
+        if display_request is not None:
+            generate_display_artifacts(root, outputs, display_request)
         return {
             "ok": True,
             "schema": SCHEMA,

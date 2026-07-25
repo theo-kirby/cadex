@@ -48,7 +48,11 @@ def test_module_ships_only_cadex_named_python_and_no_stale_identity() -> None:
     ]
     assert production, "expected production Cadex modules to exist"
     for path in production:
-        assert path.name.startswith(("Cadex", "cadex_")), path.name
+        # cadexd.py is the headless engine service entry (Phase 5, ADR-017);
+        # the service's product name is exactly "cadexd".
+        assert path.name == "cadexd.py" or path.name.startswith(
+            ("Cadex", "cadex_")
+        ), path.name
 
     # No production module retains a VibeCAD/vibescript identity token (the
     # allowlisted Vibe* migration residue is stripped before the check).

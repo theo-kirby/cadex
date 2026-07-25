@@ -492,3 +492,85 @@ behavior (set operations, not exact CSG); partdesign/sketcher values are
 not tessellatable in v1 (only part values — partdesign Bodies build through
 their own document machinery). Both are candidates for the cadexd protocol
 era if needed.
+
+## ADR-017 — Phase 5.1–5.3: cadexd, the headless engine service (2026-07-25)
+
+**Decision.** The xscript engine runs behind **cadexd**, a persistent
+headless FreeCADCmd process speaking schema `cadex-cadexd-v1` — newline-
+delimited JSON over stdio, one cadexd child per open project, spawned and
+owned by the shell. Owner decisions locked 2026-07-25:
+
+- **Document of record stays in the shell** (the .FCStd saved by the Qt
+  app). cadexd hosts an *ephemeral* headless `App::Document` per project
+  (the `cadex_rebuild` pattern) so publication semantics — ownership lint,
+  contract-driven GC, output identity, document/object inspect — run
+  engine-side. Both documents are rebuildable and digest-verified.
+- **Latency: parity only.** The worker is still spawned per run; a
+  warm-standby worker is documented future work, not built.
+- **Transport: stdio NDJSON**, 8 MB frame cap; binary artifacts are
+  referenced by filesystem path, never inlined.
+
+Mechanics (`CadexdProtocol.py` — pure, FreeCAD-free; `cadexd.py` — entry,
+`pixi run cadexd`):
+
+- Ops: `open_project, describe_api, write_script, edit_script, set_params,
+  rebuild, resolve_pin, inspect, cancel, shutdown`. The INTEGRATION.md
+  sketch's `run` dissolved into the real lifecycle ops so the
+  `STALE_PROGRAM_REVISION` guard and failure envelopes carry over verbatim.
+  Lifecycle responses are **exactly** the accept payload / `tool_failure`
+  envelope the in-process session tool produced (shared engine entry
+  `CadexScriptedRuntime.run_project_lifecycle`, also used by
+  `cadex_rebuild` — net-zero), plus a per-output `display` block
+  `{artifact_kind, artifact_path (absolute), placement, tessellation|null}`.
+- **Restore pass**: every `open_project` with an accepted digest re-runs
+  THE script into the fresh ephemeral document and asserts digest equality
+  — each open re-proves restart determinism (`CADEXD_RESTORE_FAILED`
+  otherwise).
+- **Budgets** resolve once at `open_project` (request args, preferences
+  fallback) and reach the pipeline via `service.scripted_budgets()`.
+- **stdout-pollution defense**: fd 1 is dup()ed to a private protocol fd
+  before FreeCAD can print, then redirected to stderr. stdin EOF is the
+  lifetime signal (shell death ⇒ self-exit).
+- **Serial dispatch**: one modeling request in flight; a concurrent
+  modeling request is refused `CADEXD_BUSY` by the reader thread;
+  read-only requests queue; `cancel` reaches the running worker through
+  the existing `run_process` kill path (`RUN_CANCELLED`). cadexd itself
+  runs *without* `--safe-mode` (trusted engine code); user scripts stay in
+  the per-run `--safe-mode` worker sandbox.
+- `inspect` serves `script/api/image` (store) and `document/object`
+  (ephemeral document); `selection` is rejected as shell-only.
+
+Supporting engine capabilities landed with it:
+
+- **5.1 Display tessellation + ID maps** (`cadex_tessellation.py`, staged
+  into the project worker bundle): per BREP output one
+  `cadex-tessellation-v1` artifact — binary buffer (f32 vertices, u32
+  triangles, f32 edge polylines) + JSON sidecar whose
+  `face_ranges`/`edge_polylines` map spans back to the exact 1-based
+  Face/Edge enumeration of `face_details`. Adaptive deflection
+  `clamp(rel × bbox_diagonal, 0.05, 5.0)` with coarse/standard/fine
+  presets (explicit override wins); mesh outputs emit a trivial one-range
+  map. Opt-in per request (`display`), computed after the digest —
+  **digest-neutral by construction and by test**.
+- **5.2 Headless pin resolution** (`CadexPinResolution.py`): resolves
+  `{output, selection}` against the accepted revision's staged BREP.
+  `script.json` gained `accepted_attempt` (attempt id + staging path;
+  the accepted attempt directory is pinned — no GC exists). Selections are
+  the exact `_query_subelements` fingerprint vocabulary (reused by import
+  from `cadex_partdesign_worker`) or a direct `{element_type, index}`
+  (client picking path: triangle → `face_ranges` → index happens
+  client-side). `CadexReferenceContracts.resolve_interface` stays the
+  document-bound twin.
+
+**Verification.** Stub suites for codec/dispatch/cancel/pin/tessellation;
+FreeCADCmd integrations `tessellation_id_map_integration.py`,
+`pin_resolution_integration.py`; ctest `CadexdLifecycle` drives a real
+cadexd child end-to-end including kill -9 → respawn → restore digest
+equality and a mid-run cancel. `CadexProjectRebuildDigest` unchanged and
+green over the shared-lifecycle refactor.
+
+**Consequences.** The branding contract admits exactly one non-prefixed
+module name (`cadexd.py` — the service's product name). The worker staging
+bundle grew by `cadex_tessellation.py`. Progressive tessellation and the
+warm-standby worker remain future work under the Phase 6 gate.
+

@@ -202,6 +202,7 @@ def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None
         "cadex_mesh_worker.py",
         "cadex_assembly_api.py",
         "cadex_assembly_worker.py",
+        "cadex_tessellation.py",
     }
     assert set(copied) == expected
     assert {path.name for path in staging.iterdir()} == expected

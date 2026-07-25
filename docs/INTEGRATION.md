@@ -45,26 +45,46 @@ shell remains the interim harness until Phase 7 (`docs/ROADMAP.md`).
   clean — one more reason the shell endpoint is Blender hosting the service,
   not cadex absorbing Blender code.
 
-## cadexd protocol sketch `[target — does not exist yet]`
+## cadexd protocol `cadex-cadexd-v1` `[Cadex-new — implemented, ADR-017]`
 
-Transport: JSON over stdio or a local socket (same shape as the existing
-worker protocol, `WORKER_SCHEMA = "cadex-xscript-domain-worker-v2"` in
-`src/Mod/cadex/CadexScriptedRuntime.py`). One cadexd process per project.
+Transport: newline-delimited JSON over stdio, 8 MB frame cap, one cadexd
+child (`FreeCADCmd`, no `--safe-mode`) per open project, spawned/owned by
+the shell. `pixi run cadexd` starts one by hand. Binary artifacts are
+referenced by filesystem path, never inlined. Codec + op registry:
+`src/Mod/cadex/CadexdProtocol.py`; server: `src/Mod/cadex/cadexd.py`.
 
-Requests (working sketch, to be designed properly in Phase 5):
+Frames: request `{schema, id, op, args}`; response `{id, ok, ...payload}`;
+progress event `{id, event}` (the pipeline's `_emit` events, verbatim). A
+ready banner event is emitted on startup. fd 1 is hijacked to a private
+protocol fd at entry (FreeCAD chatter lands on stderr); stdin EOF is the
+lifetime signal.
 
-| Request | Payload | Response |
+| Op | Args | Response payload |
 |---|---|---|
-| `open_project` | project slug / path | project manifest, script, params |
-| `run` | script source + param values | per-output: BREP bytes, tessellation (verts/tris/normals), face/edge **ID maps**, diagnostics |
-| `set_params` | param values only | re-run outputs (same shape as `run`), fast path |
-| `rebuild` | — | full deterministic rebuild + content digest |
-| `resolve_pin` | pin string (`@face-3`) or picked tessellation element | stable pin ↔ current topology mapping (via fingerprints, `CadexReferenceContracts.py`) |
-| `inspect` | bounded query | same contract as today's `core.inspect` |
+| `open_project` | `project_root`, `budgets?`, `restore?` | manifest + full script.json state; **restore pass** re-runs THE script into the fresh ephemeral document and asserts digest equality when an accepted digest exists |
+| `describe_api` | — | `describe_project_api()` verbatim |
+| `write_script` / `edit_script` / `set_params` | today's tool args + optional `display {quality, deflection, edges}` | **byte-identical** to the in-process tool payload (accept payload / `tool_failure` envelope, `STALE_PROGRAM_REVISION` guard included) + per-output `display {artifact_kind, artifact_path (abs), placement, tessellation\|null}` |
+| `rebuild` | `display?` | explicit deterministic re-run of the stored script (same payload shape) |
+| `resolve_pin` | `output`, `selection` (fingerprint query or `{element_type, index}`) | `{ok, output, revision, subelements, details}` against the accepted revision's staged BREP (`CadexPinResolution.py`) |
+| `inspect` | today's `core.inspect` args | same contract; `document/object` serve the ephemeral doc, `script/api/image` the store; `selection` rejected (shell-only) |
+| `cancel` | `request_id?` | acks and cancels the in-flight modeling request (`RUN_CANCELLED` flows to that request) |
+| `shutdown` | — | graceful exit |
 
-Every geometry response carries tessellation **and** the BREP so the shell
-can both draw immediately and export/measure exactly. ID maps ride along as
-per-face/per-edge attributes so shell-side picking round-trips to pins.
+Server failure codes: `CADEXD_PROTOCOL_ERROR`, `CADEXD_BUSY` (one modeling
+request in flight; read-only requests queue), `CADEXD_NOT_OPEN`,
+`CADEXD_CRASHED` (client-side, on child death), `CADEXD_RESTORE_FAILED`.
+
+Geometry responses carry the BREP artifact path **and** the opt-in
+`cadex-tessellation-v1` buffers (f32 vertices / u32 triangles / f32 edge
+polylines + sidecar `face_ranges`/`edge_polylines` mapping spans to the
+exact 1-based Face/Edge enumeration of `face_details`), so a shell can
+draw immediately and export/measure exactly; picking round-trips
+triangle → `face_ranges` → `resolve_pin {element_type, index}`. Quality
+presets `draft`/`coarse`/`standard`/`fine` (relative deflection 0.05 /
+0.02 / 0.005 / 0.001 × bbox diagonal, clamped): `draft` exists for
+progressive display — the Blender shell requests it during slider drags
+and re-requests `standard` in a background `rebuild` once the drag
+settles (ADR-019).
 
 ## Decision gate (before Phase 5 commits to the split)
 

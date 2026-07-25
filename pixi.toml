@@ -207,5 +207,9 @@ test-release = { cmd = ["ctest", "--test-dir", "build/release"]}
 # Headless project rebuild: re-run THE script into a fresh document and
 # verify the content digest against the accepted one (docs/XSCRIPT.md).
 rebuild = { cmd = [".pixi/envs/default/bin/FreeCADCmd", "-c", "import sys; sys.path.insert(0, 'src/Mod/cadex'); import cadex_rebuild; raise SystemExit(cadex_rebuild.main(['{{ root }}']))"], args = [{ "arg" = "root" }]}
+# cadexd: the headless xscript engine service speaking cadex-cadexd-v1
+# NDJSON over stdio (docs/INTEGRATION.md, ADR-017). One process per project;
+# the shell (or a test harness) owns stdin/stdout.
+cadexd = { cmd = [".pixi/envs/default/bin/FreeCADCmd", "-c", "import sys; sys.path.insert(0, 'src/Mod/cadex'); import cadexd; raise SystemExit(cadexd.main())"]}
 freecad-debug = "build/debug/bin/FreeCAD"
 freecad-release = "build/release/bin/FreeCAD"

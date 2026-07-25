@@ -721,6 +721,10 @@ class CadexProjectScriptStore:
             "accepted_revision": "",
             "accepted_contract": None,
             "accepted_digest": "",
+            # Locator for the accepted revision's staged artifacts (BREP +
+            # worker report). The accepted attempt directory is pinned: no GC
+            # removes it while it is referenced here (Phase 5.2).
+            "accepted_attempt": None,
             "latest_candidate": None,
             "updated_at": "",
         }
