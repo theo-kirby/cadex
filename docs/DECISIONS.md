@@ -1267,3 +1267,70 @@ fixtures from the shell side) is its own repository's commits; the
 warm-standby worker is untouched; and Phase 10a's probe has not run, so
 whether the enumeration is *reproducible outside FreeCAD* — as opposed to
 merely stable within it, which is what this gate proves — remains open.
+
+## ADR-028 — Phase 10a: the enumeration is reproducible outside FreeCAD, and `modelRefine` is why (2026-07-25)
+
+**Decision.** Phase 10a's probe has run. The subshape enumeration that five
+xscript ops save as script arguments **is reproducible from raw OCCT**, on the
+condition ADR-025 anticipated: FreeCAD's `modelRefine` must be vendored, not
+substituted. Phase 11 has a known shape; the pin/index contract does not need
+to change first, and saved scripts are not invalidated.
+
+**What was built.** A throwaway C++ binary against the pinned OCCT 7.8.1,
+outside the cadex tree, constructing shapes through raw `BRepPrimAPI` /
+`BRepAlgoAPI` / `BRepFilletAPI` and dumping `TopExp::MapShapes` order with the
+same per-subshape fields `_subshape_geometry` emits. Three refine variants: no
+refine, `ShapeUpgrade_UnifySameDomain`, and vendored
+`BRepBuilderAPI_RefineModel` (`modelRefine.{h,cpp}` compiled straight out of
+`src/Mod/Part/App/`). Compared against a FreeCAD oracle that replays the same
+construction through `Part.makeBox` / `.cut` / `.removeSplitter` /
+`.makeFillet` — first verified faithful by reproducing
+`cadex_tests/subshape_enumeration.json` ordinal-for-ordinal on all four probes.
+
+**Result.**
+
+| shape | none | UnifySameDomain | vendored RefineModel |
+|---|---|---|---|
+| canonical box → cut×4 → fillet | matches | matches | matches |
+| coplanar fuse → refine → fillet | 10f/20e vs 6f/12e | right counts, **wrong order** | matches |
+
+Three findings, in order of consequence:
+
+1. **The canonical shape in `test_subshape_enumeration.py` cannot discriminate
+   between the variants** — `removeSplitter` is a *no-op* on it. Raw and
+   refined fingerprints are byte-identical at all four cut stages: cylinders
+   through a box leave no coplanar split to remove. The gate is still a valid
+   OCCT-drift tripwire, which is what ADR-027 built it for, but it says
+   nothing about the refine implementation. A second shape was needed to run
+   the probe at all.
+2. **`ShapeUpgrade_UnifySameDomain` is not a drop-in for `modelRefine`.** On
+   the coplanar fuse it produces the *same face and edge counts* (6/12) and a
+   *different ordering* — 89 differing ordinals against the engine, starting
+   at `Face1`. This is precisely the failure mode the index contract cannot
+   survive: the shape is valid, the counts reconcile, and every saved index
+   means something else. Had Phase 11 reached for the OCCT-native cleanup as
+   the obvious equivalent, nothing would have failed loudly.
+3. **The vendored `BRepBuilderAPI_RefineModel` matches ordinal-for-ordinal on
+   both shapes.** It also vendors cheaply: `modelRefine.{h,cpp}` compiled
+   against raw OCCT needing only two stub headers (`PartExport` as an empty
+   macro, and a `Base::Console()` with a no-op `message`). No other FreeCAD
+   dependency.
+
+Output is deterministic — five consecutive runs hash identically — despite
+`SetRunParallel(Standard_True)` on the booleans, which the engine also sets.
+
+**Consequences.** The 10a branch ADR-025 called "the contract is reproducible,
+`modelRefine` is the only special case" is the one taken. Phase 11a's
+"vendor `modelRefine.{h,cpp}` as an explicit deliverable" is now load-bearing
+rather than housekeeping, and the differential oracle must cover a
+refine-firing shape or it will not detect a wrong refine. 10b (kill index
+arguments) and 10c (characterization corpus) are unblocked and unchanged.
+
+**Not done in this change, and not silently:** the probe is throwaway and is
+not committed — it lives outside the tree, and landing it as a permanent gate
+would mean a C++ target in a repo whose release build is engine-only. The
+canonical fixture's blind spot is recorded here but *not* fixed: adding a
+coplanar shape to `test_subshape_enumeration.py` would widen the ADR-027 gate
+to cover refine, and is worth doing, but it is a test change with its own
+golden data. 10c's timing gate — the number that actually decides whether
+Phase 11 starts — has not been run.

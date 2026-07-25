@@ -300,21 +300,29 @@ ok.
 **Goal:** find out, in month 1 rather than month 20, whether Phase 11 has a
 known shape — and what it costs.
 
-**10a — The enumeration probe (2 days, first).** One throwaway C++ binary
-against the OCCT we already link: build `box → cut(cylinder×4) → fillet`
-through raw `BRepPrimAPI` / `BRepAlgoAPI` / `BRepFilletAPI` in three
-variants (no refine, `ShapeUpgrade_UnifySameDomain`, vendored
-`BRepBuilderAPI_RefineModel`), dump `TopExp::MapShapes` order with per-face
-`BRepGProp` mass / COM / normal, and diff against today's engine's
+**10a — The enumeration probe.** `[x] Ran 2026-07-25 — ADR-028.` One
+throwaway C++ binary against the OCCT we already link: build
+`box → cut(cylinder×4) → fillet` through raw `BRepPrimAPI` / `BRepAlgoAPI` /
+`BRepFilletAPI` in three variants (no refine, `ShapeUpgrade_UnifySameDomain`,
+vendored `BRepBuilderAPI_RefineModel`), dump `TopExp::MapShapes` order with
+per-face `BRepGProp` mass / COM / normal, and diff against today's engine's
 `face_details`.
 
-- *Vendored-refine variant matches ordinal-for-ordinal* → the contract is
-  reproducible, `modelRefine` is the only special case, Phase 11 has a known
-  shape.
-- *Nothing matches, or it drifts after the fillet* → the pin/index contract
-  must change before anything else and saved scripts are invalidated. That
-  reorders the whole roadmap, and finding it now is the entire value of the
-  probe.
+**Outcome: the first branch.** The vendored-refine variant matches
+ordinal-for-ordinal — the contract is reproducible, `modelRefine` is the only
+special case, Phase 11 has a known shape. Saved scripts are not invalidated
+and the pin/index contract stands. Three things the probe turned up:
+
+- The canonical shape above **cannot discriminate between the variants** —
+  `removeSplitter` is a no-op on it (cylinders through a box leave no coplanar
+  split). A second shape — two boxes fused across a shared face — was needed
+  to run the probe at all. `test_subshape_enumeration.py` is still a valid
+  OCCT-drift tripwire, but it does not cover refine.
+- `ShapeUpgrade_UnifySameDomain` is **not** a drop-in for `modelRefine`: same
+  face and edge counts, different ordering (89 differing ordinals). Valid
+  shape, reconciling counts, every saved index silently changed meaning.
+- `modelRefine.{h,cpp}` vendors cheaply — raw OCCT plus two stub headers, no
+  other FreeCAD dependency. Probe output is deterministic across runs.
 
 **10b — Kill index arguments.** Replace the five index-taking ops'
 (`subshape`, `defeature`, `fillet`, `chamfer`, `thicken`) `Sequence[int]`
@@ -474,7 +482,8 @@ pytest src/Mod/cadex/cadex_tests/differential/ --domain=<mesh|part|sketcher|part
 | Risk | Mitigation |
 |---|---|
 | **Unverifiability** — 84% of the `part` surface has no recorded behaviour | Characterization corpus recorded *before* porting; the Phase 10c time-box is the go/no-go |
-| Subshape enumeration not reproducible | 2-day probe first; if it fails, the contract changes before anything else |
+| Subshape enumeration not reproducible | **Retired 2026-07-25 (ADR-028)** — the probe ran; raw OCCT reproduces it ordinal-for-ordinal with `modelRefine` vendored |
+| A *substituted* refine silently re-indexes every saved script | ADR-028: `UnifySameDomain` matches counts but not order. Vendor `modelRefine`; the Phase 11 oracle must include a refine-firing shape |
 | Index arguments silently build wrong geometry | Kill them in 10b — worth doing regardless of the migration |
 | Phase 11 grind with no "done" signal | Per-domain gates; each domain ships behind the unchanged protocol |
 | Response shape is unpinned | Golden fixtures in Phase 9 |
