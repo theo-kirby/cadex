@@ -37,11 +37,12 @@ every resting place in it is shippable.
   document/scene is a cache. Delete it, re-run the script, and you get a
   byte-equivalent model back. This property is testable and must stay
   testable (Phase 2 exit criterion in `docs/ROADMAP.md`).
-- **One project script** (`model.py`-style) is THE user-visible artifact and
-  sole source of truth. It composes domain APIs (partdesign, sketcher, part,
-  assembly, later mesh); parameters are declared at the top of the script and
-  surface as sliders. (Today's runtime uses per-domain programs — that is an
-  implementation stage, not the product. See `docs/XSCRIPT.md`.)
+- **One project script** is THE user-visible artifact and sole source of
+  truth. It composes all five domain APIs (partdesign, sketcher, part, mesh,
+  assembly); parameters are declared at the top and surface as sliders. This
+  is what the runtime does today — it landed in Phase 2 (ADR-011…014) and the
+  per-domain multi-program surface it replaced is gone. See
+  `docs/XSCRIPT.md`.
 
 ### The interface
 
@@ -60,13 +61,21 @@ every resting place in it is shippable.
 
 ### Scope
 
-Exactly four capability areas:
+Five capability areas — four modeling, plus the sketcher they rest on:
 
 1. **Part** — direct OCC shape modeling.
 2. **Part Design** — sketch-based feature modeling (bodies, pads, pockets…).
-3. **Assemblies** — links, joints, solved placements, motion.
-4. **Mesh editing** — import/tessellate/boolean/repair now; real mesh editing
-   arrives with the Blender shell (BMesh).
+3. **Sketcher** — the constraint solver the other two build on.
+4. **Assemblies** — links, joints, solved placements, motion.
+5. **Mesh** — import, tessellate, boolean, decimate (Phase 4, ADR-016).
+
+**Correction worth stating plainly:** this list used to promise "real mesh
+editing arrives with the Blender shell (BMesh)". The Blender shell arrived;
+that did not. ADR-030 deleted the local bpy modes, which were the only code
+in the shell that authored geometry with BMesh, because a second authoring
+path contradicts "nothing happens outside the script". Interactive mesh
+editing is therefore unscheduled and would have to arrive as engine ops, not
+as shell tools.
 
 Everything else FreeCAD offers (FEM, CAM, TechDraw, BIM, Draft, Points,
 Robot, Spreadsheet, …) is out of scope. Deleted in the VibeCAD teardown at
@@ -85,10 +94,10 @@ deliverable (Phase 11), not a shell convenience (ADR-025).
 - Multi-engine scripting (build123d, OpenSCAD — retired in the teardown).
 - **Two of anything in the finished product**: one shell, one engine, one
   script format, one document, one model loop, one installer. The Qt/Coin3D
-  shell was interim and was deleted in Phase 7 (ADR-021). The Blender shell
-  is the working substrate until the Rust shell replaces it (ADR-025) — the
-  Rust shell is not a second shell, it is the first one we own, and the
-  Blender fork is deleted when it lands.
+  shell was interim and was deleted in Phase 7 (ADR-021). One repository
+  since ADR-030. The Blender shell is the working substrate until the Rust
+  shell replaces it (ADR-025) — the Rust shell is not a second shell, it is
+  the first one we own, and `shell/` is deleted when it lands.
 - A second model loop. The AI runs as the Claude Code CLI inside the shell;
   there is no API-key provider path (ADR-020).
 - **Dependence on FreeCAD or Blender.** OCCT stays as the geometry kernel.
@@ -120,12 +129,14 @@ deliverable (Phase 11), not a shell convenience (ADR-025).
   (chat turn) sits for things like suppressing a feature.
 - ~~Whether the Qt shell is retired outright or kept headless-only as an
   engineering harness after Phase 7~~ — answered 2026-07-25 (ADR-020/021):
-  **retired outright**, together with the provider stack it served. This
-  repository is the engine; it builds no application.
+  **retired outright**, together with the provider stack it served. (What
+  followed: for three months this repository built no application at all;
+  since ADR-030 it builds the whole one, engine and shell.)
 - ~~How far the local (mesh-native) modes and the one-project-script model
   should converge~~ — answered 2026-07-25 (ADR-025 decision 3): **the local
-  modes are deleted.** One script format, one source of truth; ADR-020
-  decision 5's knowing exception is resolved rather than carried.
+  modes are deleted.** Decided there, *done* in ADR-030: `cad_api.py`,
+  `validation.py`, `scene_graph.py`, the mode registry and the dropdown are
+  gone. One script format, one source of truth.
 - ~~Whether parameter sliders count as "human edit controls"~~ — answered
   2026-07-25 (ADR-025): **no.** Principle 5 has humans steer via chat *and*
   sliders; sliders move declared parameters, they do not author geometry.

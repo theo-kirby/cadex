@@ -257,7 +257,10 @@ headless Blender 5.3.0-alpha against release cadexd):
 3. **Rebuild determinism — PASSED** (unchanged; re-proven continuously by
    the restore pass and ctest `CadexdLifecycle`).
 
-Engine-half history (pre-Phase 6 evidence):
+Engine-half history (pre-Phase 6 evidence). Two of the drivers named below
+no longer exist: `cadexd_shell_switchover_integration.py` drove the Qt shell
+and died with it (ADR-021); its role — measuring slider-drag latency over
+raw NDJSON — is `cadex_tests/cadexd_latency_integration.py` today.
 
 1. **Tessellation & ID maps — engine half SHIPPED (ADR-017).**
    `cadex-tessellation-v1` display artifacts ride every lifecycle response

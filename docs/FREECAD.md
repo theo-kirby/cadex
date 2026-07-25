@@ -16,7 +16,7 @@ Everything in this file is `[FreeCAD-inherited]` unless noted.
 
 | Tree | Why kept |
 |---|---|
-| `src/App` | `App::Document`, `DocumentObject`, properties, expressions, **transactions** — the persistence/undo substrate the publisher and `CadexTransactions.py` rely on. |
+| `src/App` | `App::Document`, `DocumentObject`, properties, expressions, **transactions** — the substrate `publish_project_candidate` applies one candidate under, as a single transaction. (The Qt shell's `CadexTransactions.py` wrapper is gone with it, ADR-021; the publisher uses `App` directly.) |
 | `src/Base` | Units, vectors, matrices, persistence primitives, Python bindings glue. |
 | `src/Gui` | Qt6 main window + Coin3D/Quarter viewport. **Present but not built** — release and package configs set `BUILD_GUI=OFF` (ADR-022). Debug builds still compile it, so the tree stays healthy until Phase 8 deletes it. See §3. |
 | `src/Main` | `FreeCAD` / `FreeCADCmd` entry points. `FreeCADCmd` is load-bearing: every xscript worker is a `FreeCADCmd --safe-mode` subprocess. |
@@ -38,11 +38,18 @@ Everything in this file is `[FreeCAD-inherited]` unless noted.
 | `src/Mod/Material` | Part material properties referenced by kept workbenches. |
 | `src/Mod/Measure` | Measurement backend. |
 | `src/Mod/Show` | Visibility automation used by TreeView/ViewProviders. |
-| `src/Mod/Start` | Launch screen shown by Experimental Mode when no document is open. |
-| `src/Mod/Test` | Test framework harness. |
 | `src/Mod/Mesh`, `src/Mod/MeshPart` | Substrate for the minimal `mesh` domain (landed, Phase 4 / ADR-016): import, tessellate, boolean, decimate, export. |
-| `src/Mod/Help` | In-app help plumbing; cheap to keep until Phase 1 audits it. |
 | `src/Mod/cadex` | `[Cadex-new]` — the engine itself (`docs/ARCHITECTURE.md`). |
+
+**Built but not shipped.** Three trees still build and are not in the engine
+payload's keep-list (`package/engine/build_engine_payload.sh`), so nothing
+the product installs contains them:
+
+| Tree | Status |
+|---|---|
+| `src/Mod/Start` | The launch screen. It was shown by the Qt shell's Experimental Mode, which was deleted in Phase 7 (ADR-021) — nothing displays it now. A removal candidate with no dependency story left. |
+| `src/Mod/Test` | FreeCAD's own Python test harness. Nothing in `cadex_tests/` uses it. |
+| `src/Mod/Help` | In-app help plumbing for a UI that no longer exists here. |
 
 ## 2. Kept elsewhere
 
@@ -97,17 +104,23 @@ The `[VibeCAD-era]` culled-domain residue inside `src/Mod/cadex/` was
 swept 2026-07-24 (ADR-010): `CadexScriptedRuntime.py`,
 `CadexScriptedDomainPublication.py`, and `CadexScriptedDomains.py` no
 longer reference any deleted tree (`draftutils`, `ArchSite`,
-`xscript_*` workers, `CadexXScriptCAM`), and only the four domain
-packs' publication/validation code remains on those paths. Some
-never-dispatched helper code for culled domains that touches only
-kept trees (mesh/points/fem/inspection/robot snapshot and rollback
-helpers, TechDraw page summaries in `CadexCore.py`) is still present
-and is follow-up sweep material.
+`xscript_*` workers, `CadexXScriptCAM`), and only the five domain
+packs' publication/validation code remains on those paths.
+
+The "follow-up sweep material" this section used to list is **done**. The
+never-dispatched helper code for culled domains (robot / FEM / inspection /
+points snapshot and rollback helpers) was deleted in Phase 9 —
+`CadexScriptedDomainPublication.py` went 7,012 → 3,613 lines, 48% removed
+(ADR-026). The TechDraw page summaries went earlier still, with `CadexCore.py`
+itself, in the Phase 7 Qt-shell deletion (ADR-021).
 
 ## 5. Open questions
 
-- Does `src/Mod/Material` reduce to just the property types the four domains
+- Does `src/Mod/Material` reduce to just the property types the five domains
   touch, or stay whole?
-- `src/Mod/Help`: any startup references that need unpicking before
-  deletion?
+- `src/Mod/Start`, `Test` and `Help` build but ship in nothing. They look
+  like a cheap Phase 13b batch; the audit has not been done.
 - Which `tests/` subtrees cover removed workbenches and go with them?
+- `cadex_assembly_worker.py:2038` imports `CommandCreateView` — GUI-lineage
+  code used headlessly for exploded views, and the one import that makes
+  deleting `src/Gui` more than mechanical. Scheduled for Phase 8.

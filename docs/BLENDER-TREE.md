@@ -27,9 +27,13 @@ These files exist in no upstream Blender and cannot conflict with one.
 
 | Path | What | Lines |
 |---|---|---|
-| `shell/scripts/addons_core/mesh_agent/` | the add-on: chat, params panel, the cadexd protocol client, hydration, picking | 5,714 |
+| `shell/scripts/addons_core/mesh_agent/` | the add-on: chat, params panel, the cadexd protocol client, hydration, picking | 4,577 (17 files) |
 | `shell/scripts/startup/bl_app_templates_system/Mesh/` | the app template that suppresses Blender's UI and lays out the Cadex workspace | 294 |
-| `shell/tests/python/bl_mesh_agent*.py` | the agent suites, including `bl_mesh_agent_cadex.py` — the `CADEX-BLENDER-GATE` evidence line | — |
+| `shell/tests/python/bl_mesh_agent{,_cadex}.py` | the agent suites; `bl_mesh_agent_cadex.py` prints the `CADEX-BLENDER-GATE` evidence line | 1,522 (2 files) |
+
+The add-on was 5,714 lines across 20 files at import; ADR-030 took it to
+4,577 across 17 by deleting the local bpy modes. Counted 2026-07-25 — treat
+these as of that date, not as a contract.
 
 ## 2. Modified upstream files — the whole delta
 
@@ -76,6 +80,10 @@ tessellated BREP on screen.
 | `shell/locale/` | 80 MB | Translations for a UI the app template hides. |
 | the VSE, grease pencil, the compositor | — | Whole editors the Cadex layout never opens. |
 | `shell/release/datafiles/` (unused parts) | — | Audit before touching: the matcap the viewport style asks for lives here. |
+
+The engine half has its own list — `src/Gui` (Phase 8), `src/Mod/{Start,Test,Help}`
+(built, shipped in nothing — `docs/FREECAD.md` §1), and the 2.3 GB staged
+payload that carries LLVM twice (`docs/cadex-release-packaging.md`).
 
 **Do not start these mid-move.** They are ordinary subtractive work under
 the normal protocol, one tree per pair of commits, each independently

@@ -122,9 +122,11 @@ attempt is a re-query rather than a guess.
 
 ### Lifecycle tools
 
-The provider-facing surface is exactly four tools
-(`PROJECT_LIFECYCLE_OPERATIONS`, pinned by
-`cadex_tests/test_project_tool_surface.py`; ADR-013):
+The tool surface the AI sees is exactly four operations
+(`PROJECT_LIFECYCLE_OPERATIONS` in `CadexScriptedDomains.py`, pinned by
+`cadex_tests/test_project_tool_surface.py`; ADR-013). They reach the engine
+as cadexd ops of the same name (`docs/INTEGRATION.md`), served to Claude
+Code over MCP by the shell:
 
 ```
 xscript.project.describe_api   composed API description for all domains
@@ -138,9 +140,10 @@ The dissolved per-domain operations (`create_program`, `edit_source`,
 `delete_program`, `inspect_program`) stay gone — the guardrail test
 asserts no registered tool may carry them again. Reads go through the
 bounded **`core.inspect`** tool (`CadexInspection.py`; scopes `document`,
-`selection`, `object`, `script`, `api`, `image` — `script` pages the
-source and reports specs/values, revisions, accepted contract + digest,
-and the latest candidate).
+`object`, `script`, `api`, `image` — `script` pages the source and reports
+specs/values, revisions, accepted contract + digest, and the latest
+candidate). There was a sixth scope, `selection`; it read the Qt shell's
+selection and died with it (ADR-021), and the engine rejects it.
 
 ### Sandbox rules
 
@@ -217,22 +220,39 @@ one validated candidate under **ONE** document transaction — one undo step:
 
 ### The slider path
 
-`CadexParametersPanel.py` (ADR-014): the panel renders the script's
-declared specs as sliders (declaration order; declared fields win, missing
-bounds get a value-bracketing band). A drag commits through
-`xscript.project.set_params` with the working-revision guard — the same
-rebuild path the assistant uses, debounced 600 ms, **no provider turn**. A
-failed rebuild reverts the row; accepted live geometry is untouched.
+The engine's half is `set_params`: a values-only patch, guarded by the
+working revision, that re-runs the script without touching source. It is the
+same lifecycle the assistant drives — there is no faster private path, and
+no AI turn.
+
+The shell's half is `scene.mesh_params`, a PropertyGroup registered from the
+engine's `param_specs` (`cadex_backend._bridge_params`). A drag debounces
+150 ms (`model._schedule_rebuild`), sends one `set_params` with a `draft`
+tessellation preset, and schedules a background `standard` refine at rest.
+A failed rebuild leaves the accepted geometry untouched.
+
+*(ADR-014's `CadexParametersPanel.py` implemented this in the Qt shell and
+was deleted with it in Phase 7, ADR-021. The contract it committed
+through — `set_params` plus the revision guard — is unchanged, which is why
+the shell swap did not touch the engine.)*
 
 ### Reference pins
 
-`CadexReferenceContracts.py`: chat and scripts refer to geometry as
-`@edge-1` / `@face-2`. A pin carries the shared handle, owning object,
+`CadexReferenceContracts.py`: a click in the viewport becomes `@face-2` on
+the next chat message. A pin carries the shared handle, owning object,
 subelement hint, and a **geometric fingerprint** (center of mass,
-direction/normal/radius/length). The fingerprint is authoritative: when
-the document revision has moved since capture, the pin is re-resolved by
-fingerprint search rather than trusting the stored subelement name — so
-pins survive rebuilds that churn object names.
+direction/normal/radius/length). The fingerprint is authoritative: when the
+revision has moved since capture, the pin is re-resolved by fingerprint
+search rather than trusting the stored subelement name — so pins survive
+rebuilds that churn object names.
+
+Pins are the *chat* vocabulary. Scripts do not use them: since ADR-029 a
+script argument names geometry with a **selector** (above), resolved through
+the same `CadexSubshapeQuery.py` vocabulary. Click and script therefore mean
+the same thing by "that face" — but only the selector is durable in a saved
+script, which is the point of the split. Nothing in the shell yet *writes* a
+selector into a script from a click; that round trip is half built
+(`docs/ROADMAP.md` Phase 10b).
 
 ---
 
@@ -244,9 +264,14 @@ pins survive rebuilds that churn object names.
 - **Sub-modules**: whether large projects split into importable sub-modules
   under the project root, or stay one flat script.
 - **Interactive mesh editing**: the Phase 4 `mesh` domain is deliberately
-  minimal (tessellate/import/boolean/decimate). Interactive mesh editing
-  waits for BMesh in the Blender shell (`docs/BLENDER.md`,
-  `docs/INTEGRATION.md`).
+  minimal (tessellate/import/boolean/decimate), and *stays* that way for now.
+  The plan used to be that interactive editing would arrive via BMesh in the
+  Blender shell. It has not, and the route narrowed rather than widened:
+  ADR-030 deleted the local bpy modes, which were the only code in the shell
+  that authored geometry with BMesh. Editing a mesh interactively would now
+  mean either a new engine op or re-opening a second authoring path — and the
+  second is a direct contradiction of "nothing happens outside the script".
+  Unscheduled, and a decision rather than an oversight.
 
 ---
 

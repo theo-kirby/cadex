@@ -143,8 +143,8 @@ that `docs/VISION.md` describes, and the protocol client that
 
 ## 3. Blender internals relevant to the shell integration
 
-All upstream Blender code, listed here as orientation for Phase 6 work
-(paths relative to `/Users/theo/mesh`):
+All upstream Blender code, listed as orientation (paths relative to
+`shell/`):
 
 | Area | Path | Why it matters |
 |---|---|---|
@@ -167,7 +167,7 @@ Added in Phase 7 (ADR-023/024); the bundled engine itself is §6 below.
 | Engine build | `pixi run stage-engine` then `pixi run build-shell`; installed by `WITH_CADEX_ENGINE`. The version pin and SHA256 fetch that used to sit here are deleted (ADR-030) — the payload no longer crosses a repository boundary |
 | Off-thread modeling | `cadex_backend.Lifecycle` + `tools.Pending`; the agent's drain loop polls, so Blender stays live during a rebuild |
 | Cancellation | a per-turn `threading.Event` bound into the client's `cancellation_check`; the engine answers `RUN_CANCELLED` |
-| API truth | the `describe_cad_api` tool; the mode prompt carries **no** API names |
+| API truth | the `describe_cad_api` tool; the system prompt carries **no** API names, and a test asserts it (`bl_mesh_agent.py`) |
 | Conversation | transcript + Claude `session_id` in the `.blend` (`history.py`) |
 | CI | `.github/workflows/cadex-app.yml` — engine → payload → shell, then the suites with no engine env set |
 

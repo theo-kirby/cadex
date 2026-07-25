@@ -80,6 +80,43 @@ achievable and is not the goal. The goal, and what the build asserts, is:
 The script *prints* the Qt libraries it does carry, so the exception is
 visible rather than assumed.
 
+## What is accidentally in the payload
+
+Measured 2026-07-25, a **staged** payload is **2.3 GB**, and most of that is
+not engine:
+
+```
+lib/       2.2 GB     of which  python3.11  856 MB
+                                libLLVM.21.1  134 MB
+                                libLLVM.18.1  116 MB   (two LLVMs)
+                                libnode.137    72 MB
+                                libclang-cpp   69 MB
+share/     171 MB     gir-1.0 27 MB · locale 26 MB · cmake-4.2 22 MB
+                      icons 15 MB · mysql 11 MB
+Mod/       4.4 MB     the workbenches the domains actually load
+bin/       452 KB     freecadcmd, CadexGeometryWorker, python
+```
+
+**Why.** The staged path copies `.pixi/envs/default`, which is a *development*
+environment: compilers, LLVM, node, a database client, CMake's documentation.
+The prune list in `build_engine_payload.sh` removes the things that would be
+embarrassing — Qt GUI, Coin, PySide, headers, unused workbenches — and
+nothing else, because it was written to answer "did a widget toolkit leak
+in?", not "is this small?".
+
+Two honest consequences:
+
+- The **"no GUI" gate is narrower than it reads.** It greps for `*Gui.so`
+  under `Mod/` and `libFreeCADGui*` under `lib/`, so stale
+  `lib/FreeCADGui.so`, `FemGui.so` and `InspectionGui.so` left in the pixi
+  env by older installs are copied and pass. Pre-existing, unrelated to any
+  recent work, and on the Phase 13b list.
+- **A release payload has never been measured.** Relocation builds from a
+  rattler package environment, which would not contain the toolchain at all,
+  so the shipped size is probably far smaller — but that path has not been
+  run here (see "Staged, or relocated"), so this is reasoning, not a
+  measurement, and should not be quoted as one.
+
 ## The gate: `CadexEnginePayloadSmoke`
 
 ```bash

@@ -228,23 +228,42 @@ FreeCAD:
 pixi run python -m pytest src/Mod/cadex/cadex_tests
 ```
 
-(422 passing / 1 skipped as of 2026-07-25.)
+(204 passing as of 2026-07-25. The count *fell* from 425: Phase 7 deleted
+the Qt shell and the provider stack along with their suites — 36 test files
+to 20 — and ADR-030 removed four more that drove the shell's deleted local
+bpy path. Fewer tests over less code, not less coverage.)
 
-`test_project_tool_surface.py` pins the exact `xscript.project.*` tool
-surface and asserts dissolved per-domain operations and culled modules stay
-gone; `test_engine_shell_split_guardrails.py` pins the process boundary
-(shell modules never import the publication/pipeline internals) and
-`test_cadexd_protocol.py` pins the cadexd op list.
-`project_xscript_api_integration.py` drives the full lifecycle headlessly
-under FreeCADCmd; `tessellation_id_map_integration.py`,
-`pin_resolution_integration.py`, and
-`cadexd_shell_switchover_integration.py` cover the Phase 5 engine
-capabilities and the shell seam (the last one also measures slider-drag
-latency). `test_project_rebuild.py` is the digest CI (ctest
-`CadexProjectRebuildDigest`); `test_cadexd_lifecycle.py` is the cadexd CI
-(ctest `CadexdLifecycle`: open → mutate → inspect → resolve_pin →
-kill -9 → respawn → restore digest equality → mid-run cancel). Both skip
-themselves when no FreeCADCmd binary is available.
+**The contract guardrails.** `test_project_tool_surface.py` pins the exact
+`xscript.project.*` tool surface and asserts dissolved per-domain operations
+and culled modules stay gone. `test_engine_purity_guardrails.py` pins the
+process boundary — nothing under `src/Mod/cadex/**` may import `PySide*`,
+`FreeCADGui`, `tool_impl` or `jsonschema`, cadexd's module closure must equal
+a declared list, and `docs/INTEGRATION.md`'s op table must equal
+`OP_ARG_SPECS`. `test_cadexd_protocol.py` pins the op list itself and
+`test_response_schemas.py` the reply shapes (ADR-027).
+
+**The integration drivers**, all headless under FreeCADCmd:
+`project_xscript_api_integration.py` (the full lifecycle),
+`tessellation_id_map_integration.py`, `pin_resolution_integration.py`, and
+`cadexd_latency_integration.py` (the slider-drag bar over raw NDJSON).
+
+**The five ctests**, in `tests/CMakeLists.txt`:
+
+| ctest | Proves |
+|---|---|
+| `CadexProjectRebuildDigest` | delete the document, rebuild from the script, digests match — rebuild-vs-accepted *and* rebuild-vs-rebuild |
+| `CadexdLifecycle` | open → mutate → inspect → resolve_pin → `kill -9` → respawn → restore digest equality → mid-run cancel |
+| `CadexSubshapeEnumeration` | the OCCT ordering fingerprint, so a version bump cannot silently re-index saved scripts (ADR-027) |
+| `CadexResponseSchemas` | the golden per-op response shapes |
+| `CadexEnginePayloadSmoke` | the *packaged* payload answers the protocol through its own manifest (ADR-023) |
+
+The ones needing a binary skip themselves when no FreeCADCmd is available.
+ctest overall has ~160 pre-existing environmental failures — diff against
+`build/ctest_baseline_failures.txt`, never expect 100%.
+
+The product gate lives on the other side of the boundary:
+`pixi run gate` runs `shell/tests/python/bl_mesh_agent_cadex.py` against the
+built bundle and prints one `CADEX-BLENDER-GATE` line.
 
 ## 4. The FreeCAD substrate `[FreeCAD-inherited]`
 

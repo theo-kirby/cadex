@@ -16,8 +16,12 @@ roadmap item. Add freely, prune ruthlessly.
   (`shell/source/blender/makesrna/`) generates UI, animation, and
   Python access from one property definition. Cadex params could get the
   same treatment: one declaration in the script drives slider, protocol
-  schema, and inspection output. (Today: `mesh_model.params()` on the shell
-  side, `set_parameter_controls` on the engine side — two vocabularies.)
+  schema, and inspection output. (The two vocabularies this idea wanted to
+  unify are both gone: `set_parameter_controls` dissolved in ADR-013 and the
+  shell's `mesh_model.params()` in ADR-030. There is one declaration
+  today — `params()`/`num()` in the script — so what is left of the idea is
+  generating the *slider metadata* from it rather than hand-bridging
+  `param_specs` into a PropertyGroup.)
 
 - **Per-revision tessellation cache.** Revisions are already
   content-addressed (`docs/XSCRIPT.md`). Caching tessellation + ID maps per

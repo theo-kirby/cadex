@@ -168,15 +168,21 @@ triangulations (ADR-016; the digest CI now seeds mesh outputs too).
 in-process fallback. **Met 2026-07-25** — ctest `CadexdLifecycle`
 (kill -9 → respawn → restore digest equality, mid-run cancel) and the
 switchover integration (median set_params drag 0.479 s ≤ 0.65 s bar) are
-the evidence; `test_engine_shell_split_guardrails.py` pins the boundary.
+the evidence; the boundary was pinned by
+`test_engine_shell_split_guardrails.py`, which was folded into
+`test_engine_purity_guardrails.py` when Phase 7 deleted the protocol seam
+it guarded — that is the file to read today.
 
-## Phase 6 — Blender shell (in `/Users/theo/mesh`) `(landed 2026-07-25, ADR-019)`
+## Phase 6 — Blender shell `(landed 2026-07-25, ADR-019)`
+
+*(Built in `/Users/theo/mesh`; that tree is `shell/` in this repository
+since ADR-030, and the paths below now read relative to it.)*
 
 **Goal:** `mesh_agent` gets a cadex backend (`docs/BLENDER.md` §5).
 
 - [x] Backend proxying to cadexd (alongside the existing local-exec path) —
       "Cadex CAD" mode; `cadexd_client.py` (GPL NDJSON client, no cadex
-      imports) + `cadex_backend.py` in the mesh repo.
+      imports) + `cadex_backend.py`.
 - [x] Tessellated outputs into the Model collection with ID-map attributes
       (`cadex_hydrate.py`: `cadex_face` INT face attribute, edge-wire
       children, placement, contract-driven GC).
@@ -368,8 +374,11 @@ Three things the work turned up:
   while every source-tree gate stayed green. Now pinned by
   `test_every_engine_module_is_installed_by_cmake`.
 
-Still open for the shell (mesh repo): nothing yet *writes* a selector into a
-script from a click, so click → durable argument is half built.
+Still open on the shell side (`shell/scripts/addons_core/mesh_agent/`):
+nothing yet *writes* a selector into a script from a click, so click →
+durable argument is half built. `resolve_pin` gives the shell the
+fingerprint; turning that into a selector argument in the script is the
+missing step.
 
 **10c — Characterization corpus, time-boxed.** Record golden outputs from
 the *current* engine before it is touched. Three tiers: ~500 op
@@ -544,7 +553,13 @@ Not a phase that "completes" — a standing mode of work.
       `shell/locale/` (80 MB), most of `shell/tests/files/` (784 MB), the
       unused `shell/release/datafiles`.
 - [ ] Engine side: Phase 8 (`src/Gui`, 66 MB) and Phase 9's warm-standby
-      worker are unchanged and still pending.
+      worker are unchanged and still pending. Two more found while
+      documenting: `src/Mod/{Start,Test,Help}` build but are in no shipped
+      payload (`docs/FREECAD.md` §1), and the staged payload is **2.3 GB**
+      of which ~2.1 GB is development environment — two copies of LLVM,
+      node, clang, CMake's docs (`docs/cadex-release-packaging.md`). The
+      payload's "no GUI" gate also has a hole: it greps `Mod/` for
+      `*Gui.so` and misses stale ones in `lib/`.
 - [ ] One installer, one name; NOTICE file carries the vendored LGPL
       attributions (ADR-025).
 - [ ] Delete `/Users/theo/vibecad` — the dead predecessor of cadex. Not
