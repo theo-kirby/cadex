@@ -43,7 +43,12 @@ add_executable(Base_tests_run
         XMLTools.cpp
 )
 
-setup_qt_test(InventorBuilder)
+# InventorBuilder writes Coin3D scene graphs and links SoDB, and
+# setup_qt_test links FreeCADGui; neither exists in a GUI-less build
+# (cadex ADR-022).
+if(BUILD_GUI)
+    setup_qt_test(InventorBuilder)
+endif()
 
 target_link_libraries(Base_tests_run PRIVATE
     GTest::gtest_main

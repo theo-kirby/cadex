@@ -86,12 +86,15 @@ cmake \
     -D Python3_EXECUTABLE:FILEPATH="$PYTHON" \
     -D BUILD_DYNAMIC_LINK_PYTHON:BOOL=OFF \
     -D ENABLE_DEVELOPER_TESTS:BOOL=OFF \
+    -D BUILD_GUI:BOOL=OFF \
     -B build \
     -S .
 
 cmake --build build
 cmake --install build
 
+# The packaged engine has no GUI binary (cadex ADR-022); only FreeCADCmd
+# and CadexGeometryWorker are produced.
 mv ${PREFIX}/bin/FreeCAD ${PREFIX}/bin/freecad || true
 mv ${PREFIX}/bin/FreeCADCmd ${PREFIX}/bin/freecadcmd || true
 

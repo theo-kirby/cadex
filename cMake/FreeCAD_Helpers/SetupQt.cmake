@@ -1,6 +1,9 @@
 # -------------------------------- Qt --------------------------------
 
-set(FREECAD_QT_COMPONENTS Core Concurrent Network Xml)
+# LinguistTools is a *build* tool (lrelease), not a runtime library, and
+# src/App -- which builds with BUILD_GUI=OFF -- compiles its own translations
+# through qt_add_translation. It therefore belongs outside the GUI block.
+set(FREECAD_QT_COMPONENTS Core Concurrent Network Xml LinguistTools)
 
 if (FREECAD_QT_MAJOR_VERSION EQUAL 5)
     message(WARNING [[
@@ -27,7 +30,7 @@ if(BUILD_GUI)
         list (APPEND FREECAD_QT_COMPONENTS OpenGLWidgets)
     endif()
 
-    list (APPEND FREECAD_QT_COMPONENTS OpenGL PrintSupport Svg UiTools Widgets LinguistTools)
+    list (APPEND FREECAD_QT_COMPONENTS OpenGL PrintSupport Svg UiTools Widgets)
 
     if(BUILD_DESIGNER_PLUGIN)
         list (APPEND FREECAD_QT_COMPONENTS Designer)
