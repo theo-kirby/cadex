@@ -1,0 +1,2547 @@
+{
+ "note": "Recorded from OCCT 7.8.1 via the engine's own part domain. A diff here means saved-script indices changed meaning.",
+ "occt_version": "7.8.1",
+ "probes": {
+  "drilled.edge": {
+   "count": 24,
+   "subshapes": [
+    {
+     "center_mm": [
+      0.0,
+      0.0,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 10.0,
+     "name": "Edge1"
+    },
+    {
+     "center_mm": [
+      0.0,
+      15.0,
+      10.0
+     ],
+     "direction": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 30.0,
+     "name": "Edge2"
+    },
+    {
+     "center_mm": [
+      0.0,
+      30.0,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 10.0,
+     "name": "Edge3"
+    },
+    {
+     "center_mm": [
+      0.0,
+      15.0,
+      0.0
+     ],
+     "direction": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 30.0,
+     "name": "Edge4"
+    },
+    {
+     "center_mm": [
+      20.0,
+      0.0,
+      0.0
+     ],
+     "direction": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 40.0,
+     "name": "Edge5"
+    },
+    {
+     "center_mm": [
+      40.0,
+      0.0,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 10.0,
+     "name": "Edge6"
+    },
+    {
+     "center_mm": [
+      20.0,
+      0.0,
+      10.0
+     ],
+     "direction": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 40.0,
+     "name": "Edge7"
+    },
+    {
+     "center_mm": [
+      20.0,
+      30.0,
+      10.0
+     ],
+     "direction": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 40.0,
+     "name": "Edge8"
+    },
+    {
+     "center_mm": [
+      40.0,
+      15.0,
+      10.0
+     ],
+     "direction": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 30.0,
+     "name": "Edge9"
+    },
+    {
+     "center_mm": [
+      8.0,
+      7.5,
+      10.0
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 18.849556,
+     "name": "Edge10",
+     "radius_mm": 3.0
+    },
+    {
+     "center_mm": [
+      32.0,
+      7.5,
+      10.0
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 18.849556,
+     "name": "Edge11",
+     "radius_mm": 3.0
+    },
+    {
+     "center_mm": [
+      8.0,
+      22.5,
+      10.0
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 18.849556,
+     "name": "Edge12",
+     "radius_mm": 3.0
+    },
+    {
+     "center_mm": [
+      32.0,
+      22.5,
+      10.0
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 18.849556,
+     "name": "Edge13",
+     "radius_mm": 3.0
+    },
+    {
+     "center_mm": [
+      20.0,
+      30.0,
+      0.0
+     ],
+     "direction": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 40.0,
+     "name": "Edge14"
+    },
+    {
+     "center_mm": [
+      40.0,
+      30.0,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 10.0,
+     "name": "Edge15"
+    },
+    {
+     "center_mm": [
+      40.0,
+      15.0,
+      0.0
+     ],
+     "direction": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 30.0,
+     "name": "Edge16"
+    },
+    {
+     "center_mm": [
+      8.0,
+      7.5,
+      0.0
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 18.849556,
+     "name": "Edge17",
+     "radius_mm": 3.0
+    },
+    {
+     "center_mm": [
+      32.0,
+      7.5,
+      0.0
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 18.849556,
+     "name": "Edge18",
+     "radius_mm": 3.0
+    },
+    {
+     "center_mm": [
+      8.0,
+      22.5,
+      0.0
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 18.849556,
+     "name": "Edge19",
+     "radius_mm": 3.0
+    },
+    {
+     "center_mm": [
+      32.0,
+      22.5,
+      0.0
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 18.849556,
+     "name": "Edge20",
+     "radius_mm": 3.0
+    },
+    {
+     "center_mm": [
+      11.0,
+      7.5,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 10.0,
+     "name": "Edge21"
+    },
+    {
+     "center_mm": [
+      35.0,
+      7.5,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 10.0,
+     "name": "Edge22"
+    },
+    {
+     "center_mm": [
+      11.0,
+      22.5,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 10.0,
+     "name": "Edge23"
+    },
+    {
+     "center_mm": [
+      35.0,
+      22.5,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 10.0,
+     "name": "Edge24"
+    }
+   ]
+  },
+  "drilled.face": {
+   "count": 10,
+   "subshapes": [
+    {
+     "area_mm2": 300.0,
+     "center_mm": [
+      0.0,
+      15.0,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Plane",
+     "name": "Face1",
+     "normal": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 400.0,
+     "center_mm": [
+      20.0,
+      0.0,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Plane",
+     "name": "Face2",
+     "normal": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 1086.902664,
+     "center_mm": [
+      20.0,
+      15.0,
+      10.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Plane",
+     "name": "Face3",
+     "normal": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "area_mm2": 400.0,
+     "center_mm": [
+      20.0,
+      30.0,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Plane",
+     "name": "Face4",
+     "normal": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 1086.902664,
+     "center_mm": [
+      20.0,
+      15.0,
+      0.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Plane",
+     "name": "Face5",
+     "normal": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    },
+    {
+     "area_mm2": 300.0,
+     "center_mm": [
+      40.0,
+      15.0,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Plane",
+     "name": "Face6",
+     "normal": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 188.495559,
+     "center_mm": [
+      8.0,
+      7.5,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face7",
+     "normal": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 188.495559,
+     "center_mm": [
+      32.0,
+      7.5,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face8",
+     "normal": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 188.495559,
+     "center_mm": [
+      8.0,
+      22.5,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face9",
+     "normal": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 188.495559,
+     "center_mm": [
+      32.0,
+      22.5,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face10",
+     "normal": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    }
+   ]
+  },
+  "rounded.edge": {
+   "count": 84,
+   "subshapes": [
+    {
+     "center_mm": [
+      0.0,
+      1.5,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 7.0,
+     "name": "Edge1"
+    },
+    {
+     "center_mm": [
+      0.0,
+      15.0,
+      1.5
+     ],
+     "direction": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 27.0,
+     "name": "Edge2"
+    },
+    {
+     "center_mm": [
+      0.0,
+      15.0,
+      8.5
+     ],
+     "direction": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 27.0,
+     "name": "Edge3"
+    },
+    {
+     "center_mm": [
+      0.0,
+      28.5,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 7.0,
+     "name": "Edge4"
+    },
+    {
+     "center_mm": [
+      0.54507,
+      0.54507,
+      1.5
+     ],
+     "direction": [
+      0.707107,
+      -0.707107,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge5",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      0.54507,
+      0.54507,
+      8.5
+     ],
+     "direction": [
+      0.707107,
+      -0.707107,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge6",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      1.5,
+      0.0,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 7.0,
+     "name": "Edge7"
+    },
+    {
+     "center_mm": [
+      0.54507,
+      1.5,
+      0.54507
+     ],
+     "direction": [
+      -0.707107,
+      0.0,
+      0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge8",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      1.5,
+      15.0,
+      0.0
+     ],
+     "direction": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 27.0,
+     "name": "Edge9"
+    },
+    {
+     "center_mm": [
+      0.54507,
+      28.5,
+      0.54507
+     ],
+     "direction": [
+      -0.707107,
+      0.0,
+      0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge10",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      0.54507,
+      1.5,
+      9.45493
+     ],
+     "direction": [
+      -0.707107,
+      0.0,
+      -0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge11",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      1.5,
+      15.0,
+      10.0
+     ],
+     "direction": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 27.0,
+     "name": "Edge12"
+    },
+    {
+     "center_mm": [
+      0.54507,
+      28.5,
+      9.45493
+     ],
+     "direction": [
+      0.707107,
+      0.0,
+      0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge13",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      0.54507,
+      29.45493,
+      1.5
+     ],
+     "direction": [
+      0.707107,
+      0.707107,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge14",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      0.54507,
+      29.45493,
+      8.5
+     ],
+     "direction": [
+      -0.707107,
+      -0.707107,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge15",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      1.5,
+      30.0,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 7.0,
+     "name": "Edge16"
+    },
+    {
+     "center_mm": [
+      1.5,
+      1.5,
+      0.0
+     ],
+     "direction": null,
+     "element_type": "edge",
+     "geometry_type": "Undefined",
+     "length_mm": 0.0,
+     "name": "Edge17"
+    },
+    {
+     "center_mm": [
+      1.5,
+      0.54507,
+      0.54507
+     ],
+     "direction": [
+      0.0,
+      -0.707107,
+      0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge18",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      1.5,
+      1.5,
+      10.0
+     ],
+     "direction": null,
+     "element_type": "edge",
+     "geometry_type": "Undefined",
+     "length_mm": 0.0,
+     "name": "Edge19"
+    },
+    {
+     "center_mm": [
+      1.5,
+      0.54507,
+      9.45493
+     ],
+     "direction": [
+      0.0,
+      -0.707107,
+      -0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge20",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      20.0,
+      0.0,
+      1.5
+     ],
+     "direction": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 37.0,
+     "name": "Edge21"
+    },
+    {
+     "center_mm": [
+      20.0,
+      0.0,
+      8.5
+     ],
+     "direction": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 37.0,
+     "name": "Edge22"
+    },
+    {
+     "center_mm": [
+      38.5,
+      0.0,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 7.0,
+     "name": "Edge23"
+    },
+    {
+     "center_mm": [
+      20.0,
+      1.5,
+      0.0
+     ],
+     "direction": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 37.0,
+     "name": "Edge24"
+    },
+    {
+     "center_mm": [
+      20.0,
+      28.5,
+      0.0
+     ],
+     "direction": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 37.0,
+     "name": "Edge25"
+    },
+    {
+     "center_mm": [
+      38.5,
+      15.0,
+      0.0
+     ],
+     "direction": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 27.0,
+     "name": "Edge26"
+    },
+    {
+     "center_mm": [
+      8.0,
+      7.5,
+      0.0
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 28.274334,
+     "name": "Edge27",
+     "radius_mm": 4.5
+    },
+    {
+     "center_mm": [
+      32.0,
+      7.5,
+      0.0
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 28.274334,
+     "name": "Edge28",
+     "radius_mm": 4.5
+    },
+    {
+     "center_mm": [
+      8.0,
+      22.5,
+      0.0
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 28.274334,
+     "name": "Edge29",
+     "radius_mm": 4.5
+    },
+    {
+     "center_mm": [
+      32.0,
+      22.5,
+      0.0
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 28.274334,
+     "name": "Edge30",
+     "radius_mm": 4.5
+    },
+    {
+     "center_mm": [
+      1.5,
+      28.5,
+      0.0
+     ],
+     "direction": null,
+     "element_type": "edge",
+     "geometry_type": "Undefined",
+     "length_mm": 0.0,
+     "name": "Edge31"
+    },
+    {
+     "center_mm": [
+      1.5,
+      29.45493,
+      0.54507
+     ],
+     "direction": [
+      0.0,
+      0.707107,
+      0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge32",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      20.0,
+      1.5,
+      10.0
+     ],
+     "direction": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 37.0,
+     "name": "Edge33"
+    },
+    {
+     "center_mm": [
+      20.0,
+      28.5,
+      10.0
+     ],
+     "direction": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 37.0,
+     "name": "Edge34"
+    },
+    {
+     "center_mm": [
+      38.5,
+      15.0,
+      10.0
+     ],
+     "direction": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 27.0,
+     "name": "Edge35"
+    },
+    {
+     "center_mm": [
+      8.0,
+      7.5,
+      10.0
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 28.274334,
+     "name": "Edge36",
+     "radius_mm": 4.5
+    },
+    {
+     "center_mm": [
+      32.0,
+      7.5,
+      10.0
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 28.274334,
+     "name": "Edge37",
+     "radius_mm": 4.5
+    },
+    {
+     "center_mm": [
+      8.0,
+      22.5,
+      10.0
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 28.274334,
+     "name": "Edge38",
+     "radius_mm": 4.5
+    },
+    {
+     "center_mm": [
+      32.0,
+      22.5,
+      10.0
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 28.274334,
+     "name": "Edge39",
+     "radius_mm": 4.5
+    },
+    {
+     "center_mm": [
+      1.5,
+      30.0,
+      8.5
+     ],
+     "direction": null,
+     "element_type": "edge",
+     "geometry_type": "Undefined",
+     "length_mm": 0.0,
+     "name": "Edge40"
+    },
+    {
+     "center_mm": [
+      1.5,
+      29.45493,
+      9.45493
+     ],
+     "direction": [
+      0.0,
+      -0.707107,
+      0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge41",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      20.0,
+      30.0,
+      1.5
+     ],
+     "direction": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 37.0,
+     "name": "Edge42"
+    },
+    {
+     "center_mm": [
+      20.0,
+      30.0,
+      8.5
+     ],
+     "direction": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 37.0,
+     "name": "Edge43"
+    },
+    {
+     "center_mm": [
+      38.5,
+      30.0,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 7.0,
+     "name": "Edge44"
+    },
+    {
+     "center_mm": [
+      38.5,
+      0.54507,
+      0.54507
+     ],
+     "direction": [
+      0.0,
+      0.707107,
+      -0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge45",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      38.5,
+      0.54507,
+      9.45493
+     ],
+     "direction": [
+      0.0,
+      -0.707107,
+      -0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge46",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      39.45493,
+      0.54507,
+      1.5
+     ],
+     "direction": [
+      -0.707107,
+      -0.707107,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge47",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      40.0,
+      1.5,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 7.0,
+     "name": "Edge48"
+    },
+    {
+     "center_mm": [
+      39.45493,
+      0.54507,
+      8.5
+     ],
+     "direction": [
+      0.707107,
+      0.707107,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge49",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      38.5,
+      29.45493,
+      0.54507
+     ],
+     "direction": [
+      0.0,
+      -0.707107,
+      -0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge50",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      39.45493,
+      1.5,
+      0.54507
+     ],
+     "direction": [
+      -0.707107,
+      0.0,
+      -0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge51",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      40.0,
+      15.0,
+      1.5
+     ],
+     "direction": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 27.0,
+     "name": "Edge52"
+    },
+    {
+     "center_mm": [
+      39.45493,
+      28.5,
+      0.54507
+     ],
+     "direction": [
+      -0.707107,
+      0.0,
+      -0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge53",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      11.54507,
+      7.5,
+      0.54507
+     ],
+     "direction": [
+      -0.707107,
+      0.0,
+      0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge54",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      8.0,
+      7.5,
+      1.5
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 18.849556,
+     "name": "Edge55",
+     "radius_mm": 3.0
+    },
+    {
+     "center_mm": [
+      35.54507,
+      7.5,
+      0.54507
+     ],
+     "direction": [
+      -0.707107,
+      0.0,
+      0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge56",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      32.0,
+      7.5,
+      1.5
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 18.849556,
+     "name": "Edge57",
+     "radius_mm": 3.0
+    },
+    {
+     "center_mm": [
+      11.54507,
+      22.5,
+      0.54507
+     ],
+     "direction": [
+      -0.707107,
+      0.0,
+      0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge58",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      8.0,
+      22.5,
+      1.5
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 18.849556,
+     "name": "Edge59",
+     "radius_mm": 3.0
+    },
+    {
+     "center_mm": [
+      35.54507,
+      22.5,
+      0.54507
+     ],
+     "direction": [
+      -0.707107,
+      0.0,
+      0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge60",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      32.0,
+      22.5,
+      1.5
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 18.849556,
+     "name": "Edge61",
+     "radius_mm": 3.0
+    },
+    {
+     "center_mm": [
+      38.5,
+      29.45493,
+      9.45493
+     ],
+     "direction": [
+      0.0,
+      0.707107,
+      -0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge62",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      39.45493,
+      1.5,
+      9.45493
+     ],
+     "direction": [
+      0.707107,
+      0.0,
+      -0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge63",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      40.0,
+      15.0,
+      8.5
+     ],
+     "direction": [
+      0.0,
+      1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 27.0,
+     "name": "Edge64"
+    },
+    {
+     "center_mm": [
+      39.45493,
+      28.5,
+      9.45493
+     ],
+     "direction": [
+      -0.707107,
+      0.0,
+      0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge65",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      11.54507,
+      7.5,
+      9.45493
+     ],
+     "direction": [
+      -0.707107,
+      0.0,
+      -0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge66",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      8.0,
+      7.5,
+      8.5
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 18.849556,
+     "name": "Edge67",
+     "radius_mm": 3.0
+    },
+    {
+     "center_mm": [
+      35.54507,
+      7.5,
+      9.45493
+     ],
+     "direction": [
+      -0.707107,
+      0.0,
+      -0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge68",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      32.0,
+      7.5,
+      8.5
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 18.849556,
+     "name": "Edge69",
+     "radius_mm": 3.0
+    },
+    {
+     "center_mm": [
+      11.54507,
+      22.5,
+      9.45493
+     ],
+     "direction": [
+      -0.707107,
+      0.0,
+      -0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge70",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      8.0,
+      22.5,
+      8.5
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 18.849556,
+     "name": "Edge71",
+     "radius_mm": 3.0
+    },
+    {
+     "center_mm": [
+      35.54507,
+      22.5,
+      9.45493
+     ],
+     "direction": [
+      -0.707107,
+      0.0,
+      -0.707107
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge72",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      32.0,
+      22.5,
+      8.5
+     ],
+     "direction": [
+      0.0,
+      -1.0,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 18.849556,
+     "name": "Edge73",
+     "radius_mm": 3.0
+    },
+    {
+     "center_mm": [
+      39.45493,
+      29.45493,
+      1.5
+     ],
+     "direction": [
+      -0.707107,
+      0.707107,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge74",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      40.0,
+      28.5,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 7.0,
+     "name": "Edge75"
+    },
+    {
+     "center_mm": [
+      39.45493,
+      29.45493,
+      8.5
+     ],
+     "direction": [
+      -0.707107,
+      0.707107,
+      0.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Circle",
+     "length_mm": 2.356194,
+     "name": "Edge76",
+     "radius_mm": 1.5
+    },
+    {
+     "center_mm": [
+      40.0,
+      1.5,
+      1.5
+     ],
+     "direction": null,
+     "element_type": "edge",
+     "geometry_type": "Undefined",
+     "length_mm": 0.0,
+     "name": "Edge77"
+    },
+    {
+     "center_mm": [
+      38.5,
+      1.5,
+      10.0
+     ],
+     "direction": null,
+     "element_type": "edge",
+     "geometry_type": "Undefined",
+     "length_mm": 0.0,
+     "name": "Edge78"
+    },
+    {
+     "center_mm": [
+      40.0,
+      28.5,
+      1.5
+     ],
+     "direction": null,
+     "element_type": "edge",
+     "geometry_type": "Undefined",
+     "length_mm": 0.0,
+     "name": "Edge79"
+    },
+    {
+     "center_mm": [
+      11.0,
+      7.5,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 7.0,
+     "name": "Edge80"
+    },
+    {
+     "center_mm": [
+      35.0,
+      7.5,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 7.0,
+     "name": "Edge81"
+    },
+    {
+     "center_mm": [
+      11.0,
+      22.5,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 7.0,
+     "name": "Edge82"
+    },
+    {
+     "center_mm": [
+      35.0,
+      22.5,
+      5.0
+     ],
+     "direction": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "element_type": "edge",
+     "geometry_type": "Line",
+     "length_mm": 7.0,
+     "name": "Edge83"
+    },
+    {
+     "center_mm": [
+      40.0,
+      28.5,
+      8.5
+     ],
+     "direction": null,
+     "element_type": "edge",
+     "geometry_type": "Undefined",
+     "length_mm": 0.0,
+     "name": "Edge84"
+    }
+   ]
+  },
+  "rounded.face": {
+   "count": 38,
+   "subshapes": [
+    {
+     "area_mm2": 189.0,
+     "center_mm": [
+      0.0,
+      15.0,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Plane",
+     "name": "Face1",
+     "normal": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 16.493361,
+     "center_mm": [
+      0.54507,
+      0.54507,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face2",
+     "normal": [
+      -0.707107,
+      -0.707107,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 63.617251,
+     "center_mm": [
+      0.54507,
+      15.0,
+      0.54507
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face3",
+     "normal": [
+      -0.707107,
+      0.0,
+      -0.707107
+     ]
+    },
+    {
+     "area_mm2": 63.617251,
+     "center_mm": [
+      0.54507,
+      15.0,
+      9.45493
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face4",
+     "normal": [
+      -0.707107,
+      0.0,
+      0.707107
+     ]
+    },
+    {
+     "area_mm2": 16.493361,
+     "center_mm": [
+      0.54507,
+      29.45493,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face5",
+     "normal": [
+      -0.707107,
+      0.707107,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 3.534292,
+     "center_mm": [
+      0.75,
+      0.75,
+      0.75
+     ],
+     "element_type": "face",
+     "geometry_type": "Sphere",
+     "name": "Face6",
+     "normal": [
+      -0.5,
+      -0.5,
+      -0.707107
+     ]
+    },
+    {
+     "area_mm2": 3.534292,
+     "center_mm": [
+      0.75,
+      0.75,
+      9.25
+     ],
+     "element_type": "face",
+     "geometry_type": "Sphere",
+     "name": "Face7",
+     "normal": [
+      -0.5,
+      -0.5,
+      0.707107
+     ]
+    },
+    {
+     "area_mm2": 259.0,
+     "center_mm": [
+      20.0,
+      0.0,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Plane",
+     "name": "Face8",
+     "normal": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 744.530995,
+     "center_mm": [
+      20.0,
+      15.0,
+      0.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Plane",
+     "name": "Face9",
+     "normal": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    },
+    {
+     "area_mm2": 3.534292,
+     "center_mm": [
+      0.75,
+      29.25,
+      0.75
+     ],
+     "element_type": "face",
+     "geometry_type": "Sphere",
+     "name": "Face10",
+     "normal": [
+      -0.5,
+      0.5,
+      -0.707107
+     ]
+    },
+    {
+     "area_mm2": 744.530995,
+     "center_mm": [
+      20.0,
+      15.0,
+      10.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Plane",
+     "name": "Face11",
+     "normal": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "area_mm2": 3.534292,
+     "center_mm": [
+      0.75,
+      29.25,
+      9.25
+     ],
+     "element_type": "face",
+     "geometry_type": "Sphere",
+     "name": "Face12",
+     "normal": [
+      -0.5,
+      0.707107,
+      0.5
+     ]
+    },
+    {
+     "area_mm2": 259.0,
+     "center_mm": [
+      20.0,
+      30.0,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Plane",
+     "name": "Face13",
+     "normal": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 87.179196,
+     "center_mm": [
+      20.0,
+      0.54507,
+      0.54507
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face14",
+     "normal": [
+      0.0,
+      -0.707107,
+      -0.707107
+     ]
+    },
+    {
+     "area_mm2": 87.179196,
+     "center_mm": [
+      20.0,
+      0.54507,
+      9.45493
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face15",
+     "normal": [
+      0.0,
+      -0.707107,
+      0.707107
+     ]
+    },
+    {
+     "area_mm2": 16.493361,
+     "center_mm": [
+      39.45493,
+      0.54507,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face16",
+     "normal": [
+      0.707107,
+      -0.707107,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 87.179196,
+     "center_mm": [
+      20.0,
+      29.45493,
+      0.54507
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face17",
+     "normal": [
+      0.0,
+      0.707107,
+      -0.707107
+     ]
+    },
+    {
+     "area_mm2": 63.617251,
+     "center_mm": [
+      39.45493,
+      15.0,
+      0.54507
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face18",
+     "normal": [
+      0.707107,
+      0.0,
+      -0.707107
+     ]
+    },
+    {
+     "area_mm2": 52.482663,
+     "center_mm": [
+      8.0,
+      7.5,
+      0.489869
+     ],
+     "element_type": "face",
+     "geometry_type": "Toroid",
+     "name": "Face19",
+     "normal": [
+      0.707107,
+      0.0,
+      -0.707107
+     ]
+    },
+    {
+     "area_mm2": 52.482663,
+     "center_mm": [
+      32.0,
+      7.5,
+      0.489869
+     ],
+     "element_type": "face",
+     "geometry_type": "Toroid",
+     "name": "Face20",
+     "normal": [
+      0.707107,
+      0.0,
+      -0.707107
+     ]
+    },
+    {
+     "area_mm2": 52.482663,
+     "center_mm": [
+      8.0,
+      22.5,
+      0.489869
+     ],
+     "element_type": "face",
+     "geometry_type": "Toroid",
+     "name": "Face21",
+     "normal": [
+      0.707107,
+      0.0,
+      -0.707107
+     ]
+    },
+    {
+     "area_mm2": 52.482663,
+     "center_mm": [
+      32.0,
+      22.5,
+      0.489869
+     ],
+     "element_type": "face",
+     "geometry_type": "Toroid",
+     "name": "Face22",
+     "normal": [
+      0.707107,
+      0.0,
+      -0.707107
+     ]
+    },
+    {
+     "area_mm2": 87.179196,
+     "center_mm": [
+      20.0,
+      29.45493,
+      9.45493
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face23",
+     "normal": [
+      0.0,
+      0.707107,
+      0.707107
+     ]
+    },
+    {
+     "area_mm2": 63.617251,
+     "center_mm": [
+      39.45493,
+      15.0,
+      9.45493
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face24",
+     "normal": [
+      0.707107,
+      0.0,
+      0.707107
+     ]
+    },
+    {
+     "area_mm2": 52.482663,
+     "center_mm": [
+      8.0,
+      7.5,
+      9.510131
+     ],
+     "element_type": "face",
+     "geometry_type": "Toroid",
+     "name": "Face25",
+     "normal": [
+      0.707107,
+      0.0,
+      0.707107
+     ]
+    },
+    {
+     "area_mm2": 52.482663,
+     "center_mm": [
+      32.0,
+      7.5,
+      9.510131
+     ],
+     "element_type": "face",
+     "geometry_type": "Toroid",
+     "name": "Face26",
+     "normal": [
+      0.707107,
+      0.0,
+      0.707107
+     ]
+    },
+    {
+     "area_mm2": 52.482663,
+     "center_mm": [
+      8.0,
+      22.5,
+      9.510131
+     ],
+     "element_type": "face",
+     "geometry_type": "Toroid",
+     "name": "Face27",
+     "normal": [
+      0.707107,
+      0.0,
+      0.707107
+     ]
+    },
+    {
+     "area_mm2": 52.482663,
+     "center_mm": [
+      32.0,
+      22.5,
+      9.510131
+     ],
+     "element_type": "face",
+     "geometry_type": "Toroid",
+     "name": "Face28",
+     "normal": [
+      0.707107,
+      0.0,
+      0.707107
+     ]
+    },
+    {
+     "area_mm2": 16.493361,
+     "center_mm": [
+      39.45493,
+      29.45493,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face29",
+     "normal": [
+      0.707107,
+      0.707107,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 3.534292,
+     "center_mm": [
+      39.25,
+      0.75,
+      0.75
+     ],
+     "element_type": "face",
+     "geometry_type": "Sphere",
+     "name": "Face30",
+     "normal": [
+      0.707107,
+      -0.5,
+      -0.5
+     ]
+    },
+    {
+     "area_mm2": 3.534292,
+     "center_mm": [
+      39.25,
+      0.75,
+      9.25
+     ],
+     "element_type": "face",
+     "geometry_type": "Sphere",
+     "name": "Face31",
+     "normal": [
+      0.5,
+      -0.5,
+      0.707107
+     ]
+    },
+    {
+     "area_mm2": 189.0,
+     "center_mm": [
+      40.0,
+      15.0,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Plane",
+     "name": "Face32",
+     "normal": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 3.534292,
+     "center_mm": [
+      39.25,
+      29.25,
+      0.75
+     ],
+     "element_type": "face",
+     "geometry_type": "Sphere",
+     "name": "Face33",
+     "normal": [
+      0.707107,
+      0.5,
+      -0.5
+     ]
+    },
+    {
+     "area_mm2": 131.946891,
+     "center_mm": [
+      8.0,
+      7.5,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face34",
+     "normal": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 131.946891,
+     "center_mm": [
+      32.0,
+      7.5,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face35",
+     "normal": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 131.946891,
+     "center_mm": [
+      8.0,
+      22.5,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face36",
+     "normal": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 131.946891,
+     "center_mm": [
+      32.0,
+      22.5,
+      5.0
+     ],
+     "element_type": "face",
+     "geometry_type": "Cylinder",
+     "name": "Face37",
+     "normal": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "area_mm2": 3.534292,
+     "center_mm": [
+      39.25,
+      29.25,
+      9.25
+     ],
+     "element_type": "face",
+     "geometry_type": "Sphere",
+     "name": "Face38",
+     "normal": [
+      0.707107,
+      0.5,
+      0.5
+     ]
+    }
+   ]
+  }
+ },
+ "script": "\ndrilled = part.box(40, 30, 10)\nfor x in (8.0, 32.0):\n    for y in (7.5, 22.5):\n        drilled = part.cut(drilled, part.cylinder(3.0, 20.0, origin=[x, y, -5.0]))\nresult = {\"drilled\": drilled, \"rounded\": part.fillet(drilled, 1.5)}\n"
+}

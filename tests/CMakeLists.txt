@@ -158,6 +158,31 @@ add_test(
 )
 set_tests_properties(CadexdLifecycle PROPERTIES TIMEOUT 900)
 
+# Cadex Phase 9 kernel-ordering CI (docs/ROADMAP.md, ADR-025): five xscript
+# ops take 1-based TopExp::MapShapes ordinals as *saved script arguments*,
+# and BOPAlgo's ordering is not a documented OCCT contract. This pins the
+# enumeration of a canonical box -> cut x4 -> fillet against a recorded
+# fingerprint, so a dependency bump that silently re-indexes every saved
+# script fails here instead of at a user. Also asserts occt is pinned
+# exactly rather than to a range.
+# The pytest module skips itself when no FreeCADCmd binary is available.
+add_test(
+    NAME CadexSubshapeEnumeration
+    COMMAND ${Python3_EXECUTABLE} -m pytest -q
+            ${CMAKE_SOURCE_DIR}/src/Mod/cadex/cadex_tests/test_subshape_enumeration.py
+)
+set_tests_properties(CadexSubshapeEnumeration PROPERTIES TIMEOUT 900)
+
+# Cadex Phase 9 protocol-response CI (docs/ROADMAP.md, ADR-025): the golden
+# per-op response shapes the Blender shell is written against. Pure Python,
+# no FreeCAD required.
+add_test(
+    NAME CadexResponseSchemas
+    COMMAND ${Python3_EXECUTABLE} -m pytest -q
+            ${CMAKE_SOURCE_DIR}/src/Mod/cadex/cadex_tests/test_response_schemas.py
+)
+set_tests_properties(CadexResponseSchemas PROPERTIES TIMEOUT 300)
+
 # Cadex Phase 7 packaging CI (docs/ROADMAP.md, ADR-023): build the engine
 # payload and drive the SAME cadexd lifecycle test against the packaged
 # tree, discovered through its cadex-engine.json manifest exactly as the

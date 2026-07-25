@@ -1,0 +1,71 @@
+{
+  "document": {
+    "name": "str",
+    "object_count": "int",
+    "uid": "str"
+  },
+  "ok": "bool",
+  "page": {
+    "effective_limit": "int",
+    "kind": "str",
+    "next_offset": "null",
+    "offset": "int",
+    "requested_limit": "int",
+    "returned": "int",
+    "total": "int"
+  },
+  "path": "str",
+  "result_json_bytes": "int",
+  "scope": "str",
+  "surface": {
+    "available": "bool",
+    "domain": "str",
+    "engine": "str",
+    "surface_id": "str",
+    "workbench": "str"
+  },
+  "target": "str",
+  "value": {
+    "accepted": {
+      "contract": [
+        {
+          "domain": "str",
+          "name": "str",
+          "type": "str"
+        }
+      ],
+      "digest": "str"
+    },
+    "latest_candidate": {
+      "attempt_id": "str",
+      "digest": "str",
+      "output_count": "int",
+      "revision": "str",
+      "status": "str"
+    },
+    "params": {
+      "specs": [
+        {
+          "default": "float",
+          "max": "float",
+          "min": "float",
+          "name": "str",
+          "step": "float",
+          "type": "str",
+          "unit": "str"
+        }
+      ],
+      "values": {
+        "width": "float"
+      }
+    },
+    "revisions": {
+      "accepted_revision": "str",
+      "working_revision": "str"
+    },
+    "script_present": "bool",
+    "source": "str",
+    "source_characters": "int",
+    "updated_at": "str"
+  }
+}

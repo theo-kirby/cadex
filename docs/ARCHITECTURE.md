@@ -125,7 +125,7 @@ Ownership closure, lint, and orphan queries live in
 | `CadexScriptedProcess.py` | Bounded subprocess runner (timeout, memory watchdog, cancellation). `[VibeCAD-era]` |
 | `CadexDigest.py` | Document-side diagnostic digest (`cadex-document-digest-v1`). `[Cadex-new]` |
 | `cadexd.py` | The headless engine service: per-project `FreeCADCmd` child, serial dispatch, ephemeral document, restore pass, cancel (`pixi run cadexd`, ADR-017). `[Cadex-new]` |
-| `CadexdProtocol.py` | `cadex-cadexd-v1` NDJSON codec, op registry + arg schemas, server failure codes; pure Python, zero FreeCAD imports. `[Cadex-new]` |
+| `CadexdProtocol.py` | `cadex-cadexd-v1` NDJSON codec, op registry + arg schemas, **response schemas** (`OP_RESPONSE_SPECS`, `NESTED_RESPONSE_SPECS`, the tool-level and server-level failure envelopes, `validate_response`), server failure codes; pure Python, zero FreeCAD imports. `[Cadex-new]` |
 | `cadex_tessellation.py` | Phase 5.1 display tessellation: adaptive deflection, per-face triangle ranges + per-edge polylines (`cadex-tessellation-v1` buffer + sidecar), digest-neutral. Staged into the worker bundle. `[Cadex-new]` |
 | `CadexPinResolution.py` | Headless pin resolution against the accepted revision's staged BREP: `_query_subelements` fingerprints or direct `{element_type, index}`. `[Cadex-new]` |
 | `cadex_rebuild.py` | Headless rebuild + digest comparison (`pixi run rebuild <root>`); drives the shared `run_project_lifecycle`. `[Cadex-new]` |

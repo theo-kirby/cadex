@@ -1,0 +1,4 @@
+{
+  "ok": "bool",
+  "shutting_down": "bool"
+}

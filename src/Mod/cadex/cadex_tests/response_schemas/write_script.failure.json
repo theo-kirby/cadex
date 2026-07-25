@@ -1,0 +1,38 @@
+{
+  "allowed_values": [],
+  "candidates": [],
+  "error": "str",
+  "failure_code": "str",
+  "failure_stage": "str",
+  "native_diagnostics": [],
+  "normalized": {},
+  "observed": {
+    "current_revision": "str"
+  },
+  "ok": "bool",
+  "requested": {
+    "expected_revision": "str"
+  },
+  "retry": {
+    "required_changes": [
+      {
+        "inspect": "str"
+      }
+    ],
+    "same_call": "bool"
+  },
+  "state_change": {
+    "changed": "bool",
+    "changed_objects": [],
+    "commit_attempted": "bool",
+    "commit_succeeded": "bool",
+    "created_objects": [],
+    "deleted_objects": [],
+    "document_changed": "bool",
+    "mutation_started": "bool",
+    "repair_targets": [],
+    "retained": "bool",
+    "transaction_opened": "bool"
+  },
+  "tool": "str"
+}

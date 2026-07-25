@@ -1,0 +1,22 @@
+{
+  "details": [
+    {
+      "area_mm2": "float",
+      "center_mm": [
+        "float"
+      ],
+      "element_type": "str",
+      "geometry_type": "str",
+      "name": "str",
+      "normal": [
+        "float"
+      ]
+    }
+  ],
+  "ok": "bool",
+  "output": "str",
+  "revision": "str",
+  "subelements": [
+    "str"
+  ]
+}

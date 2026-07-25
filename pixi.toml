@@ -37,7 +37,13 @@ ninja = "*"
 noqt5 = "*"
 numpy = ">=1.26,<1.27"
 nlohmann_json = "*"
-occt = ">=7.8,<7.9"
+# Pinned exactly, not to a range: BOPAlgo's subshape ordering is not a
+# documented OCCT contract and has changed across releases, and five xscript
+# ops take 1-based TopExp::MapShapes ordinals as *saved script arguments*.
+# A patch bump that re-indexes them builds different geometry that still
+# passes isValid(). Gated by cadex_tests/test_subshape_enumeration.py; see
+# docs/DECISIONS.md ADR-025.
+occt = "==7.8.1"
 opencamlib = "*"
 opencv = "*"
 openssl = "*"

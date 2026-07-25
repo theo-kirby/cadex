@@ -1,0 +1,91 @@
+{
+  "domain": "str",
+  "domains": {
+    "assembly": {
+      "accepted_output_types": [
+        "str"
+      ],
+      "api_global": "str",
+      "exports": [
+        {
+          "description": "str",
+          "name": "str",
+          "signature": "str"
+        }
+      ],
+      "notes": "str"
+    },
+    "mesh": {
+      "accepted_output_types": [
+        "str"
+      ],
+      "api_global": "str",
+      "exports": [
+        {
+          "description": "str",
+          "name": "str",
+          "signature": "str"
+        }
+      ],
+      "notes": "str"
+    },
+    "part": {
+      "accepted_output_types": [
+        "str"
+      ],
+      "api_global": "str",
+      "exports": [
+        {
+          "description": "str",
+          "name": "str",
+          "signature": "str"
+        }
+      ]
+    },
+    "partdesign": {
+      "accepted_output_types": [
+        "str"
+      ],
+      "api_global": "str",
+      "exports": [
+        {
+          "description": "str",
+          "name": "str",
+          "signature": "str"
+        }
+      ]
+    },
+    "sketcher": {
+      "accepted_output_types": [
+        "str"
+      ],
+      "api_global": "str",
+      "exports": [
+        {
+          "description": "str",
+          "name": "str",
+          "signature": "str"
+        }
+      ]
+    }
+  },
+  "engine": "str",
+  "instructions": "str",
+  "mutation_selection": {
+    "edit_script": "str",
+    "set_params": "str",
+    "write_script": "str"
+  },
+  "ok": "bool",
+  "parameters": {
+    "num": "str",
+    "params": "str",
+    "values": "str"
+  },
+  "program_schema": "str",
+  "result_contract": "str",
+  "revision_rule": "str",
+  "source_globals": [
+    "str"
+  ]
+}

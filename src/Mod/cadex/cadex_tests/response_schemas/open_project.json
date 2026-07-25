@@ -1,0 +1,32 @@
+{
+  "budgets": {
+    "memory_limit_mb": "int",
+    "timeout_seconds": "float"
+  },
+  "manifest": "null",
+  "ok": "bool",
+  "project_root": "str",
+  "restore": {
+    "performed": "bool"
+  },
+  "schema": "str",
+  "script": {
+    "accepted": {
+      "contract": "null",
+      "digest": "str"
+    },
+    "latest_candidate": "null",
+    "params": {
+      "specs": [],
+      "values": {}
+    },
+    "revisions": {
+      "accepted_revision": "str",
+      "working_revision": "str"
+    },
+    "script_present": "bool",
+    "source": "str",
+    "source_characters": "int",
+    "updated_at": "str"
+  }
+}

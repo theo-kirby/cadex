@@ -1,0 +1,5 @@
+{
+  "error": "str",
+  "failure_code": "str",
+  "ok": "bool"
+}

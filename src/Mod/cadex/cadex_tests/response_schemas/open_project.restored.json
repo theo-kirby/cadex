@@ -1,0 +1,56 @@
+{
+  "budgets": {
+    "memory_limit_mb": "int",
+    "timeout_seconds": "float"
+  },
+  "manifest": "null",
+  "ok": "bool",
+  "project_root": "str",
+  "restore": {
+    "digest": "str",
+    "matches_accepted": "bool",
+    "performed": "bool"
+  },
+  "schema": "str",
+  "script": {
+    "accepted": {
+      "contract": [
+        {
+          "domain": "str",
+          "name": "str",
+          "type": "str"
+        }
+      ],
+      "digest": "str"
+    },
+    "latest_candidate": {
+      "attempt_id": "str",
+      "digest": "str",
+      "output_count": "int",
+      "revision": "str",
+      "status": "str"
+    },
+    "params": {
+      "specs": [
+        {
+          "default": "float",
+          "max": "float",
+          "min": "float",
+          "name": "str",
+          "step": "float",
+          "type": "str",
+          "unit": "str"
+        }
+      ],
+      "values": {}
+    },
+    "revisions": {
+      "accepted_revision": "str",
+      "working_revision": "str"
+    },
+    "script_present": "bool",
+    "source": "str",
+    "source_characters": "int",
+    "updated_at": "str"
+  }
+}

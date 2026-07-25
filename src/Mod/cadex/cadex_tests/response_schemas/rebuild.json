@@ -1,0 +1,133 @@
+{
+  "accepted_revision": "str",
+  "digest": "str",
+  "display": {
+    "asm": {
+      "artifact_kind": "null",
+      "artifact_path": "null",
+      "placement": "null",
+      "tessellation": "null"
+    },
+    "base": {
+      "artifact_kind": "null",
+      "artifact_path": "null",
+      "placement": [
+        "float"
+      ],
+      "tessellation": "null"
+    },
+    "diag": {
+      "artifact_kind": "null",
+      "artifact_path": "null",
+      "placement": "null",
+      "tessellation": "null"
+    },
+    "plate": {
+      "artifact_kind": "str",
+      "artifact_path": "str",
+      "placement": "null",
+      "tessellation": {
+        "artifact_kind": "str",
+        "artifact_path": "str",
+        "counts": {
+          "edge_vertices": "int",
+          "edges": "int",
+          "faces": "int",
+          "triangles": "int",
+          "vertices": "int"
+        },
+        "deflection": "float",
+        "quality": "str",
+        "sidecar_path": "str"
+      }
+    },
+    "skin": {
+      "artifact_kind": "str",
+      "artifact_path": "str",
+      "placement": "null",
+      "tessellation": {
+        "artifact_kind": "str",
+        "artifact_path": "str",
+        "counts": {
+          "edge_vertices": "int",
+          "edges": "int",
+          "faces": "int",
+          "triangles": "int",
+          "vertices": "int"
+        },
+        "deflection": "float",
+        "quality": "str",
+        "sidecar_path": "str"
+      }
+    },
+    "top": {
+      "artifact_kind": "null",
+      "artifact_path": "null",
+      "placement": [
+        "float"
+      ],
+      "tessellation": "null"
+    }
+  },
+  "live_outputs": {
+    "asm": {
+      "domain": "str",
+      "label": "str",
+      "object_name": "str",
+      "output_type": "str",
+      "type_id": "str"
+    },
+    "base": {
+      "domain": "str",
+      "label": "str",
+      "object_name": "str",
+      "output_type": "str",
+      "type_id": "str"
+    },
+    "diag": {
+      "domain": "str",
+      "label": "str",
+      "object_name": "str",
+      "output_type": "str",
+      "type_id": "str"
+    },
+    "plate": {
+      "domain": "str",
+      "label": "str",
+      "object_name": "str",
+      "output_type": "str",
+      "type_id": "str"
+    },
+    "skin": {
+      "domain": "str",
+      "label": "str",
+      "object_name": "str",
+      "output_type": "str",
+      "type_id": "str"
+    },
+    "top": {
+      "domain": "str",
+      "label": "str",
+      "object_name": "str",
+      "output_type": "str",
+      "type_id": "str"
+    }
+  },
+  "model_state": {
+    "accepted_is_current": "bool",
+    "next_write_expected_revision": "str",
+    "status": "str",
+    "verification_goal": "str"
+  },
+  "ok": "bool",
+  "outputs": [
+    {
+      "domain": "str",
+      "name": "str",
+      "type": "str"
+    }
+  ],
+  "removed": [],
+  "revision": "str",
+  "tool": "str"
+}

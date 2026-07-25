@@ -1177,6 +1177,7 @@ resolved in favour of *no* — `docs/VISION.md` principle 5 has humans steer
 via chat **and** sliders. macOS notarization of a Rust application bundling
 an OCCT engine that spawns subprocesses remains unexercised (inherited open
 item from ADR-023).
+
 ## ADR-026 — Phase 9: the unreachable publication paths are deleted (2026-07-25)
 
 **Decision.** Delete the publication paths no live domain can reach — the
@@ -1215,3 +1216,54 @@ that Phase 9 also calls for land separately in ADR-027; the mesh-repo half
 of Phase 9 (the local bpy modes, the app template) is its own repository's
 commits.
 
+## ADR-027 — Phase 9: the request half of the contract was tested, the reply half was prose (2026-07-25)
+
+**Decision.** Pin the two contracts everything downstream of ADR-025
+assumes: the shape of every cadexd response, and the kernel's subshape
+ordering.
+
+**Response schemas** (`OP_RESPONSE_SPECS`, `NESTED_RESPONSE_SPECS`,
+`validate_response`, `cadex_tests/response_schemas/*.json`).
+`OP_ARG_SPECS` pinned requests; replies were prose. Fixtures were recorded
+from a live cadexd and reduced to shape — every leaf is its JSON type name,
+so no digest, temporary path or machine state is committed and a diff means
+the contract moved. `docs/INTEGRATION.md` gains a response table, enforced
+against the code the same way the op table already was.
+
+Wiring the validator into `test_cadexd_lifecycle`'s client — so real frames
+are checked, not only fixtures — immediately found three shapes the
+recording had missed, which is the argument for doing it that way:
+
+1. **Server-level failures are a different envelope.** `CADEXD_*` codes
+   produce `{ok, failure_code, error}`; a tool-level failure produces
+   twelve keys the agent reads and acts on. One spec would have let a bare
+   protocol error pass as an actionable pipeline failure. Now
+   `SERVER_FAILURE_SPEC` is separate, dispatched on the code, and a test
+   asserts it stays *strictly smaller*.
+2. `restore` carries `digest` and `matches_accepted` only when a restore
+   was actually performed.
+3. `domain_failure_stage` appears when a failure came from a domain worker
+   rather than the lifecycle.
+
+**OCCT pinned exactly** — `occt = "==7.8.1"`, not `>=7.8,<7.9`. Five ops
+(`subshape`, `defeature`, `fillet`, `chamfer`, `thicken`) take 1-based
+`TopExp::MapShapes` ordinals as **saved script arguments**, and BOPAlgo's
+ordering is not a documented contract. `test_subshape_enumeration.py` /
+ctest `CadexSubshapeEnumeration` fingerprints a canonical box → cut×4 →
+fillet through the engine's own part domain — 10 faces / 24 edges before
+the fillet, 38 / 84 after — recording geometry type, area or length, centre
+and normal or direction per ordinal. Verified by construction: swapping two
+recorded ordinals turns it red with the exact diff. A red test after a
+dependency bump means every saved script changed meaning; it does not mean
+the file needs updating.
+
+**Consequences.** 154 → 189 engine tests, all green. Two ctests added
+(`CadexSubshapeEnumeration`, `CadexResponseSchemas`). `conftest.py` puts the
+suite's own directory on `sys.path` so a test can reuse another's helpers.
+
+**Not done in this change, and not silently:** the mesh-repo half of Phase 9
+(deleting the local bpy modes, the app template, and asserting these same
+fixtures from the shell side) is its own repository's commits; the
+warm-standby worker is untouched; and Phase 10a's probe has not run, so
+whether the enumeration is *reproducible outside FreeCAD* — as opposed to
+merely stable within it, which is what this gate proves — remains open.

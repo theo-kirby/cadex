@@ -29,3 +29,10 @@ _install_freecad_stubs()
 
 if str(CADEX_DIR) not in sys.path:
     sys.path.insert(0, str(CADEX_DIR))
+
+# The suite's own directory, so a test can reuse another's helpers rather
+# than restating them (test_subshape_enumeration drives the cadexd client
+# that test_cadexd_lifecycle already builds).
+_TESTS_DIR = Path(__file__).resolve().parent
+if str(_TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_TESTS_DIR))

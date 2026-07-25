@@ -273,14 +273,19 @@ depends on. Independent of Phase 8.
       `CadexScriptedDomainPublication.py` — the robot / FEM / inspection /
       points branches no live domain can reach. *Landed 2026-07-25
       (ADR-026): 7,012 → 3,613 lines, 48% removed.*
-- [ ] **Response-schema fixtures.** `OP_ARG_SPECS` pins *requests* only; the
+- [x] **Response-schema fixtures.** `OP_ARG_SPECS` pins *requests* only; the
       shell reads ~50 response keys that nothing asserts. A golden
-      shape-only fixture per op, asserted in both repos. This is what makes
-      "replace either side independently" true rather than assumed.
-- [ ] **Pin the OCCT version and gate subshape enumeration.** BOPAlgo's
+      shape-only fixture per op. This is what makes "replace either side
+      independently" true rather than assumed. *Engine side landed
+      2026-07-25 (ADR-027); wiring the validator into the live lifecycle
+      found three shapes the recording missed.*
+- [ ] **Assert the same fixtures from the shell side** (mesh repo) — the
+      other half of "asserted in both repos".
+- [x] **Pin the OCCT version and gate subshape enumeration.** BOPAlgo's
       ordering is not a documented contract and has changed across OCCT
       releases; today one `pixi update` silently re-indexes every saved
-      script.
+      script. *Landed 2026-07-25 (ADR-027): `occt = "==7.8.1"` + ctest
+      `CadexSubshapeEnumeration`.*
 - [ ] **Warm-standby worker.** The per-drag `FreeCADCmd --safe-mode` spawn
       (~0.4–0.5 s) dominates the ~0.55 s slider median. The only
       user-visible improvement available at any price this year: weeks of

@@ -83,6 +83,41 @@ lifetime signal.
 | `cancel` | `request_id?` | acks and cancels the in-flight modeling request (`RUN_CANCELLED` flows to that request) |
 | `shutdown` | — | graceful exit |
 
+### Response shapes
+
+The table above says what an op *means*; this one says what its reply
+*contains*. Pinned in `CadexdProtocol.OP_RESPONSE_SPECS`, recorded as
+shape-only golden fixtures in `cadex_tests/response_schemas/`, and enforced
+by `cadex_tests/test_response_schemas.py` — which also asserts this table
+and the code agree. Added in Phase 9 (ADR-025): the request half of the
+contract was already tested, the half the shell actually consumes was
+prose. Every response also carries `id` and `ok`.
+
+| Op | Response keys (success) |
+|---|---|
+| `open_project` | `schema`, `project_root`, `budgets`, `restore`, `script`, `manifest`? |
+| `describe_api` | `domain`, `domains`, `engine`, `instructions`, `program_schema`, `result_contract`, `revision_rule`, `source_globals`, `parameters`, `mutation_selection` |
+| `write_script` / `edit_script` / `set_params` / `rebuild` | `tool`, `revision`, `accepted_revision`, `digest`, `model_state`, `outputs`, `live_outputs`, `removed`, `display`? |
+| `resolve_pin` | `output`, `revision`, `subelements`, `details` |
+| `inspect` | `scope`, `target`, `path`, `value`, `page`, `document`, `surface`, `result_json_bytes` |
+| `cancel` | `cancelled` |
+| `shutdown` | `shutting_down` |
+
+Nested shapes the shell reads by name are pinned too
+(`NESTED_RESPONSE_SPECS`): `display.<output> {artifact_kind,
+artifact_path, placement, tessellation}`, its `tessellation {artifact_kind,
+artifact_path, sidecar_path, counts, deflection, quality}` and that block's
+`counts {faces, edges, triangles, vertices, edge_vertices}`; `model_state
+{status, accepted_is_current, next_write_expected_revision,
+verification_goal}`; `live_outputs.<output>`; `script`; `restore`;
+`budgets`.
+
+**Failures are one envelope for every op**, because the model reads it and
+acts on it: `tool`, `error`, `failure_code`, `failure_stage`, `observed`,
+`normalized`, `requested`, `retry`, `candidates`, `allowed_values`,
+`native_diagnostics`, `state_change`, and `model_state` when the op has
+one.
+
 Server failure codes: `CADEXD_PROTOCOL_ERROR`, `CADEXD_BUSY` (one modeling
 request in flight; read-only requests queue), `CADEXD_NOT_OPEN`,
 `CADEXD_CRASHED` (client-side, on child death), `CADEXD_RESTORE_FAILED`.

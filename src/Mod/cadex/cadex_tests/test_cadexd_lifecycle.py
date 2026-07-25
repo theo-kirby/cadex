@@ -66,6 +66,25 @@ FREECADCMD = _PACKAGED_BINARY or next(
     (candidate for candidate in _FREECADCMD_CANDIDATES if candidate.is_file()), None
 )
 
+def _validate_response(op: str, frame: dict) -> list[str]:
+    """Shape-check one response against the engine under test.
+
+    ``CadexdProtocol`` is loaded from ``CADEX_ROOT``, so when this test runs
+    against a *packaged* payload it validates against that payload's own
+    contract rather than the source tree's (ADR-023).
+    """
+
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "_cadexd_protocol_under_test", CADEX_ROOT / "CadexdProtocol.py"
+    )
+    assert spec and spec.loader, CADEX_ROOT
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.validate_response(op, frame)
+
+
 MIXED_SCRIPT = """
 p = params(width=num(30, unit="mm", min=10, max=90, step=1))
 plate = part.box(p.width, 18, 4)
@@ -142,7 +161,24 @@ class _CadexdClient:
             self._responses[str(frame.get("id"))] = frame
 
     def request(self, op: str, args: dict | None = None, timeout: float = 300.0) -> dict:
-        return self.wait_response(self.send(op, args), timeout)
+        """Send one request and check the reply against the pinned shape.
+
+        Checking here rather than in each assertion means every op this
+        lifecycle already drives also gates the response contract, and a
+        fixture that has drifted from the running engine fails against the
+        engine rather than against itself (Phase 9, ADR-025).
+        """
+
+        frame = self.wait_response(self.send(op, args), timeout)
+        problems = _validate_response(op, frame)
+        assert not problems, (
+            f"cadexd {op} response violates CadexdProtocol.OP_RESPONSE_SPECS:\n  "
+            + "\n  ".join(problems)
+            + "\nIf the contract genuinely moved, update OP_RESPONSE_SPECS, "
+            "the response table in docs/INTEGRATION.md, the golden fixture in "
+            "cadex_tests/response_schemas/, and the Blender shell."
+        )
+        return frame
 
     def wait_event(self, name: str, request_id: str, timeout: float = 120.0) -> dict:
         for frame in self.events:
