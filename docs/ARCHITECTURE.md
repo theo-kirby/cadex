@@ -120,7 +120,7 @@ Ownership closure, lint, and orphan queries live in
 | `CadexScriptedRuntime.py` | The project lifecycle: store persistence, source policy, worker staging/exec, validation, acceptance. `[Cadex-new]` |
 | `CadexScriptedDomains.py` | `PROJECT_PACK` + the five capability packs (worker/publication contracts), project tool specs, `project_script_revision`, object-tag constants, source sandbox rules. `[Cadex-new]` |
 | `cadex_project_api.py` / `cadex_project_worker.py` | The project domain: `params`/`num` vocabulary, inline assembly-source tokens, multi-domain exec namespace, per-domain evaluation, worker-side content digest. `[Cadex-new]` |
-| `CadexScriptedDomainPublication.py` / `CadexScriptedPublication.py` | Project publication (one transaction, lint, GC) over the per-domain apply routines. `[VibeCAD-era]`, reshaped `[Cadex-new]` |
+| `CadexScriptedDomainPublication.py` / `CadexScriptedPublication.py` | Project publication (one transaction, lint, GC) over the per-domain apply routines. Publishes the five live domains only — the robot/FEM/inspection/points/reverse-engineering/meshpart/surface paths were deleted in Phase 9 (ADR-026), halving the module. `[VibeCAD-era]`, reshaped `[Cadex-new]` |
 | `CadexScriptedOwnership.py` | Ownership tagging, owned closure, untagged/orphan queries. |
 | `CadexScriptedProcess.py` | Bounded subprocess runner (timeout, memory watchdog, cancellation). `[VibeCAD-era]` |
 | `CadexDigest.py` | Document-side diagnostic digest (`cadex-document-digest-v1`). `[Cadex-new]` |

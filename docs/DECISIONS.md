@@ -1177,4 +1177,41 @@ resolved in favour of *no* — `docs/VISION.md` principle 5 has humans steer
 via chat **and** sliders. macOS notarization of a Rust application bundling
 an OCCT engine that spawns subprocesses remains unexercised (inherited open
 item from ADR-023).
+## ADR-026 — Phase 9: the unreachable publication paths are deleted (2026-07-25)
+
+**Decision.** Delete the publication paths no live domain can reach — the
+subtractive half of Phase 9 (ADR-025).
+
+**The deletion.** `CadexScriptedDomainPublication.py` goes from 7,012 to
+3,613 lines — **3,399 removed, 48%**. The five live domains are exactly
+`assembly`, `mesh`, `part`, `partdesign`, `sketcher`
+(`XSCRIPT_WORKBENCH_PACKS`); publication dispatches on `pack.domain`, so
+every `robot` / `fem` / `inspection` / `points` / `reverse_engineering` /
+`meshpart` / `surface` branch was unreachable. Not merely unreachable —
+**unrunnable**: those workbench trees were deleted in Phase 1 (ADR-007/009),
+so `import ObjectsFem`, `import Inspection` and `import Robot` in the
+create-object factories could not have resolved since.
+
+Removed: 7 dispatch branches, 50 dead functions (the `_configure_*` bodies
+and their whole rollback/restore/freeze machinery), 19 module constants, and
+the `*_data` response keys for those domains — which no engine module
+produces and, checked against `/Users/theo/mesh`, no shell consumes.
+`_configure_mesh`'s `data_key` / `validation_property` parameters went with
+`meshpart`, its only other caller.
+
+**Method, because "delete the dead code" is where the bodies get buried.**
+Branches first, then an AST reachability walk from the module's real entry
+points — the names other modules and tests import, plus everything public,
+plus module-level statements — iterated to fixpoint, twice (round 2 found
+`_FEM_RESULT_VECTOR_LISTS`, reachable only from a constant round 1 had just
+removed). Then the same sweep for constants, refusing to remove any name
+another file references. Then an undefined-name check. The tests were the
+weakest evidence here and are stated as such: unreachable code cannot be
+exercised by a suite, so reachability was proved structurally and the suite
+only confirms nothing *else* broke.
+
+**Consequences.** The suite stays green at 154 tests. The contract gates
+that Phase 9 also calls for land separately in ADR-027; the mesh-repo half
+of Phase 9 (the local bpy modes, the app template) is its own repository's
+commits.
 

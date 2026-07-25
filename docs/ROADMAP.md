@@ -269,9 +269,10 @@ depends on. Independent of Phase 8.
       `orphans_purge`), so it is also the largest single decoupling win.
 - [ ] **Delete the app template** (294 lines) that exists purely to suppress
       Blender's UI.
-- [ ] **Delete the dead publication paths** in
+- [x] **Delete the dead publication paths** in
       `CadexScriptedDomainPublication.py` — the robot / FEM / inspection /
-      points branches no live domain can reach.
+      points branches no live domain can reach. *Landed 2026-07-25
+      (ADR-026): 7,012 → 3,613 lines, 48% removed.*
 - [ ] **Response-schema fixtures.** `OP_ARG_SPECS` pins *requests* only; the
       shell reads ~50 response keys that nothing asserts. A golden
       shape-only fixture per op, asserted in both repos. This is what makes
