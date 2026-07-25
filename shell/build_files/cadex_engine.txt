@@ -1,0 +1,27 @@
+# Pinned cadex engine payload (cadex ADR-023).
+#
+# Mesh ships the cadex engine inside its own application bundle so that
+# Cadex mode works with zero configuration. This file pins exactly which
+# engine, and its digest per platform, so a build is reproducible and a
+# tampered or truncated download fails loudly rather than silently.
+#
+# Format: one "key value" pair per line; blank lines and # comments ignored.
+#
+#   version   the cadex release tag to fetch
+#   base_url  where the payload tarballs are published
+#   <os>-<arch>  SHA256 of cadex-engine-<version>-<os>-<arch>.tar.gz
+#
+# To point a development build at a local engine tree instead, do not edit
+# this file: set MESH_CADEX_ENGINE to a directory containing
+# cadex-engine.json, or MESH_FREECADCMD to a FreeCADCmd binary. See
+# docs/mesh/CADEX_ENGINE.md.
+
+version   0.0.2
+base_url  https://github.com/theo/cadex/releases/download
+
+# Digests are filled in per release. "unpinned" means the fetch script will
+# refuse to stage that platform -- deliberately, so an unverified payload
+# can never end up inside a shipped bundle.
+macos-arm64  unpinned
+linux-x64    unpinned
+windows-x64  unpinned

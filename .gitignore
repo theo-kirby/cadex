@@ -77,3 +77,11 @@ goals.md
 #explicitly ignore local env
 .env
 build/engine/
+
+# the shell's build trees (its GNUmakefile picks the name per platform)
+/shell/build_darwin/
+/shell/build_linux/
+/shell/build_windows/
+/shell/build_darwin_*/
+/shell/build_linux_*/
+/shell/build_windows_*/

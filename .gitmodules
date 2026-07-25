@@ -4,3 +4,27 @@
 [submodule "src/3rdParty/GSL"]
 	path = src/3rdParty/GSL
 	url = https://github.com/microsoft/GSL
+# The shell's precompiled library sets (1.3 GB each). Content, never ours:
+# `update = none` keeps a plain `git submodule update --init --recursive`
+# from dragging all four platforms down. `pixi run setup` checks out the
+# one this platform needs.
+[submodule "shell/lib/linux_x64"]
+	update = none
+	path = shell/lib/linux_x64
+	url = https://projects.blender.org/blender/lib-linux_x64.git
+	branch = main
+[submodule "shell/lib/macos_arm64"]
+	update = none
+	path = shell/lib/macos_arm64
+	url = https://projects.blender.org/blender/lib-macos_arm64.git
+	branch = main
+[submodule "shell/lib/windows_x64"]
+	update = none
+	path = shell/lib/windows_x64
+	url = https://projects.blender.org/blender/lib-windows_x64.git
+	branch = main
+[submodule "shell/lib/windows_arm64"]
+	update = none
+	path = shell/lib/windows_arm64
+	url = https://projects.blender.org/blender/lib-windows_arm64.git
+	branch = main

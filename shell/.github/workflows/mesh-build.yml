@@ -1,0 +1,108 @@
+name: Mesh Build
+
+# The first CI this repository has had. Scope is deliberately one platform
+# (macOS arm64, the only one whose bundle is built today) -- cadex ADR-023
+# sequences the others after Phase 7.
+#
+# What it proves, in order: Mesh builds; the pinned cadex engine payload
+# verifies and stages; the installed bundle carries it; and all three agent
+# suites pass headless against that bundle with no engine environment set,
+# which is the Phase 7 exit criterion.
+
+on:
+  push:
+    branches: [mesh-main]
+  pull_request:
+    branches: [mesh-main]
+  workflow_dispatch:
+    inputs:
+      engine_from_local:
+        description: "Path to a locally built cadex engine payload (skips the pinned download)."
+        required: false
+        type: string
+
+concurrency:
+  group: mesh-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: macOS arm64
+    runs-on: macos-14
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install build dependencies
+        run: |
+          brew install cmake ninja
+          ./build_files/build_environment/install_deps.sh --no-confirm || true
+
+      - name: Cache the precompiled libraries
+        uses: actions/cache@v4
+        with:
+          path: lib
+          key: mesh-lib-macos-arm64-${{ hashFiles('build_files/cmake/platform/platform_apple.cmake') }}
+
+      - name: Fetch the precompiled libraries
+        run: make update
+
+      # Stage the engine before configuring: WITH_CADEX_ENGINE fails the
+      # configure outright when the payload is missing, which is the point.
+      - name: Stage the cadex engine payload
+        run: |
+          if [ -n "${{ inputs.engine_from_local }}" ]; then
+            python3 build_files/utils/fetch_cadex_engine.py \
+              --stage "${GITHUB_WORKSPACE}/build_darwin/cadex_engine" \
+              --from-local "${{ inputs.engine_from_local }}"
+          else
+            python3 build_files/utils/fetch_cadex_engine.py \
+              --stage "${GITHUB_WORKSPACE}/build_darwin/cadex_engine"
+          fi
+
+      - name: Build
+        run: |
+          cmake -S . -B build_darwin -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DWITH_CADEX_ENGINE=ON \
+            -DCADEX_ENGINE_DIR="${GITHUB_WORKSPACE}/build_darwin/cadex_engine"
+          cmake --build build_darwin --target install
+
+      - name: Agent tests (local model path)
+        run: |
+          BLENDER=build_darwin/bin/Blender.app/Contents/MacOS/Blender
+          "${BLENDER}" --background --factory-startup \
+            --python tests/python/bl_mesh_agent.py
+          "${BLENDER}" --background --factory-startup \
+            --python tests/python/bl_mesh_agent_cad.py
+
+      # The exit criterion: no MESH_FREECADCMD, no MESH_CADEXD_MODULE, no
+      # MESH_CADEX_ENGINE. The add-on must find the engine inside the
+      # bundle by reading its manifest, or this fails.
+      - name: Gate -- CADEX-BLENDER-GATE with zero configuration
+        env:
+          MESH_FREECADCMD: ""
+          MESH_CADEXD_MODULE: ""
+          MESH_CADEX_ENGINE: ""
+        run: |
+          BLENDER=build_darwin/bin/Blender.app/Contents/MacOS/Blender
+          "${BLENDER}" --background --factory-startup \
+            --python tests/python/bl_mesh_agent_cadex.py | tee gate.txt
+          grep -q '"ok": true' gate.txt
+          grep -q '"engine_from_bundle": true' gate.txt
+
+      - name: Bundle
+        run: |
+          tar -C build_darwin/bin -czf mesh-macos-arm64.tar.gz Blender.app
+          shasum -a 256 mesh-macos-arm64.tar.gz | tee mesh-macos-arm64.tar.gz.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mesh-macos-arm64
+          path: |
+            mesh-macos-arm64.tar.gz
+            mesh-macos-arm64.tar.gz.sha256
+            gate.txt
+          if-no-files-found: error
