@@ -33,9 +33,7 @@ set(Cadex_Scripts
     cadex_sketcher_worker.py
     cadex_tessellation.py
     cadexd.py
-    CadexdClient.py
     CadexdProtocol.py
-    CadexShellHydration.py
     CadexDigest.py
 )
 

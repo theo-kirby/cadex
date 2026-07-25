@@ -12,17 +12,22 @@ The closure is computed by AST walk from the two engine entry points, so it
 holds for the packaged payload (which ships modules, not an import graph)
 and not merely for whatever the pytest process happened to import.
 
-:data:`KNOWN_RESIDUE` is the ledger of forbidden edges the closure still
-carries, each tagged with the Phase 7 commit that removes it. It only ever
-shrinks: growing it needs an ADR, and *failing to shrink it* is caught by
-:func:`test_declared_residue_is_still_real`, which fails once an entry stops
-being true. When it empties, C5 widens the scope from the closure to the
-whole of ``src/Mod/cadex/**``.
+:data:`KNOWN_RESIDUE` is empty as of C5: the Qt shell is gone, so the
+forbidden-import check applies to the whole of ``src/Mod/cadex/**`` and not
+merely to the closure. The ledger stays in place because it is the shape a
+future exception would have to take -- named, dated, and asserted still
+true -- rather than a quiet import.
+
+The op table cross-check is the one that matters most now. With the shell
+in another repository, ``docs/INTEGRATION.md`` is the protocol contract two
+codebases are written against, and nothing but this test notices when the
+document and the code drift apart.
 """
 
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 MODULE_DIR = Path(__file__).resolve().parent.parent
@@ -127,11 +132,13 @@ def test_engine_closure_never_reaches_qt() -> None:
 
 
 def test_engine_closure_carries_no_undeclared_shell_imports() -> None:
+    """Whole-tree since C5: there is no shell in this repository to exempt."""
+
     undeclared: list[str] = []
-    for module, roots in _engine_closure().items():
-        for root in sorted(FORBIDDEN_ROOTS.intersection(roots)):
-            if (module, root) not in KNOWN_RESIDUE:
-                undeclared.append(f"{module} -> {root}")
+    for path in sorted(MODULE_DIR.glob("*.py")):
+        for root in sorted(FORBIDDEN_ROOTS.intersection(_import_roots(path))):
+            if (path.stem, root) not in KNOWN_RESIDUE:
+                undeclared.append(f"{path.stem} -> {root}")
     assert not undeclared, (
         f"New shell-shaped imports in the engine closure: {undeclared}. "
         "The engine may not gain Qt, GUI, tool_impl or jsonschema edges; "
@@ -142,11 +149,10 @@ def test_engine_closure_carries_no_undeclared_shell_imports() -> None:
 def test_declared_residue_is_still_real() -> None:
     """The ledger may not outlive the edges it excuses."""
 
-    closure = _engine_closure()
     stale = [
         f"{module} -> {root} (was to go in {commit})"
         for (module, root), commit in KNOWN_RESIDUE.items()
-        if root not in closure.get(module, set())
+        if root not in _import_roots(MODULE_DIR / f"{module}.py")
     ]
     assert not stale, (
         f"KNOWN_RESIDUE excuses edges that no longer exist: {stale}. "
@@ -172,4 +178,43 @@ def test_the_conversation_store_left_the_engine() -> None:
     assert "CadexProject" not in _engine_closure(), (
         "CadexProject carries the conversation store; the engine reaches "
         "THE project script through CadexScriptStore only."
+    )
+
+
+def _documented_ops() -> set[str]:
+    """Ops named in the protocol table of ``docs/INTEGRATION.md``.
+
+    The table's rows begin ``| `op` |`` or ``| `a` / `b` |``; op names are
+    the backticked cells in the first column.
+    """
+
+    doc = (MODULE_DIR.parents[2] / "docs" / "INTEGRATION.md").read_text(
+        encoding="utf-8")
+    ops: set[str] = set()
+    for line in doc.splitlines():
+        if not line.startswith("| `"):
+            continue
+        first_cell = line.split("|")[1]
+        ops.update(re.findall(r"`([a-z_]+)`", first_cell))
+    return ops
+
+
+def test_the_protocol_document_matches_the_op_table() -> None:
+    """docs/INTEGRATION.md is the cross-repository contract, so it is tested.
+
+    The Blender shell is written against that document, in another
+    repository, under another licence. Nothing else in either tree notices
+    when the prose and ``OP_ARG_SPECS`` disagree — and a shell that calls an
+    op the engine does not serve fails at the user, not at a test.
+    """
+
+    from CadexdProtocol import OP_ARG_SPECS
+
+    documented = _documented_ops()
+    implemented = set(OP_ARG_SPECS)
+    assert documented == implemented, (
+        "docs/INTEGRATION.md and CadexdProtocol.OP_ARG_SPECS disagree.\n"
+        f"  documented but not served: {sorted(documented - implemented)}\n"
+        f"  served but not documented: {sorted(implemented - documented)}\n"
+        "With the shell in another repository, the document IS the contract."
     )
