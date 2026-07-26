@@ -70,6 +70,10 @@ class _State:
         #: The engine's restore block from the last open (ADR-017): what
         #: it re-ran and whether the digest matched.
         self.restore = {}
+        #: Non-empty while this project is open WITHOUT a proven restore
+        #: (ADR-044). Rides on every tool result from such a project so the
+        #: caller cannot mistake a rewrite-in-progress for a healthy model.
+        self.restore_warning = ""
 
 
 def _preferences():
@@ -386,7 +390,7 @@ def _refresh_script_state(scene):
     return True
 
 
-def ensure_open(scene):
+def ensure_open(scene, unrestored_ok=False):
     """Open the scene's engine project (idempotent). Returns (ok, report).
 
     The open runs the engine's **restore pass**: cadexd re-executes the
@@ -401,20 +405,33 @@ def ensure_open(scene):
     A failed restore is a first-class error: ``CADEXD_RESTORE_FAILED`` says
     the stored script and the stored digest disagree, which needs a human,
     not a retry.
+
+    ``unrestored_ok`` is the one exception, and it is what makes that error
+    survivable. The failure report tells the caller to rewrite the script —
+    but every tool, ``write_script`` included, comes through here, so the
+    remedy was gated behind the thing it remedies and the project was shut
+    for good (ADR-044). Callers that *replace* the stored script rather than
+    build on it pass ``unrestored_ok=True``; the project is then reopened
+    with ``restore: False``, and the returned report is a warning, not an
+    error. Everything that would build on an unproven model still refuses.
     """
     root = project_root(scene)
     state = _state_for(root)
     client = _client(root)
     if state.opened and client.alive():
-        return True, ""
+        return True, state.restore_warning
     opened = client.request(
         "open_project",
         {"project_root": root, "restore": True},
         progress_callback=_progress)
     if opened.get("ok") is not True:
         if str(opened.get("failure_code") or "") == RESTORE_FAILED_CODE:
-            return False, _restore_failure_report(root, opened)
+            report = _restore_failure_report(root, opened)
+            if not unrestored_ok:
+                return False, report
+            return _open_unrestored(scene, root, state, client, report)
         return False, _failure_report("open_project", opened)
+    state.restore_warning = ""
     state.opened = True
     state.restore = dict(opened.get("restore") or {})
     _adopt_script_state(scene, dict(opened.get("script") or {}),
@@ -434,6 +451,31 @@ def ensure_open(scene):
             rebuilt.get("display") or {}, rebuilt.get("revision") or "")
         _refresh_script_state(scene)
     return True, ""
+
+
+def _open_unrestored(scene, root, state, client, report):
+    """Reopen a project whose restore pass failed, for a rewrite.
+
+    No rebuild and no hydration: the stored script does not run, so there is
+    no model to show and asking for one would only fail a second time. The
+    script state still comes back, which is what the caller needs in order
+    to write a replacement.
+    """
+    opened = client.request(
+        "open_project",
+        {"project_root": root, "restore": False},
+        progress_callback=_progress)
+    if opened.get("ok") is not True:
+        return False, _failure_report("open_project", opened)
+    state.opened = True
+    state.restore = dict(opened.get("restore") or {})
+    state.restore_warning = (
+        report + "\n\nThe project was opened WITHOUT restoring, so that the "
+        "script can be replaced. Nothing is published until a write_script "
+        "succeeds; the accepted geometry is untouched until then.")
+    _adopt_script_state(scene, dict(opened.get("script") or {}),
+                        preserve_local=True)
+    return True, state.restore_warning
 
 
 def _restore_failure_report(root, payload):
@@ -596,10 +638,10 @@ class Lifecycle:
 
 
 def begin_lifecycle(scene, op, args, display=None, guarded=True,
-                    cancelled=None, on_accept=None):
+                    cancelled=None, on_accept=None, unrestored_ok=False):
     """Start a modeling request. Returns ``(False, report)`` if the project
     could not be opened, else a :class:`Lifecycle` to poll."""
-    ok, report = ensure_open(scene)
+    ok, report = ensure_open(scene, unrestored_ok=unrestored_ok)
     if not ok:
         return False, report
     _cancel_refine(project_root(scene))
@@ -610,10 +652,22 @@ def begin_lifecycle(scene, op, args, display=None, guarded=True,
 # -- the agent's two modeling tools, in begin/poll form ----------------------
 
 def begin_write_script(scene, source, cancelled=None):
-    """Start a ``write_script``. Returns a :class:`Lifecycle` or (ok, report)."""
+    """Start a ``write_script``. Returns a :class:`Lifecycle` or (ok, report).
+
+    The one op that runs on an unrestored project: it replaces the stored
+    script outright, so it neither reads nor builds on the model the restore
+    pass could not prove, and it is the documented way out of that state
+    (ADR-044).
+    """
+    def accepted():
+        # The rewrite ran and was accepted, so the store is consistent again:
+        # this revision is both the working and the accepted one.
+        _state_for(project_root(scene)).restore_warning = ""
+        _refresh_script_state(scene)
+
     return begin_lifecycle(
         scene, "write_script", {"source": source}, cancelled=cancelled,
-        on_accept=lambda: _refresh_script_state(scene))
+        on_accept=accepted, unrestored_ok=True)
 
 
 def begin_set_params(scene, updates, cancelled=None):
@@ -797,8 +851,12 @@ def _schedule_refine(scene):
 
 
 def get_script_report(scene):
-    """The get_script tool body for the cadex backend."""
-    ok, report = ensure_open(scene)
+    """The get_script tool body for the cadex backend.
+
+    Reads on an unrestored project too: rewriting a script you are not
+    allowed to read is not a recovery path (ADR-044).
+    """
+    ok, report = ensure_open(scene, unrestored_ok=True)
     if not ok:
         return False, report
     state = _state_for(project_root(scene))
@@ -811,6 +869,8 @@ def get_script_report(scene):
         lines.append("\nCurrent parameter values: "
                      + json.dumps(state.values, sort_keys=True))
     lines.append("Engine revision: " + (state.revision or "(none)"))
+    if state.restore_warning:
+        lines.append("\n" + state.restore_warning)
     return True, "\n".join(lines)
 
 

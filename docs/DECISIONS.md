@@ -2631,3 +2631,85 @@ rebuild and second rebuild.
 `None`**, and yields a Shell (or a Compound of shells), never a Solid — so
 the branch promotes with `Part.makeSolid` and refuses a mesh that sews into
 more than one shell.
+
+## ADR-044 — A refused script must not be able to shut the project (2026-07-26)
+
+**Decision.** Six changes, so that no script the engine refuses can cost a
+user their model:
+
+1. **A failed candidate is rolled back.**
+   `prepare_project_candidate` still writes the candidate source to
+   `script.py` before running it — a host that dies mid-run keeps the source
+   that was running — but `record_project_candidate_failure` now restores the
+   previous source, `working_revision` and `param_values`. The refused source
+   stays recoverable in its attempt's `request.json`, which `latest_candidate`
+   locates.
+2. **A restore that cannot run the stored script retries from the accepted
+   revision's own source**, pinned in `accepted_attempt` and read by the new
+   `CadexProjectScriptStore.read_accepted_source()`. Success reports
+   `restore.repaired_from_accepted: true`. A script that *runs* and produces a
+   different digest is untouched by this: that is the user's edit, and it
+   stays a hard `CADEXD_RESTORE_FAILED`.
+3. **A mismatched restore no longer redefines the accepted model.** The
+   restore pass runs through `write_script`, which accepts what it builds, so
+   the run that proved the model was also the run that could replace it: the
+   *second* open of a hand-edited project came up clean with the edit
+   installed as the accepted revision. The mismatch branch now rolls the four
+   `accepted_*` fields back before it reports.
+4. **`write_script` and `get_script` work on a project whose restore failed**
+   (`ensure_open(unrestored_ok=True)` → reopen with `restore: False`, and a
+   warning carried on every result until a rewrite lands). Everything else
+   still refuses an unproven model.
+5. **A caller's own `open_project` is no longer replayed by the client.**
+   `CadexdClient.request` ran `_ensure_open` first for every op, which built
+   its own args — so an explicit `open_project` was answered by a *different*
+   open, and `restore: False` never reached the engine. It also sent every
+   open twice.
+6. **`stdout` rides the success reply** (`OP_RESPONSE_SPECS`, optional), and
+   **`get_script` is capped at 64 KB** rather than the 4 KB that applies to
+   other tool results, with a truncation marker that states the numbers.
+
+**Rationale.** Reconstructed from a real modeling session, where all six
+failed in sequence. The agent was asked to align an imported
+flight controller to the chassis mounting posts. `get_script` served 4,123 of
+the script's 8,244 characters, cut mid-line, and the posts were in the half
+that was dropped. It added `print()` probes; the revision was accepted and no
+stdout came back, because only the *failure* envelope carried it. So it did
+the one thing that did work — `{}[str(info)]`, a deliberate `KeyError`
+carrying the values in its message. That refused candidate stayed on disk as
+the working source. Four minutes later the engine respawned, the restore pass
+re-ran the working source, and the project refused every operation from then
+on, including the `write_script` its own error message recommended. Nothing
+was corrupt: the accepted revision, its digest and its source were all intact
+and pinned on disk the whole time.
+
+The chain matters more than any link in it. A truncation with no way to
+detect it produced a need to observe; no way to observe produced a
+deliberately-failing script; a failing script was durable; a durable failure
+was load-bearing at open; and every recovery went through open. Each step is
+defensible alone. What makes them a defect together is that the failure was
+**silent, deferred, and self-blocking** — the store was poisoned at 16:09 and
+did not fail until 16:13, and could just as easily have failed the next
+morning.
+
+**Consequences.** `restore.repaired_from_accepted` is new and optional;
+`stdout` is new and optional on the four modeling ops; `docs/INTEGRATION.md`
+carries both. `_ensure_open` no longer runs for `open_project`, which removes
+one full script run from every open.
+
+Seven engine tests in the new `cadex_tests/test_project_store_recovery.py`
+pin the rollback (including the first-script and `set_params` cases), the
+accepted-source fallback, the mismatch rollback and the `stdout` payload,
+without needing a live cadexd. Five gate tests in
+`bl_mesh_agent_cadex.py` drive the whole thing through the real tools against
+the built bundle: a refused edit leaves the project openable, a broken store
+can still be rewritten, a script that will not run is repaired from the
+accepted source, a working script's stdout reaches the caller, and a long
+script survives `get_script` intact. `test_restore_failure_is_first_class`
+gained the second open that catches the silent adoption.
+
+**What this does not change.** `script.py` is still the project's source of
+truth and a hand edit that changes the model is still a first-class restore
+failure, reported and never silently reverted. The fallback in (2) fires only
+for a stored script that cannot execute at all, which is not a state a user
+can reach by editing.

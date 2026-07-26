@@ -101,7 +101,7 @@ lifetime signal.
 
 | Op | Args | Response payload |
 |---|---|---|
-| `open_project` | `project_root`, `budgets?`, `restore?` | manifest + full script.json state; **restore pass** re-runs THE script into the fresh ephemeral document and asserts digest equality when an accepted digest exists |
+| `open_project` | `project_root`, `budgets?`, `restore?` | manifest + full script.json state; **restore pass** re-runs THE script into the fresh ephemeral document and asserts digest equality when an accepted digest exists; a script that will not run at all is retried once from the accepted revision's pinned source (ADR-044) |
 | `describe_api` | — | `describe_project_api()` verbatim |
 | `write_script` / `edit_script` / `set_params` | today's tool args + optional `display {quality, deflection, edges}` | **byte-identical** to the in-process tool payload (accept payload / `tool_failure` envelope, `STALE_PROGRAM_REVISION` guard included) + per-output `display {artifact_kind, artifact_path (abs), placement, tessellation\|null}` |
 | `rebuild` | `display?` | explicit deterministic re-run of the stored script (same payload shape) |
@@ -125,12 +125,26 @@ prose. Every response also carries `id` and `ok`.
 |---|---|
 | `open_project` | `schema`, `project_root`, `budgets`, `restore`, `script`, `manifest`? |
 | `describe_api` | `domain`, `domains`, `engine`, `instructions`, `program_schema`, `result_contract`, `revision_rule`, `source_globals`, `parameters`, `mutation_selection` |
-| `write_script` / `edit_script` / `set_params` / `rebuild` | `tool`, `revision`, `accepted_revision`, `digest`, `model_state`, `outputs`, `live_outputs`, `removed`, `display`? |
+| `write_script` / `edit_script` / `set_params` / `rebuild` | `tool`, `revision`, `accepted_revision`, `digest`, `model_state`, `outputs`, `live_outputs`, `removed`, `display`?, `stdout`? |
 | `put_asset` | `name`, `bytes`, `sha256`, `assets` |
 | `resolve_pin` | `output`, `revision`, `subelements`, `details` |
 | `inspect` | `scope`, `target`, `path`, `value`, `page`, `document`, `surface`, `result_json_bytes` |
 | `cancel` | `cancelled` |
 | `shutdown` | `shutting_down` |
+
+`restore` reports what the open re-proved. A stored script that runs but
+produces a different digest is a **restore failure** — the user changed the
+script, and saying so is the point. A stored script that will not run at all
+is not that: it is a store left broken by something with no business writing
+it, so the pass retries once from the accepted revision's pinned source and,
+if that reproduces the accepted digest, reports
+`repaired_from_accepted: true` and leaves the store consistent (ADR-044).
+
+`stdout` is the script's own printed output. It is sent on success as well
+as on failure (ADR-044): a `print()` that only reaches the caller when the
+run breaks makes a deliberately-failing script the cheapest way to read a
+value out of a working one. It is marked optional so a shell written
+against the pre-ADR-044 shape still validates.
 
 Nested shapes the shell reads by name are pinned too
 (`NESTED_RESPONSE_SPECS`): `display.<output> {artifact_kind,

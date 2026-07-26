@@ -214,7 +214,11 @@ model lives beside the file that displays it.
 
 `CadexProjectScriptStore` (`CadexScriptStore.py`, split out of
 `CadexProject.py` in C1) owns `script.py`/`script.json` with atomic,
-schema-checked writes. **Conversation history is no longer here**: it lives
+schema-checked writes. A candidate is written before it runs and rolled back
+if it fails, so `script.py` only ever holds a source that executed; the
+accepted revision's own source stays pinned in its staging directory and is
+readable with `read_accepted_source()`, which is what the restore pass falls
+back to when the working script will not run at all (ADR-044). **Conversation history is no longer here**: it lives
 in the `.blend` with the Claude Code session id (ADR-020, decision 4), and
 the engine's conversation store died with the Qt shell. VibeCAD-era
 per-domain program stores are not migrated (ADR-011).

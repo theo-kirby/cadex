@@ -332,25 +332,64 @@ class CadexdServer:
             # Restore pass: re-run THE script into the fresh ephemeral
             # document and assert digest equality — every open re-proves
             # restart determinism and makes document/object inspect live.
-            payload = self._run_lifecycle(
-                service,
-                "xscript.project.write_script",
-                {
-                    "source": source,
-                    "expected_revision": str(state.get("working_revision") or ""),
-                },
-                cancellation_check=self._cancellation_check(request_id),
-                progress_callback=lambda event: self._send(
-                    {"id": request_id, "event": event}
-                ),
-            )
-            if payload.get("ok") is not True:
-                return failure(
-                    CADEXD_RESTORE_FAILED,
-                    "The restore pass could not re-run the accepted script.",
-                    restore_failure=payload,
+            def rerun(text: str) -> dict[str, Any]:
+                return self._run_lifecycle(
+                    service,
+                    "xscript.project.write_script",
+                    {
+                        "source": text,
+                        "expected_revision": str(
+                            store.read_state().get("working_revision") or ""
+                        ),
+                    },
+                    cancellation_check=self._cancellation_check(request_id),
+                    progress_callback=lambda event: self._send(
+                        {"id": request_id, "event": event}
+                    ),
                 )
+
+            payload = rerun(source)
+            repaired = False
+            if payload.get("ok") is not True:
+                # The working script does not even run. That is not a model
+                # the user changed — a script they changed still executes and
+                # fails on the *digest* below, which stays a hard error. It is
+                # a store left broken by something that had no business
+                # writing it: before ADR-044 a refused candidate stayed on
+                # disk, and re-running it locked the project shut for good.
+                # The accepted revision's own source is pinned beside it and
+                # provably reproduces the accepted digest, so use it, and say
+                # so in the reply.
+                accepted_source = store.read_accepted_source()
+                retry = (
+                    rerun(accepted_source)
+                    if accepted_source.strip() and accepted_source != source
+                    else None
+                )
+                if retry is None or retry.get("ok") is not True:
+                    return failure(
+                        CADEXD_RESTORE_FAILED,
+                        "The restore pass could not re-run the stored script.",
+                        restore_failure=payload,
+                    )
+                payload = retry
+                repaired = True
             if str(payload.get("digest") or "") != accepted_digest:
+                # The restore pass runs through `write_script`, which is an
+                # *accepting* operation: by now it has already recorded what
+                # it just built as the accepted revision. For a match that is
+                # a no-op. For a mismatch it is the whole model being
+                # redefined by whatever the file happened to contain — so the
+                # second open of a hand-edited project used to adopt the edit
+                # silently, having called it a corruption once (ADR-044).
+                store.write(
+                    state_updates={
+                        "accepted_revision": str(state.get("accepted_revision") or ""),
+                        "accepted_contract": state.get("accepted_contract"),
+                        "accepted_digest": accepted_digest,
+                        "accepted_attempt": state.get("accepted_attempt"),
+                    }
+                )
                 return failure(
                     CADEXD_RESTORE_FAILED,
                     "The restore pass digest does not match the accepted digest.",
@@ -364,6 +403,11 @@ class CadexdServer:
                 "digest": str(payload.get("digest") or ""),
                 "matches_accepted": True,
             }
+            if repaired:
+                # The rerun re-wrote script.py and working_revision on its way
+                # through, so the store is consistent again by the time this
+                # reply is sent.
+                restore["repaired_from_accepted"] = True
         return {
             "ok": True,
             "schema": PROTOCOL_SCHEMA,

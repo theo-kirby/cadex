@@ -177,10 +177,13 @@ OP_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     ),
     # `display` rides along whenever the run staged geometry, which is every
     # script that declares an output — not only when `display` was requested.
-    "write_script": (_MODELING_RESPONSE_REQUIRED, frozenset({"display"})),
-    "edit_script": (_MODELING_RESPONSE_REQUIRED, frozenset({"display"})),
-    "set_params": (_MODELING_RESPONSE_REQUIRED, frozenset({"display"})),
-    "rebuild": (_MODELING_RESPONSE_REQUIRED, frozenset({"display"})),
+    # `stdout` is the script's own output: always sent, empty for a script that
+    # printed nothing, and optional here only so a shell written against the
+    # older shape still validates (ADR-044).
+    "write_script": (_MODELING_RESPONSE_REQUIRED, frozenset({"display", "stdout"})),
+    "edit_script": (_MODELING_RESPONSE_REQUIRED, frozenset({"display", "stdout"})),
+    "set_params": (_MODELING_RESPONSE_REQUIRED, frozenset({"display", "stdout"})),
+    "rebuild": (_MODELING_RESPONSE_REQUIRED, frozenset({"display", "stdout"})),
     # The stored file's identity, plus the whole listing: one round trip
     # answers "did it land" and "what is importable now".
     "put_asset": (
@@ -261,10 +264,12 @@ NESTED_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset(),
     ),
     # A performed restore also reports the digest it re-derived and that it
-    # matched; a skipped one carries neither.
+    # matched; a skipped one carries neither. `repaired_from_accepted` appears
+    # only when the working script would not run and the accepted revision's
+    # own source was used instead (ADR-044).
     "restore": (
         frozenset({"performed"}),
-        frozenset({"digest", "matches_accepted"}),
+        frozenset({"digest", "matches_accepted", "repaired_from_accepted"}),
     ),
     "budgets": (frozenset({"timeout_seconds", "memory_limit_mb"}), frozenset()),
 }

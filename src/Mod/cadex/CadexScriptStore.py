@@ -89,6 +89,31 @@ class CadexProjectScriptStore:
             return ""
         return self.script_path.read_text(encoding="utf-8")
 
+    def read_accepted_source(self) -> str:
+        """The source of the accepted revision, or ``""`` if there is none.
+
+        ``script.py`` is the working source and stays the project's source of
+        truth. This is the last source that provably reproduced
+        ``accepted_digest``, kept in that revision's pinned staging directory
+        (``accepted_attempt``, which no GC removes). It is the restore pass's
+        fallback for the one case where the working source cannot be run at
+        all — a store left broken by something other than the user (ADR-044).
+        """
+
+        attempt = self.read_state().get("accepted_attempt")
+        if not isinstance(attempt, dict):
+            return ""
+        staging = str(attempt.get("staging") or "")
+        if not staging:
+            return ""
+        request = self.root / staging / "request.json"
+        try:
+            payload = json.loads(request.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return ""
+        source = payload.get("source") if isinstance(payload, dict) else None
+        return str(source or "")
+
     def read_state(self) -> dict[str, Any]:
         default = self.default_state()
         if not self.state_path.is_file():

@@ -1227,6 +1227,187 @@ def test_restore_failure_is_first_class(root):
     check("will not help" in report,
           "the report says retrying will not help")
 
+    # ADR-044: and it must keep refusing. The restore pass runs through
+    # write_script, which accepts what it builds, so the run that reports the
+    # corruption used to also adopt it -- the second open came up clean with
+    # the hand edit installed as the accepted model.
+    accepted = store_state(project)["accepted_digest"]
+    cadex_backend.close_all()
+    ok, report = cadex_backend.ensure_open(scene)
+    check(not ok, "the second open refuses too, rather than adopting the edit")
+    check(store_state(project)["accepted_digest"] == accepted,
+          "and the accepted digest still names the model the user built")
+
+
+# -- ADR-044: a refused script must not be able to shut the project ---------
+
+def test_a_refused_edit_leaves_the_project_openable(root):
+    """The whole ADR-044 failure, end to end, through the real tools.
+
+    A script that raises used to be left on disk as the working source. The
+    restore pass re-runs the working source at every open, so the next open
+    -- a respawn, or just quitting and coming back -- failed, and every tool
+    that could have fixed it opens the project first. One refused edit, and
+    the project was gone.
+    """
+    print("test_a_refused_edit_leaves_the_project_openable")
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, _report = run_tool("write_script", {"content": BASELINE_SCRIPT})
+    check(ok, "baseline accepted")
+    accepted = store_state(root)["accepted_revision"]
+
+    # Exactly the shape of the edit that caused this: a probe that raises on
+    # purpose, because raising was the only way to read a value back out.
+    ok, report = run_tool("edit_script", {"replacements": [
+        {"old": 'result = {"plate": plate}',
+         "new": 'info = [("w", 120)]\n{}[str(info)]\nresult = {"plate": plate}'}]})
+    check(not ok, "the raising edit is refused")
+
+    state = store_state(root)
+    check(state["accepted_revision"] == accepted,
+          "the accepted revision is untouched by the refused edit")
+    check(state["working_revision"] == accepted,
+          "the working revision rolled back to the accepted one")
+    with open(os.path.join(root, "script.py"), encoding="utf-8") as handle:
+        check("{}[str(info)]" not in handle.read(),
+              "the refused source is not left as the working script")
+
+    # The engine restarting is what used to surface the damage.
+    cadex_backend.close_all()
+    ok, report = cadex_backend.ensure_open(scene)
+    check(ok, "the project still opens after a refused edit ({:s})".format(
+        report or "clean"))
+    check(bpy.data.objects.get("plate") is not None,
+          "and the model comes back")
+
+    ok, text = run_tool("get_script", {})
+    check(ok and "{}[str(info)]" not in text,
+          "get_script shows the good script, not the refused one")
+
+
+def test_a_broken_store_can_still_be_rewritten(root):
+    """The documented remedy has to be reachable from the broken state.
+
+    ``write_script`` replaces the stored script outright, so it neither reads
+    nor builds on the model the restore pass could not prove -- but it went
+    through the same ``ensure_open`` as everything else, so the failure
+    report recommended an action the failure itself prevented.
+    """
+    print("test_a_broken_store_can_still_be_rewritten")
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, _report = run_tool("write_script", {"content": BASELINE_SCRIPT})
+    check(ok, "baseline accepted before breaking the store")
+
+    project = cadex_backend.project_root(scene)
+    cadex_backend.close_all()
+    # Break it the way only a human can: a script that runs but builds
+    # something else. The engine must keep calling this a restore failure.
+    script_path = os.path.join(project, "script.py")
+    with open(script_path, "r", encoding="utf-8") as handle:
+        source = handle.read()
+    with open(script_path, "w", encoding="utf-8") as handle:
+        handle.write(source.replace("part.box(120, 80, 8)",
+                                    "part.box(60, 40, 8)"))
+
+    ok, report = run_tool("rebuild_model", {})
+    check(not ok, "rebuild still refuses an unproven model")
+
+    ok, text = run_tool("get_script", {})
+    check(ok, "get_script reads a project whose restore failed")
+    check("part.box(60, 40, 8)" in text,
+          "and shows the script that has to be rewritten")
+    check("WITHOUT restoring" in text,
+          "with the state said plainly rather than implied")
+
+    ok, report = run_tool("write_script", {"content": BASELINE_SCRIPT})
+    check(ok, "write_script succeeds on a project whose restore failed: "
+              "{:s}".format(report))
+
+    cadex_backend.close_all()
+    ok, report = cadex_backend.ensure_open(scene)
+    check(ok, "the rewritten project opens clean ({:s})".format(
+        report or "clean"))
+
+
+def test_a_script_that_will_not_run_is_repaired_from_the_accepted_source(root):
+    """Self-repair for stores already broken by the pre-ADR-044 engine.
+
+    A working source that *runs* and mismatches is the user's edit and stays
+    a hard error (test_restore_failure_is_first_class). A working source that
+    will not run at all is not that, and the accepted revision's own source
+    is pinned right beside it.
+    """
+    print("test_a_script_that_will_not_run_is_repaired_from_the_accepted_source")
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, _report = run_tool("write_script", {"content": BASELINE_SCRIPT})
+    check(ok, "baseline accepted before poisoning the store")
+    accepted = store_state(root)["accepted_revision"]
+
+    project = cadex_backend.project_root(scene)
+    cadex_backend.close_all()
+    # Exactly what the old engine left behind: a raising script as the
+    # working source, with the accepted state still pointing at a good one.
+    with open(os.path.join(project, "script.py"), "a", encoding="utf-8") as handle:
+        handle.write('\n{}["boom"]\n')
+
+    ok, report = cadex_backend.ensure_open(scene)
+    check(ok, "a store that cannot run its script repairs itself ({:s})".format(
+        report or "clean"))
+    restore = cadex_backend._state_for(project).restore
+    check(restore.get("repaired_from_accepted") is True,
+          "the repair is reported, not silent: {!r}".format(restore))
+    check(restore.get("matches_accepted") is True,
+          "and the repaired model still matches the accepted digest")
+    check(store_state(root)["accepted_revision"] == accepted,
+          "the accepted revision is unchanged by the repair")
+    with open(os.path.join(project, "script.py"), encoding="utf-8") as handle:
+        check('{}["boom"]' not in handle.read(),
+              "the poisoned source is gone from the working script")
+
+
+def test_a_working_scripts_stdout_reaches_the_caller(root):
+    """``print()`` must work without making the script fail.
+
+    It reached the caller only on the failure envelope, which left "raise on
+    purpose" as the cheapest way to read a value out of a working script --
+    and that is what broke a project.
+    """
+    print("test_a_working_scripts_stdout_reaches_the_caller")
+    reset_scene(root)
+
+    ok, report = run_tool("write_script", {"content": (
+        BASELINE_SCRIPT + '\nprint("plate_volume", 120 * 80 * 8)\n')})
+    check(ok, "a script that prints is accepted")
+    check("plate_volume 76800" in report,
+          "and its stdout comes back on the accepted reply: {:s}".format(report))
+
+
+def test_get_script_is_not_truncated(root):
+    """The trigger: a script served at half length, cut mid-line.
+
+    get_script serves the exact text the next edit_script has to match, and
+    a model cannot tell that the half it was given is the half it needs.
+    """
+    print("test_get_script_is_not_truncated")
+    reset_scene(root)
+
+    # Comfortably past the 4 KB cap that used to apply, with a marker last.
+    padding = "\n".join(
+        "# padding line {:03d} ".format(n) + "x" * 60 for n in range(120))
+    source = BASELINE_SCRIPT + "\n" + padding + "\n# LAST-LINE-MARKER\n"
+    check(len(source) > 6000, "the fixture script is past the old cap")
+
+    ok, _report = run_tool("write_script", {"content": source})
+    check(ok, "the long script is accepted")
+
+    ok, text = run_tool("get_script", {})
+    check(ok, "get_script succeeds")
+    check("# LAST-LINE-MARKER" in text,
+          "the end of the script survives ({:d} chars returned)".format(len(text)))
+    check("truncated" not in text, "and nothing was elided")
 
 
 # -- M6: the engine describes its own API -----------------------------------
@@ -1376,6 +1557,11 @@ def main():
     rederive_root = tempfile.mkdtemp(prefix="mesh-cadex-rederive-")
     mirror_root = tempfile.mkdtemp(prefix="mesh-cadex-mirror-")
     defaults_root = tempfile.mkdtemp(prefix="mesh-cadex-defaults-")
+    refused_root = tempfile.mkdtemp(prefix="mesh-cadex-refused-")
+    rewrite_root = tempfile.mkdtemp(prefix="mesh-cadex-rewrite-")
+    repair_root = tempfile.mkdtemp(prefix="mesh-cadex-repair-")
+    stdout_root = tempfile.mkdtemp(prefix="mesh-cadex-stdout-")
+    long_root = tempfile.mkdtemp(prefix="mesh-cadex-long-")
     try:
         test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
@@ -1399,6 +1585,12 @@ def main():
         test_reopen_restores(reopen_root)
         test_open_runs_the_restore_pass(restore_root)
         test_restore_failure_is_first_class(corrupt_root)
+        test_a_refused_edit_leaves_the_project_openable(refused_root)
+        test_a_broken_store_can_still_be_rewritten(rewrite_root)
+        test_a_script_that_will_not_run_is_repaired_from_the_accepted_source(
+            repair_root)
+        test_a_working_scripts_stdout_reaches_the_caller(stdout_root)
+        test_get_script_is_not_truncated(long_root)
     finally:
         try:
             cadex_backend.close_all()
@@ -1415,7 +1607,9 @@ def main():
                      threading_root, cancel_root, saveas_root,
                      duplicate_root,
                      restore_root, corrupt_root, describe_root, edit_root,
-                     drop_root, rederive_root, mirror_root, defaults_root):
+                     drop_root, rederive_root, mirror_root, defaults_root,
+                     refused_root, rewrite_root, repair_root, stdout_root,
+                     long_root):
             shutil.rmtree(root, ignore_errors=True)
 
     GATE["ok"] = not FAILURES

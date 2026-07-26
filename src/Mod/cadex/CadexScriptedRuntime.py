@@ -815,7 +815,14 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         shutil.rmtree(staging, ignore_errors=True)
         raise
 
-    # The script file IS the working artifact: persist before execution.
+    # The script file IS the working artifact: persist before execution, so a
+    # host that dies mid-run still has the source that was running. A run that
+    # *fails* rolls this back (record_project_candidate_failure): a candidate
+    # the engine refused must never survive as the working source, because the
+    # restore pass re-runs the working source at every open and a script that
+    # raises would then lock the project shut (ADR-044). Nothing is lost by the
+    # rollback -- the refused source stays in this attempt's request.json,
+    # located by `latest_candidate`.
     store.write(
         source=source,
         state_updates={
@@ -829,6 +836,9 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         "pack": captured["pack"],
         "program_id": "project",
         "revision": revision,
+        "source_before": current_source,
+        "working_revision_before": working_revision,
+        "param_values_before": dict(state.get("param_values") or {}),
         "accepted_revision_before": str(state.get("accepted_revision") or ""),
         "accepted_contract_before": state.get("accepted_contract"),
         "accepted_digest_before": str(state.get("accepted_digest") or ""),
@@ -851,13 +861,29 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
 def record_project_candidate_failure(
     prepared: Mapping[str, Any], failure: Mapping[str, Any]
 ) -> None:
-    """Persist the failed candidate summary; the accepted state stays live."""
+    """Roll the working script back, then record the failed candidate.
+
+    ``prepare_project_candidate`` writes the candidate source to ``script.py``
+    before running it. If the run failed, that file now holds a source the
+    engine refused — and ``open_project``'s restore pass re-runs the working
+    source at every open. A candidate that raises would therefore fail every
+    subsequent open, including the ``write_script`` the failure report tells
+    the caller to perform: one refused edit would brick the project until a
+    human restored the ``.cadex`` directory from a backup (ADR-044).
+
+    So a failed candidate leaves no trace in the working state. The refused
+    source is still recoverable from its attempt's ``request.json``, which
+    ``latest_candidate`` locates.
+    """
 
     from CadexScriptStore import CadexProjectScriptStore
 
     store = CadexProjectScriptStore(str(prepared["project_root"]))
     store.write(
+        source=str(prepared.get("source_before") or ""),
         state_updates={
+            "param_values": dict(prepared.get("param_values_before") or {}),
+            "working_revision": str(prepared.get("working_revision_before") or ""),
             "latest_candidate": {
                 "status": "failed",
                 "revision": str(prepared["revision"]),
@@ -1089,6 +1115,11 @@ def accept_project_candidate(
         "revision": revision,
         "accepted_revision": revision,
         "removed": list(publication.get("removed") or []),
+        # The script's own stdout. The failure envelope has always carried it;
+        # dropping it here made `print()` work only when the run broke, which
+        # left "make the script fail on purpose" as the only way to read a
+        # value out of a working script (ADR-044).
+        "stdout": str(validated.get("stdout") or ""),
         "model_state": {
             "status": "accepted",
             "accepted_is_current": True,

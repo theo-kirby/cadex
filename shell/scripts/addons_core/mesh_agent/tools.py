@@ -22,6 +22,14 @@ MAX_RESULT_CHARS = 4096
 # truncating a domain's signatures at 4 KB would defeat its purpose.
 _API_DOMAIN_CHARS = 16384
 
+# get_script serves the exact text the next edit_script has to match. A
+# truncated script is worse than no script: the model cannot see that the
+# half it was given is the half it needs, so it edits blind, or --
+# as happened -- goes looking for the missing half by other means. Any
+# real project script fits well inside this; one that does not is reported
+# as truncated in a sentence rather than a marker (ADR-044).
+_SCRIPT_CHARS = 65536
+
 # Tools whose execution mutates the scene (drives per-turn undo batching).
 MUTATING_TOOLS = {"write_script", "set_params", "edit_script", "rebuild_model"}
 
@@ -327,8 +335,18 @@ def _text(message):
 
 
 def _truncate(text, limit=MAX_RESULT_CHARS):
+    """Cap one tool result, saying plainly how much was dropped.
+
+    The marker has to survive being read by a model that is about to act on
+    the text: "[... output truncated ...]" reads as trailing noise, while a
+    count reads as a fact about the result, and one that can be checked
+    against what the tool was asked for.
+    """
     if len(text) > limit:
-        return text[:limit] + "\n[... output truncated ...]"
+        return text[:limit] + (
+            "\n[... truncated: {:d} of {:d} characters shown. This result is "
+            "INCOMPLETE — do not treat it as the whole value ...]".format(
+                limit, len(text)))
     return text
 
 
@@ -382,7 +400,7 @@ def _tool_get_script(_tool_input):
     from . import cadex_backend
 
     ok, report = cadex_backend.get_script_report(bpy.context.scene)
-    return _text(_truncate(report)), not ok
+    return _text(_truncate(report, _SCRIPT_CHARS)), not ok
 
 
 def _deferred(started, render):

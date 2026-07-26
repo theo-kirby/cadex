@@ -386,9 +386,8 @@ class CadexdClient:
                     "process was killed.".format(timeout),
                     timeout_seconds=timeout)
 
-    def _ensure_open(self, progress_callback):
-        if self.alive() and self._open:
-            return None
+    def _start_child(self):
+        """Spawn a fresh child. Returns a failure payload, or None."""
         self._mark_dead()
         try:
             self._spawn()
@@ -397,6 +396,14 @@ class CadexdClient:
             return _failure("open_project", CADEXD_UNAVAILABLE,
                             "cadexd could not be started: {!s}".format(exc),
                             command=self.command[0])
+        return None
+
+    def _ensure_open(self, progress_callback):
+        if self.alive() and self._open:
+            return None
+        unavailable = self._start_child()
+        if unavailable is not None:
+            return unavailable
         args = {"project_root": self.project_root}
         if self.budgets:
             args["budgets"] = self.budgets
@@ -410,6 +417,30 @@ class CadexdClient:
         self.open_payload = opened
         return None
 
+    def _open_directly(self, args, timeout, progress_callback):
+        """Serve a caller's own ``open_project`` — do not replay one first.
+
+        Routing it through :meth:`_ensure_open` would send a *different*
+        open first (this class builds its own args, so ``restore`` always
+        defaults to true) and return that one's answer. The caller's
+        arguments would never reach the engine, which is how the one escape
+        from a failed restore -- opening with ``restore: False`` -- was
+        unreachable in practice (ADR-044). It also sent every open twice.
+        """
+        if not self.alive():
+            unavailable = self._start_child()
+            if unavailable is not None:
+                return unavailable
+        self._open = False
+        opened = self._await_response(
+            "open_project", dict(args or {}), timeout, progress_callback, None)
+        if opened.get("ok") is not True:
+            self._mark_dead()
+            return opened
+        self._open = True
+        self.open_payload = opened
+        return opened
+
     def request(self, op, args=None, timeout=None, progress_callback=None,
                 cancellation_check=None):
         """Run one protocol request; returns the response payload dict."""
@@ -417,6 +448,8 @@ class CadexdClient:
             timeout = self._default_timeout(op)
         with self._lock:
             self.last_events = []
+            if op == "open_project":
+                return self._open_directly(args, timeout, progress_callback)
             not_open = self._ensure_open(progress_callback)
             if not_open is not None:
                 return not_open
