@@ -1,4 +1,9 @@
-
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="cadex-logo-white.png">
+    <img src="cadex-logo-black.png" alt="Cadex" width="96">
+  </picture>
+</p>
 
 # Cadex
 
@@ -11,6 +16,10 @@ any time.
 
 There are no modeling toolbars and no workbench concept to learn. Chat,
 sliders, model tree, script, viewport.
+
+![A ducted-fan drone frame in the Cadex viewport, its declared parameters as
+sliders below, and the conversation that authored it on the
+right](docs/cadex-example.png)
 
 > **Status:** under active development, pre-release.
 
