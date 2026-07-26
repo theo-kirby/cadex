@@ -163,7 +163,15 @@ that `docs/VISION.md` describes, and the protocol client that
   `_adopt_script_state(..., preserve_local=True)` is what stops that
   emptiness from erasing the specs and the mirror, and
   `cadex_backend.orphaned_project()` drives the **Rebuild From Saved Script**
-  offer in the chat panel (ADR-033).
+  offer in the chat panel (ADR-033). That offer is reachable *before* any
+  open — the root simply not existing is enough — because Save-As closes
+  every session a moment after the new name takes effect (ADR-046).
+  **Imported geometry is the one thing that does come across**: assets are
+  inputs, not derived state, and a script that names one cannot re-run
+  without it, so `migrate_assets()` carries `assets/` into the new project
+  through `put_asset` when the script is adopted. `save_pre` is what records
+  *which* project to carry from (`SOURCE_PROP` — `bpy.data.filepath` still
+  names the old file there, and the value saves into the new one).
 - **There is one backend.** Until ADR-030 there were two, chosen by a mode
   dropdown: this one, and a local path that `exec()`d the script against
   `bpy`. The local path and everything serving it — `cad_api.py` (the

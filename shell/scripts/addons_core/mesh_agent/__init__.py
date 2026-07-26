@@ -136,6 +136,15 @@ class MeshAgentPreferences(bpy.types.AddonPreferences):
 @persistent
 def _save_pre_handler(_filepath):
     agent_module.get_agent().save_state()
+    # Last moment before the write, and bpy.data.filepath still names the
+    # OLD file here, so this is the only point at which a Save-As can record
+    # which project currently holds the model -- and the value lands inside
+    # the file being written, so a duplicate opened in a fresh session knows
+    # it too (ADR-046).
+    try:
+        cadex_backend_module.remember_source_root(bpy.context.scene)
+    except Exception:
+        pass
 
 
 @persistent

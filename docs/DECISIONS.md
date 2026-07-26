@@ -2789,3 +2789,72 @@ and its non-application to `edit_script`/`set_params`. Three gate tests drive
 the whole thing through the real tools: the battery-shaped mishap is refused
 and then allowed with `replace`, a two-version history lists/reads/reverts and
 records the revert itself, and pruning leaves `inspect scope=output` working.
+
+## ADR-046 — Save-As carries the geometry you imported (2026-07-26)
+
+**Decision.** Two changes to the Save-As path in the shell, both in
+`mesh_agent/`:
+
+1. **Imported geometry comes across.** `cadex_backend.migrate_assets()`
+   copies the previous project's `assets/` into the new one when the saved
+   script is adopted, one file at a time through the **`put_asset` op** —
+   cadexd stays the sole writer of the store, so the 64-file / 128 MB budget
+   is enforced where it is defined and nothing lands half-copied. Which
+   project to carry from is recorded in `save_pre` (`SOURCE_PROP`, where
+   `bpy.data.filepath` still names the old file) and therefore saves *into*
+   the new `.blend`, so a duplicate opened in a fresh session knows it too.
+   Everything the engine derives — staged artifacts, accepted revisions, the
+   `script_history` trail — still does **not** come across.
+2. **The offer is reachable.** `orphaned_project()` no longer requires the
+   engine to have opened the project first. Before an open there is no
+   engine state to ask, so it falls back to whether the root exists at all.
+
+**Rationale.** A user Saved-As `wcv6.blend` to `wcv7.blend` — a drone frame
+built on seven imported STLs — and got a file whose model could not be
+rebuilt or edited. Both halves of the recovery story were broken, and each
+hid the other.
+
+The button was unreachable. `orphaned_project()` was gated on
+`state.opened`, but `on_file_changed` calls `close_all()` a moment after the
+new name takes effect, so the one file that most needs the offer — the one
+just saved under a new name — was the only one that never got it. The chat's
+status line was the sole surviving affordance, and starting a new
+conversation (`history.clear()`) wipes it. The Text Editor's "Apply to
+Model" was reachable the whole time, which is why this survived review: the
+path exists, just not where the user was looking.
+
+And pressing it would not have worked anyway. ADR-043 made external geometry
+a first-class *input*; the Save-As note was written before it existed and
+reasoned only about *derived* state — "copying would duplicate BREP
+artifacts behind the user's back and silently fork the model's history",
+which is still right. Assets are neither derived nor reproducible: the
+script names them, and `write_script` dies on the first `mesh.import_file`
+without them. So "re-run the saved script into a new project" was not a
+recovery for any model built on geometry the user supplied — the failure
+observed verbatim was `DOMAIN_CANDIDATE_FAILED: api.import_file: no staged
+mesh asset named 'flight-controller.stl' exists`. The baked mesh stayed in
+the viewport, so the file looked fine and was not.
+
+The same hint fixes the first save of an unsaved file, which loses its
+assets the same way (temp root → `<stem>.cadex`) and was never noticed.
+
+**Why the shell reads one directory of the store.** `docs/ARCHITECTURE.md`
+said cadexd is the sole writer *and the sole reader*. The writer half is
+load-bearing and is untouched: every byte still goes in through `put_asset`.
+The reader half is now narrowed, and the doc says so — the shell lists
+`assets/`, and only in the root it is migrating away from, to hand those
+paths back to the engine. What is in there is the one thing in the store the
+shell supplied in the first place, and the shell already owns *where* the
+store lives (`project_root` derives `<stem>.cadex`). The alternative — a new
+op, or an optional `open_project` argument with a migration side effect —
+buys layout-independence for a directory whose name the shell already
+chooses.
+
+**Consequences.** No protocol change: `OP_ARG_SPECS`, the op table in
+`docs/INTEGRATION.md` and the ADR-027 response goldens are all untouched.
+`ARCHITECTURE.md`'s store invariant is narrowed to match. New gate test
+`test_save_as_carries_imported_geometry` drives the whole path — a model
+built on an imported STL, two accepted revisions, Save-As, orphan detected
+before any open, adopt, geometry back in the viewport, asset in the new
+store, history *not* carried — and
+`test_duplicated_file_keeps_its_parameters` gains the pre-open orphan check.

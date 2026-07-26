@@ -38,6 +38,19 @@ from . import cadex_hydrate
 
 ROOT_PROP = "mesh_cadex_root"
 
+#: The project root this file's model lived in when it was last written.
+#: Recorded in ``save_pre`` and therefore saved *inside* the resulting
+#: .blend, which is what lets a Save-As'd or duplicated file say where its
+#: imported geometry came from (ADR-046). Deliberately NOT consulted by
+#: :func:`project_root`: it is a migration hint, never a root.
+SOURCE_PROP = "mesh_cadex_source_root"
+
+#: The mesh formats the engine stages for ``mesh.import_file`` (cadex
+#: ``CadexScriptedRuntime._ASSET_SUFFIXES``). Mirrored here only to decide
+#: which files are worth offering to ``put_asset``, which re-validates every
+#: one of them; the shell never decides what the engine will accept.
+ASSET_SUFFIXES = (".stl", ".obj", ".ply")
+
 #: Progressive display (cadex INTEGRATION.md): slider drags request a
 #: coarse, edge-free tessellation to stay under the latency parity bar;
 #: once the drag settles, a background ``rebuild`` re-streams the standard
@@ -135,6 +148,79 @@ def project_root(scene):
         root = tempfile.mkdtemp(prefix="mesh-cadex-")
         _unsaved_roots[key] = root
     return root
+
+
+def remember_source_root(scene):
+    """Record the project root this file is about to be written away from.
+
+    Called from ``save_pre``, where ``bpy.data.filepath`` still names the
+    *old* file: what gets stored is the root that holds the model right now,
+    and it is stored before the write, so it travels into the new file.
+    Save-As is the case that needs it, but the first save of an unsaved
+    file -- temp root to ``<stem>.cadex`` -- is the same move and loses its
+    imported geometry the same way, so it gets the same hint.
+    """
+    if scene is None:
+        return
+    try:
+        scene[SOURCE_PROP] = project_root(scene)
+    except Exception:
+        pass
+
+
+def source_root(scene):
+    """Where this file's model was before it got its current name, or "".
+
+    The hint saved into the .blend first, because it survives a restart and
+    a plain file-manager copy. The session's own open roots are the fallback
+    for a file that was never saved with this add-on's handler installed.
+    Only a root that is not the current one, and that has imported geometry
+    in it, is worth reporting.
+    """
+    try:
+        current = os.path.abspath(project_root(scene))
+    except Exception:
+        return ""
+    remembered = ""
+    try:
+        remembered = str(scene.get(SOURCE_PROP, "") or "")
+    except Exception:
+        pass
+    for candidate in [remembered] + list(open_roots()):
+        if not candidate:
+            continue
+        candidate = os.path.abspath(candidate)
+        if candidate != current and _assets_in(candidate):
+            return candidate
+    return ""
+
+
+def _assets_in(root):
+    """Absolute paths of the importable mesh files in one project root.
+
+    The only directory of the store the shell ever reads, and it reads it
+    only to hand the paths back to ``put_asset``. What is in there is not
+    derived state: it is the files the user handed us, which the shell is
+    what supplied in the first place. The walk mirrors the engine's staging
+    walk -- flat, known suffixes, no symlinks -- so it never offers a file a
+    run would skip (ADR-046).
+    """
+    directory = os.path.join(root, "assets")
+    if not os.path.isdir(directory):
+        return []
+    try:
+        names = sorted(os.listdir(directory))
+    except OSError:
+        return []
+    found = []
+    for name in names:
+        path = os.path.join(directory, name)
+        if os.path.islink(path) or not os.path.isfile(path):
+            continue
+        if os.path.splitext(name)[1].lower() not in ASSET_SUFFIXES:
+            continue
+        found.append(path)
+    return found
 
 
 def _state_for(root):
@@ -1129,20 +1215,34 @@ def scene_remembers_a_model(scene):
 
 
 def orphaned_project(scene):
-    """The engine is open on this file's project and that project is empty.
+    """This file names an engine project with no script in it.
 
-    True only after an open, which is the point: before the open we cannot
-    know, and after it ``os.path.isdir`` is useless because ``open_project``
-    creates the root it was handed. ``script_present`` comes over the
-    protocol, so this asks the engine rather than reaching into its store.
+    Two ways to know, and both are needed. Once the project is open,
+    ``script_present`` comes over the protocol and is authoritative --
+    ``os.path.isdir`` is useless by then, because ``open_project`` creates
+    the root it was handed.
+
+    Before any open there is no state to ask, and Save-As leaves exactly
+    that gap: ``on_file_changed`` drops every session a moment after the new
+    name takes effect, so the file that most needs the offer -- the one just
+    saved under a new name -- was the only one that never got it. The chat's
+    "Rebuild From Saved Script" button was unreachable until something else
+    happened to open the project, and the status line that would have said
+    so does not survive a new conversation. Whether the root *exists* is not
+    store knowledge: the shell is what chooses it (:func:`project_root`).
     """
     try:
-        state = _states.get(project_root(scene))
+        root = project_root(scene)
     except Exception:
         return False
-    if state is None or not state.opened or state.script_present:
-        return False
-    return scene_remembers_a_model(scene)
+    state = _states.get(root)
+    if state is None or not state.opened:
+        empty = not os.path.isdir(root)
+    else:
+        empty = not state.script_present
+    # Last, and only when it can change the answer: this one parses the
+    # saved specs, and it runs on every panel draw.
+    return empty and scene_remembers_a_model(scene)
 
 
 def begin_rebuild_model(scene, cancelled=None):
@@ -1228,6 +1328,71 @@ def apply_slider_defaults(scene):
                   for name, old, new in changes))
 
 
+def stored_asset_names(scene):
+    """Names ``mesh.import_file`` can already resolve here, or None if unknown.
+
+    Over the protocol, because what the engine will stage is the engine's
+    answer to give. None means the question could not be asked -- an
+    unopenable project -- and the caller should carry everything rather than
+    assume the project is empty.
+    """
+    ok, _report = ensure_open(scene)
+    if not ok:
+        return None
+    payload = _client(project_root(scene)).request("inspect", {"scope": "assets"})
+    if payload.get("ok") is not True:
+        return None
+    value = payload.get("value") or {}
+    return {str(entry.get("name") or "")
+            for entry in list(value.get("assets") or [])}
+
+
+def migrate_assets(scene):
+    """Carry the previous project's imported geometry into this one.
+
+    Save-As mints a new project root and carries nothing across. For
+    everything the engine *derives* -- staged artifacts, accepted revisions,
+    the undo trail -- that is the right answer, and ADR-043's Save-As note
+    says why: they are reproducible from the script, and copying them would
+    fork a model's history behind the user's back. Assets are not derived.
+    They are inputs the user supplied, the script names them by name, and a
+    script that imports one cannot run at all without it -- so "re-run the
+    saved script into a new project" was never a recovery for any model
+    built on external geometry. It failed on the first import (ADR-046).
+
+    Every file goes in through ``put_asset``, one at a time: cadexd stays
+    the sole writer of the store, so the 64-file / 128 MB budget is enforced
+    where it is defined and nothing can land half-copied under its final
+    name. Returns (ok, report); ``ok`` is False only if a file was refused,
+    and the report is "" when there was nothing to carry.
+    """
+    origin = source_root(scene)
+    if not origin:
+        return True, ""
+    sources = _assets_in(origin)
+    if not sources:
+        return True, ""
+    have = stored_asset_names(scene)
+    carried, refused = [], []
+    for path in sources:
+        name = os.path.basename(path)
+        if have is not None and name in have:
+            continue
+        payload = put_asset(scene, path, name=name)
+        if payload.get("ok") is True:
+            carried.append(name)
+        else:
+            refused.append("{:s} ({:s})".format(
+                name, str(payload.get("error") or "refused")))
+    lines = []
+    if carried:
+        lines.append("Carried {:d} imported file(s) over from {:s}: {:s}.".format(
+            len(carried), os.path.basename(origin), ", ".join(carried)))
+    if refused:
+        lines.append("Could NOT carry: " + "; ".join(refused))
+    return not refused, "\n".join(lines)
+
+
 def adopt_saved_script(scene):
     """Rebuild this file's engine project from the script saved in the .blend.
 
@@ -1236,12 +1401,22 @@ def adopt_saved_script(scene):
     normal ``write_script`` path gives the new project its own accepted
     revision and digest -- a genuine sibling of the original, not a copy of
     its artifacts. Returns (ok, report).
+
+    The imported geometry comes across first (:func:`migrate_assets`),
+    because the script cannot run without it. A refusal there is reported
+    but not fatal: the write is still attempted, and if the missing file was
+    one the script needs, the engine names it -- which is a better error
+    than anything this function could invent.
     """
     from . import model
     source = (model.get_script() or "").strip()
     if not source:
         return False, "This file carries no saved script to adopt."
-    return write_script(scene, source)
+    _ok, carried = migrate_assets(scene)
+    ok, report = write_script(scene, source)
+    if carried:
+        report = carried + "\n" + report
+    return ok, report
 
 
 def on_file_changed(scene=None):
@@ -1257,7 +1432,10 @@ def on_file_changed(scene=None):
     name. Copying an engine project on Save-As would duplicate BREP
     artifacts behind the user's back and silently fork the model's history;
     saying what happened and offering to re-run the saved script is the
-    honest option.
+    honest option. Its *imported geometry* is the exception, and comes
+    across when the script is adopted (:func:`migrate_assets`, ADR-046):
+    assets are inputs, not derived state, and the script cannot re-run
+    without them.
 
     The check is on the *current* file, not on whether some previous root
     happened to be open. Gating on that missed the commonest case entirely:
@@ -1280,8 +1458,8 @@ def on_file_changed(scene=None):
         os.path.basename(stale[0])) if stale else "")
     return ("This file has no engine project yet ({:s}).{:s} Press "
             "\"Rebuild From Saved Script\" to re-run the script saved in this "
-            "file into a new project, or copy the original project directory "
-            "across to carry its history over.".format(
+            "file into a new project; any geometry you imported comes across "
+            "with it. The original's revision history stays where it is.".format(
                 os.path.basename(current), where))
 
 

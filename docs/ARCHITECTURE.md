@@ -204,10 +204,19 @@ macOS). Layout:
                                 the put_asset op (ADR-043)
 ```
 
-**cadexd is the sole writer and the sole reader.** The shell never touches
-the store: it asks the engine (`inspect`), which is why the store's layout
-is not part of the contract in `docs/INTEGRATION.md` — and why it must not
-become one now that both halves are in one tree.
+**cadexd is the sole writer.** Every byte that lands in the store goes
+through an op; the shell asks the engine what is in there (`inspect`), which
+is why the store's layout is not part of the contract in
+`docs/INTEGRATION.md` — and why it must not become one now that both halves
+are in one tree.
+
+The shell reads exactly one directory of it, and only ever to hand the paths
+straight back: on Save-As it lists `assets/` in the root it is *leaving*, so
+that `put_asset` can carry the user's imported geometry into the new project
+(ADR-046). Assets are the one thing in the store the shell supplied in the
+first place, and the shell already chooses where the store lives (below).
+Nothing else in the store is read by the shell, and nothing at all is
+written by it.
 
 In practice the root is chosen by the shell, not by `$CADEX_HOME`: the
 Blender shell passes `<blend-dir>/<stem>.cadex` as `project_root`, so a

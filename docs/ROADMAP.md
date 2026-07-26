@@ -139,6 +139,13 @@ view, viewport.
       **File → Import Geometry…** and the `import_geometry` tool;
       `mesh.transform`; `inspect scope="output"` and `scope="assets"`;
       `part.shape_from_mesh`.
+- [x] **Save-As carries imported geometry** `(landed 2026-07-26, ADR-046)`.
+      ADR-043's new input class broke the Save-As story it was not written
+      for: the new project got no `assets/`, so "re-run the saved script"
+      died on the first `mesh.import_file` — and the button offering it was
+      unreachable anyway, gated on an engine session Save-As had just
+      closed. Assets now migrate through `put_asset` on adopt; derived
+      state (artifacts, revisions, history) still does not.
 
 **Exit criteria:** mesh programs run/publish/rebuild like the other domains.
 Verified 2026-07-24: mixed part/assembly/mesh scripts (tessellate, boolean

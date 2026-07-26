@@ -148,10 +148,61 @@ result = {"plate": plate}
 """
 
 
+#: A model that cannot be rebuilt from its script alone: the script names a
+#: file the user supplied. This is what Save-As used to lose (ADR-046).
+IMPORTED_GEOMETRY_SCRIPT = """
+widget = mesh.import_file("widget.stl")
+result = {"widget": widget}
+"""
+
+MOVED_GEOMETRY_SCRIPT = """
+widget = mesh.transform(mesh.import_file("widget.stl"), translation=(5, 0, 0))
+result = {"widget": widget}
+"""
+
+#: A closed tetrahedron, the smallest thing `mesh.import_file` will take.
+TETRAHEDRON_STL = """solid widget
+facet normal 0 0 -1
+  outer loop
+    vertex 0 0 0
+    vertex 0 10 0
+    vertex 10 0 0
+  endloop
+endfacet
+facet normal 0 -1 0
+  outer loop
+    vertex 0 0 0
+    vertex 10 0 0
+    vertex 0 0 10
+  endloop
+endfacet
+facet normal -1 0 0
+  outer loop
+    vertex 0 0 0
+    vertex 0 0 10
+    vertex 0 10 0
+  endloop
+endfacet
+facet normal 0.5774 0.5774 0.5774
+  outer loop
+    vertex 10 0 0
+    vertex 0 10 0
+    vertex 0 0 10
+  endloop
+endfacet
+endsolid widget
+"""
+
+
 def store_state(root):
     """The engine's durable script state, read straight off disk."""
     with open(os.path.join(root, "script.json"), encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def revision_sources(root):
+    """The accepted sources in one project's undo trail (ADR-045)."""
+    return sorted(glob.glob(os.path.join(root, "script_history", "*.py")))
 
 
 def check(condition, label):
@@ -1139,6 +1190,11 @@ def test_duplicated_file_keeps_its_parameters(workdir):
           "the copy names a project that does not exist yet")
     check(cadex_backend.scene_remembers_a_model(scene),
           "the .blend still carries the model (specs and script mirror)")
+    # Before any open, which is when the offer has to be reachable: Save-As
+    # closes every session, so an engine-only answer left the chat with no
+    # button at exactly the moment one was needed (ADR-046).
+    check(cadex_backend.orphaned_project(scene),
+          "the copy is reported as orphaned before anything opens it")
 
     # The open that used to do the damage.
     ok, report = cadex_backend.ensure_open(scene)
@@ -1164,6 +1220,78 @@ def test_duplicated_file_keeps_its_parameters(workdir):
           "the adopted project declares the same parameter")
     check(os.path.isdir(os.path.join(workdir, "orig.cadex")),
           "the original project is left intact, not moved or copied")
+
+
+def test_save_as_carries_imported_geometry(workdir):
+    """Save-As must bring the files the script imports along with it.
+
+    ADR-043 made external geometry a first-class input; the Save-As story
+    was written before it existed and carried nothing across. So a file that
+    imported anything -- a bought part, a scan, a component from another
+    tool -- Saved-As into a project whose script could not run: the recovery
+    path the shell offers ("re-run the saved script") died on the first
+    ``mesh.import_file``, and the only surviving copy of the model was the
+    baked mesh in the viewport, which nothing can edit.
+
+    Assets are inputs, not derived state. They come across; the revision
+    history, which *is* derived and would fork if copied, does not (ADR-046).
+    """
+    print("test_save_as_carries_imported_geometry")
+
+    supplied = os.path.join(workdir, "widget.stl")
+    with open(supplied, "w", encoding="utf-8") as handle:
+        handle.write(TETRAHEDRON_STL)
+
+    first = os.path.join(workdir, "asset-orig.blend")
+    second = os.path.join(workdir, "asset-copy.blend")
+
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.wm.save_as_mainfile(filepath=first)
+    scene = bpy.context.scene
+
+    payload = cadex_backend.put_asset(scene, supplied)
+    check(payload.get("ok") is True,
+          "the supplied component lands in the first project's store")
+    ok, report = run_tool("write_script", {"content": IMPORTED_GEOMETRY_SCRIPT})
+    check(ok, "a model built on the imported file is accepted ({:s})".format(
+        report[:80]))
+    check(bpy.data.objects.get("widget") is not None,
+          "the imported component is in the viewport")
+    # A second accepted revision, so "the history did not come across" is a
+    # claim the counts can actually distinguish.
+    ok, report = run_tool("write_script",
+                          {"content": MOVED_GEOMETRY_SCRIPT})
+    check(ok, "a second revision is accepted ({:s})".format(report[:80]))
+    check(len(revision_sources(os.path.join(workdir, "asset-orig.cadex"))) == 2,
+          "the original project has two revisions in its trail")
+
+    bpy.ops.wm.save_as_mainfile(filepath=second)
+    scene = bpy.context.scene
+    check(not os.path.isdir(cadex_backend.project_root(scene)),
+          "the Save-As'd file names a project that does not exist yet")
+    check(cadex_backend.orphaned_project(scene),
+          "the Save-As'd file is reported as orphaned before any open")
+    check(cadex_backend.source_root(scene) == os.path.abspath(
+              os.path.join(workdir, "asset-orig.cadex")),
+          "the new file remembers which project its geometry came from")
+
+    ok, report = cadex_backend.adopt_saved_script(scene)
+    check(ok, "the saved script rebuilds the Save-As'd project ({:s})".format(
+        (report or "clean")[:160]))
+    check("widget.stl" in (report or ""),
+          "the report names the component it carried across")
+    check(bpy.data.objects.get("widget") is not None,
+          "the imported component is back in the new file's viewport")
+    check(not cadex_backend.orphaned_project(scene),
+          "the adopted project is no longer orphaned")
+    check(cadex_backend.stored_asset_names(scene) == {"widget.stl"},
+          "the new project holds the component in its own store")
+    check(os.path.isfile(os.path.join(workdir, "asset-orig.cadex",
+                                      "assets", "widget.stl")),
+          "the original project keeps its own copy")
+    check(len(revision_sources(os.path.join(workdir, "asset-copy.cadex"))) == 1,
+          "the new project starts its own trail -- the original's two "
+          "revisions did NOT come across")
 
 
 # -- M5: the restore pass runs on every open --------------------------------
@@ -1650,6 +1778,7 @@ def main():
     cancel_root = tempfile.mkdtemp(prefix="mesh-cadex-cancel-")
     saveas_root = tempfile.mkdtemp(prefix="mesh-cadex-saveas-")
     duplicate_root = tempfile.mkdtemp(prefix="mesh-cadex-duplicate-")
+    carry_root = tempfile.mkdtemp(prefix="mesh-cadex-carry-")
     restore_root = tempfile.mkdtemp(prefix="mesh-cadex-restore-")
     corrupt_root = tempfile.mkdtemp(prefix="mesh-cadex-corrupt-")
     describe_root = tempfile.mkdtemp(prefix="mesh-cadex-describe-")
@@ -1686,6 +1815,7 @@ def main():
         test_cadex_turn_single_undo(turn_root)
         test_save_as_and_multi_file_lifecycle(saveas_root)
         test_duplicated_file_keeps_its_parameters(duplicate_root)
+        test_save_as_carries_imported_geometry(carry_root)
         test_reopen_restores(reopen_root)
         test_open_runs_the_restore_pass(restore_root)
         test_restore_failure_is_first_class(corrupt_root)
@@ -1712,7 +1842,7 @@ def main():
         for root in (corpus_root, baseline_root, wide_root, turn_root,
                      reopen_root,
                      threading_root, cancel_root, saveas_root,
-                     duplicate_root,
+                     duplicate_root, carry_root,
                      restore_root, corrupt_root, describe_root, edit_root,
                      drop_root, rederive_root, mirror_root, defaults_root,
                      refused_root, rewrite_root, repair_root, stdout_root,
