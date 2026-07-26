@@ -31,14 +31,14 @@ These files exist in no upstream Blender and cannot conflict with one.
 | `shell/scripts/addons_core/mesh_agent/` | the add-on: chat, params, headers, the top bar, the cadexd protocol client, hydration, picking | 5,937 (19 files) |
 | `shell/source/blender/editors/space_cadex_chat/` | the Cadex Chat editor: transcript, message box, header (ADR-035) | 202 |
 | `shell/source/blender/editors/space_cadex_params/` | the Cadex Parameters editor (ADR-035) | 170 |
-| `shell/scripts/startup/bl_app_templates_system/Mesh/` | the app template: `startup.blend` carries the layout, `__init__.py` enables the add-on and installs the Cadex top bar (ADR-037, ADR-041) | 85 + a 267 KB `.blend` |
+| `shell/scripts/startup/bl_app_templates_system/Mesh/` | the app template: `startup.blend` carries the layout, `__init__.py` enables the add-on, installs the Cadex top bar and suppresses the splash (ADR-037, ADR-041, ADR-042) | 111 + a 267 KB `.blend` |
 | `shell/tests/python/bl_mesh_agent{,_cadex}.py` | the agent suites; `bl_mesh_agent_cadex.py` prints the `CADEX-BLENDER-GATE` evidence line | 1,793 (2 files) |
 
 The add-on was 5,714 lines across 20 files at import; ADR-030 took it to
 4,577 across 17 by deleting the local bpy modes; ADR-035 added `spaces.py`
 and took ~250 lines of geometry machinery out of `ui.py` (705 → 449);
 ADR-041 added `topbar.py`. The app template was 294 lines, then 340, and is
-now 85 because the layout is a file.
+now 111 because the layout is a file.
 Counted 2026-07-26 — treat these as of that date, not as a contract.
 
 ## 2. Modified upstream files — the whole delta
@@ -156,9 +156,10 @@ section carried, **landed 2026-07-26** — see §6.
   `_collapse_to_viewport`, `_empty_scene`, `_hide_foreign_tool_panels`,
   `_style_props`, `_style_viewport`, `_open_params`, `MESH_PANELS`,
   `_hidden_panel_polls`, `_set_area_type`, `_reregister_with_draw`'s
-  `PROPERTIES_HT_header` swap. 340 lines → 98, then 85. The layout is
-  `Mesh/startup.blend`; what survives enables the add-on and installs the
-  Cadex top bar (ADR-041), neither of which a `.blend` can carry.
+  `PROPERTIES_HT_header` swap. 340 lines → 98, then 111 with ADR-041 and
+  ADR-042. The layout is `Mesh/startup.blend`; what survives enables the
+  add-on, installs the Cadex top bar and suppresses the splash, none of which
+  a `.blend` can carry.
 - **The geometry classifier** (ADR-035): `mesh_agent/ui.py`'s `_area_roles`,
   `_area_with_role`, `_column_role`, `chat_area`, `input_area`,
   `open_params_area`, `close_params_area`, `open_input_area`,

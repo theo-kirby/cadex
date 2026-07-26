@@ -2432,3 +2432,45 @@ and uninstall must return the *same* stock draw function. In the gate,
 `screen.screenshot` of the launched bundle shows `File  Edit` alone on the bar
 and the File menu drawing all ten rows.
 
+## ADR-042 — No splash screen (2026-07-26)
+
+**Decision.** Cadex launches straight into its own layout. The Mesh app
+template clears `USER_SPLASH_DISABLE` — `preferences.view.show_splash = False`
+— from its `load_factory_startup_post` handler.
+
+**Rationale.** ADR-041 put a product top bar on screen and left the largest
+identity leak on the startup path untouched: every launch opened Blender's
+splash, with the Blender logo, "Support Blender Development", "Donate to
+Blender", a *What's New* link into Blender's release notes and a **New File**
+column offering 2D Animation, Sculpting and Storyboarding as ways out of the
+product. It is the first thing a new user sees, and none of it is ours.
+
+**Why the flag and not the code.** `wm_init_splash_show_on_startup_check`
+(`wm_init_exit.cc`) tests `U.uiflag & USER_SPLASH_DISABLE` first, so setting
+the flag is a complete answer, and it is a *preference* the shell was always
+free to set. Deleting the `WM_init_splash_on_startup(C)` call in `creator.c`
+would have been an eighth file in `docs/BLENDER-TREE.md` §2a, which is
+documented to stay at seven; this keeps the upstream delta at zero and leaves
+`--app-template default` — the stock-Blender escape hatch — with its splash
+intact.
+
+**Why the handler and not the timer.** `creator.c` reads the flag immediately
+after `WM_init`, which is *before* any timer fires. This is the one piece of
+template work that cannot be deferred, so `load_handler` does it inline and
+only then registers the 0.1 s timer that installs the top bar.
+
+**The dirty flag is put back.** Preferences auto-save on exit when dirty, so
+writing this would reach through the shared profile into the user's stock
+Blender sessions as well. `_hide_splash` restores `is_dirty` to what it found
+— the product decides what it launches into, the user's `userpref.blend` is
+not edited — and it costs nothing, because the handler runs on every startup.
+It is also why the flag is re-applied for users whose profile predates this,
+which a factory-default change in `blendfile.cc` would not have been.
+
+**Evidence.** `test_startup_layout_is_the_shipped_file` in
+`shell/tests/python/bl_mesh_agent_cadex.py` calls the **shipped** template's
+`_hide_splash()` and checks both halves: the splash is off and the preferences
+are left exactly as dirty as they were found. `pixi run gate` ok.
+Confirmed in a real window: `screen.screenshot` four seconds into a launch of
+the built bundle shows the three Cadex areas and the `File  Edit` bar, with no
+splash over them.

@@ -17,7 +17,7 @@ state machine that split areas, monkeypatched two header draw functions and
 re-registered every foreign Tool panel with `poll -> False` is now a file, and
 this module is what is left over (ADR-037).
 
-Two things survive, because neither can live in a .blend:
+Three things survive, because none of them can live in a .blend:
 
 - **Enabling the add-on.** `preferences.addons` is `UserDef`, not `Main`, so a
   startup file cannot carry it. Shipping a `Mesh/userpref.blend` would work
@@ -28,6 +28,9 @@ Two things survive, because neither can live in a .blend:
   code, not screen data, so no `.blend` can carry it -- and the swap belongs
   to the product shell rather than to the add-on, so that `mesh_agent` in a
   stock Blender session leaves that session's top bar alone.
+- **Suppressing the splash** (ADR-042). It is a `UserDef` flag, and the one
+  thing here that has to run in the load handler rather than the timer --
+  `creator.c` reads the flag immediately after `WM_init`.
 
 To re-author the layout: launch, arrange it by hand, `File > Defaults > Save
 Startup File`, then copy
@@ -58,6 +61,28 @@ def _cadex_topbar():
     topbar.install()
 
 
+def _hide_splash():
+    """No Blender splash on startup (ADR-042).
+
+    Must run from the handler rather than the timer: the check is
+    `U.uiflag & USER_SPLASH_DISABLE` in `wm_init_splash_show_on_startup_check`
+    (`wm_init_exit.cc`), read from `creator.cc` right after `WM_init` -- which
+    is after this handler and long before any timer fires.
+
+    The dirty flag is put back deliberately. Preferences auto-save on exit
+    when dirty, and this is the product deciding what it launches into, not
+    the user editing a preference: writing it into `userpref.blend` would
+    reach through the shared profile into stock Blender sessions too. It costs
+    nothing to re-apply, because this runs on every startup.
+    """
+    preferences = bpy.context.preferences
+    if not preferences.view.show_splash:
+        return
+    was_dirty = preferences.is_dirty
+    preferences.view.show_splash = False
+    preferences.is_dirty = was_dirty
+
+
 def _apply():
     try:
         _ensure_agent_addon()
@@ -72,6 +97,7 @@ def _apply():
 def load_handler(_):
     if bpy.app.background:
         return
+    _hide_splash()
     if not bpy.app.timers.is_registered(_apply):
         bpy.app.timers.register(_apply, first_interval=0.1)
 

@@ -270,8 +270,8 @@ into the file.
 panel, reset region sizes, rename screens — never runs on ours. That is
 load-bearing: do not add "Mesh" to that list.
 
-`__init__.py` is 85 lines and does two things, both of which a `.blend`
-cannot carry:
+`__init__.py` is 111 lines and does three things, none of which a `.blend`
+can carry:
 
 - **Enables the add-on.** `preferences.addons` is `UserDef`, not `Main`.
   Shipping a `Mesh/userpref.blend` would work and would also pin the user's
@@ -282,9 +282,14 @@ cannot carry:
   that `mesh_agent` in a stock Blender session leaves that session's bar alone.
   Until ADR-041 this line blanked the bar instead, which is how `File > Open`,
   `Save As`, Import/Export and Preferences went missing.
+- **Suppresses the splash** (ADR-042) — `preferences.view.show_splash = False`,
+  restoring `is_dirty` so the user's `userpref.blend` is not edited. This one
+  runs *in the load handler*, not in the timer: `creator.c` reads
+  `USER_SPLASH_DISABLE` immediately after `WM_init`, before any timer fires.
 
-Both run from a deferred timer that skips background mode, so a headless
-suite that wants the bar has to call `_cadex_topbar()` itself — the gate does.
+The first two run from a deferred timer that skips background mode, so a
+headless suite that wants the bar has to call `_cadex_topbar()` itself — the
+gate does, and `_hide_splash()` with it.
 
 To re-author the layout: launch, arrange by hand, `File > Defaults > Save
 Startup File`, then copy `<config>/Mesh/startup.blend` over the one in the

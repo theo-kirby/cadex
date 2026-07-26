@@ -232,6 +232,22 @@ def test_startup_layout_is_the_shipped_file():
         finally:
             topbar.uninstall()
 
+        # And no splash on the way in (ADR-042). Suppressing it must not
+        # dirty the preferences: dirty preferences auto-save on exit, and
+        # this is the product's decision, not the user's.
+        preferences = bpy.context.preferences
+        was_splash = preferences.view.show_splash
+        was_dirty = preferences.is_dirty
+        try:
+            template._hide_splash()
+            check(not preferences.view.show_splash,
+                  "the shipped app template suppresses the splash")
+            check(preferences.is_dirty == was_dirty,
+                  "suppressing the splash leaves the preferences as it found "
+                  "them")
+        finally:
+            preferences.view.show_splash = was_splash
+            preferences.is_dirty = was_dirty
 
     # Leave the factory startup loaded: everything after this builds its own
     # scene from it.
