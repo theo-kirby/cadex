@@ -213,12 +213,42 @@ static const EnumPropertyItem *rna_Area_ui_type_itemf(bContext *C,
     item_from += 1; /* +1 to skip SPACE_EMPTY */
   }
 
+  /* A group label ("General", "Animation", ...) is held back until an editor
+   * survives underneath it, so a group emptied by the filter below does not
+   * leave a heading with nothing under it. */
+  const EnumPropertyItem *heading_pending = nullptr;
+
   for (; item_from->identifier; item_from++) {
     if (ELEM(item_from->value, SPACE_TOPBAR, SPACE_STATUSBAR)) {
       continue;
     }
 
-    SpaceType *st = item_from->identifier[0] ? BKE_spacetype_from_id(item_from->value) : nullptr;
+    /* Rows with an empty identifier are the RNA_ENUM_ITEM_HEADING group
+     * labels, not space types. */
+    const bool is_heading = item_from->identifier[0] == '\0';
+    if (is_heading) {
+      heading_pending = item_from;
+      continue;
+    }
+
+    SpaceType *st = BKE_spacetype_from_id(item_from->value);
+    /* An editor Cadex does not build is not offered. Unregistered space types
+     * used to be listed anyway, and picking one left a dead area; hiding an
+     * editor is now exactly "stop registering it". The enum rows themselves
+     * must stay -- ED_area_name() / ED_area_icon() (screen_edit.cc) index this
+     * same array by `area->spacetype`. SPACE_EMPTY has no space type by
+     * construction and is here for the Python API, so it is exempt. */
+    if (st == nullptr && item_from->value != SPACE_EMPTY) {
+      continue;
+    }
+
+    if (heading_pending != nullptr) {
+      const int heading_prev = totitem;
+      RNA_enum_item_add(&item, &totitem, heading_pending);
+      item[heading_prev].value = heading_pending->value << 16;
+      heading_pending = nullptr;
+    }
+
     int totitem_prev = totitem;
     if (C && st && st->space_subtype_item_extend != nullptr) {
       st->space_subtype_item_extend(C, &item, &totitem);
