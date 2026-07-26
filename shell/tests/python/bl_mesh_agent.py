@@ -667,65 +667,6 @@ def test_new_conversation_starts_a_fresh_session():
         agent.history.clear()
 
 
-class _FakeArea:
-    """Just enough of an area for ui._area_roles, which reads geometry only."""
-
-    def __init__(self, area_type, x, y, pointer):
-        self.type = area_type
-        self.x = x
-        self.y = y
-        self._pointer = pointer
-
-    def as_pointer(self):
-        return self._pointer
-
-
-class _FakeScreen:
-    def __init__(self, areas):
-        self.areas = areas
-
-
-def test_column_roles_are_read_off_the_geometry():
-    """The three Properties areas are told apart by where they sit.
-
-    They all sit on the Tool tab and the header carries a tab dropdown, so
-    space.context cannot identify them: the right-most column is the chat,
-    its top half the transcript and its bottom half the input strip.
-    """
-    print("test_column_roles_are_read_off_the_geometry")
-    from mesh_agent import ui as mesh_ui
-
-    viewport = _FakeArea('VIEW_3D', 0, 300, 1)
-    params = _FakeArea('PROPERTIES', 0, 0, 2)
-    transcript = _FakeArea('PROPERTIES', 640, 120, 3)
-    strip = _FakeArea('PROPERTIES', 640, 0, 4)
-    screen = _FakeScreen([viewport, strip, params, transcript])
-
-    roles = mesh_ui._area_roles(screen)
-    check(roles.get(3) == 'chat', "the top of the right column is the chat")
-    check(roles.get(4) == 'input', "the bottom of it is the input strip")
-    check(roles.get(2) == 'params', "the left-hand area is the parameters")
-    check(1 not in roles, "the viewport has no column role")
-    check(mesh_ui.chat_area(screen) is transcript
-          and mesh_ui.input_area(screen) is strip
-          and mesh_ui.params_area(screen) is params,
-          "the lookups return the matching areas")
-
-    # Before the strip is split off, the column is the transcript alone --
-    # this is the state open_input_area tests for.
-    bare = _FakeScreen([viewport, params, transcript])
-    check(mesh_ui.input_area(bare) is None, "no strip before it is opened")
-    check(mesh_ui.chat_area(bare) is transcript,
-          "a lone column area is still the chat")
-
-    # And with nothing but the chat column: no parameters area to find.
-    only = _FakeScreen([viewport, transcript])
-    check(mesh_ui.params_area(only) is None,
-          "no parameters area before it is opened")
-    check(mesh_ui.chat_area(only) is transcript,
-          "the chat is not mistaken for the parameters")
-
-
 def test_cadex_editors_are_registered():
     """Chat and Parameters are editor types, not Properties areas told apart
     by where they sit."""
@@ -736,6 +677,35 @@ def test_cadex_editors_are_registered():
     for name in ('SpaceCadexChat', 'SpaceCadexParams'):
         check(hasattr(bpy.types, name),
               "bpy.types.{:s} exists".format(name))
+
+
+def test_panels_are_homed_on_the_cadex_editors():
+    """Each panel names the editor it belongs to, and no poll asks where it
+    is being drawn -- that was the whole job of the geometry classifier."""
+    print("test_panels_are_homed_on_the_cadex_editors")
+    from mesh_agent import ui as mesh_ui
+
+    expected = {
+        'CADEX_CHAT_PT_transcript': ('CADEX_CHAT', 'WINDOW'),
+        'CADEX_CHAT_PT_input': ('CADEX_CHAT', 'EXECUTE'),
+        'CADEX_PARAMS_PT_parameters': ('CADEX_PARAMS', 'WINDOW'),
+    }
+    for name, (space, region) in expected.items():
+        cls = getattr(bpy.types, name, None)
+        if cls is None:
+            check(False, "{:s} is registered".format(name))
+            continue
+        check(cls.bl_space_type == space,
+              "{:s} draws in {:s}".format(name, space))
+        check(cls.bl_region_type == region,
+              "{:s} draws in the {:s} region".format(name, region))
+        check("poll" not in cls.__dict__,
+              "{:s} has no poll".format(name))
+
+    check(not hasattr(mesh_ui, "_area_roles"),
+          "the geometry classifier is gone")
+    check(not hasattr(mesh_ui, "_column_role"),
+          "the column-role lookup is gone")
 
 
 def test_confirming_the_input_sends():
@@ -806,8 +776,8 @@ def main():
         test_transcript_persistence()
         test_session_id_round_trips_and_is_per_file()
         test_new_conversation_starts_a_fresh_session()
-        test_column_roles_are_read_off_the_geometry()
         test_cadex_editors_are_registered()
+        test_panels_are_homed_on_the_cadex_editors()
         test_confirming_the_input_sends()
         test_message_box_widget_is_available()
         test_mcp_shim_protocol()

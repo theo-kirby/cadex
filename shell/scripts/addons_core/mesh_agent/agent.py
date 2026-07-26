@@ -93,8 +93,7 @@ def _tag_redraw():
         return
     for window in bpy.context.window_manager.windows:
         for area in window.screen.areas:
-            # The chat column is hosted in a Properties editor.
-            if area.type in {'VIEW_3D', 'PROPERTIES'}:
+            if area.type in {'VIEW_3D', 'CADEX_CHAT', 'CADEX_PARAMS'}:
                 area.tag_redraw()
 
 

@@ -2,59 +2,37 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-"""Chat panel in the 3D Viewport sidebar, plus its operators.
+"""The panels of the two Cadex editors, plus the chat operators.
 
-The parameters live in their own screen area rather than in the chat column
--- see PARAMS_CONTEXT below.
+The transcript, the message box and the parameter sliders are panels of
+`SPACE_CADEX_CHAT` and `SPACE_CADEX_PARAMS` -- real editor types, listed in
+the editor-type dropdown and dockable like the viewport. They used to be
+three Properties editors pinned to the Tool tab, told apart at draw time by
+comparing `area.x` and `area.y`, with every `poll()` hanging off that guess.
+The space type is the answer now, so none of the polls here are about *where*
+they draw. See ADR-035.
+
+Headers live in `spaces.py`.
 """
 
 import os
 import textwrap
-import traceback
 
 import bpy
 from bpy.types import Operator, Panel
 
 from . import agent as agent_module
 
-# The parameters area is a second Properties editor split off the bottom of
-# the viewport. It is an *area* and not another panel in the chat column
-# because that is what makes it closable and reopenable on its own, like the
-# viewport: a panel is a resident of someone else's region and comes and goes
-# with it.
-#
-# It is pinned to the **Tool** tab, the same as the chat column, and the two
-# panels sort themselves out by area (see _column_role). Any other tab would
-# do for hosting a panel, but only Tool is free of Blender's own C-registered
-# `PROPERTIES_PT_context` breadcrumb -- its poll is literally
-# `sbuts->mainb != BCONTEXT_TOOL` (`buttons_context.cc`), and being a C panel
-# it is not in `bpy.types`, so it cannot be polled out from Python the way the
-# app template hides the inherited Python panels. On the Scene tab it puts a
-# stray "Scene" row above the sliders.
-PARAMS_CONTEXT = 'TOOL'
-
-# Fraction of the viewport's height the parameters area takes. Measured from
-# the bottom, and <= 0.5 on purpose: `area_split` (screen_edit.cc) gives the
-# *new* area the bottom half only in that case, which is what lets
-# open_params_area() tell the two halves apart without waiting for the screen
-# geometry to settle.
+# Fraction of the viewport's height a freshly split parameters editor takes.
 PARAMS_SPLIT = 0.3
 
-# The message box is a text-box widget (multi-line, wrapping, with a grip on
-# its edge), and it gets its own short area at the bottom of the chat column
-# for the same reason the parameters have one: only an area stays put while
-# the transcript beside it scrolls. It cannot simply be a taller chat input
-# bar -- that bar is a header region, header regions are one row tall by
-# construction, and `ED_region_header_layout` only ever recomputes their
-# *width* (`editors/screen/area.cc`). The button row stays in the header, now
-# the input strip's, one row under the box.
+# The message box is a text-box widget: it wraps onto as many lines as it is
+# tall, scrolls when the message outgrows them, and carries a grip on its edge
+# for making it taller. It sits in the chat editor's RGN_TYPE_EXECUTE region,
+# which -- unlike a header -- is an ordinary sizable region
+# (RGN_TYPE_IS_HEADER_ANY deliberately excludes it, DNA_screen_types.h). That
+# is what retired the fourth screen area ADR-034 documents.
 INPUT_LINES = 3
-# Three text lines, the panel padding around them, and that header row.
-INPUT_AREA_UNITS = INPUT_LINES + 3.0
-
-# Areas of the same column share an x exactly; a few pixels of slack in case
-# a split leaves them off by one.
-_COLUMN_SLACK = 4
 
 
 class MESH_AGENT_OT_chat_send(Operator):
@@ -149,8 +127,12 @@ class MESH_AGENT_OT_paste_image(Operator):
 class MESH_AGENT_OT_adopt_script(Operator):
     bl_idname = "mesh_agent.adopt_script"
     bl_label = "Rebuild From Saved Script"
-    bl_description = ("Re-run the script saved in this .blend into this "
-                      "file's engine project, which is empty")
+    # Two callers, one meaning: push the script in this .blend to the engine.
+    # The chat offers it when the engine project is empty (a duplicated or
+    # Save-As'd file); the Text Editor's sidebar offers it as "Apply to Model"
+    # after a hand edit, which is the only route from the buffer to the engine.
+    bl_description = ("Run the script saved in this .blend into this file's "
+                      "engine project")
 
     @classmethod
     def poll(cls, context):
@@ -194,258 +176,75 @@ _ROLE_ICONS = {
 }
 
 
-def _area_roles(screen):
-    """Role by area pointer for every Properties area on the screen.
-
-    Found by geometry, not by which tab they are pinned to. All three are
-    pinned to Tool, and the header carries a tab dropdown, so `space.context`
-    is user-switchable -- keying off it would take the chat away exactly when
-    the user needs it to switch back.
-
-    The right-most column is the chat: the transcript on top, the input strip
-    under it. Any Properties area outside that column is the parameters.
-    """
-    props = [area for area in screen.areas if area.type == 'PROPERTIES']
-    if not props:
-        return {}
-    right = max(area.x for area in props)
-    roles = {}
-    column = []
-    for area in props:
-        if area.x >= right - _COLUMN_SLACK:
-            column.append(area)
-        else:
-            roles[area.as_pointer()] = 'params'
-    top = max(column, key=lambda area: area.y).as_pointer()
-    for area in column:
-        roles[area.as_pointer()] = 'chat' if area.as_pointer() == top else 'input'
-    return roles
-
-
-def _area_with_role(screen, role):
-    roles = _area_roles(screen)
-    for area in screen.areas:
-        if roles.get(area.as_pointer()) == role:
-            return area
-    return None
-
-
-def chat_area(screen):
-    """The transcript: the top of the chat column."""
-    return _area_with_role(screen, 'chat')
-
-
-def input_area(screen):
-    """The input strip under the transcript, or None if it isn't open."""
-    return _area_with_role(screen, 'input')
-
-
 def params_area(screen):
-    """The parameters area: the Properties area outside the chat column."""
-    return _area_with_role(screen, 'params')
+    """The parameters editor on this screen, or None.
 
-
-def _column_role(context):
-    """Which of our columns the region being drawn belongs to.
-
-    'sidebar' is a real 3D-viewport sidebar, which gets the transcript, the
-    parameters and an inline input -- it has no header of ours to put the
-    input strip's contents in.
+    One `area.type` comparison. There is no pointer bookkeeping and no retry
+    loop because there is no space-data swap to wait on.
     """
-    area = getattr(context, "area", None)
-    if area is None or area.type != 'PROPERTIES':
-        return 'sidebar'
-    return _area_roles(context.screen).get(area.as_pointer(), 'chat')
-
-
-# (window, area pointer, attempts) while the parameters area's space data is
-# still catching up with its area type; see _configure_params_area.
-_params_pending = []
-
-
-def _configure_params_area():
-    """Pin the parameters area to its tab and strip its chrome.
-
-    Runs from a timer: assigning `area.type` swaps the space in, but
-    `area.spaces.active` can still be the outgoing space for a tick, so this
-    re-derives the state each time and retries -- the same reason the app
-    template's layout pass is a timer.
-
-    The area is found by the pointer open_params_area recorded, not by
-    params_area(): the new area's geometry has not settled yet, so anything
-    that compares x could still mistake it for the chat column and pin *that*
-    to the Scene tab.
-    """
-    if not _params_pending:
-        return None
-    window, pointer, attempts = _params_pending[0]
-    if attempts > 20:
-        _params_pending.clear()
-        return None
-    _params_pending[0] = (window, pointer, attempts + 1)
-    try:
-        screen = window.screen
-        area = next((a for a in screen.areas if a.as_pointer() == pointer),
-                    None)
-        if area is None:
-            _params_pending.clear()
-            return None
-        space = area.spaces.active
-        if getattr(space, "type", "") != 'PROPERTIES':
-            return 0.1
-        with bpy.context.temp_override(window=window, screen=screen,
-                                       area=area):
-            try:
-                space.context = PARAMS_CONTEXT
-            except TypeError:
-                # The tab list is built from panels whose polls pass, so it
-                # can still be empty this tick; retry.
-                return 0.1
-            # No header and no tab strip: the area is one block of sliders,
-            # and the chat input bar's toggle is what opens and closes it.
-            space.show_region_header = False
-        nav = next((r for r in area.regions if r.type == 'NAVIGATION_BAR'),
-                   None)
-        if nav is not None and nav.width > 1:
-            with bpy.context.temp_override(window=window, screen=screen,
-                                           area=area, region=nav):
-                bpy.ops.screen.region_toggle(region_type='NAVIGATION_BAR')
-    except Exception:
-        traceback.print_exc()
-    _params_pending.clear()
-    return None
-
-
-def open_params_area(window):
-    """Split the parameters area off the bottom of the largest viewport."""
-    screen = window.screen
-    if params_area(screen) is not None:
-        return None
-    viewports = [area for area in screen.areas if area.type == 'VIEW_3D']
-    if not viewports:
-        return None
-    viewport = max(viewports, key=lambda area: area.width * area.height)
-    before = {area.as_pointer() for area in screen.areas}
-    try:
-        with bpy.context.temp_override(window=window, screen=screen,
-                                       area=viewport):
-            bpy.ops.screen.area_split(direction='HORIZONTAL',
-                                      factor=PARAMS_SPLIT)
-    except RuntimeError:
-        # The viewport is too short to split (area_split's minimum height).
-        return None
-    fresh = [area for area in screen.areas
-             if area.as_pointer() not in before]
-    if not fresh:
-        return None
-    area = fresh[0]
-    # Area type changes need a window in the context; from a bare timer the
-    # assignment appears to succeed but the space data never switches.
-    with bpy.context.temp_override(window=window, screen=screen, area=area):
-        area.type = 'PROPERTIES'
-    _params_pending[:] = [(window, area.as_pointer(), 0)]
-    if not bpy.app.timers.is_registered(_configure_params_area):
-        bpy.app.timers.register(_configure_params_area, first_interval=0.05)
-    return area
-
-
-def close_params_area(window, area):
-    """Close the parameters area; False if the screen would not let it go."""
-    _params_pending.clear()
-    try:
-        with bpy.context.temp_override(window=window, screen=window.screen,
-                                       area=area):
-            bpy.ops.screen.area_close()
-    except RuntimeError:
-        # area_close's poll fails when no neighbour can absorb the space.
-        return False
-    return True
-
-
-def open_input_area(window):
-    """Split the input strip off the bottom of the chat column.
-
-    Unlike the parameters area this needs no timer: both halves of a split
-    Properties area are already Properties areas, so there is no space swap
-    to wait on, and the guard below keeps the split factor at or under a
-    half -- which is what makes the *new* area the bottom one
-    (`area_split`, screen_edit.cc), so neither half has to be identified by
-    geometry that has not settled yet.
-    """
-    screen = window.screen
-    if input_area(screen) is not None:
-        return None
-    transcript = chat_area(screen)
-    if transcript is None:
-        return None
-    scale = bpy.context.preferences.system.ui_scale or 1.0
-    wanted = INPUT_AREA_UNITS * 20.0 * scale
-    if transcript.height < wanted * 2.0:
-        # Too short to give the input a strip of its own; the chat panel
-        # notices and keeps the box inline instead.
-        return None
-    before = {area.as_pointer() for area in screen.areas}
-    try:
-        with bpy.context.temp_override(window=window, screen=screen,
-                                       area=transcript):
-            bpy.ops.screen.area_split(direction='HORIZONTAL',
-                                      factor=wanted / transcript.height)
-    except RuntimeError:
-        return None
-    fresh = [area for area in screen.areas
-             if area.as_pointer() not in before]
-    if not fresh:
-        return None
-    area = fresh[0]
-    # The transcript keeps no header of its own any more: the buttons live in
-    # the strip's header, one row under the message box.
-    with bpy.context.temp_override(window=window, screen=screen,
-                                   area=transcript):
-        transcript.spaces.active.show_region_header = False
-    nav = next((r for r in area.regions if r.type == 'NAVIGATION_BAR'), None)
-    if nav is not None and nav.width > 1:
-        with bpy.context.temp_override(window=window, screen=screen,
-                                       area=area, region=nav):
-            bpy.ops.screen.region_toggle(region_type='NAVIGATION_BAR')
-    return area
+    return next((area for area in screen.areas
+                 if area.type == 'CADEX_PARAMS'), None)
 
 
 class MESH_AGENT_OT_toggle_params(Operator):
     bl_idname = "mesh_agent.toggle_params"
     bl_label = "Parameters"
-    bl_description = "Show or hide the parameters area"
+    bl_description = "Show or hide the parameters editor"
 
     def execute(self, context):
         window = context.window
-        area = params_area(window.screen)
-        if area is None:
-            if open_params_area(window) is None:
-                self.report({'WARNING'}, "No room for the parameters area")
+        screen = window.screen
+        area = params_area(screen)
+        if area is not None:
+            try:
+                with context.temp_override(window=window, screen=screen,
+                                           area=area):
+                    bpy.ops.screen.area_close()
+            except RuntimeError:
+                # area_close's poll fails when no neighbour can absorb it.
+                self.report({'WARNING'},
+                            "The parameters editor cannot be closed")
                 return {'CANCELLED'}
-        elif not close_params_area(window, area):
-            self.report({'WARNING'}, "The parameters area cannot be closed")
+            return {'FINISHED'}
+
+        viewports = [a for a in screen.areas if a.type == 'VIEW_3D']
+        if not viewports:
+            self.report({'WARNING'}, "No viewport to split")
             return {'CANCELLED'}
+        viewport = max(viewports, key=lambda a: a.width * a.height)
+        before = {a.as_pointer() for a in screen.areas}
+        try:
+            with context.temp_override(window=window, screen=screen,
+                                       area=viewport):
+                bpy.ops.screen.area_split(direction='HORIZONTAL',
+                                          factor=PARAMS_SPLIT)
+        except RuntimeError:
+            # The viewport is too short to split (area_split's minimum).
+            self.report({'WARNING'}, "No room for the parameters editor")
+            return {'CANCELLED'}
+        fresh = [a for a in screen.areas if a.as_pointer() not in before]
+        if not fresh:
+            self.report({'WARNING'}, "No room for the parameters editor")
+            return {'CANCELLED'}
+        # Area type changes need a window in the context; without one the
+        # assignment appears to succeed but the space data never switches.
+        with context.temp_override(window=window, screen=screen,
+                                   area=fresh[0]):
+            fresh[0].type = 'CADEX_PARAMS'
         return {'FINISHED'}
 
 
-class VIEW3D_PT_mesh_params(Panel):
-    # The sole occupant of the parameters area (PARAMS_CONTEXT above). Same
-    # Tool category as the chat panel -- the Properties editor's Tool tab
-    # mirrors the viewport's "Tool"-category sidebar panels -- so the poll is
-    # what keeps it out of the chat column.
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "Tool"
-    bl_order = 0
+class CADEX_PARAMS_PT_parameters(Panel):
+    """The sole occupant of the parameters editor's main region."""
+
+    bl_space_type = 'CADEX_PARAMS'
+    bl_region_type = 'WINDOW'
+    bl_options = {'HIDE_HEADER'}
     bl_label = "Parameters"
 
-    # The poll is about *where* this draws, never about whether there is
-    # anything to show. The old one hid the panel whenever the script declared
-    # no parameters, which is why it came and went on its own; an empty model
-    # now says so rather than leave the user looking at a blank strip.
-    @classmethod
-    def poll(cls, context):
-        return _column_role(context) in {'params', 'sidebar'}
+    # No poll. It used to say *where* this draws; the space type says that
+    # now. An empty model says so in the body rather than leaving the user
+    # looking at a blank editor.
 
     def draw(self, context):
         from . import model
@@ -466,44 +265,24 @@ class VIEW3D_PT_mesh_params(Panel):
                             slider=spec["type"] in {'FLOAT', 'INT'})
 
 
-class VIEW3D_PT_mesh_chat(Panel):
-    # The Properties editor's Tool tab mirrors the viewport's "Tool"-category
-    # sidebar panels (see WorkSpaceButtonsPanel in bl_ui/properties_workspace.py),
-    # which lets the Mesh template host this panel as a full-height chat column:
-    # a Properties editor pinned to the Tool tab, with the other tool panels
-    # hidden while Simple mode is active. The viewport sidebar itself stays
-    # closed in Simple mode, so the panel effectively appears only there.
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "Tool"
+class CADEX_CHAT_PT_transcript(Panel):
+    """The conversation, in the chat editor's main region."""
+
+    bl_space_type = 'CADEX_CHAT'
+    bl_region_type = 'WINDOW'
     bl_options = {'HIDE_HEADER'}
     bl_label = "Chat"
 
-    @classmethod
-    def poll(cls, context):
-        # Keeps the transcript out of the two areas that share this tab.
-        return _column_role(context) in {'chat', 'sidebar'}
+    # No poll: this is the chat editor, so this is where the chat goes.
 
     def draw(self, context):
         layout = self.layout
         agent = agent_module.get_agent()
 
-        # The model selector. It takes effect at the next turn; the
-        # conversation itself continues. It edits the add-on preference, so it
-        # is also the default for future sessions. (The mode dropdown that sat
-        # above it is gone with the local modes -- ADR-030.)
-        selectors = layout.column(align=True)
-        prefs = agent_module.get_prefs()
-        if prefs is not None:
-            selectors.prop(prefs, "model", text="")
-
-        # Face picking feeds BREP pins to the next message.
-        from . import cadex_backend, cadex_pick
-        pending = cadex_pick.pending_pin_count()
-        selectors.operator(
-            "mesh_agent.pick_pin", icon='EYEDROPPER',
-            text="Pin Face" if not pending
-            else "Pin Face ({:d} pinned)".format(pending))
+        # The model selector and Pin Face moved to the editor's header
+        # (spaces.py): they are chat-level controls, and the header is where
+        # an editor's chrome belongs now that this editor has one.
+        from . import cadex_backend
         # One warning row, not a wall of text: the remedy lives in the
         # add-on preferences, which is where the fix is applied.
         ok, reason, _remedy = cadex_backend.preflight()
@@ -549,31 +328,21 @@ class VIEW3D_PT_mesh_chat(Panel):
             row.operator(MESH_AGENT_OT_chat_cancel.bl_idname,
                          text="", icon='CANCEL')
 
-        # A viewport sidebar has no header of ours, and a column too short to
-        # split never got an input strip: rather than leave the user with a
-        # transcript they cannot answer, the panel carries the input itself.
-        if _column_role(context) != 'chat' \
-                or input_area(context.screen) is None:
-            inline = layout.column(align=True)
-            draw_chat_input(inline, context)
-            draw_chat_buttons(inline.row(align=True), context)
 
+class CADEX_CHAT_PT_input(Panel):
+    """The message box and its button row, in the chat editor's execute
+    region -- a normal sizable region, so the box can be several rows tall
+    and stay put while the transcript above it scrolls."""
 
-class VIEW3D_PT_mesh_input(Panel):
-    # The sole occupant of the input strip (open_input_area above).
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "Tool"
+    bl_space_type = 'CADEX_CHAT'
+    bl_region_type = 'EXECUTE'
     bl_options = {'HIDE_HEADER'}
-    bl_order = 0
     bl_label = "Message"
 
-    @classmethod
-    def poll(cls, context):
-        return _column_role(context) == 'input'
-
     def draw(self, context):
-        draw_chat_input(self.layout, context)
+        column = self.layout.column(align=True)
+        draw_chat_input(column, context)
+        draw_chat_buttons(column.row(align=True), context)
 
 
 def draw_chat_input(layout, context):
@@ -587,7 +356,7 @@ def draw_chat_input(layout, context):
 
     `confirm_only` is what keeps a click elsewhere from sending the draft:
     without it, ending the edit by any means commits the value, and
-    committing is the only thing Python hears about. See ADR-035.
+    committing is the only thing Python hears about. See ADR-034.
     """
     layout.textbox(context.window_manager, "mesh_chat_input",
                    initial_visible_lines=INPUT_LINES,
@@ -618,33 +387,11 @@ def draw_chat_buttons(layout, context):
     # the transcript (Agent.new_conversation).
     layout.operator(MESH_AGENT_OT_chat_new.bl_idname, text="", icon='FILE_NEW')
 
-    # Opens and closes the parameters area. Depressed while it is open, so the
-    # one button reads as the state as well as the switch.
+    # Opens and closes the parameters editor. Depressed while it is open, so
+    # the one button reads as the state as well as the switch.
     layout.operator(MESH_AGENT_OT_toggle_params.bl_idname, text="",
                     icon='OPTIONS',
                     depress=params_area(context.screen) is not None)
-
-
-def draw_chat_input_header(self, context):
-    """Replacement draw for PROPERTIES_HT_header while Simple mode is active
-    (installed by the Mesh app template, which also flips the header region to
-    the bottom of the area): a dropdown for the hidden properties tabs, and in
-    the input strip the button row under the message box."""
-    layout = self.layout
-
-    # The other properties tabs, tucked behind a dropdown instead of the
-    # navigation bar's icon strip.
-    layout.prop(context.space_data, "context", text="", icon_only=True)
-
-    # All three of our areas are Properties editors, so they share this header
-    # type. Only the input strip's carries the buttons: the transcript's is
-    # hidden, and the parameters area's, if the user brings it back, gets the
-    # tab dropdown and nothing else.
-    if _column_role(context) != 'input':
-        return
-
-    layout.separator_spacer()
-    draw_chat_buttons(layout, context)
 
 
 classes = (
@@ -655,9 +402,9 @@ classes = (
     MESH_AGENT_OT_paste_image,
     MESH_AGENT_OT_adopt_script,
     MESH_AGENT_OT_toggle_params,
-    VIEW3D_PT_mesh_params,
-    VIEW3D_PT_mesh_chat,
-    VIEW3D_PT_mesh_input,
+    CADEX_PARAMS_PT_parameters,
+    CADEX_CHAT_PT_transcript,
+    CADEX_CHAT_PT_input,
 )
 
 
@@ -697,9 +444,6 @@ def register():
 
 
 def unregister():
-    if bpy.app.timers.is_registered(_configure_params_area):
-        bpy.app.timers.unregister(_configure_params_area)
-    _params_pending.clear()
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
     del bpy.types.WindowManager.mesh_chat_input

@@ -28,6 +28,7 @@ from . import agent as agent_module
 from . import cadex_backend as cadex_backend_module
 from . import cadex_pick as cadex_pick_module
 from . import model as model_module
+from . import spaces
 from . import ui
 
 
@@ -180,6 +181,7 @@ def register():
     cadex_backend_module.register()
     cadex_pick_module.register()
     ui.register()
+    spaces.register()
     bpy.app.handlers.save_pre.append(_save_pre_handler)
     bpy.app.handlers.save_post.append(_save_post_handler)
     bpy.app.handlers.load_post.append(_load_post_handler)
@@ -192,6 +194,7 @@ def unregister():
         bpy.app.handlers.save_post.remove(_save_post_handler)
     if _load_post_handler in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_load_post_handler)
+    spaces.unregister()
     ui.unregister()
     cadex_pick_module.unregister()
     cadex_backend_module.unregister()
