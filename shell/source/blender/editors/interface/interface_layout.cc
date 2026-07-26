@@ -2799,19 +2799,21 @@ void Layout::textbox(const bContext *C,
                      PointerRNA *ptr,
                      StringRefNull propname,
                      std::optional<StringRefNull> placeholder,
-                     const int initial_visible_lines)
+                     const int initial_visible_lines,
+                     const bool confirm_only)
 {
   TextboxState *textbox_state = textbox_ensure_state(
       CTX_wm_region(C),
       fmt::format("{}.{}", RNA_struct_identifier(ptr->type), propname),
       initial_visible_lines);
-  this->textbox_with_state(ptr, propname, textbox_state, placeholder);
+  this->textbox_with_state(ptr, propname, textbox_state, placeholder, confirm_only);
 }
 
 void Layout::textbox_with_state(PointerRNA *ptr,
                                 StringRefNull propname,
                                 TextboxState *textbox_state,
-                                std::optional<StringRefNull> placeholder)
+                                std::optional<StringRefNull> placeholder,
+                                const bool confirm_only)
 {
 
   Block *block = this->block();
@@ -2854,6 +2856,7 @@ void Layout::textbox_with_state(PointerRNA *ptr,
       std::nullopt);
   ButtonTextBox *textbox = static_cast<ButtonTextBox *>(but);
   textbox->state = textbox_state;
+  textbox->confirm_only = confirm_only;
   if (placeholder) {
     button_placeholder_set(but, *placeholder);
   }

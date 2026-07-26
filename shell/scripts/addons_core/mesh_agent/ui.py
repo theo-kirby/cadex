@@ -40,6 +40,22 @@ PARAMS_CONTEXT = 'TOOL'
 # geometry to settle.
 PARAMS_SPLIT = 0.3
 
+# The message box is a text-box widget (multi-line, wrapping, with a grip on
+# its edge), and it gets its own short area at the bottom of the chat column
+# for the same reason the parameters have one: only an area stays put while
+# the transcript beside it scrolls. It cannot simply be a taller chat input
+# bar -- that bar is a header region, header regions are one row tall by
+# construction, and `ED_region_header_layout` only ever recomputes their
+# *width* (`editors/screen/area.cc`). The button row stays in the header, now
+# the input strip's, one row under the box.
+INPUT_LINES = 3
+# Three text lines, the panel padding around them, and that header row.
+INPUT_AREA_UNITS = INPUT_LINES + 3.0
+
+# Areas of the same column share an x exactly; a few pixels of slack in case
+# a split leaves them off by one.
+_COLUMN_SLACK = 4
+
 
 class MESH_AGENT_OT_chat_send(Operator):
     bl_idname = "mesh_agent.chat_send"
@@ -154,19 +170,20 @@ class MESH_AGENT_OT_adopt_script(Operator):
         return {'FINISHED'}
 
 
-class MESH_AGENT_OT_chat_clear(Operator):
-    bl_idname = "mesh_agent.chat_clear"
-    bl_label = "Clear Chat"
-    bl_description = "Clear the chat transcript"
+class MESH_AGENT_OT_chat_new(Operator):
+    bl_idname = "mesh_agent.chat_new"
+    bl_label = "New Chat"
+    bl_description = ("Start a new conversation: clear the transcript and "
+                      "begin a fresh assistant session. The model in the "
+                      "file is left alone")
 
     @classmethod
     def poll(cls, context):
         return not agent_module.get_agent().busy
 
     def execute(self, context):
-        agent = agent_module.get_agent()
-        agent.history.clear()
-        agent.history.save_to_text_block()
+        if not agent_module.get_agent().new_conversation():
+            return {'CANCELLED'}
         return {'FINISHED'}
 
 
@@ -177,45 +194,68 @@ _ROLE_ICONS = {
 }
 
 
-def chat_area(screen):
-    """The chat column: the right-most Properties area.
+def _area_roles(screen):
+    """Role by area pointer for every Properties area on the screen.
 
-    Found by geometry, not by which tab it is pinned to. The header carries a
-    tab dropdown, so `space.context` is user-switchable -- keying off it would
-    take the chat input bar away exactly when the user needs it to switch
-    back.
+    Found by geometry, not by which tab they are pinned to. All three are
+    pinned to Tool, and the header carries a tab dropdown, so `space.context`
+    is user-switchable -- keying off it would take the chat away exactly when
+    the user needs it to switch back.
+
+    The right-most column is the chat: the transcript on top, the input strip
+    under it. Any Properties area outside that column is the parameters.
     """
     props = [area for area in screen.areas if area.type == 'PROPERTIES']
     if not props:
-        return None
-    return max(props, key=lambda area: area.x)
+        return {}
+    right = max(area.x for area in props)
+    roles = {}
+    column = []
+    for area in props:
+        if area.x >= right - _COLUMN_SLACK:
+            column.append(area)
+        else:
+            roles[area.as_pointer()] = 'params'
+    top = max(column, key=lambda area: area.y).as_pointer()
+    for area in column:
+        roles[area.as_pointer()] = 'chat' if area.as_pointer() == top else 'input'
+    return roles
+
+
+def _area_with_role(screen, role):
+    roles = _area_roles(screen)
+    for area in screen.areas:
+        if roles.get(area.as_pointer()) == role:
+            return area
+    return None
+
+
+def chat_area(screen):
+    """The transcript: the top of the chat column."""
+    return _area_with_role(screen, 'chat')
+
+
+def input_area(screen):
+    """The input strip under the transcript, or None if it isn't open."""
+    return _area_with_role(screen, 'input')
 
 
 def params_area(screen):
-    """The parameters area: the Properties area that isn't the chat column."""
-    chat = chat_area(screen)
-    chat_ptr = chat.as_pointer() if chat is not None else 0
-    for area in screen.areas:
-        if area.type == 'PROPERTIES' and area.as_pointer() != chat_ptr:
-            return area
-    return None
+    """The parameters area: the Properties area outside the chat column."""
+    return _area_with_role(screen, 'params')
 
 
 def _column_role(context):
     """Which of our columns the region being drawn belongs to.
 
-    Both columns are Properties editors pinned to the Tool tab, so the tab
-    cannot tell them apart and the panels below decide by area instead.
-    'sidebar' is a real 3D-viewport sidebar, which gets both panels the way it
-    did before the parameters moved out.
+    'sidebar' is a real 3D-viewport sidebar, which gets the transcript, the
+    parameters and an inline input -- it has no header of ours to put the
+    input strip's contents in.
     """
     area = getattr(context, "area", None)
     if area is None or area.type != 'PROPERTIES':
         return 'sidebar'
-    chat = chat_area(context.screen)
-    if chat is None or area.as_pointer() == chat.as_pointer():
-        return 'chat'
-    return 'params'
+    return _area_roles(context.screen).get(area.as_pointer(), 'chat')
 
 
 # (window, area pointer, attempts) while the parameters area's space data is
@@ -322,6 +362,54 @@ def close_params_area(window, area):
     return True
 
 
+def open_input_area(window):
+    """Split the input strip off the bottom of the chat column.
+
+    Unlike the parameters area this needs no timer: both halves of a split
+    Properties area are already Properties areas, so there is no space swap
+    to wait on, and the guard below keeps the split factor at or under a
+    half -- which is what makes the *new* area the bottom one
+    (`area_split`, screen_edit.cc), so neither half has to be identified by
+    geometry that has not settled yet.
+    """
+    screen = window.screen
+    if input_area(screen) is not None:
+        return None
+    transcript = chat_area(screen)
+    if transcript is None:
+        return None
+    scale = bpy.context.preferences.system.ui_scale or 1.0
+    wanted = INPUT_AREA_UNITS * 20.0 * scale
+    if transcript.height < wanted * 2.0:
+        # Too short to give the input a strip of its own; the chat panel
+        # notices and keeps the box inline instead.
+        return None
+    before = {area.as_pointer() for area in screen.areas}
+    try:
+        with bpy.context.temp_override(window=window, screen=screen,
+                                       area=transcript):
+            bpy.ops.screen.area_split(direction='HORIZONTAL',
+                                      factor=wanted / transcript.height)
+    except RuntimeError:
+        return None
+    fresh = [area for area in screen.areas
+             if area.as_pointer() not in before]
+    if not fresh:
+        return None
+    area = fresh[0]
+    # The transcript keeps no header of its own any more: the buttons live in
+    # the strip's header, one row under the message box.
+    with bpy.context.temp_override(window=window, screen=screen,
+                                   area=transcript):
+        transcript.spaces.active.show_region_header = False
+    nav = next((r for r in area.regions if r.type == 'NAVIGATION_BAR'), None)
+    if nav is not None and nav.width > 1:
+        with bpy.context.temp_override(window=window, screen=screen,
+                                       area=area, region=nav):
+            bpy.ops.screen.region_toggle(region_type='NAVIGATION_BAR')
+    return area
+
+
 class MESH_AGENT_OT_toggle_params(Operator):
     bl_idname = "mesh_agent.toggle_params"
     bl_label = "Parameters"
@@ -357,7 +445,7 @@ class VIEW3D_PT_mesh_params(Panel):
     # now says so rather than leave the user looking at a blank strip.
     @classmethod
     def poll(cls, context):
-        return _column_role(context) != 'chat'
+        return _column_role(context) in {'params', 'sidebar'}
 
     def draw(self, context):
         from . import model
@@ -393,8 +481,8 @@ class VIEW3D_PT_mesh_chat(Panel):
 
     @classmethod
     def poll(cls, context):
-        # Keeps the chat out of the parameters area, which shares this tab.
-        return _column_role(context) != 'params'
+        # Keeps the transcript out of the two areas that share this tab.
+        return _column_role(context) in {'chat', 'sidebar'}
 
     def draw(self, context):
         layout = self.layout
@@ -461,35 +549,56 @@ class VIEW3D_PT_mesh_chat(Panel):
             row.operator(MESH_AGENT_OT_chat_cancel.bl_idname,
                          text="", icon='CANCEL')
 
+        # A viewport sidebar has no header of ours, and a column too short to
+        # split never got an input strip: rather than leave the user with a
+        # transcript they cannot answer, the panel carries the input itself.
+        if _column_role(context) != 'chat' \
+                or input_area(context.screen) is None:
+            inline = layout.column(align=True)
+            draw_chat_input(inline, context)
+            draw_chat_buttons(inline.row(align=True), context)
 
-def draw_chat_input_header(self, context):
-    """Replacement draw for PROPERTIES_HT_header while Simple mode is active
-    (installed by the Mesh app template, which also flips the header region to
-    the bottom of the area): a dropdown for the hidden properties tabs plus
-    the chat input anchored at the bottom of the column."""
-    layout = self.layout
+
+class VIEW3D_PT_mesh_input(Panel):
+    # The sole occupant of the input strip (open_input_area above).
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Tool"
+    bl_options = {'HIDE_HEADER'}
+    bl_order = 0
+    bl_label = "Message"
+
+    @classmethod
+    def poll(cls, context):
+        return _column_role(context) == 'input'
+
+    def draw(self, context):
+        draw_chat_input(self.layout, context)
+
+
+def draw_chat_input(layout, context):
+    """The message box.
+
+    A text-box widget rather than a text field: it wraps onto as many lines
+    as it is tall, scrolls when the message outgrows them, and carries a grip
+    on its edge for making it taller. Return sends -- the property's update
+    callback does that -- and Shift+Return puts in a newline, which the
+    widget handles itself (`interface_handlers.cc`, EVT_RETKEY).
+
+    `confirm_only` is what keeps a click elsewhere from sending the draft:
+    without it, ending the edit by any means commits the value, and
+    committing is the only thing Python hears about. See ADR-035.
+    """
+    layout.textbox(context.window_manager, "mesh_chat_input",
+                   initial_visible_lines=INPUT_LINES,
+                   placeholder="Ask for a change",
+                   confirm_only=True)
+
+
+def draw_chat_buttons(layout, context):
+    """The row under the message box: attachments, send/stop, new chat, and
+    the parameters toggle."""
     agent = agent_module.get_agent()
-
-    # The other properties tabs, tucked behind a dropdown instead of the
-    # navigation bar's icon strip.
-    layout.prop(context.space_data, "context", text="", icon_only=True)
-
-    area = getattr(context, "area", None)
-    chat = chat_area(context.screen)
-    if area is not None and chat is not None \
-            and area.as_pointer() != chat.as_pointer():
-        # The parameters area is a Properties editor too, so it shares this
-        # header type. Its header is hidden in Simple mode; if the user brings
-        # it back, it gets the tab dropdown and nothing else -- the chat input
-        # belongs to the chat column alone.
-        return
-
-    # Make the text field absorb the remaining header width.
-    ui_scale = context.preferences.system.ui_scale or 1.0
-    total_units = context.region.width / (20.0 * ui_scale)
-    field = layout.row(align=True)
-    field.ui_units_x = max(8.0, total_units - 11.0)
-    field.prop(context.window_manager, "mesh_chat_input", text="")
 
     attach = layout.row(align=True)
     pending = agent.pending_attachment_count()
@@ -504,7 +613,10 @@ def draw_chat_input_header(self, context):
     else:
         layout.operator(MESH_AGENT_OT_chat_send.bl_idname,
                         text="", icon='PLAY')
-    layout.operator(MESH_AGENT_OT_chat_clear.bl_idname, text="", icon='TRASH')
+    # Starting over is one button, not a trash can: what the user wants back
+    # is an assistant with an empty head, and that is the session as much as
+    # the transcript (Agent.new_conversation).
+    layout.operator(MESH_AGENT_OT_chat_new.bl_idname, text="", icon='FILE_NEW')
 
     # Opens and closes the parameters area. Depressed while it is open, so the
     # one button reads as the state as well as the switch.
@@ -513,17 +625,64 @@ def draw_chat_input_header(self, context):
                     depress=params_area(context.screen) is not None)
 
 
+def draw_chat_input_header(self, context):
+    """Replacement draw for PROPERTIES_HT_header while Simple mode is active
+    (installed by the Mesh app template, which also flips the header region to
+    the bottom of the area): a dropdown for the hidden properties tabs, and in
+    the input strip the button row under the message box."""
+    layout = self.layout
+
+    # The other properties tabs, tucked behind a dropdown instead of the
+    # navigation bar's icon strip.
+    layout.prop(context.space_data, "context", text="", icon_only=True)
+
+    # All three of our areas are Properties editors, so they share this header
+    # type. Only the input strip's carries the buttons: the transcript's is
+    # hidden, and the parameters area's, if the user brings it back, gets the
+    # tab dropdown and nothing else.
+    if _column_role(context) != 'input':
+        return
+
+    layout.separator_spacer()
+    draw_chat_buttons(layout, context)
+
+
 classes = (
     MESH_AGENT_OT_chat_send,
     MESH_AGENT_OT_chat_cancel,
-    MESH_AGENT_OT_chat_clear,
+    MESH_AGENT_OT_chat_new,
     MESH_AGENT_OT_attach_image,
     MESH_AGENT_OT_paste_image,
     MESH_AGENT_OT_adopt_script,
     MESH_AGENT_OT_toggle_params,
     VIEW3D_PT_mesh_params,
     VIEW3D_PT_mesh_chat,
+    VIEW3D_PT_mesh_input,
 )
+
+
+def _chat_input_confirmed(self, _context):
+    """Send the message when the input field is confirmed.
+
+    This is what makes Return send: Blender commits a text field's value when
+    the edit ends, and an RNA update callback is the only place Python hears
+    about it. In a multi-line text box the C side already splits the two keys
+    the way a chat wants -- Shift+Return inserts a newline, Return ends the
+    edit (`interface_handlers.cc`, EVT_RETKEY under ButtonType::TextBox).
+
+    Clicking outside the field ends the edit the same way, so it sends too.
+    That is the whole behaviour of a Blender text button; the alternative is
+    to have Return not send at all.
+    """
+    prompt = self.mesh_chat_input
+    if not prompt.strip():
+        return
+    agent = agent_module.get_agent()
+    if agent.busy:
+        return
+    if agent.start_turn(prompt):
+        # Re-enters this callback with an empty value, which returns above.
+        self.mesh_chat_input = ""
 
 
 def register():
@@ -531,6 +690,7 @@ def register():
         name="Message",
         description="Ask the assistant to build or change something",
         default="",
+        update=_chat_input_confirmed,
     )
     for cls in classes:
         bpy.utils.register_class(cls)

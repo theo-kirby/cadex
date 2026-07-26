@@ -117,6 +117,7 @@ static void rna_uiItemTextBox(Layout *layout,
                               const char *propname,
                               const int initial_visible_lines,
                               const char *placeholder,
+                              bool confirm_only,
                               const char *text_ctxt,
                               bool translate)
 {
@@ -132,7 +133,7 @@ static void rna_uiItemTextBox(Layout *layout,
   if (placeholder) {
     placeholder_opt = rna_translate_ui_text(placeholder, text_ctxt, nullptr, prop, translate);
   }
-  layout->textbox(C, ptr, propname, placeholder_opt, initial_visible_lines);
+  layout->textbox(C, ptr, propname, placeholder_opt, initial_visible_lines, confirm_only);
 }
 
 static void rna_uiItemTextBoxWithState(Layout *layout,
@@ -1595,6 +1596,13 @@ void RNA_api_ui_layout(StructRNA *srna)
   parm = RNA_def_string(
       func, "placeholder", nullptr, 0, "", "Hint describing the expected value when empty");
   RNA_def_property_clear_flag(parm, PROP_NEVER_NULL);
+  RNA_def_boolean(func,
+                  "confirm_only",
+                  false,
+                  "Confirm Only",
+                  "Only a confirm (Return) applies the value. Clicking elsewhere ends the edit "
+                  "but keeps the text without notifying, for a box holding a draft the user is "
+                  "still composing rather than a value being edited in place");
   api_ui_item_common_translation(func);
 
   func = RNA_def_function(srna, "textbox_with_state", "rna_uiItemTextBoxWithState");

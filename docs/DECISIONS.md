@@ -1782,3 +1782,77 @@ same principle that keeps Save-As from copying `.cadex`.
 Regression-tested by `test_duplicated_file_keeps_its_parameters` in
 `shell/tests/python/bl_mesh_agent_cadex.py`; verified to fail with the guard
 removed.
+
+## ADR-034 — The input gets a strip of its own, and Return sends (2026-07-26)
+
+**Decision.** The chat input leaves the Properties header. It becomes a
+multi-line text-box widget (`layout.textbox()`) in a fourth screen area — a
+short strip split off the foot of the chat column — with the button row
+staying in that strip's header, one row underneath. **Return sends the
+message; Shift+Return puts in a newline.** The trash-can *Clear Chat* becomes
+**New Chat**, which resets the Claude Code session as well as the transcript.
+
+**Rationale.** Three separate things, one change to the input.
+
+*Multi-line is not optional and could not stay in the header.* A message long
+enough to be worth typing ran off the end of a one-line field with no way to
+see it. Header regions are one row tall by construction: `ED_region_header_layout`
+(`editors/screen/area.cc`) recomputes `region->sizex` for a layout-based
+header and never `sizey`, and `ED_area_headersize()` is a global constant. So
+either the input moves out of the header or it stays one line. It moves, into
+an area, for the reason ADR-032 gave for the parameters: the box has to stay
+put while the transcript beside it scrolls, and only an area does that. The
+end of the transcript panel was the cheap alternative and was rejected — an
+input you have to scroll down to reach is worse than a short one.
+
+*The widget already existed.* `ButtonType::TextBox` wraps, scrolls, and
+carries a resize grip, and its C key handling is already chat-shaped:
+`EVT_RETKEY` under `ButtonType::TextBox` inserts a newline with Shift held
+and ends the edit without (`interface_handlers.cc`). Sending on Return is
+then just the `update=` callback on `WindowManager.mesh_chat_input`, which is
+where Blender reports a committed text button. **`shell/`'s seven-file delta
+against upstream is untouched** (`docs/BLENDER-TREE.md` §2) — the whole change
+is `mesh_agent/ui.py`, `agent.py` and the Mesh app template.
+
+*Clearing a chat that the model still remembers is a lie.* `chat_clear`
+emptied `history` only. The backend outlives the turn and keeps the
+`session_id` it learned from the stream, so the next turn still passed
+`--resume` and the model answered with the whole cleared conversation in
+context. `Agent.new_conversation()` drops the session and the image
+attachments (their indices are what `get_attached_image` takes) along with
+the transcript. Naming it *New Chat* follows: what the user wants back is an
+assistant with an empty head, not a tidy scrollback.
+
+**Consequences.** The Simple-mode layout is **four** areas, not three, and
+`_column_role` grew into `_area_roles`: the right-most column is the chat,
+its top half the transcript and its bottom half the input strip; any
+Properties area outside that column is the parameters.
+
+**Two `screen.area_split` calls cannot share a tick.** The second reads a
+screen whose geometry has not caught up with the first and quietly does
+nothing — which silently cost the parameters area its split the moment the
+input strip started splitting ahead of it. The app template now opens the
+parameters one tick behind (`_open_params`). Anything that adds a fifth area
+inherits this constraint.
+
+**Clicking outside the box sends, too.** A Blender text button has exactly one
+"the edit finished" signal, reached by Return and by clicking elsewhere
+alike, and no way to tell them apart from Python. The alternative was Return
+not sending at all. Escape still cancels the edit without sending.
+
+**The box does not grow as you type.** It wraps to its height, scrolls past
+it, and has a grip. The wrapped line count and the box height are both C-side
+(`ButtonTextBox::last_total_lines`, `TextboxState::visible_lines`), reachable
+from the layout API only as `initial_visible_lines` at the moment the region
+first creates the state. Auto-growing means editing inherited Blender, and
+that trade is not worth a merge conflict in `interface_handlers.cc`.
+
+If the strip is missing — a viewport sidebar, or a column too short to split
+— the chat panel draws the box and buttons inline rather than leave a
+transcript that cannot be answered.
+
+Covered by `test_column_roles_are_read_off_the_geometry`,
+`test_confirming_the_input_sends`, `test_message_box_widget_is_available` and
+`test_new_conversation_starts_a_fresh_session` in
+`shell/tests/python/bl_mesh_agent.py`; layout and fallback verified against
+the built bundle, `CADEX-BLENDER-GATE` green.

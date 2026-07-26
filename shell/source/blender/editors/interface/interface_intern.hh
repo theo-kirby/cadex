@@ -399,6 +399,12 @@ struct ButtonTextBox : public Button {
 
   TextboxState *state;
 
+  /**
+   * Only a confirm applies the value: clicking elsewhere ends the edit but keeps
+   * the text without notifying. See #Layout::textbox.
+   */
+  bool confirm_only = false;
+
   /** Wrap cache from last redraw/event handling. */
   std::unique_ptr<TextWrapCache> wrap_cache;
 

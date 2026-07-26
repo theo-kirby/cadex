@@ -614,6 +614,176 @@ def test_session_id_round_trips_and_is_per_file():
         shutil.rmtree(workdir, ignore_errors=True)
 
 
+def test_new_conversation_starts_a_fresh_session():
+    """New Chat must reset the session, not just the transcript.
+
+    The backend outlives the turn, so clearing only the visible messages
+    left ``--resume`` pointing at the conversation the user just cleared.
+    """
+    print("test_new_conversation_starts_a_fresh_session")
+    from mesh_agent import agent as agent_module
+
+    class _FakeBackend:
+        def __init__(self, session_id=None):
+            self.session_id = session_id
+
+        def cancel(self):
+            pass
+
+    bpy.ops.wm.read_homefile(use_empty=True)
+    agent = agent_module.get_agent()
+    try:
+        agent.backend = _FakeBackend("session-one")
+        agent.history.add("user", "make a bracket")
+        agent.attachments = [{"path": "/nonexistent.png", "name": "a.png"}]
+        agent._sent_attachments = 1
+
+        check(agent.new_conversation(), "new_conversation reported success")
+        check(agent.history.messages == [], "the transcript is empty")
+        check(agent.backend.session_id is None,
+              "the backend no longer resumes the old session")
+        check(agent.history.session_id == "",
+              "the saved session id is empty: {!r}".format(
+                  agent.history.session_id))
+        check(agent.attachments == [] and agent.pending_attachment_count() == 0,
+              "the attachments restart at zero")
+
+        saved = json.loads(bpy.data.texts[history_module.TEXT_BLOCK_NAME]
+                           .as_string())
+        check(saved["messages"] == [] and not saved["session_id"],
+              "the .blend's copy was rewritten too")
+
+        # A running turn owns the session; the button is polled out, and the
+        # call itself refuses as well.
+        agent.busy = True
+        agent.history.add("user", "still talking")
+        check(not agent.new_conversation(),
+              "new_conversation refuses while a turn is running")
+        check(len(agent.history.messages) == 1,
+              "a running turn's transcript survived")
+    finally:
+        agent.busy = False
+        agent.backend = None
+        agent.history.clear()
+
+
+class _FakeArea:
+    """Just enough of an area for ui._area_roles, which reads geometry only."""
+
+    def __init__(self, area_type, x, y, pointer):
+        self.type = area_type
+        self.x = x
+        self.y = y
+        self._pointer = pointer
+
+    def as_pointer(self):
+        return self._pointer
+
+
+class _FakeScreen:
+    def __init__(self, areas):
+        self.areas = areas
+
+
+def test_column_roles_are_read_off_the_geometry():
+    """The three Properties areas are told apart by where they sit.
+
+    They all sit on the Tool tab and the header carries a tab dropdown, so
+    space.context cannot identify them: the right-most column is the chat,
+    its top half the transcript and its bottom half the input strip.
+    """
+    print("test_column_roles_are_read_off_the_geometry")
+    from mesh_agent import ui as mesh_ui
+
+    viewport = _FakeArea('VIEW_3D', 0, 300, 1)
+    params = _FakeArea('PROPERTIES', 0, 0, 2)
+    transcript = _FakeArea('PROPERTIES', 640, 120, 3)
+    strip = _FakeArea('PROPERTIES', 640, 0, 4)
+    screen = _FakeScreen([viewport, strip, params, transcript])
+
+    roles = mesh_ui._area_roles(screen)
+    check(roles.get(3) == 'chat', "the top of the right column is the chat")
+    check(roles.get(4) == 'input', "the bottom of it is the input strip")
+    check(roles.get(2) == 'params', "the left-hand area is the parameters")
+    check(1 not in roles, "the viewport has no column role")
+    check(mesh_ui.chat_area(screen) is transcript
+          and mesh_ui.input_area(screen) is strip
+          and mesh_ui.params_area(screen) is params,
+          "the lookups return the matching areas")
+
+    # Before the strip is split off, the column is the transcript alone --
+    # this is the state open_input_area tests for.
+    bare = _FakeScreen([viewport, params, transcript])
+    check(mesh_ui.input_area(bare) is None, "no strip before it is opened")
+    check(mesh_ui.chat_area(bare) is transcript,
+          "a lone column area is still the chat")
+
+    # And with nothing but the chat column: no parameters area to find.
+    only = _FakeScreen([viewport, transcript])
+    check(mesh_ui.params_area(only) is None,
+          "no parameters area before it is opened")
+    check(mesh_ui.chat_area(only) is transcript,
+          "the chat is not mistaken for the parameters")
+
+
+def test_confirming_the_input_sends():
+    """Return in the message box sends: Blender commits the field's value
+    when the edit ends, and the property's update callback is what turns
+    that into a turn."""
+    print("test_confirming_the_input_sends")
+    from mesh_agent import agent as agent_module
+
+    class _FakeBackend:
+        session_id = None
+
+        def __init__(self):
+            self.prompts = []
+
+        def start_turn(self, prompt, _events):
+            self.prompts.append(prompt)
+
+        def cancel(self):
+            pass
+
+    bpy.ops.wm.read_homefile(use_empty=True)
+    agent = agent_module.get_agent()
+    backend = _FakeBackend()
+    window_manager = bpy.context.window_manager
+    try:
+        agent.history.clear()
+        agent.backend = backend
+
+        window_manager.mesh_chat_input = "make a bracket"
+        check(backend.prompts == ["make a bracket"],
+              "the confirmed message reached the backend: {!r}".format(
+                  backend.prompts))
+        check(agent.busy, "the turn is running")
+        check(window_manager.mesh_chat_input == "",
+              "the field was cleared without re-entering the callback")
+
+        # Nothing is sent while a turn is running, or for an empty field.
+        window_manager.mesh_chat_input = "and a gear"
+        check(backend.prompts == ["make a bracket"],
+              "a second message during a turn is not sent")
+        agent.busy = False
+        window_manager.mesh_chat_input = "   "
+        check(backend.prompts == ["make a bracket"],
+              "whitespace alone is not sent")
+    finally:
+        agent.busy = False
+        agent.backend = None
+        agent.history.clear()
+        window_manager.mesh_chat_input = ""
+
+
+def test_message_box_widget_is_available():
+    """The input is a text-box widget, not a text field; without it the chat
+    would silently fall back to nothing at all."""
+    print("test_message_box_widget_is_available")
+    check("textbox" in bpy.types.UILayout.bl_rna.functions,
+          "UILayout.textbox exists in this build")
+
+
 def main():
     print("=== bl_mesh_agent tests ===")
     mesh_agent.register()
@@ -623,6 +793,10 @@ def main():
         test_tool_call_cap()
         test_transcript_persistence()
         test_session_id_round_trips_and_is_per_file()
+        test_new_conversation_starts_a_fresh_session()
+        test_column_roles_are_read_off_the_geometry()
+        test_confirming_the_input_sends()
+        test_message_box_widget_is_available()
         test_mcp_shim_protocol()
         test_cadex_engine_discovery()
         test_cadex_budgets_reach_open_project()

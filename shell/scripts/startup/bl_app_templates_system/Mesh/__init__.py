@@ -14,6 +14,12 @@ Python shortly after load:
 - every screen area closed except the 3D viewport, which is then split 50/50
   with a Properties editor pinned to the Tool tab — that editor hosts the chat
   panel as a full-height column (other tool-tab panels are hidden)
+- an input strip split off the foot of that column: a third Properties editor
+  on the same tab, holding the multi-line message box, with the button row in
+  its header underneath. It is an area because the message box has to stay put
+  while the transcript above it scrolls, and because a header region — where
+  the input used to live — is one row tall and cannot grow
+  (``mesh_agent.ui.open_input_area``)
 - a parameters area split off the bottom of the viewport: a second Properties
   editor on the same Tool tab, headerless, hosting the parameter sliders and
   nothing else (the two panels sort themselves out by area — see
@@ -34,7 +40,8 @@ from bpy.app.handlers import persistent
 
 # Panels that make up the chat column and the parameters area; everything
 # else in the Tool category gets hidden.
-MESH_PANELS = {"VIEW3D_PT_mesh_chat", "VIEW3D_PT_mesh_params"}
+MESH_PANELS = {"VIEW3D_PT_mesh_chat", "VIEW3D_PT_mesh_params",
+               "VIEW3D_PT_mesh_input"}
 
 # Original poll functions of foreign panels hidden in Simple mode, kept for
 # the Phase 2 Pro-mode toggle to restore.
@@ -132,7 +139,7 @@ def _reregister_with_draw(cls, draw):
 
 def _override_headers():
     """Blank out the top menu bar and turn the Properties header into the
-    chat input bar (the header region itself is flipped to the bottom of the
+    chat button row (the header region itself is flipped to the bottom of the
     area in _style_props)."""
     if "topbar" not in _ui_overrides:
         cls = bpy.types.TOPBAR_HT_upper_bar
@@ -150,8 +157,10 @@ def _override_headers():
 
 
 def _style_props(window, area):
-    """Flip the header (the chat input bar) to the bottom of the chat column
-    and hide the tab icon strip; the tabs live in a header dropdown instead."""
+    """Flip the header (the chat button row) to the bottom of the chat column
+    and hide the tab icon strip; the tabs live in a header dropdown instead.
+
+    Runs before the input strip is split off, so the strip inherits both."""
     screen = window.screen
     header = next((r for r in area.regions if r.type == 'HEADER'), None)
     if header is not None and header.alignment != 'BOTTOM':
@@ -195,6 +204,24 @@ def _style_viewport(window, area):
 
 _attempts = [0]
 _applied = [False]
+
+# The window whose parameters area is still to be opened; see _open_params.
+_params_pending = []
+
+
+def _open_params():
+    """The second area split, a tick after the first.
+
+    Two `screen.area_split` calls cannot share a tick: area geometry is only
+    refreshed between redraws, so the second one reads a screen that has not
+    caught up with the first and quietly does nothing -- which is how the
+    parameters area went missing when the input strip started splitting off
+    the chat column ahead of it.
+    """
+    if _params_pending:
+        from mesh_agent import ui as mesh_ui
+        mesh_ui.open_params_area(_params_pending.pop())
+    return None
 
 
 def _apply_simple_ui():
@@ -257,10 +284,16 @@ def _apply_simple_ui():
             _override_headers()
             _style_viewport(window, left)
             _style_props(window, right)
-            # Last, so the two-area checks above are done with: this adds a
-            # third area under the viewport. It finishes on its own timer.
+            # Last, so the two-area checks above are done with: these add a
+            # third and fourth area -- the input strip at the foot of the
+            # chat column, and the parameters under the viewport. Each takes
+            # a tick of its own (_open_params), and the parameters area then
+            # finishes configuring itself on a third.
             from mesh_agent import ui as mesh_ui
-            mesh_ui.open_params_area(window)
+            mesh_ui.open_input_area(window)
+            _params_pending[:] = [window]
+            if not bpy.app.timers.is_registered(_open_params):
+                bpy.app.timers.register(_open_params, first_interval=0.2)
             _applied[0] = True
             if _debug:
                 print("mesh-template: applied")
@@ -293,6 +326,7 @@ def load_handler(_):
         return
     _attempts[0] = 0
     _applied[0] = False
+    _params_pending.clear()
     if not bpy.app.timers.is_registered(_apply_simple_ui):
         bpy.app.timers.register(_apply_simple_ui, first_interval=0.3)
 

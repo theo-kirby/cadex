@@ -4200,6 +4200,21 @@ static int do_but_textedit(
                 but, text_edit, ime_data->composite.c_str(), ime_data->composite.size());
           }
 #endif
+          else if (textbox && textbox->confirm_only && but->editstr && but->rnaprop &&
+                   RNA_property_type(but->rnaprop) == PROP_STRING)
+          {
+            /* A confirm-only text box holds a draft the user is still composing, so clicking
+             * elsewhere must keep the text without *confirming* it. Store the draft without
+             * notifying and take the cancel path, which then leaves the value alone:
+             * #apply_but returns early while nothing has been applied yet.
+             *
+             * That early return is what this relies on, so it holds only while no interactive
+             * apply has run -- a confirm-only box whose property carries #PROP_TEXTEDIT_UPDATE
+             * would have applied already, and cancelling would restore the old value over the
+             * draft. */
+            RNA_property_string_set(&but->rnapoin, but->rnaprop, but->editstr);
+            data->cancel = true;
+          }
           button_activate_state(C, but, BUTTON_STATE_EXIT);
           retval = WM_UI_HANDLER_BREAK;
         }

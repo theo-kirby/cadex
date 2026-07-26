@@ -163,6 +163,27 @@ class Agent:
         if self.backend is not None and hasattr(self.backend, "session_id"):
             self.backend.session_id = self.history.session_id or None
 
+    def new_conversation(self):
+        """Start a fresh conversation. False if a turn is running.
+
+        Emptying the transcript is not enough on its own. The backend outlives
+        the turn and keeps the session id it learned from the stream, so the
+        next turn would still pass ``--resume`` and the model would answer
+        with everything the user just cleared still in its context. The
+        attachments go with it: their indices are what ``get_attached_image``
+        takes, and a new conversation starts them again at zero.
+        """
+        if self.busy:
+            return False
+        self.history.clear()
+        if self.backend is not None and hasattr(self.backend, "session_id"):
+            self.backend.session_id = None
+        self.attachments = []
+        self._sent_attachments = 0
+        self.save_state()
+        _tag_redraw()
+        return True
+
     def shutdown(self):
         if self.backend is not None:
             self.backend.cancel()

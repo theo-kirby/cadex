@@ -668,20 +668,26 @@ struct Layout : public Item, NonCopyable, NonMovable {
   /**
    * Adds a string property item as textbox, this will let multi-line text editing, textbox state
    * will stored in the current context region.
+   * \param confirm_only: only a confirm (Return) applies the value. Clicking elsewhere ends the
+   * edit but keeps the text without notifying, for a box holding a draft the user is still
+   * composing rather than a value being edited in place.
    */
   void textbox(const bContext *C,
                PointerRNA *ptr,
                StringRefNull propname,
                std::optional<StringRefNull> placeholder = std::nullopt,
-               const int initial_visible_lines = 3);
+               const int initial_visible_lines = 3,
+               const bool confirm_only = false);
   /**
    * Adds a string property item as textbox, this will let multi-line text editing.
    * \param textbox_state: custom allocation for persistent textbox state.
+   * \param confirm_only: see #textbox.
    */
   void textbox_with_state(PointerRNA *ptr,
                           StringRefNull propname,
                           TextboxState *textbox_state,
-                          std::optional<StringRefNull> placeholder = std::nullopt);
+                          std::optional<StringRefNull> placeholder = std::nullopt,
+                          const bool confirm_only = false);
 
   /**
    * Adds a RNA property item, and sets a custom popover to expose its value.
