@@ -215,6 +215,7 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "to_nurbs",
             "reverse",
             "sew",
+            "shape_from_mesh",
             "repair",
             "fillet",
             "chamfer",
@@ -233,9 +234,9 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
         "mesh",
         "Mesh",
         ("mesh",),
-        "Tessellate part shapes, import STL/OBJ/PLY assets, apply native mesh "
-        "set operations, and decimate. Every published output is exactly one "
-        "validated triangle mesh.",
+        "Tessellate part shapes, import STL/OBJ/PLY assets, place them with "
+        "transform, apply native mesh set operations, and decimate. Every "
+        "published output is exactly one validated triangle mesh.",
         (
             "from_shape",
             "import_file",
@@ -243,6 +244,7 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "difference",
             "intersection",
             "decimate",
+            "transform",
         ),
         production_ready=True,
     ),

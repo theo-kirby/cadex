@@ -843,6 +843,22 @@ def inspect(scene, args):
     return _client(project_root(scene)).request("inspect", dict(args))
 
 
+def put_asset(scene, source_path, name=""):
+    """Copy one STL/OBJ/PLY into the project store. Payload verbatim.
+
+    The shell never writes the store itself (docs/ARCHITECTURE.md), so
+    dropping a component into a model is a protocol op like everything else.
+    The returned `name` is what the model passes to `mesh.import_file()`.
+    """
+    ok, report = ensure_open(scene)
+    if not ok:
+        return {"ok": False, "error": report}
+    args = {"source_path": str(source_path)}
+    if name:
+        args["name"] = str(name)
+    return _client(project_root(scene)).request("put_asset", args)
+
+
 def engine_summary(scene):
     """What the engine actually holds, for scene_summary in cadex mode.
 
@@ -873,6 +889,11 @@ def engine_summary(scene):
                                         "path": "/revisions"})
     if script.get("ok") is True:
         summary["revisions"] = script.get("value")
+    # What external geometry is already staged: the names mesh.import_file()
+    # takes. Without this the model has no way to know a component is there.
+    assets = client.request("inspect", {"scope": "assets"})
+    if assets.get("ok") is True:
+        summary["assets"] = assets.get("value")
     summary["viewport_mirror"] = _mirror_note()
     return True, summary
 

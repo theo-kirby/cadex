@@ -237,6 +237,22 @@ def capture_inspection(service: Any, arguments: Mapping[str, Any]) -> dict[str, 
             "kind": "image",
             "project_root": str(service.project_scope_snapshot().get("root") or ""),
         }
+    if scope == "assets":
+        # What ``mesh.import_file`` can name. Store-backed like image scope,
+        # so the walk happens in complete_inspection, off the document thread.
+        return {
+            **common,
+            "kind": "assets",
+            "project_root": str(service.project_scope_snapshot().get("root") or ""),
+        }
+    if scope == "output":
+        # The accepted revision's per-output facts, read from the pinned
+        # attempt directory rather than from the run that produced them.
+        return {
+            **common,
+            "kind": "output",
+            "project_root": str(service.project_scope_snapshot().get("root") or ""),
+        }
     raise ValueError(f"Unknown core.inspect scope: {scope!r}.")
 
 
@@ -333,6 +349,102 @@ def _complete_image(captured: Mapping[str, Any]) -> tuple[Any, dict[str, Any] | 
         {"ok": True, "image": public, "attached": True},
         {"path": str(resolved), "name": str(selected.get("name") or target)},
     )
+
+
+def _complete_assets(captured: Mapping[str, Any]) -> Any:
+    """The project's importable mesh assets — how the agent discovers them."""
+
+    root = str(captured.get("project_root") or "")
+    if not root:
+        return {
+            "ok": False,
+            "error": "The active document has no durable Cadex project root.",
+        }
+    from CadexScriptedRuntime import list_project_assets
+
+    entries = list_project_assets(root)
+    return {
+        "asset_count": len(entries),
+        "assets": entries,
+        "note": (
+            "Names here are what mesh.import_file() takes. Add one with the "
+            "shell's File > Import Geometry, or the import_geometry tool."
+        ),
+    }
+
+
+#: Per-output detail the worker already computed, in the order an agent
+#: reading a page wants it. Absent keys are simply not reported.
+_OUTPUT_DETAIL_KEYS = (
+    "name",
+    "type",
+    "domain",
+    "artifact_kind",
+    "facts",
+    "mesh_data",
+    "operation_diagnostics",
+)
+
+
+def _complete_output(captured: Mapping[str, Any]) -> Any:
+    """Facts for any output of the *accepted* revision, on demand.
+
+    The facts already exist: every attempt's ``result.json`` carries them,
+    and ``script.json``'s ``accepted_attempt`` pins that directory against
+    GC. Before this they were readable only on the rebuild response that
+    produced them, so "how big is the bracket I imported an hour ago" had no
+    answer (ADR-043). Nothing is computed here.
+    """
+
+    root = str(captured.get("project_root") or "")
+    if not root:
+        return {
+            "ok": False,
+            "error": "The active document has no durable Cadex project root.",
+        }
+    from CadexPinResolution import (
+        accepted_attempt_dir,
+        accepted_output_item,
+        load_worker_report,
+    )
+    from CadexScriptStore import CadexProjectScriptStore
+
+    state = CadexProjectScriptStore(root).read_state()
+    revision = str(state.get("accepted_revision") or "")
+    if not revision:
+        return {
+            "ok": False,
+            "error": "The project has no accepted revision to inspect outputs of.",
+        }
+    report = load_worker_report(accepted_attempt_dir(Path(root), state))
+    items = [item for item in list(report.get("outputs") or []) if isinstance(item, Mapping)]
+    target = str(captured.get("target") or "")
+    if not target:
+        return {
+            "revision": revision,
+            "output_count": len(items),
+            "outputs": [
+                {
+                    "name": str(item.get("name") or ""),
+                    "type": str(item.get("type") or ""),
+                    "domain": str(item.get("domain") or ""),
+                    "artifact_kind": item.get("artifact_kind"),
+                }
+                for item in items
+            ],
+        }
+    try:
+        item = accepted_output_item(report, target)
+    except KeyError:
+        raise ValueError(
+            f"The accepted revision has no output named {target!r}; it publishes "
+            f"{sorted(str(entry.get('name') or '') for entry in items)}."
+        ) from None
+    detail = {
+        key: item[key] for key in _OUTPUT_DETAIL_KEYS if item.get(key) is not None
+    }
+    detail["revision"] = revision
+    return detail
 
 
 def _json_pointer_parts(pointer: str) -> list[str]:
@@ -534,6 +646,10 @@ def complete_inspection(captured: Mapping[str, Any]) -> dict[str, Any]:
             raw = _complete_api(captured)
         elif kind == "image":
             raw, attachment = _complete_image(captured)
+        elif kind == "assets":
+            raw = _complete_assets(captured)
+        elif kind == "output":
+            raw = _complete_output(captured)
         else:
             raise ValueError("Invalid captured core.inspect operation.")
         result = _bounded_page(raw, captured)

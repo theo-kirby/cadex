@@ -3,10 +3,11 @@
 """cadexd lifecycle CI (Phase 5.3, ctest ``CadexdLifecycle``).
 
 Drives a real cadexd child (FreeCADCmd) over the cadex-cadexd-v1 stdio
-protocol: open → write_script (with display) → set_params → inspect →
-resolve_pin → kill -9 → respawn → restore digest equality → explicit
-rebuild → cancel a slow script mid-run → server stays serviceable →
-shutdown. Skipped when no FreeCADCmd binary is available.
+protocol: open → put_asset (and the script that imports it) → write_script
+(with display) → set_params → inspect → resolve_pin → kill -9 → respawn →
+restore digest equality → explicit rebuild → cancel a slow script mid-run →
+server stays serviceable → shutdown. Skipped when no FreeCADCmd binary is
+available.
 """
 
 from __future__ import annotations
@@ -93,13 +94,46 @@ top = assembly.component(plate, placement=[0, 0, 4])
 asm = assembly.assembly([base, top])
 diag = assembly.solve(asm)
 skin = mesh.from_shape(plate, linear_deflection=0.5)
+scan = mesh.import_file("tetra.stl")
 result = {"plate": plate, "base": base, "top": top, "asm": asm,
-          "diag": diag, "skin": skin}
+          "diag": diag, "skin": skin, "scan": scan}
 """
 
 SLOW_SCRIPT = """
 blobs = [part.sphere(5.0, center=[i * 3.0, 0.0, 0.0]) for i in range(60)]
 result = {"blob": part.fuse(blobs)}
+"""
+
+TETRA_STL = """solid tetra
+facet normal 0 0 -1
+ outer loop
+  vertex 0 0 0
+  vertex 4 0 0
+  vertex 0 4 0
+ endloop
+endfacet
+facet normal 0 -1 0
+ outer loop
+  vertex 0 0 0
+  vertex 0 0 4
+  vertex 4 0 0
+ endloop
+endfacet
+facet normal -1 0 0
+ outer loop
+  vertex 0 0 0
+  vertex 0 4 0
+  vertex 0 0 4
+ endloop
+endfacet
+facet normal 1 1 1
+ outer loop
+  vertex 4 0 0
+  vertex 0 0 4
+  vertex 0 4 0
+ endloop
+endfacet
+endsolid tetra
 """
 
 
@@ -241,6 +275,8 @@ def _stop(client: _CadexdClient | None) -> None:
 )
 def test_cadexd_lifecycle_end_to_end() -> None:
     root = Path(tempfile.mkdtemp(prefix="cadexd-lifecycle-ci-"))
+    # Outside the project store: put_asset's whole job is getting it inside.
+    incoming_dir = Path(tempfile.mkdtemp(prefix="cadexd-incoming-"))
     client = respawned = None
     try:
         client = _spawn_cadexd()
@@ -254,7 +290,34 @@ def test_cadexd_lifecycle_end_to_end() -> None:
         api = client.request("describe_api")
         assert api["ok"] is True and api["domain"] == "project"
 
-        # write_script with display: accept payload + display block.
+        # put_asset: external geometry enters the store through the protocol,
+        # never by the shell writing the store itself (ADR-043).
+        incoming = incoming_dir / "Tetra.STL"
+        incoming.write_text(TETRA_STL, encoding="utf-8")
+        empty = client.request("inspect", {"scope": "assets"})
+        assert empty["ok"] is True and empty["value"]["asset_count"] == 0
+        stored = client.request(
+            "put_asset", {"source_path": str(incoming), "name": "tetra.stl"}
+        )
+        assert stored["ok"] is True, stored
+        assert stored["name"] == "tetra.stl"
+        assert stored["bytes"] == len(TETRA_STL.encode("utf-8"))
+        assert (root / "assets" / "tetra.stl").is_file()
+        assert [item["name"] for item in stored["assets"]] == ["tetra.stl"]
+        rejected = client.request(
+            "put_asset", {"source_path": str(incoming), "name": "../escape.stl"}
+        )
+        assert rejected["ok"] is False, rejected
+        assert rejected["failure_code"] == "ASSET_REJECTED", rejected
+        listed = client.request("inspect", {"scope": "assets"})
+        assert listed["ok"] is True, listed
+        assert listed["value"]["assets"][0]["sha256"] == stored["sha256"]
+        # No accepted revision yet, so output scope has nothing to serve.
+        no_outputs = client.request("inspect", {"scope": "output"})
+        assert no_outputs["ok"] is True and no_outputs["value"]["ok"] is False
+
+        # write_script with display: accept payload + display block. The
+        # script imports the asset put_asset just stored.
         written = client.request(
             "write_script",
             {
@@ -273,6 +336,7 @@ def test_cadexd_lifecycle_end_to_end() -> None:
         assert Path(plate["tessellation"]["artifact_path"]).is_file()
         assert Path(plate["tessellation"]["sidecar_path"]).is_file()
         assert display["skin"]["artifact_kind"] == "mesh"
+        assert display["scan"]["artifact_kind"] == "mesh"
         assert display["top"]["placement"] is not None
         assert display["diag"]["artifact_kind"] is None
 
@@ -306,6 +370,23 @@ def test_cadexd_lifecycle_end_to_end() -> None:
         assert document_view["value"]["object_count"] > 0
         selection_view = client.request("inspect", {"scope": "selection"})
         assert selection_view["failure_code"] == "CADEXD_PROTOCOL_ERROR"
+
+        # output scope: the accepted revision's per-output facts, asked for
+        # long after the rebuild that produced them (ADR-043).
+        outputs_view = client.request("inspect", {"scope": "output"})
+        assert outputs_view["ok"] is True, outputs_view
+        by_name = {item["name"]: item for item in outputs_view["value"]["outputs"]}
+        assert by_name["plate"]["domain"] == "part"
+        assert by_name["scan"]["artifact_kind"] == "mesh"
+        plate_facts = client.request(
+            "inspect", {"scope": "output", "target": "plate", "path": "/facts"}
+        )
+        assert plate_facts["ok"] is True, plate_facts
+        assert plate_facts["value"]["shape_type"] == "Solid"
+        scan_facts = client.request(
+            "inspect", {"scope": "output", "target": "scan", "path": "/facts/facets"}
+        )
+        assert scan_facts["ok"] is True and scan_facts["value"] == 4
 
         # resolve_pin against the accepted staged BREP.
         pin = client.request(
@@ -378,3 +459,4 @@ def test_cadexd_lifecycle_end_to_end() -> None:
         _stop(client)
         _stop(respawned)
         shutil.rmtree(root, ignore_errors=True)
+        shutil.rmtree(incoming_dir, ignore_errors=True)

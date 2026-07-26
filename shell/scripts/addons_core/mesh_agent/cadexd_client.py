@@ -35,8 +35,12 @@ CADEXD_CRASHED = "CADEXD_CRASHED"
 CADEXD_UNAVAILABLE = "CADEXD_UNAVAILABLE"
 
 #: Ops that run the modeling pipeline and deserve the long budget.
+#: ``put_asset`` copies a file the user picked into the project store; a
+#: hundred-megabyte STL is not a 60-second read, and the engine serializes it
+#: against an in-flight rebuild the same way.
 MODELING_OPS = frozenset(
-    {"open_project", "write_script", "edit_script", "set_params", "rebuild"}
+    {"open_project", "write_script", "edit_script", "set_params", "rebuild",
+     "put_asset"}
 )
 
 _READY_TIMEOUT_SECONDS = 120.0

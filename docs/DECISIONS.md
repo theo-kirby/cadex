@@ -2474,3 +2474,160 @@ are left exactly as dirty as they were found. `pixi run gate` ok.
 Confirmed in a real window: `screen.screenshot` four seconds into a launch of
 the built bundle shows the three Cadex areas and the `File  Edit` bar, with no
 splash over them.
+
+## ADR-043 — External geometry is a first-class input (2026-07-26)
+
+**Decision.** The product gains a complete path for geometry it did not
+author: a file the user drops in becomes a named asset in the project store,
+the script places it, converts it to BREP, builds against it, and measures
+the result. Four changes, all behind the unchanged cadexd protocol shape:
+
+1. **`put_asset`** — a new op (`{source_path, name?}` →
+   `{name, bytes, sha256, assets}`), plus **File → Import Geometry…** in the
+   Cadex top bar and an `import_geometry` MCP tool. Bounds are the existing
+   staging bounds, defined once in `CadexScriptedRuntime`
+   (`store_project_asset` / `list_project_assets`): flat directory, known
+   mesh suffixes, 64 files, 128 MB — counted *including* the incoming file,
+   so a write can never leave a project a later run cannot stage. A new
+   `inspect scope="assets"` lists what is importable.
+2. **`mesh.transform`** — the same kwargs and the same order of operations as
+   `part.transform` (scale about pivot → rotate about pivot → translate),
+   composed into one `App.Matrix` because `Mesh` has no `scale`.
+3. **`inspect scope="output"`** — per-output facts for any output of the
+   accepted revision, read from the pinned accepted attempt.
+4. **`part.shape_from_mesh`** — `makeShapeFromMesh` behind the part API,
+   yielding a `solid` (or `shell` with `solid=False`) the part, partdesign
+   and assembly domains consume.
+
+**Rationale.** Phase 4 (ADR-016) shipped `mesh.import_file`, and then nothing
+in the product could reach it. No surface anywhere wrote `assets/` — the only
+writer in the whole tree was a test fixture — so the feature was available
+exclusively to a user who knew to `cp` a file into
+`<blend-dir>/<stem>.cadex/assets/` by hand. And even once a file was in, it
+could not be **moved** (the mesh API had no transform), could not enter the
+**BREP domains** (`part`'s validator rejected mesh values), and could only be
+**measured** on the rebuild that produced it. Each gap is small; together they
+made "use this bracket I already have" impossible, which is an ordinary thing
+to ask a CAD tool.
+
+**Why `put_asset` is a modeling op and not a read op.** It writes. That alone
+would settle it, but the useful part is what membership in `MODELING_OPS`
+buys: mutual exclusion against an in-flight rebuild, for free
+(`cadexd.py`'s admit/dispatch), so an asset can never land half-copied while
+`_stage_project_assets` is reading that same directory. `READ_OPS` is
+documented read-only and stays so. The shell's hand-copied `MODELING_OPS`
+gains it too, which also gives the copy the 300 s budget rather than the 60 s
+read budget — a 100 MB STL is not a read.
+
+**Why a path and not bytes.** The frame cap is 8 MB and the asset budget is
+128 MB. Both halves share a filesystem and the protocol already relies on it:
+`inspect scope=image` hands back a project-store path for the shell to read.
+The shell still never writes the store — `docs/ARCHITECTURE.md`'s "cadexd is
+the sole writer and the sole reader" is why this is an op at all rather than
+a `shutil.copyfile` in the operator.
+
+**What this supersedes.**
+
+- `docs/XSCRIPT.md`'s "the Phase 4 `mesh` domain is deliberately minimal …
+  and *stays* that way for now … a decision rather than an oversight." The
+  charter it stated was about *modelling* meshes interactively, and that
+  still holds and is still unscheduled. What it incidentally froze was the
+  *ingest* path, which nobody decided. The paragraph is rewritten, not left
+  standing.
+- **ADR-016's mesh-domain charter**, in the same narrow way: the domain's op
+  list grows by `transform`, and mesh values now have a consumer outside the
+  mesh domain.
+- **ADR-041's "everything the menus point at is stock."** No longer true, by
+  one row. `MESH_AGENT_OT_import_asset` is the first non-stock operator in
+  the Cadex File menu, and it has to be: stock Import loads a mesh into the
+  *Blender* scene, which in Cadex is a display mirror of the engine's outputs
+  and not the model. Importing geometry *into the model* means writing the
+  engine's asset store, which only the engine may do. The invariant ADR-041
+  actually protects — no upstream file edited, `docs/BLENDER-TREE.md` §2 does
+  not grow — is untouched.
+
+**What this gives up.** `part.shape_from_mesh(mesh.decimate(...))` is
+**rejected**, at script-eval time, with a message naming `decimate`. FreeCAD's
+decimator is non-deterministic (ADR-016), and a mesh output survives that by
+being digest-identified by its canonical definition instead of its geometry —
+an escape hatch a BREP output does not have, because a BREP output's identity
+*is* its exported bytes, which is what publication verifies byte-for-byte.
+Adding a determinism carve-out to `compute_project_digest`'s BREP branch
+would weaken the digest contract of all fifty part operations to serve one.
+So the guard sits at the API boundary instead
+(`payload_tree_is_deterministic`, moved into `cadex_mesh_api` so the part API
+can apply it without importing a worker). The cost is exactly the operation
+most useful for taming a dense scan; the workarounds are to decimate offline
+and import the reduced file, or to publish the decimated value as a `mesh`
+output.
+
+**Two more limits, stated in the API docstrings.** A converted STL is a shell
+of thousands of planar triangle faces: ADR-029 geometric selectors
+(`subshape`, `fillet`, `chamfer`) are near-useless on it and BREP booleans
+against it are slow — it is for cutting clearance against, not for
+feature-editing. And all of this stands on `Mod/Mesh`/`Mod/MeshPart`, which
+ADR-025 slates for replacement by `manifold` (ROADMAP 11b): two more ops on a
+substrate already flagged for a swap, which is a known and accepted cost.
+
+**Consequences.**
+
+- *Protocol.* One new op in `OP_ARG_SPECS`, `MODELING_OPS` and
+  `OP_RESPONSE_SPECS`; a golden `response_schemas/put_asset.json`; both
+  tables in `docs/INTEGRATION.md` (each cross-checked against the code by a
+  live-parsing test). `inspect` needed no protocol change at all — its arg
+  and response specs already covered two new scopes, which is the pinning
+  paying for itself.
+- *Root threading.* `build_mesh(payload, root)` needs a root;
+  `build_part_shape(payload, *, diagnostics)` has none, and threading one in
+  would have touched ~50 call sites. Instead `configure_part_assets(root,
+  mesh_ingest)` mirrors the module's existing idiom for host-staged material
+  (`configure_part_references`), called from `cadex_project_worker` and
+  `cadex_domain_worker`. It binds *two* things, and the second is the
+  interesting one: the mesh kernel arrives as a callable rather than an
+  import, because `cadex_part_worker` is in cadexd's declared import closure
+  and `cadex_mesh_worker` deliberately is not. A static
+  `from cadex_mesh_worker import build_mesh` there pulled four staged worker
+  modules into the service's closure — `test_engine_purity_guardrails`
+  caught it — to serve a call the service never makes. The staged callers own
+  that edge; `DECLARED_ENGINE_MODULES` is unchanged.
+- *Pin resolution.* `accepted_attempt_dir`, `load_worker_report` and
+  `accepted_output_item` are public names now: `inspect scope="output"` reads
+  the same pinned report against the same containment checks.
+- *Docs.* `INTEGRATION.md` (both tables), `XSCRIPT.md` (store, mesh
+  vocabulary, scope list, and the rewritten "stays that way" paragraph),
+  `ARCHITECTURE.md` (staging, file map, store layout — which had never
+  mentioned `assets/` — and the test count), `BLENDER.md` (thirteen tools),
+  `BLENDER-TREE.md` (add-on line count), `ROADMAP.md` (Phase 4, and the op
+  counts in 11b/11c: mesh 6 → 7, part 49 → 50).
+
+**Evidence.** `pixi run python -m pytest src/Mod/cadex/cadex_tests` — 226
+passed (was 208). New coverage: `put_asset`'s bounds, name rules and
+atomicity, and that `list_project_assets` walks exactly as
+`_stage_project_assets` does (`test_mesh_domain.py`); `scope="assets"` and
+`scope="output"` including paging and the missing-output message
+(`test_model_context_contract.py`); the promoted accepted-attempt helpers
+and their containment check (`test_pin_resolution.py`); `mesh.transform`'s
+contract equality with `part.transform`'s kwargs, and that it does *not*
+make its tree approximating; `shape_from_mesh`'s domain crossing, option
+validation, and `decimate` rejection.
+
+`test_cadexd_lifecycle.py` now drives `put_asset` (including a rejected
+`../escape.stl`), `inspect scope=assets`, and `inspect scope=output` before
+and after acceptance, against a real cadexd child — and every frame in that
+test is validated against the pinned response spec, so the golden and the
+running engine agree by construction.
+
+`test_project_rebuild.py` extends the digest CI with
+`mesh.transform`-placed import, `scan_solid = part.shape_from_mesh(scan)`
+and `carved = part.cut(plate, scan_solid)`. Its accepted-vs-rebuild and
+rebuild-vs-rebuild assertions therefore cover `makeShapeFromMesh`
+reproducibility for free. Measured: the imported tetra becomes a BREP
+`Solid` of 10.667 mm³ — the mesh's own volume — and cutting it from the
+2160 mm³ plate leaves 2149.333 mm³, with one digest across accepted, first
+rebuild and second rebuild.
+
+`makeShapeFromMesh`'s calling convention was confirmed against the pinned
+`.pixi` build rather than assumed: it **mutates in place and returns
+`None`**, and yields a Shell (or a Compound of shells), never a Solid — so
+the branch promotes with `Part.makeSolid` and refuses a mesh that sews into
+more than one shell.

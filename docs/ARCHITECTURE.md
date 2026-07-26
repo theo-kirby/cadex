@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-07-25
+Verified against source: 2026-07-26
 
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),
@@ -90,7 +90,10 @@ NDJSON client with no cadex imports.
   executes once, outputs are grouped by domain and evaluated sketcher →
   part → partdesign → mesh → assembly. Mesh assets (`assets/*.stl|obj|ply`
   under the project root) are staged beside the worker for
-  `mesh.import_file`. Wire schema: `cadex-xscript-project-worker-v1`.
+  `mesh.import_file` — and, since ADR-043, for `part.shape_from_mesh`, which
+  materializes a nested mesh value inside the part build through the entry
+  point `configure_part_assets` binds. Wire schema:
+  `cadex-xscript-project-worker-v1`.
 - **Publisher** (`src/Mod/cadex/CadexScriptedDomainPublication.py`,
   `CadexScriptedPublication.py`): `publish_project_candidate` applies all
   domains under ONE transaction (per-domain sub-publishes with
@@ -139,10 +142,10 @@ Ownership closure, lint, and orphan queries live in
 | `CadexdProtocol.py` | `cadex-cadexd-v1` NDJSON codec, op registry + arg schemas, **response schemas** (`OP_RESPONSE_SPECS`, `NESTED_RESPONSE_SPECS`, the tool-level and server-level failure envelopes, `validate_response`), server failure codes; pure Python, zero FreeCAD imports. `[Cadex-new]` |
 | `cadex_tessellation.py` | Phase 5.1 display tessellation: adaptive deflection, per-face triangle ranges + `face_keys` fingerprints + per-edge polylines (`cadex-tessellation-v1` buffer + sidecar), digest-neutral. Staged into the worker bundle. `[Cadex-new]` |
 | `CadexSubshapeQuery.py` | **The one subshape vocabulary** (Phase 10b, ADR-029): `subshape_geometry` fingerprints, `query_subelements` / `resolve_selected_subshapes` resolve a selector against a shape, `SELECTOR_KEYS` is the closed key set, `fingerprint_key` is the sidecar handle. Kernel-neutral — no FreeCAD import — and staged into the worker bundle. Extracted from `cadex_partdesign_worker` (Phase 11a's item, forced forward: the part domain could not reach it without an import cycle). `[Cadex-new]` |
-| `CadexPinResolution.py` | Headless pin resolution against the accepted revision's staged BREP: `CadexSubshapeQuery` fingerprints or direct `{element_type, index}`. `[Cadex-new]` |
+| `CadexPinResolution.py` | Headless pin resolution against the accepted revision's staged BREP: `CadexSubshapeQuery` fingerprints or direct `{element_type, index}`. Its three accepted-attempt readers (`accepted_attempt_dir`, `load_worker_report`, `accepted_output_item`) are public since ADR-043 — `inspect scope="output"` reads the same pinned report. `[Cadex-new]` |
 | `cadex_rebuild.py` | Headless rebuild + digest comparison (`pixi run rebuild <root>`); drives the shared `run_project_lifecycle`. `[Cadex-new]` |
 | `cadex_{partdesign,sketcher,part,assembly}_{api,worker}.py` | The original four domain APIs (staged into the project worker) and worker implementations. `[VibeCAD-era]` |
-| `cadex_mesh_api.py` / `cadex_mesh_worker.py` | The Phase 4 mesh domain on `Mod/Mesh`+`Mod/MeshPart`: tessellate/import/boolean/decimate, canonical vertex/facet ordering + vertex-set digest fingerprint (ADR-016). `[Cadex-new]` |
+| `cadex_mesh_api.py` / `cadex_mesh_worker.py` | The Phase 4 mesh domain on `Mod/Mesh`+`Mod/MeshPart`: tessellate/import/transform/boolean/decimate, canonical vertex/facet ordering + vertex-set digest fingerprint (ADR-016). The api also owns `payload_tree_is_deterministic`, which `part.shape_from_mesh` applies at script-eval time (ADR-043); the worker's `canonical_mesh_from_payload` is the BREP-ingest entry point the part worker is *handed* rather than imports, because the part worker is in cadexd's closure and this one deliberately is not. `[Cadex-new]` |
 | `cadex_domain_api.py` / `cadex_domain_worker.py` | Shared domain API/worker plumbing (`_execute_source` is the composition substrate). `[VibeCAD-era]` |
 | `CadexGeometryWorker.cpp` | Isolated C++ BREP validation / distance worker. `[VibeCAD-era]` |
 
@@ -169,7 +172,7 @@ list.
 | `cadexd.py` | The service: serial dispatch, cancel, busy, the ephemeral document, the restore pass, the per-output `display` block. |
 | `CadexTools.py` | `FAILURE_STAGES`, the `tool_failure` envelope every refusal is shaped as (and every shell parses), `unchanged_state`, `ToolSpec` as a declaration. |
 | `CadexEngineSettings.py` | The engine's own preference group and sandbox budget defaults. Split from the Qt preferences in C1. |
-| `CadexInspection.py` | The bounded `inspect` read surface (scopes `document`, `object`, `script`, `api`, `image`; `selection` was shell-only and is gone). |
+| `CadexInspection.py` | The bounded `inspect` read surface (scopes `document`, `object`, `script`, `api`, `image`, `output`, `assets`; the last two added in ADR-043 — per-output facts from the pinned accepted attempt, and the importable-asset listing. `selection` was shell-only and is gone). |
 | `CadexReferenceContracts.py` | Geometry pins: shared handle + owner + subelement hint + geometric fingerprint, and fingerprint re-resolution when the revision moved. |
 | `CadexPinResolution.py` | Resolves a pick or fingerprint against the accepted revision's staged BREP. |
 | `CadexSubshapeQuery.py` | The selector vocabulary a pin *and* a script argument both speak — since Phase 10b the five index-taking part ops resolve through it, so naming geometry means the same thing in chat and in the script. |
@@ -194,6 +197,10 @@ macOS). Layout:
   script_artifacts/<revision>/  staged worker attempts + serialized outputs
                                 (+ display/ tessellation buffers when
                                 requested)
+  assets/                       flat .stl/.obj/.ply the script imports by
+                                name (mesh.import_file, part.shape_from_mesh);
+                                bounded at 64 files / 128 MB, written only by
+                                the put_asset op (ADR-043)
 ```
 
 **cadexd is the sole writer and the sole reader.** The shell never touches
@@ -228,7 +235,7 @@ FreeCAD:
 pixi run python -m pytest src/Mod/cadex/cadex_tests
 ```
 
-(204 passing as of 2026-07-25. The count *fell* from 425: Phase 7 deleted
+(226 passing as of 2026-07-26. The count *fell* from 425: Phase 7 deleted
 the Qt shell and the provider stack along with their suites — 36 test files
 to 20 — and ADR-030 removed four more that drove the shell's deleted local
 bpy path. Fewer tests over less code, not less coverage.)

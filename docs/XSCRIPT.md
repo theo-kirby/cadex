@@ -18,7 +18,10 @@ replaced the VibeCAD-era per-domain multi-program surface `[Cadex-new]`.
   five capability domains and is the sole source of truth — the user can
   open it, read it, and diff it; nothing model-shaped exists outside it.
   Mesh assets the script imports live under `<project>/assets/` (flat,
-  `.stl`/`.obj`/`.ply`).
+  `.stl`/`.obj`/`.ply`). Nothing outside cadexd writes that directory: the
+  `put_asset` op copies a file the user picked into it and returns the name
+  the script may then import (ADR-043), and `inspect scope="assets"` lists
+  what is there.
 - Sidecar state: `<project>/script.json` (schema `cadex-project-script-v1`,
   `CadexProject.py:CadexProjectScriptStore`) — cached `param_specs`,
   `param_values`, working/accepted revision, accepted contract (output
@@ -73,8 +76,14 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   published stable object. Cross-document component references are retired;
   v0.0.1 assemblies are rigid, same-script solids (ADR-011).
 - `mesh.from_shape()` tessellates a same-script part value (`Mod/MeshPart`);
-  `mesh.import_file()` reads one flat asset file; `mesh.union`/`difference`/
-  `intersection` and `mesh.decimate` run on the native mesh kernel. Every
+  `mesh.import_file()` reads one flat asset file; `mesh.transform()` places
+  one (same kwargs and same order of operations as `part.transform`, composed
+  into a single matrix because `Mesh` has no `scale`); `mesh.union`/
+  `difference`/`intersection` and `mesh.decimate` run on the native mesh
+  kernel. Going the other way, `part.shape_from_mesh()` converts a mesh value
+  into BREP topology (`makeShapeFromMesh`, then promoted to a solid unless
+  `solid=False`) so an imported component can be cut against, assembled and
+  padded around — see ADR-043 for what that costs. Every
   mesh output is rebuilt in canonical vertex/facet order (booleans
   immediately, all outputs before export), and the digest identifies a mesh
   by its exact sorted vertex set (`geometry_sha256`) — the native set
@@ -152,10 +161,13 @@ The dissolved per-domain operations (`create_program`, `edit_source`,
 `delete_program`, `inspect_program`) stay gone — the guardrail test
 asserts no registered tool may carry them again. Reads go through the
 bounded **`core.inspect`** tool (`CadexInspection.py`; scopes `document`,
-`object`, `script`, `api`, `image` — `script` pages the source and reports
-specs/values, revisions, accepted contract + digest, and the latest
-candidate). There was a sixth scope, `selection`; it read the Qt shell's
-selection and died with it (ADR-021), and the engine rejects it.
+`object`, `script`, `api`, `image`, `output`, `assets` — `script` pages the
+source and reports specs/values, revisions, accepted contract + digest, and
+the latest candidate; `output` serves any accepted output's measured facts
+from the pinned accepted attempt, so they are readable long after the
+rebuild that produced them; `assets` lists what `mesh.import_file` can name;
+both added in ADR-043). There was one more scope, `selection`; it read the
+Qt shell's selection and died with it (ADR-021), and the engine rejects it.
 
 ### Sandbox rules
 
@@ -287,15 +299,26 @@ selector into a script from a click; that round trip is half built
   hash are a possible optimization; the revision machinery points the way.
 - **Sub-modules**: whether large projects split into importable sub-modules
   under the project root, or stay one flat script.
-- **Interactive mesh editing**: the Phase 4 `mesh` domain is deliberately
-  minimal (tessellate/import/boolean/decimate), and *stays* that way for now.
-  The plan used to be that interactive editing would arrive via BMesh in the
-  Blender shell. It has not, and the route narrowed rather than widened:
-  ADR-030 deleted the local bpy modes, which were the only code in the shell
-  that authored geometry with BMesh. Editing a mesh interactively would now
-  mean either a new engine op or re-opening a second authoring path — and the
-  second is a direct contradiction of "nothing happens outside the script".
-  Unscheduled, and a decision rather than an oversight.
+- **Interactive mesh editing**: still unscheduled, and still a decision
+  rather than an oversight. The plan used to be that it would arrive via
+  BMesh in the Blender shell. It has not, and the route narrowed rather than
+  widened: ADR-030 deleted the local bpy modes, which were the only code in
+  the shell that authored geometry with BMesh. Editing a mesh interactively
+  would now mean either a new engine op or re-opening a second authoring
+  path — and the second is a direct contradiction of "nothing happens
+  outside the script".
+
+  What this paragraph used to also say — that the `mesh` domain is
+  deliberately minimal and *stays* that way — is **superseded by ADR-043**.
+  The charter it stated was a *modelling* one, and it held; what it
+  incidentally froze was the *ingest* path, which was not a decision anyone
+  made. External geometry is now a first-class input: `put_asset` gets a
+  file into the store, `mesh.transform` places it, `part.shape_from_mesh`
+  takes it into the BREP domains, and `inspect scope="output"` measures the
+  result. None of that is interactive mesh editing, and the "nothing happens
+  outside the script" rule is untouched — the script still names every
+  operation; the asset store is an input to it, the way a parameter value
+  is.
 
 ---
 

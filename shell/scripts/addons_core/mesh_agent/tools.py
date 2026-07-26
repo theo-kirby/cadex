@@ -31,7 +31,7 @@ MUTATING_TOOLS = {"write_script", "set_params", "edit_script", "rebuild_model"}
 # the scene's mode; there is one backend now.)
 _ENGINE_TOOLS = {"get_script", "write_script", "set_params",
                  "edit_script", "inspect_model", "describe_cad_api",
-                 "scene_summary", "rebuild_model"}
+                 "scene_summary", "rebuild_model", "import_geometry"}
 
 TOOL_DEFS = [
     {
@@ -134,16 +134,22 @@ TOOL_DEFS = [
             "Cadex mode only. Ask the engine about the model it holds: "
             "scope 'script' for the source, parameters and revisions, "
             "'document' for the published objects, 'object' with a target "
-            "for one object's properties. This is engine truth, unlike the "
-            "tessellated copies in the Blender scene."
+            "for one object's properties, 'output' for one accepted output's "
+            "measured facts (volume, area, bounds, centre of mass, face and "
+            "edge counts — omit the target to list every output), 'assets' "
+            "for the external mesh files stored for mesh.import_file(). This "
+            "is engine truth, unlike the tessellated copies in the Blender "
+            "scene."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "scope": {"type": "string",
-                          "description": "script | document | object"},
+                          "description": "script | document | object | output "
+                                         "| assets"},
                 "target": {"type": "string",
-                           "description": "Object name, for scope=object."},
+                           "description": "Object name for scope=object; "
+                                          "output name for scope=output."},
                 "path": {"type": "string",
                          "description": "Sub-path within the scope, e.g. "
                                         "/revisions or /params."},
@@ -240,6 +246,31 @@ TOOL_DEFS = [
                     "description": "Output directory (created if missing).",
                 },
             },
+        },
+    },
+    {
+        "name": "import_geometry",
+        "description": (
+            "Copy an external mesh file (STL, OBJ or PLY) from anywhere on "
+            "disk into the model's asset store, so the script can import it "
+            "with mesh.import_file(). Returns the stored name — pass that "
+            "name, not the original path. Use this when the user points you "
+            "at a component file; use inspect_model with scope 'assets' to "
+            "see what is already stored (the user can also drop files in "
+            "through File > Import Geometry)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string",
+                         "description": "Path to the STL/OBJ/PLY file to import."},
+                "name": {"type": "string",
+                         "description": "Optional name to store it under "
+                                        "(same format suffix; default: the "
+                                        "source file's name). Re-using a "
+                                        "stored name replaces that asset."},
+            },
+            "required": ["path"],
         },
     },
     {
@@ -469,9 +500,9 @@ def _tool_inspect_model(tool_input):
     from . import cadex_backend
 
     scope = str(tool_input.get("scope") or "").strip()
-    if scope not in {"script", "document", "object"}:
-        return _text("inspect_model scope must be script, document or "
-                     "object."), True
+    if scope not in {"script", "document", "object", "output", "assets"}:
+        return _text("inspect_model scope must be script, document, object, "
+                     "output or assets."), True
     args = {"scope": scope}
     for key in ("target", "path"):
         value = str(tool_input.get(key) or "").strip()
@@ -637,6 +668,32 @@ def _tool_export_stl(tool_input):
         "Exported {:d} STL file(s):\n".format(len(lines)) + "\n".join(lines))), False
 
 
+def _tool_import_geometry(tool_input):
+    import os
+
+    import bpy
+    from . import cadex_backend
+
+    path = str(tool_input.get("path") or "").strip()
+    if not path:
+        return _text("import_geometry needs the path of an STL, OBJ or PLY "
+                     "file."), True
+    path = os.path.abspath(os.path.expanduser(path))
+    payload = cadex_backend.put_asset(bpy.context.scene, path,
+                                      str(tool_input.get("name") or "").strip())
+    if payload.get("ok") is not True:
+        return _text(_truncate("The engine refused the import: "
+                               + str(payload.get("error") or payload))), True
+    stored = payload.get("assets") or []
+    return _text(
+        "Imported {:s} as {:s} ({:d} bytes). Reference it in the script with "
+        "mesh.import_file(\"{:s}\").\nAssets now stored: {:s}".format(
+            path, str(payload.get("name")), int(payload.get("bytes") or 0),
+            str(payload.get("name")),
+            ", ".join(str(item.get("name")) for item in stored) or "(none)"),
+    ), False
+
+
 def _tool_focus_view(tool_input):
     import bpy
 
@@ -679,6 +736,7 @@ _HANDLERS = {
     "scene_summary": _tool_scene_summary,
     "viewport_screenshot": _tool_viewport_screenshot,
     "export_stl": _tool_export_stl,
+    "import_geometry": _tool_import_geometry,
     "focus_view": _tool_focus_view,
 }
 

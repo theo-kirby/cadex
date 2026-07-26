@@ -280,6 +280,15 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
     output_directory = root / "outputs"
     output_directory.mkdir(parents=True, exist_ok=False)
 
+    # part.shape_from_mesh materializes a nested mesh value, which resolves
+    # mesh.import_file names against <root>/assets. build_part_shape takes
+    # neither a root nor the mesh kernel, so both are bound once here — this
+    # module is staged into the sandbox, so it may own that edge (ADR-043).
+    from cadex_mesh_worker import canonical_mesh_from_payload
+    from cadex_part_worker import configure_part_assets
+
+    configure_part_assets(root, canonical_mesh_from_payload)
+
     inline_sources: dict[str, dict[str, Any]] = {}
     collector = ParamsCollector(param_values)
     globals_by_name: dict[str, Any] = {"params": collector, "num": num}

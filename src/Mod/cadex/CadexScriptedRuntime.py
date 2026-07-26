@@ -14,6 +14,7 @@ with the Phase 2.4 tool-surface swap (docs/DECISIONS.md ADR-013).
 
 from __future__ import annotations
 
+import hashlib
 import inspect as _inspect
 import json
 import os
@@ -188,6 +189,107 @@ def _stage_project_assets(project_root: Path, staging: Path) -> list[str]:
         shutil.copyfile(path, target_dir / path.name)
         staged.append(path.name)
     return staged
+
+
+def _asset_entry(path: Path) -> dict[str, Any]:
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            size += len(chunk)
+            digest.update(chunk)
+    return {"name": path.name, "bytes": size, "sha256": digest.hexdigest()}
+
+
+def list_project_assets(project_root: Path | str) -> list[dict[str, Any]]:
+    """Every importable mesh asset in the project store, sorted by name.
+
+    The same flat, suffix-filtered, symlink-skipping walk
+    :func:`_stage_project_assets` performs, so what this reports is exactly
+    what a run would stage for ``mesh.import_file``.
+    """
+
+    source_dir = Path(project_root) / "assets"
+    if not source_dir.is_dir():
+        return []
+    return [
+        _asset_entry(path)
+        for path in sorted(source_dir.iterdir())
+        if not path.is_symlink()
+        and path.is_file()
+        and path.suffix.lower() in _ASSET_SUFFIXES
+    ]
+
+
+def store_project_asset(
+    project_root: Path | str,
+    source_path: str,
+    name: str = "",
+) -> dict[str, Any]:
+    """Copy one mesh file into ``<project_root>/assets`` under a checked name.
+
+    The engine is the sole writer of the project store
+    (docs/ARCHITECTURE.md), so this is how a file the user picked outside the
+    store becomes importable. Bounds are the staging bounds — same suffixes,
+    same 64-file / 128 MB budget, counted *including* the incoming file, so a
+    run can never be staged into a budget this write already broke.
+    Overwriting an existing name is allowed: that is re-import.
+    """
+
+    from cadex_mesh_api import _asset_filename
+
+    raw_source = str(source_path or "").strip()
+    if not raw_source:
+        raise ValueError("source_path must name a readable mesh file.")
+    try:
+        source = Path(raw_source).expanduser().resolve(strict=True)
+    except OSError as exc:
+        raise ValueError(f"Could not read {raw_source!r}: {exc}") from exc
+    if not source.is_file():
+        raise ValueError(f"{raw_source!r} is not a regular file.")
+    source_suffix = source.suffix.lower()
+    if source_suffix not in _ASSET_SUFFIXES:
+        raise ValueError(
+            f"{source.name!r} is not one of the importable mesh formats "
+            f"{sorted(_ASSET_SUFFIXES)}."
+        )
+    target_name = _asset_filename("put_asset", str(name or "").strip() or source.name)
+    if Path(target_name).suffix.lower() != source_suffix:
+        raise ValueError(
+            f"name {target_name!r} must keep the source file's {source_suffix} "
+            "format; the importer reads the format from the suffix."
+        )
+
+    size = source.stat().st_size
+    existing = [
+        item for item in list_project_assets(project_root) if item["name"] != target_name
+    ]
+    if len(existing) + 1 > _MAX_ASSET_FILES:
+        raise ValueError(
+            f"The project already holds {len(existing)} mesh assets; the "
+            f"staging budget is {_MAX_ASSET_FILES} files."
+        )
+    total_bytes = sum(int(item["bytes"]) for item in existing) + size
+    if total_bytes > _MAX_ASSET_BYTES:
+        raise ValueError(
+            f"Storing {target_name!r} would bring the project's mesh assets to "
+            f"{total_bytes} bytes, over the staging budget of {_MAX_ASSET_BYTES}."
+        )
+
+    assets_dir = Path(project_root) / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    # Dot-prefixed and .tmp-suffixed, so a concurrent staging walk skips it
+    # and no reader ever sees a half-copied asset under its final name.
+    temporary = assets_dir / f".{target_name}.{uuid.uuid4().hex}.tmp"
+    try:
+        shutil.copyfile(source, temporary)
+        temporary.replace(assets_dir / target_name)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+    return _asset_entry(assets_dir / target_name)
 
 
 def _document_objects(doc: Any) -> list[dict[str, str]]:

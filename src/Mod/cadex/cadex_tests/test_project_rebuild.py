@@ -63,8 +63,19 @@ hull = mesh.union(
 )
 lite = mesh.decimate(hull, tolerance=0.5, reduction=0.5)
 scan = mesh.import_file("tetra.stl")
+placed = mesh.transform(
+    scan,
+    translation=[12.0, 0.0, 0.0],
+    rotation_axis=[0.0, 0.0, 1.0],
+    rotation_degrees=45.0,
+    scale=1.5,
+    pivot=[2.0, 2.0, 0.0],
+)
+scan_solid = part.shape_from_mesh(scan)
+carved = part.cut(plate, scan_solid)
 result = {"plate": plate, "base": base, "top": top, "asm": asm, "diag": diag,
-          "hull": hull, "lite": lite, "scan": scan}
+          "hull": hull, "lite": lite, "scan": scan, "placed": placed,
+          "scan_solid": scan_solid, "carved": carved}
 '''
 
 TETRA_STL = '''solid tetra
@@ -123,6 +134,20 @@ try:
     # delete the document entirely; the script store is the only truth left
     App.closeDocument(document.Name)
 
+    # part.shape_from_mesh must land as real BREP the part kernel can consume,
+    # not merely as an accepted output (ADR-043).
+    accepted_outputs = {
+        item["name"]: {
+            "artifact_kind": item.get("artifact_kind"),
+            "domain": item.get("domain"),
+            "shape_type": (item.get("facts") or {}).get("shape_type"),
+            "volume_mm3": (item.get("facts") or {}).get("volume_mm3"),
+        }
+        for item in json.loads(
+            (Path(prepared["staging"]) / "result.json").read_text(encoding="utf-8")
+        )["outputs"]
+    }
+
     first = cadex_rebuild.rebuild_project(root)
     second = cadex_rebuild.rebuild_project(root)
     report = {
@@ -131,6 +156,7 @@ try:
         "first": first["digest"],
         "second": second["digest"],
         "first_matches_accepted": first["digest_matches_accepted"],
+        "outputs": accepted_outputs,
     }
 finally:
     shutil.rmtree(root, ignore_errors=True)
@@ -180,3 +206,12 @@ def test_rebuild_digest_matches_accepted_and_is_reproducible(tmp_path) -> None:
     assert report["first"] == report["accepted"], report
     assert report["second"] == report["first"], report
     assert report["first_matches_accepted"] is True, report
+    # The digest assertions above cover makeShapeFromMesh's reproducibility
+    # for free; these say the ingested mesh is genuinely BREP, and that the
+    # part kernel could cut a modelled solid with it (ADR-043).
+    outputs = report["outputs"]
+    assert outputs["scan_solid"]["artifact_kind"] == "brep", report
+    assert outputs["scan_solid"]["domain"] == "part", report
+    assert outputs["scan_solid"]["shape_type"] == "Solid", report
+    assert outputs["carved"]["artifact_kind"] == "brep", report
+    assert 0.0 < outputs["carved"]["volume_mm3"] < outputs["plate"]["volume_mm3"], report

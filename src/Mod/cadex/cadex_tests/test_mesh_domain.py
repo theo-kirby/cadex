@@ -168,6 +168,68 @@ def test_decimate_bounds_reduction_and_tolerance() -> None:
         api.decimate(source, tolerance=0.0, reduction=0.5)
 
 
+def test_transform_mirrors_the_part_transform_contract() -> None:
+    """An import you cannot place is not usable geometry (ADR-043)."""
+
+    import cadex_part_api as part_api
+
+    api = _api()
+    scan = api.import_file("scan.stl")
+    value = api.transform(
+        scan,
+        translation=[1.0, 2.0, 3.0],
+        rotation_axis=[0.0, 0.0, 1.0],
+        rotation_degrees=90.0,
+        scale=2.0,
+        pivot=[5.0, 0.0, 0.0],
+    )
+    assert value.domain == "mesh" and value.output_type == "mesh"
+    properties = value.to_payload()["properties"]
+    assert properties["translation"] == [1.0, 2.0, 3.0]
+    assert properties["scale"] == [2.0, 2.0, 2.0]
+    assert properties["pivot"] == [5.0, 0.0, 0.0]
+    assert properties["rotation_degrees"] == 90.0
+
+    # Same knobs as part.transform, so placing an import reads like placing
+    # a modelled solid.
+    part_transform = part_api.PartDomainAPI.transform
+    mesh_transform = MeshDomainAPI.transform
+    import inspect
+
+    part_kwargs = set(inspect.signature(part_transform).parameters) - {"self", "shape"}
+    mesh_kwargs = set(inspect.signature(mesh_transform).parameters) - {"self", "mesh"}
+    assert part_kwargs == mesh_kwargs
+
+
+def test_transform_validates_its_arguments() -> None:
+    api = _api()
+    scan = api.import_file("scan.stl")
+    with pytest.raises(ValueError, match="Mesh api"):
+        api.transform(_part_solid())
+    with pytest.raises(ValueError, match="rotation_axis"):
+        api.transform(scan, rotation_axis=[0.0, 0.0, 0.0])
+    with pytest.raises(ValueError, match="scale"):
+        api.transform(scan, scale=0.0)
+    with pytest.raises(ValueError, match="scale"):
+        api.transform(scan, scale=[1.0, -1.0, 1.0])
+    with pytest.raises(ValueError, match="translation"):
+        api.transform(scan, translation=[1.0, 2.0])
+
+
+def test_transform_does_not_make_its_tree_approximating() -> None:
+    """Rigid-plus-scale on floats is exact, so the fingerprint stays valid."""
+
+    from cadex_mesh_worker import payload_tree_is_deterministic
+
+    api = _api()
+    placed = api.transform(api.import_file("scan.stl"), translation=[1.0, 0.0, 0.0])
+    assert payload_tree_is_deterministic(placed.to_payload())
+    decimated = api.decimate(placed, tolerance=0.5, reduction=0.5)
+    assert not payload_tree_is_deterministic(
+        api.transform(decimated, translation=[1.0, 0.0, 0.0]).to_payload()
+    )
+
+
 def test_api_is_immutable_and_payloads_are_json_safe() -> None:
     import json
 
@@ -176,6 +238,75 @@ def test_api_is_immutable_and_payloads_are_json_safe() -> None:
         api.extra = True  # type: ignore[attr-defined]
     payload = api.union(api.import_file("a.stl"), api.import_file("b.stl")).to_payload()
     assert json.loads(json.dumps(payload)) == payload
+
+
+# ---------------------------------------------------------------------------
+# Mesh into the BREP domains: part.shape_from_mesh (ADR-043)
+# ---------------------------------------------------------------------------
+
+PART_PACK = domains.XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
+
+
+def _part() -> object:
+    return create_domain_api("part", PART_PACK.api_exports, PART_PACK.output_types)
+
+
+def test_shape_from_mesh_crosses_the_domain_boundary_into_part() -> None:
+    part = _part()
+    value = part.shape_from_mesh(_api().import_file("scan.stl"))
+    assert value.domain == "part"
+    assert value.output_type == "solid"
+    payload = value.to_payload()
+    assert payload["operation"] == "shape_from_mesh"
+    assert payload["arguments"][0]["domain"] == "mesh"
+    assert payload["properties"]["tolerance"] == 0.1
+    assert payload["properties"]["sew"] is True
+
+    # solid=False publishes the sewn shell instead; both are publishable.
+    shell = part.shape_from_mesh(_api().import_file("scan.stl"), solid=False)
+    assert shell.output_type == "shell"
+
+
+def test_shape_from_mesh_result_groups_under_part() -> None:
+    grouped = project_worker._group_result_by_domain(
+        {"scan_solid": _part().shape_from_mesh(_api().import_file("scan.stl"))}
+    )
+    assert set(grouped["part"]) == {"scan_solid"}
+    assert grouped["mesh"] == {}
+
+
+def test_shape_from_mesh_validates_its_argument_and_options() -> None:
+    part = _part()
+    mesh = _api().import_file("scan.stl")
+    with pytest.raises(ValueError, match="Mesh api"):
+        part.shape_from_mesh(_part_solid())
+    with pytest.raises(ValueError, match="Mesh api"):
+        part.shape_from_mesh({"domain": "mesh", "operation": "import_file"})
+    with pytest.raises(ValueError, match="tolerance"):
+        part.shape_from_mesh(mesh, tolerance=0.0)
+    with pytest.raises(ValueError, match="sew"):
+        part.shape_from_mesh(mesh, sew=False, solid=True)
+
+
+def test_shape_from_mesh_rejects_approximating_trees_by_name() -> None:
+    """A BREP output's identity is its bytes, so it has no by-definition
+    fallback: an unreproducible mesh would flip the digest every rebuild."""
+
+    api = _api()
+    decimated = api.decimate(api.import_file("scan.stl"), tolerance=0.5, reduction=0.5)
+    with pytest.raises(ValueError, match="decimate") as raised:
+        _part().shape_from_mesh(decimated)
+    assert "digest" in str(raised.value)
+    # Nondeterminism propagates: transforming it does not launder it.
+    with pytest.raises(ValueError, match="decimate"):
+        _part().shape_from_mesh(api.transform(decimated, translation=[1.0, 0.0, 0.0]))
+    # The reachable workaround stays reachable.
+    assert _part().shape_from_mesh(api.import_file("scan.stl")).domain == "part"
+
+
+def test_shape_from_mesh_is_declared_by_the_part_pack() -> None:
+    assert "shape_from_mesh" in PART_PACK.api_exports
+    assert "shape_from_mesh" in _part().exported_names
 
 
 # ---------------------------------------------------------------------------
@@ -269,3 +400,102 @@ def test_asset_staging_enforces_the_budget(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(runtime, "_MAX_ASSET_BYTES", 5)
     with pytest.raises(ValueError, match="staging budget"):
         runtime._stage_project_assets(project_root, staging)
+
+
+# ---------------------------------------------------------------------------
+# Getting an asset into the project store (ADR-043)
+# ---------------------------------------------------------------------------
+
+
+def test_store_project_asset_copies_and_lists(tmp_path: Path) -> None:
+    import CadexScriptedRuntime as runtime
+
+    source = tmp_path / "incoming" / "Bracket.STL"
+    source.parent.mkdir()
+    source.write_bytes(b"solid bracket")
+    project_root = tmp_path / "project"
+
+    stored = runtime.store_project_asset(project_root, str(source))
+    assert stored["name"] == "Bracket.STL"
+    assert stored["bytes"] == len(b"solid bracket")
+    assert re.fullmatch(r"[0-9a-f]{64}", stored["sha256"])
+    assert (project_root / "assets" / "Bracket.STL").read_bytes() == b"solid bracket"
+    assert runtime.list_project_assets(project_root) == [stored]
+    # No half-copied temporaries survive an atomic store.
+    assert sorted(p.name for p in (project_root / "assets").iterdir()) == [
+        "Bracket.STL"
+    ]
+
+    # An explicit name renames; overwriting the same name is re-import.
+    renamed = runtime.store_project_asset(project_root, str(source), "scan.stl")
+    assert renamed["name"] == "scan.stl"
+    source.write_bytes(b"solid bracket v2")
+    again = runtime.store_project_asset(project_root, str(source), "scan.stl")
+    assert again["sha256"] != renamed["sha256"]
+    assert [item["name"] for item in runtime.list_project_assets(project_root)] == [
+        "Bracket.STL",
+        "scan.stl",
+    ]
+
+
+def test_store_project_asset_rejects_bad_sources_and_names(tmp_path: Path) -> None:
+    import CadexScriptedRuntime as runtime
+
+    project_root = tmp_path / "project"
+    source = tmp_path / "scan.stl"
+    source.write_bytes(b"solid x")
+    notes = tmp_path / "notes.txt"
+    notes.write_text("not geometry")
+
+    with pytest.raises(ValueError, match="source_path"):
+        runtime.store_project_asset(project_root, "")
+    with pytest.raises(ValueError, match="Could not read"):
+        runtime.store_project_asset(project_root, str(tmp_path / "missing.stl"))
+    with pytest.raises(ValueError, match="importable mesh formats"):
+        runtime.store_project_asset(project_root, str(notes))
+    for name in ("nested/scan.stl", "../scan.stl", "scan", "x" * 121 + ".stl"):
+        with pytest.raises(ValueError, match="filename"):
+            runtime.store_project_asset(project_root, str(source), name)
+    # A name that changes the format would break the suffix-driven importer.
+    with pytest.raises(ValueError, match="format"):
+        runtime.store_project_asset(project_root, str(source), "scan.ply")
+    assert not (project_root / "assets").exists()
+
+
+def test_store_project_asset_counts_the_incoming_file_against_the_budget(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import CadexScriptedRuntime as runtime
+
+    project_root = tmp_path / "project"
+    source = tmp_path / "scan.stl"
+    source.write_bytes(b"12345678")
+    runtime.store_project_asset(project_root, str(source), "a.stl")
+
+    monkeypatch.setattr(runtime, "_MAX_ASSET_BYTES", 12)
+    with pytest.raises(ValueError, match="staging budget"):
+        runtime.store_project_asset(project_root, str(source), "b.stl")
+    # Overwriting a.stl replaces its bytes rather than adding to them.
+    assert runtime.store_project_asset(project_root, str(source), "a.stl")["bytes"] == 8
+
+    monkeypatch.setattr(runtime, "_MAX_ASSET_FILES", 1)
+    with pytest.raises(ValueError, match="staging budget is 1 files"):
+        runtime.store_project_asset(project_root, str(source), "c.stl")
+
+
+def test_stored_assets_are_exactly_what_a_run_would_stage(tmp_path: Path) -> None:
+    """``list_project_assets`` and ``_stage_project_assets`` walk alike."""
+
+    import CadexScriptedRuntime as runtime
+
+    project_root = tmp_path / "project"
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    source = tmp_path / "scan.stl"
+    source.write_bytes(b"solid x")
+    runtime.store_project_asset(project_root, str(source), "scan.stl")
+    (project_root / "assets" / "notes.txt").write_text("skip me")
+
+    listed = [item["name"] for item in runtime.list_project_assets(project_root)]
+    assert listed == runtime._stage_project_assets(project_root, staging) == ["scan.stl"]
+    assert runtime.list_project_assets(tmp_path / "no-such-project") == []

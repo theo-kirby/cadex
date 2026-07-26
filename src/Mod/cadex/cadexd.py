@@ -490,6 +490,42 @@ class CadexdServer:
         # response: the shell shares the filesystem and consumes it there.
         return complete_inspection(captured)
 
+    def _op_put_asset(
+        self, _request_id: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Copy one mesh file into the open project's ``assets`` directory.
+
+        The shell may not write the store itself (docs/ARCHITECTURE.md: cadexd
+        is its sole writer and sole reader), so importing external geometry
+        goes through the protocol like everything else. A modeling op, so it
+        cannot race a rebuild's asset staging.
+        """
+
+        not_open = self._require_open()
+        if not_open is not None:
+            return not_open
+        from CadexScriptedRuntime import list_project_assets, store_project_asset
+        from CadexTools import tool_failure
+
+        source_path = str(args["source_path"])
+        name = str(args.get("name") or "")
+        try:
+            stored = store_project_asset(self._project_root, source_path, name)
+        except (OSError, ValueError) as exc:
+            return tool_failure(
+                "cadexd.put_asset",
+                "ASSET_REJECTED",
+                "precondition",
+                str(exc),
+                requested={"source_path": source_path, "name": name},
+                observed={"assets": list_project_assets(self._project_root)},
+            )
+        return {
+            "ok": True,
+            **stored,
+            "assets": list_project_assets(self._project_root),
+        }
+
     def _op_shutdown(self, _request_id: str, _args: dict[str, Any]) -> dict[str, Any]:
         self.shutdown_requested = True
         return {"ok": True, "shutting_down": True}

@@ -43,6 +43,39 @@ class PartOperationError(ValueError):
 MAX_SUBELEMENT_FACTS = 256
 _REFERENCE_SHAPES: Mapping[tuple[str, str], Any] = MappingProxyType({})
 
+#: Staging root whose ``assets`` directory ``shape_from_mesh`` imports from.
+_ASSET_ROOT: Path | None = None
+#: ``(payload, root) -> Mesh`` in canonical order, injected per request.
+_MESH_INGEST: Any = None
+
+
+def configure_part_assets(root: Path | None, mesh_ingest: Any = None) -> None:
+    """Bind what ``shape_from_mesh`` needs, for one worker request.
+
+    Two bindings, for two reasons.
+
+    The **root** because ``build_mesh(payload, root)`` resolves
+    ``mesh.import_file`` names against ``<root>/assets`` while
+    ``build_part_shape(payload, *, diagnostics)`` has no root, and threading
+    one in would touch every ``_shape`` call site in this module and the
+    recursive payload chain in ``cadex_domain_worker``.
+
+    The **mesh ingest callable** because this module is in cadexd's import
+    closure and ``cadex_mesh_worker`` deliberately is not — domain workers
+    are staged into the sandbox by filename, not imported (see
+    ``cadex_tests/test_engine_purity_guardrails``). A static
+    ``from cadex_mesh_worker import build_mesh`` here would pull the whole
+    domain-worker stack into the service to serve a call the service never
+    makes. The staged callers own that edge and hand the entry point in.
+
+    Both mirror the module's existing idiom for host-staged material,
+    :func:`configure_part_references` (ADR-043).
+    """
+
+    global _ASSET_ROOT, _MESH_INGEST
+    _ASSET_ROOT = None if root is None else Path(root)
+    _MESH_INGEST = mesh_ingest
+
 
 def configure_part_references(root: Path, entries: list[dict[str, Any]]) -> None:
     """Load and authenticate host-staged BREP snapshots for one worker request."""
@@ -300,6 +333,22 @@ def _serialized(operation: str, parameter: str, value: Any) -> dict[str, Any]:
         raise _error(operation, parameter, "expected a serialized Part api value")
     if value.get("domain") != "part":
         raise _error(operation, parameter, "value belongs to another XScript domain")
+    return dict(value)
+
+
+def _serialized_mesh(operation: str, parameter: str, value: Any) -> dict[str, Any]:
+    """A serialized *mesh* value. Deliberately a sibling of :func:`_serialized`.
+
+    ``_serialized``'s ``domain != "part"`` rejection is load-bearing at three
+    dozen call sites; ``shape_from_mesh`` is the one operation that ingests
+    another domain, so it gets its own guard rather than a relaxed shared one.
+    """
+
+    required = {"domain", "operation", "output_type", "arguments", "properties"}
+    if not isinstance(value, dict) or not required <= set(value):
+        raise _error(operation, parameter, "expected a serialized Mesh api value")
+    if value.get("domain") != "mesh":
+        raise _error(operation, parameter, "value did not come from the Mesh api")
     return dict(value)
 
 
@@ -912,6 +961,75 @@ def _build(
         return _shape(operation, "shape", _argument(payload, 0, "shape")).toNurbs()
     if operation == "reverse":
         return _shape(operation, "shape", _argument(payload, 0, "shape")).reversed()
+    if operation == "shape_from_mesh":
+        # The ingest counterpart of sew: triangles in, BREP topology out.
+        if _ASSET_ROOT is None or _MESH_INGEST is None:
+            raise PartOperationError(
+                "api.shape_from_mesh: this worker request has no staged mesh "
+                "kernel to materialize the mesh value with",
+                stage="part_contract",
+                operation=operation,
+                correction=(
+                    "Build shape_from_mesh from the project script surface; that "
+                    "is the surface that stages the project's mesh assets."
+                ),
+            )
+        nested = _serialized_mesh(operation, "mesh", _argument(payload, 0, "mesh"))
+        try:
+            # The ingest canonicalizes, which is load-bearing rather than
+            # cosmetic: it is the only thing making the point/facet arrays —
+            # and therefore the exported BREP bytes the project digest hashes —
+            # order-stable across runs.
+            mesh = _MESH_INGEST(nested, _ASSET_ROOT)
+        except Exception as exc:
+            # Rewrapped here, with the mesh kernel's own stage and correction
+            # preserved: build_part_shape's generic handler would relabel this
+            # `part_kernel` and drop the text that says how to fix the mesh.
+            details = getattr(exc, "details", None)
+            details = details if isinstance(details, Mapping) else {}
+            raise PartOperationError(
+                str(exc)
+                if details
+                else (
+                    f"api.{operation}: the mesh value could not be materialized: "
+                    f"{exc.__class__.__name__}: {exc}"
+                ),
+                stage=str(details.get("stage") or "mesh_kernel"),
+                operation=operation,
+                parameter="mesh",
+                correction=str(details.get("correction") or "")
+                or (
+                    "Inspect the mesh value this operation consumes: fix the "
+                    "mesh operation, or the asset name it imports."
+                ),
+            ) from exc
+        result = Part.Shape()
+        # Mutates in place and returns None on the pinned build; assigning the
+        # call's value would silently produce a null shape.
+        result.makeShapeFromMesh(
+            mesh.Topology,
+            float(properties.get("tolerance", 0.1)),
+            bool(properties.get("sew", True)),
+        )
+        if str(payload.get("output_type") or "") != "solid":
+            return result
+        # makeShapeFromMesh returns a Shell or a Compound of shells, never a
+        # Solid; build_part_shape's declared-vs-actual check rejects a raw
+        # Shell declared solid, so promote it here.
+        if str(result.ShapeType) == "Solid":
+            return result
+        if str(result.ShapeType) == "Shell":
+            return Part.makeSolid(result)
+        shells = list(getattr(result, "Shells", []) or [])
+        if len(shells) == 1:
+            return Part.makeSolid(shells[0])
+        raise _error(
+            operation,
+            "solid",
+            f"the mesh sewed into {len(shells)} shells, so it cannot form one "
+            "solid; pass solid=False for a shell, or repair the mesh so it is "
+            "one closed surface",
+        )
     if operation == "sew":
         shapes = _shape_list(operation, "shapes", _argument(payload, 0, "shapes"))
         result = Part.makeCompound(shapes)

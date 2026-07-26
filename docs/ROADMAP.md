@@ -131,6 +131,14 @@ view, viewport.
 - [x] Register the domain pack + worker bundle; guardrail tests updated
       (`test_mesh_domain.py`; tool surface unchanged — capability packs
       carry no tools).
+- [x] **External geometry as a first-class input** `(landed 2026-07-26,
+      ADR-043)`. Phase 4 shipped an ingest path nothing could reach: no
+      product surface wrote `assets/`, an import could not be moved, could
+      not enter the BREP domains, and could only be measured on the rebuild
+      that produced it. Four changes closed it — the `put_asset` op plus
+      **File → Import Geometry…** and the `import_geometry` tool;
+      `mesh.transform`; `inspect scope="output"` and `scope="assets"`;
+      `part.shape_from_mesh`.
 
 **Exit criteria:** mesh programs run/publish/rebuild like the other domains.
 Verified 2026-07-24: mixed part/assembly/mesh scripts (tessellate, boolean
@@ -421,12 +429,15 @@ deadline pressure is gone.
       Phase 10b** (`CadexSubshapeQuery.py`, ADR-029); 10b could not proceed
       without it. Both implementations run in-process in `FreeCADCmd`, so
       the harness is a pytest fixture, not a pipeline.
-- [ ] **11b — `mesh` (6 ops).** The cheapest place to prove the process.
+- [ ] **11b — `mesh` (7 ops).** The cheapest place to prove the process.
       Swap to **manifold**; ADR-016's determinism workaround layers 1 and 3
       become unnecessary. *Contract change to flag:* manifold requires
       manifold input, and `mesh.import_file` accepts arbitrary user
-      STL/OBJ/PLY.
-- [ ] **11c — `part` (49 ops).** Proves the binding. Not "nearly all direct
+      STL/OBJ/PLY. ADR-043 widened the blast radius rather than narrowing
+      it — `part.shape_from_mesh` now feeds imported meshes into the BREP
+      domains, so this swap has to keep `makeShapeFromMesh`'s ingest
+      reproducible too, not merely the mesh outputs. A known, accepted cost.
+- [ ] **11c — `part` (50 ops).** Proves the binding. Not "nearly all direct
       OCCT": `removeSplitter` (default-on for every boolean), `slice`,
       `offset2d` and the angular-deflection constant are FreeCAD-original —
       ~2,200 lines to vendor or re-derive.

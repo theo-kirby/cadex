@@ -21,16 +21,59 @@ reason `spaces.py` gives: `bl_ui` is inherited Blender and conservative,
 header's draw at runtime, and only the app template calls it, so the add-on
 loaded into a stock Blender session leaves that session's top bar alone.
 
-Everything the menus point at is stock: `wm.open_mainfile`, `wm.save_mainfile`
-and the rest are the operators Blender ships, and Import/Export are Blender's
-own menus, so a format added by an enabled add-on appears here without this
-file knowing about it. The document is the `.blend` (ADR-033): it carries the
-script mirror, the parameter specs and the engine project id, so File > Save
-saves the model.
+Almost everything the menus point at is stock: `wm.open_mainfile`,
+`wm.save_mainfile` and the rest are the operators Blender ships, and
+Import/Export are Blender's own menus, so a format added by an enabled add-on
+appears here without this file knowing about it. The document is the `.blend`
+(ADR-033): it carries the script mirror, the parameter specs and the engine
+project id, so File > Save saves the model.
+
+The exception is `Import Geometry...` (ADR-043), the first non-stock row in
+this menu. It has to be ours: stock Import loads a mesh into the *Blender*
+scene, which in Cadex is a display mirror of the engine's outputs and not the
+model. Importing geometry into the model means putting the file in the engine
+project's asset store, which only the engine may write -- so the row calls a
+`put_asset` op, and the model then names the stored asset from the script.
 """
 
 import bpy
-from bpy.types import Menu
+from bpy.types import Menu, Operator
+
+from . import agent as agent_module
+
+
+class MESH_AGENT_OT_import_asset(Operator):
+    bl_idname = "mesh_agent.import_asset"
+    bl_label = "Import Geometry"
+    bl_description = ("Copy an STL, OBJ or PLY file into this model's assets "
+                      "so the script can build with it")
+
+    filepath: bpy.props.StringProperty(subtype='FILE_PATH')
+    filter_glob: bpy.props.StringProperty(default="*.stl;*.obj;*.ply",
+                                          options={'HIDDEN'})
+
+    def invoke(self, context, _event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        from . import cadex_backend
+
+        payload = cadex_backend.put_asset(context.scene, self.filepath)
+        history = agent_module.get_agent().history
+        if payload.get("ok") is not True:
+            report = str(payload.get("error") or payload)
+            history.add("status", "Could not import geometry: " + report)
+            self.report({'WARNING'}, report.splitlines()[0] if report else
+                        "Import failed")
+            return {'CANCELLED'}
+        # Name the stored asset, because that name -- not the path the user
+        # picked -- is what mesh.import_file() takes.
+        history.add("status",
+                    "Imported {:s} into this model's assets. Ask for it by "
+                    "name: mesh.import_file(\"{:s}\").".format(
+                        self.filepath, str(payload.get("name") or "")))
+        return {'FINISHED'}
 
 
 class CADEX_MT_file(Menu):
@@ -63,6 +106,14 @@ class CADEX_MT_file(Menu):
         layout.operator_context = 'INVOKE_AREA'
         layout.operator("wm.save_as_mainfile", text="Save As...")
         layout.operator("wm.save_as_mainfile", text="Save Copy...").copy = True
+
+        layout.separator()
+
+        # Ours, and first: importing *into the model* is the thing a CAD user
+        # means by Import here. The stock menus below load into the Blender
+        # scene, which is the display mirror (ADR-043).
+        layout.operator("mesh_agent.import_asset", text="Import Geometry...",
+                        icon='IMPORT')
 
         layout.separator()
 
@@ -154,6 +205,7 @@ def uninstall():
 
 
 classes = (
+    MESH_AGENT_OT_import_asset,
     CADEX_MT_file,
     CADEX_MT_edit,
     CADEX_MT_editor_menus,

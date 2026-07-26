@@ -28,7 +28,7 @@ These files exist in no upstream Blender and cannot conflict with one.
 
 | Path | What | Lines |
 |---|---|---|
-| `shell/scripts/addons_core/mesh_agent/` | the add-on: chat, params, headers, the top bar, the cadexd protocol client, hydration, picking | 5,937 (19 files) |
+| `shell/scripts/addons_core/mesh_agent/` | the add-on: chat, params, headers, the top bar, the cadexd protocol client, hydration, picking | 5,987 (19 files) |
 | `shell/source/blender/editors/space_cadex_chat/` | the Cadex Chat editor: transcript, message box, header (ADR-035) | 202 |
 | `shell/source/blender/editors/space_cadex_params/` | the Cadex Parameters editor (ADR-035) | 170 |
 | `shell/scripts/startup/bl_app_templates_system/Mesh/` | the app template: `startup.blend` carries the layout, `__init__.py` enables the add-on, installs the Cadex top bar and suppresses the splash (ADR-037, ADR-041, ADR-042) | 111 + a 267 KB `.blend` |
@@ -37,7 +37,8 @@ These files exist in no upstream Blender and cannot conflict with one.
 The add-on was 5,714 lines across 20 files at import; ADR-030 took it to
 4,577 across 17 by deleting the local bpy modes; ADR-035 added `spaces.py`
 and took ~250 lines of geometry machinery out of `ui.py` (705 → 449);
-ADR-041 added `topbar.py`. The app template was 294 lines, then 340, and is
+ADR-041 added `topbar.py`; ADR-043 added the import-geometry operator and
+tool (5,937 → 5,987). The app template was 294 lines, then 340, and is
 now 111 because the layout is a file.
 Counted 2026-07-26 — treat these as of that date, not as a contract.
 

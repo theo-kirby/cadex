@@ -21,6 +21,32 @@ _TESSELLATABLE_PART_TYPES = frozenset({"solid", "shell", "face", "compound"})
 #: Mesh asset formats the isolated worker imports from the project assets tree.
 ASSET_SUFFIXES = frozenset({".stl", ".obj", ".ply"})
 
+#: Operations whose kernel result is approximate and run-dependent (the
+#: GTS-derived decimation collapses edges in address-dependent tie order).
+#: Their outputs — and anything built on them — are digest-identified by
+#: their canonical definition instead of a geometry fingerprint.
+APPROXIMATING_OPERATIONS = frozenset({"decimate"})
+
+
+def payload_tree_is_deterministic(payload: Any) -> bool:
+    """False when any operation in the value tree is approximating.
+
+    Lives here rather than in the worker (where it began) because two
+    callers outside the mesh kernel need it: the digest branch that decides
+    whether a mesh output carries a geometry fingerprint, and
+    ``part.shape_from_mesh``, which must refuse an approximating tree at
+    script-eval time — a BREP output's identity *is* its exported bytes, so
+    it has no by-definition fallback (ADR-043).
+    """
+
+    if isinstance(payload, dict):
+        if str(payload.get("operation") or "") in APPROXIMATING_OPERATIONS:
+            return False
+        return all(payload_tree_is_deterministic(value) for value in payload.values())
+    if isinstance(payload, (list, tuple)):
+        return all(payload_tree_is_deterministic(item) for item in payload)
+    return True
+
 
 def _error(operation: str, parameter: str, message: str, value: Any = None) -> ValueError:
     received = "" if value is None else f" Received {value!r}."
@@ -46,6 +72,24 @@ def _number(
     if minimum is not None and (result <= minimum if strict else result < minimum):
         relation = "greater than" if strict else "at least"
         raise _error(operation, parameter, f"must be {relation} {minimum:g}", value)
+    return result
+
+
+def _vector(
+    operation: str,
+    parameter: str,
+    value: Any,
+    *,
+    nonzero: bool = False,
+) -> list[float]:
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        raise _error(operation, parameter, "expected [x, y, z]", value)
+    result = [
+        _number(operation, f"{parameter}[{index}]", item)
+        for index, item in enumerate(value)
+    ]
+    if nonzero and math.sqrt(sum(item * item for item in result)) <= 1.0e-12:
+        raise _error(operation, parameter, "vector magnitude must be non-zero", value)
     return result
 
 
@@ -243,6 +287,44 @@ class MeshDomainAPI:
             label=label,
         )
 
+    def transform(
+        self,
+        mesh: DomainValue,
+        *,
+        translation: Iterable[float] = (0.0, 0.0, 0.0),
+        rotation_axis: Iterable[float] = (0.0, 0.0, 1.0),
+        rotation_degrees: float = 0.0,
+        scale: float | Iterable[float] = 1.0,
+        pivot: Iterable[float] = (0.0, 0.0, 0.0),
+        label: str = "",
+    ) -> DomainValue:
+        """Copy, scale and rotate about pivot, then translate a mesh.
+
+        The same contract as ``part.transform``, so positioning an imported
+        component reads the same as positioning a modelled solid. Exactly
+        reproducible on float coordinates, so it does not make its tree
+        approximating: a transformed import keeps its geometry fingerprint.
+        """
+
+        operation = "transform"
+        if isinstance(scale, (list, tuple)):
+            clean_scale = _vector(operation, "scale", scale)
+            if any(value <= 0.0 for value in clean_scale):
+                raise _error(operation, "scale", "all scale factors must be positive", scale)
+        else:
+            factor = _number(operation, "scale", scale, minimum=0.0, strict=True)
+            clean_scale = [factor, factor, factor]
+        return self._value(
+            operation,
+            _mesh(operation, "mesh", mesh),
+            translation=_vector(operation, "translation", translation),
+            rotation_axis=_vector(operation, "rotation_axis", rotation_axis, nonzero=True),
+            rotation_degrees=_number(operation, "rotation_degrees", rotation_degrees),
+            scale=clean_scale,
+            pivot=_vector(operation, "pivot", pivot),
+            label=label,
+        )
+
     @property
     def exported_names(self) -> tuple[str, ...]:
         return (
@@ -252,4 +334,5 @@ class MeshDomainAPI:
             "difference",
             "intersection",
             "decimate",
+            "transform",
         )

@@ -32,8 +32,19 @@ CADEXD_CRASHED = "CADEXD_CRASHED"
 CADEXD_RESTORE_FAILED = "CADEXD_RESTORE_FAILED"
 
 #: Ops that mutate engine state; at most one may be in flight.
+#: ``put_asset`` writes the project store rather than the document, but it
+#: belongs here and not in :data:`READ_OPS`: membership is what makes it
+#: mutually exclusive with an in-flight rebuild, so an asset can never land
+#: half-copied while ``_stage_project_assets`` is reading (ADR-043).
 MODELING_OPS = frozenset(
-    {"open_project", "write_script", "edit_script", "set_params", "rebuild"}
+    {
+        "open_project",
+        "write_script",
+        "edit_script",
+        "set_params",
+        "rebuild",
+        "put_asset",
+    }
 )
 #: Read-only ops; these queue behind an in-flight modeling op.
 READ_OPS = frozenset({"describe_api", "resolve_pin", "inspect"})
@@ -58,6 +69,10 @@ OP_ARG_SPECS: dict[str, tuple[dict[str, type], dict[str, type]]] = {
         {"display": dict},
     ),
     "rebuild": ({}, {"display": dict}),
+    # A path, not bytes: the asset budget is 128 MB and the frame cap is 8 MB.
+    # Both halves share a filesystem and the protocol already relies on it
+    # (``inspect scope=image`` hands back a store path).
+    "put_asset": ({"source_path": str}, {"name": str}),
     "resolve_pin": ({"output": str, "selection": dict}, {}),
     "inspect": (
         {"scope": str},
@@ -166,6 +181,12 @@ OP_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "edit_script": (_MODELING_RESPONSE_REQUIRED, frozenset({"display"})),
     "set_params": (_MODELING_RESPONSE_REQUIRED, frozenset({"display"})),
     "rebuild": (_MODELING_RESPONSE_REQUIRED, frozenset({"display"})),
+    # The stored file's identity, plus the whole listing: one round trip
+    # answers "did it land" and "what is importable now".
+    "put_asset": (
+        frozenset({"name", "bytes", "sha256", "assets"}),
+        frozenset(),
+    ),
     "resolve_pin": (
         frozenset({"output", "revision", "subelements", "details"}),
         frozenset(),

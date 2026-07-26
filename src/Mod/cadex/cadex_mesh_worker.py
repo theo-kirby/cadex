@@ -18,6 +18,11 @@ from pathlib import Path
 import struct
 from typing import Any
 
+# Re-exported: the approximating-tree test moved to the API module so
+# ``part.shape_from_mesh`` can apply it without importing a worker (ADR-043),
+# and every existing reader of it lives on this side of the boundary.
+from cadex_mesh_api import payload_tree_is_deterministic  # noqa: F401
+
 
 class MeshOperationError(ValueError):
     """One mesh definition could not be materialized by the native kernels."""
@@ -74,6 +79,56 @@ def _import_asset(root: Path, filename: str):
     return mesh
 
 
+def _triple(value: Any, fallback: tuple[float, float, float]) -> list[float]:
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        return list(fallback)
+    return [float(item) for item in value]
+
+
+def _transform_matrix(properties: dict[str, Any]):
+    """One matrix for a whole ``mesh.transform``: scale, rotate, translate.
+
+    ``Mesh`` has no ``scale()`` and no ``rotate()`` -- only ``transform(m)`` --
+    so where ``part.transform`` applies three kernel calls in order, this
+    composes the same three steps into one matrix, right-to-left:
+    ``T · (P · R · P⁻¹) · S``, with ``S`` already carrying its own pivot
+    correction. Same order of operations, same result.
+    """
+
+    import FreeCAD as App
+
+    pivot = App.Vector(*_triple(properties.get("pivot"), (0.0, 0.0, 0.0)))
+    factors = _triple(properties.get("scale"), (1.0, 1.0, 1.0))
+    axis = App.Vector(*_triple(properties.get("rotation_axis"), (0.0, 0.0, 1.0)))
+    translation = App.Vector(*_triple(properties.get("translation"), (0.0, 0.0, 0.0)))
+    degrees = float(properties.get("rotation_degrees", 0.0))
+
+    scaling = App.Matrix()
+    scaling.A11, scaling.A22, scaling.A33 = factors
+    scaling.A14 = pivot.x * (1.0 - factors[0])
+    scaling.A24 = pivot.y * (1.0 - factors[1])
+    scaling.A34 = pivot.z * (1.0 - factors[2])
+
+    rotation = App.Rotation(axis, degrees).toMatrix()
+    to_pivot = App.Matrix()
+    to_pivot.A14, to_pivot.A24, to_pivot.A34 = pivot.x, pivot.y, pivot.z
+    from_pivot = App.Matrix()
+    from_pivot.A14, from_pivot.A24, from_pivot.A34 = -pivot.x, -pivot.y, -pivot.z
+
+    moving = App.Matrix()
+    moving.A14, moving.A24, moving.A34 = (
+        translation.x,
+        translation.y,
+        translation.z,
+    )
+    return (
+        moving.multiply(to_pivot)
+        .multiply(rotation)
+        .multiply(from_pivot)
+        .multiply(scaling)
+    )
+
+
 def build_mesh(payload: dict[str, Any], root: Path):
     """Execute one validated Mesh definition and wrap kernel errors usefully."""
 
@@ -108,6 +163,12 @@ def build_mesh(payload: dict[str, Any], root: Path):
             # orderings; canonicalize immediately so downstream consumers
             # (e.g. decimate) see one deterministic input.
             return canonical_mesh(getattr(left, method)(right))
+        if operation == "transform":
+            source = build_mesh(_nested_payload(_argument(payload, 0, "mesh")), root)
+            # Mesh.transform mutates in place, as decimate does.
+            result = source.copy()
+            result.transform(_transform_matrix(properties))
+            return result
         if operation == "decimate":
             mesh = build_mesh(_nested_payload(_argument(payload, 0, "mesh")), root)
             result = mesh.copy()
@@ -162,23 +223,18 @@ def canonical_mesh(mesh: Any):
     )
 
 
-#: Operations whose kernel result is approximate and run-dependent (the
-#: GTS-derived decimation collapses edges in address-dependent tie order).
-#: Their outputs — and anything built on them — are digest-identified by
-#: their canonical definition instead of a geometry fingerprint.
-_APPROXIMATING_OPERATIONS = frozenset({"decimate"})
+def canonical_mesh_from_payload(payload: dict[str, Any], root: Path):
+    """One materialized mesh value, in canonical order — the BREP ingest entry.
 
+    ``part.shape_from_mesh`` reaches this through the callable
+    ``cadex_part_worker.configure_part_assets`` binds, rather than by
+    importing it: the part worker is in cadexd's import closure and this
+    module is deliberately not. Canonicalizing inside the entry point rather
+    than at the call site makes the order-stability guarantee part of the
+    contract, and BREP ingest is the one caller that cannot do without it.
+    """
 
-def payload_tree_is_deterministic(payload: Any) -> bool:
-    """False when any operation in the value tree is approximating."""
-
-    if isinstance(payload, dict):
-        if str(payload.get("operation") or "") in _APPROXIMATING_OPERATIONS:
-            return False
-        return all(payload_tree_is_deterministic(value) for value in payload.values())
-    if isinstance(payload, (list, tuple)):
-        return all(payload_tree_is_deterministic(item) for item in payload)
-    return True
+    return canonical_mesh(build_mesh(payload, root))
 
 
 def mesh_geometry_fingerprint(mesh: Any) -> str:

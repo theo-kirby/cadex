@@ -1,0 +1,13 @@
+{
+  "assets": [
+    {
+      "bytes": "int",
+      "name": "str",
+      "sha256": "str"
+    }
+  ],
+  "bytes": "int",
+  "name": "str",
+  "ok": "bool",
+  "sha256": "str"
+}

@@ -807,9 +807,14 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
 
             configure_assembly_references(root, references)
         elif domain == "part":
-            from cadex_part_worker import configure_part_references
+            from cadex_mesh_worker import canonical_mesh_from_payload
+            from cadex_part_worker import (
+                configure_part_assets,
+                configure_part_references,
+            )
 
             configure_part_references(root, references)
+            configure_part_assets(root, canonical_mesh_from_payload)
         elif domain == "sketcher":
             from cadex_sketcher_worker import configure_sketcher_references
 

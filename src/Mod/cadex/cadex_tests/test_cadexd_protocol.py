@@ -48,6 +48,7 @@ def test_op_list_is_pinned() -> None:
         "edit_script",
         "set_params",
         "rebuild",
+        "put_asset",
         "resolve_pin",
         "inspect",
         "cancel",
@@ -59,6 +60,9 @@ def test_op_list_is_pinned() -> None:
         "edit_script",
         "set_params",
         "rebuild",
+        # Writes the project store; modeling so it cannot race the staging
+        # a rebuild does out of that same directory (ADR-043).
+        "put_asset",
     }
 
 

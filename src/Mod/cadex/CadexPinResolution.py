@@ -41,7 +41,14 @@ def _failure(code: str, message: str, **details: Any) -> dict[str, Any]:
     return tool_failure(TOOL_NAME, code, "precondition", message, **details)
 
 
-def _accepted_attempt_dir(root: Path, state: Mapping[str, Any]) -> Path:
+def accepted_attempt_dir(root: Path, state: Mapping[str, Any]) -> Path:
+    """The pinned staging directory of the accepted attempt, containment-checked.
+
+    Public since ADR-043: ``inspect scope="output"`` reads the same worker
+    report this module resolves pins against, and both need the same
+    guarantee that ``accepted_attempt.staging`` stays under the project root.
+    """
+
     attempt = state.get("accepted_attempt")
     if not isinstance(attempt, Mapping) or not str(attempt.get("staging") or ""):
         raise ValueError(
@@ -54,7 +61,9 @@ def _accepted_attempt_dir(root: Path, state: Mapping[str, Any]) -> Path:
     return staging
 
 
-def _load_worker_report(staging: Path) -> dict[str, Any]:
+def load_worker_report(staging: Path) -> dict[str, Any]:
+    """The accepted attempt's ``result.json``; refuses a report that failed."""
+
     result_path = staging / "result.json"
     if not result_path.is_file():
         raise ValueError(
@@ -66,9 +75,11 @@ def _load_worker_report(staging: Path) -> dict[str, Any]:
     return report
 
 
-def _accepted_output_item(
+def accepted_output_item(
     report: Mapping[str, Any], output: str
 ) -> dict[str, Any]:
+    """One output's serialized record; ``KeyError`` when the name is absent."""
+
     for item in list(report.get("outputs") or []):
         if isinstance(item, Mapping) and str(item.get("name") or "") == output:
             return dict(item)
@@ -163,12 +174,12 @@ def resolve_pin(
             observed={"accepted_outputs": [str(item.get("name")) for item in contract]},
         )
     try:
-        staging = _accepted_attempt_dir(root, state)
-        report = _load_worker_report(staging)
+        staging = accepted_attempt_dir(root, state)
+        report = load_worker_report(staging)
     except ValueError as exc:
         return _failure("PIN_ARTIFACT_MISSING", str(exc))
     try:
-        item = _accepted_output_item(report, clean_output)
+        item = accepted_output_item(report, clean_output)
     except KeyError:
         return _failure(
             "PIN_ARTIFACT_MISSING",

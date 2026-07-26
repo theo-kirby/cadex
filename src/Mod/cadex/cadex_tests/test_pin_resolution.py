@@ -113,6 +113,41 @@ def test_non_brep_outputs_are_unsupported(tmp_path: Path) -> None:
     assert result["failure_code"] == "UNSUPPORTED_PIN_TARGET"
 
 
+def test_the_accepted_attempt_helpers_are_a_shared_public_surface(
+    tmp_path: Path,
+) -> None:
+    """``inspect scope="output"`` reads the same pinned report (ADR-043)."""
+
+    import pytest
+
+    from CadexPinResolution import (
+        accepted_attempt_dir,
+        accepted_output_item,
+        load_worker_report,
+    )
+
+    staging = _seed_store(
+        tmp_path,
+        report={
+            "ok": True,
+            "outputs": [{"name": "plate", "type": "solid", "domain": "part"}],
+        },
+    )
+    state = CadexProjectScriptStore(tmp_path).read_state()
+
+    assert accepted_attempt_dir(tmp_path, state) == staging.resolve()
+    report = load_worker_report(staging)
+    assert accepted_output_item(report, "plate")["domain"] == "part"
+    with pytest.raises(KeyError):
+        accepted_output_item(report, "ghost")
+
+    # Containment is the guarantee both readers depend on.
+    escaped = dict(state)
+    escaped["accepted_attempt"] = {"staging": "../elsewhere"}
+    with pytest.raises(ValueError):
+        accepted_attempt_dir(tmp_path, escaped)
+
+
 def test_accepted_attempt_is_recorded_on_acceptance(tmp_path: Path) -> None:
     # accept_project_candidate persists the locator; verified end-to-end in
     # the integration test, structurally here.

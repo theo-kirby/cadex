@@ -209,7 +209,8 @@ def _documented_response_keys() -> set[str]:
     keys: set[str] = set()
     for line in section.splitlines():
         if line.startswith("| `"):
-            keys.update(re.findall(r"`([a-z_]+)`", line.split("|")[2]))
+            # Digits are part of a key name (``sha256``), not a separator.
+            keys.update(re.findall(r"`([a-z0-9_]+)`", line.split("|")[2]))
     return keys
 
 

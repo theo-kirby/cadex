@@ -15,6 +15,7 @@ from typing import Any, Iterable, Sequence
 
 from CadexSubshapeQuery import SELECTOR_KEYS
 from cadex_domain_api import DomainValue
+from cadex_mesh_api import payload_tree_is_deterministic
 
 
 _TOPOLOGY_TYPES = frozenset({"edge", "wire", "face", "shell", "solid", "compound"})
@@ -120,6 +121,19 @@ def _shape(
             parameter,
             f"expected topology type {sorted(allowed_types)}",
             value.output_type,
+        )
+    return value
+
+
+def _mesh_value(operation: str, parameter: str, value: Any) -> DomainValue:
+    """The mirror of ``cadex_mesh_api._part_shape``, pointing the other way."""
+
+    if not isinstance(value, DomainValue) or value.domain != "mesh":
+        raise _error(
+            operation,
+            parameter,
+            "expected a value returned by the Mesh api",
+            type(value).__name__,
         )
     return value
 
@@ -1410,6 +1424,62 @@ class PartDomainAPI:
             label=label,
         )
 
+    def shape_from_mesh(
+        self,
+        mesh: DomainValue,
+        *,
+        tolerance: float = 0.1,
+        sew: bool = True,
+        solid: bool = True,
+        label: str = "",
+    ) -> DomainValue:
+        """Convert a Mesh api value into BREP topology this api can build on.
+
+        The way an imported STL/OBJ/PLY component becomes real geometry:
+        ``part.cut(plate, part.shape_from_mesh(mesh.import_file("scan.stl")))``.
+        Yields a ``solid`` (or a ``shell`` with ``solid=False``), consumable by
+        the part, partdesign and assembly domains.
+
+        Two things it is not. **It is not feature-editable**: a converted STL
+        is a shell of thousands of planar triangle faces, so geometric
+        selectors (``subshape``, ``fillet``, ``chamfer``) are near-useless on
+        it and BREP booleans against it are slow. It is for cutting clearance
+        against, not for editing. **It refuses an approximating mesh tree**:
+        ``mesh.decimate`` is not reproducible (ADR-016), and a BREP output's
+        digest identity *is* its exported bytes, with no by-definition
+        fallback — so decimate offline and import the reduced file, or publish
+        the decimated value as a ``mesh`` output instead.
+        """
+
+        operation = "shape_from_mesh"
+        clean_mesh = _mesh_value(operation, "mesh", mesh)
+        if solid and not sew:
+            raise _error(
+                operation,
+                "sew",
+                "a solid needs sewn faces; pass sew=True, or solid=False for "
+                "the unsewn shell",
+                sew,
+            )
+        if not payload_tree_is_deterministic(clean_mesh.to_payload()):
+            raise _error(
+                operation,
+                "mesh",
+                "the mesh was built with decimate, whose result is not "
+                "reproducible, so a BREP built from it would change the "
+                "project digest on every rebuild; decimate the file offline "
+                "and import the reduced mesh, or publish the decimated value "
+                "as a mesh output",
+            )
+        return self._value(
+            operation,
+            "solid" if solid else "shell",
+            clean_mesh,
+            tolerance=_number(operation, "tolerance", tolerance, minimum=0.0, strict=True),
+            sew=bool(sew),
+            label=label,
+        )
+
     def repair(
         self,
         shape: DomainValue,
@@ -1738,6 +1808,7 @@ class PartDomainAPI:
             "to_nurbs",
             "reverse",
             "sew",
+            "shape_from_mesh",
             "repair",
             "fillet",
             "chamfer",

@@ -105,8 +105,9 @@ lifetime signal.
 | `describe_api` | — | `describe_project_api()` verbatim |
 | `write_script` / `edit_script` / `set_params` | today's tool args + optional `display {quality, deflection, edges}` | **byte-identical** to the in-process tool payload (accept payload / `tool_failure` envelope, `STALE_PROGRAM_REVISION` guard included) + per-output `display {artifact_kind, artifact_path (abs), placement, tessellation\|null}` |
 | `rebuild` | `display?` | explicit deterministic re-run of the stored script (same payload shape) |
+| `put_asset` | `source_path`, `name?` | copies one STL/OBJ/PLY into the project store's `assets/` under a validated name (overwrite = re-import), returns its `{name, bytes, sha256}` plus the full listing. A **modeling** op: it writes the store, and exclusion against an in-flight rebuild is what stops a half-copied asset being staged. A path, not bytes — the asset budget is 128 MB against an 8 MB frame cap |
 | `resolve_pin` | `output`, `selection` (fingerprint query or `{element_type, index}`) | `{ok, output, revision, subelements, details}` against the accepted revision's staged BREP (`CadexPinResolution.py`) |
-| `inspect` | today's `core.inspect` args | same contract; `document/object` serve the ephemeral doc, `script/api/image` the store; `selection` rejected (shell-only) |
+| `inspect` | today's `core.inspect` args | same contract; `document/object` serve the ephemeral doc, `script/api/image/assets` the store; `selection` rejected (shell-only) |
 | `cancel` | `request_id?` | acks and cancels the in-flight modeling request (`RUN_CANCELLED` flows to that request) |
 | `shutdown` | — | graceful exit |
 
@@ -125,6 +126,7 @@ prose. Every response also carries `id` and `ok`.
 | `open_project` | `schema`, `project_root`, `budgets`, `restore`, `script`, `manifest`? |
 | `describe_api` | `domain`, `domains`, `engine`, `instructions`, `program_schema`, `result_contract`, `revision_rule`, `source_globals`, `parameters`, `mutation_selection` |
 | `write_script` / `edit_script` / `set_params` / `rebuild` | `tool`, `revision`, `accepted_revision`, `digest`, `model_state`, `outputs`, `live_outputs`, `removed`, `display`? |
+| `put_asset` | `name`, `bytes`, `sha256`, `assets` |
 | `resolve_pin` | `output`, `revision`, `subelements`, `details` |
 | `inspect` | `scope`, `target`, `path`, `value`, `page`, `document`, `surface`, `result_json_bytes` |
 | `cancel` | `cancelled` |
