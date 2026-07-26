@@ -25,6 +25,20 @@ SCRIPT_STATE_SCHEMA = "cadex-project-script-v1"
 SCRIPT_FILE_NAME = "script.py"
 SCRIPT_STATE_FILE_NAME = "script.json"
 SCRIPT_ARTIFACTS_DIR_NAME = "script_artifacts"
+SCRIPT_HISTORY_DIR_NAME = "script_history"
+SCRIPT_HISTORY_INDEX_NAME = "history.json"
+
+#: Accepted revisions kept in ``script_history/``. Each entry is the script
+#: text and a line of metadata — single-digit kilobytes — so this bound is
+#: about keeping the directory readable, not about disk (ADR-045).
+HISTORY_LIMIT = 25
+
+#: Attempt staging directories kept per project, beyond the accepted one.
+#: An attempt is ~2 MB (it stages the whole worker bundle next to the run's
+#: BREP), it exists to run one script, and nothing reads a stale one — but
+#: the most recent few are what a post-mortem needs, so they are not free to
+#: delete on sight either.
+ATTEMPT_KEEP = 3
 
 
 def now_iso() -> str:
@@ -54,7 +68,11 @@ class CadexProjectScriptStore:
     - ``script.json`` — parameter spec cache + values, working/accepted
       revision, accepted contract (recorded output list), accepted digest,
       and the latest candidate summary.
-    - ``script_artifacts/<revision>/`` — per-revision staged artifacts.
+    - ``script_artifacts/<revision>/`` — per-revision staged artifacts,
+      pruned to the accepted attempt plus :data:`ATTEMPT_KEEP` (ADR-045).
+    - ``script_history/`` — the last :data:`HISTORY_LIMIT` accepted sources
+      as plain ``.py`` files, plus ``history.json`` indexing them. This is
+      the undo trail: text only, no BREP, no worker bundle.
 
     Pre-release v2 per-domain program stores are not migrated: conversations
     are preserved by their own store, scripts start empty (ADR-011).
@@ -65,6 +83,8 @@ class CadexProjectScriptStore:
         self.script_path = self.root / SCRIPT_FILE_NAME
         self.state_path = self.root / SCRIPT_STATE_FILE_NAME
         self.artifacts_root = self.root / SCRIPT_ARTIFACTS_DIR_NAME
+        self.history_root = self.root / SCRIPT_HISTORY_DIR_NAME
+        self.history_index_path = self.history_root / SCRIPT_HISTORY_INDEX_NAME
 
     @staticmethod
     def default_state() -> dict[str, Any]:
@@ -158,3 +178,131 @@ class CadexProjectScriptStore:
         if not re.fullmatch(r"[0-9a-f]{8,64}", clean):
             raise ValueError("An artifacts directory needs a hexadecimal revision.")
         return self.artifacts_root / clean
+
+    # -- history: the undo trail (ADR-045) ---------------------------------
+
+    def read_history(self) -> list[dict[str, Any]]:
+        """Accepted revisions, oldest first. Never raises on a bad index."""
+
+        try:
+            data = json.loads(self.history_index_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+        entries = data.get("entries") if isinstance(data, dict) else None
+        return [dict(item) for item in entries or [] if isinstance(item, dict)]
+
+    def read_history_source(self, selector: str | int) -> str:
+        """One historical source, by ordinal (``3``, ``"3"``) or revision.
+
+        A revision may be given by any unique prefix, which is what makes the
+        12-character revisions people actually read out of a listing usable.
+        Returns ``""`` when nothing matches.
+        """
+
+        entries = self.read_history()
+        want = str(selector).strip().lower()
+        if not want:
+            return ""
+        matched = [e for e in entries if str(e.get("ordinal")) == want]
+        if not matched:
+            matched = [e for e in entries
+                       if str(e.get("revision") or "").startswith(want)]
+        if len(matched) != 1:
+            return ""
+        path = self.history_root / str(matched[0].get("file") or "")
+        try:
+            return path.read_text(encoding="utf-8")
+        except OSError:
+            return ""
+
+    def record_history(
+        self, revision: str, source: str, contract: Any = None
+    ) -> dict[str, Any] | None:
+        """Append one accepted revision to the history; prune to the limit.
+
+        Called only on acceptance, so the trail is entirely of scripts that
+        ran and published — which is what makes reverting to any of them
+        safe. A repeat of the revision already at the tip is not recorded:
+        re-opening a project re-runs its accepted script, and an undo trail
+        that fills with identical entries is not one.
+        """
+
+        revision = str(revision or "")
+        source = str(source or "")
+        if not revision or not source.strip():
+            return None
+        entries = self.read_history()
+        if entries and str(entries[-1].get("revision") or "") == revision:
+            return dict(entries[-1])
+
+        ordinal = int(entries[-1].get("ordinal") or 0) + 1 if entries else 1
+        name = "{:04d}-{:s}.py".format(ordinal, revision[:12])
+        atomic_write_bytes(self.history_root / name, source.encode("utf-8"))
+        entry = {
+            "ordinal": ordinal,
+            "revision": revision,
+            "file": name,
+            "saved_at": now_iso(),
+            "characters": len(source),
+            "outputs": sorted(
+                str(item.get("name"))
+                for item in (contract or [])
+                if isinstance(item, dict) and item.get("name")
+            ),
+        }
+        entries.append(entry)
+
+        for stale in entries[:-HISTORY_LIMIT]:
+            try:
+                (self.history_root / str(stale.get("file") or "")).unlink()
+            except OSError:
+                pass
+        entries = entries[-HISTORY_LIMIT:]
+        atomic_write_json(
+            self.history_index_path,
+            {"schema": SCRIPT_STATE_SCHEMA, "entries": entries},
+        )
+        return entry
+
+    def prune_artifacts(self, keep_recent: int = ATTEMPT_KEEP) -> list[str]:
+        """Drop stale attempt directories; return what was removed.
+
+        An attempt directory stages the whole worker bundle beside the run's
+        BREP — about 2 MB — and nothing reads one once the run is over. The
+        accepted attempt is pinned (``inspect scope=output`` reads it), the
+        most recent few stay for post-mortems, and the rest are the reason a
+        single afternoon's project reached 56 MB (ADR-045).
+        """
+
+        import shutil
+
+        pinned = self.read_state().get("accepted_attempt")
+        pinned_dir = None
+        if isinstance(pinned, dict) and pinned.get("staging"):
+            pinned_dir = (self.root / str(pinned["staging"])).resolve()
+
+        attempts = []
+        if self.artifacts_root.is_dir():
+            for revision_dir in self.artifacts_root.iterdir():
+                if not revision_dir.is_dir():
+                    continue
+                for attempt in revision_dir.iterdir():
+                    if attempt.is_dir() and attempt.name.startswith("attempt-"):
+                        attempts.append(attempt)
+        # Attempt ids lead with a zero-padded millisecond stamp, so the name
+        # sorts chronologically without stat()ing anything.
+        attempts.sort(key=lambda path: path.name)
+
+        removed: list[str] = []
+        for attempt in attempts[:-keep_recent] if keep_recent else attempts:
+            if pinned_dir is not None and attempt.resolve() == pinned_dir:
+                continue
+            shutil.rmtree(attempt, ignore_errors=True)
+            removed.append(attempt.name)
+            parent = attempt.parent
+            try:
+                if parent.is_dir() and not any(parent.iterdir()):
+                    parent.rmdir()
+            except OSError:
+                pass
+        return removed

@@ -277,3 +277,158 @@ def test_the_modeling_response_contract_carries_stdout() -> None:
                         "verification_goal": "g"},
     }
     assert not validate_response("write_script", frame)
+
+
+# -- ADR-045: history, retention, and the destructive-overwrite guard -------
+
+
+def test_every_accepted_revision_is_kept_as_recoverable_text(
+    tmp_path: Path, freecad_home: Path
+) -> None:
+    """The undo trail: text only, indexed, in acceptance order."""
+
+    root = tmp_path / "project.cadex"
+    store = CadexProjectScriptStore(root)
+    for n in (1, 2, 3):
+        prepared = _prepare(root, freecad_home,
+                            'result = {{"plate": part.box({:d}, 1, 1)}}\n'.format(n))
+        accept_project_candidate(
+            prepared,
+            {"live_outputs": {}, "removed": []},
+            {"digest": "d{:d}".format(n), "stdout": "",
+             "contract": [{"name": "plate", "domain": "part", "type": "solid"}]},
+        )
+
+    entries = store.read_history()
+    assert [e["ordinal"] for e in entries] == [1, 2, 3]
+    assert all(e["outputs"] == ["plate"] for e in entries)
+    assert store.read_history_source(1) == 'result = {"plate": part.box(1, 1, 1)}\n'
+    assert store.read_history_source("3") == 'result = {"plate": part.box(3, 1, 1)}\n'
+    # By revision prefix too -- what a listing actually shows you.
+    assert store.read_history_source(entries[1]["revision"][:12]).endswith(
+        'part.box(2, 1, 1)}\n')
+    assert store.read_history_source("nope") == ""
+
+
+def test_history_does_not_fill_with_repeats_of_the_same_revision(
+    tmp_path: Path, freecad_home: Path
+) -> None:
+    """Every open re-runs and re-accepts the stored script."""
+
+    root = tmp_path / "project.cadex"
+    store = CadexProjectScriptStore(root)
+    for _ in range(4):
+        prepared = _prepare(root, freecad_home, GOOD_SOURCE)
+        accept_project_candidate(
+            prepared, {"live_outputs": {}, "removed": []},
+            {"digest": "d", "contract": [], "stdout": ""})
+    assert len(store.read_history()) == 1
+
+
+def test_history_is_bounded(tmp_path: Path, freecad_home: Path) -> None:
+    """Old versions age out, and their files go with them."""
+
+    from CadexScriptStore import HISTORY_LIMIT
+
+    root = tmp_path / "project.cadex"
+    store = CadexProjectScriptStore(root)
+    for n in range(HISTORY_LIMIT + 4):
+        prepared = _prepare(root, freecad_home,
+                            'result = {{"p": part.box({:d}, 1, 1)}}\n'.format(n))
+        accept_project_candidate(
+            prepared, {"live_outputs": {}, "removed": []},
+            {"digest": "d{:d}".format(n), "contract": [], "stdout": ""})
+
+    entries = store.read_history()
+    assert len(entries) == HISTORY_LIMIT
+    assert entries[-1]["ordinal"] == HISTORY_LIMIT + 4
+    kept = {e["file"] for e in entries}
+    on_disk = {p.name for p in store.history_root.glob("*.py")}
+    assert on_disk == kept, "aged-out versions must not linger on disk"
+
+
+def test_stale_attempt_directories_are_pruned(
+    tmp_path: Path, freecad_home: Path
+) -> None:
+    """56 MB for one afternoon was the symptom; this is the fix.
+
+    The accepted attempt is pinned (``inspect scope=output`` reads it) and
+    the most recent few stay for post-mortems.
+    """
+
+    from CadexScriptStore import ATTEMPT_KEEP
+
+    root = tmp_path / "project.cadex"
+    store = CadexProjectScriptStore(root)
+    accepted_staging = None
+    for n in range(8):
+        prepared = _prepare(root, freecad_home,
+                            'result = {{"p": part.box({:d}, 1, 1)}}\n'.format(n))
+        if n == 0:
+            accept_project_candidate(
+                prepared, {"live_outputs": {}, "removed": []},
+                {"digest": "d", "contract": [], "stdout": ""})
+            accepted_staging = Path(str(prepared["staging"]))
+        else:
+            record_project_candidate_failure(prepared, {"failure_code": "X",
+                                                        "error": "y"})
+    store.prune_artifacts()
+
+    remaining = sorted(p for p in root.glob("script_artifacts/*/attempt-*"))
+    assert accepted_staging.is_dir(), "the pinned accepted attempt survives"
+    assert len(remaining) <= ATTEMPT_KEEP + 1
+    assert accepted_staging in remaining
+
+
+def test_a_write_script_that_drops_an_output_is_refused(
+    tmp_path: Path, freecad_home: Path
+) -> None:
+    """The mishap: 'add a battery' answered with a script holding only one.
+
+    Nothing about the run looks like a failure -- it builds, it publishes,
+    it is accepted -- so only comparing contracts catches it.
+    """
+
+    from CadexScriptedRuntime import dropped_outputs
+
+    root = tmp_path / "project.cadex"
+    prepared = _prepare(root, freecad_home, GOOD_SOURCE)
+    prepared["accepted_contract_before"] = [
+        {"name": "frame", "domain": "part", "type": "solid"},
+        {"name": "flight_controller", "domain": "mesh", "type": "mesh"},
+    ]
+    battery_only = {"contract": [{"name": "battery", "domain": "part",
+                                  "type": "solid"}]}
+
+    assert dropped_outputs(prepared, battery_only) == [
+        "flight_controller", "frame"]
+
+    # Keeping them is fine, and so is adding alongside them.
+    kept = {"contract": [{"name": "frame"}, {"name": "flight_controller"},
+                         {"name": "battery"}]}
+    assert dropped_outputs(prepared, kept) == []
+
+    # Deleting on purpose stays one flag away.
+    prepared["arguments"] = dict(prepared["arguments"], replace=True)
+    assert dropped_outputs(prepared, battery_only) == []
+
+
+def test_only_write_script_can_drop_outputs_by_accident(
+    tmp_path: Path, freecad_home: Path
+) -> None:
+    """edit_script is targeted and set_params does not touch the source."""
+
+    from CadexScriptedRuntime import dropped_outputs
+
+    root = tmp_path / "project.cadex"
+    prepared = _prepare(root, freecad_home, GOOD_SOURCE)
+    prepared["accepted_contract_before"] = [{"name": "frame"}]
+    gone = {"contract": []}
+
+    assert dropped_outputs(prepared, gone) == ["frame"]
+    for operation in ("edit_script", "set_params"):
+        assert dropped_outputs(dict(prepared, operation=operation), gone) == []
+
+    # A project with nothing accepted yet has nothing to lose.
+    first = dict(prepared, accepted_contract_before=None)
+    assert dropped_outputs(first, gone) == []

@@ -317,7 +317,7 @@ def _revision_from_payload(scene, payload):
 _INSPECT_PAGE = 50
 
 
-def _resolve_stub(client, scope, value):
+def _resolve_stub(client, scope, value, target=""):
     """Re-read one previewed value, if that is what this is.
 
     ``inspect`` replaces any value over 1 KiB with a marker carrying the
@@ -326,11 +326,11 @@ def _resolve_stub(client, scope, value):
     legitimately looks like that, so the pair of keys is the test.
     """
     if isinstance(value, dict) and "inspect_path" in value and "type" in value:
-        return _inspect_full(client, scope, str(value["inspect_path"]))
+        return _inspect_full(client, scope, str(value["inspect_path"]), target)
     return value
 
 
-def _inspect_full(client, scope, path):
+def _inspect_full(client, scope, path, target=""):
     """The whole value at ``path``, following the pager and the previews.
 
     ``inspect`` is the *assistant's* reader: it bounds every result at 32 KiB
@@ -349,9 +349,11 @@ def _inspect_full(client, scope, path):
     offset = 0
     whole = None
     while True:
-        result = client.request("inspect", {"scope": scope, "path": path,
-                                            "offset": offset,
-                                            "limit": _INSPECT_PAGE})
+        args = {"scope": scope, "path": path, "offset": offset,
+                "limit": _INSPECT_PAGE}
+        if target:
+            args["target"] = target
+        result = client.request("inspect", args)
         if result.get("ok") is not True:
             return whole
         value = result.get("value")
@@ -360,11 +362,11 @@ def _inspect_full(client, scope, path):
         if kind == "mapping":
             merged = dict(whole or {})
             for key, item in dict(value or {}).items():
-                merged[key] = _resolve_stub(client, scope, item)
+                merged[key] = _resolve_stub(client, scope, item, target)
             whole = merged
         elif kind == "array":
             merged = list(whole or [])
-            merged.extend(_resolve_stub(client, scope, item)
+            merged.extend(_resolve_stub(client, scope, item, target)
                           for item in list(value or []))
             whole = merged
         elif kind == "string":
@@ -651,7 +653,7 @@ def begin_lifecycle(scene, op, args, display=None, guarded=True,
 
 # -- the agent's two modeling tools, in begin/poll form ----------------------
 
-def begin_write_script(scene, source, cancelled=None):
+def begin_write_script(scene, source, replace=False, cancelled=None):
     """Start a ``write_script``. Returns a :class:`Lifecycle` or (ok, report).
 
     The one op that runs on an unrestored project: it replaces the stored
@@ -665,8 +667,11 @@ def begin_write_script(scene, source, cancelled=None):
         _state_for(project_root(scene)).restore_warning = ""
         _refresh_script_state(scene)
 
+    args = {"source": source}
+    if replace:
+        args["replace"] = True
     return begin_lifecycle(
-        scene, "write_script", {"source": source}, cancelled=cancelled,
+        scene, "write_script", args, cancelled=cancelled,
         on_accept=accepted, unrestored_ok=True)
 
 
@@ -896,11 +901,49 @@ def begin_edit_script(scene, replacements, cancelled=None):
 
 
 def inspect(scene, args):
-    """One engine ``inspect`` request. Returns the payload verbatim."""
-    ok, report = ensure_open(scene)
+    """One engine ``inspect`` request. Returns the payload verbatim.
+
+    ``scope=history`` reads on an unrestored project too: a store the
+    restore pass could not prove is exactly when the previous versions are
+    worth reading (ADR-045).
+    """
+    unrestored_ok = str(dict(args).get("scope") or "") == "history"
+    ok, report = ensure_open(scene, unrestored_ok=unrestored_ok)
     if not ok:
         return {"ok": False, "error": report}
     return _client(project_root(scene)).request("inspect", dict(args))
+
+
+def begin_restore_version(scene, selector, cancelled=None):
+    """Write a stored version back over the current script (ADR-045).
+
+    Revert is deliberately not a new engine op: a version *is* a script, so
+    putting one back is the ``write_script`` that already exists. That keeps
+    the round trip honest -- the restored script re-runs, re-publishes and
+    is re-accepted like any other, rather than being trusted because it used
+    to work.
+
+    ``replace`` is passed because reverting is precisely the case where
+    dropping current outputs is intended.
+    """
+    selector = str(selector).strip()
+    if not selector:
+        return False, ("Which version? Inspect scope=history for the list.")
+    ok, report = ensure_open(scene, unrestored_ok=True)
+    if not ok:
+        return False, report
+    # Through the pager, not a single inspect: any value over 1 KiB comes
+    # back as a marker, and a script is always over 1 KiB. Reading `value`
+    # directly would restore a stub as if it were the script.
+    whole = _inspect_full(_client(project_root(scene)), "history", "",
+                          target=selector)
+    source = str((whole or {}).get("source") or "") if isinstance(whole, dict) else ""
+    if not source.strip():
+        return False, (
+            "No stored version matches {!r}, or its source could not be "
+            "read. Inspect scope=history for the list of versions.".format(
+                selector))
+    return begin_write_script(scene, source, replace=True, cancelled=cancelled)
 
 
 def put_asset(scene, source_path, name=""):

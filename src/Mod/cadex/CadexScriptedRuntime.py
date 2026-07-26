@@ -833,6 +833,7 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "tool_name": tool_name,
         "operation": operation,
+        "arguments": arguments,
         "pack": captured["pack"],
         "program_id": "project",
         "revision": revision,
@@ -1106,6 +1107,22 @@ def accept_project_candidate(
             },
         }
     )
+    # The undo trail, and the reason the store stops growing without bound
+    # (ADR-045). Both are best-effort: a project that cannot write its
+    # history has still accepted a revision, and failing the run over that
+    # would be the tail wagging the dog.
+    try:
+        # At acceptance `script.py` holds exactly the source being accepted
+        # (prepare wrote it before the run), so it is the fallback rather
+        # than a guess.
+        source = str(prepared.get("source") or "") or store.read_source()
+        store.record_history(revision, source, contract)
+    except OSError:
+        pass
+    try:
+        store.prune_artifacts()
+    except OSError:
+        pass
     return {
         "ok": True,
         "tool": str(prepared["tool_name"]),
@@ -1130,6 +1147,43 @@ def accept_project_candidate(
             ),
         },
     }
+
+
+def dropped_outputs(
+    prepared: Mapping[str, Any], validated: Mapping[str, Any]
+) -> list[str]:
+    """Accepted output names this candidate would silently remove (ADR-045).
+
+    ``write_script`` replaces THE project script, and a model asked to "add a
+    battery" can answer with a script containing only a battery — which
+    builds, publishes, and is accepted, taking the rest of the project with
+    it. Nothing about that run looks like a failure, so nothing catches it;
+    the user finds out by looking at an empty viewport.
+
+    Only ``write_script`` is checked, and only against the *accepted*
+    contract. ``edit_script`` is a targeted replacement and ``set_params``
+    does not touch the source, so neither can drop an output by accident.
+    Deleting a part on purpose stays one ``replace=true`` away.
+    """
+
+    if str(prepared.get("operation") or "") != "write_script":
+        return []
+    arguments = dict(prepared.get("arguments") or {})
+    if bool(arguments.get("replace")):
+        return []
+    before = {
+        str(item.get("name"))
+        for item in (prepared.get("accepted_contract_before") or [])
+        if isinstance(item, Mapping) and item.get("name")
+    }
+    if not before:
+        return []
+    after = {
+        str(item.get("name"))
+        for item in (validated.get("contract") or [])
+        if isinstance(item, Mapping) and item.get("name")
+    }
+    return sorted(before - after)
 
 
 def candidate_model_state(prepared: Mapping[str, Any]) -> dict[str, Any]:
@@ -1251,6 +1305,26 @@ def run_project_lifecycle(
                 str(exc),
                 requested=args,
                 observed={"exception_type": exc.__class__.__name__},
+            )
+            record_project_candidate_failure(prepared, failure)
+            failure["model_state"] = candidate_model_state(prepared)
+            return failure
+        dropped = dropped_outputs(prepared, validated)
+        if dropped:
+            failure = tool_failure(
+                tool_name,
+                "PROJECT_OUTPUTS_DROPPED",
+                "postcondition",
+                "This script drops {:s} that the accepted revision "
+                "declares: {:s}. write_script replaces THE whole project "
+                "script -- to add a part, edit the script you have. Pass "
+                "replace=true if removing {:s} is what you meant.".format(
+                    "an output" if len(dropped) == 1 else "outputs",
+                    ", ".join(dropped),
+                    "it" if len(dropped) == 1 else "them",
+                ),
+                requested={"replace": bool(args.get("replace"))},
+                observed={"dropped_outputs": dropped},
             )
             record_project_candidate_failure(prepared, failure)
             failure["model_state"] = candidate_model_state(prepared)

@@ -56,9 +56,14 @@ CONTROL_OPS = frozenset({"cancel", "shutdown"})
 OP_ARG_SPECS: dict[str, tuple[dict[str, type], dict[str, type]]] = {
     "open_project": ({"project_root": str}, {"budgets": dict, "restore": bool}),
     "describe_api": ({}, {}),
+    # `replace` is the caller saying it means to drop outputs the accepted
+    # revision declares. Without it a write_script that would remove one is
+    # refused, because write_script replaces THE whole project script and
+    # "add a part" is an easy way to ask for exactly that by accident
+    # (ADR-045).
     "write_script": (
         {"source": str, "expected_revision": str},
-        {"display": dict},
+        {"display": dict, "replace": bool},
     ),
     "edit_script": (
         {"replacements": list, "expected_revision": str},

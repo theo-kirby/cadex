@@ -188,6 +188,7 @@ macOS). Layout:
 <root>/projects/<slug>-<hash8>/
   project.cadex.json            project manifest
   script.py                     THE project script (sole source of truth)
+  script_history/               last 25 accepted sources + history.json (ADR-045)
   script.json                   schema cadex-project-script-v1: param specs
                                 cache + values, working/accepted revision,
                                 accepted contract, accepted_digest,

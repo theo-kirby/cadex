@@ -2713,3 +2713,79 @@ truth and a hand edit that changes the model is still a first-class restore
 failure, reported and never silently reverted. The fallback in (2) fires only
 for a stored script that cannot execute at all, which is not a state a user
 can reach by editing.
+
+## ADR-045 — The script has a history, and write_script cannot silently delete a model (2026-07-26)
+
+**Decision.** Three changes, from one incident:
+
+1. **`script_history/`** — every *accepted* revision's source is kept as a
+   plain `.py` file with a `history.json` index (ordinal, revision, time,
+   character count, declared outputs). Last `HISTORY_LIMIT = 25`. Text only:
+   no BREP, no worker bundle, single-digit kilobytes per entry. Re-accepting
+   the revision already at the tip is not recorded, so re-opening a project
+   does not fill the trail with itself.
+2. **Reading and reverting it** — `inspect scope="history"` lists the
+   versions, or serves one by ordinal or revision prefix. Revert is *not* a
+   new op: a version is a script, so putting one back is the `write_script`
+   that already exists. The shell's `restore_version` tool does the two steps.
+   That keeps it honest — a restored version re-runs, re-publishes and is
+   re-accepted like anything else, rather than being trusted because it used
+   to work.
+3. **`write_script` refuses to drop accepted outputs** unless `replace=true`
+   (new optional arg). Checked after the run, against the real output
+   contract, where the truth is known — a `PROJECT_OUTPUTS_DROPPED` failure
+   that names what would have been lost. `edit_script` and `set_params` are
+   not checked: one is a targeted replacement, the other does not touch the
+   source.
+
+Plus the retention that should always have existed: `prune_artifacts()` drops
+stale attempt staging directories on acceptance, keeping the pinned accepted
+attempt and `ATTEMPT_KEEP = 3`.
+
+**Rationale.** A user asked "lets create a battery model, it should just be a
+64x10x6 rectangle" — an *additive* request. The agent answered with
+`write_script` carrying only the battery. It built, it published, it was
+accepted, and a drone frame with an imported flight controller stopped
+existing. A minute later: "whered the rest of the stuff go".
+
+Nothing malfunctioned. `write_script` replaces THE project script and that is
+what it did. But the surface makes the destructive reading of an additive
+request a single well-formed call, with no signal at any layer — the run is
+indistinguishable from a legitimate rewrite until you look at the viewport.
+
+This is the *opposite* failure to ADR-044 and is not covered by it: that one
+protects against runs the engine **refuses**; this was a run that **succeeded**
+and was wrong. Both end the same way — work gone, silently — and that is the
+property worth defending, not any particular mechanism.
+
+Recovery was possible only by accident. Every attempt's `request.json` still
+held its source, because no GC had ever been written (`default_state()` even
+documents `accepted_attempt` as pinned "no GC removes it while it is
+referenced here", describing a collector that does not exist). So the store
+was simultaneously **too big to keep** — 2.3 MB per attempt, a full worker
+bundle staged beside each run's BREP, 56 MB for one afternoon — and **too
+opaque to use**: no index, no tool, no UI. Recovering the frame meant globbing
+`request.json` files and reading millisecond stamps out of directory names.
+A history you cannot list is not a history.
+
+**Why the guard fires after the run, not before.** A script's outputs are not
+knowable from its text; only running it says what it declares. Checking
+after costs one wasted run on the refused path — and the ADR-044 rollback
+means that run leaves nothing behind.
+
+**Consequences.** `write_script` gains optional `replace`; `inspect` gains
+scope `history`; both are in `docs/INTEGRATION.md`'s op table. New
+`restore_version` MCP tool, and `write_script`'s tool description now opens by
+saying it replaces the ENTIRE script and to use `edit_script` to add to a
+model. Existing projects gain history from their next acceptance onward:
+nothing back-fills, because a source that was never run under this engine has
+no proof it still builds.
+
+Nine engine tests in `cadex_tests/test_project_store_recovery.py` cover the
+trail (ordering, selection by ordinal and by revision prefix, the repeat
+suppression, the bound and its file cleanup), the attempt pruning against the
+pinned accepted attempt, and the drop guard including its `replace` escape
+and its non-application to `edit_script`/`set_params`. Three gate tests drive
+the whole thing through the real tools: the battery-shaped mishap is refused
+and then allowed with `replace`, a two-version history lists/reads/reverts and
+records the revert itself, and pruning leaves `inspect scope=output` working.

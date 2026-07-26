@@ -253,6 +253,15 @@ def capture_inspection(service: Any, arguments: Mapping[str, Any]) -> dict[str, 
             "kind": "output",
             "project_root": str(service.project_scope_snapshot().get("root") or ""),
         }
+    if scope == "history":
+        # The undo trail (ADR-045): every accepted revision's source, newest
+        # last. Store-backed, so the read happens off the document thread.
+        # With no target it lists; with one it serves that version's source.
+        return {
+            **common,
+            "kind": "history",
+            "project_root": str(service.project_scope_snapshot().get("root") or ""),
+        }
     raise ValueError(f"Unknown core.inspect scope: {scope!r}.")
 
 
@@ -369,6 +378,48 @@ def _complete_assets(captured: Mapping[str, Any]) -> Any:
         "note": (
             "Names here are what mesh.import_file() takes. Add one with the "
             "shell's File > Import Geometry, or the import_geometry tool."
+        ),
+    }
+
+
+def _complete_history(captured: Mapping[str, Any]) -> Any:
+    """The project's accepted-revision history — the undo trail (ADR-045).
+
+    No target lists it, newest last. A target selects one version by ordinal
+    or revision prefix and serves that version's source, which is what a
+    revert reads before writing it back.
+    """
+
+    root = str(captured.get("project_root") or "")
+    if not root:
+        return {
+            "ok": False,
+            "error": "The active document has no durable Cadex project root.",
+        }
+    from CadexScriptStore import CadexProjectScriptStore
+
+    store = CadexProjectScriptStore(root)
+    target = str(captured.get("target") or "").strip()
+    if target:
+        source = store.read_history_source(target)
+        if not source:
+            return {
+                "ok": False,
+                "error": (
+                    "No stored version matches {!r}. Inspect scope=history "
+                    "with no target for the list.".format(target)
+                ),
+            }
+        return {"selector": target, "source": source, "characters": len(source)}
+
+    entries = store.read_history()
+    return {
+        "version_count": len(entries),
+        "versions": entries,
+        "note": (
+            "Every accepted revision, oldest first. Inspect one with "
+            "target=<ordinal|revision>; write it back with write_script to "
+            "revert (replace=true if it drops outputs you have now)."
         ),
     }
 
@@ -650,6 +701,8 @@ def complete_inspection(captured: Mapping[str, Any]) -> dict[str, Any]:
             raw = _complete_assets(captured)
         elif kind == "output":
             raw = _complete_output(captured)
+        elif kind == "history":
+            raw = _complete_history(captured)
         else:
             raise ValueError("Invalid captured core.inspect operation.")
         result = _bounded_page(raw, captured)

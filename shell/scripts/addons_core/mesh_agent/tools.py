@@ -31,15 +31,17 @@ _API_DOMAIN_CHARS = 16384
 _SCRIPT_CHARS = 65536
 
 # Tools whose execution mutates the scene (drives per-turn undo batching).
-MUTATING_TOOLS = {"write_script", "set_params", "edit_script", "rebuild_model"}
+MUTATING_TOOLS = {"write_script", "set_params", "edit_script", "rebuild_model",
+                  "restore_version"}
 
 # Tools that reach the cadex engine; these are preflighted so a missing
 # engine reports itself once, in a sentence, rather than as a traceback from
 # deep inside process spawning. (Before ADR-030 this set was conditional on
 # the scene's mode; there is one backend now.)
 _ENGINE_TOOLS = {"get_script", "write_script", "set_params",
-                 "edit_script", "inspect_model", "describe_cad_api",
-                 "scene_summary", "rebuild_model", "import_geometry"}
+                 "edit_script", "restore_version", "inspect_model",
+                 "describe_cad_api", "scene_summary", "rebuild_model",
+                 "import_geometry"}
 
 TOOL_DEFS = [
     {
@@ -53,10 +55,13 @@ TOOL_DEFS = [
     {
         "name": "write_script",
         "description": (
-            "Replace the entire model script and rebuild the scene from it. "
-            "The script is the single source of truth for the model: it runs "
-            "top-to-bottom with `bpy` available after the Model collection is "
-            "cleared, so it must be deterministic and self-contained. Declare "
+            "Replace the ENTIRE model script and rebuild the scene from it. "
+            "This is not 'add a part': whatever the script you pass does not "
+            "build no longer exists. To add to a model that already has "
+            "parts, call get_script and use edit_script. The script is the "
+            "single source of truth for the model: it runs top-to-bottom "
+            "with `bpy` available after the Model collection is cleared, so "
+            "it must be deterministic and self-contained. Declare "
             "user-tunable parameters at the top with mesh_model.params(). The "
             "result reports the rebuilt objects, the parameters, and script "
             "stdout — or the traceback if the script failed (fix and rewrite)."
@@ -66,6 +71,13 @@ TOOL_DEFS = [
             "properties": {
                 "content": {"type": "string",
                             "description": "Full Python source of the model script."},
+                "replace": {
+                    "type": "boolean",
+                    "description": (
+                        "Confirm that dropping outputs the model currently "
+                        "has is intended. Without it, a script that removes "
+                        "an existing output is refused and nothing changes."),
+                },
             },
             "required": ["content"],
         },
@@ -123,6 +135,30 @@ TOOL_DEFS = [
         },
     },
     {
+        "name": "restore_version",
+        "description": (
+            "Cadex mode only. Put a previously accepted version of the "
+            "script back, then rebuild from it. Every accepted revision is "
+            "kept; list them with inspect_model scope='history', which gives "
+            "each one an ordinal, a revision and the outputs it declared. "
+            "This is the undo for a script that was overwritten or edited "
+            "into a state you want to leave — the restored version re-runs "
+            "and is re-accepted like any other script."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "version": {
+                    "type": "string",
+                    "description": (
+                        "Ordinal (e.g. '7') or revision prefix (e.g. "
+                        "'4b097c378487') from inspect_model scope='history'."),
+                },
+            },
+            "required": ["version"],
+        },
+    },
+    {
         "name": "rebuild_model",
         "description": (
             "Re-run the script the engine already holds, from scratch, and "
@@ -145,19 +181,23 @@ TOOL_DEFS = [
             "for one object's properties, 'output' for one accepted output's "
             "measured facts (volume, area, bounds, centre of mass, face and "
             "edge counts — omit the target to list every output), 'assets' "
-            "for the external mesh files stored for mesh.import_file(). This "
-            "is engine truth, unlike the tessellated copies in the Blender "
-            "scene."
+            "for the external mesh files stored for mesh.import_file(), "
+            "'history' for the previously accepted versions of the script "
+            "(omit the target to list them, give one to read that version's "
+            "source). This is engine truth, unlike the tessellated copies in "
+            "the Blender scene."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "scope": {"type": "string",
                           "description": "script | document | object | output "
-                                         "| assets"},
+                                         "| assets | history"},
                 "target": {"type": "string",
                            "description": "Object name for scope=object; "
-                                          "output name for scope=output."},
+                                          "output name for scope=output; "
+                                          "ordinal or revision for "
+                                          "scope=history."},
                 "path": {"type": "string",
                          "description": "Sub-path within the scope, e.g. "
                                         "/revisions or /params."},
@@ -454,6 +494,7 @@ def _tool_write_script(tool_input, agent=None):
     source = tool_input.get("content", "")
     started = cadex_backend.begin_write_script(
         bpy.context.scene, source,
+        replace=bool(tool_input.get("replace")),
         cancelled=_cancellation_check(agent))
     if not isinstance(started, cadex_backend.Lifecycle):
         # Keep the attempted source visible when the engine never ran -- and
@@ -513,14 +554,26 @@ def _tool_edit_script(tool_input, agent=None):
         _render_write_script)
 
 
+def _tool_restore_version(tool_input, agent=None):
+    import bpy
+    from . import cadex_backend
+
+    return _deferred(
+        cadex_backend.begin_restore_version(
+            bpy.context.scene, tool_input.get("version", ""),
+            cancelled=_cancellation_check(agent)),
+        _render_write_script)
+
+
 def _tool_inspect_model(tool_input):
     import bpy
     from . import cadex_backend
 
     scope = str(tool_input.get("scope") or "").strip()
-    if scope not in {"script", "document", "object", "output", "assets"}:
+    if scope not in {"script", "document", "object", "output", "assets",
+                     "history"}:
         return _text("inspect_model scope must be script, document, object, "
-                     "output or assets."), True
+                     "output, assets or history."), True
     args = {"scope": scope}
     for key in ("target", "path"):
         value = str(tool_input.get(key) or "").strip()
@@ -747,6 +800,7 @@ _HANDLERS = {
     "write_script": _tool_write_script,
     "set_params": _tool_set_params,
     "edit_script": _tool_edit_script,
+    "restore_version": _tool_restore_version,
     "rebuild_model": _tool_rebuild_model,
     "inspect_model": _tool_inspect_model,
     "describe_cad_api": _tool_describe_cad_api,

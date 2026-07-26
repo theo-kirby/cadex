@@ -24,6 +24,7 @@ MESH_FREECADCMD environment variable or PATH. Prints one JSON gate report
 line ("CADEX-BLENDER-GATE {...}") and exits non-zero on any failure.
 """
 
+import glob
 import json
 import os
 import random
@@ -527,7 +528,8 @@ def test_params_and_latency(root):
     check(ok, "clamped value accepted")
 
     # Contract-driven GC through the shell: dropping outputs removes them.
-    ok, _report = run_tool("write_script", {"content": REDUCED_SCRIPT})
+    ok, _report = run_tool("write_script", {"content": REDUCED_SCRIPT,
+                              "replace": True})
     check(ok, "reduced write_script accepted")
     check(bpy.data.objects.get("skin") is None, "dropped output GCed")
     check(bpy.data.objects.get("plate") is not None, "kept output survives")
@@ -1033,7 +1035,8 @@ def test_cancel_reaches_the_engine(root):
           "cancelled run left the accepted geometry alone")
 
     # The engine stays serviceable after a cancel.
-    ok, report = run_tool("write_script", {"content": REDUCED_SCRIPT})
+    ok, report = run_tool("write_script", {"content": REDUCED_SCRIPT,
+                              "replace": True})
     check(ok, "engine still serviceable after cancel ({:s})".format(
         report[:120]))
     GATE["cancel_seconds"] = round(time.monotonic() - began, 3)
@@ -1065,7 +1068,8 @@ def test_save_as_and_multi_file_lifecycle(workdir):
     check(scene.get(cadex_backend.ROOT_PROP) is None,
           "the derived root is NOT cached as a user override")
 
-    ok, report = run_tool("write_script", {"content": REDUCED_SCRIPT})
+    ok, report = run_tool("write_script", {"content": REDUCED_SCRIPT,
+                              "replace": True})
     check(ok, "model accepted in a.blend ({:s})".format(report[:80]))
     check(os.path.isdir(root_a), "a.cadex created on disk")
     check(cadex_backend.open_roots() == [root_a],
@@ -1410,6 +1414,103 @@ def test_get_script_is_not_truncated(root):
     check("truncated" not in text, "and nothing was elided")
 
 
+# -- ADR-045: history, revert, and the destructive-overwrite guard ----------
+
+def test_write_script_refuses_to_drop_existing_outputs(root):
+    """"lets create a battery model" must not delete the drone frame.
+
+    write_script replaces THE project script, so a model answering an
+    additive request with a script containing only the new part builds
+    fine, publishes fine, and is accepted -- taking everything else with it.
+    """
+    print("test_write_script_refuses_to_drop_existing_outputs")
+    reset_scene(root)
+    ok, _report = run_tool("write_script", {"content": BASELINE_SCRIPT})
+    check(ok, "baseline accepted")
+    accepted = store_state(root)["accepted_revision"]
+
+    battery = ('p = params(length=num(64.0, unit="mm", min=10.0, max=200.0,\n'
+               '                      label="Length"))\n'
+               'battery = part.box(p.length, 10, 6, label="Battery")\n'
+               'result = {"battery": battery}\n')
+    ok, report = run_tool("write_script", {"content": battery})
+    check(not ok, "a script that drops existing outputs is refused")
+    check("plate" in report and "skin" in report,
+          "the refusal names what would have been lost: {:s}".format(report[:160]))
+    check("replace=true" in report, "and how to confirm if it was meant")
+    check(store_state(root)["accepted_revision"] == accepted,
+          "the model is untouched by the refusal")
+    check(bpy.data.objects.get("plate") is not None,
+          "and the viewport still has it")
+
+    ok, report = run_tool("write_script", {"content": battery, "replace": True})
+    check(ok, "replace=true goes through: {:s}".format(report[:80]))
+    check(sorted(o["name"] for o in store_state(root)["accepted_contract"])
+          == ["battery"], "and the project is now just the battery")
+
+
+def test_script_history_and_revert(root):
+    """The undo trail, end to end through the tools."""
+    print("test_script_history_and_revert")
+    reset_scene(root)
+    ok, _report = run_tool("write_script", {"content": BASELINE_SCRIPT})
+    check(ok, "first version accepted")
+    ok, _report = run_tool("edit_script", {"replacements": [
+        {"old": "part.box(120, 80, 8)", "new": "part.box(90, 60, 8)"}]})
+    check(ok, "second version accepted")
+
+    ok, text = run_tool("inspect_model", {"scope": "history"})
+    check(ok, "history lists")
+    payload = json.loads(text)
+    versions = payload.get("versions") or []
+    check(len(versions) >= 2, "both versions are listed ({:d})".format(len(versions)))
+    check(all("plate" in v.get("outputs", []) for v in versions),
+          "each version records the outputs it declared")
+    first = versions[0]
+
+    ok, text = run_tool("inspect_model", {"scope": "history",
+                                          "target": str(first["ordinal"])})
+    check(ok and "part.box(120, 80, 8)" in text,
+          "a stored version serves its own source")
+
+    # And the round trip: put version 1 back.
+    ok, report = run_tool("restore_version", {"version": str(first["ordinal"])})
+    check(ok, "revert succeeds: {:s}".format(report[:80]))
+    ok, text = run_tool("get_script", {})
+    check(ok and "part.box(120, 80, 8)" in text,
+          "the reverted script is the one in the engine now")
+    check(bpy.data.objects.get("plate") is not None, "and it rebuilt")
+
+    # A revert is itself an accepted revision, so it is undoable too.
+    ok, text = run_tool("inspect_model", {"scope": "history"})
+    check(ok and len(json.loads(text).get("versions") or []) >= 3,
+          "the revert is itself recorded in the history")
+
+
+def test_stale_attempts_are_pruned(root):
+    """The store must not grow without bound (56 MB for one afternoon)."""
+    print("test_stale_attempts_are_pruned")
+    reset_scene(root)
+    ok, _report = run_tool("write_script", {"content": BASELINE_SCRIPT})
+    check(ok, "baseline accepted")
+    for size in (2.0, 2.2, 2.4, 2.6):
+        ok, _report = run_tool("set_params", {"params": {"hole": float(size)}})
+        check(ok, "set_params {:.1f} accepted".format(size))
+    attempts = glob.glob(os.path.join(root, "script_artifacts", "*", "attempt-*"))
+    check(len(attempts) <= 5,
+          "stale attempt directories are pruned ({:d} left)".format(len(attempts)))
+
+    pinned = store_state(root).get("accepted_attempt") or {}
+    staging = os.path.join(root, str(pinned.get("staging") or ""))
+    check(os.path.isdir(staging), "the accepted attempt is never pruned")
+    # The facts block is over inspect's 1 KiB preview threshold, so the top
+    # page carries a stub for it -- reading the pinned attempt at all is the
+    # property under test here.
+    ok, text = run_tool("inspect_model", {"scope": "output", "target": "plate"})
+    check(ok and '"artifact_kind": "brep"' in text,
+          "and inspect scope=output still reads the pinned attempt")
+
+
 # -- M6: the engine describes its own API -----------------------------------
 
 def test_describe_cad_api(root):
@@ -1562,6 +1663,9 @@ def main():
     repair_root = tempfile.mkdtemp(prefix="mesh-cadex-repair-")
     stdout_root = tempfile.mkdtemp(prefix="mesh-cadex-stdout-")
     long_root = tempfile.mkdtemp(prefix="mesh-cadex-long-")
+    guard_root = tempfile.mkdtemp(prefix="mesh-cadex-guard-")
+    history_root = tempfile.mkdtemp(prefix="mesh-cadex-history-")
+    prune_root = tempfile.mkdtemp(prefix="mesh-cadex-prune-")
     try:
         test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
@@ -1591,6 +1695,9 @@ def main():
             repair_root)
         test_a_working_scripts_stdout_reaches_the_caller(stdout_root)
         test_get_script_is_not_truncated(long_root)
+        test_write_script_refuses_to_drop_existing_outputs(guard_root)
+        test_script_history_and_revert(history_root)
+        test_stale_attempts_are_pruned(prune_root)
     finally:
         try:
             cadex_backend.close_all()
@@ -1609,7 +1716,7 @@ def main():
                      restore_root, corrupt_root, describe_root, edit_root,
                      drop_root, rederive_root, mirror_root, defaults_root,
                      refused_root, rewrite_root, repair_root, stdout_root,
-                     long_root):
+                     long_root, guard_root, history_root, prune_root):
             shutil.rmtree(root, ignore_errors=True)
 
     GATE["ok"] = not FAILURES
