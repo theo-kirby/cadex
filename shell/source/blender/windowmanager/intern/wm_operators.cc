@@ -4347,15 +4347,12 @@ static void gesture_circle_modal_keymap(wmKeyConfig *keyconf)
 
   keymap = WM_modalkeymap_ensure(keyconf, "View3D Gesture Circle", modal_items);
 
-  /* Assign map to operators. */
+  /* Assign map to operators. Operators belonging to editors Cadex does not
+   * build are not listed: WM_modalkeymap_assign logs a CLOG_ERROR for every
+   * idname it cannot find, which was one error per launch each. ADR-036. */
   WM_modalkeymap_assign(keymap, "VIEW3D_OT_select_circle");
   WM_modalkeymap_assign(keymap, "UV_OT_select_circle");
-  WM_modalkeymap_assign(keymap, "SEQUENCER_OT_select_circle");
-  WM_modalkeymap_assign(keymap, "CLIP_OT_select_circle");
   WM_modalkeymap_assign(keymap, "MASK_OT_select_circle");
-  WM_modalkeymap_assign(keymap, "NODE_OT_select_circle");
-  WM_modalkeymap_assign(keymap, "GRAPH_OT_select_circle");
-  WM_modalkeymap_assign(keymap, "ACTION_OT_select_circle");
 }
 
 /* Straight line modal operators. */
@@ -4380,8 +4377,9 @@ static void gesture_straightline_modal_keymap(wmKeyConfig *keyconf)
 
   keymap = WM_modalkeymap_ensure(keyconf, "Gesture Straight Line", modal_items);
 
-  /* Assign map to operators. */
-  WM_modalkeymap_assign(keymap, "IMAGE_OT_sample_line");
+  /* Assign map to operators. Operators belonging to editors Cadex does not
+   * build are not listed: WM_modalkeymap_assign logs a CLOG_ERROR for every
+   * idname it cannot find, which was one error per launch each. ADR-036. */
   WM_modalkeymap_assign(keymap, "PAINT_OT_weight_gradient");
   WM_modalkeymap_assign(keymap, "MESH_OT_bisect");
   WM_modalkeymap_assign(keymap, "PAINT_OT_mask_line_gesture");
@@ -4412,29 +4410,21 @@ static void gesture_box_modal_keymap(wmKeyConfig *keyconf)
 
   keymap = WM_modalkeymap_ensure(keyconf, "Gesture Box", modal_items);
 
-  /* Assign map to operators. */
-  WM_modalkeymap_assign(keymap, "ACTION_OT_select_box");
+  /* Assign map to operators. Operators belonging to editors Cadex does not
+   * build are not listed: WM_modalkeymap_assign logs a CLOG_ERROR for every
+   * idname it cannot find, which was one error per launch each. ADR-036. */
   WM_modalkeymap_assign(keymap, "ANIM_OT_channels_select_box");
   WM_modalkeymap_assign(keymap, "ANIM_OT_previewrange_set");
   WM_modalkeymap_assign(keymap, "INFO_OT_select_box");
   WM_modalkeymap_assign(keymap, "FILE_OT_select_box");
-  WM_modalkeymap_assign(keymap, "GRAPH_OT_select_box");
   WM_modalkeymap_assign(keymap, "MARKER_OT_select_box");
-  WM_modalkeymap_assign(keymap, "NLA_OT_select_box");
-  WM_modalkeymap_assign(keymap, "NODE_OT_select_box");
-  WM_modalkeymap_assign(keymap, "NODE_OT_viewer_border");
   WM_modalkeymap_assign(keymap, "PAINT_OT_hide_show");
   WM_modalkeymap_assign(keymap, "OUTLINER_OT_select_box");
 #if 0 /* Template. */
   WM_modalkeymap_assign(keymap, "SCREEN_OT_box_select");
 #endif
-  WM_modalkeymap_assign(keymap, "SEQUENCER_OT_select_box");
-  WM_modalkeymap_assign(keymap, "SEQUENCER_OT_box_blade");
-  WM_modalkeymap_assign(keymap, "SEQUENCER_OT_view_ghost_border");
   WM_modalkeymap_assign(keymap, "UV_OT_select_box");
   WM_modalkeymap_assign(keymap, "UV_OT_custom_region_set");
-  WM_modalkeymap_assign(keymap, "CLIP_OT_select_box");
-  WM_modalkeymap_assign(keymap, "CLIP_OT_graph_select_box");
   WM_modalkeymap_assign(keymap, "MASK_OT_select_box");
   WM_modalkeymap_assign(keymap, "PAINT_OT_mask_box_gesture");
   WM_modalkeymap_assign(keymap, "SCULPT_OT_face_set_box_gesture");
@@ -4445,8 +4435,6 @@ static void gesture_box_modal_keymap(wmKeyConfig *keyconf)
   WM_modalkeymap_assign(keymap, "VIEW3D_OT_select_box");
   /* XXX TODO: zoom border should perhaps map right-mouse to zoom out instead of in+cancel. */
   WM_modalkeymap_assign(keymap, "VIEW3D_OT_zoom_border");
-  WM_modalkeymap_assign(keymap, "IMAGE_OT_render_border");
-  WM_modalkeymap_assign(keymap, "IMAGE_OT_view_zoom_border");
   WM_modalkeymap_assign(keymap, "GREASE_PENCIL_OT_erase_box");
 }
 
@@ -4467,18 +4455,15 @@ static void gesture_lasso_modal_keymap(wmKeyConfig *keyconf)
 
   keymap = WM_modalkeymap_ensure(keyconf, "Gesture Lasso", modal_items);
 
-  /* Assign map to operators. */
+  /* Assign map to operators. Operators belonging to editors Cadex does not
+   * build are not listed: WM_modalkeymap_assign logs a CLOG_ERROR for every
+   * idname it cannot find, which was one error per launch each. ADR-036. */
   WM_modalkeymap_assign(keymap, "VIEW3D_OT_select_lasso");
   WM_modalkeymap_assign(keymap, "MASK_OT_select_lasso");
   WM_modalkeymap_assign(keymap, "PAINT_OT_mask_lasso_gesture");
   WM_modalkeymap_assign(keymap, "SCULPT_OT_face_set_lasso_gesture");
   WM_modalkeymap_assign(keymap, "SCULPT_OT_trim_lasso_gesture");
-  WM_modalkeymap_assign(keymap, "ACTION_OT_select_lasso");
-  WM_modalkeymap_assign(keymap, "CLIP_OT_select_lasso");
-  WM_modalkeymap_assign(keymap, "GRAPH_OT_select_lasso");
-  WM_modalkeymap_assign(keymap, "NODE_OT_select_lasso");
   WM_modalkeymap_assign(keymap, "UV_OT_select_lasso");
-  WM_modalkeymap_assign(keymap, "SEQUENCER_OT_select_lasso");
   WM_modalkeymap_assign(keymap, "PAINT_OT_hide_show_lasso_gesture");
   WM_modalkeymap_assign(keymap, "GREASE_PENCIL_OT_erase_lasso");
 }
@@ -4530,10 +4515,11 @@ static void gesture_zoom_border_modal_keymap(wmKeyConfig *keyconf)
 
   keymap = WM_modalkeymap_ensure(keyconf, "Gesture Zoom Border", modal_items);
 
-  /* Assign map to operators. */
+  /* Assign map to operators. Operators belonging to editors Cadex does not
+   * build are not listed: WM_modalkeymap_assign logs a CLOG_ERROR for every
+   * idname it cannot find, which was one error per launch each. ADR-036. */
   WM_modalkeymap_assign(keymap, "VIEW2D_OT_zoom_border");
   WM_modalkeymap_assign(keymap, "VIEW3D_OT_zoom_border");
-  WM_modalkeymap_assign(keymap, "IMAGE_OT_view_zoom_border");
 }
 
 void wm_window_keymap(wmKeyConfig *keyconf)

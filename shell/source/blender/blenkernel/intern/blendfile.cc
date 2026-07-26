@@ -1525,14 +1525,17 @@ UserDef *BKE_blendfile_userdef_from_defaults()
 
   /* Add-ons. */
   {
+    /* Not enabled by default: `cycles` (shader node editor panels) and
+     * `pose_library` (dope sheet and asset browser panels). Both register
+     * against an editor Cadex does not build, so both raised on every launch.
+     * They are still installed, just not on by default. `io_mesh_uv_layout`
+     * goes for the same reason but is dropped from `_addons_hidden_core` in
+     * `addon_utils.py` instead -- that list ignores this one. See ADR-036. */
     const char *addons[] = {
         "io_anim_bvh",
         "io_curve_svg",
-        "io_mesh_uv_layout",
         "io_scene_fbx",
         "io_scene_gltf2",
-        "cycles",
-        "pose_library",
         "bl_pkg",
     };
     for (int i = 0; i < ARRAY_SIZE(addons); i++) {

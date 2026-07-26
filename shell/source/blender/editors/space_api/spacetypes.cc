@@ -67,28 +67,26 @@ void ED_spacetypes_init()
   U.widget_unit = 20;
 
   /* Create space types. */
+  /* Only the editors Cadex ships. An unregistered space type is not offered
+   * in the editor menu (rna_Area_ui_type_itemf), so this list *is* the menu.
+   * Not registered: space_action, space_clip, space_graph, space_image,
+   * space_nla, space_node, space_script, space_sequencer, space_spreadsheet.
+   * They are still *compiled* -- kept subsystems reference symbols across all
+   * nine, so dropping them from the build is the delete half of the protocol
+   * in docs/FREECAD.md S3 and belongs to Phase 13b. See ADR-036. */
   ED_spacetype_outliner();
   ED_spacetype_view3d();
-  ED_spacetype_ipo();
-  ED_spacetype_image();
-  ED_spacetype_node();
   ED_spacetype_buttons();
   ED_spacetype_info();
   ED_spacetype_file();
-  ED_spacetype_action();
-  ED_spacetype_nla();
-  ED_spacetype_script();
   ED_spacetype_text();
-  vse::ED_spacetype_sequencer();
   ED_spacetype_console();
   ED_spacetype_userpref();
-  ED_spacetype_clip();
   ED_spacetype_project();
   ED_spacetype_cadex_chat();
   ED_spacetype_cadex_params();
   ED_spacetype_statusbar();
   ED_spacetype_topbar();
-  spreadsheet::register_spacetype();
 
   /* Register operator types for screen and all spaces. */
   ED_operatortypes_userpref();
@@ -161,20 +159,39 @@ void ED_spacemacros_init()
   ED_operatormacros_mesh();
   ED_operatormacros_uvedit();
   ED_operatormacros_metaball();
-  ED_operatormacros_node();
   object::operatormacros_object();
   ED_operatormacros_file();
-  ED_operatormacros_graph();
-  ED_operatormacros_action();
-  ED_operatormacros_clip();
   ED_operatormacros_curve();
   curves::operatormacros_curves();
   pointcloud::operatormacros_pointcloud();
   ED_operatormacros_mask();
-  vse::ED_operatormacros_sequencer();
   ED_operatormacros_paint();
   ED_operatormacros_grease_pencil();
-  ED_operatormacros_nla();
+
+  /* A space type's own operators are registered from its `operatortypes`
+   * callback, which only runs for registered space types. The macros below
+   * chain those operators, so defining them for an editor Cadex does not
+   * register would build macros around operators that do not exist -- which
+   * WM_operatortype_macro_define survives, but only by warning on every
+   * missing property at startup. See ADR-036. */
+  if (BKE_spacetype_from_id(SPACE_NODE)) {
+    ED_operatormacros_node();
+  }
+  if (BKE_spacetype_from_id(SPACE_GRAPH)) {
+    ED_operatormacros_graph();
+  }
+  if (BKE_spacetype_from_id(SPACE_ACTION)) {
+    ED_operatormacros_action();
+  }
+  if (BKE_spacetype_from_id(SPACE_CLIP)) {
+    ED_operatormacros_clip();
+  }
+  if (BKE_spacetype_from_id(SPACE_SEQ)) {
+    vse::ED_operatormacros_sequencer();
+  }
+  if (BKE_spacetype_from_id(SPACE_NLA)) {
+    ED_operatormacros_nla();
+  }
 
   /* Register dropboxes (can use macros). */
   ui::dropboxes_ui();

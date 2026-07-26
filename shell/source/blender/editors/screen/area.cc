@@ -2831,6 +2831,16 @@ void ED_area_newspace(bContext *C, ScrArea *area, int type, const bool skip_regi
   wmWindow *win = CTX_wm_window(C);
   SpaceType *st = BKE_spacetype_from_id(type);
 
+  /* An editor Cadex does not build can still be asked for by an inherited
+   * call site -- the render result wants SPACE_IMAGE, the drivers editor
+   * SPACE_GRAPH (ADR-036). Fall back the way loading a file that names an
+   * unknown space type already does (area_init_type_fallback), rather than
+   * carrying a null area->type into everything below. */
+  if (st == nullptr) {
+    type = SPACE_VIEW3D;
+    st = BKE_spacetype_from_id(type);
+  }
+
   if (area->spacetype != type) {
     SpaceLink *slold = static_cast<SpaceLink *>(area->spacedata.first);
     /* store area->type->exit callback */

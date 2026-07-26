@@ -166,6 +166,12 @@ static void do_version_workspaces_create_from_screens(Main *bmain)
 static void do_version_area_change_space_to_space_action(ScrArea *area, const Scene *scene)
 {
   SpaceType *stype = BKE_spacetype_from_id(SPACE_ACTION);
+  if (stype == nullptr) {
+    /* Cadex does not build the dope sheet (ADR-036), so a pre-2.8 file with a
+     * timeline area has nothing to convert to. ED_area_and_region_types_init
+     * falls the area back to the viewport on init. */
+    return;
+  }
   SpaceAction *saction = reinterpret_cast<SpaceAction *>(stype->create(area, scene));
   ARegion *region_channels;
 

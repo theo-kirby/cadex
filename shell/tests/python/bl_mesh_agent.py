@@ -667,6 +667,52 @@ def test_new_conversation_starts_a_fresh_session():
         agent.history.clear()
 
 
+KEPT_EDITORS = (
+    'VIEW_3D', 'CADEX_CHAT', 'CADEX_PARAMS', 'PROPERTIES', 'OUTLINER',
+    'TEXT_EDITOR', 'CONSOLE', 'INFO', 'PREFERENCES', 'FILES',
+)
+
+# Identifiers as the editor-type menu spells them. The animation, image, node
+# and file editors surface *subtype* identifiers rather than their space
+# type's own (rna_Area_ui_type_itemf calls space_subtype_item_extend), so
+# asserting on "DOPESHEET_EDITOR" or "GRAPH_EDITOR" would pass vacuously --
+# those strings were never valid ui_type values.
+HIDDEN_EDITORS = (
+    # space_action. Only these two of the seven SpaceDopeSheetEditor modes are
+    # menu items (rna_enum_space_action_mode_items is a subset of
+    # ..._mode_all_items); the rest would assert vacuously.
+    'DOPESHEET', 'TIMELINE',
+    # space_graph
+    'FCURVES', 'DRIVERS',
+    # space_nla
+    'NLA_EDITOR',
+    # space_image
+    'IMAGE_EDITOR', 'UV',
+    # space_node
+    'ShaderNodeTree', 'CompositorNodeTree', 'GeometryNodeTree',
+    'TextureNodeTree',
+    # space_sequencer, space_spreadsheet, space_clip
+    'SEQUENCE_EDITOR', 'SPREADSHEET', 'CLIP_EDITOR',
+    # the asset browser, a space_file subtype
+    'ASSETS',
+)
+
+
+def _ui_type_accepted(area, identifier):
+    """Whether the editor menu offers this identifier.
+
+    `Area.ui_type` is a dynamic enum, so its item list is not readable from
+    Python without a context -- `enum_items` comes back empty. Assigning it
+    is: RNA validates the value against the same itemf the menu is built
+    from, and raises TypeError when it is not in the list.
+    """
+    try:
+        area.ui_type = identifier
+    except TypeError:
+        return False
+    return True
+
+
 def test_cadex_editors_are_registered():
     """Chat and Parameters are editor types, not Properties areas told apart
     by where they sit."""
@@ -677,6 +723,36 @@ def test_cadex_editors_are_registered():
     for name in ('SpaceCadexChat', 'SpaceCadexParams'):
         check(hasattr(bpy.types, name),
               "bpy.types.{:s} exists".format(name))
+
+
+def test_editor_menu_is_short():
+    """The editor-type menu offers what Cadex builds and nothing else.
+
+    An editor quietly coming back is invisible otherwise -- it only shows up
+    as a dropdown entry that destroys the layout when picked.
+    """
+    print("test_editor_menu_is_short")
+    area = next((a for s in bpy.data.screens for a in s.areas), None)
+    if area is None:
+        check(False, "a screen area to read the editor menu from")
+        return
+    was = area.ui_type
+    try:
+        for name in KEPT_EDITORS:
+            check(_ui_type_accepted(area, name),
+                  "{:s} is on the editor menu".format(name))
+        for name in HIDDEN_EDITORS:
+            check(not _ui_type_accepted(area, name),
+                  "{:s} is off the editor menu".format(name))
+        # The two bars are not editors and never were offered.
+        for name in ('TOPBAR', 'STATUSBAR'):
+            check(not _ui_type_accepted(area, name),
+                  "{:s} is off the editor menu".format(name))
+    finally:
+        try:
+            area.ui_type = was
+        except TypeError:
+            pass
 
 
 def test_panels_are_homed_on_the_cadex_editors():
@@ -777,6 +853,7 @@ def main():
         test_session_id_round_trips_and_is_per_file()
         test_new_conversation_starts_a_fresh_session()
         test_cadex_editors_are_registered()
+        test_editor_menu_is_short()
         test_panels_are_homed_on_the_cadex_editors()
         test_confirming_the_input_sends()
         test_message_box_widget_is_available()

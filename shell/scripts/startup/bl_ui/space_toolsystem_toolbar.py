@@ -4206,11 +4206,13 @@ class SEQUENCER_PT_tools_active(ToolSelectPanelHelper, Panel):
     }
 
 
+# The image, node and sequencer tool panels are defined above but not
+# registered: Cadex does not build those space types, and registering a panel
+# against a space type that does not exist raises "Region not found in space
+# type" -- which aborts bl_ui's whole registration loop, taking the top bar
+# menus with it. See ADR-036.
 classes = (
-    IMAGE_PT_tools_active,
-    NODE_PT_tools_active,
     VIEW3D_PT_tools_active,
-    SEQUENCER_PT_tools_active,
 )
 
 if __name__ == "__main__":  # only for live edit.

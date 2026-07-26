@@ -70,23 +70,22 @@ _modules = [
     "space_toolsystem_common",
     "space_toolsystem_toolbar",
 
-    "space_clip",
+    # The UI modules of the editors Cadex does not build are not loaded.
+    # Their panels name space types that no longer exist, so registering them
+    # would just raise. Removed as a group -- they cross-import each other
+    # (space_graph/space_nla/space_sequencer pull from space_dopesheet and
+    # space_time) but nothing outside the set imports them. The files stay on
+    # disk; this is the disable half. See ADR-036.
+    # Dropped: space_clip, space_dopesheet, space_graph, space_image,
+    # space_nla, space_node, space_sequencer, space_spreadsheet, space_time.
     "space_console",
-    "space_dopesheet",
     "space_filebrowser",
-    "space_graph",
-    "space_image",
     "space_info",
-    "space_nla",
-    "space_node",
     "space_outliner",
     "space_project",
     "space_properties",
-    "space_sequencer",
-    "space_spreadsheet",
     "space_statusbar",
     "space_text",
-    "space_time",
     "space_topbar",
     "space_userpref",
     "space_view3d",

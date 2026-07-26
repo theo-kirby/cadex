@@ -905,7 +905,16 @@ static void file_space_subtype_set(ScrArea *area, int value)
 
 static void file_space_subtype_item_extend(bContext * /*C*/, EnumPropertyItem **item, int *totitem)
 {
-  RNA_enum_items_add(item, totitem, rna_enum_space_file_browse_mode_items);
+  /* Cadex does not ship the asset browser. It is a SpaceFile *subtype*, not a
+   * space type, so it cannot be hidden by simply not registering it the way
+   * the other editors are (ADR-036) -- it is filtered here instead. The file
+   * browser itself stays: file dialogs need it. */
+  for (const EnumPropertyItem *it = rna_enum_space_file_browse_mode_items; it->identifier; it++) {
+    if (it->value == FILE_BROWSE_MODE_ASSETS) {
+      continue;
+    }
+    RNA_enum_item_add(item, totitem, it);
+  }
 }
 
 static StringRefNull file_space_name_get(const ScrArea *area)

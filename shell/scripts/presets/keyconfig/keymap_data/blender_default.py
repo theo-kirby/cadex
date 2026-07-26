@@ -2274,6 +2274,14 @@ def km_node_generic(params):
 
 
 def km_node_editor(params):
+    # NOTE (Cadex, ADR-036): keymap items here that used to carry macro
+    # sub-operator properties -- ("NODE_OT_translate_attach", [...]) and
+    # ("TRANSFORM_OT_translate", [...]) -- pass None instead. Cadex does not
+    # build the node editor, so its operators never register, so
+    # ED_spacemacros_init skips its macros, so naming a sub-operator raises
+    # in bl_keymap_utils.io._init_properties_from_data at startup. The rest of
+    # this keymap is inert but harmless: a keymap item for an operator that
+    # does not exist is simply never matched.
     items = []
     keymap = (
         "Node Editor",
@@ -2354,11 +2362,11 @@ def km_node_editor(params):
         op_menu("NODE_MT_add", {"type": 'A', "value": 'PRESS', "shift": True}),
         op_menu("NODE_MT_swap", {"type": 'S', "value": 'PRESS', "shift": True}),
         ("node.duplicate_move", {"type": 'D', "value": 'PRESS', "shift": True},
-         {"properties": [("NODE_OT_translate_attach", [("TRANSFORM_OT_translate", [("view2d_edge_pan", True)])])]}),
+         None),
         ("node.duplicate_move_linked", {"type": 'D', "value": 'PRESS', "alt": True},
-         {"properties": [("NODE_OT_translate_attach", [("TRANSFORM_OT_translate", [("view2d_edge_pan", True)])])]}),
+         None),
         ("node.duplicate_move_keep_inputs", {"type": 'D', "value": 'PRESS', "shift": True, "ctrl": True},
-         {"properties": [("NODE_OT_translate_attach", [("TRANSFORM_OT_translate", [("view2d_edge_pan", True)])])]}),
+         None),
         ("node.parent_set", {"type": 'P', "value": 'PRESS', "ctrl": True}, None),
         ("node.detach", {"type": 'P', "value": 'PRESS', "alt": True}, None),
         ("node.join_named", {"type": 'F', "value": 'PRESS'}, None),
@@ -2401,14 +2409,14 @@ def km_node_editor(params):
         ("node.delete_copy_reconnect", {"type": 'X', "value": 'PRESS', "ctrl": True}, None),
         ("node.translate_attach",
          {"type": 'G', "value": 'PRESS'},
-         {"properties": [("TRANSFORM_OT_translate", [("view2d_edge_pan", True)])]}),
+         None),
         ("node.translate_attach",
          {"type": 'LEFTMOUSE', "value": 'CLICK_DRAG'},
-         {"properties": [("TRANSFORM_OT_translate", [("view2d_edge_pan", True)])]}),
+         None),
         # Avoid duplicating the previous item.
         *([] if params.select_mouse == 'LEFTMOUSE' else (
             ("node.translate_attach", {"type": params.select_mouse, "value": 'CLICK_DRAG'},
-             {"properties": [("TRANSFORM_OT_translate", [("view2d_edge_pan", True)])]}),
+             None),
         )),
         ("transform.translate", {"type": 'G', "value": 'PRESS'}, {"properties": [("view2d_edge_pan", True)]}),
         ("transform.translate", {"type": 'LEFTMOUSE', "value": 'CLICK_DRAG'},
@@ -2422,10 +2430,10 @@ def km_node_editor(params):
         ("transform.resize", {"type": 'S', "value": 'PRESS'}, None),
         ("node.move_detach_links_release",
          {"type": params.action_mouse, "value": 'CLICK_DRAG', "alt": True},
-         {"properties": [("NODE_OT_translate_attach", [("TRANSFORM_OT_translate", [("view2d_edge_pan", True)])])]}),
+         None),
         ("node.move_detach_links",
          {"type": params.select_mouse, "value": 'CLICK_DRAG', "alt": True},
-         {"properties": [("TRANSFORM_OT_translate", [("view2d_edge_pan", True)])]}),
+         None),
         ("wm.context_toggle", {"type": 'TAB', "value": 'PRESS', "shift": True},
          {"properties": [("data_path", 'tool_settings.use_snap_node')]}),
         ("wm.context_toggle", {"type": 'Z', "value": 'PRESS', "alt": True, "shift": True},

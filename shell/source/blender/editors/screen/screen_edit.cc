@@ -599,6 +599,12 @@ bool screen_area_close(
 void screen_area_spacelink_add(const Scene *scene, ScrArea *area, eSpace_Type space_type)
 {
   SpaceType *stype = BKE_spacetype_from_id(space_type);
+  /* Unregistered space types are how Cadex hides the editors it does not
+   * build (ADR-036); fall back rather than dereference null. */
+  if (stype == nullptr) {
+    stype = BKE_spacetype_from_id(SPACE_VIEW3D);
+    area->spacetype = SPACE_VIEW3D;
+  }
   SpaceLink *slink = stype->create(area, scene);
 
   area->regionbase = slink->regionbase;

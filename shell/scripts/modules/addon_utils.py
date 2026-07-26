@@ -43,11 +43,15 @@ _stale_filename = ".~stale~"
 # which could be part of an improvement to store preferences for disabled add-ons.
 # This is the reason we can't include "cycles".
 # See #71486 and follow up discussion on #151863.
+# NOTE: entries here are enabled unconditionally, whatever the preferences
+# say, so this is the list that decides -- not the defaults in
+# `BKE_blendfile_userdef_from_defaults`. `io_mesh_uv_layout` is not in it
+# because it appends to the UV editor's menu, and Cadex does not build that
+# editor (ADR-036); enabling it raised on every launch.
 _addons_hidden_core = {
     "bl_pkg",
     "io_anim_bvh",
     "io_curve_svg",
-    "io_mesh_uv_layout",
     "io_scene_fbx",
 }
 
