@@ -247,6 +247,14 @@ the `rebuild` op re-run over the stored script; ADR-039). The debounce timer
 runs outside any operator, so before that a failed drag reached the console
 and nowhere else.
 
+The sliders are an override layer, and the shell can collapse it: **Apply as
+Defaults** rewrites each `num()` default in the script to the value its slider
+is sitting at (ADR-040). That is a `write_script` like any other — the shell
+splices the source and sends it whole — so the script stays the single source of
+truth rather than gaining a second place where a value can live. The stored
+values are left in place, and go on shadowing the defaults they were written
+from, so the operation does not move the geometry or its digest.
+
 *(ADR-014's `CadexParametersPanel.py` implemented this in the Qt shell and
 was deleted with it in Phase 7, ADR-021. The contract it committed
 through — `set_params` plus the revision guard — is unchanged, which is why

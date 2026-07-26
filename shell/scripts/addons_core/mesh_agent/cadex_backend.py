@@ -1055,6 +1055,55 @@ def rebuild_model(scene):
     return started.wait()
 
 
+def apply_slider_defaults(scene):
+    """Write the current slider values into the script as the new defaults.
+
+    The sliders are an override layer over what the script declares: move one
+    and the value lives in the store, while `num(36.0, ...)` in the source still
+    says 36. This collapses the layer -- each declared parameter's default
+    becomes the value the slider is sitting at, in the script itself, which is
+    the artifact that gets committed and diffed.
+
+    Rewritten from the **engine's** source, not the buffer, so the button does
+    exactly one thing; a hand-edited buffer is refused rather than swept along,
+    because `write_script` refreshes the mirror and would take the edits with it.
+
+    The geometry does not move: the store keeps its parameter values, and a
+    stored value shadows the default it was just written from, so the rebuild
+    this triggers computes the same shapes and reports the same content digest.
+    That also absorbs the rounding in `model.format_default` -- the literal in
+    the script is the readable form of the value, not the value being built.
+    Returns (ok, report).
+    """
+    from . import model
+
+    ok, report = ensure_open(scene)
+    if not ok:
+        return False, report
+    state = _state_for(project_root(scene))
+    if not state.script_present or not state.source:
+        return False, "There is no project script to set defaults on yet."
+    if model.script_is_dirty():
+        return False, ("The script buffer has unapplied edits. Apply or revert "
+                       "them first, then set the defaults.")
+    values = model.get_values(scene)
+    if not values:
+        return False, "The project script declares no parameters."
+    try:
+        source, changes = model.rewrite_defaults(state.source, values)
+    except ValueError as exc:
+        return False, str(exc)
+    if not changes:
+        return True, "Every parameter default already matches its slider."
+    ok, report = write_script(scene, source)
+    if not ok:
+        return False, report
+    return True, "{:s}\n{:s}".format(
+        report,
+        "\n".join("{:s}: {:s} -> {:s}".format(name, old, new)
+                  for name, old, new in changes))
+
+
 def adopt_saved_script(scene):
     """Rebuild this file's engine project from the script saved in the .blend.
 

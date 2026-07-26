@@ -138,6 +138,159 @@ def set_script(source, stamp=True):
     return True
 
 
+# -- writing slider values back into the script's declarations ---------------
+
+#: Significant digits kept when a slider value becomes a script literal.
+#: Blender's FloatProperty is single-precision, so a slider reading 3.6 in the
+#: panel holds 3.5999999046325684, and writing *that* into someone's script is
+#: not a defensible thing to do. Six digits is under the float32 noise floor and
+#: still readable.
+#:
+#: It is deliberately coarser than float32's ~7.2 digits, so the literal can sit
+#: ~1e-7 of its magnitude away from the slider -- irrelevant against OCCT's own
+#: tolerance, and it does not touch the current build at all, because the stored
+#: value goes on shadowing the default it was written from
+#: (`cadex_backend.apply_slider_defaults`).
+_DEFAULT_DIGITS = 6
+
+
+def rounded_value(value):
+    """One slider value as it will be written to the script."""
+    return float("{:.{:d}g}".format(float(value), _DEFAULT_DIGITS))
+
+
+def format_default(value):
+    """The literal text for a rewritten ``num()`` default."""
+    return repr(rounded_value(value))
+
+
+def _num_call_name(node):
+    import ast
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return ""
+
+
+def _params_call(tree):
+    """The script's single ``params(...)`` call node, or None."""
+    import ast
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and _num_call_name(node.func) == "params":
+            return node
+    return None
+
+
+def _line_offsets(data):
+    offsets = [0]
+    for index, byte in enumerate(data):
+        if byte == 0x0A:
+            offsets.append(index + 1)
+    return offsets
+
+
+def rewrite_defaults(source, values):
+    """``source`` with each declared ``num()`` default set to its slider value.
+
+    Returns ``(new_source, changes)`` where changes is a list of
+    ``(name, old_text, new_text)``. Raises :class:`ValueError` with a
+    user-facing sentence when the declarations cannot be rewritten safely.
+
+    Splices the source rather than unparsing the tree. `ast.unparse` would
+    return a canonical rewrite of the *whole* script -- comments gone, layout
+    reflowed -- and this script is the artifact the user reads and diffs. Only
+    the default's own source span is touched, so everything else, down to the
+    spacing inside the `num()` call, is exactly as it was.
+    """
+    import ast
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        raise ValueError(
+            "The script does not parse, so its defaults cannot be "
+            "rewritten: {:s}".format(str(exc))) from None
+
+    call = _params_call(tree)
+    if call is None:
+        raise ValueError("This script declares no params(...) call.")
+    if call.args or any(keyword.arg is None for keyword in call.keywords):
+        # `params(**declarations)` hides the names from static reading, and
+        # guessing which literal belongs to which slider is exactly the kind
+        # of guess that silently corrupts a script.
+        raise ValueError(
+            "This script builds its parameters dynamically; only literal "
+            "params(name=num(...)) declarations can be rewritten.")
+
+    data = source.encode("utf-8")
+    starts = _line_offsets(data)
+
+    def span(node):
+        # ast columns are utf-8 byte offsets, and a label or description may
+        # well hold a non-ASCII character.
+        return (starts[node.lineno - 1] + node.col_offset,
+                starts[node.end_lineno - 1] + node.end_col_offset)
+
+    edits = []
+    changes = []
+    skipped = []
+    for keyword in call.keywords:
+        name = str(keyword.arg)
+        if name not in values:
+            continue
+        declaration = keyword.value
+        if not (isinstance(declaration, ast.Call)
+                and _num_call_name(declaration.func) == "num"):
+            skipped.append(name)
+            continue
+        target = None
+        if declaration.args:
+            target = declaration.args[0]
+        else:
+            target = next((item.value for item in declaration.keywords
+                           if item.arg == "default"), None)
+        if target is None:
+            skipped.append(name)
+            continue
+        start, end = span(target)
+        old_text = data[start:end].decode("utf-8")
+        new_text = format_default(values[name])
+        if old_text == new_text:
+            continue
+        edits.append((start, end, new_text))
+        changes.append((name, old_text, new_text))
+
+    if skipped and not changes:
+        raise ValueError(
+            "No parameter default could be rewritten ({:s} "
+            "{:s} not declared with num(...)).".format(
+                ", ".join(sorted(skipped)),
+                "is" if len(skipped) == 1 else "are"))
+
+    # Back to front, so each splice leaves the earlier offsets valid.
+    for start, end, new_text in sorted(edits, reverse=True):
+        data = data[:start] + new_text.encode("utf-8") + data[end:]
+    return data.decode("utf-8"), changes
+
+
+def defaults_differ_from_sliders(scene):
+    """True when some slider sits away from its declared default.
+
+    Cheap enough for a draw handler -- it compares the bridged specs against
+    the stored values and never parses the script. Rounded on both sides, or
+    float32 noise would leave the button lit for ever after it was pressed.
+    """
+    values = get_values(scene)
+    for spec in load_specs(scene):
+        name = spec["id"]
+        if name not in values:
+            continue
+        if rounded_value(values[name]) != rounded_value(spec["default"]):
+            return True
+    return False
+
+
 # -- parameter storage -----------------------------------------------------
 
 def load_specs(scene):

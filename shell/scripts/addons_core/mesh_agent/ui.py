@@ -186,6 +186,35 @@ class MESH_AGENT_OT_rebuild_model(Operator):
         return {'FINISHED'}
 
 
+class MESH_AGENT_OT_apply_slider_defaults(Operator):
+    bl_idname = "mesh_agent.apply_slider_defaults"
+    bl_label = "Apply as Defaults"
+    bl_description = ("Write the current slider values into the script as the "
+                      "parameters' default values")
+
+    @classmethod
+    def poll(cls, context):
+        return not agent_module.get_agent().busy
+
+    def execute(self, context):
+        from . import cadex_backend
+        from . import model
+        ok, report = cadex_backend.apply_slider_defaults(context.scene)
+        agent = agent_module.get_agent()
+        if not ok:
+            agent.history.add("status", report)
+            model.record_error(report)
+            self.report({'WARNING'}, first_line(report))
+            return {'CANCELLED'}
+        model.clear_last_error()
+        # The per-parameter old -> new lines are the interesting part: this
+        # operation edits the user's script, so it says exactly what it wrote.
+        agent.history.add("status",
+                          "Slider values are the script's defaults now.\n"
+                          + "\n".join(report.splitlines()[1:]))
+        return {'FINISHED'}
+
+
 class MESH_AGENT_OT_chat_new(Operator):
     bl_idname = "mesh_agent.chat_new"
     bl_label = "New Chat"
@@ -323,6 +352,15 @@ class CADEX_PARAMS_PT_parameters(Panel):
             if hasattr(group, spec["id"]):
                 column.prop(group, spec["id"],
                             slider=spec["type"] in {'FLOAT', 'INT'})
+
+        # Collapses the override layer: the values the sliders are sitting at
+        # become the defaults *in the script*. Live only while some slider is
+        # away from its declared default, so the button reads as the answer to
+        # "these are the numbers I want -- keep them".
+        row = layout.row()
+        row.enabled = model.defaults_differ_from_sliders(context.scene)
+        row.operator(MESH_AGENT_OT_apply_slider_defaults.bl_idname,
+                     icon='CHECKMARK')
 
 
 class CADEX_CHAT_PT_transcript(Panel):
@@ -469,6 +507,7 @@ classes = (
     MESH_AGENT_OT_paste_image,
     MESH_AGENT_OT_adopt_script,
     MESH_AGENT_OT_rebuild_model,
+    MESH_AGENT_OT_apply_slider_defaults,
     MESH_AGENT_OT_toggle_params,
     CADEX_PARAMS_PT_parameters,
     CADEX_CHAT_PT_transcript,

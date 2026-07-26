@@ -2290,3 +2290,78 @@ reverted under the user.
   cursor jump and the missing dirty mark).
 - Engine suite 208 passed; `pixi run gate` `"ok": true` with the slider median
   at 0.575 s, inside the 0.65 s bar.
+
+## ADR-040 — Apply as Defaults: the sliders can write themselves into the script (2026-07-26)
+
+**Decision.** A button in the parameters panel takes the value every slider is
+currently sitting at and writes it into the script as that parameter's `num()`
+default. Shell-side: `model.rewrite_defaults()` splices the source,
+`cadex_backend.apply_slider_defaults()` sends the result through the ordinary
+`write_script`. No protocol change, no new op, no engine change.
+
+**Why.** The sliders are an *override layer* over the declarations: drag one and
+the value lives in `param_values` in the store, while the script still says
+`num(36.0, ...)`. That is right for exploring, and wrong as a resting state —
+the script is the artifact that gets read, committed and diffed (`docs/VISION.md`),
+so a value the user has settled on belongs in it. There was no way to get it
+there except editing the script by hand and retyping numbers off the panel.
+
+**Splice, don't unparse.** `ast.unparse` would return a canonical rewrite of the
+whole script — comments gone, layout reflowed — for a change to a handful of
+numbers. So the rewrite parses with `ast`, takes the *source span* of each
+default expression (`lineno`/`col_offset`/`end_*`, resolved against utf-8 byte
+offsets because a label or description may hold a non-ASCII character), and
+splices back to front. On the real 116-line whoop chassis script the entire diff
+is five changed numbers: same line count, same eight comments, every label, unit
+and min/max byte-identical.
+
+**It refuses rather than guesses.** `params(**declared)` hides the names from
+static reading, a declaration that is not a literal `num(...)` call has no
+default to replace, and a script that does not parse cannot be rewritten at all.
+Each of those is a sentence in the panel, not a traceback and not a guess —
+guessing which literal belongs to which slider is exactly how this kind of tool
+silently corrupts someone's file. A parameter with no slider value is left as
+declared.
+
+**Float32.** Blender's `FloatProperty` is single-precision, so a slider reading
+3.6 holds 3.5999999046325684, and writing that into a script is indefensible.
+Values are cut to six significant digits (`model._DEFAULT_DIGITS`), which is
+under the float32 noise floor and still readable. That is deliberately *coarser*
+than float32's ~7.2 digits, so a literal can sit ~1e-7 of its magnitude from the
+slider — negligible against OCCT's own tolerance, and it does not affect the
+current build at all, because of the next point.
+
+**The geometry does not move.** The stored `param_values` are left alone, and a
+stored value shadows the default it was just written from, so the rebuild this
+triggers computes the same shapes and reports the same content digest. Clearing
+the store instead would have been the tidier model — the script would be the
+only place a value lives — but it costs a second engine round-trip for no
+visible difference, and the redundant overrides are inert. Noted as a known
+interaction rather than fixed: a *later* hand-edit of a default is still
+shadowed by a stored value, which is pre-existing behaviour (ADR-039's prune is
+what bounds it), and **Apply as Defaults** makes it likelier to be met.
+
+**A dirty buffer is refused.** `write_script` refreshes the mirror, so rewriting
+while the buffer holds unapplied hand edits would destroy them. The button says
+to apply or revert first — which is what the ADR-039 dirty marking is for.
+
+**Greyed out when it would do nothing.** `model.defaults_differ_from_sliders()`
+compares the bridged specs against the stored values (no parse, cheap enough for
+a draw handler) with both sides rounded — unrounded, float32 noise would leave
+the button lit for ever after it was pressed.
+
+**Evidence.** `test_rewrite_defaults_splices_only_the_default` in
+`shell/tests/python/bl_mesh_agent_cadex.py` drives the pure function with no
+engine: comments and non-ASCII text preserved, a trailing comment on the
+rewritten line preserved, `num(default=...)` keyword form handled, float32 noise
+rounded to what the panel showed, an unchanged default not reported, a parameter
+without a value untouched, and all four refusals returning sentences.
+`test_apply_slider_defaults` covers it end to end: the engine's script declares
+the new defaults, the bridged specs come back with them, the button goes back to
+greyed out, **the content digest is unchanged**, a second press reports there is
+nothing to do, and a dirty buffer is refused with the buffer left alone.
+`pixi run gate` ok, slider median 0.574 s. Confirmed through `bpy.ops` in a real
+window on the nine-parameter whoop chassis file.
+
+**Not done:** exposing this as an assistant tool. The assistant can already
+rewrite a default with `edit_script`, and it has no sliders to read.

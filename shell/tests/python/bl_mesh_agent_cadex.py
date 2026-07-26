@@ -635,6 +635,153 @@ def test_rebuild_model_rederives_from_the_engine(root):
           "the geometry is back in the scene")
 
 
+def test_rewrite_defaults_splices_only_the_default():
+    """The source surgery behind "Apply as Defaults", on its own.
+
+    Pure text-in/text-out, so it is tested without an engine: what matters is
+    that it touches the default and *nothing* else -- comments, spacing and the
+    other arguments of the same `num()` call all survive byte for byte.
+    """
+    print("test_rewrite_defaults_splices_only_the_default")
+    rewrite = model_module.rewrite_defaults
+
+    # The ordinary case, with a comment and non-ASCII text to splice around.
+    source = (
+        '# leading comment — with an em dash\n'
+        'p = params(\n'
+        '    width=num(40.0, unit="mm", min=20, max=80, label="Width"),\n'
+        '    depth=num(24, unit="mm", min=10, max=50),  # trailing comment\n'
+        ')\n'
+        'plate = part.box(p.width, p.depth, 6)\n'
+        'result = {"plate": plate}\n')
+    updated, changes = rewrite(source, {"width": 50.0, "depth": 30.0})
+    check(dict((name, (old, new)) for name, old, new in changes)
+          == {"width": ("40.0", "50.0"), "depth": ("24", "30.0")},
+          "both defaults reported as old -> new: {!r}".format(changes))
+    check('width=num(50.0, unit="mm", min=20, max=80, label="Width")' in updated,
+          "the width default is replaced in place")
+    check('depth=num(30.0, unit="mm", min=10, max=50),  # trailing comment'
+          in updated,
+          "the depth default is replaced and the trailing comment survives")
+    check('# leading comment — with an em dash' in updated
+          and updated.startswith('# leading comment'),
+          "comments and non-ASCII text are untouched")
+    check(updated.count("part.box(p.width, p.depth, 6)") == 1,
+          "the body of the script is untouched")
+
+    # float32 noise from a Blender slider must not reach the script.
+    noisy, changes = rewrite('p = params(w=num(1.0))',
+                             {"w": 3.5999999046325684})
+    check(noisy == 'p = params(w=num(3.6))',
+          "a float32 slider value is rounded to what the panel showed: "
+          "{!r}".format(noisy))
+
+    # The default as a keyword, which `num()`'s signature also allows.
+    keyworded, changes = rewrite('p = params(w=num(default=1.0, min=0))',
+                                 {"w": 2.5})
+    check(keyworded == 'p = params(w=num(default=2.5, min=0))',
+          "a keyword default is rewritten too: {!r}".format(keyworded))
+
+    # Already equal: nothing to do, and nothing rewritten.
+    same, changes = rewrite('p = params(w=num(2.5))', {"w": 2.5})
+    check(same == 'p = params(w=num(2.5))' and not changes,
+          "an unchanged default is left alone and not reported")
+
+    # A parameter with no slider value is not touched.
+    partial, changes = rewrite('p = params(a=num(1.0), b=num(2.0))', {"a": 9.0})
+    check(partial == 'p = params(a=num(9.0), b=num(2.0))'
+          and [name for name, _old, _new in changes] == ["a"],
+          "a parameter absent from the values is left as declared")
+
+    # And the refusals, which must be sentences rather than tracebacks.
+    for label, bad, values in (
+            ("no params() call", 'plate = part.box(1, 2, 3)', {"w": 1.0}),
+            ("dynamic declarations", 'p = params(**declared)', {"w": 1.0}),
+            ("a syntax error", 'p = params(w=num(1.0)', {"w": 1.0}),
+            ("a computed declaration", 'p = params(w=spec_for("w"))',
+             {"w": 1.0}),
+    ):
+        try:
+            rewrite(bad, values)
+        except ValueError as exc:
+            check(bool(str(exc)) and "Traceback" not in str(exc),
+                  "{:s} is refused with a sentence: {:s}".format(
+                      label, str(exc)[:60]))
+        else:
+            check(False, "{:s} should have been refused".format(label))
+
+
+def test_apply_slider_defaults(root):
+    """The button: slider values become the script's declared defaults.
+
+    End to end, because the interesting claims are about the engine's state
+    afterwards -- the script it holds, the specs it re-derives, and the digest,
+    which must *not* move: the values are unchanged, only where they are
+    written down.
+    """
+    print("test_apply_slider_defaults")
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, report = run_tool("write_script", {"content": TWO_PARAM_SCRIPT})
+    check(ok, "write_script accepted ({:s})".format(
+        report.splitlines()[0] if report else ""))
+    check(not model_module.defaults_differ_from_sliders(scene),
+          "a freshly built model sits at its declared defaults "
+          "(so the button is greyed out)")
+
+    ok, report = model_module.set_values({"width": 50.0, "depth": 30.0})
+    check(ok, "sliders moved ({:s})".format(
+        report.splitlines()[0] if report else ""))
+    check(model_module.defaults_differ_from_sliders(scene),
+          "moving a slider lights the button")
+    digest_before = store_state(root).get("accepted_digest")
+
+    ok, report = cadex_backend.apply_slider_defaults(scene)
+    check(ok, "apply_slider_defaults accepted ({:s})".format(
+        report.splitlines()[0] if report else ""))
+
+    # The script the *engine* holds now declares the new defaults.
+    source = cadex_backend.cached_script_state(scene).source
+    check("width=num(50.0," in source and "depth=num(30.0," in source,
+          "the engine's script declares the slider values as defaults")
+    check(model_module.get_script() == source,
+          "and the buffer mirrors it")
+    check(not model_module.script_is_dirty(),
+          "the rewritten script reads as clean, not as a hand edit")
+
+    # The specs the panel draws come back with the new defaults.
+    defaults = {spec["id"]: spec["default"]
+                for spec in model_module.load_specs(scene)}
+    check(defaults == {"width": 50.0, "depth": 30.0},
+          "the bridged specs carry the new defaults: {!r}".format(defaults))
+    check(not model_module.defaults_differ_from_sliders(scene),
+          "and the button goes back to greyed out")
+
+    # Same numbers, written down somewhere else: the model cannot have moved.
+    check(store_state(root).get("accepted_digest") == digest_before,
+          "the content digest is unchanged, so the geometry did not move")
+
+    # Pressing it again is a no-op that says so rather than writing a revision.
+    ok, report = cadex_backend.apply_slider_defaults(scene)
+    check(ok and "already" in report,
+          "a second press reports there is nothing to do ({:s})".format(
+              report.splitlines()[0] if report else ""))
+
+    # A hand-edited buffer is refused, not swept into the rewrite -- the write
+    # would refresh the mirror and take the user's edits with it.
+    text = bpy.data.texts[model_module.SCRIPT_NAME]
+    text.write("\n# an edit that has not been applied\n")
+    check(model_module.script_is_dirty(), "the buffer is dirty for the test")
+    ok, report = model_module.set_values({"width": 55.0})
+    check(ok, "a slider still moves with a dirty buffer")
+    ok, report = cadex_backend.apply_slider_defaults(scene)
+    check(not ok and "unapplied edits" in report,
+          "a dirty buffer is refused with a way out ({:s})".format(
+              report.splitlines()[0] if report else ""))
+    check("# an edit that has not been applied" in model_module.get_script(),
+          "and the refused attempt left the buffer alone")
+
+
 def test_script_view_marks_hand_edits(root):
     """The buffer never diverges from the model silently.
 
@@ -1195,6 +1342,7 @@ def main():
     drop_root = tempfile.mkdtemp(prefix="mesh-cadex-drop-")
     rederive_root = tempfile.mkdtemp(prefix="mesh-cadex-rederive-")
     mirror_root = tempfile.mkdtemp(prefix="mesh-cadex-mirror-")
+    defaults_root = tempfile.mkdtemp(prefix="mesh-cadex-defaults-")
     try:
         test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
@@ -1208,6 +1356,8 @@ def main():
         test_dropping_a_param_leaves_the_sliders_working(drop_root)
         test_rebuild_model_rederives_from_the_engine(rederive_root)
         test_script_view_marks_hand_edits(mirror_root)
+        test_rewrite_defaults_splices_only_the_default()
+        test_apply_slider_defaults(defaults_root)
         test_main_thread_free_during_rebuild(threading_root)
         test_cancel_reaches_the_engine(cancel_root)
         test_cadex_turn_single_undo(turn_root)
@@ -1232,7 +1382,7 @@ def main():
                      threading_root, cancel_root, saveas_root,
                      duplicate_root,
                      restore_root, corrupt_root, describe_root, edit_root,
-                     drop_root, rederive_root, mirror_root):
+                     drop_root, rederive_root, mirror_root, defaults_root):
             shutil.rmtree(root, ignore_errors=True)
 
     GATE["ok"] = not FAILURES

@@ -74,13 +74,13 @@ that `docs/VISION.md` describes, and the protocol client that
 |---|---|
 | `__init__.py` | Add-on registration; preferences (model selection, Claude CLI path, tool-call limit); save/load lifecycle handlers; undo-batching hookup. |
 | `agent.py` | Turn orchestration and event loop. Queues tool calls from the bridge; drains them on the main thread; pushes **one undo step per chat turn**. |
-| `model.py` | The script mirror (`bpy.data.texts["model.py"]`, soft read-only) and the dynamic PropertyGroup at `scene.mesh_params`; 0.15 s debounced rebuild on slider drag, dispatched to the engine. `set_script()` is a no-op when the source is unchanged and restores the cursor when it is not, and stamps the digest the dirty marking compares; `last_error()` carries a failed drag to the panel (ADR-039). |
+| `model.py` | The script mirror (`bpy.data.texts["model.py"]`, soft read-only) and the dynamic PropertyGroup at `scene.mesh_params`; 0.15 s debounced rebuild on slider drag, dispatched to the engine. `set_script()` is a no-op when the source is unchanged and restores the cursor when it is not, and stamps the digest the dirty marking compares; `last_error()` carries a failed drag to the panel (ADR-039). `rewrite_defaults()` splices slider values into the script's `num()` declarations for **Apply as Defaults** (ADR-040) — pure text in, text out. |
 | `model_api.py` | `clamp()` — coerce a value to its spec's type and range. All that is left of a script-facing API that no script imports any more (ADR-030). |
 | `bridge.py` | Localhost TCP server (127.0.0.1, auto-assigned port, 16-byte hex token auth). Two wire ops: `list_tools`, `call`. Queues socket-thread requests for main-thread execution. |
 | `mcp_shim.py` | Standalone MCP stdio server spawned by the Claude CLI via `--mcp-config`. No `bpy` import; relays MCP tool calls to the bridge over TCP. |
 | `backend.py` | Spawns `claude -p` as a subprocess per turn; writes the MCP config (shim path/port/token); session continuity via `--resume <session-id>`. |
 | `tools.py` | Tool definitions/executors. Tools: `get_script`, `write_script`, `edit_script`, `set_params`, `rebuild_model`, `inspect_model`, `describe_cad_api`, `get_attached_image`, `scene_summary`, `viewport_screenshot`, `export_stl`, `focus_view`. Marks `write_script`/`edit_script`/`set_params`/`rebuild_model` as mutating for undo counting, and preflights the engine-reaching ones so a missing engine reads as one sentence. `rebuild_model` re-runs the script the engine already holds (ADR-039) — the tool to reach for when the model and the engine have drifted. |
-| `ui.py` | The panels of the two Cadex editors — transcript, message box, parameter sliders — plus the operators (send, cancel, new chat, attach image, paste, toggle parameters, toggle script, rebuild from saved script, rebuild model). No `poll` here asks *where* it is drawing: the space type answers that (ADR-035). The parameters panel draws a failed drag as an alert row with **Rebuild Model** beside it (ADR-039). |
+| `ui.py` | The panels of the two Cadex editors — transcript, message box, parameter sliders — plus the operators (send, cancel, new chat, attach image, paste, toggle parameters, toggle script, rebuild from saved script, rebuild model, apply as defaults). No `poll` here asks *where* it is drawing: the space type answers that (ADR-035). The parameters panel draws a failed drag as an alert row with **Rebuild Model** beside it (ADR-039), and an **Apply as Defaults** button that is live only while a slider sits away from its declared default (ADR-040). |
 | `spaces.py` | Headers for `CADEX_CHAT` and `CADEX_PARAMS`, and the script view: `MESH_AGENT_OT_show_script` (a **toggle** — a Text Editor on the `model.py` mirror, opened or closed), `MESH_AGENT_OT_revert_script`, and `CADEX_PT_script`, its sidebar panel, which says whether the buffer matches the model and offers **Apply to Model** / **Revert to Model** / **Rebuild Model** accordingly (ADR-039). Headers live here rather than in `bl_ui` because `bl_ui` is inherited and this is ours. |
 | `history.py` | Chat transcript as JSON in `bpy.data.texts["mesh_chat.json"]`; persists inside the .blend file. |
 | `capture.py` | Viewport screenshot (base64 PNG) and attached-image loading (downscaled, default max 768 px). |
@@ -139,6 +139,13 @@ that `docs/VISION.md` describes, and the protocol client that
   (ADR-038). Read that before touching anything that consumes an `inspect`
   reply: taking the first page at face value is correct for a
   one-parameter fixture and empty for every real model.
+- The sliders are an **override layer** over what the script declares, and
+  **Apply as Defaults** collapses it: each declared parameter's `num()` default
+  becomes the value its slider is sitting at, in the script itself
+  (`model.rewrite_defaults` → `cadex_backend.apply_slider_defaults` →
+  `write_script`). It splices only each default's own source span, so comments,
+  spacing and every other argument survive byte for byte, and it refuses a
+  dirty buffer rather than sweeping unapplied edits into the rewrite (ADR-040).
 - Slider drag → `_on_param_update()` → `_schedule_rebuild()` → 0.15 s
   `bpy.app.timers` debounce → one revision-guarded `set_params` to the engine,
   draft-quality tessellation while dragging with a background standard
