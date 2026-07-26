@@ -130,6 +130,29 @@ result = {"plate": plate}
 """
 
 
+#: Two declarations, then one: the rewrite that used to wedge the sliders
+#: permanently. `depth`'s *value* outlived its declaration in the store, and
+#: every later `set_params` merged it back in and then refused it (ADR-039).
+TWO_PARAM_SCRIPT = """
+p = params(width=num(40.0, unit="mm", min=20, max=80, label="Width"),
+           depth=num(24.0, unit="mm", min=10, max=50, label="Depth"))
+plate = part.box(p.width, p.depth, 6)
+result = {"plate": plate}
+"""
+
+ONE_PARAM_SCRIPT = """
+p = params(width=num(40.0, unit="mm", min=20, max=80, label="Width"))
+plate = part.box(p.width, 24, 6)
+result = {"plate": plate}
+"""
+
+
+def store_state(root):
+    """The engine's durable script state, read straight off disk."""
+    with open(os.path.join(root, "script.json"), encoding="utf-8") as handle:
+        return json.load(handle)
+
+
 def check(condition, label):
     status = "ok" if condition else "FAIL"
     print("  {:s}: {:s}".format(status, label))
@@ -522,6 +545,167 @@ def test_params_survive_the_inspect_pager(root):
     ok, drag_report = model_module.set_values({"length": 150.0})
     check(ok, "a bridged slider rebuilds ({:s})".format(
         drag_report.splitlines()[0] if drag_report else ""))
+
+
+def test_dropping_a_param_leaves_the_sliders_working(root):
+    """A script that drops a parameter must not wedge every later drag.
+
+    The reported failure, at the shell's own level: the sliders on a real model
+    stopped working *permanently* and nothing in the UI could un-stick them.
+    The patch the shell sends is built from the declared parameters, so it
+    never mentioned the dropped one -- the engine merged the dead value in from
+    its own store and then refused the request for naming it (ADR-039).
+    """
+    print("test_dropping_a_param_leaves_the_sliders_working")
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, report = run_tool("write_script", {"content": TWO_PARAM_SCRIPT})
+    check(ok, "two-param write_script accepted ({:s})".format(
+        report.splitlines()[0] if report else ""))
+    ok, report = model_module.set_values({"width": 50.0, "depth": 30.0})
+    check(ok, "both sliders set ({:s})".format(
+        report.splitlines()[0] if report else ""))
+    check(store_state(root).get("param_values") == {"width": 50.0,
+                                                    "depth": 30.0},
+          "the store holds both values: {!r}".format(
+              store_state(root).get("param_values")))
+
+    # The rewrite. `depth` is gone from the script; its value must go with it.
+    ok, report = run_tool("write_script", {"content": ONE_PARAM_SCRIPT})
+    check(ok, "one-param write_script accepted ({:s})".format(
+        report.splitlines()[0] if report else ""))
+    check([spec["id"] for spec in model_module.load_specs(scene)] == ["width"],
+          "only the surviving parameter has a slider")
+    values = store_state(root).get("param_values") or {}
+    check("depth" not in values and values.get("width") == 50.0,
+          "the dropped parameter's value is pruned from the store: {!r}".format(
+              values))
+
+    # The drag that used to fail forever, and then a second one -- the failure
+    # was permanent, so one success is the whole regression.
+    for index, value in enumerate((55.0, 60.0)):
+        ok, report = model_module.set_values({"width": value})
+        check(ok, "drag {:d} after the drop succeeds ({:s})".format(
+            index, report.splitlines()[0] if report else ""))
+
+    # And the engine is still strict about what the *caller* asks for: an
+    # undeclared name in the patch is a caller error, not a stale store.
+    ok, report = model_module.set_values({"depth": 30.0})
+    check(not ok and "depth" in report,
+          "setting the dropped parameter by name is still refused ({:s})".format(
+              report.splitlines()[0] if report else ""))
+
+
+def test_rebuild_model_rederives_from_the_engine(root):
+    """The way out, for the user and the assistant: re-run what is stored.
+
+    Nothing used to heal a shell that had lost track of the engine -- neither
+    `write_script` nor "Rebuild From Saved Script" touched the stored values,
+    and there was no route back except editing `script.json` by hand.
+    """
+    print("test_rebuild_model_rederives_from_the_engine")
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, report = run_tool("write_script", {"content": TWO_PARAM_SCRIPT})
+    check(ok, "write_script accepted ({:s})".format(
+        report.splitlines()[0] if report else ""))
+
+    check("rebuild_model" in {tool["name"] for tool in tools.list_tools()},
+          "rebuild_model is offered to the assistant")
+    check("rebuild_model" in tools.MUTATING_TOOLS,
+          "rebuild_model counts as mutating, so the turn gets one undo step")
+
+    # Throw away everything the shell believes about the parameters, which is
+    # the state a drifted file is in, then ask the engine to re-derive it.
+    scene[model_module.SPECS_PROP] = ""
+    model_module.ensure_group([])
+    check(not model_module.load_specs(scene), "specs cleared for the test")
+
+    ok, report = run_tool("rebuild_model", {})
+    check(ok, "rebuild_model accepted ({:s})".format(
+        report.splitlines()[0] if report else ""))
+    check([spec["id"] for spec in model_module.load_specs(scene)]
+          == ["width", "depth"],
+          "rebuild_model re-derived the declared parameters")
+    group = getattr(scene, "mesh_params", None)
+    check(group is not None and hasattr(group, "width")
+          and hasattr(group, "depth"),
+          "and rebuilt the slider properties from them")
+    check(bpy.data.objects.get("plate") is not None,
+          "the geometry is back in the scene")
+
+
+def test_script_view_marks_hand_edits(root):
+    """The buffer never diverges from the model silently.
+
+    `bpy.data.texts["model.py"]` mirrors the engine's script, and a hand edit
+    that has not been applied is invisible in the geometry. The sidebar panel
+    reads `script_is_dirty()`, so that is what this pins -- plus the two things
+    a live view needs: refreshing the mirror must not move the cursor, and
+    Revert must put the engine's source back.
+    """
+    print("test_script_view_marks_hand_edits")
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, report = run_tool("write_script", {"content": ONE_PARAM_SCRIPT})
+    check(ok, "write_script accepted ({:s})".format(
+        report.splitlines()[0] if report else ""))
+    check(not model_module.script_is_dirty(),
+          "a freshly mirrored script reads as clean")
+
+    # Re-mirroring the same source must be a no-op, cursor included: the mirror
+    # is rewritten on every accepted request, and a slider drag that reset the
+    # cursor would fight anyone reading the script.
+    text = bpy.data.texts[model_module.SCRIPT_NAME]
+    text.cursor_set(2, character=4)
+    check(model_module.set_script(text.as_string()) is False,
+          "re-mirroring an unchanged source does not rewrite the buffer")
+    ok, report = model_module.set_values({"width": 44.0})
+    check(ok, "a drag through the mirrored script ({:s})".format(
+        report.splitlines()[0] if report else ""))
+    check([text.current_line_index, text.current_character] == [2, 4],
+          "a drag leaves the cursor where it was: {!r}".format(
+              [text.current_line_index, text.current_character]))
+    check(not model_module.script_is_dirty(),
+          "and leaves the buffer clean")
+
+    # A hand edit, exactly as the Text Editor makes one: the buffer changes
+    # and nothing tells the engine.
+    text.clear()
+    text.write(ONE_PARAM_SCRIPT + "\n# a hand edit the engine has not seen\n")
+    check(model_module.script_is_dirty(),
+          "a hand edit marks the buffer modified")
+
+    ok, report = model_module.set_values({"width": 46.0})
+    check(ok, "the model still builds from engine truth, not the buffer")
+    check(model_module.script_is_dirty(),
+          "and a rebuild does not quietly adopt the edit")
+
+    # Through `poll()` first: an operator whose poll fails raises out of
+    # `bpy.ops`, which would abort the whole suite instead of failing one check.
+    check(bpy.ops.mesh_agent.revert_script.poll()
+          and bpy.ops.mesh_agent.revert_script() == {'FINISHED'},
+          "Revert to Model runs")
+    check(not model_module.script_is_dirty(), "Revert clears the divergence")
+    check(model_module.get_script().strip() == ONE_PARAM_SCRIPT.strip(),
+          "and the buffer is the engine's source again")
+
+    # A failed Apply keeps the text *and* keeps the marking. Both halves
+    # matter: the user's edit is not thrown away, and a script the engine
+    # refused must never come back reading as "matches the model".
+    text.clear()
+    text.write(ONE_PARAM_SCRIPT + "\nthis is not python (\n")
+    check(model_module.script_is_dirty(), "the broken edit marks the buffer")
+    check(bpy.ops.mesh_agent.adopt_script.poll()
+          and bpy.ops.mesh_agent.adopt_script() == {'CANCELLED'},
+          "Apply to Model fails on a script the engine refuses")
+    check("this is not python (" in model_module.get_script(),
+          "the refused source stays in the buffer to be fixed")
+    check(model_module.script_is_dirty(),
+          "and is not stamped as matching the model")
+    check(bool(model_module.last_error()),
+          "the failure is recorded, so the panel can say why")
+    model_module.clear_last_error()
 
 
 # -- agent turn: one undo per turn through the real bridge -------------------
@@ -1008,6 +1192,9 @@ def main():
     corrupt_root = tempfile.mkdtemp(prefix="mesh-cadex-corrupt-")
     describe_root = tempfile.mkdtemp(prefix="mesh-cadex-describe-")
     edit_root = tempfile.mkdtemp(prefix="mesh-cadex-edit-")
+    drop_root = tempfile.mkdtemp(prefix="mesh-cadex-drop-")
+    rederive_root = tempfile.mkdtemp(prefix="mesh-cadex-rederive-")
+    mirror_root = tempfile.mkdtemp(prefix="mesh-cadex-mirror-")
     try:
         test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
@@ -1018,6 +1205,9 @@ def main():
         test_edit_script_and_inspection(edit_root)
         test_params_and_latency(baseline_root)
         test_params_survive_the_inspect_pager(wide_root)
+        test_dropping_a_param_leaves_the_sliders_working(drop_root)
+        test_rebuild_model_rederives_from_the_engine(rederive_root)
+        test_script_view_marks_hand_edits(mirror_root)
         test_main_thread_free_during_rebuild(threading_root)
         test_cancel_reaches_the_engine(cancel_root)
         test_cadex_turn_single_undo(turn_root)
@@ -1041,7 +1231,8 @@ def main():
                      reopen_root,
                      threading_root, cancel_root, saveas_root,
                      duplicate_root,
-                     restore_root, corrupt_root, describe_root, edit_root):
+                     restore_root, corrupt_root, describe_root, edit_root,
+                     drop_root, rederive_root, mirror_root):
             shutil.rmtree(root, ignore_errors=True)
 
     GATE["ok"] = not FAILURES

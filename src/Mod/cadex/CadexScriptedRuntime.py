@@ -524,24 +524,41 @@ def capture_project_state(
 def _project_param_values(
     state: Mapping[str, Any], patch: Any, tool_name: str
 ) -> dict[str, float]:
-    """Apply one values-only RFC 7396 patch against the declared parameters."""
+    """Apply one values-only RFC 7396 patch against the declared parameters.
+
+    The strict check is on the *patch*: asking to set a parameter the script
+    does not declare is a caller error and stays loud. A stale key in the
+    stored values is not -- it is what a rewritten script leaves behind, and
+    it used to wedge every later ``set_params`` permanently (ADR-039). So the
+    stored base is narrowed to the declared names before the merge. Dropping
+    undeclared keys cannot change what the worker computes: ``ParamsCollector``
+    resolves each declared parameter by name and never reads the rest.
+    """
 
     declared = {
         str(spec.get("name") or ""): spec
         for spec in list(state.get("param_specs") or [])
     }
-    merged = _merge_patch(dict(state.get("param_values") or {}), patch)
+    if isinstance(patch, dict):
+        for name in patch:
+            if str(name) not in declared:
+                _raise(
+                    tool_name,
+                    "UNKNOWN_PROJECT_PARAMETER",
+                    "precondition",
+                    "The project script declares no parameter named "
+                    f"{str(name)!r}.",
+                    requested={"values": patch},
+                    observed={"declared": sorted(declared)},
+                )
+    base = {
+        name: value
+        for name, value in dict(state.get("param_values") or {}).items()
+        if name in declared
+    }
+    merged = _merge_patch(base, patch)
     cleaned: dict[str, float] = {}
     for name, value in merged.items():
-        if name not in declared:
-            _raise(
-                tool_name,
-                "UNKNOWN_PROJECT_PARAMETER",
-                "precondition",
-                f"The project script declares no parameter named {name!r}.",
-                requested={"values": patch},
-                observed={"declared": sorted(declared)},
-            )
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             _raise(
                 tool_name,
@@ -874,7 +891,22 @@ def validate_project_result(
                 )
         contract.append({"name": name, "type": output_type, "domain": domain})
 
-    # Durable working revision binds the worker-collected parameter specs.
+    # Durable working revision binds the worker-collected parameter specs --
+    # and only the values those specs declare. A script that drops a parameter
+    # leaves its value behind otherwise, and a stale value is what used to
+    # wedge `set_params` forever (ADR-039). Pruning here is what heals a store
+    # that is already stale: `open_project`'s restore pass and `rebuild` both
+    # come through this path. It is digest-neutral -- the worker resolves
+    # declared parameters by name and ignores every other key -- so only the
+    # revision moves, and `final_revision` below, `working_revision` here and
+    # `accepted_revision` in accept_project_candidate all derive from this
+    # same pruned dict.
+    declared_names = {str(spec.get("name") or "") for spec in param_specs}
+    prepared["param_values"] = {
+        name: value
+        for name, value in dict(prepared["param_values"]).items()
+        if name in declared_names
+    }
     final_revision = contracts.project_script_revision(
         source=str(prepared["source"]),
         param_specs=param_specs,
@@ -884,6 +916,7 @@ def validate_project_result(
     store.write(
         state_updates={
             "param_specs": param_specs,
+            "param_values": dict(prepared["param_values"]),
             "working_revision": final_revision,
             "latest_candidate": {
                 "status": "validated",

@@ -74,14 +74,14 @@ that `docs/VISION.md` describes, and the protocol client that
 |---|---|
 | `__init__.py` | Add-on registration; preferences (model selection, Claude CLI path, tool-call limit); save/load lifecycle handlers; undo-batching hookup. |
 | `agent.py` | Turn orchestration and event loop. Queues tool calls from the bridge; drains them on the main thread; pushes **one undo step per chat turn**. |
-| `model.py` | The script mirror (`bpy.data.texts["model.py"]`, read-only) and the dynamic PropertyGroup at `scene.mesh_params`; 0.15 s debounced rebuild on slider drag, dispatched to the engine. |
+| `model.py` | The script mirror (`bpy.data.texts["model.py"]`, soft read-only) and the dynamic PropertyGroup at `scene.mesh_params`; 0.15 s debounced rebuild on slider drag, dispatched to the engine. `set_script()` is a no-op when the source is unchanged and restores the cursor when it is not, and stamps the digest the dirty marking compares; `last_error()` carries a failed drag to the panel (ADR-039). |
 | `model_api.py` | `clamp()` — coerce a value to its spec's type and range. All that is left of a script-facing API that no script imports any more (ADR-030). |
 | `bridge.py` | Localhost TCP server (127.0.0.1, auto-assigned port, 16-byte hex token auth). Two wire ops: `list_tools`, `call`. Queues socket-thread requests for main-thread execution. |
 | `mcp_shim.py` | Standalone MCP stdio server spawned by the Claude CLI via `--mcp-config`. No `bpy` import; relays MCP tool calls to the bridge over TCP. |
 | `backend.py` | Spawns `claude -p` as a subprocess per turn; writes the MCP config (shim path/port/token); session continuity via `--resume <session-id>`. |
-| `tools.py` | Tool definitions/executors. Tools: `get_script`, `write_script`, `edit_script`, `set_params`, `inspect_model`, `describe_cad_api`, `get_attached_image`, `scene_summary`, `viewport_screenshot`, `export_stl`, `focus_view`. Marks `write_script`/`edit_script`/`set_params` as mutating for undo counting, and preflights the engine-reaching ones so a missing engine reads as one sentence. |
-| `ui.py` | The panels of the two Cadex editors — transcript, message box, parameter sliders — plus the operators (send, cancel, new chat, attach image, paste, toggle parameters, rebuild from saved script). No `poll` here asks *where* it is drawing: the space type answers that (ADR-035). |
-| `spaces.py` | Headers for `CADEX_CHAT` and `CADEX_PARAMS`, and the script view: `MESH_AGENT_OT_show_script` (open a Text Editor on the `model.py` mirror) and `CADEX_PT_script`, its sidebar panel with **Apply to Model**. Headers live here rather than in `bl_ui` because `bl_ui` is inherited and this is ours. |
+| `tools.py` | Tool definitions/executors. Tools: `get_script`, `write_script`, `edit_script`, `set_params`, `rebuild_model`, `inspect_model`, `describe_cad_api`, `get_attached_image`, `scene_summary`, `viewport_screenshot`, `export_stl`, `focus_view`. Marks `write_script`/`edit_script`/`set_params`/`rebuild_model` as mutating for undo counting, and preflights the engine-reaching ones so a missing engine reads as one sentence. `rebuild_model` re-runs the script the engine already holds (ADR-039) — the tool to reach for when the model and the engine have drifted. |
+| `ui.py` | The panels of the two Cadex editors — transcript, message box, parameter sliders — plus the operators (send, cancel, new chat, attach image, paste, toggle parameters, toggle script, rebuild from saved script, rebuild model). No `poll` here asks *where* it is drawing: the space type answers that (ADR-035). The parameters panel draws a failed drag as an alert row with **Rebuild Model** beside it (ADR-039). |
+| `spaces.py` | Headers for `CADEX_CHAT` and `CADEX_PARAMS`, and the script view: `MESH_AGENT_OT_show_script` (a **toggle** — a Text Editor on the `model.py` mirror, opened or closed), `MESH_AGENT_OT_revert_script`, and `CADEX_PT_script`, its sidebar panel, which says whether the buffer matches the model and offers **Apply to Model** / **Revert to Model** / **Rebuild Model** accordingly (ADR-039). Headers live here rather than in `bl_ui` because `bl_ui` is inherited and this is ours. |
 | `history.py` | Chat transcript as JSON in `bpy.data.texts["mesh_chat.json"]`; persists inside the .blend file. |
 | `capture.py` | Viewport screenshot (base64 PNG) and attached-image loading (downscaled, default max 768 px). |
 | `modes.py` | The Cadex system-prompt overlay and `system_prompt()`. What remains of a three-mode registry after ADR-030 collapsed it to one. |
@@ -104,8 +104,20 @@ that `docs/VISION.md` describes, and the protocol client that
   symmetric: `get_script` reads this buffer, so the assistant sees a hand edit
   at once, while `write_script` goes to the engine, so the engine does not —
   until **Apply to Model** (`MESH_AGENT_OT_adopt_script` →
-  `cadex_backend.adopt_saved_script`) runs. Any engine round-trip overwrites
-  the buffer.
+  `cadex_backend.adopt_saved_script`) runs. Any *accepted* engine round-trip
+  overwrites the buffer.
+- Divergence is **marked, not inferred** (ADR-039). `model.set_script()` stamps
+  the digest of what it wrote onto the text datablock as an ID property (so it
+  saves with the .blend); `model.script_is_dirty()` compares it against the
+  buffer, and `CADEX_PT_script` draws one of three states: matches the model,
+  modified and not applied, or not in the model yet. A source the engine
+  **refused** is mirrored with `accepted=False` — it stays in the buffer to be
+  fixed and does not get the clean stamp. An unstamped buffer counts as clean,
+  so a .blend saved before ADR-039 does not open with a false alert.
+- Refreshing the mirror must not move the cursor: `set_script()` returns early
+  when the buffer already holds the source, and saves/restores the cursor when
+  it does not. The mirror is rewritten on every accepted request, so without
+  that a slider drag fights anyone reading the script.
 - The scene is a **rebuildable cache** of that script — the same principle
   the engine applies to its document (`docs/XSCRIPT.md`). What the Model
   collection holds is tessellated BREP the engine returned, hydrated by

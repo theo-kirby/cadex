@@ -2154,3 +2154,139 @@ Regression-tested by `test_params_survive_the_inspect_pager` in
 that is over the threshold; it asserts *that* it is over the threshold as
 well, so a shrunk fixture fails loudly instead of silently testing nothing.
 Verified to fail with the fix reverted (0 of 8 params bridged, mirror empty).
+
+## ADR-039 — Stale parameter values do not wedge the sliders, and the script has a live view (2026-07-26)
+
+**Decision.** Two changes with one root, in
+`src/Mod/cadex/CadexScriptedRuntime.py` and the `mesh_agent` add-on.
+
+1. **The store's parameter values are pruned to what the script declares.**
+   `_project_param_values()` narrows the stored values to the declared names
+   *before* merging one `set_params` patch over them, and
+   `validate_project_result()` writes the pruned dict back into the store
+   beside the newly collected `param_specs`. A key in the **patch** that is
+   not declared still raises `UNKNOWN_PROJECT_PARAMETER` — that is a caller
+   error. A key in the **store** that is not declared is dropped.
+2. **The xscript gets a persistent, editable view.** The script-view button is
+   a toggle beside the Parameters toggle; the mirror is refreshed without
+   moving the cursor; and the Text Editor sidebar always says whether the
+   buffer matches the model, with **Apply to Model**, **Revert to Model** and
+   **Rebuild Model** as the three ways out.
+
+**The bug.** On `whoop-chassis-v01` every slider drag failed, permanently:
+
+```
+cadexd set_params failed [UNKNOWN_PROJECT_PARAMETER]
+The project script declares no parameter named 'duct_gap'.
+requested: {"values": {"cam_hole_d": ..., "wheelbase": ...}}   <- no duct_gap
+```
+
+`duct_gap` was in neither the request nor the declared specs. It was in the
+*store*: the script had been rewritten, `param_specs` was updated with it and
+`param_values` was not. `_project_param_values()` merged the stored values
+into every patch and then validated *every merged key*, so a value whose
+parameter no longer existed refused every later `set_params` — for a name the
+caller never sent.
+
+**The asymmetry is what made it a bug.** `ParamsCollector`
+(`cadex_project_api.py`) looks values up *by declared name*, so the worker
+already ignored `duct_gap` and the model built fine. Only the precondition
+check was strict. The engine tolerated the stale key everywhere it mattered
+and rejected it where it did not.
+
+**Nothing healed it.** `write_script` never touched `param_values`, and
+"Rebuild From Saved Script" is the same call. There was no route back except
+editing `script.json` by hand.
+
+**Why pruning is safe.** It is digest-neutral by construction: the worker
+resolves each declared parameter by name and never reads the rest, so removing
+undeclared keys cannot change what it computes. Verified on the reported
+store — pruning `duct_gap` left `accepted_digest` at
+`5b484f2d046f97d7…` unchanged. The *revision* does move, but
+`final_revision` → `working_revision` → `accepted_revision` all derive from
+the same pruned dict, so they stay consistent, and `open_project`'s
+restore-pass digest comparison still matches.
+
+**It self-heals.** `open_project`'s restore pass runs
+`xscript.project.write_script` with the stored source, and `rebuild` is the
+same call, so the prune fires on the next open. `whoop-chassis-v01` repaired
+itself with no migration and no user action — confirmed against a copy of the
+real store: `open_project` alone dropped `duct_gap`, and the drag that had
+been failing succeeded.
+
+**A way out, for both hands.** `rebuild_model` re-runs the script the engine
+already stores and re-derives specs, values and geometry from it. It is a
+shell function (`cadex_backend.rebuild_model`), an operator
+(`mesh_agent.rebuild_model`, drawn next to the failure in the parameters
+panel and in the script sidebar) and an assistant tool. It is built on the
+existing `rebuild` op with `guarded=False` — that op's `OP_ARG_SPECS` entry is
+`({}, {"display": dict})` and rejects `expected_revision`, which is right,
+because re-running what is stored has nothing to be stale against. **No
+protocol change and no new op**; the engine tool surface pinned by
+`test_project_tool_surface.py` is untouched.
+
+A failed slider drag is also no longer console-only: `model._last_error`
+(session state, not saved — a failed drag is a fact about now) is drawn as an
+alert row in the parameters panel, with the Rebuild Model button beside it.
+The debounce timer runs outside any operator, so there was no operator report
+for it to land in, and a permanently wedged slider looked exactly like a
+slider that did nothing.
+
+**Deliberately not done:** an automatic retry on `UNKNOWN_PROJECT_PARAMETER`
+in `Lifecycle.poll()`, beside the existing `STALE_PROGRAM_REVISION` retry.
+With the prune the condition cannot arise, and a recovery path for an
+unreachable failure is code that can never be exercised.
+
+**The script view.** Same root: the script was *invisible*, so a store and a
+buffer could disagree with nothing on screen saying so.
+`MESH_AGENT_OT_show_script` is now a toggle in the shape of
+`MESH_AGENT_OT_toggle_params` — it closes the Text Editor showing the mirror
+if one is open, else splits and points one at it — and it no longer polls
+itself off on a file with no mirror, because that is exactly when someone
+wants to look (`model.ensure_script_text` makes an empty one). It moved out of
+the chat header and into the button row under the message box, so the two
+views are one pair of buttons. **The stock Text Editor is kept**; no new space
+type, so nothing is added to `docs/BLENDER-TREE.md` §2b.
+
+`agent._tag_redraw()` tags `TEXT_EDITOR`, and `mirror_script_text()` tags too
+(the mirror is written outside agent turns). `model.set_script()` returns early
+when the source is already in the buffer and otherwise saves and restores the
+cursor — `clear()` + `write()` sends it to the end of the file, and the mirror
+is rewritten on every accepted request, so a slider drag used to fight anyone
+reading the script.
+
+Divergence is marked, not inferred: `set_script` stamps the digest of what it
+wrote onto the text datablock as an ID property (so it saves with the .blend),
+and `CADEX_PT_script` compares it against the buffer. Clean says "Matches the
+model." with **Rebuild Model**; dirty says "Modified — not applied" with
+**Apply to Model** and **Revert to Model**, plus the first line of the last
+failure when there was one. A source the engine *refused* is mirrored with
+`accepted=False`: it stays in the buffer to be fixed and does not get the
+clean stamp, because labelling a script the model does not have as matching
+the model is the one thing this display must never do. An unstamped buffer
+counts as clean, so files saved before this ADR do not all open with a false
+alert.
+
+**Chosen over the alternatives** (asked and answered): the script view is a
+toggle button rather than a fourth area in `startup.blend`, which would mean
+re-saving a ~270 KB git-LFS object on a layout change (ADR-037);
+"Reinitialize" means re-running the stored script, not deleting the store; and
+a failed hand edit keeps the text and marks the editor dirty rather than being
+reverted under the user.
+
+**Evidence.**
+- `src/Mod/cadex/cadex_tests/test_project_param_pruning.py` — the merge rule
+  in-process (stale store key dropped, patch key still raises, RFC 7396
+  deletes unaffected) and the persistence through a real worker: dropping `b`
+  prunes `b`'s value, the digest is identical with and without the stale key
+  in the worker's inputs, and the next `set_params` succeeds. 3 of its 4 cases
+  fail with the fix reverted; the one that passes is the "still raises loud"
+  case, which is the point.
+- `shell/tests/python/bl_mesh_agent_cadex.py` — three cases:
+  `test_dropping_a_param_leaves_the_sliders_working` (reverted: the exact
+  reported `UNKNOWN_PROJECT_PARAMETER` on both drags),
+  `test_rebuild_model_rederives_from_the_engine`, and
+  `test_script_view_marks_hand_edits` (reverted: 4 checks fail, including the
+  cursor jump and the missing dirty mark).
+- Engine suite 208 passed; `pixi run gate` `"ok": true` with the slider median
+  at 0.575 s, inside the 0.65 s bar.

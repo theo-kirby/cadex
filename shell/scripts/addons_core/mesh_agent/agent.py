@@ -93,7 +93,10 @@ def _tag_redraw():
         return
     for window in bpy.context.window_manager.windows:
         for area in window.screen.areas:
-            if area.type in {'VIEW_3D', 'CADEX_CHAT', 'CADEX_PARAMS'}:
+            # TEXT_EDITOR because one of them may be showing the script mirror,
+            # which a turn (or a rebuild) rewrites under it.
+            if area.type in {'VIEW_3D', 'CADEX_CHAT', 'CADEX_PARAMS',
+                             'TEXT_EDITOR'}:
                 area.tag_redraw()
 
 

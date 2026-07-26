@@ -61,6 +61,10 @@ class _State:
         self.revision = ""
         self.specs = []       # engine param_specs, verbatim
         self.values = {}
+        #: The source as the engine last reported it. Kept so Revert can put
+        #: the buffer back without a round trip (ADR-039) -- the buffer is the
+        #: only other copy, and a hand edit is what Revert undoes.
+        self.source = ""
         self.script_present = False
         self.opened = False
         #: The engine's restore block from the last open (ADR-017): what
@@ -227,13 +231,36 @@ def _adopt_script_state(scene, script_state, preserve_local=False):
         return
     source = script_state.get("source")
     if isinstance(source, str):
+        state.source = source
         mirror_script_text(source)
     _bridge_params(scene, state)
 
 
-def mirror_script_text(source):
+def cached_script_state(scene):
+    """The cached engine state for this scene's project, or None.
+
+    Read-only, and deliberately does not open the project: the callers are
+    panel draws and Revert, none of which should spawn an engine.
+    """
+    try:
+        return _states.get(project_root(scene))
+    except Exception:
+        return None
+
+
+def mirror_script_text(source, accepted=True):
+    """Put ``source`` in the script buffer. ``accepted`` marks it engine truth.
+
+    A source the engine refused is mirrored with ``accepted=False``: it stays
+    on screen to be fixed, but it does not get the clean stamp.
+    """
     from . import model
-    model.set_script(source)
+    if not model.set_script(source, stamp=accepted):
+        return
+    # The mirror is written outside agent turns too (`ensure_open`, a rebuild,
+    # an adopt), and a Text Editor showing it will not repaint on its own.
+    from . import agent as agent_module
+    agent_module._tag_redraw()
 
 
 def _bridge_params(scene, state):
@@ -641,7 +668,8 @@ def write_script(scene, source):
     if ok:
         _refresh_script_state(scene)
     else:
-        mirror_script_text(source)  # keep the attempted source visible
+        # Keep the attempted source visible, and marked as not in the model.
+        mirror_script_text(source, accepted=False)
     return ok, report
 
 
@@ -991,6 +1019,40 @@ def orphaned_project(scene):
     if state is None or not state.opened or state.script_present:
         return False
     return scene_remembers_a_model(scene)
+
+
+def begin_rebuild_model(scene, cancelled=None):
+    """Start a full re-run of the *stored* script. Lifecycle or (ok, report).
+
+    The way out when the model in the viewport and the engine have drifted --
+    a script the engine holds but this file never hydrated, a slider group
+    built from stale declarations, or (before ADR-039) a store whose values
+    outlived their parameters. It re-derives everything from the engine's own
+    stored source, so it sends no source from the shell and cannot itself be
+    the thing that is stale.
+
+    ``guarded=False`` is not optional: ``rebuild``'s ``OP_ARG_SPECS`` entry is
+    ``({}, {"display": dict})`` and rejects ``expected_revision`` -- which is
+    right, because re-running what is stored has nothing to be stale against.
+    """
+    def accepted():
+        # The point of the operation: whatever the shell believed about specs,
+        # values and source is replaced by what the engine just re-derived.
+        _refresh_script_state(scene)
+        from . import model
+        model.clear_last_error()
+
+    return begin_lifecycle(scene, "rebuild", {}, display=DISPLAY_REQUEST,
+                           guarded=False, cancelled=cancelled,
+                           on_accept=accepted)
+
+
+def rebuild_model(scene):
+    """Blocking :func:`begin_rebuild_model`. Returns (ok, report)."""
+    started = begin_rebuild_model(scene)
+    if not isinstance(started, Lifecycle):
+        return started
+    return started.wait()
 
 
 def adopt_saved_script(scene):

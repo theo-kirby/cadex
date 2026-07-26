@@ -41,9 +41,11 @@ class CADEX_CHAT_HT_header(Header):
             text="Pin Face" if not pending
             else "Pin Face ({:d} pinned)".format(pending))
 
-        layout.separator_spacer()
-        layout.operator(MESH_AGENT_OT_show_script.bl_idname, text="",
-                        icon='TEXT')
+        # The script view's button is in the row under the message box, beside
+        # the parameters toggle (ui.draw_chat_buttons). It used to be a plain
+        # opener here as well, which meant two buttons for one view and only
+        # one of them able to close it -- and the spacer that pushed it to the
+        # right goes with it, having nothing left to push.
 
 
 class CADEX_PARAMS_HT_header(Header):
@@ -68,20 +70,51 @@ def script_text():
     return bpy.data.texts.get(model.SCRIPT_NAME)
 
 
+def script_area(screen):
+    """The Text Editor on this screen showing the script mirror, or None.
+
+    Not "any Text Editor": the toggle must not close one the user opened on
+    some other text, and must not claim to be open when it is showing one.
+    """
+    text = script_text()
+    if text is None:
+        return None
+    for area in screen.areas:
+        if area.type != 'TEXT_EDITOR':
+            continue
+        space = area.spaces.active
+        if space is not None and space.text == text:
+            return area
+    return None
+
+
 class MESH_AGENT_OT_show_script(Operator):
     bl_idname = "mesh_agent.show_script"
     bl_label = "Script"
-    bl_description = ("Show the model script in a Text Editor")
+    bl_description = "Show or hide the model script in a Text Editor"
 
-    @classmethod
-    def poll(cls, context):
-        return script_text() is not None
+    # No poll. A file with no mirror yet is exactly when someone wants to see
+    # what the script is, and a greyed-out button answers that with nothing;
+    # `model.ensure_script_text` makes the empty mirror instead.
 
     def execute(self, context):
-        text = script_text()
+        from . import model
         window = context.window
         screen = window.screen
 
+        open_area = script_area(screen)
+        if open_area is not None:
+            try:
+                with context.temp_override(window=window, screen=screen,
+                                           area=open_area):
+                    bpy.ops.screen.area_close()
+            except RuntimeError:
+                # area_close's poll fails when no neighbour can absorb it.
+                self.report({'WARNING'}, "The script view cannot be closed")
+                return {'CANCELLED'}
+            return {'FINISHED'}
+
+        text = model.ensure_script_text()
         area = next((a for a in screen.areas if a.type == 'TEXT_EDITOR'), None)
         if area is None:
             viewports = [a for a in screen.areas if a.type == 'VIEW_3D']
@@ -116,6 +149,33 @@ class MESH_AGENT_OT_show_script(Operator):
         return {'FINISHED'}
 
 
+class MESH_AGENT_OT_revert_script(Operator):
+    bl_idname = "mesh_agent.revert_script"
+    bl_label = "Revert to Model"
+    bl_description = ("Throw away the edits in this buffer and put the "
+                      "engine's script back")
+
+    @classmethod
+    def poll(cls, context):
+        from . import model
+        return model.script_is_dirty()
+
+    def execute(self, context):
+        from . import cadex_backend
+        from . import model
+
+        # The engine's cached state, not a fresh request: the buffer diverged
+        # from a source the shell already has, and Revert is the cheap escape
+        # from a typo. Rebuild Model is the button for "ask the engine again".
+        state = cadex_backend.cached_script_state(context.scene)
+        if state is None or not state.script_present or not state.source:
+            self.report({'WARNING'},
+                        "The engine holds no script to revert to")
+            return {'CANCELLED'}
+        model.set_script(state.source)
+        return {'FINISHED'}
+
+
 class CADEX_PT_script(Panel):
     """Sidebar panel in the Text Editor, next to the model script."""
 
@@ -131,25 +191,53 @@ class CADEX_PT_script(Panel):
         return text is not None and space is not None and space.text == text
 
     def draw(self, context):
+        from . import cadex_backend
+        from . import model
         layout = self.layout
 
-        # Be honest about which way the mirror points. `get_script` reads this
-        # buffer, so the assistant sees a hand edit immediately; `write_script`
-        # goes to the engine, which does not. Blender text datablocks have no
-        # read-only flag to enforce it with, so say it rather than pretend.
-        column = layout.column(align=True)
-        column.label(text="The engine's script, mirrored here.", icon='INFO')
-        note = column.column(align=True)
-        note.enabled = False
-        note.label(text="Edits are visible to the assistant")
-        note.label(text="but reach the engine only on Apply.")
+        # Be honest about which way the mirror points, and about whether it
+        # currently *is* a mirror. `get_script` reads this buffer, so the
+        # assistant sees a hand edit immediately; the engine does not, until
+        # Apply. Blender text datablocks have no read-only flag to enforce that
+        # with, so the panel says which of three states the buffer is in --
+        # silently diverged is the one thing it must never be (ADR-039).
+        state = cadex_backend.cached_script_state(context.scene)
+        engine_has_script = state is not None and state.script_present
+        dirty = model.script_is_dirty()
 
-        layout.operator(ui_module.MESH_AGENT_OT_adopt_script.bl_idname,
-                        text="Apply to Model", icon='FILE_REFRESH')
+        if dirty or (not engine_has_script and model.get_script().strip()):
+            box = layout.box().column(align=True)
+            row = box.row()
+            row.alert = True
+            row.label(text="Modified — not applied" if dirty
+                      else "Not in the model yet", icon='ERROR')
+            note = box.column(align=True)
+            note.enabled = False
+            note.label(text="The assistant sees these edits;")
+            note.label(text="the model does not, until Apply.")
+            # Why the last attempt did not take, when there was one. The full
+            # report is in the transcript; one line is what fits here.
+            failure = model.last_error()
+            if failure:
+                alert = box.row()
+                alert.alert = True
+                alert.label(text=ui_module.first_line(failure), icon='INFO')
+            box.operator(ui_module.MESH_AGENT_OT_adopt_script.bl_idname,
+                         text="Apply to Model", icon='FILE_REFRESH')
+            if dirty:
+                box.operator(MESH_AGENT_OT_revert_script.bl_idname,
+                             text="Revert to Model", icon='LOOP_BACK')
+            return
+
+        column = layout.column(align=True)
+        column.label(text="Matches the model.", icon='CHECKMARK')
+        layout.operator(ui_module.MESH_AGENT_OT_rebuild_model.bl_idname,
+                        text="Rebuild Model", icon='FILE_REFRESH')
 
 
 classes = (
     MESH_AGENT_OT_show_script,
+    MESH_AGENT_OT_revert_script,
     CADEX_CHAT_HT_header,
     CADEX_PARAMS_HT_header,
     CADEX_PT_script,

@@ -140,15 +140,49 @@ class MESH_AGENT_OT_adopt_script(Operator):
 
     def execute(self, context):
         from . import cadex_backend
+        from . import model
         ok, report = cadex_backend.adopt_saved_script(context.scene)
         agent = agent_module.get_agent()
         if not ok:
             agent.history.add("status", report)
+            # So the panels can say *why* the buffer is still not in the model.
+            model.record_error(report)
             self.report({'WARNING'}, "Could not rebuild from the saved script")
             return {'CANCELLED'}
+        model.clear_last_error()
         agent.history.add("status",
                           "Rebuilt this file's engine project from the script "
                           "saved in the file.")
+        return {'FINISHED'}
+
+
+class MESH_AGENT_OT_rebuild_model(Operator):
+    bl_idname = "mesh_agent.rebuild_model"
+    bl_label = "Rebuild Model"
+    # The user-facing half of the ADR-039 way out. Distinct from "Rebuild From
+    # Saved Script", which pushes *this file's* buffer to the engine: this one
+    # sends nothing and re-runs what the engine already stores, so it is the
+    # safe thing to press when it is unclear which side is wrong.
+    bl_description = ("Re-run the script the engine holds and re-derive the "
+                      "parameters and geometry from it")
+
+    @classmethod
+    def poll(cls, context):
+        return not agent_module.get_agent().busy
+
+    def execute(self, context):
+        from . import cadex_backend
+        from . import model
+        ok, report = cadex_backend.rebuild_model(context.scene)
+        agent = agent_module.get_agent()
+        if not ok:
+            agent.history.add("status", report)
+            model.record_error(report)
+            self.report({'WARNING'}, "The engine could not re-run its script")
+            return {'CANCELLED'}
+        model.clear_last_error()
+        agent.history.add("status", "Re-ran the stored script; parameters and "
+                                    "geometry re-derived from it.")
         return {'FINISHED'}
 
 
@@ -174,6 +208,18 @@ _ROLE_ICONS = {
     "assistant": 'LIGHT',
     "status": 'INFO',
 }
+
+
+def first_line(report, limit=64):
+    """One row's worth of an engine failure report.
+
+    The reports are written for the model -- structured and several lines long
+    -- and a panel row shows one line. The whole report is in the transcript
+    and the console; this is the label on the button that fixes it.
+    """
+    lines = [line for line in str(report or "").splitlines() if line.strip()]
+    line = lines[0].strip() if lines else ""
+    return line if len(line) <= limit else line[:limit - 1] + "…"
 
 
 def params_area(screen):
@@ -249,6 +295,20 @@ class CADEX_PARAMS_PT_parameters(Panel):
     def draw(self, context):
         from . import model
         layout = self.layout
+
+        # A failed drag has nowhere else to surface: the debounce timer runs
+        # outside any operator, so before ADR-039 a rebuild that the engine
+        # refused printed to the console and the slider just appeared to do
+        # nothing. The remedy sits in the same panel as the failure.
+        failure = model.last_error()
+        if failure:
+            box = layout.box().column(align=True)
+            row = box.row()
+            row.alert = True
+            row.label(text=first_line(failure), icon='ERROR')
+            box.operator(MESH_AGENT_OT_rebuild_model.bl_idname,
+                         icon='FILE_REFRESH')
+
         specs = model.load_specs(context.scene)
         group = getattr(context.scene, "mesh_params", None)
         if group is None or not specs:
@@ -366,7 +426,8 @@ def draw_chat_input(layout, context):
 
 def draw_chat_buttons(layout, context):
     """The row under the message box: attachments, send/stop, new chat, and
-    the parameters toggle."""
+    the two view toggles (parameters, script)."""
+    from . import spaces
     agent = agent_module.get_agent()
 
     attach = layout.row(align=True)
@@ -392,6 +453,12 @@ def draw_chat_buttons(layout, context):
     layout.operator(MESH_AGENT_OT_toggle_params.bl_idname, text="",
                     icon='OPTIONS',
                     depress=params_area(context.screen) is not None)
+    # And the same for the script view -- a Text Editor pointed at the mirror.
+    # It sits here rather than in the chat header (where a one-way opener used
+    # to live) so the two views are one pair of buttons with one meaning.
+    layout.operator(spaces.MESH_AGENT_OT_show_script.bl_idname, text="",
+                    icon='TEXT',
+                    depress=spaces.script_area(context.screen) is not None)
 
 
 classes = (
@@ -401,6 +468,7 @@ classes = (
     MESH_AGENT_OT_attach_image,
     MESH_AGENT_OT_paste_image,
     MESH_AGENT_OT_adopt_script,
+    MESH_AGENT_OT_rebuild_model,
     MESH_AGENT_OT_toggle_params,
     CADEX_PARAMS_PT_parameters,
     CADEX_CHAT_PT_transcript,

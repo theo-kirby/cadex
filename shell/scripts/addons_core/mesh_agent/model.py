@@ -34,6 +34,12 @@ COLLECTION_NAME = "Model"
 SPECS_PROP = "mesh_model_specs"
 PARAMS_ATTR = "mesh_params"
 
+# Stamped on the text datablock (an ID property, so it saves with the .blend):
+# the digest of the source the engine last mirrored into the buffer. The
+# difference between it and the buffer's current digest is a hand edit that
+# the engine has not seen.
+DIGEST_PROP = "cadex_mirrored_digest"
+
 # Currently registered dynamic PropertyGroup and the specs JSON it was built
 # from (used to skip re-registration when the declarations are unchanged —
 # important because a slider being dragged must not have its class swapped).
@@ -51,14 +57,85 @@ def get_script():
     return text.as_string() if text is not None else ""
 
 
-def set_script(source):
+def ensure_script_text():
+    """The mirror datablock, created empty if this file has none yet.
+
+    The script view is a toggle now (ADR-039), and a button that greys itself
+    out on a fresh file is worse than one that opens an empty editor.
+    """
     import bpy
     text = bpy.data.texts.get(SCRIPT_NAME)
     if text is None:
         text = bpy.data.texts.new(SCRIPT_NAME)
         text.use_fake_user = True
+    return text
+
+
+def source_digest(source):
+    """The digest the dirty marking compares. Not the engine's revision."""
+    import hashlib
+    return hashlib.sha256((source or "").encode("utf-8")).hexdigest()
+
+
+def mirrored_digest(text=None):
+    """Digest stamped on the buffer when the engine last wrote it, or ""."""
+    if text is None:
+        import bpy
+        text = bpy.data.texts.get(SCRIPT_NAME)
+    if text is None:
+        return ""
+    return str(text.get(DIGEST_PROP, "") or "")
+
+
+def script_is_dirty():
+    """True when the buffer has been hand-edited since the engine wrote it.
+
+    An unstamped buffer counts as clean: a file saved before ADR-039 has no
+    stamp, and calling every one of those dirty would put a false alert in
+    front of users who have changed nothing.
+    """
+    stamped = mirrored_digest()
+    return bool(stamped) and source_digest(get_script()) != stamped
+
+
+def set_script(source, stamp=True):
+    """Mirror the engine's source into the buffer. True when it changed.
+
+    Two things it must not do. It must not rewrite the buffer when the source
+    is already there -- `clear()` + `write()` sends the cursor to the end of
+    the file (verified), and the mirror is refreshed on every accepted request,
+    so a slider drag would fight anyone reading the script. And when it does
+    rewrite, it puts the cursor back.
+
+    The digest it stamps is of the buffer as the engine last wrote it, which is
+    what `script_is_dirty` needs: `as_string()` round-trips `write()` exactly,
+    so a hand edit is the only thing that can move it.
+
+    ``stamp=False`` is for a source the engine *refused*: keep it in the buffer
+    so the user can fix it, but leave the stamp on the last accepted source, so
+    the buffer goes on reading as modified. Stamping a rejected source would
+    label a script the model does not have as "matches the model".
+    """
+    text = ensure_script_text()
+    digest = source_digest(source)
+    if text.as_string() == source:
+        # Still stamp: this may be the first mirror into a buffer that already
+        # happened to hold the engine's source (a reopened file), and without
+        # the stamp it would read as neither clean nor dirty.
+        if stamp:
+            text[DIGEST_PROP] = digest
+        return False
+    line, character = text.current_line_index, text.current_character
     text.clear()
     text.write(source)
+    try:
+        text.cursor_set(line, character=character, select=False)
+    except (RuntimeError, TypeError, ValueError):
+        # A shorter script than before: the old cursor is off the end.
+        pass
+    if stamp:
+        text[DIGEST_PROP] = digest
+    return True
 
 
 # -- parameter storage -----------------------------------------------------
@@ -174,19 +251,46 @@ def _schedule_rebuild():
         bpy.app.timers.register(_debounced_rebuild, first_interval=0.15)
 
 
+# The last slider rebuild's failure, or "". Session state: a drag that failed
+# is a fact about right now, not about the file, so it is deliberately not
+# saved. It exists because a drag has no operator report to land in -- the
+# debounce timer runs outside any operator, so the failure used to reach the
+# console and nowhere else, which is how a permanently wedged slider could look
+# like a slider that simply did nothing (ADR-039).
+_last_error = [""]
+
+
+def last_error():
+    return _last_error[0]
+
+
+def record_error(report):
+    _last_error[0] = str(report or "")
+
+
+def clear_last_error():
+    _last_error[0] = ""
+
+
 def _debounced_rebuild():
     import bpy
     try:
         ok, report = rebuild()
         if ok:
+            _last_error[0] = ""
             try:
                 bpy.ops.ed.undo_push(message="Mesh: adjust parameters")
             except RuntimeError:
                 pass
         elif report:
+            _last_error[0] = report
             print("mesh model rebuild failed:\n" + report)
     except Exception:
+        _last_error[0] = traceback.format_exc().strip().splitlines()[-1]
         traceback.print_exc()
+    # The parameters editor draws `last_error()`, and nothing else repaints it.
+    from . import agent as agent_module
+    agent_module._tag_redraw()
     return None
 
 

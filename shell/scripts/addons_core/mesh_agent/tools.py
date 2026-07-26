@@ -23,7 +23,7 @@ MAX_RESULT_CHARS = 4096
 _API_DOMAIN_CHARS = 16384
 
 # Tools whose execution mutates the scene (drives per-turn undo batching).
-MUTATING_TOOLS = {"write_script", "set_params", "edit_script"}
+MUTATING_TOOLS = {"write_script", "set_params", "edit_script", "rebuild_model"}
 
 # Tools that reach the cadex engine; these are preflighted so a missing
 # engine reports itself once, in a sentence, rather than as a traceback from
@@ -31,7 +31,7 @@ MUTATING_TOOLS = {"write_script", "set_params", "edit_script"}
 # the scene's mode; there is one backend now.)
 _ENGINE_TOOLS = {"get_script", "write_script", "set_params",
                  "edit_script", "inspect_model", "describe_cad_api",
-                 "scene_summary"}
+                 "scene_summary", "rebuild_model"}
 
 TOOL_DEFS = [
     {
@@ -113,6 +113,20 @@ TOOL_DEFS = [
             },
             "required": ["replacements"],
         },
+    },
+    {
+        "name": "rebuild_model",
+        "description": (
+            "Re-run the script the engine already holds, from scratch, and "
+            "re-derive the declared parameters, their values and the geometry "
+            "from it. Use it when the model and the engine have drifted: the "
+            "scene does not match what get_script reports, the sliders show "
+            "parameters the script no longer declares, or a set_params call "
+            "failed for a parameter you did not send. It sends no script, so "
+            "it cannot lose work — but it also cannot fix a script that is "
+            "wrong; write_script does that."
+        ),
+        "input_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "inspect_model",
@@ -393,8 +407,9 @@ def _tool_write_script(tool_input, agent=None):
         bpy.context.scene, source,
         cancelled=_cancellation_check(agent))
     if not isinstance(started, cadex_backend.Lifecycle):
-        # Keep the attempted source visible when the engine never ran.
-        cadex_backend.mirror_script_text(source)
+        # Keep the attempted source visible when the engine never ran -- and
+        # marked as not in the model, because it is not.
+        cadex_backend.mirror_script_text(source, accepted=False)
     return _deferred(started, _render_write_script)
 
 
@@ -417,6 +432,25 @@ def _tool_set_params(tool_input, agent=None):
             bpy.context.scene, updates,
             cancelled=_cancellation_check(agent)),
         _render_set_params)
+
+
+def _render_rebuild_model(ok, report):
+    if not ok:
+        _status("Engine could not re-run the stored script: "
+                + _first_line(report))
+        return _text(_truncate(
+            "The engine could not re-run the stored script:\n" + report)), True
+    return _text(_truncate(report)), False
+
+
+def _tool_rebuild_model(_tool_input, agent=None):
+    import bpy
+    from . import cadex_backend
+
+    return _deferred(
+        cadex_backend.begin_rebuild_model(
+            bpy.context.scene, cancelled=_cancellation_check(agent)),
+        _render_rebuild_model)
 
 
 def _tool_edit_script(tool_input, agent=None):
@@ -638,6 +672,7 @@ _HANDLERS = {
     "write_script": _tool_write_script,
     "set_params": _tool_set_params,
     "edit_script": _tool_edit_script,
+    "rebuild_model": _tool_rebuild_model,
     "inspect_model": _tool_inspect_model,
     "describe_cad_api": _tool_describe_cad_api,
     "get_attached_image": _tool_get_attached_image,
@@ -649,4 +684,4 @@ _HANDLERS = {
 
 # Handlers that additionally receive the calling Agent.
 _AGENT_HANDLERS = {"get_attached_image", "write_script", "set_params",
-                   "edit_script"}
+                   "edit_script", "rebuild_model"}

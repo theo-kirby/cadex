@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-07-25
+Verified against source: 2026-07-26
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -24,6 +24,18 @@ replaced the VibeCAD-era per-domain multi-program surface `[Cadex-new]`.
   `param_values`, working/accepted revision, accepted contract (output
   names/types/domains), `accepted_digest`, latest candidate/failure.
   Writes are atomic; unknown fields are rejected.
+- **The two parameter caches move together** (ADR-039). `param_specs` is what
+  the script declares; `param_values` is what the sliders were last set to.
+  Every accepted run prunes `param_values` to the declared names
+  (`validate_project_result`), and `set_params` narrows the stored base to
+  those names before merging its patch over them
+  (`_project_param_values`). A parameter the script drops takes its value with
+  it; a name in the *patch* that the script does not declare is still a loud
+  `UNKNOWN_PROJECT_PARAMETER`. Pruning is digest-neutral — the worker resolves
+  declared parameters by name and ignores the rest — so only the revision
+  moves, and every revision the store keeps derives from the pruned dict.
+  Before this, a rewritten script left dead values behind and every later
+  `set_params` failed on a name the caller never sent, permanently.
 - Execution artifacts live under `<project>/script_artifacts/<revision>/`.
 - Revision = `project_script_revision` over `{schema, domain: "project",
   source, param_specs, param_values}` (`CadexScriptedDomains.py`) —
@@ -229,7 +241,11 @@ The shell's half is `scene.mesh_params`, a PropertyGroup registered from the
 engine's `param_specs` (`cadex_backend._bridge_params`). A drag debounces
 150 ms (`model._schedule_rebuild`), sends one `set_params` with a `draft`
 tessellation preset, and schedules a background `standard` refine at rest.
-A failed rebuild leaves the accepted geometry untouched.
+A failed rebuild leaves the accepted geometry untouched — and says so in the
+parameters panel, with a **Rebuild Model** button beside it (`rebuild_model`,
+the `rebuild` op re-run over the stored script; ADR-039). The debounce timer
+runs outside any operator, so before that a failed drag reached the console
+and nowhere else.
 
 *(ADR-014's `CadexParametersPanel.py` implemented this in the Qt shell and
 was deleted with it in Phase 7, ADR-021. The contract it committed
