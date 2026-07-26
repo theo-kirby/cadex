@@ -82,6 +82,7 @@ that `docs/VISION.md` describes, and the protocol client that
 | `tools.py` | Tool definitions/executors. Tools: `get_script`, `write_script`, `edit_script`, `set_params`, `rebuild_model`, `inspect_model`, `describe_cad_api`, `get_attached_image`, `scene_summary`, `viewport_screenshot`, `export_stl`, `focus_view`. Marks `write_script`/`edit_script`/`set_params`/`rebuild_model` as mutating for undo counting, and preflights the engine-reaching ones so a missing engine reads as one sentence. `rebuild_model` re-runs the script the engine already holds (ADR-039) — the tool to reach for when the model and the engine have drifted. |
 | `ui.py` | The panels of the two Cadex editors — transcript, message box, parameter sliders — plus the operators (send, cancel, new chat, attach image, paste, toggle parameters, toggle script, rebuild from saved script, rebuild model, apply as defaults). No `poll` here asks *where* it is drawing: the space type answers that (ADR-035). The parameters panel draws a failed drag as an alert row with **Rebuild Model** beside it (ADR-039), and an **Apply as Defaults** button that is live only while a slider sits away from its declared default (ADR-040). |
 | `spaces.py` | Headers for `CADEX_CHAT` and `CADEX_PARAMS`, and the script view: `MESH_AGENT_OT_show_script` (a **toggle** — a Text Editor on the `model.py` mirror, opened or closed), `MESH_AGENT_OT_revert_script`, and `CADEX_PT_script`, its sidebar panel, which says whether the buffer matches the model and offers **Apply to Model** / **Revert to Model** / **Rebuild Model** accordingly (ADR-039). Headers live here rather than in `bl_ui` because `bl_ui` is inherited and this is ours. |
+| `topbar.py` | The Cadex top bar (ADR-041): `CADEX_MT_file` (New, Open…, Open Recent, Revert, Save, Save As…, Save Copy…, Import ▸, Export ▸, Quit) and `CADEX_MT_edit` (Undo, Redo, Preferences…), and the `install()` / `uninstall()` pair that swaps `TOPBAR_HT_upper_bar`'s draw. Everything the menus point at is a stock operator or a stock menu. Registering the add-on does **not** install the bar — the app template does that, so `mesh_agent` in a stock Blender session leaves that session's bar alone; `unregister()` does uninstall, because a header naming menus that are gone draws errors. |
 | `history.py` | Chat transcript as JSON in `bpy.data.texts["mesh_chat.json"]`; persists inside the .blend file. |
 | `capture.py` | Viewport screenshot (base64 PNG) and attached-image loading (downscaled, default max 768 px). |
 | `modes.py` | The Cadex system-prompt overlay and `system_prompt()`. What remains of a three-mode registry after ADR-030 collapsed it to one. |
@@ -269,21 +270,29 @@ into the file.
 panel, reset region sizes, rename screens — never runs on ours. That is
 load-bearing: do not add "Mesh" to that list.
 
-`__init__.py` is 98 lines and does two things, both of which a `.blend`
+`__init__.py` is 85 lines and does two things, both of which a `.blend`
 cannot carry:
 
 - **Enables the add-on.** `preferences.addons` is `UserDef`, not `Main`.
   Shipping a `Mesh/userpref.blend` would work and would also pin the user's
   theme, paths, keymap and autosave, so this stays four lines of Python.
-- **Blanks the top menu bar.** `bScreen.flag` has `SCREEN_COLLAPSE_STATUSBAR`
-  and no topbar counterpart, so there is nothing to save.
+- **Installs the Cadex top bar** — File and Edit, from `mesh_agent.topbar`
+  (ADR-041). A header's draw function is code, not screen data, so no `.blend`
+  can carry it. It is the *template* that installs rather than the add-on, so
+  that `mesh_agent` in a stock Blender session leaves that session's bar alone.
+  Until ADR-041 this line blanked the bar instead, which is how `File > Open`,
+  `Save As`, Import/Export and Preferences went missing.
+
+Both run from a deferred timer that skips background mode, so a headless
+suite that wants the bar has to call `_cadex_topbar()` itself — the gate does.
 
 To re-author the layout: launch, arrange by hand, `File > Defaults > Save
 Startup File`, then copy `<config>/Mesh/startup.blend` over the one in the
 tree. **Do it in one commit** — the file is git-LFS-tracked and every re-save
 is a new object that is never reclaimed. `test_startup_layout_is_the_shipped_file`
-in `bl_mesh_agent_cadex.py` is what catches it silently failing to load, and
-it puts `startup_areas` in the `CADEX-BLENDER-GATE` line as evidence.
+in `bl_mesh_agent_cadex.py` is what catches it silently failing to load (and
+the shipped template failing to install the bar), and it puts `startup_areas`
+in the `CADEX-BLENDER-GATE` line as evidence.
 
 ### The message box, and what sends it
 

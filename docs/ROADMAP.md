@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-07-25
+Verified against source: 2026-07-26
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -292,8 +292,9 @@ depends on. Independent of Phase 8.
       layout is now `Mesh/startup.blend`, which only became possible once the
       chat and parameter columns were real editor types (ADR-035) — a saved
       screen can record area types, and until then the area types were lying.
-      What survives enables the add-on and blanks the top bar, neither of
-      which a `.blend` can carry. Guarded by
+      What survives enables the add-on and sets up the top bar, neither of
+      which a `.blend` can carry — and the bar carries the Cadex File and Edit
+      menus since ADR-041, having been blank between ADR-037 and it. Guarded by
       `test_startup_layout_is_the_shipped_file` in the gate.*
 - [x] **Delete the dead publication paths** in
       `CadexScriptedDomainPublication.py` — the robot / FEM / inspection /

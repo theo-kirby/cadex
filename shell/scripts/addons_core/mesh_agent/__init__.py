@@ -29,6 +29,7 @@ from . import cadex_backend as cadex_backend_module
 from . import cadex_pick as cadex_pick_module
 from . import model as model_module
 from . import spaces
+from . import topbar as topbar_module
 from . import ui
 
 
@@ -182,6 +183,9 @@ def register():
     cadex_pick_module.register()
     ui.register()
     spaces.register()
+    # Registers the menus; the app template is what puts them on the bar
+    # (topbar.install), so a stock Blender session keeps its own top bar.
+    topbar_module.register()
     bpy.app.handlers.save_pre.append(_save_pre_handler)
     bpy.app.handlers.save_post.append(_save_post_handler)
     bpy.app.handlers.load_post.append(_load_post_handler)
@@ -194,6 +198,7 @@ def unregister():
         bpy.app.handlers.save_post.remove(_save_post_handler)
     if _load_post_handler in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_load_post_handler)
+    topbar_module.unregister()
     spaces.unregister()
     ui.unregister()
     cadex_pick_module.unregister()

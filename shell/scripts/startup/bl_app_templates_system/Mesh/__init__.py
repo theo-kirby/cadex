@@ -23,8 +23,11 @@ Two things survive, because neither can live in a .blend:
   startup file cannot carry it. Shipping a `Mesh/userpref.blend` would work
   and would also pin the user's theme, paths, keymap and autosave -- so this
   stays four lines of Python instead.
-- **Blanking the top bar.** `bScreen.flag` has `SCREEN_COLLAPSE_STATUSBAR` and
-  no topbar counterpart (`DNA_screen_types.h`), so there is nothing to save.
+- **The top bar.** It carries the Cadex File and Edit menus rather than
+  Blender's six (`mesh_agent.topbar`, ADR-041). A header's draw function is
+  code, not screen data, so no `.blend` can carry it -- and the swap belongs
+  to the product shell rather than to the add-on, so that `mesh_agent` in a
+  stock Blender session leaves that session's top bar alone.
 
 To re-author the layout: launch, arrange it by hand, `File > Defaults > Save
 Startup File`, then copy
@@ -35,10 +38,6 @@ reclaimed.
 
 import bpy
 from bpy.app.handlers import persistent
-
-# Original draw functions of headers overridden in Simple mode, kept for the
-# Pro-mode restore.
-_ui_overrides = {}
 
 
 def _ensure_agent_addon():
@@ -52,29 +51,17 @@ def _ensure_agent_addon():
         traceback.print_exc()
 
 
-def _reregister_with_draw(cls, draw):
-    # Like poll, draw is captured at registration time, so re-register.
-    bpy.utils.unregister_class(cls)
-    cls.draw = draw
-    bpy.utils.register_class(cls)
-
-
-def _blank_topbar():
-    if "topbar" in _ui_overrides:
-        return
-    cls = bpy.types.TOPBAR_HT_upper_bar
-    _ui_overrides["topbar"] = cls.draw
-
-    def _draw_nothing(_self, _context):
-        pass
-
-    _reregister_with_draw(cls, _draw_nothing)
+def _cadex_topbar():
+    # Must run after the add-on is enabled: the menus the bar draws are
+    # registered by `mesh_agent.register()`.
+    from mesh_agent import topbar
+    topbar.install()
 
 
 def _apply():
     try:
         _ensure_agent_addon()
-        _blank_topbar()
+        _cadex_topbar()
     except Exception:
         import traceback
         traceback.print_exc()

@@ -216,6 +216,23 @@ def test_startup_layout_is_the_shipped_file():
 
     GATE["startup_areas"] = areas
 
+    # The other half of the template, and the one a stale bundle loses: the
+    # top bar carries the Cadex File and Edit menus (ADR-041). The template's
+    # own timer never runs here (`load_handler` returns in background), so
+    # this calls what the timer would have called -- from the *shipped*
+    # module, which is the point.
+    from mesh_agent import topbar
+    template = sys.modules.get("bl_app_templates_system.Mesh")
+    check(template is not None, "the Mesh app template module is loaded")
+    if template is not None:
+        try:
+            template._cadex_topbar()
+            check(topbar.installed(),
+                  "the shipped app template installs the Cadex top bar")
+        finally:
+            topbar.uninstall()
+
+
     # Leave the factory startup loaded: everything after this builds its own
     # scene from it.
     bpy.ops.wm.read_factory_settings(use_empty=True)

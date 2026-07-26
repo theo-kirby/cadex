@@ -2365,3 +2365,70 @@ window on the nine-parameter whoop chassis file.
 
 **Not done:** exposing this as an assistant tool. The assistant can already
 rewrite a default with `edit_script`, and it has no sliders to read.
+
+## ADR-041 — The File menu comes back, as ours (2026-07-26)
+
+**Decision.** The Mesh app template no longer blanks the top bar. It installs
+a Cadex bar with two menus, **File** and **Edit**, defined in the new
+`shell/scripts/addons_core/mesh_agent/topbar.py`.
+
+File: New, Open…, Open Recent, Revert, Save, Save As…, Save Copy…, Import ▸,
+Export ▸, Quit. Edit: Undo, Redo, Preferences…
+
+**Rationale.** ADR-037 blanked `TOPBAR_HT_upper_bar` because nothing else
+suppressed Blender's bar, and that took the whole of `File` with it — there
+was no way to open a file, save one under a new name, or import and export
+geometry without going through the assistant or a keyboard shortcut nobody is
+told about. `Edit > Preferences` went with it, and it is the only door to the
+add-on preferences: the engine path, the tool-call cap and the ADR-019 run
+budgets are all behind it. The `.blend` **is** the document (ADR-033) — it
+carries the script mirror, the parameter specs and the engine project id — so
+`File > Save` saves the model, and this is a missing door rather than a
+missing feature.
+
+**Why two menus and not the bar.** Restoring the stock header would have been
+a one-line deletion, and it would have put the Blender menu (splash, about,
+system), Render, the workspace tabs and the scene/view-layer pickers back on
+screen. A CAD app has nothing to render, ships one workspace and shows one
+scene, and `File > New` would have offered Blender's app templates — VFX,
+Video Editing, Sculpting — as ways to leave the product. Our `New` sets no
+`app_template` at all, which `wm_homefile_read_exec` reads as *the template
+already in force*, so it reloads the Cadex startup file.
+
+**Where it lives, and what it does not cost.** No upstream file is edited:
+`bl_ui/space_topbar.py` is untouched, and `topbar.install()` swaps the
+header's draw at runtime, the same re-register trick ADR-037 removed the last
+use of. `docs/BLENDER-TREE.md` §2 does not grow — the change is entirely in
+§1 files (`mesh_agent/`, the app template), which is the whole reason the
+menus are in the add-on rather than in `bl_ui`, exactly as ADR-035 argued for
+the editor headers.
+
+The **app template** is what calls `install()`, not the add-on's `register()`.
+`mesh_agent` loaded into a stock Blender session — which is how both suites
+run, and how a developer who forgets `--app-template Mesh` lands — leaves that
+session's top bar alone. The add-on's `unregister()` does call `uninstall()`:
+a header pointing at menu classes that are no longer registered draws a row of
+errors, and disabling the add-on is exactly when that would happen.
+
+**Everything the menus point at is stock.** `wm.open_mainfile`,
+`wm.save_as_mainfile`, `ed.undo`, `screen.userpref_show` and the rest are
+Blender's own operators, and Import/Export are Blender's own menus — so a
+format registered by an enabled add-on appears without this file knowing about
+it. Today that is STL, OBJ, PLY, USD, Alembic, FBX and glTF. The cost is that
+an upstream rename on a merge silently turns a menu row red.
+
+**Evidence.** `test_cadex_topbar_is_the_product_bar` in
+`shell/tests/python/bl_mesh_agent.py` reads the operator and menu identifiers
+out of the module's own source with a regex — a hand-maintained list beside
+the menus is exactly what a merge does not update — and checks every one of
+them against the running build (`bpy.ops` for operators, `bpy.types` for
+menus; `TOPBAR_MT_file_open_recent` is registered from C and is invisible to
+both, so it is named as the one exception). It also pins install/uninstall:
+registering the add-on must not install the bar, installing twice is a no-op,
+and uninstall must return the *same* stock draw function. In the gate,
+`test_startup_layout_is_the_shipped_file` calls the **shipped** app template's
+`_cadex_topbar()` and checks it installs, which is what catches a stale bundle.
+`pixi run gate` ok, slider median 0.625 s. Confirmed in a real window:
+`screen.screenshot` of the launched bundle shows `File  Edit` alone on the bar
+and the File menu drawing all ten rows.
+

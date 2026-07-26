@@ -784,6 +784,83 @@ def test_panels_are_homed_on_the_cadex_editors():
           "the column-role lookup is gone")
 
 
+#: Menus the File menu points at that are registered from C
+#: (`editors/space_topbar/space_topbar.cc`) and so never appear in
+#: `bpy.types` -- there is no way to check them from Python.
+TOPBAR_C_MENUS = frozenset({'TOPBAR_MT_file_open_recent'})
+
+
+def _identifiers_drawn_by(module):
+    """The operator and menu identifiers a module's draw functions name.
+
+    Read out of the source rather than kept in a list beside it: the point is
+    to catch an upstream rename on a Blender merge, and a hand-maintained
+    list is exactly what a merge does not update.
+    """
+    import inspect
+    import re
+    source = inspect.getsource(module)
+    return (set(re.findall(r'\.operator\(\s*"([^"]+)"', source)),
+            set(re.findall(r'\.menu\(\s*"([^"]+)"', source)))
+
+
+def _operator_exists(idname):
+    module, _, function = idname.partition(".")
+    submodule = getattr(bpy.ops, module, None)
+    # Operator types defined in C are absent from `bpy.types`, so this asks
+    # `bpy.ops` -- which lists them, and lists nothing that is not registered.
+    return submodule is not None and function in dir(submodule)
+
+
+def test_cadex_topbar_is_the_product_bar():
+    """File and Edit are back on the top bar, and every entry resolves.
+
+    The app template blanked the bar entirely (ADR-037), which is how Open,
+    Save, Import, Export and Preferences went missing; ADR-041 puts back two
+    menus of our own rather than Blender's six. A menu entry naming an
+    operator this build does not have draws as a red row, so the identifiers
+    are checked against the running build rather than trusted.
+    """
+    print("test_cadex_topbar_is_the_product_bar")
+    from mesh_agent import topbar
+
+    for name in ('CADEX_MT_file', 'CADEX_MT_edit', 'CADEX_MT_editor_menus'):
+        check(getattr(bpy.types, name, None) is not None,
+              "{:s} is registered".format(name))
+
+    operators, menus = _identifiers_drawn_by(topbar)
+    for idname in ("wm.open_mainfile", "wm.save_mainfile",
+                   "wm.save_as_mainfile", "wm.revert_mainfile",
+                   "screen.userpref_show"):
+        check(idname in operators, "the bar offers {:s}".format(idname))
+    for name in ('TOPBAR_MT_file_import', 'TOPBAR_MT_file_export',
+                 'TOPBAR_MT_file_open_recent'):
+        check(name in menus, "the File menu offers {:s}".format(name))
+
+    for idname in sorted(operators):
+        check(_operator_exists(idname),
+              "{:s} exists in this build".format(idname))
+    for name in sorted(menus - TOPBAR_C_MENUS):
+        check(getattr(bpy.types, name, None) is not None,
+              "{:s} exists in this build".format(name))
+
+    # Blender's bar must come back exactly as it was: disabling the add-on
+    # runs uninstall, and a half-restored header is a broken session.
+    stock = bpy.types.TOPBAR_HT_upper_bar.draw
+    check(not topbar.installed(), "the bar is not installed by registering")
+    try:
+        topbar.install()
+        check(bpy.types.TOPBAR_HT_upper_bar.draw is topbar.draw_upper_bar,
+              "install puts the Cadex bar on the top bar")
+        topbar.install()
+        check(bpy.types.TOPBAR_HT_upper_bar.draw is topbar.draw_upper_bar,
+              "installing twice is a no-op")
+    finally:
+        topbar.uninstall()
+    check(bpy.types.TOPBAR_HT_upper_bar.draw is stock,
+          "uninstall gives the stock bar back")
+
+
 def test_confirming_the_input_sends():
     """Return in the message box sends: Blender commits the field's value
     when the edit ends, and the property's update callback is what turns
@@ -855,6 +932,7 @@ def main():
         test_cadex_editors_are_registered()
         test_editor_menu_is_short()
         test_panels_are_homed_on_the_cadex_editors()
+        test_cadex_topbar_is_the_product_bar()
         test_confirming_the_input_sends()
         test_message_box_widget_is_available()
         test_mcp_shim_protocol()
