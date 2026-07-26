@@ -2101,3 +2101,56 @@ rebuilds anything.
 
 Verified on a wiped profile: `rm -rf` the config directory, launch with
 `--app-template Mesh`, land in the right layout with no timer.
+
+## ADR-038 — `inspect` is the assistant's reader; the shell must read the whole value (2026-07-26)
+
+**Decision.** The shell no longer takes the first page of an `inspect` reply
+at face value. `_refresh_script_state` reads THE script's state through a new
+`_inspect_full()` in `cadex_backend.py`, which follows `page.next_offset`
+until the container is exhausted and re-reads any value the engine replaced
+with a preview marker, through the `inspect_path` that marker carries. The
+engine's inspection contract is unchanged.
+
+**Rationale.** `core.inspect` is a *bounded* reader, and deliberately so: it
+caps a reply at 32 KiB, pages mappings, arrays and strings, and substitutes
+anything over 1 KiB with `{"type": ..., "inspect_path": ...}`
+(`CadexInspection.py`, `_preview` / `_bounded_page`). That is exactly right
+for the audience it was written for — a model that pays for every byte it
+reads and should drill in on purpose.
+
+The shell is not that audience. It needs `params.specs` to build sliders and
+`source` to fill the script mirror, whole or not at all. It was calling the
+same op, reading `value["params"]["specs"]`, and getting `None` — because
+`value["params"]` was the marker, not the params. `list(None or [])` is `[]`,
+so `_bridge_params` wrote `scene["mesh_model_specs"] = "[]"` and unregistered
+the slider PropertyGroup; `source` was a marker too, so it failed the
+`isinstance(source, str)` test and the mirror was never written.
+
+The visible result was a parameters editor that drew "No parameters in this
+model" for every model that had any, and a Script view showing an empty
+`model.py`. `ensure_open` bridges the *complete* block that `open_project`
+returns, and then calls `_refresh_script_state`, which overwrote it — so the
+sliders were correct for the duration of one function call. Every
+`write_script` did the same on accept.
+
+**Why it survived.** The 1 KiB threshold is above every fixture in the suite
+and below every real model. `BASELINE_SCRIPT` declares one parameter, so the
+ADR-027 golden for `inspect` has one `specs` entry in it and the whole block
+fits in a preview; the gate was green while the product bridged nothing. This
+is the second time a params-bridging bug has hidden behind a one-parameter
+fixture (ADR-033 was the first).
+
+**Consequences.** The fix is shell-side. Exempting the script scope from
+paging would have put the shell's appetite into the assistant's reader and
+made a 60-parameter model a 32 KiB budget question; following the pointer is
+what the pointer is for.
+
+`_refresh_script_state` now also refuses to adopt a block with no
+`script_present` key — an error body or a truncated page reaches
+`_adopt_script_state` otherwise, and bridging one costs the specs.
+
+Regression-tested by `test_params_survive_the_inspect_pager` in
+`shell/tests/python/bl_mesh_agent_cadex.py`, on an eight-parameter script
+that is over the threshold; it asserts *that* it is over the threshold as
+well, so a shrunk fixture fails loudly instead of silently testing nothing.
+Verified to fail with the fix reverted (0 of 8 params bridged, mirror empty).

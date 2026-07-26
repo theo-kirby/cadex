@@ -282,14 +282,81 @@ def _revision_from_payload(scene, payload):
             state.revision = revision
 
 
+#: Page size for :func:`_inspect_full`. The engine caps ``limit`` at 50.
+_INSPECT_PAGE = 50
+
+
+def _resolve_stub(client, scope, value):
+    """Re-read one previewed value, if that is what this is.
+
+    ``inspect`` replaces any value over 1 KiB with a marker carrying the
+    JSON Pointer to reach it -- ``{"type": "array", "item_count": 11,
+    "inspect_path": "/params/specs"}``. Nothing in a script-state payload
+    legitimately looks like that, so the pair of keys is the test.
+    """
+    if isinstance(value, dict) and "inspect_path" in value and "type" in value:
+        return _inspect_full(client, scope, str(value["inspect_path"]))
+    return value
+
+
+def _inspect_full(client, scope, path):
+    """The whole value at ``path``, following the pager and the previews.
+
+    ``inspect`` is the *assistant's* reader: it bounds every result at 32 KiB
+    by paging containers and by replacing anything over 1 KiB with a stub
+    (:func:`_resolve_stub`). That is right for a model reading a payload it
+    has to pay for, and wrong for the shell, which needs the specs it turns
+    into sliders and the source it mirrors -- whole, or not at all.
+
+    So the shell follows what the pager and the stubs point at. This used to
+    read the top page and take it at face value: correct for a one-parameter
+    test fixture, and silently empty for every real model, which is how it
+    survived (the ADR-027 golden for ``inspect`` has one parameter in it).
+
+    Returns ``None`` if the first page fails.
+    """
+    offset = 0
+    whole = None
+    while True:
+        result = client.request("inspect", {"scope": scope, "path": path,
+                                            "offset": offset,
+                                            "limit": _INSPECT_PAGE})
+        if result.get("ok") is not True:
+            return whole
+        value = result.get("value")
+        page = dict(result.get("page") or {})
+        kind = str(page.get("kind") or "")
+        if kind == "mapping":
+            merged = dict(whole or {})
+            for key, item in dict(value or {}).items():
+                merged[key] = _resolve_stub(client, scope, item)
+            whole = merged
+        elif kind == "array":
+            merged = list(whole or [])
+            merged.extend(_resolve_stub(client, scope, item)
+                          for item in list(value or []))
+            whole = merged
+        elif kind == "string":
+            whole = (whole or "") + str(value or "")
+        else:
+            return value
+        next_offset = page.get("next_offset")
+        if next_offset is None:
+            return whole
+        offset = int(next_offset)
+
+
 def _refresh_script_state(scene):
     """Re-read engine script state (source, specs, values, revisions)."""
     client = _client(project_root(scene))
-    inspected = client.request("inspect", {"scope": "script"})
-    if inspected.get("ok") is True and isinstance(inspected.get("value"), dict):
-        _adopt_script_state(scene, inspected["value"])
-        return True
-    return False
+    state = _inspect_full(client, "script", "")
+    # `script_present` is the cheapest proof that a whole script-state block
+    # came back rather than an error body or a truncated page. Adopting one of
+    # those would bridge empty specs over good ones.
+    if not isinstance(state, dict) or "script_present" not in state:
+        return False
+    _adopt_script_state(scene, state)
+    return True
 
 
 def ensure_open(scene):

@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-07-25
+Verified against source: 2026-07-26
 
 **This document is the contract between the two halves of the product.**
 They live in one repository (ADR-030) and in two processes, under two
@@ -138,6 +138,17 @@ artifact_path, sidecar_path, counts, deflection, quality}` and that block's
 {status, accepted_is_current, next_write_expected_revision,
 verification_goal}`; `live_outputs.<output>`; `script`; `restore`;
 `budgets`.
+
+**`inspect` is a bounded reader, and a client that wants a whole value has
+to say so.** It caps a reply at 32 KiB: containers are paged (`page.kind`,
+`page.next_offset`, `offset`/`limit` args, `limit` <= 50) and any single
+value over 1 KiB is replaced by a marker — `{"type": "array",
+"item_count": 11, "inspect_path": "/params/specs"}` — naming the JSON
+Pointer that reaches it. So `value` is a *view*, never a promise of the
+whole; read to the end of the pages and follow the markers, or accept a
+sample. The shell does the former in `cadex_backend._inspect_full()`
+(ADR-038). The bound is the point of the op — do not remove it to save a
+caller the walk.
 
 **Failures are one envelope for every op**, because the model reads it and
 acts on it: `tool`, `error`, `failure_code`, `failure_stage`, `observed`,

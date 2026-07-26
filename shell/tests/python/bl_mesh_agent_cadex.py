@@ -92,6 +92,43 @@ plate = part.box(60, 40, 8)
 result = {"plate": plate}
 """
 
+#: A script whose declarations do not fit in one `inspect` preview. Eight
+#: parameters with labels and descriptions push `params` past the engine's
+#: 1 KiB preview threshold, and the source past it too -- which is the size
+#: every real model is, and the size at which the shell used to bridge
+#: nothing at all. Keep it over the threshold (see test_params_survive_the
+#: _inspect_pager) or the test stops testing anything.
+WIDE_PARAMS_SCRIPT = """
+p = params(
+    length=num(120.0, unit="mm", min=60, max=200, label="Overall length",
+               description="The long dimension of the plate, corner to corner"),
+    width=num(80.0, unit="mm", min=40, max=140, label="Overall width",
+              description="The short dimension of the plate, corner to corner"),
+    thickness=num(8.0, unit="mm", min=4, max=20, label="Plate thickness",
+                  description="Material thickness before any fillet is taken"),
+    hole=num(2.5, unit="mm", min=1.0, max=4.0, label="Hole diameter",
+             description="Diameter of every hole in the bolt grid"),
+    columns=num(6.0, min=2, max=8, label="Hole columns",
+                description="How many holes across the length of the plate"),
+    rows=num(4.0, min=2, max=6, label="Hole rows",
+             description="How many holes across the width of the plate"),
+    pitch=num(18.0, unit="mm", min=12, max=30, label="Hole pitch",
+              description="Centre-to-centre spacing of the bolt grid"),
+    fillet=num(1.0, unit="mm", min=0.5, max=4.0, label="Edge fillet",
+               description="Radius rolled onto the plate's outer edges"),
+)
+base = part.box(p.length, p.width, p.thickness)
+holes = [
+    part.cylinder(p.hole, p.thickness * 2.0,
+                  origin=[10 + p.pitch * (i % int(p.columns)),
+                          12 + p.pitch * (i // int(p.columns)),
+                          -p.thickness])
+    for i in range(int(p.columns) * int(p.rows))
+]
+plate = part.fillet(part.cut(base, holes), p.fillet)
+result = {"plate": plate}
+"""
+
 
 def check(condition, label):
     status = "ok" if condition else "FAIL"
@@ -440,6 +477,51 @@ def test_params_and_latency(root):
     check(bpy.data.objects.get("plate") is not None, "kept output survives")
     check(not model_module.load_specs(scene),
           "param specs empty after params left the script")
+
+
+def test_params_survive_the_inspect_pager(root):
+    """A model too big for one `inspect` preview still gets its sliders.
+
+    `inspect` bounds what it returns: a value over 1 KiB comes back as a stub
+    naming the pointer to reach it. The shell used to read the top page and
+    take it at face value, so every model with more than a parameter or two
+    bridged *zero* specs and mirrored an empty script -- while this suite,
+    whose baseline declares one parameter, stayed green throughout.
+    """
+    print("test_params_survive_the_inspect_pager")
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, report = run_tool("write_script", {"content": WIDE_PARAMS_SCRIPT})
+    check(ok, "wide write_script accepted ({:s})".format(
+        report.splitlines()[0] if report else ""))
+
+    declared = ["length", "width", "thickness", "hole",
+                "columns", "rows", "pitch", "fillet"]
+    specs = model_module.load_specs(scene)
+    check([spec["id"] for spec in specs] == declared,
+          "all {:d} params bridged, in order ({:d} arrived)".format(
+              len(declared), len(specs)))
+    group = getattr(scene, "mesh_params", None)
+    check(group is not None
+          and all(hasattr(group, name) for name in declared),
+          "every declared param has a slider property")
+    check(model_module.get_script().strip() == WIDE_PARAMS_SCRIPT.strip(),
+          "the script mirror holds the whole source, not a truncated page")
+
+    # The guard is only meaningful while the payload actually exceeds the
+    # engine's preview threshold; a smaller script would pass either way.
+    client = cadex_backend._client(cadex_backend.project_root(scene))
+    top = client.request("inspect", {"scope": "script"})
+    previewed = [key for key, value in dict(top.get("value") or {}).items()
+                 if isinstance(value, dict) and "inspect_path" in value]
+    check("params" in previewed and "source" in previewed,
+          "this model is big enough that the engine previews it {!r}".format(
+              sorted(previewed)))
+
+    # And the sliders drive the engine, not just the panel.
+    ok, drag_report = model_module.set_values({"length": 150.0})
+    check(ok, "a bridged slider rebuilds ({:s})".format(
+        drag_report.splitlines()[0] if drag_report else ""))
 
 
 # -- agent turn: one undo per turn through the real bridge -------------------
@@ -915,6 +997,7 @@ def main():
 
     corpus_root = tempfile.mkdtemp(prefix="mesh-cadex-corpus-")
     baseline_root = tempfile.mkdtemp(prefix="mesh-cadex-baseline-")
+    wide_root = tempfile.mkdtemp(prefix="mesh-cadex-wide-")
     turn_root = tempfile.mkdtemp(prefix="mesh-cadex-turn-")
     reopen_root = tempfile.mkdtemp(prefix="mesh-cadex-reopen-")
     threading_root = tempfile.mkdtemp(prefix="mesh-cadex-thread-")
@@ -934,6 +1017,7 @@ def main():
         test_describe_cad_api(describe_root)
         test_edit_script_and_inspection(edit_root)
         test_params_and_latency(baseline_root)
+        test_params_survive_the_inspect_pager(wide_root)
         test_main_thread_free_during_rebuild(threading_root)
         test_cancel_reaches_the_engine(cancel_root)
         test_cadex_turn_single_undo(turn_root)
@@ -953,7 +1037,8 @@ def main():
         except Exception:
             pass
         import shutil
-        for root in (corpus_root, baseline_root, turn_root, reopen_root,
+        for root in (corpus_root, baseline_root, wide_root, turn_root,
+                     reopen_root,
                      threading_root, cancel_root, saveas_root,
                      duplicate_root,
                      restore_root, corrupt_root, describe_root, edit_root):

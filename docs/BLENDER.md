@@ -119,6 +119,14 @@ that `docs/VISION.md` describes, and the protocol client that
   is only re-registered when the spec JSON changes (prevents a class swap
   mid-drag). The sliders are drawn by `CADEX_PARAMS_PT_parameters`, the sole
   occupant of the Cadex Parameters editor.
+- The specs reach the shell two ways, and only one of them is free.
+  `open_project` returns the whole script-state block; `inspect` — which is
+  how `_refresh_script_state()` re-reads it after a `write_script` — is the
+  assistant's *bounded* reader, so it pages and it replaces any value over
+  1 KiB with a pointer to itself. `cadex_backend._inspect_full()` walks both
+  (ADR-038). Read that before touching anything that consumes an `inspect`
+  reply: taking the first page at face value is correct for a
+  one-parameter fixture and empty for every real model.
 - Slider drag → `_on_param_update()` → `_schedule_rebuild()` → 0.15 s
   `bpy.app.timers` debounce → one revision-guarded `set_params` to the engine,
   draft-quality tessellation while dragging with a background standard
