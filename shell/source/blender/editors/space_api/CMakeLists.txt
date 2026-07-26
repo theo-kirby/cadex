@@ -23,6 +23,8 @@ set(LIB
   bf_editor_geometry
   bf_editor_space_action
   bf_editor_space_buttons
+  bf_editor_space_cadex_chat
+  bf_editor_space_cadex_params
   bf_editor_space_clip
   bf_editor_space_console
   bf_editor_space_file

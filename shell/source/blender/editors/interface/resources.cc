@@ -129,6 +129,13 @@ const uchar *get_color_ptr(bTheme *btheme, int spacetype, int colorid)
 
       switch (spacetype) {
         case SPACE_PROPERTIES:
+        /* The Cadex editors are panel columns, so they borrow the Properties
+         * theme rather than adding two ThemeSpace blocks to DNA and two rows
+         * to Preferences > Themes -- the same trade SPACE_PROJECT makes with
+         * space_preferences. Without this the `default:` below hands them the
+         * viewport's grey, which reads as a bug behind panels. */
+        case SPACE_CADEX_CHAT:
+        case SPACE_CADEX_PARAMS:
           ts = &btheme->space_properties;
           break;
         case SPACE_VIEW3D:
@@ -228,7 +235,12 @@ const uchar *get_color_ptr(bTheme *btheme, int spacetype, int colorid)
           break;
         case TH_TEXT:
           if (ELEM(g_theme_state.regionid, RGN_TYPE_UI, RGN_TYPE_TOOLS) ||
-              ELEM(g_theme_state.spacetype, SPACE_PROPERTIES, SPACE_USERPREF, SPACE_PROJECT))
+              ELEM(g_theme_state.spacetype,
+                   SPACE_PROPERTIES,
+                   SPACE_USERPREF,
+                   SPACE_PROJECT,
+                   SPACE_CADEX_CHAT,
+                   SPACE_CADEX_PARAMS))
           {
             cp = btheme->tui.panel_text;
           }

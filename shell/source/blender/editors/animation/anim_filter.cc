@@ -399,6 +399,8 @@ bool ANIM_animdata_context_getdata(bAnimContext *ac)
       case SPACE_STATUSBAR:
       case SPACE_SPREADSHEET:
       case SPACE_PROJECT:
+      case SPACE_CADEX_CHAT:
+      case SPACE_CADEX_PARAMS:
         break;
     }
   }

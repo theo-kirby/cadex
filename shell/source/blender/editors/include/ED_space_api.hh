@@ -42,6 +42,8 @@ void ED_spacetype_console();
 void ED_spacetype_userpref();
 void ED_spacetype_clip();
 void ED_spacetype_project();
+void ED_spacetype_cadex_chat();
+void ED_spacetype_cadex_params();
 void ED_spacetype_statusbar();
 void ED_spacetype_topbar();
 

@@ -1172,6 +1172,24 @@ SpaceProject *CTX_wm_space_project(const bContext *C)
   return nullptr;
 }
 
+SpaceCadexChat *CTX_wm_space_cadex_chat(const bContext *C)
+{
+  ScrArea *area = CTX_wm_area(C);
+  if (area && area->spacetype == SPACE_CADEX_CHAT) {
+    return static_cast<SpaceCadexChat *>(area->spacedata.first);
+  }
+  return nullptr;
+}
+
+SpaceCadexParams *CTX_wm_space_cadex_params(const bContext *C)
+{
+  ScrArea *area = CTX_wm_area(C);
+  if (area && area->spacetype == SPACE_CADEX_PARAMS) {
+    return static_cast<SpaceCadexParams *>(area->spacedata.first);
+  }
+  return nullptr;
+}
+
 void CTX_wm_manager_set(bContext *C, wmWindowManager *wm)
 {
   C->wm.manager = wm;

@@ -726,6 +726,18 @@ def test_column_roles_are_read_off_the_geometry():
           "the chat is not mistaken for the parameters")
 
 
+def test_cadex_editors_are_registered():
+    """Chat and Parameters are editor types, not Properties areas told apart
+    by where they sit."""
+    print("test_cadex_editors_are_registered")
+    space_types = bpy.types.Space.bl_rna.properties['type'].enum_items.keys()
+    for name in ('CADEX_CHAT', 'CADEX_PARAMS'):
+        check(name in space_types, "{:s} is a space type".format(name))
+    for name in ('SpaceCadexChat', 'SpaceCadexParams'):
+        check(hasattr(bpy.types, name),
+              "bpy.types.{:s} exists".format(name))
+
+
 def test_confirming_the_input_sends():
     """Return in the message box sends: Blender commits the field's value
     when the edit ends, and the property's update callback is what turns
@@ -795,6 +807,7 @@ def main():
         test_session_id_round_trips_and_is_per_file()
         test_new_conversation_starts_a_fresh_session()
         test_column_roles_are_read_off_the_geometry()
+        test_cadex_editors_are_registered()
         test_confirming_the_input_sends()
         test_message_box_widget_is_available()
         test_mcp_shim_protocol()

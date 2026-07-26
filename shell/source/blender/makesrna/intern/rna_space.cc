@@ -98,6 +98,18 @@ const EnumPropertyItem rna_enum_space_type_items[] = {
      ICON_VIEW3D,
      "3D Viewport",
      "Manipulate objects in a 3D environment"},
+    /* The two editors that make Cadex what it is sit next to the viewport:
+     * these three are the product, and the menu should say so. */
+    {SPACE_CADEX_CHAT,
+     "CADEX_CHAT",
+     ICON_OUTLINER_OB_LIGHT,
+     "Cadex Chat",
+     "Ask the assistant to build or change the model"},
+    {SPACE_CADEX_PARAMS,
+     "CADEX_PARAMS",
+     ICON_OPTIONS,
+     "Cadex Parameters",
+     "Adjust the parameters the model declares"},
     {SPACE_IMAGE,
      "IMAGE_EDITOR",
      ICON_IMAGE,
@@ -817,6 +829,10 @@ static StructRNA *rna_Space_refine(PointerRNA *ptr)
       return RNA_SpaceSpreadsheet;
     case SPACE_PROJECT:
       return RNA_SpaceProject;
+    case SPACE_CADEX_CHAT:
+      return RNA_SpaceCadexChat;
+    case SPACE_CADEX_PARAMS:
+      return RNA_SpaceCadexParams;
 
       /* Currently no type info. */
     case SPACE_SCRIPT:
@@ -9600,6 +9616,31 @@ static void rna_def_space_project(BlenderRNA *brna)
   RNA_def_property_ui_text(prop, "Active Section", "Choose the category of options to display");
 }
 
+static void rna_def_space_cadex_chat(BlenderRNA *brna)
+{
+  StructRNA *srna;
+
+  srna = RNA_def_struct(brna, "SpaceCadexChat", "Space");
+  RNA_def_struct_sdna(srna, "SpaceCadexChat");
+  RNA_def_struct_ui_text(srna, "Space Cadex Chat", "Cadex chat space data");
+
+  /* The message box lives in RGN_TYPE_EXECUTE, which has no show-region
+   * toggle in rna_def_space_generic_show_region_toggles -- and should not:
+   * a chat editor you cannot type into is not a state worth offering. */
+  rna_def_space_generic_show_region_toggles(srna, (1 << RGN_TYPE_HEADER));
+}
+
+static void rna_def_space_cadex_params(BlenderRNA *brna)
+{
+  StructRNA *srna;
+
+  srna = RNA_def_struct(brna, "SpaceCadexParams", "Space");
+  RNA_def_struct_sdna(srna, "SpaceCadexParams");
+  RNA_def_struct_ui_text(srna, "Space Cadex Parameters", "Cadex parameters space data");
+
+  rna_def_space_generic_show_region_toggles(srna, (1 << RGN_TYPE_HEADER));
+}
+
 void RNA_def_space(BlenderRNA *brna)
 {
   rna_def_space(brna);
@@ -9629,6 +9670,8 @@ void RNA_def_space(BlenderRNA *brna)
   rna_def_space_clip(brna);
   rna_def_space_spreadsheet(brna);
   rna_def_space_project(brna);
+  rna_def_space_cadex_chat(brna);
+  rna_def_space_cadex_params(brna);
 }
 
 }  // namespace blender

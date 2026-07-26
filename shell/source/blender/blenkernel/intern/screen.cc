@@ -1248,7 +1248,9 @@ void BKE_screen_header_alignment_reset(bScreen *screen)
                  SPACE_USERPREF,
                  SPACE_OUTLINER,
                  SPACE_PROPERTIES,
-                 SPACE_PROJECT))
+                 SPACE_PROJECT,
+                 SPACE_CADEX_CHAT,
+                 SPACE_CADEX_PARAMS))
         {
           region.alignment = RGN_ALIGN_TOP;
           continue;
@@ -1261,7 +1263,9 @@ void BKE_screen_header_alignment_reset(bScreen *screen)
                  SPACE_USERPREF,
                  SPACE_OUTLINER,
                  SPACE_PROPERTIES,
-                 SPACE_PROJECT))
+                 SPACE_PROJECT,
+                 SPACE_CADEX_CHAT,
+                 SPACE_CADEX_PARAMS))
         {
           region.alignment = RGN_ALIGN_BOTTOM;
           continue;
