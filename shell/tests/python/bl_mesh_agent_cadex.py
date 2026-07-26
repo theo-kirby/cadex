@@ -125,6 +125,42 @@ def brep_objects():
 
 # -- write_script + ID-map transport ----------------------------------------
 
+def test_startup_layout_is_the_shipped_file():
+    """The Mesh template's layout is a saved screen, not a timer.
+
+    This is the only thing that catches `Mesh/startup.blend` silently failing
+    to load: the app-template stub no longer rebuilds the layout, so a broken
+    or missing startup file degrades to Blender's factory screen rather than
+    raising. See ADR-037.
+    """
+    print("test_startup_layout_is_the_shipped_file")
+    bpy.ops.wm.read_homefile(app_template="Mesh", use_factory_startup=True)
+
+    areas = sorted(area.type for screen in bpy.data.screens
+                   for area in screen.areas)
+    check(areas == ['CADEX_CHAT', 'CADEX_PARAMS', 'VIEW_3D'],
+          "the startup layout is the three Cadex areas: {!r}".format(areas))
+    workspaces = [workspace.name for workspace in bpy.data.workspaces]
+    check(workspaces == ["Simple"],
+          "one workspace, named Simple: {!r}".format(workspaces))
+    check(not bpy.data.objects, "the startup scene is empty")
+
+    viewport = next((area.spaces.active for screen in bpy.data.screens
+                     for area in screen.areas if area.type == 'VIEW_3D'), None)
+    check(viewport is not None and viewport.shading.type == 'SOLID'
+          and viewport.shading.light == 'MATCAP',
+          "the viewport keeps its solid/matcap styling")
+    check(viewport is not None and not viewport.overlay.show_overlays
+          and not viewport.show_region_ui and not viewport.show_region_header,
+          "the viewport keeps its chrome off")
+
+    GATE["startup_areas"] = areas
+
+    # Leave the factory startup loaded: everything after this builds its own
+    # scene from it.
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+
+
 def test_write_script_hydrates(root):
     print("test_write_script_hydrates")
     reset_scene(root)
@@ -890,6 +926,7 @@ def main():
     describe_root = tempfile.mkdtemp(prefix="mesh-cadex-describe-")
     edit_root = tempfile.mkdtemp(prefix="mesh-cadex-edit-")
     try:
+        test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
         scene = bpy.context.scene
         test_picking_fidelity(scene)
