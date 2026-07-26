@@ -287,12 +287,14 @@ depends on. Independent of Phase 8.
       BVHTree and `orphans_purge` coupling — the largest single decoupling
       win available on the shell side. Four tests in `bl_mesh_agent.py` that
       drove the deleted path went too.*
-- [ ] **Delete the app template** (294 lines) that exists purely to suppress
-      Blender's UI. *Not done with ADR-030, deliberately: it is still what
-      suppresses the UI, and a fresh profile already starts in it (ADR-024),
-      so it is already the startup configuration rather than something a user
-      selects. It retires when a startup config replaces it, as its own
-      commit.*
+- [x] **Delete the app template** (294 lines, then 340) that exists purely to
+      suppress Blender's UI. *Landed 2026-07-26 (ADR-037): 340 → 98 lines. The
+      layout is now `Mesh/startup.blend`, which only became possible once the
+      chat and parameter columns were real editor types (ADR-035) — a saved
+      screen can record area types, and until then the area types were lying.
+      What survives enables the add-on and blanks the top bar, neither of
+      which a `.blend` can carry. Guarded by
+      `test_startup_layout_is_the_shipped_file` in the gate.*
 - [x] **Delete the dead publication paths** in
       `CadexScriptedDomainPublication.py` — the robot / FEM / inspection /
       points branches no live domain can reach. *Landed 2026-07-25

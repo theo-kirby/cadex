@@ -1810,9 +1810,8 @@ carries a resize grip, and its C key handling is already chat-shaped:
 `EVT_RETKEY` under `ButtonType::TextBox` inserts a newline with Shift held
 and ends the edit without (`interface_handlers.cc`). Sending on Return is
 then just the `update=` callback on `WindowManager.mesh_chat_input`, which is
-where Blender reports a committed text button. **`shell/`'s seven-file delta
-against upstream is untouched** (`docs/BLENDER-TREE.md` §2) — the whole change
-is `mesh_agent/ui.py`, `agent.py` and the Mesh app template.
+where Blender reports a committed text button. Everything but `confirm_only`
+below is `mesh_agent/ui.py`, `agent.py` and the Mesh app template.
 
 *Clearing a chat that the model still remembers is a lie.* `chat_clear`
 emptied `history` only. The backend outlives the turn and keeps the
@@ -1835,10 +1834,16 @@ input strip started splitting ahead of it. The app template now opens the
 parameters one tick behind (`_open_params`). Anything that adds a fifth area
 inherits this constraint.
 
-**Clicking outside the box sends, too.** A Blender text button has exactly one
-"the edit finished" signal, reached by Return and by clicking elsewhere
-alike, and no way to tell them apart from Python. The alternative was Return
-not sending at all. Escape still cancels the edit without sending.
+**Clicking outside the box must not send, and that took C.** A Blender text
+button has exactly one "the edit finished" signal, reached by Return and by
+clicking elsewhere alike, and no way to tell them apart from Python —
+committing is the only thing Python hears about, so a click elsewhere sent the
+draft. `layout.textbox(..., confirm_only=True)` adds the distinction: the value
+is committed only when the edit ends by explicit confirmation. That is five
+inherited files (`UI_interface_layout.hh`, `interface_intern.hh`,
+`interface_layout.cc`, `interface_handlers.cc`, `rna_ui_api.cc`) and the first
+behavioural — rather than string-literal — entry in the delta table; see
+`docs/BLENDER-TREE.md` §2b. Escape still cancels the edit without sending.
 
 **The box does not grow as you type.** It wraps to its height, scrolls past
 it, and has a grip. The wrapped line count and the box height are both C-side
@@ -1851,8 +1856,248 @@ If the strip is missing — a viewport sidebar, or a column too short to split
 — the chat panel draws the box and buttons inline rather than leave a
 transcript that cannot be answered.
 
-Covered by `test_column_roles_are_read_off_the_geometry`,
-`test_confirming_the_input_sends`, `test_message_box_widget_is_available` and
+Covered by `test_confirming_the_input_sends`,
+`test_message_box_widget_is_available` and
 `test_new_conversation_starts_a_fresh_session` in
 `shell/tests/python/bl_mesh_agent.py`; layout and fallback verified against
 the built bundle, `CADEX-BLENDER-GATE` green.
+
+**Superseded in part by ADR-035.** The input strip's *area* is gone: the
+message box is a `RGN_TYPE_EXECUTE` region of the Cadex Chat editor, which is
+not a header region and so was never subject to the one-row limit that forced
+the fourth area. The two-splits-per-tick constraint and
+`test_column_roles_are_read_off_the_geometry` go with it. What stands is the
+widget, Return-sends, `confirm_only`, and New Chat.
+
+## ADR-035 — Chat and Parameters become editors (2026-07-26)
+
+**Decision.** `SPACE_CADEX_CHAT` and `SPACE_CADEX_PARAMS` are real Blender
+space types — named entries in the editor-type dropdown that split, dock and
+resize exactly like the 3D Viewport. The transcript, the message box and the
+parameter sliders become panels of those two editors. The geometry classifier
+that told three Properties areas apart by comparing `area.x` and `area.y`
+(`_area_roles` and everything hanging off it) is deleted. The script gets a
+view through the **stock Text Editor**, not a third space type.
+
+**Rationale.** The layout was held together by a guess. Chat, the input strip
+and the sliders were not editors: they were three Properties editors pinned to
+the Tool tab, drawing `bl_space_type='VIEW_3D'` sidebar panels that appeared
+there only because the Properties Tool tab mirrors the viewport's Tool-category
+sidebar. Which of the three an area *was* got decided at draw time from its
+coordinates, and every `poll()` hung off that. The cost was everywhere: a
+340-line retrying timer that split areas and monkeypatched two header draw
+functions; the ADR-034 bug where two `screen.area_split` calls could not share
+a tick and the parameters area silently went missing; and an editor-type
+dropdown that still offered a dozen editors, each of which destroyed the
+layout if picked.
+
+*Why the input stops needing an area of its own.* ADR-034 gave the message box
+a fourth **screen area** because header regions are one row tall by
+construction. `RGN_TYPE_EXECUTE` is the answer it was missing:
+`RGN_TYPE_IS_HEADER_ANY` (`DNA_screen_types.h`) covers `HEADER`,
+`TOOL_HEADER`, `FOOTER`, `ASSET_SHELF_HEADER` and `SCRUBBING` and
+deliberately **not** `EXECUTE`, so an execute region is an ordinary sizable
+panel region — `space_project.cc` already uses one that way. The input is now
+a region of the chat editor, `RGN_ALIGN_BOTTOM` with
+`prefsizey = 6 * HEADERY` and user-resizable. The fourth area and the
+two-splits-per-tick constraint both go with it.
+
+*Two editors, not three.* `model.py` already exists as a text datablock with a
+fake user (`model.set_script`), and the Text Editor brings syntax
+highlighting, line numbers and find for free. A third space type would be a
+reimplementation of `space_text` for a buffer we do not even own.
+
+*What they cost.* Both are bare `SpaceLink` headers with no fields of their
+own — transcript scroll is region state, parameter values live in
+`scene.mesh_params`, the model selector is an add-on preference. DNA is
+append-only forever, so that emptiness is the point. Both reuse
+`btheme->space_properties` rather than adding two `ThemeSpace` blocks, and
+both reuse existing icons (`ICON_OUTLINER_OB_LIGHT`, `ICON_OPTIONS`): the
+editor-type dropdown draws the icon from the `rna_enum_space_type_items` row,
+not from `SpaceType::iconid`, so no new artwork and no generated icon sheet.
+
+**Consequences.** Every `poll()` in `ui.py` that answered "which area am I?"
+is gone; `VIEW3D_PT_mesh_params`'s ADR-032 caveat ("the poll is about *where*
+this draws") simply becomes true. `ui.py` goes from 705 lines to 449.
+`MESH_AGENT_OT_toggle_params` keeps its purpose and loses its mechanism: find
+`area.type == 'CADEX_PARAMS'` and close it, or split the viewport and set the
+type. No pointer bookkeeping, no retry timer, because there is no space-data
+swap to wait on.
+
+Headers live in the new `mesh_agent/spaces.py`, not in
+`shell/scripts/startup/bl_ui/` — `bl_ui` is inherited and conservative,
+`mesh_agent` is ours. The price is that a Cadex editor draws an empty header
+with the add-on disabled, which is honest: the editors *are* the add-on's UI.
+
+**The script view is a mirror, and the panel says so.** `get_script` reads the
+text datablock; `write_script` goes to the engine. So a hand edit is visible to
+the assistant immediately but does not reach the engine until **Apply to
+Model** (`MESH_AGENT_OT_adopt_script`) runs. Blender text datablocks have no
+read-only flag to enforce this with, so `CADEX_PT_script` states it rather
+than pretending.
+
+**This is a deliberate, large increase in the inherited-Blender delta**, and it
+reverses the pressure `CLAUDE.md` and `docs/BLENDER-TREE.md` §2 put on that
+number. The case: the delta is *additive* — two new `space_cadex_*`
+directories plus one-line entries in enums, exhaustive switches and CMake
+lists — so it conflicts as insertions rather than as rewritten logic, and
+`-Wswitch` finds the ones that matter; it buys the removal of ~550 lines of
+Python layout hacks and the whole class of bug ADR-034 documents; and Phase 12
+retires the Blender shell wholesale, so the cost has a horizon. Keeping the
+geometry classifier would have cost the same complexity forever.
+`docs/BLENDER-TREE.md` §2 is restructured to say this out loud rather than
+imply it.
+
+Covered by `test_cadex_editors_are_registered` and
+`test_panels_are_homed_on_the_cadex_editors` in
+`shell/tests/python/bl_mesh_agent.py`; driven by hand against the built
+bundle (send, parameters toggle, script view); `CADEX-BLENDER-GATE` green.
+
+## ADR-036 — An editor Cadex does not build is not offered (2026-07-26)
+
+**Decision.** The editor-type menu lists only what Cadex ships: 3D Viewport,
+Cadex Chat, Cadex Parameters, Properties, Outliner, Text Editor, Python
+Console, Info, Preferences and the File Browser. The dope sheet/timeline,
+graph/drivers, NLA, image/UV, shader/compositor/geometry nodes, sequencer,
+spreadsheet, movie clip and the asset browser are gone from it. The mechanism
+is **not registering the space type**: `rna_Area_ui_type_itemf`
+(`rna_screen.cc`) now skips any row whose `BKE_spacetype_from_id` comes back
+null, instead of hardcoding a blacklist.
+
+**Rationale.** Not registering a space type did *not* previously hide it — the
+loop added the item regardless, so picking it left a dead area. One guard
+turns "stop registering it" into "it leaves the menu", which is also the
+*disable* half of the removal protocol in `docs/FREECAD.md` §3: the two steps
+line up instead of fighting.
+
+The enum rows themselves must stay. `ED_area_name()` and `ED_area_icon()`
+(`screen_edit.cc`) index `rna_enum_space_type_items` by `area->spacetype` via
+`RNA_enum_from_value`; deleting rows returns `-1` and reads out of bounds.
+Headings carry `value = 0`, which would collide with `SPACE_EMPTY` under the
+same lookups, so they stay too — the loop instead holds a group label back
+until something survives underneath it, which is what keeps "Animation" from
+being emitted with nothing under it. `SPACE_EMPTY` is exempt from the guard:
+it has no space type by construction and exists for the Python API.
+
+**Consequences, and one correction to the plan this came from.** Dropping the
+editors' `add_subdirectory()` and `LIB` entries — "the tree stays; the build
+stops compiling it" — **does not work and was not done.** The dependency audit
+fails: kept subsystems link against all nine. `ED_operatormacros_action`,
+`ED_operatormacros_graph` and `ED_operatormacros_nla` are called from
+`ED_spacemacros_init`; `ANIM_graph_context_fcurve` and `ANIM_nla_context_strip`
+from the animation editors' shared code; `ED_space_image_*`, `uiTemplateImage`
+and the UV paint tiles from `editors/uvedit` and `sculpt_paint`;
+`ED_node_set_active`, `ed::space_node::*` and `uiTemplateNodeLink` from
+properties and render; `ed::vse::*` and `ed::spreadsheet::*` likewise —
+252 undefined symbols in all. Compiling them out is the *delete* half, and it
+belongs to Phase 13b with the trees. So the C++ change is exactly one thing:
+the nine `ED_spacetype_*()` calls leave `ED_spacetypes_init()`.
+
+Five consequences had to be handled, each verified by launching:
+
+- **Unchecked `SpaceType::create` call sites.** `screen_area_spacelink_add`
+  (`screen_edit.cc`) and `do_version_area_change_space_to_space_action`
+  (`versioning_280.cc`) dereference the result of `BKE_spacetype_from_id`
+  without a null check, and `ED_area_newspace` (`area.cc`) carries a null
+  `area->type` through. Inherited call sites still ask for these: the render
+  result wants `SPACE_IMAGE` (`render_view.cc`), the drivers editor
+  `SPACE_GRAPH` (`screen_ops.cc`). All three now fall back to the viewport the
+  way loading a file that names an unknown space type already does
+  (`area_init_type_fallback`).
+- **`bl_ui` modules.** `space_clip`, `space_dopesheet`, `space_graph`,
+  `space_image`, `space_nla`, `space_node`, `space_sequencer`,
+  `space_spreadsheet` and `space_time` leave `_modules`. They cross-import each
+  other and nothing outside the set imports them, so they go as a group or not
+  at all. `space_toolsystem_toolbar` also stops registering
+  `IMAGE_PT_tools_active`, `NODE_PT_tools_active` and
+  `SEQUENCER_PT_tools_active`: registering a panel against a space type that
+  does not exist raises `"Region not found in space type"`, and that **aborted
+  bl_ui's whole registration loop**, taking the top-bar menus with it.
+- **The asset browser is a `SpaceFile` subtype**, not a space type, so it
+  cannot be hidden by not registering it. It is filtered in
+  `file_space_subtype_item_extend` instead. The file browser itself stays —
+  file dialogs need it.
+- **Operator macros over missing operators.** A space type's operators are
+  registered from its `operatortypes` callback, which no longer runs, so
+  `ED_operatormacros_{node,graph,action,clip,nla,sequencer}` built macros
+  around operators that do not exist. `WM_operatortype_macro_define` survives
+  that, but only by warning on every missing property at startup, so those six
+  calls are now conditional on the space type being registered. The knock-on:
+  four keymap items in `blender_default.py`'s node keymap named a macro
+  sub-operator, which raises in `_init_properties_from_data`; they pass `None`.
+- **Three bundled add-ons.** `cycles` (shader-node panels), `pose_library`
+  (dope sheet and asset browser) and `io_mesh_uv_layout` (appends to the UV
+  editor's menu) each raised on every launch. They are no longer enabled by
+  default — `cycles` and `pose_library` leave
+  `BKE_blendfile_userdef_from_defaults`, `io_mesh_uv_layout` leaves
+  `_addons_hidden_core` in `addon_utils.py`, which is the list that actually
+  decides because it enables unconditionally. All three are still installed.
+
+**Known residue, deliberately left.** A headed launch still prints ~92
+`Warning: property '<name>' not found in item 'OperatorProperties'` lines:
+`blender_default.py` carries keymaps for all nine editors, and a keymap item
+for an operator that does not exist cannot have its properties set. Removing
+them means deleting ~3,000 lines of keymap data from an inherited file, which
+is a large merge liability for cosmetics — that data should go when the trees
+go. They are warnings, not errors, and a keymap item for a missing operator is
+simply never matched. Recorded in `docs/BLENDER-TREE.md` §4.
+
+Covered by `test_editor_menu_is_short` in
+`shell/tests/python/bl_mesh_agent.py`, which asserts on the identifiers the
+menu actually uses — the animation, image, node and file editors surface
+*subtype* identifiers, so asserting on `DOPESHEET_EDITOR` or `GRAPH_EDITOR`
+would have passed vacuously.
+
+## ADR-037 — The layout is a file, not a program (2026-07-26)
+
+**Decision.** `shell/scripts/startup/bl_app_templates_system/Mesh/startup.blend`
+carries the Cadex layout. The app template's timer state machine is deleted;
+what remains is a 98-line stub. This closes `docs/ROADMAP.md` Phase 9's
+"delete the app template".
+
+**Rationale.** The layout became expressible as a saved screen the moment the
+columns became real editors (ADR-035) — a saved screen can only record area
+*types*, and until then the area types were lying. Every other template ships
+a `startup.blend` (81–111 KB) with an `__init__.py` of 874–1,624 bytes,
+against Mesh's 13,746.
+
+`blo_is_builtin_template` (`versioning_defaults.cc`) hardcodes
+`2D_Animation`, `Storyboarding`, `Sculpting`, `VFX`, `Video_Editing`. **"Mesh"
+is not in that list**, so `BLO_update_defaults_startup_blend`'s destructive
+pass — free every stored panel, reset region sizes, rename screens — never
+runs on ours. Only the universal reset of `V2D_IS_INIT` on
+`RGN_TYPE_UI`/`TOOLS`/`TOOL_PROPS` regions applies, and none of our regions is
+one of those. The file loads verbatim.
+
+**What stays in Python, and why it must.** Enabling the add-on:
+`preferences.addons` is `UserDef`, not `Main`, so a startup file cannot carry
+it, and shipping a `Mesh/userpref.blend` would pin the user's theme, paths,
+keymap and autosave as well. Blanking the top bar: `bScreen.flag` has
+`SCREEN_COLLAPSE_STATUSBAR` and no topbar counterpart, so there is nothing to
+save. Everything else — `_apply_simple_ui` and its 40-attempt retry loop,
+`_remove_other_workspaces`, `_collapse_to_viewport`, `_empty_scene`,
+`_hide_foreign_tool_panels`, `_style_props`, `_style_viewport`, `_open_params`,
+`MESH_PANELS`, `_hidden_panel_polls` — is gone. Viewport shading, matcap,
+overlays, region visibility, the single "Simple" workspace and the empty scene
+all save into the file.
+
+**The costs, stated plainly.** A `.blend` is opaque to review and to
+`git diff`; nobody can read the layout, it can only be run. It pins DNA, so a
+later DNA change can silently degrade it — re-author rather than rely on
+zero-fill. It is a git-LFS object (`shell/.gitattributes`, `*.blend`) on a repo
+already near GitHub's free ceiling, and **every re-save is a new object that is
+never reclaimed**, so iterate locally and commit once. Ours is 267 KB, larger
+than the other templates' 81–111 KB and still noise against ~790 MB.
+
+The mitigation for all of it is `test_startup_layout_is_the_shipped_file` in
+`shell/tests/python/bl_mesh_agent_cadex.py`, which loads the template with
+`wm.read_homefile(app_template="Mesh")` and asserts the area types are exactly
+`{VIEW_3D, CADEX_CHAT, CADEX_PARAMS}`, one workspace named "Simple", an empty
+scene, and the viewport's solid/matcap styling and hidden chrome. It also
+emits `startup_areas` into the `CADEX-BLENDER-GATE` line, so the layout is
+evidence rather than a pass/fail. Without it, a `startup.blend` that stopped
+loading would degrade quietly to Blender's factory screen — the stub no longer
+rebuilds anything.
+
+Verified on a wiped profile: `rm -rf` the config directory, launch with
+`--app-template Mesh`, land in the right layout with no timer.

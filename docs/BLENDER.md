@@ -1,6 +1,6 @@
 # BLENDER.md — The Shell
 
-Verified against source: 2026-07-25
+Verified against source: 2026-07-26
 
 **The shell is the product, and since ADR-030 it is in this repository**, at
 `shell/` — a Blender fork whose `mesh_agent` add-on is the interface. Nothing
@@ -10,8 +10,9 @@ which Blender internals the integration depends on.
 
 Companion documents: `docs/INTEGRATION.md` is the wire contract between the
 two halves, and `docs/BLENDER-TREE.md` is the inherited-tree ledger — what is
-kept, what is a removal candidate, and the complete three-file diff against
-upstream Blender. This one is about how the shell works.
+kept, what is a removal candidate, and the complete diff against upstream
+Blender (§2a identity, §2b the Cadex editors, §2c the message box). This one
+is about how the shell works.
 
 **How to run the shell's suites:**
 
@@ -46,7 +47,13 @@ Everything here is `[Cadex-new]` unless marked as upstream Blender.
 - **The additive-only policy ended with Phase 7** (ADR-020 decision 6,
   ADR-024). Shipping one application that works with no configuration needed
   edits to three upstream files; the Cadex bundle identity (ADR-030) reused
-  the same three plus the macOS `Info.plist`.
+  the same three plus the macOS `Info.plist`. **ADR-035 and ADR-036 roughly
+  tripled that surface**, knowingly: owning two space types and not shipping
+  nine others is additive in almost every file it touches, it bought the
+  removal of ~550 lines of Python layout hacks, and Phase 12 retires the
+  Blender shell wholesale. The delta is now grouped by how it ages —
+  `docs/BLENDER-TREE.md` §2a identity, §2b the Cadex editors, §2c the message
+  box — rather than counted as one number.
 - The rule is **"every edit is listed in `docs/BLENDER-TREE.md` §2, kept
   minimal, and justified"** — each row says what changed, why, and what a
   merge conflict in it would mean.
@@ -73,7 +80,8 @@ that `docs/VISION.md` describes, and the protocol client that
 | `mcp_shim.py` | Standalone MCP stdio server spawned by the Claude CLI via `--mcp-config`. No `bpy` import; relays MCP tool calls to the bridge over TCP. |
 | `backend.py` | Spawns `claude -p` as a subprocess per turn; writes the MCP config (shim path/port/token); session continuity via `--resume <session-id>`. |
 | `tools.py` | Tool definitions/executors. Tools: `get_script`, `write_script`, `edit_script`, `set_params`, `inspect_model`, `describe_cad_api`, `get_attached_image`, `scene_summary`, `viewport_screenshot`, `export_stl`, `focus_view`. Marks `write_script`/`edit_script`/`set_params` as mutating for undo counting, and preflights the engine-reaching ones so a missing engine reads as one sentence. |
-| `ui.py` | Chat panel in the 3D-viewport sidebar plus operators (send, cancel, attach image, paste, toggle parameters); the chat input bar is rewired into the Properties header at the bottom of the right panel. Also owns the parameters area — the panel, and the split/close/configure helpers the app template and the toggle operator share. |
+| `ui.py` | The panels of the two Cadex editors — transcript, message box, parameter sliders — plus the operators (send, cancel, new chat, attach image, paste, toggle parameters, rebuild from saved script). No `poll` here asks *where* it is drawing: the space type answers that (ADR-035). |
+| `spaces.py` | Headers for `CADEX_CHAT` and `CADEX_PARAMS`, and the script view: `MESH_AGENT_OT_show_script` (open a Text Editor on the `model.py` mirror) and `CADEX_PT_script`, its sidebar panel with **Apply to Model**. Headers live here rather than in `bl_ui` because `bl_ui` is inherited and this is ours. |
 | `history.py` | Chat transcript as JSON in `bpy.data.texts["mesh_chat.json"]`; persists inside the .blend file. |
 | `capture.py` | Viewport screenshot (base64 PNG) and attached-image loading (downscaled, default max 768 px). |
 | `modes.py` | The Cadex system-prompt overlay and `system_prompt()`. What remains of a three-mode registry after ADR-030 collapsed it to one. |
@@ -87,8 +95,17 @@ that `docs/VISION.md` describes, and the protocol client that
 
 - The **single script** is the artifact, and it lives in the engine's project
   store, not here. `bpy.data.texts["model.py"]` (`use_fake_user=True`) is a
-  **read-only mirror** of it, so the script is visible and searchable in
-  Blender without being editable behind the engine's back.
+  **mirror** of it, so the script is visible and searchable in Blender.
+  `MESH_AGENT_OT_show_script` opens it in the stock **Text Editor** — no
+  custom editor, because that buffer already exists and the Text Editor brings
+  syntax highlighting, line numbers and find for free (ADR-035).
+- The mirror is *soft* read-only, and the sidebar panel says so. Blender text
+  datablocks have no read-only flag, and the two directions are not
+  symmetric: `get_script` reads this buffer, so the assistant sees a hand edit
+  at once, while `write_script` goes to the engine, so the engine does not —
+  until **Apply to Model** (`MESH_AGENT_OT_adopt_script` →
+  `cadex_backend.adopt_saved_script`) runs. Any engine round-trip overwrites
+  the buffer.
 - The scene is a **rebuildable cache** of that script — the same principle
   the engine applies to its document (`docs/XSCRIPT.md`). What the Model
   collection holds is tessellated BREP the engine returned, hydrated by
@@ -100,9 +117,8 @@ that `docs/VISION.md` describes, and the protocol client that
   keep ids stable. The spec JSON is cached in a scene property so sliders
   restore on file load without asking the engine, and the PropertyGroup class
   is only re-registered when the spec JSON changes (prevents a class swap
-  mid-drag). The sliders are drawn by `VIEW3D_PT_mesh_params` in the
-  parameters area — its own screen area, not part of the chat column; see
-  the app template below.
+  mid-drag). The sliders are drawn by `CADEX_PARAMS_PT_parameters`, the sole
+  occupant of the Cadex Parameters editor.
 - Slider drag → `_on_param_update()` → `_schedule_rebuild()` → 0.15 s
   `bpy.app.timers` debounce → one revision-guarded `set_params` to the engine,
   draft-quality tessellation while dragging with a background standard
@@ -141,40 +157,140 @@ that `docs/VISION.md` describes, and the protocol client that
   `ed.undo_push()` is issued, labeled "Mesh: " + the first 60 chars of the
   user prompt. **One user turn = one undo step.**
 
-### The app template: `scripts/startup/bl_app_templates_system/Mesh/`
+### The two Cadex editors
 
-`__init__.py` reshapes Blender into the product layout:
+Chat and Parameters are **real Blender space types** — `SPACE_CADEX_CHAT` and
+`SPACE_CADEX_PARAMS`, named entries in the editor-type dropdown that split,
+dock and resize exactly like the 3D Viewport (ADR-035). Their C side is two
+files, `source/blender/editors/space_cadex_{chat,params}/`, and both are
+deliberately empty of content: everything drawn in them is a panel or header
+registered by the add-on.
 
-- Removes all workspaces but one; collapses all areas to a single 3D viewport;
-  then splits **50/50 vertical** — left half 3D viewport (headers hidden,
-  solid shading, toon matcap), right half a Properties editor pinned to the
-  Tool tab hosting the chat panel.
-- Splits the bottom **30%** off the viewport for the **parameters area**: a
-  second Properties editor on the same Tool tab, header and tab strip hidden,
-  hosting `VIEW3D_PT_mesh_params` alone. Three areas, not two.
-- Blanks the top menu bar; flips the Properties header (which hosts the chat
-  input bar) to the bottom of the right panel; hides foreign Tool-category
-  panels while keeping `VIEW3D_PT_mesh_chat` / `VIEW3D_PT_mesh_params`.
-- Applied via a repeating `bpy.app.timers` state machine because area
-  geometry only settles between redraws.
+**Cadex Chat**, three regions:
 
-The parameters area is an **area** rather than a second panel in the chat
-column so it can be closed and reopened on its own — the `OPTIONS` toggle at
-the end of the chat input bar (`mesh_agent.toggle_params`), which shows
-depressed while the area is open.
+| Region | Draws | Panel |
+|---|---|---|
+| `RGN_TYPE_WINDOW` | the transcript | `CADEX_CHAT_PT_transcript` |
+| `RGN_TYPE_EXECUTE` | the message box and its button row | `CADEX_CHAT_PT_input` |
+| `RGN_TYPE_HEADER` | model selector, Pin Face, the script button | `CADEX_CHAT_HT_header` |
 
-Both columns are pinned to the **Tool** tab, and the two panels sort
-themselves out by area (`mesh_agent.ui._column_role`) rather than by tab. Tool
-is not an arbitrary choice: every other Properties tab draws Blender's
-C-registered `PROPERTIES_PT_context` breadcrumb, whose poll is
-`sbuts->mainb != BCONTEXT_TOOL` (`buttons_context.cc`). Being a C panel it is
-absent from `bpy.types`, so the template's hide pass cannot reach it, and on
-any other tab it puts a stray context row above the sliders.
+`RGN_TYPE_EXECUTE` is the load-bearing part. `RGN_TYPE_IS_HEADER_ANY`
+(`DNA_screen_types.h`) covers `HEADER`, `TOOL_HEADER`, `FOOTER`,
+`ASSET_SHELF_HEADER` and `SCRUBBING` and deliberately **not** `EXECUTE` — so
+an execute region is an ordinary sizable panel region, not subject to the
+one-row limit that once forced the message box into a screen area of its own
+(ADR-034). It is `RGN_ALIGN_BOTTOM`, `prefsizey = 6 * HEADERY`, and
+user-resizable.
 
-`VIEW3D_PT_mesh_params`'s `poll` is about *where* it draws, never about
-whether there is anything to show. The old one hid the panel whenever the
-script declared no parameters, which is what made it appear and disappear on
-its own; an empty model now says so instead (ADR-032).
+**Cadex Parameters**, two regions: `RGN_TYPE_WINDOW` for the sliders
+(`CADEX_PARAMS_PT_parameters`) and a header. `mesh_agent.toggle_params` — the
+`OPTIONS` button at the end of the chat button row, depressed while the editor
+is open — closes it, or splits the viewport and sets `area.type`. That is the
+whole operator now: no pointer bookkeeping and no retry timer, because there
+is no space-data swap to wait on.
+
+Neither space type has DNA fields of its own. Transcript scroll is region
+state, parameter values live in `scene.mesh_params`, the model selector is an
+add-on preference, and the draft message is a `WindowManager` property. DNA is
+append-only forever, so keep it that way.
+
+**What this replaced.** Until 2026-07-26 the three columns were three
+*Properties* editors pinned to the Tool tab, drawing `bl_space_type='VIEW_3D'`
+sidebar panels that only appeared there because the Properties Tool tab
+mirrors the viewport's Tool-category sidebar. Which of the three an area *was*
+got decided at draw time by comparing `area.x` and `area.y`, and every `poll()`
+hung off that. `CADEX_PARAMS_PT_parameters` still says what ADR-032 said — an
+empty model says so rather than the panel vanishing — but the caveat that its
+poll was "about *where* this draws" is simply gone.
+
+### The editor menu is short
+
+The dropdown offers only what Cadex builds: 3D Viewport, Cadex Chat, Cadex
+Parameters, Properties, Outliner, Text Editor, Python Console, Info,
+Preferences, File Browser. The dope sheet, graph editor, NLA, image/UV editor,
+node editors, sequencer, spreadsheet, movie clip editor and asset browser are
+not offered, because each destroyed the layout if picked and none has a use in
+a CAD app.
+
+The mechanism is **not registering the space type**: `rna_Area_ui_type_itemf`
+(`makesrna/intern/rna_screen.cc`) skips any row whose `BKE_spacetype_from_id`
+returns null, so the nine `ED_spacetype_*()` calls simply left
+`ED_spacetypes_init()` (ADR-036). The enum rows themselves must stay —
+`ED_area_name()` and `ED_area_icon()` index `rna_enum_space_type_items` by
+`area->spacetype`. Their trees are still compiled: kept subsystems reference
+252 symbols across them, so compiling them out is Phase 13b work, not this.
+
+Consequences worth knowing if you touch this: their `bl_ui` modules are out of
+`_modules` (as a group — they cross-import each other); the asset browser is a
+`SpaceFile` *subtype* and is filtered in `file_space_subtype_item_extend`
+instead; and three bundled add-ons (`cycles`, `pose_library`,
+`io_mesh_uv_layout`) are no longer enabled by default because each registers
+against an editor that no longer exists.
+
+### The startup file: `scripts/startup/bl_app_templates_system/Mesh/`
+
+**The layout is `startup.blend`, not code** (ADR-037). It became expressible as
+a saved screen the moment the columns became real editors, because a saved
+screen can only record area *types* — and until then the area types were
+lying. Viewport left, Cadex Chat right at full height, Cadex Parameters under
+the viewport; one workspace named "Simple"; an empty scene; solid shading with
+the toon matcap, overlays and regions off. All of that is space data and saves
+into the file.
+
+`blo_is_builtin_template` (`versioning_defaults.cc`) does not list "Mesh", so
+`BLO_update_defaults_startup_blend`'s destructive pass — free every stored
+panel, reset region sizes, rename screens — never runs on ours. That is
+load-bearing: do not add "Mesh" to that list.
+
+`__init__.py` is 98 lines and does two things, both of which a `.blend`
+cannot carry:
+
+- **Enables the add-on.** `preferences.addons` is `UserDef`, not `Main`.
+  Shipping a `Mesh/userpref.blend` would work and would also pin the user's
+  theme, paths, keymap and autosave, so this stays four lines of Python.
+- **Blanks the top menu bar.** `bScreen.flag` has `SCREEN_COLLAPSE_STATUSBAR`
+  and no topbar counterpart, so there is nothing to save.
+
+To re-author the layout: launch, arrange by hand, `File > Defaults > Save
+Startup File`, then copy `<config>/Mesh/startup.blend` over the one in the
+tree. **Do it in one commit** — the file is git-LFS-tracked and every re-save
+is a new object that is never reclaimed. `test_startup_layout_is_the_shipped_file`
+in `bl_mesh_agent_cadex.py` is what catches it silently failing to load, and
+it puts `startup_areas` in the `CADEX-BLENDER-GATE` line as evidence.
+
+### The message box, and what sends it
+
+`draw_chat_input` uses `layout.textbox()` — a text-box widget
+(`ButtonType::TextBox`), not a text field. It wraps onto as many lines as it
+is tall, scrolls when the message outgrows them, and carries a grip for
+making it taller.
+
+**Return sends; Shift+Return puts in a newline.** The second half is the
+widget's own C behaviour (`interface_handlers.cc`, `EVT_RETKEY` under
+`ButtonType::TextBox`). The first half is the `update=` callback on
+`WindowManager.mesh_chat_input`: Blender commits a text button's value when
+the edit ends, and that callback is the only place Python hears about it.
+
+**Clicking outside the box does not send.** A Blender text button has exactly
+one "the edit finished" signal, reached by Return and by a click elsewhere
+alike, and committing is the only thing Python hears about — so without help,
+a stray click sent the draft. `layout.textbox(..., confirm_only=True)` adds
+the distinction on the C side, and it is the one behavioural edit in the
+inherited-Blender delta (`docs/BLENDER-TREE.md` §2c). Escape still cancels the
+edit without sending.
+
+What the widget does *not* do is grow by itself as you type. The wrapped line
+count (`ButtonTextBox::last_total_lines`) and the box's height
+(`TextboxState::visible_lines`) both live in C, reachable from the layout API
+only as the `initial_visible_lines` argument at the moment the region first
+creates the state.
+
+That is now a *choice* rather than a wall. The box lives in a region of an
+editor we own, and `RGN_FLAG_DYNAMIC_SIZE` lets a region size itself from its
+`ARegionType::layout()` callback (`DNA_screen_types.h`) — so a custom layout
+callback could set `sizey` from the wrapped line count without touching
+inherited Blender at all. Not built; recorded in ADR-035 as the obvious
+follow-up.
 
 ## 3. Blender internals relevant to the shell integration
 
@@ -188,7 +304,7 @@ All upstream Blender code, listed as orientation (paths relative to
 | Attributes / CustomData | mesh attribute system (accessed via BMesh/Mesh APIs) | Where per-face/per-edge **BREP ID maps** land when cadexd streams tessellated shapes, so picking can resolve back to `@face-N` / `@edge-N` pins. |
 | DNA/RNA | `source/blender/makesdna/`, `source/blender/makesrna/` | Blender's struct + reflection system; how `scene.mesh_params` properties exist; a model for parameter reflection (see `docs/IDEAS.md`). |
 | Depsgraph | `source/blender/depsgraph/` | Evaluation/dirty-propagation if cadexd outputs ever become depsgraph-integrated rather than rebuild-on-demand. |
-| Window manager / editors | `source/blender/windowmanager/`, `source/blender/editors/` | Layout, operators, event handling — what the app template scripts against. |
+| Window manager / editors | `source/blender/windowmanager/`, `source/blender/editors/` | Layout, operators, event handling. `editors/space_cadex_{chat,params}/` are ours and live here (ADR-035); `space_project/` is the upstream file they were modelled on. |
 | Undo | `source/blender/blenkernel/intern/undo_system.cc`, `blender_undo.cc` (memfile), headers `BKE_undo_system.hh` / `BKE_blender_undo.hh` | Memfile snapshot undo; why one `undo_push` per turn is cheap and sufficient. |
 
 ## 4. The shell's own machinery (Phase 7)

@@ -1,6 +1,6 @@
 # BLENDER-TREE.md — Inherited Shell Substrate Inventory
 
-Verified against source: 2026-07-25
+Verified against source: 2026-07-26
 
 `shell/` is a Blender fork. This is its ledger — what we keep, what is
 slated for removal, what is already gone — the peer of `docs/FREECAD.md`
@@ -28,20 +28,32 @@ These files exist in no upstream Blender and cannot conflict with one.
 
 | Path | What | Lines |
 |---|---|---|
-| `shell/scripts/addons_core/mesh_agent/` | the add-on: chat, params panel, the cadexd protocol client, hydration, picking | 4,577 (17 files) |
-| `shell/scripts/startup/bl_app_templates_system/Mesh/` | the app template that suppresses Blender's UI and lays out the Cadex workspace | 294 |
-| `shell/tests/python/bl_mesh_agent{,_cadex}.py` | the agent suites; `bl_mesh_agent_cadex.py` prints the `CADEX-BLENDER-GATE` evidence line | 1,522 (2 files) |
+| `shell/scripts/addons_core/mesh_agent/` | the add-on: chat, params, headers, the cadexd protocol client, hydration, picking | 5,005 (18 files) |
+| `shell/source/blender/editors/space_cadex_chat/` | the Cadex Chat editor: transcript, message box, header (ADR-035) | 202 |
+| `shell/source/blender/editors/space_cadex_params/` | the Cadex Parameters editor (ADR-035) | 170 |
+| `shell/scripts/startup/bl_app_templates_system/Mesh/` | the app template: `startup.blend` carries the layout, `__init__.py` enables the add-on and blanks the top bar (ADR-037) | 98 + a 267 KB `.blend` |
+| `shell/tests/python/bl_mesh_agent{,_cadex}.py` | the agent suites; `bl_mesh_agent_cadex.py` prints the `CADEX-BLENDER-GATE` evidence line | 1,793 (2 files) |
 
 The add-on was 5,714 lines across 20 files at import; ADR-030 took it to
-4,577 across 17 by deleting the local bpy modes. Counted 2026-07-25 — treat
-these as of that date, not as a contract.
+4,577 across 17 by deleting the local bpy modes; ADR-035 added `spaces.py`
+and took ~250 lines of geometry machinery out of `ui.py` (705 → 449). The app
+template was 294 lines, then 340, and is now 98 because the layout is a file.
+Counted 2026-07-26 — treat these as of that date, not as a contract.
 
 ## 2. Modified upstream files — the whole delta
 
-Seven files in six changes, and that is the entire edit surface against
-stock Blender. Keep
-it that way: every addition here is a future merge conflict, and the reason
-the shell was cheap to absorb is that this table is short.
+Two kinds of edit, and they age very differently. **2a** is product identity:
+string literals and guarded CMake blocks, seven files, and it must stay seven.
+**2b** is the price of owning editors and of not shipping the ones we do not
+want (ADR-035, ADR-036) — a deliberate, bounded investment that roughly
+tripled the surface. **2c** is the in-flight message-box work.
+
+Every addition here is a future merge conflict. The distinction that matters
+is *how* it conflicts: 2a and most of 2b conflict as insertions the compiler
+finds, while a rewritten function body conflicts as logic. Phase 12 (ADR-025)
+retires the Blender shell wholesale, which is the horizon on all of it.
+
+### 2a. Product identity — seven files, and they stay seven
 
 | File | Change | Why | On conflict |
 |---|---|---|---|
@@ -56,6 +68,41 @@ the shell was cheap to absorb is that this table is short.
 rejected: a data default in a DNA header conflicts as a data blob, whereas
 argument-parsing code conflicts as logic. The same escape hatch
 (`--app-template default`) exists either way.
+
+### 2b. The Cadex editors — ADR-035 and ADR-036
+
+Adding a space type to Blender means touching every exhaustive `switch` over
+`eSpace_Type`. These are mechanical, `-Wswitch` finds the ones that matter,
+and their number is a property of Blender's design rather than of ours. A
+conflict here is a one-line re-add per row.
+
+| File | Change | On conflict |
+|---|---|---|
+| `makesdna/DNA_space_enums.h` | `SPACE_CADEX_CHAT = 25`, `SPACE_CADEX_PARAMS = 26`; `SPACE_TYPE_NUM` bumped | Append only — the header says so. Renumbering breaks every saved `.blend`. |
+| `makesdna/DNA_space_types.h` | two bare `SpaceLink`-header structs | Re-add. They have no fields and must not gain any: DNA is append-only forever. |
+| `editors/include/ED_space_api.hh` | two declarations | Re-add. |
+| `editors/space_api/spacetypes.cc` | two `ED_spacetype_cadex_*()` calls added; **nine removed** (ADR-036); six `ED_operatormacros_*` made conditional | The removals are the load-bearing half: this list *is* the editor menu. Take upstream's additions, then re-apply both edits. |
+| `editors/CMakeLists.txt`, `editors/space_api/CMakeLists.txt` | two `add_subdirectory` / two `LIB` entries | Re-add. The hidden editors keep theirs — see ADR-036 on why compiling them out does not work. |
+| `makesrna/intern/rna_space.cc` | two `rna_enum_space_type_items` rows, two `rna_Space_refine()` cases, `rna_def_space_cadex_*()` + calls | Rows go under the `General` heading, after `SPACE_VIEW3D`. |
+| `makesrna/intern/rna_screen.cc` | `rna_Area_ui_type_itemf`: skip unregistered space types, hold group headings back until something survives under them | The one behavioural edit in 2b. Re-apply inside the loop; the enum rows themselves must never be deleted (`ED_area_name` indexes them). |
+| `windowmanager/intern/wm_draw.cc`, `editors/interface/templates/interface_template_search_menu.cc`, `editors/animation/anim_filter.cc`, `blenkernel/intern/grease_pencil_convert_legacy.cc` | two cases each in exhaustive switches | `-Wswitch` fails the build if you forget. |
+| `editors/interface/resources.cc` | both types mapped to `btheme->space_properties` (two sites) | Re-add, else the `default:` branch hands them the viewport's grey. |
+| `blenkernel/BKE_context.hh`, `blenkernel/intern/context.cc` | `CTX_wm_space_cadex_chat()` / `_params()` + forward decls | Re-add. |
+| `python/intern/bpy_rna_callback.cc` | `RNA_SpaceCadexChat` / `Params` → space id | Needed for `draw_handler_add`. |
+| `blenkernel/intern/screen.cc` | both types added to the header/footer alignment lists | Keeps their headers pinned to the top like the other panel-column editors. |
+| `editors/screen/area.cc`, `editors/screen/screen_edit.cc`, `blenloader/intern/versioning_280.cc` | null-guard three `SpaceType::create` paths, falling back to the viewport | **Required by ADR-036.** Inherited call sites still ask for `SPACE_IMAGE` (render result) and `SPACE_GRAPH` (drivers editor); without these it is a null deref. |
+| `editors/space_file/space_file.cc` | `file_space_subtype_item_extend` drops the asset-browser item | The asset browser is a `SpaceFile` subtype, not a space type, so not-registering cannot hide it. |
+| `blenkernel/intern/blendfile.cc`, `scripts/modules/addon_utils.py` | `cycles`, `pose_library`, `io_mesh_uv_layout` no longer enabled by default | Each registers against an editor we do not build and raised on every launch. Still installed. |
+| `windowmanager/intern/wm_operators.cc` | 24 `WM_modalkeymap_assign` calls for missing operators removed | Each was a `CLOG_ERROR` per launch. |
+| `scripts/startup/bl_ui/__init__.py` | nine `space_*` modules leave `_modules` | They cross-import each other; remove as a group or not at all. |
+| `scripts/startup/bl_ui/space_toolsystem_toolbar.py` | image/node/sequencer tool panels no longer registered | Registering against a missing space type raises and **aborts bl_ui's whole registration loop**. |
+| `scripts/presets/keyconfig/keymap_data/blender_default.py` | four node keymap items pass `None` instead of macro sub-operator properties | Raises in `_init_properties_from_data` otherwise. The rest of the dead keymaps stay — see §4. |
+
+### 2c. The message box — ADR-034
+
+| File | Change | On conflict |
+|---|---|---|
+| `editors/include/UI_interface_layout.hh`, `editors/interface/interface_intern.hh`, `editors/interface/interface_layout.cc`, `editors/interface/interface_handlers.cc`, `makesrna/intern/rna_ui_api.cc` | `confirm_only` on the text-box widget: commit the value only when the edit ends by explicit confirmation | The first *behavioural* edit in this table rather than a literal or an insertion, and the one most likely to conflict as logic. Re-apply inside `ui_textedit_end` / the layout API. |
 
 ## 3. Kept — the shell stands on these
 
@@ -81,7 +128,8 @@ tessellated BREP on screen.
 | `WITH_CYCLES` → `shell/intern/cycles` | ~48 MB source, and by inspection the single largest block of build time | A path tracer. Cadex renders solid-shaded BREP tessellation. |
 | `shell/tests/files/` | 784 MB | Blender's own render/regression fixtures. The single biggest line item in the working tree. Nothing in the four gate suites reads it. |
 | `shell/locale/` | 80 MB | Translations for a UI the app template hides. |
-| the VSE, grease pencil, the compositor | — | Whole editors the Cadex layout never opens. |
+| the nine unregistered editors: `space_action`, `space_clip`, `space_graph`, `space_image`, `space_nla`, `space_node`, `space_script`, `space_sequencer`, `space_spreadsheet` | — | **Disabled 2026-07-26 (ADR-036)**: not registered, so not in the editor menu. Compiling them out is the delete half and needs real work — kept subsystems reference 252 symbols across them. Deleting them also retires ~3,000 lines of now-dead keymap data in `blender_default.py`, which is what still prints ~92 `property ... not found` warnings on a headed launch. |
+| grease pencil, the compositor | — | Whole editors the Cadex layout never opens. |
 | `shell/release/datafiles/` (unused parts) | — | Audit before touching: the matcap the viewport style asks for lives here. |
 
 The engine half has its own list — `src/Gui` (Phase 8), `src/Mod/{Start,Test,Help}`
@@ -97,13 +145,25 @@ verifiable against `CADEX-BLENDER-GATE`.
 Not inherited — ours, and listed here so the two halves of the shell's
 shrinkage are in one place.
 
-- **The app template mechanism** (294 lines). It exists purely to suppress
-  Blender's UI. It goes when a startup configuration replaces it, as its own
-  commit — deleting it before then just restores stock Blender's interface
-  (`docs/ROADMAP.md` Phase 9).
+Nothing is currently scheduled. The app template mechanism, the one entry this
+section carried, **landed 2026-07-26** — see §6.
 
 ## 6. Already deleted
 
+- **The app template's layout machinery** (ADR-037, ROADMAP Phase 9):
+  `_apply_simple_ui` and its 40-attempt retry loop, `_remove_other_workspaces`,
+  `_collapse_to_viewport`, `_empty_scene`, `_hide_foreign_tool_panels`,
+  `_style_props`, `_style_viewport`, `_open_params`, `MESH_PANELS`,
+  `_hidden_panel_polls`, `_set_area_type`, `_reregister_with_draw`'s
+  `PROPERTIES_HT_header` swap. 340 lines → 98. The layout is
+  `Mesh/startup.blend`; what survives enables the add-on and blanks the top
+  bar, neither of which a `.blend` can carry.
+- **The geometry classifier** (ADR-035): `mesh_agent/ui.py`'s `_area_roles`,
+  `_area_with_role`, `_column_role`, `chat_area`, `input_area`,
+  `open_params_area`, `close_params_area`, `open_input_area`,
+  `_configure_params_area`, `draw_chat_input_header`, and the constants
+  `PARAMS_CONTEXT`, `_COLUMN_SLACK`, `INPUT_AREA_UNITS`. The space type is the
+  answer now. 705 lines → 449.
 - **The local bpy modes** (ADR-030, Phase 9): `cad_api.py`, `validation.py`,
   `scene_graph.py`, the local half of `model.py` / `model_api.py` /
   `tools.py`, `modes.py`'s CAD overlay and mode registry, the mode dropdown,
