@@ -101,6 +101,23 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   into the search lattice; mesh obstacles are their bounding box, so a
   concave body belongs in `avoid` as the part solid it is, and the two
   components a cable lands on do not belong in its `avoid` at all.
+- `part.bundle()` routes several wires along **one** path (ADR-057,
+  **experimental**): given one `(start_port, end_port)` pair per conductor,
+  it searches a single route at the bundle's outer diameter, lays the
+  conductors about that shared centreline — `style="twisted"` helically, or
+  `style="flat"` side by side — and sweeps the one named by `conductor`, so N
+  conductors are N calls differing only in that index and cost one search
+  between them. One `solid`, and therefore one model-tree row, per conductor:
+  a compound would hydrate as a single row with no way to name a wire inside
+  it. The order of `connections` is the order around the bundle, which is how
+  the caller says which wire sits where. A twisted lay's radius is computed
+  so no two conductors touch, which only has a solution when
+  `twist_pitch_mm > len(connections) * gauge_mm`; a flat lay's `spacing_mm`
+  defaults to `gauge_mm`, so its conductors are separate tangent solids with
+  no web between them. `up` orients a ribbon where the run starts and is
+  carried along it rather than re-levelled. Everything else — `avoid`,
+  `clearance_mm`, `slack`, `cell_mm`, `min_bend_radius_mm` — means what it
+  does on `part.cable` and applies to the bundle as a whole.
 - Outputs are evaluated per domain in fixed order sketcher → part →
   partdesign → mesh → assembly, reusing the per-domain evaluators and
   serializers.

@@ -204,6 +204,7 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "loft",
             "sweep",
             "cable",
+            "bundle",
             "ruled_surface",
             "filled_surface",
             "fuse",

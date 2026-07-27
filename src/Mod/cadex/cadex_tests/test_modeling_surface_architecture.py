@@ -203,6 +203,9 @@ def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None
         # The wire router part.cable searches with: pure Python, imported by
         # the part worker inside the sandbox, so it is staged too (ADR-056).
         "CadexRouting.py",
+        # The multi-conductor lay part.bundle places around that route: pure
+        # Python, staged for the same reason (ADR-057).
+        "CadexBundle.py",
         "cadex_partdesign_api.py",
         "cadex_partdesign_worker.py",
         "cadex_mesh_api.py",

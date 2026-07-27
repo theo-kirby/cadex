@@ -683,6 +683,50 @@ pytest src/Mod/cadex/cadex_tests/differential/ --domain=<mesh|part|sketcher|part
 | OCCT version drift re-indexes saved scripts | Pin the version; gate the enumeration |
 | Stall midway | Order chosen so every resting place is shippable: engine done + Blender shell is a product |
 
+## Off-phase — `part.cable` and `part.bundle`, experimental (ADR-056, ADR-057, 2026-07-27)
+
+Procedural wire routing landed on **no phase**. It is new scope, not a work
+item any phase declared, and it is recorded here as experimental rather than
+checked off against something it does not belong to.
+
+What shipped: two part ops, `part.cable` and `part.bundle`, plus
+`CadexRouting.py` and `CadexBundle.py`; no shell code and no protocol change
+(`OP_ARG_SPECS` untouched, so the goldens and `docs/INTEGRATION.md`'s op
+table are unaffected). `wcv8.cadex` is wired with 22 conductors across seven
+routes: a twisted battery pair, three twisted phases per motor, and two
+four-way flat ribbons.
+
+`part.bundle` (ADR-057) lays N conductors about one shared centreline and
+publishes one row per conductor. It reuses `part.cable`'s corridor, search,
+spline fit and sweep wholesale — the extraction that made them shared changed
+no numerics, proved by rebuilding the drone to an unchanged digest. What is
+its own is the frame and the offsets, in `CadexBundle.py`.
+
+What makes them experimental, and what would settle it:
+
+- **Ports are literals.** Selector-anchored ports — so a port rides the
+  geometry when the part changes, per the ADR-029 rule — are the obvious next
+  step and are not built. `resolve_pin` already returns `center_mm` and
+  `normal`, which is exactly a port, so the pick→port path needs no new code.
+- **Mesh obstacles are bounding boxes.** Fine for boards and motors, wrong
+  for anything concave; the workaround is to pass such a body as a part
+  solid.
+- **Cost is not yet interactive.** ~0.75 s per cable on the drone, and a
+  slider drag pays full price because moving a port invalidates the memo.
+  Bundles help rather than hurt: the drone's 22 conductors rebuild in 17.0 s
+  against 13.3 s for the 7 single wires they replaced, because a bundle is
+  one search and N sweeps and a sweep is the cheap half.
+- **A bundle's conductors do not fan out by port position.** Conductor `k`
+  takes lay position `k`, so a `connections` list ordered against the pad
+  layout crosses once near the breakout. Reordering the list fixes it; doing
+  it automatically is not possible in general, because on a twisted run the
+  phase rotates along the route and the two ends cannot both be matched.
+- **`CadexRouting._sag` folds a run that is parallel to Z**, because sag is
+  applied along −Z regardless of the run's own direction. Pre-existing and
+  shared with `part.cable`, where it is silent; `part.bundle` refuses on it
+  via its bend floor. Fixing it moves accepted digests, so it needs its own
+  ADR — see ADR-057's closing note.
+
 ## Later — identified, not scheduled
 
 - **A1: `display` on `open_project`.** Would fold the restore pass and the

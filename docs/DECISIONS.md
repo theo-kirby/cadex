@@ -3936,3 +3936,166 @@ the modal running rather than cancelling — which is also what absorbs the
 release of the very click that started it, since that one lands on the
 button. And `CADEX_CHAT` joins the redraw set, because the pinned count is
 drawn in its header and a header does not repaint on its own.
+
+## ADR-057 — Wires come in bundles: `part.bundle` (2026-07-27)
+
+**Decision.** One new part operation, `part.bundle(connections, *, gauge_mm,
+conductor, style, twist_pitch_mm, left_handed, spacing_mm, up, breakout_mm,
+clearance_mm, avoid, slack, min_bend_radius_mm, cell_mm, label)`. It takes
+one `(start_port, end_port)` pair **per conductor**, searches **one** route
+for all of them, lays the conductors about that shared centreline — twisted
+helically or flat side by side — and sweeps the one named by `conductor`.
+Output type `solid`. The lay geometry lives in a new pure-Python module,
+`src/Mod/cadex/CadexBundle.py`, staged into the sandbox by filename like
+`CadexRouting.py` before it.
+
+**Why an addition, in a tree whose policy is to remove more than it adds.**
+ADR-056 gave the drone a harness of single wires, and a real harness has
+almost none. A battery lead is a red/black pair, a brushless motor takes
+three phases, an I2C run is four conductors. Modelled as N independent
+`part.cable` calls those route independently, drift apart, cost N searches,
+and do not look like the object. The alternative to adding an op was asking
+the model to author the lay in the script — N splines with hand-computed
+helical offsets — which is exactly the "waypoints baked into the script"
+that ADR-056 forbids, and it would go stale the moment a port moved.
+
+Nearly all of it is reuse: the corridor, the obstacle rasterisation, the
+search, the spline fit, the sweep and the bend check are `part.cable`'s,
+lifted into `_route_corridor` and `_sweep_conductor` in a first commit that
+changed no numerics — proved by rebuilding `wcv8.cadex` to the same digest,
+`1555d0d5…`. What is genuinely new is a frame along the shared centreline
+and the offsets from it: arithmetic, no search, no kernel.
+
+**One row per conductor, not a compound.** A compound publishes as one
+`Part::Feature`, tessellates into one mesh with N disconnected islands, and
+hydrates as **one** shell row; nothing records which solid a face belongs to,
+and `part.subshape` can only pick a solid out of it by `near_point` or area.
+Per-conductor rows keep every wire selectable, colourable and measurable, and
+match ADR-056's own "one output per wire". Confirmed against a live document:
+seven `part.bundle` calls publish seven `Part::Feature` rows.
+
+**The lay radius is solved, not asserted — the plan's closed form was wrong.**
+The obvious radius puts N circles of diameter `d` touching on a circle,
+`R = (d/2)/sin(pi/N)`. That is the condition for two neighbours to touch
+*within one cross-section*, and neighbouring helices do not reach their
+closest approach within one cross-section. For phase offset `dphi` and axial
+offset `u` the squared centre distance is
+
+    f(u) = 2 R^2 (1 - cos(2*pi*u/P - dphi)) + u^2
+
+and `f'(0) = -2 R^2 (2*pi/P) sin(dphi) < 0`, so `u = 0` is never the minimum.
+Measured at the chord radius:
+
+| N | gauge | pitch | closest approach | overlap |
+|---|-------|-------|------------------|---------|
+| 2 | 1.0   | 10    | 1.000            | none    |
+| 3 | 1.0   | 8     | 0.971            | 0.029   |
+| 4 | 1.0   | 10    | 0.950            | 0.050   |
+| 6 | 1.2   | 15    | 1.096            | **0.104** |
+
+Every `N >= 3` case interpenetrates, by up to 8.7% of the gauge — and two
+solids overlapping by 0.1 mm still pass `isValid()` and still render, which
+is the worst kind of wrong. `N = 2` is the one exact case, because antipodal
+helices *do* pinch at `u = 0`; the twisted pair is free. So `bundle_radius`
+bisects for the smallest radius at or above the chord radius that keeps every
+pair a gauge apart, with fixed iteration counts so it stays a pure function
+of its inputs. As `R` grows the minimum migrates to `u = P/N`, so a lay
+exists **iff `twist_pitch_mm > len(connections) * gauge_mm`**; below that the
+solve runs away and the op refuses with that floor named.
+
+**A rotation-minimising frame, not Frenet.** Frenet's normal is defined by
+the curvature vector, so it is undefined where the path is straight and
+reverses at every inflection — and a routed centreline is near-straight runs
+with S-bends around obstacles, so inflections are the normal case. Each one
+would snap the whole bundle 180 degrees mid-run. The frame is carried by the
+double-reflection method of Wang et al.: O(1) per sample, no trigonometry,
+exactly reproducible. Measured on one S-bend, Frenet's normal flips three
+times where the carried frame turns at most 2.26 degrees per sample, tracking
+the path's own bending.
+
+**`up` seeds the ribbon, it does not level it.** A flat lay spreads along
+`tangent x up`, so the default `(0, 0, 1)` makes a ribbon lie flat rather
+than stand on edge. That cross product has no direction where the run is
+parallel to `up` — a vertical run, which is the single most common harness
+geometry — so `up` is used once, to seed the frame, and the frame is carried
+from there. Levelling pointwise instead would have to be guarded at every
+sample and would still spin where the guard fired. It is also what a real
+ribbon does: it carries its orientation along and twists as it bends.
+
+**The ends are a blend, not a stub.** The first attempt gave each conductor a
+stub from its pad to a stand-off and then jumped to its place in the lay.
+That puts a 90-degree corner where the lateral move has no axial room; the
+interpolating spline overshoots, and the swept circle around the overshoot
+self-intersects into a solid that is closed, valid and **39% short on
+volume**. Instead each conductor blends between its own pad and its lay
+position over `breakout_mm` of arc, with a raised cosine whose derivative
+vanishes at both ends, so it leaves the pad along the run and joins the lay
+tangentially and there is no corner anywhere. The blend is exact at both
+ends, so a conductor lands precisely on its pad.
+
+**Stand-off and breakout are two different lengths.** The stand-off is how
+far off the surface the search starts (`clearance + diameter/2`, as
+`part.cable` computes it); the breakout is the arc the fan-out is spread
+over, and wants to be much longer. Using one number for both pushes the
+search anchors far past the pads, and on a short board-to-board hop the route
+has to come back in — a hairpin that measured a 0.075 mm bend radius on the
+drone's 5.8 mm battery lead.
+
+**True Frenet in the sweep, contrary to expectation.** `makePipeShell`'s
+corrected-Frenet mode (`isFrenet=False`) was the obvious choice for a spine
+whose curvature dips through zero. Measured, it collapses helical spines: up
+to **51% of the volume missing** on a six-way lay, still returning one closed
+valid solid. True Frenet held every measured configuration to within 0.62%.
+The section is a circle centred on the spine, so in principle the mode cannot
+matter; it does, so the measurement decides and the test pins it.
+
+**One search, by memo.** `_SHAPE_MEMO` is keyed on the whole payload and
+`conductor` is part of it, so without a second memo each conductor would
+re-route. `_BUNDLE_ROUTES` is keyed on the payload with `conductor` and
+`label` stripped — a deny-list, because forgetting a future cosmetic field
+costs one wasted search while forgetting a route-affecting one would return
+the wrong wire. It is cleared in `reset_part_shape_memo` alongside
+`_SHAPE_MEMO`: this holds a *route*, and a route leaking into another request
+would place a wire against the previous request's obstacles under a
+self-consistent digest. The memo is a cost saving, not a correctness
+mechanism — the route is deterministic, so N unmemoised searches would
+produce N identical routes.
+
+**Refusals name the wire.** A harness declares many bundles, and a refusal
+that does not say which one sends you reading every port literal in the
+script. The bundle's label goes in the message, not only in `observed`.
+
+**A hard bend floor at `gauge_mm/2`,** under any declared
+`min_bend_radius_mm`. A conductor that doubles back tighter than its own
+radius sweeps into a closed, valid, self-intersecting solid; this refuses it
+instead. It is what caught both the corner and the hairpin above.
+
+**No protocol change.** `CadexdProtocol.OP_ARG_SPECS` is untouched — a bundle
+is a part operation inside the project script, not a new op on the wire — so
+the ADR-027 response goldens and `docs/INTEGRATION.md`'s op table are
+unaffected.
+
+**Consequences.** `wcv8.cadex` is rewired: the battery lead is a twisted
+pair, each motor takes three twisted phases, and both the FC→ESP32 and
+ESP32→range-finder runs are four-way flat ribbons. 7 conductors become 22,
+across the same 7 routes; outputs go from 21 to 36 and a full rebuild from
+13.3 s to 17.0 s — the added cost is sweeps, not searches, which is what the
+shared route was for. Reopening the project re-runs the script and matches
+its digest, so the whole lay is deterministic end to end.
+
+The rewire needed thinner gauges than the single wires it replaced (0.5 mm
+phases, 0.4 mm ribbon conductors) because the corridor is now searched at the
+bundle's outer diameter — the lay has to fit the gap, not one wire. That is
+the honest answer rather than a special case in the op, and it is the same
+trade a real harness makes.
+
+**Found on the way, not fixed here: `CadexRouting._sag` folds a vertical
+run.** Sag displaces interior waypoints along −Z regardless of the run's own
+direction, so a run parallel to Z is displaced along its own axis and doubles
+back — measured on a 60 mm vertical run at `slack=1.05`, the z sequence comes
+back `0 → 4.28 → 2.99 → 55.73 → 60`. This is pre-existing and affects
+`part.cable` identically, where it is silent because a cable only checks its
+bend radius when the caller declares one. Fixing it changes `part.cable`
+output and moves accepted project digests, so it needs its own ADR and is not
+folded in here. `part.bundle` fails safe on it via the hard bend floor, and
+the drone's battery pair declares `slack=1.0` for that reason.

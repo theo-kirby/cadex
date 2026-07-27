@@ -22,6 +22,8 @@ _TOPOLOGY_TYPES = frozenset({"edge", "wire", "face", "shell", "solid", "compound
 _PUBLISHABLE_TYPES = frozenset({"wire", "face", "shell", "solid", "compound"})
 _JOIN_TYPES = frozenset({"arc", "tangent", "intersection"})
 _TRANSITION_TYPES = frozenset({"transformed", "right_corner", "round_corner"})
+#: How the conductors of a ``part.bundle`` are laid about their shared route.
+_LAY_STYLES = frozenset({"twisted", "flat"})
 _SUBSHAPE_TYPES = frozenset({"edge", "wire", "face", "shell", "solid"})
 #: Part topologies that enclose a volume a route can be tested against.
 _OBSTACLE_TYPES = frozenset({"solid", "shell", "compound"})
@@ -1283,6 +1285,173 @@ class PartDomainAPI:
             **properties,
         )
 
+    def bundle(
+        self,
+        connections: Sequence[Sequence[Sequence[float]]],
+        *,
+        gauge_mm: float,
+        conductor: int,
+        style: str = "twisted",
+        twist_pitch_mm: float | None = None,
+        left_handed: bool = False,
+        spacing_mm: float | None = None,
+        up: Sequence[float] | None = None,
+        breakout_mm: float | None = None,
+        clearance_mm: float = 1.0,
+        avoid: Sequence[DomainValue] = (),
+        slack: float = 1.05,
+        min_bend_radius_mm: float | None = None,
+        cell_mm: float | None = None,
+        label: str = "",
+    ) -> DomainValue:
+        """Route several wires along one shared path and sweep one of them.
+
+        The multi-conductor harness operation.  A battery lead is a red/black
+        pair, a brushless motor takes three phase wires and an I2C run is four:
+        modelled as separate ``part.cable`` calls those route independently and
+        drift apart, which is neither what the object looks like nor what it
+        costs.  A bundle searches **one** route for all of them and lays the
+        conductors around it — twisted helically, or flat side by side —
+        separating only at the ends, where each lands on its own port.
+
+        ``connections`` is one ``(start_port, end_port)`` pair per conductor,
+        and each port is the same ``(point, direction)`` pair ``part.cable``
+        takes.  ``conductor`` is the 0-based index of the one *this call*
+        returns, so N conductors are N calls that differ only in that index::
+
+            pair = [(batt_pos, esc_pos), (batt_neg, esc_neg)]
+            red   = part.bundle(pair, gauge_mm=1.6, conductor=0, avoid=[frame])
+            black = part.bundle(pair, gauge_mm=1.6, conductor=1, avoid=[frame])
+
+        Each call is one ``solid`` and therefore **one row in the model tree**,
+        which is what lets you select, colour and measure a single wire.  The
+        shared route is searched once and reused, so the pair above costs one
+        search, not two.
+
+        ``style`` is ``"twisted"`` (the default) or ``"flat"``.
+
+        **Twisted.**  ``twist_pitch_mm`` is the lay length — how far along the
+        run the bundle turns through one full revolution — and defaults to a
+        real-harness value derived from the gauge and the conductor count.
+        ``left_handed`` reverses the lay.  The radius the conductors sit at is
+        *computed*, not chosen: it is the smallest radius at which no two
+        conductors touch.  Because neighbouring helices reach their closest
+        approach at an axial offset rather than in a shared cross-section, a
+        lay only exists at all when ``twist_pitch_mm > len(connections) *
+        gauge_mm``; a tighter pitch is refused with that floor named.
+
+        **Flat.**  ``spacing_mm`` is the centre-to-centre lane pitch and
+        defaults to ``gauge_mm``, so the conductors touch.  They are separate
+        tangent solids — there is no web between them and nothing is fused.
+        ``up`` orients the ribbon where the run starts (default ``(0, 0, 1)``,
+        which makes it lie flat); the ribbon then carries that orientation
+        along the route rather than re-levelling itself, which is what a real
+        ribbon cable does.
+
+        **The order of ``connections`` is the order around the bundle.**
+        Conductor ``k`` takes phase ``k`` of the lay, or lane ``k`` of the
+        ribbon, counting from one edge.  Two conductors whose ports are laid
+        out opposite to their order will cross once near the breakout — which
+        is what a real harness does, and which you fix by reordering
+        ``connections``.  It is not fixed automatically, because on a twisted
+        run the phase rotates along the route and the two ends cannot both be
+        matched.
+
+        ``breakout_mm`` is how far the bundle stands off each end before the
+        conductors fan out to their own ports; it defaults to a multiple of the
+        bundle's own diameter, which is the room the fan-out actually needs.
+        ``avoid``, ``clearance_mm``, ``slack``, ``cell_mm`` and
+        ``min_bend_radius_mm`` mean what they do on ``part.cable``, and apply
+        to the bundle as a whole: the route is searched at the bundle's outer
+        diameter, so the corridor clears the whole lay rather than one wire.
+        ``min_bend_radius_mm`` is checked against each conductor's own path,
+        where the lay's curvature and the route's add up.
+
+        Like ``part.cable`` it refuses an obstacle built with ``mesh.decimate``,
+        whose result is not reproducible (ADR-016).
+        """
+
+        operation = "bundle"
+        if not isinstance(connections, (list, tuple)) or len(connections) < 2:
+            raise _error(
+                operation,
+                "connections",
+                "expected at least two (start_port, end_port) pairs; a single "
+                "wire is part.cable",
+                connections,
+            )
+        clean_connections: list[list[list[list[float]]]] = []
+        for index, pair in enumerate(connections):
+            name = f"connections[{index}]"
+            if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                raise _error(
+                    operation, name, "expected a (start_port, end_port) pair", pair
+                )
+            start = _port(operation, f"{name}[0]", pair[0])
+            end = _port(operation, f"{name}[1]", pair[1])
+            separation = math.sqrt(
+                sum((end[0][axis] - start[0][axis]) ** 2 for axis in range(3))
+            )
+            if separation <= 1.0e-9:
+                raise _error(
+                    operation,
+                    name,
+                    "the two ports must be at different points for there to be a run",
+                )
+            clean_connections.append([start, end])
+        clean_style = str(style)
+        if clean_style not in _LAY_STYLES:
+            raise _error(
+                operation,
+                "style",
+                f"expected one of {sorted(_LAY_STYLES)}",
+                style,
+            )
+        properties: dict[str, Any] = {
+            "conductor": _integer(
+                operation,
+                "conductor",
+                conductor,
+                minimum=0,
+                maximum=len(clean_connections) - 1,
+            ),
+            "gauge_mm": _number(operation, "gauge_mm", gauge_mm, minimum=0.0, strict=True),
+            "style": clean_style,
+            "left_handed": bool(left_handed),
+            "clearance_mm": _number(operation, "clearance_mm", clearance_mm, minimum=0.0),
+            "slack": _number(operation, "slack", slack, minimum=1.0),
+            "avoid": _obstacles(operation, "avoid", avoid),
+        }
+        if twist_pitch_mm is not None:
+            properties["twist_pitch_mm"] = _number(
+                operation, "twist_pitch_mm", twist_pitch_mm, minimum=0.0, strict=True
+            )
+        if spacing_mm is not None:
+            properties["spacing_mm"] = _number(
+                operation, "spacing_mm", spacing_mm, minimum=0.0, strict=True
+            )
+        if up is not None:
+            properties["up"] = _vector(operation, "up", up, nonzero=True)
+        if breakout_mm is not None:
+            properties["breakout_mm"] = _number(
+                operation, "breakout_mm", breakout_mm, minimum=0.0, strict=True
+            )
+        if min_bend_radius_mm is not None:
+            properties["min_bend_radius_mm"] = _number(
+                operation, "min_bend_radius_mm", min_bend_radius_mm, minimum=0.0, strict=True
+            )
+        if cell_mm is not None:
+            properties["cell_mm"] = _number(
+                operation, "cell_mm", cell_mm, minimum=0.0, strict=True
+            )
+        return self._value(
+            operation,
+            "solid",
+            clean_connections,
+            label=label,
+            **properties,
+        )
+
     def ruled_surface(
         self,
         first: DomainValue,
@@ -1945,6 +2114,7 @@ class PartDomainAPI:
             "loft",
             "sweep",
             "cable",
+            "bundle",
             "ruled_surface",
             "filled_surface",
             "fuse",

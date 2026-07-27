@@ -652,6 +652,10 @@ def _route_corridor(
 ):
     """The lattice one route is searched on: resolution, corridor, occupancy.
 
+    Shared by ``part.cable`` and ``part.bundle`` (ADR-057).  A bundle passes
+    its *outer* diameter as ``gauge``, so the corridor and the clearance
+    dilation account for the whole lay rather than one conductor.
+
     Returns ``(cell, low, high, counts, occupied)`` — everything
     ``CadexRouting.route_path`` needs but the two ports themselves.
     """
@@ -699,7 +703,7 @@ def _route_corridor(
 
 
 #: The correction ``part.cable`` offers when a route bends tighter than the
-#: conductor tolerates.
+#: conductor tolerates.  A bundle names its own cause instead (ADR-057).
 _BEND_CORRECTION = (
     "The corridor forces a kink this conductor cannot take. "
     "Raise cell_mm so the route is smoother, add slack, or move "
@@ -727,7 +731,8 @@ def _sweep_conductor(
 ):
     """Fit a spline through ``waypoints`` and sweep a round conductor along it.
 
-    ``centre`` is where the profile circle sits — the run's first point.
+    Shared by ``part.cable`` and ``part.bundle`` (ADR-057).  ``centre`` is
+    where the profile circle sits — the run's first point.
 
     The sweep runs in OCC's **true** Frenet mode.  The section is a circle
     centred on the spine, so in principle the mode cannot matter; in practice
@@ -878,6 +883,405 @@ def _build_cable(payload: dict[str, Any], properties: dict[str, Any]):
         gauge=gauge,
         centre=start_point,
         min_bend_radius_mm=properties.get("min_bend_radius_mm"),
+    )
+
+
+#: Shared centrelines, keyed on a bundle payload with the per-conductor
+#: fields stripped -- see ``_bundle_route_key``. Cleared per request with
+#: ``_SHAPE_MEMO``: this holds a *route*, and a route that leaked into another
+#: request would place a wire using the previous request's obstacles under a
+#: self-consistent digest, which is the worst failure this codebase can have.
+_BUNDLE_ROUTES: dict[str, tuple[tuple[float, float, float], ...]] = {}
+_BUNDLE_ROUTE_LIMIT = 32
+
+#: Bundle payload fields that pick a conductor out of a lay rather than
+#: describe the lay. Everything else feeds the shared search, so this is a
+#: deny-list on purpose: forgetting a future cosmetic field costs one wasted
+#: search, forgetting a future route-affecting one would return the wrong wire.
+_BUNDLE_PER_CONDUCTOR_FIELDS = ("conductor", "label")
+
+
+def _bundle_route_key(payload: dict[str, Any]) -> str:
+    """Content identity for the *route* a bundle's conductors share."""
+
+    properties = {
+        name: value
+        for name, value in _properties(payload).items()
+        if name not in _BUNDLE_PER_CONDUCTOR_FIELDS
+    }
+    return _memo_key({**payload, "properties": properties})
+
+
+def _bundle_ports(operation: str, connections: Any) -> list[list[list[Any]]]:
+    """Validate the ``(start_port, end_port)`` pairs into vectors."""
+
+    if not isinstance(connections, list) or len(connections) < 2:
+        raise _error(
+            operation,
+            "connections",
+            "expected at least two (start_port, end_port) pairs",
+        )
+    result: list[list[list[Any]]] = []
+    for index, pair in enumerate(connections):
+        name = f"connections[{index}]"
+        if not isinstance(pair, list) or len(pair) != 2:
+            raise _error(operation, name, "expected a (start_port, end_port) pair")
+        ends: list[list[Any]] = []
+        for side, port in (("0", pair[0]), ("1", pair[1])):
+            if not isinstance(port, list) or len(port) != 2:
+                raise _error(
+                    operation, f"{name}[{side}]", "expected a (point, direction) pair"
+                )
+            ends.append(
+                [
+                    _vector(operation, f"{name}[{side}][0]", port[0]),
+                    _vector(operation, f"{name}[{side}][1]", port[1], nonzero=True),
+                ]
+            )
+        result.append(ends)
+    return result
+
+
+def _bundle_gather(operation: str, ports: list[list[Any]], side: str):
+    """Where the bundle leaves one end, and which way.
+
+    The point is the centroid of that end's ports; the direction is the sum of
+    their *unit* directions, so a port whose direction vector happens to be
+    long does not steer the whole bundle.  Ports that disagree by more than
+    about sixty degrees on average have no common way out, and that is refused
+    here rather than left to produce a meaningless average.
+    """
+
+    import FreeCAD as App
+
+    count = len(ports)
+    point = App.Vector(0.0, 0.0, 0.0)
+    direction = App.Vector(0.0, 0.0, 0.0)
+    for port in ports:
+        point = point + port[0]
+        direction = direction + port[1] * (1.0 / port[1].Length)
+    point = point * (1.0 / count)
+    agreement = direction.Length / count
+    if agreement < 0.5:
+        raise PartOperationError(
+            f"api.{operation}: the {side} ports do not agree on a direction to "
+            f"leave along (mean agreement {agreement:.3f})",
+            stage="part_routing",
+            operation=operation,
+            parameter="connections",
+            observed={"end": side, "direction_agreement": agreement},
+            correction=(
+                "A bundle leaves each end as one run, so its ports have to face "
+                "roughly the same way. Give them a common outward direction, or "
+                "route these wires as separate part.cable calls."
+            ),
+        )
+    return point, direction * (1.0 / direction.Length)
+
+
+def _build_bundle(payload: dict[str, Any], properties: dict[str, Any]):
+    """Route one path for several conductors and sweep the requested one.
+
+    One search serves the whole bundle: the route is memoised on the payload
+    with the per-conductor fields stripped, so N conductors cost one A* and N
+    sweeps rather than N of each (ADR-057).  The corridor is searched at the
+    bundle's *outer* diameter, because what has to fit through a gap is the
+    lay, not one wire.
+    """
+
+    import FreeCAD as App
+    import Part
+
+    import CadexBundle
+    import CadexRouting
+
+    operation = "bundle"
+    connections = _bundle_ports(operation, _argument(payload, 0, "connections"))
+    count = len(connections)
+    conductor = int(properties.get("conductor", 0))
+    if not 0 <= conductor < count:
+        raise _error(
+            operation,
+            "conductor",
+            f"must index one of the {count} declared connections",
+        )
+
+    gauge = float(properties.get("gauge_mm", 0.0))
+    if gauge <= 0.0:
+        raise _error(operation, "gauge_mm", "must be greater than zero")
+    style = str(properties.get("style") or "twisted")
+    if style not in CadexBundle.STYLES:
+        raise _error(operation, "style", "expected 'twisted' or 'flat'")
+    clearance = float(properties.get("clearance_mm", 1.0))
+    slack = float(properties.get("slack", 1.05))
+    left_handed = bool(properties.get("left_handed", False))
+    twist_pitch = properties.get("twist_pitch_mm")
+    twist_pitch = None if twist_pitch is None else float(twist_pitch)
+    spacing = properties.get("spacing_mm")
+    spacing = None if spacing is None else float(spacing)
+    up = properties.get("up")
+    up = (0.0, 0.0, 1.0) if up is None else (float(up[0]), float(up[1]), float(up[2]))
+
+    def _refuse(exc: "CadexBundle.BundleError"):
+        corrections = {
+            "pitch": (
+                "The conductors cannot be laid this tightly: a lay only exists "
+                "when twist_pitch_mm exceeds the conductor count times gauge_mm. "
+                "Raise twist_pitch_mm, reduce gauge_mm, or use style='flat'."
+            ),
+            "count": (
+                "A bundle lays two or more conductors around a shared route; a "
+                "single wire is part.cable."
+            ),
+            "radius": (
+                "No lay radius keeps these conductors apart. Raise "
+                "twist_pitch_mm or reduce gauge_mm."
+            ),
+            "path": (
+                "The shared route is too short or too coarse to lay conductors "
+                "along. Raise cell_mm, or move the ports further apart."
+            ),
+        }
+        return PartOperationError(
+            f"api.{operation}: {exc}",
+            stage="part_routing",
+            operation=operation,
+            observed={"reason": exc.reason, **exc.observed},
+            correction=corrections.get(exc.reason, corrections["path"]),
+        )
+
+    try:
+        diameter = CadexBundle.outer_diameter(
+            gauge,
+            count=count,
+            style=style,
+            twist_pitch_mm=twist_pitch,
+            spacing_mm=spacing,
+        )
+    except CadexBundle.BundleError as exc:
+        raise _refuse(exc) from exc
+
+    start_point, start_dir = _bundle_gather(
+        operation, [pair[0] for pair in connections], "start"
+    )
+    end_point, end_dir = _bundle_gather(
+        operation, [pair[1] for pair in connections], "end"
+    )
+    reach = (end_point - start_point).Length
+    if reach <= 1.0e-9:
+        raise _error(
+            operation,
+            "connections",
+            "the two ends gather to the same point, so there is no run to route",
+        )
+
+    # Two different lengths, deliberately not the same number.
+    #
+    # The *stand-off* is how far off the surface the search starts, and it is
+    # what ``part.cable`` computes as clearance + half the wire: far enough to
+    # be clear of the component, no further. Push it out and the route has to
+    # come back in, which on a short run is a hairpin the sweep cannot turn.
+    #
+    # The *breakout* is the arc over which the conductors fan out from their
+    # own pads into the lay. It wants to be generous -- a half-cosine that
+    # travels the bundle's width in less than about that width is a corner --
+    # but never more than the run can spare, since two breakouts meeting in
+    # the middle would leave nothing actually laid up as a bundle.
+    standoff = clearance + diameter / 2.0
+    breakout = properties.get("breakout_mm")
+    if breakout is None:
+        breakout = min(1.5 * diameter + clearance, reach / 3.0)
+    else:
+        breakout = float(breakout)
+
+    route_key = _bundle_route_key(payload)
+    shared = _BUNDLE_ROUTES.get(route_key)
+    if shared is None:
+        solids, boxes = _cable_obstacles(operation, properties.get("avoid", []))
+        anchor_start = start_point + start_dir * standoff
+        anchor_end = end_point + end_dir * standoff
+        cell, low, high, _counts, occupied = _route_corridor(
+            operation=operation,
+            anchor_start=anchor_start,
+            anchor_end=anchor_end,
+            gauge=diameter,
+            clearance=clearance,
+            cell_mm=float(properties.get("cell_mm", 0.0)),
+            solids=solids,
+            boxes=boxes,
+        )
+        try:
+            waypoints = CadexRouting.route_path(
+                (start_point.x, start_point.y, start_point.z),
+                (start_dir.x, start_dir.y, start_dir.z),
+                (end_point.x, end_point.y, end_point.z),
+                (end_dir.x, end_dir.y, end_dir.z),
+                occupied=occupied,
+                cell_mm=cell,
+                # The lattice keeps the *centreline* this far from material, so
+                # it has to hold the whole lay, not just the clearance -- the
+                # same figure the stand-off uses, for the same reason.
+                clearance_mm=standoff,
+                standoff_mm=standoff,
+                slack=slack,
+                bounds=(low, high),
+                max_cells=_CABLE_MAX_CELLS,
+            )
+        except CadexRouting.RoutingError as exc:
+            corrections = {
+                "blocked": (
+                    "Nothing connects the two ends at this clearance with room "
+                    f"for a {diameter:.2f} mm bundle: lower clearance_mm, reduce "
+                    "the conductor count or gauge_mm, remove an obstacle from "
+                    "avoid that does not really block the run, or move a port."
+                ),
+                "budget": (
+                    "The search ran out of cells before it found a way through. "
+                    "Raise cell_mm to search coarsely, or shorten the run by "
+                    "routing through an intermediate port."
+                ),
+                "bounds": (
+                    "The two ends do not describe a routable run. Check that "
+                    "each port's direction points away from its component and "
+                    "that the two ends are not at the same point."
+                ),
+            }
+            # The label is in the message, not only in observed: a harness
+            # declares many bundles, and a refusal that does not say which
+            # one sends you reading every port literal in the script.
+            named = str(properties.get("label") or "")
+            raise PartOperationError(
+                f"api.{operation}: {exc}"
+                + (f" (bundle {named!r})" if named else ""),
+                stage="part_routing",
+                operation=operation,
+                observed={
+                    "reason": exc.reason,
+                    "bundle_diameter_mm": diameter,
+                    "breakout_mm": breakout,
+                    "label": named,
+                    **exc.observed,
+                },
+                correction=corrections.get(exc.reason, corrections["bounds"]),
+            ) from exc
+
+        # The shared span runs gather point to gather point -- the whole run,
+        # ports included. Each conductor fans out from its own port into the
+        # lay over the breakout, so the ends are a blend rather than a stub,
+        # and there is no corner anywhere for the sweep to turn.
+        span_points: list[tuple[float, float, float]] = []
+        for candidate in [
+            tuple(float(axis) for axis in point) for point in waypoints
+        ]:
+            if span_points and (
+                (candidate[0] - span_points[-1][0]) ** 2
+                + (candidate[1] - span_points[-1][1]) ** 2
+                + (candidate[2] - span_points[-1][2]) ** 2
+            ) <= 1.0e-12:
+                continue
+            span_points.append(candidate)  # type: ignore[arg-type]
+        while len(span_points) < 3:
+            if len(span_points) < 2:
+                raise _error(
+                    operation,
+                    "connections",
+                    "the routed span collapsed to a point; raise breakout_mm or "
+                    "move the two ends apart",
+                )
+            span_points.insert(
+                1,
+                tuple(  # type: ignore[arg-type]
+                    (span_points[0][axis] + span_points[1][axis]) / 2.0
+                    for axis in range(3)
+                ),
+            )
+
+        spine = Part.BSplineCurve()
+        spine.interpolate(
+            Points=[App.Vector(*point) for point in span_points],
+            PeriodicFlag=False,
+            Tolerance=1.0e-7,
+        )
+        samples = CadexBundle.sample_count(
+            spine.length(),
+            style=style,
+            twist_pitch_mm=twist_pitch,
+            cell_mm=cell,
+        )
+        shared = tuple(
+            (float(point.x), float(point.y), float(point.z))
+            for point in spine.toShape().discretize(Number=samples)
+        )
+        if len(_BUNDLE_ROUTES) < _BUNDLE_ROUTE_LIMIT:
+            _BUNDLE_ROUTES[route_key] = shared
+
+    try:
+        lay = CadexBundle.conductor_paths(
+            shared,
+            count=count,
+            style=style,
+            gauge_mm=gauge,
+            spacing_mm=spacing,
+            twist_pitch_mm=twist_pitch,
+            left_handed=left_handed,
+            up=up,
+            start_points=[
+                (pair[0][0].x, pair[0][0].y, pair[0][0].z) for pair in connections
+            ],
+            end_points=[
+                (pair[1][0].x, pair[1][0].y, pair[1][0].z) for pair in connections
+            ],
+            breakout_mm=breakout,
+        )
+    except CadexBundle.BundleError as exc:
+        raise _refuse(exc) from exc
+
+    waypath: list[tuple[float, float, float]] = []
+    for candidate in lay[conductor]:
+        if waypath and (
+            (candidate[0] - waypath[-1][0]) ** 2
+            + (candidate[1] - waypath[-1][1]) ** 2
+            + (candidate[2] - waypath[-1][2]) ** 2
+        ) <= 1.0e-12:
+            continue
+        waypath.append(candidate)
+
+    # A hard floor under any declared minimum: a conductor that doubles back
+    # tighter than its own radius sweeps into a solid that is closed, valid
+    # and self-intersecting -- so it is refused here rather than published.
+    declared = properties.get("min_bend_radius_mm")
+    floor = gauge / 2.0
+    if declared is None or float(declared) < floor:
+        declared = floor
+
+    return _sweep_conductor(
+        waypath,
+        operation=operation,
+        gauge=gauge,
+        centre=App.Vector(*waypath[0]),
+        min_bend_radius_mm=declared,
+        # The check has to see the lay, not a fixed 97 samples spread over a
+        # run that may hold fifty turns -- too coarse and it over-reports the
+        # radius, which makes it pass conductors it should refuse.
+        bend_samples=max(_CABLE_BEND_SAMPLES, len(waypath)),
+        context=(
+            " (bundle %r conductor %d)" % (str(properties.get("label") or ""), conductor)
+            if properties.get("label")
+            else " (conductor %d)" % conductor
+        ),
+        bend_correction=(
+            "The lay and the route bend the same way here. Raise "
+            "twist_pitch_mm so the conductor turns less, raise cell_mm so the "
+            "route is smoother, lower slack towards 1.0 so the run hangs less "
+            "(a run that is close to vertical sags along its own axis), or "
+            "move a port so the run turns less sharply."
+        ),
+        sweep_correction=(
+            "The conductor turns tighter than its gauge can be swept through. "
+            "Raise twist_pitch_mm, reduce gauge_mm, raise cell_mm for a "
+            "smoother route, or declare min_bend_radius_mm so the route is "
+            "rejected before the sweep."
+        ),
     )
 
 
@@ -1313,6 +1717,8 @@ def _build(
         )
     if operation == "cable":
         return _build_cable(payload, properties)
+    if operation == "bundle":
+        return _build_bundle(payload, properties)
     if operation == "ruled_surface":
         first = _shape(operation, "first", _argument(payload, 0, "first"))
         second = _shape(operation, "second", _argument(payload, 1, "second"))
@@ -1679,6 +2085,7 @@ def reset_part_shape_memo() -> None:
     """Drop every memoised shape. One request must never see another's."""
 
     _SHAPE_MEMO.clear()
+    _BUNDLE_ROUTES.clear()
 
 
 def _memo_key(payload: Mapping[str, Any]) -> str:

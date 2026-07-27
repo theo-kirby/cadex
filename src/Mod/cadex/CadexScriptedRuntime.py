@@ -48,6 +48,9 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         # by filename, not imported — so cadex_part_worker can import it
         # inside the sandbox.
         "CadexRouting.py",
+        # The multi-conductor lay (ADR-057). Staged the same way, for the same
+        # reason: cadex_part_worker imports it inside the sandbox.
+        "CadexBundle.py",
         "cadex_partdesign_api.py",
         "cadex_partdesign_worker.py",
         "cadex_mesh_api.py",
