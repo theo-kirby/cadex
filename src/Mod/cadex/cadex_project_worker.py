@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from contextlib import redirect_stdout
 import hashlib
+from collections.abc import Mapping
 import io
 import json
 import os
@@ -255,6 +256,34 @@ def _resolve_inline_sources(
     return entries, component_sources
 
 
+def _stamp_source_output(
+    item: dict[str, Any], component_sources: Mapping[str, str]
+) -> None:
+    """Name the declared output whose geometry a component instances.
+
+    A ``component_link`` output carries a solved placement and no geometry of
+    its own; the shape it places is a separate declared output. Nothing in
+    the response said *which* one, so a consumer holding a solved assembly
+    had a set of matrices and no way to know what to put at them -- see
+    ADR-049. The token → output-name map already exists (it is what lets the
+    publisher rewrite each token to a live object); this only writes it down
+    where the response can carry it.
+
+    Left absent rather than null when there is no match, so the key is a
+    positive signal and every non-component entry keeps exactly the shape it
+    has today.
+    """
+
+    if str(item.get("type") or "") != "component_link":
+        return
+    arguments = list((item.get("definition") or {}).get("arguments") or [])
+    if not arguments or not isinstance(arguments[0], Mapping):
+        return
+    source = component_sources.get(str(arguments[0].get("object_name") or ""))
+    if source:
+        item["source_output"] = str(source)
+
+
 def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
     import FreeCAD as App
 
@@ -422,6 +451,7 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
             assembly_outputs = []
             for name, value in grouped["assembly"].items():
                 item = serialize(name, value, "assembly")
+                _stamp_source_output(item, component_sources)
                 assembly_outputs.append(item)
                 outputs.append(item)
             validations["assembly"] = validate_and_solve_assembly(

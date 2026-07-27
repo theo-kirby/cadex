@@ -2983,3 +2983,96 @@ order rather than Blender's wxyz. Frame 0 is `frame_kind: "input"` with
 `nominal_time_s: None`; solver frames carry real times. A 0..1 s run at a
 0.05 s step is 22 frames, not 21: both endpoints are included, plus the
 input frame.
+
+---
+
+## ADR-049 — A solved assembly is visible (2026-07-27)
+
+**Decision.** A component's display entry names the declared output whose
+geometry it places, in a new optional `source_output` key on
+`display.<output>`. The shell instances that output's mesh at the
+component's `placement` (shell half, same ADR).
+
+**Rationale.** A solved assembly never reached the viewport, and the
+response is why. Components carry a `placement` and no geometry; the parts
+they instance carry geometry and no placement — visible in the pinned
+golden `set_params.json` long before anyone read it that way: `base`/`top`
+have `placement: [float]` and `artifact_kind: null`, `plate`/`skin` the
+mirror image. `cadex_hydrate.py` skips any entry with no tessellation and
+the contract-driven GC then deletes it, so the one thing the user asked for
+— the mechanism, arranged — was the one thing that could not appear.
+
+Nothing in the response connected the two halves. The component knew where
+to be and not what to draw; the part knew what to draw and not where.
+Every consumer had a set of matrices and no way to spend them.
+
+**Why a new key and not a re-use.** Three alternatives were rejected:
+
+- *Give components a `tessellation` of their own.* That is the same
+  geometry serialized once per component — 40 screws, 40 meshes — and it
+  moves the dedupe the engine already does into the wire.
+- *Reuse `display.* {tessellation: null}` as a pose-only marker.* The
+  shell's GC deletes exactly those entries; the marker and the delete
+  signal would be the same value.
+- *Let the shell match components to parts by name or by order.* There is
+  no such relation, and inventing one puts a guess on the critical path of
+  whether the model appears at all.
+
+The token → output-name map already existed — it is what lets the publisher
+rewrite each inline source token to a live published object
+(`_resolve_inline_sources`). This ADR only writes it down where the
+response can carry it.
+
+**Optional, and absent rather than null.** Only components have a source,
+so presence *is* the discriminator, and every other entry keeps byte-for-byte
+the shape it had. A consumer that does not know the key is unaffected.
+
+**Consequences.** A protocol change, additive and optional:
+`NESTED_RESPONSE_SPECS["display.*"]` gains it in the optional set, four
+ADR-027 goldens move (`write_script`, `edit_script`, `set_params`,
+`rebuild` — `edit_script` too, which the plan for this work missed), and
+`docs/INTEGRATION.md`'s nested-shape prose gains the paragraph that says
+what the two entry kinds are. `OP_ARG_SPECS` is untouched, so neither doc
+*table* moves and the request contract is unchanged.
+
+**Digest-neutral, verified rather than argued.** `compute_project_digest`
+reads named keys off each output item and `source_output` is not one of
+them, so the digest cannot move — and the same script through a pre-change
+and post-change engine returns the identical digest
+`59905ecb52fcffaf7bb2b26f365487894ce14fb39460064431c971cc8d366fc5`.
+
+This fixes static assemblies, not only simulated ones, which is most of why
+it is worth a protocol change at all.
+
+**Shell half (B1).** `cadex_hydrate.hydrate_display` gains a second pass,
+after the geometry pass and before the GC. An entry with a `placement`, no
+`tessellation` and a `source_output` becomes an object that **shares the
+source's mesh datablock** — forty screws cost one mesh — found or created by
+`OUTPUT_PROP` exactly as the first pass does, so Blender's `.001` name dedup
+cannot break the lookup. It gets the solved matrix, a `cadex_kind` of
+`component`, a `cadex_source` naming what it instances, and an ` Edges`
+child sharing the source's edge mesh and parented to it, so the wire follows
+the component for free.
+
+Components join `keep`, so the existing contract-driven GC stays the entire
+cleanup story — no second collector to fight, and a shared datablock is
+never orphaned by it because the source still uses it.
+
+A source that has at least one instance is **hidden, never deleted**: it is
+a declared output and the user may still inspect or pin against it. The
+unhide is marked (`cadex_hidden_source`) rather than unconditional, so a
+later pass unhides exactly what it hid and never overrides visibility the
+user set themselves.
+
+The three `hydrate_display` call sites — the open path, a lifecycle accept,
+and the settled refine — collapse into one `cadex_backend.hydrate(payload)`.
+They had all been unpacking the same two arguments from the same payload;
+anything that must happen on every accepted revision now happens once, in
+one place, instead of in whichever of the three someone remembered.
+`hydrate_display` keeps its own signature and its own tests.
+
+Two gate tests: a jointed assembly puts each component at its *solved*
+placement (not its declared one), tagged, sourced, wire-parented, with the
+source hidden and still present; and two components sharing one plate are
+one `bpy.data.meshes` datablock, at different placements, collected on a
+revision that drops the assembly — which also unhides the source.

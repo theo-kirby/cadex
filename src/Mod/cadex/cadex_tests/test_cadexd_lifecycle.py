@@ -538,16 +538,21 @@ def test_cadexd_solves_a_jointed_assembly() -> None:
         assert "j" in display, sorted(display)
 
         # Components carry a solved placement and no geometry of their own;
-        # the parts they instance carry geometry and no placement.
-        for component in ("base", "swing"):
+        # the parts they instance carry geometry and no placement. Which is
+        # why a component has to name its source: without source_output an
+        # entry with no tessellation looks like nothing to draw (ADR-049).
+        for component, source in (("base", "plate"), ("swing", "arm")):
             entry = display[component]
             assert entry["artifact_kind"] is None, entry
             assert isinstance(entry["placement"], list), entry
             assert len(entry["placement"]) == 16, entry
+            assert entry["source_output"] == source, entry
         for shape in ("plate", "arm"):
             entry = display[shape]
             assert entry["artifact_kind"] == "brep", entry
             assert entry["placement"] is None, entry
+            # Only components carry it; presence is the test.
+            assert "source_output" not in entry, entry
 
         # The solver ran: `swing` was declared at [0, 0, 40] and the revolute
         # joint put it on the base connector's [12, 0, 4] offset instead. A

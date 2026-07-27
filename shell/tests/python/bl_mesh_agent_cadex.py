@@ -1626,6 +1626,120 @@ def test_script_history_and_revert(root):
           "the revert is itself recorded in the history")
 
 
+ASSEMBLY_SCRIPT = """
+plate = part.box(40, 20, 4)
+arm = part.box(30, 6, 6)
+base = assembly.component(plate, grounded=True)
+swing = assembly.component(arm, placement=[0, 0, 40])
+j = assembly.joint("revolute",
+                   assembly.connector(base, "origin", offset=[12, 0, 4]),
+                   assembly.connector(swing, "origin"))
+asm = assembly.assembly([base, swing], [j])
+diag = assembly.solve(asm)
+result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
+          "j": j, "asm": asm, "diag": diag}
+"""
+
+SHARED_SOURCE_SCRIPT = """
+plate = part.box(40, 20, 4)
+base = assembly.component(plate, grounded=True)
+top = assembly.component(plate, placement=[0, 0, 20])
+asm = assembly.assembly([base, top])
+diag = assembly.solve(asm)
+result = {"plate": plate, "base": base, "top": top, "asm": asm, "diag": diag}
+"""
+
+
+def test_an_assembly_shows_its_solved_placements(root):
+    """The solved assembly reaches the viewport (ADR-049).
+
+    Components carry a placement and no geometry, so before source_output
+    existed the hydrator skipped them and the GC deleted them: a solved
+    assembly was invisible no matter how well it solved.
+    """
+
+    print("test_an_assembly_shows_its_solved_placements")
+    reset_scene(root)
+    ok, report = run_tool("write_script", {"content": ASSEMBLY_SCRIPT})
+    check(ok, "jointed assembly accepted ({:s})".format(
+        report.splitlines()[0] if report else ""))
+
+    swing = bpy.data.objects.get("swing")
+    base = bpy.data.objects.get("base")
+    check(swing is not None and base is not None,
+          "both components hydrated as objects")
+    if swing is None or base is None:
+        return
+
+    check(str(swing.get(cadex_hydrate.KIND_PROP, "")) == "component",
+          "a component is tagged as one")
+    check(str(swing.get(cadex_hydrate.SOURCE_PROP, "")) == "arm",
+          "the component records the output it instances")
+
+    # The solver put `swing` on the base connector's [12, 0, 4] offset,
+    # overriding its declared [0, 0, 40]. That exact matrix is what has to
+    # reach the object.
+    translation = swing.matrix_world.translation
+    check(abs(translation.x - 12.0) < 1e-6
+          and abs(translation.y) < 1e-6
+          and abs(translation.z - 4.0) < 1e-6,
+          "the component sits at its solved placement, not its declared one")
+
+    # It draws the source's geometry, and it does so by sharing the
+    # datablock rather than copying it.
+    arm = bpy.data.objects.get("arm")
+    check(arm is not None and swing.data is arm.data,
+          "the component shares the source mesh datablock")
+    check(arm is not None and bool(arm.hide_viewport),
+          "an instanced source is hidden, not deleted")
+    check(bpy.data.objects.get("plate") is not None,
+          "and the source object still exists")
+
+    edges = bpy.data.objects.get("swing" + cadex_hydrate.EDGE_SUFFIX)
+    check(edges is not None and edges.parent is swing,
+          "the component's wire child is parented to it")
+
+
+def test_two_components_share_one_mesh(root):
+    """Forty screws cost one mesh. Here, two components and one plate."""
+
+    print("test_two_components_share_one_mesh")
+    reset_scene(root)
+    ok, _ = run_tool("write_script", {"content": SHARED_SOURCE_SCRIPT})
+    check(ok, "shared-source assembly accepted")
+
+    base = bpy.data.objects.get("base")
+    top = bpy.data.objects.get("top")
+    plate = bpy.data.objects.get("plate")
+    check(base is not None and top is not None and plate is not None,
+          "both components and their shared source exist")
+    if base is None or top is None or plate is None:
+        return
+    check(base.data is top.data is plate.data,
+          "two components and their source are one mesh datablock")
+    check(len([m for m in bpy.data.meshes
+               if m.users and m is base.data]) == 1,
+          "and it is a single datablock, not a copy per component")
+
+    # Same geometry, different places.
+    check((base.matrix_world.translation
+           - top.matrix_world.translation).length > 1.0,
+          "the two instances are at different placements")
+
+    # A revision that drops the assembly leaves no component objects and
+    # unhides the source -- the GC is the whole cleanup story.
+    ok, _ = run_tool("write_script", {
+        "content": "result = {\"plate\": part.box(40, 20, 4)}",
+        "replace": True})
+    check(ok, "a revision without the assembly accepted")
+    check(bpy.data.objects.get("base") is None
+          and bpy.data.objects.get("top") is None,
+          "components are collected when they leave the contract")
+    plate = bpy.data.objects.get("plate")
+    check(plate is not None and not plate.hide_viewport,
+          "and the source is unhidden once nothing instances it")
+
+
 def test_stale_attempts_are_pruned(root):
     """The store must not grow without bound (56 MB for one afternoon)."""
     print("test_stale_attempts_are_pruned")
@@ -1806,6 +1920,8 @@ def main():
     guard_root = tempfile.mkdtemp(prefix="mesh-cadex-guard-")
     history_root = tempfile.mkdtemp(prefix="mesh-cadex-history-")
     prune_root = tempfile.mkdtemp(prefix="mesh-cadex-prune-")
+    assembly_root = tempfile.mkdtemp(prefix="mesh-cadex-assembly-")
+    shared_root = tempfile.mkdtemp(prefix="mesh-cadex-shared-")
     try:
         test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
@@ -1839,6 +1955,8 @@ def main():
         test_write_script_refuses_to_drop_existing_outputs(guard_root)
         test_script_history_and_revert(history_root)
         test_stale_attempts_are_pruned(prune_root)
+        test_an_assembly_shows_its_solved_placements(assembly_root)
+        test_two_components_share_one_mesh(shared_root)
     finally:
         try:
             cadex_backend.close_all()
@@ -1857,7 +1975,8 @@ def main():
                      restore_root, corrupt_root, describe_root, edit_root,
                      drop_root, rederive_root, mirror_root, defaults_root,
                      refused_root, rewrite_root, repair_root, stdout_root,
-                     long_root, guard_root, history_root, prune_root):
+                     long_root, guard_root, history_root, prune_root,
+                     assembly_root, shared_root):
             shutil.rmtree(root, ignore_errors=True)
 
     GATE["ok"] = not FAILURES

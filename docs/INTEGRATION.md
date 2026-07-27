@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-07-26
+Verified against source: 2026-07-27
 
 **This document is the contract between the two halves of the product.**
 They live in one repository (ADR-030) and in two processes, under two
@@ -148,12 +148,27 @@ against the pre-ADR-044 shape still validates.
 
 Nested shapes the shell reads by name are pinned too
 (`NESTED_RESPONSE_SPECS`): `display.<output> {artifact_kind,
-artifact_path, placement, tessellation}`, its `tessellation {artifact_kind,
+artifact_path, placement, tessellation}` plus optional `source_output`, its
+`tessellation {artifact_kind,
 artifact_path, sidecar_path, counts, deflection, quality}` and that block's
 `counts {faces, edges, triangles, vertices, edge_vertices}`; `model_state
 {status, accepted_is_current, next_write_expected_revision,
 verification_goal}`; `live_outputs.<output>`; `script`; `restore`;
 `budgets`.
+
+**A display entry is one of two kinds, and `source_output` is how you tell
+them apart.** An output that owns geometry carries `artifact_kind` /
+`artifact_path` (and a `tessellation` when one was requested) and a null
+`placement`. An assembly **component** is the mirror image: a solved
+`placement` — 16 floats, row-major — and no geometry at all, because the
+shape it places is a *different* declared output. `source_output` names
+that output (ADR-049).
+
+It is present only on component entries, so its presence is the test; a
+consumer that does not know the key sees exactly the shape it saw before.
+A client rendering a solved assembly instances `source_output`'s geometry
+at the component's `placement` — without it, an entry with no tessellation
+looks like nothing to draw, which is what made solved assemblies invisible.
 
 **`inspect` is a bounded reader, and a client that wants a whole value has
 to say so.** It caps a reply at 32 KiB: containers are paged (`page.kind`,

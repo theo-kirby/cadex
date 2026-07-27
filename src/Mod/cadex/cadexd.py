@@ -138,6 +138,12 @@ def _display_block(
             "placement": item.get("solved_placement_matrix"),
             "tessellation": None,
         }
+        # Only components have one, and only then (ADR-049): the key is a
+        # positive signal that this entry places another output's geometry,
+        # so every other entry keeps the shape it has always had.
+        source_output = str(item.get("source_output") or "")
+        if source_output:
+            entry["source_output"] = source_output
         tessellation = item.get("display")
         if isinstance(tessellation, Mapping):
             entry["tessellation"] = {

@@ -14,6 +14,7 @@
       "placement": [
         "float"
       ],
+      "source_output": "str",
       "tessellation": "null"
     },
     "diag": {
@@ -40,6 +41,7 @@
       "placement": [
         "float"
       ],
+      "source_output": "str",
       "tessellation": "null"
     }
   },

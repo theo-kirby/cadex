@@ -75,6 +75,27 @@ def hydrate_timings(reset=False):
     if reset:
         _hydrate_seconds = []
     return recorded
+
+
+def hydrate(payload):
+    """Turn one accepted response into viewport objects. The only entry point.
+
+    Three call sites used to reach into ``cadex_hydrate.hydrate_display``
+    with the same two arguments unpacked from the same payload -- the open
+    path, a lifecycle accept, and the settled refine. Collapsing them means
+    anything that has to happen on every accepted revision happens once,
+    here, rather than in whichever of the three someone remembered.
+
+    ``hydrate_display`` keeps its own signature and its own tests; this is
+    the payload-shaped wrapper over it.
+    """
+
+    started = time.perf_counter()
+    try:
+        return cadex_hydrate.hydrate_display(
+            payload.get("display") or {}, payload.get("revision") or "")
+    finally:
+        _hydrate_seconds.append(time.perf_counter() - started)
 STALE_REVISION_CODE = "STALE_PROGRAM_REVISION"
 RESTORE_FAILED_CODE = "CADEXD_RESTORE_FAILED"
 
@@ -552,8 +573,7 @@ def ensure_open(scene, unrestored_ok=False):
         if rebuilt.get("ok") is not True:
             return False, _failure_report("rebuild", rebuilt)
         _revision_from_payload(scene, rebuilt)
-        cadex_hydrate.hydrate_display(
-            rebuilt.get("display") or {}, rebuilt.get("revision") or "")
+        hydrate(rebuilt)
         _refresh_script_state(scene)
     return True, ""
 
@@ -723,15 +743,11 @@ class Lifecycle:
                 return None
             return False, _failure_report(self._op, payload)
         _revision_from_payload(self._scene, payload)
-        started = time.perf_counter()
         try:
-            hydration = cadex_hydrate.hydrate_display(
-                payload.get("display") or {}, payload.get("revision") or "")
+            hydration = hydrate(payload)
         except Exception:
             return False, ("The engine accepted the revision but viewport "
                            "hydration failed:\n" + traceback.format_exc())
-        finally:
-            _hydrate_seconds.append(time.perf_counter() - started)
         if self.on_accept is not None:
             self.on_accept()
         return True, _accept_report(payload, hydration)
@@ -948,9 +964,7 @@ def _schedule_refine(scene):
                     # new file with the old file's geometry.
                     and project_root(scene_now) == root):
                 try:
-                    cadex_hydrate.hydrate_display(
-                        payload.get("display") or {},
-                        payload.get("revision") or "")
+                    hydrate(payload)
                 except Exception:
                     traceback.print_exc()
             return None

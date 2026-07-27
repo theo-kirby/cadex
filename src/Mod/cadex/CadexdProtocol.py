@@ -223,9 +223,12 @@ assert set(OP_RESPONSE_SPECS) == set(OP_ARG_SPECS)
 #: Nested response shapes the Blender shell reads by name. Keyed by a dotted
 #: path; ``*`` matches one level of mapping keys (an output name).
 NESTED_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    # `source_output` rides only on component entries: the declared output
+    # whose geometry this one places (ADR-049). Optional because every other
+    # output kind has no source to name.
     "display.*": (
         frozenset({"artifact_kind", "artifact_path", "placement", "tessellation"}),
-        frozenset(),
+        frozenset({"source_output"}),
     ),
     "display.*.tessellation": (
         frozenset(

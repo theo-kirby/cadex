@@ -39,6 +39,16 @@ KIND_PROP = "cadex_kind"
 SIDECAR_PROP = "cadex_sidecar"
 EDGE_SUFFIX = " Edges"
 
+#: On a component instance: the declared output whose geometry it places
+#: (the response's ``source_output``, ADR-049).
+SOURCE_PROP = "cadex_source"
+#: On a source object we hid because something instances it. A marker, so a
+#: later pass can unhide exactly what it hid and never touch an object the
+#: user hid themselves.
+HIDDEN_SOURCE_PROP = "cadex_hidden_source"
+#: ``KIND_PROP`` value for a component instance.
+COMPONENT_KIND = "component"
+
 
 def read_tessellation(sidecar_path):
     """Read one tessellation sidecar + binary buffer into numpy arrays."""
@@ -151,13 +161,121 @@ def _replace_data(obj, mesh):
         bpy.data.meshes.remove(previous)
 
 
+def _find(collection, output, *, edges):
+    """The one cadex object for ``output``, wire child or not.
+
+    Found by ``OUTPUT_PROP`` rather than by name, because Blender's ``.001``
+    dedup means an object's name is not a stable identity.
+    """
+
+    return next(
+        (candidate for candidate in _cadex_objects(collection)
+         if candidate[OUTPUT_PROP] == output
+         and candidate.name.endswith(EDGE_SUFFIX) == edges),
+        None,
+    )
+
+
+def _hydrate_components(collection, display_map, revision, keep,
+                        created, updated):
+    """Place component instances of already-hydrated source geometry.
+
+    A component carries a solved ``placement`` and no geometry of its own;
+    the shape it places is a *different* declared output, named by
+    ``source_output`` (ADR-049). Before that key existed these entries had
+    no tessellation, so the first pass skipped them and the GC deleted
+    them -- a solved assembly simply never appeared.
+
+    Instances **share the source's mesh datablock**, so forty screws cost
+    one mesh. Runs after the geometry pass, which is what guarantees the
+    source object exists and already carries this revision's mesh.
+
+    Returns the set of source output names that got at least one instance.
+    """
+
+    import bpy
+    instanced = set()
+    for name in sorted(display_map or {}):
+        entry = display_map[name] or {}
+        if entry.get("tessellation"):
+            continue  # geometry of its own; the first pass owns it
+        source_name = str(entry.get("source_output") or "")
+        matrix = _matrix_from_placement(entry.get("placement") or [])
+        if not source_name or matrix is None:
+            continue
+        source = _find(collection, source_name, edges=False)
+        if source is None or source.data is None:
+            continue  # source not displayable this pass (draft, or absent)
+
+        obj = _find(collection, name, edges=False)
+        if obj is None:
+            obj = bpy.data.objects.new(name, source.data)
+            collection.objects.link(obj)
+            created.append(obj.name)
+        else:
+            _replace_data(obj, source.data)
+            updated.append(obj.name)
+        obj[OUTPUT_PROP] = name
+        obj[REVISION_PROP] = str(revision)
+        obj[KIND_PROP] = COMPONENT_KIND
+        obj[SOURCE_PROP] = source_name
+        obj.matrix_world = matrix
+        keep.add(obj.name)
+        instanced.add(source_name)
+
+        # The wire child shares the source's edge mesh and is parented, so
+        # it follows the component's matrix for free -- exactly as the
+        # geometry pass parents its own.
+        source_edges = _find(collection, source_name, edges=True)
+        if source_edges is None or source_edges.data is None:
+            continue
+        edge_obj = _find(collection, name, edges=True)
+        if edge_obj is None:
+            edge_obj = bpy.data.objects.new(name + EDGE_SUFFIX,
+                                            source_edges.data)
+            collection.objects.link(edge_obj)
+        else:
+            _replace_data(edge_obj, source_edges.data)
+        edge_obj[OUTPUT_PROP] = name
+        edge_obj[REVISION_PROP] = str(revision)
+        edge_obj[KIND_PROP] = "edges"
+        edge_obj.display_type = 'WIRE'
+        edge_obj.hide_select = True
+        edge_obj.parent = obj
+        edge_obj.matrix_parent_inverse.identity()
+        keep.add(edge_obj.name)
+    return instanced
+
+
+def _hide_instanced_sources(collection, instanced):
+    """Hide a source that is drawn through its instances; unhide when not.
+
+    A source is a declared output, so it is hidden and never deleted. The
+    marker property is what keeps this from stomping visibility the user
+    set: only objects this function hid are ever unhidden by it.
+    """
+
+    for obj in _cadex_objects(collection):
+        output = str(obj.get(OUTPUT_PROP) or "")
+        if str(obj.get(KIND_PROP) or "") == COMPONENT_KIND:
+            continue  # a component is never its own source
+        if output in instanced:
+            obj.hide_viewport = True
+            obj[HIDDEN_SOURCE_PROP] = True
+        elif obj.get(HIDDEN_SOURCE_PROP):
+            obj.hide_viewport = False
+            del obj[HIDDEN_SOURCE_PROP]
+
+
 def hydrate_display(display_map, revision):
     """Mirror one accepted response's display block into the Model collection.
 
     ``display_map`` is the response's ``display`` object: output name →
-    ``{artifact_kind, artifact_path, placement, tessellation}``. Outputs
-    without a tessellation record are skipped (not displayable). Returns a
-    report dict with created/updated/removed object names.
+    ``{artifact_kind, artifact_path, placement, tessellation}``, plus
+    ``source_output`` on components. Two passes: outputs with a
+    tessellation become geometry objects, then components become instances
+    of that geometry at their solved placements. Returns a report dict with
+    created/updated/removed object names.
     """
     import bpy
     collection = _model_collection()
@@ -176,9 +294,7 @@ def hydrate_display(display_map, revision):
         attribute.data.foreach_set(
             "value", face_ids_per_triangle(tessellation["face_ranges"],
                                            len(tessellation["triangles"])))
-        obj = next((candidate for candidate in _cadex_objects(collection)
-                    if candidate[OUTPUT_PROP] == name
-                    and not candidate.name.endswith(EDGE_SUFFIX)), None)
+        obj = _find(collection, name, edges=False)
         if obj is None:
             obj = bpy.data.objects.new(name, mesh)
             collection.objects.link(obj)
@@ -196,9 +312,7 @@ def hydrate_display(display_map, revision):
         keep.add(obj.name)
 
         edge_mesh = _build_edge_mesh(name + EDGE_SUFFIX, tessellation)
-        edge_obj = next((candidate for candidate in _cadex_objects(collection)
-                         if candidate[OUTPUT_PROP] == name
-                         and candidate.name.endswith(EDGE_SUFFIX)), None)
+        edge_obj = _find(collection, name, edges=True)
         if edge_mesh is None:
             pass  # no edge data requested/present; stale child GCed below
         elif edge_obj is None:
@@ -216,8 +330,15 @@ def hydrate_display(display_map, revision):
             edge_obj.matrix_parent_inverse.identity()
             keep.add(edge_obj.name)
 
+    instanced = _hydrate_components(collection, display_map, revision, keep,
+                                    created, updated)
+    _hide_instanced_sources(collection, instanced)
+
     # Contract-driven GC: any cadex-tagged object whose output name is no
-    # longer displayable this pass goes, meshes included.
+    # longer displayable this pass goes, meshes included. Components join
+    # `keep` above, so this stays the entire cleanup story -- no second GC
+    # to fight. A shared datablock is never orphaned by it: the source
+    # still uses it.
     removed = []
     for obj in list(_cadex_objects(collection)):
         if obj.name in keep:
