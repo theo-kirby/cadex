@@ -25,6 +25,19 @@ Two medians are reported, because the two shells asked for different work:
 
 Bar for both: median ≤ 0.65 s (the decision-gate parity bar,
 ``docs/INTEGRATION.md``).
+
+**Which engine.** By default this measures the dev tree: the built
+``FreeCADCmd`` plus ``src/Mod/cadex`` on ``sys.path``. Set
+``CADEX_ENGINE_ROOT`` to a staged payload and it measures the *shipped*
+engine instead, resolving the binary and the module dir out of
+``cadex-engine.json`` exactly the way ``test_cadexd_lifecycle.py`` and the
+Blender shell do — a source tree that meets the bar proves nothing about a
+payload (ADR-023). The report names the engine it measured (``engine``,
+``engine_root``), so the two runs are told apart in a log::
+
+    pixi run python src/Mod/cadex/cadex_tests/cadexd_latency_integration.py
+    CADEX_ENGINE_ROOT=build/engine/cadex-engine-0.0.0-macos-arm64 \
+        pixi run python src/Mod/cadex/cadex_tests/cadexd_latency_integration.py
 """
 
 from __future__ import annotations
@@ -50,6 +63,33 @@ _FREECADCMD_CANDIDATES = (
     REPO_ROOT / "build" / "release" / "bin" / "FreeCADCmd",
     REPO_ROOT / ".pixi" / "envs" / "default" / "bin" / "FreeCADCmd",
 )
+
+
+def _packaged_engine():
+    """Resolve ``(binary, module_dir)`` from ``CADEX_ENGINE_ROOT``, or None.
+
+    The manifest is the payload's discovery contract (ADR-020); reading it
+    here rather than guessing the layout is what makes this measurement the
+    *shipped* engine's and not a build directory's.
+    """
+    root = os.environ.get("CADEX_ENGINE_ROOT", "").strip()
+    if not root:
+        return None, None
+    manifest_path = Path(root) / "cadex-engine.json"
+    if not manifest_path.is_file():
+        raise SystemExit(
+            f"CADEX_ENGINE_ROOT={root!r} has no cadex-engine.json; the "
+            "payload's manifest is its discovery contract (ADR-020)."
+        )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest.get("schema") == "cadex-engine-v1", manifest
+    assert manifest.get("protocol") == PROTOCOL_SCHEMA, manifest
+    base = manifest_path.parent
+    binary = base.joinpath(*str(manifest["freecadcmd"]).split("/"))
+    module_dir = base.joinpath(*str(manifest["module_dir"]).split("/"))
+    assert binary.is_file(), binary
+    assert module_dir.is_dir(), module_dir
+    return binary, module_dir
 
 #: The switchover baseline, verbatim: 24 holes, a fillet, and a mesh skin.
 BASELINE_SCRIPT = """
@@ -111,13 +151,13 @@ class _Stdio:
                 return answer
 
 
-def _spawn(executable: Path) -> _Stdio:
+def _spawn(executable: Path, module_dir: Path) -> _Stdio:
     process = subprocess.Popen(
         [
             str(executable),
             "-c",
             (
-                f"import sys; sys.path.insert(0, {str(CADEX_ROOT)!r}); "
+                f"import sys; sys.path.insert(0, {str(module_dir)!r}); "
                 "import cadexd; raise SystemExit(cadexd.main())"
             ),
         ],
@@ -151,9 +191,12 @@ def _drag(client: _Stdio, revision: str, display: dict | None) -> tuple[list[flo
 
 
 def main() -> int:
-    executable = next(
+    packaged_binary, packaged_module_dir = _packaged_engine()
+    executable = packaged_binary or next(
         (candidate for candidate in _FREECADCMD_CANDIDATES if candidate.is_file()), None
     )
+    module_dir = packaged_module_dir or CADEX_ROOT
+    engine = "payload" if packaged_binary is not None else "dev-tree"
     if executable is None:
         print(
             "CADEX-LATENCY "
@@ -165,7 +208,7 @@ def main() -> int:
     root = Path(tempfile.mkdtemp(prefix="cadexd-latency-"))
     client = None
     try:
-        client = _spawn(executable)
+        client = _spawn(executable, module_dir)
 
         opened = client.request("open_project", {"project_root": str(root)})
         assert opened.get("ok") is True, opened
@@ -184,6 +227,8 @@ def main() -> int:
         report = {
             "ok": median <= PARITY_BAR_SECONDS
             and display_median <= PARITY_BAR_SECONDS,
+            "engine": engine,
+            "engine_root": str(module_dir),
             "drags": DRAGS,
             "set_params_seconds": [round(value, 3) for value in plain],
             "median_seconds": round(median, 3),

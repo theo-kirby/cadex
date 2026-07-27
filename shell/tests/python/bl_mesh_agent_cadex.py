@@ -532,6 +532,7 @@ def test_params_and_latency(root):
           "standard display carries the edge wire object")
     revision_before = str(plate.get(cadex_hydrate.REVISION_PROP, ""))
 
+    cadex_backend.hydrate_timings(reset=True)
     durations = []
     for index in range(10):
         value = 1.5 + 0.2 * index
@@ -539,6 +540,7 @@ def test_params_and_latency(root):
         ok, drag_report = model_module.set_values({"hole": value})
         durations.append(time.perf_counter() - started)
         check(ok, "drag {:d} accepted".format(index))
+    hydrations = cadex_backend.hydrate_timings(reset=True)
     median = statistics.median(durations)
     plate = bpy.data.objects.get("plate")
     check(plate is not None
@@ -549,6 +551,15 @@ def test_params_and_latency(root):
         "median_seconds": round(median, 3),
         "parity_bar_seconds": 0.65,
         "median_within_bar": median <= 0.65,
+    }
+    # Hydration's share of the drag. Measured, not bounded: it is here to
+    # say whether the viewport half of a drag is worth optimising at all.
+    hydrate_median = statistics.median(hydrations) if hydrations else 0.0
+    GATE["hydrate_seconds"] = {
+        "seconds": [round(value, 4) for value in hydrations],
+        "median_seconds": round(hydrate_median, 4),
+        "share_of_drag": (round(hydrate_median / median, 3)
+                          if median > 0 else None),
     }
     check(median <= 0.65,
           "slider-drag median {:.3f} s within the 0.65 s parity bar".format(

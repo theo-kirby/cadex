@@ -58,6 +58,23 @@ ASSET_SUFFIXES = (".stl", ".obj", ".ply")
 DISPLAY_REQUEST = {"quality": "standard", "edges": True}
 DRAG_DISPLAY = {"quality": "draft", "edges": False}
 REFINE_DELAY_SECONDS = 0.8
+
+#: Wall-clock seconds spent turning an accepted response into viewport
+#: objects, oldest first. Hydration runs on the main thread inside
+#: :meth:`Lifecycle.poll`, so whatever share of a drag it takes is a share
+#: no amount of engine work can remove -- and until this was measured
+#: nobody knew whether that share was 2% or 40%. The gate reports it as
+#: ``hydrate_seconds``.
+_hydrate_seconds = []
+
+
+def hydrate_timings(reset=False):
+    """Recorded hydration durations, oldest first; optionally clear them."""
+    global _hydrate_seconds
+    recorded = list(_hydrate_seconds)
+    if reset:
+        _hydrate_seconds = []
+    return recorded
 STALE_REVISION_CODE = "STALE_PROGRAM_REVISION"
 RESTORE_FAILED_CODE = "CADEXD_RESTORE_FAILED"
 
@@ -706,12 +723,15 @@ class Lifecycle:
                 return None
             return False, _failure_report(self._op, payload)
         _revision_from_payload(self._scene, payload)
+        started = time.perf_counter()
         try:
             hydration = cadex_hydrate.hydrate_display(
                 payload.get("display") or {}, payload.get("revision") or "")
         except Exception:
             return False, ("The engine accepted the revision but viewport "
                            "hydration failed:\n" + traceback.format_exc())
+        finally:
+            _hydrate_seconds.append(time.perf_counter() - started)
         if self.on_accept is not None:
             self.on_accept()
         return True, _accept_report(payload, hydration)
