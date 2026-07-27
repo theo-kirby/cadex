@@ -180,15 +180,16 @@ def test_source_policy_blocks_escape_hatches() -> None:
 def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None:
     import CadexScriptedRuntime as runtime
 
-    staging = tmp_path / "project"
-    staging.mkdir()
-    copied = runtime._stage_worker_bundle(
+    bundle, entry = runtime.shared_worker_bundle(
         Path(runtime.__file__).resolve().parent,
-        staging,
         "project",
     )
+    copied = sorted(path.name for path in bundle.iterdir()
+                    if path.suffix == ".py")
     expected = {
-        "worker.py",
+        # The project entry module, under its real name: it is imported
+        # rather than runpy'd now, so it keeps a module name (ADR-052).
+        "cadex_project_worker.py",
         "cadex_domain_api.py",
         "cadex_domain_worker.py",
         # The subshape vocabulary the five selector-taking part ops resolve
@@ -208,7 +209,9 @@ def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None
         "cadex_tessellation.py",
     }
     assert set(copied) == expected
-    assert {path.name for path in staging.iterdir()} == expected
+    assert entry == "cadex_project_worker.py"
+    # Nothing else rides along -- __pycache__ aside, which is the point.
+    assert {path.name for path in bundle.iterdir()} - {"__pycache__"} == expected
     # The project bundle is the only bundle: per-domain staging was retired.
     assert set(runtime._DOMAIN_WORKER_BUNDLES) == {"project"}
 
@@ -763,9 +766,8 @@ def test_worker_staging_rejects_an_undeclared_domain(tmp_path: Path) -> None:
     import CadexScriptedRuntime as runtime
 
     with pytest.raises(ValueError, match="no isolated worker bundle"):
-        runtime._stage_worker_bundle(
+        runtime.shared_worker_bundle(
             Path(runtime.__file__).resolve().parent,
-            tmp_path,
             "not-a-domain",
         )
 

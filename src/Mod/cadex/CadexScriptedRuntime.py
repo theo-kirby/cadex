@@ -22,6 +22,7 @@ from pathlib import Path
 import re
 import shutil
 import sys
+import tempfile
 import time
 from typing import Any, Callable, Mapping
 import uuid
@@ -125,10 +126,15 @@ def _read_json(path: Path, label: str) -> dict[str, Any]:
     return value
 
 
-def _stage_worker_bundle(
-    module_root: Path, staging: Path, domain: str
-) -> tuple[str, ...]:
-    """Copy only the isolated runner and the active domain's declared modules."""
+#: Where shared worker bundles live. Outside the project store on purpose:
+#: they are a function of the *engine build*, not of any project, and a
+#: per-project copy is what made this cost 608 KB and 16 ``compile()`` calls
+#: on every single request.
+_BUNDLE_CACHE_DIRNAME = "cadex-worker-bundles"
+
+
+def _bundle_members(domain: str) -> tuple[str, tuple[str, ...]]:
+    """``(entry_module, filenames)`` for one domain's isolated worker."""
 
     clean_domain = str(domain or "").strip().lower()
     domain_files = _DOMAIN_WORKER_BUNDLES.get(clean_domain)
@@ -136,10 +142,7 @@ def _stage_worker_bundle(
         raise ValueError(
             f"XScript domain {clean_domain!r} has no isolated worker bundle."
         )
-    filenames = (
-        "cadex_domain_api.py",
-        *domain_files,
-    )
+    filenames = ("cadex_domain_api.py", *domain_files)
     if len(filenames) != len(set(filenames)):
         raise RuntimeError(
             f"XScript domain {clean_domain!r} has duplicate worker dependencies."
@@ -148,16 +151,74 @@ def _stage_worker_bundle(
         "cadex_project_worker.py" if clean_domain == "project"
         else "cadex_domain_worker.py"
     )
-    copied = ("worker.py", *filenames)
-    sources = (entry_module, *filenames)
-    for source_name, target_name in zip(sources, copied, strict=True):
-        source = module_root / source_name
+    return entry_module, filenames
+
+
+def _link_or_copy(source: Path, target: Path) -> None:
+    """Hardlink, falling back to a copy that preserves mtime.
+
+    The mtime matters and is the whole point: ``__pycache__`` validates a
+    cached bytecode file against its source's mtime and size, so a
+    ``shutil.copyfile`` (which does *not* preserve mtime) would invalidate
+    the cache on every rebuild and the compile would come straight back.
+    ``PYTHONPYCACHEPREFIX`` alone would not have fixed that either.
+    """
+
+    try:
+        os.link(source, target)
+    except OSError:
+        # Different filesystem, or a platform without hardlinks.
+        shutil.copy2(source, target)
+
+
+def shared_worker_bundle(module_root: Path, domain: str) -> tuple[Path, str]:
+    """The content-addressed bundle directory for one domain. Built once.
+
+    Returns ``(bundle_dir, entry_module_name)``. Keyed by the bytes of every
+    member, so an engine rebuild produces a new directory and a stale one is
+    never used; identical content reuses the directory, and with it the
+    ``__pycache__`` next to it.
+
+    Built atomically -- populated under ``.tmp-<uuid>`` and ``os.replace``d
+    into place -- so two workers racing on the same bundle cannot read a
+    half-populated directory.
+    """
+
+    entry_module, filenames = _bundle_members(domain)
+    members = (entry_module, *filenames)
+
+    digest = hashlib.sha256()
+    for name in sorted(set(members)):
+        source = module_root / name
         if source.parent != module_root or not source.is_file():
             raise RuntimeError(
-                f"Required XScript worker dependency {source_name!r} is missing."
+                f"Required XScript worker dependency {name!r} is missing."
             )
-        shutil.copyfile(source, staging / target_name)
-    return copied
+        data = source.read_bytes()
+        digest.update(name.encode("utf-8"))
+        digest.update(str(len(data)).encode("ascii"))
+        digest.update(data)
+
+    clean_domain = str(domain or "").strip().lower()
+    root = Path(tempfile.gettempdir()) / _BUNDLE_CACHE_DIRNAME
+    bundle = root / f"{clean_domain}-{digest.hexdigest()[:24]}"
+    if bundle.is_dir():
+        return bundle, entry_module
+
+    root.mkdir(parents=True, exist_ok=True)
+    pending = root / f".tmp-{uuid.uuid4().hex}"
+    pending.mkdir(parents=True, exist_ok=False)
+    try:
+        for name in set(members):
+            _link_or_copy(module_root / name, pending / name)
+        os.replace(pending, bundle)
+    except OSError:
+        shutil.rmtree(pending, ignore_errors=True)
+        # Lost a race with another worker, or could not publish. Either the
+        # bundle is there now or the caller's next attempt rebuilds it.
+        if not bundle.is_dir():
+            raise
+    return bundle, entry_module
 
 
 def _stage_project_assets(project_root: Path, staging: Path) -> list[str]:
@@ -186,7 +247,11 @@ def _stage_project_assets(project_root: Path, staging: Path) -> list[str]:
                 f"mesh files / {_MAX_ASSET_BYTES} bytes."
             )
         target_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(path, target_dir / path.name)
+        # Hardlink: a 128 MB asset budget copied per attempt is 128 MB of
+        # I/O on every drag. Safe because put_asset writes through
+        # `replace`, so overwriting an asset makes a new inode and never
+        # mutates a file a live attempt has linked.
+        _link_or_copy(path, target_dir / path.name)
         staged.append(path.name)
     return staged
 
@@ -396,10 +461,18 @@ def execute_candidate(
 ) -> dict[str, Any]:
     from CadexScriptedProcess import run_process
 
+    # A plain import, not runpy.run_path: run_path compiles the entry
+    # module from source every single time, while an import writes and
+    # reuses __pycache__ next to the shared bundle. The bundle directory is
+    # content-addressed, so this cache is never stale.
+    bundle = str(prepared["bundle_dir"])
+    entry = str(prepared["entry_module"]).removesuffix(".py")
     code = (
-        "import os,runpy,sys;"
+        "import os,sys;"
         "sys.path.insert(0,os.getcwd());"
-        "runpy.run_path('worker.py',run_name='__main__')"
+        f"sys.path.insert(0,{bundle!r});"
+        f"import {entry} as _w;"
+        "raise SystemExit(_w.main())"
     )
     process = run_process(
         [str(prepared["freecadcmd_executable"]), "--safe-mode", "-c", code],
@@ -791,7 +864,7 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
     staging.mkdir(parents=True, exist_ok=False)
     module_root = Path(__file__).resolve().parent
     try:
-        _stage_worker_bundle(module_root, staging, "project")
+        bundle_dir, entry_module = shared_worker_bundle(module_root, "project")
         _stage_project_assets(Path(project_root), staging)
         request = {
             "schema": PROJECT_WORKER_SCHEMA,
@@ -848,6 +921,8 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         "param_specs_before": list(state.get("param_specs") or []),
         "project_root": project_root,
         "staging": str(staging),
+        "bundle_dir": str(bundle_dir),
+        "entry_module": str(entry_module),
         "attempt_id": attempt_id,
         "freecadcmd_executable": str(freecadcmd_executable),
         "timeout_seconds": float(captured["timeout_seconds"]),

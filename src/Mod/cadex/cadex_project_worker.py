@@ -74,7 +74,17 @@ def _execute_project_source(
 
     def trace(frame: Any, event: str, _arg: Any):
         nonlocal operations
-        if frame.f_code.co_filename == source_filename and event in {"line", "call"}:
+        if frame.f_code.co_filename != source_filename:
+            # Not the user's program. Returning `trace` here made Python
+            # line-trace every frame of every call the script makes --
+            # the whole cadex_*_api payload-construction path, on every
+            # single line. Returning None declines local tracing for that
+            # frame; the counter is unchanged by construction, because it
+            # only ever incremented for source frames anyway, and a
+            # callback back into source code still gets a fresh `call`
+            # event at the global hook.
+            return None
+        if event in {"line", "call"}:
             operations += 1
             if operations > max_operations:
                 raise RuntimeError(

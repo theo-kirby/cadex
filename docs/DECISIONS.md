@@ -3281,3 +3281,74 @@ deflection + whether edges were streamed, and
 Deliberately **not** built: the general "update in place when vertex counts
 match" path. Counts move with the geometry, so on a parameter drag it misses
 every time.
+
+---
+
+## ADR-052 — The cold-path diet (2026-07-27)
+
+**Decision.** Four small independent changes to what a request costs before
+it reaches any geometry.
+
+1. **The settrace hook stops tracing our own code.**
+   `_execute_project_source`'s trace function returned *itself* for every
+   frame, so Python line-traced the entire `cadex_*_api`
+   payload-construction path on every line of it. It now returns `None` for
+   any frame that is not the user's program. The counter is unchanged by
+   construction — it only ever incremented for source frames — and a
+   callback back into source code still gets a fresh `call` event at the
+   global hook.
+2. **The process poll loop stops forking `/bin/ps` at t=0**
+   (`next_memory_check = started + 0.5`; it was `0.0`, so every run forked
+   `ps` while the child was still `dlopen`ing OCCT and could not possibly
+   have allocated anything), and sleeps adaptively — 1 ms backing off to
+   50 ms — instead of a flat 50 ms that charged every short run up to 50 ms
+   of dead time. **Not** a waiter thread: `process.wait()` has to stay
+   interruptible for cancellation, which puts you back at a polled loop plus
+   machinery.
+3. **The two assembly transfer-integrity checks ask for the counts they
+   read.** Both passed `max_subelements=32` and then read seven count
+   fields, computing 32 face and 32 edge details each time for nothing.
+   Counts are unconditional in `part_shape_facts`; only the details are
+   bounded, so `0` is the honest argument.
+4. **The worker bundle is staged once, not per request.** It was copied into
+   every attempt directory — 608 KB and 16 `compile()` calls on every single
+   request. It now lives in one content-addressed directory outside the
+   project store, populated by `os.link` with a `copy2` fallback and
+   published atomically (`.tmp-<uuid>` → `os.replace`), and the
+   `runpy.run_path` bootstrap becomes a plain `import` so the entry module
+   is cacheable too.
+
+   **The hardlink is the load-bearing detail.** `__pycache__` validates
+   bytecode against its source's mtime and size; `shutil.copyfile` does not
+   preserve mtime, so a copy would invalidate the cache on every request and
+   the compile would come straight back. `PYTHONPYCACHEPREFIX` alone would
+   not have fixed that either. Content-addressing is what makes the cache
+   safe: an engine rebuild produces a different directory, so a stale bundle
+   can never be served.
+
+   Project assets are hardlinked the same way, which also removes a latent
+   128 MB-per-drag copy for any project with imported geometry. Safe because
+   `put_asset` writes through `replace`, so overwriting an asset makes a new
+   inode and never mutates a file a live attempt has linked.
+
+**Measured**, on the 24-hole/fillet/mesh-skin baseline, dev tree and payload
+agreeing: **0.505 s → 0.471 s** plain and **0.610 s → 0.529 s** with the
+draft display the shell requests mid-drag. The gate's end-to-end slider
+median moved 0.578 s → 0.565 s.
+
+**Stage D cannot reach real-time, and this ADR should not let the numbers
+imply otherwise.** What remains after this is process spawn, FreeCAD's C++
+init, `--safe-mode`'s `QTemporaryDir` setup and the OCCT dylib load — all
+invisible to cProfile, none of it removable by making Python cheaper. That
+is what ADR-055's warm preview worker is for. This buys roughly 7% of a
+drag; it does not change what kind of thing a drag is.
+
+**Consequences.** `_stage_worker_bundle` is replaced by
+`shared_worker_bundle`, which returns `(bundle_dir, entry_module)` rather
+than a tuple of copied names, and the entry module keeps its real name
+instead of being renamed to `worker.py` — it is imported now, so it needs
+one. Three tests move with it (`test_tessellation.py`,
+`test_modeling_surface_architecture.py` ×2), and a new test asserts the
+bundle is built once, is content-addressed, and preserves mtime — the
+property the whole item stands on. 250 engine tests pass in the source tree
+and against the staged payload; `pixi run gate` green.

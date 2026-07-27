@@ -155,7 +155,18 @@ def run_process(
         timed_out = False
         memory_exceeded = False
         observed_memory: int | None = None
-        next_memory_check = 0.0
+        # First check half a second in, not immediately: at t=0 the child is
+        # still dlopen'ing OCCT and cannot have allocated anything, so the
+        # old 0.0 forked /bin/ps once per run for an answer that could not
+        # be interesting.
+        next_memory_check = started + 0.5
+        # Adaptive: a short script finishes inside the first few
+        # milliseconds, and a flat 50 ms sleep charged every run up to that
+        # much dead time. Backs off so a long run is not a spin loop.
+        #
+        # Not a waiter thread: process.wait() has to stay interruptible for
+        # cancellation, which puts you back at a polled loop plus machinery.
+        poll_interval = 0.001
         while process.poll() is None:
             if cancellation_check is not None and cancellation_check():
                 cancelled = True
@@ -170,7 +181,8 @@ def run_process(
                 if observed_memory is not None and observed_memory > memory_limit_bytes:
                     memory_exceeded = True
                     break
-            time.sleep(0.05)
+            time.sleep(poll_interval)
+            poll_interval = min(0.05, poll_interval * 1.5)
         if cancelled or timed_out or memory_exceeded:
             _terminate(process)
         process.wait()
