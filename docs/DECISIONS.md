@@ -3174,3 +3174,110 @@ LinkedObject` — because the live component still references the part when
 retirement runs. An ordering wrinkle in retirement, unrelated to playback;
 the gate test drops the simulation and keeps the mechanism, which is the
 case that matters here.
+
+---
+
+## ADR-051 — The drag leaves the main thread (2026-07-27)
+
+**Decision.** A slider drag no longer blocks Blender's main thread.
+`rebuild_from_sliders` splits into `begin_slider_rebuild(scene)`, which
+returns an unwaited `Lifecycle`, and a blocking `rebuild_from_sliders` that
+is `.wait()` over it. `model._debounced_rebuild` hands the drag to a pump
+(`note_drag` / `_drag_pump`) that keeps at most one request in flight per
+project and coalesces the rest.
+
+**Rationale.** Each debounce expiry ran one `set_params` round trip *on the
+main thread* — about half a second — so the application froze, repeatedly,
+for the whole of a drag. For a hole diameter that was survivable. For an
+assembly, where watching the motion is the point, it made the thing
+unusable.
+
+`_lifecycle`'s docstring already claimed "one code path underneath"; this
+makes it true, with `on_accept` carrying what the blocking form used to do
+after `if ok:` so the two callers genuinely share a path rather than being
+two that happen to agree.
+
+**Coalescing needs no value queue.** `begin_slider_rebuild` reads the live
+PropertyGroup when it *starts*, so restarting after the in-flight request
+completes automatically takes the newest values and drops every intermediate
+one. A 50-event burst is one in-flight request plus a boolean — measured:
+12 events became 2 requests and converged on the final value.
+
+**Cancel in flight only past ~1.0 s.** Below that the in-flight result is
+about to arrive and is nearly current, and cancelling it freezes the
+viewport for another whole round trip. Above it, a stale request is holding
+the client lock while the user has already dragged well past the value it is
+computing. One constant, with that reasoning beside it.
+
+**Arbitration.** `begin_lifecycle` supersedes a *queued* drag — the agent is
+about to move the revision, so those values are stale — and leaves an
+in-flight one alone, since it already holds the client and finishes in a
+moment. `note_drag` defers while the agent is busy, because otherwise the
+drag's `expected_revision` snapshot goes stale behind the agent's write and
+burns the one-shot retry on every drag. The drag pump and the refine pump
+stay separate.
+
+**A superseded drag is not a failure** and must not reach
+`model._last_error`, which is what the parameters panel displays (ADR-039
+state stays in `model.py`). That is what the `superseded` flag is for.
+
+One slot **per project root**, the exact twin of `_refines` and for the same
+reason: a drag started in one .blend must not hydrate into another. The pump
+re-checks `project_root` before polling, because `Lifecycle.poll` hydrates
+unconditionally.
+
+**Background mode is untouched:** `model._schedule_rebuild`'s
+`if bpy.app.background` branch still calls the blocking form, so the gate's
+`test_params_and_latency` measures the same end-to-end work and its 0.65 s
+bar and baseline stay comparable. Verified: 0.576 s after, 0.578 s before.
+
+**Visible consequence.** One undo step per *settled* value instead of one
+per debounce expiry. That is an improvement and it matches "one turn = one
+undo step", but it is a change a user can see.
+
+**Known limit, not papered over.** `ensure_open` still runs `open_project`
+(a full restore pass) plus a `rebuild` synchronously on the main thread, so
+the *first* drag of a session still stalls — `open_seconds` is 2.1 s in the
+gate. Out of scope here.
+
+**Consequences.** Two new gate tests. `test_main_thread_free_during_a_drag`
+drives a 12-event burst and drives the pump by hand — `bpy.app.timers` do
+not fire under `--background`, which is also what makes the tick count
+meaningful — and asserts one request in flight, one queued boolean, 2 total,
+convergence on the final value, and no error.
+`test_an_agent_turn_supersedes_a_queued_drag` asserts the queued drag is
+dropped and that the supersede never surfaces as a failure. New gate keys
+`drag_ticks` (96), `drag_requests` (2), `drag_seconds`.
+
+**Unchanged geometry is not rebuilt (C2).** An object records what its mesh
+was built from (`cadex_source_sha`); a hydration whose sidecar describes the
+same buffers sets the placement and the revision and skips the binary read,
+the mesh build and the face-attribute write entirely. The hash is compared,
+never the path: every attempt gets its own staging directory, so paths
+differ on every request.
+
+**The measurement says this is not a latency win today, and the ADR should
+say so rather than let the numbers imply otherwise.** A0 exists to answer
+whether hydration is worth optimising: it is **9.6 ms, 1.7% of a 579 ms
+drag**. It is not. Nor does the skip fire on a parameter drag, which is the
+case that matters — the geometry genuinely changed, so the key genuinely
+moved. What it does fire on today is a repeated rebuild at the same quality
+(`rebuild_model`, and the rebuild after a restore on open).
+
+It is kept for what it enables rather than what it saves now: a response
+carrying a `placement` with unchanged buffers is indistinguishable from a
+pose-only response, which is precisely the shape the warm preview worker
+(ADR-055) returns — and at Stage E's ~60-80 ms the same 10 ms is ~14%
+instead of 1.7%.
+
+**The key is not `source_sha256`.** That was the obvious mistake and it is
+silent: the *same* BREP is tessellated at draft quality during a drag and at
+standard quality by the settled refine, with an identical `source_sha256`
+both times. Keyed on the SHA alone the refine looks like a no-op and the
+viewport keeps the coarse mesh permanently. The key is source + quality +
+deflection + whether edges were streamed, and
+`test_unchanged_geometry_is_not_rebuilt` asserts exactly that case.
+
+Deliberately **not** built: the general "update in place when vertex counts
+match" path. Counts move with the geometry, so on a parameter drag it misses
+every time.

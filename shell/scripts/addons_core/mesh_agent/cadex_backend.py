@@ -795,6 +795,11 @@ def begin_lifecycle(scene, op, args, display=None, guarded=True,
     if not ok:
         return False, report
     _cancel_refine(project_root(scene))
+    # A *queued* drag is stale the moment the agent writes: its values were
+    # captured against a revision this request is about to move. An
+    # in-flight one is left alone -- it already holds the client and will
+    # finish in a moment.
+    _supersede_drag(project_root(scene))
     return Lifecycle(scene, op, args, display=display, guarded=guarded,
                      cancelled=cancelled, on_accept=on_accept)
 
@@ -880,30 +885,226 @@ def write_script(scene, source):
     return ok, report
 
 
-def rebuild_from_sliders():
-    """The slider-drag path: current slider values → one set_params request.
+def begin_slider_rebuild(scene):
+    """Start the slider-drag request. A :class:`Lifecycle`, or (ok, report).
 
-    Called from model.rebuild()'s backend dispatch (debounced drag, or
-    model.set_values() from the set_params tool). Returns (ok, report).
+    The non-blocking half of :func:`rebuild_from_sliders`, so the drag pump
+    can poll it instead of the main thread sitting inside it for half a
+    second per debounce tick.
+
+    ``on_accept`` carries what the blocking form used to do after ``if ok:``
+    -- adopt the values and schedule the settled refine -- so both callers
+    genuinely share one code path rather than two that agree today.
     """
-    import bpy
-    from . import model
-    scene = bpy.context.scene
+
     ok, report = ensure_open(scene)
     if not ok:
         return False, report
     state = _state_for(project_root(scene))
     if not state.script_present:
         return True, "No project script yet; nothing to rebuild."
+    # Read at start time, not at queue time: that is what makes coalescing
+    # need no value queue (see note_drag).
     values = _slider_values(scene, state)
     if not values:
         return False, "The project script declares no parameters."
-    ok, report = _lifecycle(scene, "set_params", {"values": values},
-                            display=DRAG_DISPLAY)
-    if ok:
+
+    def accepted():
         state.values.update(values)
         _schedule_refine(scene)
-    return ok, report
+
+    return begin_lifecycle(scene, "set_params", {"values": values},
+                           display=DRAG_DISPLAY, on_accept=accepted)
+
+
+def rebuild_from_sliders():
+    """The slider-drag path: current slider values → one set_params request.
+
+    Called from model.rebuild()'s backend dispatch (background mode, or
+    model.set_values() from the set_params tool). Returns (ok, report).
+    """
+    started = begin_slider_rebuild(bpy_scene())
+    if not isinstance(started, Lifecycle):
+        return started
+    return started.wait()
+
+
+# -- the drag pump: one in flight, the rest coalesced ------------------------
+
+#: Past this, an in-flight drag is cancelled when a newer one is waiting.
+#: Below it the in-flight result is about to arrive and is nearly current,
+#: and cancelling would freeze the viewport for another whole round trip;
+#: above it a stale request is holding the client lock while the user has
+#: already dragged well past the value it is computing.
+DRAG_CANCEL_AFTER_SECONDS = 1.0
+
+#: One drag slot **per project root**, the exact twin of ``_refines`` and
+#: for the same reason: a drag started in one .blend must never hydrate
+#: into another.
+_drags = {}
+
+
+def _drag_slot(root):
+    slot = _drags.get(root)
+    if slot is None:
+        slot = {"lifecycle": None, "queued": False, "superseded": False,
+                "started": 0.0, "requests": 0}
+        _drags[root] = slot
+    return slot
+
+
+def _supersede_drag(root):
+    """Drop a *queued* drag; leave an in-flight one alone.
+
+    Called when the agent starts its own modeling request. The queued drag
+    is stale by definition -- the agent is about to move the revision -- and
+    a superseded drag is not a failure, so it must not reach
+    ``model._last_error`` (ADR-039 state stays in model.py).
+    """
+
+    slot = _drags.get(root)
+    if slot is not None and slot.get("queued"):
+        slot["queued"] = False
+        slot["superseded"] = True
+
+
+def note_drag(scene, on_finish=None):
+    """Register a slider change. At most one request in flight per project.
+
+    **Coalescing needs no value queue.** ``begin_slider_rebuild`` reads the
+    live PropertyGroup when it *starts*, so restarting after the in-flight
+    request completes automatically picks up the newest values and drops
+    every intermediate one. A 50-event burst becomes at most one in-flight
+    request plus a boolean.
+    """
+
+    from . import agent as agent_module
+
+    root = project_root(scene)
+    slot = _drag_slot(root)
+
+    # Defer while the agent is mid-turn: otherwise the drag's
+    # expected_revision snapshot goes stale behind the agent's write and
+    # burns the one-shot retry on every single drag.
+    if agent_module.get_agent().busy:
+        slot["queued"] = True
+        return
+
+    if slot.get("lifecycle") is not None:
+        slot["queued"] = True
+        return
+
+    _start_drag(scene, root, slot, on_finish)
+
+
+def _start_drag(scene, root, slot, on_finish=None):
+    import bpy
+
+    slot["queued"] = False
+    slot["superseded"] = False
+    started = begin_slider_rebuild(scene)
+    if not isinstance(started, Lifecycle):
+        if on_finish is not None:
+            on_finish(*started)
+        return
+    slot["lifecycle"] = started
+    slot["started"] = time.monotonic()
+    slot["requests"] = int(slot.get("requests") or 0) + 1
+    slot["on_finish"] = on_finish
+
+    def pump():
+        return _drag_pump(root)
+
+    if not bpy.app.background:
+        bpy.app.timers.register(pump, first_interval=0.02)
+
+
+def _drag_pump(root):
+    """Main thread. Poll the in-flight drag; restart for a queued one.
+
+    Modelled on ``_schedule_refine``'s poll, including its re-check of
+    ``project_root`` before hydrating: ``Lifecycle.poll`` hydrates
+    unconditionally, so a drag that lands after a Save-As must not repaint
+    the new file with the old file's geometry.
+    """
+
+    import bpy
+    from . import agent as agent_module
+    from . import model
+
+    slot = _drags.get(root)
+    if slot is None:
+        return None
+    lifecycle = slot.get("lifecycle")
+    if lifecycle is None:
+        return None
+
+    scene = bpy.context.scene
+    if project_root(scene) != root:
+        slot["lifecycle"] = None
+        slot["queued"] = False
+        return None
+
+    # A stale in-flight request holds the client lock while the user drags
+    # past it; a nearly-finished one is worth waiting for. See the constant.
+    if (slot.get("queued")
+            and time.monotonic() - slot["started"] > DRAG_CANCEL_AFTER_SECONDS):
+        slot["superseded"] = True
+
+    outcome = lifecycle.poll()
+    if outcome is None:
+        return 0.02
+
+    ok, report = outcome
+    slot["lifecycle"] = None
+    superseded = slot.pop("superseded", False)
+    on_finish = slot.pop("on_finish", None)
+
+    if ok:
+        model.clear_last_error()
+    elif not superseded and report:
+        # A superseded drag is not a failure and must not be reported as
+        # one; anything else is exactly what ADR-039's panel exists for.
+        model.record_error(report)
+        print("mesh model rebuild failed:\n" + report)
+    if on_finish is not None:
+        on_finish(ok, report)
+    agent_module._tag_redraw()
+
+    if slot.get("queued") and not agent_module.get_agent().busy:
+        _start_drag(scene, root, slot)
+        return None
+    return None
+
+
+def drag_stats(root=None, reset=False):
+    """``{requests, queued, in_flight}`` for the gate. Test-facing."""
+    import bpy
+    root = root or project_root(bpy.context.scene)
+    slot = _drag_slot(root)
+    stats = {
+        "requests": int(slot.get("requests") or 0),
+        "queued": bool(slot.get("queued")),
+        "in_flight": slot.get("lifecycle") is not None,
+    }
+    if reset:
+        slot["requests"] = 0
+    return stats
+
+
+def pump_drag_once(root=None):
+    """Run one drag-pump tick by hand. Test-facing.
+
+    ``bpy.app.timers`` do not fire under ``--background``, so the gate
+    drives the pump itself.
+    """
+    import bpy
+    return _drag_pump(root or project_root(bpy.context.scene))
+
+
+def bpy_scene():
+    import bpy
+    return bpy.context.scene
 
 
 # -- post-drag display refinement -------------------------------------------

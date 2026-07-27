@@ -426,25 +426,43 @@ def clear_last_error():
 
 
 def _debounced_rebuild():
+    """Hand the drag to the backend's pump and return immediately.
+
+    This used to block the main thread inside one ``set_params`` round trip
+    -- about half a second, every debounce expiry -- so a drag froze the
+    whole application repeatedly (ADR-051). The pump keeps at most one
+    request in flight and coalesces the rest.
+
+    One undo step per *settled* value now, rather than one per debounce
+    expiry. That matches "one turn = one undo step" and is an improvement,
+    but it is a visible change.
+    """
     import bpy
-    try:
-        ok, report = rebuild()
+    from . import cadex_backend
+
+    def finished(ok, report):
         if ok:
-            _last_error[0] = ""
             try:
                 bpy.ops.ed.undo_push(message="Mesh: adjust parameters")
             except RuntimeError:
                 pass
-        elif report:
-            _last_error[0] = report
-            print("mesh model rebuild failed:\n" + report)
+        # The pump owns _last_error: it is the only one that knows whether a
+        # failure was real or merely superseded.
+        agent_module_tag_redraw()
+
+    try:
+        cadex_backend.note_drag(bpy.context.scene, on_finish=finished)
     except Exception:
         _last_error[0] = traceback.format_exc().strip().splitlines()[-1]
         traceback.print_exc()
     # The parameters editor draws `last_error()`, and nothing else repaints it.
+    agent_module_tag_redraw()
+    return None
+
+
+def agent_module_tag_redraw():
     from . import agent as agent_module
     agent_module._tag_redraw()
-    return None
 
 
 def _make_property(spec):

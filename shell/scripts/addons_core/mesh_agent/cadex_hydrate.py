@@ -49,6 +49,37 @@ HIDDEN_SOURCE_PROP = "cadex_hidden_source"
 #: ``KIND_PROP`` value for a component instance.
 COMPONENT_KIND = "component"
 
+#: What the object's current mesh was built from. Not the source artifact's
+#: SHA alone: the *same* BREP is tessellated at draft quality during a drag
+#: and at standard quality by the settled refine, with the same
+#: ``source_sha256`` both times. Keyed on the SHA alone, the refine would
+#: look like a no-op and the viewport would keep the coarse mesh for good.
+SOURCE_SHA_PROP = "cadex_source_sha"
+
+
+def _display_key(sidecar):
+    """Identity of the *buffers* a sidecar describes, not just its source.
+
+    Source artifact + quality + deflection + whether edges were streamed.
+    Two hydrations agreeing on all four describe byte-identical buffers, so
+    rebuilding the mesh from them cannot change anything on screen.
+    """
+
+    counts = sidecar.get("counts") or {}
+    return "{:s}|{:s}|{:.9g}|{:d}".format(
+        str(sidecar.get("source_sha256") or ""),
+        str(sidecar.get("quality") or ""),
+        float(sidecar.get("deflection") or 0.0),
+        1 if int(counts.get("edge_vertices") or 0) > 0 else 0,
+    )
+
+
+def read_sidecar(sidecar_path):
+    """Just the sidecar JSON -- no binary buffer read."""
+
+    with open(sidecar_path, "r", encoding="utf-8") as handle:
+        return json.load(handle)
+
 
 def read_tessellation(sidecar_path):
     """Read one tessellation sidecar + binary buffer into numpy arrays."""
@@ -287,6 +318,29 @@ def hydrate_display(display_map, revision):
         if not tessellation_record:
             continue
         sidecar_path = str(tessellation_record.get("sidecar_path") or "")
+        key = _display_key(read_sidecar(sidecar_path))
+        obj = _find(collection, name, edges=False)
+
+        # The buffers this response describes are the ones already on the
+        # object: rebuilding them cannot change a pixel, so don't read the
+        # binary, don't build a mesh, don't rewrite the face attribute.
+        # Compare the hash, never the path -- every attempt gets its own
+        # staging directory, so paths differ on every single request.
+        if (obj is not None and obj.data is not None
+                and str(obj.get(SOURCE_SHA_PROP) or "") == key):
+            obj[REVISION_PROP] = str(revision)
+            obj[SIDECAR_PROP] = sidecar_path
+            matrix = _matrix_from_placement(entry.get("placement") or [])
+            if matrix is not None:
+                obj.matrix_world = matrix
+            updated.append(obj.name)
+            keep.add(obj.name)
+            edge_obj = _find(collection, name, edges=True)
+            if edge_obj is not None:
+                edge_obj[REVISION_PROP] = str(revision)
+                keep.add(edge_obj.name)
+            continue
+
         tessellation = read_tessellation(sidecar_path)
         mesh = _build_mesh(name, tessellation["vertices"],
                            tessellation["triangles"])
@@ -294,7 +348,6 @@ def hydrate_display(display_map, revision):
         attribute.data.foreach_set(
             "value", face_ids_per_triangle(tessellation["face_ranges"],
                                            len(tessellation["triangles"])))
-        obj = _find(collection, name, edges=False)
         if obj is None:
             obj = bpy.data.objects.new(name, mesh)
             collection.objects.link(obj)
@@ -306,6 +359,7 @@ def hydrate_display(display_map, revision):
         obj[REVISION_PROP] = str(revision)
         obj[KIND_PROP] = str(entry.get("artifact_kind") or "")
         obj[SIDECAR_PROP] = sidecar_path
+        obj[SOURCE_SHA_PROP] = key
         matrix = _matrix_from_placement(entry.get("placement") or [])
         if matrix is not None:
             obj.matrix_world = matrix

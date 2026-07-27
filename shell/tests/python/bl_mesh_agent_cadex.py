@@ -1063,6 +1063,161 @@ def test_main_thread_free_during_rebuild(root):
     GATE["main_thread_rebuild_seconds"] = round(elapsed, 3)
 
 
+def test_unchanged_geometry_is_not_rebuilt(root):
+    """Same buffers in, same mesh datablock out (ADR-051).
+
+    And the part that is easy to get wrong: a *draft* response for the same
+    source must NOT be mistaken for the same buffers, or the settled refine
+    would be a no-op and the viewport would keep the coarse mesh for good.
+    """
+    print("test_unchanged_geometry_is_not_rebuilt")
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, _ = run_tool("write_script", {"content": BASELINE_SCRIPT})
+    check(ok, "baseline accepted")
+
+    plate = bpy.data.objects.get("plate")
+    check(plate is not None, "plate hydrated")
+    if plate is None:
+        return
+    mesh_before = plate.data
+    key_before = str(plate.get(cadex_hydrate.SOURCE_SHA_PROP, ""))
+    check(bool(key_before), "the object records what its mesh was built from")
+
+    # Re-run the same script at the same quality: identical buffers.
+    ok, _ = cadex_backend.rebuild_model(scene)
+    check(ok, "rebuild accepted")
+    plate = bpy.data.objects.get("plate")
+    check(plate is not None and plate.data is mesh_before,
+          "unchanged geometry keeps the very same mesh datablock")
+
+    # A drag changes the geometry, so it must NOT be skipped.
+    ok, _ = model_module.set_values({"hole": 3.1})
+    check(ok, "drag accepted")
+    plate = bpy.data.objects.get("plate")
+    check(plate is not None and plate.data is not mesh_before,
+          "changed geometry is rebuilt, not skipped")
+    key_draft = str(plate.get(cadex_hydrate.SOURCE_SHA_PROP, ""))
+    check(key_draft != key_before, "and the recorded key moved with it")
+
+    # The settled refine is the same source at standard quality. Keyed on
+    # source_sha256 alone this would be skipped and the coarse mesh would
+    # survive; the key carries quality, so it is rebuilt.
+    draft_mesh = plate.data
+    ok, _ = cadex_backend.refine_now(scene)
+    check(ok, "refine accepted")
+    plate = bpy.data.objects.get("plate")
+    check(plate is not None and plate.data is not draft_mesh,
+          "a standard-quality refine of the same source is NOT skipped")
+    check(bpy.data.objects.get("plate" + cadex_hydrate.EDGE_SUFFIX) is not None,
+          "and the refine restored the edge wire object")
+
+
+def test_main_thread_free_during_a_drag(root):
+    """A slider drag must not block the main thread either (ADR-051).
+
+    ``test_main_thread_free_during_rebuild`` proves it for the agent's
+    modeling requests; the drag path had its own blocking call, and a drag
+    is the one thing the user does continuously.
+
+    ``bpy.app.timers`` do not fire under ``--background``, so the pump is
+    driven by hand -- which is also what makes the tick count meaningful:
+    every tick here is a turn the main thread got back.
+    """
+    print("test_main_thread_free_during_a_drag")
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, _ = run_tool("write_script", {"content": BASELINE_SCRIPT})
+    check(ok, "baseline accepted")
+
+    cadex_backend.drag_stats(reset=True)
+
+    # A burst, exactly as a real drag delivers it: many value changes far
+    # faster than one round trip.
+    finished = []
+    for index in range(12):
+        model_module.apply_values({"hole": 1.6 + 0.1 * index})
+        cadex_backend.note_drag(scene, on_finish=lambda ok, report:
+                                finished.append(ok))
+
+    stats = cadex_backend.drag_stats()
+    check(stats["in_flight"], "one request went in flight")
+    check(stats["requests"] == 1,
+          "a 12-event burst started exactly one request (got {:d})".format(
+              stats["requests"]))
+    check(stats["queued"], "and the rest coalesced into one queued boolean")
+
+    ticks = []
+    began = time.monotonic()
+    while (cadex_backend.drag_stats()["in_flight"]
+           or cadex_backend.drag_stats()["queued"]):
+        if time.monotonic() - began > 300.0:
+            break
+        ticks.append(time.monotonic())
+        cadex_backend.pump_drag_once()
+        time.sleep(0.01)
+    elapsed = time.monotonic() - began
+
+    check(len(ticks) > 10,
+          "main thread ticked {:d} times across a {:.2f} s drag".format(
+              len(ticks), elapsed))
+    total = cadex_backend.drag_stats()["requests"]
+    check(total == 2,
+          "12 events became 2 requests: one in flight, one for the final "
+          "value (got {:d})".format(total))
+
+    # Coalescing takes the *newest* values, because begin_slider_rebuild
+    # reads the live PropertyGroup when it starts rather than from a queue.
+    group = getattr(scene, "mesh_params", None)
+    check(group is not None and abs(group.hole - 2.7) < 1e-6,
+          "the drag converged on the final value")
+    plate = bpy.data.objects.get("plate")
+    check(plate is not None, "and the viewport still has the model")
+    check(not model_module.last_error(),
+          "a coalesced drag reports no error")
+
+    GATE["drag_ticks"] = len(ticks)
+    GATE["drag_requests"] = total
+    GATE["drag_seconds"] = round(elapsed, 3)
+
+
+def test_an_agent_turn_supersedes_a_queued_drag(root):
+    """The agent is about to move the revision; a queued drag is stale.
+
+    And a superseded drag is not a failure: it must not land in
+    ``model.last_error()``, which is what the parameters panel shows.
+    """
+    print("test_an_agent_turn_supersedes_a_queued_drag")
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, _ = run_tool("write_script", {"content": BASELINE_SCRIPT})
+    check(ok, "baseline accepted")
+
+    model_module.clear_last_error()
+    cadex_backend.drag_stats(reset=True)
+    for index in range(6):
+        model_module.apply_values({"hole": 1.6 + 0.1 * index})
+        cadex_backend.note_drag(scene)
+    check(cadex_backend.drag_stats()["queued"], "a drag is queued")
+
+    # The agent's own modeling request drops it.
+    started = cadex_backend.begin_write_script(scene, BASELINE_SCRIPT)
+    check(not cadex_backend.drag_stats()["queued"],
+          "an agent turn supersedes the queued drag")
+    if isinstance(started, cadex_backend.Lifecycle):
+        started.wait()
+    while cadex_backend.drag_stats()["in_flight"]:
+        cadex_backend.pump_drag_once()
+        time.sleep(0.01)
+    check(not model_module.last_error(),
+          "and the supersede is not reported as a failure ({:s})".format(
+              first_line_of(model_module.last_error())))
+
+
+def first_line_of(text):
+    return (text or "").splitlines()[0] if text else ""
+
+
 def test_cancel_reaches_the_engine(root):
     """Escape during a long rebuild must cancel it, not orphan it."""
     print("test_cancel_reaches_the_engine")
@@ -2047,6 +2202,9 @@ def main():
     assembly_root = tempfile.mkdtemp(prefix="mesh-cadex-assembly-")
     shared_root = tempfile.mkdtemp(prefix="mesh-cadex-shared-")
     sim_root = tempfile.mkdtemp(prefix="mesh-cadex-sim-")
+    drag_root = tempfile.mkdtemp(prefix="mesh-cadex-drag-")
+    skip_root = tempfile.mkdtemp(prefix="mesh-cadex-skip-")
+    supersede_root = tempfile.mkdtemp(prefix="mesh-cadex-supersede-")
     try:
         test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
@@ -2063,6 +2221,9 @@ def main():
         test_rewrite_defaults_splices_only_the_default()
         test_apply_slider_defaults(defaults_root)
         test_main_thread_free_during_rebuild(threading_root)
+        test_unchanged_geometry_is_not_rebuilt(skip_root)
+        test_main_thread_free_during_a_drag(drag_root)
+        test_an_agent_turn_supersedes_a_queued_drag(supersede_root)
         test_cancel_reaches_the_engine(cancel_root)
         test_cadex_turn_single_undo(turn_root)
         test_save_as_and_multi_file_lifecycle(saveas_root)
@@ -2102,7 +2263,8 @@ def main():
                      drop_root, rederive_root, mirror_root, defaults_root,
                      refused_root, rewrite_root, repair_root, stdout_root,
                      long_root, guard_root, history_root, prune_root,
-                     assembly_root, shared_root, sim_root):
+                     assembly_root, shared_root, sim_root,
+                     drag_root, supersede_root, skip_root):
             shutil.rmtree(root, ignore_errors=True)
 
     GATE["ok"] = not FAILURES
