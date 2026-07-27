@@ -34,6 +34,7 @@ import time
 import traceback
 
 from . import cadexd_client
+from . import cadex_animate
 from . import cadex_hydrate
 
 ROOT_PROP = "mesh_cadex_root"
@@ -77,7 +78,7 @@ def hydrate_timings(reset=False):
     return recorded
 
 
-def hydrate(payload):
+def hydrate(payload, animate=True):
     """Turn one accepted response into viewport objects. The only entry point.
 
     Three call sites used to reach into ``cadex_hydrate.hydrate_display``
@@ -86,16 +87,35 @@ def hydrate(payload):
     anything that has to happen on every accepted revision happens once,
     here, rather than in whichever of the three someone remembered.
 
+    ``animate=False`` skips the simulation bake. Mid-drag responses pass it:
+    a drag re-runs the whole script, simulation included, and re-baking
+    10 000 frames per debounce tick to show a shape change is the wrong
+    trade. The settled refine bakes.
+
+    A failed bake never costs you the geometry -- hydration has already
+    happened and stands on its own, which is why ``cadex_animate`` is a
+    sibling module and not part of ``cadex_hydrate``.
+
     ``hydrate_display`` keeps its own signature and its own tests; this is
     the payload-shaped wrapper over it.
     """
 
     started = time.perf_counter()
     try:
-        return cadex_hydrate.hydrate_display(
+        hydration = cadex_hydrate.hydrate_display(
             payload.get("display") or {}, payload.get("revision") or "")
     finally:
         _hydrate_seconds.append(time.perf_counter() - started)
+    if animate:
+        try:
+            hydration["simulation"] = cadex_animate.apply(payload)
+        except Exception:
+            hydration["simulation"] = {"baked": False,
+                                       "error": traceback.format_exc()}
+            traceback.print_exc()
+    return hydration
+
+
 STALE_REVISION_CODE = "STALE_PROGRAM_REVISION"
 RESTORE_FAILED_CODE = "CADEXD_RESTORE_FAILED"
 
@@ -744,7 +764,13 @@ class Lifecycle:
             return False, _failure_report(self._op, payload)
         _revision_from_payload(self._scene, payload)
         try:
-            hydration = hydrate(payload)
+            # A draft display is a mid-drag response: re-baking the whole
+            # simulation on every debounce tick to show a shape change is
+            # the wrong trade. The settled refine, which asks for standard
+            # quality, bakes.
+            hydration = hydrate(
+                payload,
+                animate=str(self._display.get("quality") or "") != "draft")
         except Exception:
             return False, ("The engine accepted the revision but viewport "
                            "hydration failed:\n" + traceback.format_exc())

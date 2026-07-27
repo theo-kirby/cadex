@@ -3076,3 +3076,101 @@ placement (not its declared one), tagged, sourced, wire-parented, with the
 source hidden and still present; and two components sharing one plate are
 one `bpy.data.meshes` datablock, at different placements, collected on a
 revision that drops the assembly — which also unhides the source.
+
+---
+
+## ADR-050 — The shell plays a simulation (2026-07-27)
+
+**Decision.** A new `shell/scripts/addons_core/mesh_agent/cadex_animate.py`
+bakes an accepted simulation trace into F-Curves on the component instances,
+and a `CADEX_PARAMS_PT_simulation` panel in the parameters editor plays it.
+
+**Rationale.** Watching the real motion of a mechanism is the point of
+building one, and with ADR-047/048/049 the engine finally produces the
+trace and the shell finally has objects to move. Nothing yet moved them,
+and a baked action is otherwise reachable only through editors this product
+does not show.
+
+**A sibling module, not part of `cadex_hydrate`.** A malformed, missing or
+oversized trace must never cost you the geometry. Hydration runs first and
+stands alone; the bake runs after and is allowed to fail on its own —
+`cadex_backend.hydrate` catches it and reports it without touching the
+hydration result.
+
+**Baked, not evaluated per frame.** No `frame_change_post` handler and no
+per-frame Python: the poses are known ahead of time, Blender's animation
+system plays F-Curves without involving us, and a Python handler on every
+frame is exactly the thing that would make playback stutter.
+
+**Five ways to get this wrong, all silent, all verified against a live
+Blender rather than assumed:**
+
+1. **Time, not frame index.** `time_step_s` and `frames_per_second` are
+   independent. Keying on the frame index plays a 0.05 s / 30 fps
+   simulation at 2/3 speed; frames land on *fractional* Blender frames and
+   rounding them collapses several samples onto one.
+2. **Quaternion order.** The trace is `rotation_xyzw`; Blender is wxyz.
+3. **Hemisphere continuity.** The solver returns `q` and `-q` for the same
+   orientation and `_compact_placement` normalizes without de-flipping.
+   Keyed raw, a linkage swings through a full rotation between two adjacent
+   samples and it reads as a solver bug.
+4. **`rotation_mode`.** The default `'XYZ'` leaves the quaternion channels
+   inert: nothing errors and nothing moves.
+5. **Slotted actions.** Stronger than expected — in this Blender (5.3)
+   `Action` has **no `fcurves` attribute at all**; code written against
+   `action.fcurves.new(...)` raises `AttributeError` rather than silently
+   animating nothing. Curves live at
+   `action.layers[].strips[].channelbag(slot).fcurves`, and
+   `fcurve_ensure_for_datablock` builds the layer, strip and slot — but only
+   once the action is already assigned to the object.
+
+Keys are written in bulk (`points.add`, `foreach_set("co"/"interpolation")`,
+`fcurve.update()`), never `keyframe_insert`: the engine's ceiling is 10 000
+frames × 7 channels. Interpolation is LINEAR, because the poses are already
+sampled at the solver's step and Bezier handles between them would invent
+motion the solver never produced.
+
+Frame 0 (`frame_kind: "input"`, `nominal_time_s: None`) is skipped: it has
+no time, and it is the pose the object already sits at. Units are raw mm
+1:1 — 1 BU = 1 mm and both sides are Z-up right-handed, so there is no
+conversion anywhere.
+
+**Replacement is clear-then-bake, never edit-in-place**, and the orphaned
+actions are removed, mirroring `_replace_data`'s orphan-mesh handling: a
+shorter simulation must not leave the tail of a longer one behind. An
+unchanged trace (same SHA-256 of the artifact's bytes) is not re-baked.
+Mid-drag responses pass `animate=False` — a drag re-runs the whole script,
+simulation included, and re-baking on every debounce tick to show a shape
+change is the wrong trade. The settled refine bakes.
+
+**Two simulations in one script are refused** with a sentence rather than
+silently picking one: two simulations are two timelines and a scene has one.
+
+**The panel.** In the parameters editor, beside the sliders, because that is
+where you already are when you want to see the effect of one. No new editor
+and no new space type — **ADR-036 stands and `space_action` is not
+re-registered.** It is the only panel in this add-on with a `poll`, and the
+poll asks about *content* (one custom-property lookup: does this model have
+a simulation?) rather than about *where it is drawn*, which is the kind
+ADR-035 removed. A model without a simulation sees the editor exactly as
+before. Nothing about *authoring* a simulation goes in the panel; that
+belongs to `describe_project_api()`, which is the single source of API truth.
+
+**Consequences.** No protocol change and no inherited-tree delta. New tests:
+four in the engine-free suite covering the pure trace→curve conversion
+(fractional frames, wxyz reordering, a deliberate `q → -q` staying
+continuous, mm 1:1, the input frame skipped) plus the panel's poll; and
+`test_a_simulation_plays` in the gate, which compares the *played* pose
+against the engine's own trace at three frames through the depsgraph —
+3/3 — rather than against the F-Curve values, which would only prove the
+bake agrees with itself. New gate key
+`simulation: {frames, components, bake_seconds, keyframes}`; measured at
+21 frames, 2 components, 147 keyframes, 0.578 s.
+
+**Found on the way, not fixed here.** A revision that drops an assembly's
+*parts* as well as its simulation is refused by the engine's output
+retirement guard — `Cannot retire XScript output 'arm'; ... App::Link ...
+LinkedObject` — because the live component still references the part when
+retirement runs. An ordering wrinkle in retirement, unrelated to playback;
+the gate test drops the simulation and keeps the mechanism, which is the
+case that matters here.

@@ -919,6 +919,152 @@ def test_message_box_widget_is_available():
           "UILayout.textbox exists in this build")
 
 
+
+# -- simulation playback: the pure trace -> F-curve conversion --------------
+#
+# No bpy, no engine: this is arithmetic and ordering, and every one of these
+# failure modes is silent in the viewport (ADR-050).
+
+def _trace_frames(count, *, step=0.05, flip_at=None):
+    """Solver frames, optionally with a deliberate quaternion sign flip."""
+    frames = [{
+        "frame_index": 0,
+        "frame_kind": "input",
+        "nominal_time_s": None,
+        "component_placements": {
+            "swing": {"position_mm": [0.0, 0.0, 0.0],
+                      "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]},
+        },
+    }]
+    for index in range(count):
+        # A quarter turn about Z, as xyzw.
+        quaternion = [0.0, 0.0, 0.3826834, 0.9238795]
+        if flip_at is not None and index >= flip_at:
+            quaternion = [-value for value in quaternion]
+        frames.append({
+            "frame_index": index + 1,
+            "frame_kind": "solver_output",
+            "nominal_time_s": round(index * step, 6),
+            "component_placements": {
+                "swing": {"position_mm": [float(index), 1.0, 2.0],
+                          "rotation_xyzw": quaternion},
+            },
+        })
+    return frames
+
+
+def test_playback_keys_on_time_not_frame_index():
+    from mesh_agent import cadex_animate
+
+    # 0.05 s solver step at 30 fps: 1.5 Blender frames per sample. Keying
+    # on the frame index would play this at 1/1.5 speed.
+    check(abs(cadex_animate.frame_of(0.0, 0.0, 30) - 1.0) < 1e-9,
+          "the first sample is frame 1")
+    check(abs(cadex_animate.frame_of(0.05, 0.0, 30) - 2.5) < 1e-9,
+          "a 0.05 s sample at 30 fps lands on frame 2.5, not frame 2")
+    check(abs(cadex_animate.frame_of(1.0, 0.0, 30) - 31.0) < 1e-9,
+          "one second at 30 fps is frame 31")
+    # A non-integral step/fps ratio must stay fractional rather than
+    # collapsing several samples onto one frame.
+    landings = [cadex_animate.frame_of(index * 0.01, 0.0, 30)
+                for index in range(4)]
+    check(len(set(landings)) == 4,
+          "four 0.01 s samples land on four distinct fractional frames")
+
+
+def test_playback_reorders_the_quaternion_and_keeps_it_continuous():
+    from mesh_agent import cadex_animate
+
+    curves = cadex_animate.curves_for_component(
+        _trace_frames(4), "swing", 0.0, 30)
+
+    # The trace is xyzw; Blender is wxyz. w=0.9238795 must be channel 0.
+    first_w = curves[("rotation_quaternion", 0)][1]
+    check(abs(first_w - 0.9238795) < 1e-6,
+          "the quaternion is reordered xyzw -> wxyz")
+    first_z = curves[("rotation_quaternion", 3)][1]
+    check(abs(first_z - 0.3826834) < 1e-6,
+          "and the vector part follows w")
+
+    # mm 1:1, no conversion.
+    check(curves[("location", 1)][1] == 1.0
+          and curves[("location", 2)][1] == 2.0,
+          "positions are raw mm, 1:1")
+
+    # Frame 0 has no time and is not keyed.
+    check(len(curves[("location", 0)]) == 8,
+          "four solver frames become four keys; the input frame is skipped")
+
+    # A deliberate q -> -q at sample 2. The solver means the same
+    # orientation; keyed raw it takes the long way round the sphere.
+    flipped = cadex_animate.curves_for_component(
+        _trace_frames(4, flip_at=2), "swing", 0.0, 30)
+    w_values = flipped[("rotation_quaternion", 0)][1::2]
+    check(all(value > 0.0 for value in w_values),
+          "a q -> -q sign flip is walked back into one hemisphere")
+    check(max(w_values) - min(w_values) < 1e-6,
+          "so a constant orientation stays constant across the flip")
+
+
+def test_playback_frame_range_covers_the_run():
+    from mesh_agent import cadex_animate
+
+    start, end = cadex_animate.frame_range(
+        {"parameters": {"start_time_s": 0.0, "end_time_s": 1.0,
+                        "frames_per_second": 30}})
+    check(start == 1 and end == 31,
+          "a 1 s run at 30 fps is frames 1..31")
+    start, end = cadex_animate.frame_range(
+        {"parameters": {"start_time_s": 0.0, "end_time_s": 2.5,
+                        "frames_per_second": 24}})
+    check(start == 1 and end == 61, "2.5 s at 24 fps is frames 1..61")
+
+
+def test_playback_skips_the_input_frame():
+    from mesh_agent import cadex_animate
+
+    frames = _trace_frames(3)
+    solved = cadex_animate.solver_frames(frames)
+    check(len(solved) == 3 and all(f["frame_kind"] == "solver_output"
+                                   for f in solved),
+          "the input frame is not a playback sample")
+    check(all(f["nominal_time_s"] is not None for f in solved),
+          "and every playback sample has a time")
+
+
+
+def test_the_simulation_panel_polls_on_content_not_geometry():
+    """The one panel with a poll, and it is about the model, not the layout.
+
+    ADR-035 removed every poll that asked *where* a panel was being drawn.
+    This one asks whether the model has a simulation at all, so a model
+    without one sees the parameters editor exactly as before -- a different
+    question, and the only kind of poll still worth having.
+    """
+    print("test_the_simulation_panel_polls_on_content_not_geometry")
+    from mesh_agent import cadex_animate
+
+    cls = getattr(bpy.types, "CADEX_PARAMS_PT_simulation", None)
+    check(cls is not None, "CADEX_PARAMS_PT_simulation is registered")
+    if cls is None:
+        return
+    check(cls.bl_space_type == 'CADEX_PARAMS',
+          "it lives in the parameters editor, not a new space type")
+    check(cls.bl_region_type == 'WINDOW', "in the main region")
+    check("poll" in cls.__dict__, "and it does poll")
+
+    scene = bpy.context.scene
+    if cadex_animate.SCENE_FLAG in scene:
+        del scene[cadex_animate.SCENE_FLAG]
+    check(not cls.poll(bpy.context),
+          "a model with no simulation does not show the panel")
+    scene[cadex_animate.SCENE_FLAG] = {"fps": 30, "frames": 21,
+                                       "components": 2, "seconds": 1.0}
+    check(cls.poll(bpy.context),
+          "a model with one does")
+    del scene[cadex_animate.SCENE_FLAG]
+
+
 def main():
     print("=== bl_mesh_agent tests ===")
     mesh_agent.register()
@@ -939,6 +1085,11 @@ def main():
         test_cadex_engine_discovery()
         test_cadex_budgets_reach_open_project()
         test_cadex_overlay_carries_no_api_names()
+        test_playback_keys_on_time_not_frame_index()
+        test_playback_reorders_the_quaternion_and_keeps_it_continuous()
+        test_playback_frame_range_covers_the_run()
+        test_playback_skips_the_input_frame()
+        test_the_simulation_panel_polls_on_content_not_geometry()
         if os.environ.get("MESH_AGENT_LIVE"):
             test_live_claude_turn()
         else:

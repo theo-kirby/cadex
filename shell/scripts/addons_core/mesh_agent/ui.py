@@ -309,6 +309,55 @@ class MESH_AGENT_OT_toggle_params(Operator):
         return {'FINISHED'}
 
 
+class CADEX_PARAMS_PT_simulation(Panel):
+    """Playback for a model that has a simulation, and nothing otherwise.
+
+    Watching the mechanism move is the point of building one, and a baked
+    simulation is otherwise reachable only from an editor this product does
+    not show. It lives beside the sliders because that is where you already
+    are when you want to see the effect of one: no new editor and no new
+    space type (ADR-036 stands).
+
+    Playing from here redraws the 3D viewport correctly --
+    ``match_region_with_redraws`` tags every ``SPACE_VIEW3D`` region
+    whichever region started playback.
+    """
+
+    bl_space_type = 'CADEX_PARAMS'
+    bl_region_type = 'WINDOW'
+    bl_label = "Simulation"
+
+    @classmethod
+    def poll(cls, context):
+        from . import cadex_animate
+        # One custom-property lookup: a model with no simulation sees the
+        # parameters editor exactly as it was.
+        return cadex_animate.SCENE_FLAG in context.scene
+
+    def draw(self, context):
+        from . import cadex_animate
+        scene = context.scene
+        info = dict(scene.get(cadex_animate.SCENE_FLAG) or {})
+        layout = self.layout
+
+        playing = bool(getattr(context.screen, "is_animation_playing", False))
+        row = layout.row(align=True)
+        row.scale_y = 1.3
+        row.operator("screen.animation_play",
+                     text="Pause" if playing else "Play",
+                     icon='PAUSE' if playing else 'PLAY')
+
+        layout.prop(scene, "frame_current", text="Frame")
+
+        fps = float(info.get("fps") or scene.render.fps or 30)
+        elapsed = max(0, scene.frame_current - scene.frame_start) / fps
+        total = max(0, scene.frame_end - scene.frame_start) / fps
+        row = layout.row()
+        row.enabled = False
+        row.label(text="{:.2f} s of {:.2f} s  ({:d} components)".format(
+            elapsed, total, int(info.get("components") or 0)))
+
+
 class CADEX_PARAMS_PT_parameters(Panel):
     """The sole occupant of the parameters editor's main region."""
 
@@ -509,6 +558,7 @@ classes = (
     MESH_AGENT_OT_rebuild_model,
     MESH_AGENT_OT_apply_slider_defaults,
     MESH_AGENT_OT_toggle_params,
+    CADEX_PARAMS_PT_simulation,
     CADEX_PARAMS_PT_parameters,
     CADEX_CHAT_PT_transcript,
     CADEX_CHAT_PT_input,

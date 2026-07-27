@@ -1740,6 +1740,130 @@ def test_two_components_share_one_mesh(root):
           "and the source is unhidden once nothing instances it")
 
 
+SIMULATION_SCRIPT = """
+plate = part.box(40, 20, 4)
+arm = part.box(30, 6, 6)
+base = assembly.component(plate, grounded=True)
+swing = assembly.component(arm, placement=[0, 0, 40])
+j = assembly.joint("revolute",
+                   assembly.connector(base, "origin", offset=[12, 0, 4]),
+                   assembly.connector(swing, "origin"))
+asm = assembly.assembly([base, swing], [j])
+diag = assembly.solve(asm)
+spin = assembly.motion(j, "2 * pi * time")
+sim = assembly.simulation(asm, [spin], end_time_s=1.0, time_step_s=0.05)
+result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
+          "j": j, "asm": asm, "diag": diag, "spin": spin, "sim": sim}
+"""
+
+
+def test_a_simulation_plays(root):
+    """The mechanism moves when you press play (ADR-050).
+
+    Compares the baked curves against the engine's own trace at three
+    frames, through the depsgraph -- not against the F-curve values, which
+    would only prove the bake agrees with itself.
+    """
+
+    print("test_a_simulation_plays")
+    from mesh_agent import cadex_animate
+
+    reset_scene(root)
+    scene = bpy.context.scene
+    started = time.perf_counter()
+    ok, report = run_tool("write_script", {"content": SIMULATION_SCRIPT})
+    bake_seconds = time.perf_counter() - started
+    check(ok, "simulation script accepted ({:s})".format(
+        report.splitlines()[0] if report else ""))
+    if not ok:
+        return
+
+    swing = bpy.data.objects.get("swing")
+    check(swing is not None, "the driven component hydrated")
+    if swing is None:
+        return
+
+    check(swing.rotation_mode == 'QUATERNION',
+          "rotation_mode is QUATERNION (the default XYZ ignores the bake)")
+    curves = cadex_animate.fcurves_of(swing)
+    check(len(curves) == 7,
+          "seven F-curves: location xyz + quaternion wxyz (got {:d})".format(
+              len(curves)))
+    keys = sorted({len(curve.keyframe_points) for curve in curves})
+    check(keys == [21],
+          "every channel carries one key per solver frame (got {})".format(
+              keys))
+
+    check(scene.render.fps == 30, "the scene plays at the trace's fps")
+    check(scene.frame_start == 1 and scene.frame_end == 31,
+          "the frame range covers the run (1..31, got {:d}..{:d})".format(
+              scene.frame_start, scene.frame_end))
+
+    # The grounded component is in the trace and never moves; it still gets
+    # curves, which is what keeps the two halves consistent.
+    base = bpy.data.objects.get("base")
+    check(base is not None and len(cadex_animate.fcurves_of(base)) == 7,
+          "the grounded component is baked too")
+
+    # Read the engine's own trace and compare, through the depsgraph.
+    traces = glob.glob(os.path.join(
+        root, "script_artifacts", "*", "*", "outputs",
+        "assembly-simulation-trace.json"))
+    check(bool(traces), "the trace artifact is on disk")
+    if not traces:
+        return
+    trace, _sha = cadex_animate.read_trace(sorted(traces)[-1])
+    solved = cadex_animate.solver_frames(trace["frames"])
+    start_s = float(trace["parameters"]["start_time_s"])
+    fps = int(trace["parameters"]["frames_per_second"])
+
+    agreed = 0
+    for index in (0, len(solved) // 2, len(solved) - 1):
+        frame = solved[index]
+        at = cadex_animate.frame_of(frame["nominal_time_s"], start_s, fps)
+        scene.frame_set(int(round(at)), subframe=at - int(round(at)))
+        evaluated = swing.evaluated_get(bpy.context.evaluated_depsgraph_get())
+        expected = frame["component_placements"]["swing"]["position_mm"]
+        actual = evaluated.matrix_world.translation
+        if all(abs(actual[axis] - expected[axis]) < 1e-3 for axis in range(3)):
+            agreed += 1
+    check(agreed == 3,
+          "the played pose matches the engine's trace at 3 frames "
+          "({:d}/3)".format(agreed))
+
+    # The wire child follows its parent and carries no action of its own.
+    edges = bpy.data.objects.get("swing" + cadex_hydrate.EDGE_SUFFIX)
+    check(edges is not None and not cadex_animate.fcurves_of(edges),
+          "the wire child has no action of its own")
+    if edges is not None:
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        child = edges.evaluated_get(depsgraph).matrix_world.translation
+        parent = swing.evaluated_get(depsgraph).matrix_world.translation
+        check((child - parent).length < 1e-3,
+              "and it follows the parent anyway")
+
+    GATE["simulation"] = {
+        "frames": len(solved),
+        "components": len(trace.get("component_outputs") or []),
+        "bake_seconds": round(bake_seconds, 3),
+        "keyframes": len(curves) * (keys[0] if keys else 0),
+    }
+
+    # A revision that drops the simulation leaves no orphan actions behind.
+    # Drop the simulation, keep the mechanism. (Dropping the parts as well
+    # is refused by the engine's output-retirement guard, because the live
+    # App::Link component still references them -- a real ordering wrinkle
+    # in retirement, and nothing to do with playback.)
+    actions_before = len(bpy.data.actions)
+    ok, drop_report = run_tool("write_script", {"content": ASSEMBLY_SCRIPT,
+                                               "replace": True})
+    check(ok, "a revision without the simulation accepted ({:s})".format(
+        (drop_report or "").splitlines()[0] if drop_report else ""))
+    check(actions_before > 0 and len(bpy.data.actions) == 0,
+          "dropping the simulation leaves no orphan actions "
+          "({:d} -> {:d})".format(actions_before, len(bpy.data.actions)))
+
+
 def test_stale_attempts_are_pruned(root):
     """The store must not grow without bound (56 MB for one afternoon)."""
     print("test_stale_attempts_are_pruned")
@@ -1922,6 +2046,7 @@ def main():
     prune_root = tempfile.mkdtemp(prefix="mesh-cadex-prune-")
     assembly_root = tempfile.mkdtemp(prefix="mesh-cadex-assembly-")
     shared_root = tempfile.mkdtemp(prefix="mesh-cadex-shared-")
+    sim_root = tempfile.mkdtemp(prefix="mesh-cadex-sim-")
     try:
         test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
@@ -1957,6 +2082,7 @@ def main():
         test_stale_attempts_are_pruned(prune_root)
         test_an_assembly_shows_its_solved_placements(assembly_root)
         test_two_components_share_one_mesh(shared_root)
+        test_a_simulation_plays(sim_root)
     finally:
         try:
             cadex_backend.close_all()
@@ -1976,7 +2102,7 @@ def main():
                      drop_root, rederive_root, mirror_root, defaults_root,
                      refused_root, rewrite_root, repair_root, stdout_root,
                      long_root, guard_root, history_root, prune_root,
-                     assembly_root, shared_root):
+                     assembly_root, shared_root, sim_root):
             shutil.rmtree(root, ignore_errors=True)
 
     GATE["ok"] = not FAILURES
