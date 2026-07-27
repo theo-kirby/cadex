@@ -1,6 +1,6 @@
 # FREECAD.md — Inherited Substrate Inventory
 
-Verified against source: 2026-07-25
+Verified against source: 2026-07-27
 
 Cadex's **engine** is a FreeCAD fork. This is the ledger of what we keep,
 what is slated for removal, and what is already gone. Its peer for the shell
@@ -124,3 +124,15 @@ itself, in the Phase 7 Qt-shell deletion (ADR-021).
 - `cadex_assembly_worker.py:2038` imports `CommandCreateView` — GUI-lineage
   code used headlessly for exploded views, and the one import that makes
   deleting `src/Gui` more than mechanical. Scheduled for Phase 8.
+  **Partly answered (ADR-047):** the import is no longer *broken* — the
+  module's unguarded `from PySide.QtCore import ...` made it unimportable
+  headless, so `assembly.exploded_view` failed outright, and it now carries
+  the same `try/except ImportError` guard as `JointObject.py`. What is left
+  for Phase 8 is the deletion question, not a correctness one: the
+  `ExplodedView` document object is pure App-level and wants to move out of
+  a `Command*` module rather than keep being imported from one.
+- The engines we test with are not the engine that ships. `.pixi/envs/default`
+  carries a `FreeCADGui.so`; `build/release` (`BUILD_GUI=OFF`) does not.
+  `test_cadexd_lifecycle.py` prefers the former, so a GUI-coupling break can
+  pass every source-tree run and only appear in the payload — ADR-047 was
+  exactly that. Should the default flip to `build/release`?

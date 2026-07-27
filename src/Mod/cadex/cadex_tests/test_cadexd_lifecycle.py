@@ -104,6 +104,31 @@ blobs = [part.sphere(5.0, center=[i * 3.0, 0.0, 0.0]) for i in range(60)]
 result = {"blob": part.fuse(blobs)}
 """
 
+#: A jointed assembly, solved. ``swing`` is declared at [0, 0, 40] and the
+#: revolute joint pulls it onto the base connector's [12, 0, 4] offset, so a
+#: run that merely *doesn't crash* is still distinguishable from one where
+#: the solver actually ran.
+#:
+#: No live test built a joint before this one, which is exactly why
+#: ``assembly.joint`` could sit broken headless: Assembly/Preferences.py
+#: imported FreeCADGui at module scope, so ``import Preferences`` raised in a
+#: BUILD_GUI=OFF engine, JointObject's ImportError guard turned Preferences
+#: into None, and solveIfAllowed died on 'NoneType' has no attribute
+#: 'preferences' (ADR-047).
+JOINT_SCRIPT = """
+plate = part.box(40, 20, 4)
+arm = part.box(30, 6, 6)
+base = assembly.component(plate, grounded=True)
+swing = assembly.component(arm, placement=[0, 0, 40])
+j = assembly.joint("revolute",
+                   assembly.connector(base, "origin", offset=[12, 0, 4]),
+                   assembly.connector(swing, "origin"))
+asm = assembly.assembly([base, swing], [j])
+diag = assembly.solve(asm)
+result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
+          "j": j, "asm": asm, "diag": diag}
+"""
+
 TETRA_STL = """solid tetra
 facet normal 0 0 -1
  outer loop
@@ -460,3 +485,63 @@ def test_cadexd_lifecycle_end_to_end() -> None:
         _stop(respawned)
         shutil.rmtree(root, ignore_errors=True)
         shutil.rmtree(incoming_dir, ignore_errors=True)
+
+
+@pytest.mark.skipif(
+    FREECADCMD is None, reason="No FreeCADCmd binary available for cadexd CI."
+)
+def test_cadexd_solves_a_jointed_assembly() -> None:
+    """A joint builds, and the solver moves the component it constrains.
+
+    Drives a real joint through a real engine because that is the only
+    thing that would have caught ADR-047: the assembly suites validate
+    arguments under a stubbed FreeCAD, so they never reach the FreeCAD
+    import that was broken, and nothing else in the repository built a
+    joint at all.
+    """
+
+    root = Path(tempfile.mkdtemp(prefix="cadexd-joint-ci-"))
+    client = None
+    try:
+        client = _spawn_cadexd()
+        opened = client.request("open_project", {"project_root": str(root)})
+        assert opened["ok"] is True, opened
+
+        written = client.request(
+            "write_script", {"source": JOINT_SCRIPT, "expected_revision": ""}
+        )
+        assert written["ok"] is True, written
+
+        display = written["display"]
+        # The joint is a declared output and it published.
+        assert "j" in display, sorted(display)
+
+        # Components carry a solved placement and no geometry of their own;
+        # the parts they instance carry geometry and no placement.
+        for component in ("base", "swing"):
+            entry = display[component]
+            assert entry["artifact_kind"] is None, entry
+            assert isinstance(entry["placement"], list), entry
+            assert len(entry["placement"]) == 16, entry
+        for shape in ("plate", "arm"):
+            entry = display[shape]
+            assert entry["artifact_kind"] == "brep", entry
+            assert entry["placement"] is None, entry
+
+        # The solver ran: `swing` was declared at [0, 0, 40] and the revolute
+        # joint put it on the base connector's [12, 0, 4] offset instead. A
+        # run that only avoided the crash would leave it where it was
+        # declared, so this is the assertion that has teeth.
+        translation = [round(value, 6)
+                       for value in written["display"]["swing"]["placement"][3::4]]
+        assert translation == [12.0, 0.0, 4.0, 1.0], translation
+
+        grounded = [round(value, 6)
+                    for value in written["display"]["base"]["placement"][3::4]]
+        assert grounded == [0.0, 0.0, 0.0, 1.0], grounded
+
+        done = client.request("shutdown", timeout=60)
+        assert done["ok"] is True
+    finally:
+        _stop(client)
+        shutil.rmtree(root, ignore_errors=True)

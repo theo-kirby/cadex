@@ -2858,3 +2858,74 @@ built on an imported STL, two accepted revisions, Save-As, orphan detected
 before any open, adopt, geometry back in the viewport, asset in the new
 store, history *not* carried — and
 `test_duplicated_file_keeps_its_parameters` gains the pre-open orphan check.
+
+---
+
+## ADR-047 — A joint solves in a headless engine (2026-07-27)
+
+**Decision.** `src/Mod/Assembly/Preferences.py` imports `FreeCADGui` inside
+`PreferencesPage.__init__` instead of at module scope, and
+`src/Mod/Assembly/CommandCreateView.py` guards its
+`from PySide.QtCore import QT_TRANSLATE_NOOP` with the same
+`try/except ImportError` shape `JointObject.py` already carries in this
+fork. `package/engine/build_engine_payload.sh` also prunes `FreeCADGui.so`,
+not only `libFreeCADGui*`.
+
+**Rationale.** `assembly.joint(...)` failed in a headless engine with
+`'NoneType' object has no attribute 'preferences'`, and
+`assembly.exploded_view(...)` failed with `No module named 'PySide'`. Both
+are one bug wearing two hats: a GUI-only import at module scope in a module
+whose *other* contents are pure App-level.
+
+`Preferences.py`'s sole GUI dependency is the `PreferencesPage` class, which
+nothing headless instantiates; `preferences()` itself is one `ParamGet`.
+Because the import sat at module scope, `import Preferences` raised in a
+`BUILD_GUI=OFF` engine, `JointObject.py`'s `except ImportError` guard set
+`Preferences = None`, and `solveIfAllowed` — which calls
+`Preferences.preferences()` unconditionally — died on every joint.
+`CommandCreateView.py` is the same shape one level along: the engine's
+`exploded_view` builds and reads its `ExplodedView` document object, a pure
+App-level feature, but the module could not be imported to reach it.
+
+This is the ADR-022 exception worth making in the conservative zone: both
+diffs *reduce* the fork's coupling to the GUI rather than adding logic, and
+neither changes behaviour in a build that has Qt.
+
+**Why it survived.** Two independent reasons, and each one alone would have
+been enough.
+
+1. **No live test built a joint.** The assembly suites validate arguments
+   under a stubbed FreeCAD, so they never reach the FreeCAD import that was
+   broken; `test_cadexd_lifecycle.py` and the shell gate had zero `joint`
+   hits. `test_cadexd_solves_a_jointed_assembly` is that missing test.
+2. **The engines developers run are not the engine that ships.** Three
+   trees disagreed. `.pixi/envs/default` — which is what
+   `test_cadexd_lifecycle.py` picks by default — carries a `FreeCADGui.so`
+   and joints work there. The staged payload carried a *stale* one that the
+   prune's `libFreeCADGui*` pattern never matched, because the Python
+   extension module has no `lib` prefix, so joints worked in the product
+   **by accident**. Only `build/release` (`BUILD_GUI=OFF`) told the truth.
+   A joint test written before this ADR would have passed on the default
+   engine and proved nothing.
+
+The prune fix is what makes the other two changes load-bearing: with a
+stale `FreeCADGui` in the payload the guard is never exercised, and the day
+Phase 8 deletes `src/Gui` the product would have regressed with no test
+able to see it. A surviving `FreeCADGui` is not inert — it silently changes
+which imports succeed.
+
+**Consequences.** No protocol change; no ADR-027 golden moves. New engine
+test `test_cadexd_solves_a_jointed_assembly` asserts both that the joint
+publishes and that the solver *ran* — `swing` is declared at `[0, 0, 40]`
+and must come back on the revolute joint's `[12, 0, 4]` connector offset,
+so a run that merely avoids the crash still fails. Verified against a
+freshly staged payload with no `FreeCADGui` at all: the test fails without
+the `Preferences.py` change (the verbatim `'NoneType' object has no
+attribute 'preferences'`) and passes with it, and `exploded_view` goes from
+`No module named 'PySide'` to a published output. `docs/FREECAD.md` §5's
+`CommandCreateView` question is answered.
+
+Note for Phase 8: the lifecycle test's default engine is still the
+GUI-carrying pixi environment. Until that is the shipped configuration, the
+packaged run (`CADEX_ENGINE_ROOT=...`) is the one with teeth for any
+GUI-coupling regression.

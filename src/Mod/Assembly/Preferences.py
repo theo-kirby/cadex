@@ -22,7 +22,6 @@
 # **************************************************************************/
 
 import FreeCAD
-import FreeCADGui
 
 translate = FreeCAD.Qt.translate
 
@@ -33,6 +32,15 @@ def preferences():
 
 class PreferencesPage:
     def __init__(self, parent=None):
+        # Imported here, not at module scope: preferences() is a plain
+        # ParamGet that the App-level solver needs (JointObject.solveIfAllowed),
+        # while PreferencesPage is the only GUI user in this module. A
+        # headless build has no FreeCADGui (cadex ADR-022), and a
+        # module-scope import made the whole module unimportable there --
+        # which silently turned Preferences into None in JointObject's
+        # ImportError guard and broke every joint.
+        import FreeCADGui
+
         self.form = FreeCADGui.PySideUic.loadUi(":preferences/Assembly.ui")
 
     def saveSettings(self):

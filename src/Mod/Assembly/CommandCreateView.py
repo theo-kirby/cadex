@@ -28,7 +28,17 @@ import FreeCAD as App
 from pivy import coin
 from Part import LineSegment, Compound
 
-from PySide.QtCore import QT_TRANSLATE_NOOP
+try:
+    from PySide.QtCore import QT_TRANSLATE_NOOP
+except ImportError:
+    # A headless engine build ships no Qt Python bindings (cadex ADR-022),
+    # and this module's ExplodedView document object is a pure App-level
+    # feature the engine's assembly.exploded_view builds and reads. Only
+    # the command and task-panel classes below need real Qt, and nothing
+    # headless instantiates them. Same guard shape as JointObject.py.
+    def QT_TRANSLATE_NOOP(_context, text):
+        return text
+
 
 if App.GuiUp:
     import FreeCADGui as Gui

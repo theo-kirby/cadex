@@ -128,7 +128,14 @@ prune_qt_libs "${payload}/lib"
 # FreeCAD's own GUI libraries. A BUILD_GUI=OFF build does not produce
 # these at all (ADR-022); pruning them keeps a stage-only payload honest
 # when it is copied from an environment that still has older ones.
-find "${payload}/lib" -maxdepth 1 -name 'libFreeCADGui*' -exec rm -rf {} + 2>/dev/null || true
+# Both the shared library and the Python extension module: the binding is
+# named FreeCADGui.so with no "lib" prefix, so the libFreeCADGui* pattern
+# alone let a stale one survive a re-stage -- and a surviving FreeCADGui is
+# not inert, it silently changes which imports succeed in the payload
+# (it is what hid the headless-joint break, ADR-047).
+find "${payload}/lib" -maxdepth 1 \( -name 'libFreeCADGui*' \
+     -o -name 'FreeCADGui.so' -o -name 'FreeCADGui.dylib' \
+     -o -name 'FreeCADGui.pyd' \) -exec rm -rf {} + 2>/dev/null || true
 find "${payload}/Mod" -name '*Gui.so' -delete 2>/dev/null || true
 find "${payload}/Mod" -name '*Gui.dylib' -delete 2>/dev/null || true
 
