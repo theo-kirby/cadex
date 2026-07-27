@@ -23,6 +23,8 @@ _PUBLISHABLE_TYPES = frozenset({"wire", "face", "shell", "solid", "compound"})
 _JOIN_TYPES = frozenset({"arc", "tangent", "intersection"})
 _TRANSITION_TYPES = frozenset({"transformed", "right_corner", "round_corner"})
 _SUBSHAPE_TYPES = frozenset({"edge", "wire", "face", "shell", "solid"})
+#: Part topologies that enclose a volume a route can be tested against.
+_OBSTACLE_TYPES = frozenset({"solid", "shell", "compound"})
 _HELIX_REPRESENTATIONS = frozenset({"standard", "segmented"})
 _PROJECTION_MODES = frozenset({"parallel", "perspective"})
 
@@ -136,6 +138,59 @@ def _mesh_value(operation: str, parameter: str, value: Any) -> DomainValue:
             type(value).__name__,
         )
     return value
+
+
+def _port(operation: str, parameter: str, value: Any) -> list[list[float]]:
+    """One connection point: where a wire attaches and which way it leaves.
+
+    The shape ``resolve_pin`` already answers a pick with — ``center_mm``
+    plus ``normal`` — so a picked pad is a port with no conversion.
+    """
+
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise _error(
+            operation, parameter, "expected ([x, y, z], [dx, dy, dz])", value
+        )
+    return [
+        _vector(operation, f"{parameter}[0]", value[0]),
+        _vector(operation, f"{parameter}[1]", value[1], nonzero=True),
+    ]
+
+
+def _obstacles(operation: str, parameter: str, values: Any) -> list[DomainValue]:
+    """Part solids and Mesh values, mixed, that a route must go around.
+
+    The one place in this api that takes both domains by design: a harness
+    runs between imported STL components and printed BREP structure, and
+    demanding one be converted to the other would make ``avoid`` useless for
+    exactly the model that needs it.
+    """
+
+    if isinstance(values, DomainValue):
+        sequence = [values]
+    elif isinstance(values, (list, tuple)):
+        sequence = list(values)
+    else:
+        raise _error(
+            operation, parameter, "expected an array of Part or Mesh values", values
+        )
+    result: list[DomainValue] = []
+    for index, value in enumerate(sequence):
+        name = f"{parameter}[{index}]"
+        if isinstance(value, DomainValue) and value.domain == "mesh":
+            if not payload_tree_is_deterministic(value.to_payload()):
+                raise _error(
+                    operation,
+                    name,
+                    "the obstacle was built with decimate, whose result is not "
+                    "reproducible, so the route around it would change on every "
+                    "rebuild; decimate the file offline and import the reduced "
+                    "mesh, or avoid the undecimated value",
+                )
+            result.append(value)
+            continue
+        result.append(_shape(operation, name, value, allowed=_OBSTACLE_TYPES))
+    return result
 
 
 def _shapes(
@@ -1135,6 +1190,99 @@ class PartDomainAPI:
             label=label,
         )
 
+    def cable(
+        self,
+        start: Sequence[Sequence[float]],
+        end: Sequence[Sequence[float]],
+        *,
+        gauge_mm: float,
+        clearance_mm: float = 1.0,
+        avoid: Sequence[DomainValue] = (),
+        slack: float = 1.05,
+        min_bend_radius_mm: float | None = None,
+        cell_mm: float | None = None,
+        label: str = "",
+    ) -> DomainValue:
+        """Route a wire between two connection points and sweep it as a solid.
+
+        The harness operation: you declare where the wire attaches, not where
+        it goes.  ``start`` and ``end`` are ``(point, direction)`` pairs — the
+        point sits on a component's surface and the direction points away
+        from it, which is exactly the ``center_mm`` and ``normal`` a picked
+        pad resolves to.  ``gauge_mm`` is the outer diameter of the insulated
+        conductor.  The result is one ``solid``::
+
+            part.cable(((0, 4, 8.6), (0, 1, 0)),
+                       ((12, 9, 6.2), (0, 0, 1)),
+                       gauge_mm=0.8, avoid=[frame, flight_controller])
+
+        The route is searched afresh on every rebuild, so a cable follows the
+        things it connects: change a parameter that moves a component and the
+        wire re-routes and stays attached.  Never paste computed waypoints
+        back into the script to save the search — they are wrong the moment a
+        parameter moves, and silently so.
+
+        ``avoid`` is what the wire must go around, and it takes ``part``
+        values and ``mesh`` values mixed, because a real harness runs between
+        printed structure and imported modules.  Obstacles are inflated by
+        ``clearance_mm``, and the wire leaves each port along that port's own
+        direction before the search starts — a port is *on* a surface, so its
+        own neighbourhood is inside something by construction.
+
+        **A mesh obstacle is tested by its bounding box, not its triangles.**
+        Accurate enough for the roughly box-shaped modules a harness connects,
+        and wrong for anything concave or enclosing: pass such a body as the
+        ``part`` solid it is.  A frame handed over as a mesh has a bounding
+        box containing the whole model and would block every route.
+
+        ``slack`` (at least 1.0) is how much longer than taut the wire hangs.
+        ``min_bend_radius_mm`` rejects a route that kinks tighter than the
+        conductor tolerates, rather than modelling an impossible wire.
+        ``cell_mm`` overrides the search resolution, which otherwise follows
+        the gauge and clearance; finer finds tighter gaps and costs more.
+
+        Like ``shape_from_mesh``, it refuses an obstacle built with
+        ``mesh.decimate``: that result is not reproducible (ADR-016), and a
+        route around a moving obstacle is a moving route, which changes the
+        project digest on every rebuild.
+        """
+
+        operation = "cable"
+        clean_start = _port(operation, "start", start)
+        clean_end = _port(operation, "end", end)
+        separation = math.sqrt(
+            sum((clean_end[0][index] - clean_start[0][index]) ** 2 for index in range(3))
+        )
+        if separation <= 1.0e-9:
+            raise _error(
+                operation,
+                "start/end",
+                "the two ports must be at different points for there to be a run",
+            )
+        clean_slack = _number(operation, "slack", slack, minimum=1.0)
+        properties: dict[str, Any] = {
+            "gauge_mm": _number(operation, "gauge_mm", gauge_mm, minimum=0.0, strict=True),
+            "clearance_mm": _number(operation, "clearance_mm", clearance_mm, minimum=0.0),
+            "slack": clean_slack,
+            "avoid": _obstacles(operation, "avoid", avoid),
+        }
+        if min_bend_radius_mm is not None:
+            properties["min_bend_radius_mm"] = _number(
+                operation, "min_bend_radius_mm", min_bend_radius_mm, minimum=0.0, strict=True
+            )
+        if cell_mm is not None:
+            properties["cell_mm"] = _number(
+                operation, "cell_mm", cell_mm, minimum=0.0, strict=True
+            )
+        return self._value(
+            operation,
+            "solid",
+            clean_start,
+            clean_end,
+            label=label,
+            **properties,
+        )
+
     def ruled_surface(
         self,
         first: DomainValue,
@@ -1796,6 +1944,7 @@ class PartDomainAPI:
             "revolve",
             "loft",
             "sweep",
+            "cable",
             "ruled_surface",
             "filled_surface",
             "fuse",

@@ -7,6 +7,7 @@ set(Cadex_Scripts
     CadexModelingSurface.py
     CadexPinResolution.py
     CadexReferenceContracts.py
+    CadexRouting.py
     CadexProject.py
     CadexScriptStore.py
     CadexSubshapeQuery.py

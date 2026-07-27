@@ -91,7 +91,7 @@ that `docs/VISION.md` describes, and the protocol client that
 | `cadex_backend.py` | Per-scene cadexd session: project root beside the .blend (`<stem>.cadex/`), revision-guarded `write_script`/`set_params` with stale-revision self-heal, engine params bridged into `scene.mesh_params`, draft-while-dragging + background standard refine. |
 | `cadex_animate.py` | an accepted simulation trace → F-Curves on the component instances: time-keyed (not frame-index-keyed), wxyz quaternions walked into one hemisphere, bulk `foreach_set` onto slotted actions, cleared and re-baked per revision. A sibling of `cadex_hydrate.py`, so a bad trace never costs you the geometry. |
 | `cadex_hydrate.py` | `cadex-tessellation-v1` buffers → Model-collection mesh objects: `cadex_face` INT face attribute (1-based BREP ids), `cadex_edge` wire children, placements, contract-driven GC by `cadex_output` property. |
-| `cadex_pick.py` | Viewport pick → polygon → `cadex_face` → `resolve_pin`; resolved pins queue onto the next chat message (like image attachments). Operator `mesh_agent.pick_pin`. |
+| `cadex_pick.py` | Viewport pick → a pin queued onto the next chat message (like image attachments), in two flavours sharing one eyedropper modal and one queue. **Face pin** (`mesh_agent.pick_pin`): polygon → `cadex_face` → `resolve_pin` → `@face-N`, BREP outputs only. **Point pin** (`mesh_agent.pick_point`, ADR-056): the ray-cast hit and its normal, pushed back through the object's placement into the output's own space — no engine round-trip, and it works on mesh outputs, which have no faces to name. A point and a direction *is* a `part.cable` port. |
 
 ### The script loop (source of truth)
 
@@ -225,7 +225,7 @@ registered by the add-on.
 |---|---|---|
 | `RGN_TYPE_WINDOW` | the transcript | `CADEX_CHAT_PT_transcript` |
 | `RGN_TYPE_EXECUTE` | the message box and its button row | `CADEX_CHAT_PT_input` |
-| `RGN_TYPE_HEADER` | model selector, Pin Face, the script button | `CADEX_CHAT_HT_header` |
+| `RGN_TYPE_HEADER` | model selector, Pin Face, Pin Point, the pinned count, the script button | `CADEX_CHAT_HT_header` |
 
 `RGN_TYPE_EXECUTE` is the load-bearing part. `RGN_TYPE_IS_HEADER_ANY`
 (`DNA_screen_types.h`) covers `HEADER`, `TOOL_HEADER`, `FOOTER`,
@@ -402,6 +402,7 @@ works:
 | Local `exec()` of the script | `write_script`/`set_params` through cadexd; tessellated BREP + ID maps hydrated into the Model collection (`cadex_hydrate.py`) — **deleted** on the left, ADR-030 |
 | `scene_summary` / `viewport_screenshot` tools | Unchanged (they read the hydrated scene) |
 | Picking a Blender face | `mesh_agent.pick_pin`: ray-cast → `cadex_face` attribute → `resolve_pin` → `@face-N` pin on the next message |
+| Picking a point on anything | `mesh_agent.pick_point`: ray-cast → hit + normal → the output's own space → a point pin on the next message. The only pick that works on an imported mesh (ADR-056) |
 | One `undo_push` per turn | Unchanged (verified in cadex mode) |
 
 Gate evidence lives in `shell/tests/python/bl_mesh_agent_cadex.py`

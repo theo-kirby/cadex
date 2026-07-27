@@ -44,6 +44,10 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         "cadex_sketcher_worker.py",
         "cadex_part_api.py",
         "cadex_part_worker.py",
+        # The wire router (ADR-056). Staged like every other worker module —
+        # by filename, not imported — so cadex_part_worker can import it
+        # inside the sandbox.
+        "CadexRouting.py",
         "cadex_partdesign_api.py",
         "cadex_partdesign_worker.py",
         "cadex_mesh_api.py",

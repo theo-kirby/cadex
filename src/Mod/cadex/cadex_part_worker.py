@@ -471,6 +471,416 @@ def _wire_from_shape(operation: str, parameter: str, shape: Any):
         raise _error(operation, parameter, f"edges do not form one ordered wire: {exc}") from exc
 
 
+#: Sample count for the discrete bend-radius check on a fitted cable spline.
+#: Fixed rather than length-derived so the verdict is the same every run.
+_CABLE_BEND_SAMPLES = 97
+#: Distinct lattice cells one route may probe before it refuses.
+_CABLE_MAX_CELLS = 200000
+#: Triangulation memo for cable obstacles, keyed by content and deflection.
+_CABLE_TESSELLATION: dict[tuple[str, float], Any] = {}
+_CABLE_TESSELLATION_LIMIT = 32
+#: Bounding boxes of mesh obstacles, keyed by content. Materializing a mesh
+#: value re-imports and canonicalizes its asset, which is the same work
+#: whether the caller wants the triangles or six numbers -- and a harness
+#: names the same handful of components on every one of its cables.
+_CABLE_MESH_BOXES: dict[str, tuple[float, float, float, float, float, float]] = {}
+_CABLE_MESH_BOX_LIMIT = 64
+
+
+def _cable_bounding_box(value: Any) -> tuple[float, float, float, float, float, float]:
+    box = value.BoundBox
+    return (
+        float(box.XMin),
+        float(box.YMin),
+        float(box.ZMin),
+        float(box.XMax),
+        float(box.YMax),
+        float(box.ZMax),
+    )
+
+
+def _cable_obstacles(operation: str, entries: Any):
+    """Resolve the ``avoid`` list into triangulated solids and mesh boxes.
+
+    Part obstacles are returned as their triangulation.  ``Shape.isInside``
+    was the obvious way to answer occupancy and it is the wrong one: measured
+    against the drone frame — 219 faces, fused and filleted — it costs 3.3 ms
+    a point, because OCC builds a fresh solid classifier per call, and the
+    seven cables on that model spent 40 s in it.  One tessellation costs
+    0.10 s and answers every cell in the corridor (ADR-056).
+
+    Mesh obstacles collapse to their axis-aligned bounding box: the modules a
+    harness runs between are box-shaped, and the obstacle where that would be
+    badly wrong — a frame enclosing the whole model — is a ``part`` solid.
+    """
+
+    if not isinstance(entries, list):
+        raise _error(operation, "avoid", "must be an array of Part or Mesh values")
+    solids: list[tuple[str, str, Any]] = []
+    boxes: list[tuple[float, float, float, float, float, float]] = []
+    for index, entry in enumerate(entries):
+        name = f"avoid[{index}]"
+        if isinstance(entry, dict) and entry.get("domain") == "mesh":
+            if _ASSET_ROOT is None or _MESH_INGEST is None:
+                raise PartOperationError(
+                    f"api.{operation}: this worker request has no staged mesh kernel "
+                    "to materialize a mesh obstacle with",
+                    stage="part_contract",
+                    operation=operation,
+                    parameter=name,
+                    correction=(
+                        f"Build {operation} from the project script surface; that "
+                        "is the surface that stages the project's mesh assets."
+                    ),
+                )
+            mesh_key = _memo_key(entry)
+            box = _CABLE_MESH_BOXES.get(mesh_key)
+            if box is None:
+                box = _cable_bounding_box(
+                    _MESH_INGEST(_serialized_mesh(operation, name, entry), _ASSET_ROOT)
+                )
+                if len(_CABLE_MESH_BOXES) < _CABLE_MESH_BOX_LIMIT:
+                    _CABLE_MESH_BOXES[mesh_key] = box
+            boxes.append(box)
+            continue
+        # Deliberately not resolved here: on a tessellation memo hit the
+        # shape is never needed, and building it is a copy of a fused,
+        # filleted solid per cable.
+        solids.append((_memo_key(entry), name, entry))
+    return solids, boxes
+
+
+def _cable_solid_cells(
+    solids: list[tuple[str, str, Any]],
+    *,
+    operation: str,
+    origin: list[float],
+    far: list[float],
+    cell: float,
+    counts: tuple[int, int, int],
+) -> set[tuple[int, int, int]]:
+    """Rasterise the obstacle surfaces into the routing lattice.
+
+    The **surface**, not the volume, and that is sufficient: a closed shell
+    rasterised at half a cell leaves no gap a 26-connected step can cross, so
+    an obstacle's interior is unreachable without passing through cells this
+    marks.  It also makes the clearance dilation mean the right thing, since
+    clearance is measured from a surface.
+
+    Triangles are sampled on a barycentric grid at half a cell rather than
+    having their bounding box filled: one triangle can cover a whole planar
+    face, and filling its box would wall off the room in front of it.
+    """
+
+    marked: set[tuple[int, int, int]] = set()
+    step = cell * 0.5
+    for key, name, entry in solids:
+        deflection = max(cell / 4.0, 0.01)
+        memo_key = (key, deflection)
+        triangulation = _CABLE_TESSELLATION.get(memo_key)
+        if triangulation is None:
+            triangulation = _shape(operation, name, entry).tessellate(deflection)
+            if len(_CABLE_TESSELLATION) < _CABLE_TESSELLATION_LIMIT:
+                _CABLE_TESSELLATION[memo_key] = triangulation
+        points, facets = triangulation
+        for facet in facets:
+            first, second, third = points[facet[0]], points[facet[1]], points[facet[2]]
+            corners = (first, second, third)
+            if any(
+                max(corner[axis] for corner in corners) < origin[axis]
+                or min(corner[axis] for corner in corners) > far[axis]
+                for axis in range(3)
+            ):
+                continue
+            longest = max(
+                (second - first).Length, (third - second).Length, (first - third).Length
+            )
+            steps = max(1, int(math.ceil(longest / step)))
+            for along in range(steps + 1):
+                for across in range(steps + 1 - along):
+                    u, v = along / steps, across / steps
+                    cell_index = tuple(
+                        int(
+                            (
+                                first[axis]
+                                + (second[axis] - first[axis]) * u
+                                + (third[axis] - first[axis]) * v
+                                - origin[axis]
+                            )
+                            / cell
+                        )
+                        for axis in range(3)
+                    )
+                    if all(0 <= cell_index[axis] < counts[axis] for axis in range(3)):
+                        marked.add(cell_index)  # type: ignore[arg-type]
+    return marked
+
+
+def _cable_min_bend_radius(points: list[Any]) -> float:
+    """Tightest three-point circumradius along a sampled polyline.
+
+    Discrete on purpose: it depends only on the sampled points, so it says
+    the same thing on every kernel build, where a curvature query need not.
+    """
+
+    tightest = math.inf
+    for index in range(len(points) - 2):
+        first, middle, last = points[index], points[index + 1], points[index + 2]
+        legs = (
+            (middle - first).Length,
+            (last - middle).Length,
+            (first - last).Length,
+        )
+        twice_area = (middle - first).cross(last - first).Length
+        if twice_area <= 1.0e-12 or min(legs) <= 1.0e-12:
+            # Collinear samples bend not at all: infinite radius, no verdict.
+            continue
+        tightest = min(tightest, legs[0] * legs[1] * legs[2] / (2.0 * twice_area))
+    return tightest
+
+
+def _route_corridor(
+    *,
+    operation: str,
+    anchor_start: Any,
+    anchor_end: Any,
+    gauge: float,
+    clearance: float,
+    cell_mm: float,
+    solids: list[Any],
+    boxes: list[Any],
+):
+    """The lattice one route is searched on: resolution, corridor, occupancy.
+
+    Returns ``(cell, low, high, counts, occupied)`` — everything
+    ``CadexRouting.route_path`` needs but the two ports themselves.
+    """
+
+    span = (anchor_end - anchor_start).Length
+    # The resolution the route is searched at.  One cell per gauge (or per
+    # clearance, whichever is coarser) resolves the gaps a wire of this size
+    # can actually use, and the cost is cubic in the reciprocal: halving it
+    # was measured at 6x the routing time on the drone's motor leads.
+    cell = cell_mm or max(gauge, clearance, span / 400.0)
+    # The corridor: the two anchors, opened out far enough that a detour has
+    # somewhere to go, and no further -- this box is what bounds the search.
+    margin = clearance + gauge + max(4.0 * cell, span / 3.0)
+    low = [
+        min(anchor_start[axis], anchor_end[axis]) - margin for axis in range(3)
+    ]
+    high = [
+        max(anchor_start[axis], anchor_end[axis]) + margin for axis in range(3)
+    ]
+
+    counts = tuple(
+        max(1, int(math.ceil((high[axis] - low[axis]) / cell))) for axis in range(3)
+    )
+    solid_cells = _cable_solid_cells(
+        solids,
+        operation=operation,
+        origin=low,
+        far=high,
+        cell=cell,
+        counts=counts,  # type: ignore[arg-type]
+    )
+
+    def occupied(i: int, j: int, k: int) -> bool:
+        if (i, j, k) in solid_cells:
+            return True
+        x = low[0] + (i + 0.5) * cell
+        y = low[1] + (j + 0.5) * cell
+        z = low[2] + (k + 0.5) * cell
+        for box in boxes:
+            if box[0] <= x <= box[3] and box[1] <= y <= box[4] and box[2] <= z <= box[5]:
+                return True
+        return False
+
+    return cell, low, high, counts, occupied
+
+
+#: The correction ``part.cable`` offers when a route bends tighter than the
+#: conductor tolerates.
+_BEND_CORRECTION = (
+    "The corridor forces a kink this conductor cannot take. "
+    "Raise cell_mm so the route is smoother, add slack, or move "
+    "a port so the run does not have to turn so sharply."
+)
+#: ...and when the sweep itself fails.
+_SWEEP_CORRECTION = (
+    "The route turns tighter than the gauge can be swept through. "
+    "Reduce gauge_mm, raise cell_mm for a smoother route, or declare "
+    "min_bend_radius_mm so the route is rejected before the sweep."
+)
+
+
+def _sweep_conductor(
+    waypoints: list[Any],
+    *,
+    operation: str,
+    gauge: float,
+    centre: Any,
+    min_bend_radius_mm: Any = None,
+    bend_samples: int | None = None,
+    bend_correction: str = _BEND_CORRECTION,
+    sweep_correction: str = _SWEEP_CORRECTION,
+    context: str = "",
+):
+    """Fit a spline through ``waypoints`` and sweep a round conductor along it.
+
+    ``centre`` is where the profile circle sits — the run's first point.
+
+    The sweep runs in OCC's **true** Frenet mode.  The section is a circle
+    centred on the spine, so in principle the mode cannot matter; in practice
+    corrected Frenet collapses helical spines, measured at up to 51% of the
+    volume missing on a six-way lay while still returning one closed, valid
+    solid.  True Frenet held every measured case to within 0.62%.
+    """
+
+    import FreeCAD as App
+    import Part
+
+    curve = Part.BSplineCurve()
+    curve.interpolate(
+        Points=[App.Vector(*point) for point in waypoints],
+        PeriodicFlag=False,
+        Tolerance=1.0e-7,
+    )
+    path_edge = curve.toShape()
+
+    if min_bend_radius_mm is not None:
+        samples = path_edge.discretize(
+            Number=bend_samples if bend_samples is not None else _CABLE_BEND_SAMPLES
+        )
+        tightest = _cable_min_bend_radius(list(samples))
+        if tightest < float(min_bend_radius_mm):
+            raise PartOperationError(
+                f"api.{operation}: the route bends to {tightest:.3f} mm radius, "
+                f"tighter than the declared minimum of "
+                f"{float(min_bend_radius_mm):.3f} mm{context}",
+                stage="part_routing",
+                operation=operation,
+                parameter="min_bend_radius_mm",
+                observed={
+                    "min_bend_radius_mm": float(min_bend_radius_mm),
+                    "route_bend_radius_mm": tightest,
+                },
+                correction=bend_correction,
+            )
+
+    try:
+        tangent = curve.tangent(curve.FirstParameter)[0]
+    except Exception:
+        tangent = App.Vector(*waypoints[1]) - App.Vector(*waypoints[0])
+    profile = Part.Wire([Part.makeCircle(gauge / 2.0, centre, tangent)])
+    result = Part.Wire([path_edge]).makePipeShell([profile], True, True)
+    if result is None or result.isNull() or not result.Solids:
+        raise PartOperationError(
+            f"api.{operation}: the conductor could not be swept along the "
+            f"routed path{context}",
+            stage="part_kernel",
+            operation=operation,
+            correction=sweep_correction,
+        )
+    return result
+
+
+def _build_cable(payload: dict[str, Any], properties: dict[str, Any]):
+    """Search a route between two ports and sweep the conductor along it.
+
+    The search lives in ``CadexRouting`` and the budget is why it lives in
+    this process at all: the script sandbox meters every traced line against
+    a 400k operation budget and explicitly declines to trace frames outside
+    the script, so an A* written in the script would spend budget per node
+    while the same search here costs one operation (ADR-056).
+    """
+
+    import CadexRouting
+
+    operation = "cable"
+    start = _argument(payload, 0, "start")
+    end = _argument(payload, 1, "end")
+    if not isinstance(start, list) or len(start) != 2:
+        raise _error(operation, "start", "expected a (point, direction) pair")
+    if not isinstance(end, list) or len(end) != 2:
+        raise _error(operation, "end", "expected a (point, direction) pair")
+    start_point = _vector(operation, "start[0]", start[0])
+    start_dir = _vector(operation, "start[1]", start[1], nonzero=True)
+    end_point = _vector(operation, "end[0]", end[0])
+    end_dir = _vector(operation, "end[1]", end[1], nonzero=True)
+
+    gauge = float(properties.get("gauge_mm", 0.0))
+    clearance = float(properties.get("clearance_mm", 1.0))
+    slack = float(properties.get("slack", 1.05))
+    if gauge <= 0.0:
+        raise _error(operation, "gauge_mm", "must be greater than zero")
+    standoff = clearance + gauge / 2.0
+    solids, boxes = _cable_obstacles(operation, properties.get("avoid", []))
+
+    # Not Vector.normalize(), which normalizes in place: start_dir is handed
+    # to the router afterwards and must still be the direction it was given.
+    anchor_start = start_point + start_dir * (standoff / start_dir.Length)
+    anchor_end = end_point + end_dir * (standoff / end_dir.Length)
+    cell, low, high, counts, occupied = _route_corridor(
+        operation=operation,
+        anchor_start=anchor_start,
+        anchor_end=anchor_end,
+        gauge=gauge,
+        clearance=clearance,
+        cell_mm=float(properties.get("cell_mm", 0.0)),
+        solids=solids,
+        boxes=boxes,
+    )
+
+    try:
+        waypoints = CadexRouting.route_path(
+            (start_point.x, start_point.y, start_point.z),
+            (start_dir.x, start_dir.y, start_dir.z),
+            (end_point.x, end_point.y, end_point.z),
+            (end_dir.x, end_dir.y, end_dir.z),
+            occupied=occupied,
+            cell_mm=cell,
+            clearance_mm=clearance,
+            standoff_mm=standoff,
+            slack=slack,
+            bounds=(low, high),
+            max_cells=_CABLE_MAX_CELLS,
+        )
+    except CadexRouting.RoutingError as exc:
+        corrections = {
+            "blocked": (
+                "Nothing connects the two ports at this clearance: lower "
+                "clearance_mm, remove an obstacle from avoid that does not "
+                "really block the run, or move a port to a face the wire can "
+                "actually leave from."
+            ),
+            "budget": (
+                "The search ran out of cells before it found a way through. "
+                "Raise cell_mm to search coarsely, or shorten the run by "
+                "routing through an intermediate port."
+            ),
+            "bounds": (
+                "The two ports do not describe a routable run. Check that each "
+                "port's direction points away from its component and that the "
+                "two points are not the same point."
+            ),
+        }
+        raise PartOperationError(
+            f"api.cable: {exc}",
+            stage="part_routing",
+            operation=operation,
+            observed={"reason": exc.reason, **exc.observed},
+            correction=corrections.get(exc.reason, corrections["bounds"]),
+        ) from exc
+
+    return _sweep_conductor(
+        waypoints,
+        operation=operation,
+        gauge=gauge,
+        centre=start_point,
+        min_bend_radius_mm=properties.get("min_bend_radius_mm"),
+    )
+
+
 def _build(
     operation: str,
     payload: dict[str, Any],
@@ -901,6 +1311,8 @@ def _build(
             bool(properties.get("frenet")),
             transitions[str(properties.get("transition") or "transformed")],
         )
+    if operation == "cable":
+        return _build_cable(payload, properties)
     if operation == "ruled_surface":
         first = _shape(operation, "first", _argument(payload, 0, "first"))
         second = _shape(operation, "second", _argument(payload, 1, "second"))

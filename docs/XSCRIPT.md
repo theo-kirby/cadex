@@ -91,6 +91,16 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   coplanar regions differently for identical geometry. `decimate` is
   approximating (run-dependent result), so decimate trees are
   digest-identified by their canonical definition instead (ADR-016).
+- `part.cable()` routes a wire instead of authoring one (ADR-056,
+  **experimental**): given two `(point, direction)` ports and a `gauge_mm`,
+  it searches a path clearing the `avoid` obstacles — `part` values and
+  `mesh` values mixed — and sweeps a round conductor along it, one `solid`
+  per wire. The route is recomputed every rebuild, so a cable follows the
+  components it connects instead of going stale; waypoints must never be
+  baked back into the script. Part obstacles are tessellated and rasterised
+  into the search lattice; mesh obstacles are their bounding box, so a
+  concave body belongs in `avoid` as the part solid it is, and the two
+  components a cable lands on do not belong in its `avoid` at all.
 - Outputs are evaluated per domain in fixed order sketcher → part →
   partdesign → mesh → assembly, reusing the per-domain evaluators and
   serializers.

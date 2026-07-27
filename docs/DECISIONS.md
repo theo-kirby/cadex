@@ -3754,3 +3754,185 @@ the same slider, lifts when a different slider moves, and the debounced
 `set_params` behind it still rebuilds the geometry the preview could not
 describe — asserted on the plate's actual dimensions, with the motion
 slider's value applied too.
+
+## ADR-056 — Wires route themselves: `part.cable` (2026-07-27)
+
+**Decision.** One new part operation, `part.cable(start, end, *, gauge_mm,
+clearance_mm, avoid, slack, min_bend_radius_mm, cell_mm, label)`. It takes
+two `(point, direction)` ports, searches a path between them that clears the
+declared obstacles, and sweeps a round conductor along it. Output type
+`solid`, one per wire. The search lives in a new pure-Python module,
+`src/Mod/cadex/CadexRouting.py`, staged into the sandbox by filename like
+every other worker module.
+
+**Why an addition, in a tree whose policy is to remove more than it adds.**
+The drone project (`wcv8.cadex`) assembles a frame plus nine placed
+components and has no way to express the harness between them. The
+alternative was Blender curves in the shell, and that is the wrong answer for
+the reason ADR-030 deleted the local bpy modes: geometry authored in the
+shell is not in the script, so it vanishes on rebuild and does not move when
+a slider does. Everything else needed already existed — `part.bspline` is the
+path, `part.circle` + `part.wire` + `part.sweep` is the gauge,
+`cadex_hydrate.py` turns any output into a viewport row. What did not exist
+was the search. This adds the search and nothing else: **no shell code and no
+protocol change.** `CadexdProtocol.OP_ARG_SPECS` is untouched, so the op
+table in `docs/INTEGRATION.md` and the ADR-027 response goldens are
+unaffected.
+
+**Why it is an engine op rather than a script-level helper.** The sandbox
+traces every script line against a 400k operation budget and explicitly
+declines to trace frames outside the script
+(`cadex_project_worker.py`). A search written in the script burns budget per
+node; the same search inside the worker costs one operation. That single fact
+is what makes obstacle avoidance viable at all.
+
+**Two shape decisions.** *One op returning a solid*, not `route` + `sweep`:
+a route is not a thing a model wants to own — it is recomputed every rebuild
+and never referred to — and splitting it would invite scripts to cache
+waypoints, which go stale the moment a slider moves. *One output per wire*,
+not a fused harness compound: each wire is a separate row in the model tree,
+separately selectable and separately diagnosable, and fusing seven disjoint
+solids buys nothing.
+
+**Determinism is the hard requirement**, because `open_project` re-runs the
+accepted script and asserts digest equality. The frontier pushes `(f, g,
+cell)` so heap ties break on cost and then lexicographically on integer cell
+index; neighbour offsets are a fixed sorted tuple; no step iterates a set or
+a dict. Two fresh processes rebuilding the wired drone produce byte-identical
+digests, and reopening the project is the end-to-end proof for free.
+
+**`isInside` was the obvious occupancy test and the wrong one.** Measured
+against the drone frame — 219 faces, fused and filleted — `Shape.isInside`
+costs **3.3 ms per point**, because OCC builds a fresh solid classifier on
+every call; batching the same query as a boolean against a vertex compound
+only reaches 0.63 ms. The seven cables spent 40 s in it. Part obstacles are
+therefore **tessellated once and their surfaces rasterised into the routing
+lattice**: 0.10 s to tessellate, ~0.2 s to rasterise a corridor, and the
+search itself is 0.02 s. Rasterising the *surface* rather than the volume is
+sufficient — a closed shell sampled at half a cell leaves no gap a
+26-connected step can cross — and it makes the clearance dilation mean the
+right thing, since clearance is measured from a surface. End to end the
+drone's seven cables went 268 s → 13 s, against a 7.9 s unwired baseline.
+
+**Mesh obstacles are their bounding box.** An exact triangle test was not
+worth a per-cell BVH for v1, and the modules a harness runs between — boards,
+motors, packs — are box-shaped. The obstacle where this would be badly wrong
+is a frame enclosing the whole model, and that is a `part` solid. Two
+consequences the docstring states outright: pass a concave body as the part
+solid it is, and **do not list the two components a cable lands on in its own
+`avoid`** — a port sits on their surface, so the search would start inside an
+obstacle. The drone's flight controller stays out of every list for a second
+reason: its board is a square turned 45°, so its bounding box is half air.
+
+**Ports are exempt, but only for the wire.** A port sits *on* a surface, so
+its cells and its standoff stub are declared free — otherwise nothing routes.
+That punches a channel through the obstacle's rasterised shell, so the search
+is separately forbidden from expanding into stub cells: the exemption says
+where the wire may be, not where the search may travel. Without that split a
+route could wander inside the component it leaves from.
+
+**Not reproducible, not routable.** `avoid` refuses a `mesh.decimate` tree on
+the same grounds `part.shape_from_mesh` does (ADR-016, ADR-043): a
+non-reproducible obstacle is a non-reproducible route, and the digest is
+computed from the geometry.
+
+**Consequences.** `CadexRouting.py` joins the project worker bundle, the
+declared engine module set in `test_engine_purity_guardrails`, and the
+installed script list; each of those fails loudly if missed.
+`cadex_tests/test_cable_routing.py` drives the search against synthetic
+occupancy grids — straight run, detour, exact reproducibility, sealed
+corridor, budget, clearance, stub exemption, corner-cutting, slack
+monotonicity — plus the argument contract for `part.cable`. `wcv8.cadex` is
+wired for real: battery→FC, FC→ESP32, ESP32→range finder and four motor
+leads that thread the duct notches, all seven measured at **zero**
+intersection volume with the frame solid, and re-solving across the whole
+`wheelbase` slider range. Selector-anchored ports — so a port rides the
+geometry when the part changes, per ADR-029 — are deliberately out of scope;
+ports are literals for now, and `resolve_pin` already returns `center_mm` and
+`normal`, which is exactly a port.
+
+**Cost that remains.** Seven searches per rebuild, ~0.75 s each on this
+model. `build_part_shape`'s content-keyed memo (ADR-053) only helps when a
+payload is byte-identical, and moving a slider moves the ports, so drags pay
+full price. The lever if that becomes binding is a coarser default `cell_mm`
+— the cost is cubic in the reciprocal — not baking waypoints into the script.
+
+### Point pins: picking a port off an imported component
+
+**Decision.** A second pick gesture, `mesh_agent.pick_point` ("Pin Point"),
+beside the existing `pick_pin` ("Pin Face") in the chat header. It queues the
+ray-cast hit and its surface normal — pushed back through the object's
+placement into the output's own space — onto the next chat message, exactly
+as a face pin does. Both share one eyedropper modal and one queue.
+
+**Why.** ADR-056 claimed the pick→port loop already worked with no new code,
+on the grounds that `resolve_pin` returns `center_mm` and `normal`, which is
+a port. That is true and it is not enough: `cadex_pick.face_index_of_polygon`
+refuses anything whose hydrated kind is not `brep` —
+
+> Object flight_controller is not a cadex BREP output; pins resolve on BREP
+> outputs only.
+
+— and the gate asserts that refusal. A harness lands almost every port on an
+*imported component*, which is a mesh output. So on the drone the loop
+resolved nothing for thirteen of fourteen ports, and the claim was wrong.
+
+**Why a point rather than mesh picking.** A face pin *names* something: it
+resolves to a BREP face the engine can re-find, which is what makes it
+survive a rebuild. A mesh output has no such thing to name — a triangle has
+no stable identity, and inventing one would be exactly the index-shaped
+reference ADR-029 deleted. But a port does not need a name. It needs a place
+and a direction, both of which the ray-cast already computes and threw away.
+So this resolves nothing, asks the engine nothing, and works on any hydrated
+output. A point pin is a literal and goes stale if its component moves —
+which is what the ports already are, and what ADR-056 scoped.
+
+**A placement is undone, and not the way a point is.** The hit is in world
+space, the script authors in the output's space: a point comes back as
+`M^-1 p`, but a normal as `M^T n`. Using the inverse for both is correct for
+a translation and silently backwards under rotation — most placements are
+translations, so this would have shipped. The gate's placement fixture
+rotates for that reason, and it caught it before the first run.
+
+**Consequences.** `spaces.py` gains a second button and the pinned count
+moves out of one button's label into its own, because the queue was always
+shared. Three gate tests: a mesh output takes a point pin where a face pin is
+refused, a rotated placement round-trips on both point and normal, and a
+non-output is refused rather than pinned to a name the agent cannot act on.
+The two-step gesture the user actually described — pick a point, then pick
+*which cable end it belongs to* — is deliberately not built: binding a pick
+to a position in script text is a design question, not a coding one, and the
+point pin is what unblocks the loop meanwhile.
+
+### The pick buttons never worked from their own button
+
+**Decision.** The eyedropper modal no longer gates on the area it was
+invoked from. It starts from anywhere, and the click resolves against the
+3D viewport region under the *mouse* (`cadex_pick.viewport_region_at`).
+
+**Why.** Both pins are launched from a button in the `CADEX_CHAT` header, so
+`context.area` at invoke is the chat area, never `VIEW_3D` — and the first
+thing `invoke` did was::
+
+    if context.area is None or context.area.type != 'VIEW_3D':
+        self.report({'WARNING'}, "Use the 3D viewport to pick")
+        return {'CANCELLED'}
+
+so the gesture cancelled the instant it started, reporting into the status
+bar where it read as nothing happening. There is no keymap anywhere in
+`mesh_agent`, so the button is the only way in and `pick_pin` had therefore
+never worked from it since it was written; `pick_point` inherited the flaw
+by sharing the modal. Found by using it, not by testing it.
+
+**Why the gate missed it.** `test_pin_flow` calls `resolve_polygon`
+directly. Every part of the pick was covered except the part that starts it.
+The modal needs a real window and cannot run under `--background`, so what
+is pinned now is the lookup it depends on: a pixel inside the viewport finds
+its window region, one over either header finds nothing, and the bounds are
+half-open.
+
+**Two smaller fixes alongside.** A click that is not over a viewport keeps
+the modal running rather than cancelling — which is also what absorbs the
+release of the very click that started it, since that one lands on the
+button. And `CADEX_CHAT` joins the redraw set, because the pinned count is
+drawn in its header and a header does not repaint on its own.

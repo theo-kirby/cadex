@@ -26,6 +26,7 @@ line ("CADEX-BLENDER-GATE {...}") and exits non-zero on any failure.
 
 import glob
 import json
+import math
 import os
 import random
 import statistics
@@ -503,6 +504,121 @@ def test_pin_flow(scene):
     note = cadex_pick.consume_pin_notes()
     check("@face-" in note and "box" in note, "pin note formatted")
     check(cadex_pick.consume_pin_notes() == "", "pin notes drain")
+
+
+def test_point_pin_flow(scene):
+    """A point pin is a place and a direction — a part.cable port (ADR-056).
+
+    The one thing a face pin cannot give you: imported components are mesh
+    outputs, ``resolve_polygon`` refuses them by design, and a harness lands
+    almost all of its ports on exactly those.
+    """
+    print("test_point_pin_flow")
+    from mathutils import Matrix, Vector
+
+    # The mesh output: refused as a face pin, accepted as a point pin.
+    skin = bpy.data.objects.get("skin")
+    refused, _report = cadex_pick.resolve_polygon(scene, skin, 0)
+    pin, report = cadex_pick.point_pin(
+        skin, Vector((1.0, 2.0, 3.0)), Vector((0.0, 0.0, 2.0)))
+    check(refused is None and pin is not None,
+          "the mesh output takes a point pin where a face pin is refused "
+          "({:s})".format(report))
+    check(pin is not None and pin["output"] == "skin"
+          and pin["kind"] == "point",
+          "the point pin names its output")
+    check(pin is not None and pin["point"] == [1.0, 2.0, 3.0],
+          "the pinned point is the hit point")
+    check(pin is not None and pin["normal"] == [0.0, 0.0, 1.0],
+          "the surface normal is normalised: {!r}".format(
+              pin and pin["normal"]))
+
+    # A placement is undone: the script authors in the output's own space,
+    # so a world-space hit on a placed component must come back as the
+    # coordinate the script would have to write.
+    box = bpy.data.objects.get("box")
+    before = box.matrix_world.copy()
+    try:
+        box.matrix_world = (Matrix.Translation(Vector((10.0, 0.0, 0.0)))
+                            @ Matrix.Rotation(math.radians(90.0), 4, 'Z'))
+        placed, _report = cadex_pick.point_pin(
+            box, Vector((10.0, 5.0, 0.0)), Vector((0.0, 1.0, 0.0)))
+        check(placed is not None
+              and all(abs(placed["point"][axis] - value) < 1.0e-6
+                      for axis, value in enumerate((5.0, 0.0, 0.0))),
+              "a placement is undone on the point: {!r}".format(
+                  placed and placed["point"]))
+        check(placed is not None
+              and all(abs(placed["normal"][axis] - value) < 1.0e-6
+                      for axis, value in enumerate((1.0, 0.0, 0.0))),
+              "a placement is undone on the normal: {!r}".format(
+                  placed and placed["normal"]))
+    finally:
+        box.matrix_world = before
+
+    # Anything that is not a cadex output is refused rather than pinned to
+    # a name the agent cannot act on.
+    stray = bpy.data.objects.new("stray", None)
+    refused, report = cadex_pick.point_pin(
+        stray, Vector((0.0, 0.0, 0.0)), Vector((0.0, 0.0, 1.0)))
+    check(refused is None and "not a cadex output" in report,
+          "a non-output is refused ({:s})".format(report))
+    bpy.data.objects.remove(stray)
+
+    cadex_pick.queue_pin(pin)
+    note = cadex_pick.consume_pin_notes()
+    check("a point on skin" in note and "surface normal" in note,
+          "the point pin note reads as a port: {:s}".format(note.strip()))
+    check(cadex_pick.consume_pin_notes() == "", "point pin notes drain")
+
+
+def test_both_pin_gestures_are_registered():
+    print("test_both_pin_gestures_are_registered")
+    check(hasattr(bpy.types, "MESH_AGENT_OT_pick_pin"),
+          "the face pin operator is registered")
+    check(hasattr(bpy.types, "MESH_AGENT_OT_pick_point"),
+          "the point pin operator is registered")
+
+
+def test_the_pick_finds_the_viewport_under_the_mouse():
+    """Both pins start from a button in the chat header, not the viewport.
+
+    The modal cannot use the area it was invoked from -- that is the header's
+    own area, and gating on it cancels the gesture the instant it starts,
+    which is what the buttons did. The region has to come from where the
+    mouse ends up. Driving the modal needs a real window, so what is checked
+    here is the lookup the modal depends on.
+    """
+    print("test_the_pick_finds_the_viewport_under_the_mouse")
+
+    class _Region:
+        def __init__(self, kind, x, y, width, height):
+            self.type = kind
+            self.x, self.y = x, y
+            self.width, self.height = width, height
+
+    class _Area:
+        def __init__(self, kind, regions):
+            self.type = kind
+            self.regions = regions
+
+    window = _Region('WINDOW', 100, 50, 400, 300)
+    areas = [
+        _Area('CADEX_CHAT', [_Region('HEADER', 0, 0, 100, 400)]),
+        _Area('VIEW_3D', [_Region('HEADER', 100, 350, 400, 26), window]),
+    ]
+
+    check(cadex_pick.viewport_region_at(areas, 300, 200) is window,
+          "a pixel inside the viewport finds its window region")
+    check(cadex_pick.viewport_region_at(areas, 50, 200) is None,
+          "a pixel over the chat header finds nothing")
+    check(cadex_pick.viewport_region_at(areas, 300, 360) is None,
+          "a pixel over the viewport's own header finds nothing")
+    check(cadex_pick.viewport_region_at(areas, 100, 50) is window
+          and cadex_pick.viewport_region_at(areas, 500, 350) is None,
+          "the region is half-open: its low corner is in, its high corner out")
+    check(cadex_pick.viewport_region_at([], 300, 200) is None,
+          "no viewport at all is not an error")
 
 
 # -- params bridge + slider latency ------------------------------------------
@@ -2405,6 +2521,9 @@ def main():
         scene = bpy.context.scene
         test_picking_fidelity(scene)
         test_pin_flow(scene)
+        test_point_pin_flow(scene)
+        test_both_pin_gestures_are_registered()
+        test_the_pick_finds_the_viewport_under_the_mouse()
         test_describe_cad_api(describe_root)
         test_edit_script_and_inspection(edit_root)
         test_params_and_latency(baseline_root)
