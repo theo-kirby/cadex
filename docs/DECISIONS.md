@@ -2929,3 +2929,57 @@ Note for Phase 8: the lifecycle test's default engine is still the
 GUI-carrying pixi environment. Until that is the shipped configuration, the
 packaged run (`CADEX_ENGINE_ROOT=...`) is the one with teeth for any
 GUI-coupling regression.
+
+---
+
+## ADR-048 — A simulation publishes (2026-07-27)
+
+**Decision.** `cadex_assembly_worker._execute_native_simulation` emits
+`simulation_trace_preview` on the simulation output item: the input, middle
+and final frames of the authenticated trace, deduplicated by index and
+bounded at three however long the run.
+
+**Rationale.** `_configure_assembly_simulation` reads
+`item["simulation_trace_preview"]` and raises
+`An Assembly simulation has no authenticated trace summary` when it is
+missing. Nothing wrote it — that read was its only occurrence in the
+repository — so **every** script containing `assembly.simulation(...)` died
+at publication with `DOMAIN_PUBLICATION_FAILED`. The property and its
+description already existed and were already right; the producing half was
+never written.
+
+**Emitted, not derived.** The obvious alternative is for the publisher to
+read the retained trace artifact and slice it. Rejected: the property is an
+*authenticated* summary, and the publisher does not otherwise touch that
+artifact. Deriving it there would make the publisher a second reader of a
+file the worker already has open, and would let a preview exist that the
+worker never vouched for. Emitting it in the worker keeps the preview a
+verbatim subset of the frames that went into `artifact_sha256`, so it can be
+checked against the retained trace rather than merely trusted.
+
+Deduplication matters at the short end: a two-frame trace has
+`0`, `count // 2` and `count - 1` all collide, and publishing the last frame
+three times would misrepresent the trace as static.
+
+**Consequences.** No protocol change and no ADR-027 golden moves —
+`simulation_trace_preview` is a worker→publisher item key, not a response
+key. Two new tests, and they cover different halves on purpose:
+`test_assembly_simulation_publication.py` drives the publisher under the
+stubbed-FreeCAD conftest and pins the preview's shape against
+`_simulation_trace_preview` itself, while `test_cadexd_publishes_a_simulation`
+runs a driven assembly through a real engine and asserts the trace is a
+readable file whose driven component moves and whose grounded one does not.
+The unit test alone would not have caught this, because the bug was that
+nothing *called* the producing code.
+
+Both were verified to fail before the change with the verbatim publication
+error and pass after, against a staged payload.
+
+**What the trace actually looks like**, since the shell's playback (ADR-050)
+depends on it and it is easy to guess wrong: `component_placements` maps a
+component name to `{"position_mm": [x, y, z], "rotation_xyzw": [x, y, z, w]}`
+— a compact position and quaternion, **not** a 4x4 matrix, and in **xyzw**
+order rather than Blender's wxyz. Frame 0 is `frame_kind: "input"` with
+`nominal_time_s: None`; solver frames carry real times. A 0..1 s run at a
+0.05 s step is 22 frames, not 21: both endpoints are included, plus the
+input frame.

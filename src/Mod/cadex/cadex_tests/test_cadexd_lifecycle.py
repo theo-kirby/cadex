@@ -129,6 +129,27 @@ result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
           "j": j, "asm": asm, "diag": diag}
 """
 
+#: The jointed assembly above, driven. Every script containing
+#: ``assembly.simulation(...)`` failed at publication until ADR-048, because
+#: the publisher read ``simulation_trace_preview`` and no code anywhere
+#: wrote it. 0..1 s at a 0.05 s step is 21 frames -- enough for a middle
+#: frame to be a distinct one.
+SIMULATION_SCRIPT = """
+plate = part.box(40, 20, 4)
+arm = part.box(30, 6, 6)
+base = assembly.component(plate, grounded=True)
+swing = assembly.component(arm, placement=[0, 0, 40])
+j = assembly.joint("revolute",
+                   assembly.connector(base, "origin", offset=[12, 0, 4]),
+                   assembly.connector(swing, "origin"))
+asm = assembly.assembly([base, swing], [j])
+diag = assembly.solve(asm)
+spin = assembly.motion(j, "2 * pi * time")
+sim = assembly.simulation(asm, [spin], end_time_s=1.0, time_step_s=0.05)
+result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
+          "j": j, "asm": asm, "diag": diag, "spin": spin, "sim": sim}
+"""
+
 TETRA_STL = """solid tetra
 facet normal 0 0 -1
  outer loop
@@ -539,6 +560,85 @@ def test_cadexd_solves_a_jointed_assembly() -> None:
         grounded = [round(value, 6)
                     for value in written["display"]["base"]["placement"][3::4]]
         assert grounded == [0.0, 0.0, 0.0, 1.0], grounded
+
+        done = client.request("shutdown", timeout=60)
+        assert done["ok"] is True
+    finally:
+        _stop(client)
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@pytest.mark.skipif(
+    FREECADCMD is None, reason="No FreeCADCmd binary available for cadexd CI."
+)
+def test_cadexd_publishes_a_simulation() -> None:
+    """A driven assembly publishes, and retains a readable trace.
+
+    The publisher has always demanded ``simulation_trace_preview`` and the
+    worker never emitted it, so this failed for every simulation script ever
+    written (ADR-048). Nothing caught it because no live test ran one.
+
+    Also the shell's contract for playback: the trace is a real file on a
+    path the response hands out, and its frames carry the times and the
+    per-component placements a bake needs.
+    """
+
+    root = Path(tempfile.mkdtemp(prefix="cadexd-simulation-ci-"))
+    client = None
+    try:
+        client = _spawn_cadexd()
+        opened = client.request("open_project", {"project_root": str(root)})
+        assert opened["ok"] is True, opened
+
+        written = client.request(
+            "write_script", {"source": SIMULATION_SCRIPT, "expected_revision": ""}
+        )
+        assert written["ok"] is True, written
+
+        entry = written["display"]["sim"]
+        assert entry["artifact_kind"] == "assembly_simulation_json", entry
+
+        trace = json.loads(
+            Path(entry["artifact_path"]).read_text(encoding="utf-8")
+        )
+        frames = trace["frames"]
+        # 0.0 .. 1.0 inclusive at a 0.05 s step is 21 solver frames, plus
+        # the input frame the solver did not produce.
+        assert len(frames) == 22, len(frames)
+        assert trace["parameters"]["frames_per_second"] == 30
+        assert trace["parameters"]["time_step_s"] == 0.05
+
+        # Frame 0 is the input pose and carries no time; the rest are the
+        # solver's, in order. Playback keys on the time, not the index --
+        # at 0.05 s and 30 fps the two disagree by 1.5x.
+        assert frames[0]["frame_kind"] == "input"
+        assert frames[0]["nominal_time_s"] is None
+        times = [frame["nominal_time_s"] for frame in frames[1:]]
+        assert times == sorted(times), times
+        assert times[0] == 0.0 and times[-1] == pytest.approx(1.0)
+
+        # Every frame poses every component, in the compact position +
+        # xyzw-quaternion form the shell's bake reads (NOT a 4x4 matrix,
+        # and NOT Blender's wxyz order).
+        for frame in frames:
+            placements = frame["component_placements"]
+            assert set(placements) == {"base", "swing"}, placements
+            for pose in placements.values():
+                assert len(pose["position_mm"]) == 3, pose
+                assert len(pose["rotation_xyzw"]) == 4, pose
+
+        # The motion actually moved something: `swing` is driven, `base` is
+        # grounded. Without this the trace could be 22 identical frames.
+        def _pose(frame, name):
+            pose = frame["component_placements"][name]
+            return (tuple(pose["position_mm"]), tuple(pose["rotation_xyzw"]))
+
+        assert len({_pose(frame, "swing") for frame in frames}) > 1, (
+            "the driven component never moved"
+        )
+        assert len({_pose(frame, "base") for frame in frames}) == 1, (
+            "the grounded component moved"
+        )
 
         done = client.request("shutdown", timeout=60)
         assert done["ok"] is True

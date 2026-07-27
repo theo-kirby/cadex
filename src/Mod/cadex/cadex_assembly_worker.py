@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 import hashlib
 import json
 import math
@@ -2204,6 +2204,25 @@ def _execute_native_exploded_view(
     return data
 
 
+def _simulation_trace_preview(frames: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """The input, middle and final frames of an authenticated trace.
+
+    Exactly what ``CadexSimulationTracePreview``'s own description promises,
+    and a verbatim subset of the frames hashed into ``artifact_sha256`` --
+    so the published preview can be checked against the retained artifact
+    rather than merely trusted. Bounded at three frames regardless of how
+    long the simulation ran; the complete trace stays a program artifact.
+
+    Deduplicated by index, so a two-frame trace previews two frames rather
+    than repeating the last one.
+    """
+
+    if not frames:
+        return []
+    indices = sorted({0, len(frames) // 2, len(frames) - 1})
+    return [dict(frames[index]) for index in indices]
+
+
 def _execute_native_simulation(
     *,
     document: Any,
@@ -2452,6 +2471,10 @@ def _execute_native_simulation(
             "frame_count": len(frames),
             "pose_count": len(frames) * len(components),
             "assembly_data": {"assembly_output": assembly_output, **summary},
+            # Published as CadexSimulationTracePreview. Its own key, not part
+            # of assembly_data: that dict is the validation record, and the
+            # preview is a sample of the trace, not a setting.
+            "simulation_trace_preview": _simulation_trace_preview(frames),
         }
     )
     return summary
