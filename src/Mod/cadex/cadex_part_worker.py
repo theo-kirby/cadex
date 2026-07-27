@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 from pathlib import Path
 from types import MappingProxyType
@@ -1206,13 +1207,102 @@ def _build(
     raise _error(operation, "operation", "is not implemented by the Part worker")
 
 
+#: Content-keyed shapes built during ONE worker request.
+#:
+#: A value used twice -- a `plate` fed to two `mesh.from_shape` calls, a
+#: sub-assembly cut against several things -- was built once per consumer,
+#: because nothing memoised anything: +0.164 s per extra consumer, measured.
+#: Assembly components already dedupe; nothing else did.
+#:
+#: Reset in `reset_part_shape_memo`, called from the request's `try/finally`
+#: rather than at entry. A warm worker that leaked this across requests
+#: would return geometry for the *previous* parameter values under a
+#: self-consistent digest, which is the worst failure this codebase can
+#: have. The finally is the guard that makes that impossible.
+_SHAPE_MEMO: dict[str, tuple[Any, dict[str, Any]]] = {}
+
+#: Entries, not bytes: shapes are opaque here. Small because sharing is
+#: shallow in practice -- a handful of expensive nodes, not hundreds.
+_SHAPE_MEMO_LIMIT = 64
+
+
+def reset_part_shape_memo() -> None:
+    """Drop every memoised shape. One request must never see another's."""
+
+    _SHAPE_MEMO.clear()
+
+
+def _memo_key(payload: Mapping[str, Any]) -> str:
+    """Content identity for one part definition.
+
+    Same construction as ``cadex_project_api.inline_source_token`` so the
+    tree has one content-key idiom rather than two that drift.
+    """
+
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return "src-" + hashlib.sha256(canonical).hexdigest()[:24]
+
+
 def build_part_shape(
     payload: dict[str, Any],
     *,
     diagnostics: dict[str, Any] | None = None,
 ):
-    """Execute one validated Part definition and wrap OCC errors usefully."""
+    """Execute one validated Part definition and wrap OCC errors usefully.
 
+    Memoised by content. **Copies on the way in and on the way out**, for
+    three independent reasons, any one of which would be enough:
+
+    - ``part.repair`` calls ``shape.fix(...)`` *in place* on what it is
+      given. Harmless while nothing was shared; silent cache corruption
+      under a memo.
+    - ``part.transform`` already copies, precisely because it mutates.
+    - **The digest hazard.** ``MeshPart.meshFromShape`` runs ``BRepMesh``,
+      which skips faces that already carry a triangulation. Handing
+      ``mesh.from_shape`` a shape that ``part_shape_facts`` had already
+      tessellated would change the PLY, its ``geometry_sha256`` and the
+      project digest -- while ``test_project_rebuild`` stayed green, because
+      rebuild would use the memo too. ``Shape.copy()`` defaults to
+      ``copyMesh=False``, which is exactly what makes a hit
+      indistinguishable from a fresh build.
+
+    Measured: ``copy()`` is 0.62 ms against the 42.7 ms of ``cut`` +
+    ``makeFillet`` it replaces on the baseline part -- 68x cheaper, so the
+    copy is not what this costs.
+    """
+
+    key = _memo_key(payload)
+    memoised = _SHAPE_MEMO.get(key)
+    if memoised is not None:
+        shape, fragment = memoised
+        if diagnostics is not None and fragment:
+            # Replay the fragment: `general_fuse` publishes a declared
+            # live_outputs.* key, so a hit must report what a build did.
+            diagnostics.update(fragment)
+        return shape.copy()
+
+    fragment: dict[str, Any] = {}
+    shape = _build_part_shape_uncached(
+        payload, diagnostics=fragment if diagnostics is not None else None
+    )
+    if diagnostics is not None and fragment:
+        diagnostics.update(fragment)
+    if len(_SHAPE_MEMO) < _SHAPE_MEMO_LIMIT:
+        _SHAPE_MEMO[key] = (shape.copy(), dict(fragment))
+    return shape
+
+
+def _build_part_shape_uncached(
+    payload: dict[str, Any],
+    *,
+    diagnostics: dict[str, Any] | None = None,
+):
     operation = str(payload.get("operation") or "")
     if not operation:
         raise PartOperationError(

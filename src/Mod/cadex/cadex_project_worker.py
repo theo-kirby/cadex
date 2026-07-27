@@ -324,7 +324,10 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
     # neither a root nor the mesh kernel, so both are bound once here — this
     # module is staged into the sandbox, so it may own that edge (ADR-043).
     from cadex_mesh_worker import canonical_mesh_from_payload
-    from cadex_part_worker import configure_part_assets
+    from cadex_part_worker import (
+        configure_part_assets,
+        reset_part_shape_memo,
+    )
 
     configure_part_assets(root, canonical_mesh_from_payload)
 
@@ -491,6 +494,12 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
         }
     finally:
         App.closeDocument(document.Name)
+        # In the `finally`, not at entry. A warm worker (ADR-055) that
+        # leaked this across requests would answer with geometry built from
+        # the *previous* parameter values, under a digest self-consistent
+        # with it -- the worst failure this codebase can have. Clearing on
+        # the way out makes that impossible rather than unlikely.
+        reset_part_shape_memo()
 
 
 def main() -> int:

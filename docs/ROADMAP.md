@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-07-26
+Verified against source: 2026-07-27
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -331,14 +331,33 @@ depends on. Independent of Phase 8.
       releases; today one `pixi update` silently re-indexes every saved
       script. *Landed 2026-07-25 (ADR-027): `occt = "==7.8.1"` + ctest
       `CadexSubshapeEnumeration`.*
+- [x] **The target case works at all.** Ahead of any speed work: joints
+      failed headless (ADR-047), simulations could not publish (ADR-048),
+      and a solved assembly never reached the viewport because nothing in
+      the response said which output a component instanced (ADR-049). All
+      three were invisible because no live test built a joint. A simulation
+      now plays in the viewport (ADR-050).
+- [x] **The drag is off the main thread** (ADR-051). One request in flight
+      per project, the rest coalesced; a 12-event burst becomes 2 requests.
+      *Stated limit:* `ensure_open` still blocks the first drag of a session.
+- [x] **The cold-path diet** (ADR-052) and **shared sub-expressions built
+      once** (ADR-053). Engine median 0.505 s → 0.417 s plain,
+      0.610 s → 0.473 s with the shell's draft display; gate slider median
+      0.578 s → 0.537 s.
+- [ ] **Subelement details on demand** (planned ADR-054). Stop computing
+      `face_details`/`edge_details` in the worker; serve them from the
+      pinned attempt's BREP when `inspect scope="output"` asks.
 - [ ] **Warm-standby worker.** The per-drag `FreeCADCmd --safe-mode` spawn
-      (~0.4–0.5 s) dominates the ~0.55 s slider median. The only
-      user-visible improvement available at any price this year: weeks of
-      work for ~5× on the only interactive number the product has.
+      still dominates. What remains after ADR-052/053 is process spawn,
+      FreeCAD C++ init, `--safe-mode`'s `QTemporaryDir` and the OCCT dylib
+      load — none of it reachable from Python, which is what makes a
+      resident read-only preview worker (planned ADR-055) the only route to
+      real-time. Expected to land at ~60–80 ms for an 8-component assembly,
+      not 16 ms: the residue is `Document.addObject`.
 
 **Exit criteria:** one script format across the product; both new gates
-green; slider median materially below 0.548 s; `CADEX-BLENDER-GATE` still
-ok.
+green; slider median materially below 0.548 s *(met: 0.537 s end-to-end,
+0.417 s engine-only)*; `CADEX-BLENDER-GATE` still ok.
 
 ## Phase 10 — Probe, then characterize `(the go/no-go gate)`
 

@@ -3352,3 +3352,75 @@ one. Three tests move with it (`test_tessellation.py`,
 bundle is built once, is content-addressed, and preserves mtime — the
 property the whole item stands on. 250 engine tests pass in the source tree
 and against the staged payload; `pixi run gate` green.
+
+---
+
+## ADR-053 — Shared sub-expressions are built once (2026-07-27)
+
+**Decision.** `build_part_shape` memoises by content for the duration of one
+worker request, keyed by
+`"src-" + sha256(canonical_json(payload))[:24]` — the same construction as
+`cadex_project_api.inline_source_token`, so the tree has one content-key
+idiom rather than two that drift.
+
+**Rationale.** Assembly components dedupe; nothing else did. A value used
+twice — a `plate` fed to two `mesh.from_shape` calls, a sub-assembly cut
+against several things — was rebuilt per consumer, measured at **+0.164 s
+per extra consumer**.
+
+**Hooked at `build_part_shape`, not `_shape`.** On the latency baseline both
+consumers of `plate` are top-level, so a `_shape`-level memo would score
+zero hits on the very case it exists for.
+
+**Copies on get and on put**, for three independent reasons, any one of
+which alone would justify it:
+
+- `part.repair` calls `shape.fix(...)` **in place** on what it is handed.
+  Harmless while nothing was shared; silent cache corruption under a memo.
+- `part.transform` already copies, precisely because it mutates.
+- **The digest hazard.** `MeshPart.meshFromShape` runs `BRepMesh`, which
+  skips faces that already carry a triangulation. Handing `mesh.from_shape`
+  a shape `part_shape_facts` had already tessellated would change the PLY,
+  its `geometry_sha256` and the project digest — while
+  `test_project_rebuild` stayed green, because rebuild would use the memo
+  too. `Shape.copy()` defaults to `copyMesh=False`, which is what makes a
+  hit indistinguishable from a fresh build.
+
+Measured before building it, as the plan required: `Shape.copy()` is
+**0.62 ms against the 42.7 ms** of `cut` + `makeFillet` it replaces on the
+baseline part — **68x cheaper**, so the mandatory copy is not what this
+costs.
+
+**The reset lives in the request's `finally`, not at its entry.** A warm
+worker (ADR-055) that leaked the memo across requests would answer with
+geometry built from the *previous* parameter values, under a digest
+self-consistent with it — the worst failure this codebase can have. A test
+pins the reset's position in the `finally` for exactly that reason.
+
+**Evidence.** Digest equality on four scripts — the latency baseline, a
+shared node feeding two `mesh.from_shape` calls, one with `part.repair`, one
+with `part.transform` — captured **on the same build** with the memo
+reverted and re-applied. All four identical. `test_project_rebuild` alone is
+necessary but not sufficient here, because both of its sides would use the
+memo.
+
+A methodological note worth keeping: the first attempt at this captured the
+"before" digests, then rebuilt the engine, then compared. One script
+disagreed and it looked like a memo bug. It was a stale baseline — an A/B
+across two builds is not an A/B. The valid comparison reverts only the
+change under test, on one build, and it passes.
+
+`test_subshape_enumeration`, `test_subshape_selectors`, `test_pin_resolution`
+and `test_project_rebuild` all stay green: face and edge ordering is what the
+pin contract stands on.
+
+**Measured payoff.** The shared-node script **0.570 s → 0.376 s**. The
+latency baseline **0.471 s → 0.417 s** plain and 0.529 s → 0.496 s with the
+draft display; the gate's end-to-end slider median 0.565 s → 0.537 s.
+
+**Deliberately not done.** No `functools.lru_cache`: process-lifetime scope
+is exactly the leak that becomes a correctness bug under a warm worker, and
+dict payloads are unhashable anyway. The per-node `isValid()` in
+`build_part_shape` stays — it names the operation that produced a bad shape,
+which is what the agent repairs from, and this halves its count for free on
+any script with sharing.
