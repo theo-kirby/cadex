@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-07-26
+Verified against source: 2026-07-27
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -271,6 +271,24 @@ from, so the operation does not move the geometry or its digest.
 was deleted with it in Phase 7, ADR-021. The contract it committed
 through — `set_params` plus the revision guard — is unchanged, which is why
 the shell swap did not touch the engine.)*
+
+**In front of that path, for the sliders that drive motion**, sits
+`preview_params` (ADR-055). A resident `--safe-mode` worker inside cadexd
+answers a **pose-only** parameter change — one where every non-assembly
+output's canonical definition is byte-identical and only placements moved —
+with solved component matrices and nothing else: no BREP, no tessellation, no
+digest, no publication, **no store write**. Measured at **33 ms** against the
+same model's 0.59 s accepting run.
+
+It is a fast path for *some* sliders, not all, and that is structural rather
+than an unfinished edge. A parameter feeding `part.box(p.width, …)` changes
+that box's definition, so it is never pose-only — correctly, because the
+geometry really did change. What a preview serves is exactly the class the
+`set_params` lifecycle is worst at and the user notices most: a component
+placement, a joint offset, a motion formula. Everything else falls back to
+the debounced `set_params` above, which remains the only thing that makes a
+change real: the preview never accepts, so the revision it was guarded by is
+still the revision when it is done.
 
 ### Reference pins
 

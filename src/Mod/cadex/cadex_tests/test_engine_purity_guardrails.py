@@ -75,6 +75,10 @@ DECLARED_ENGINE_MODULES = frozenset(
         "CadexScriptStore",
         # the xscript pipeline
         "CadexScriptedRuntime",
+        # the resident preview worker, host side. Its *worker* side is
+        # cadex_preview_worker, staged by filename like every other domain
+        # worker and therefore outside this closure by design (ADR-055).
+        "CadexWarmWorker",
         "CadexScriptedProcess",
         "CadexScriptedPublication",
         "CadexScriptedDomainPublication",

@@ -294,8 +294,8 @@ def _stamp_source_output(
         item["source_output"] = str(source)
 
 
-def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
-    import FreeCAD as App
+def _validate_request(request: dict[str, Any]) -> tuple[str, dict, dict, dict]:
+    """Structural checks shared by an accepting run and a preview."""
 
     if request.get("schema") != SCHEMA:
         raise ValueError(
@@ -315,6 +315,37 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
         )
     if not isinstance(param_values, dict):
         raise TypeError("param_values must be an object.")
+    return source, inputs, api_contracts, param_values
+
+
+def _staged_globals(
+    api_contracts: dict[str, Any],
+    param_values: dict[str, Any],
+    inline_sources: dict[str, dict[str, Any]],
+) -> tuple[dict[str, Any], ParamsCollector]:
+    """One API object per capability domain, plus the parameter vocabulary."""
+
+    collector = ParamsCollector(param_values)
+    globals_by_name: dict[str, Any] = {"params": collector, "num": num}
+    for domain in EVALUATION_ORDER:
+        contract = api_contracts[domain]
+        exports = list(contract.get("exports") or [])
+        output_types = list(contract.get("output_types") or [])
+        if domain == "assembly":
+            globals_by_name[domain] = create_project_assembly_api(
+                exports, output_types, inline_sources
+            )
+        else:
+            globals_by_name[domain] = create_domain_api(
+                domain, exports, output_types
+            )
+    return globals_by_name, collector
+
+
+def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
+    import FreeCAD as App
+
+    source, inputs, api_contracts, param_values = _validate_request(request)
 
     output_directory = root / "outputs"
     output_directory.mkdir(parents=True, exist_ok=False)
@@ -332,20 +363,9 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
     configure_part_assets(root, canonical_mesh_from_payload)
 
     inline_sources: dict[str, dict[str, Any]] = {}
-    collector = ParamsCollector(param_values)
-    globals_by_name: dict[str, Any] = {"params": collector, "num": num}
-    for domain in EVALUATION_ORDER:
-        contract = api_contracts[domain]
-        exports = list(contract.get("exports") or [])
-        output_types = list(contract.get("output_types") or [])
-        if domain == "assembly":
-            globals_by_name[domain] = create_project_assembly_api(
-                exports, output_types, inline_sources
-            )
-        else:
-            globals_by_name[domain] = create_domain_api(
-                domain, exports, output_types
-            )
+    globals_by_name, collector = _staged_globals(
+        api_contracts, param_values, inline_sources
+    )
 
     document = App.newDocument(
         "XScriptProjectCandidate", "XScript Project Candidate", True, True
@@ -502,6 +522,241 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
         reset_part_shape_memo()
 
 
+class PreviewUnavailable(Exception):
+    """This script cannot be answered by a placement-only reply.
+
+    Not an error: the caller falls back to the accepting path, which is the
+    real answer anyway. Carries the reason so the shell can say why, and so a
+    test can tell "the preview declined" from "the preview broke".
+    """
+
+
+def _definition_fingerprints(
+    grouped: dict[str, dict[str, Any]],
+) -> dict[str, str]:
+    """SHA-256 of each **non-assembly** output's canonical definition.
+
+    The definition is the complete build recipe — it is what
+    :func:`compute_project_digest` hashes for every output that has no
+    artifact bytes of its own — so two runs whose definitions are pairwise
+    identical build pairwise identical geometry. That is the entire basis for
+    answering a parameter change with placements alone, and it is a *dynamic*
+    test rather than a static classifier: there is no dependency graph to
+    consult (``p.width`` evaluates to a bare float, and ``DomainValue`` keeps
+    no parameter provenance), and a parameter can be pose-only at one value
+    and topology-changing at the next.
+
+    Assembly outputs are excluded, and must be: a component's placement is an
+    argument of its own definition, so including them would make every moved
+    component read as a changed definition and nothing would ever be
+    previewable.
+    """
+
+    fingerprints: dict[str, str] = {}
+    for domain, outputs in grouped.items():
+        if domain == "assembly":
+            continue
+        for name, value in outputs.items():
+            canonical = _canonical_json(_payload(value)).encode("utf-8")
+            fingerprints[name] = hashlib.sha256(canonical).hexdigest()
+    return fingerprints
+
+
+def _preview_references(
+    inline_sources: dict[str, dict[str, Any]],
+    grouped: dict[str, dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """Bind each component source to a shape built in this process.
+
+    The accepting path matches component sources to declared outputs by their
+    canonical definition and then hands the solver a staged BREP; this
+    matches them the same way and hands the solver the shape itself.
+    ``build_part_shape`` is memoised by content (ADR-053), so across the
+    previews of one drag the parts that did not change are not rebuilt —
+    which is what makes the second preview of a drag cheaper than the first.
+    """
+
+    from cadex_part_worker import build_part_shape
+
+    index: dict[str, tuple[str, str, dict[str, Any]]] = {}
+    for domain in ("part", "partdesign"):
+        for name, value in grouped[domain].items():
+            payload = _payload(value)
+            index.setdefault(_canonical_json(payload), (name, domain, payload))
+
+    entries: list[dict[str, Any]] = []
+    component_sources: dict[str, str] = {}
+    for token, payload in inline_sources.items():
+        matched = index.get(_canonical_json(payload))
+        if matched is None:
+            raise PreviewUnavailable(
+                "a component source is not a declared part output of this script"
+            )
+        name, domain, matched_payload = matched
+        if domain != "part":
+            # A PartDesign source is a native Body history, built by
+            # validate_and_build_partdesign against a document rather than by
+            # build_part_shape, so there is no memoised shape to bind and no
+            # cheap way to make one. Declining is honest and costs one
+            # debounced rebuild.
+            raise PreviewUnavailable(
+                f"component source {name!r} is built by partdesign"
+            )
+        component_sources[token] = name
+        entries.append(
+            {
+                "document_uid": INLINE_SOURCE_UID,
+                "object_name": token,
+                "shape": build_part_shape(matched_payload),
+                "label": name,
+                "type_id": "Part::Feature",
+                "source_kind": "shape",
+                "published_interfaces": {},
+            }
+        )
+    return entries, component_sources
+
+
+def _run_preview(request: dict[str, Any], root: Path) -> dict[str, Any]:
+    """Answer one parameter change with solved placements and nothing else.
+
+    A read-only oracle (ADR-055). It execs the script, decides whether the
+    change was pose-only, and if it was, builds the component shapes and runs
+    the native assembly solve. It does **not** export BREP, compute shape
+    facts, tessellate, hash anything, compute a digest, or publish — and it
+    writes no file at all, which is the invariant the whole design rests on:
+    every byte the project store ever accepts still comes from a cold
+    ``--safe-mode`` run with a fresh attempt directory.
+
+    The memo is deliberately **not** reset here, unlike the accepting path's
+    ``finally``. Persisting it across the previews of one generation is the
+    point; it is safe because the memo key is *content*, so a different
+    parameter value is a different key rather than a stale hit. Bounding it
+    is the warm worker's job — it clears on a generation change and respawns
+    on a request count.
+    """
+
+    import FreeCAD as App
+
+    source, inputs, api_contracts, param_values = _validate_request(request)
+    baseline = request.get("baseline")
+    if baseline is not None and not isinstance(baseline, dict):
+        raise TypeError("baseline must be an object when present.")
+
+    from cadex_mesh_worker import canonical_mesh_from_payload
+    from cadex_part_worker import configure_part_assets
+
+    configure_part_assets(root, canonical_mesh_from_payload)
+
+    inline_sources: dict[str, dict[str, Any]] = {}
+    globals_by_name, _collector = _staged_globals(
+        api_contracts, param_values, inline_sources
+    )
+
+    document = App.newDocument(
+        "XScriptProjectPreview", "XScript Project Preview", True, True
+    )
+    try:
+        result, _stdout, _budget = _execute_project_source(
+            source=source,
+            document_name=str(request.get("document_name") or "XScriptDocument"),
+            document_objects=list(request.get("document_objects") or []),
+            inputs=inputs,
+            globals_by_name=globals_by_name,
+            max_operations=int(request.get("max_operations") or 400_000),
+            max_seconds=float(request.get("max_seconds") or 300.0),
+        )
+        if not result:
+            raise ValueError("A project script must return at least one output.")
+        grouped = _group_result_by_domain(result)
+        fingerprints = _definition_fingerprints(grouped)
+
+        def declined(reason: str) -> dict[str, Any]:
+            return {
+                "ok": True,
+                "schema": SCHEMA,
+                "domain": "project",
+                "mode": "preview",
+                "previewable": False,
+                "reason": reason,
+                "placements": {},
+                "definitions_fingerprint": fingerprints,
+            }
+
+        if baseline is None:
+            # The generation's first exec: there is nothing to compare
+            # against, so this run *is* the baseline. It still returns the
+            # fingerprints, which is how the caller acquires one.
+            return declined("no baseline for this generation")
+        expected = baseline.get("definitions_fingerprint")
+        if not isinstance(expected, dict):
+            raise TypeError("baseline.definitions_fingerprint must be an object.")
+        changed = sorted(
+            name
+            for name in set(expected) | set(fingerprints)
+            if expected.get(name) != fingerprints.get(name)
+        )
+        if changed:
+            # The honest answer, and the common one: a parameter feeding
+            # `part.box(p.width, ...)` really did change that box's
+            # definition, and a placement-only reply would be a lie. Returned
+            # before any shape is built, so declining is cheap.
+            return declined(
+                "these definitions changed, so the geometry did too: "
+                + ", ".join(changed[:8])
+            )
+        if not grouped["assembly"]:
+            return declined("this script declares no assembly outputs")
+
+        from cadex_assembly_worker import (
+            configure_assembly_references,
+            validate_and_solve_assembly,
+        )
+
+        references, _component_sources = _preview_references(
+            inline_sources, grouped
+        )
+        configure_assembly_references(root, references, from_shapes=True)
+        assembly_items = [
+            {"name": name, "type": str(_payload(value).get("output_type") or "")}
+            for name, value in grouped["assembly"].items()
+        ]
+        validate_and_solve_assembly(
+            document,
+            dict(grouped["assembly"]),
+            assembly_items,
+            None,
+            skip_derived=True,
+        )
+        placements: dict[str, list[float]] = {}
+        for item in assembly_items:
+            matrix = item.get("solved_placement_matrix")
+            if isinstance(matrix, list):
+                placements[str(item["name"])] = [float(value) for value in matrix]
+        return {
+            "ok": True,
+            "schema": SCHEMA,
+            "domain": "project",
+            "mode": "preview",
+            "previewable": True,
+            "placements": placements,
+            "definitions_fingerprint": fingerprints,
+        }
+    except PreviewUnavailable as exc:
+        return {
+            "ok": True,
+            "schema": SCHEMA,
+            "domain": "project",
+            "mode": "preview",
+            "previewable": False,
+            "reason": str(exc),
+            "placements": {},
+            "definitions_fingerprint": {},
+        }
+    finally:
+        App.closeDocument(document.Name)
+
+
 def main() -> int:
     result_path = Path(os.environ[RESULT_ENV]).resolve()
     try:
@@ -511,7 +766,12 @@ def main() -> int:
         if not isinstance(request, dict):
             raise TypeError("Project worker request must be an object.")
         _resource_limits(request)
-        payload = _run(request, root)
+        mode = str(request.get("mode") or "accept")
+        if mode not in {"accept", "preview"}:
+            raise ValueError(f"Unsupported project worker mode: {mode!r}.")
+        payload = (
+            _run_preview(request, root) if mode == "preview" else _run(request, root)
+        )
     except BaseException as exc:
         payload = {
             "ok": False,

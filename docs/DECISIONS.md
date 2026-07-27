@@ -3424,3 +3424,333 @@ dict payloads are unhashable anyway. The per-node `isValid()` in
 `build_part_shape` stays — it names the operation that produced a bad shape,
 which is what the agent repairs from, and this halves its count for free on
 any script with sharing.
+
+## ADR-055 — The server says what it is declared to say (2026-07-27)
+
+**Decision.** Four keys cadexd sent on server-level failures but
+`CadexdProtocol.SERVER_FAILURE_SPEC` did not declare are reconciled: the
+`CADEXD_BUSY` sender is corrected to `busy_with` (the spec is the contract,
+the sender was wrong), and `exception_type`, `restore_failure` and
+`observed` are declared in the optional set.
+
+| sent at | key | was |
+|---|---|---|
+| `cadexd.py` `_admit` (`CADEXD_BUSY`) | `busy_request_id` | spec says `busy_with` |
+| `dispatch`, `_op_inspect` (`CADEXD_PROTOCOL_ERROR`) | `exception_type` | undeclared |
+| `_op_open_project` (`CADEXD_RESTORE_FAILED`) | `restore_failure` | undeclared |
+| `_op_open_project` (`CADEXD_RESTORE_FAILED`) | `observed` | undeclared |
+
+(The `requested`/`observed` pair in `_op_put_asset` is a `tool_failure`,
+correctly declared by `FAILURE_RESPONSE_SPEC` — not a bug.)
+
+**Rationale.** An undeclared key is a key the shell may not read: the whole
+value of pinning replies (ADR-025) is that either half can be replaced
+against the spec rather than against the other half's source. A sender that
+disagrees with the spec makes the spec a description of intent instead of a
+contract. `busy_request_id` in particular means a shell written strictly
+against `SERVER_FAILURE_SPEC` cannot tell *which* request a refusal was
+waiting on, which is exactly what a client needs to decide between waiting
+and cancelling.
+
+**Why it survived.** `test_cadexd_lifecycle` shape-checks every frame it
+*receives*, but it never drove a BUSY or a restore failure — the happy path
+does not collide two modeling requests, and it does not corrupt the store.
+The shell gate's `test_restore_failure_is_first_class` drives the digest
+mismatch, but it reads the rendered report, not the frame. So four keys were
+undeclared for as long as they had existed, and none of the existing suites
+could have said so.
+
+**The fix is structural as well as case-by-case.**
+`test_every_key_the_server_sends_on_a_failure_is_declared` parses `cadexd.py`
+and checks every `failure(...)` call site's keywords against the spec. It
+needs no live server, names the file and line, and covers the two
+`exception_type` sites that no test drives — a handler made to throw and an
+`inspect` capture made to fail are both awkward to provoke and neither
+should have to be provoked for the contract to hold. Two live cases back it
+up where provoking is cheap:
+`test_a_second_modeling_request_is_refused_as_busy` collides a `rebuild`
+with an in-flight slow `write_script`, and
+`test_a_broken_store_reports_a_declared_restore_failure` drives **both**
+restore-failure shapes — a hand edit that runs and reproduces a different
+digest (`observed`), and a store whose script does not run at all with its
+accepted revision's pinned source removed (`restore_failure`). Each was
+confirmed to fail against the unfixed spec before being kept.
+
+**Consequences.** No shell change: nothing read `busy_request_id` — the key
+had no consumer, which is its own evidence. This is the precondition for the
+resident preview worker: `preview_params` is a `READ_OPS` member and will
+collide with in-flight modeling far more often than anything does today, so
+a BUSY frame stops being a curiosity the moment previews ship.
+
+### The project worker can answer a preview
+
+**Decision.** The project worker takes `mode: "preview"`. A preview execs the
+script at new parameter values, decides whether the change was **pose-only**,
+and if it was, builds the component shapes through the ADR-053 memo and runs
+`validate_and_solve_assembly`. It returns
+`{previewable, placements, definitions_fingerprint, reason?}` and **skips all
+serialization**: no `exportBrep`, no `part_shape_facts`, no sha256, no
+tessellation, no digest, no publication.
+
+**Why a resident process is the only route left, and why this is safe.**
+ADR-052 already took the cold path apart; what remains of the ~0.42 s is
+process spawn, FreeCAD's C++ init, `--safe-mode`'s `QTemporaryDir` setup and
+the OCCT dylib load. None of it is visible to cProfile and none of it is
+reachable by making Python cheaper. What makes a resident process acceptable
+is that **it never writes the project store, never publishes, and never moves
+a revision or a digest** — it is a read-only oracle. Every accepted byte
+still comes from a cold `--safe-mode` run with a fresh attempt directory, so
+digest determinism, cross-revision isolation and crash recovery are preserved
+*by construction* rather than by argument. Same hybrid ADR-019 already ships
+one level down: draft tessellation during a drag, standard `rebuild` at rest.
+
+**Pose-only detection is dynamic, not a static classifier.** Each
+non-assembly output's canonical definition is hashed and compared against a
+baseline; identical means the geometry is identical, because the definition
+*is* the complete build recipe — it is what `compute_project_digest` hashes
+for every output with no artifact bytes of its own. A static classifier was
+rejected twice over: there is no dependency graph to build one from
+(`p.width` evaluates to a bare float and `DomainValue.to_payload()` carries
+no parameter provenance), and one would still be wrong for a parameter that
+is pose-only at one value and topology-changing at the next.
+
+**Assembly outputs are excluded from the comparison**, and must be: a
+component's placement is an argument of its own definition, so including them
+would make every moved component read as changed geometry and nothing would
+ever be previewable.
+
+**This serves the parameters that drive motion, not every slider.** A
+parameter feeding `part.box(p.width, …)` changes that box's definition and is
+therefore *never* pose-only — correctly, because the geometry really did
+change and a placement-only reply would be a lie. The refusal is returned
+before any shape is built, so declining costs 0.8 ms.
+
+**Deviation from the plan, recorded because it is a real one.** The plan
+defined pose-only as "definitions identical **and at least one placement
+moved**". Shipped as definitions-identical alone. The movement clause adds
+nothing to safety — identical definitions already means pose is the only
+thing that *can* differ — and it introduces a live bug: a drag that begins at
+the accepted parameter value produces a first preview where nothing has moved
+yet, which would answer `previewable: false`, and the shell latches previews
+off for the remainder of a drag on exactly that answer. The whole drag would
+fall back. Whether a placement actually moved is something the caller can see
+for free by comparing matrices it already holds.
+
+**The baseline comes from the generation's first exec.** With no baseline
+there is nothing to compare against, so the reply is `previewable: false`
+carrying the fingerprints — which is how a baseline is acquired at all. The
+warm worker establishes it on its `load` frame, at the *accepted* parameter
+values.
+
+**The memo's lifetime, stated precisely, because this and ADR-053 pull in
+opposite directions.** The accepting path keeps its per-request reset in
+`_run`'s `finally`, unchanged. The preview path deliberately does **not**
+reset: keeping the memo across the previews of one generation is the point,
+since unchanged parts must not rebuild. This is safe because the memo key is
+*content* — a different parameter value is a different key, never a stale hit
+— and bounded because the warm worker clears it on a generation change and
+respawns on a request count.
+
+**Component references bind in-process.** `configure_part_references`
+authenticates a BREP by re-reading the file and matching its SHA-256 against
+what the host recorded, because the artifact *crossed a process boundary*. In
+a preview nothing crossed anything: the shape came out of `build_part_shape`
+microseconds earlier in this interpreter, so the round trip would
+authenticate a byte stream against a hash of itself and charge an export plus
+an import for it. `configure_part_references_from_shapes` binds the shape
+directly; validity is still checked, and every model-level bound downstream —
+solid count, interface and BOM limits, hierarchy load — is the same code on
+both routes, because those check the model rather than the transfer.
+
+**A preview skips the simulation and the exploded views**
+(`validate_and_solve_assembly(..., skip_derived=True)`), after validating
+their contracts. Neither can move a solved component placement — a simulation
+poses components frame by frame *from* the solve, an exploded view reports
+offsets from it — so a preview that wants placements would be paying for
+outputs it discards. Not a small saving: a driven assembly re-runs native
+kinematics over up to 10 000 frames, which would make a pose-only preview of
+a simulation script slower than the cold rebuild it exists to front-run
+(the ADR-050 hazard, one level up). Playback is baked at settle time by the
+accepting run, which is where it belongs.
+
+**PartDesign component sources decline rather than guess.** A PartDesign
+source is a native Body history built against a document by
+`validate_and_build_partdesign`, not by `build_part_shape`, so there is no
+memoised shape to bind. Declining is honest and costs one debounced rebuild.
+
+**Measured, in-process, on a two-component revolute assembly:** a pose-only
+preview is **7.9 ms** cold and **4.9 ms** with the memo warm; a refusal is
+**0.8 ms**. That is the computation only — the protocol and the resident
+process are the next step, and the end-to-end number is theirs to report.
+
+**Evidence.** `test_project_preview.py` drives all of it through a real
+FreeCADCmd: the no-baseline reply, a joint offset that moves a solved
+placement to the value the parameter names (`swing` is declared at
+[0, 0, 40] and the revolute joint puts it on the connector offset, so a run
+that merely did not crash is distinguishable), a `part.box` parameter refused
+by name, the memo holding steady across previews, and the same answer through
+the worker's own entry point so `mode` is honoured where the request is read.
+And the invariant the design rests on, asserted the strongest way available
+rather than argued: the store's complete file list with sizes and mtimes is
+snapshotted before a burst of previews and must be byte-identical after, with
+nothing written beside the worker either.
+
+### The resident worker and the `preview_params` op
+
+**Decision.** cadexd owns one `CadexWarmWorker` per open project — a resident
+`FreeCADCmd --safe-mode` out of the same content-addressed bundle
+(ADR-052), spawned **lazily on the first preview**, and serving the new
+`preview_params` read op.
+
+```
+preview_params
+  args     ({"values": dict, "expected_revision": str}, {})
+  response (frozenset({"placements", "revision", "previewable"}),
+            frozenset({"reason"}))
+```
+
+`placements` is `{output_name: [16 floats]}` — flat arrays, so there is no
+nested shape to pin and no `NESTED_RESPONSE_SPECS` entry.
+
+**A `READ_OPS` member, not a `MODELING_OPS` one.** It writes nothing, and
+queueing behind an in-flight modeling request is precisely the wanted
+behaviour when a drag's preview meets the settle-time `set_params` behind it.
+In `MODELING_OPS` the two would refuse each other instead — the shell's
+client carries the same table and the same note, because that duplication is
+the one place the two halves can silently disagree.
+
+**Generation binding.** The worker holds one
+`(source, api_contracts, assets_fingerprint)` generation, established by a
+`load` frame that execs once at the *stored* parameter values and records the
+definition fingerprints as the baseline. `write_script`, `edit_script`,
+`set_params`, `rebuild`, `put_asset` and `open_project` kill it — free,
+because the worker is stateless by contract, so the cost of being wrong is
+one respawn. Implemented as a kill rather than a rebind: a killed worker
+*cannot* answer with the previous generation's geometry, and "cannot" is the
+only guarantee worth having here. The kill sits in `_lifecycle_response`,
+which is what puts it on all four script-mutating handlers and, deliberately,
+*not* on `open_project`'s restore path — that path re-runs the stored script
+through `_run_lifecycle` directly and changes nothing.
+
+**Bounds without a process per run.** A 5 s deadline then `SIGKILL` (a
+preview that slow has already failed its purpose); cancel is a kill; a memory
+ceiling sampled every 16 requests rather than during them, so the common path
+pays nothing for it; and a respawn every 200 requests as a leak backstop that
+needs no leak detector. `--safe-mode`, the closed environment allowlist, the
+AST source policy and the settrace budget are all unchanged: this changes how
+often a worker starts, not what a worker may do. The allowlist is now one
+function (`worker_environment`) shared by both workers, because two copies of
+it would eventually disagree about what "nothing" means.
+
+**Every failure is a declined preview, never a failure envelope.** A stale
+revision, an unknown parameter, a worker that will not start, a deadline, a
+crash: all of them return `previewable: false` with a reason. An optimisation
+that fails loudly is worse than one that fails quietly, because the shell
+already has the correct answer in flight behind it.
+
+**Measured over the protocol**, on the latency bar's own baseline part —
+24 holes, a fillet, a mesh skin — now in a jointed assembly with a second
+slider that drives motion rather than geometry, so both numbers are the same
+model asked two ways:
+
+| | dev tree | payload |
+|---|---|---|
+| accepting `set_params`, draft display | 0.636 s | 0.588 s |
+| **preview, median** | **0.0337 s** | **0.0331 s** |
+| first preview (spawn + generation load) | 0.305 s | 0.305 s |
+| speedup | 18.9× | 17.8× |
+
+Better than the 60–80 ms this was expected to land at, and the first preview
+is paid once per drag rather than once per frame. The plain and draft medians
+are unmoved (0.417 s / 0.469 s), which is the point: nothing about the
+accepting path changed.
+
+`cadexd_latency_integration.py` carries this as a third lane with its own bar
+— median ≤ 0.10 s, a frame rate rather than a parity number, because 10 fps
+is the floor below which "live" stops being an honest word for it.
+
+**Where the remaining 33 ms is**, since it is worth naming before anyone
+optimises further: the exec plus `Document.addObject` for the Assembly object
+and its component links, rebuilt per preview. Keeping the candidate
+`App::Document` alive between previews is where true real-time lives and
+where every determinism guarantee gets hard; it would be its own ADR and its
+own decision. 30 fps is a good place to stop and look at it.
+
+**Evidence.** `test_preview_params_answers_a_pose_only_slider_over_the_protocol`
+drives the whole thing through a real cadexd: a pose-only slider answered
+with the placement the joint offset names, a second preview served by the
+same resident worker, a geometry slider refused by name, a stale revision
+declined, an ordinary `set_params` afterwards producing exactly what it
+always did, and the generation killed by that `set_params` so the next
+preview re-loads rather than answering from a model that no longer exists.
+And the store snapshot, again at the protocol level this time: not one file
+added, not one byte or mtime moved.
+
+### The shell's preview dispatch
+
+**Decision.** The preview gets its **own** dispatch in `cadex_backend`: at
+most one request in flight, fired on a ~30 Hz pump, intermediate values
+dropped, **never debounced**. The settle-time `set_params` (ADR-051's
+coalescing pump) and the standard refine stay exactly as they are — the
+preview rides in front of them, it does not replace them.
+
+**Because a 33 ms engine behind a 150 ms debounce is still a 150 ms drag.**
+Reusing `model._schedule_rebuild`'s timer would have thrown away the entire
+win. `model._on_param_update` now calls both, in that order.
+
+**Applying a preview does not go through hydration at all.**
+`preview_params` returns `placements`, not a `display` block, so
+`cadex_hydrate.apply_placements` sets `matrix_world` on the component
+instances ADR-049 created and stops: no sidecar read, no buffer decode, no
+mesh rebuild, no face-attribute rewrite, no GC pass. There is nothing to
+hydrate, and that is not an optimisation but the definition of pose-only —
+every mesh datablock in the collection is already the right one. Worth
+stating plainly because the plan assumed otherwise: **ADR-051's
+unchanged-geometry hydration skip is not what makes this work.** It remains
+a modest win for repeated same-quality rebuilds and nothing more.
+
+**Degrading cleanly is a requirement, not a nicety**, because most sliders
+are not pose-only:
+
+- on `previewable: false`, previews **latch off for the remainder of that
+  parameter's drag**. The answer cannot change while the same slider is being
+  dragged, so re-asking every 33 ms is pure waste.
+- the latch is **per parameter**, and the set it latches on is the sliders
+  that were actually moving when the refusal came — not every slider the
+  script declares. Moving a different one is a different question and lifts
+  it; so does the drag settling, which is also when the engine kills its
+  generation.
+- a preview failure **never reaches `model._last_error`**. It is an
+  optimisation, and the debounced `set_params` behind it is the real answer;
+  a panel that reported "not previewable" as a model error would be lying
+  about a drag that is about to succeed.
+- the pump skips a tick while an accepting run is in flight. The client
+  serializes on one lock, so a preview issued behind a `set_params` would
+  block for half a second and land after the answer it was trying to
+  anticipate.
+
+**Diffing against the accepted values, not against nothing.** "Which slider
+moved" is resolved against the model's *effective* accepted values — stored
+values over the specs' `num()` defaults, the same resolution `_bridge_params`
+uses to seed the sliders. `state.values` alone is not it: a script that has
+only ever been written carries no stored values at all, so every parameter
+would read as changed, every refusal would latch every slider, and the latch
+would never lift. That is exactly the bug the gate caught.
+
+**Measured through the shell**, `--background`, engine from the bundle:
+**5.6 ms** median preview against the gate's 0.496 s slider median. The
+engine-only number is 31–34 ms on the heavier latency baseline; the gate's
+model is smaller. Either way the 30 Hz pump, not the engine, is now the
+binding constraint on how often the viewport moves.
+
+**Evidence.** Two gate tests.
+`test_a_pose_only_slider_previews_at_interactive_rate`: a 12-event burst
+starts exactly one request, the reply poses the viewport, and it carries the
+*newest* value — values are read when a request starts, not when it is
+queued, the same trick that lets the drag pump coalesce without a queue.
+`test_a_shape_slider_falls_back_to_set_params`: the refusal latches, names
+`plate`, poses nothing, is not an error, stops re-asking on further drags of
+the same slider, lifts when a different slider moves, and the debounced
+`set_params` behind it still rebuilds the geometry the preview could not
+describe — asserted on the plate's actual dimensions, with the motion
+slider's value applied too.

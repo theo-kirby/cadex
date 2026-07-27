@@ -159,6 +159,18 @@ def _display_block(
     return result
 
 
+def _declined_preview(revision: str, reason: str) -> dict[str, Any]:
+    """A successful ``preview_params`` that declines to answer with poses."""
+
+    return {
+        "ok": True,
+        "previewable": False,
+        "revision": revision,
+        "placements": {},
+        "reason": reason,
+    }
+
+
 class CadexdServer:
     """Serial dispatcher over one project's engine state.
 
@@ -184,6 +196,9 @@ class CadexdServer:
         self._service: _CadexdService | None = None
         self._project_root: Path | None = None
         self._document: Any = None
+        # Spawned lazily on the first preview, so a session that never drags
+        # a slider never pays for it (ADR-055).
+        self._preview_worker: Any = None
         self.shutdown_requested = False
 
     # -- reader-thread side ---------------------------------------------
@@ -220,7 +235,7 @@ class CadexdServer:
                                 CADEXD_BUSY,
                                 "A modeling request is already in flight; "
                                 "cancel it or wait for its response.",
-                                busy_request_id=self._busy_request_id,
+                                busy_with=self._busy_request_id,
                             ),
                         }
                     )
@@ -308,6 +323,8 @@ class CadexdServer:
         root.mkdir(parents=True, exist_ok=True)
         root = root.resolve()
         budgets = _resolve_budgets(args.get("budgets"))
+        # A different project is a different everything.
+        self._invalidate_preview_worker()
         if self._document is not None:
             try:
                 App.closeDocument(self._document.Name)
@@ -431,12 +448,31 @@ class CadexdServer:
             self._service, "xscript.project.describe_api", {}
         )
 
+    def _invalidate_preview_worker(self) -> None:
+        """Kill the resident preview worker's bound generation.
+
+        Free, because that worker is stateless by contract: the cost of being
+        wrong is one respawn. Called by everything that can change the source,
+        the parameters, the assets or the project — deliberately *not* from
+        ``open_project``'s restore path, which re-runs the stored script
+        through the same lifecycle without changing anything (ADR-055).
+        """
+
+        worker, self._preview_worker = self._preview_worker, None
+        if worker is not None:
+            worker.invalidate()
+
     def _lifecycle_response(
         self, request_id: str, tool_name: str, args: dict[str, Any]
     ) -> dict[str, Any]:
         not_open = self._require_open()
         if not_open is not None:
             return not_open
+        # Before the run, not after: this request is about to change the
+        # source or the parameters, and a preview answered from the old
+        # generation while it does would be answering about a model that no
+        # longer exists.
+        self._invalidate_preview_worker()
         sink: dict[str, Any] = {}
         payload = self._run_lifecycle(
             self._service,
@@ -554,6 +590,9 @@ class CadexdServer:
         not_open = self._require_open()
         if not_open is not None:
             return not_open
+        # An asset is part of the preview generation: mesh.import_file
+        # resolves against the staged copy, so a new one is a new model.
+        self._invalidate_preview_worker()
         from CadexScriptedRuntime import list_project_assets, store_project_asset
         from CadexTools import tool_failure
 
@@ -576,11 +615,63 @@ class CadexdServer:
             "assets": list_project_assets(self._project_root),
         }
 
+    def _op_preview_params(
+        self, _request_id: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Answer a parameter change with solved placements, or decline.
+
+        A read-only oracle in front of ``set_params``, not a replacement for
+        it (ADR-055): it writes nothing, publishes nothing, and moves no
+        revision or digest. The accepting path behind it is still what makes
+        a change real, so **every** way this can go wrong ends in
+        ``previewable: false`` with a reason rather than a failure envelope —
+        an optimisation that fails loudly is worse than one that fails
+        silently, because the shell has a correct answer already in flight.
+        """
+
+        not_open = self._require_open()
+        if not_open is not None:
+            return not_open
+        from CadexScriptedRuntime import DomainRuntimeFailure, prepare_preview
+
+        try:
+            prepared = prepare_preview(self._service, dict(args["values"]))
+        except (DomainRuntimeFailure, ValueError, KeyError, OSError) as exc:
+            return _declined_preview("", f"this preview could not be prepared: {exc}")
+
+        revision = str(prepared["revision"])
+        expected = str(args["expected_revision"])
+        if expected and expected != revision:
+            # Same guard as set_params. A preview of a revision the caller is
+            # not looking at would pose the viewport from a model the user
+            # never asked about.
+            return _declined_preview(
+                revision,
+                f"expected revision {expected!r}, the store is at {revision!r}",
+            )
+
+        if self._preview_worker is None:
+            from CadexWarmWorker import CadexWarmWorker
+
+            self._preview_worker = CadexWarmWorker(self._project_root)
+        answer = self._preview_worker.preview(prepared, prepared["param_values"])
+        if answer.get("previewable") is not True:
+            return _declined_preview(
+                revision, str(answer.get("reason") or "not previewable")
+            )
+        return {
+            "ok": True,
+            "previewable": True,
+            "revision": revision,
+            "placements": dict(answer.get("placements") or {}),
+        }
+
     def _op_shutdown(self, _request_id: str, _args: dict[str, Any]) -> dict[str, Any]:
         self.shutdown_requested = True
         return {"ok": True, "shutting_down": True}
 
     def close(self) -> None:
+        self._invalidate_preview_worker()
         if self._document is not None:
             try:
                 import FreeCAD as App

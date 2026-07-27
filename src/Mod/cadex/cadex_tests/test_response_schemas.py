@@ -165,6 +165,51 @@ def test_failure_envelope_is_one_shape_for_every_op() -> None:
     )
 
 
+def test_every_key_the_server_sends_on_a_failure_is_declared() -> None:
+    """Read cadexd's own ``failure(...)`` call sites and check them.
+
+    The four keys ADR-055 fixed were undeclared for as long as they had
+    existed, and the reason is structural: nothing compares what the *sender*
+    passes against what the spec names, so an undeclared key is only ever
+    caught by a test that happens to drive that exact refusal. Two such tests
+    now exist in ``test_cadexd_lifecycle``; this one needs no live server and
+    covers the sites no test drives, including the ``exception_type`` on a
+    handler that was never made to throw.
+    """
+
+    import ast
+
+    from CadexdProtocol import SERVER_FAILURE_SPEC
+
+    required, optional = SERVER_FAILURE_SPEC
+    declared = required | optional
+    source = (MODULE_DIR.parent / "cadexd.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    sites = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "failure"
+    ]
+    assert sites, "cadexd.py builds server failures with failure(); it stopped."
+
+    undeclared = sorted(
+        {
+            f"{keyword.arg} (cadexd.py:{node.lineno})"
+            for node in sites
+            for keyword in node.keywords
+            if keyword.arg is not None and keyword.arg not in declared
+        }
+    )
+    assert not undeclared, (
+        "cadexd sends server-failure keys SERVER_FAILURE_SPEC does not "
+        f"declare: {undeclared}. The spec is the contract — either declare "
+        "the key or stop sending it."
+    )
+
+
 def test_a_renamed_or_dropped_response_key_is_caught() -> None:
     """The point of the fixtures, asserted directly."""
 

@@ -1074,7 +1074,255 @@ def _drag_pump(root):
     if slot.get("queued") and not agent_module.get_agent().busy:
         _start_drag(scene, root, slot)
         return None
+    # Settled. The engine killed its preview generation when it accepted
+    # this, and a new drag deserves a fresh answer rather than the previous
+    # one's latch (ADR-055).
+    _clear_preview_latch(root)
     return None
+
+
+# -- the preview path: in front of the drag, never instead of it -------------
+
+#: ~30 Hz. A 33 ms engine behind the 150 ms debounce would still be a 150 ms
+#: drag, so the preview gets its own dispatch: at most one in flight, fired
+#: on this interval, intermediate values dropped, **never debounced**
+#: (ADR-055). The settle-time ``set_params`` and the standard refine behind
+#: it are untouched — the preview rides in front of them, it does not
+#: replace them.
+PREVIEW_INTERVAL_SECONDS = 1.0 / 30.0
+
+#: One preview slot per project root, like ``_drags`` and ``_refines``.
+_previews = {}
+
+
+def _preview_slot(root):
+    slot = _previews.get(root)
+    if slot is None:
+        slot = {"thread": None, "result": {}, "dirty": False, "pumping": False,
+                "latched": False, "latched_for": frozenset(), "reason": "",
+                "values": None, "pending_changed": frozenset(),
+                "in_flight_changed": frozenset(),
+                "requests": 0, "applied": 0, "seconds": []}
+        _previews[root] = slot
+    return slot
+
+
+def _accepted_values(state):
+    """The model's effective parameter values as accepted.
+
+    ``state.values`` alone is not it: a script that has only ever been
+    written carries no stored values at all — the defaults live in its
+    ``num()`` declarations and nothing writes them down until a ``set_params``
+    does. Falling back to the specs' defaults is the same resolution
+    ``_bridge_params`` uses to seed the sliders, which is what makes "this
+    slider moved" mean the same thing here as it does there.
+    """
+
+    resolved = {}
+    for spec in state.specs:
+        name = str(spec.get("name") or "")
+        if not name:
+            continue
+        resolved[name] = float(
+            (state.values or {}).get(name, spec.get("default") or 0.0)
+        )
+    return resolved
+
+
+def note_preview(scene):
+    """A slider moved: keep the preview pump running. Cheap and best-effort.
+
+    Called from the property update alongside the debounced rebuild, not
+    instead of it. Everything here is an optimisation, so every failure path
+    ends in "stop previewing and let the debounce answer" — a preview must
+    never reach ``model._last_error``.
+    """
+
+    import bpy
+
+    try:
+        root = project_root(scene)
+        state = _state_for(root)
+        if not state.script_present:
+            return
+        slot = _preview_slot(root)
+        values = _slider_values(scene, state)
+        if not values:
+            return
+        # Which sliders moved since the last time we looked. The latch is per
+        # parameter: "this slider is not previewable" cannot change while the
+        # same slider is being dragged, but it says nothing about the next
+        # one. Seeded from the *accepted* values, so the first change of a
+        # drag reports the one slider that moved rather than all of them.
+        previous = slot.get("values")
+        if previous is None:
+            previous = _accepted_values(state)
+        changed = frozenset(
+            name for name in values if previous.get(name) != values[name]
+        )
+        slot["values"] = dict(values)
+        slot["pending_changed"] = slot.get("pending_changed",
+                                           frozenset()) | changed
+        if slot["latched"] and changed and not (changed <= slot["latched_for"]):
+            slot["latched"] = False
+            slot["latched_for"] = frozenset()
+            slot["reason"] = ""
+        slot["dirty"] = True
+        if slot["pumping"] or bpy.app.background:
+            return
+        slot["pumping"] = True
+        bpy.app.timers.register(lambda: _preview_pump(root),
+                                first_interval=0.0)
+    except Exception:
+        traceback.print_exc()
+
+
+def _preview_pump(root):
+    """Main thread. Poll the in-flight preview, then start the next one."""
+
+    import bpy
+
+    slot = _previews.get(root)
+    if slot is None:
+        return None
+    try:
+        scene = bpy.context.scene
+        if project_root(scene) != root:
+            slot["pumping"] = False
+            return None
+
+        thread = slot.get("thread")
+        if thread is not None:
+            if thread.is_alive():
+                return PREVIEW_INTERVAL_SECONDS
+            _finish_preview(scene, root, slot)
+
+        if slot["latched"] or not slot["dirty"]:
+            slot["pumping"] = False
+            return None
+        # The accepting run holds the client's lock, and a preview that
+        # blocks on it would land after the answer it was trying to
+        # anticipate. Wait a tick.
+        if _drag_slot(root).get("lifecycle") is not None:
+            return PREVIEW_INTERVAL_SECONDS
+        _start_preview(scene, root, slot)
+        return PREVIEW_INTERVAL_SECONDS
+    except Exception:
+        # An optimisation that raises into a timer is worse than no
+        # optimisation: stop, say so on the console, leave the debounce to it.
+        traceback.print_exc()
+        slot["pumping"] = False
+        slot["thread"] = None
+        slot["latched"] = True
+        return None
+
+
+def _start_preview(scene, root, slot):
+    """Send one ``preview_params`` off the main thread.
+
+    Values are read **here**, at start time, which is what drops every
+    intermediate one: the same trick that lets the drag pump coalesce without
+    a queue.
+    """
+
+    state = _state_for(root)
+    values = _slider_values(scene, state)
+    if not values:
+        slot["dirty"] = False
+        return
+    slot["dirty"] = False
+    # What this request is asking about, so a refusal latches the sliders
+    # that caused it and not every slider the script declares.
+    slot["in_flight_changed"] = slot.get("pending_changed") or frozenset()
+    slot["pending_changed"] = frozenset()
+    slot["requests"] = int(slot.get("requests") or 0) + 1
+    slot["result"] = {}
+    result = slot["result"]
+    client = _client(root)
+    args = {"values": values, "expected_revision": state.revision}
+    started = time.monotonic()
+
+    def worker():
+        try:
+            result["payload"] = client.request("preview_params", args)
+        except Exception:
+            result["payload"] = {"ok": False, "error": traceback.format_exc()}
+        result["seconds"] = time.monotonic() - started
+
+    thread = threading.Thread(target=worker, name="cadex-preview", daemon=True)
+    slot["thread"] = thread
+    thread.start()
+
+
+def _finish_preview(scene, root, slot):
+    """Main thread. Apply the poses, or latch previews off for this drag."""
+
+    from . import cadex_hydrate
+
+    slot["thread"] = None
+    payload = (slot.get("result") or {}).get("payload") or {}
+    seconds = float((slot.get("result") or {}).get("seconds") or 0.0)
+    slot["seconds"].append(round(seconds, 4))
+
+    if payload.get("ok") is not True or payload.get("previewable") is not True:
+        # Latched for the remainder of *this* parameter's drag: the answer
+        # cannot change while the same slider is being dragged, so re-asking
+        # every 33 ms is pure waste. Never recorded as an error -- the
+        # debounced set_params behind this is the real answer (ADR-055).
+        slot["latched"] = True
+        slot["latched_for"] = (slot.get("in_flight_changed")
+                               or frozenset(slot.get("values") or {}))
+        slot["reason"] = str(payload.get("reason") or payload.get("error") or "")
+        return
+
+    # A preview answered against a revision the model has since left is not
+    # wrong, it is late: an accepting run landed while it was in flight and
+    # already posed the viewport correctly.
+    if str(payload.get("revision") or "") != _state_for(root).revision:
+        return
+    slot["applied"] += cadex_hydrate.apply_placements(payload.get("placements"))
+
+
+def preview_stats(root=None, reset=False):
+    """``{requests, applied, latched, reason, in_flight, seconds}``. Test-facing."""
+    import bpy
+    root = root or project_root(bpy.context.scene)
+    slot = _preview_slot(root)
+    thread = slot.get("thread")
+    stats = {
+        "requests": int(slot.get("requests") or 0),
+        "applied": int(slot.get("applied") or 0),
+        "latched": bool(slot.get("latched")),
+        "reason": str(slot.get("reason") or ""),
+        "in_flight": thread is not None and thread.is_alive(),
+        "seconds": list(slot.get("seconds") or []),
+    }
+    if reset:
+        slot.update({"requests": 0, "applied": 0, "seconds": [],
+                     "latched": False, "latched_for": frozenset(),
+                     "reason": "", "values": None,
+                     "pending_changed": frozenset(),
+                     "in_flight_changed": frozenset()})
+    return stats
+
+
+def pump_preview_once(root=None):
+    """Run one preview-pump tick by hand. Test-facing.
+
+    ``bpy.app.timers`` do not fire under ``--background``, so the gate drives
+    the pump itself — the same arrangement ``pump_drag_once`` uses.
+    """
+    import bpy
+    return _preview_pump(root or project_root(bpy.context.scene))
+
+
+def _clear_preview_latch(root):
+    """The drag settled: the next one gets a fresh answer."""
+    slot = _previews.get(root)
+    if slot is not None:
+        slot["latched"] = False
+        slot["latched_for"] = frozenset()
+        slot["reason"] = ""
 
 
 def drag_stats(root=None, reset=False):

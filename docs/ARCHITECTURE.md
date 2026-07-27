@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-07-26
+Verified against source: 2026-07-27
 
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),
@@ -354,10 +354,22 @@ The steps:
 
 ## 6. Open questions
 
-- **The warm-standby worker.** The per-drag `FreeCADCmd --safe-mode` spawn
-  (~0.4–0.5 s) dominates the ~0.5 s slider median. A warm worker inside
-  cadexd is the identified lever for sub-100 ms drags; nothing else in the
-  measured path is close to it in cost.
+- ~~**The warm-standby worker.**~~ **Closed by ADR-055.** cadexd owns one
+  resident `FreeCADCmd --safe-mode` preview worker per open project, spawned
+  lazily on the first `preview_params`, and it answers a pose-only parameter
+  change with solved placements in **33 ms** against the accepting path's
+  0.59 s on the same model. It is safe because it is a read-only oracle: it
+  never writes the project store, never publishes, and never moves a
+  revision or a digest, so every accepted byte still comes from a cold run
+  with a fresh attempt directory.
+
+  What is *not* closed is the accepting path's own ~0.42 s. A preview serves
+  the parameters that drive motion — a component placement, a joint offset, a
+  motion formula — and by construction cannot serve one that changes a
+  definition, because a placement-only reply for `part.box(p.width, …)` would
+  be a lie. Those sliders still pay a cold spawn, and the next lever for them
+  would be keeping the candidate `App::Document` alive between runs, which is
+  where every determinism guarantee gets hard and would be its own ADR.
 - **`display` on `open_project`** (A1). Would fold the restore pass and the
   hydration rebuild into one script run; the measured cost of not having it
   is 0.49 s per project open.

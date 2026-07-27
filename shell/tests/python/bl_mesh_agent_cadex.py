@@ -1805,6 +1805,198 @@ result = {"plate": plate, "base": base, "top": top, "asm": asm, "diag": diag}
 """
 
 
+#: The same jointed assembly, with one slider of each kind (ADR-055).
+#: ``reach`` is a joint offset — it moves `swing` and changes no definition,
+#: so it previews. ``width`` feeds ``part.box``, so it does not and must not.
+PREVIEW_SCRIPT = """
+p = params(reach=num(12, unit="mm", min=0, max=30, step=1, label="Reach"),
+           width=num(40, unit="mm", min=10, max=90, step=1, label="Width"))
+plate = part.box(p.width, 20, 4)
+arm = part.box(30, 6, 6)
+base = assembly.component(plate, grounded=True)
+swing = assembly.component(arm, placement=[0, 0, 40])
+j = assembly.joint("revolute",
+                   assembly.connector(base, "origin", offset=[p.reach, 0, 4]),
+                   assembly.connector(swing, "origin"))
+asm = assembly.assembly([base, swing], [j])
+diag = assembly.solve(asm)
+result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
+          "j": j, "asm": asm, "diag": diag}
+"""
+
+
+def _pump_preview_until_idle(limit=30.0):
+    """Drive the preview pump by hand; timers do not fire under --background."""
+    began = time.monotonic()
+    while time.monotonic() - began < limit:
+        cadex_backend.pump_preview_once()
+        stats = cadex_backend.preview_stats()
+        if not stats["in_flight"]:
+            return stats
+        time.sleep(0.005)
+    return cadex_backend.preview_stats()
+
+
+def test_a_pose_only_slider_previews_at_interactive_rate(root):
+    """A motion slider is answered by the preview path, not the debounce.
+
+    The engine answers a pose-only parameter change with solved placements
+    from a resident worker (ADR-055); the shell applies them straight to
+    ``matrix_world`` on the component instances, with no hydration in the
+    path at all -- ``preview_params`` returns placements, not a display
+    block, so there is nothing to hydrate.
+    """
+
+    print("test_a_pose_only_slider_previews_at_interactive_rate")
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, report = run_tool("write_script", {"content": PREVIEW_SCRIPT})
+    check(ok, "preview baseline accepted ({:s})".format(
+        report.splitlines()[0] if report else ""))
+
+    swing = bpy.data.objects.get("swing")
+    check(swing is not None, "the driven component hydrated")
+    if swing is None:
+        return
+    check(abs(swing.matrix_world.translation.x - 12.0) < 1e-6,
+          "and starts on the declared joint offset (got {:.3f})".format(
+              swing.matrix_world.translation.x))
+
+    cadex_backend.preview_stats(reset=True)
+
+    # A burst exactly as a real drag delivers it: many value changes far
+    # faster than one round trip. Every intermediate one must be dropped.
+    for index in range(12):
+        model_module.apply_values({"reach": 13.0 + index})
+        cadex_backend.note_preview(scene)
+    check(cadex_backend.preview_stats()["requests"] == 0,
+          "note_preview sends nothing by itself; the pump does")
+
+    cadex_backend.pump_preview_once()
+    in_flight = cadex_backend.preview_stats()
+    check(in_flight["in_flight"], "one preview went in flight")
+    check(in_flight["requests"] == 1,
+          "a 12-event burst started exactly one preview (got {:d})".format(
+              in_flight["requests"]))
+
+    stats = _pump_preview_until_idle()
+    cadex_backend.pump_preview_once()  # applies the reply
+    stats = cadex_backend.preview_stats()
+
+    check(not stats["latched"],
+          "a pose-only slider is previewable ({:s})".format(stats["reason"]))
+    check(stats["applied"] > 0,
+          "the preview posed the viewport ({:d} placements)".format(
+              stats["applied"]))
+    # 12 events became one request, and it carried the *newest* value --
+    # values are read when the request starts, not when it is queued.
+    check(abs(swing.matrix_world.translation.x - 24.0) < 1e-6,
+          "the component moved to the final dragged value (got {:.3f})".format(
+              swing.matrix_world.translation.x))
+    check(not model_module.last_error(),
+          "a preview reports no error ({:s})".format(
+              first_line_of(model_module.last_error())))
+
+    # Now the rate, which is the whole point: several sequential previews,
+    # each a full round trip through the resident worker.
+    cadex_backend.preview_stats(reset=True)
+    seconds = []
+    for index in range(8):
+        model_module.apply_values({"reach": 5.0 + index})
+        cadex_backend.note_preview(scene)
+        cadex_backend.pump_preview_once()
+        _pump_preview_until_idle()
+        cadex_backend.pump_preview_once()
+    seconds = cadex_backend.preview_stats()["seconds"]
+    check(len(seconds) >= 6,
+          "drove {:d} sequential previews".format(len(seconds)))
+    median = sorted(seconds)[len(seconds) // 2] if seconds else 99.0
+    check(median <= 0.2,
+          "median preview latency {:.3f} s is interactive".format(median))
+    GATE["preview"] = {
+        "median_seconds": round(median, 4),
+        "seconds": [round(value, 4) for value in seconds],
+        "applied": cadex_backend.preview_stats()["applied"],
+    }
+
+
+def test_a_shape_slider_falls_back_to_set_params(root):
+    """Most sliders are not pose-only, and degrading cleanly is required.
+
+    A parameter feeding ``part.box`` changes that box's definition, so a
+    placement-only reply would be a lie and the engine refuses to give one.
+    The shell must latch previews off for the rest of that drag -- the answer
+    cannot change while the same slider is being dragged -- must not report
+    it as an error, and must still end up with the correct viewport, because
+    the debounced ``set_params`` behind it is the real answer.
+    """
+
+    print("test_a_shape_slider_falls_back_to_set_params")
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, _report = run_tool("write_script", {"content": PREVIEW_SCRIPT})
+    check(ok, "preview baseline accepted")
+    model_module.clear_last_error()
+    cadex_backend.preview_stats(reset=True)
+
+    model_module.apply_values({"width": 61.0})
+    cadex_backend.note_preview(scene)
+    cadex_backend.pump_preview_once()
+    _pump_preview_until_idle()
+    cadex_backend.pump_preview_once()
+
+    stats = cadex_backend.preview_stats()
+    check(stats["latched"], "a shape slider latches previews off")
+    check("plate" in stats["reason"],
+          "and says which output changed ({:s})".format(stats["reason"][:70]))
+    check(stats["applied"] == 0, "nothing was posed from a refused preview")
+    check(not model_module.last_error(),
+          "a refused preview is not an error ({:s})".format(
+              first_line_of(model_module.last_error())))
+
+    # Latched: dragging the *same* slider further must not re-ask.
+    before = cadex_backend.preview_stats()["requests"]
+    for index in range(5):
+        model_module.apply_values({"width": 62.0 + index})
+        cadex_backend.note_preview(scene)
+        cadex_backend.pump_preview_once()
+    check(cadex_backend.preview_stats()["requests"] == before,
+          "the latch stops re-asking every tick (got {:d}, was {:d})".format(
+              cadex_backend.preview_stats()["requests"], before))
+
+    # A *different* slider is a different question, so the latch lifts.
+    model_module.apply_values({"reach": 21.0})
+    cadex_backend.note_preview(scene)
+    check(not cadex_backend.preview_stats()["latched"],
+          "moving a different parameter clears the latch")
+
+    # And the real answer still lands: the debounced set_params rebuilds the
+    # geometry the preview could not describe.
+    cadex_backend.drag_stats(reset=True)
+    cadex_backend.note_drag(scene)
+    began = time.monotonic()
+    while (cadex_backend.drag_stats()["in_flight"]
+           or cadex_backend.drag_stats()["queued"]):
+        if time.monotonic() - began > 300.0:
+            break
+        cadex_backend.pump_drag_once()
+        time.sleep(0.01)
+    plate = bpy.data.objects.get("plate")
+    check(plate is not None, "the viewport still has the model")
+    if plate is not None:
+        width = plate.dimensions.x
+        check(abs(width - 66.0) < 0.5,
+              "and the set_params behind the preview rebuilt the geometry "
+              "(plate x = {:.2f}, expected 66)".format(width))
+    swing = bpy.data.objects.get("swing")
+    check(swing is not None
+          and abs(swing.matrix_world.translation.x - 21.0) < 1e-6,
+          "with the motion slider's value applied too")
+    check(not model_module.last_error(),
+          "and no error was reported ({:s})".format(
+              first_line_of(model_module.last_error())))
+
+
 def test_an_assembly_shows_its_solved_placements(root):
     """The solved assembly reaches the viewport (ADR-049).
 
@@ -2204,6 +2396,8 @@ def main():
     sim_root = tempfile.mkdtemp(prefix="mesh-cadex-sim-")
     drag_root = tempfile.mkdtemp(prefix="mesh-cadex-drag-")
     skip_root = tempfile.mkdtemp(prefix="mesh-cadex-skip-")
+    preview_root = tempfile.mkdtemp(prefix="mesh-cadex-preview-")
+    fallback_root = tempfile.mkdtemp(prefix="mesh-cadex-fallback-")
     supersede_root = tempfile.mkdtemp(prefix="mesh-cadex-supersede-")
     try:
         test_startup_layout_is_the_shipped_file()
@@ -2244,6 +2438,8 @@ def main():
         test_an_assembly_shows_its_solved_placements(assembly_root)
         test_two_components_share_one_mesh(shared_root)
         test_a_simulation_plays(sim_root)
+        test_a_pose_only_slider_previews_at_interactive_rate(preview_root)
+        test_a_shape_slider_falls_back_to_set_params(fallback_root)
     finally:
         try:
             cadex_backend.close_all()
@@ -2264,7 +2460,8 @@ def main():
                      refused_root, rewrite_root, repair_root, stdout_root,
                      long_root, guard_root, history_root, prune_root,
                      assembly_root, shared_root, sim_root,
-                     drag_root, supersede_root, skip_root):
+                     drag_root, supersede_root, skip_root,
+                     preview_root, fallback_root):
             shutil.rmtree(root, ignore_errors=True)
 
     GATE["ok"] = not FAILURES

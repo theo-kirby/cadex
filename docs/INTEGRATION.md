@@ -108,6 +108,7 @@ lifetime signal.
 | `put_asset` | `source_path`, `name?` | copies one STL/OBJ/PLY into the project store's `assets/` under a validated name (overwrite = re-import), returns its `{name, bytes, sha256}` plus the full listing. A **modeling** op: it writes the store, and exclusion against an in-flight rebuild is what stops a half-copied asset being staged. A path, not bytes — the asset budget is 128 MB against an 8 MB frame cap |
 | `resolve_pin` | `output`, `selection` (fingerprint query or `{element_type, index}`) | `{ok, output, revision, subelements, details}` against the accepted revision's staged BREP (`CadexPinResolution.py`) |
 | `inspect` | today's `core.inspect` args | same contract; `document/object` serve the ephemeral doc, `script/api/image/assets/history` the store; `selection` rejected (shell-only) |
+| `preview_params` | `values`, `expected_revision` | solved component placements for a **pose-only** parameter change, from a resident read-only worker (ADR-055) — no BREP, no tessellation, no digest, no publication, **no store write**. A **read** op: it queues behind an in-flight modeling request rather than refusing one. Answers `previewable: false` with a `reason` whenever the change was not pose-only, the revision is stale, or the worker is unavailable; the debounced `set_params` behind it is the real answer either way |
 | `cancel` | `request_id?` | acks and cancels the in-flight modeling request (`RUN_CANCELLED` flows to that request) |
 | `shutdown` | — | graceful exit |
 
@@ -129,6 +130,7 @@ prose. Every response also carries `id` and `ok`.
 | `put_asset` | `name`, `bytes`, `sha256`, `assets` |
 | `resolve_pin` | `output`, `revision`, `subelements`, `details` |
 | `inspect` | `scope`, `target`, `path`, `value`, `page`, `document`, `surface`, `result_json_bytes` |
+| `preview_params` | `placements`, `revision`, `previewable`, `reason`? |
 | `cancel` | `cancelled` |
 | `shutdown` | `shutting_down` |
 
@@ -190,6 +192,18 @@ one.
 Server failure codes: `CADEXD_PROTOCOL_ERROR`, `CADEXD_BUSY` (one modeling
 request in flight; read-only requests queue), `CADEXD_NOT_OPEN`,
 `CADEXD_CRASHED` (client-side, on child death), `CADEXD_RESTORE_FAILED`.
+
+**A server-level failure is a smaller envelope**, deliberately: there is no
+tool, no pipeline stage and no document state to report, so it carries
+`error` and `failure_code` and nothing else is required. Optional, and the
+whole set — a key the server sends that is not named here is a bug in the
+server, and a test reads cadexd's `failure(...)` call sites to say so
+(ADR-055): `op` and `request_id` name what was refused, `busy_with` names
+the in-flight modeling request a `CADEXD_BUSY` is waiting on (read it to
+decide between waiting and cancelling), `detail` and `exception_type` are
+diagnostics, and `restore_failure` / `observed` are the two ways an open's
+restore pass fails — the payload of a stored script that would not run, and
+the digests that disagreed.
 
 Geometry responses carry the BREP artifact path **and** the opt-in
 `cadex-tessellation-v1` buffers (f32 vertices / u32 triangles / f32 edge

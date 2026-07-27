@@ -1,0 +1,10 @@
+{
+  "ok": "bool",
+  "placements": {
+    "output_name": [
+      "float"
+    ]
+  },
+  "previewable": "bool",
+  "revision": "str"
+}

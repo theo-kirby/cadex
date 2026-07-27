@@ -344,20 +344,45 @@ depends on. Independent of Phase 8.
       once** (ADR-053). Engine median 0.505 s → 0.417 s plain,
       0.610 s → 0.473 s with the shell's draft display; gate slider median
       0.578 s → 0.537 s.
-- [ ] **Subelement details on demand** (planned ADR-054). Stop computing
-      `face_details`/`edge_details` in the worker; serve them from the
-      pinned attempt's BREP when `inspect scope="output"` asks.
-- [ ] **Warm-standby worker.** The per-drag `FreeCADCmd --safe-mode` spawn
-      still dominates. What remains after ADR-052/053 is process spawn,
-      FreeCAD C++ init, `--safe-mode`'s `QTemporaryDir` and the OCCT dylib
-      load — none of it reachable from Python, which is what makes a
-      resident read-only preview worker (planned ADR-055) the only route to
-      real-time. Expected to land at ~60–80 ms for an 8-component assembly,
-      not 16 ms: the residue is `Document.addObject`.
+- [ ] **Subelement details on demand** (would have been ADR-054).
+      **Not doing this**, with the measurement on record: computing
+      `face_details`/`edge_details` costs **17.7 ms** on the 98-face baseline
+      plate (32.9 ms vs 15.2 ms at `max_subelements=0`) — about **4.2%** of a
+      0.417 s drag. Not worth moving a computation across a process boundary
+      and changing `inspect`'s cost model for. The item stays here with its
+      number attached so it can be revived if output counts grow.
+- [x] **Warm-standby worker** (ADR-055). cadexd owns one resident
+      `--safe-mode` preview worker per open project, spawned lazily on the
+      first `preview_params`, bound to one `(source, api_contracts, assets)`
+      generation and killed by anything that changes them. It answers a
+      **pose-only** parameter change with solved placements and writes
+      nothing at all — the invariant is asserted over the store's full file
+      list, sizes and mtimes across a burst of previews.
+      *Measured on the baseline part in a jointed assembly:* **33 ms**
+      median against the same model's **0.588 s** accepting run — 17.8×, and
+      better than the 60–80 ms this was expected to land at. First preview of
+      a drag is 0.305 s (spawn + generation load), once per drag rather than
+      once per frame.
+      *Stated limit:* a preview serves the parameters that drive motion and
+      by construction cannot serve one that changes a definition, so the
+      headline applies to a subset of sliders; the rest fall back to the
+      debounced `set_params`, which is still the only thing that makes a
+      change real.
+- [x] **The shell's preview dispatch** (ADR-055). Its own ~30 Hz pump, one
+      request in flight, intermediate values dropped, never debounced — a
+      33 ms engine behind the 150 ms debounce would still be a 150 ms drag.
+      The reply is placements, not a display block, so it sets `matrix_world`
+      on the component instances with no hydration in the path at all.
+      **5.6 ms** median through the gate, against its 0.496 s slider median.
+      Degrading is part of the contract: a refusal latches previews off for
+      that parameter's drag, lifts when a different parameter moves or the
+      drag settles, and never reaches `model.last_error()`.
 
 **Exit criteria:** one script format across the product; both new gates
-green; slider median materially below 0.548 s *(met: 0.537 s end-to-end,
-0.417 s engine-only)*; `CADEX-BLENDER-GATE` still ok.
+green; slider median materially below 0.548 s *(met: 0.496 s end-to-end,
+0.389–0.42 s engine-only; and 5.6 ms end-to-end for a motion slider, which
+is a different path rather than a better number on this one)*;
+`CADEX-BLENDER-GATE` still ok.
 
 ## Phase 10 — Probe, then characterize `(the go/no-go gate)`
 
@@ -594,8 +619,9 @@ Not a phase that "completes" — a standing mode of work.
       (`shell/intern/cycles`), the VSE, grease pencil, the compositor,
       `shell/locale/` (80 MB), most of `shell/tests/files/` (784 MB), the
       unused `shell/release/datafiles`.
-- [ ] Engine side: Phase 8 (`src/Gui`, 66 MB) and Phase 9's warm-standby
-      worker are unchanged and still pending. Two more found while
+- [ ] Engine side: Phase 8 (`src/Gui`, 66 MB) is unchanged and still
+      pending (Phase 9's warm-standby worker landed as ADR-055). Two more
+      found while
       documenting: `src/Mod/{Start,Test,Help}` build but are in no shipped
       payload (`docs/FREECAD.md` §1), and the staged payload is **2.3 GB**
       of which ~2.1 GB is development environment — two copies of LLVM,

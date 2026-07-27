@@ -15,7 +15,8 @@ mesh-skin baseline part and the same 10 ``set_params`` drags, driven over
 raw ``cadex-cadexd-v1`` NDJSON by the minimal client below. No
 ``CadexdClient``, no hydration, no shell.
 
-Two medians are reported, because the two shells asked for different work:
+Two medians are reported for the accepting path, because the two shells
+asked for different work:
 
 - ``median_seconds`` — no ``display`` block: parse → worker → validate →
   accept. The pure engine number, comparable to the Qt 0.479 s baseline.
@@ -25,6 +26,18 @@ Two medians are reported, because the two shells asked for different work:
 
 Bar for both: median ≤ 0.65 s (the decision-gate parity bar,
 ``docs/INTEGRATION.md``).
+
+A third lane measures the **preview** path (ADR-055) over
+``PREVIEW_BASELINE_SCRIPT`` — the same 24-hole/fillet/mesh-skin part, now in
+a jointed assembly with a second slider that drives motion rather than
+geometry. Both paths are measured on that one model, so
+``median_assembly_seconds`` (accepting, draft display) and
+``median_preview_seconds`` are the same work asked two ways rather than two
+different models. ``first_preview_seconds`` is reported separately because it
+pays the resident worker's spawn and its generation load — once per drag, not
+once per frame — and hiding it would be reporting a number nobody
+experiences. Bar: median ≤ 0.10 s, which is a frame rate rather than a parity
+number: 10 fps is the floor below which "live" stops being an honest word.
 
 **Which engine.** By default this measures the dev tree: the built
 ``FreeCADCmd`` plus ``src/Mod/cadex`` on ``sys.path``. Set
@@ -104,8 +117,43 @@ skin = mesh.from_shape(plate, linear_deflection=0.5)
 result = {"plate": plate, "skin": skin}
 """
 
+#: The same part, in an assembly, with a second slider that drives motion
+#: rather than geometry (ADR-055). Deliberately the same weight class as
+#: ``BASELINE_SCRIPT`` -- the same 24 holes, the same fillet, the same mesh
+#: skin -- so ``median_preview_seconds`` and ``median_assembly_seconds`` are
+#: the same model measured two ways and not two different models.
+#:
+#: ``reach`` is a joint offset: it moves `lever` and changes no definition,
+#: so it is previewable. ``hole`` is still there and still is not.
+PREVIEW_BASELINE_SCRIPT = """
+p = params(hole=num(2.5, unit="mm", min=1.0, max=4.0, step=0.1),
+           reach=num(20.0, unit="mm", min=0.0, max=60.0, step=0.5))
+base = part.box(120, 80, 8)
+holes = [
+    part.cylinder(p.hole, 16, origin=[10 + 18 * (i % 6), 12 + 18 * (i // 6), -4])
+    for i in range(24)
+]
+plate = part.fillet(part.cut(base, holes), 1.0)
+arm = part.box(60, 10, 10)
+anchor = assembly.component(plate, grounded=True)
+lever = assembly.component(arm, placement=[0, 0, 40])
+j = assembly.joint("revolute",
+                   assembly.connector(anchor, "origin", offset=[p.reach, 20, 8]),
+                   assembly.connector(lever, "origin"))
+asm = assembly.assembly([anchor, lever], [j])
+diag = assembly.solve(asm)
+skin = mesh.from_shape(plate, linear_deflection=0.5)
+result = {"plate": plate, "arm": arm, "anchor": anchor, "lever": lever,
+          "j": j, "asm": asm, "diag": diag, "skin": skin}
+"""
+
 DRAGS = 10
 PARITY_BAR_SECONDS = 0.65
+
+#: A preview exists to be watchable, so its bar is a frame rate rather than a
+#: parity number: 0.10 s is 10 fps, the floor below which "live" stops being
+#: an honest word for it.
+PREVIEW_BAR_SECONDS = 0.10
 DRAFT_DISPLAY = {"quality": "draft", "edges": False}
 
 
@@ -190,6 +238,34 @@ def _drag(client: _Stdio, revision: str, display: dict | None) -> tuple[list[flo
     return durations, revision
 
 
+def _preview_drag(client: _Stdio, revision: str) -> list[float]:
+    """``DRAGS`` ``preview_params`` calls; per-call seconds.
+
+    The revision never moves, and that is the whole point: a preview answers
+    a *candidate* without accepting it, so the same ``expected_revision``
+    guards every call of a drag. The first call is excluded from the report's
+    median and reported separately — it pays the resident worker's spawn and
+    its generation load, which happens once per drag rather than once per
+    frame.
+    """
+
+    durations: list[float] = []
+    for index in range(DRAGS):
+        started = time.perf_counter()
+        answer = client.request(
+            "preview_params",
+            {
+                "values": {"reach": 5.0 + 5.0 * index},
+                "expected_revision": revision,
+            },
+        )
+        durations.append(time.perf_counter() - started)
+        assert answer.get("ok") is True, answer
+        assert answer.get("previewable") is True, answer
+        assert answer.get("revision") == revision, answer
+    return durations
+
+
 def main() -> int:
     packaged_binary, packaged_module_dir = _packaged_engine()
     executable = packaged_binary or next(
@@ -222,11 +298,28 @@ def main() -> int:
         plain, revision = _drag(client, revision, None)
         drafted, revision = _drag(client, revision, DRAFT_DISPLAY)
 
+        # The same part in an assembly, measured two ways: the accepting path
+        # on the geometry slider, and the preview path on the motion slider.
+        assembled = client.request(
+            "write_script",
+            {"source": PREVIEW_BASELINE_SCRIPT, "expected_revision": revision},
+        )
+        assert assembled.get("ok") is True, assembled
+        revision = str(assembled["model_state"]["next_write_expected_revision"])
+        accepting, revision = _drag(client, revision, DRAFT_DISPLAY)
+        previews = _preview_drag(client, revision)
+
         median = statistics.median(plain)
         display_median = statistics.median(drafted)
+        assembly_median = statistics.median(accepting)
+        # The first preview of a drag pays the spawn and the generation load;
+        # every later one is what the user actually watches. Both reported --
+        # hiding the first would be reporting a number nobody experiences.
+        preview_median = statistics.median(previews[1:])
         report = {
             "ok": median <= PARITY_BAR_SECONDS
-            and display_median <= PARITY_BAR_SECONDS,
+            and display_median <= PARITY_BAR_SECONDS
+            and preview_median <= PREVIEW_BAR_SECONDS,
             "engine": engine,
             "engine_root": str(module_dir),
             "drags": DRAGS,
@@ -234,9 +327,19 @@ def main() -> int:
             "median_seconds": round(median, 3),
             "set_params_display_seconds": [round(value, 3) for value in drafted],
             "median_display_seconds": round(display_median, 3),
+            "assembly_set_params_display_seconds": [
+                round(value, 3) for value in accepting
+            ],
+            "median_assembly_seconds": round(assembly_median, 3),
+            "preview_seconds": [round(value, 4) for value in previews],
+            "first_preview_seconds": round(previews[0], 3),
+            "median_preview_seconds": round(preview_median, 4),
+            "preview_speedup": round(assembly_median / max(preview_median, 1e-9), 1),
             "parity_bar_seconds": PARITY_BAR_SECONDS,
+            "preview_bar_seconds": PREVIEW_BAR_SECONDS,
             "median_within_bar": median <= PARITY_BAR_SECONDS,
             "median_display_within_bar": display_median <= PARITY_BAR_SECONDS,
+            "median_preview_within_bar": preview_median <= PREVIEW_BAR_SECONDS,
         }
     finally:
         if client is not None:

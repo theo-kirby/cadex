@@ -47,7 +47,12 @@ MODELING_OPS = frozenset(
     }
 )
 #: Read-only ops; these queue behind an in-flight modeling op.
-READ_OPS = frozenset({"describe_api", "resolve_pin", "inspect"})
+#:
+#: ``preview_params`` belongs here and emphatically not in
+#: :data:`MODELING_OPS`: it writes nothing, and queueing behind an in-flight
+#: modeling op is exactly the wanted behaviour when a drag's preview collides
+#: with the settle-time ``set_params`` behind it (ADR-055).
+READ_OPS = frozenset({"describe_api", "resolve_pin", "inspect", "preview_params"})
 #: Control ops; handled out of band by the reader.
 CONTROL_OPS = frozenset({"cancel", "shutdown"})
 
@@ -83,6 +88,11 @@ OP_ARG_SPECS: dict[str, tuple[dict[str, type], dict[str, type]]] = {
         {"scope": str},
         {"target": str, "path": str, "offset": int, "limit": int, "attach": bool},
     ),
+    # Read-only, and the only op that answers a *candidate* rather than the
+    # model: solved placements for a parameter change that moved nothing but
+    # poses. Same guard as set_params, because a preview of a revision the
+    # caller is not looking at is worse than no preview (ADR-055).
+    "preview_params": ({"values": dict, "expected_revision": str}, {}),
     "cancel": ({}, {"request_id": str}),
     "shutdown": ({}, {}),
 }
@@ -124,9 +134,27 @@ FAILURE_RESPONSE_SPEC: tuple[frozenset[str], frozenset[str]] = (
 #: stage and no document state to report. Collapsing the two would let a
 #: bare ``{ok, failure_code, error}`` pass as a pipeline failure the agent
 #: expects to be able to act on.
+#:
+#: The optional set is what the server actually sends: ``busy_with`` names
+#: the in-flight modeling request a ``CADEXD_BUSY`` refused for,
+#: ``exception_type`` names the class of an exception a handler did not
+#: expect, and ``restore_failure`` / ``observed`` carry the two ways an open
+#: can fail its restore pass — the payload of a script that would not run,
+#: and the digests that disagreed. Declared because a key the server sends
+#: and the spec does not name is a key the shell may not read (ADR-055).
 SERVER_FAILURE_SPEC: tuple[frozenset[str], frozenset[str]] = (
     frozenset({"error", "failure_code"}),
-    frozenset({"op", "request_id", "detail", "busy_with"}),
+    frozenset(
+        {
+            "op",
+            "request_id",
+            "detail",
+            "busy_with",
+            "exception_type",
+            "restore_failure",
+            "observed",
+        }
+    ),
 )
 
 SERVER_FAILURE_CODES = frozenset(
@@ -213,6 +241,14 @@ OP_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
             }
         ),
         frozenset(),
+    ),
+    # `placements` is {output_name: [16 floats]} -- flat arrays, so there is
+    # no nested object shape to pin and no NESTED_RESPONSE_SPECS entry.
+    # `reason` rides only on a refusal, and is for the log and the shell's
+    # latch, never for the user.
+    "preview_params": (
+        frozenset({"placements", "revision", "previewable"}),
+        frozenset({"reason"}),
     ),
     "cancel": (frozenset({"cancelled"}), frozenset()),
     "shutdown": (frozenset({"shutting_down"}), frozenset()),

@@ -16,6 +16,7 @@ from typing import Any
 from cadex_domain_api import DomainValue
 from cadex_part_worker import (
     configure_part_references,
+    configure_part_references_from_shapes,
     detached_reference_shape,
     part_shape_facts,
 )
@@ -734,10 +735,23 @@ def _json_safe(value: Any, *, depth: int = 0) -> Any:
     return str(value)
 
 
-def configure_assembly_references(root: Path, entries: list[dict[str, Any]]) -> None:
-    """Authenticate component BREPs and bind their bounded semantic metadata."""
+def configure_assembly_references(
+    root: Path, entries: list[dict[str, Any]], *, from_shapes: bool = False
+) -> None:
+    """Authenticate component BREPs and bind their bounded semantic metadata.
 
-    configure_part_references(root, entries)
+    ``from_shapes`` is the preview binding (ADR-055): entries carry a live
+    ``shape`` instead of a staged ``artifact_path``/``brep_sha256`` pair, so
+    the BREP round trip is skipped. Everything downstream of the binding —
+    the solid count, the interface and BOM bounds, the hierarchy load — is
+    the same code on both routes, because those check the *model*, not the
+    transfer.
+    """
+
+    if from_shapes:
+        configure_part_references_from_shapes(entries)
+    else:
+        configure_part_references(root, entries)
     metadata: dict[tuple[str, str], Mapping[str, Any]] = {}
     hierarchies: dict[tuple[str, str], Mapping[str, Any]] = {}
     for index, raw in enumerate(entries):
@@ -3057,8 +3071,22 @@ def validate_and_solve_assembly(
     raw_result: Mapping[str, Any],
     outputs: list[dict[str, Any]],
     artifact_root: Path | None = None,
+    *,
+    skip_derived: bool = False,
 ) -> dict[str, Any]:
-    """Build, solve, and annotate one exact native assembly candidate."""
+    """Build, solve, and annotate one exact native assembly candidate.
+
+    ``skip_derived`` drops the simulation trace and the exploded views after
+    validating their contracts, and is for previews only (ADR-055). Neither
+    can move a solved component placement — a simulation poses components
+    frame by frame *from* the solve and restores it, an exploded view reports
+    offsets from it — so a preview that wants placements is paying for
+    outputs it will discard. It is not a small saving: a driven assembly
+    re-runs native kinematics over up to 10 000 frames, which would make a
+    pose-only preview of a simulation script slower than the cold rebuild it
+    is trying to front-run. Playback is baked at settle time by the accepting
+    run, which is where it belongs.
+    """
 
     import JointObject
     import UtilsAssembly
@@ -3081,6 +3109,9 @@ def validate_and_solve_assembly(
         assembly_value=assembly_value,
         component_outputs=component_outputs,
     )
+    if skip_derived:
+        simulation_contract = None
+        exploded_view_contract = []
     assembly_properties = _properties(assembly_value, "assembly")
     component_values = list(assembly_properties.get("components") or [])
     joint_values = list(assembly_properties.get("joints") or [])

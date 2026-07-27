@@ -298,6 +298,39 @@ def _hide_instanced_sources(collection, instanced):
             del obj[HIDDEN_SOURCE_PROP]
 
 
+def apply_placements(placements):
+    """Pose already-hydrated component instances. Returns how many moved.
+
+    The preview path's whole viewport update (ADR-055). Deliberately **not**
+    a hydration: ``preview_params`` answers with placements rather than a
+    ``display`` block, because a pose-only change has no new geometry to
+    carry — every mesh datablock in the collection is already the right one
+    by definition, which is what "pose-only" means. So this sets
+    ``matrix_world`` and stops. No sidecar read, no buffer decode, no mesh
+    rebuild, no face attribute rewrite, no GC pass.
+
+    Wire children are parented to their component and follow for free,
+    exactly as they do on the accepting path.
+
+    Silently ignores a name with no object: a component whose source was not
+    displayable at draft quality has no instance to move, and a preview is
+    not the place to complain about it.
+    """
+
+    collection = _model_collection()
+    moved = 0
+    for name in sorted(placements or {}):
+        matrix = _matrix_from_placement(placements[name] or [])
+        if matrix is None:
+            continue
+        obj = _find(collection, name, edges=False)
+        if obj is None:
+            continue
+        obj.matrix_world = matrix
+        moved += 1
+    return moved
+
+
 def hydrate_display(display_map, revision):
     """Mirror one accepted response's display block into the Model collection.
 

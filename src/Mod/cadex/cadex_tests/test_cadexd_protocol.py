@@ -51,9 +51,16 @@ def test_op_list_is_pinned() -> None:
         "put_asset",
         "resolve_pin",
         "inspect",
+        "preview_params",
         "cancel",
         "shutdown",
     }
+    # A read op, and the membership is load-bearing: preview_params writes
+    # nothing, and queueing behind an in-flight modeling request is exactly
+    # what should happen when a drag's preview meets the set_params that
+    # settles it (ADR-055).
+    assert "preview_params" in protocol.READ_OPS
+    assert "preview_params" not in protocol.MODELING_OPS
     assert protocol.MODELING_OPS == {
         "open_project",
         "write_script",

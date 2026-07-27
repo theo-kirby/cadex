@@ -124,6 +124,43 @@ def configure_part_references(root: Path, entries: list[dict[str, Any]]) -> None
     _REFERENCE_SHAPES = MappingProxyType(shapes)
 
 
+def configure_part_references_from_shapes(entries: list[dict[str, Any]]) -> None:
+    """Bind component reference shapes that never left this process.
+
+    The preview counterpart of :func:`configure_part_references`, and the
+    difference is the whole point: that one authenticates a BREP by
+    re-reading the file and matching its SHA-256 against what the host
+    recorded, because the artifact *crossed a process boundary* and the shape
+    the assembly solves must provably be the shape the part domain built. In
+    a preview nothing crossed anything — the shape came out of
+    ``build_part_shape`` a few microseconds earlier, in this interpreter — so
+    the round trip would authenticate a byte stream against a hash of itself
+    and charge an export plus an import for the privilege (ADR-055).
+
+    Validity is still checked: a null or invalid shape must not reach the
+    solver by either route.
+    """
+
+    shapes: dict[tuple[str, str], Any] = {}
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise ValueError(f"preview_references[{index}] must be an object.")
+        key = (
+            str(entry.get("document_uid") or ""),
+            str(entry.get("object_name") or ""),
+        )
+        if not all(key) or key in shapes:
+            raise ValueError(
+                f"preview_references[{index}] has missing or duplicate identity."
+            )
+        shape = entry.get("shape")
+        if shape is None or shape.isNull() or not shape.isValid():
+            raise ValueError(f"preview_references[{index}] is not a valid shape.")
+        shapes[key] = shape
+    global _REFERENCE_SHAPES
+    _REFERENCE_SHAPES = MappingProxyType(shapes)
+
+
 def detached_reference_shape(reference: Mapping[str, Any]) -> Any:
     """Return a copy of one authenticated host-staged reference shape.
 

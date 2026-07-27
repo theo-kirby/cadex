@@ -38,6 +38,11 @@ CADEXD_UNAVAILABLE = "CADEXD_UNAVAILABLE"
 #: ``put_asset`` copies a file the user picked into the project store; a
 #: hundred-megabyte STL is not a 60-second read, and the engine serializes it
 #: against an in-flight rebuild the same way.
+#:
+#: ``preview_params`` is deliberately **not** here. It writes nothing, and
+#: queueing behind an in-flight modeling request is exactly what a drag's
+#: preview should do when it meets the ``set_params`` that settles it
+#: (ADR-055). Adding it would make the two refuse each other instead.
 MODELING_OPS = frozenset(
     {"open_project", "write_script", "edit_script", "set_params", "rebuild",
      "put_asset"}
@@ -47,6 +52,12 @@ _READY_TIMEOUT_SECONDS = 120.0
 _READ_TIMEOUT_SECONDS = 60.0
 _MODELING_TIMEOUT_SECONDS = 300.0
 _POLL_SECONDS = 0.05
+
+#: ``preview_params`` is a read op, but not a 60-second one: it exists to be
+#: watched at a frame rate, and the engine already kills its resident worker
+#: at 5 s (ADR-055). Waiting a minute for an optimisation whose fallback is
+#: already debounced behind it would stall the drag it is meant to smooth.
+_PREVIEW_TIMEOUT_SECONDS = 5.0
 
 
 def _failure(op, code, message, **observed):
@@ -333,6 +344,8 @@ class CadexdClient:
         if op in MODELING_OPS:
             budget = float(self.budgets.get("timeout_seconds") or 0.0)
             return budget + 60.0 if budget > 0 else _MODELING_TIMEOUT_SECONDS
+        if op == "preview_params":
+            return _PREVIEW_TIMEOUT_SECONDS
         return _READ_TIMEOUT_SECONDS
 
     def _await_response(self, op, args, timeout, progress_callback,

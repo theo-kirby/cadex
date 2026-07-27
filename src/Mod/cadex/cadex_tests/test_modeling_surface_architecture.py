@@ -207,6 +207,10 @@ def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None
         "cadex_assembly_api.py",
         "cadex_assembly_worker.py",
         "cadex_tessellation.py",
+        # The resident preview worker's entry: a second entry point into the
+        # same bundle, sandboxed the same way, never importable by the
+        # service (ADR-055).
+        "cadex_preview_worker.py",
     }
     assert set(copied) == expected
     assert entry == "cadex_project_worker.py"

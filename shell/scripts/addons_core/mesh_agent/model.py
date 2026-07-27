@@ -392,7 +392,25 @@ def set_values(updates):
 def _on_param_update(_self, _context):
     if _suspend_updates[0]:
         return
+    _schedule_preview()
     _schedule_rebuild()
+
+
+def _schedule_preview():
+    """Ask for a placement-only preview, in front of the debounced rebuild.
+
+    Not debounced, deliberately: a 33 ms engine behind a 150 ms debounce is
+    still a 150 ms drag (ADR-055). The preview has its own ~30 Hz dispatch
+    with at most one request in flight, and it *adds* nothing to the drag's
+    correctness — the ``set_params`` scheduled right below is what makes the
+    change real, and a preview that cannot answer simply stops asking.
+    """
+    import bpy
+    from . import cadex_backend
+    try:
+        cadex_backend.note_preview(bpy.context.scene)
+    except Exception:
+        traceback.print_exc()
 
 
 def _schedule_rebuild():

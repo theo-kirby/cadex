@@ -74,7 +74,7 @@ that `docs/VISION.md` describes, and the protocol client that
 |---|---|
 | `__init__.py` | Add-on registration; preferences (model selection, Claude CLI path, tool-call limit); save/load lifecycle handlers; undo-batching hookup. |
 | `agent.py` | Turn orchestration and event loop. Queues tool calls from the bridge; drains them on the main thread; pushes **one undo step per chat turn**. |
-| `model.py` | The script mirror (`bpy.data.texts["model.py"]`, soft read-only) and the dynamic PropertyGroup at `scene.mesh_params`; 0.15 s debounced rebuild on slider drag, dispatched to the engine. `set_script()` is a no-op when the source is unchanged and restores the cursor when it is not, and stamps the digest the dirty marking compares; `last_error()` carries a failed drag to the panel (ADR-039). `rewrite_defaults()` splices slider values into the script's `num()` declarations for **Apply as Defaults** (ADR-040) — pure text in, text out. |
+| `model.py` | The script mirror (`bpy.data.texts["model.py"]`, soft read-only) and the dynamic PropertyGroup at `scene.mesh_params`; 0.15 s debounced rebuild on slider drag, dispatched to the engine, plus an undebounced ~30 Hz `preview_params` pump in front of it for motion parameters (ADR-055). `set_script()` is a no-op when the source is unchanged and restores the cursor when it is not, and stamps the digest the dirty marking compares; `last_error()` carries a failed drag to the panel (ADR-039). `rewrite_defaults()` splices slider values into the script's `num()` declarations for **Apply as Defaults** (ADR-040) — pure text in, text out. |
 | `model_api.py` | `clamp()` — coerce a value to its spec's type and range. All that is left of a script-facing API that no script imports any more (ADR-030). |
 | `bridge.py` | Localhost TCP server (127.0.0.1, auto-assigned port, 16-byte hex token auth). Two wire ops: `list_tools`, `call`. Queues socket-thread requests for main-thread execution. |
 | `mcp_shim.py` | Standalone MCP stdio server spawned by the Claude CLI via `--mcp-config`. No `bpy` import; relays MCP tool calls to the bridge over TCP. |
@@ -153,6 +153,22 @@ that `docs/VISION.md` describes, and the protocol client that
   draft-quality tessellation while dragging with a background standard
   refine → `bpy.ops.ed.undo_push()` on success. In background mode the
   rebuild runs immediately (no timer).
+- **In front of that, for sliders that drive motion:** `_schedule_preview()`
+  → `cadex_backend.note_preview()` → a ~30 Hz pump that keeps at most one
+  `preview_params` in flight, drops every intermediate value, and is
+  deliberately **not** debounced — a 33 ms engine behind a 150 ms debounce is
+  still a 150 ms drag (ADR-055). The reply is placements, not a display
+  block, so `cadex_hydrate.apply_placements()` sets `matrix_world` on the
+  component instances and nothing else runs: no sidecar, no buffers, no mesh
+  rebuild, no GC. Measured at **5.6 ms** median through the gate.
+
+  It serves a subset of sliders by construction — a parameter that changes an
+  output's definition is refused, correctly — so degrading cleanly is part of
+  the contract: a refusal latches previews off for the rest of *that
+  parameter's* drag (re-asking cannot change the answer), lifts when a
+  different parameter moves or the drag settles, and **never** reaches
+  `model.last_error()`. The debounced `set_params` behind it is the real
+  answer either way, and it is the only thing that makes a change real.
 - **A .blend and its `.cadex` are two halves of one model.** The file carries
   the baked tessellation, the `model.py` mirror, the specs JSON and the
   values; `<stem>.cadex/` carries the xscript source, the BREP artifacts and

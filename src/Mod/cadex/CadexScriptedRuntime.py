@@ -51,6 +51,11 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         "cadex_assembly_api.py",
         "cadex_assembly_worker.py",
         "cadex_tessellation.py",
+        # The resident preview worker's entry (ADR-055). In the bundle rather
+        # than beside cadexd because it runs inside the same --safe-mode
+        # sandbox as everything else here, out of the same content-addressed
+        # directory, and must never be importable by the service.
+        "cadex_preview_worker.py",
     ),
 }
 
@@ -416,8 +421,104 @@ def _freecadcmd(freecad_home: str) -> Path:
     )
 
 
-def _worker_environment(prepared: Mapping[str, Any]) -> dict[str, str]:
-    staging = str(prepared["staging"])
+def stage_preview_assets(project_root: Path, staging: Path) -> list[str]:
+    """Stage the project's assets beside the resident preview worker.
+
+    The same bounded copy the per-run worker gets, for the same reason:
+    ``mesh.import_file`` resolves names against ``<staging>/assets`` only, so
+    a sandboxed worker never reads the durable project tree. Hardlinks, so
+    this does not modify the store — which the preview path asserts.
+    """
+
+    return _stage_project_assets(Path(project_root), Path(staging))
+
+
+def prepare_preview(service: Any, values: Mapping[str, Any]) -> dict[str, Any]:
+    """Everything one preview needs, read from the store and nothing written.
+
+    Deliberately *not* :func:`prepare_project_candidate`: that one mints an
+    attempt directory, stages a request into it, and persists the source as
+    the working script before the worker starts, because an accepting run
+    must be recoverable from disk if the host dies mid-run. A preview has
+    nothing to recover — it is a question, not a change — so it reads the
+    store and writes none of it (ADR-055).
+
+    Raises :class:`DomainRuntimeFailure` if the requested values do not match
+    the declared parameters; the caller turns that into a declined preview
+    rather than an error, since the debounced ``set_params`` behind it is the
+    real answer.
+    """
+
+    from CadexScriptStore import CadexProjectScriptStore
+    from CadexWarmWorker import assets_fingerprint, generation_key
+
+    tool_name = "xscript.project.set_params"
+    captured = capture_project_state(service, tool_name, {"values": dict(values)})
+    project_root = Path(str(captured["project_root"]))
+    store = CadexProjectScriptStore(project_root)
+    state = store.read_state()
+    source = store.read_source()
+    if not source.strip():
+        _raise(
+            tool_name,
+            "NO_PROJECT_SCRIPT",
+            "precondition",
+            "There is no project script to preview yet.",
+        )
+    api_contracts = _project_api_contracts()
+    # The generation's baseline is the *stored* values -- the model as it
+    # currently stands -- and the preview is the same program at the patched
+    # values. Both go through the same validation as a real set_params, so a
+    # preview cannot be asked something set_params would refuse.
+    # Narrowed to the declared names, exactly as _project_param_values does
+    # before its merge: a stale key left behind by a rewritten script is not
+    # a caller error and must not wedge anything (ADR-039).
+    declared = {
+        str(spec.get("name") or "") for spec in list(state.get("param_specs") or [])
+    }
+    baseline_values = {
+        name: value
+        for name, value in dict(state.get("param_values") or {}).items()
+        if name in declared
+    }
+    param_values = _project_param_values(state, dict(values), tool_name)
+    bundle_dir, _entry_module = shared_worker_bundle(
+        Path(__file__).resolve().parent, "project"
+    )
+    return {
+        "generation": generation_key(
+            source, api_contracts, assets_fingerprint(project_root)
+        ),
+        "project_root": str(project_root),
+        "revision": str(state.get("working_revision") or ""),
+        "param_values": param_values,
+        "bundle_dir": str(bundle_dir),
+        "freecadcmd_executable": str(_freecadcmd(str(captured["freecad_home"]))),
+        "request": {
+            "schema": PROJECT_WORKER_SCHEMA,
+            "source": source,
+            "inputs": {},
+            "param_values": baseline_values,
+            "api_contracts": api_contracts,
+            "document_name": str(captured["document_name"]),
+            "document_uid": str(captured["document_uid"]),
+            "document_objects": list(captured["document_objects"]),
+            "max_operations": 400_000,
+            "max_seconds": float(captured["timeout_seconds"]),
+        },
+    }
+
+
+def worker_environment(staging: str | Path) -> dict[str, str]:
+    """The closed environment every isolated worker runs under.
+
+    One allowlist, shared by the per-run worker and the resident preview
+    worker (ADR-055): the point of it is that a worker sees nothing of the
+    host's environment except what it is handed, and two copies of that list
+    would eventually disagree about what "nothing" means.
+    """
+
+    staging = str(staging)
     preserved = (
         "COMSPEC",
         "LANG",
@@ -477,7 +578,7 @@ def execute_candidate(
     process = run_process(
         [str(prepared["freecadcmd_executable"]), "--safe-mode", "-c", code],
         cwd=str(prepared["staging"]),
-        environment=_worker_environment(prepared),
+        environment=worker_environment(prepared["staging"]),
         cancellation_check=cancellation_check,
         timeout_seconds=float(prepared["timeout_seconds"]),
         memory_limit_bytes=int(prepared["memory_limit_bytes"]),
