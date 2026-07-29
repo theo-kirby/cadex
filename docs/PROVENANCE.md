@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-07-25
+Verified against source: 2026-07-28
 
 Cadex is not written from scratch. It is a **derivative work of two large
 free-software projects**, carrying the design lessons of a third that we
@@ -84,13 +84,14 @@ tree.
 repository at `ac5af55948d`, which was itself a Blender fork — Blender 5.3
 alpha. Blender's 163,789-commit history stayed behind, deliberately.
 
-**What we changed — seven files, in six changes.** That is the entire delta
+**What we changed — eight files, in seven changes.** That is the entire delta
 against stock Blender, and keeping it that short is why the shell was cheap
 to absorb.
 The changes are: a default app template so a new user meets the Cadex
-layout; two CMake additions that bundle the engine; the product rename
-(`Blender.app` → `Cadex.app`, and the window title); and the macOS bundle's
-`Info.plist` identity. Every one is listed in
+layout, and the `read_userdef` line that makes that default reach an
+existing profile too (ADR-058); two CMake additions that bundle the engine;
+the product rename (`Blender.app` → `Cadex.app`, and the window title); and
+the macOS bundle's `Info.plist` identity. Every one is listed in
 [`BLENDER-TREE.md`](BLENDER-TREE.md) §2 with a conflict-resolution note,
 because each is a future merge conflict and we would rather write down how
 to resolve it now.

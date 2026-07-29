@@ -7,6 +7,22 @@
 
 # Cadex
 
+Author:
+"Cadex is an experimental side project, far from production software.
+I've always liked Blender's interface and UX more than those of traditional CAD softwares,
+and even plenty of unrelated software. I also love its flexibility, extensibility,
+and massive range of capability. The biggest downfall for me was always the
+inability to do constraint based modeling easily, and the limitations of the armature
+based rigging system instead of proper linkages and simulation. Since both Blender
+and FreeCAD are open source, I figured why not try to mash them together and
+greedily try to achieve the best of both worlds. Also making the whole thing be
+drivable by an agent seemed like an obvious value add, since they are so capable now.
+I make no claims towards its reliability nor robustness, though anecdotally I have
+been quite satisfied. This project will forever be free and open source.
+If you are looking for a more serious project with similar themes, I highly recommend 
+checking out [VibeCAD](https://github.com/10-X-eng/vibecad) or [Smith](https://arche.co)"
+
+AI:
 **Cadex is an AI-native CAD application.** You describe the part; the AI
 authors a declarative **xscript** Python program; the program runs in a
 sandboxed headless worker, and only validated geometry reaches your model.

@@ -4099,3 +4099,104 @@ bend radius when the caller declares one. Fixing it changes `part.cable`
 output and moves accepted project digests, so it needs its own ADR and is not
 folded in here. `part.bundle` fails safe on it via the hard bend floor, and
 the drone's battery pair declares `slack=1.0` for that reason.
+
+## ADR-058 — Cadex installs like an application (2026-07-28)
+
+**Decision.** Two changes so the product opens from Spotlight, Launchpad and
+the Dock rather than from a build command:
+
+1. `blenloader/intern/readfile.cc` resets `UserDef::app_template` on read to
+   the **DNA default** instead of to the empty string.
+2. `package/app/build_app.sh` gains `install` / `uninstall`, exposed as
+   `pixi run install-app` / `pixi run uninstall-app`, which rsync the built
+   `Cadex.app` into `/Applications`.
+
+**Why the readfile change.** ADR-024 set the DNA default to `"Mesh"` so a new
+user meets the chat-driven layout without finding it in a menu. It did not
+work for anyone who had ever launched the shell before. Upstream's
+`read_userdef` ends with
+
+```c
+/* Don't read the active app template, use the default one. */
+user->app_template[0] = '\0';
+```
+
+— the comment says *use the default one* but the code hardcodes upstream's
+default rather than reading it, so the DNA literal only ever reached a
+profile with **no `userpref.blend` at all**. Measured before the fix, on this
+machine's own profile: fresh profile → `[Mesh]`, existing profile → `[]`,
+i.e. stock Blender, no `mesh_agent`, no Cadex top bar. Finder cannot pass
+`--app-template`, so an installed bundle had no way to reach the product.
+
+The edit takes the literal from the DNA member initializer
+(`const UserDef userdef_default = {};`, the same pattern as
+`space_file/filesel.cc:106`) rather than restating `"Mesh"` — ADR-024's
+single source of truth survives. `--app-template default` still escapes to
+stock Blender; verified.
+
+**Cost: `docs/BLENDER-TREE.md` §2a is eight files, not seven.** That
+invariant was worth breaking exactly once, for the file that makes ADR-024
+true; it conflicts as a two-line replacement inside one function, which is
+the cheap kind. `creator_args.cc` stays rejected for the reason ADR-024 gave.
+
+**What `install-app` is and is not.** It is a *local* install. `pixi run app`
+bundles a **staged** payload, so every Mach-O under
+`Contents/Resources/cadex` resolves `@rpath` through
+`<repo>/.pixi/envs/default/lib` and `<repo>/build/release/lib` — the bundle
+carries its own `lib/` and never looks at it. The installed app therefore
+reads its libraries out of the repository and stops modelling if the repo
+moves. The command says so on every run. Making the bundle standalone is the
+relocated-payload and notarization work already listed as open in
+`docs/cadex-release-packaging.md`; nothing here changes that.
+
+`install` refuses to `rsync --delete` into anything at the destination that
+lacks a `Contents/Info.plist`, and `uninstall` refuses to remove it, so a
+mistyped `CADEX_INSTALL_DIR` cannot eat a directory.
+
+**Evidence.** `CADEX-BLENDER-GATE` green from the build tree and again from
+`/Applications/Cadex.app` — `ok: true`, `engine_from_bundle: true`,
+`startup_areas: [CADEX_CHAT, CADEX_PARAMS, VIEW_3D]`, 372/372 picks. A plain
+launch of the installed bundle under a scrubbed environment reports
+`app_template = Mesh` against the pre-existing profile. The bundle's ad-hoc
+linker signature is unchanged by the copy (`codesign -v --deep` returns the
+same message for the source bundle and the installed one) and no quarantine
+attribute is set.
+
+## ADR-059 — The app icon is the Cadex mark (2026-07-28)
+
+**Decision.** `shell/release/darwin/Blender.app/Contents/Resources/cadex_icon.icns`
+is regenerated from the logo the README ships, `cadex-logo-white.png`, by a
+new `package/app/make_app_icon.py`.
+
+**Why.** The icns in the tree was still the VibeCAD-era mark — the dark
+rounded square with the blue/white letterforms — which the Stage C rebrand
+(`9c0c7871`) missed because an icns is a binary and a grep for "vibecad"
+cannot see inside one. It shipped as the Dock icon of every build, and the
+`pixi run install-app` work (ADR-058) is what made that visible: an app you
+launch from a build command is a path, an app you launch from the Dock is an
+icon.
+
+**`docs/images/cadex-mark.svg` is the same stale art** and is *not* the
+source. It is still referenced by nothing in the product, so it is left in
+place rather than half-fixed here; regenerating or deleting it is its own
+change. The script's docstring says so, because that file is exactly what the
+next person will reach for.
+
+**The composition is not the bare logo.** A README mark sits on the page's
+own background; a Dock icon is composited against wallpaper, so a
+transparent black-on-nothing mark would disappear on a dark desktop. The
+script puts the white mark on the shell's own `#0e1116` at Apple's icon grid
+— an 824 px body with a 185 px corner radius inside a 1024 px canvas — which
+also keeps the Dock silhouette the shape it already was. `--light` composes
+`cadex-logo-black.png` on white instead; nothing else changes.
+
+**Derived, not dropped in.** The point of the script is that the binary in
+the tree is explainable and reproducible from a source we can read in a diff.
+Rerun it when the logo changes.
+
+**Consequences.** `CFBundleIconFile` already pointed at this filename and
+`CFBundleIconName` is still absent (ADR-030), so no plist change: the install
+step copies the new file and Launch Services picks it up. Verified by
+extracting the icns back out of `/Applications/Cadex.app` after
+`pixi run install-app`. No behaviour changes; `CADEX-BLENDER-GATE` is
+unaffected and was not re-run for the icon alone.

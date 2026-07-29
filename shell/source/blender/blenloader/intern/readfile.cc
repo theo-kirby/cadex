@@ -4120,8 +4120,14 @@ static BHead *read_userdef(BlendFileData *bfd, FileData *fd, BHead *bhead)
 
   BLO_read_struct_list(reader, uiStyle, &user->uistyles);
 
-  /* Don't read the active app template, use the default one. */
-  user->app_template[0] = '\0';
+  /* Don't read the active app template, use the default one -- which for Cadex
+   * is "Mesh" rather than upstream's empty string (ADR-024). Upstream cleared
+   * the field outright, so its own DNA default only ever reached a profile with
+   * no `userpref.blend` at all; any existing profile silently started as stock
+   * Blender. Taking the literal from the DNA member initializer keeps ADR-024's
+   * single source of truth. `--app-template default` still escapes. */
+  const UserDef userdef_default = {};
+  STRNCPY(user->app_template, userdef_default.app_template);
 
   /* Clear runtime data. */
   user->runtime.is_dirty = false;

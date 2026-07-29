@@ -1,6 +1,6 @@
 # CLAUDE.md — Agent Entry Point
 
-Verified against source: 2026-07-25. This file replaces the retired
+Verified against source: 2026-07-28. This file replaces the retired
 `AGENTS.md` (see `docs/DECISIONS.md` ADR-005).
 
 Cadex is an AI-native CAD app. **This repository is the whole product**
@@ -51,7 +51,7 @@ Read `docs/VISION.md` before designing anything.
 | `docs/DECISIONS.md` | ADR log. Append an entry for every removal or direction change. |
 | `docs/PROVENANCE.md` | Which code came from FreeCAD, from Blender, and from VibeCAD; licences, credit, and how two licences share one repo. |
 | `docs/FREECAD.md` | Inherited-tree ledger for the **engine**: kept / disabled / already-deleted. |
-| `docs/BLENDER-TREE.md` | The same ledger for **`shell/`**, plus the seven-file diff against upstream Blender. |
+| `docs/BLENDER-TREE.md` | The same ledger for **`shell/`**, plus the eight-file diff against upstream Blender. |
 | `docs/INTEGRATION.md` | **The process contract**: the cadexd protocol (test-enforced on both requests and responses) and the engine payload. |
 | `docs/BLENDER.md` | The shell: `mesh_agent`'s file map, its tools, and how to run its suites. |
 | `docs/IDEAS.md` | Parking lot for uncommitted ideas. |
@@ -96,6 +96,9 @@ shell/build_darwin/       the shell build tree and the installed bundle
 git lfs install               # once per machine, BEFORE cloning
 pixi run setup                # first time: check out shell/lib/<platform>
 pixi run app                  # build engine + payload + shell, then launch
+pixi run install-app          # ...and copy it to /Applications so it opens like
+                              # an app. Local install: the staged payload keeps
+                              # resolving its libs out of this repo (ADR-058).
 
 pixi run python -m pytest src/Mod/cadex/cadex_tests   # engine tests, no build needed
 pixi run configure            # CMake configure (debug, GUI ON)
@@ -142,8 +145,8 @@ The philosophy is **remove more than we add** (`docs/VISION.md`). Zones:
 - **The rest of `shell/**` — inherited Blender, same conservative rules.**
   The delta against upstream Blender is listed in full in
   `docs/BLENDER-TREE.md` §2, in three groups that age differently: **§2a**
-  product identity (seven files of string literals and guarded CMake blocks —
-  *this one must stay seven*), **§2b** the Cadex editors (ADR-035, ADR-036 —
+  product identity (eight files of string literals and guarded CMake blocks —
+  *this one must stay eight*), **§2b** the Cadex editors (ADR-035, ADR-036 —
   additive rows in enums, exhaustive switches and CMake lists, plus the
   registration list that *is* the editor menu), and **§2c** the message box
   (ADR-034). Every line added there is a future merge conflict; what differs

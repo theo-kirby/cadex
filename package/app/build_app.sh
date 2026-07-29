@@ -7,6 +7,8 @@
 #   package/app/build_app.sh launch   run the built bundle
 #   package/app/build_app.sh gate     the product gate against the built bundle
 #   package/app/build_app.sh path     print the built executable's path
+#   package/app/build_app.sh install  copy the bundle into /Applications
+#   package/app/build_app.sh uninstall  remove it again
 #
 # The engine half (`build-engine`, `stage-engine`) stays in pixi.toml, where
 # it already lived. This script exists for one reason: **the shell must not
@@ -175,6 +177,63 @@ cmd_launch() {
 
 cmd_path() { printf '%s\n' "${app_exe}"; }
 
+# Install the built bundle where the desktop expects an application, so Cadex
+# opens from Spotlight, Launchpad and the Dock like anything else.
+#
+# This is a **local** install, and the distinction is the one from
+# docs/cadex-release-packaging.md: `pixi run app` bundles a *staged* engine
+# payload, whose Mach-O load commands still carry the build prefix. Every
+# binary under Contents/Resources/cadex resolves @rpath through
+# `<repo>/.pixi/envs/default/lib` and `<repo>/build/release/lib`, so the
+# installed bundle reads its libraries out of this repository rather than out
+# of itself. Move or delete the repo and the installed app stops modelling.
+# Making it standalone is the relocated-payload + notarization work, not this.
+cmd_install() {
+    if [ "${os_ncase}" != "darwin" ]; then
+        echo "FAIL: install is macOS-only for now (no shell bundle is built elsewhere)."
+        exit 1
+    fi
+    local src="${install_dir}/${app_name}.app"
+    local dest_dir="${CADEX_INSTALL_DIR:-/Applications}"
+    local dest="${dest_dir}/${app_name}.app"
+
+    [ -x "${app_exe}" ] || { echo "FAIL: ${src} does not exist. Run: pixi run app"; exit 1; }
+    [ -d "${dest_dir}" ] || { echo "FAIL: ${dest_dir} does not exist."; exit 1; }
+    # Refuse to --delete into anything that is not a bundle we put there.
+    if [ -e "${dest}" ] && [ ! -f "${dest}/Contents/Info.plist" ]; then
+        echo "FAIL: ${dest} exists and is not an application bundle."
+        exit 1
+    fi
+
+    echo "==> installing ${src}"
+    echo "==>        to  ${dest}   (~3 GB; incremental after the first time)"
+    rsync -a --delete "${src}/" "${dest}/"
+
+    # Make Launch Services notice it now rather than whenever it next rescans.
+    local lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+    [ -x "${lsregister}" ] && "${lsregister}" -f "${dest}" || true
+
+    echo "==> installed. Open it from Spotlight, Launchpad or:  open -a ${app_name}"
+    echo "    NOTE: the bundled engine still resolves its libraries out of"
+    echo "          ${repo}"
+    echo "          Keep this repository where it is, or the installed app will"
+    echo "          launch but fail to model."
+}
+
+cmd_uninstall() {
+    local dest="${CADEX_INSTALL_DIR:-/Applications}/${app_name}.app"
+    if [ ! -d "${dest}" ]; then
+        echo "==> ${dest} is not installed"
+        return
+    fi
+    [ -f "${dest}/Contents/Info.plist" ] || {
+        echo "FAIL: ${dest} is not an application bundle; refusing to remove it."
+        exit 1
+    }
+    rm -rf "${dest}"
+    echo "==> removed ${dest}"
+}
+
 # The product gate. Run from `shell/` because the suite resolves its own
 # fixtures relative to the shell tree, and with every MESH_* engine override
 # unset -- the bundle must find its engine by manifest or fail.
@@ -189,13 +248,15 @@ cmd_gate() {
 # `scrubbed <anything>` is exposed so the gate suites can run the built
 # bundle without the engine environment on PATH either.
 case "${1:-}" in
-    setup)  shift; cmd_setup "$@" ;;
-    shell)  shift; cmd_shell "$@" ;;
-    launch) shift; cmd_launch "$@" ;;
-    path)   shift; cmd_path "$@" ;;
-    gate)   shift; cmd_gate "$@" ;;
-    exec)   shift; scrubbed "$@" ;;
+    setup)     shift; cmd_setup "$@" ;;
+    shell)     shift; cmd_shell "$@" ;;
+    launch)    shift; cmd_launch "$@" ;;
+    path)      shift; cmd_path "$@" ;;
+    gate)      shift; cmd_gate "$@" ;;
+    install)   shift; cmd_install "$@" ;;
+    uninstall) shift; cmd_uninstall "$@" ;;
+    exec)      shift; scrubbed "$@" ;;
     *)
-        echo "usage: $(basename "$0") {setup|shell|launch|gate|path|exec} [args...]"
+        echo "usage: $(basename "$0") {setup|shell|launch|gate|path|install|uninstall|exec} [args...]"
         exit 2 ;;
 esac

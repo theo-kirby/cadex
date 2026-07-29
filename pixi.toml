@@ -231,6 +231,13 @@ stage-engine = { cmd = ["bash", "package/engine/build_engine_payload.sh"], env =
 stage-engine-release = { cmd = ["bash", "package/engine/build_engine_payload.sh"]}
 build-shell = { cmd = ["bash", "package/app/build_app.sh", "shell"], depends-on = ["stage-engine"]}
 app = { cmd = ["bash", "package/app/build_app.sh", "launch"], depends-on = ["build-engine", "build-shell"]}
+# Build, then install into /Applications so Cadex opens from Spotlight and the
+# Dock. A *local* install: the staged payload inside the bundle still resolves
+# its libraries out of this repository, so the repo has to stay put. See the
+# comment above cmd_install in package/app/build_app.sh, and "Installing it
+# locally" in docs/cadex-release-packaging.md.
+install-app = { cmd = ["bash", "package/app/build_app.sh", "install"], depends-on = ["build-engine", "build-shell"]}
+uninstall-app = { cmd = ["bash", "package/app/build_app.sh", "uninstall"]}
 # The product gate, against the built bundle, with no MESH_* set.
 gate = { cmd = ["bash", "package/app/build_app.sh", "gate"]}
 # redirect to debug by default

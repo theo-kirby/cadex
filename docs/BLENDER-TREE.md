@@ -1,6 +1,6 @@
 # BLENDER-TREE.md — Inherited Shell Substrate Inventory
 
-Verified against source: 2026-07-27
+Verified against source: 2026-07-28
 
 `shell/` is a Blender fork. This is its ledger — what we keep, what is
 slated for removal, what is already gone — the peer of `docs/FREECAD.md`
@@ -33,6 +33,7 @@ These files exist in no upstream Blender and cannot conflict with one.
 | `shell/source/blender/editors/space_cadex_params/` | the Cadex Parameters editor (ADR-035) | 170 |
 | `shell/scripts/startup/bl_app_templates_system/Mesh/` | the app template: `startup.blend` carries the layout, `__init__.py` enables the add-on, installs the Cadex top bar and suppresses the splash (ADR-037, ADR-041, ADR-042) | 111 + a 267 KB `.blend` |
 | `shell/tests/python/bl_mesh_agent{,_cadex}.py` | the agent suites; `bl_mesh_agent_cadex.py` prints the `CADEX-BLENDER-GATE` evidence line | 3,229 (2 files) |
+| `shell/release/darwin/Blender.app/Contents/Resources/cadex_icon.icns` | the Dock icon. Generated from `cadex-logo-white.png` by `package/app/make_app_icon.py` — regenerate rather than edit (ADR-059) | a 249 KB binary |
 
 The add-on was 5,714 lines across 20 files at import; ADR-030 took it to
 4,577 across 17 by deleting the local bpy modes; ADR-035 added `spaces.py`
@@ -45,7 +46,7 @@ Counted 2026-07-26 — treat these as of that date, not as a contract.
 ## 2. Modified upstream files — the whole delta
 
 Two kinds of edit, and they age very differently. **2a** is product identity:
-string literals and guarded CMake blocks, seven files, and it must stay seven.
+string literals and guarded CMake blocks, eight files, and it must stay eight.
 **2b** is the price of owning editors and of not shipping the ones we do not
 want (ADR-035, ADR-036) — a deliberate, bounded investment that roughly
 tripled the surface. **2c** is the in-flight message-box work.
@@ -55,11 +56,12 @@ is *how* it conflicts: 2a and most of 2b conflict as insertions the compiler
 finds, while a rewritten function body conflicts as logic. Phase 12 (ADR-025)
 retires the Blender shell wholesale, which is the horizon on all of it.
 
-### 2a. Product identity — seven files, and they stay seven
+### 2a. Product identity — eight files, and they stay eight
 
 | File | Change | Why | On conflict |
 |---|---|---|---|
-| `source/blender/makesdna/DNA_userdef_types.h` | `app_template` default `""` → `"Mesh"` | A new user meets the chat-driven layout without finding it in a menu (ADR-024). Only a *fresh* profile takes the default; an existing `userpref.blend` keeps what it stored, and `--app-template default` still escapes to stock Blender. | Keep `"Mesh"`, take upstream's changes to the surrounding struct. The literal is the whole change. |
+| `source/blender/makesdna/DNA_userdef_types.h` | `app_template` default `""` → `"Mesh"` | A new user meets the chat-driven layout without finding it in a menu (ADR-024). `--app-template default` still escapes to stock Blender. | Keep `"Mesh"`, take upstream's changes to the surrounding struct. The literal is the whole change. |
+| `source/blender/blenloader/intern/readfile.cc` | `read_userdef` resets `app_template` to the DNA default rather than to `'\0'` | Upstream's comment says *use the default one* but the code hardcodes upstream's default, so the row above only ever reached a profile with no `userpref.blend` at all — every existing profile started as stock Blender, and a double-clicked bundle cannot pass `--app-template` (ADR-058). | Two-line re-apply at the end of `read_userdef`. Take the literal from the DNA member initializer, never restate `"Mesh"` here. |
 | `CMakeLists.txt` | `WITH_CADEX_ENGINE` option + `CADEX_ENGINE_DIR` cache path | Declares the option that bundles the engine. Additive: one `option()`, one `set(... CACHE PATH ...)`. | Re-add the block; it depends on nothing around it. |
 | `source/creator/CMakeLists.txt` | `install()` rules for the engine payload under `WITH_CADEX_ENGINE`; `Blender.app` → `${CADEX_APP_NAME}.app` in the install destinations and `OUTPUT_NAME` | The engine block is additive, one guarded block beside the existing `scripts` install (ADR-023, ADR-030). The rename is six string literals routed through one variable so the product is `Cadex.app` (ADR-030). | Re-add the engine block after upstream's install rules; re-apply the variable wherever upstream reintroduces a `Blender.app` literal. |
 | `build_files/cmake/testing.cmake`, `build_files/cmake/platform/platform_apple.cmake` | one `Blender.app` literal each → `${CADEX_APP_NAME}.app` | Same rename; these two hold the test-install and `DYLD_LIBRARY_PATH` paths that would otherwise point at a bundle that is not built. | One-line re-apply. |

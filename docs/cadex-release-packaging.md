@@ -1,6 +1,6 @@
 # Packaging — One Bundle
 
-Verified against source: 2026-07-25
+Verified against source: 2026-07-28
 
 **One repository builds one application** (ADR-030). `pixi run app` produces
 the bundle, and the *engine payload* — a relocatable directory the shell
@@ -162,6 +162,40 @@ not a quality setting.
 runs here is the goal, and the honest alternative — requiring a rattler
 build before you can launch the app you just edited — is not a build loop
 anyone would use.
+
+## Installing it locally
+
+```bash
+pixi run install-app      # build, then copy the bundle to /Applications
+pixi run uninstall-app    # remove it
+```
+
+`install-app` rsyncs `shell/build_darwin/bin/Cadex.app` to
+`/Applications/Cadex.app` (override with `CADEX_INSTALL_DIR`) and pokes
+Launch Services so Spotlight, Launchpad and the Dock see it immediately. It
+refuses to `--delete` into a destination that is not an application bundle.
+Re-running it after a rebuild is incremental.
+
+**This is a local install of a staged payload, and that is a real
+limitation.** Every Mach-O under `Contents/Resources/cadex` carries exactly
+two rpaths, both absolute into the repository:
+
+```
+/Users/<you>/cadex/.pixi/envs/default/lib
+/Users/<you>/cadex/build/release/lib
+```
+
+The bundle *carries* its own `lib/` and never looks at it. So the installed
+app reads its libraries out of the source tree: move or delete the repo and
+Cadex launches and then fails to model. The command prints this every time.
+Making the installed bundle standalone is the relocation + notarization work
+under "Open" below, not a flag on this command.
+
+A double-clicked bundle starts in the Cadex layout because
+`UserDef::app_template` defaults to `"Mesh"` (ADR-024) and `read_userdef`
+resets to that default rather than to the empty string (ADR-058). Finder
+cannot pass `--app-template`, so this is what makes an installed app the
+product rather than stock Blender.
 
 ## Building and releasing
 
