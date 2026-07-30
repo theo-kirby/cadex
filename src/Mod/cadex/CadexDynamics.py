@@ -40,7 +40,7 @@ Conventions, chosen once and not renegotiated anywhere downstream:
 from __future__ import annotations
 
 import math
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 __all__ = [
     "DynamicsError",
@@ -71,7 +71,26 @@ __all__ = [
     "quaternion_conjugate_wxyz",
     "quaternion_rotate_wxyz",
     "quaternion_normalised",
+    "quaternion_from_axis_angle_wxyz",
     "rotation_angle_between",
+    # inertia
+    "body_inertial",
+    "full_inertia_six",
+    # the graph
+    "JOINT_TABLE",
+    "classify_joints",
+    "extract_tree",
+    "joint_transform",
+    "joint_coordinates",
+    "closure_residuals",
+    # the model
+    "build_model",
+    "simulate",
+    "model_evidence",
+    "DEFAULT_TIME_STEP_S",
+    "CLOSURE_RESIDUAL_MM",
+    "CLOSURE_RESIDUAL_RADIANS",
+    "CLOSURE_EQUALITY_TOLERANCE",
 ]
 
 
@@ -2248,9 +2267,3 @@ def _axis_normalised(axis: Sequence[float], *, context: str) -> list[float]:
             observed={"context": context},
         )
     return [item / magnitude for item in values]
-
-
-def _ordered_names(values: Iterable[Any]) -> list[str]:
-    """Script order, deduplicated -- never a set, never id()-keyed."""
-
-    return list(dict.fromkeys(str(item) for item in values))
