@@ -283,6 +283,7 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             # motor are arguments to a dynamics run, not things a script
             # publishes (M4).
             "joint_dynamics",
+            "actuator",
             "exploded_view",
         ),
         production_ready=True,

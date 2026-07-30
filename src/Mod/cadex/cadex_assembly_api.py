@@ -429,6 +429,17 @@ _COUPLED_JOINT_KINDS = {
 }
 _PLACEMENT_ONLY_JOINT_KINDS = ("distance", "parallel", "perpendicular", "angle")
 
+#: The three actuator kinds and, for each, the control parameter its two
+#: coordinate families take. The pairing is what the kind *means*: a
+#: position servo is commanded in position, a velocity one in speed, and a
+#: motor in effort -- so a `control_deg` on a motor is not a unit mistake
+#: but a claim about the wrong quantity, and it is refused as one.
+_ACTUATOR_KINDS = {
+    "motor": ("control_nmm", "control_n"),
+    "position": ("control_deg", "control_mm"),
+    "velocity": ("control_deg_per_s", "control_mm_per_s"),
+}
+
 
 def _coordinate(operation: str, joint: DomainValue, motion_type: Any) -> str:
     """Which unit family this joint's coordinate speaks, or a refusal.
@@ -555,29 +566,55 @@ def _unit_pair(
     )
 
 
-def _motion_formula(value: Any) -> str:
-    operation = "motion"
+def _checked_formula(
+    operation: str,
+    parameter: str,
+    value: Any,
+    *,
+    names: frozenset[str],
+    refusals: Mapping[str, str] = {},
+) -> str:
+    """One expression of ``time``, whitelisted node by node, in Python syntax.
+
+    Extracted from ``_motion_formula`` so that ``api.motion`` and
+    ``api.actuator`` share one whitelist rather than two that drift. The
+    difference between them is entirely in the arguments: ``api.motion``
+    renders its result back to Ondsel's ``^`` and accepts ``initialValue``;
+    a control formula keeps Python syntax, because it is *this* engine that
+    evaluates it, and refuses ``initialValue``, because a dynamics run's
+    initial value is a solved pose rather than a scalar a script can name.
+
+    An AST whitelist rather than a sandbox: what is accepted is enumerated,
+    so a Python release growing a new expression node adds nothing here.
+    """
+
     if not isinstance(value, str):
-        raise _error(operation, "formula", "expected a native motion expression", value)
+        raise _error(
+            operation,
+            parameter,
+            "expected an expression written as a string -- a constant setpoint "
+            'is "30", not 30',
+            value,
+        )
     formula = value.strip()
     if not formula:
-        raise _error(operation, "formula", "must not be empty", value)
+        raise _error(operation, parameter, "must not be empty", value)
     if len(formula) > 512:
-        raise _error(operation, "formula", "must contain at most 512 characters")
+        raise _error(operation, parameter, "must contain at most 512 characters")
     if not formula.isascii():
-        raise _error(operation, "formula", "must contain only ASCII expression syntax")
+        raise _error(operation, parameter, "must contain only ASCII expression syntax")
     try:
         tree = ast.parse(formula.replace("^", "**"), mode="eval")
     except SyntaxError as exc:
         raise _error(
             operation,
-            "formula",
+            parameter,
             f"invalid expression near column {exc.offset or 1}",
             value,
         ) from exc
     nodes = list(ast.walk(tree))
     if len(nodes) > 128:
-        raise _error(operation, "formula", "expression is too complex")
+        raise _error(operation, parameter, "expression is too complex")
     allowed_nodes = (
         ast.Expression,
         ast.BinOp,
@@ -598,7 +635,7 @@ def _motion_formula(value: Any) -> str:
         if not isinstance(node, allowed_nodes):
             raise _error(
                 operation,
-                "formula",
+                parameter,
                 f"unsupported expression element {type(node).__name__}",
                 value,
             )
@@ -610,18 +647,21 @@ def _motion_formula(value: Any) -> str:
             ):
                 raise _error(
                     operation,
-                    "formula",
+                    parameter,
                     "constants must be finite numbers",
                     node.value,
                 )
         elif isinstance(node, ast.Name) and node.id not in (
-            _MOTION_NAMES | _MOTION_FUNCTIONS
+            names | _MOTION_FUNCTIONS
         ):
+            if node.id in refusals:
+                raise _error(operation, parameter, refusals[node.id], node.id)
             raise _error(
                 operation,
-                "formula",
-                f"unknown name {node.id!r}; use time, initialValue, pi, or a "
-                f"supported function {sorted(_MOTION_FUNCTIONS)}",
+                parameter,
+                f"unknown name {node.id!r}; use "
+                f"{', '.join(sorted(names))}, or a supported function "
+                f"{sorted(_MOTION_FUNCTIONS)}",
             )
         elif isinstance(node, ast.Call):
             if (
@@ -632,12 +672,32 @@ def _motion_formula(value: Any) -> str:
             ):
                 raise _error(
                     operation,
-                    "formula",
+                    parameter,
                     "functions must be one-argument calls to abs, asin/arcsin, "
                     "arctan, cos, or sin",
                     value,
                 )
-    return formula.replace("**", "^")
+    return formula.replace("^", "**")
+
+
+def _motion_formula(value: Any) -> str:
+    """``api.motion``'s formula, rendered back to Ondsel's ``^`` for powers."""
+
+    return _checked_formula(
+        "motion", "formula", value, names=_MOTION_NAMES
+    ).replace("**", "^")
+
+
+#: What a control formula may name. ``initialValue`` is deliberately absent
+#: and refused by name below.
+_CONTROL_NAMES = frozenset({"time", "pi"})
+_CONTROL_REFUSALS = {
+    "initialValue": (
+        "is not available to a control formula: a dynamics run's initial "
+        "value is a solved pose the mechanism was in, not a scalar the "
+        "script can name. Write the setpoint you want in absolute terms"
+    )
+}
 
 
 class AssemblyDomainAPI:
@@ -658,6 +718,7 @@ class AssemblyDomainAPI:
         "body",
         "collision",
         "joint_dynamics",
+        "actuator",
         "exploded_view",
     )
 
@@ -1567,6 +1628,194 @@ class AssemblyDomainAPI:
             operation, "joint_dynamics", value, label=label, **properties
         )
 
+    def actuator(
+        self,
+        joint: DomainValue,
+        *,
+        kind: str = "position",
+        motion_type: str = "auto",
+        control_deg: str | None = None,
+        control_mm: str | None = None,
+        control_deg_per_s: str | None = None,
+        control_mm_per_s: str | None = None,
+        control_nmm: str | None = None,
+        control_n: str | None = None,
+        stiffness_nmm_per_deg: float | None = None,
+        stiffness_n_per_mm: float | None = None,
+        damping_nmms_per_deg: float | None = None,
+        damping_ns_per_mm: float | None = None,
+        torque_limit_nmm: float | None = None,
+        force_limit_n: float | None = None,
+        label: str = "",
+    ) -> DomainValue:
+        """Put a motor on one joint, and tell it what to hold.
+
+        This is what makes a mechanism *driven* rather than merely dropped.
+        Three kinds, and the difference between them is what the control
+        signal means:
+
+        * ``position`` -- a servo. ``control_deg`` (or ``control_mm``) is
+          where the joint should be, ``stiffness_*`` is how hard it pulls
+          per unit of error, ``damping_*`` is how much it resists moving
+          while it does. This is the closed loop, and it runs inside
+          MuJoCo's own solver rather than in any script.
+        * ``velocity`` -- a speed controller. ``control_deg_per_s`` is how
+          fast the joint should turn and ``damping_*`` is the gain.
+        * ``motor`` -- no loop at all. ``control_nmm`` *is* the torque, and
+          nothing corrects it.
+
+        **The control is a formula of ``time``, in seconds**, written as a
+        string exactly as ``api.motion`` writes one: ``"30"`` holds thirty
+        degrees, ``"30*sin(2*pi*time)"`` sweeps. It may use ``time``, ``pi``,
+        arithmetic, powers, and the one-argument functions ``abs``,
+        ``asin``/``arcsin``, ``arctan``, ``cos`` and ``sin``. There is no
+        ``initialValue``: a dynamics run starts from a solved pose, not from
+        a number a script can name.
+
+        **Units are in the names and the wrong one is a refusal**, joint by
+        joint. A joint that turns takes ``control_deg``,
+        ``stiffness_nmm_per_deg``, ``damping_nmms_per_deg`` and
+        ``torque_limit_nmm``; one that slides takes ``control_mm``,
+        ``stiffness_n_per_mm``, ``damping_ns_per_mm`` and ``force_limit_n``.
+        A ``cylindrical`` joint owns one coordinate of each and needs an
+        explicit ``motion_type``.
+
+        ``torque_limit_nmm`` is the most a real motor can produce, and a
+        mechanism that saturates against it holds short of its setpoint --
+        the run's evidence reports the peak effort each actuator reached, so
+        "the arm sagged" comes with the number that explains it.
+
+        The gear ratio is fixed at one and cannot be set: MuJoCo's ``gear``
+        rescales the setpoint as well as the effort, so a surface with both
+        would have two ways to say a ratio and one of them would be silently
+        wrong. Model the reduction as the joint it really is.
+
+        Loop-closing, coupled, ``fixed``, ``ball`` and suppressed joints are
+        all refused with the reason, and a joint may carry at most one
+        actuator per coordinate.
+
+        An actuator is an intermediate value like ``connector``: pass it to
+        ``api.dynamics``, and do not return it as an output of its own.
+        """
+
+        operation = "actuator"
+        value = _domain_value(operation, "joint", joint, output_type="joint")
+        coordinate = _coordinate(operation, value, motion_type)
+        clean_kind = str(kind or "").strip().lower()
+        if clean_kind not in _ACTUATOR_KINDS:
+            raise _error(
+                operation,
+                "kind",
+                f"must be one of {sorted(_ACTUATOR_KINDS)}",
+                kind,
+            )
+        controls = {
+            "control_deg": control_deg,
+            "control_mm": control_mm,
+            "control_deg_per_s": control_deg_per_s,
+            "control_mm_per_s": control_mm_per_s,
+            "control_nmm": control_nmm,
+            "control_n": control_n,
+        }
+        angular_name, linear_name = _ACTUATOR_KINDS[clean_kind]
+        wanted = angular_name if coordinate == "angular" else linear_name
+        for name, supplied in controls.items():
+            if supplied is not None and name != wanted:
+                raise _error(
+                    operation,
+                    name,
+                    f"is not what a {clean_kind} actuator on a {coordinate} "
+                    f"joint coordinate is controlled by; use {wanted!r}",
+                    supplied,
+                )
+        if controls[wanted] is None:
+            raise _error(
+                operation,
+                wanted,
+                f"is required for a {clean_kind} actuator on a {coordinate} "
+                "joint coordinate",
+            )
+        control = _checked_formula(
+            operation,
+            wanted,
+            controls[wanted],
+            names=_CONTROL_NAMES,
+            refusals=_CONTROL_REFUSALS,
+        )
+        stiffness = _unit_pair(
+            operation,
+            coordinate,
+            ("stiffness_nmm_per_deg", stiffness_nmm_per_deg),
+            ("stiffness_n_per_mm", stiffness_n_per_mm),
+            strict_minimum=True,
+        )
+        damping = _unit_pair(
+            operation,
+            coordinate,
+            ("damping_nmms_per_deg", damping_nmms_per_deg),
+            ("damping_ns_per_mm", damping_ns_per_mm),
+        )
+        effort = _unit_pair(
+            operation,
+            coordinate,
+            ("torque_limit_nmm", torque_limit_nmm),
+            ("force_limit_n", force_limit_n),
+            strict_minimum=True,
+        )
+        if clean_kind == "position" and stiffness is None:
+            raise _error(
+                operation,
+                "stiffness_nmm_per_deg"
+                if coordinate == "angular"
+                else "stiffness_n_per_mm",
+                "is required for a position actuator: it is how hard the servo "
+                "pulls per unit of error, and there is no defensible default -- "
+                "too little and the arm sags, too much and the solver needs a "
+                "finer step",
+            )
+        if clean_kind != "position" and stiffness is not None:
+            raise _error(
+                operation,
+                stiffness[0],
+                f"does not apply to a {clean_kind} actuator: only a position "
+                "servo has a position gain",
+                stiffness[1],
+            )
+        if clean_kind == "velocity" and damping is None:
+            raise _error(
+                operation,
+                "damping_nmms_per_deg"
+                if coordinate == "angular"
+                else "damping_ns_per_mm",
+                "is required for a velocity actuator: it is the gain, and "
+                "without it the actuator produces no effort at all",
+            )
+        if clean_kind == "motor" and damping is not None:
+            raise _error(
+                operation,
+                damping[0],
+                "does not apply to a motor: a motor has no loop to damp, its "
+                "control is the effort itself. Declare the damping on the "
+                "joint with api.joint_dynamics instead",
+                damping[1],
+            )
+        properties: dict[str, Any] = {
+            "kind": clean_kind,
+            "motion_type": coordinate,
+            **{name: None for name in controls},
+            "stiffness_nmm_per_deg": None,
+            "stiffness_n_per_mm": None,
+            "damping_nmms_per_deg": None,
+            "damping_ns_per_mm": None,
+            "torque_limit_nmm": None,
+            "force_limit_n": None,
+        }
+        properties[wanted] = control
+        for entry in (stiffness, damping, effort):
+            if entry is not None:
+                properties[entry[0]] = entry[1]
+        return self._value(operation, "actuator", value, label=label, **properties)
+
     def body(
         self,
         component: DomainValue,
@@ -1656,11 +1905,52 @@ class AssemblyDomainAPI:
             label=label,
         )
 
+    @staticmethod
+    def _one_per_coordinate(
+        operation: str,
+        parameter: str,
+        values: Sequence[DomainValue],
+        output_type: str,
+        joint_ids: set[int],
+        duplicate: str,
+    ) -> list[DomainValue]:
+        """One list of per-coordinate joint declarations, checked for both.
+
+        Keyed by *coordinate*, not by joint: a cylindrical joint owns a
+        rotation and a slide, so damping one of them says nothing about the
+        other and driving one is not driving both. Two declarations on the
+        same coordinate is a script whose second one silently wins, which is
+        the shape of failure this whole slice is organised against.
+        """
+
+        entries = _values(
+            operation, parameter, values, output_type=output_type, minimum=0
+        )
+        declared: set[tuple[int, str]] = set()
+        for index, entry in enumerate(entries):
+            target = entry.arguments[0]
+            if id(target) not in joint_ids:
+                raise _error(
+                    operation,
+                    f"{parameter}[{index}]",
+                    "targets a joint that is not listed in this assembly",
+                )
+            coordinate = (id(target), str(entry.properties.get("motion_type")))
+            if coordinate in declared:
+                raise _error(
+                    operation,
+                    f"{parameter}[{index}]",
+                    f"gives one {coordinate[1]} joint coordinate {duplicate}",
+                )
+            declared.add(coordinate)
+        return entries
+
     def dynamics(
         self,
         assembly: DomainValue,
         bodies: Sequence[DomainValue],
         *,
+        actuators: Sequence[DomainValue] = (),
         joint_dynamics: Sequence[DomainValue] = (),
         start_time_s: float = 0.0,
         end_time_s: float = 1.0,
@@ -1686,11 +1976,13 @@ class AssemblyDomainAPI:
         alone and passes through everything -- which is exactly what a
         kinematics-shaped model already assumed.
 
-        ``joint_dynamics`` takes ``api.joint_dynamics`` values, at most one
-        per joint coordinate. Without them every joint is frictionless,
-        undamped and has no rotor inertia, because those are MuJoCo's
-        defaults -- fine for a mechanism falling under gravity, and not fine
-        under a motor stiff enough to hold it.
+        ``actuators`` takes ``api.actuator`` values, at most one per joint
+        coordinate, and is what turns a mechanism that falls into one that
+        is driven. ``joint_dynamics`` takes ``api.joint_dynamics`` values
+        under the same one-per-coordinate rule. Without them every joint is
+        frictionless, undamped and has no rotor inertia, because those are
+        MuJoCo's defaults -- fine for a mechanism falling under gravity, and
+        not fine under a motor stiff enough to hold it.
 
         ``gravity_m_s2`` is a vector in **metres** per second squared --
         the one place besides density where this surface is SI, because
@@ -1743,38 +2035,23 @@ class AssemblyDomainAPI:
                 "in a dynamics model is not a lighter part -- it is an "
                 "unsolvable one",
             )
-        joint_dynamics_values = _values(
+        joint_ids = {id(item) for item in model.properties.get("joints", ())}
+        actuator_values = self._one_per_coordinate(
+            operation,
+            "actuators",
+            actuators,
+            "actuator",
+            joint_ids,
+            "two motors",
+        )
+        joint_dynamics_values = self._one_per_coordinate(
             operation,
             "joint_dynamics",
             joint_dynamics,
-            output_type="joint_dynamics",
-            minimum=0,
+            "joint_dynamics",
+            joint_ids,
+            "two sets of damping, armature and friction loss",
         )
-        joints = list(model.properties.get("joints", ()))
-        joint_ids = {id(item) for item in joints}
-        # Keyed by *coordinate*, not by joint: a cylindrical joint owns a
-        # rotation and a slide, and damping one of them says nothing about
-        # the other. Two declarations on one coordinate is a script whose
-        # second one silently wins, which is the shape of thing this slice
-        # is organised against.
-        declared: set[tuple[int, str]] = set()
-        for index, entry in enumerate(joint_dynamics_values):
-            target = entry.arguments[0]
-            if id(target) not in joint_ids:
-                raise _error(
-                    operation,
-                    f"joint_dynamics[{index}]",
-                    "configures a joint that is not listed in this assembly",
-                )
-            coordinate = (id(target), str(entry.properties.get("motion_type")))
-            if coordinate in declared:
-                raise _error(
-                    operation,
-                    f"joint_dynamics[{index}]",
-                    f"gives one {coordinate[1]} joint coordinate two sets of "
-                    "damping, armature and friction loss",
-                )
-            declared.add(coordinate)
         start = _number(operation, "start_time_s", start_time_s)
         end = _number(operation, "end_time_s", end_time_s)
         if end <= start:
@@ -1865,6 +2142,7 @@ class AssemblyDomainAPI:
             "simulation",
             model,
             bodies=body_values,
+            actuators=actuator_values,
             joint_dynamics=joint_dynamics_values,
             start_time_s=start,
             end_time_s=end,

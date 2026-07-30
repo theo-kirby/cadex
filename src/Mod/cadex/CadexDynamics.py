@@ -102,6 +102,7 @@ __all__ = [
     "closure_residuals",
     # actuation
     "joint_dynamics_records",
+    "actuator_records",
     # the model
     "build_model",
     "simulate",
@@ -2601,6 +2602,181 @@ def joint_dynamics_records(
     return records
 
 
+def actuator_records(
+    entries: Sequence[Mapping[str, Any]],
+    tree: Mapping[str, Any],
+    joint_records: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Every motor, resolved to a joint coordinate and converted to SI.
+
+    Same shape as :func:`joint_dynamics_records` and the same refusals, for
+    the same reason: a joint the spanning forest turned into a loop closure,
+    a coupling that attaches nothing, a suppressed joint and a joint from
+    some other assembly are all authoring mistakes, and only the tree can
+    tell which one this is.
+
+    The control formula travels through untouched. It is a *formula*, not a
+    number, so there is nothing to convert until it has been evaluated --
+    which is what makes the conversion of its result the one thing this
+    module must not let escape.
+    """
+
+    table = _coordinate_table(tree, joint_records)
+    refusals = _coordinate_refusals(tree)
+    records: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for entry in entries:
+        joint = str(entry.get("joint") or "")
+        motion = str(entry.get("motion_type") or "")
+        kind = str(entry.get("kind") or "")
+        what = f"the {kind} actuator on {_coordinate_context(joint, motion)}"
+        record = _resolve_coordinate(entry, table, refusals, what=what)
+        if (joint, motion) in seen:
+            raise DynamicsError(
+                f"{_coordinate_context(joint, motion)} carries two actuators.",
+                reason="duplicate_actuator",
+                correction=(
+                    "One joint coordinate has one motor. Two would sum their "
+                    "efforts, which is a mechanism nobody described."
+                ),
+                observed={"joint": joint, "motion_type": motion},
+            )
+        seen.add((joint, motion))
+        angular = motion == "angular"
+
+        def _declared(angular_key: str, linear_key: str) -> float | None:
+            value = entry.get(angular_key if angular else linear_key)
+            return None if value is None else float(value)
+
+        stiffness = _declared("stiffness_nmm_per_deg", "stiffness_n_per_mm")
+        damping = _declared("damping_nmms_per_deg", "damping_ns_per_mm")
+        effort = _declared("torque_limit_nmm", "force_limit_n")
+        control = entry.get(
+            {
+                ("motor", True): "control_nmm",
+                ("motor", False): "control_n",
+                ("position", True): "control_deg",
+                ("position", False): "control_mm",
+                ("velocity", True): "control_deg_per_s",
+                ("velocity", False): "control_mm_per_s",
+            }[(kind, angular)]
+        )
+        if not isinstance(control, str) or not control:
+            raise DynamicsError(
+                f"{what} has no control formula.",
+                reason="malformed_actuator",
+                observed={"joint": joint, "kind": kind},
+            )
+        records.append(
+            {
+                "joint": joint,
+                "motion_type": motion,
+                "kind": kind,
+                "mujoco_joint": str(record["mujoco_joint"]),
+                "mujoco_type": str(record["mujoco_type"]),
+                "mujoco_actuator": f"{record['mujoco_joint']}/{kind}",
+                "joint_kind": str(record["kind"]),
+                "control": control,
+                # Every gain in SI, converted exactly once and here. The
+                # units the script wrote are kept beside them, because a
+                # reader comparing two runs wants the number they typed.
+                "stiffness_si": (
+                    None
+                    if stiffness is None
+                    else (
+                        stiffness_nm_per_rad(stiffness)
+                        if angular
+                        else stiffness_n_per_m(stiffness)
+                    )
+                ),
+                "damping_si": (
+                    None
+                    if damping is None
+                    else (
+                        damping_nms_per_rad(damping)
+                        if angular
+                        else damping_ns_per_m(damping)
+                    )
+                ),
+                "effort_limit_si": (
+                    None
+                    if effort is None
+                    else (torque_nm(effort) if angular else float(effort))
+                ),
+                "declared": {
+                    "control": control,
+                    "stiffness": stiffness,
+                    "damping": damping,
+                    "effort_limit": effort,
+                },
+            }
+        )
+    return records
+
+
+def _verify_gains_are_resolvable(
+    mujoco: Any,
+    model: Any,
+    qpos: Sequence[float],
+    actuators: Sequence[Mapping[str, Any]],
+) -> None:
+    """A position gain the solver step cannot carry is refused, not delivered.
+
+    ``implicitfast`` integrates damping implicitly and stiffness explicitly,
+    so a position actuator's spring term inherits the classical ``ω·h < 2``
+    -- measured (M4 phase 0) at 2.02 on four different steps and invariant
+    across a 400x range of inertia, which is what lets this be stated once,
+    dimensionlessly, for every mechanism rather than as a gain for one.
+
+    The refusal names the step it would take, exactly as M3's restitution
+    refusal does, because "too stiff" without a number is advice nobody can
+    act on.
+    """
+
+    if not any(record.get("stiffness_si") for record in actuators):
+        return
+    inertia = _dof_inertia(mujoco, model, qpos)
+    for record in actuators:
+        gain = record.get("stiffness_si")
+        if not gain:
+            continue
+        joint_id = mujoco.mj_name2id(
+            model, mujoco.mjtObj.mjOBJ_JOINT, str(record["mujoco_joint"])
+        )
+        mass = inertia[int(model.jnt_dofadr[joint_id])]
+        if mass <= 0.0:
+            continue
+        step = float(model.opt.timestep)
+        omega_step = step * math.sqrt(float(gain) / mass)
+        if omega_step <= MAXIMUM_ACTUATOR_OMEGA_STEP:
+            continue
+        required = MAXIMUM_ACTUATOR_OMEGA_STEP / math.sqrt(float(gain) / mass)
+        raise DynamicsError(
+            f"The actuator on joint {record['joint']!r} has a gain of "
+            f"{gain:.6g} against {mass:.6g} of inertia, which needs a solver "
+            f"step of {required:.6g} s or finer; this run steps at "
+            f"{step:.6g} s.",
+            reason="actuator_gain_needs_a_finer_step",
+            correction=(
+                "MuJoCo integrates a position actuator's spring explicitly, so "
+                "a spring stepped too coarsely gains energy rather than "
+                "holding: past this the joint oscillates and then diverges. "
+                "Pass a finer solver_step_s to assembly.dynamics, lower the "
+                "gain, or raise the joint's armature with "
+                "assembly.joint_dynamics -- a heavier rotor carries a stiffer "
+                "gain at the same step."
+            ),
+            observed={
+                "joint": str(record["joint"]),
+                "stiffness_si": float(gain),
+                "inertia": mass,
+                "solver_step_s": step,
+                "required_step_s": required,
+                "omega_step": omega_step,
+            },
+        )
+
+
 def _mujoco_module() -> Any:
     """The one import site, with the payload failure named if it is missing."""
 
@@ -2728,6 +2904,7 @@ def build_model(
     gravity_m_s2: Sequence[float] = DEFAULT_GRAVITY_M_S2,
     time_step_s: float = DEFAULT_TIME_STEP_S,
     joint_dynamics: Sequence[Mapping[str, Any]] = (),
+    actuators: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """One assembly, as a compiled MuJoCo model plus the evidence for it.
 
@@ -2953,6 +3130,8 @@ def build_model(
         native_joint.armature = float(record["armature_si"])
         native_joint.frictionloss = float(record["friction_loss_si"])
 
+    actuator_applied = actuator_records(actuators, tree, joint_records)
+
     # Closures are written against *sites* placed at the two connector
     # frames, not against bodies. Measured, and it matters: a body-anchored
     # connect takes one anchor and derives the other by resolving it through
@@ -3064,6 +3243,7 @@ def build_model(
         mujoco, model, tree, placements, joint_records, solved_values
     )
     _verify_damping_is_resolvable(mujoco, model, qpos)
+    _verify_gains_are_resolvable(mujoco, model, qpos, actuator_applied)
     closure_violation = _closure_violation(mujoco, model, qpos)
     if closure_violation > CLOSURE_EQUALITY_TOLERANCE:
         raise DynamicsError(
@@ -3094,6 +3274,7 @@ def build_model(
         "geoms": geoms,
         "excluded_pairs": excluded_pairs,
         "joint_dynamics": joint_dynamics_applied,
+        "actuators": actuator_applied,
         "mujoco_version": str(getattr(mujoco, "__version__", "unknown")),
     }
 
@@ -3188,6 +3369,7 @@ def simulate(
     time_step_s: float = DEFAULT_TIME_STEP_S,
     gravity_m_s2: Sequence[float] = DEFAULT_GRAVITY_M_S2,
     joint_dynamics: Sequence[Mapping[str, Any]] = (),
+    actuators: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """Run the model and return trace frames in the schema the shell plays.
 
@@ -3276,6 +3458,7 @@ def simulate(
         gravity_m_s2=gravity_m_s2,
         time_step_s=solver_step,
         joint_dynamics=joint_dynamics,
+        actuators=actuators,
     )
     model = built["model"]
     names = [str(component["name"]) for component in components]

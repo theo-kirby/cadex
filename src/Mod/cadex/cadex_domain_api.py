@@ -104,6 +104,7 @@ _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
         # type, nothing publishes them, and a script that returned one would
         # be declaring a fact about a joint rather than a result (M4).
         "joint_dynamics": "joint_dynamics",
+        "actuator": "actuator",
         "exploded_view": "exploded_view",
     },
     "material": {
