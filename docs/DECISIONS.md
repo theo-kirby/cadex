@@ -4200,3 +4200,121 @@ step copies the new file and Launch Services picks it up. Verified by
 extracting the icns back out of `/Applications/Cadex.app` after
 `pixi run install-app`. No behaviour changes; `CADEX-BLENDER-GATE` is
 unaffected and was not re-run for the icon alone.
+
+---
+
+## ADR-060 — Dynamics runs on MuJoCo (2026-07-30)
+
+**Decision.** Cadex gains rigid-body dynamics, and MuJoCo is the engine for
+it. Five parts:
+
+1. **Dynamics is in scope**, as a sibling of the kinematics
+   `api.simulation` already provides (ADR-048). `docs/VISION.md`'s
+   "Assemblies — links, joints, solved placements, motion" covers it.
+2. **The scope extends past dynamics** to task definitions, offboard
+   training, and policy rollout — the arc in `docs/MUJOCO.md`, slices
+   M5–M8. Cadex becomes a robot design *and* control tool. This is a
+   direction change and it is made deliberately here rather than arrived at.
+3. **MuJoCo is kept, not forked.** It joins OCCT in the category of
+   kernels we depend on and do not own. Apache-2.0, upstream, unmodified;
+   `mjSpec` and the plugin system are the extension points a fork would
+   otherwise be for. This is the opposite of the FreeCAD and Blender
+   relationship, where the fork exists because the thing is being replaced.
+4. **In this repository, engine-side.** Not a new repository: ADR-030
+   merged two into one and Phase 13a deleted the cross-repo payload
+   machinery a third would recreate. Nothing under `shell/` imports
+   mujoco — a physics authoring path in the shell would be a second source
+   of truth, the way the bpy modes were (ADR-025, ADR-030).
+5. **A trained policy is an asset, not a derivation.** VISION principle 3
+   says any state that cannot be rebuilt from the script is a bug. Policy
+   weights cannot be — they are the output of hours of stochastic compute.
+   They live in the project store's `assets/`, digest-pinned, exactly as an
+   imported STL does; the script declares reproducibly *how* they were
+   trained. What survives is the property that matters: a rollout of a
+   fixed policy on a fixed model is deterministic, so trace digests hold.
+
+**Why this is cheap enough to start now.** `cadex-assembly-simulation-trace-v1`
+does not care what produced it. A MuJoCo backend emitting the same schema
+needs no protocol op, no response key, no `docs/INTEGRATION.md` row and no
+`shell/` diff — `cadex_animate.py` has played traces since ADR-050. A policy
+rollout is also a trace, so one existing seam carries the whole arc. Doing
+this after Phases 11/12 would cost the same work against two moving targets.
+
+**Why MuJoCo and not the alternatives.** It is the only option that is
+Apache-2.0, headless-first, deterministic for a fixed binary, buildable into
+a 14 MB payload, and has a programmatic model-construction API (`mjSpec`)
+that maps onto an xscript graph without an XML round-trip. The GPU backends
+(MJX, MuJoCo Warp) are for massively parallel RL rollouts and are **not**
+adopted here — one user, one mechanism, CPU stepping at 2 kHz.
+
+**The version pin is exact**, `== 3.10.0`, for precisely the reason
+`occt == 7.8.1` is (ADR-025). MuJoCo's own `VERSIONING.md` disclaims
+numerical reproducibility across releases; the pipeline is deterministic for
+a fixed binary but contact integration is float-sensitive and the solver
+changes between versions routinely. Every `open_project` re-runs THE script
+and asserts digest equality, so an unpinned patch bump would silently turn
+every stored simulation into a restore failure. For the same reason MuJoCo
+is run **single-threaded** — upstream has open reproducibility issues with
+multi-threaded island solving.
+
+**Units are the highest-risk detail and get a test before a feature.**
+FreeCAD is millimetres; every MuJoCo default assumes SI metres and
+kilograms. The failure mode is silent: a part falls at 9810 mm/s² through
+the floor and looks entirely plausible.
+
+**Four of thirteen joint kinds do not map and are refused.** MuJoCo has
+`free`/`ball`/`slide`/`hinge` plus equality constraints. `fixed`,
+`revolute`, `slider`, `ball` and `cylindrical` map directly; `screw`,
+`gears`, `belt` and `rack_pinion` map through `equality/joint` polynomial
+coupling; `distance`, `parallel`, `perpendicular` and `angle` are
+*placement* constraints with no runtime equivalent and get a sentence
+saying so.
+
+**Training is offboard, by physics rather than preference.** MJX needs
+JAX-on-GPU and MuJoCo Warp needs CUDA; the reference result — a Unitree G1
+gait in ~90 minutes — is 4096 parallel environments on an RTX 4090. This
+repository's development platform is `osx-arm64`, where JAX's GPU story is
+`jax-metal` 0.1.0 plus community MPS backends with known problems. The
+boundary this forces is a good one: the engine stays a geometry-and-dynamics
+service, the shell stays a viewer, and the training bundle goes to a machine
+with a GPU.
+
+**Consequences.**
+
+- `docs/MUJOCO.md` is the framework: slices M0–M8, each a resting place.
+  M5 (MJCF export with exact OCCT inertias) is shippable on its own and is
+  the point past which the rest is optional.
+- `docs/VISION.md`'s scope list gains dynamics and control. Not done in this
+  ADR — it is a VISION edit and belongs with the slice that first ships user-
+  visible dynamics (M3), not with the decision to pursue it.
+- Exact mass properties from OCCT into `<inertial>` is the capability the
+  robotics ecosystem does not have and we get nearly free. It lands in M2.
+- The 10 000-frame / 100 000-pose-sample cap in `api.simulation` was sized
+  for kinematics and will not survive an RL rollout. M3.
+
+**How MuJoCo is delivered is NOT decided here.** M0 found the two routes
+each blocked, and the resolution is its own decision:
+
+- **conda `mujoco-python 3.10.0`** is the correct answer for shipping —
+  package-managed, so `relocate_conda_environment.py` carries it into the
+  payload. It cannot be installed today. Adding *any* dependency invalidates
+  `pixi.lock` and forces a full re-solve, and a full re-solve of the current
+  manifest **fails on its own, before MuJoCo is mentioned**: conda-forge has
+  moved to `qt6-main` 6.11 / `occt` 8.0 / `opencv` 5.0 while the manifest
+  pins `qt6-main >=6.8,<6.9` and `occt ==7.8.1`, so `opencv`, `vtk` and
+  `smesh` have no viable candidates. The manifest works only by lockfile
+  accident and has for some time.
+- **pypi `mujoco 3.10.0`** installs cleanly — it touches only the pypi half
+  of the lock — and is verified working: `mjSpec` builds, `mj_step` runs, a
+  free-fall integrates correctly, and **no GL module is imported at all**,
+  so the payload's no-renderer guarantee is not at risk. But the wheel is
+  not conda-package-managed (zero `conda-meta` entries), and
+  `relocate_conda_environment.py` deliberately ships only `is_conda` files,
+  so it **would be silently dropped from the payload**.
+
+Neither unblocking move is small, and neither is about MuJoCo: repairing the
+manifest means re-pinning the geometry environment, which can move accepted
+digests, and teaching the relocation script to carry pypi packages means
+changing ADR-023's shipping path. Recorded here so the next person does not
+rediscover it. M1 is throwaway prototyping in the dev environment and is
+**not** blocked by either.

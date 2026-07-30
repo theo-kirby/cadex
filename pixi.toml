@@ -164,6 +164,17 @@ pthreads-win32 = "*"
 
 [pypi-dependencies]
 freecad-stubs = "*"
+# DEVELOPMENT ONLY -- this does NOT ship. relocate_conda_environment.py
+# carries package-managed files only, and a pypi wheel has no conda-meta
+# entry, so the engine payload is built without it. It is here because the
+# correct home, conda-forge `mujoco-python`, cannot be installed until the
+# manifest is re-solvable: adding any conda dependency forces a full
+# re-solve, and a full re-solve fails on its own today (qt6-main/occt drift
+# against opencv, vtk, smesh). Pinned exactly for the reason occt is --
+# MuJoCo disclaims cross-version numerical reproducibility and every
+# open_project asserts digest equality. See docs/DECISIONS.md ADR-060 and
+# docs/MUJOCO.md slice M0.
+mujoco = "==3.10.0"
 
 ## Qt 6 Configuration Presets
 [target.linux-64.tasks]
