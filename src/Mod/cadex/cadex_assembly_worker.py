@@ -2753,6 +2753,11 @@ def _execute_dynamics_simulation(
     start_time = float(properties["start_time_s"])
     end_time = float(properties["end_time_s"])
     frames_per_second = int(properties["frames_per_second"])
+    # ``None`` means the script did not say, so the module's own default
+    # applies -- read from the module rather than restated here, which is
+    # the same rule the collision deflection follows.
+    gravity = properties.get("gravity_m_s2")
+    solver_step = properties.get("solver_step_s")
     try:
         run = CadexDynamics.simulate(
             dynamics_components,
@@ -2760,6 +2765,16 @@ def _execute_dynamics_simulation(
             start_time_s=start_time,
             end_time_s=end_time,
             frames_per_second=frames_per_second,
+            gravity_m_s2=(
+                CadexDynamics.DEFAULT_GRAVITY_M_S2
+                if gravity is None
+                else [float(value) for value in gravity]
+            ),
+            time_step_s=(
+                CadexDynamics.DEFAULT_TIME_STEP_S
+                if solver_step is None
+                else float(solver_step)
+            ),
         )
     except CadexDynamics.DynamicsError as error:
         raise _dynamics_failure(simulation_output, error) from error
@@ -2784,6 +2799,10 @@ def _execute_dynamics_simulation(
         {
             "solver": "mujoco",
             "solver_step_s": float(run["solver_step_s"]),
+            # What the script asked for, beside what the rounding produced.
+            # They differ whenever the requested step does not divide a frame
+            # interval evenly, which is most of the time.
+            "requested_step_s": float(run["requested_step_s"]),
             "steps_per_sample": int(run["steps_per_sample"]),
             "worst_closure_residual_mm": float(run["worst_closure_residual_mm"]),
         }

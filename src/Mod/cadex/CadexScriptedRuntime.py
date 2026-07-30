@@ -1614,7 +1614,11 @@ def _capability_api_listing() -> dict[str, dict[str, Any]]:
         "component's own shape. Prefer primitives: MuJoCo collides with the "
         "convex hull of any mesh, so 'mesh' refuses a concave part and names "
         "its volume error, and 'hull' is how a script accepts that hull "
-        "deliberately. distance, parallel, perpendicular, angle and "
+        "deliberately. gravity_m_s2 is a vector in metres per second squared "
+        "(Earth by default; [0,0,0] isolates a joint from the falling) and "
+        "solver_step_s is how finely the solver integrates between frames -- a "
+        "bouncing contact needs 0.001 or finer and is refused without it. "
+        "distance, parallel, perpendicular, angle and "
         "rack_pinion joints are refused by a dynamics run."
     )
     return listing

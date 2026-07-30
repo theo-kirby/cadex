@@ -1425,6 +1425,8 @@ class AssemblyDomainAPI:
         start_time_s: float = 0.0,
         end_time_s: float = 1.0,
         frames_per_second: int = 60,
+        gravity_m_s2: Sequence[float] | None = None,
+        solver_step_s: float | None = None,
         label: str = "",
     ) -> DomainValue:
         """Simulate the assembly under gravity and retain its trace.
@@ -1444,6 +1446,19 @@ class AssemblyDomainAPI:
         alone and passes through everything -- which is exactly what a
         kinematics-shaped model already assumed. Damping and actuators are
         not in this slice.
+
+        ``gravity_m_s2`` is a vector in **metres** per second squared --
+        the one place besides density where this surface is SI, because
+        9.81 is how gravity is quoted and −9810 mm/s² is how a typo hides.
+        It defaults to Earth's, and ``[0, 0, 0]`` is the way to isolate a
+        joint's own behaviour from the falling.
+
+        ``solver_step_s`` is how finely the solver integrates *between*
+        trace frames, which is a different number from ``frames_per_second``
+        and always finer. It is rounded so that a whole number of steps
+        lands exactly on each frame, and the step that actually ran is
+        reported in the trace's evidence. A bouncing contact needs 0.001 s
+        or finer and says so.
         """
 
         operation = "dynamics"
@@ -1508,6 +1523,43 @@ class AssemblyDomainAPI:
                 "must be from 1 through 240",
                 frames_per_second,
             )
+        gravity = (
+            None
+            if gravity_m_s2 is None
+            else _vector(operation, "gravity_m_s2", gravity_m_s2, size=3)
+        )
+        if gravity is not None:
+            magnitude = math.sqrt(sum(value * value for value in gravity))
+            if magnitude > 1000.0:
+                raise _error(
+                    operation,
+                    "gravity_m_s2",
+                    "must be at most 1000 m/s2 in magnitude. This is metres per "
+                    "second squared, not millimetres: Earth is 9.81 and the Moon "
+                    "is 1.62",
+                    gravity_m_s2,
+                )
+        step = (
+            None
+            if solver_step_s is None
+            else _number(
+                operation,
+                "solver_step_s",
+                solver_step_s,
+                minimum=0.0,
+                maximum=1.0,
+                strict_minimum=True,
+            )
+        )
+        if step is not None and step > 1.0 / frames_per_second:
+            raise _error(
+                operation,
+                "solver_step_s",
+                f"must not exceed one frame interval ({1.0 / frames_per_second:g} s "
+                f"at {frames_per_second} fps): the solver steps between frames, "
+                "never across them",
+                solver_step_s,
+            )
         # One sample per frame plus the input frame, under the same caps
         # api.simulation declares. Unlike the kinematics solver the trace
         # step and the solver step are separate here, so the frame count is
@@ -1528,6 +1580,8 @@ class AssemblyDomainAPI:
             start_time_s=start,
             end_time_s=end,
             frames_per_second=frames_per_second,
+            gravity_m_s2=gravity,
+            solver_step_s=step,
             estimated_frame_limit=estimated_frames,
             label=label,
         )

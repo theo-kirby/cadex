@@ -2011,10 +2011,19 @@ _EQUALITY_SOLIMP = (0.99, 0.9999, 0.0001, 0.5, 2.0)
 _OPEN_ANGLE_MARGIN_RADIANS = 100.0 * 2.0 * math.pi
 _OPEN_LENGTH_MARGIN_M = 1000.0
 
-#: The default solver step. Deliberately not a script parameter in M2: one
-#: number to be wrong about while the translator is being proved, and M3
-#: splits solver step from trace step properly.
+#: The default solver step, and since M3 phase 3 the *default* rather than
+#: the only one: ``api.dynamics`` takes ``solver_step_s``. It stays 0.002
+#: because that is what every M2 measurement was made at, and because the
+#: cases that need finer -- a bouncing contact, chiefly -- now say so and
+#: are refused when they do not get it.
 DEFAULT_TIME_STEP_S = 0.002
+
+#: How many solver steps one trace frame may cost. The frame budget bounds
+#: how many frames a run produces; this bounds what each one is worth, and
+#: without it ``solver_step_s`` is an unbounded cost rather than a slow one.
+#: 2000 steps at 60 fps is a 8.3 microsecond step, three orders finer than
+#: anything the contact model needs.
+MAXIMUM_STEPS_PER_SAMPLE = 2000
 
 
 def _limit_range(
@@ -2476,6 +2485,17 @@ def build_model(
     # is off by default in 3.10.0 (``enableflags == 0``); an assertion
     # after compile is what keeps that true.
     spec.option.enableflags = 0
+    # The integrator is a decision, not a default (M3 phase 3). MuJoCo's
+    # default is Euler and the measurement that ruled it out is a freely
+    # tumbling asymmetric part -- the shape of anything that falls over:
+    # over twenty seconds at the default step Euler *gains* 51% of its
+    # kinetic energy, a part spinning faster the longer it spins, and every
+    # frame of it looks like physics. implicitfast conserves angular
+    # momentum and energy to the printed precision, reproduces RK4's
+    # trajectory through three Dzhanibekov flips to three decimals, and
+    # costs one force evaluation per step where RK4 costs four. Full
+    # implicit was measured too and is worse than either: it *loses* 29%.
+    spec.option.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
 
     native_bodies: dict[str, Any] = {"": spec.worldbody}
     joint_records: list[dict[str, Any]] = []
@@ -2757,12 +2777,41 @@ def simulate(
     The solver steps far finer than the trace samples: the step is chosen so
     a whole number of them lands exactly on each sample time, because a
     sample interpolated between steps would make the trace depend on
-    floating-point accumulation.
+    floating-point accumulation. That rounding means the step the solver
+    actually takes is rarely exactly the one the script asked for, so the
+    step that ran is reported in the evidence beside the one requested --
+    a run whose bouncing contact was refused for being too coarsely stepped
+    should be able to see which number the refusal was about.
     """
 
     mujoco = _mujoco_module()
     sample_interval = 1.0 / float(frames_per_second)
-    steps_per_sample = max(1, int(round(sample_interval / float(time_step_s))))
+    requested_step = float(time_step_s)
+    if not math.isfinite(requested_step) or requested_step <= 0.0:
+        raise DynamicsError(
+            f"The solver step must be a positive number of seconds, not "
+            f"{requested_step:g}.",
+            reason="malformed_solver_step",
+            observed={"solver_step_s": requested_step},
+        )
+    steps_per_sample = max(1, int(round(sample_interval / requested_step)))
+    if steps_per_sample > MAXIMUM_STEPS_PER_SAMPLE:
+        raise DynamicsError(
+            f"A solver step of {requested_step:g} s needs {steps_per_sample} "
+            f"steps per frame at {frames_per_second} fps; the accepted maximum "
+            f"is {MAXIMUM_STEPS_PER_SAMPLE}.",
+            reason="solver_step_too_fine",
+            correction=(
+                "The cost of a run is frames times steps-per-frame, and this "
+                "one is unbounded rather than slow. Raise solver_step_s or "
+                "lower frames_per_second."
+            ),
+            observed={
+                "solver_step_s": requested_step,
+                "steps_per_sample": steps_per_sample,
+                "frames_per_second": int(frames_per_second),
+            },
+        )
     solver_step = sample_interval / steps_per_sample
     built = build_model(
         components,
@@ -2846,6 +2895,7 @@ def simulate(
         "frames": frames,
         "sample_interval_s": sample_interval,
         "solver_step_s": solver_step,
+        "requested_step_s": requested_step,
         "steps_per_sample": steps_per_sample,
         "solver_tolerance": float(model.opt.tolerance),
         "worst_closure_residual_mm": length_mm(worst_closure),
@@ -2939,6 +2989,7 @@ def model_evidence(
         # under rather than leaving a reader to infer them from a version.
         "solver_disableflags": int(built["disableflags"]),
         "solver_enableflags": int(built["enableflags"]),
+        "solver_integrator": "implicitfast",
         # What each body may touch things with, and -- for a mesh -- the
         # three volumes that decided it was allowed to. A hull an author
         # accepted is a fact about the model somebody will want to find
@@ -2990,6 +3041,20 @@ def _verify_solver_flags(mujoco: Any, model: Any) -> None:
     going missing, and this is the only place that would notice.
     """
 
+    integrator = int(model.opt.integrator)
+    expected = int(mujoco.mjtIntegrator.mjINT_IMPLICITFAST)
+    if integrator != expected:
+        raise DynamicsError(
+            f"The compiled model integrates with {integrator} where this "
+            f"translator asked for implicitfast ({expected}).",
+            reason="solver_flags_changed",
+            correction=(
+                "The integrator is a measured choice: Euler gains 51% of a "
+                "tumbling part's kinetic energy over twenty seconds. Re-measure "
+                "before moving it."
+            ),
+            observed={"integrator": integrator},
+        )
     island = int(mujoco.mjtDisableBit.mjDSBL_ISLAND)
     disable = int(model.opt.disableflags)
     enable = int(model.opt.enableflags)
