@@ -90,6 +90,12 @@ _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
         "solve": "solver_diagnostics",
         "motion": "motion",
         "simulation": "simulation",
+        # Dynamics produces a `simulation`, not a type of its own: a script
+        # has one simulation whichever solver ran it, and two
+        # assembly_simulation_json artifacts would leave the shell baking
+        # neither (ADR-062). `body` is an intermediate, like `connector`.
+        "dynamics": "simulation",
+        "body": "body",
         "exploded_view": "exploded_view",
     },
     "material": {

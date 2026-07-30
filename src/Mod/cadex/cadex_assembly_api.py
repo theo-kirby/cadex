@@ -497,6 +497,8 @@ class AssemblyDomainAPI:
         "solve",
         "motion",
         "simulation",
+        "dynamics",
+        "body",
         "exploded_view",
     )
 
@@ -1011,6 +1013,162 @@ class AssemblyDomainAPI:
             end_time_s=end,
             time_step_s=step,
             error_tolerance=tolerance,
+            frames_per_second=frames_per_second,
+            estimated_frame_limit=estimated_frames,
+            label=label,
+        )
+
+    def body(
+        self,
+        component: DomainValue,
+        *,
+        density_kg_m3: float,
+        label: str = "",
+    ) -> DomainValue:
+        """Give one component the mass properties a dynamics run needs.
+
+        ``density_kg_m3`` is required and has no default: mass, inertia and
+        every fall time scale with it, and a guessed density produces an
+        animation that looks entirely plausible and is wrong. Steel is 7850,
+        aluminium 2700, ABS 1040. Mass and the inertia tensor are computed
+        exactly from the component's own solids -- nothing is estimated
+        from a bounding box.
+
+        A body is an intermediate value like ``connector``: pass it to
+        ``api.dynamics``, and do not return it as an output of its own.
+        """
+
+        operation = "body"
+        value = _domain_value(
+            operation,
+            "component",
+            component,
+            output_type="component_link",
+        )
+        density = _number(
+            operation,
+            "density_kg_m3",
+            density_kg_m3,
+            minimum=0.0,
+            maximum=30000.0,
+            strict_minimum=True,
+        )
+        return self._value(
+            operation,
+            "body",
+            value,
+            density_kg_m3=density,
+            label=label,
+        )
+
+    def dynamics(
+        self,
+        assembly: DomainValue,
+        bodies: Sequence[DomainValue],
+        *,
+        start_time_s: float = 0.0,
+        end_time_s: float = 1.0,
+        frames_per_second: int = 60,
+        label: str = "",
+    ) -> DomainValue:
+        """Simulate the assembly under gravity and retain its trace.
+
+        The dynamics counterpart of ``api.simulation``: instead of
+        prescribing motion with formulas of ``time``, this gives every
+        component mass and lets the mechanism fall, swing and settle. Every
+        component in the assembly needs exactly one ``api.body``.
+
+        The trace is the same ``simulation`` output kind the kinematics
+        solver produces -- a script has one simulation, whichever solver
+        ran it. Frames are sampled at ``frames_per_second``; the solver
+        steps far finer than that internally.
+
+        Contact, damping, actuators and gravity as a parameter are not in
+        this slice. Bodies do not collide yet: a mechanism is held together
+        by its joints alone.
+        """
+
+        operation = "dynamics"
+        model = _domain_value(operation, "assembly", assembly, output_type="assembly")
+        body_values = _values(
+            operation,
+            "bodies",
+            bodies,
+            output_type="body",
+            minimum=1,
+        )
+        components = list(model.properties.get("components", ()))
+        component_ids = {id(item) for item in components}
+        seen: set[int] = set()
+        for index, body_value in enumerate(body_values):
+            component = body_value.arguments[0]
+            if id(component) not in component_ids:
+                raise _error(
+                    operation,
+                    f"bodies[{index}]",
+                    "gives mass to a component that is not listed in this assembly",
+                )
+            if id(component) in seen:
+                raise _error(
+                    operation,
+                    f"bodies[{index}]",
+                    "gives one component two densities",
+                )
+            seen.add(id(component))
+        if len(seen) != len(components):
+            raise _error(
+                operation,
+                "bodies",
+                f"requires one api.body per component; this assembly has "
+                f"{len(components)} component(s) and {len(seen)} body value(s). "
+                "A component with no density has no mass, and a massless part "
+                "in a dynamics model is not a lighter part -- it is an "
+                "unsolvable one",
+            )
+        start = _number(operation, "start_time_s", start_time_s)
+        end = _number(operation, "end_time_s", end_time_s)
+        if end <= start:
+            raise _error(
+                operation,
+                "end_time_s",
+                "must be greater than start_time_s",
+                end_time_s,
+            )
+        if isinstance(frames_per_second, bool) or not isinstance(
+            frames_per_second, int
+        ):
+            raise _error(
+                operation,
+                "frames_per_second",
+                "expected an integer from 1 through 240",
+                frames_per_second,
+            )
+        if not 1 <= frames_per_second <= 240:
+            raise _error(
+                operation,
+                "frames_per_second",
+                "must be from 1 through 240",
+                frames_per_second,
+            )
+        # One sample per frame plus the input frame, under the same caps
+        # api.simulation declares. Unlike the kinematics solver the trace
+        # step and the solver step are separate here, so the frame count is
+        # exactly what was asked for.
+        estimated_frames = math.ceil((end - start) * frames_per_second) + 2
+        if estimated_frames > 10_000 or estimated_frames * len(components) > 100_000:
+            raise _error(
+                operation,
+                "time range/frames_per_second",
+                "would exceed 10000 frames or 100000 component-pose samples; "
+                "lower frames_per_second or shorten the time range",
+            )
+        return self._value(
+            operation,
+            "simulation",
+            model,
+            bodies=body_values,
+            start_time_s=start,
+            end_time_s=end,
             frames_per_second=frames_per_second,
             estimated_frame_limit=estimated_frames,
             label=label,

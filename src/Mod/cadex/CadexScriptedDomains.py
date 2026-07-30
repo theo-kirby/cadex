@@ -265,7 +265,8 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
         ),
         "Define native assembly links, grounding, connector references, joints, "
         "solved placements, structured solver diagnostics, and worker-generated "
-        "kinematic simulations, exploded views, and flexible source hierarchies.",
+        "kinematic simulations, rigid-body dynamics runs, exploded views, and "
+        "flexible source hierarchies.",
         (
             "assembly",
             "component",
@@ -274,6 +275,8 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "solve",
             "motion",
             "simulation",
+            "dynamics",
+            "body",
             "exploded_view",
         ),
         production_ready=True,

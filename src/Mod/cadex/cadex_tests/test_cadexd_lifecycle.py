@@ -20,6 +20,7 @@ server sent and the spec did not declare.
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -176,6 +177,34 @@ asm = assembly.assembly([base, swing], [j])
 diag = assembly.solve(asm)
 result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
           "j": j, "asm": asm, "diag": diag}
+"""
+
+#: The same mechanism as a *dynamics* run (ADR-062). No motion formula: the
+#: arm has mass, the hinge axis is horizontal, and gravity does the rest.
+#: The connector offsets rotate both JCS 90 degrees about X so the joint's
+#: +Z -- FreeCAD's axis convention -- is horizontal; a vertical hinge under
+#: vertical gravity produces no torque and would sit there looking solved.
+DYNAMICS_SCRIPT = """
+plate = part.box(60, 60, 6)
+arm = part.box(80, 8, 8)
+base = assembly.component(plate, grounded=True)
+swing = assembly.component(arm, placement=[0, 0, 40])
+j = assembly.joint("revolute",
+                   assembly.connector(base, "origin",
+                                      offset={"position": [12, 0, 6],
+                                              "axis": [1, 0, 0],
+                                              "angle_degrees": 90}),
+                   assembly.connector(swing, "origin",
+                                      offset={"position": [0, 0, 0],
+                                              "axis": [1, 0, 0],
+                                              "angle_degrees": 90}))
+asm = assembly.assembly([base, swing], [j])
+diag = assembly.solve(asm)
+b1 = assembly.body(base, density_kg_m3=2700)
+b2 = assembly.body(swing, density_kg_m3=7850)
+sim = assembly.dynamics(asm, [b1, b2], end_time_s=1.0, frames_per_second=30)
+result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
+          "j": j, "asm": asm, "diag": diag, "sim": sim}
 """
 
 TETRA_STL = """solid tetra
@@ -672,6 +701,143 @@ def test_cadexd_publishes_a_simulation() -> None:
         assert len({_pose(frame, "base") for frame in frames}) == 1, (
             "the grounded component moved"
         )
+
+        done = client.request("shutdown", timeout=60)
+        assert done["ok"] is True
+    finally:
+        _stop(client)
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@pytest.mark.skipif(
+    FREECADCMD is None, reason="No FreeCADCmd binary available for cadexd CI."
+)
+def test_cadexd_publishes_a_dynamics_run() -> None:
+    """A mechanism with mass falls, through the whole pipeline (ADR-062).
+
+    The end-to-end claim of slice M2: an ``assembly.dynamics`` script runs
+    OndselSolver for the placements, MuJoCo for the motion, and publishes
+    through the path ``assembly.simulation`` already used -- one artifact
+    kind, one output type, no protocol change and no change in the shell.
+
+    It is also the only place the translator meets a *real* Ondsel solve.
+    The unit fixtures are composed forwards from known joint coordinates, so
+    they prove the inverse against MuJoCo's kinematics but share a
+    convention with the builder. Here the connector frames and the solved
+    placements both come from FreeCAD, and the first solved frame has to
+    reproduce those placements to the micrometre -- which is pose parity,
+    on data neither half of the translator chose.
+    """
+
+    root = Path(tempfile.mkdtemp(prefix="cadexd-dynamics-ci-"))
+    client = None
+    try:
+        client = _spawn_cadexd()
+        opened = client.request("open_project", {"project_root": str(root)})
+        assert opened["ok"] is True, opened
+
+        written = client.request(
+            "write_script", {"source": DYNAMICS_SCRIPT, "expected_revision": ""}
+        )
+        assert written["ok"] is True, written
+
+        entry = written["display"]["sim"]
+        assert entry["artifact_kind"] == "assembly_simulation_json", entry
+        trace = json.loads(Path(entry["artifact_path"]).read_text(encoding="utf-8"))
+        assert trace["schema"] == "cadex-assembly-simulation-trace-v1"
+        # The same schema the kinematics solver writes, with no motions.
+        assert trace["motion_outputs"] == []
+
+        frames = trace["frames"]
+        # 0..1 s at 30 fps is 31 samples, plus the untimed input frame.
+        assert len(frames) == 32, len(frames)
+        assert frames[0]["frame_kind"] == "input"
+        assert frames[0]["nominal_time_s"] is None
+        # There is a solved frame AT start_time, before any stepping. Getting
+        # this wrong puts the entire run one frame late and nothing errors.
+        assert frames[1]["nominal_time_s"] == 0.0
+        assert frames[-1]["nominal_time_s"] == pytest.approx(1.0)
+
+        # Every component in every frame. cadex_animate skips a missing one
+        # and Blender interpolates the gap, so a part that stops moving looks
+        # like a physics result.
+        for frame in frames:
+            assert set(frame["component_placements"]) == {"base", "swing"}, frame
+
+        # Pose parity against the real solve: FreeCAD placed the components,
+        # MuJoCo reproduced them.
+        for name in ("base", "swing"):
+            solved = written["display"][name]["placement"]
+            first = frames[1]["component_placements"][name]
+            assert first["position_mm"] == pytest.approx(
+                [solved[3], solved[7], solved[11]], abs=1.0e-6
+            ), name
+        assert frames[0]["component_placements"] == frames[1]["component_placements"]
+
+        # It swung. Under gravity, with mass, and nothing prescribing it.
+        # The arm's origin sits *on* the hinge axis, so its position never
+        # moves however far it falls -- the rotation is the observable, and
+        # a test written on the height would have passed on a model that did
+        # nothing at all.
+        turns = [
+            2.0
+            * math.acos(
+                min(
+                    1.0,
+                    abs(
+                        sum(
+                            first * second
+                            for first, second in zip(
+                                frames[1]["component_placements"]["swing"][
+                                    "rotation_xyzw"
+                                ],
+                                frame["component_placements"]["swing"][
+                                    "rotation_xyzw"
+                                ],
+                                strict=True,
+                            )
+                        )
+                    ),
+                )
+            )
+            for frame in frames[1:]
+        ]
+        assert max(turns) > 0.5, turns
+        # ...and it *accelerated* from rest rather than being placed along a
+        # path: three samples in, the angle has grown as t², which is what
+        # a constant torque on a mass does and what no prescribed motion in
+        # this script could have produced. Measured 0.095, 0.393, 0.882 rad.
+        assert turns[1] > 0.0
+        assert turns[2] / turns[1] == pytest.approx(4.0, abs=0.5), turns[:4]
+        assert turns[3] / turns[1] == pytest.approx(9.0, abs=1.0), turns[:4]
+        # Nothing is aliased: no sample turns more than half a circle from
+        # the last, which is the limit above which no de-flipping recovers
+        # the orientation.
+        steps = [
+            abs(later - earlier)
+            for earlier, later in zip(turns, turns[1:], strict=False)
+        ]
+        assert max(steps) < math.pi, max(steps)
+        assert len({tuple(
+            frame["component_placements"]["base"]["position_mm"]
+        ) for frame in frames}) == 1, "the grounded component moved"
+
+        # The evidence the model can act on: exact masses, the tree, and
+        # what any closure gave up.
+        dynamics = trace["dynamics"]
+        assert dynamics["solver"] == "mujoco"
+        assert dynamics["closures"] == []
+        assert [body["component_output"] for body in dynamics["bodies"]] == [
+            "base",
+            "swing",
+        ]
+        masses = {
+            item["component_output"]: item["mass_kg"]
+            for item in dynamics["inertials"]
+        }
+        # 60x60x6 mm of aluminium and 80x8x8 mm of steel, exactly.
+        assert masses["base"] == pytest.approx(2700.0 * 0.06 * 0.06 * 0.006, rel=1e-9)
+        assert masses["swing"] == pytest.approx(7850.0 * 0.08 * 0.008 * 0.008, rel=1e-9)
 
         done = client.request("shutdown", timeout=60)
         assert done["ok"] is True

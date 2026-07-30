@@ -1742,6 +1742,68 @@ def _graph_contract(
     )
 
 
+def _dynamics_contract(
+    simulation_output: str,
+    simulation_value: DomainValue,
+    *,
+    assembly_value: DomainValue,
+) -> None:
+    """One api.body per component, and every body on this assembly.
+
+    A component with no density has no mass, and a massless part in a
+    dynamics model is not a lighter part -- it is a body whose acceleration
+    is undefined, which MuJoCo turns into a mechanism that explodes on the
+    first step. The API refuses it and so does this: the worker validates
+    the graph it is handed rather than the graph it hopes was authored.
+    """
+
+    properties = _properties(simulation_value, "dynamics")
+    bodies = list(properties.get("bodies") or [])
+    components = list(_properties(assembly_value, "assembly").get("components") or [])
+    component_ids = {id(value) for value in components}
+    covered: list[int] = []
+    for index, body in enumerate(bodies):
+        if (
+            not isinstance(body, DomainValue)
+            or body.domain != "assembly"
+            or body.operation != "body"
+            or body.output_type != "body"
+            or len(body.arguments) != 1
+        ):
+            raise AssemblyCandidateError(
+                f"Dynamics body {index} must come from api.body.",
+                details={"stage": "dynamics_graph"},
+            )
+        component = body.arguments[0]
+        if id(component) not in component_ids:
+            raise AssemblyCandidateError(
+                f"Dynamics output {simulation_output!r} gives mass to a component "
+                "that is not listed in this assembly.",
+                details={"stage": "dynamics_graph", "body_index": index},
+            )
+        if id(component) in covered:
+            raise AssemblyCandidateError(
+                f"Dynamics output {simulation_output!r} gives one component two "
+                "densities.",
+                details={"stage": "dynamics_graph", "body_index": index},
+            )
+        covered.append(id(component))
+    if len(covered) != len(components):
+        raise AssemblyCandidateError(
+            f"Dynamics output {simulation_output!r} needs one api.body per "
+            f"component: {len(components)} component(s), {len(covered)} body value(s).",
+            details={
+                "stage": "dynamics_graph",
+                "simulation_output": simulation_output,
+                "correction": (
+                    "Create an api.body(component, density_kg_m3=...) for every "
+                    "component in the assembly and pass them all to "
+                    "api.dynamics. Steel is 7850, aluminium 2700."
+                ),
+            },
+        )
+
+
 def _simulation_contract(
     raw_result: Mapping[str, Any],
     *,
@@ -1770,15 +1832,47 @@ def _simulation_contract(
             },
         )
     simulation_output, simulation_value = simulations[0]
-    if simulation_value.operation != "simulation" or len(simulation_value.arguments) != 1:
+    # Kinematics and dynamics produce the same output type on purpose. A
+    # sibling type would let one script declare both and silently lose an
+    # animation: cadex_animate._simulation_entries finds two
+    # assembly_simulation_json artifacts, bakes NEITHER, clears the scene and
+    # reports into a message the UI never shows. Sharing the type puts both
+    # under the "exactly one" rule below (ADR-062).
+    if (
+        simulation_value.operation not in {"simulation", "dynamics"}
+        or len(simulation_value.arguments) != 1
+    ):
         raise AssemblyCandidateError(
-            f"Simulation output {simulation_output!r} must come from api.simulation."
+            f"Simulation output {simulation_output!r} must come from api.simulation "
+            "or api.dynamics."
         )
     if simulation_value.arguments[0] is not assembly_value:
         raise AssemblyCandidateError(
             f"Simulation output {simulation_output!r} must consume the exact returned "
             "api.assembly value."
         )
+    if simulation_value.operation == "dynamics":
+        if motion_outputs:
+            raise AssemblyCandidateError(
+                f"Dynamics output {simulation_output!r} cannot be combined with "
+                "api.motion outputs.",
+                details={
+                    "stage": "simulation_graph",
+                    "simulation_output": simulation_output,
+                    "motion_outputs": list(motion_outputs.values()),
+                    "correction": (
+                        "api.motion prescribes movement for the kinematics solver; "
+                        "a dynamics run computes movement from mass and gravity. "
+                        "Keep one or the other in a script, not both."
+                    ),
+                },
+            )
+        _dynamics_contract(
+            simulation_output,
+            simulation_value,
+            assembly_value=assembly_value,
+        )
+        return simulation_output, simulation_value, {}
     properties = _properties(simulation_value, "simulation")
     motions = list(properties.get("motions") or [])
     if not motions:
@@ -2538,6 +2632,174 @@ def _execute_native_simulation(
         },
         artifact_root=artifact_root,
         outputs_by_name=outputs_by_name,
+    )
+
+
+def _execute_dynamics_simulation(
+    *,
+    assembly_output: str,
+    simulation_output: str,
+    simulation_value: DomainValue,
+    component_outputs: Mapping[int, str],
+    components: Mapping[str, Any],
+    component_data: Mapping[str, Mapping[str, Any]],
+    component_placements: Mapping[str, Mapping[str, Any]],
+    joint_data: Mapping[str, Mapping[str, Any]],
+    artifact_root: Path,
+    outputs_by_name: Mapping[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Run the assembly as rigid-body dynamics on MuJoCo (ADR-062).
+
+    The worker's whole share of the work is *reading*: densities off the
+    graph, mass properties off the solids, solved placements and
+    component-local connector frames off the objects FreeCAD just solved.
+    Everything numeric -- the tree, the unit conversions, the model, the
+    stepping loop -- happens in :mod:`CadexDynamics`, which imports no
+    FreeCAD and can be tested without one.
+
+    The frames it hands over are ``local_frame`` composed with the solved
+    placement, never ``global_frame``: ``setJointConnectors`` records the
+    latter during the joint loop, before ``assembly.solve`` has run, so it
+    is a snapshot of a partially-solved state that depends on the order the
+    joints appear in the script. A model built from it compiles, runs, and
+    drifts (hazard 1).
+    """
+
+    import CadexDynamics
+
+    properties = _properties(simulation_value, "dynamics")
+    densities: dict[str, float] = {}
+    for body in list(properties.get("bodies") or []):
+        name = component_outputs[id(body.arguments[0])]
+        densities[name] = float(
+            _properties(body, "body").get("density_kg_m3")
+        )
+
+    dynamics_components: list[dict[str, Any]] = []
+    for name, component in components.items():
+        shape = _component_local_shape(
+            component, context=f"dynamics body {name!r}"
+        )
+        readings = _solid_inertia_readings(shape, context=f"dynamics body {name!r}")
+        try:
+            inertial = CadexDynamics.body_inertial(
+                readings, densities[name], context=f"dynamics body {name!r}"
+            )
+        except CadexDynamics.DynamicsError as error:
+            raise _dynamics_failure(simulation_output, error) from error
+        dynamics_components.append(
+            {
+                "name": name,
+                "grounded": bool(component_data[name]["grounded"]),
+                "flexible": bool(component_data[name]["flexible"]),
+                "solved_matrix": list(component_placements[name]["matrix"]),
+                "inertial": inertial,
+            }
+        )
+
+    dynamics_joints = [
+        {
+            "name": joint_output,
+            "kind": str(data["kind"]),
+            "suppressed": bool(data["suppressed"]),
+            "parameters": dict(data["parameters"] or {}),
+            "length_limits_mm": data["length_limits_mm"],
+            "angle_limits_degrees": data["angle_limits_degrees"],
+            "connectors": [
+                {
+                    "component": str(connector["component_output"]),
+                    "local_matrix": list(connector["local_frame"]["matrix"]),
+                }
+                for connector in list(data["connectors"])
+            ],
+        }
+        for joint_output, data in joint_data.items()
+    ]
+
+    start_time = float(properties["start_time_s"])
+    end_time = float(properties["end_time_s"])
+    frames_per_second = int(properties["frames_per_second"])
+    try:
+        run = CadexDynamics.simulate(
+            dynamics_components,
+            dynamics_joints,
+            start_time_s=start_time,
+            end_time_s=end_time,
+            frames_per_second=frames_per_second,
+        )
+    except CadexDynamics.DynamicsError as error:
+        raise _dynamics_failure(simulation_output, error) from error
+
+    frames = list(run["frames"])
+    estimated_limit = int(properties["estimated_frame_limit"])
+    pose_count = len(frames) * len(components)
+    if len(frames) < 2 or len(frames) > estimated_limit or pose_count > 100_000:
+        raise AssemblyCandidateError(
+            f"Dynamics output {simulation_output!r} produced {len(frames)} frames "
+            f"({pose_count} component poses), outside the declared schedule.",
+            details={
+                "stage": "simulation_trace",
+                "simulation_output": simulation_output,
+                "frame_count": len(frames),
+                "estimated_frame_limit": estimated_limit,
+                "correction": "Lower frames_per_second or shorten the time range.",
+            },
+        )
+    evidence = dict(run["evidence"])
+    evidence.update(
+        {
+            "solver": "mujoco",
+            "solver_step_s": float(run["solver_step_s"]),
+            "steps_per_sample": int(run["steps_per_sample"]),
+            "worst_closure_residual_mm": float(run["worst_closure_residual_mm"]),
+        }
+    )
+    return _retain_simulation_trace(
+        assembly_output=assembly_output,
+        simulation_output=simulation_output,
+        component_names=list(components),
+        frames=frames,
+        parameters={
+            "start_time_s": start_time,
+            "end_time_s": end_time,
+            # The publisher's cTimeStepOutput is the *trace* step, which for
+            # a dynamics run is the sample interval; the solver's own step is
+            # in the evidence, where a reader can tell the two apart.
+            "time_step_s": float(run["sample_interval_s"]),
+            "error_tolerance": float(run["solver_tolerance"]),
+            "frames_per_second": frames_per_second,
+        },
+        trace_extra={
+            # An empty list, and it has to be present: the publisher reads
+            # motion_outputs from every simulation, and the shell's bake
+            # reads the same trace for both solvers.
+            "motion_outputs": [],
+            "dynamics": evidence,
+        },
+        summary_extra={
+            "motion_outputs": [],
+            "native_code": 0,
+            "dynamics": evidence,
+        },
+        artifact_root=artifact_root,
+        outputs_by_name=outputs_by_name,
+    )
+
+
+def _dynamics_failure(
+    simulation_output: str, error: Any
+) -> AssemblyCandidateError:
+    """One DynamicsError, as a candidate failure the model can act on."""
+
+    return AssemblyCandidateError(
+        f"Dynamics output {simulation_output!r} could not be built: {error}",
+        details={
+            "stage": "dynamics_model",
+            "simulation_output": simulation_output,
+            "reason": str(getattr(error, "reason", "")),
+            "correction": str(getattr(error, "correction", "")),
+            **_json_safe(dict(getattr(error, "observed", {}) or {})),
+        },
     )
 
 
@@ -3664,20 +3926,34 @@ def validate_and_solve_assembly(
                     "simulation_output": simulation_output,
                 },
             )
-        simulation_summary = _execute_native_simulation(
-            document=document,
-            assembly=assembly,
-            assembly_output=assembly_output,
-            simulation_output=simulation_output,
-            simulation_value=simulation_value,
-            motion_outputs=motion_outputs,
-            joint_outputs=joint_outputs,
-            joint_objects=joint_objects,
-            joint_data=joint_data,
-            components=components,
-            artifact_root=artifact_root,
-            outputs_by_name=by_name,
-        )
+        if simulation_value.operation == "dynamics":
+            simulation_summary = _execute_dynamics_simulation(
+                assembly_output=assembly_output,
+                simulation_output=simulation_output,
+                simulation_value=simulation_value,
+                component_outputs=component_outputs,
+                components=components,
+                component_data=component_data,
+                component_placements=component_placements,
+                joint_data=joint_data,
+                artifact_root=artifact_root,
+                outputs_by_name=by_name,
+            )
+        else:
+            simulation_summary = _execute_native_simulation(
+                document=document,
+                assembly=assembly,
+                assembly_output=assembly_output,
+                simulation_output=simulation_output,
+                simulation_value=simulation_value,
+                motion_outputs=motion_outputs,
+                joint_outputs=joint_outputs,
+                joint_objects=joint_objects,
+                joint_data=joint_data,
+                components=components,
+                artifact_root=artifact_root,
+                outputs_by_name=by_name,
+            )
         diagnostics["simulation"] = simulation_summary
     exploded_view_summaries: list[dict[str, Any]] = []
     for exploded_view_output, exploded_view_value in exploded_view_contract:

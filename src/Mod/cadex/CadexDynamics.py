@@ -1633,6 +1633,214 @@ def _closure_violation(mujoco: Any, model: Any, qpos: Sequence[float]) -> float:
     return worst
 
 
+def simulate(
+    components: Sequence[Mapping[str, Any]],
+    joints: Sequence[Mapping[str, Any]],
+    *,
+    start_time_s: float,
+    end_time_s: float,
+    frames_per_second: int,
+    time_step_s: float = DEFAULT_TIME_STEP_S,
+    gravity_m_s2: Sequence[float] = DEFAULT_GRAVITY_M_S2,
+) -> dict[str, Any]:
+    """Run the model and return trace frames in the schema the shell plays.
+
+    Three details of that schema are contract rather than choice, and all
+    three were found by running M1's prototype against ``cadex_animate``
+    rather than by reading it:
+
+    * **There is a solved frame at ``start_time``, and it is not the input
+      frame.** The first sample is taken *before* any stepping, and the
+      untimed ``input`` frame sits in front of it. Stepping first puts the
+      whole run one frame late and nothing errors.
+    * **Positions are millimetres and rotations are xyzw.** MuJoCo
+      integrates in metres and reports ``wxyz``.
+    * **The sample rate is part of the contract.** A link turning more than
+      half a circle between samples is aliased, and no amount of
+      de-flipping recovers it.
+
+    The solver steps far finer than the trace samples: the step is chosen so
+    a whole number of them lands exactly on each sample time, because a
+    sample interpolated between steps would make the trace depend on
+    floating-point accumulation.
+    """
+
+    mujoco = _mujoco_module()
+    sample_interval = 1.0 / float(frames_per_second)
+    steps_per_sample = max(1, int(round(sample_interval / float(time_step_s))))
+    solver_step = sample_interval / steps_per_sample
+    built = build_model(
+        components,
+        joints,
+        gravity_m_s2=gravity_m_s2,
+        time_step_s=solver_step,
+    )
+    model = built["model"]
+    names = [str(component["name"]) for component in components]
+    body_ids = {
+        name: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
+        for name in names
+    }
+
+    data = mujoco.MjData(model)
+    data.qpos[:] = built["qpos_solved"]
+    mujoco.mj_forward(model, data)
+
+    def _placements() -> dict[str, dict[str, list[float]]]:
+        poses = {
+            name: {
+                "position_mm": vector_mm(data.xpos[body_ids[name]]),
+                "rotation_xyzw": quaternion_xyzw_from_wxyz(
+                    quaternion_normalised(data.xquat[body_ids[name]])
+                ),
+            }
+            for name in names
+        }
+        # Hazard 5: a component missing from one frame is not an error the
+        # shell reports -- cadex_animate skips it and Blender interpolates
+        # the gap, so a part that stops moving looks like a physics result.
+        if set(poses) != set(names):
+            raise DynamicsError(
+                "A trace frame is missing a component pose.",
+                reason="incomplete_frame",
+                observed={"expected": names, "observed": sorted(poses)},
+            )
+        return poses
+
+    frames: list[dict[str, Any]] = [
+        {
+            "frame_index": 0,
+            "frame_kind": "input",
+            "nominal_time_s": None,
+            "component_placements": _placements(),
+        }
+    ]
+    sample_count = int(
+        math.floor((float(end_time_s) - float(start_time_s)) * frames_per_second + 1e-9)
+    )
+    worst_closure = _closure_violation(mujoco, model, built["qpos_solved"])
+    for sample in range(sample_count + 1):
+        if sample:
+            for _step in range(steps_per_sample):
+                mujoco.mj_step(model, data)
+            worst_closure = max(worst_closure, _active_equality_residual(mujoco, data))
+        frames.append(
+            {
+                "frame_index": len(frames),
+                "frame_kind": "solver_output",
+                "nominal_time_s": min(
+                    float(end_time_s),
+                    float(start_time_s) + sample * sample_interval,
+                ),
+                "component_placements": _placements(),
+            }
+        )
+        if not all(math.isfinite(float(value)) for value in data.qpos):
+            raise DynamicsError(
+                f"The dynamics solver diverged at "
+                f"{frames[-1]['nominal_time_s']:.6g} s.",
+                reason="solver_diverged",
+                correction=(
+                    "A model that blows up usually has a body with almost no "
+                    "inertia, a joint limit fighting a closure, or a mechanism "
+                    "that is over-constrained. Check the reported masses."
+                ),
+                observed={"time_s": frames[-1]["nominal_time_s"]},
+            )
+    return {
+        "frames": frames,
+        "sample_interval_s": sample_interval,
+        "solver_step_s": solver_step,
+        "steps_per_sample": steps_per_sample,
+        "solver_tolerance": float(model.opt.tolerance),
+        "worst_closure_residual_mm": length_mm(worst_closure),
+        "model": model,
+        "built": built,
+        "evidence": model_evidence(built, components),
+    }
+
+
+def _active_equality_residual(mujoco: Any, data: Any) -> float:
+    return max(
+        (
+            abs(float(data.efc_pos[row]))
+            for row in range(int(data.nefc))
+            if int(data.efc_type[row]) == int(mujoco.mjtConstraint.mjCNSTR_EQUALITY)
+        ),
+        default=0.0,
+    )
+
+
+def model_evidence(
+    built: Mapping[str, Any], components: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """What the translator decided, in the record the model can inspect.
+
+    A ``connect`` closing a revolute constrains position and lets axis
+    alignment go -- exact for a planar loop, one constraint short for a
+    spatial one. That is recorded here rather than hidden, along with the
+    mass and inertia of every body, because "the arm feels heavy" is a
+    complaint nobody can act on without these numbers.
+    """
+
+    tree = built["tree"]
+    return {
+        "bodies": [
+            {
+                "component_output": str(body["name"]),
+                "parent": body["parent"],
+                "attachment": body["attachment"],
+                "depth": body["depth"],
+                "joint_output": body["joint"],
+                "joint_kind": body["joint_kind"],
+                "mujoco_joints": list(body["mujoco_joints"]),
+            }
+            for body in tree["bodies"]
+        ],
+        "inertials": [
+            {
+                "component_output": str(component["name"]),
+                "density_kg_m3": float(component["inertial"]["density_kg_m3"]),
+                "mass_kg": float(component["inertial"]["mass_kg"]),
+                "center_of_mass_mm": list(
+                    component["inertial"]["center_of_mass_mm"]
+                ),
+                "principal_inertia_kg_m2": list(
+                    component["inertial"]["principal_inertia_kg_m2"]
+                ),
+                "solid_count": int(component["inertial"]["solid_count"]),
+            }
+            for component in components
+        ],
+        "closures": [
+            {
+                "joint_output": str(closure["joint"]),
+                "joint_kind": str(closure["kind"]),
+                "closure_kind": str(closure["closure_kind"]),
+                "constrained_dof": int(closure["constrained_dof"]),
+                "note": str(closure["note"]),
+                "component_outputs": list(closure["components"]),
+            }
+            for closure in tree["closures"]
+        ],
+        "static_joints": list(tree["static_joints"]),
+        "tree_joint_count": int(tree["tree_joint_count"]),
+        "maximum_depth": int(tree["maximum_depth"]),
+        "grounded_components": list(tree["grounded"]),
+        "gravity_m_s2": list(built["gravity_m_s2"]),
+        "joints": [
+            {
+                "joint_output": record["joint"],
+                "joint_kind": record["kind"],
+                "mujoco_joint": record["mujoco_joint"],
+                "mujoco_type": record["mujoco_type"],
+                "limits": record["limits"],
+            }
+            for record in built["joint_records"]
+        ],
+    }
+
+
 def _verify_compiled_inertia(
     mujoco: Any,
     model: Any,
