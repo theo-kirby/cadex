@@ -64,6 +64,63 @@ result = {"plate": plate, "pin": pin, "ground": ground, "faller": faller,
 """
 
 
+#: A driven mechanism, which the M3 gate never exercised. Actuators add a
+#: per-step floating-point path -- a formula of ``time`` evaluated before
+#: every ``mj_step`` -- and a control signal is exactly the kind of thing
+#: that would depend on an accumulated clock without anybody noticing. The
+#: setpoint is a function of ``time`` on purpose: a constant would evaluate
+#: to the same number however the instant was computed, and would prove
+#: nothing about the way it is computed.
+ACTUATED_SCRIPT = """
+column = part.box(80, 80, 400)
+upper = part.box(300, 40, 20)
+fore = part.box(220, 30, 15)
+post = assembly.component(column, grounded=True)
+arm = assembly.component(upper, placement=[80, 20, 380])
+hand = assembly.component(fore, placement=[380, 25, 382.5])
+shoulder = assembly.joint("revolute",
+                          assembly.connector(post, "origin",
+                                             offset={"position": [80, 40, 390],
+                                                     "axis": [1, 0, 0],
+                                                     "angle_degrees": -90}),
+                          assembly.connector(arm, "origin",
+                                             offset={"position": [0, 20, 10],
+                                                     "axis": [1, 0, 0],
+                                                     "angle_degrees": -90}))
+elbow = assembly.joint("revolute",
+                       assembly.connector(arm, "origin",
+                                          offset={"position": [300, 20, 10],
+                                                  "axis": [1, 0, 0],
+                                                  "angle_degrees": -90}),
+                       assembly.connector(hand, "origin",
+                                          offset={"position": [0, 15, 7.5],
+                                                  "axis": [1, 0, 0],
+                                                  "angle_degrees": -90}))
+asm = assembly.assembly([post, arm, hand], [shoulder, elbow])
+diag = assembly.solve(asm)
+sim = assembly.dynamics(asm, [
+    assembly.body(post, density_kg_m3=7850),
+    assembly.body(arm, density_kg_m3=2700),
+    assembly.body(hand, density_kg_m3=2700),
+], actuators=[
+    assembly.actuator(shoulder, kind="position",
+                      control_deg="25*sin(2*pi*time) + 10",
+                      stiffness_nmm_per_deg=4000, damping_nmms_per_deg=200,
+                      torque_limit_nmm=400000),
+    assembly.actuator(elbow, kind="velocity", control_deg_per_s="20*cos(time)",
+                      damping_nmms_per_deg=300),
+], joint_dynamics=[
+    assembly.joint_dynamics(shoulder, damping_nmms_per_deg=40,
+                            armature_kgmm2=2000, friction_loss_nmm=50),
+    assembly.joint_dynamics(elbow, damping_nmms_per_deg=15,
+                            armature_kgmm2=500),
+], end_time_s=2.0, frames_per_second=60, solver_step_s=0.0005)
+result = {"column": column, "upper": upper, "fore": fore, "post": post,
+          "arm": arm, "hand": hand, "shoulder": shoulder, "elbow": elbow,
+          "asm": asm, "diag": diag, "sim": sim}
+"""
+
+
 def _retained_trace(source: str) -> tuple[bytes, dict]:
     """One script, one cadexd, one project root, and the bytes it wrote."""
 
@@ -138,6 +195,58 @@ def test_the_run_being_compared_is_one_where_contact_did_the_work() -> None:
     assert mesh["restitution"] == 0.4
     assert evidence["solver_integrator"] == "implicitfast"
     assert evidence["solver_disableflags"] != 0
+
+
+def test_an_actuated_mechanism_writes_the_same_trace_across_restarts() -> None:
+    """M4's half of the gate, and the reason it is re-run rather than assumed.
+
+    Actuators add a per-step floating-point path the M3 gate never touched:
+    a formula of ``time`` compiled once and evaluated before every
+    ``mj_step``, 4 000 times over this run. The instant it is evaluated at
+    is computed as ``start + index · step`` from an integer index
+    specifically so that it cannot drift -- and this is what would catch a
+    version of that which read the solver's own accumulated clock instead.
+    Two engines, two project roots, nothing shared but the script text.
+    """
+
+    first_bytes, _first = _retained_trace(ACTUATED_SCRIPT)
+    second_bytes, _second = _retained_trace(ACTUATED_SCRIPT)
+    assert first_bytes == second_bytes
+    assert (
+        hashlib.sha256(first_bytes).hexdigest()
+        == hashlib.sha256(second_bytes).hexdigest()
+    )
+
+
+def test_the_gate_ran_on_a_mechanism_the_motors_were_actually_driving() -> None:
+    """A gate on a trace where the actuators did nothing would mean nothing.
+
+    So the same run is checked for what it is supposed to contain: two
+    motors of different kinds, a setpoint that varies, effort that was
+    really produced, and an arm that moved because of it.
+    """
+
+    raw, _entry = _retained_trace(ACTUATED_SCRIPT)
+    trace = json.loads(raw.decode("utf-8"))
+    actuators = {
+        record["joint_output"]: record
+        for record in trace["dynamics"]["actuators"]
+    }
+    assert actuators["shoulder"]["kind"] == "position"
+    assert actuators["elbow"]["kind"] == "velocity"
+    assert actuators["shoulder"]["control"] == "25*sin(2*pi*time) + 10"
+    assert actuators["shoulder"]["peak_effort_si"] > 1.0
+    assert actuators["elbow"]["peak_effort_si"] > 0.0
+    heights = [
+        frame["component_placements"]["hand"]["position_mm"][2]
+        for frame in trace["frames"][1:]
+    ]
+    assert max(heights) - min(heights) > 100.0, "the arm has to have swept"
+    friction = {
+        record["joint_output"]: record
+        for record in trace["dynamics"]["joint_dynamics"]
+    }
+    assert friction["shoulder"]["friction_loss_si"] == pytest.approx(0.05)
 
 
 def test_the_trace_says_which_mujoco_wrote_it() -> None:
