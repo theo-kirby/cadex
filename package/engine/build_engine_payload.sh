@@ -82,6 +82,21 @@ mkdir -p "${payload}/bin"
 for tool in freecadcmd FreeCADCmd CadexGeometryWorker python; do
     if [ -e "${payload}/bin_all/${tool}" ]; then
         cp -a "${payload}/bin_all/${tool}" "${payload}/bin/"
+        # A conda `bin/python` is a symlink to `bin/pythonX.Y`, and the
+        # interpreter itself is not in the keep list -- so copying the link
+        # alone leaves it dangling the moment bin_all is removed. The payload
+        # shipped a broken bin/python this way until ADR-061's import gate ran
+        # and could not find an interpreter to run. Carry one level of
+        # same-directory target; anything else is not ours to resolve.
+        if [ -L "${payload}/bin_all/${tool}" ]; then
+            link_target="$(readlink "${payload}/bin_all/${tool}")"
+            case "${link_target}" in
+                */*) ;;
+                *)  if [ -e "${payload}/bin_all/${link_target}" ]; then
+                        cp -a "${payload}/bin_all/${link_target}" "${payload}/bin/"
+                    fi ;;
+            esac
+        fi
     fi
 done
 rm -rf "${payload}/bin_all"

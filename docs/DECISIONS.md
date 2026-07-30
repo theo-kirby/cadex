@@ -4390,3 +4390,28 @@ the stage-only path, which carries mujoco for an unrelated reason (it copies
   empty and `mujoco-python` should move to `recipe.yaml`'s `run:` list. The
   constant exists to be deleted; it is named so that the deletion is easy to
   find.
+
+**Addendum (2026-07-30) — the gate found a dangling `bin/python`.** On its
+first run the import gate failed, and not on mujoco: the payload's
+`bin/python` was a broken symlink. A conda `bin/python` points at
+`bin/pythonX.Y`; the prune's keep list names `python` but not the versioned
+interpreter behind it, so `cp -a` carried the link and the next line deleted
+its target. The payload has shipped it broken for as long as the prune has
+existed, and nothing noticed because nothing ran it — discovery goes through
+`cadex-engine.json`, which names `freecadcmd`, and `INTEGRATION.md`'s payload
+listing shows `bin/{freecadcmd,CadexGeometryWorker,python}` as though all
+three worked. `build_engine_payload.sh` now carries one level of
+same-directory symlink target alongside the link.
+
+Worth stating plainly because it is the argument for the gate's shape: a file
+check would have passed. `test -e bin/python` is true for a dangling symlink,
+and `test -f` on the *directory listing* looks right too. Only running the
+interpreter found it. Same for the thing the gate was actually built for — a
+present `site-packages/mujoco` proves nothing about a bundled dylib whose
+rpath was just rewritten.
+
+Verified after the fix: `pixi run stage-engine` produces a 2.4 GB payload
+whose own `bin/python` imports mujoco 3.10.0 from its own site-packages,
+integrates the reference free fall to the same six decimals, and loads no GL
+module. Packaged lifecycle gate (`CADEX_ENGINE_ROOT=<payload> pytest
+test_cadexd_lifecycle.py`): 6 passed.

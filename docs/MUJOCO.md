@@ -203,13 +203,19 @@ to fix: repairing it means re-pinning the environment that builds geometry,
 which moves accepted digests. `CARRIED_PYPI_PACKAGES` is named so that the
 day it is repaired, the exception is easy to find and delete.
 
-**Done when:** `pixi run stage-engine` produces a payload whose own
-`bin/python` imports mujoco at the pinned version — asserted by the payload
-build itself, because a source tree that passes proves nothing about a
-payload (ADR-023). *Not yet run end to end: staging copies a 4.2 GB
-environment and this machine has 4.5 GB free. The carrying logic, the rpath
-survival and the import are each verified in isolation; the full stage is
-outstanding.*
+**Done — 2026-07-30.** `pixi run stage-engine` produces a 2.4 GB payload
+whose own `bin/python` imports mujoco 3.10.0 from its own site-packages and
+integrates the reference free fall identically, with no GL module loaded.
+Packaged lifecycle gate: 6 passed.
+
+The import gate earned its keep on its first run by failing — not on mujoco,
+but on `bin/python`, which was a **dangling symlink**. A conda `bin/python`
+points at `bin/pythonX.Y`, the interpreter was not in the prune's keep list,
+and the payload had been shipping a broken link for as long as the prune has
+existed. Nothing noticed because nothing ran it: discovery goes through
+`cadex-engine.json`, which names `freecadcmd`. Fixed by carrying one level of
+same-directory symlink target. This is the ADR-023 rule paying out exactly as
+written — a source tree that passes proves nothing about a payload.
 
 ---
 
