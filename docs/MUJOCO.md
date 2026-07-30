@@ -1,7 +1,8 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
 Verified against source: 2026-07-30
-Status: **plan, not built.** Nothing in this document exists yet. Branch `MJC`.
+Status: **M0 recorded (ADR-060), M1 passed.** M2 onward is plan, not built.
+Branch `MJC`.
 
 This is the framework for adding **rigid-body dynamics** to Cadex on
 MuJoCo, and then following that capability all the way to its end: an agent
@@ -194,19 +195,48 @@ renderer.
 
 ---
 
-### M1 — Prove the seam in a day
+### M1 — Prove the seam in a day `(PASSED 2026-07-30)`
 
-Deliberately throwaway. Hand-write an MJCF for one existing test assembly,
-step it in a scratch script, emit a `cadex-assembly-simulation-trace-v1` by
-hand, and feed it through `cadex_animate` in the gate.
+Deliberately throwaway. Build a mechanism in MuJoCo, step it, emit a
+`cadex-assembly-simulation-trace-v1`, and feed it to `cadex_animate`.
 
-If the shell plays it with **zero** shell edits, the central claim of this
-document is proven and everything after is ordinary work. If it does not,
-we have spent a day rather than a phase, and the plan changes shape before
-it costs anything.
+A **double pendulum**, not a falling box: its links pass through full
+rotations, so the trace exercises the quaternion-hemisphere flip that
+`cadex_animate` documents as one of its five silent failure modes. A seam
+proven on a box proves much less.
 
-**Done when:** a MuJoCo-produced trace animates in `Cadex.app` and the
-`shell/` diff is empty.
+**Result: passed, with an empty `shell/` diff.** Both halves — the pure one
+without bpy, and `apply()` inside the built `Cadex.app` — accepted a
+MuJoCo-produced trace unmodified. 2 components, 121 frames, 1694 keyframes
+baked; the played pose matches the trace to **8e-6 mm** and **3.8e-8** on
+orientation; the Simulation panel's scene flag appears. `pixi run gate`
+stays `ok: true` (picking 372/372, slider median 0.489 s).
+
+The central claim of this document holds: the shell already knows how to
+play a MuJoCo simulation, and does not know that it does.
+
+**Four contract details M2 must honour**, all found here rather than
+guessed:
+
+- **There is a solved frame at `start_time`, and it is not the input
+  frame.** The engine emits `frame_kind: "input"` with a null time *and* a
+  `solver_output` whose `nominal_time_s` is
+  `start + (frame_index - 1) * step` — so the first solved sample sits at
+  `start_time` and lands on Blender frame 1. Stepping before emitting the
+  first sample puts the entire run one frame late, and nothing errors. This
+  was M1's one failure, and finding it is the slice paying for itself.
+- **Units.** MuJoCo integrates in metres; the field is literally
+  `position_mm` and the shell treats 1 BU as 1 mm. ×1000, at one boundary.
+- **Quaternion order.** MuJoCo's `data.xquat` is wxyz; the trace field is
+  `rotation_xyzw`.
+- **Sampling rate is part of the contract, not a display setting.**
+  `_continuous` repairs a hemisphere flip only when it can still see one. A
+  link rotating more than half a turn between trace samples is aliased, and
+  no amount of de-flipping recovers it.
+
+**Size, measured:** ~191 bytes per component-pose. The 64 MB trace cap is
+therefore worth ~335 000 poses and the API's 100 000-pose cap binds first —
+so M3's budget work is about the API limit, not the byte limit.
 
 ---
 
