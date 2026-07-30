@@ -162,6 +162,53 @@ def build(
     return component_records, joint_records, placements
 
 
+def closing_frame(
+    placements: Mapping[str, Sequence[float]],
+    parent: str,
+    parent_local: Sequence[float],
+    child: str,
+) -> list[float]:
+    """The child-side connector frame that makes a closing joint coincide.
+
+    A loop closure is only meaningful on a consistent assembly: FreeCAD's
+    solver produces one, and a fixture has to earn it. Rather than guessing
+    a frame and hoping, this composes the one that puts the child's
+    connector exactly where the parent's already is.
+    """
+
+    return dyn.matrix_multiply(
+        dyn.matrix_inverse(placements[child]),
+        dyn.matrix_multiply(placements[parent], parent_local),
+    )
+
+
+def closing_joint(
+    name: str,
+    kind: str,
+    parent: str,
+    child: str,
+    parent_local: Sequence[float],
+    placements: Mapping[str, Sequence[float]],
+) -> dict[str, Any]:
+    """One loop-closing joint whose two connector frames coincide."""
+
+    return {
+        "name": name,
+        "kind": kind,
+        "suppressed": False,
+        "parameters": {},
+        "length_limits_mm": None,
+        "angle_limits_degrees": None,
+        "connectors": [
+            {"component": parent, "local_matrix": list(parent_local)},
+            {
+                "component": child,
+                "local_matrix": closing_frame(placements, parent, parent_local, child),
+            },
+        ],
+    }
+
+
 def pendulum(*, angle: float = 0.7) -> tuple[list[dict], list[dict], dict]:
     """A grounded base and one arm on a revolute joint, off both axes.
 

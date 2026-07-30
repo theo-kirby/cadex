@@ -1251,6 +1251,13 @@ def joint_coordinates(
 CLOSURE_RESIDUAL_MM = 1.0e-4
 CLOSURE_RESIDUAL_RADIANS = 1.0e-6
 
+#: How far a loop closure may be violated at the solved pose, in metres and
+#: radians -- ``efc_pos`` mixes both, and a micrometre and a microradian are
+#: each far below anything a real error produces. A closure that starts
+#: violated is a pre-stressed model: the solver pulls the mechanism into
+#: shape on the first step and the animation opens with a snap.
+CLOSURE_EQUALITY_TOLERANCE = 1.0e-6
+
 
 def closure_residuals(
     components: Sequence[Mapping[str, Any]],
@@ -1519,6 +1526,52 @@ def build_model(
                 }
             )
 
+    # Closures are written against *sites* placed at the two connector
+    # frames, not against bodies. Measured, and it matters: a body-anchored
+    # connect takes one anchor and derives the other by resolving it through
+    # the model's **reference configuration** -- and this model's reference
+    # configuration is deliberately not the solved pose (that is what makes
+    # phase 5's parity check a test rather than a tautology). A four-bar
+    # built with body anchors closed 16 mm away from where it should, in a
+    # model whose XML looked entirely ordinary. Sites carry both frames
+    # explicitly, so there is nothing left to infer: connect pins their
+    # origins together, weld pins the whole frames -- which is exactly what
+    # FreeCAD's revolute and fixed joints mean.
+    for closure in tree["closures"]:
+        first, second = closure["components"]
+        sites = []
+        for component, local in zip(
+            closure["components"], closure["local_matrices"], strict=True
+        ):
+            site_name = f"{closure['joint']}/{component}"
+            native_bodies[component].add_site(
+                name=site_name,
+                pos=vector_m(matrix_translation_mm(local)),
+                quat=quaternion_wxyz_from_matrix(local),
+            )
+            sites.append(site_name)
+        equality = spec.add_equality()
+        equality.name = str(closure["joint"])
+        equality.objtype = mujoco.mjtObj.mjOBJ_SITE
+        equality.name1, equality.name2 = sites
+        equality.type = (
+            mujoco.mjtEq.mjEQ_CONNECT
+            if closure["closure_kind"] == "connect"
+            else mujoco.mjtEq.mjEQ_WELD
+        )
+        # MuJoCo's equality constraints are soft: a spring-damper with a
+        # 0.02 s time constant by default, which let a driven four-bar drift
+        # 3 mm open on a 200 mm mechanism -- measured. Two timesteps is the
+        # stiffest setting the integrator accepts, and it brings that to
+        # 0.05 mm. A loop that visibly comes apart while it runs is a wrong
+        # answer that looks right, which is the class of failure this whole
+        # slice is organised against.
+        equality.solref = [2.0 * float(time_step_s), 1.0]
+        if closure["closure_kind"] == "weld":
+            data = [0.0] * 11
+            data[10] = 1.0  # torquescale: the rotational rows are the point
+            equality.data = data
+
     try:
         model = spec.compile()
     except Exception as exc:
@@ -1535,6 +1588,21 @@ def build_model(
 
     _verify_compiled_inertia(mujoco, model, inertials, tree)
     qpos = _solved_qpos(mujoco, model, tree, placements, joint_records)
+    closure_violation = _closure_violation(mujoco, model, qpos)
+    if closure_violation > CLOSURE_EQUALITY_TOLERANCE:
+        raise DynamicsError(
+            "The assembly's loop closures do not hold at the solved pose: the "
+            f"worst equality residual is {length_mm(closure_violation):.6g} mm.",
+            reason="closure_inconsistent",
+            correction=(
+                "A loop closure that is violated at the starting pose is a "
+                "pre-stressed model: the solver will pull the mechanism into "
+                "shape on the first step and the animation will begin with a "
+                "snap. Re-solve the assembly and check the closing joint's "
+                "connectors."
+            ),
+            observed={"closure_residual_m": closure_violation},
+        )
     return {
         "spec": spec,
         "model": model,
@@ -1545,6 +1613,24 @@ def build_model(
         "time_step_s": float(time_step_s),
         "gravity_m_s2": list(gravity_m_s2),
     }
+
+
+def _closure_violation(mujoco: Any, model: Any, qpos: Sequence[float]) -> float:
+    """The worst equality-constraint residual at one configuration.
+
+    ``efc_pos`` carries every active constraint row, so the equality ones
+    are selected by type: a joint sitting exactly on its declared limit
+    contributes a row too, and it is not a closure problem.
+    """
+
+    data = mujoco.MjData(model)
+    data.qpos[:] = list(qpos)
+    mujoco.mj_forward(model, data)
+    worst = 0.0
+    for row in range(int(data.nefc)):
+        if int(data.efc_type[row]) == int(mujoco.mjtConstraint.mjCNSTR_EQUALITY):
+            worst = max(worst, abs(float(data.efc_pos[row])))
+    return worst
 
 
 def _verify_compiled_inertia(
