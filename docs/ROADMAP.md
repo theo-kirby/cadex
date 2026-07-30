@@ -773,10 +773,20 @@ with the phase numbers above. Every slice is a resting place.
       whose laws were **measured against OndselSolver** rather than derived.
       `rack_pinion` refused. Collision deferred to M3 (`model.ngeom == 0` is
       a test). No protocol change, no `shell/` diff.
-- [ ] **M3 — Dynamics for real.** Contact and collision geometry via convex
-      decomposition; friction and restitution; the cross-restart determinism
-      gate with MuJoCo forced single-threaded; solver step split from trace
-      step, and a frame budget sized for rollouts rather than kinematics.
+- [x] **M3 — Dynamics for real** (ADR-064). `api.collision` with four
+      primitives plus `mesh`/`hull`; friction, restitution, `condim`, margin
+      and collision groups; gravity and the solver step as script
+      parameters; and the determinism gate, which holds across cadexd
+      restarts with contact doing real work. A mast topples, lands, bounces
+      twice and stops. **Three of this line's own words were wrong.** Convex
+      decomposition is not in it and was not needed — a concave part is
+      *refused*, naming its volume error, because MuJoCo hulls a collision
+      mesh silently. "Forced single-threaded" was never a flag: islands are
+      a *disable* bit that was on by default, and the risk was constraint
+      ordering, not threads. And the solver step was already split from the
+      trace step in M2, so what M3 owed was the budget — which became two
+      budgets, one for what leaves the engine and one for what the engine
+      does. No protocol change, no `shell/` diff.
 - [ ] **M4 — Actuators and closed loop.** The last slice that is
       unambiguously CAD.
 - [ ] **M5 — MJCF export.** Independently shippable, and the cheapest slice
@@ -805,4 +815,11 @@ lose by accident:
 - **`CadexDynamics.py` is reachable from the sandboxed worker and never from
   `cadexd`.** `test_engine_purity_guardrails` asserts the import closure
   equals `DECLARED_ENGINE_MODULES` exactly; a service whose job is reading
-  NDJSON off a pipe does not need 53 MB of physics engine resident.
+  NDJSON off a pipe does not need 53 MB of physics engine resident. M3 added
+  `scipy.spatial` to that module and it is imported the same deferred way
+  `mujoco` is, for the same reason.
+- **A default is a promise, not a decision** (ADR-064). Every MuJoCo option
+  the translator depends on — the island and sleep flags, the integrator,
+  the compiler's inertia handling — is set explicitly and re-asserted on the
+  *compiled* model, which is where a release changing a default would land.
+  Moving one is a measurement, not an edit.

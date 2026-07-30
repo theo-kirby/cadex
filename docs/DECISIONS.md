@@ -4620,3 +4620,227 @@ until the arc it opened is finished.
   export with exact OCCT inertias) proves out as the independently shippable
   capability `docs/MUJOCO.md` argues it is, that is the natural occasion to
   revisit — and it would be a new ADR, not an assumption anyone may act on.
+
+---
+
+## ADR-064 — Contact, and the six numbers M3 measured rather than inherited (2026-07-30)
+
+**Decision.** Slice M3 of `docs/MUJOCO.md` lands: dynamics bodies collide.
+`assembly.collision(kind, ...)` is a new non-publishable intermediate,
+`api.body` takes `collision=`, and `api.dynamics` takes `gravity_m_s2` and
+`solver_step_s`. Contact, friction, restitution and a cross-restart
+determinism gate exist, and a mechanism topples, lands and stops.
+
+No protocol change, no new response key, no `shell/` diff — `git diff
+main...MJC` still names no file under `shell/`, which is the invariant
+ADR-063 said the branch would keep.
+
+Six phases, each committed as a resting place, and phase 0 wrote no feature
+code at all. That ordering is deliberate and it is the reason this ADR is
+mostly a list of measurements: **the phase that measures comes before the
+phase that builds**, because M2 learned that a default is a promise and not
+a decision.
+
+### 1. What was measured, and what it contradicted
+
+Nine numbers, six of which contradict a name, a default, a documented rule
+or this plan's own text.
+
+1. **`mjDSBL_ISLAND` is a *disable* bit, so islands were on.** Hazard 4 was
+   written as "force single-threaded" and read like one switch. A bare
+   compile has `disableflags == 0`, which means islands are **on** — the
+   opposite of what the hazard implied. On a jointed model with no geoms the
+   flag moves nothing (zero delta over 300 steps of the four-bar); with three
+   boxes settling on a plane it moves qpos by ~2e-14 after 1500 steps.
+   Physically nothing, digest-wise decisive. Both settings are separately
+   reproducible across processes, so the choice is only about which is
+   *written down*: islands off, because that is the single monolithic
+   constraint solve whose row ordering does not depend on how contacts
+   partition — and it costs nothing, since MuJoCo parallelises only an
+   `mjData` handed a thread pool, which this module never does.
+
+2. **The restitution formula everyone quotes is the wrong one.** MuJoCo has
+   no restitution coefficient; bounce falls out of the contact spring's
+   damping ratio. Every reference gives `e = exp(−ζπ/√(1−ζ²))`, which is
+   derived for a *bilateral* spring holding the mass through a full half
+   period. A contact is unilateral: it separates the instant the normal
+   force would turn tensile, which is earlier. Solving `kx + cẋ = 0` for that
+   instant gives `ωd·t* = π − 2·arcsin ζ` and therefore
+   `e = exp(−ζ(π − 2 arcsin ζ)/√(1−ζ²))`. Against a dropped ball the second
+   matches to 1% where the first is out by 44% at ζ = 0.5.
+
+3. **And even the right formula needs the solver to keep up.** At ten steps
+   per contact time constant — which is exactly what 60 fps and
+   `DEFAULT_TIME_STEP_S` produce — a requested restitution of 0.9 measures
+   **3.45**: a ball bouncing higher than it was dropped from, forever, every
+   frame of it looking like physics. At twenty steps the worst error across
+   the authorable band is 12% and finer buys almost nothing. So a bouncing
+   contact is *refused* unless the step resolves it, with the required step
+   in the message.
+
+4. **MuJoCo's parent/child filter does not cover the case every mechanism
+   here has.** It excludes a body from its parent only when that parent is
+   not itself welded to the world — and in a model built the M2 way, every
+   grounded component *is* a static world child. Measured on a
+   world-child/hinge/hinge chain: the grandchild-child pair is filtered and
+   the child-parent pair is **not**. So the first link of every mechanism M2
+   could already build would have collided with the base it is hinged to the
+   moment geoms existed, and a four-bar overlaps at its pins by construction.
+
+5. **Euler manufactures energy on anything that tumbles.** MuJoCo's default
+   integrator, on a freely spinning asymmetric plate — the shape of any part
+   that falls over — *gains* 51% of its kinetic energy over twenty seconds at
+   the default step. `implicitfast` conserves energy and angular momentum to
+   the printed precision and reproduces RK4's trajectory through three
+   Dzhanibekov flips to three decimals, at one force evaluation per step
+   against RK4's four. MuJoCo's full `implicit` is worse than either: −29%.
+   A settled box stack, which is the obvious thing to test, integrates
+   identically under all four to 4e-12 and says nothing.
+
+6. **MuJoCo *sums* the two margins rather than taking the larger.** 20 mm and
+   30 mm produce a 50 mm margin, measured — not the max the documentation
+   led us to expect. It also averages the two `solref`s (so a bouncy part
+   dropped on a dead floor bounces about half as much as it asked to), takes
+   the elementwise maximum of friction, and the maximum `condim`.
+
+7. **`contype`/`conaffinity` are signed int32 in the binding.** An all-ones
+   `0xFFFFFFFF` is refused by `add_geom` outright, so the top bit is unusable
+   and there are **31** collision groups, not 32. Found by a compiler error,
+   which is the cheap end of the same lesson.
+
+8. **`mjENBL_SLEEP` is off by default** and now stays off by assertion. A
+   sleeping body stops integrating, and a settling mechanism is precisely the
+   M3 scenario.
+
+9. **OndselSolver writes byte-identical traces in two separate cadexd
+   processes**, and so does the whole M3 path with contact in it. ADR-062
+   made the first of those the precondition for the digest decision below.
+
+### 2. Convexity is two measurements, not one — a correction to the plan
+
+The plan said: compare the convex hull's volume against the exact
+`GProp_GProps` volume, and refuse the difference. That is wrong, and working
+out what a tessellated cylinder does is what showed it. A tessellated
+cylinder is an *inscribed* prism: at the default deflection a 5 mm pin is
+1.6% short of its exact volume before any concavity exists at all, and a
+44-gon is 0.34% short. Hull-against-exact would have reported concavity for
+every round part in every assembly.
+
+So there are two questions with two tolerances:
+
+- **Concavity** is the hull's volume against the *mesh's own* volume, both
+  computed from the same vertices. For a genuinely convex part they agree to
+  floating-point noise — measured at −7.7e-16 on a real OCCT cylinder — so any
+  gap is real. A 60×60×10 plate with a 40×40 notch measures 20 000 mm³ inside
+  a 28 000 mm³ hull and is refused, naming both ways out.
+- **Fidelity** is the mesh's volume against the exact BREP volume, which asks
+  a different question: is this still the part. It is *not* waived by the
+  `hull` opt-in, because an author who accepted the hull of their bracket has
+  not thereby accepted an eight-sided cylinder.
+
+**`mesh` and `hull` are two kinds rather than one kind and a boolean**, so the
+acceptance appears in the script's own text where a reader meets it. There is
+no way to get a hull by accident, which is the whole of hazard 2.
+
+**Convex decomposition stays out.** Phase 2 did not earn it: primitives cover
+the cases that came up, and CoACD would cost a second `CARRIED_PYPI_PACKAGES`
+exception — the thing ADR-061 named so it would be easy to *delete* — plus a
+decomposition whose cross-version determinism nobody has established and over
+which we assert digest equality. `scipy.spatial.ConvexHull` was already in the
+payload and costs nothing.
+
+### 3. The deflection is declared, never inherited
+
+`cadex_tessellation` scales its deflection by the bounding-box diagonal
+because it is choosing how a part *looks*. A collision mesh built from that
+would collide differently at draft quality than at fine — a physics result
+depending on a view setting. The collision deflection is a fixed absolute
+length in `CadexDynamics`, resolved in the pure module so the worker holds no
+second copy of the default, and it is only safe to have a fixed default
+because the fidelity check refuses a mesh too coarse to be the part.
+
+### 4. Joined parts do not collide, and that is authored intent
+
+Given measurement (4), the translator writes an explicit `exclude` for every
+pair of components a non-suppressed joint connects — tree edges, closures and
+couplings alike. Two parts joined by a revolute interpenetrate at the pin by
+construction, and simulating that is never what the script meant; a gear pair
+is coupled by an equality constraint *precisely because* we are not
+simulating tooth contact. The exclusions are listed in the trace evidence
+rather than being invisible behaviour.
+
+### 5. Two budgets, because there are two costs
+
+The 10 000 frame / 100 000 pose caps were sized for kinematics, where the
+trace step *was* the solver step. Now they are not: the same 600-frame trace
+costs 4 800 solver steps at the default step and 1 200 000 at the finest the
+per-frame cap allows. So `api.dynamics` keeps its frame and pose caps and
+they now say what they count — artifact bytes, keyframes the shell bakes,
+memory in Blender: **what leaves the engine**. `CadexDynamics` gains
+`MAXIMUM_SOLVER_STEPS`, which bounds **what the engine does**, checked before
+the model is built.
+
+This answers the last open question in `docs/MUJOCO.md` §6. A policy rollout
+is long in steps and short in frames — integrate for minutes, report a
+hundred poses — and one combined cap cannot express that trade while two can.
+
+### 6. The digest decision, and where it belongs
+
+ADR-062 left this open on one precondition, and the precondition holds: both
+solvers are byte-reproducible across processes, and so is the whole M3 path
+with mesh collision and bouncing contact in it. So the answer is **yes, a
+trace's `artifact_sha256` should join the project digest** — today it is in
+no digest at all, so a MuJoCo bump changes every trace and moves nothing,
+which is the silence ADR-062 called strictly worse than loud.
+
+**That change is not made on this branch.**
+`cadex_project_worker.compute_project_digest` is shared code and treats a
+kinematics trace and a dynamics trace identically — both are `simulation`
+outputs digested by their canonical definition. Making only the dynamics one
+count would be an asymmetry nobody could predict from the output type. Per
+ADR-063 the change belongs on `main` and reaches `MJC` by sync.
+
+What is done here is the branch-local half: the trace evidence records
+`solver_version`, so a MuJoCo bump is legible in the artifact even before it
+is digest-moving, and `test_dynamics_restart_determinism` pins the present
+state so the routed change has something to rewrite.
+
+### 7. What M3 deliberately did not ship
+
+- **`gap`.** The plan listed it beside `margin`. It changed
+  `contact.includemargin` at no value tried, so its combination rule was not
+  pinned, and an unmeasured knob is not something this slice ships.
+- **Restitution outside `{0} ∪ [0.3, 0.9]`.** Below 0.3 the discrete solver
+  damps the bounce away — a requested 0.15 measures 0.00 — and above 0.9 the
+  damping is light enough that the integrator adds energy. Both ends refused,
+  with the band in the message.
+- **Convex decomposition**, per §2. **Actuators and control callbacks** (M4),
+  **MJCF export** (M5), **tendons** and therefore slider and cylindrical loop
+  closures, and **flexible subassemblies**.
+
+### 8. Consequences
+
+- **Every dynamics trace digest moves.** The integrator changed, the island
+  flag changed, and geoms and exclusions are in the model. Nothing pins those
+  bytes today, which is exactly the silence §6 is about.
+- **A body still touches nothing by default.** M2 scripts run unchanged;
+  contact is opted into per body. The alternative default would be to *infer*
+  a collision shape, which is the one thing this surface exists to prevent.
+- **`CadexDynamics.py` keeps the M2 split rule.** Contact parameters were
+  named as the most likely place a second unit-conversion site would appear;
+  the API checks bounds and shapes, and every conversion — coefficients to
+  packed vectors, groups to bitmasks, restitution to a damping ratio, full
+  extents to half-extents, millimetres to metres — happens in the pure
+  module. `scipy.spatial` joins `mujoco` as a deferred, function-scoped
+  import with its own named payload failure.
+- **What a sync must not drop**, extending ADR-063's list:
+  `test_dynamics_collision.py`, `test_dynamics_contact.py`,
+  `test_dynamics_determinism.py`, `test_dynamics_environment.py`,
+  `test_dynamics_restart_determinism.py`, `dynamics_trace_digest.py`, and the
+  `collision` export in `CadexScriptedDomains.py` and `cadex_domain_api.py`.
+- **Verified.** Engine suite **556 passed** (447 at M2's close). Packaged
+  lifecycle gate **8 passed** against a payload restaged from this work
+  (7 before, plus the topple gate), and the collision and cross-restart
+  suites pass against that same payload — which is what proves Qhull is
+  really in it. `pixi run gate` was not re-run and did not need to be: the
+  branch still contains no `shell/` diff.

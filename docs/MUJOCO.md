@@ -1,8 +1,8 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
 Verified against source: 2026-07-30
-Status: **M0 recorded (ADR-060, ADR-061), M1 passed, M2 closed (ADR-062).**
-M3 onward is plan, not built.
+Status: **M0 recorded (ADR-060, ADR-061), M1 passed, M2 closed (ADR-062),
+M3 closed (ADR-064).** M4 onward is plan, not built.
 
 **Branch `MJC`, permanently (ADR-063).** This file, and everything it
 describes, exists on `MJC` and not on `main`. The branch is not awaiting a
@@ -267,7 +267,9 @@ guessed:
 
 **Size, measured:** ~191 bytes per component-pose. The 64 MB trace cap is
 therefore worth ~335 000 poses and the API's 100 000-pose cap binds first —
-so M3's budget work is about the API limit, not the byte limit.
+so M3's budget work was about the API limit, not the byte limit, and it
+turned out to be about a *second* limit the API never had: what the solver
+does between frames (§5 hazard 6, ADR-064).
 
 ---
 
@@ -361,7 +363,7 @@ Ondsel solve (the first solved frame of a dynamics trace reproduces
 FreeCAD's placements to the micrometre), plus the perturbation test, plus a
 closure-residual gate that needs no MuJoCo at all.
 
-### M3 — Dynamics for real `(PLANNED 2026-07-30, not started)`
+### M3 — Dynamics for real `(DONE 2026-07-30, ADR-064)`
 
 Contact, friction, restitution, gravity as a script parameter, and the
 determinism gate. Phased like M2 was, and for the same reason: the phase
@@ -479,6 +481,58 @@ with contact doing the work.
 **Done when:** a thing falls over correctly, and does so identically twice
 in two different processes.
 
+**Done, and closed.** A mast hinged level on a post swings down under
+gravity alone, slaps a floor slab it is not jointed to, rebounds through
+twenty degrees, comes back, and by 1.25 s is motionless to under a
+micro-degree — end to end through the live cadexd gate, with no protocol
+change and no `shell/` diff. The same script through two separate cadexd
+processes writes the same artifact byte for byte. Engine suite **556
+passed** (447 at M2's close); the **packaged lifecycle gate 8 passed**
+against a payload restaged from the closing commit, and the collision and
+cross-restart suites pass against that same payload, which is what proves
+Qhull is really in it. `pixi run gate` was not re-run and did not need to
+be — `git diff main...MJC` still names no file under `shell/`.
+
+**What the six phases learned by measuring**, and the plan's own corrections
+are in ADR-064 in full. The six that contradict a name, a default or a
+documented rule:
+
+1. **`mjDSBL_ISLAND` is a *disable* bit, so islands were on** — the opposite
+   of what "force single-threaded" implied. It moves nothing without geoms
+   and ~2e-14 with them, which is physically nothing and digest-wise
+   decisive. Islands are now off explicitly, sleep is off by assertion, and
+   both are recorded in the trace.
+2. **The restitution formula everyone quotes is the bilateral one.** A
+   contact is unilateral: it separates when the normal force would turn
+   tensile, not after a full half period. `e = exp(−ζ(π − 2 arcsin ζ)/√(1−ζ²))`
+   matches a dropped ball to 1% where `e = exp(−ζπ/√(1−ζ²))` is out by 44%.
+3. **A bouncing contact needs twenty solver steps per contact time
+   constant.** At the ten the default step gives, a requested 0.9 measures
+   **3.45** — a ball bouncing higher than it was dropped from. Refused now,
+   with the required step named.
+4. **MuJoCo's parent/child filter does not cover a body hinged to a grounded
+   one**, because it exempts parents welded to the world and every grounded
+   component here is one. Without the explicit exclusions the translator now
+   writes, every mechanism M2 could build would self-collide at its pins.
+5. **Euler gains 51% of a tumbling part's kinetic energy in twenty
+   seconds.** `implicitfast` conserves both energy and angular momentum and
+   tracks RK4 through three Dzhanibekov flips at a quarter the cost. The
+   integrator is a written-down choice now, not a default.
+6. **MuJoCo sums the two contact margins** rather than taking the larger, and
+   averages the two `solref`s — so a bouncy part on a dead floor bounces half
+   as much as it asked to. `contype`/`conaffinity` are signed int32, so there
+   are 31 collision groups and not 32.
+
+**And one correction to this plan's own text.** It said to measure convexity
+by comparing the convex hull against the exact `GProp_GProps` volume. That
+would charge every curved part for its faceting — a tessellated cylinder is
+an inscribed prism, 0.34% short of its exact volume at 44 sides before any
+concavity exists. Concavity is hull-against-*mesh*, both from the same
+vertices, where a real OCCT cylinder measures −7.7e-16. Fidelity —
+mesh-against-exact — is a second, separate question with its own tolerance,
+and it is not waived by the `hull` opt-in: accepting the hull of a bracket is
+not accepting an eight-sided cylinder.
+
 **Explicitly not in M3:** actuators and control callbacks (M4), MJCF export
 (M5), tendons — and therefore slider and cylindrical loop closures, which
 need one — flexible subassemblies, and convex decomposition unless phase 2
@@ -587,25 +641,45 @@ Ranked by how quietly they fail.
 
 1. ~~**Units**~~ (§3.2). **Handled in M2**, which wrote the test before the
    feature: millimetres at the surface, one conversion site in the pure
-   module, `test_dynamics_units.py`. Still live as a *regression* hazard —
-   M3's contact parameters are the most likely place a second conversion
-   site appears.
-2. **Convexity.** MuJoCo hulls collision meshes without complaint. Wrong
-   contacts that look plausible. M3 phase 1, and the plan's answer is to
-   **refuse** a concave body rather than hull it silently: the volume error
-   against the exact `GProp_GProps` volume is measurable, so it gets
-   measured.
-3. **Cross-version drift.** MuJoCo disclaims numerical reproducibility
-   across releases and we assert digest equality on every project open.
-   Exact pin, M0 — and a version bump is a deliberate, digest-moving event
-   like an OCCT bump, not a routine update.
-4. **Multi-threading — and it is not the flag it sounds like.** Measured on
-   3.10.0: `mjDSBL_ISLAND` is a *disable* bit and a default compile has
-   `disableflags == 0`, so islands are **on**, not off. But MuJoCo only
-   parallelises when an `mjData` is handed a thread pool, which we never do,
-   so the live risk is constraint *ordering* rather than threads. Probably
-   already deterministic is not a test; M3 phase 0 measures it both ways and
-   sets the flag explicitly either way.
+   module, `test_dynamics_units.py`. **M3 was the predicted regression and
+   it held**: contact parameters were named as the likeliest place a second
+   conversion site would appear, and none did. The API checks bounds and
+   shapes; full extents to half-extents, coefficients to packed vectors,
+   groups to bitmasks, restitution to a damping ratio and millimetres to
+   metres all happen in the pure module. Still live for M4 for the same
+   reason.
+2. ~~**Convexity.**~~ **Handled in M3** (ADR-064), and it needed *two*
+   measurements rather than the one this list assumed. Concavity is the
+   hull's volume against the **mesh's own**, both from the same vertices —
+   a real OCCT cylinder measures −7.7e-16, a notched plate measures 20 000
+   mm³ inside a 28 000 mm³ hull and is refused. Comparing the hull against
+   the *exact* volume, which is what this entry used to say, would have
+   reported concavity for every round part in the tree: an inscribed 44-gon
+   is 0.34% short of its cylinder before any concavity exists. That second
+   comparison is still made, under its own tolerance, as a *fidelity*
+   check — is this still the part — and the `hull` opt-in does not waive it.
+   Still live as a regression hazard: `mesh` and `hull` are two kinds
+   precisely so that accepting a hull is a word in the script.
+3. **Cross-version drift**, and it is now the *first* hazard on this list
+   rather than the third. MuJoCo disclaims numerical reproducibility across
+   releases. M3 proved reproducibility everywhere it could — the same script
+   through two cadexd processes writes the same artifact byte for byte, and
+   OndselSolver does too — which is exactly what leaves a version bump as the
+   one thing that still moves every number. A trace's `artifact_sha256` is in
+   **no** digest today, so that bump is silent; ADR-064 decides it should
+   join the digest and routes the change to `main`, because the digest code
+   is shared with the kinematics trace. Until it lands, the trace records
+   `solver_version` so the drift is at least legible. Exact pin, M0.
+4. ~~**Multi-threading**~~ — **handled in M3 phase 0**, and it was never
+   about threads. `mjDSBL_ISLAND` is a *disable* bit and a bare compile has
+   `disableflags == 0`, so islands were **on**. Measured both ways: with no
+   geoms the flag changes nothing, with three boxes settling on a plane it
+   changes qpos by ~2e-14 — physically nothing, digest-wise decisive. Both
+   settings are separately reproducible, so islands are now off *explicitly*
+   and sleep is off by assertion, both checked on the compiled model where a
+   MuJoCo default change would land, and both recorded in the trace. The
+   remaining hazard is the ordinary one: a version bump may move numbers,
+   which is hazard 3.
 5. ~~**Loop extraction.**~~ **Handled in M2**, and it was the predicted
    hazard that behaved as predicted: the split is a breadth-first spanning
    forest from the grounded components, everything else is an equality
@@ -614,10 +688,14 @@ Ranked by how quietly they fail.
    constraints are soft. Stiffened to two timesteps, it is 0.05 mm. What was
    *not* predicted is that a body-anchored `connect` resolves its second
    anchor through the reference configuration; closures go against sites.
-6. **Frame budget.** The 10 000-frame cap was sized for kinematics. An RL
-   rollout blows through it. M3 phase 4 — narrower than it was, because M2
-   already separated the solver step from the trace step, so what is left is
-   deciding what the cap counts.
+6. ~~**Frame budget.**~~ **Handled in M3 phase 4**, by splitting it in two.
+   The 10 000 frame / 100 000 pose caps stay and now say what they count:
+   what *leaves* the engine — artifact bytes, keyframes the shell bakes.
+   `MAXIMUM_SOLVER_STEPS` bounds what the engine *does*, which stopped being
+   proportional to the first the moment `solver_step_s` became authorable:
+   the same 600-frame trace is 4 800 steps at the default step and 1 200 000
+   at the finest allowed. An RL rollout wants exactly that trade — minutes of
+   integration, a hundred poses — and one cap cannot express it.
 7. **Scope creep into a UI.** M5–M8 want buttons — train, stop, load
    policy — and "no user-accessible modeling tools" does not obviously
    answer whether those are allowed. ADR-060 should.
@@ -642,9 +720,20 @@ Ranked by how quietly they fail.
   dynamics run and silently lose the animation it already had. Sharing the
   type puts both under the existing "exactly one simulation" rule, and mixing
   `api.motion` with `api.dynamics` is refused.
-- **Where the frame budget goes when a rollout needs more than 10 000 frames**
-  — M3 splits solver step from trace step, which changes what the cap is
-  even counting. New, and it replaces the two answered above.
+- ~~Where the frame budget goes when a rollout needs more than 10 000
+  frames?~~ — answered by M3 phase 4 (ADR-064): **two budgets, because there
+  are two costs.** The frame and pose caps count what *leaves* the engine —
+  artifact bytes, keyframes the shell bakes — and stay where they were.
+  `CadexDynamics.MAXIMUM_SOLVER_STEPS` counts what the engine *does*, which
+  stopped being proportional to the first when `solver_step_s` became
+  authorable. A rollout is long in steps and short in frames, and one
+  combined cap cannot express that trade.
+- **Does a trace's `artifact_sha256` join the project digest?** — decided
+  *yes* by ADR-064 on M3's evidence (both solvers reproduce byte for byte
+  across processes), and **routed to `main`**, because
+  `compute_project_digest` is shared code that treats a kinematics and a
+  dynamics trace identically. Open here only in the sense that the change has
+  not landed yet; `solver_version` in the trace evidence is the interim.
 - Where does the training run — a service we operate, or the user's own
   GPU box under their credentials? M7 has to answer this and it is as much
   a product question as a technical one.

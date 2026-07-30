@@ -133,11 +133,34 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   equality constraints and the published evidence records what each one gave
   up — a `connect` closing a revolute pins position and lets axis alignment
   go, which is exact for a planar four-bar and one constraint short for a
-  spatial one. Bodies do **not** collide yet: a mechanism is held together by
-  its joints alone. Refused rather than approximated: `distance`/`parallel`/
+  spatial one. `gravity_m_s2` and `solver_step_s` are authorable (ADR-064);
+  gravity is metres per second squared, and `[0, 0, 0]` is how you isolate a
+  joint's behaviour from the falling.
+  Refused rather than approximated: `distance`/`parallel`/
   `perpendicular`/`angle` joints (they constrain where the solver *put* a
   part, not how it moves), `rack_pinion`, slider and cylindrical loop
   closures, flexible subassemblies, and any component without a body.
+- `assembly.collision(kind, ...)` says what a body may touch things with
+  (ADR-064, **experimental**), and a body given none touches nothing — it is
+  carried by its joints and passes through the rest of the mechanism, which
+  is what every dynamics run did before M3. Four primitives — `box`,
+  `sphere`, `cylinder`, `capsule` — placed with `offset` in the component's
+  own frame, plus `mesh` for the component's own tessellated solids. Prefer
+  the primitives: **MuJoCo takes the convex hull of any collision mesh and
+  does not say so**, so a bracket with a slot silently becomes a solid
+  block. `mesh` therefore measures its own convexity against its hull and
+  refuses a part the hull would change, naming the volume error; `hull` is
+  the same geometry with that refusal turned off, which is how a script says
+  in its own text that the hull was read and accepted. A mesh too coarse to
+  be the part is refused separately, and that refusal is not waived by
+  `hull`. Contact takes `friction`, `condim`, `margin_mm`, `restitution` and
+  a `contact_group`/`collides_with` pair. Restitution is 0 or between 0.3
+  and 0.9 — MuJoCo has no restitution coefficient, bounce comes out of the
+  contact spring's damping, and outside that band the translation is not
+  honest — and above 0 it needs a `solver_step_s` of 0.001 or finer, which
+  is refused rather than silently under-delivered. Components that a joint
+  connects never collide with each other: they overlap at the joint by
+  construction.
 - Outputs are evaluated per domain in fixed order sketcher → part →
   partdesign → mesh → assembly, reusing the per-domain evaluators and
   serializers.
