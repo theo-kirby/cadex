@@ -2,7 +2,7 @@
 
 Verified against source: 2026-07-30
 Status: **M0 recorded (ADR-060, ADR-061), M1 passed, M2 closed (ADR-062),
-M3 closed (ADR-064).** M4 onward is plan, not built.
+M3 closed (ADR-064), M4 closed (ADR-065).** M5 onward is plan, not built.
 
 **Branch `MJC`, permanently (ADR-063).** This file, and everything it
 describes, exists on `MJC` and not on `main`. The branch is not awaiting a
@@ -533,25 +533,96 @@ mesh-against-exact — is a second, separate question with its own tolerance,
 and it is not waived by the `hull` opt-in: accepting the hull of a bracket is
 not accepting an eight-sided cylinder.
 
-**Explicitly not in M3:** actuators and control callbacks (M4), MJCF export
+**Explicitly not in M3:** actuators (M4 — and the "control callbacks" half
+of that phrase turned out to be a thing M4 refused rather than built), MJCF export
 (M5), tendons — and therefore slider and cylindrical loop closures, which
 need one — flexible subassemblies, and convex decomposition unless phase 2
 earns it.
 
 ---
 
-### M4 — Actuators and closed loop
+### M4 — Actuators and closed loop `(DONE 2026-07-30, ADR-065)`
 
-MuJoCo's actuator vocabulary (`motor`, `position`, `velocity`, `general`,
-`muscle`, …) becomes an xscript surface. A control callback runs in the
-worker, so a PD controller or a scripted trajectory can drive the mechanism
-rather than a formula prescribing it.
+Three of MuJoCo's actuator kinds — `motor`, `position`, `velocity` — become
+an xscript surface, and with them the joint properties a driven mechanism
+needs: damping, armature and friction loss.
 
 This is the last slice that is unambiguously *CAD*. Everything after it is
-robotics, and M0's ADR should have already said whether we are going there.
+robotics, and M0's ADR already said we are going there.
 
-**Done when:** a script can specify a motor and a setpoint, and the arm
-holds position against gravity.
+**Two corrections to this section's own text**, both decided before code and
+both from measuring against mujoco 3.10.0.
+
+1. **"A control callback runs in the worker" is the wrong shape, and it is
+   also unnecessary.** xscript is a declarative graph builder, not a runtime;
+   a Python callable invoked every solver step would put unbounded arbitrary
+   code inside the determinism gate and break "nothing happens outside the
+   script" the same way the deleted bpy modes did. It is not needed either:
+   MuJoCo's `position` and `velocity` actuators **are** the PD loop —
+   `gainprm = [kp]`, `biasprm = [0, −kp, −kv]`, closed in C, measured rather
+   than read. What a script supplies is a **setpoint**, and a setpoint that
+   varies is a whitelisted formula of `time`, reusing the validator
+   `api.motion` has had since ADR-048.
+2. **Joint damping and armature are part of this slice.** A position gain
+   stiff enough to hold an arm rings on a frictionless, armature-free joint —
+   measured, sixty degrees peak to peak, not decaying — and MuJoCo's defaults
+   for all three are zero. A gain that only behaves because of an undeclared
+   default is the failure class M2 and M3 were each organised against, so
+   `api.joint_dynamics` is its own declared intermediate.
+
+**Done, and closed.** A two-link arm on a grounded post, both links
+horizontal so gravity has its full moment arm, holds a commanded 30° and
+settles at **30.44** — the 0.44 being the load's torque divided by the gain,
+on gravity's side, which is what a proportional servo does. The same script
+with its `actuators=` list emptied falls to 75°, which is what makes the
+first number mean anything. End to end through the live cadexd gate, with no
+protocol change and no `shell/` diff. Engine suite **684 passed** (556 at
+M3's close); the **packaged lifecycle gate 8 passed** against a payload
+restaged from the closing commit, with the actuator and cross-restart suites
+passing against that same payload. `git diff main...MJC` still names no file
+under `shell/`.
+
+**Units are in the parameter names, and the wrong one is a refusal.** Every
+quantity whose meaning depends on whether the joint coordinate turns or
+slides gets a suffixed pair — `control_deg`/`control_mm`,
+`stiffness_nmm_per_deg`/`stiffness_n_per_mm`,
+`torque_limit_nmm`/`force_limit_n`, `armature_kgmm2`/`armature_kg`, and four
+more. That is more names than one `control=` plus a `motion_type` would need,
+and it is hazard 1 answered in the surface: the two readings of
+`stiffness=4000` differ by five and a half million, and a `control="30"` that
+means radians is a 57× error that runs and errors nowhere.
+
+**Six things phase 0 measured**, four of which moved a decision; ADR-065 has
+them in full.
+
+1. **`compiler.autolimits` defaults on**, so a `ctrlrange` silently becomes a
+   `ctrllimited`. Off, a range without its flag is a compile error, which is
+   the version to have — and every `limited` this translator relies on is now
+   stated.
+2. **`gear` rescales the *setpoint*, not only the effort**: at gear 2 a
+   commanded 0.5 holds the joint at 0.25. So the gear is pinned at 1,
+   asserted on the compiled model, and the surface has no ratio argument at
+   all.
+3. **The stability ceiling is `ω·h = 2` and it is dimensionless** — measured
+   at 2.02 on four solver steps and invariant across a 400× range of inertia,
+   because `implicitfast` integrates damping implicitly and stiffness
+   explicitly. Stated dimensionlessly, one refusal is right for every
+   mechanism; stated as a gain it would be right for one.
+4. **A damping gain does not explode, it freezes.** Past `c / M ≈ 1.2e10` per
+   second a velocity actuator commanded to 1 rad/s delivers 1e-9, finite the
+   whole way, warned about by nothing. Silence is the worse failure, so it is
+   the one with a refusal in front of it.
+5. **A `motor` at zero control is bitwise the unactuated run**, four-bar
+   included. Its converse is a separate test, because a `position` actuator
+   at zero control is a servo holding zero and not "no actuator".
+6. **`MjsJoint.damping` is a three-vector while `.armature` is a scalar.**
+   Assigning a float to the first is a `TypeError` — the loud kind of wrong.
+
+**Explicitly not in M4:** MJCF export (M5), `general` and `muscle`
+actuators, tendon transmissions, and any per-frame actuator state in the
+trace — the frame schema is `{frame_index, frame_kind, nominal_time_s,
+component_placements}` and it is the reason this whole arc needs no shell
+change.
 
 ---
 
@@ -641,13 +712,24 @@ Ranked by how quietly they fail.
 
 1. ~~**Units**~~ (§3.2). **Handled in M2**, which wrote the test before the
    feature: millimetres at the surface, one conversion site in the pure
-   module, `test_dynamics_units.py`. **M3 was the predicted regression and
-   it held**: contact parameters were named as the likeliest place a second
-   conversion site would appear, and none did. The API checks bounds and
-   shapes; full extents to half-extents, coefficients to packed vectors,
-   groups to bitmasks, restitution to a damping ratio and millimetres to
-   metres all happen in the pure module. Still live for M4 for the same
-   reason.
+   module, `test_dynamics_units.py`. **M3 and M4 were each the predicted
+   regression and it held both times.** M3's contact parameters were named
+   as the likeliest place a second conversion site would appear and none
+   did; M4 was the harder case and it was answered in the *parameter names*
+   rather than only in the module. Every quantity whose meaning depends on
+   whether a joint coordinate turns or slides carries a **suffixed pair** —
+   `control_deg`/`control_mm`, `stiffness_nmm_per_deg`/`stiffness_n_per_mm`,
+   `armature_kgmm2`/`armature_kg` and five more — and passing the wrong one
+   is a refusal rather than a factor of five and a half million. All six M4
+   conversions were written into `test_dynamics_units.py` before they had a
+   caller, and the worker forwards actuator parameters without touching a
+   number, which it can because they come off the graph and there is nothing
+   to read out of FreeCAD for a motor.
+   **Still live for M5**, and in a new form: MJCF is a text format with its
+   own unit conventions and an `<option>` block, so the export is a second
+   place the whole boundary could be re-implemented. It must read the
+   already-converted SI numbers this module produces rather than convert
+   afresh from the graph.
 2. ~~**Convexity.**~~ **Handled in M3** (ADR-064), and it needed *two*
    measurements rather than the one this list assumed. Concavity is the
    hull's volume against the **mesh's own**, both from the same vertices —

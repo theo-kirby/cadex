@@ -85,3 +85,8 @@ build/engine/
 /shell/build_darwin_*/
 /shell/build_linux_*/
 /shell/build_windows_*/
+
+# MuJoCo writes its warning log into the process working directory, so a
+# dynamics test that deliberately diverges leaves one in the repo root. It
+# is a runtime artifact, never a source file (M4).
+MUJOCO_LOG.TXT

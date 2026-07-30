@@ -4844,3 +4844,181 @@ state so the routed change has something to rewrite.
   suites pass against that same payload — which is what proves Qhull is
   really in it. `pixi run gate` was not re-run and did not need to be: the
   branch still contains no `shell/` diff.
+
+## ADR-065 — Actuators, and the control callback that was not needed (2026-07-30)
+
+**Decision.** Slice M4 of `docs/MUJOCO.md` lands: dynamics mechanisms are
+driven. `assembly.actuator(joint, kind=..., control_deg=..., ...)` and
+`assembly.joint_dynamics(joint, damping_nmms_per_deg=..., ...)` are two new
+non-publishable intermediates, and `api.dynamics` takes `actuators=` and
+`joint_dynamics=`. A script specifies a motor and a setpoint, and the arm
+holds position against gravity.
+
+No protocol change, no new response key, no `shell/` diff — `git diff
+main...MJC` still names no file under `shell/`, which is the invariant
+ADR-063 said the branch would keep. Per-frame actuator state stays **out** of
+the trace frames: the schema is still `{frame_index, frame_kind,
+nominal_time_s, component_placements}`, and that is the whole reason this arc
+has cost the shell nothing.
+
+Seven phases, each a resting place, and phase 0 wrote no feature code. Same
+ordering rule as M3, for the same reason: **the phase that measures comes
+before the phase that builds**.
+
+### 1. Two corrections to the plan, both decided before code
+
+**A control callback is the wrong shape, and it is also unnecessary.** The
+plan this slice came from said "a control callback runs in the worker" — a
+Python callable invoked every solver step. That would put unbounded arbitrary
+code inside the determinism gate and break "nothing happens outside the
+script" the same way the deleted bpy modes did. It is also not needed, and
+phase 0 is what established that: MuJoCo's `position` and `velocity`
+actuators *are* the PD loop, written into `actuator_gainprm` and
+`actuator_biasprm` and closed in C. What a script has to supply is a
+**setpoint**, and a setpoint that varies is a formula of `time` — a
+vocabulary `api.motion` has had since ADR-048, whose AST whitelist M4
+extracted into `_checked_formula` rather than copying.
+
+**Joint damping and armature are part of this slice, not a later one.** A
+position gain stiff enough to hold an arm rings on a frictionless,
+armature-free joint — measured, sixty degrees peak to peak, not decaying —
+and MuJoCo's defaults for damping, armature and friction loss are all zero.
+A gain that only behaves because of an undeclared default is exactly the
+failure class M2 and M3 were each organised against, so the resistance is a
+declared intermediate rather than a tuning secret.
+
+### 2. What phase 0 measured
+
+Six questions, four of which moved a decision.
+
+1. **A `position` actuator is `gainprm = [kp]`, `biasprm = [0, −kp, −kv]`.**
+   The closed loop is three numbers in a compiled model. This is the
+   measurement the first correction above rests on.
+
+2. **`compiler.autolimits` defaults *on***, so a `ctrlrange` silently becomes
+   a `ctrllimited`. With it off, a `forcerange` without a `forcelimited` is a
+   compile error — the loud version, and the one to have. The translator now
+   sets `autolimits = False` and states every `limited` flag it relies on,
+   joints included.
+
+3. **`gear` rescales the setpoint, not just the effort.** At gear 2 a
+   commanded 0.5 rad holds the joint at 0.25, because `ctrl` addresses the
+   actuator's coordinate, which is `gear · q`. So M4 pins the gear at 1,
+   refuses anything else, and the surface has no ratio argument at all: two
+   ways to say a ratio is one way to be silently wrong. The pin is asserted
+   on the compiled model.
+
+4. **The stability ceiling is `ω·h = 2`, and it is dimensionless.** An
+   undamped position gain diverges at `ω·h = 2.02`, measured at four
+   different solver steps and invariant across a 400× range of inertia —
+   which is the textbook explicit-integration limit, showing up here because
+   `implicitfast` integrates damping implicitly and stiffness explicitly.
+   That invariance is what lets the refusal be stated once for every
+   mechanism rather than as a gain for one, and the translator has the
+   inertia to hand: it is the joint's own diagonal of the compiled mass
+   matrix. Damping buys real headroom (ζ = 1 survives to 5.09) and the limit
+   ignores it deliberately — a model whose stability rests on a number the
+   author picked for feel breaks when somebody smooths the motion.
+
+5. **A damping gain does not explode. It freezes, and says nothing.** Past
+   `c / M ≈ 1.2e10` per second MuJoCo's own regularisation wins: a velocity
+   actuator commanded to 1 rad/s delivers 1e-9, finite the whole way, warned
+   about by nothing. Joint damping does the same at 2.9e10. Silence is the
+   worse of the two failure modes, so it is the one with a refusal in front
+   of it — `MAXIMUM_DAMPING_RATE_PER_S`, a decade below the smaller, covering
+   both so they cannot drift apart. Nothing real approaches it; it exists so
+   that regime is a sentence rather than a mystery.
+
+6. **A `motor` at zero control is bitwise the unactuated run.** Measured on a
+   bare hinge in phase 0 and on the four-bar in phase 4: identical frames,
+   not close ones. Had that not held, the digest story would have had a
+   problem with nothing to do with actuators. Its converse is stated as its
+   own test, because "no actuator" and "an actuator asking for nothing" are
+   the same sentence in English and opposite models — a `position` actuator
+   at zero is a servo holding the joint at zero.
+
+`MjsJoint.damping` and `.stiffness` are three-vectors (one per dof, for a
+ball joint's three) while `.armature` and `.frictionloss` are scalars.
+Assigning a float to the first is a `TypeError`, which is at least the loud
+kind of wrong.
+
+### 3. Units are in the parameter names, and the wrong one is a refusal
+
+Every quantity whose meaning depends on whether the joint coordinate turns or
+slides gets a **suffixed pair**, and only the one matching the joint is
+accepted: `control_deg`/`control_mm`, `control_deg_per_s`/`control_mm_per_s`,
+`control_nmm`/`control_n`, `torque_limit_nmm`/`force_limit_n`,
+`stiffness_nmm_per_deg`/`stiffness_n_per_mm`,
+`damping_nmms_per_deg`/`damping_ns_per_mm`, `armature_kgmm2`/`armature_kg`,
+`friction_loss_nmm`/`friction_loss_n`.
+
+This is more parameter names than a single `control=` plus a `motion_type`
+would need, and that is the point. `api.motion`'s one formula whose unit
+depends on a sibling argument is hazard 1 exactly: a `control="30"` that
+means 30 radians is a 57× error that runs, looks like physics and errors
+nowhere. The two readings of `stiffness=4000` differ by five and a half
+million. `cylindrical` joints own one coordinate of each and, like
+`api.motion`, require an explicit `motion_type`.
+
+Hazard 1 was named as still live for M4 and this is the second time it has
+been paid rather than triggered: every M4 conversion is in `CadexDynamics`,
+`test_dynamics_units` grew all six before they had a caller, and the worker
+forwards property dicts without touching a number — which it can, because an
+actuator's parameters come off the graph and there is nothing to read out of
+FreeCAD for one. That is the property to protect in review.
+
+### 4. Which joints refuse a motor, and why each does
+
+A loop-closing joint (it has no MuJoCo joint to drive — the refusal says the
+spanning forest reached both its components another way, and what would
+change it), a coupled kind (`screw`, `gears`, `belt`, `rack_pinion` attach
+nothing; the refusal names the joints they relate), `fixed` (no coordinate),
+`ball` (three, and no scalar setpoint means anything), suppressed, and the
+four placement-only kinds. The tree-dependent refusals live in the pure
+module because only the tree knows; the rest are at the API, where the
+message can name the parameter.
+
+`initialValue` is refused in a control formula, with its reason: a dynamics
+run's initial value is a solved pose, not a scalar the script can name.
+`api.motion` keeps it, and keeps its `**` → `^` Ondsel rendering; the control
+path keeps Python syntax, because this engine is what evaluates it.
+
+### 5. Time is computed, not accumulated
+
+`t = start_time_s + index · solver_step` from an integer index, never the
+solver's own clock — which MuJoCo maintains by adding the step to itself.
+`simulate` already lands its samples on exact step boundaries for the same
+reason; a control signal that drifted off them would make the trace depend on
+the drift, and the determinism gate is what would have to catch it, after the
+fact, on a digest, with nothing to point at. The formula is compiled once per
+actuator and evaluated against a globals dict with no `__builtins__`, so the
+API's whitelist and the reachable namespace are two barriers that fail
+differently.
+
+### 6. The evidence reports what the motors had to do
+
+`model_evidence` gains `actuators` and `joint_dynamics` blocks carrying the
+declared numbers, the SI ones, the effort limit, the **peak effort actually
+reached** and whether it saturated. That last pair is the block's argument:
+"the arm sagged" is a complaint nobody can act on, and "it sat on its 0.1 N·m
+limit" is the same complaint with the answer in it — the same case the
+inertials block already makes about "the arm feels heavy".
+
+### 7. Verification
+
+Engine suite **684 passed** (556 at M3's close). The two-link arm holds 30°
+and settles at **30.44** — the 0.44 being the load's torque divided by the
+gain, on gravity's side, which is what a proportional servo does and is
+asserted as a signed bound rather than a magnitude. The same script with the
+`actuators=` list emptied falls to 75°, which is what makes the first number
+mean anything. A setpoint of `25*sin(2*pi*time)` is tracked through a 50°
+sweep. The cross-restart gate grew an actuated mechanism with both looped
+actuator kinds and a time-varying setpoint, and writes the same artifact byte
+for byte through two separate cadexd processes.
+
+Packaged lifecycle gate **8 passed** against a payload restaged from the
+closing commit, with the actuator and cross-restart suites passing against
+that same payload — ADR-023's rule being that a source tree proves nothing
+about a payload. `pixi run gate` was not re-run and did not need to be:
+`git diff --name-only main...MJC -- shell/` is empty, and that invariant, not
+a repeated run, is what the shell claim rests on.

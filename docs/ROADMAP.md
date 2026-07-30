@@ -787,8 +787,19 @@ with the phase numbers above. Every slice is a resting place.
       trace step in M2, so what M3 owed was the budget — which became two
       budgets, one for what leaves the engine and one for what the engine
       does. No protocol change, no `shell/` diff.
-- [ ] **M4 — Actuators and closed loop.** The last slice that is
-      unambiguously CAD.
+- [x] **M4 — Actuators and closed loop** (ADR-065). `api.actuator` in three
+      kinds — `motor`, `position`, `velocity` — plus `api.joint_dynamics` for
+      the damping, armature and friction loss MuJoCo defaults to zero. A
+      two-link arm holds a commanded 30° and settles at 30.44, the 0.44 being
+      the load's torque over the gain; the same script with no actuators
+      falls to 75°. **Two of this line's own words were wrong.** There is no
+      control callback: MuJoCo's position actuator *is* the PD loop, closed
+      in C, so what a script supplies is a setpoint — a whitelisted formula
+      of `time`, which keeps arbitrary Python out of the determinism gate.
+      And joint damping was not a later slice: a stiff gain on an undamped
+      joint rings at sixty degrees peak to peak forever. Units are in the
+      parameter names and the wrong one is a refusal. No protocol change, no
+      `shell/` diff.
 - [ ] **M5 — MJCF export.** Independently shippable, and the cheapest slice
       in the arc: no solver loop, no determinism problem, no contact tuning.
       If the arc ever rejoins `main`, ADR-063 names this as the occasion to
