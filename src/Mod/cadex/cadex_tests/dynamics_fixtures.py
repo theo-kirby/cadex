@@ -382,6 +382,60 @@ def pendulum(*, angle: float = 0.7) -> tuple[list[dict], list[dict], dict]:
     )
 
 
+def two_link_arm(
+    *, shoulder: float = 0.0, elbow: float = 0.0
+) -> tuple[list[dict], list[dict], dict]:
+    """A grounded post, an upper arm and a forearm: M4's exit criterion.
+
+    Both hinges turn about world +Y and both links start horizontal, which
+    is the worst case on purpose -- gravity has its full moment arm on the
+    shoulder, and a servo that holds this holds anything. The forearm hangs
+    off the upper arm rather than off the post, so the shoulder carries a
+    two-link subtree and its effective inertia is not the number a
+    single-link intuition would give.
+
+    Link frames put the proximal joint at the origin and the distal one
+    along +X, so the connector frames are simple and the solved placements
+    are not -- the same construction the four-bar uses, for the same
+    reason.
+    """
+
+    upper_length = 300.0
+    fore_length = 220.0
+    axis = (0.0, 1.0, 0.0)
+    return build(
+        [
+            {"name": "post", "grounded": True, "size": (80.0, 80.0, 400.0)},
+            {"name": "upper", "size": (upper_length, 40.0, 20.0)},
+            {"name": "fore", "size": (fore_length, 30.0, 15.0)},
+        ],
+        [
+            {
+                "name": "shoulder",
+                "kind": "revolute",
+                "parent": "post",
+                "child": "upper",
+                # +Y is the hinge axis, so the connector frames turn the
+                # link's local +Z onto it.
+                "parent_frame": frame((0.0, 0.0, 200.0), (1.0, 0.0, 0.0), -90.0),
+                "child_frame": frame((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), -90.0),
+                "values": [shoulder],
+            },
+            {
+                "name": "elbow",
+                "kind": "revolute",
+                "parent": "upper",
+                "child": "fore",
+                "parent_frame": frame(
+                    (upper_length, 0.0, 0.0), (1.0, 0.0, 0.0), -90.0
+                ),
+                "child_frame": frame((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), -90.0),
+                "values": [elbow],
+            },
+        ],
+    )
+
+
 def four_bar() -> tuple[list[dict], list[dict], dict]:
     """A planar four-bar: three tree edges and one loop closure.
 
