@@ -207,6 +207,55 @@ result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
           "j": j, "asm": asm, "diag": diag, "sim": sim}
 """
 
+#: M3's exit criterion, end to end (docs/MUJOCO.md M3, phase 6). A hinged
+#: mast on a post, level to start with and hanging out over a floor slab it
+#: is not jointed to. Nothing prescribes its motion and nothing but contact
+#: stops it: it swings down under gravity, slaps the slab, bounces twice at
+#: the restitution it was given, and settles.
+#:
+#: Every M3 code path is load-bearing here. Without the geoms it passes
+#: through the slab; without the explicit joint exclusion it collides with
+#: the post it is hinged to and never gets started; without the finer
+#: solver step the bouncing contact is refused; and under MuJoCo's default
+#: Euler integrator a mechanism this shape gains energy rather than losing
+#: it. The slab is a separate grounded component precisely so that the
+#: exclusion covers the mast and post and leaves the landing surface out.
+TOPPLE_SCRIPT = """
+slab = part.box(600, 400, 20)
+tower = part.box(60, 60, 200)
+mast = part.box(300, 40, 40)
+floor = assembly.component(slab, grounded=True)
+post = assembly.component(tower, placement=[40, 170, 20], grounded=True)
+column = assembly.component(mast, placement=[70, 180, 200])
+hinge = assembly.joint("revolute",
+                       assembly.connector(post, "origin",
+                                          offset={"position": [30, 30, 200],
+                                                  "axis": [1, 0, 0],
+                                                  "angle_degrees": -90}),
+                       assembly.connector(column, "origin",
+                                          offset={"position": [20, 20, 20],
+                                                  "axis": [1, 0, 0],
+                                                  "angle_degrees": -90}))
+asm = assembly.assembly([floor, post, column], [hinge])
+diag = assembly.solve(asm)
+sim = assembly.dynamics(asm, [
+    assembly.body(floor, density_kg_m3=7850,
+                  collision=assembly.collision("box", size_mm=[600, 400, 20],
+                                               offset=[300, 200, 10],
+                                               friction=0.9, restitution=0.3)),
+    assembly.body(post, density_kg_m3=7850,
+                  collision=assembly.collision("box", size_mm=[60, 60, 200],
+                                               offset=[30, 30, 100], friction=0.9)),
+    assembly.body(column, density_kg_m3=700,
+                  collision=assembly.collision("box", size_mm=[300, 40, 40],
+                                               offset=[150, 20, 20],
+                                               friction=0.9, restitution=0.3)),
+], end_time_s=2.5, frames_per_second=60, solver_step_s=0.0005)
+result = {"slab": slab, "tower": tower, "mast": mast, "floor": floor,
+          "post": post, "column": column, "hinge": hinge, "asm": asm,
+          "diag": diag, "sim": sim}
+"""
+
 TETRA_STL = """solid tetra
 facet normal 0 0 -1
  outer loop
@@ -1093,4 +1142,97 @@ def test_a_broken_store_reports_a_declared_restore_failure() -> None:
         _stop(client)
         _stop(mismatched)
         _stop(unrunnable)
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@pytest.mark.skipif(
+    FREECADCMD is None, reason="No FreeCADCmd binary available for cadexd CI."
+)
+def test_cadexd_publishes_a_mechanism_that_topples_lands_and_stops() -> None:
+    """M3's exit criterion: a thing falls over correctly (docs/MUJOCO.md M3).
+
+    M2's dynamics gate proved a mechanism with mass can fall. Its bodies had
+    no geometry at all -- ``model.ngeom == 0`` was an assertion -- so nothing
+    could touch anything and nothing could stop. This is the same pipeline
+    with contact in it, and the three claims in the name are three
+    assertions:
+
+    * **topples** -- the mast leaves level and swings through 40 degrees
+      under gravity alone, with no motion formula anywhere in the script;
+    * **lands** -- it stops descending at the angle its own geometry allows
+      on a slab it is not jointed to, rather than passing through it;
+    * **stops** -- and the last half second of the trace is motionless to
+      the micro-degree, having bounced first, which is what says the
+      restitution did something and then stopped doing it.
+
+    A trace where the mast simply never moved would satisfy "stops" alone,
+    which is why the bounce is asserted too.
+    """
+
+    root = Path(tempfile.mkdtemp(prefix="cadexd-topple-ci-"))
+    client = None
+    try:
+        client = _spawn_cadexd()
+        opened = client.request("open_project", {"project_root": str(root)})
+        assert opened["ok"] is True, opened
+        written = client.request(
+            "write_script", {"source": TOPPLE_SCRIPT, "expected_revision": ""}
+        )
+        assert written["ok"] is True, written
+
+        entry = written["display"]["sim"]
+        assert entry["artifact_kind"] == "assembly_simulation_json", entry
+        trace = json.loads(Path(entry["artifact_path"]).read_text(encoding="utf-8"))
+        assert trace["schema"] == "cadex-assembly-simulation-trace-v1"
+        assert trace["motion_outputs"] == []
+        dynamics = trace["dynamics"]
+        assert dynamics["solver"] == "mujoco"
+
+        # The mast is hinged to the post, so those two are excluded from
+        # each other; the slab is not jointed to anything, which is what
+        # leaves it available to be landed on.
+        assert dynamics["contact_exclusions"] == [["column", "post"]]
+        assert {entry["component_output"] for entry in dynamics["collisions"]} == {
+            "floor",
+            "post",
+            "column",
+        }
+
+        frames = trace["frames"]
+        # 0..2.5 s at 60 fps is 151 samples plus the untimed input frame.
+        assert len(frames) == 152, len(frames)
+
+        def lean(frame: dict) -> float:
+            """The mast's rotation about the hinge axis, in degrees."""
+
+            x, y, z, w = frame["component_placements"]["column"]["rotation_xyzw"]
+            return math.degrees(2.0 * math.atan2(y, w))
+
+        angles = [lean(frame) for frame in frames[1:]]
+
+        # Topples: level at t=0, and forty degrees over by the end.
+        assert angles[0] == pytest.approx(0.0, abs=1.0e-9)
+        assert angles[-1] == pytest.approx(41.35, abs=1.0)
+
+        # Lands and bounces: the lean rises to a first peak, comes back
+        # measurably, and rises again. A mast that swung down and stayed
+        # down would be monotonic and would fail here.
+        peak = max(range(len(angles)), key=lambda index: angles[index])
+        rebound = min(angles[peak:])
+        assert angles[peak] - rebound > 5.0, (angles[peak], rebound)
+        assert max(angles[peak:]) > rebound + 5.0
+
+        # Stops: motionless over the last half second, to the micro-degree.
+        settled = angles[-30:]
+        assert max(settled) - min(settled) < 1.0e-6, settled
+
+        # And it never went through the slab: the slab's top is at z = 20
+        # and the mast's own frame sits on its underside.
+        heights = [
+            frame["component_placements"]["column"]["position_mm"][2]
+            for frame in frames[1:]
+        ]
+        assert min(heights) > 20.0, min(heights)
+    finally:
+        _stop(client)
         shutil.rmtree(root, ignore_errors=True)
