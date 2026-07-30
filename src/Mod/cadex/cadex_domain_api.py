@@ -95,6 +95,11 @@ _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
         # assembly_simulation_json artifacts would leave the shell baking
         # neither (ADR-062). `body` is an intermediate, like `connector`.
         "dynamics": "simulation",
+        # An exported MuJoCo model *does* get a type of its own, for the
+        # converse of the reason dynamics does not: nothing bakes it, so
+        # two of them in one script is a reasonable thing to write and the
+        # "exactly one simulation" rule must not catch them (ADR-066).
+        "mjcf": "mjcf",
         "body": "body",
         # A collision shape is an argument to a body, never an output: it
         # has no native type and nothing publishes it (M3 phase 1).

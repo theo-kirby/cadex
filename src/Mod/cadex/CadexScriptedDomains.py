@@ -261,12 +261,13 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "solver_diagnostics",
             "motion",
             "simulation",
+            "mjcf",
             "exploded_view",
         ),
         "Define native assembly links, grounding, connector references, joints, "
         "solved placements, structured solver diagnostics, and worker-generated "
-        "kinematic simulations, rigid-body dynamics runs, exploded views, and "
-        "flexible source hierarchies.",
+        "kinematic simulations, rigid-body dynamics runs, exported MuJoCo MJCF "
+        "models, exploded views, and flexible source hierarchies.",
         (
             "assembly",
             "component",
@@ -276,6 +277,7 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "motion",
             "simulation",
             "dynamics",
+            "mjcf",
             "body",
             "collision",
             # Two more intermediates, and deliberately absent from

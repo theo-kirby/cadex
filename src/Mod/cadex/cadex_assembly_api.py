@@ -27,6 +27,12 @@ _PUBLISHABLE_TYPES = frozenset(
         "solver_diagnostics",
         "motion",
         "simulation",
+        # An exported MuJoCo model is its own output type, unlike a dynamics
+        # run: `dynamics` shares `simulation` because two
+        # assembly_simulation_json artifacts would leave the shell baking
+        # neither, and an MJCF file is baked by nothing. A script may
+        # declare several (ADR-066).
+        "mjcf",
         "exploded_view",
     }
 )
@@ -715,6 +721,7 @@ class AssemblyDomainAPI:
         "motion",
         "simulation",
         "dynamics",
+        "mjcf",
         "body",
         "collision",
         "joint_dynamics",
@@ -1945,6 +1952,123 @@ class AssemblyDomainAPI:
             declared.add(coordinate)
         return entries
 
+    def _mujoco_model(
+        self,
+        operation: str,
+        assembly: DomainValue,
+        bodies: Sequence[DomainValue],
+        actuators: Sequence[DomainValue],
+        joint_dynamics: Sequence[DomainValue],
+        gravity_m_s2: Sequence[float] | None,
+        solver_step_s: float | None,
+    ) -> dict[str, Any]:
+        """Everything ``api.dynamics`` and ``api.mjcf`` both have to check.
+
+        The two surfaces share six parameters and every one of their
+        validations -- one ``api.body`` per component, one actuator and one
+        joint_dynamics per joint *coordinate*, gravity in metres, a solver
+        step inside its bounds. Extracted rather than copied because two
+        copies of the "steel is 7850" refusal is two places for it to
+        drift, and the refusal texts are the part of this API that a model
+        actually reads.
+
+        What is *not* here is what counts a trace: ``start_time_s``,
+        ``end_time_s``, ``frames_per_second`` and the frame and pose caps
+        all measure what leaves the engine as an animation, and an exported
+        model is not one.
+        """
+
+        model = _domain_value(operation, "assembly", assembly, output_type="assembly")
+        body_values = _values(
+            operation,
+            "bodies",
+            bodies,
+            output_type="body",
+            minimum=1,
+        )
+        components = list(model.properties.get("components", ()))
+        component_ids = {id(item) for item in components}
+        seen: set[int] = set()
+        for index, body_value in enumerate(body_values):
+            component = body_value.arguments[0]
+            if id(component) not in component_ids:
+                raise _error(
+                    operation,
+                    f"bodies[{index}]",
+                    "gives mass to a component that is not listed in this assembly",
+                )
+            if id(component) in seen:
+                raise _error(
+                    operation,
+                    f"bodies[{index}]",
+                    "gives one component two densities",
+                )
+            seen.add(id(component))
+        if len(seen) != len(components):
+            raise _error(
+                operation,
+                "bodies",
+                f"requires one api.body per component; this assembly has "
+                f"{len(components)} component(s) and {len(seen)} body value(s). "
+                "A component with no density has no mass, and a massless part "
+                "in a dynamics model is not a lighter part -- it is an "
+                "unsolvable one",
+            )
+        joint_ids = {id(item) for item in model.properties.get("joints", ())}
+        actuator_values = self._one_per_coordinate(
+            operation,
+            "actuators",
+            actuators,
+            "actuator",
+            joint_ids,
+            "two motors",
+        )
+        joint_dynamics_values = self._one_per_coordinate(
+            operation,
+            "joint_dynamics",
+            joint_dynamics,
+            "joint_dynamics",
+            joint_ids,
+            "two sets of damping, armature and friction loss",
+        )
+        gravity = (
+            None
+            if gravity_m_s2 is None
+            else _vector(operation, "gravity_m_s2", gravity_m_s2, size=3)
+        )
+        if gravity is not None:
+            magnitude = math.sqrt(sum(value * value for value in gravity))
+            if magnitude > 1000.0:
+                raise _error(
+                    operation,
+                    "gravity_m_s2",
+                    "must be at most 1000 m/s2 in magnitude. This is metres per "
+                    "second squared, not millimetres: Earth is 9.81 and the Moon "
+                    "is 1.62",
+                    gravity_m_s2,
+                )
+        step = (
+            None
+            if solver_step_s is None
+            else _number(
+                operation,
+                "solver_step_s",
+                solver_step_s,
+                minimum=0.0,
+                maximum=1.0,
+                strict_minimum=True,
+            )
+        )
+        return {
+            "model": model,
+            "components": components,
+            "bodies": body_values,
+            "actuators": actuator_values,
+            "joint_dynamics": joint_dynamics_values,
+            "gravity_m_s2": gravity,
+            "solver_step_s": step,
+        }
+
     def dynamics(
         self,
         assembly: DomainValue,
@@ -1999,59 +2123,17 @@ class AssemblyDomainAPI:
         """
 
         operation = "dynamics"
-        model = _domain_value(operation, "assembly", assembly, output_type="assembly")
-        body_values = _values(
+        shared = self._mujoco_model(
             operation,
-            "bodies",
+            assembly,
             bodies,
-            output_type="body",
-            minimum=1,
-        )
-        components = list(model.properties.get("components", ()))
-        component_ids = {id(item) for item in components}
-        seen: set[int] = set()
-        for index, body_value in enumerate(body_values):
-            component = body_value.arguments[0]
-            if id(component) not in component_ids:
-                raise _error(
-                    operation,
-                    f"bodies[{index}]",
-                    "gives mass to a component that is not listed in this assembly",
-                )
-            if id(component) in seen:
-                raise _error(
-                    operation,
-                    f"bodies[{index}]",
-                    "gives one component two densities",
-                )
-            seen.add(id(component))
-        if len(seen) != len(components):
-            raise _error(
-                operation,
-                "bodies",
-                f"requires one api.body per component; this assembly has "
-                f"{len(components)} component(s) and {len(seen)} body value(s). "
-                "A component with no density has no mass, and a massless part "
-                "in a dynamics model is not a lighter part -- it is an "
-                "unsolvable one",
-            )
-        joint_ids = {id(item) for item in model.properties.get("joints", ())}
-        actuator_values = self._one_per_coordinate(
-            operation,
-            "actuators",
             actuators,
-            "actuator",
-            joint_ids,
-            "two motors",
-        )
-        joint_dynamics_values = self._one_per_coordinate(
-            operation,
-            "joint_dynamics",
             joint_dynamics,
-            "joint_dynamics",
-            joint_ids,
-            "two sets of damping, armature and friction loss",
+            gravity_m_s2,
+            solver_step_s,
         )
+        model = shared["model"]
+        components = shared["components"]
         start = _number(operation, "start_time_s", start_time_s)
         end = _number(operation, "end_time_s", end_time_s)
         if end <= start:
@@ -2077,34 +2159,7 @@ class AssemblyDomainAPI:
                 "must be from 1 through 240",
                 frames_per_second,
             )
-        gravity = (
-            None
-            if gravity_m_s2 is None
-            else _vector(operation, "gravity_m_s2", gravity_m_s2, size=3)
-        )
-        if gravity is not None:
-            magnitude = math.sqrt(sum(value * value for value in gravity))
-            if magnitude > 1000.0:
-                raise _error(
-                    operation,
-                    "gravity_m_s2",
-                    "must be at most 1000 m/s2 in magnitude. This is metres per "
-                    "second squared, not millimetres: Earth is 9.81 and the Moon "
-                    "is 1.62",
-                    gravity_m_s2,
-                )
-        step = (
-            None
-            if solver_step_s is None
-            else _number(
-                operation,
-                "solver_step_s",
-                solver_step_s,
-                minimum=0.0,
-                maximum=1.0,
-                strict_minimum=True,
-            )
-        )
+        step = shared["solver_step_s"]
         if step is not None and step > 1.0 / frames_per_second:
             raise _error(
                 operation,
@@ -2141,15 +2196,85 @@ class AssemblyDomainAPI:
             operation,
             "simulation",
             model,
-            bodies=body_values,
-            actuators=actuator_values,
-            joint_dynamics=joint_dynamics_values,
+            bodies=shared["bodies"],
+            actuators=shared["actuators"],
+            joint_dynamics=shared["joint_dynamics"],
             start_time_s=start,
             end_time_s=end,
             frames_per_second=frames_per_second,
-            gravity_m_s2=gravity,
+            gravity_m_s2=shared["gravity_m_s2"],
             solver_step_s=step,
             estimated_frame_limit=estimated_frames,
+            label=label,
+        )
+
+    def mjcf(
+        self,
+        assembly: DomainValue,
+        bodies: Sequence[DomainValue],
+        *,
+        actuators: Sequence[DomainValue] = (),
+        joint_dynamics: Sequence[DomainValue] = (),
+        gravity_m_s2: Sequence[float] | None = None,
+        solver_step_s: float | None = None,
+        label: str = "",
+    ) -> DomainValue:
+        """Export the assembly as a MuJoCo MJCF model file.
+
+        The same model ``api.dynamics`` would simulate, written out instead
+        of run: one self-contained ``.xml`` retained as a program artifact,
+        carrying mass and inertia computed exactly from each component's
+        solids rather than estimated from a bounding box. It loads in a
+        stock MuJoCo with no Cadex anywhere near it.
+
+        Every parameter means what it means in ``api.dynamics`` and is
+        checked the same way -- one ``assembly.body`` per component, at most
+        one actuator and one ``joint_dynamics`` per joint coordinate,
+        gravity in metres per second squared. What is absent is everything
+        that counts a *trace*: there is no time range and no
+        ``frames_per_second``, because nothing is integrated.
+
+        **The file opens where the assembly was solved.** MuJoCo's own
+        reference configuration is the one where each joint's connector
+        frames coincide, which is not the solved pose; the export writes a
+        keyframe named ``solved`` and anything reading the file should reset
+        to it.
+
+        **Collision geometry only.** A component with no
+        ``assembly.collision`` shapes exports no geom, exactly as it
+        contributes none in a dynamics run -- which means a mechanism with
+        no collision shapes at all opens *invisible* in MuJoCo's viewer,
+        held together by joints that are drawn as nothing. Give the parts
+        that matter a collision shape if the file is meant to be looked at.
+
+        Unlike ``api.simulation`` and ``api.dynamics`` a script may declare
+        **more than one** ``api.mjcf`` output: the "exactly one simulation"
+        rule exists because the shell bakes one animation, and an exported
+        model is not baked. An ``api.mjcf`` may sit beside an
+        ``api.dynamics`` in the same script, or beside ``api.motion``
+        outputs -- kinematics on screen and a dynamics model on disk is a
+        useful pair and a legal one.
+        """
+
+        operation = "mjcf"
+        shared = self._mujoco_model(
+            operation,
+            assembly,
+            bodies,
+            actuators,
+            joint_dynamics,
+            gravity_m_s2,
+            solver_step_s,
+        )
+        return self._value(
+            operation,
+            "mjcf",
+            shared["model"],
+            bodies=shared["bodies"],
+            actuators=shared["actuators"],
+            joint_dynamics=shared["joint_dynamics"],
+            gravity_m_s2=shared["gravity_m_s2"],
+            solver_step_s=shared["solver_step_s"],
             label=label,
         )
 
