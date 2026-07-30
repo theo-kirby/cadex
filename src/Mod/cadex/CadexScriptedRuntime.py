@@ -1600,7 +1600,17 @@ def _capability_api_listing() -> dict[str, dict[str, Any]]:
         "In a project script assembly.component(source, ...) takes a part or "
         "partdesign value created in the same script; cross-document component "
         "references are not supported and every component source must also be "
-        "a declared result output."
+        "a declared result output. "
+        "assembly.dynamics(...) is the dynamics counterpart of "
+        "assembly.simulation: it needs one assembly.body(component, "
+        "density_kg_m3=...) per component and runs the mechanism under gravity "
+        "instead of prescribing its motion, so a script uses api.motion or "
+        "api.dynamics and never both. Both produce a simulation output and a "
+        "script may declare exactly one. Density has no default (steel 7850, "
+        "aluminium 2700); mass and inertia are computed exactly from the "
+        "component's solids. Bodies do not collide yet, and distance, "
+        "parallel, perpendicular, angle and rack_pinion joints are refused by "
+        "a dynamics run."
     )
     return listing
 
