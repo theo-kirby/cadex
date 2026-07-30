@@ -357,32 +357,128 @@ Ondsel solve (the first solved frame of a dynamics trace reproduces
 FreeCAD's placements to the micrometre), plus the perturbation test, plus a
 closure-residual gate that needs no MuJoCo at all.
 
-### M3 — Dynamics for real
+### M3 — Dynamics for real `(PLANNED 2026-07-30, not started)`
 
-Gravity, mass, restitution, friction, contact parameters. The units
-boundary from §3.2 gets built and tested here, first.
+Contact, friction, restitution, gravity as a script parameter, and the
+determinism gate. Phased like M2 was, and for the same reason: the phase
+that measures comes before the phase that builds.
 
-Mesh collision arrives via convex decomposition, because a bracket with a
-slot silently becoming a solid block is a wrong answer that looks right.
-The existing `part.cable` obstacle handling already has the "mesh obstacles
-are bounding boxes" wart recorded in ROADMAP; this is the same class of
-problem and should not get the same workaround.
+**Three corrections to what this section said before it was planned**, all
+from reading the M2 code and measuring against mujoco 3.10.0:
 
-The determinism gate lands: same script, same params → identical trace
-digest across cadexd restarts, with MuJoCo forced **single-threaded**
-because upstream has open reproducibility issues with island parallelism.
-M2 gates determinism only *within* one process, and it corrected ADR-060 on
-the way past: a trace's `artifact_sha256` is in **no** project digest, so a
-version bump today changes every trace and moves nothing. Whether trace
-bytes belong in the digest is this slice's call, and it needs OndselSolver's
-own byte reproducibility proven first.
+1. **M2 already split solver step from trace step.** `api.dynamics` takes
+   `frames_per_second` and derives a finer `solver_step` from
+   `DEFAULT_TIME_STEP_S = 0.002`; the trace records `solver_step_s`
+   alongside. What M3 actually owes here is not the split but the *budget*
+   (phase 4) and making the solver step authorable.
+2. **"The units boundary gets built here, first" is already paid.** M2
+   phase 0 wrote `test_dynamics_units.py` before the feature, and the split
+   rule — the pure module does every arithmetic operation *including every
+   unit conversion*, the worker does every FreeCAD read and nothing else —
+   is stated and tested. M3 inherits it and must not leak a second
+   conversion site; contact parameters are where that would happen.
+3. **"Forced single-threaded" is not the flag it sounds like.** Measured:
+   `mjDSBL_ISLAND` is a *disable* bit and `m.opt.disableflags == 0` on a
+   default compile, so islands are **on** by default, not off. Separately,
+   MuJoCo only actually parallelises when an `mjData` is given a thread
+   pool, which we never do — so we are probably already single-threaded and
+   the hazard is about constraint *ordering*, not threads. Probably is not a
+   test.
 
-The frame budget gets revisited. `api.simulation` caps at 10 000 frames /
-100 000 component-pose samples, and `time_step_s` currently means both
-solver step and trace step. Dynamics wants those separate — 2 kHz solver,
-60 Hz trace.
+---
 
-**Done when:** a thing falls over correctly, and does so identically twice.
+**Phase 0 — measure, before anything is built.** The M2 lesson that paid
+best was writing the units test first; the analogue here is that every
+determinism assumption gets a number before contact exists to blame.
+
+- **Is a trace byte-identical across processes today, with no contact at
+  all?** Run the M2 four-bar in two separate interpreters and compare. If it
+  already is not, contact is not the cause and the gate has a prior problem
+  worth finding now rather than after mesh collision has muddied it.
+- **Does `mjDSBL_ISLAND` change any number in our usage?** Measure both
+  ways. Then set it explicitly whichever way the measurement lands, because
+  a flag is only a promise about a default — the lesson `balanceinertia`
+  charged us for in M2.
+- **Assert `mjENBL_SLEEP` off.** Measured off by default in 3.10.0. A
+  sleeping body freezes a settling mechanism, which is exactly the M3
+  scenario, and the trace difference is silent.
+- **Prove OndselSolver's own byte reproducibility.** ADR-062 made this the
+  precondition for deciding whether trace bytes enter the project digest.
+  Answer it here, in this phase, and record the answer either way.
+
+**Phase 1 — collision geometry, and what it refuses.** The hazard is
+hazard 2: MuJoCo hulls a collision mesh without complaint, so a bracket
+with a slot silently becomes a solid block.
+
+- **The mesh source is `cadex_tessellation.tessellate_shape`**, which
+  already exists worker-side and already respects the M2 split rule.
+- **A collision mesh must not ride the display deflection.** Display
+  deflection is chosen for looks and scales with the bounding box; a
+  collision mesh derived from it is a physics result that changes when the
+  view does. Separate, explicitly declared, recorded in the evidence.
+- **Convex decomposition is not in M3 unless phase 2 proves it necessary.**
+  Measured today: `scipy` 1.17.0 with Qhull (`scipy.spatial._qhull`) is
+  already in the staged payload, so a convex *hull* costs no new dependency
+  and no new payload weight. CoACD would cost a second
+  `CARRIED_PYPI_PACKAGES` exception — the thing ADR-061 named so it would be
+  easy to find and delete, not so it would grow — plus a decomposition whose
+  cross-version determinism nobody has established and which we assert digest
+  equality over. That trade needs evidence, not enthusiasm.
+- **Convexity is measured, not assumed.** We have the BREP, so compare the
+  solid's exact `GProp_GProps` volume against its convex hull's. If they
+  differ beyond tolerance the body is concave, MuJoCo would silently hull
+  it, and the build **refuses** — naming the component and the volume error
+  — exactly as `rack_pinion` was refused in M2. Measuring exists so the
+  guess does not ship.
+- **The script says what to do about it**, and the refusal names the
+  options: explicit primitives (box, sphere, cylinder, capsule) as the
+  declarative escape hatch, or an explicit opt-in that the author has
+  accepted the hull. Never an inferred one.
+
+**Phase 2 — contact parameters.** Friction, restitution, `condim`,
+`margin`/`gap`, and the `contype`/`conaffinity` pairs that decide what may
+touch what.
+
+- **Restitution is a translation, not a pass-through.** MuJoCo has no
+  restitution coefficient; bounce comes out of `solref`. That conversion is
+  arithmetic, so it lives in the pure module with its own test, and it is
+  the most likely place for a second unit-conversion site to sneak in.
+- **Parent/child filtering is a default we must verify, not inherit.**
+  `mjDSBL_FILTERPARENT` exists and is off; what it does by default to a
+  jointed chain decides whether every mechanism M2 can already build starts
+  self-colliding the moment geoms appear.
+
+**Phase 3 — gravity and solver as script surface.** `gravity_m_s2` is a
+module constant today (`DEFAULT_GRAVITY_M_S2`) and should be authorable —
+a mechanism on the Moon, or with gravity off to isolate a joint. The
+integrator is measured as Euler by default; contact usually wants
+`implicitfast`, and that choice is a digest-moving decision that gets
+written down rather than defaulted into. `solver_step_s` becomes authorable
+with `DEFAULT_TIME_STEP_S` as its default.
+
+**Phase 4 — the frame budget.** The 10 000 frame / 100 000 component-pose
+caps were sized for kinematics. With solver and trace steps already
+separate, the open question is what the cap should *count* once an M7-scale
+rollout exists — and it is now the only open question left in §6.
+
+**Phase 5 — the determinism gate.** Same script, same params →
+identical trace digest across cadexd restarts, single-threading settled by
+phase 0 rather than asserted. Then the digest decision phase 0 gathered
+evidence for: whether a trace's `artifact_sha256` joins the project digest,
+given that today it is in **no** digest and so a MuJoCo version bump changes
+every trace and moves nothing — silent, which ADR-062 called strictly worse
+than loud.
+
+**Phase 6 — the falling thing.** A mechanism that topples, lands, and stops,
+with contact doing the work.
+
+**Done when:** a thing falls over correctly, and does so identically twice
+in two different processes.
+
+**Explicitly not in M3:** actuators and control callbacks (M4), MJCF export
+(M5), tendons — and therefore slider and cylindrical loop closures, which
+need one — flexible subassemblies, and convex decomposition unless phase 2
+earns it.
 
 ---
 
@@ -485,16 +581,27 @@ of chat turns that terminates in a viewport playing a learned gait.
 
 Ranked by how quietly they fail.
 
-1. **Units** (§3.2). Silent, catastrophic, and the whole plan's most likely
-   own-goal. Tested first, in M3.
+1. ~~**Units**~~ (§3.2). **Handled in M2**, which wrote the test before the
+   feature: millimetres at the surface, one conversion site in the pure
+   module, `test_dynamics_units.py`. Still live as a *regression* hazard —
+   M3's contact parameters are the most likely place a second conversion
+   site appears.
 2. **Convexity.** MuJoCo hulls collision meshes without complaint. Wrong
-   contacts that look plausible. M3.
+   contacts that look plausible. M3 phase 1, and the plan's answer is to
+   **refuse** a concave body rather than hull it silently: the volume error
+   against the exact `GProp_GProps` volume is measurable, so it gets
+   measured.
 3. **Cross-version drift.** MuJoCo disclaims numerical reproducibility
    across releases and we assert digest equality on every project open.
    Exact pin, M0 — and a version bump is a deliberate, digest-moving event
    like an OCCT bump, not a routine update.
-4. **Multi-threading.** Island parallelism has open upstream reproducibility
-   issues. Single-threaded until proven otherwise. M3.
+4. **Multi-threading — and it is not the flag it sounds like.** Measured on
+   3.10.0: `mjDSBL_ISLAND` is a *disable* bit and a default compile has
+   `disableflags == 0`, so islands are **on**, not off. But MuJoCo only
+   parallelises when an `mjData` is handed a thread pool, which we never do,
+   so the live risk is constraint *ordering* rather than threads. Probably
+   already deterministic is not a test; M3 phase 0 measures it both ways and
+   sets the flag explicitly either way.
 5. ~~**Loop extraction.**~~ **Handled in M2**, and it was the predicted
    hazard that behaved as predicted: the split is a breadth-first spanning
    forest from the grounded components, everything else is an equality
@@ -504,7 +611,9 @@ Ranked by how quietly they fail.
    *not* predicted is that a body-anchored `connect` resolves its second
    anchor through the reference configuration; closures go against sites.
 6. **Frame budget.** The 10 000-frame cap was sized for kinematics. An RL
-   rollout blows through it. M3.
+   rollout blows through it. M3 phase 4 — narrower than it was, because M2
+   already separated the solver step from the trace step, so what is left is
+   deciding what the cap counts.
 7. **Scope creep into a UI.** M5–M8 want buttons — train, stop, load
    policy — and "no user-accessible modeling tools" does not obviously
    answer whether those are allowed. ADR-060 should.
