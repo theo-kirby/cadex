@@ -3234,7 +3234,42 @@ def build_model(
         native_joint.armature = float(record["armature_si"])
         native_joint.frictionloss = float(record["friction_loss_si"])
 
+    # Actuators, after every joint exists and before the compile. Each is a
+    # MuJoCo actuator on exactly one joint coordinate, with the gear pinned
+    # at one: MuJoCo's ``gear`` rescales the *setpoint* as well as the
+    # effort (measured, M4 phase 0), so a translator that wrote anything
+    # else would silently mean something other than what the script said.
     actuator_applied = actuator_records(actuators, tree, joint_records)
+    for record in actuator_applied:
+        native_actuator = spec.add_actuator()
+        native_actuator.name = str(record["mujoco_actuator"])
+        native_actuator.target = str(record["mujoco_joint"])
+        native_actuator.trntype = mujoco.mjtTrn.mjTRN_JOINT
+        native_actuator.gear = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        kind = str(record["kind"])
+        if kind == "motor":
+            native_actuator.set_to_motor()
+        elif kind == "position":
+            # gainprm = [kp], biasprm = [0, -kp, -kv]: the PD loop, in the
+            # compiled model. Measured in phase 0 rather than read, because
+            # a sign or a slot out of place is a servo that pushes away
+            # from its setpoint and still looks like a mechanism.
+            native_actuator.set_to_position(
+                float(record["stiffness_si"]),
+                kv=float(record["damping_si"] or 0.0),
+            )
+        else:
+            native_actuator.set_to_velocity(float(record["damping_si"]))
+        # Both flags stated, always. ``autolimits`` is off, so an unstated
+        # one is a compile error rather than an inference -- and an effort
+        # limit that exists is one somebody wrote down.
+        native_actuator.ctrllimited = mujoco.mjtLimited.mjLIMITED_FALSE
+        if record["effort_limit_si"] is None:
+            native_actuator.forcelimited = mujoco.mjtLimited.mjLIMITED_FALSE
+        else:
+            limit = float(record["effort_limit_si"])
+            native_actuator.forcelimited = mujoco.mjtLimited.mjLIMITED_TRUE
+            native_actuator.forcerange = [-limit, limit]
 
     # Closures are written against *sites* placed at the two connector
     # frames, not against bodies. Measured, and it matters: a body-anchored
@@ -3343,6 +3378,7 @@ def build_model(
 
     _verify_compiled_inertia(mujoco, model, inertials, tree)
     _verify_solver_flags(mujoco, model)
+    _verify_actuator_flags(mujoco, model, actuator_applied)
     qpos = _solved_qpos(
         mujoco, model, tree, placements, joint_records, solved_values
     )
@@ -3571,9 +3607,64 @@ def simulate(
         for name in names
     }
 
+    # Each actuator's index in ``data.ctrl``, resolved once. The order the
+    # spec added them in is not promised to be the compiled order, and
+    # writing a setpoint into the wrong slot is a mechanism that runs.
+    actuator_slots = [
+        (
+            int(
+                mujoco.mj_name2id(
+                    model,
+                    mujoco.mjtObj.mjOBJ_ACTUATOR,
+                    str(record["mujoco_actuator"]),
+                )
+            ),
+            record,
+        )
+        for record in built["actuators"]
+    ]
+
+    def _apply_control(step_index: int) -> None:
+        """Every actuator's command at one instant, in the model's units.
+
+        **Time is computed, not accumulated.** ``start + index · step`` from
+        an integer index, and never MuJoCo's own clock -- which it maintains
+        by adding the step to itself, and which is therefore a
+        floating-point accumulation. ``simulate`` already lands its samples
+        on exact step boundaries for the same reason; a control signal that
+        drifted off them would make the trace depend on the drift, and the
+        determinism gate is what would have to catch it, after the fact, on
+        a digest, with nothing to point at.
+
+        (A test greps this module for the attribute that would be the easy
+        mistake, so it is deliberately not spelled anywhere here.)
+        """
+
+        control_time = float(start_time_s) + step_index * solver_step
+        for slot, record in actuator_slots:
+            context = (
+                f"the {record['kind']} actuator on joint {record['joint']!r}"
+            )
+            data.ctrl[slot] = control_si(
+                evaluate_control(
+                    record["control_code"], control_time, context=context
+                ),
+                kind=str(record["kind"]),
+                motion_type=str(record["motion_type"]),
+                context=context,
+            )
+
     data = mujoco.MjData(model)
     data.qpos[:] = built["qpos_solved"]
+    _apply_control(0)
     mujoco.mj_forward(model, data)
+    peak_effort = [0.0] * len(actuator_slots)
+
+    def _record_effort() -> None:
+        for index, (slot, _record) in enumerate(actuator_slots):
+            peak_effort[index] = max(
+                peak_effort[index], abs(float(data.actuator_force[slot]))
+            )
 
     def _placements() -> dict[str, dict[str, list[float]]]:
         poses = {
@@ -3605,10 +3696,13 @@ def simulate(
         }
     ]
     worst_closure = _closure_violation(mujoco, model, built["qpos_solved"])
+    _record_effort()
     for sample in range(sample_count + 1):
         if sample:
-            for _step in range(steps_per_sample):
+            for inner in range(steps_per_sample):
+                _apply_control((sample - 1) * steps_per_sample + inner)
                 mujoco.mj_step(model, data)
+                _record_effort()
             worst_closure = max(worst_closure, _active_equality_residual(mujoco, data))
         frames.append(
             {
@@ -3644,7 +3738,7 @@ def simulate(
         "worst_closure_residual_mm": length_mm(worst_closure),
         "model": model,
         "built": built,
-        "evidence": model_evidence(built, components),
+        "evidence": model_evidence(built, components, peak_effort=peak_effort),
     }
 
 
@@ -3660,7 +3754,10 @@ def _active_equality_residual(mujoco: Any, data: Any) -> float:
 
 
 def model_evidence(
-    built: Mapping[str, Any], components: Sequence[Mapping[str, Any]]
+    built: Mapping[str, Any],
+    components: Sequence[Mapping[str, Any]],
+    *,
+    peak_effort: Sequence[float] = (),
 ) -> dict[str, Any]:
     """What the translator decided, in the record the model can inspect.
 
@@ -3783,6 +3880,38 @@ def model_evidence(
         # absent from this list is frictionless, undamped and has no rotor --
         # which is a fact about the run somebody comparing two of them will
         # want without re-reading the script.
+        # Every motor, what it was told, what it was allowed, and what it
+        # actually had to do. The peak effort is the argument this block
+        # exists for: "the arm sagged" is a complaint nobody can act on, and
+        # "it saturated at its 8 N·m limit for 0.4 s" is the same complaint
+        # with the answer in it -- the same case the inertials block makes
+        # about "the arm feels heavy".
+        "actuators": [
+            {
+                "joint_output": str(record["joint"]),
+                "motion_type": str(record["motion_type"]),
+                "kind": str(record["kind"]),
+                "mujoco_actuator": str(record["mujoco_actuator"]),
+                "control": str(record["control"]),
+                "stiffness_si": record["stiffness_si"],
+                "damping_si": record["damping_si"],
+                "effort_limit_si": record["effort_limit_si"],
+                "peak_effort_si": (
+                    float(peak_effort[index]) if index < len(peak_effort) else None
+                ),
+                "saturated": (
+                    None
+                    if record["effort_limit_si"] is None
+                    or index >= len(peak_effort)
+                    else bool(
+                        float(peak_effort[index])
+                        >= float(record["effort_limit_si"]) * (1.0 - 1.0e-9)
+                    )
+                ),
+                "declared": dict(record["declared"]),
+            }
+            for index, record in enumerate(built["actuators"])
+        ],
         "joint_dynamics": [
             {
                 "joint_output": str(record["joint"]),
@@ -3840,6 +3969,109 @@ def _verify_solver_flags(mujoco: Any, model: Any) -> None:
             ),
             observed={"disableflags": disable, "enableflags": enable},
         )
+
+
+def _verify_actuator_flags(
+    mujoco: Any, model: Any, actuators: Sequence[Mapping[str, Any]]
+) -> None:
+    """Every actuator compiled to the thing the translator asked for.
+
+    Set on the spec; asserted on the *compiled* model, which is the
+    assertion that survives a MuJoCo release changing what a spec field
+    means -- the lesson ``balanceinertia`` charged M2 for, and the same
+    argument ``_verify_solver_flags`` makes about the solver's own flags.
+
+    Three things are checked and each has a measured reason. The gear,
+    because at anything but one ``ctrl`` addresses ``gear · q`` and every
+    setpoint in the run means something else. ``ctrllimited``, because a
+    control range nobody asked for would clamp a formula silently. And the
+    gain and bias parameters, because they *are* the closed loop: a ``kp``
+    in the wrong slot is a servo that does not servo.
+    """
+
+    for index, record in enumerate(actuators):
+        actuator_id = mujoco.mj_name2id(
+            model, mujoco.mjtObj.mjOBJ_ACTUATOR, str(record["mujoco_actuator"])
+        )
+        if actuator_id < 0:
+            raise DynamicsError(
+                f"The compiled model has no actuator named "
+                f"{record['mujoco_actuator']!r}.",
+                reason="actuator_flags_changed",
+                observed={"actuator": str(record["mujoco_actuator"])},
+            )
+        gear = [float(value) for value in model.actuator_gear[actuator_id]]
+        if gear != [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]:
+            raise DynamicsError(
+                f"The compiled model gives actuator "
+                f"{record['mujoco_actuator']!r} a gear of {gear}.",
+                reason="actuator_flags_changed",
+                correction=(
+                    "The gear is pinned at one because MuJoCo's ctrl addresses "
+                    "gear times the joint coordinate, so any other value "
+                    "silently rescales every setpoint in the run."
+                ),
+                observed={"actuator": str(record["mujoco_actuator"]), "gear": gear},
+            )
+        if bool(model.actuator_ctrllimited[actuator_id]):
+            raise DynamicsError(
+                f"The compiled model clamps actuator "
+                f"{record['mujoco_actuator']!r}'s control range.",
+                reason="actuator_flags_changed",
+                correction=(
+                    "The control is the formula the script wrote; an effort "
+                    "limit is what bounds what the motor can do about it."
+                ),
+                observed={"actuator": str(record["mujoco_actuator"])},
+            )
+        limited = bool(model.actuator_forcelimited[actuator_id])
+        if limited != (record["effort_limit_si"] is not None):
+            raise DynamicsError(
+                f"Actuator {record['mujoco_actuator']!r} compiled with "
+                f"forcelimited={limited}.",
+                reason="actuator_flags_changed",
+                observed={"actuator": str(record["mujoco_actuator"])},
+            )
+        if record["effort_limit_si"] is not None:
+            expected = float(record["effort_limit_si"])
+            compiled = [
+                float(value) for value in model.actuator_forcerange[actuator_id]
+            ]
+            if compiled != [-expected, expected]:
+                raise DynamicsError(
+                    f"Actuator {record['mujoco_actuator']!r} compiled with a "
+                    f"force range of {compiled}, not {[-expected, expected]}.",
+                    reason="actuator_flags_changed",
+                    observed={"actuator": str(record["mujoco_actuator"])},
+                )
+        kind = str(record["kind"])
+        gain = [float(value) for value in model.actuator_gainprm[actuator_id][:3]]
+        bias = [float(value) for value in model.actuator_biasprm[actuator_id][:3]]
+        stiffness = float(record["stiffness_si"] or 0.0)
+        damping = float(record["damping_si"] or 0.0)
+        expected_gain, expected_bias = {
+            "motor": ([1.0, 0.0, 0.0], [0.0, 0.0, 0.0]),
+            "position": ([stiffness, 0.0, 0.0], [0.0, -stiffness, -damping]),
+            "velocity": ([damping, 0.0, 0.0], [0.0, 0.0, -damping]),
+        }[kind]
+        if gain != expected_gain or bias != expected_bias:
+            raise DynamicsError(
+                f"Actuator {record['mujoco_actuator']!r} is a {kind} actuator "
+                f"whose compiled gain is {gain} and bias {bias}; this "
+                f"translator asked for {expected_gain} and {expected_bias}.",
+                reason="actuator_flags_changed",
+                correction=(
+                    "A position actuator's gain and bias are the PD loop "
+                    "itself. Re-measure what set_to_position writes before "
+                    "moving this."
+                ),
+                observed={
+                    "actuator": str(record["mujoco_actuator"]),
+                    "index": index,
+                    "gainprm": gain,
+                    "biasprm": bias,
+                },
+            )
 
 
 def _verify_compiled_inertia(
