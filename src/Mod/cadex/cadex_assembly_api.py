@@ -1564,6 +1564,17 @@ class AssemblyDomainAPI:
         # api.simulation declares. Unlike the kinematics solver the trace
         # step and the solver step are separate here, so the frame count is
         # exactly what was asked for.
+        #
+        # These two numbers count what *leaves* the engine -- artifact
+        # bytes, keyframes the shell bakes, memory in Blender -- and they
+        # are deliberately not the whole budget (M3 phase 4). What the
+        # solver *does* is bounded separately, in CadexDynamics, because
+        # since solver_step_s became authorable the two costs stopped being
+        # proportional: the same 600-frame trace is 4800 solver steps at
+        # the default step and 1 200 000 at the finest one allowed. A
+        # policy rollout will want exactly that trade -- integrate for
+        # minutes, report a hundred poses -- and one combined cap cannot
+        # express it.
         estimated_frames = math.ceil((end - start) * frames_per_second) + 2
         if estimated_frames > 10_000 or estimated_frames * len(components) > 100_000:
             raise _error(

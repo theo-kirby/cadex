@@ -2025,6 +2025,27 @@ DEFAULT_TIME_STEP_S = 0.002
 #: anything the contact model needs.
 MAXIMUM_STEPS_PER_SAMPLE = 2000
 
+#: The whole run's solver work (M3 phase 4). **Two budgets, because there
+#: are two costs and they are not proportional to each other.**
+#:
+#: ``api.dynamics`` caps *frames* and *component poses* -- 10 000 and
+#: 100 000, sized for kinematics and kept. Those count what leaves the
+#: engine: bytes in the artifact, keyframes the shell bakes, memory in
+#: Blender. This one counts what the engine *does*, which since
+#: ``solver_step_s`` became authorable is a completely different number:
+#: the same 600-frame trace costs 4 800 steps at the default step and
+#: 1 200 000 at the finest one the per-frame cap allows.
+#:
+#: Naming them separately is the answer to docs/MUJOCO.md §6's remaining
+#: open question -- what the cap should count once an M7-scale rollout
+#: exists. A policy rollout is long in *steps* and short in frames: it
+#: wants to integrate for minutes and report a hundred poses. Under one
+#: combined cap that trade is impossible; under two it is exactly what the
+#: numbers describe. Two million steps is about forty seconds of solver
+#: time on a mechanism-sized model, which is long for a script and finite,
+#: and it is two orders above anything M3 itself needs.
+MAXIMUM_SOLVER_STEPS = 2_000_000
+
 
 def _limit_range(
     limits: Any, *, angular: bool, context: str
@@ -2813,6 +2834,32 @@ def simulate(
             },
         )
     solver_step = sample_interval / steps_per_sample
+    sample_count = int(
+        math.floor((float(end_time_s) - float(start_time_s)) * frames_per_second + 1e-9)
+    )
+    # The second budget (M3 phase 4), checked before the model is built so
+    # a run that cannot be afforded is refused before it is paid for. The
+    # frame cap in ``api.dynamics`` bounds the trace; this bounds the work.
+    solver_steps = sample_count * steps_per_sample
+    if solver_steps > MAXIMUM_SOLVER_STEPS:
+        raise DynamicsError(
+            f"This run needs {solver_steps} solver steps "
+            f"({sample_count} frames x {steps_per_sample} steps each); the "
+            f"accepted maximum is {MAXIMUM_SOLVER_STEPS}.",
+            reason="solver_budget_exceeded",
+            correction=(
+                "Frames and solver steps are budgeted separately because they "
+                "are separate costs: frames are what the trace carries and "
+                "steps are what the solver does. Raise solver_step_s, shorten "
+                "the time range, or lower frames_per_second."
+            ),
+            observed={
+                "sample_count": sample_count,
+                "steps_per_sample": steps_per_sample,
+                "solver_steps": solver_steps,
+                "maximum_solver_steps": MAXIMUM_SOLVER_STEPS,
+            },
+        )
     built = build_model(
         components,
         joints,
@@ -2859,9 +2906,6 @@ def simulate(
             "component_placements": _placements(),
         }
     ]
-    sample_count = int(
-        math.floor((float(end_time_s) - float(start_time_s)) * frames_per_second + 1e-9)
-    )
     worst_closure = _closure_violation(mujoco, model, built["qpos_solved"])
     for sample in range(sample_count + 1):
         if sample:
@@ -2897,6 +2941,7 @@ def simulate(
         "solver_step_s": solver_step,
         "requested_step_s": requested_step,
         "steps_per_sample": steps_per_sample,
+        "solver_steps": solver_steps,
         "solver_tolerance": float(model.opt.tolerance),
         "worst_closure_residual_mm": length_mm(worst_closure),
         "model": model,

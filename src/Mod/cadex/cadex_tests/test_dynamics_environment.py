@@ -351,3 +351,56 @@ def test_a_finer_step_is_what_lets_a_bouncing_contact_run() -> None:
         time_step_s=0.0005,
     )
     assert run["solver_step_s"] <= 0.001
+
+
+# ---------------------------------------------------------------------------
+# The budget, and what each half of it counts (M3 phase 4).
+# ---------------------------------------------------------------------------
+
+
+def test_frames_and_solver_steps_are_budgeted_separately() -> None:
+    """The answer to the last open question in docs/MUJOCO.md section 6.
+
+    They were one cost when the solver step was a constant. They are two
+    now: the same trace length costs 4 800 solver steps at the default step
+    and 1 200 000 at the finest the per-frame cap allows. A policy rollout
+    wants the extreme of that trade -- integrate for minutes, report a
+    hundred poses -- and a single combined cap cannot express it.
+    """
+
+    assert dyn.MAXIMUM_SOLVER_STEPS == 2_000_000
+    assert dyn.MAXIMUM_STEPS_PER_SAMPLE == 2000
+    # A short trace with a very fine step is allowed: few frames, much work.
+    run = dyn.simulate(
+        *fx.pendulum()[:2],
+        start_time_s=0.0,
+        end_time_s=1.0,
+        frames_per_second=10,
+        time_step_s=0.0001,
+    )
+    assert len(run["frames"]) == 12
+    assert run["solver_steps"] == 10_000
+    assert run["steps_per_sample"] == 1000
+
+
+def test_a_run_that_cannot_be_afforded_is_refused_before_it_is_paid_for() -> None:
+    """Refused before the model is built, not part way through stepping."""
+
+    with pytest.raises(dyn.DynamicsError) as excinfo:
+        dyn.simulate(
+            *fx.pendulum()[:2],
+            start_time_s=0.0,
+            end_time_s=200.0,
+            frames_per_second=60,
+            time_step_s=0.0001,
+        )
+    assert excinfo.value.reason == "solver_budget_exceeded"
+    assert excinfo.value.observed["solver_steps"] > dyn.MAXIMUM_SOLVER_STEPS
+    assert "separate costs" in excinfo.value.correction
+
+
+def test_the_frame_cap_still_counts_what_leaves_the_engine() -> None:
+    """Unchanged from M2, and now with a stated reason for being separate."""
+
+    with pytest.raises(ValueError, match="10000 frames or 100000"):
+        _make_dynamics(end_time_s=1000.0, frames_per_second=240)
