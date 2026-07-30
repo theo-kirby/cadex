@@ -291,9 +291,13 @@ may import `mujoco`.
 already used — same `output_type`, same `artifact_kind`, no protocol change,
 no `shell/` diff. Engine suite **447 passed** at closure (445 at the ADR, plus
 the two that came with the `describe_api` note and the `CadexDynamics`
-tidy); the live cadexd gate runs a dynamics script end to end; the packaged
-payload gate and `pixi run gate` both pass, which is what an empty `shell/`
-diff is worth proving rather than asserting.
+tidy), and the **packaged lifecycle gate 7 passed** against a payload
+restaged from the closing commit — which is the gate that matters, since
+ADR-023's rule is that a passing source tree proves nothing about a
+payload. `pixi run gate` passed at M2's verification commit and has not been
+re-run since, because the branch has never contained a `shell/` diff to
+invalidate it: `git diff main...MJC` names no file under `shell/`. That
+invariant, not a repeated run, is what the shell claim rests on.
 
 Closed 2026-07-30 with its two documentation debts paid: `docs/VISION.md`
 gained the scope ADR-060 owed it and `docs/ROADMAP.md` gained Phase 14, both
