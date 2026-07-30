@@ -39,6 +39,7 @@ Conventions, chosen once and not renegotiated anywhere downstream:
 
 from __future__ import annotations
 
+import ast
 import math
 from typing import Any, Mapping, Sequence
 
@@ -103,6 +104,9 @@ __all__ = [
     # actuation
     "joint_dynamics_records",
     "actuator_records",
+    "compile_control",
+    "evaluate_control",
+    "control_si",
     # the model
     "build_model",
     "simulate",
@@ -2602,6 +2606,102 @@ def joint_dynamics_records(
     return records
 
 
+#: Everything a control formula may name, bound once and shared by every
+#: evaluation. This dict *is* the globals the expression sees: there is no
+#: ``__builtins__`` in it, so a name the API's whitelist somehow let through
+#: still resolves to nothing. Two independent barriers rather than one,
+#: because the second costs a dictionary.
+_CONTROL_GLOBALS: dict[str, Any] = {
+    "__builtins__": {},
+    "pi": math.pi,
+    "abs": abs,
+    "sin": math.sin,
+    "cos": math.cos,
+    "asin": math.asin,
+    "arcsin": math.asin,
+    "arctan": math.atan,
+}
+
+
+def compile_control(formula: str, *, context: str) -> Any:
+    """One control formula, compiled once, for a run that will step it a lot.
+
+    ``compile`` of an already-parsed and already-whitelisted expression --
+    never ``eval`` of a string at step time. At the two-million-step ceiling
+    ``MAXIMUM_SOLVER_STEPS`` allows, evaluating a compiled expression costs
+    about a second per actuator, which is affordable; re-parsing the source
+    every step would not be.
+    """
+
+    try:
+        tree = ast.parse(str(formula), mode="eval")
+    except SyntaxError as exc:
+        raise DynamicsError(
+            f"{context} has a control formula that is not an expression: {exc}",
+            reason="malformed_control_formula",
+            observed={"context": context, "formula": str(formula)},
+        ) from exc
+    return compile(tree, filename="<control>", mode="eval")
+
+
+def evaluate_control(code: Any, time_s: float, *, context: str) -> float:
+    """The formula's value at one instant, as a finite number or a refusal."""
+
+    try:
+        value = float(eval(code, _CONTROL_GLOBALS, {"time": float(time_s)}))
+    except Exception as exc:
+        raise DynamicsError(
+            f"{context} could not be evaluated at t = {time_s:.6g} s: {exc}",
+            reason="control_formula_failed",
+            correction=(
+                "A control formula is arithmetic on `time` in seconds. Check "
+                "for a division by zero or a function outside its domain -- "
+                "asin of something past 1, for instance."
+            ),
+            observed={"context": context, "time_s": float(time_s)},
+        ) from exc
+    if not math.isfinite(value):
+        raise DynamicsError(
+            f"{context} evaluated to {value} at t = {time_s:.6g} s.",
+            reason="control_formula_failed",
+            correction=(
+                "A control that is not a finite number is not a command. "
+                "Check the formula for a pole in the run's time range."
+            ),
+            observed={"context": context, "time_s": float(time_s)},
+        )
+    return value
+
+
+#: What one evaluated control means, per kind and coordinate, in the unit
+#: MuJoCo's ``ctrl`` speaks. This is the last conversion in the M4 boundary
+#: and the one with the most ways to be silently wrong: the same string
+#: "30" is a third of a turn, thirty millimetres or half a newton-metre
+#: depending on two other words in the script.
+_CONTROL_CONVERSIONS = {
+    ("position", "angular"): angle_radians,
+    ("position", "linear"): length_m,
+    ("velocity", "angular"): angle_radians,
+    ("velocity", "linear"): speed_m_s,
+    ("motor", "angular"): torque_nm,
+    ("motor", "linear"): float,
+}
+
+
+def control_si(value: float, *, kind: str, motion_type: str, context: str) -> float:
+    """One evaluated control, in the unit the compiled model reads."""
+
+    convert = _CONTROL_CONVERSIONS.get((str(kind), str(motion_type)))
+    if convert is None:
+        raise DynamicsError(
+            f"{context} has no control unit for a {kind} actuator on a "
+            f"{motion_type} coordinate.",
+            reason="malformed_actuator",
+            observed={"context": context, "kind": kind, "motion_type": motion_type},
+        )
+    return float(convert(float(value)))
+
+
 def actuator_records(
     entries: Sequence[Mapping[str, Any]],
     tree: Mapping[str, Any],
@@ -2677,6 +2777,10 @@ def actuator_records(
                 "mujoco_actuator": f"{record['mujoco_joint']}/{kind}",
                 "joint_kind": str(record["kind"]),
                 "control": control,
+                # Compiled here rather than at step time: the formula is
+                # evaluated once per solver step, and there are up to two
+                # million of those.
+                "control_code": compile_control(control, context=what),
                 # Every gain in SI, converted exactly once and here. The
                 # units the script wrote are kept beside them, because a
                 # reader comparing two runs wants the number they typed.
