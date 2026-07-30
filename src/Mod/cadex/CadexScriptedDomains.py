@@ -277,6 +277,7 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "simulation",
             "dynamics",
             "body",
+            "collision",
             "exploded_view",
         ),
         production_ready=True,

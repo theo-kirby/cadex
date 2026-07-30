@@ -76,6 +76,15 @@ __all__ = [
     # inertia
     "body_inertial",
     "full_inertia_six",
+    # collision
+    "DEFAULT_COLLISION_DEFLECTION_MM",
+    "COLLISION_CONVEXITY_TOLERANCE",
+    "COLLISION_TESSELLATION_TOLERANCE",
+    "MAXIMUM_COLLISION_VERTICES",
+    "collision_deflection_mm",
+    "mesh_volume_mm3",
+    "convex_hull_volume_mm3",
+    "collision_geoms",
     # the graph
     "JOINT_TABLE",
     "classify_joints",
@@ -748,6 +757,397 @@ def full_inertia_six(tensor: Sequence[float]) -> list[float]:
 
     values = [float(item) for item in tensor]
     return [values[0], values[4], values[8], values[1], values[2], values[5]]
+
+
+# ---------------------------------------------------------------------------
+# Collision geometry, and the measurement that refuses it (M3 phase 1).
+# ---------------------------------------------------------------------------
+
+#: The chord tolerance a collision mesh is tessellated at when the script
+#: does not say. Deliberately an **absolute length** and deliberately not
+#: the display deflection: ``cadex_tessellation`` scales that one by the
+#: bounding-box diagonal because it is chosen for looks, so a collision mesh
+#: inheriting it would be a physics result that changes when the view does --
+#: a part rendered at "draft" quality would collide differently from the same
+#: part at "fine". A fixed length is only safe because the fidelity check
+#: below refuses a mesh too coarse to be the part; without that check this
+#: number would be a silent quality knob on the physics.
+DEFAULT_COLLISION_DEFLECTION_MM = 0.25
+
+#: How far the hull may exceed the mesh before the part is called concave.
+#: Both volumes are computed from the *same vertices*, so for a genuinely
+#: convex part they agree to floating-point noise and this is pure headroom
+#: against Qhull merging near-coplanar facets. A real concavity -- a slot, a
+#: pocket, a C-section -- is percent-scale, three or more orders of magnitude
+#: above this.
+COLLISION_CONVEXITY_TOLERANCE = 1.0e-4
+
+#: How far the tessellation may fall short of the exact BREP volume. A
+#: tessellated cylinder is an inscribed prism, so this is never zero for a
+#: curved part, and it is the number that says whether the geom is still the
+#: part: 5% of volume missing is a visibly faceted stand-in, and its contacts
+#: would be wrong in a way that looks like physics.
+COLLISION_TESSELLATION_TOLERANCE = 0.05
+
+#: A bound on what one collision mesh may cost. MuJoCo hulls the mesh, and a
+#: hull with a hundred thousand vertices is a collision cost nobody asked
+#: for; the correction is a coarser deflection, which the refusal names.
+MAXIMUM_COLLISION_VERTICES = 200_000
+
+#: The five MuJoCo geom types this surface can produce, and how many size
+#: numbers each takes. ``mesh`` and ``hull`` are the same MuJoCo type: they
+#: differ only in whether a concave part is refused, which is a decision
+#: this module makes before MuJoCo ever sees the geometry.
+_COLLISION_GEOM_TYPES = {
+    "box": "box",
+    "sphere": "sphere",
+    "cylinder": "cylinder",
+    "capsule": "capsule",
+    "mesh": "mesh",
+    "hull": "mesh",
+}
+_COLLISION_FROM_SHAPE = ("mesh", "hull")
+
+
+def _scipy_hull() -> Any:
+    """The one import site for Qhull, with the payload failure named."""
+
+    try:
+        from scipy.spatial import ConvexHull  # noqa: PLC0415 - not module scope
+    except ImportError as exc:  # pragma: no cover - a broken payload only
+        raise DynamicsError(
+            "This engine build cannot import scipy.spatial, so a collision "
+            "mesh cannot be measured for convexity.",
+            reason="scipy_unavailable",
+            correction=(
+                "scipy ships in the engine payload already (it is what the "
+                "mesh domain fits surfaces with). Rebuild the payload with "
+                "pixi run stage-engine."
+            ),
+        ) from exc
+    return ConvexHull
+
+
+def collision_deflection_mm(
+    shapes: Sequence[Mapping[str, Any]], *, context: str
+) -> float | None:
+    """The chord tolerance the worker must tessellate at, or ``None``.
+
+    The worker cannot tessellate without a number and cannot compute one
+    without breaking the split rule, so the resolution happens here and the
+    worker reads the answer. ``None`` means no shape needs the BREP at all,
+    which is the case a body made of primitives must not pay for.
+    """
+
+    deflections = [
+        shape.get("deflection_mm")
+        for shape in shapes
+        if str(shape.get("kind")) in _COLLISION_FROM_SHAPE
+    ]
+    if not deflections:
+        return None
+    if len(deflections) > 1:
+        raise DynamicsError(
+            f"{context} declares more than one mesh or hull collision shape.",
+            reason="duplicate_collision_mesh",
+            observed={"context": context, "count": len(deflections)},
+        )
+    declared = deflections[0]
+    value = (
+        DEFAULT_COLLISION_DEFLECTION_MM if declared is None else float(declared)
+    )
+    if not math.isfinite(value) or value <= 0.0:
+        raise DynamicsError(
+            f"{context} declares a collision deflection of {value:g} mm.",
+            reason="malformed_deflection",
+            observed={"context": context, "deflection_mm": declared},
+        )
+    return value
+
+
+def mesh_volume_mm3(
+    vertices_mm: Sequence[float], triangles: Sequence[int]
+) -> float:
+    """The volume a closed triangle mesh encloses, by the divergence theorem.
+
+    ``V = ⅙ Σ v₀ · (v₁ × v₂)`` over outward-wound triangles.
+    ``cadex_tessellation.tessellate_shape`` flips reversed faces so the
+    winding is consistently outward, which is exactly the precondition this
+    needs -- and a mesh that came out inside-out reports a *negative* volume,
+    which is loud rather than subtly wrong.
+
+    This is what the hull is compared against, and it is not the same
+    question as comparing the hull to the exact BREP volume. A tessellated
+    cylinder is an inscribed prism whose volume is short of the exact one by
+    a chord-error term that has nothing to do with concavity: at the default
+    deflection a 5 mm pin loses about 1.6% of its volume to faceting alone.
+    Measuring hull-against-mesh isolates concavity, because both come from
+    the same vertices; mesh-against-exact is a separate question with a
+    separate tolerance, and conflating them would either refuse every
+    cylinder or accept every shallow pocket.
+    """
+
+    total = 0.0
+    terms: list[float] = []
+    for index in range(0, len(triangles) - 2, 3):
+        base = [3 * int(triangles[index + corner]) for corner in range(3)]
+        a = [float(vertices_mm[base[0] + axis]) for axis in range(3)]
+        b = [float(vertices_mm[base[1] + axis]) for axis in range(3)]
+        c = [float(vertices_mm[base[2] + axis]) for axis in range(3)]
+        cross = [
+            b[1] * c[2] - b[2] * c[1],
+            b[2] * c[0] - b[0] * c[2],
+            b[0] * c[1] - b[1] * c[0],
+        ]
+        terms.append(sum(a[axis] * cross[axis] for axis in range(3)))
+    total = math.fsum(terms)
+    return total / 6.0
+
+
+def convex_hull_volume_mm3(vertices_mm: Sequence[float], *, context: str) -> float:
+    """The volume of the convex hull of a point set, via Qhull.
+
+    This is the number MuJoCo's compiler will effectively use, because it
+    hulls every collision mesh it is given and says nothing about it. Having
+    it *here*, before the model is built, is what turns hazard 2 from a
+    silent wrong answer into a refusal with a number in it.
+    """
+
+    ConvexHull = _scipy_hull()
+    points = [
+        [float(vertices_mm[index + axis]) for axis in range(3)]
+        for index in range(0, len(vertices_mm) - 2, 3)
+    ]
+    if len(points) < 4:
+        raise DynamicsError(
+            f"{context} tessellated to {len(points)} vertices, which cannot "
+            "bound a volume.",
+            reason="degenerate_collision_mesh",
+            correction=(
+                "The component's solids did not produce a usable surface mesh. "
+                "Check that the component is a solid rather than a shell."
+            ),
+            observed={"context": context, "vertex_count": len(points)},
+        )
+    try:
+        hull = ConvexHull(points)
+    except Exception as exc:
+        raise DynamicsError(
+            f"{context} has no three-dimensional convex hull: {exc}",
+            reason="degenerate_collision_mesh",
+            correction=(
+                "Qhull refuses a point set that is flat or degenerate. A "
+                "zero-thickness component cannot be a collision shape; give it "
+                "an explicit primitive instead."
+            ),
+            observed={"context": context},
+        ) from exc
+    return float(hull.volume)
+
+
+def collision_geoms(
+    shapes: Sequence[Mapping[str, Any]],
+    mesh: Mapping[str, Any] | None,
+    *,
+    exact_volume_mm3: float,
+    context: str,
+) -> list[dict[str, Any]]:
+    """One body's collision shapes, in metres, measured and refused.
+
+    Every conversion happens here and nowhere else: full extents become
+    MuJoCo half-extents, millimetres become metres, and the xyzw quaternion
+    the script surface speaks becomes the wxyz one MuJoCo does. The worker
+    hands over millimetres and a tessellation; it computes nothing.
+
+    Returns a list of geom records, each carrying the evidence for itself --
+    for a mesh, the three volumes that decided whether it was allowed.
+    """
+
+    records: list[dict[str, Any]] = []
+    for index, shape in enumerate(shapes):
+        kind = str(shape.get("kind"))
+        if kind not in _COLLISION_GEOM_TYPES:
+            raise DynamicsError(
+                f"{context} declares an unknown collision kind {kind!r}.",
+                reason="unknown_collision_kind",
+                observed={"context": context, "kind": kind},
+            )
+        offset = shape.get("offset") or {}
+        position = _floats(
+            offset.get("position", [0.0, 0.0, 0.0]),
+            count=3,
+            context=f"{context} collision {index} offset position",
+        )
+        rotation = _floats(
+            offset.get("rotation", [0.0, 0.0, 0.0, 1.0]),
+            count=4,
+            context=f"{context} collision {index} offset rotation",
+        )
+        record: dict[str, Any] = {
+            "index": index,
+            "kind": kind,
+            "mujoco_type": _COLLISION_GEOM_TYPES[kind],
+            "pos_m": vector_m(position),
+            "quat_wxyz": quaternion_normalised(
+                quaternion_wxyz_from_xyzw(rotation)
+            ),
+        }
+        if kind == "box":
+            extents = _floats(
+                shape["size_mm"], count=3, context=f"{context} collision {index} size"
+            )
+            # MuJoCo boxes are half-extents. A script that said 20 mm and got
+            # a 40 mm box would be a factor of two nobody notices until two
+            # parts overlap, so the halving is here with the unit conversion
+            # rather than anywhere a second copy could drift from it.
+            record["size_m"] = [length_m(value) / 2.0 for value in extents]
+            record["size_mm"] = extents
+        elif kind == "sphere":
+            radius = float(shape["radius_mm"])
+            record["size_m"] = [length_m(radius)]
+            record["size_mm"] = [radius]
+        elif kind in {"cylinder", "capsule"}:
+            radius = float(shape["radius_mm"])
+            length = float(shape["length_mm"])
+            # Same halving, and for a capsule the half-length is of the
+            # *cylindrical section*: the two hemispherical caps sit outside
+            # it, so a capsule is always ``length + 2·radius`` long overall.
+            record["size_m"] = [length_m(radius), length_m(length) / 2.0]
+            record["size_mm"] = [radius, length]
+        else:
+            if mesh is None:
+                raise DynamicsError(
+                    f"{context} declares a {kind} collision shape but no "
+                    "tessellation was supplied for it.",
+                    reason="missing_collision_mesh",
+                    observed={"context": context},
+                )
+            record.update(
+                _measured_collision_mesh(
+                    mesh,
+                    accept_hull=kind == "hull",
+                    exact_volume_mm3=exact_volume_mm3,
+                    context=context,
+                )
+            )
+        records.append(record)
+    return records
+
+
+def _measured_collision_mesh(
+    mesh: Mapping[str, Any],
+    *,
+    accept_hull: bool,
+    exact_volume_mm3: float,
+    context: str,
+) -> dict[str, Any]:
+    """One tessellation, measured twice, and refused for either reason.
+
+    **Concavity.** MuJoCo takes the convex hull of a collision mesh without
+    complaint, so a bracket with a slot becomes a solid block and the
+    resulting contacts look entirely plausible. The hull volume is computed
+    here, against the mesh's own volume, and a part the hull would change is
+    refused with the error in it -- the same move M2 made when it refused
+    ``rack_pinion`` rather than shipping a guessed sign convention. ``hull``
+    is the opt-in that turns this refusal into an accepted fact.
+
+    **Fidelity.** The mesh is also compared against the component's exact
+    ``GProp_GProps`` volume, which is the check that says whether this is
+    still the part. It is not a convexity question and it is not turned off
+    by the ``hull`` opt-in: an author who accepts the hull of their bracket
+    has not thereby accepted a twelve-sided cylinder.
+    """
+
+    vertices = list(mesh["vertices_mm"])
+    triangles = list(mesh["triangles"])
+    vertex_count = len(vertices) // 3
+    if vertex_count > MAXIMUM_COLLISION_VERTICES:
+        raise DynamicsError(
+            f"{context} tessellated to {vertex_count} collision vertices; the "
+            f"accepted maximum is {MAXIMUM_COLLISION_VERTICES}.",
+            reason="collision_mesh_too_large",
+            correction=(
+                "Raise deflection_mm on the collision shape, or replace it with "
+                "explicit primitives -- a bracket's real collision behaviour is "
+                "usually two boxes."
+            ),
+            observed={"context": context, "vertex_count": vertex_count},
+        )
+    volume = mesh_volume_mm3(vertices, triangles)
+    if volume <= 0.0:
+        raise DynamicsError(
+            f"{context} tessellated to a mesh enclosing {volume:.6g} mm³.",
+            reason="degenerate_collision_mesh",
+            correction=(
+                "A negative or zero enclosed volume means the triangle winding "
+                "is inverted or the surface is not closed. Check the source "
+                "solid."
+            ),
+            observed={"context": context, "mesh_volume_mm3": volume},
+        )
+    hull_volume = convex_hull_volume_mm3(vertices, context=context)
+    concavity = (hull_volume - volume) / hull_volume if hull_volume > 0.0 else 0.0
+    fidelity = (
+        abs(exact_volume_mm3 - volume) / exact_volume_mm3
+        if exact_volume_mm3 > 0.0
+        else 0.0
+    )
+    if fidelity > COLLISION_TESSELLATION_TOLERANCE:
+        raise DynamicsError(
+            f"{context}'s collision mesh encloses {volume:.6g} mm³ where the "
+            f"solid is {exact_volume_mm3:.6g} mm³ -- {fidelity:.2%} of the "
+            "part is missing to faceting.",
+            reason="collision_mesh_too_coarse",
+            correction=(
+                "The mesh is too coarse to be this part, so its contacts would "
+                "be wrong in a way that looks like physics. Lower deflection_mm "
+                f"on the collision shape (it is {float(mesh['deflection_mm']):g} "
+                "mm), or declare an explicit primitive instead."
+            ),
+            observed={
+                "context": context,
+                "mesh_volume_mm3": volume,
+                "solid_volume_mm3": exact_volume_mm3,
+                "volume_error": fidelity,
+                "deflection_mm": float(mesh["deflection_mm"]),
+            },
+        )
+    if concavity > COLLISION_CONVEXITY_TOLERANCE and not accept_hull:
+        raise DynamicsError(
+            f"{context} is concave: its convex hull encloses "
+            f"{hull_volume:.6g} mm³ against the part's {volume:.6g} mm³, so "
+            f"{concavity:.2%} of what it would collide with is not part of it.",
+            reason="collision_mesh_concave",
+            correction=(
+                "MuJoCo takes the convex hull of every collision mesh without "
+                "saying so, so this part would touch things across its own "
+                "openings. Either describe the collision behaviour with "
+                "explicit primitives -- assembly.collision('box', ...) and "
+                "friends, which is usually what a bracket really needs -- or "
+                "declare assembly.collision('hull') to record that you have "
+                "read this number and accept the solid block."
+            ),
+            observed={
+                "context": context,
+                "mesh_volume_mm3": volume,
+                "hull_volume_mm3": hull_volume,
+                "solid_volume_mm3": exact_volume_mm3,
+                "concavity": concavity,
+            },
+        )
+    return {
+        "vertices_m": [length_m(float(value)) for value in vertices],
+        "triangles": [int(value) for value in triangles],
+        "vertex_count": vertex_count,
+        "triangle_count": len(triangles) // 3,
+        "deflection_mm": float(mesh["deflection_mm"]),
+        "mesh_volume_mm3": volume,
+        "hull_volume_mm3": hull_volume,
+        "solid_volume_mm3": float(exact_volume_mm3),
+        "concavity": concavity,
+        "volume_error": fidelity,
+        "accepted_hull": bool(accept_hull),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1609,6 +2009,52 @@ def _mujoco_module() -> Any:
     return mujoco
 
 
+def _add_collision_geoms(
+    mujoco: Any,
+    spec: Any,
+    native: Any,
+    name: str,
+    records: Sequence[Mapping[str, Any]],
+) -> None:
+    """Attach one body's measured collision shapes to it.
+
+    Adding nothing when there is nothing to add is the case that matters:
+    a body with no collision shape keeps ``ngeom == 0``, passes through
+    everything, and behaves exactly as it did before M3 -- which is what
+    lets a mechanism opt into contact one part at a time.
+
+    A geom carries no mass here. ``inertiafromgeom`` is off and the body's
+    inertia is explicit, so these shapes decide what touches what and
+    nothing else; ``_verify_compiled_inertia`` re-checks that after the
+    compile, which is what would catch a MuJoCo release deciding otherwise.
+    """
+
+    types = {
+        "box": mujoco.mjtGeom.mjGEOM_BOX,
+        "sphere": mujoco.mjtGeom.mjGEOM_SPHERE,
+        "cylinder": mujoco.mjtGeom.mjGEOM_CYLINDER,
+        "capsule": mujoco.mjtGeom.mjGEOM_CAPSULE,
+        "mesh": mujoco.mjtGeom.mjGEOM_MESH,
+    }
+    for record in records:
+        geom_name = f"{name}/collision{record['index']}"
+        arguments: dict[str, Any] = {
+            "name": geom_name,
+            "type": types[str(record["mujoco_type"])],
+            "pos": list(record["pos_m"]),
+            "quat": list(record["quat_wxyz"]),
+        }
+        if str(record["mujoco_type"]) == "mesh":
+            mesh = spec.add_mesh()
+            mesh.name = geom_name + "/mesh"
+            mesh.uservert = list(record["vertices_m"])
+            mesh.userface = list(record["triangles"])
+            arguments["meshname"] = mesh.name
+        else:
+            arguments["size"] = list(record["size_m"])
+        native.add_geom(**arguments)
+
+
 def build_model(
     components: Sequence[Mapping[str, Any]],
     joints: Sequence[Mapping[str, Any]],
@@ -1651,6 +2097,18 @@ def build_model(
     }
     inertials = {
         str(component["name"]): dict(component["inertial"])
+        for component in components
+    }
+    # Every collision shape is measured and converted before a single geom
+    # is added, so a refusal names the component rather than arriving as a
+    # compiler error about an element id.
+    geoms = {
+        str(component["name"]): collision_geoms(
+            list((component.get("collision") or {}).get("shapes") or []),
+            (component.get("collision") or {}).get("mesh"),
+            exact_volume_mm3=float(component["inertial"]["volume_mm3"]),
+            context=f"component {component.get('name')!r}",
+        )
         for component in components
     }
 
@@ -1719,6 +2177,7 @@ def build_model(
         native.mass = float(inertial["mass_kg"])
         native.ipos = vector_m(inertial["center_of_mass_mm"])
         native.fullinertia = full_inertia_six(inertial["inertia_kg_m2"])
+        _add_collision_geoms(mujoco, spec, native, name, geoms[name])
 
         if body["attachment"] == "free":
             native.add_freejoint(name=f"{name}/free")
@@ -1896,6 +2355,7 @@ def build_model(
         "gravity_m_s2": list(gravity_m_s2),
         "disableflags": int(model.opt.disableflags),
         "enableflags": int(model.opt.enableflags),
+        "geoms": geoms,
     }
 
 
@@ -2128,6 +2588,28 @@ def model_evidence(
         # under rather than leaving a reader to infer them from a version.
         "solver_disableflags": int(built["disableflags"]),
         "solver_enableflags": int(built["enableflags"]),
+        # What each body may touch things with, and -- for a mesh -- the
+        # three volumes that decided it was allowed to. A hull an author
+        # accepted is a fact about the model somebody will want to find
+        # later without re-reading the script.
+        "collisions": [
+            {
+                "component_output": name,
+                "shapes": [
+                    {
+                        key: value
+                        for key, value in record.items()
+                        # The geometry itself is thousands of numbers and it
+                        # is already in the model; the evidence carries what
+                        # was decided, not what was tessellated.
+                        if key not in {"vertices_m", "triangles"}
+                    }
+                    for record in records
+                ],
+            }
+            for name, records in sorted(built["geoms"].items())
+            if records
+        ],
         "joints": [
             {
                 "joint_output": record["joint"],

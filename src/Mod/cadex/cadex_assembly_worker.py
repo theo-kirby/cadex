@@ -1787,6 +1787,20 @@ def _dynamics_contract(
                 "densities.",
                 details={"stage": "dynamics_graph", "body_index": index},
             )
+        for shape_index, shape in enumerate(
+            list(_properties(body, "body").get("collision") or [])
+        ):
+            if (
+                not isinstance(shape, DomainValue)
+                or shape.domain != "assembly"
+                or shape.operation != "collision"
+                or shape.output_type != "collision"
+            ):
+                raise AssemblyCandidateError(
+                    f"Dynamics body {index} collision shape {shape_index} must "
+                    "come from api.collision.",
+                    details={"stage": "dynamics_graph", "body_index": index},
+                )
         covered.append(id(component))
     if len(covered) != len(components):
         raise AssemblyCandidateError(
@@ -2669,24 +2683,43 @@ def _execute_dynamics_simulation(
 
     properties = _properties(simulation_value, "dynamics")
     densities: dict[str, float] = {}
+    collision_shapes: dict[str, list[dict[str, Any]]] = {}
     for body in list(properties.get("bodies") or []):
         name = component_outputs[id(body.arguments[0])]
-        densities[name] = float(
-            _properties(body, "body").get("density_kg_m3")
-        )
+        body_properties = _properties(body, "body")
+        densities[name] = float(body_properties.get("density_kg_m3"))
+        collision_shapes[name] = [
+            dict(_properties(shape, "collision"))
+            for shape in list(body_properties.get("collision") or [])
+        ]
 
     dynamics_components: list[dict[str, Any]] = []
     for name, component in components.items():
-        shape = _component_local_shape(
-            component, context=f"dynamics body {name!r}"
-        )
-        readings = _solid_inertia_readings(shape, context=f"dynamics body {name!r}")
+        context = f"dynamics body {name!r}"
+        shape = _component_local_shape(component, context=context)
+        readings = _solid_inertia_readings(shape, context=context)
         try:
             inertial = CadexDynamics.body_inertial(
-                readings, densities[name], context=f"dynamics body {name!r}"
+                readings, densities[name], context=context
+            )
+            # The deflection is resolved in the pure module, not here: the
+            # worker cannot tessellate without a number and cannot choose
+            # one without becoming a second place the default lives. None
+            # means this body is made of primitives and never needs the
+            # BREP at all, which is the case that must stay free.
+            deflection = CadexDynamics.collision_deflection_mm(
+                collision_shapes[name], context=context
             )
         except CadexDynamics.DynamicsError as error:
             raise _dynamics_failure(simulation_output, error) from error
+        collision: dict[str, Any] = {
+            "shapes": collision_shapes[name],
+            "mesh": None,
+        }
+        if deflection is not None:
+            collision["mesh"] = _collision_mesh_reading(
+                shape, deflection, context=context
+            )
         dynamics_components.append(
             {
                 "name": name,
@@ -2694,6 +2727,7 @@ def _execute_dynamics_simulation(
                 "flexible": bool(component_data[name]["flexible"]),
                 "solved_matrix": list(component_placements[name]["matrix"]),
                 "inertial": inertial,
+                "collision": collision,
             }
         )
 
@@ -3437,6 +3471,51 @@ def _solid_inertia_readings(shape: Any, *, context: str) -> list[dict[str, Any]]
             }
         )
     return readings
+
+
+def _collision_mesh_reading(
+    shape: Any, deflection_mm: float, *, context: str
+) -> dict[str, Any]:
+    """One component's surface as triangles, in millimetres. A pure read.
+
+    The tessellator is ``cadex_tessellation.tessellate_shape`` -- the same
+    one the display path uses -- because it already flips reversed faces so
+    triangle winding is consistently outward, and the enclosed-volume
+    measurement on the other side of the seam depends on exactly that. What
+    is *not* shared is the deflection: the display picks its own by scaling
+    the bounding-box diagonal, so a collision mesh built from it would be a
+    physics result that changed with the view quality. This one is declared
+    by the script or defaults to a fixed length in ``CadexDynamics``.
+
+    Edges are skipped: a collision mesh has no use for polylines, and they
+    are the expensive half of a fine tessellation.
+    """
+
+    from cadex_tessellation import tessellate_shape
+
+    try:
+        tessellation = tessellate_shape(
+            shape, float(deflection_mm), include_edges=False
+        )
+    except Exception as error:
+        raise AssemblyCandidateError(
+            f"{context} could not be tessellated for collision at "
+            f"{float(deflection_mm):g} mm.",
+            details={
+                "stage": "dynamics_collision_mesh",
+                "deflection_mm": float(deflection_mm),
+                "correction": (
+                    "Raise deflection_mm on the collision shape, or declare an "
+                    "explicit primitive instead of the component's own shape."
+                ),
+                "native_error": str(error),
+            },
+        ) from error
+    return {
+        "deflection_mm": float(deflection_mm),
+        "vertices_mm": list(tessellation["vertices"]),
+        "triangles": list(tessellation["triangles"]),
+    }
 
 
 def _component_local_shape(component: Any, *, context: str) -> Any:

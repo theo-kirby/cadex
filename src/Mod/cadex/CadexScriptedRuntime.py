@@ -1608,9 +1608,14 @@ def _capability_api_listing() -> dict[str, dict[str, Any]]:
         "api.dynamics and never both. Both produce a simulation output and a "
         "script may declare exactly one. Density has no default (steel 7850, "
         "aluminium 2700); mass and inertia are computed exactly from the "
-        "component's solids. Bodies do not collide yet, and distance, "
-        "parallel, perpendicular, angle and rack_pinion joints are refused by "
-        "a dynamics run."
+        "component's solids. A body touches nothing until it is given "
+        "assembly.collision(kind, ...) shapes -- 'box'/'sphere'/'cylinder'/"
+        "'capsule' primitives placed with offset=, or 'mesh' for the "
+        "component's own shape. Prefer primitives: MuJoCo collides with the "
+        "convex hull of any mesh, so 'mesh' refuses a concave part and names "
+        "its volume error, and 'hull' is how a script accepts that hull "
+        "deliberately. distance, parallel, perpendicular, angle and "
+        "rack_pinion joints are refused by a dynamics run."
     )
     return listing
 

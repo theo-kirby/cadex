@@ -50,6 +50,148 @@ def box_inertial(
     return dyn.body_inertial([reading], density, context="fixture body")
 
 
+def collision_shape(kind: str, **parameters: Any) -> dict[str, Any]:
+    """One ``api.collision`` value, as the worker hands it over.
+
+    The API's own validation is tested against the API; this is the shape
+    of the mapping that crosses the seam, so a fixture that drifts from it
+    is a test passing against a payload nothing produces.
+    """
+
+    offset = parameters.pop("offset", None) or {}
+    return {
+        "kind": kind,
+        "offset": {
+            "position": list(offset.get("position", (0.0, 0.0, 0.0))),
+            "rotation": list(offset.get("rotation", (0.0, 0.0, 0.0, 1.0))),
+        },
+        **parameters,
+    }
+
+
+def _prism_mesh(
+    polygon: Sequence[Sequence[float]],
+    height: float,
+    caps: Sequence[Sequence[int]],
+) -> dict[str, Any]:
+    """A closed, outward-wound prism over one XY polygon.
+
+    ``polygon`` is counter-clockwise seen from +Z; ``caps`` is the polygon's
+    triangulation by vertex index, which is supplied rather than derived
+    because a fan does the wrong thing on a non-convex outline and the whole
+    point of these fixtures is the non-convex one.
+
+    The winding matches what ``tessellate_shape`` produces -- outward -- so
+    ``mesh_volume_mm3`` reads a positive volume, which is the precondition
+    every convexity measurement rests on.
+    """
+
+    count = len(polygon)
+    vertices: list[float] = []
+    for point in polygon:
+        vertices.extend((float(point[0]), float(point[1]), 0.0))
+    for point in polygon:
+        vertices.extend((float(point[0]), float(point[1]), float(height)))
+    triangles: list[int] = []
+    for a, b, c in caps:
+        triangles.extend((a, c, b))  # bottom cap faces -Z
+        triangles.extend((a + count, b + count, c + count))  # top faces +Z
+    for index in range(count):
+        following = (index + 1) % count
+        triangles.extend((index, following, following + count))
+        triangles.extend((index, following + count, index + count))
+    return {"vertices_mm": vertices, "triangles": triangles}
+
+
+def box_mesh(
+    length: float, width: float, height: float, *, deflection_mm: float = 0.25
+) -> dict[str, Any]:
+    """A box, tessellated exactly -- so fidelity error is exactly zero."""
+
+    polygon = [
+        (-length / 2.0, -width / 2.0),
+        (length / 2.0, -width / 2.0),
+        (length / 2.0, width / 2.0),
+        (-length / 2.0, width / 2.0),
+    ]
+    mesh = _prism_mesh(polygon, height, [(0, 1, 2), (0, 2, 3)])
+    shifted = list(mesh["vertices_mm"])
+    for index in range(2, len(shifted), 3):
+        shifted[index] -= height / 2.0
+    return {
+        "deflection_mm": deflection_mm,
+        "vertices_mm": shifted,
+        "triangles": mesh["triangles"],
+    }
+
+
+def l_bracket_mesh(
+    long_arm: float = 60.0,
+    thickness: float = 20.0,
+    short_arm: float = 60.0,
+    height: float = 10.0,
+    *,
+    deflection_mm: float = 0.25,
+) -> dict[str, Any]:
+    """The hazard, as geometry: an L whose hull is 40% bigger than it is.
+
+    This is the bracket-with-a-slot of docs/MUJOCO.md hazard 2 in its
+    smallest honest form. MuJoCo would collide with the full triangle
+    across the inside corner and every contact would look plausible.
+    """
+
+    polygon = [
+        (0.0, 0.0),
+        (long_arm, 0.0),
+        (long_arm, thickness),
+        (thickness, thickness),
+        (thickness, short_arm),
+        (0.0, short_arm),
+    ]
+    mesh = _prism_mesh(polygon, height, [(0, 1, 2), (0, 2, 3), (0, 3, 4), (0, 4, 5)])
+    return {
+        "deflection_mm": deflection_mm,
+        "vertices_mm": mesh["vertices_mm"],
+        "triangles": mesh["triangles"],
+    }
+
+
+def l_bracket_volume_mm3(
+    long_arm: float = 60.0,
+    thickness: float = 20.0,
+    short_arm: float = 60.0,
+    height: float = 10.0,
+) -> float:
+    return height * (long_arm * thickness + thickness * (short_arm - thickness))
+
+
+def faceted_cylinder_mesh(
+    radius: float, height: float, sides: int, *, deflection_mm: float = 0.25
+) -> dict[str, Any]:
+    """An inscribed n-gon prism: a cylinder as a tessellator really makes one.
+
+    Convex, so it says nothing about concavity -- what it exercises is the
+    *other* measurement, the one that asks whether the mesh is still the
+    part. An inscribed polygon always encloses less than the circle it
+    approximates, and at a coarse deflection it encloses visibly less.
+    """
+
+    polygon = [
+        (
+            radius * math.cos(2.0 * math.pi * index / sides),
+            radius * math.sin(2.0 * math.pi * index / sides),
+        )
+        for index in range(sides)
+    ]
+    caps = [(0, index, index + 1) for index in range(1, sides - 1)]
+    mesh = _prism_mesh(polygon, height, caps)
+    return {
+        "deflection_mm": deflection_mm,
+        "vertices_mm": mesh["vertices_mm"],
+        "triangles": mesh["triangles"],
+    }
+
+
 def frame(
     position: Sequence[float] = (0.0, 0.0, 0.0),
     axis: Sequence[float] = (0.0, 0.0, 1.0),
@@ -122,6 +264,9 @@ def build(
                 "inertial": component.get("inertial")
                 or box_inertial(*component.get("size", (100.0, 40.0, 20.0))),
                 "solved_matrix": None,
+                "collision": component.get(
+                    "collision", {"shapes": [], "mesh": None}
+                ),
             }
         )
     joint_records: list[dict[str, Any]] = []

@@ -96,6 +96,9 @@ _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
         # neither (ADR-062). `body` is an intermediate, like `connector`.
         "dynamics": "simulation",
         "body": "body",
+        # A collision shape is an argument to a body, never an output: it
+        # has no native type and nothing publishes it (M3 phase 1).
+        "collision": "collision",
         "exploded_view": "exploded_view",
     },
     "material": {

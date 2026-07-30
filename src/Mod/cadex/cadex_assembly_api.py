@@ -45,6 +45,21 @@ _JOINT_TYPES = (
     "gears",
     "belt",
 )
+#: What each collision kind takes, and therefore what it refuses. ``mesh``
+#: and ``hull`` are the same geometry -- the component's own tessellated
+#: solids -- and differ only in whether a part MuJoCo would hull is refused
+#: or accepted. Keeping them two *kinds* rather than one kind and a boolean
+#: puts the acceptance in the script's own text, where a reader sees it.
+_COLLISION_KINDS: dict[str, frozenset[str]] = {
+    "box": frozenset({"size_mm"}),
+    "sphere": frozenset({"radius_mm"}),
+    "cylinder": frozenset({"radius_mm", "length_mm"}),
+    "capsule": frozenset({"radius_mm", "length_mm"}),
+    "mesh": frozenset({"deflection_mm"}),
+    "hull": frozenset({"deflection_mm"}),
+}
+#: The two kinds that come out of the component's own BREP.
+_COLLISION_SHAPE_KINDS = frozenset({"mesh", "hull"})
 _SUBELEMENT = re.compile(r"^(Face|Edge|Vertex)[1-9][0-9]*$")
 _INTERFACE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 _MOTION_FUNCTIONS = frozenset({"abs", "asin", "arcsin", "arctan", "cos", "sin"})
@@ -499,6 +514,7 @@ class AssemblyDomainAPI:
         "simulation",
         "dynamics",
         "body",
+        "collision",
         "exploded_view",
     )
 
@@ -1018,11 +1034,152 @@ class AssemblyDomainAPI:
             label=label,
         )
 
+    def collision(
+        self,
+        kind: str,
+        *,
+        size_mm: Sequence[float] | None = None,
+        radius_mm: float | None = None,
+        length_mm: float | None = None,
+        deflection_mm: float | None = None,
+        offset: Sequence[float] | Mapping[str, Sequence[float]] | None = None,
+        label: str = "",
+    ) -> DomainValue:
+        """Declare what one dynamics body may touch things with.
+
+        A body with no collision shape has none: it is held in place by its
+        joints and passes through everything, which is what every dynamics
+        run did before this existed. Contact is opted into, per body, by
+        saying what shape does the touching.
+
+        Six kinds, in two groups.
+
+        **Primitives** -- ``box`` (``size_mm=[x, y, z]``, the full extents),
+        ``sphere`` (``radius_mm``), ``cylinder`` and ``capsule``
+        (``radius_mm`` plus ``length_mm``, along the component's local +Z).
+        ``offset`` places the shape in the component's own frame, in the
+        same form ``api.connector`` takes. These are exact, cheap and the
+        recommended answer: a bracket's real collision behaviour is usually
+        two boxes, not its own outline.
+
+        **The component's own shape** -- ``mesh`` tessellates the
+        component's solids and hands MuJoCo the result. MuJoCo takes the
+        *convex hull* of any collision mesh without saying so, so a bracket
+        with a slot silently becomes a solid block. ``mesh`` therefore
+        measures its own convexity and **refuses** a part the hull would
+        change, naming the volume error. ``hull`` is the same geometry with
+        the refusal turned off: it is how an author says, in the script,
+        that they have read the number and accept the hull. There is no way
+        to get a hull by accident.
+
+        ``deflection_mm`` is the chord tolerance the mesh is built at, and
+        it is deliberately not the display deflection -- that one is chosen
+        for looks and scales with the bounding box, so a collision mesh
+        derived from it would be a physics result that changes when the
+        view does. It defaults to a fixed length, and a deflection too
+        coarse to represent the part is refused rather than accepted
+        quietly.
+
+        A collision shape is an intermediate value like ``connector``: pass
+        it to ``api.body``, and do not return it as an output of its own.
+        """
+
+        operation = "collision"
+        clean_kind = str(kind or "").strip()
+        if clean_kind not in _COLLISION_KINDS:
+            raise _error(
+                operation,
+                "kind",
+                f"expected one of {list(_COLLISION_KINDS)}",
+                kind,
+            )
+        required = _COLLISION_KINDS[clean_kind]
+        supplied = {
+            "size_mm": size_mm,
+            "radius_mm": radius_mm,
+            "length_mm": length_mm,
+            "deflection_mm": deflection_mm,
+        }
+        for name, value in supplied.items():
+            if value is not None and name not in required:
+                raise _error(
+                    operation,
+                    name,
+                    f"is not a {clean_kind} parameter; {clean_kind} takes "
+                    f"{sorted(required)}",
+                    value,
+                )
+        properties: dict[str, Any] = {"kind": clean_kind}
+        if "size_mm" in required:
+            if size_mm is None:
+                raise _error(operation, "size_mm", "is required for a box")
+            extents = _vector(operation, "size_mm", size_mm, size=3)
+            for index, extent in enumerate(extents):
+                if not 0.0 < extent <= 1.0e6:
+                    raise _error(
+                        operation,
+                        f"size_mm[{index}]",
+                        "must be a full extent greater than 0 and at most 1e6 mm",
+                        extent,
+                    )
+            properties["size_mm"] = extents
+        if "radius_mm" in required:
+            if radius_mm is None:
+                raise _error(operation, "radius_mm", f"is required for a {clean_kind}")
+            properties["radius_mm"] = _number(
+                operation,
+                "radius_mm",
+                radius_mm,
+                minimum=0.0,
+                maximum=1.0e6,
+                strict_minimum=True,
+            )
+        if "length_mm" in required:
+            if length_mm is None:
+                raise _error(operation, "length_mm", f"is required for a {clean_kind}")
+            properties["length_mm"] = _number(
+                operation,
+                "length_mm",
+                length_mm,
+                minimum=0.0,
+                maximum=1.0e6,
+                strict_minimum=True,
+            )
+        if "deflection_mm" in required:
+            properties["deflection_mm"] = (
+                None
+                if deflection_mm is None
+                else _number(
+                    operation,
+                    "deflection_mm",
+                    deflection_mm,
+                    minimum=0.0,
+                    maximum=100.0,
+                    strict_minimum=True,
+                )
+            )
+        if clean_kind in _COLLISION_SHAPE_KINDS:
+            if offset is not None:
+                raise _error(
+                    operation,
+                    "offset",
+                    f"does not apply to a {clean_kind}: the geometry comes out of "
+                    "the component's own solids, already in the component's frame, "
+                    "and moving it there would put the physics somewhere the part "
+                    "is not",
+                    offset,
+                )
+            properties["offset"] = _placement(operation, "offset", None)
+        else:
+            properties["offset"] = _placement(operation, "offset", offset)
+        return self._value(operation, "collision", label=label, **properties)
+
     def body(
         self,
         component: DomainValue,
         *,
         density_kg_m3: float,
+        collision: DomainValue | Sequence[DomainValue] | None = None,
         label: str = "",
     ) -> DomainValue:
         """Give one component the mass properties a dynamics run needs.
@@ -1033,6 +1190,15 @@ class AssemblyDomainAPI:
         aluminium 2700, ABS 1040. Mass and the inertia tensor are computed
         exactly from the component's own solids -- nothing is estimated
         from a bounding box.
+
+        ``collision`` takes one ``api.collision`` value or a list of them,
+        and giving none means this body touches nothing -- it is carried by
+        its joints and passes through the rest of the mechanism. That is
+        the default because it is what a kinematics-shaped model already
+        assumed, and because the alternative default would be to infer a
+        collision shape, which is the one thing ``api.collision`` exists to
+        stop. Mass never comes from these shapes: inertia stays exactly what
+        the BREP says regardless of what the body collides with.
 
         A body is an intermediate value like ``connector``: pass it to
         ``api.dynamics``, and do not return it as an output of its own.
@@ -1053,11 +1219,47 @@ class AssemblyDomainAPI:
             maximum=30000.0,
             strict_minimum=True,
         )
+        if collision is None:
+            shapes: list[DomainValue] = []
+        elif isinstance(collision, (list, tuple)):
+            shapes = _values(
+                operation,
+                "collision",
+                collision,
+                output_type="collision",
+                minimum=1,
+            )
+        else:
+            shapes = [
+                _domain_value(
+                    operation, "collision", collision, output_type="collision"
+                )
+            ]
+        if len(shapes) > 16:
+            raise _error(
+                operation,
+                "collision",
+                "accepts at most 16 collision shapes for one body",
+                len(shapes),
+            )
+        derived = [
+            shape
+            for shape in shapes
+            if str(shape.properties.get("kind")) in _COLLISION_SHAPE_KINDS
+        ]
+        if len(derived) > 1:
+            raise _error(
+                operation,
+                "collision",
+                "takes at most one mesh or hull shape per body: they are both "
+                "the whole component, so a second one is the same geometry twice",
+            )
         return self._value(
             operation,
             "body",
             value,
             density_kg_m3=density,
+            collision=shapes,
             label=label,
         )
 
@@ -1083,9 +1285,11 @@ class AssemblyDomainAPI:
         ran it. Frames are sampled at ``frames_per_second``; the solver
         steps far finer than that internally.
 
-        Contact, damping, actuators and gravity as a parameter are not in
-        this slice. Bodies do not collide yet: a mechanism is held together
-        by its joints alone.
+        A body touches nothing until ``api.body`` is given ``collision``
+        shapes, so a mechanism with none is held together by its joints
+        alone and passes through everything -- which is exactly what a
+        kinematics-shaped model already assumed. Damping and actuators are
+        not in this slice.
         """
 
         operation = "dynamics"
