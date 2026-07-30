@@ -212,6 +212,160 @@ def test_project_digest_tracks_artifact_bytes(tmp_path) -> None:
     assert before != after
 
 
+def _trace_output(tmp_path: Path) -> dict:
+    """One simulation output that retained a trace, as the worker writes it."""
+
+    artifact = tmp_path / "outputs" / "assembly-simulation-trace.json"
+    artifact.parent.mkdir(exist_ok=True)
+    artifact.write_bytes(b'{"schema":"cadex-assembly-simulation-trace-v1"}')
+    return {
+        "name": "sim",
+        "domain": "assembly",
+        "type": "simulation",
+        "artifact_kind": "assembly_simulation_json",
+        "artifact_path": "outputs/assembly-simulation-trace.json",
+        "definition": {"operation": "simulation"},
+    }
+
+
+def test_a_retained_trace_reaches_the_project_digest(tmp_path) -> None:
+    """The change ADR-068 is (ADR-064 decided it, on M3's evidence).
+
+    Before this, a simulation was "everything else": its digest entry was the
+    graph that produced it, not the numbers that came out. Two projects whose
+    scripts matched but whose traces came from different solver versions had
+    the same digest, and `open_project` asserts digest equality — so the
+    difference passed in silence.
+    """
+
+    outputs = [*_digest_outputs(tmp_path), _trace_output(tmp_path)]
+    before = project_worker.compute_project_digest(tmp_path, outputs)
+    (tmp_path / "outputs" / "assembly-simulation-trace.json").write_bytes(
+        b'{"schema":"cadex-assembly-simulation-trace-v1","moved":true}'
+    )
+    after = project_worker.compute_project_digest(tmp_path, outputs)
+    assert before != after, "the trace's own bytes must reach the digest"
+
+
+def test_the_graph_that_asked_for_a_trace_still_reaches_the_digest(tmp_path) -> None:
+    """Bytes were **added**, not substituted, and this is why it matters.
+
+    A trace artifact is a rendering of the output, not the whole of it: the
+    simulation also carries settings that a reader can change without moving
+    a single frame — a label being the obvious one. Substituting the bytes
+    for the recipe would have made those edits invisible to the digest,
+    which is a regression dressed as a simplification. Keeping both makes the
+    change strictly monotonic.
+    """
+
+    outputs = [*_digest_outputs(tmp_path), _trace_output(tmp_path)]
+    before = project_worker.compute_project_digest(tmp_path, outputs)
+    outputs[-1]["definition"] = {"operation": "simulation", "end_time_s": 2.0}
+    assert project_worker.compute_project_digest(tmp_path, outputs) != before
+
+    # ...and a change that moves no frame at all is still visible.
+    outputs[-1]["definition"] = {"operation": "simulation", "label": "renamed"}
+    assert project_worker.compute_project_digest(tmp_path, outputs) != before
+
+
+def test_any_retained_artifact_reaches_the_digest_by_existing(tmp_path) -> None:
+    """The rule is keyed on having bytes, not on a roster of known kinds.
+
+    This is the property that makes the rule worth having: an output kind
+    invented later joins the project digest by writing a file, rather than by
+    someone remembering to add it to a list here. Asserted with a kind this
+    tree does not define, because a test using a real one could not tell the
+    general rule from a special case.
+    """
+
+    artifact = tmp_path / "outputs" / "something.bin"
+    artifact.parent.mkdir(exist_ok=True)
+    artifact.write_bytes(b"first")
+    outputs = [
+        {
+            "name": "thing",
+            "domain": "assembly",
+            "type": "some_future_type",
+            "artifact_kind": "some_future_kind",
+            "artifact_path": "outputs/something.bin",
+            "definition": {"operation": "future"},
+        }
+    ]
+    before = project_worker.compute_project_digest(tmp_path, outputs)
+    artifact.write_bytes(b"second")
+    assert project_worker.compute_project_digest(tmp_path, outputs) != before
+
+
+def test_a_mesh_is_still_identified_by_its_vertices_and_not_its_bytes(
+    tmp_path,
+) -> None:
+    """The one exception, and the reason it is one (ADR-016).
+
+    The native set operations re-triangulate coplanar regions
+    non-deterministically while the vertex set stays exact, so hashing a
+    mesh's bytes would flap the digest on identical geometry. Rewriting the
+    .ply must change nothing; changing the fingerprint must change everything.
+    """
+
+    artifact = tmp_path / "outputs" / "output-002.ply"
+    artifact.parent.mkdir(exist_ok=True)
+    artifact.write_bytes(b"ply-one")
+    outputs = [
+        {
+            "name": "hull",
+            "domain": "mesh",
+            "type": "mesh",
+            "artifact_kind": "mesh",
+            "artifact_path": "outputs/output-002.ply",
+            "geometry_sha256": "c" * 64,
+            "definition": {"operation": "from_shape"},
+        }
+    ]
+    before = project_worker.compute_project_digest(tmp_path, outputs)
+    artifact.write_bytes(b"ply-two-retriangulated")
+    assert project_worker.compute_project_digest(tmp_path, outputs) == before
+
+    outputs[0]["geometry_sha256"] = "d" * 64
+    assert project_worker.compute_project_digest(tmp_path, outputs) != before
+
+
+def test_an_approximating_mesh_still_falls_back_to_its_definition(tmp_path) -> None:
+    """A decimate tree carries no fingerprint, and must not gain one by bytes.
+
+    Its result is run-dependent by construction, so its bytes are the last
+    thing that should identify it — which is exactly the trap the inverted
+    rule would have walked into if `mesh` were not excluded as a *kind*
+    rather than by the presence of a fingerprint.
+    """
+
+    artifact = tmp_path / "outputs" / "output-003.ply"
+    artifact.parent.mkdir(exist_ok=True)
+    artifact.write_bytes(b"decimated-one")
+    outputs = [
+        {
+            "name": "lite",
+            "domain": "mesh",
+            "type": "mesh",
+            "artifact_kind": "mesh",
+            "artifact_path": "outputs/output-003.ply",
+            "definition": {"operation": "decimate", "reduction": 0.5},
+        }
+    ]
+    before = project_worker.compute_project_digest(tmp_path, outputs)
+    artifact.write_bytes(b"decimated-two-different-run")
+    assert project_worker.compute_project_digest(tmp_path, outputs) == before
+
+    outputs[0]["definition"] = {"operation": "decimate", "reduction": 0.9}
+    assert project_worker.compute_project_digest(tmp_path, outputs) != before
+
+
+def test_an_output_with_no_artifact_is_still_its_recipe(tmp_path) -> None:
+    outputs = _digest_outputs(tmp_path)
+    before = project_worker.compute_project_digest(tmp_path, outputs)
+    outputs[1]["definition"] = {"b": 3}
+    assert project_worker.compute_project_digest(tmp_path, outputs) != before
+
+
 def test_project_digest_rounds_placements_below_tolerance(tmp_path) -> None:
     outputs = _digest_outputs(tmp_path)
     outputs[1]["solved_placement_matrix"] = [1.0, 0.0, 0.25, 5.0]
