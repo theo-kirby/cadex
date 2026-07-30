@@ -729,13 +729,17 @@ four-bar fixture (`qpos = [0.873, −0.702, 0.966]`) rather than live,
 because a planar loop of revolutes is reported redundant by this tree's
 native solver and cannot reach a live gate at all.
 
-**Known consequence, not fixed here (hazard 3).** `compute_project_digest`
-gives anything that is not `brep`/`mesh` a `payload_sha256` of its
-canonical definition JSON, so the exported XML bytes are in **no** project
-digest — identical to how the trace behaves today. A MuJoCo version bump
-therefore changes every exported file silently. ADR-064 already routed the
-real fix to `main`; M5 inherits that decision and publishes
-`CadexMjcfMuJoCoVersion` so the drift is at least legible.
+**Known consequence at the time, closed a day later (hazard 3).** When M5
+landed, `compute_project_digest` gave anything that was not `brep`/`mesh` a
+`payload_sha256` of its canonical definition JSON, so the exported XML bytes
+were in **no** project digest and a MuJoCo version bump changed every
+exported file silently — identical to how the trace behaved. **ADR-068 fixed
+both at once**, on `main`, by keying the digest's bytes clause on *having an
+artifact* rather than on a list of known kinds: `assembly_mjcf_xml` was
+covered by the sync with no code on this branch, which is the property that
+clause was written for. `CadexMjcfMuJoCoVersion` is still published and still
+earns it — the digest says that something changed, the field says which
+version wrote it.
 
 **Done when — and it is:** an assembly designed in Cadex exports an MJCF
 file that loads in a stock MuJoCo with no Cadex on its path (asserted by
@@ -844,16 +848,30 @@ Ranked by how quietly they fail.
    check — is this still the part — and the `hull` opt-in does not waive it.
    Still live as a regression hazard: `mesh` and `hull` are two kinds
    precisely so that accepting a hull is a word in the script.
-3. **Cross-version drift**, and it is now the *first* hazard on this list
-   rather than the third. MuJoCo disclaims numerical reproducibility across
-   releases. M3 proved reproducibility everywhere it could — the same script
-   through two cadexd processes writes the same artifact byte for byte, and
-   OndselSolver does too — which is exactly what leaves a version bump as the
-   one thing that still moves every number. A trace's `artifact_sha256` is in
-   **no** digest today, so that bump is silent; ADR-064 decides it should
-   join the digest and routes the change to `main`, because the digest code
-   is shared with the kinematics trace. Until it lands, the trace records
-   `solver_version` so the drift is at least legible. Exact pin, M0.
+3. ~~**Cross-version drift.**~~ **Half-handled, and the silent half is the
+   half that went.** MuJoCo disclaims numerical reproducibility across
+   releases, and M3 proved reproducibility everywhere it could — the same
+   script through two cadexd processes writes the same artifact byte for
+   byte, and OndselSolver does too — which is what left a version bump as the
+   one thing that still moved every number. A trace's bytes were in **no**
+   project digest, so that bump changed the physics of every stored project
+   and the one mechanism designed to notice said nothing.
+
+   **ADR-068 landed on `main` and arrived here on the sync**, so a retained
+   artifact's SHA-256 is now part of the project digest — added to the
+   canonical definition rather than substituted for it, so the change is
+   strictly monotonic. It is keyed on *having an artifact* rather than on a
+   list of known kinds, which is why M5's `assembly_mjcf_xml` is covered too
+   without a line of code on this branch. A version bump is now a loud
+   `open_project` refusal instead of a silent substitution.
+
+   **What is left is the migration, not the detection.** A project containing
+   a simulation, opened after a solver upgrade, refuses to open;
+   `open_project restore=false` is the existing escape hatch and re-accepting
+   records the new digest, but nothing offers that to a user in words. The
+   `solver_version` and `CadexMjcfMuJoCoVersion` fields keep earning their
+   place — the digest says *that* something changed, and only those say
+   *which* version wrote it. Exact pin, M0, still load-bearing.
 4. ~~**Multi-threading**~~ — **handled in M3 phase 0**, and it was never
    about threads. `mjDSBL_ISLAND` is a *disable* bit and a bare compile has
    `disableflags == 0`, so islands were **on**. Measured both ways: with no
@@ -912,12 +930,17 @@ Ranked by how quietly they fail.
   stopped being proportional to the first when `solver_step_s` became
   authorable. A rollout is long in steps and short in frames, and one
   combined cap cannot express that trade.
-- **Does a trace's `artifact_sha256` join the project digest?** — decided
+- ~~**Does a trace's `artifact_sha256` join the project digest?**~~ — decided
   *yes* by ADR-064 on M3's evidence (both solvers reproduce byte for byte
-  across processes), and **routed to `main`**, because
-  `compute_project_digest` is shared code that treats a kinematics and a
-  dynamics trace identically. Open here only in the sense that the change has
-  not landed yet; `solver_version` in the trace evidence is the interim.
+  across processes), routed to `main` because `compute_project_digest` is
+  shared code that treats a kinematics and a dynamics trace identically, and
+  **landed there as ADR-068 on 2026-07-31** with `main`'s own three-process
+  reproducibility evidence behind it. It arrived here on the sync. The rule
+  is keyed on having an artifact rather than on a roster of kinds, so M5's
+  exported models joined at the same time and for free. What is still open is
+  the *migration* — a solver upgrade now refuses to open the project, and
+  nothing tells the user that `restore=false` and a re-accept is the way
+  through.
 - Where does the training run — a service we operate, or the user's own
   GPU box under their credentials? M7 has to answer this and it is as much
   a product question as a technical one.

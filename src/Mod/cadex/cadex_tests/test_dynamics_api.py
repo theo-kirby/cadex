@@ -21,6 +21,8 @@ animation it already had.
 
 from __future__ import annotations
 
+import shutil
+
 import pytest
 
 from cadex_assembly_api import AssemblyDomainAPI, _PUBLISHABLE_TYPES
@@ -210,44 +212,89 @@ def test_the_worker_contract_accepts_a_dynamics_run() -> None:
     assert motions == {}
 
 
-def test_the_simulation_trace_is_not_part_of_the_project_digest() -> None:
-    """The correction ADR-062 owes ADR-060, as a fact rather than a claim.
+def test_the_simulation_trace_is_part_of_the_project_digest() -> None:
+    """The correction ADR-062 owed ADR-060, now finally true (ADR-068).
 
-    ADR-060 justifies MuJoCo's exact version pin with "every open_project
+    ADR-060 justified MuJoCo's exact version pin with "every open_project
     asserts digest equality, so an unpinned patch bump would silently turn
-    every stored simulation into a restore failure." It would not.
-    ``compute_project_digest`` branches on ``artifact_kind`` for ``brep`` and
-    ``mesh`` and falls through to the canonical *definition* for everything
-    else, so a trace's ``artifact_sha256`` is in no digest -- a version bump
-    would change every trace and move nothing, which is worse than the ADR
-    describes because it is silent.
+    every stored simulation into a restore failure." M2 measured that and
+    found it false: ``compute_project_digest`` branched on ``artifact_kind``
+    for ``brep`` and ``mesh`` and fell through to the canonical *definition*
+    for everything else, so a trace's bytes were in no digest. A version bump
+    changed every trace and moved nothing.
 
-    Pinned here so that bringing trace bytes into the digest (M3's call, and
-    it needs OndselSolver's own byte reproducibility first) is a deliberate
-    change that fails this test rather than a quiet one.
+    ADR-064 decided that should change and routed it to ``main``, because
+    the digest code is shared with the kinematics trace. ADR-068 landed it
+    there, and this is the test M3 wrote in its inverted form saying it would
+    have to be rewritten. The pin's justification is now the truth rather
+    than the intent.
     """
 
     from pathlib import Path
+    import tempfile
 
     from cadex_project_worker import compute_project_digest
 
-    def _outputs(trace_digest: str) -> list[dict]:
-        return [
+    root = Path(tempfile.mkdtemp(prefix="m5-trace-digest-"))
+    try:
+        artifact = root / "outputs" / "assembly-simulation-trace.json"
+        artifact.parent.mkdir(parents=True)
+        artifact.write_bytes(b'{"schema":"cadex-assembly-simulation-trace-v1"}')
+        outputs = [
             {
                 "name": "sim",
                 "domain": "assembly",
                 "type": "simulation",
                 "artifact_kind": "assembly_simulation_json",
                 "artifact_path": "outputs/assembly-simulation-trace.json",
-                "artifact_sha256": trace_digest,
                 "definition": {"operation": "dynamics", "end_time_s": 1.0},
             }
         ]
+        before = compute_project_digest(root, outputs)
+        artifact.write_bytes(
+            b'{"schema":"cadex-assembly-simulation-trace-v1","x":1}'
+        )
+        assert compute_project_digest(root, outputs) != before
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
-    root = Path(".")
-    assert compute_project_digest(root, _outputs("a" * 64)) == (
-        compute_project_digest(root, _outputs("b" * 64))
-    )
+
+def test_an_exported_mjcf_model_is_part_of_the_project_digest() -> None:
+    """And it got there without a line of MJC code, which was the design.
+
+    ADR-068 keyed the digest's bytes clause on *having an artifact* rather
+    than on a roster of known kinds, precisely so that this branch's
+    ``assembly_mjcf_xml`` would be covered by the sync rather than by
+    somebody remembering it. This asserts the outcome rather than trusting
+    the reasoning -- hazard 3 applied to exported models, closed by
+    inheritance.
+    """
+
+    from pathlib import Path
+    import tempfile
+
+    from cadex_project_worker import compute_project_digest
+
+    root = Path(tempfile.mkdtemp(prefix="m5-mjcf-digest-"))
+    try:
+        artifact = root / "outputs" / "model-model.xml"
+        artifact.parent.mkdir(parents=True)
+        artifact.write_bytes(b'<mujoco model="cadex-assembly"/>')
+        outputs = [
+            {
+                "name": "model",
+                "domain": "assembly",
+                "type": "mjcf",
+                "artifact_kind": "assembly_mjcf_xml",
+                "artifact_path": "outputs/model-model.xml",
+                "definition": {"operation": "mjcf"},
+            }
+        ]
+        before = compute_project_digest(root, outputs)
+        artifact.write_bytes(b'<mujoco model="cadex-assembly"><!-- --></mujoco>')
+        assert compute_project_digest(root, outputs) != before
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 def test_the_worker_contract_re_checks_the_bodies_it_is_handed() -> None:

@@ -163,10 +163,30 @@ def _round_placement(values: Any) -> Any:
 def compute_project_digest(root: Path, outputs: list[dict[str, Any]]) -> str:
     """SHA-256 over the canonical description of all serialized outputs.
 
-    Entries are sorted by output name; BREP-backed outputs contribute the
-    SHA-256 of their exported artifact, everything else the SHA-256 of its
-    canonical definition JSON; solved placements are rounded to 1e-9 so OCCT
-    noise below modeling tolerance cannot flip the digest.
+    Entries are sorted by output name; solved placements are rounded to 1e-9
+    so OCCT noise below modeling tolerance cannot flip the digest.
+
+    A BREP output is its exported shape and a mesh output is its vertex set;
+    both are identified by that and nothing else, because for those two the
+    bytes *are* the whole output. Everything else is identified by its
+    canonical definition — the recipe — **and, if it retained an artifact, by
+    that artifact's bytes as well** (ADR-068).
+
+    The bytes clause is an addition rather than a substitution, and that is
+    the deliberate part. Before it, a *simulation trace* — an artifact this
+    engine had spent a slice proving byte-reproducible across processes — was
+    identified only by the graph that asked for it. Two projects whose
+    scripts matched but whose traces came from different solver versions had
+    the same digest, and `open_project` asserts digest equality, so the
+    difference passed in silence. Adding the bytes rather than swapping them
+    in makes the change strictly monotonic: everything that moved the digest
+    before still moves it, so no edit that used to be visible becomes
+    invisible.
+
+    The clause is keyed on *having an artifact* rather than on a roster of
+    known kinds, so an output kind invented later joins the digest by writing
+    a file rather than by someone remembering to add it here. `mesh` is the
+    single exception and is excluded by name, for the reason given below.
     """
 
     entries = []
@@ -177,13 +197,10 @@ def compute_project_digest(root: Path, outputs: list[dict[str, Any]]) -> str:
             "output_type": str(item.get("type") or ""),
         }
         artifact = str(item.get("artifact_path") or "")
-        if artifact and str(item.get("artifact_kind") or "") == "brep":
+        kind = str(item.get("artifact_kind") or "")
+        if artifact and kind == "brep":
             entry["shape_sha256"] = _file_sha256(root / artifact)
-        elif (
-            artifact
-            and str(item.get("artifact_kind") or "") == "mesh"
-            and item.get("geometry_sha256")
-        ):
+        elif artifact and kind == "mesh" and item.get("geometry_sha256"):
             # Vertex-set fingerprint, not artifact bytes: the native set
             # operations re-triangulate coplanar regions non-deterministically
             # while the vertex set stays exact. Approximating mesh outputs
@@ -194,6 +211,13 @@ def compute_project_digest(root: Path, outputs: list[dict[str, Any]]) -> str:
             entry["payload_sha256"] = hashlib.sha256(
                 _canonical_json(item.get("definition") or {}).encode("utf-8")
             ).hexdigest()
+            # `kind != "mesh"` and not `geometry_sha256 is None`: a decimate
+            # tree is approximating and run-dependent *by construction*, so
+            # its bytes are the last thing that should identify it. Excluding
+            # the kind rather than the missing fingerprint is what keeps that
+            # true.
+            if artifact and kind != "mesh":
+                entry["artifact_sha256"] = _file_sha256(root / artifact)
         placement = _round_placement(item.get("solved_placement_matrix"))
         if placement is not None:
             entry["placement"] = placement

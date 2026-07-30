@@ -267,40 +267,53 @@ def test_the_trace_says_which_mujoco_wrote_it() -> None:
     assert trace["dynamics"]["solver_version"] == mujoco.__version__
 
 
-def test_a_trace_is_still_absent_from_the_project_digest_and_that_is_recorded() -> None:
-    """The state ADR-064 is a decision about, pinned so the change is visible.
+def test_the_trace_the_gate_compared_is_the_one_the_digest_now_covers() -> None:
+    """M3 wrote this test inverted, and said so: ADR-068 is what rewrites it.
 
-    ``cadex_project_worker.compute_project_digest`` hashes exported BREP for shape
-    outputs, a vertex fingerprint for meshes, and the canonical *definition*
-    for everything else. A simulation is everything else: its digest entry
-    is the graph that produced it, not the numbers that came out. When the
-    routed change lands from `main` this test is what has to be rewritten,
-    which is the point of writing it.
+    The old body asserted that a trace's bytes reached no project digest, and
+    its docstring named the routed change as the thing that would have to
+    break it. The change landed on ``main`` (ADR-068) and arrived here on the
+    sync, so the assertion turns over: the bytes this suite proves stable
+    across restarts are now the bytes ``open_project`` compares.
+
+    That is what closes the loop the whole suite exists for. Byte
+    reproducibility across processes stopped being a property nobody
+    consumed the moment the digest started consuming it — and it is why the
+    reproducibility gate above is now load-bearing rather than aspirational.
     """
 
     from cadex_project_worker import compute_project_digest
 
-    root = Path(tempfile.mkdtemp(prefix="m3-digest-"))
+    root = Path(tempfile.mkdtemp(prefix="m5-digest-"))
     try:
+        artifact = root / "outputs" / "assembly-simulation-trace.json"
+        artifact.parent.mkdir(parents=True)
+        artifact.write_bytes(b'{"schema":"cadex-assembly-simulation-trace-v1"}')
         outputs = [
             {
                 "name": "sim",
                 "domain": "assembly",
                 "type": "simulation",
-                "artifact_path": "outputs/assembly-simulation-trace.json",
                 "artifact_kind": "assembly_simulation_json",
-                "artifact_sha256": "a" * 64,
+                "artifact_path": "outputs/assembly-simulation-trace.json",
                 "definition": {"operation": "dynamics"},
             }
         ]
         first = compute_project_digest(root, outputs)
-        outputs[0]["artifact_sha256"] = "b" * 64
-        assert compute_project_digest(root, outputs) == first, (
-            "today the trace's own bytes do not reach the project digest"
+
+        # Different numbers out of the solver: a different project.
+        artifact.write_bytes(
+            b'{"schema":"cadex-assembly-simulation-trace-v1","frames":[]}'
         )
-        outputs[0]["definition"] = {"operation": "dynamics", "end_time_s": 2.0}
         assert compute_project_digest(root, outputs) != first, (
-            "what does reach it is the graph that asked for the trace"
+            "a trace's own bytes must reach the project digest"
         )
+
+        # And the graph that asked for the trace still reaches it too --
+        # ADR-068 added the bytes rather than substituting them.
+        artifact.write_bytes(b'{"schema":"cadex-assembly-simulation-trace-v1"}')
+        assert compute_project_digest(root, outputs) == first
+        outputs[0]["definition"] = {"operation": "dynamics", "end_time_s": 2.0}
+        assert compute_project_digest(root, outputs) != first
     finally:
         shutil.rmtree(root, ignore_errors=True)

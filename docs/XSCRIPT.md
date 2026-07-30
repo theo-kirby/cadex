@@ -320,10 +320,16 @@ one validated candidate under **ONE** document transaction — one undo step:
 
 - **Content digest** (D8): SHA-256 over the name-sorted output entries
   `{output_name, domain, output_type,
-  shape_sha256|mesh_sha256|payload_sha256, placement (rounded 1e-9)}`,
-  schema `cadex-project-digest-v1`, computed
+  shape_sha256|mesh_sha256|payload_sha256 [+ artifact_sha256],
+  placement (rounded 1e-9)}`, schema `cadex-project-digest-v1`, computed
   worker-side from serialized artifacts; recorded as `accepted_digest` on
-  accept. `CadexDigest.py:document_digest` recomputes a diagnostic digest
+  accept. A BREP output is its exported shape and a mesh output its vertex
+  set — for those two the bytes *are* the output. Everything else is its
+  canonical definition, **plus `artifact_sha256` when it retained a file**
+  (ADR-068): the clause is keyed on having an artifact rather than on a list
+  of known kinds, so a new output kind joins the digest by writing a file.
+  `mesh` is the one exclusion, because a decimate tree's bytes are
+  run-dependent by construction where its recipe is not. `CadexDigest.py:document_digest` recomputes a diagnostic digest
   from the live tagged objects (schema `cadex-document-digest-v1`; a
   different quantity — do not compare across schemas).
 - **Headless rebuild** (D9): `cadex_rebuild.py` re-runs THE script into a

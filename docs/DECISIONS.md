@@ -5377,3 +5377,140 @@ next payload work, with its own gate run.
 - `docs/ROADMAP.md`'s M5 line is updated to point here instead of forward.
 - Nothing in the code changes. This entry is a decision, and its whole value
   is that the next slice does not spend an hour re-deriving it.
+
+---
+
+## ADR-068 — A retained artifact is part of the project's identity (2026-07-31)
+
+**Decision.** `compute_project_digest` gains one clause: an output that
+retained an artifact contributes that artifact's SHA-256 as
+`artifact_sha256`, **in addition to** the canonical-definition hash it
+already contributed. BREP and mesh outputs are unaffected — they are already
+identified by their shape and their vertex set respectively — and `mesh` is
+excluded from the new clause by name.
+
+This is the change ADR-064 decided and routed here. That ADR decided it on
+`MJC`'s evidence and could not land it there: `compute_project_digest` is
+shared code that treats a kinematics and a dynamics trace identically, so the
+change belongs on `main` and reaches the branch on the next sync.
+
+### 1. What was wrong
+
+The old rule named `brep`, named `mesh`, and let everything else fall through
+to its canonical definition. "Everything else" included a **simulation
+trace** — an artifact the engine had spent a whole slice proving
+byte-reproducible across processes. So a trace was identified by the graph
+that *asked* for it and never by the numbers that came out.
+
+The consequence is specific and silent. `open_project` compares the rebuilt
+digest against the stored `accepted_digest` and refuses on mismatch
+(ADR-044). Two projects whose scripts matched but whose traces were computed
+by different solver versions produced the *same* digest — so a solver upgrade
+changed the physics of every stored project and the one mechanism designed to
+notice said nothing. `docs/MUJOCO.md` hazard 3 has named this since M3.
+
+### 2. Measured first, as usual
+
+The change makes a trace's bytes load-bearing for whether a project opens at
+all, so the precondition is that those bytes are reproducible. `MJC` proved
+it for MuJoCo; `main` did not have its own evidence, and now does:
+`test_simulation_restart_determinism.py` runs one script through **three**
+separate `cadexd` processes with three separate project roots and compares
+the file the project store retained. OndselSolver writes the same 6533 bytes
+every time, and the project digest agrees across independent builds. Three
+runs rather than two, because two agreeing could be two runs that took the
+same path through an allocator.
+
+The other thing worth measuring was *what the new clause actually captures*.
+Enumerated by running a script with a solid, a tessellated mesh, a decimate
+tree, an assembly, a joint, a motion, a simulation and an exploded view
+through a live `cadexd` and reading back every output's `artifact_kind`:
+only **three** kinds ever reach an output — `brep`, `mesh` and
+`assembly_simulation_json`. Every other output type retains no artifact at
+all. Tessellation is not among them and cannot be: the digest is computed
+before display artifacts are generated, deliberately (Phase 5.1).
+
+So the new clause captures exactly one thing today. That is the point of
+writing it as a rule rather than as a case.
+
+### 3. Added, not substituted — and that is the deliberate part
+
+The first draft *replaced* the definition hash with the artifact hash for
+these outputs, which is what `brep` already does and looked like consistency.
+A test written against it failed, and the failure was right.
+
+A BREP output's bytes are the whole output: a solid is its shape. A trace
+artifact is a *rendering* of its output — the simulation also carries
+settings a reader can change without moving a single frame, a label being the
+obvious one. Substituting would have made those edits invisible to the
+digest: a regression dressed as a simplification.
+
+Keeping both makes the change **strictly monotonic**. Everything that moved
+the digest before still moves it; the bytes are new coverage on top. For a
+number that gates whether a project opens, monotonic is the only safe
+direction, and it costs one extra hash of a small dict.
+
+### 4. Keyed on having an artifact, not on a roster of kinds
+
+The clause reads `if artifact and kind != "mesh"`. It could have read
+`if kind in {"assembly_simulation_json"}`, and that would have been wrong in
+a way that is easy to miss: every new artifact-producing output kind would
+then join the project digest only when somebody remembered to come back here
+and add it. Silence is this change's whole subject; a rule that defaults to
+silence would be an odd thing to fix it with.
+
+The inverted form makes the default correct and forces an exception to be
+argued for. There is exactly one exception and it is argued for in §5.
+
+It also means the `MJC` sync is free. That branch's `assembly_mjcf_xml`
+export (ADR-066) has the same silent-drift exposure and needs **no edit here**
+to be covered — it joins by having written a file. A test using a
+deliberately fictional `artifact_kind` pins the general rule, because a test
+using a real one could not tell a general rule from a special case.
+
+### 5. The one exception, and why it is excluded by *kind*
+
+A mesh's bytes are not reproducible where its geometry is: the native set
+operations re-triangulate coplanar regions non-deterministically while the
+vertex set stays exact (ADR-016). That is why a mesh is identified by a
+vertex-set fingerprint and not by its `.ply`.
+
+The exclusion is written as `kind != "mesh"` rather than as "has no
+`geometry_sha256`", and the difference matters. An **approximating** mesh — a
+decimate tree — carries no fingerprint at all, because its result is
+run-dependent by construction. Excluding on the missing fingerprint would
+have routed exactly those outputs into the bytes clause: the one kind of
+output whose bytes are guaranteed to differ between runs. It has its own
+test.
+
+### 6. Consequences, including the one users will see
+
+- **A solver version bump now fails loudly instead of passing silently.** A
+  project containing a simulation, opened after an OndselSolver or MuJoCo
+  upgrade, will refuse to open with `CADEXD_RESTORE_FAILED` and both digests
+  in `observed`. That is the intended behaviour and it is a real change: the
+  old behaviour was to open the project and quietly present different
+  physics. The escape hatch already exists — `open_project` takes
+  `restore=false`, which skips the comparison — and re-accepting through
+  `write_script` records the new digest. A friendlier migration path is worth
+  having and is not built here.
+- **`docs/MUJOCO.md` hazard 3 loses half its content on the next `MJC` sync.**
+  The `solver_version` / `CadexMjcfMuJoCoVersion` fields stay useful — they
+  say *which* version wrote an artifact, where the digest only says *that*
+  something changed — but they stop being the only signal.
+- Stored `accepted_digest` values from before this change no longer match a
+  rebuild of the same project *if it contains a simulation*. Projects without
+  one are unaffected. There is no migration and none is offered: the fix is
+  to re-accept, which is one `write_script` away and is what a user does
+  anyway on opening a project they intend to edit.
+- `docs/XSCRIPT.md`'s D8 entry is updated in the same commit.
+
+### 7. Verification
+
+Engine suite **321 passed** (312 before). Six new digest tests: the trace's
+bytes reach the digest; the recipe still does too, including an edit that
+moves no frame; an artifact of a kind this tree does not define joins by
+existing; a mesh is still its vertices and not its bytes; a decimate tree
+still falls back to its definition; an output with no artifact is still its
+recipe. Plus the three live restart-determinism tests the change rests on,
+committed before it.
