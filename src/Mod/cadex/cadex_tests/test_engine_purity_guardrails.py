@@ -267,6 +267,32 @@ def test_mujoco_never_enters_the_engine_closure() -> None:
     )
 
 
+def test_the_shell_never_learns_about_mujoco() -> None:
+    """Dynamics is engine-side, permanently (ADR-060 decision 4, ADR-062).
+
+    Slice M2 shipped with an empty ``shell/`` diff, which was its central
+    claim: the shell already knows how to play a simulation trace and does
+    not know what produced it. A physics authoring path in the add-on would
+    be a second source of truth the way the deleted bpy modes were, so the
+    invariant outlives the diff -- nothing under ``shell/`` may import
+    mujoco or reach for the translator.
+    """
+
+    shell = MODULE_DIR.parents[2] / "shell"
+    if not shell.is_dir():  # pragma: no cover - a source checkout always has it
+        return
+    offenders: list[str] = []
+    for path in sorted((shell / "scripts" / "addons_core" / "mesh_agent").rglob("*.py")):
+        roots = _import_roots(path)
+        for forbidden in ("mujoco", "CadexDynamics"):
+            if forbidden in roots:
+                offenders.append(f"{path.relative_to(shell)} -> {forbidden}")
+    assert not offenders, (
+        f"The shell reached for the dynamics engine: {offenders}. Physics "
+        "belongs in the script, engine-side; the shell only plays the trace."
+    )
+
+
 def test_the_conversation_store_left_the_engine() -> None:
     """History lives in the .blend now (ADR-020, decision 4)."""
 
