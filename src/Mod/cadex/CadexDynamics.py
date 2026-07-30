@@ -2748,6 +2748,7 @@ def build_model(
         "enableflags": int(model.opt.enableflags),
         "geoms": geoms,
         "excluded_pairs": excluded_pairs,
+        "mujoco_version": str(getattr(mujoco, "__version__", "unknown")),
     }
 
 
@@ -3035,6 +3036,14 @@ def model_evidence(
         "solver_disableflags": int(built["disableflags"]),
         "solver_enableflags": int(built["enableflags"]),
         "solver_integrator": "implicitfast",
+        # Hazard 3, made legible. MuJoCo disclaims numerical reproducibility
+        # across its own releases, and a trace's bytes are in no project
+        # digest today -- so a version bump changes every trace and moves
+        # nothing anybody would see. Until that decision is taken (ADR-064
+        # routes it to main, because the digest code is shared with the
+        # kinematics trace), the artifact at least says which MuJoCo wrote
+        # it, and a reader comparing two traces can tell drift from a bug.
+        "solver_version": str(built["mujoco_version"]),
         # What each body may touch things with, and -- for a mesh -- the
         # three volumes that decided it was allowed to. A hull an author
         # accepted is a fact about the model somebody will want to find
