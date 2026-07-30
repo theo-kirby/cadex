@@ -813,8 +813,12 @@ with the phase numbers above. Every slice is a resting place.
       cheap part was calling MuJoCo's writer; the slice was proving the file
       is the model. The export verifies its own output before returning it
       and refuses rather than writing. No protocol change, no `shell/` diff;
-      the packaged gate is 9 tests. Whether the arc rejoins `main` is still
-      ADR-063's question and still a later ADR.
+      the packaged gate is 9 tests. **ADR-063's deferred merge-back question
+      is answered by ADR-067: no — and M5 is the reason rather than the
+      exception.** The export calls MuJoCo's own writer, so the capability is
+      not separable from the 51 MB dependency, and the round-trip proof that
+      makes the file trustworthy only means anything while the writer and the
+      compiler are the same pair.
 - [ ] **M6 — A task is part of the script.** Observation, action, reward,
       termination, randomisation — all data, all declarative.
 - [ ] **M7 — Training happens elsewhere.** Offboard by design; training does

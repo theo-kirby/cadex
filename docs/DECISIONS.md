@@ -5270,3 +5270,110 @@ ADR-023's rule being that a source tree proves nothing about a payload.
 `pixi run gate` was not re-run and did not need to be: `git diff --name-only
 main...MJC -- shell/` is empty, and that invariant, not a repeated run, is
 what the shell claim rests on.
+
+---
+
+## ADR-067 — `MJC` stays, and M5 is why rather than why not (2026-07-31)
+
+**Decision.** The question ADR-063 deferred — *whether the MuJoCo arc ever
+returns to `main`* — is answered **no**, and closed rather than deferred
+again. `MJC` remains permanent. ADR-063's "Not decided here" paragraph is
+superseded by this entry.
+
+**Why now.** ADR-063 named exactly one trigger: *"If M5 (MJCF export with
+exact OCCT inertias) proves out as the independently shippable capability
+`docs/MUJOCO.md` argues it is, that is the natural occasion to revisit."*
+M5 closed on 2026-07-31 (ADR-066). It proved out. So this is the occasion,
+and leaving the question open past its own trigger would be worse than
+either answer.
+
+### 1. The new fact M5 produced, and it points the other way
+
+"Independently shippable" and "free to ship" are different claims, and M5 is
+where they came apart.
+
+`export_mjcf` writes MJCF by calling **MuJoCo's own writer** —
+`MjSpec.to_xml()` — rather than serialising MJCF ourselves. So the capability
+requires `mujoco` at runtime, in the payload, on the machine of every user
+who has it. Measured against the payload built from ADR-066's closing commit:
+**51 MB**. A user modeling a bracket pays all of it and imports none of it.
+
+Had M5 written its own serialiser, "design a mechanism in Cadex, export MJCF
+with exact OCCT inertias" would be a few hundred lines of pure Python
+producing a text file, it would carry no dependency at all, and it could sit
+on `main` for free. That was a real fork in the road and it was taken
+deliberately in the other direction. The reason it was right is also the
+reason it closes this question rather than opening it: **M5's central claim
+is that the exported file is provably the model that was simulated**, and the
+proof is a round trip — write, reload, diff field by field, re-run the OCCT
+inertia comparison against the reloaded model, refuse past tolerance
+(ADR-066 §4). That proof only means anything when the writer and the compiler
+are the same pair. A serialiser of ours would verify against itself, would
+need its own conformance suite against every MJCF element we emit, and would
+drift from MuJoCo's schema on every release — three costs, to save one
+dependency on a branch that already carries it.
+
+So the trigger fired and produced evidence **for** the branch. That is worth
+recording precisely because it is the opposite of what ADR-063 anticipated.
+
+### 2. ADR-063's other arguments are unchanged, and were not weakened
+
+* **The build flag is still refused.** VISION principle 1 — prefer the design
+  that removes a concept over the one that adds a switch. A `WITH_DYNAMICS`
+  option would put a second configuration of the product into every gate,
+  every payload test and every digest argument. M5 made this *more* true, not
+  less: the flag would now also have to gate a publishable output type, five
+  registration entries that cross-check each other at import, and a ninth
+  packaged gate test.
+* **The direction change is still unfinished.** ADR-060 extended the product
+  past CAD into task definitions, offboard training and control policies. M0,
+  M1, M2, M3, M4 and M5 are closed; M6, M7 and M8 are not, and two of
+  `docs/MUJOCO.md` §6's open questions are product questions M6 and M7 cannot
+  dodge — where training runs, and whether a policy asset extends `put_asset`
+  or gets its own op. A branch is where a direction change belongs until the
+  arc it opened is finished, and the arc is three slices from finished.
+* **The sync cost has stayed what it was advertised as.** `main` and `MJC`
+  have not diverged in the wrong direction once: 44 commits ahead, **0
+  behind**, no `shell/` diff across the whole arc, and every non-dynamics fix
+  found on the branch has been routed to `main` rather than landed here
+  (ADR-064's digest change is the live example). The mechanism ADR-063
+  proposed is the mechanism that has been used.
+
+### 3. What would re-open this, so nobody has to guess
+
+The question is closed, not permanently unaskable. Three facts would be new
+enough to warrant a fresh ADR, and nothing less should:
+
+1. **A pure-Python MJCF writer with its own conformance suite**, making the
+   export separable from the dependency. §1 argues against building one for
+   M5's sake; a *different* reason to have one would change this calculus.
+2. **`mujoco` becoming an ordinary conda dependency** — that is, the pixi
+   manifest becoming re-solvable past the `occt ==7.8.1` pin, so
+   `CARRIED_PYPI_PACKAGES` can be deleted. ADR-061 named that exception so it
+   would be easy to remove; removing it would take one of the three costs off
+   the table.
+3. **A product decision that dynamics is core**, which is not an engineering
+   finding and would not arrive through this log.
+
+### 4. Known, measured, and deliberately not fixed here
+
+**30 MB of the 51 is `mujoco/experimental/`** — the MuJoCo studio viewer and
+its extensions, which the engine never imports and which
+`relocate_macos_runtime_rpaths.py` currently re-signs and re-points for
+nothing. Pruning it would take the dynamics payload cost to roughly 21 MB.
+That is `MJC`-owned work (`CARRIED_PYPI_PACKAGES` is on this branch per
+ADR-063) and it is worth doing, but it is not done here: it does not change
+this verdict — 21 MB is still 21 MB a bracket-modeller does not want — and a
+decision ADR is the wrong place to land a payload change. It belongs with the
+next payload work, with its own gate run.
+
+### 5. Consequences
+
+- `CLAUDE.md`'s `MJC` block stands unchanged and is now backed by two ADRs
+  rather than one: do not merge this branch, do not open a PR against `main`,
+  do not read its absence from `main` as unfinished work.
+- ADR-066 §11 said merge-back "remains a later ADR's answer". This is that
+  ADR; the two are consistent and neither is rewritten.
+- `docs/ROADMAP.md`'s M5 line is updated to point here instead of forward.
+- Nothing in the code changes. This entry is a decision, and its whole value
+  is that the next slice does not spend an hour re-deriving it.
