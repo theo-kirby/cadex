@@ -19,6 +19,7 @@ watching a mechanism run the wrong way.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -96,7 +97,15 @@ result = {"case": case, "first": first, "second": second,
 """
 
 
-def _ondsel_trace(source: str) -> dict:
+def _ondsel_trace_bytes(source: str) -> bytes:
+    """One kinematics run, through a cadexd of its own, as written bytes.
+
+    A fresh project root and a fresh process each time: this is the harness
+    both the coupling measurements and M3 phase 0's reproducibility
+    question run on, and the latter is only a question at all if nothing is
+    shared between the two runs being compared.
+    """
+
     root = Path(tempfile.mkdtemp(prefix="ondsel-parity-"))
     client = None
     try:
@@ -108,10 +117,14 @@ def _ondsel_trace(source: str) -> dict:
         )
         assert written["ok"] is True, written
         entry = written["display"]["sim"]
-        return json.loads(Path(entry["artifact_path"]).read_text(encoding="utf-8"))
+        return Path(entry["artifact_path"]).read_bytes()
     finally:
         _stop(client)
         shutil.rmtree(root, ignore_errors=True)
+
+
+def _ondsel_trace(source: str) -> dict:
+    return json.loads(_ondsel_trace_bytes(source).decode("utf-8"))
 
 
 def _relative(frame: dict, first: str, second: str) -> tuple[list[float], list[float]]:
@@ -213,3 +226,29 @@ def test_ondsel_advances_a_screw_one_pitch_per_revolution() -> None:
     assert built["couplings"][0]["slope"] == pytest.approx(
         dyn.length_m(moved / turned), rel=1.0e-9
     )
+
+
+def test_ondsel_writes_byte_identical_traces_in_two_separate_processes() -> None:
+    """M3 phase 0's fourth measurement, and it decides a later question.
+
+    ADR-062 left the digest decision open on one precondition: a trace's
+    ``artifact_sha256`` is in **no** project digest today, so a solver
+    version bump changes every trace and moves nothing -- silent, which is
+    strictly worse than loud. Putting it *in* a digest is only defensible
+    if the solver already produces the same bytes twice, and that had never
+    been measured for the solver we have shipped all along.
+
+    So it is measured here, on OndselSolver rather than on MuJoCo, because
+    the kinematics path is the one with users. Two cadexd processes, two
+    project roots, nothing shared: the trace files compare equal byte for
+    byte. Whatever the digest decision turns out to be, it is not blocked
+    by the existing solver being irreproducible.
+    """
+
+    first = _ondsel_trace_bytes(SCREW_SCRIPT)
+    second = _ondsel_trace_bytes(SCREW_SCRIPT)
+    assert hashlib.sha256(first).hexdigest() == hashlib.sha256(second).hexdigest(), (
+        "OndselSolver produced different bytes for the same script in two "
+        "processes; the digest decision in M3 phase 5 rests on this"
+    )
+    assert first == second

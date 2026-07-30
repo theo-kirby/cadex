@@ -32,12 +32,17 @@ detector there is for a frame-composition, unit or handedness error.
 
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
 import CadexDynamics as dyn
 import dynamics_fixtures as fx
+import dynamics_trace_digest as digest_module
 
 mujoco = pytest.importorskip("mujoco")
 
@@ -389,6 +394,47 @@ def test_a_hinge_whose_axis_was_taken_from_the_wrong_connector_is_refused() -> N
         dyn.build_model(components, joints)
     assert excinfo.value.reason == "joint_residual"
     assert excinfo.value.observed["residual_radians"] == pytest.approx(0.35, abs=1e-9)
+
+
+def _digest_in_a_fresh_interpreter(fixture: str) -> dict:
+    """Run one fixture in a process that has never seen this one."""
+
+    here = Path(__file__).resolve().parent
+    completed = subprocess.run(
+        [sys.executable, str(here / "dynamics_trace_digest.py"), fixture],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=str(here),
+    )
+    assert completed.returncode == 0, completed.stderr
+    return json.loads(completed.stdout)
+
+
+def test_the_same_assembly_gives_byte_identical_frames_across_processes() -> None:
+    """M3 phase 0, and it is deliberately measured before contact exists.
+
+    If a trace is not already reproducible across interpreters with no
+    geoms in the model at all, then contact is not what broke it and the
+    determinism gate has a prior problem -- one far cheaper to find now
+    than after mesh collision has muddied it. Measured: three separate
+    interpreters, identical digests, so the gate starts from a clean base
+    and phase 5 inherits a claim rather than a hope.
+
+    Two processes would prove the claim; three is barely more expensive and
+    catches the case where a hash happens to be seeded per-pair.
+    """
+
+    digests = [_digest_in_a_fresh_interpreter("four_bar") for _repeat in range(3)]
+    assert len({record["digest"] for record in digests}) == 1, digests
+    assert digests[0]["frame_count"] > 2
+    # The same numbers computed in *this* interpreter, so the subprocess
+    # path is not quietly comparing two copies of the same mistake.
+    components, joints, _placements = fx.four_bar()
+    run = dyn.simulate(
+        components, joints, start_time_s=0.0, end_time_s=0.5, frames_per_second=60
+    )
+    assert digest_module.trace_digest(run["frames"]) == digests[0]["digest"]
 
 
 def test_the_same_assembly_gives_byte_identical_qpos_within_one_process() -> None:

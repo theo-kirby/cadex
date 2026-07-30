@@ -1672,6 +1672,27 @@ def build_model(
     spec.compiler.degree = False
     spec.option.gravity = list(gravity_m_s2)
     spec.option.timestep = float(time_step_s)
+    # Islands off, explicitly (M3 phase 0). Measured on mujoco 3.10.0:
+    # ``mjDSBL_ISLAND`` is a *disable* bit and a default compile has
+    # ``disableflags == 0``, so islands are **on** by default -- the
+    # opposite of what "forced single-threaded" sounded like. On a jointed
+    # model with no contact the flag moves nothing (measured: zero delta
+    # over 300 steps of the four-bar), but once geoms exist it does: three
+    # boxes settling on a plane came out 2e-14 apart in qpos after 1500
+    # steps, which is small and is still enough to move a digest we assert
+    # equality over. Both settings are reproducible across processes, so
+    # the choice is about which one is *written down*: islands off is the
+    # single monolithic constraint solve, whose row ordering does not
+    # depend on how contacts happen to partition. It costs nothing here
+    # because islands only buy parallelism when an ``mjData`` is handed a
+    # thread pool, which this module never does.
+    spec.option.disableflags = int(mujoco.mjtDisableBit.mjDSBL_ISLAND)
+    # Sleep off, explicitly, for the same reason and a louder failure: a
+    # body MuJoCo has put to sleep stops integrating, and a settling
+    # mechanism -- M3's whole scenario -- is exactly what that freezes. It
+    # is off by default in 3.10.0 (``enableflags == 0``); an assertion
+    # after compile is what keeps that true.
+    spec.option.enableflags = 0
 
     native_bodies: dict[str, Any] = {"": spec.worldbody}
     joint_records: list[dict[str, Any]] = []
@@ -1844,6 +1865,7 @@ def build_model(
         ) from exc
 
     _verify_compiled_inertia(mujoco, model, inertials, tree)
+    _verify_solver_flags(mujoco, model)
     qpos = _solved_qpos(
         mujoco, model, tree, placements, joint_records, solved_values
     )
@@ -1872,6 +1894,8 @@ def build_model(
         "placements": placements,
         "time_step_s": float(time_step_s),
         "gravity_m_s2": list(gravity_m_s2),
+        "disableflags": int(model.opt.disableflags),
+        "enableflags": int(model.opt.enableflags),
     }
 
 
@@ -2099,6 +2123,11 @@ def model_evidence(
         "maximum_depth": int(tree["maximum_depth"]),
         "grounded_components": list(tree["grounded"]),
         "gravity_m_s2": list(built["gravity_m_s2"]),
+        # Recorded, not merely asserted: the flags are what make one trace
+        # digest comparable to another, so the trace says which ones it ran
+        # under rather than leaving a reader to infer them from a version.
+        "solver_disableflags": int(built["disableflags"]),
+        "solver_enableflags": int(built["enableflags"]),
         "joints": [
             {
                 "joint_output": record["joint"],
@@ -2110,6 +2139,36 @@ def model_evidence(
             for record in built["joint_records"]
         ],
     }
+
+
+def _verify_solver_flags(mujoco: Any, model: Any) -> None:
+    """The determinism flags survived the compile, and nothing else joined.
+
+    Set on the spec above; asserted on the *compiled* model here, which is
+    the assertion that survives a MuJoCo release changing what a spec field
+    means -- the lesson ``balanceinertia`` charged M2 for. The equality is
+    exact rather than a bit test on purpose: a flag we did not ask for
+    arriving as a new default is exactly as digest-moving as one of ours
+    going missing, and this is the only place that would notice.
+    """
+
+    island = int(mujoco.mjtDisableBit.mjDSBL_ISLAND)
+    disable = int(model.opt.disableflags)
+    enable = int(model.opt.enableflags)
+    if disable != island or enable != 0:
+        raise DynamicsError(
+            "The compiled model's solver flags are not the ones this "
+            f"translator set: disableflags={disable}, enableflags={enable}, "
+            f"expected {island} and 0.",
+            reason="solver_flags_changed",
+            correction=(
+                "Islands are disabled and sleep is off so a trace digest "
+                "means the same thing on every machine. A MuJoCo upgrade "
+                "that changes a default lands here; re-measure both ways "
+                "and record the answer before moving the flag."
+            ),
+            observed={"disableflags": disable, "enableflags": enable},
+        )
 
 
 def _verify_compiled_inertia(
