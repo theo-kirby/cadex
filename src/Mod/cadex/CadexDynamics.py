@@ -794,6 +794,53 @@ COLLISION_TESSELLATION_TOLERANCE = 0.05
 #: for; the correction is a coarser deflection, which the refusal names.
 MAXIMUM_COLLISION_VERTICES = 200_000
 
+#: The contact spring's time constant, in seconds. It is MuJoCo's own
+#: default written down rather than inherited, for the reason M3 phase 0
+#: gave: a default is a promise, not a decision. Softer than this and a
+#: resting part sinks visibly into what it rests on; stiffer and the
+#: integrator needs a finer step to stay stable.
+CONTACT_TIMECONST_S = 0.02
+
+#: MuJoCo's own friction triple (sliding, torsional, rolling), again
+#: written down. A script that gives one number replaces the sliding term
+#: and keeps these two, because torsional and rolling friction are in
+#: different units and guessing them from a sliding coefficient would be
+#: inventing numbers.
+DEFAULT_FRICTION = (1.0, 0.005, 0.0001)
+
+#: The restitutions this translation can actually deliver, measured (M3
+#: phase 2). MuJoCo has no restitution coefficient at all; bounce falls out
+#: of the contact spring's damping ratio, and the map between them stops
+#: being honest at both ends. Below 0.3 the discrete solver eats the bounce
+#: -- a requested 0.15 measures 0.00 -- and above 0.9 the damping is so
+#: light that the integrator *adds* energy, which is a ball that bounces
+#: higher than it was dropped from. Both ends are refused rather than
+#: quietly delivered wrong; 0 is exact and is the default.
+MINIMUM_RESTITUTION = 0.3
+MAXIMUM_RESTITUTION = 0.9
+
+#: How finely the solver must step for a bouncy contact to come out at the
+#: value that was asked for. Measured by round-tripping a requested
+#: restitution through the damping ratio and back off a dropped ball: at
+#: ten steps per time constant -- which is what 60 fps and the default
+#: solver step give -- a requested 0.9 measures **3.45**, energy from
+#: nowhere. At twenty the worst error over [0.3, 0.9] is 12%, and finer
+#: buys almost nothing. So restitution above zero *requires* the finer
+#: step, and asking for one without the other is refused.
+RESTITUTION_STEPS_PER_TIMECONST = 20
+
+#: MuJoCo's four contact dimensionalities: 1 is frictionless, 3 adds
+#: sliding friction, 4 adds torsional, 6 adds rolling.
+CONDIM_VALUES = (1, 3, 4, 6)
+
+#: How many collision groups a script may name. MuJoCo's contype and
+#: conaffinity are documented as 32-bit masks and are *signed* int32 in the
+#: binding, measured: an all-ones 0xFFFFFFFF is refused by ``add_geom``
+#: outright. So the top bit is unusable and the count is 31, not 32 -- a
+#: number found by a compiler error rather than by reading, which is the
+#: cheap end of the same lesson the flags taught.
+CONTACT_GROUP_COUNT = 31
+
 #: The five MuJoCo geom types this surface can produce, and how many size
 #: numbers each takes. ``mesh`` and ``hull`` are the same MuJoCo type: they
 #: differ only in whether a concave part is refused, which is a decision
@@ -826,6 +873,120 @@ def _scipy_hull() -> Any:
             ),
         ) from exc
     return ConvexHull
+
+
+def restitution_for_dampratio(dampratio: float) -> float:
+    """The bounce a MuJoCo contact spring with this damping ratio delivers.
+
+    MuJoCo has no restitution coefficient. A contact is a spring-damper
+    whose ``solref`` is ``(timeconst, dampratio)``, so restitution is a
+    *consequence* of the damping ratio and the translation between them is
+    arithmetic -- which is why it lives here, in the module that does every
+    unit conversion, and not at the seam where a second copy could drift.
+
+    The textbook relation ``e = exp(−ζπ/√(1−ζ²))`` is the wrong one and was
+    measured to be wrong: it assumes the mass stays in contact for a full
+    half period, which a *bilateral* spring does. A contact is unilateral --
+    it separates the instant the normal force would turn tensile, which is
+    earlier. Solving ``kx + cẋ = 0`` for that instant gives
+
+        ``ωd·t* = π − 2·arcsin ζ``      and      ``e = exp(−ζ(π − 2 arcsin ζ)/√(1−ζ²))``
+
+    and the difference is not academic: at ζ = 0.5 the bilateral formula
+    says 0.16 and this one says 0.29, against a measured 0.29.
+    """
+
+    ratio = float(dampratio)
+    if ratio <= 0.0:
+        return 1.0
+    if ratio >= 1.0:
+        # The formula's own limit. MuJoCo's discrete solver kills the bounce
+        # entirely well before this, which is why MINIMUM_RESTITUTION exists.
+        return math.exp(-2.0)
+    return math.exp(
+        -ratio * (math.pi - 2.0 * math.asin(ratio)) / math.sqrt(1.0 - ratio * ratio)
+    )
+
+
+def dampratio_for_restitution(restitution: float, *, context: str) -> float:
+    """The damping ratio that delivers one restitution, by bisection.
+
+    ``restitution_for_dampratio`` is transcendental and strictly decreasing
+    on (0, 1), so the inverse is a bisection rather than a closed form.
+    Fifty halvings put it well inside double precision, and the result is
+    deterministic to the bit -- which matters, because it goes into a model
+    whose trace digest is compared across processes.
+    """
+
+    target = float(restitution)
+    if target <= 0.0:
+        # Critical damping. Measured: a ball dropped on a critically damped
+        # contact does not leave the surface at all.
+        return 1.0
+    if not MINIMUM_RESTITUTION <= target <= MAXIMUM_RESTITUTION:
+        raise DynamicsError(
+            f"{context} asks for a restitution of {target:g}, which this "
+            "contact model cannot deliver.",
+            reason="restitution_out_of_range",
+            correction=(
+                "MuJoCo has no restitution coefficient: bounce comes out of "
+                "the contact spring's damping, and the map holds only between "
+                f"{MINIMUM_RESTITUTION:g} and {MAXIMUM_RESTITUTION:g}. Below "
+                "that the solver damps the bounce out entirely and above it "
+                "the integrator adds energy. Use 0 for a contact that does "
+                "not bounce."
+            ),
+            observed={"context": context, "restitution": target},
+        )
+    low, high = 0.0, 1.0
+    for _step in range(50):
+        middle = 0.5 * (low + high)
+        if restitution_for_dampratio(middle) > target:
+            low = middle
+        else:
+            high = middle
+    return 0.5 * (low + high)
+
+
+def contact_masks(
+    group: int, collides_with: Sequence[int] | None, *, context: str
+) -> tuple[int, int]:
+    """One group and its partners, as MuJoCo's ``contype``/``conaffinity``.
+
+    MuJoCo's rule is that two geoms may touch when
+    ``contype₁ & conaffinity₂`` or ``contype₂ & conaffinity₁`` is non-zero,
+    which is a bitmask protocol a CAD author has no reason to know. The
+    script says which group a shape is in and which groups it collides
+    with; the bits are made here.
+
+    Note the ``or``: the relation MuJoCo checks is symmetric even when the
+    declarations are not, so a shape in group 1 that collides with nothing
+    can still be touched by a shape that collides with group 1. That is
+    MuJoCo's semantics and it is recorded rather than papered over.
+    """
+
+    index = int(group)
+    if not 0 <= index < CONTACT_GROUP_COUNT:
+        raise DynamicsError(
+            f"{context} is in collision group {index}, outside 0..{CONTACT_GROUP_COUNT - 1}.",
+            reason="collision_group_out_of_range",
+            observed={"context": context, "group": index},
+        )
+    if collides_with is None:
+        affinity = (1 << CONTACT_GROUP_COUNT) - 1
+    else:
+        affinity = 0
+        for other in collides_with:
+            other_index = int(other)
+            if not 0 <= other_index < CONTACT_GROUP_COUNT:
+                raise DynamicsError(
+                    f"{context} collides with group {other_index}, outside "
+                    f"0..{CONTACT_GROUP_COUNT - 1}.",
+                    reason="collision_group_out_of_range",
+                    observed={"context": context, "group": other_index},
+                )
+            affinity |= 1 << other_index
+    return 1 << index, affinity
 
 
 def collision_deflection_mm(
@@ -991,6 +1152,9 @@ def collision_geoms(
             "quat_wxyz": quaternion_normalised(
                 quaternion_wxyz_from_xyzw(rotation)
             ),
+            **_contact_parameters(
+                shape, context=f"{context} collision {index}"
+            ),
         }
         if kind == "box":
             extents = _floats(
@@ -1032,6 +1196,109 @@ def collision_geoms(
             )
         records.append(record)
     return records
+
+
+def _contact_parameters(
+    shape: Mapping[str, Any], *, context: str
+) -> dict[str, Any]:
+    """What one collision shape does when it touches something.
+
+    Everything MuJoCo needs, translated once: friction as a triple, bounce
+    as a ``solref``, the group pair as bitmasks, margin in metres. The
+    script surface speaks millimetres and coefficients; the geom speaks
+    metres and packed vectors, and this is the only place the two meet.
+
+    **What MuJoCo does with two geoms' worth of these, measured**, because
+    every one of them is a property of a *pair* and none of these numbers
+    is used on its own:
+
+    * friction is the elementwise **maximum**, so the rougher surface wins;
+    * ``condim`` is the maximum, so the richer contact model wins;
+    * ``margin`` is the **sum**, which is not what the documentation's
+      "max" led us to expect -- two geoms at 20 mm and 30 mm produce a
+      50 mm margin, measured;
+    * ``solref`` is the **average**, so a bouncy ball on a dead floor
+      bounces half as much as it asked to. That one is worth knowing: a
+      restitution declared on one side of a contact is not the restitution
+      the contact has.
+    """
+
+    friction = shape.get("friction")
+    if friction is None:
+        triple = list(DEFAULT_FRICTION)
+    elif isinstance(friction, (int, float)) and not isinstance(friction, bool):
+        # One number replaces sliding friction only. Torsional and rolling
+        # friction are in different units (length and length² respectively),
+        # so deriving them from a sliding coefficient would be invention.
+        triple = [float(friction), DEFAULT_FRICTION[1], DEFAULT_FRICTION[2]]
+    else:
+        triple = _floats(friction, count=3, context=f"{context} friction")
+    for position, value in enumerate(triple):
+        if value < 0.0:
+            raise DynamicsError(
+                f"{context} has a negative friction coefficient {value:g}.",
+                reason="negative_friction",
+                observed={"context": context, "friction": triple, "index": position},
+            )
+
+    restitution = float(shape.get("restitution") or 0.0)
+    dampratio = dampratio_for_restitution(restitution, context=context)
+
+    condim = shape.get("condim")
+    condim_value = 3 if condim is None else int(condim)
+    if condim_value not in CONDIM_VALUES:
+        raise DynamicsError(
+            f"{context} asks for condim {condim_value}, which is not one of "
+            f"{list(CONDIM_VALUES)}.",
+            reason="unknown_condim",
+            observed={"context": context, "condim": condim_value},
+        )
+    if condim_value == 1 and friction is not None:
+        # A condim-1 contact is frictionless by definition, so MuJoCo
+        # ignores the friction vector entirely. Declaring both is a script
+        # that does not do what it says, and ignoring it quietly is exactly
+        # the failure this slice is organised against.
+        raise DynamicsError(
+            f"{context} declares friction on a frictionless contact "
+            "(condim=1), where MuJoCo ignores it.",
+            reason="friction_on_frictionless_contact",
+            correction=(
+                "Either raise condim to 3 so the friction is used, or drop "
+                "the friction argument to say the contact really is "
+                "frictionless."
+            ),
+            observed={"context": context, "condim": condim_value},
+        )
+
+    margin_mm = float(shape.get("margin_mm") or 0.0)
+    if margin_mm < 0.0:
+        raise DynamicsError(
+            f"{context} has a negative contact margin of {margin_mm:g} mm.",
+            reason="negative_margin",
+            observed={"context": context, "margin_mm": margin_mm},
+        )
+    contype, conaffinity = contact_masks(
+        int(shape.get("contact_group") or 0),
+        shape.get("collides_with"),
+        context=context,
+    )
+    return {
+        "friction": triple,
+        "restitution": restitution,
+        "solref": [CONTACT_TIMECONST_S, dampratio],
+        "dampratio": dampratio,
+        "condim": condim_value,
+        "margin_m": length_m(margin_mm),
+        "margin_mm": margin_mm,
+        "contact_group": int(shape.get("contact_group") or 0),
+        "collides_with": (
+            None
+            if shape.get("collides_with") is None
+            else [int(value) for value in shape["collides_with"]]
+        ),
+        "contype": contype,
+        "conaffinity": conaffinity,
+    }
 
 
 def _measured_collision_mesh(
@@ -2009,6 +2276,56 @@ def _mujoco_module() -> Any:
     return mujoco
 
 
+def _verify_restitution_is_resolvable(
+    geoms: Mapping[str, Sequence[Mapping[str, Any]]], *, time_step_s: float
+) -> None:
+    """A bouncy contact the solver cannot resolve is refused, not delivered.
+
+    The measurement that made this a refusal rather than a footnote: at the
+    default solver step -- ten steps per contact time constant, which is
+    what 60 fps and ``DEFAULT_TIME_STEP_S`` produce -- a requested
+    restitution of 0.9 comes back as **3.45**. The ball bounces higher than
+    it was dropped from, forever, and every frame of it looks like physics.
+    At twenty steps the worst error across the whole authorable band is
+    12%, so twenty is the line.
+
+    Nothing is refused when no shape bounces, which is the default, so this
+    costs an ordinary contact model nothing.
+    """
+
+    limit = CONTACT_TIMECONST_S / RESTITUTION_STEPS_PER_TIMECONST
+    if time_step_s <= limit:
+        return
+    bouncy = sorted(
+        (name, float(record["restitution"]))
+        for name, records in geoms.items()
+        for record in records
+        if float(record.get("restitution") or 0.0) > 0.0
+    )
+    if not bouncy:
+        return
+    component, restitution = bouncy[0]
+    raise DynamicsError(
+        f"Component {component!r} asks for a restitution of {restitution:g}, "
+        f"but the solver step is {time_step_s:.6g} s and a bouncing contact "
+        f"needs {limit:.6g} s or finer to come out at the value asked for.",
+        reason="restitution_needs_a_finer_step",
+        correction=(
+            "MuJoCo integrates a contact as a spring, and a spring stepped "
+            "too coarsely gains energy: measured, a restitution of 0.9 at "
+            "the default step returns 3.45, a ball bouncing higher than it "
+            "was dropped from. Pass a finer solver_step_s to "
+            "assembly.dynamics, or set the restitution to 0."
+        ),
+        observed={
+            "component": component,
+            "restitution": restitution,
+            "solver_step_s": time_step_s,
+            "required_step_s": limit,
+        },
+    )
+
+
 def _add_collision_geoms(
     mujoco: Any,
     spec: Any,
@@ -2043,6 +2360,12 @@ def _add_collision_geoms(
             "type": types[str(record["mujoco_type"])],
             "pos": list(record["pos_m"]),
             "quat": list(record["quat_wxyz"]),
+            "friction": list(record["friction"]),
+            "solref": list(record["solref"]),
+            "condim": int(record["condim"]),
+            "margin": float(record["margin_m"]),
+            "contype": int(record["contype"]),
+            "conaffinity": int(record["conaffinity"]),
         }
         if str(record["mujoco_type"]) == "mesh":
             mesh = spec.add_mesh()
@@ -2111,6 +2434,8 @@ def build_model(
         )
         for component in components
     }
+
+    _verify_restitution_is_resolvable(geoms, time_step_s=float(time_step_s))
 
     spec = mujoco.MjSpec()
     spec.modelname = "cadex-assembly"
@@ -2290,6 +2615,31 @@ def build_model(
             data[10] = 1.0  # torquescale: the rotational rows are the point
             equality.data = data
 
+    # Two components a script *joined* must not collide with each other, and
+    # MuJoCo will not work that out on its own. Measured (M3 phase 2): its
+    # parent/child filter excludes a body from its parent only when that
+    # parent is not itself welded to the world -- so in a model built this
+    # way, where every grounded component is a static world child, the very
+    # first link of every mechanism collides with the base it is hinged to.
+    # A four-bar's crank and ground overlap at the pin by construction, so
+    # geoms would have made every M2 mechanism explode the moment they
+    # existed. The exclusion is authored intent: parts connected by a joint
+    # interpenetrate at the joint, and simulating that is never what the
+    # script meant. Gears and belts are excluded for the same reason from
+    # the other direction -- a coupling exists precisely because we are not
+    # simulating tooth contact.
+    excluded_pairs: list[list[str]] = []
+    for classified in tree["classified_joints"]:
+        if classified["suppressed"]:
+            continue
+        first, second = sorted(str(item) for item in classified["components"])
+        if [first, second] in excluded_pairs:
+            continue
+        excluded_pairs.append([first, second])
+        exclude = spec.add_exclude()
+        exclude.name = f"{first}|{second}"
+        exclude.bodyname1, exclude.bodyname2 = first, second
+
     solved_values = _solved_joint_values(tree, placements)
     couplings = _coupling_records(tree, placements, solved_values)
     for coupling in couplings:
@@ -2356,6 +2706,7 @@ def build_model(
         "disableflags": int(model.opt.disableflags),
         "enableflags": int(model.opt.enableflags),
         "geoms": geoms,
+        "excluded_pairs": excluded_pairs,
     }
 
 
@@ -2610,6 +2961,11 @@ def model_evidence(
             for name, records in sorted(built["geoms"].items())
             if records
         ],
+        # Which components were told not to touch each other, and why there
+        # is a list at all: MuJoCo's own parent filter does not cover a body
+        # hinged to a grounded one, so without these a four-bar's crank
+        # collides with the ground it turns on.
+        "contact_exclusions": [list(pair) for pair in built["excluded_pairs"]],
         "joints": [
             {
                 "joint_output": record["joint"],

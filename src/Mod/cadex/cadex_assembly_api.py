@@ -1043,6 +1043,12 @@ class AssemblyDomainAPI:
         length_mm: float | None = None,
         deflection_mm: float | None = None,
         offset: Sequence[float] | Mapping[str, Sequence[float]] | None = None,
+        friction: float | Sequence[float] | None = None,
+        restitution: float = 0.0,
+        condim: int | None = None,
+        margin_mm: float | None = None,
+        contact_group: int = 0,
+        collides_with: Sequence[int] | None = None,
         label: str = "",
     ) -> DomainValue:
         """Declare what one dynamics body may touch things with.
@@ -1079,6 +1085,31 @@ class AssemblyDomainAPI:
         view does. It defaults to a fixed length, and a deflection too
         coarse to represent the part is refused rather than accepted
         quietly.
+
+        **What happens on contact.** ``friction`` is one number -- the
+        sliding coefficient, 1.0 by default -- or a triple of sliding,
+        torsional and rolling. ``condim`` is 1 (frictionless), 3 (sliding,
+        the default), 4 (plus torsional) or 6 (plus rolling); declaring
+        friction on a frictionless contact is refused rather than ignored.
+        ``margin_mm`` starts the contact before the surfaces meet.
+
+        ``restitution`` is bounce, from 0 (the default, and exact) or
+        between 0.3 and 0.9. MuJoCo has no restitution coefficient at all:
+        bounce is a consequence of the contact spring's damping, and the
+        translation between them is honest only in that band -- below it
+        the solver damps the bounce away, above it the integrator adds
+        energy. A restitution above zero also needs a solver step fine
+        enough to resolve the impact, and asking for one without the other
+        is refused with the step it would take. Note that MuJoCo *averages*
+        the two geoms' springs, so a bouncy part dropped on a dead floor
+        bounces about half as much as it asked to; declare the restitution
+        on both sides of the contact you care about.
+
+        ``contact_group`` and ``collides_with`` say what may touch what:
+        a shape is in one group (0 to 30, 0 by default) and collides with
+        all of them unless ``collides_with`` names a shorter list. Components that
+        a joint connects never collide with each other -- they overlap at
+        the joint by construction -- and that exclusion is automatic.
 
         A collision shape is an intermediate value like ``connector``: pass
         it to ``api.body``, and do not return it as an output of its own.
@@ -1172,7 +1203,130 @@ class AssemblyDomainAPI:
             properties["offset"] = _placement(operation, "offset", None)
         else:
             properties["offset"] = _placement(operation, "offset", offset)
+        properties.update(
+            self._contact_arguments(
+                operation,
+                friction=friction,
+                restitution=restitution,
+                condim=condim,
+                margin_mm=margin_mm,
+                contact_group=contact_group,
+                collides_with=collides_with,
+            )
+        )
         return self._value(operation, "collision", label=label, **properties)
+
+    @staticmethod
+    def _contact_arguments(
+        operation: str,
+        *,
+        friction: Any,
+        restitution: Any,
+        condim: Any,
+        margin_mm: Any,
+        contact_group: Any,
+        collides_with: Any,
+    ) -> dict[str, Any]:
+        """Bounds and shapes only. Every conversion is in CadexDynamics.
+
+        The split M2 established and M3 must not leak a second copy of:
+        this checks that a number is a number in a plausible range, and the
+        pure module turns coefficients into MuJoCo's packed vectors, groups
+        into bitmasks and restitution into a damping ratio. Contact
+        parameters were named as the most likely place a second conversion
+        site would appear, so none of them is converted here.
+        """
+
+        if friction is None:
+            clean_friction: Any = None
+        elif isinstance(friction, (list, tuple)):
+            clean_friction = _vector(operation, "friction", friction, size=3)
+            for index, value in enumerate(clean_friction):
+                if value < 0.0:
+                    raise _error(
+                        operation, f"friction[{index}]", "must not be negative", value
+                    )
+        else:
+            clean_friction = _number(
+                operation, "friction", friction, minimum=0.0, maximum=100.0
+            )
+        clean_restitution = _number(
+            operation, "restitution", restitution, minimum=0.0, maximum=1.0
+        )
+        if clean_restitution and not 0.3 <= clean_restitution <= 0.9:
+            raise _error(
+                operation,
+                "restitution",
+                "must be 0, or from 0.3 through 0.9. MuJoCo has no restitution "
+                "coefficient: bounce falls out of the contact spring's damping, "
+                "and outside that band the translation is not honest -- below it "
+                "the solver damps the bounce away and above it the integrator "
+                "adds energy",
+                restitution,
+            )
+        if condim is None:
+            clean_condim: Any = None
+        else:
+            if isinstance(condim, bool) or condim not in (1, 3, 4, 6):
+                raise _error(
+                    operation,
+                    "condim",
+                    "expected 1 (frictionless), 3 (sliding), 4 (+torsional) or "
+                    "6 (+rolling)",
+                    condim,
+                )
+            clean_condim = int(condim)
+        clean_margin = (
+            None
+            if margin_mm is None
+            else _number(
+                operation, "margin_mm", margin_mm, minimum=0.0, maximum=1000.0
+            )
+        )
+        if isinstance(contact_group, bool) or not isinstance(contact_group, int):
+            raise _error(
+                operation, "contact_group", "expected an integer from 0 to 30",
+                contact_group,
+            )
+        if not 0 <= contact_group <= 30:
+            raise _error(
+                operation, "contact_group", "must be from 0 to 30", contact_group
+            )
+        if collides_with is None:
+            clean_collides: Any = None
+        else:
+            if not isinstance(collides_with, (list, tuple)) or len(collides_with) > 31:
+                raise _error(
+                    operation,
+                    "collides_with",
+                    "expected a list of at most 31 group indices",
+                    collides_with,
+                )
+            clean_collides = []
+            for index, group in enumerate(collides_with):
+                if isinstance(group, bool) or not isinstance(group, int):
+                    raise _error(
+                        operation,
+                        f"collides_with[{index}]",
+                        "expected an integer from 0 to 30",
+                        group,
+                    )
+                if not 0 <= group <= 30:
+                    raise _error(
+                        operation,
+                        f"collides_with[{index}]",
+                        "must be from 0 to 30",
+                        group,
+                    )
+                clean_collides.append(int(group))
+        return {
+            "friction": clean_friction,
+            "restitution": clean_restitution,
+            "condim": clean_condim,
+            "margin_mm": clean_margin,
+            "contact_group": int(contact_group),
+            "collides_with": clean_collides,
+        }
 
     def body(
         self,
