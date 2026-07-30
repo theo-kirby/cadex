@@ -1635,7 +1635,21 @@ def _capability_api_listing() -> dict[str, dict[str, Any]]:
         "joint_dynamics=[...]; MuJoCo's defaults for all three are zero, so a "
         "stiff position actuator on an otherwise bare joint oscillates and "
         "does not settle. A loop-closing, coupled, fixed, ball or suppressed "
-        "joint cannot be driven or damped, and each refusal says which it is."
+        "joint cannot be driven or damped, and each refusal says which it is. "
+        "assembly.mjcf(assembly, bodies, ...) exports that same model as one "
+        "self-contained MuJoCo MJCF file instead of running it: same bodies, "
+        "same actuators, same joint_dynamics, same gravity_m_s2 and "
+        "solver_step_s, and no time range or frames_per_second because "
+        "nothing is integrated. It carries the exact OCCT mass and inertia "
+        "and a keyframe named 'solved' holding the pose the assembly solver "
+        "produced -- MuJoCo's own reference pose is the one where each "
+        "joint's connector frames coincide, so a reader must reset to that "
+        "keyframe. Collision meshes are written into the file, so there is no "
+        "sidecar; only collision geometry is exported, which means a "
+        "mechanism with no assembly.collision shapes opens invisible in "
+        "MuJoCo's viewer. Unlike a simulation a script may declare more than "
+        "one assembly.mjcf, and one may sit beside assembly.motion or "
+        "assembly.dynamics."
     )
     return listing
 

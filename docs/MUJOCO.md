@@ -1,8 +1,9 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-07-30
+Verified against source: 2026-07-31
 Status: **M0 recorded (ADR-060, ADR-061), M1 passed, M2 closed (ADR-062),
-M3 closed (ADR-064), M4 closed (ADR-065).** M5 onward is plan, not built.
+M3 closed (ADR-064), M4 closed (ADR-065), M5 closed (ADR-066).** M6 onward
+is plan, not built.
 
 **Branch `MJC`, permanently (ADR-063).** This file, and everything it
 describes, exists on `MJC` and not on `main`. The branch is not awaiting a
@@ -626,24 +627,123 @@ change.
 
 ---
 
-### M5 — The model leaves the building
+### M5 — The model leaves the building — **closed (ADR-066)**
 
-MJCF export as a first-class engine op, alongside STEP (VISION: "a
-parametric CAD app that cannot emit STEP is not a product" — the same
-argument applies here).
+`assembly.mjcf(assembly, bodies, ...)` — a new publishable xscript output
+that writes one self-contained MJCF file carrying exact OCCT inertia and a
+keyframe at the pose the assembly solver produced. **No protocol change and
+no `shell/` diff**, which is the invariant ADR-063 says the shell claim
+rests on.
 
-**This slice is worth shipping even if M6–M8 never happen.** "Design a
-mechanism in Cadex, export MJCF with exact OCCT inertias" is a
-differentiated capability on its own, because MJCF is the de-facto robot
-description format and correct inertia is the universally botched part. It
-is also the cheapest possible version of the whole idea: no solver loop, no
-determinism problem, no contact tuning.
+Two corrections to what this section used to say, both found while
+measuring:
 
-Everything downstream consumes this artifact, which means M6–M8 are
-building on a thing that is independently useful and independently tested.
+* **Not "a first-class engine op, alongside STEP".** There is no STEP
+  export in this tree — `file.export_model` is a name in
+  `CadexModelingSurface.py` with no op behind it, and Phase 11 owns it. M5
+  is the engine's first user-facing export path, and it is *not* a cadexd
+  op: that would need `OP_ARG_SPECS`, `OP_RESPONSE_SPECS`, both
+  `docs/INTEGRATION.md` tables, a golden fixture and the shell's client.
+  A publishable output type needs none of them. The sentence also predates
+  ADR-063.
+* **Not "no determinism problem".** `to_xml()` writes about six
+  significant figures and has no precision knob. Mass survives a round trip
+  to 1e-16 relative; an inertia triple whose smallest entry is 1e-5 of its
+  largest does not, and lands at 2.4e-6. So "matches the in-engine
+  simulation" is a **tolerance**, measured per mechanism, and the export
+  reports how much of it each file actually spent. Byte determinism is
+  fine — the same script through two cadexd processes writes the same XML —
+  but numeric identity was never available.
 
-**Done when:** exported MJCF loads in stock MuJoCo and matches the
-in-engine simulation.
+**What was measured before anything was built** (phase 0,
+`test_dynamics_mjcf_measured.py`, 55 tests):
+
+| Finding | Number |
+|---|---|
+| Reload: worst mass error | 3.2e-16 relative |
+| Reload: worst inertia error | 2.4e-6 relative (four-bar) |
+| Reload: worst other field | 1.8e-6 (`body_pos`) |
+| Trajectory divergence, 500 steps | 4.1e-4 mm worst; four-bar **0** |
+| A stock load with no keyframe | **61.3 mm** out of pose |
+| Collision mesh cost | ~51 bytes a vertex, written **inline** |
+| Solver options across a reload | bit-identical |
+
+Two findings came out differently from the plan. `explicitinertial` off
+does not quietly drop the masses on a mechanism with no geoms — the file
+stops loading at all, which is the good failure mode; but give a body a
+collision geom and the same file loads with inertia inferred **from the
+geom**, silently, which is exactly the failure the whole arc exists to
+avoid, and now has its own test. And a solved pose of all zeros writes
+`<key name="solved"/>` with no `qpos` attribute, because `to_xml()` omits
+anything equal to a default — so the keyframe assertion is the pose after a
+reset and never the attribute text.
+
+**The design, and why each part is what it is:**
+
+* **Surface.** A publishable output, not a cadexd op and not a flag on
+  `api.dynamics` — the latter would couple export to running the solver
+  loop M5 exists to avoid. `mjcf` gets an output type of its own where
+  `dynamics` deliberately shares `simulation`: that sharing exists because
+  `cadex_animate` bakes exactly one `assembly_simulation_json` and silently
+  bakes *neither* on finding two. Nothing bakes an MJCF file, so a script
+  may declare several, each naming its own artifact
+  (`outputs/<output>-model.xml`), and `api.mjcf` beside `api.motion` is
+  legal and useful — kinematics on screen, a dynamics model on disk.
+* **Geometry: collision only.** A component with no `api.collision` exports
+  no geom, exactly as it contributes none in a dynamics run. The exported
+  file is provably the simulated model, which is what the exit criterion
+  asks. The consequence, stated plainly: **a mechanism with no collision
+  geometry opens invisible in MuJoCo's viewer.** Visual meshes are an M6+
+  question.
+* **The copy.** The solved keyframe is added on `spec.copy()`, never on the
+  caller's spec, so a script carrying both `api.dynamics` and `api.mjcf`
+  cannot have its simulation's numbers moved by an export. Structural
+  rather than careful, and gated live: the same script with and without the
+  export retains identical trace bytes.
+* **Self-verification.** `export_mjcf` reloads its own output and diffs it
+  against the model it came from — counts first, then every numeric field,
+  then every solver option bit-for-bit — and re-runs the OCCT inertia
+  comparison against the *reloaded* model, because the claim being sold is
+  about the file. Anything past tolerance is a `DynamicsError` and never an
+  artifact.
+* **Zero arithmetic.** Hazard 1's M5 form, answered structurally rather
+  than by promise: the spec is already SI, `to_xml()` converts nothing, and
+  `qpos_solved` is already in MuJoCo coordinates. There is no number for a
+  second conversion site to appear in, and `test_dynamics_units`'s grep
+  covers the worker half for free. **Third payment, third time it held.**
+
+**The pinned tolerances** (`CadexDynamics`): mass 1e-12, inertia **1e-5**,
+fields 1e-5, pose **1e-2 mm**. The inertia bound is the tight one — the
+four-bar spends a third of it and there is no precision knob to buy more.
+`MAXIMUM_MJCF_BYTES` is 64 MiB, sized from ~51 bytes a vertex against
+`MAXIMUM_COLLISION_VERTICES`, which admits five maximal meshes.
+
+**One finding about FreeCAD, recorded because M5 is where it becomes
+visible.** The native assembly solver drives a *tree* mechanism to the
+configuration where each joint's connector frames coincide — which is
+exactly MuJoCo's reference configuration — so an exported tree opens
+correctly with a keyframe that happens to be all zeros. Initial placements
+and joint limits do not move it. The keyframe becomes load-bearing when a
+loop closure forces a nonzero coordinate, and that is proved on the
+four-bar fixture (`qpos = [0.873, −0.702, 0.966]`) rather than live,
+because a planar loop of revolutes is reported redundant by this tree's
+native solver and cannot reach a live gate at all.
+
+**Known consequence, not fixed here (hazard 3).** `compute_project_digest`
+gives anything that is not `brep`/`mesh` a `payload_sha256` of its
+canonical definition JSON, so the exported XML bytes are in **no** project
+digest — identical to how the trace behaves today. A MuJoCo version bump
+therefore changes every exported file silently. ADR-064 already routed the
+real fix to `main`; M5 inherits that decision and publishes
+`CadexMjcfMuJoCoVersion` so the drift is at least legible.
+
+**Done when — and it is:** an assembly designed in Cadex exports an MJCF
+file that loads in a stock MuJoCo with no Cadex on its path (asserted by
+the subprocess, which tries to import `CadexDynamics` and reports that it
+could not), opens in the pose it was solved at, carries the OCCT inertias
+to a stated and tested tolerance, and integrates to the same trajectory the
+engine produced within that tolerance — through the live cadexd gate, with
+no protocol change and no `shell/` diff. The packaged gate is **9 tests**.
 
 ---
 
@@ -725,11 +825,13 @@ Ranked by how quietly they fail.
    caller, and the worker forwards actuator parameters without touching a
    number, which it can because they come off the graph and there is nothing
    to read out of FreeCAD for a motor.
-   **Still live for M5**, and in a new form: MJCF is a text format with its
-   own unit conventions and an `<option>` block, so the export is a second
-   place the whole boundary could be re-implemented. It must read the
-   already-converted SI numbers this module produces rather than convert
-   afresh from the graph.
+   **M5 was the third payment and it held again**, and this time the answer
+   was structural rather than disciplined: the export path performs *no
+   arithmetic at all*. The spec is already SI, `to_xml()` converts nothing,
+   and `qpos_solved` is already in MuJoCo coordinates, so there is no number
+   for a second conversion site to appear in — the failure mode this entry
+   predicted was not avoided, it was made unavailable. Still live for M6–M8,
+   where a reward function is a number in units nobody has named yet.
 2. ~~**Convexity.**~~ **Handled in M3** (ADR-064), and it needed *two*
    measurements rather than the one this list assumed. Concavity is the
    hull's volume against the **mesh's own**, both from the same vertices —

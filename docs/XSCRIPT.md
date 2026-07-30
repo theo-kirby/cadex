@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-07-30
+Verified against source: 2026-07-31
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -140,6 +140,29 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `perpendicular`/`angle` joints (they constrain where the solver *put* a
   part, not how it moves), `rack_pinion`, slider and cylindrical loop
   closures, flexible subassemblies, and any component without a body.
+- `assembly.mjcf()` exports that same model as a MuJoCo MJCF file instead of
+  running it (ADR-066, **experimental**): the six parameters it shares with
+  `assembly.dynamics` mean what they mean there and are validated by the same
+  code, and what is absent is everything that counts a *trace* —
+  `start_time_s`, `end_time_s`, `frames_per_second` — because nothing is
+  integrated. One self-contained `.xml` per output, retained as a program
+  artifact; collision meshes are written *into* it, so there is no sidecar
+  and no asset directory. It carries the OCCT mass and inertia, which is the
+  part everyone else botches, and a keyframe named `solved` — MuJoCo's own
+  reference configuration is the one where each joint's connector frames
+  coincide, so a file without that keyframe opens with the mechanism folded
+  up, and anything reading one should reset to it. **Collision geometry
+  only**, exactly as in a dynamics run, which means a mechanism with no
+  `assembly.collision` shapes opens *invisible* in MuJoCo's viewer. Unlike
+  `assembly.simulation` and `assembly.dynamics` a script may declare **more
+  than one**: nothing bakes an exported model, so two of them — Earth gravity
+  and lunar, say — is a reasonable script, and `assembly.mjcf` may sit beside
+  `assembly.motion` as well as beside `assembly.dynamics`. The exporter
+  reloads and verifies its own output before writing it, so an inertia that
+  did not survive the file is a refusal rather than an artifact; MuJoCo's XML
+  writer emits about six significant figures and has no precision setting, so
+  the match is a stated tolerance and the published evidence reports how much
+  of it this file used.
 - `assembly.collision(kind, ...)` says what a body may touch things with
   (ADR-064, **experimental**), and a body given none touches nothing — it is
   carried by its joints and passes through the rest of the mechanism, which

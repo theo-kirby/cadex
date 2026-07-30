@@ -164,16 +164,23 @@ pthreads-win32 = "*"
 
 [pypi-dependencies]
 freecad-stubs = "*"
-# DEVELOPMENT ONLY -- this does NOT ship. relocate_conda_environment.py
-# carries package-managed files only, and a pypi wheel has no conda-meta
-# entry, so the engine payload is built without it. It is here because the
-# correct home, conda-forge `mujoco-python`, cannot be installed until the
-# manifest is re-solvable: adding any conda dependency forces a full
-# re-solve, and a full re-solve fails on its own today (qt6-main/occt drift
-# against opencv, vtk, smesh). Pinned exactly for the reason occt is --
-# MuJoCo disclaims cross-version numerical reproducibility and every
-# open_project asserts digest equality. See docs/DECISIONS.md ADR-060 and
-# docs/MUJOCO.md slice M0.
+# THIS SHIPS. `CARRIED_PYPI_PACKAGES` in
+# package/rattler-build/scripts/relocate_conda_environment.py carries the
+# wheel into the engine payload as unmanaged copy-verbatim files -- pypi
+# wheels have no conda-meta entry, so they need naming rather than
+# discovering -- and package/engine/build_engine_payload.sh hard-fails the
+# build if the payload cannot *import* mujoco 3.10.0. (This comment said
+# "DEVELOPMENT ONLY -- this does NOT ship" until 2026-07-31; it was written
+# before ADR-061 and was already wrong when M0 closed.)
+#
+# It is a pypi wheel rather than the correct home, conda-forge
+# `mujoco-python`, because that cannot be installed until the manifest is
+# re-solvable: adding any conda dependency forces a full re-solve, and a
+# full re-solve fails on its own today (qt6-main/occt drift against opencv,
+# vtk, smesh). Pinned exactly for the reason occt is -- MuJoCo disclaims
+# cross-version numerical reproducibility, every open_project asserts digest
+# equality, and since ADR-066 a version bump also changes every exported
+# MJCF file. See docs/DECISIONS.md ADR-060, ADR-061 and docs/MUJOCO.md M0.
 mujoco = "==3.10.0"
 
 ## Qt 6 Configuration Presets

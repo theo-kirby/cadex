@@ -19,6 +19,7 @@ server sent and the spec did not declare.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -1236,3 +1237,143 @@ def test_cadexd_publishes_a_mechanism_that_topples_lands_and_stops() -> None:
     finally:
         _stop(client)
         shutil.rmtree(root, ignore_errors=True)
+
+
+#: M5's exit criterion, in the gate that counts (docs/MUJOCO.md M5). The
+#: mechanism is DYNAMICS_SCRIPT's, exported rather than simulated: the point
+#: of this one is the *packaged* path, so it asserts what the payload
+#: produced and leaves the stock-MuJoCo comparison to
+#: test_dynamics_mjcf_live, which runs against the same payload.
+MJCF_SCRIPT = """
+plate = part.box(60, 60, 6)
+arm = part.box(80, 8, 8)
+base = assembly.component(plate, grounded=True)
+swing = assembly.component(arm, placement=[0, 0, 40])
+j = assembly.joint("revolute",
+                   assembly.connector(base, "origin",
+                                      offset={"position": [12, 0, 6],
+                                              "axis": [1, 0, 0],
+                                              "angle_degrees": 90}),
+                   assembly.connector(swing, "origin",
+                                      offset={"position": [0, 0, 0],
+                                              "axis": [1, 0, 0],
+                                              "angle_degrees": 90}))
+asm = assembly.assembly([base, swing], [j])
+diag = assembly.solve(asm)
+model = assembly.mjcf(asm, [
+    assembly.body(base, density_kg_m3=2700,
+                  collision=assembly.collision("box", size_mm=[60, 60, 6],
+                                               offset=[30, 30, 3])),
+    assembly.body(swing, density_kg_m3=7850,
+                  collision=assembly.collision("box", size_mm=[80, 8, 8],
+                                               offset=[40, 4, 4])),
+])
+result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
+          "j": j, "asm": asm, "diag": diag, "model": model}
+"""
+
+
+@pytest.mark.skipif(
+    FREECADCMD is None, reason="No FreeCADCmd binary available for cadexd CI."
+)
+def test_cadexd_exports_an_mjcf_model() -> None:
+    """The model leaves the building, through the packaged engine (ADR-066).
+
+    M5's shippable capability: design a mechanism in Cadex, export MJCF with
+    exact inertias. This is the ninth gate test and it exists because a
+    source tree that passes proves nothing about a payload -- ADR-023's rule,
+    and the one that caught the dangling ``bin/python`` in M0. What it adds
+    over the unit suites is that the file was written by the engine a user
+    actually runs, with mujoco resolved out of the payload's own
+    environment.
+
+    No protocol change is involved and none should appear here: the export
+    arrives as an ordinary output with an ``artifact_kind`` the shell has
+    never heard of, which ``cadex_hydrate`` skips for want of a
+    tessellation and ``cadex_animate`` skips for want of the simulation
+    kind.
+    """
+
+    root = Path(tempfile.mkdtemp(prefix="cadexd-mjcf-ci-"))
+    client = None
+    try:
+        client = _spawn_cadexd()
+        opened = client.request("open_project", {"project_root": str(root)})
+        assert opened["ok"] is True, opened
+
+        written = client.request(
+            "write_script", {"source": MJCF_SCRIPT, "expected_revision": ""}
+        )
+        assert written["ok"] is True, written
+
+        entry = written["display"]["model"]
+        assert entry["artifact_kind"] == "assembly_mjcf_xml", entry
+        # An export is not display geometry and must not pretend to be:
+        # cadex_hydrate skips any entry without a tessellation, which is
+        # what keeps this invisible to a shell that was never changed.
+        assert entry["tessellation"] is None
+        assert entry["placement"] is None
+
+        path = Path(entry["artifact_path"])
+        raw = path.read_bytes()
+        assert path.name == "model-model.xml", path.name
+        text = raw.decode("utf-8")
+
+        # One self-contained file. No STL sidecar, no asset directory, and
+        # nothing outside it referenced.
+        assert text.startswith('<mujoco model="cadex-assembly">')
+        assert "file=" not in text
+        assert list(path.parent.glob("*.stl")) == []
+
+        # The three things that make it the model rather than a model.
+        assert "<inertial " in text, "exact OCCT inertia must survive the file"
+        assert '<key name="solved"' in text, "it must open at the solved pose"
+        assert text.count("<geom") == 2, "collision geometry, and only that"
+
+        # M3's solver decisions travel with it: a file that lost one would
+        # integrate differently from the engine that wrote it.
+        assert 'integrator="implicitfast"' in text
+        assert '<flag island="disable"/>' in text
+
+        # Exact masses, computed here rather than read out of the artifact:
+        # 60x60x6 mm of aluminium and 80x8x8 mm of steel.
+        for mass in (2700.0 * 0.06 * 0.06 * 0.006, 7850.0 * 0.08 * 0.008 * 0.008):
+            assert f'mass="{mass:.6g}"' in text, mass
+
+        # It published. A new output type with no publication branch would
+        # have failed the accept rather than reaching this line, and the
+        # native type is the one _NATIVE_TYPE_BY_OUTPUT declares.
+        live = written["live_outputs"]["model"]
+        assert live["domain"] == "assembly"
+        assert live["output_type"] == "mjcf"
+        assert live["type_id"] == "App::FeaturePython"
+
+        # The engine verified its own output before writing it: a file that
+        # reloaded as a different model, or lost its OCCT inertia to the
+        # writer's six significant figures, is a DynamicsError and never an
+        # artifact. Re-checked here on the payload's bytes.
+        reloaded = _reload_mjcf(text)
+        assert reloaded is None or reloaded == 3, reloaded
+
+        done = client.request("shutdown", timeout=60)
+        assert done["ok"] is True
+    finally:
+        _stop(client)
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def _reload_mjcf(text: str) -> int | None:
+    """Body count after a stock reload, or ``None`` where mujoco is absent.
+
+    This module is the packaged gate and runs wherever ``FreeCADCmd`` is,
+    which is not necessarily where the test environment has ``mujoco``. The
+    engine that wrote the file has it by construction -- the payload build
+    hard-fails without it -- so the reload here is a bonus check rather than
+    the claim, and the claim itself is in ``test_dynamics_mjcf_live``.
+    """
+
+    try:
+        import mujoco
+    except Exception:
+        return None
+    return int(mujoco.MjModel.from_xml_string(text).nbody)

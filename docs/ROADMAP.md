@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-07-27
+Verified against source: 2026-07-31
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -800,10 +800,21 @@ with the phase numbers above. Every slice is a resting place.
       joint rings at sixty degrees peak to peak forever. Units are in the
       parameter names and the wrong one is a refusal. No protocol change, no
       `shell/` diff.
-- [ ] **M5 — MJCF export.** Independently shippable, and the cheapest slice
-      in the arc: no solver loop, no determinism problem, no contact tuning.
-      If the arc ever rejoins `main`, ADR-063 names this as the occasion to
-      revisit — as a new ADR, not an assumption.
+- [x] **M5 — MJCF export** (ADR-066). `assembly.mjcf(assembly, bodies, ...)`
+      writes one self-contained MJCF file — collision meshes inline, no
+      sidecars — carrying exact OCCT inertia and a keyframe at the pose the
+      assembly solver produced. It loads in a stock MuJoCo whose interpreter
+      cannot import Cadex and integrates to the engine's own trajectory.
+      **Two of this line's own words were wrong.** "No determinism problem":
+      `to_xml()` writes six significant figures with no precision knob, so
+      inertia round-trips to 2.4e-6 and "matches the in-engine simulation"
+      is a measured tolerance rather than an identity. And "the cheapest
+      slice" was right about the physics and wrong about the work — the
+      cheap part was calling MuJoCo's writer; the slice was proving the file
+      is the model. The export verifies its own output before returning it
+      and refuses rather than writing. No protocol change, no `shell/` diff;
+      the packaged gate is 9 tests. Whether the arc rejoins `main` is still
+      ADR-063's question and still a later ADR.
 - [ ] **M6 — A task is part of the script.** Observation, action, reward,
       termination, randomisation — all data, all declarative.
 - [ ] **M7 — Training happens elsewhere.** Offboard by design; training does
