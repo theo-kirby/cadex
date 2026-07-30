@@ -69,7 +69,7 @@ Checked 2026-07-30 against conda-forge, the MuJoCo docs, and this tree.
 | Package | `mujoco-python` **3.10.0** (conda-forge, 2026-06-22), Apache-2.0 |
 | Platforms | all five pixi platforms, including `osx-arm64` |
 | Python/numpy fit | an `np2py311` build exists depending on `numpy >=1.23,<3` — **compatible** with our `python >=3.11,<3.12` and `numpy >=1.26,<1.27` pins. No conflict. |
-| Payload cost | `mujoco-python` 3.1 MiB + `libmujoco` 10.8 MiB ≈ **14 MB**, plus small pure-Python deps |
+| Payload cost | **53.5 MB**, measured (ADR-061). The conda package is ~14 MB, but what we ship is the pypi wheel, which bundles the plugin dylibs conda-forge splits out. |
 | Unwanted deps | pulls `glfw`, `pyopengl`, `pyglfw`, `absl-py`, `etils`, `fsspec`. The GL ones are for `mujoco.viewer` only; core `import mujoco` must not need them, and the payload should prune them (slice M0). |
 | Model construction | **`mjSpec`** — programmatic build (`spec.worldbody.add_body(...)`, `spec.compile()`), one-to-one with MJCF. No XML string-building layer needed. |
 | Determinism | deterministic for a **fixed binary, fixed platform, single-threaded**. Explicitly **not** bitwise-reproducible across versions — MuJoCo's own `VERSIONING.md` says so. Multi-threaded island solving has open reproducibility issues upstream. |
@@ -176,9 +176,9 @@ a resting place: the product works at the end of each one.
 
 ---
 
-### M0 — Decide, depend, prune
+### M0 — Decide, depend, deliver `(ADR-060, ADR-061)`
 
-The paperwork slice, and it is small.
+The paperwork slice, and it was not as small as billed.
 
 ADR-060 records the direction: dynamics is in scope, MuJoCo is the engine,
 MuJoCo is a kept dependency and not a fork, and M5–M8 either are or are not
@@ -189,9 +189,27 @@ we assert digest equality on every project open. The payload build learns
 to prune `glfw`/`pyopengl`, and the payload smoke test grows one line
 proving `import mujoco` works in a tree with no GL at all.
 
-**Done when:** `pixi run build-engine && pixi run stage-engine` produces a
-payload that imports mujoco headlessly, and the payload has not grown a
-renderer.
+What actually happened: the dependency could not be added at all. Adding any
+conda package forces a full re-solve, and the manifest has not been
+re-solvable for some time — conda-forge moved past `occt ==7.8.1` and
+`qt6-main <6.9`, which we hold on purpose. `pixi.lock` has been carrying it.
+So MuJoCo arrives as a pypi wheel, and `relocate_conda_environment.py` gains
+`CARRIED_PYPI_PACKAGES` to carry it into the payload by name (ADR-061). The
+GL prune the slice planned turned out to be unnecessary — the wheel imports
+no GL module at all.
+
+**The manifest is now a known, written-down problem** and not this slice's
+to fix: repairing it means re-pinning the environment that builds geometry,
+which moves accepted digests. `CARRIED_PYPI_PACKAGES` is named so that the
+day it is repaired, the exception is easy to find and delete.
+
+**Done when:** `pixi run stage-engine` produces a payload whose own
+`bin/python` imports mujoco at the pinned version — asserted by the payload
+build itself, because a source tree that passes proves nothing about a
+payload (ADR-023). *Not yet run end to end: staging copies a 4.2 GB
+environment and this machine has 4.5 GB free. The carrying logic, the rpath
+survival and the import are each verified in isolation; the full stage is
+outstanding.*
 
 ---
 

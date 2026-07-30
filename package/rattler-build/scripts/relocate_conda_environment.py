@@ -26,6 +26,27 @@ PYTHON_RUNTIME_PROBE = (
     "print(target.as_posix())"
 )
 
+# Site-packages directories carried verbatim even though no conda package
+# owns them. Named one by one, never a pattern: shipping an unmanaged file
+# is the exception this script exists to prevent, so each one is a decision
+# with a reason next to it.
+#
+# mujoco (cadex ADR-060) -- the dynamics engine. Its correct home is
+# conda-forge `mujoco-python`, which cannot be installed until the manifest
+# is re-solvable again; see ADR-060 for why that is a separate problem with
+# a separate risk. Carrying the wheel is safe in a way a wheel usually is
+# not: it bundles its own libmujoco.<version>.dylib beside the extension
+# modules and reaches it through `@loader_path`, so it references nothing in
+# the conda prefix and is relocatable by construction.
+#
+# relocate_macos_runtime_rpaths.py then walks it like anything else, and
+# wants to: the wheel ships a stale absolute build rpath
+# (/Volumes/BuildData/...) alongside @loader_path. The sanitizer deletes the
+# stale one, keeps the working one, re-points the experimental/studio
+# extensions at @loader_path/../.., and re-signs. Verified by relocating a
+# copy and importing from it -- same free-fall integration to six decimals.
+CARRIED_PYPI_PACKAGES = ("mujoco",)
+
 
 class CopyArchive(NoArchive):
     """Conda-pack directory writer that never hardlinks into source caches."""
@@ -140,6 +161,42 @@ def _python_runtime_target(prefix: Path) -> str:
     return target
 
 
+def _carried_pypi_files(source: Path, python_runtime_target: str) -> list[File]:
+    """Files of the CARRIED_PYPI_PACKAGES, as unmanaged copy-verbatim entries.
+
+    ``is_conda=False`` and no ``prefix_placeholder``, which is what tells
+    conda-pack to copy the bytes and rewrite nothing -- the whole reason
+    carrying these is safe. A named package that is not installed is an
+    error, not a silent omission: it would ship a payload missing the
+    dynamics engine and fail at the user.
+    """
+
+    # site-packages sits beside the runtime's own encodings/ package.
+    site_packages = Path(python_runtime_target).parent.parent / "site-packages"
+    carried: list[File] = []
+    for name in CARRIED_PYPI_PACKAGES:
+        roots = sorted(
+            path
+            for path in (source / site_packages).glob(f"{name}*")
+            if path.name == name or path.name.startswith(f"{name}-")
+        )
+        if not roots:
+            raise RuntimeError(
+                f"{name!r} is named in CARRIED_PYPI_PACKAGES but is not installed "
+                f"in {source / site_packages}. Install it or remove the name; "
+                "shipping a payload without it fails at the user, not here."
+            )
+        for root in roots:
+            for path in sorted(root.rglob("*")):
+                if path.is_dir() and not path.is_symlink():
+                    continue
+                if "__pycache__" in path.parts:
+                    continue
+                target = path.relative_to(source)
+                carried.append(File(str(path), target.as_posix(), is_conda=False))
+    return carried
+
+
 def _copy_relocated_environment(
     source: Path,
     destination: Path,
@@ -180,12 +237,15 @@ def main() -> int:
             + ", ".join(missing)
         )
 
+    carried_files = _carried_pypi_files(source, python_runtime_target)
     print(
         f"Relocating {len(managed_files)} package-managed files from {source} to "
-        f"{destination}; excluding {unmanaged_count} unmanaged files.",
+        f"{destination}; excluding {unmanaged_count - len(carried_files)} unmanaged "
+        f"files; carrying {len(carried_files)} verbatim from "
+        f"{', '.join(CARRIED_PYPI_PACKAGES)}.",
         flush=True,
     )
-    installed_files = _installed_managed_files(source, managed_files)
+    installed_files = _installed_managed_files(source, managed_files) + carried_files
     _copy_relocated_environment(source, destination, installed_files)
     missing_after_copy = sorted(
         target for target in required_files if not (destination / target).is_file()

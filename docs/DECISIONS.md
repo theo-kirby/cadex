@@ -4318,3 +4318,75 @@ digests, and teaching the relocation script to carry pypi packages means
 changing ADR-023's shipping path. Recorded here so the next person does not
 rediscover it. M1 is throwaway prototyping in the dev environment and is
 **not** blocked by either.
+
+---
+
+## ADR-061 — The payload carries the MuJoCo wheel, by name (2026-07-30)
+
+**Decision.** `relocate_conda_environment.py` gains `CARRIED_PYPI_PACKAGES`,
+a list of site-packages directories copied verbatim despite no conda package
+owning them. It contains one entry, `mujoco`. The engine payload build then
+asserts the payload can *import* it, at the pinned version, or fails.
+
+This resolves the delivery question ADR-060 left open, and rejects the two
+alternatives it named.
+
+**Why not repair the manifest instead.** That is the "correct" answer in the
+abstract — conda-forge `mujoco-python` is package-managed and would need no
+exception at all. But the repair is unbounded and its risk is in the wrong
+place. The root manifest cannot be re-solved because the channel moved past
+pins we hold deliberately (`occt ==7.8.1`, `qt6-main >=6.8,<6.9`), so the fix
+is to pin every drifting package — `opencv`, `vtk`, `smesh`, and whatever the
+solver reveals one layer down — across five platforms. `recipe.yaml`'s `run:`
+list is a second solve with the same drift. Every one of those pins touches
+the environment that builds geometry, and ADR-025 is a standing reminder that
+moving a geometry dependency moves accepted digests. Bundling that into
+"deliver a physics library" would be trading a large unrelated risk for a
+small related one. It is a real problem, it is now written down, and it
+deserves its own change.
+
+**Why carrying the wheel is safe here, specifically.** Shipping an unmanaged
+file is the exact thing this script exists to prevent, so the exception needs
+a reason rather than a convenience. MuJoCo's wheel bundles
+`libmujoco.<version>.dylib` and four plugin dylibs *beside* the extension
+modules and reaches them through `@loader_path`. It references nothing in the
+conda prefix. It is relocatable by construction — which is the property the
+`is_conda` filter is a proxy for, held directly instead of inferred.
+
+Verified rather than argued: a copy of the package was put through
+`relocate_macos_runtime_rpaths.py` and imported from its new location. The
+sanitizer deletes a stale absolute build rpath the wheel ships
+(`/Volumes/BuildData/...`), keeps `@loader_path`, re-points the
+`experimental/studio` extensions at `@loader_path/../..`, and re-signs. The
+relocated copy integrates the same free-fall to six decimals. No exclusion
+from rpath handling is needed or wanted — an earlier draft of this change
+asserted one, and the scan disproved it.
+
+**The list is names, never patterns.** A glob would make the next addition
+invisible; a name makes it a decision with a comment next to it. A named
+package that is not installed raises rather than being skipped, because the
+silent version of this failure ships a payload with no dynamics engine and
+breaks at the user.
+
+**The gate is an import, not a file check.** `build_engine_payload.sh` runs
+`bin/python -c 'import mujoco'` against the packaged tree and compares the
+version to the pin. A present directory proves nothing about a bundled dylib
+whose rpath was just rewritten, and ADR-023's rule — a source tree that
+passes proves nothing about a payload — is exactly this case. It also covers
+the stage-only path, which carries mujoco for an unrelated reason (it copies
+`lib/` wholesale) and could stop doing so without anyone noticing.
+
+**Consequences.**
+
+- The payload grows **53.5 MB**, not the ~14 MB `docs/MUJOCO.md` estimated
+  from the conda package. The wheel is fatter than the conda split — it
+  carries the plugin dylibs (`libactuator`, `libelasticity`, `libsdf_plugin`,
+  `libsensor`) that conda-forge separates. The estimate in MUJOCO.md §2 is
+  corrected.
+- 217 files, `__pycache__` excluded, `mujoco-3.10.0.dist-info` included so
+  the payload's own metadata stays honest about what is installed.
+- M2 has somewhere to ship to, which was the point.
+- When the manifest is eventually repaired, `CARRIED_PYPI_PACKAGES` should
+  empty and `mujoco-python` should move to `recipe.yaml`'s `run:` list. The
+  constant exists to be deleted; it is named so that the deletion is easy to
+  find.

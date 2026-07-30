@@ -219,6 +219,22 @@ fi
 echo "==> Qt libraries carried (expected: Core, Xml, Concurrent, Network):"
 ls "${payload}/lib" 2>/dev/null | grep -i '^libQt' | sort || true
 
+# The dynamics engine has to be in the payload, not merely in the developer's
+# environment (cadex ADR-060). It reaches here by two different routes and
+# both have silently dropped it before: the relocated path carries it only
+# because CARRIED_PYPI_PACKAGES names it, and the stage-only path only
+# because it copies lib/ wholesale. Asserted rather than assumed, and
+# asserted by *importing* -- a present directory proves nothing about a
+# bundled dylib whose rpath was just rewritten.
+mujoco_version="$("${payload}/bin/python" -c 'import mujoco; print(mujoco.__version__)' 2>&1 | tail -1 || true)"
+if [ "${mujoco_version}" != "3.10.0" ]; then
+    echo "FAIL: the payload cannot import mujoco 3.10.0 (got: ${mujoco_version})"
+    echo "      CARRIED_PYPI_PACKAGES in relocate_conda_environment.py is what"
+    echo "      carries it; the pin lives in pixi.toml. See ADR-060."
+    exit 1
+fi
+echo "==> mujoco ${mujoco_version} imports from the payload"
+
 if [ "${os}" = "macos" ] && [ -f "${repo}/package/rattler-build/scripts/audit_macos_bundle.py" ]; then
     python "${repo}/package/rattler-build/scripts/audit_macos_bundle.py" "${payload}" || true
 fi
