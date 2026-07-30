@@ -514,6 +514,223 @@ def rotation_angle_between(
     return 2.0 * math.acos(max(-1.0, min(1.0, dot)))
 
 
+# ---------------------------------------------------------------------------
+# Inertia. The differentiator: exact OCCT mass properties, not a hull guess.
+# ---------------------------------------------------------------------------
+
+
+def _symmetric_eigenvalues(tensor: Sequence[float]) -> list[float]:
+    """Principal moments of a symmetric 3x3, by cyclic Jacobi rotations.
+
+    Fixed sweep count rather than a convergence tolerance, so the answer is
+    the same on every run and every platform -- ``open_project`` re-runs the
+    accepted script and asserts digest equality, and an inertia validation
+    that varies breaks the project rather than merely the body.
+    """
+
+    matrix = [
+        [float(tensor[0]), float(tensor[1]), float(tensor[2])],
+        [float(tensor[3]), float(tensor[4]), float(tensor[5])],
+        [float(tensor[6]), float(tensor[7]), float(tensor[8])],
+    ]
+    for _sweep in range(24):
+        if all(
+            matrix[row][column] == 0.0 for row, column in ((0, 1), (0, 2), (1, 2))
+        ):
+            break
+        for row, column in ((0, 1), (0, 2), (1, 2)):
+            pivot = matrix[row][column]
+            if pivot == 0.0:
+                continue
+            theta = (matrix[column][column] - matrix[row][row]) / (2.0 * pivot)
+            sign = 1.0 if theta >= 0.0 else -1.0
+            tangent = sign / (abs(theta) + math.sqrt(theta * theta + 1.0))
+            cosine = 1.0 / math.sqrt(tangent * tangent + 1.0)
+            sine = tangent * cosine
+            row_value = matrix[row][row]
+            column_value = matrix[column][column]
+            matrix[row][row] = row_value - tangent * pivot
+            matrix[column][column] = column_value + tangent * pivot
+            matrix[row][column] = 0.0
+            matrix[column][row] = 0.0
+            for index in range(3):
+                if index in (row, column):
+                    continue
+                first = matrix[index][row]
+                second = matrix[index][column]
+                matrix[index][row] = cosine * first - sine * second
+                matrix[row][index] = matrix[index][row]
+                matrix[index][column] = sine * first + cosine * second
+                matrix[column][index] = matrix[index][column]
+    return sorted(matrix[index][index] for index in range(3))
+
+
+def _parallel_axis_mm5(volume_mm3: float, offset_mm: Sequence[float]) -> list[float]:
+    """``V·(‖d‖²E − d·dᵀ)`` -- the shift term, at unit density, in mm⁵."""
+
+    dx, dy, dz = (float(item) for item in offset_mm)
+    squared = dx * dx + dy * dy + dz * dz
+    return [
+        volume_mm3 * (squared - dx * dx),
+        volume_mm3 * (-dx * dy),
+        volume_mm3 * (-dx * dz),
+        volume_mm3 * (-dy * dx),
+        volume_mm3 * (squared - dy * dy),
+        volume_mm3 * (-dy * dz),
+        volume_mm3 * (-dz * dx),
+        volume_mm3 * (-dz * dy),
+        volume_mm3 * (squared - dz * dz),
+    ]
+
+
+def body_inertial(
+    readings: Sequence[Mapping[str, Any]],
+    density_kg_m3: float,
+    *,
+    context: str,
+) -> dict[str, Any]:
+    """Mass, centre of mass and inertia tensor for one component's solids.
+
+    ``readings`` is what ``cadex_assembly_worker._solid_inertia_readings``
+    produces: one entry per ``TopoShapeSolid``, each carrying its volume in
+    mm³, its centre of mass in the component's own frame, and its inertia
+    tensor **about its own centre of mass** in mm⁵ at unit density.
+
+    Two things are deliberate here.
+
+    *The tensor is read about the solid's own centre of mass*, by
+    translating a copy of the solid, rather than read about the origin and
+    corrected afterwards. ``J_origin − V·(‖C‖²E − C·Cᵀ)`` is a difference of
+    near-equal large numbers: a part modelled 500 mm from the origin has an
+    origin term about 150 times the centre-of-mass term, so a 1 mm feature
+    at 10⁴ mm loses roughly nine significant digits to cancellation.
+    Translating first cannot cancel.
+
+    *Multi-solid components are summed about a common point*, which is the
+    combined centre of mass -- adding tensors taken about different points
+    is meaningless and produces a number that still passes every sanity
+    check MuJoCo applies (hazard 2).
+
+    The result is what a MuJoCo body wants: ``mass``, ``ipos`` (the centre
+    of mass **in the component frame**, because the body frame is the
+    component frame -- hazard 4) and ``fullinertia`` about that centre.
+    """
+
+    density = checked_density(density_kg_m3, context=context)
+    if not readings:
+        raise DynamicsError(
+            f"{context} has no solid to take mass properties from.",
+            reason="no_solid",
+            correction=(
+                "A dynamics body needs a component whose shape contains at least "
+                "one solid. A wire, a face or an empty compound has no mass."
+            ),
+            observed={"context": context},
+        )
+    entries: list[tuple[float, list[float], list[float]]] = []
+    for index, reading in enumerate(readings):
+        volume = float(reading["volume_mm3"])
+        if not math.isfinite(volume) or volume <= 0.0:
+            raise DynamicsError(
+                f"{context} solid {index} has volume {volume:g} mm³.",
+                reason="degenerate_solid",
+                correction=(
+                    "Every solid must enclose a positive volume. Check for an "
+                    "inverted or self-intersecting solid in the source part."
+                ),
+                observed={"context": context, "solid_index": index, "volume_mm3": volume},
+            )
+        centre = _floats(
+            reading["center_of_mass_mm"], count=3, context=f"{context} solid {index} COM"
+        )
+        tensor = _floats(
+            reading["inertia_mm5_about_com"],
+            count=9,
+            context=f"{context} solid {index} inertia",
+        )
+        entries.append((volume, centre, tensor))
+
+    total_volume = math.fsum(volume for volume, _centre, _tensor in entries)
+    centre_of_mass = [
+        math.fsum(volume * centre[axis] for volume, centre, _tensor in entries)
+        / total_volume
+        for axis in range(3)
+    ]
+    combined = [0.0] * 9
+    for volume, centre, tensor in entries:
+        offset = [centre[axis] - centre_of_mass[axis] for axis in range(3)]
+        shift = _parallel_axis_mm5(volume, offset)
+        for index in range(9):
+            combined[index] += tensor[index] + shift[index]
+    # Symmetrise: the two halves differ only by rounding, and MuJoCo reads
+    # six numbers from a matrix we would otherwise be asserting nine of.
+    for row, column in ((0, 1), (0, 2), (1, 2)):
+        average = 0.5 * (combined[row * 3 + column] + combined[column * 3 + row])
+        combined[row * 3 + column] = average
+        combined[column * 3 + row] = average
+
+    tensor_kg_m2 = inertia_kg_m2(density, combined)
+    principal = _symmetric_eigenvalues(tensor_kg_m2)
+    largest = max(principal)
+    if principal[0] <= 0.0:
+        raise DynamicsError(
+            f"{context} has a non-positive principal moment of inertia "
+            f"({principal[0]:.6g} kg·m²).",
+            reason="degenerate_inertia",
+            correction=(
+                "The component's solids do not form a body with volume in three "
+                "dimensions. Check for a zero-thickness or duplicated solid."
+            ),
+            observed={"context": context, "principal_kg_m2": principal},
+        )
+    # A + B >= C. MuJoCo enforces this with *no* tolerance at all -- a
+    # violation of one part in 1e9 is refused -- so the check is here, where
+    # the refusal can name the component. It is stated with a tolerance
+    # rather than bare because a sheet-metal part sits arithmetically on the
+    # boundary: in the continuum limit Ixx + Iyy = Izz exactly, and a real
+    # plate clears it only by its own thickness squared (hazard 8).
+    residual = principal[0] + principal[1] - principal[2]
+    if residual < -1.0e-9 * largest:
+        raise DynamicsError(
+            f"{context} has an inertia tensor that violates the triangle "
+            f"inequality by {abs(residual):.6g} kg·m² "
+            f"({abs(residual) / largest:.3g} of its largest moment).",
+            reason="inertia_triangle_violation",
+            correction=(
+                "No real rigid body has such a tensor, so the source geometry is "
+                "degenerate: look for overlapping solids counted twice, or a "
+                "solid with inverted orientation."
+            ),
+            observed={
+                "context": context,
+                "principal_kg_m2": principal,
+                "residual_kg_m2": residual,
+            },
+        )
+    return {
+        "mass_kg": mass_kg(density, total_volume),
+        "volume_mm3": total_volume,
+        "density_kg_m3": density,
+        "center_of_mass_mm": centre_of_mass,
+        "inertia_kg_m2": tensor_kg_m2,
+        "principal_inertia_kg_m2": principal,
+        "solid_count": len(entries),
+    }
+
+
+def full_inertia_six(tensor: Sequence[float]) -> list[float]:
+    """The nine-entry tensor as MuJoCo's ``fullinertia``.
+
+    MJCF order is (Ixx, Iyy, Izz, Ixy, Ixz, Iyz) -- measured against the
+    compiler rather than read off the documentation, because a transposed
+    or reordered product-of-inertia term is a body that tumbles subtly
+    wrong and nothing refuses it.
+    """
+
+    values = [float(item) for item in tensor]
+    return [values[0], values[4], values[8], values[1], values[2], values[5]]
+
+
 def _axis_normalised(axis: Sequence[float], *, context: str) -> list[float]:
     values = [float(item) for item in axis]
     magnitude = math.sqrt(sum(item * item for item in values))

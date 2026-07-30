@@ -3066,6 +3066,101 @@ def _coupled_joint_issues(
     return issues
 
 
+def _matrix_of_inertia_rows(value: Any) -> list[float]:
+    """The 3x3 block of a native ``Base.Matrix``, row-major."""
+
+    return [
+        float(getattr(value, name))
+        for name in ("A11", "A12", "A13", "A21", "A22", "A23", "A31", "A32", "A33")
+    ]
+
+
+def _solid_inertia_readings(shape: Any, *, context: str) -> list[dict[str, Any]]:
+    """Exact OCCT mass properties per solid, in millimetres, at unit density.
+
+    A pure FreeCAD read: no unit conversion, no density, no tensor algebra.
+    Everything numeric happens in :func:`CadexDynamics.body_inertial`, which
+    is the half that can be tested without a kernel.
+
+    **The tensor is read from a copy translated so its centre of mass sits
+    at the origin.** Measured under this build, ``Shape.MatrixOfInertia`` is
+    already the tensor about the centre of mass -- which is *not* what
+    docs/MUJOCO.md M2 assumed -- so translating first is redundant today and
+    correct under either convention tomorrow. It also cannot suffer the
+    cancellation that reading about the origin and subtracting would: for a
+    part modelled 500 mm out, the origin term is some 150 times the
+    centre-of-mass term, and a 1 mm feature at 10⁴ mm would lose nine
+    significant digits to the difference. It is one shape copy per solid and
+    the same single ``MatrixOfInertia`` call either way.
+
+    Only ``TopoShapeSolid`` carries mass properties, so the solids are
+    iterated rather than the shape read whole: a compound of a solid and a
+    stray face would otherwise report the face's area-weighted centroid.
+    """
+
+    import FreeCAD as App
+
+    solids = list(getattr(shape, "Solids", []) or [])
+    if not solids:
+        raise AssemblyCandidateError(
+            f"{context} contains no solid, so it has no mass.",
+            details={
+                "stage": "dynamics_mass_properties",
+                "correction": (
+                    "A dynamics body needs a component whose shape contains at "
+                    "least one solid. Build the component from a part or "
+                    "partdesign value that produces a solid."
+                ),
+            },
+        )
+    readings: list[dict[str, Any]] = []
+    for index, solid in enumerate(solids):
+        centre = solid.CenterOfMass
+        centred = solid.copy()
+        centred.translate(App.Vector(-centre.x, -centre.y, -centre.z))
+        readings.append(
+            {
+                "volume_mm3": float(solid.Volume),
+                "center_of_mass_mm": [
+                    float(centre.x),
+                    float(centre.y),
+                    float(centre.z),
+                ],
+                "inertia_mm5_about_com": _matrix_of_inertia_rows(
+                    centred.MatrixOfInertia
+                ),
+            }
+        )
+    return readings
+
+
+def _component_local_shape(component: Any, *, context: str) -> Any:
+    """The component's geometry in its own frame, never the placed one.
+
+    The MuJoCo body frame *is* the FreeCAD component frame, with the mass
+    offset carried in ``body.ipos`` (hazard 4). Reading the placed shape
+    would put every part's centre of mass in assembly coordinates, which
+    compiles, simulates, and reads on screen as "the mesh is in the wrong
+    place" long after the physics has already been wrong.
+    """
+
+    linked = getattr(component, "LinkedObject", None)
+    shape = getattr(linked, "Shape", None) if linked is not None else None
+    if shape is None:
+        raise AssemblyCandidateError(
+            f"{context} links a source with no readable shape.",
+            details={
+                "stage": "dynamics_mass_properties",
+                "correction": (
+                    "assembly.dynamics needs one solid per component. A native "
+                    "assembly or part container is not one body; reference the "
+                    "solid itself."
+                ),
+            },
+        )
+    return shape
+
+
 def validate_and_solve_assembly(
     document: Any,
     raw_result: Mapping[str, Any],
