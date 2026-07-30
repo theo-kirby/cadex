@@ -1,7 +1,8 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
 Verified against source: 2026-07-30
-Status: **M0 recorded (ADR-060), M1 passed.** M2 onward is plan, not built.
+Status: **M0 recorded (ADR-060, ADR-061), M1 passed, M2 built (ADR-062).**
+M3 onward is plan, not built.
 Branch `MJC`.
 
 This is the framework for adding **rigid-body dynamics** to Cadex on
@@ -87,7 +88,7 @@ Our thirteen map in three groups:
 | Group | Cadex joints | How |
 |---|---|---|
 | **Direct** (5) | `fixed`, `revolute`, `slider`, `ball`, `cylindrical` | no joint / `hinge` / `slide` / `ball` / `hinge`+`slide` on one axis |
-| **Coupled** (4) | `screw`, `gears`, `belt`, `rack_pinion` | two joints plus `equality/joint` polynomial coupling |
+| **Coupled** (4) | `screw`, `gears`, `belt`, `rack_pinion` | `equality/joint` between coordinates *other* joints own — they attach nothing (M2, ADR-062). `rack_pinion` is refused until its convention is measured |
 | **No equivalent** (4) | `distance`, `parallel`, `perpendicular`, `angle` | these are *placement* constraints, not runtime ones. **Refuse with a sentence.** |
 
 **Loops.** Our assembly graph is a constraint graph and may contain loops;
@@ -264,28 +265,82 @@ so M3's budget work is about the API limit, not the byte limit.
 
 ---
 
-### M2 — `assembly` → `mjSpec`
+### M2 — `assembly` → `mjSpec` `(DONE 2026-07-30, ADR-062)`
 
 The real builder, and the largest single piece of engineering in M1–M4.
 
-Walk the assembly `DomainValue` graph and construct an `MjSpec`: bodies
-from components, the spanning tree extracted from the joint graph, loop
-closures as `equality/connect`, the five direct joint mappings, the four
-coupled ones as `equality/joint`. The four unmappable joint kinds are
-refused with a sentence in the house style, naming which joint and why.
+`assembly.dynamics(asm, bodies, ...)` walks the assembly graph and
+constructs an `MjSpec`: one body per component with exact OCCT inertia, a
+spanning forest grown breadth-first from the grounded components, loop
+closures as `equality/connect` or `equality/weld` against sites, the five
+direct joint mappings, and gear/belt/screw couplings as `equality/joint`.
+`assembly.body(component, density_kg_m3=...)` is the intermediate that gives
+a component mass; density is required and never defaulted. The unmappable
+joint kinds are refused with a sentence naming which joint and why. The
+translator is `src/Mod/cadex/CadexDynamics.py`: pure Python, no FreeCAD,
+staged into the sandbox by filename, and the only module in the tree that
+may import `mujoco`.
 
-Collision is **primitives only** at this slice — box, capsule, cylinder,
-sphere. No meshes. This is not a limitation to apologise for; it is what
-good MJCF authoring does anyway, and it defers the convexity problem to
-where it belongs.
+**Done.** The trace publishes through the path `api.simulation` already
+used — same `output_type`, same `artifact_kind`, no protocol change, no
+`shell/` diff. Engine suite 445 passed; the live cadexd gate runs a
+dynamics script end to end.
 
-Inertia comes from OCCT. This is the differentiator and it lands here.
+**Nine things this slice learned by measuring, seven of which contradict
+what is written above or in the plan it came from.**
 
-**Done when:** a mechanism that today runs as kinematics also runs as
-dynamics and lands in roughly the same place under prescribed motion —
-kinematics parity is the check that the model was built correctly.
+1. **`Shape.MatrixOfInertia` is about the centre of mass, not the origin.**
+   This document said the origin. The reading is taken from a copy
+   translated to the origin, which is right under either convention.
+2. **Geoms are not needed to infer mass, so collision is deferred to M3.**
+   "Primitives only" above assumed they were. A geomless body with explicit
+   inertia compiles and simulates; `model.ngeom == 0` is a test, and
+   contact cannot participate in a result this slice has not validated.
+3. **All four coupled kinds attach nothing.**
+   `AssemblyObject::isJointTypeConnecting` returns false for exactly them,
+   so FreeCAD's own solver never uses them to place a part. "A screw is a
+   hinge plus a coupling" was one joint too generous.
+4. **`rack_pinion` is refused.** Its native constraint acts along a marker
+   frame OndselSolver derives specially and the measurement run did not
+   produce a clean `x = R·θ`. Measuring exists so the guess does not ship.
+5. **Screw pitch is millimetres per revolution.** Hazard 7's 2π ambiguity,
+   settled by driving one turn through the real kinematics path: a 4 mm
+   pitch moved the nut 4.000 mm. Gears counter-rotate at −r1/r2; a belt
+   drives at +r1/r2. `test_dynamics_ondsel_parity` keeps all three pinned to
+   what FreeCAD actually does.
+6. **`compiler.degree` defaults to degrees**, and silently turned a `[-1, 1]`
+   joint range into `[-0.017, 0.017]`.
+7. **A body-anchored `connect` resolves its second anchor through the
+   model's reference configuration**, which here is deliberately not the
+   solved pose — it closed a four-bar 16 mm out, in XML that looked
+   ordinary. Closures are written against sites instead.
+8. **Equality constraints are soft enough to matter.** Default `solref` let
+   a driven four-bar drift 3 mm open on a 200 mm mechanism; default `solimp`
+   let a heavy nut overwhelm its screw coupling entirely (610 mm of travel
+   where the pitch allows 105). Stiffened, those are 0.05 mm and 0.8%.
+9. **`balanceinertia` really does invent numbers**: `[0.001, 0.001, 1.0]`
+   compiles to `[0.334, 0.334, 0.334]`. It is asserted off, and the compiled
+   inertia is re-checked against the OCCT numbers on every build, because a
+   flag is only a promise about a default.
 
----
+**The exit criterion, and why it is shaped that way.** The model's reference
+configuration is the one where each joint's two connector frames coincide —
+*not* the solved pose. The solved pose is derived from
+`component_placements` by inversion, `mj_forward` runs, and every body's
+world pose is compared back. Building the model at the solved pose and
+checking its own reference configuration would assert only that the same
+numbers were written twice; it passes on a model whose joint axes are
+entirely wrong. Pose parity alone still cannot tell a hinge from a slide
+sharing a frame, so each joint is also displaced by δ in turn and exactly
+its subtree must move, by exactly that joint's own motion.
+
+**The kinematics-parity check named below was not the gate in the end.**
+Running the same mechanism under prescribed motion and under gravity does
+not compare like with like — the two produce different trajectories by
+construction. What replaced it is stronger: pose parity against a *real*
+Ondsel solve (the first solved frame of a dynamics trace reproduces
+FreeCAD's placements to the micrometre), plus the perturbation test, plus a
+closure-residual gate that needs no MuJoCo at all.
 
 ### M3 — Dynamics for real
 
@@ -301,6 +356,11 @@ problem and should not get the same workaround.
 The determinism gate lands: same script, same params → identical trace
 digest across cadexd restarts, with MuJoCo forced **single-threaded**
 because upstream has open reproducibility issues with island parallelism.
+M2 gates determinism only *within* one process, and it corrected ADR-060 on
+the way past: a trace's `artifact_sha256` is in **no** project digest, so a
+version bump today changes every trace and moves nothing. Whether trace
+bytes belong in the digest is this slice's call, and it needs OndselSolver's
+own byte reproducibility proven first.
 
 The frame budget gets revisited. `api.simulation` caps at 10 000 frames /
 100 000 component-pose samples, and `time_step_s` currently means both

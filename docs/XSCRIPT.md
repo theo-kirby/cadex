@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-07-27
+Verified against source: 2026-07-30
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -118,6 +118,26 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   carried along it rather than re-levelled. Everything else — `avoid`,
   `clearance_mm`, `slack`, `cell_mm`, `min_bend_radius_mm` — means what it
   does on `part.cable` and applies to the bundle as a whole.
+- `assembly.dynamics()` runs the assembly as rigid-body dynamics instead of
+  prescribing its motion (ADR-062, **experimental**): give every component an
+  `assembly.body(component, density_kg_m3=...)` and the mechanism falls,
+  swings and settles under gravity on MuJoCo. It produces the same
+  `simulation` output type `assembly.simulation` does — a script has one
+  simulation whichever solver ran it, and two would leave the shell baking
+  neither — so a script carries `api.motion` *or* `api.dynamics`, not both.
+  `density_kg_m3` has **no default**: mass, inertia and every fall time scale
+  with it, and a guessed density makes the animation plausible and wrong
+  (steel 7850, aluminium 2700, ABS 1040). Mass and the inertia tensor come
+  from the component's own solids exactly, not from a bounding box, which is
+  the part standard robot-model authoring gets wrong. Loops close as
+  equality constraints and the published evidence records what each one gave
+  up — a `connect` closing a revolute pins position and lets axis alignment
+  go, which is exact for a planar four-bar and one constraint short for a
+  spatial one. Bodies do **not** collide yet: a mechanism is held together by
+  its joints alone. Refused rather than approximated: `distance`/`parallel`/
+  `perpendicular`/`angle` joints (they constrain where the solver *put* a
+  part, not how it moves), `rack_pinion`, slider and cylindrical loop
+  closures, flexible subassemblies, and any component without a body.
 - Outputs are evaluated per domain in fixed order sketcher → part →
   partdesign → mesh → assembly, reusing the per-domain evaluators and
   serializers.

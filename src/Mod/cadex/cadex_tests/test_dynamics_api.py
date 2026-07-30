@@ -210,6 +210,46 @@ def test_the_worker_contract_accepts_a_dynamics_run() -> None:
     assert motions == {}
 
 
+def test_the_simulation_trace_is_not_part_of_the_project_digest() -> None:
+    """The correction ADR-062 owes ADR-060, as a fact rather than a claim.
+
+    ADR-060 justifies MuJoCo's exact version pin with "every open_project
+    asserts digest equality, so an unpinned patch bump would silently turn
+    every stored simulation into a restore failure." It would not.
+    ``compute_project_digest`` branches on ``artifact_kind`` for ``brep`` and
+    ``mesh`` and falls through to the canonical *definition* for everything
+    else, so a trace's ``artifact_sha256`` is in no digest -- a version bump
+    would change every trace and move nothing, which is worse than the ADR
+    describes because it is silent.
+
+    Pinned here so that bringing trace bytes into the digest (M3's call, and
+    it needs OndselSolver's own byte reproducibility first) is a deliberate
+    change that fails this test rather than a quiet one.
+    """
+
+    from pathlib import Path
+
+    from cadex_project_worker import compute_project_digest
+
+    def _outputs(trace_digest: str) -> list[dict]:
+        return [
+            {
+                "name": "sim",
+                "domain": "assembly",
+                "type": "simulation",
+                "artifact_kind": "assembly_simulation_json",
+                "artifact_path": "outputs/assembly-simulation-trace.json",
+                "artifact_sha256": trace_digest,
+                "definition": {"operation": "dynamics", "end_time_s": 1.0},
+            }
+        ]
+
+    root = Path(".")
+    assert compute_project_digest(root, _outputs("a" * 64)) == (
+        compute_project_digest(root, _outputs("b" * 64))
+    )
+
+
 def test_the_worker_contract_re_checks_the_bodies_it_is_handed() -> None:
     """The worker validates the graph it gets, not the graph it hopes for."""
 

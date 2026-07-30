@@ -4415,3 +4415,141 @@ whose own `bin/python` imports mujoco 3.10.0 from its own site-packages,
 integrates the reference free fall to the same six decimals, and loads no GL
 module. Packaged lifecycle gate (`CADEX_ENGINE_ROOT=<payload> pytest
 test_cadexd_lifecycle.py`): 6 passed.
+
+---
+
+## ADR-062 — `assembly.dynamics`, and the translator behind it (2026-07-30)
+
+**Decision.** Slice M2 of `docs/MUJOCO.md` lands: an assembly can be run as
+rigid-body dynamics on MuJoCo and publishes through the trace path
+`assembly.simulation` already used. Five parts, each with a reason a future
+reader can check.
+
+1. **`api.dynamics` produces `output_type: "simulation"`, not a new type.**
+   Not tidiness — `cadex_animate._simulation_entries` selects on
+   `artifact_kind == "assembly_simulation_json"` and, on finding two, bakes
+   **neither**: it clears the scene, drops the Simulation panel and reports
+   into a message the UI never shows. A sibling type would let a script
+   declare a kinematics *and* a dynamics run and silently lose the animation
+   it already had. Sharing the type puts both under the existing "exactly
+   one simulation" rule in `_simulation_contract`; relaxing that check from
+   `!= "simulation"` to `not in {"simulation", "dynamics"}` is the whole
+   change, and mixing `api.motion` with `api.dynamics` is refused.
+
+2. **`api.body` is a non-publishable intermediate**, exactly as `connector`
+   is: it wraps a component with dynamics-only data, is never returned as an
+   output, and therefore needs no native type, no publication branch and no
+   `configure_order` row. `api.component` is untouched, so the kinematics
+   path cannot regress. **Density is required and never defaulted** — it
+   scales mass, inertia and every fall time, and a guessed one produces an
+   animation that is plausible and wrong. The refusal names steel and
+   aluminium rather than picking one.
+
+3. **`CadexDynamics.py` is a pure module staged by filename**, like
+   `CadexRouting` (ADR-056). It imports no FreeCAD, and it imports `mujoco`
+   *inside* the functions that build a model. `test_engine_purity_guardrails`
+   asserts the engine's import closure equals `DECLARED_ENGINE_MODULES`
+   exactly, so this module must be reachable from the sandboxed worker and
+   never from `cadexd`: a service whose job is reading NDJSON off a pipe does
+   not need 53 MB of physics engine resident. The split rule is stated once
+   and greppable: the pure module does every arithmetic operation *including
+   every unit conversion*; the worker does every FreeCAD read and nothing
+   else.
+
+4. **The model's reference configuration is deliberately not the solved
+   pose.** A tree body's frame relative to its parent is `L_p ∘ inv(L_c)` —
+   where the two connector frames coincide — with the joint at `L_c`'s origin
+   along its +Z. The solved pose is then *derived* as a joint coordinate by
+   inversion and checked against `component_placements`. Building at the
+   solved pose and checking the model's own reference configuration would
+   assert only that the same numbers were written twice: it passes on a model
+   whose joint axes are entirely wrong. Perturbation parity — displace each
+   joint by δ, and exactly its subtree must move, by exactly that joint's own
+   motion — is what separates "the tree is right" from "the mechanism is
+   right".
+
+5. **Collision geometry is deferred to M3**, deviating from `docs/MUJOCO.md`
+   M2's "primitives only". That was written assuming geoms were needed to
+   infer mass; they are not, because we have the BREP. Bodies carry explicit
+   inertia and no geometry at all (`model.ngeom == 0`, asserted), so contact
+   cannot participate in a result this slice has not validated, and no
+   unvalidated collision primitive is carried around waiting for M3.
+
+**What was measured rather than assumed.** Five things, each of which was
+either wrong in the plan or unknowable from documentation:
+
+- **`Shape.MatrixOfInertia` is taken about the centre of mass**, not about
+  the origin as `docs/MUJOCO.md` M2 states. The reading is still taken from a
+  copy translated to the origin, which is correct under either convention and
+  cannot suffer the cancellation that reading-and-subtracting would: for a
+  part 500 mm out the origin term is 27x the centre-of-mass term here, and a
+  small feature far from the origin would lose most of its significant digits
+  to the difference.
+- **MuJoCo's `balanceinertia` rewrites exact inertia into invented numbers**
+  — `[0.001, 0.001, 1.0]` compiles to `[0.334, 0.334, 0.334]`. It, and
+  `boundinertia`/`boundmass`/`inertiafromgeom`, are set off; and because a
+  flag is only a promise about defaults, every build re-checks the compiled
+  mass and principal moments against the OCCT numbers per body.
+- **`compiler.degree` defaults to degrees**, which silently turned a
+  `[-1, 1]` joint range into `[-0.017, 0.017]`.
+- **A body-anchored `connect` resolves its second anchor through the model's
+  reference configuration.** With this model's reference configuration that
+  closed a four-bar 16 mm from where it belonged, in XML that looked
+  ordinary. Closures are written against **sites** placed at the two
+  connector frames instead, so nothing is inferred.
+- **Equality constraints are soft.** At MuJoCo's default time constant a
+  driven four-bar drifted 3 mm open on a 200 mm mechanism; at the default
+  impedance a heavy nut overwhelmed its screw coupling completely (610 mm of
+  travel where the pitch allows 105). `solref` at two timesteps and `solimp`
+  at (0.99, 0.9999) bring those to 0.05 mm and 0.8%.
+
+**The coupled joints are measured against OndselSolver, not derived.**
+Driving one revolution through the real kinematics path gave: gears
+counter-rotate at `−r1/r2`; a belt drives at `+r1/r2`; and a screw advances
+`pitch` millimetres per **revolution**, settling the 2π ambiguity in a
+property whose UI label says only "Thread pitch".
+`test_dynamics_ondsel_parity` keeps those measurements as a gate, because a
+wrong sign is a gear train running backwards, which looks exactly like a
+working mechanism. **`rack_pinion` is refused** in M2: its native constraint
+acts along a marker frame OndselSolver derives specially, the measurement
+run did not produce a clean `x = R·θ`, and the point of measuring is to not
+ship the guess.
+
+Also corrected from the plan and from `docs/MUJOCO.md` M2: **all four coupled
+kinds attach nothing.** `AssemblyObject::isJointTypeConnecting` returns false
+for exactly screw, rack-and-pinion, gears and belt, so FreeCAD's own solver
+never uses them to place a part. "A screw is a hinge plus a coupling" was one
+joint too generous; it is a coupling between coordinates a slider and a
+revolute already own.
+
+**A correction ADR-060 owes itself.** ADR-060 justifies the exact version pin
+by claiming "every `open_project` re-runs THE script and asserts digest
+equality, so an unpinned patch bump would silently turn every stored
+simulation into a restore failure." **That is not true.**
+`compute_project_digest` (`cadex_project_worker.py`) branches on
+`artifact_kind` for `brep` and `mesh` and falls through to `payload_sha256`
+over the script *definition* for everything else, so a simulation trace's
+`artifact_sha256` is in no digest at all. A MuJoCo version bump would change
+every trace completely and the digest would not move — which is strictly
+worse than the ADR describes, because it is silent rather than loud. The
+exact pin stands on its own merits (ADR-025's reasoning about kernels, and
+MuJoCo's own `VERSIONING.md`), but not on that argument. M2 therefore gates
+determinism with its own test — same inputs, byte-identical model and
+configuration, within one process — and leaves the question of bringing
+trace bytes into the digest to M3, which needs OndselSolver's own byte
+reproducibility proven first.
+
+**Not in this slice**, deliberately: contact and collision geometry,
+damping/armature/stiffness, gravity as a script parameter, split solver and
+trace timesteps, the cross-restart determinism gate, actuators (M4), MJCF
+export (M5), mesh collision (M3), slider and cylindrical loop closures (they
+need a tendon), and flexible subassemblies — one component is one body, and
+a flexible one is refused rather than quietly assumed rigid.
+
+**Evidence.** Engine suite 445 passed (312 before this slice). The live
+cadexd lifecycle gate publishes a dynamics script end to end: FreeCAD places
+the components, MuJoCo reproduces those placements to the micrometre in the
+first solved frame, and the arm then swings from rest at 0.095, 0.393,
+0.882 rad over three samples — growing as t², which is what a constant torque
+on a mass does and what nothing in that script prescribed. `shell/` diff:
+empty. Protocol change: none.

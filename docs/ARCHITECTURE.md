@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-07-27
+Verified against source: 2026-07-30
 
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),
@@ -148,6 +148,7 @@ Ownership closure, lint, and orphan queries live in
 | `cadex_mesh_api.py` / `cadex_mesh_worker.py` | The Phase 4 mesh domain on `Mod/Mesh`+`Mod/MeshPart`: tessellate/import/transform/boolean/decimate, canonical vertex/facet ordering + vertex-set digest fingerprint (ADR-016). The api also owns `payload_tree_is_deterministic`, which `part.shape_from_mesh` applies at script-eval time (ADR-043); the worker's `canonical_mesh_from_payload` is the BREP-ingest entry point the part worker is *handed* rather than imports, because the part worker is in cadexd's closure and this one deliberately is not. `[Cadex-new]` |
 | `CadexRouting.py` | The wire router behind `part.cable` (ADR-056, **experimental**): lazy 26-connected A* on an integer lattice, clearance by lattice dilation, line-of-sight shortcut, sag, bounded by a probe budget. Kernel-neutral — no FreeCAD import, occupancy arrives as an `occupied(i, j, k)` callback — so the whole algorithm is unit-testable headless; staged into the worker bundle. The part worker backs that callback with obstacle surfaces rasterised from one tessellation, because `Shape.isInside` measured 3.3 ms a point. `[Cadex-new]` |
 | `CadexBundle.py` | The multi-conductor lay behind `part.bundle` (ADR-057, **experimental**): a rotation-minimising frame carried along the shared centreline by double reflection (Frenet flips at every inflection, and a routed path is full of them), twisted and flat conductor offsets from it, a numeric solve for the lay radius at which no two conductors interpenetrate, and the raised-cosine fan-out that lands each conductor on its own port without a corner. Kernel-neutral and FreeCAD-free like `CadexRouting.py`, unit-testable headless, staged into the worker bundle by filename. `[Cadex-new]` |
+| `CadexDynamics.py` | The MuJoCo translator behind `assembly.dynamics` (ADR-062, **experimental**): the joint table, a breadth-first spanning forest with loop closures as equality constraints, exact OCCT inertia converted to SI, the `mjSpec` build and the stepping loop that emits a `cadex-assembly-simulation-trace-v1`. Kernel-neutral and FreeCAD-free like `CadexRouting.py`, staged into the worker bundle by filename -- and the only module in the tree that may import `mujoco`, which it does inside functions so `cadexd`'s closure never reaches it. The worker does every FreeCAD read; this does every arithmetic operation including every unit conversion, and a test greps to keep that true. `[Cadex-new]` |
 | `cadex_domain_api.py` / `cadex_domain_worker.py` | Shared domain API/worker plumbing (`_execute_source` is the composition substrate). `[VibeCAD-era]` |
 | `CadexGeometryWorker.cpp` | Isolated C++ BREP validation / distance worker. `[VibeCAD-era]` |
 
