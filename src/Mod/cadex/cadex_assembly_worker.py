@@ -2241,6 +2241,92 @@ def _simulation_trace_preview(frames: Sequence[Mapping[str, Any]]) -> list[dict[
     return [dict(frames[index]) for index in indices]
 
 
+def _retain_simulation_trace(
+    *,
+    assembly_output: str,
+    simulation_output: str,
+    component_names: Sequence[str],
+    frames: Sequence[Mapping[str, Any]],
+    parameters: Mapping[str, Any],
+    trace_extra: Mapping[str, Any],
+    summary_extra: Mapping[str, Any],
+    artifact_root: Path,
+    outputs_by_name: Mapping[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Encode, bound, retain and publish one simulation trace.
+
+    Extracted from ``_execute_native_simulation`` so both solvers reach the
+    trace through one path (ADR-062). The schema, the byte cap, the digest,
+    the preview and the item keys the publisher reads are all here, once:
+    a MuJoCo run that wrote its own copy of this would be a second place for
+    ``artifact_kind`` or ``simulation_trace_preview`` to drift, and the
+    shell reads exactly those two.
+
+    ``trace_extra`` and ``summary_extra`` are the solver-specific halves --
+    motion observations for kinematics, the model's evidence for dynamics.
+    Everything else is identical by construction rather than by inspection.
+    """
+
+    trace = {
+        "schema": _SIMULATION_TRACE_SCHEMA,
+        "assembly_output": assembly_output,
+        "simulation_output": simulation_output,
+        "component_outputs": list(component_names),
+        "parameters": dict(parameters),
+        "frames": list(frames),
+        **dict(trace_extra),
+    }
+    encoded = json.dumps(
+        trace,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    if len(encoded) > _MAX_SIMULATION_TRACE_BYTES:
+        raise AssemblyCandidateError(
+            f"Simulation trace requires {len(encoded)} bytes; the accepted maximum is "
+            f"{_MAX_SIMULATION_TRACE_BYTES} bytes.",
+            details={
+                "stage": "simulation_trace",
+                "simulation_output": simulation_output,
+                "correction": "Increase time_step_s or shorten the time range.",
+            },
+        )
+    relative = Path("outputs") / "assembly-simulation-trace.json"
+    target = artifact_root / relative
+    target.write_bytes(encoded)
+    digest = hashlib.sha256(encoded).hexdigest()
+    summary = {
+        "simulation_output": simulation_output,
+        "parameters": dict(parameters),
+        "frame_count": len(frames),
+        "pose_count": len(frames) * len(component_names),
+        "artifact_schema": _SIMULATION_TRACE_SCHEMA,
+        "artifact_sha256": digest,
+        "artifact_bytes": len(encoded),
+        **dict(summary_extra),
+    }
+    simulation_item = outputs_by_name[simulation_output]
+    simulation_item.update(
+        {
+            "artifact_kind": "assembly_simulation_json",
+            "artifact_path": str(relative),
+            "artifact_schema": _SIMULATION_TRACE_SCHEMA,
+            "artifact_sha256": digest,
+            "artifact_bytes": len(encoded),
+            "frame_count": len(frames),
+            "pose_count": len(frames) * len(component_names),
+            "assembly_data": {"assembly_output": assembly_output, **summary},
+            # Published as CadexSimulationTracePreview. Its own key, not part
+            # of assembly_data: that dict is the validation record, and the
+            # preview is a sample of the trace, not a setting.
+            "simulation_trace_preview": _simulation_trace_preview(frames),
+        }
+    )
+    return summary
+
+
 def _execute_native_simulation(
     *,
     document: Any,
@@ -2429,73 +2515,30 @@ def _execute_native_simulation(
                 },
             )
 
-    trace = {
-        "schema": _SIMULATION_TRACE_SCHEMA,
-        "assembly_output": assembly_output,
-        "simulation_output": simulation_output,
-        "component_outputs": list(components),
-        "motion_outputs": [record["motion_output"] for record in motion_records],
-        "parameters": {
+    return _retain_simulation_trace(
+        assembly_output=assembly_output,
+        simulation_output=simulation_output,
+        component_names=list(components),
+        frames=frames,
+        parameters={
             "start_time_s": float(properties["start_time_s"]),
             "end_time_s": float(properties["end_time_s"]),
             "time_step_s": float(properties["time_step_s"]),
             "error_tolerance": float(properties["error_tolerance"]),
             "frames_per_second": int(properties["frames_per_second"]),
         },
-        "motion_observations": observations,
-        "frames": frames,
-    }
-    encoded = json.dumps(
-        trace,
-        ensure_ascii=True,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
-    if len(encoded) > _MAX_SIMULATION_TRACE_BYTES:
-        raise AssemblyCandidateError(
-            f"Simulation trace requires {len(encoded)} bytes; the accepted maximum is "
-            f"{_MAX_SIMULATION_TRACE_BYTES} bytes.",
-            details={
-                "stage": "simulation_trace",
-                "simulation_output": simulation_output,
-                "correction": "Increase time_step_s or shorten the time range.",
-            },
-        )
-    relative = Path("outputs") / "assembly-simulation-trace.json"
-    target = artifact_root / relative
-    target.write_bytes(encoded)
-    digest = hashlib.sha256(encoded).hexdigest()
-    summary = {
-        "simulation_output": simulation_output,
-        "motion_outputs": [record["motion_output"] for record in motion_records],
-        "parameters": dict(trace["parameters"]),
-        "native_code": 0,
-        "frame_count": len(frames),
-        "pose_count": len(frames) * len(components),
-        "motion_observations": observations,
-        "artifact_schema": _SIMULATION_TRACE_SCHEMA,
-        "artifact_sha256": digest,
-        "artifact_bytes": len(encoded),
-    }
-    simulation_item = outputs_by_name[simulation_output]
-    simulation_item.update(
-        {
-            "artifact_kind": "assembly_simulation_json",
-            "artifact_path": str(relative),
-            "artifact_schema": _SIMULATION_TRACE_SCHEMA,
-            "artifact_sha256": digest,
-            "artifact_bytes": len(encoded),
-            "frame_count": len(frames),
-            "pose_count": len(frames) * len(components),
-            "assembly_data": {"assembly_output": assembly_output, **summary},
-            # Published as CadexSimulationTracePreview. Its own key, not part
-            # of assembly_data: that dict is the validation record, and the
-            # preview is a sample of the trace, not a setting.
-            "simulation_trace_preview": _simulation_trace_preview(frames),
-        }
+        trace_extra={
+            "motion_outputs": [record["motion_output"] for record in motion_records],
+            "motion_observations": observations,
+        },
+        summary_extra={
+            "motion_outputs": [record["motion_output"] for record in motion_records],
+            "native_code": 0,
+            "motion_observations": observations,
+        },
+        artifact_root=artifact_root,
+        outputs_by_name=outputs_by_name,
     )
-    return summary
 
 
 def _subelement(component: Any, name: str, *, context: str) -> tuple[Any, str]:
