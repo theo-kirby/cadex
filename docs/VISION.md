@@ -145,3 +145,41 @@ deliverable (Phase 11), not a shell convenience (ADR-025).
   weeks; the characterization corpus is the unknown that sets the scale.
 - macOS notarization of a Rust app bundling an OCCT engine that spawns
   subprocesses (inherited open item, ADR-023).
+
+---
+
+## Branch `MJC` — dynamics and control `(ADR-060, ADR-063; 2026-07-30)`
+
+**This section describes the `MJC` branch only.** On `main` it does not
+apply: `main` has no dynamics, no MuJoCo dependency, and this section is not
+in its copy of the file. ADR-063 records why the branch is permanent and
+which way changes flow.
+
+ADR-060 extended the scope list above by two areas. They are stated here
+rather than folded into the numbered list, so that a sync from `main` lands
+as an insertion instead of a conflict:
+
+6. **Dynamics** — mass, inertia, gravity, contact and force. Not a
+   replacement for area 4's kinematics but its complement: kinematics
+   prescribes motion and reports where things end up, dynamics is given
+   inertia and forces and reports what the mechanism actually does. Both
+   exist; `api.motion` and `api.dynamics` are siblings, and a script uses
+   one or the other.
+7. **Control** — task definitions, offboard training, and trained policies
+   rolled out in-engine (`docs/MUJOCO.md` M6–M8). This is the genuine
+   direction change: Cadex becomes a robot design *and* control tool.
+
+**What does not change, and is the reason this fits at all.** A dynamics run
+publishes through the trace path that already existed — same schema, same
+`output_type`, no protocol op, no `shell/` diff. Principle 3 survives
+intact everywhere except one place, which §3.1 of `docs/MUJOCO.md` resolves
+explicitly: **a trained policy is an asset, not a derivation.** It cannot be
+rebuilt from the script and never will be, so it lives in `assets/` beside
+an imported STL, referenced by name and digest, while the script declares
+reproducibly *how* it was trained. The property that matters is preserved —
+a rollout of a fixed policy on a fixed model is deterministic.
+
+**The open question ADR-060 left for M5–M8.** "No user-accessible modeling
+tools" is clear about fillet buttons and says nothing about a **train**
+button, which is not a modeling tool but is still something a human presses.
+Unanswered, and it must be answered before M7 builds a UI for it.

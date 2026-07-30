@@ -1,9 +1,15 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
 Verified against source: 2026-07-30
-Status: **M0 recorded (ADR-060, ADR-061), M1 passed, M2 built (ADR-062).**
+Status: **M0 recorded (ADR-060, ADR-061), M1 passed, M2 closed (ADR-062).**
 M3 onward is plan, not built.
-Branch `MJC`.
+
+**Branch `MJC`, permanently (ADR-063).** This file, and everything it
+describes, exists on `MJC` and not on `main`. The branch is not awaiting a
+merge window: a user who is not going to simulate a mechanism should not
+build a physics engine or ship 53.5 MB of one. Changes flow `main` → `MJC`
+and never back; ADR-063 lists what a sync must not drop, and why a branch
+was chosen over a `WITH_DYNAMICS` build flag.
 
 This is the framework for adding **rigid-body dynamics** to Cadex on
 MuJoCo, and then following that capability all the way to its end: an agent
@@ -281,10 +287,19 @@ translator is `src/Mod/cadex/CadexDynamics.py`: pure Python, no FreeCAD,
 staged into the sandbox by filename, and the only module in the tree that
 may import `mujoco`.
 
-**Done.** The trace publishes through the path `api.simulation` already
-used — same `output_type`, same `artifact_kind`, no protocol change, no
-`shell/` diff. Engine suite 445 passed; the live cadexd gate runs a
-dynamics script end to end.
+**Done, and closed.** The trace publishes through the path `api.simulation`
+already used — same `output_type`, same `artifact_kind`, no protocol change,
+no `shell/` diff. Engine suite **447 passed** at closure (445 at the ADR, plus
+the two that came with the `describe_api` note and the `CadexDynamics`
+tidy); the live cadexd gate runs a dynamics script end to end; the packaged
+payload gate and `pixi run gate` both pass, which is what an empty `shell/`
+diff is worth proving rather than asserting.
+
+Closed 2026-07-30 with its two documentation debts paid: `docs/VISION.md`
+gained the scope ADR-060 owed it and `docs/ROADMAP.md` gained Phase 14, both
+as branch-marked appended blocks per ADR-063. **Nothing in M2 is left
+open.** What M2 deferred is named in ADR-062's "not in this slice" list and
+belongs to M3 or later — read that list before assuming a gap is a bug.
 
 **Nine things this slice learned by measuring, seven of which contradict
 what is written above or in the plan it came from.**
@@ -480,9 +495,14 @@ Ranked by how quietly they fail.
    like an OCCT bump, not a routine update.
 4. **Multi-threading.** Island parallelism has open upstream reproducibility
    issues. Single-threaded until proven otherwise. M3.
-5. **Loop extraction.** Which joints become tree edges and which become
-   equality constraints is not always obvious, and a bad split produces a
-   model that simulates but drifts. M2.
+5. ~~**Loop extraction.**~~ **Handled in M2**, and it was the predicted
+   hazard that behaved as predicted: the split is a breadth-first spanning
+   forest from the grounded components, everything else is an equality
+   constraint, and the drift is real — a driven four-bar sat 3 mm open on a
+   200 mm mechanism at MuJoCo's default `solref`, because equality
+   constraints are soft. Stiffened to two timesteps, it is 0.05 mm. What was
+   *not* predicted is that a body-anchored `connect` resolves its second
+   anchor through the reference configuration; closures go against sites.
 6. **Frame budget.** The 10 000-frame cap was sized for kinematics. An RL
    rollout blows through it. M3.
 7. **Scope creep into a UI.** M5–M8 want buttons — train, stop, load
@@ -491,13 +511,27 @@ Ranked by how quietly they fail.
 
 ## 6. Open questions
 
-- Does the script surface speak millimetres (consistent with the rest of
-  Cadex) or metres (consistent with MuJoCo defaults)? One of them requires
-  conversion at the boundary; the other requires it everywhere the user
-  looks.
-- Does dynamics extend `api.simulation` or become a sibling `api.dynamics`?
-  The trace schema is shared either way; the question is whether the
-  *authoring* surfaces should be.
+- ~~Does the script surface speak millimetres or metres?~~ — answered by M2:
+  **millimetres**, and kilograms-per-cubic-metre for density, which is the
+  one place the surface is already SI because that is how material densities
+  are quoted. The whole conversion lives in `CadexDynamics.py` and nowhere
+  else: the split rule is that the pure module does every arithmetic
+  operation *including every unit conversion*, and the worker does every
+  FreeCAD read and nothing else. `test_dynamics_units.py` was written before
+  the feature, per §3.2.
+- ~~Does dynamics extend `api.simulation` or become a sibling
+  `api.dynamics`?~~ — answered by M2 (ADR-062): **a sibling authoring
+  surface, sharing the output type.** Not a compromise but a forced move —
+  `cadex_animate._simulation_entries` selects on `artifact_kind ==
+  "assembly_simulation_json"` and on finding two bakes **neither**, clearing
+  the scene and dropping the Simulation panel into a message the UI never
+  shows. A sibling *type* would let a script declare a kinematics and a
+  dynamics run and silently lose the animation it already had. Sharing the
+  type puts both under the existing "exactly one simulation" rule, and mixing
+  `api.motion` with `api.dynamics` is refused.
+- **Where the frame budget goes when a rollout needs more than 10 000 frames**
+  — M3 splits solver step from trace step, which changes what the cap is
+  even counting. New, and it replaces the two answered above.
 - Where does the training run — a service we operate, or the user's own
   GPU box under their credentials? M7 has to answer this and it is as much
   a product question as a technical one.

@@ -198,3 +198,36 @@ tests and logging the decision; don't commit secrets or machine paths.
    client in the same PR. Being in one repo is not a licence to reach across
    the boundary in any other way.
 7. **Update `docs/ROADMAP.md` checkboxes** when a work item lands.
+
+## You are on branch `MJC` (ADR-063)
+
+**This section is on `MJC` only.** If you are reading it, you are on the
+permanent dynamics branch, not on `main`.
+
+`MJC` carries the MuJoCo dynamics arc — `docs/MUJOCO.md`, slices M0–M8. It
+is **not a feature branch awaiting a merge**. Do not merge it to `main`, do
+not open a PR against `main`, and do not read its absence from `main` as
+unfinished work. `main` stays free of MuJoCo so that a user who is not going
+to simulate a mechanism does not build or ship 53.5 MB of physics engine.
+
+Working rules on top of the change policy above:
+
+- **Changes flow `main` → `MJC`, never back.** If what you are fixing is not
+  dynamics-specific — a bug in the trace path, a payload prune, a doc that is
+  wrong on both branches — it belongs on `main` first and reaches here on the
+  next sync. Ask before landing such a fix here.
+- **Shared docs get appended, branch-marked blocks — not in-place rewrites.**
+  `VISION.md`, `ROADMAP.md` and this file each carry exactly one such block.
+  An insertion resolves on sync; a rewritten paragraph conflicts. Same rule
+  `docs/BLENDER-TREE.md` applies to the inherited shell tree, same reason.
+  `docs/DECISIONS.md` is the exception — it is append-only on both branches,
+  so conflicts there are expected and resolved in date order.
+- **Two invariants that are cheap to break by accident**, both test-pinned:
+  nothing in `shell/` imports mujoco, and `CadexDynamics.py` is reachable
+  from the sandboxed worker but never from `cadexd`
+  (`test_engine_purity_guardrails` asserts the import closure exactly).
+- **Verify dynamics work with `pixi run python -m pytest
+  src/Mod/cadex/cadex_tests`** — the `test_dynamics_*` suites run headless
+  with no build. Anything touching the payload still needs the packaged gate;
+  ADR-023's rule that a passing source tree proves nothing about a payload
+  is what caught the dangling `bin/python` in M0.

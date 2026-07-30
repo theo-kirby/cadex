@@ -4553,3 +4553,70 @@ first solved frame, and the arm then swings from rest at 0.095, 0.393,
 0.882 rad over three samples — growing as t², which is what a constant torque
 on a mass does and what nothing in that script prescribed. `shell/` diff:
 empty. Protocol change: none.
+
+---
+
+## ADR-063 — `MJC` is a permanent branch, not a merge candidate (2026-07-30)
+
+**Decision.** The MuJoCo dynamics arc — `docs/MUJOCO.md` slices M0–M8,
+ADR-060, ADR-061, ADR-062 and everything after them — lives on the branch
+`MJC` **permanently**. It is not a feature branch awaiting a merge window.
+`main` stays free of MuJoCo, and a build from `main` neither carries the
+dependency nor pays for it.
+
+**Rationale.** Dynamics is not free to carry. The payload grows 53.5 MB
+(ADR-061) for a wheel that a user modeling a bracket will never import, and
+that wheel arrives through `CARRIED_PYPI_PACKAGES` — a named exception in
+`relocate_conda_environment.py` that exists only because the pixi manifest
+has not been re-solvable since conda-forge moved past our `occt ==7.8.1`
+pin. Someone who is not going to simulate a mechanism should not build a
+physics engine, ship one, or inherit that exception.
+
+That argument is about cost, and cost alone would also be satisfied by a
+build flag. A flag was not chosen, for the reason VISION principle 1 gives:
+prefer the design that removes a concept over the one that adds a switch. A
+`WITH_DYNAMICS` option would put a second configuration of the product into
+every gate, every payload test and every digest argument — two of something,
+which the non-goals list forbids in the finished product. A branch costs a
+periodic sync and nothing else.
+
+It also keeps ADR-060's scope decision honest. That ADR extended the product
+past "CAD" into task definitions, offboard training and control policies —
+a real direction change, approved, but one whose consequences are still being
+discovered a slice at a time. A branch is where a direction change belongs
+until the arc it opened is finished.
+
+**Consequences.**
+
+- **Changes flow `main` → `MJC`, never back.** `MJC` syncs from `main`;
+  nothing on `MJC` is merged to `main`. Work discovered on `MJC` that is
+  *not* dynamics-specific — a bug in the trace path, a payload prune fix —
+  belongs on `main` first, and reaches `MJC` on the next sync.
+- **What `MJC` owns**, and what a sync must therefore never drop:
+  `src/Mod/cadex/CadexDynamics.py`, its row in
+  `src/Mod/cadex/CMakeLists.txt`, the `api.dynamics` / `api.body` surface in
+  `cadex_assembly_api.py` and `cadex_assembly_worker.py`, the ten
+  `cadex_tests/test_dynamics_*.py` suites and their fixtures, `docs/MUJOCO.md`,
+  ADR-060…ADR-063, the mujoco lines in `pixi.toml` / `pixi.lock`, and
+  `CARRIED_PYPI_PACKAGES` in
+  `package/engine/scripts/relocate_conda_environment.py`.
+- **Shared docs diverge, and are written to minimise it.** `VISION.md`,
+  `ROADMAP.md` and `CLAUDE.md` differ between the branches. On `MJC` the
+  dynamics material is an **appended, branch-marked block** in each rather
+  than an in-place rewrite of an existing list, because an insertion resolves
+  on sync and a rewritten paragraph conflicts. This is the same rule
+  `CLAUDE.md` already states for the inherited `shell/` tree, applied to our
+  own docs for the same reason.
+- **`docs/DECISIONS.md` is the exception that cannot follow that rule**, since
+  it is append-only and both branches append. Sync conflicts there are
+  expected, mechanical, and resolved by keeping both sides in date order.
+- **The seam that made this possible is the same one M1 proved.** Dynamics
+  needed no protocol op, no response key and no `shell/` diff (ADR-062), so
+  the branch delta is confined to the engine and its docs. A dynamics arc
+  that had required protocol changes could not have been branched this
+  cheaply — which is an argument for keeping M3–M8 inside the existing trace
+  contract wherever it is honest to do so.
+- **Not decided here:** whether the arc ever returns to `main`. If M5 (MJCF
+  export with exact OCCT inertias) proves out as the independently shippable
+  capability `docs/MUJOCO.md` argues it is, that is the natural occasion to
+  revisit — and it would be a new ADR, not an assumption anyone may act on.

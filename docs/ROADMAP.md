@@ -734,3 +734,75 @@ What makes them experimental, and what would settle it:
   0.49 s per project open.
 - **Linux and Windows shell bundles.** The engine payload builds for both;
   only macOS arm64 has shell CI. Moot once Phase 12 lands — revisit then.
+
+---
+
+## Phase 14 — Dynamics and control, on branch `MJC` `(ADR-060, ADR-063; 2026-07-30)`
+
+**This phase exists on the `MJC` branch only** and is deliberately absent
+from the dependency graph at the top of this file. It depends on nothing in
+Phases 0–13 beyond what already shipped, and nothing in Phases 0–13 depends
+on it. ADR-063 records why the branch is permanent, which way changes flow
+(`main` → `MJC`, never back), and what a sync must not drop.
+
+**Goal:** rigid-body dynamics on MuJoCo, and then the whole arc that
+capability opens — a mechanism designed in Cadex, exported, trained, and
+played back walking. The framework, the slices, the hazards and the measured
+facts are `docs/MUJOCO.md`; only status lives here.
+
+Slices are numbered **M0–M8** rather than sub-phases, to avoid colliding
+with the phase numbers above. Every slice is a resting place.
+
+- [x] **M0 — Decide, depend, deliver** (ADR-060, ADR-061). Scope approved
+      including the M5–M8 direction change; `mujoco-python` 3.10.0 exactly
+      pinned. The dependency could not be added as conda — the manifest has
+      not been re-solvable since conda-forge moved past `occt ==7.8.1` — so
+      it arrives as a pypi wheel carried by name through
+      `CARRIED_PYPI_PACKAGES`. The payload's import gate failed on its first
+      run and found a **dangling `bin/python` symlink** the payload had been
+      shipping for as long as the prune has existed, unnoticed because
+      discovery goes through `cadex-engine.json` and names `freecadcmd`.
+      ADR-023 paying out exactly as written.
+- [x] **M1 — Prove the seam** (2026-07-30). A double pendulum, chosen over a
+      falling box because its links pass through full rotations and so
+      exercise the quaternion-hemisphere flip `cadex_animate` lists as one of
+      its five silent failure modes. Trace played in the shell, unmodified.
+- [x] **M2 — `assembly` → `mjSpec`** (ADR-062). `api.dynamics` / `api.body`,
+      exact OCCT inertia, a breadth-first spanning forest from the grounded
+      components, loop closures against sites, and gear/belt/screw couplings
+      whose laws were **measured against OndselSolver** rather than derived.
+      `rack_pinion` refused. Collision deferred to M3 (`model.ngeom == 0` is
+      a test). No protocol change, no `shell/` diff.
+- [ ] **M3 — Dynamics for real.** Contact and collision geometry via convex
+      decomposition; friction and restitution; the cross-restart determinism
+      gate with MuJoCo forced single-threaded; solver step split from trace
+      step, and a frame budget sized for rollouts rather than kinematics.
+- [ ] **M4 — Actuators and closed loop.** The last slice that is
+      unambiguously CAD.
+- [ ] **M5 — MJCF export.** Independently shippable, and the cheapest slice
+      in the arc: no solver loop, no determinism problem, no contact tuning.
+      If the arc ever rejoins `main`, ADR-063 names this as the occasion to
+      revisit — as a new ADR, not an assumption.
+- [ ] **M6 — A task is part of the script.** Observation, action, reward,
+      termination, randomisation — all data, all declarative.
+- [ ] **M7 — Training happens elsewhere.** Offboard by design; training does
+      not run on the user's laptop and that is a clean boundary, not a
+      compromise.
+- [ ] **M8 — The policy comes home.** A rollout is a trace, played by the
+      shell code that has existed since ADR-050.
+
+**Exit criteria (the arc's, not a slice's):** "design me a quadruped and
+teach it to walk" is a sequence of chat turns that terminates in a viewport
+playing a learned gait. Each slice carries its own "done when", in
+`docs/MUJOCO.md` §4.
+
+**Standing constraints for this phase**, both from ADR-062 and both cheap to
+lose by accident:
+
+- **Nothing in `shell/` imports mujoco, ever.** A physics authoring path in
+  the shell violates "nothing happens outside the script" the same way the
+  deleted bpy modes did.
+- **`CadexDynamics.py` is reachable from the sandboxed worker and never from
+  `cadexd`.** `test_engine_purity_guardrails` asserts the import closure
+  equals `DECLARED_ENGINE_MODULES` exactly; a service whose job is reading
+  NDJSON off a pipe does not need 53 MB of physics engine resident.
