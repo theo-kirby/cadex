@@ -50,6 +50,14 @@ _SUBELEMENT = re.compile(r"^(Face|Edge|Vertex)([1-9][0-9]*)$")
 _REFERENCE_METADATA: Mapping[tuple[str, str], Mapping[str, Any]] = MappingProxyType({})
 _SIMULATION_TRACE_SCHEMA = "cadex-assembly-simulation-trace-v1"
 _MAX_SIMULATION_TRACE_BYTES = 64 * 1024 * 1024
+#: An exported MuJoCo model is not in a Cadex schema, and saying so is the
+#: point: the file is MJCF, MuJoCo's own format, and the version that
+#: matters for reading it is MuJoCo's rather than ours. What is versioned
+#: here is the *artifact contract* -- one XML file, one keyframe named
+#: ``solved``, collision geoms only -- which is what a reader would need
+#: told if it ever changed (ADR-066).
+_MJCF_SCHEMA = "mujoco-mjcf-v1"
+_MJCF_ARTIFACT_KIND = "assembly_mjcf_xml"
 _EXPLODED_VIEW_SCHEMA = "cadex-assembly-exploded-view-v1"
 _ASSEMBLY_HIERARCHY_SCHEMA = "cadex-assembly-source-hierarchy-v1"
 _MAX_HIERARCHY_NODES = 512
@@ -1757,10 +1765,61 @@ def _dynamics_contract(
     the graph it is handed rather than the graph it hopes was authored.
     """
 
-    properties = _properties(simulation_value, "dynamics")
+    _mujoco_graph_contract(
+        simulation_output,
+        simulation_value,
+        assembly_value=assembly_value,
+        operation="dynamics",
+        subject="Dynamics",
+        stage="dynamics_graph",
+    )
+
+
+def _mjcf_contract(
+    output_name: str,
+    value: DomainValue,
+    *,
+    assembly_value: DomainValue,
+) -> None:
+    """The same graph an ``api.dynamics`` needs, exported instead of run."""
+
+    _mujoco_graph_contract(
+        output_name,
+        value,
+        assembly_value=assembly_value,
+        operation="mjcf",
+        subject="MJCF",
+        stage="mjcf_graph",
+    )
+
+
+def _mujoco_graph_contract(
+    output_name: str,
+    value: DomainValue,
+    *,
+    assembly_value: DomainValue,
+    operation: str,
+    subject: str,
+    stage: str,
+) -> None:
+    """Tier-3 re-validation of a MuJoCo model graph, whatever it is for.
+
+    Every body, collision shape, actuator and joint_dynamics really came
+    from the API that makes it, and targets a component or joint this
+    assembly lists. A ``DomainValue`` is a plain object and a script can
+    construct one that looks close enough, so this is not a restatement of
+    what ``api.dynamics`` already checked -- it is the check that the thing
+    reaching the worker went through ``api.dynamics`` at all.
+
+    Shared with ``api.mjcf`` because the graph is identical: an exported
+    model and a simulated one are the same bodies, the same actuators, the
+    same one-per-component rule (M5 phase 3).
+    """
+
+    properties = _properties(value, operation)
     bodies = list(properties.get("bodies") or [])
     components = list(_properties(assembly_value, "assembly").get("components") or [])
-    component_ids = {id(value) for value in components}
+    component_ids = {id(item) for item in components}
     covered: list[int] = []
     for index, body in enumerate(bodies):
         if (
@@ -1771,21 +1830,21 @@ def _dynamics_contract(
             or len(body.arguments) != 1
         ):
             raise AssemblyCandidateError(
-                f"Dynamics body {index} must come from api.body.",
-                details={"stage": "dynamics_graph"},
+                f"{subject} body {index} must come from api.body.",
+                details={"stage": stage},
             )
         component = body.arguments[0]
         if id(component) not in component_ids:
             raise AssemblyCandidateError(
-                f"Dynamics output {simulation_output!r} gives mass to a component "
+                f"{subject} output {output_name!r} gives mass to a component "
                 "that is not listed in this assembly.",
-                details={"stage": "dynamics_graph", "body_index": index},
+                details={"stage": stage, "body_index": index},
             )
         if id(component) in covered:
             raise AssemblyCandidateError(
-                f"Dynamics output {simulation_output!r} gives one component two "
+                f"{subject} output {output_name!r} gives one component two "
                 "densities.",
-                details={"stage": "dynamics_graph", "body_index": index},
+                details={"stage": stage, "body_index": index},
             )
         for shape_index, shape in enumerate(
             list(_properties(body, "body").get("collision") or [])
@@ -1797,49 +1856,44 @@ def _dynamics_contract(
                 or shape.output_type != "collision"
             ):
                 raise AssemblyCandidateError(
-                    f"Dynamics body {index} collision shape {shape_index} must "
+                    f"{subject} body {index} collision shape {shape_index} must "
                     "come from api.collision.",
-                    details={"stage": "dynamics_graph", "body_index": index},
+                    details={"stage": stage, "body_index": index},
                 )
         covered.append(id(component))
-    # Provenance, exactly as it is checked for collision shapes above: each
-    # entry came from the API that makes it, and targets a joint this
-    # assembly lists. The worker validates the graph it is handed rather
-    # than the graph it hopes was authored -- a DomainValue is a plain
-    # object and a script can construct one that looks close enough.
     joints = list(_properties(assembly_value, "assembly").get("joints") or [])
-    joint_ids = {id(value) for value in joints}
+    joint_ids = {id(item) for item in joints}
     for parameter in ("actuators", "joint_dynamics"):
-        operation = "actuator" if parameter == "actuators" else "joint_dynamics"
+        maker = "actuator" if parameter == "actuators" else "joint_dynamics"
         for index, entry in enumerate(list(properties.get(parameter) or [])):
             if (
                 not isinstance(entry, DomainValue)
                 or entry.domain != "assembly"
-                or entry.operation != operation
-                or entry.output_type != operation
+                or entry.operation != maker
+                or entry.output_type != maker
                 or len(entry.arguments) != 1
             ):
                 raise AssemblyCandidateError(
-                    f"Dynamics {parameter} {index} must come from api.{operation}.",
-                    details={"stage": "dynamics_graph", parameter: index},
+                    f"{subject} {parameter} {index} must come from api.{maker}.",
+                    details={"stage": stage, parameter: index},
                 )
             if id(entry.arguments[0]) not in joint_ids:
                 raise AssemblyCandidateError(
-                    f"Dynamics output {simulation_output!r} targets a joint that "
+                    f"{subject} output {output_name!r} targets a joint that "
                     "is not listed in this assembly.",
-                    details={"stage": "dynamics_graph", parameter: index},
+                    details={"stage": stage, parameter: index},
                 )
     if len(covered) != len(components):
         raise AssemblyCandidateError(
-            f"Dynamics output {simulation_output!r} needs one api.body per "
+            f"{subject} output {output_name!r} needs one api.body per "
             f"component: {len(components)} component(s), {len(covered)} body value(s).",
             details={
-                "stage": "dynamics_graph",
-                "simulation_output": simulation_output,
+                "stage": stage,
+                "output": output_name,
                 "correction": (
                     "Create an api.body(component, density_kg_m3=...) for every "
-                    "component in the assembly and pass them all to "
-                    "api.dynamics. Steel is 7850, aluminium 2700."
+                    f"component in the assembly and pass them all to "
+                    f"api.{operation}. Steel is 7850, aluminium 2700."
                 ),
             },
         )
@@ -1958,6 +2012,42 @@ def _simulation_contract(
             )
         drives.add(drive)
     return simulation_output, simulation_value, motion_outputs
+
+
+def _mjcf_outputs_contract(
+    raw_result: Mapping[str, Any],
+    *,
+    assembly_value: DomainValue,
+) -> list[tuple[str, DomainValue]]:
+    """Every ``api.mjcf`` output, checked and returned in declaration order.
+
+    Deliberately *not* under the "exactly one" rule ``api.simulation`` and
+    ``api.dynamics`` share. That rule exists because ``cadex_animate`` bakes
+    one ``assembly_simulation_json`` and silently bakes neither on finding
+    two; nothing bakes an MJCF file, so two exports of one assembly -- under
+    Earth gravity and lunar, say -- is a reasonable script and each names
+    its own artifact (ADR-066).
+    """
+
+    exports = [
+        (name, value)
+        for name, value in raw_result.items()
+        if isinstance(value, DomainValue) and value.output_type == "mjcf"
+    ]
+    for output_name, value in exports:
+        if value.operation != "mjcf" or len(value.arguments) != 1:
+            raise AssemblyCandidateError(
+                f"MJCF output {output_name!r} must come from api.mjcf.",
+                details={"stage": "mjcf_graph", "output": output_name},
+            )
+        if value.arguments[0] is not assembly_value:
+            raise AssemblyCandidateError(
+                f"MJCF output {output_name!r} must consume the exact returned "
+                "api.assembly value.",
+                details={"stage": "mjcf_graph", "output": output_name},
+            )
+        _mjcf_contract(output_name, value, assembly_value=assembly_value)
+    return exports
 
 
 def _exploded_view_contract(
@@ -2418,38 +2508,29 @@ def _retain_simulation_trace(
         separators=(",", ":"),
         allow_nan=False,
     ).encode("utf-8")
-    if len(encoded) > _MAX_SIMULATION_TRACE_BYTES:
-        raise AssemblyCandidateError(
-            f"Simulation trace requires {len(encoded)} bytes; the accepted maximum is "
-            f"{_MAX_SIMULATION_TRACE_BYTES} bytes.",
-            details={
-                "stage": "simulation_trace",
-                "simulation_output": simulation_output,
-                "correction": "Increase time_step_s or shorten the time range.",
-            },
-        )
-    relative = Path("outputs") / "assembly-simulation-trace.json"
-    target = artifact_root / relative
-    target.write_bytes(encoded)
-    digest = hashlib.sha256(encoded).hexdigest()
+    retained = _retain_artifact(
+        output_name=simulation_output,
+        relative=Path("outputs") / "assembly-simulation-trace.json",
+        payload=encoded,
+        artifact_kind="assembly_simulation_json",
+        schema=_SIMULATION_TRACE_SCHEMA,
+        maximum_bytes=_MAX_SIMULATION_TRACE_BYTES,
+        subject="Simulation trace",
+        stage="simulation_trace",
+        correction="Increase time_step_s or shorten the time range.",
+        artifact_root=artifact_root,
+        outputs_by_name=outputs_by_name,
+    )
     summary = {
         "simulation_output": simulation_output,
         "parameters": dict(parameters),
         "frame_count": len(frames),
         "pose_count": len(frames) * len(component_names),
-        "artifact_schema": _SIMULATION_TRACE_SCHEMA,
-        "artifact_sha256": digest,
-        "artifact_bytes": len(encoded),
+        **retained,
         **dict(summary_extra),
     }
-    simulation_item = outputs_by_name[simulation_output]
-    simulation_item.update(
+    outputs_by_name[simulation_output].update(
         {
-            "artifact_kind": "assembly_simulation_json",
-            "artifact_path": str(relative),
-            "artifact_schema": _SIMULATION_TRACE_SCHEMA,
-            "artifact_sha256": digest,
-            "artifact_bytes": len(encoded),
             "frame_count": len(frames),
             "pose_count": len(frames) * len(component_names),
             "assembly_data": {"assembly_output": assembly_output, **summary},
@@ -2460,6 +2541,60 @@ def _retain_simulation_trace(
         }
     )
     return summary
+
+
+def _retain_artifact(
+    *,
+    output_name: str,
+    relative: Path,
+    payload: bytes,
+    artifact_kind: str,
+    schema: str,
+    maximum_bytes: int,
+    subject: str,
+    stage: str,
+    correction: str,
+    artifact_root: Path,
+    outputs_by_name: Mapping[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Bound, write, digest and publish one output's retained bytes.
+
+    Extracted from ``_retain_simulation_trace`` for exactly the reason that
+    function's own docstring gives about not having two places for
+    ``artifact_kind`` to drift (M5 phase 3): an MJCF export writes a
+    different payload under a different schema with a different cap, and
+    everything *around* those three is identical by construction rather
+    than by inspection. Returns the five ``artifact_*`` keys, which the
+    caller folds into its own summary and which are also set on the output
+    item here so no caller can retain bytes and forget to declare them.
+    """
+
+    if len(payload) > maximum_bytes:
+        raise AssemblyCandidateError(
+            f"{subject} requires {len(payload)} bytes; the accepted maximum is "
+            f"{maximum_bytes} bytes.",
+            details={
+                "stage": stage,
+                "simulation_output": output_name,
+                "correction": correction,
+            },
+        )
+    (artifact_root / relative).write_bytes(payload)
+    declared = {
+        "artifact_kind": artifact_kind,
+        "artifact_path": str(relative),
+        "artifact_schema": schema,
+        "artifact_sha256": hashlib.sha256(payload).hexdigest(),
+        "artifact_bytes": len(payload),
+    }
+    outputs_by_name[output_name].update(declared)
+    # The summary half describes the *bytes* and not where they landed: the
+    # item declares the kind and the path, and a published validation record
+    # carrying a filesystem path would be one more thing to keep true.
+    return {
+        key: declared[key]
+        for key in ("artifact_schema", "artifact_sha256", "artifact_bytes")
+    }
 
 
 def _execute_native_simulation(
@@ -2676,6 +2811,132 @@ def _execute_native_simulation(
     )
 
 
+def _mujoco_model_inputs(
+    *,
+    output_name: str,
+    properties: Mapping[str, Any],
+    component_outputs: Mapping[int, str],
+    components: Mapping[str, Any],
+    component_data: Mapping[str, Mapping[str, Any]],
+    component_placements: Mapping[str, Mapping[str, Any]],
+    joint_data: Mapping[str, Mapping[str, Any]],
+    joint_outputs: Mapping[int, str],
+    operation: str,
+) -> dict[str, Any]:
+    """Read one solved assembly into the plain dicts CadexDynamics takes.
+
+    This is the whole of the worker's share of a MuJoCo model, and it is
+    *reading*: densities off the graph, mass properties off the solids,
+    solved placements and component-local connector frames off the objects
+    FreeCAD just solved. Everything numeric -- the tree, every unit
+    conversion, the model itself -- happens in :mod:`CadexDynamics`, which
+    imports no FreeCAD and can be tested without one.
+
+    The frames it hands over are ``local_frame`` composed with the solved
+    placement, never ``global_frame``: ``setJointConnectors`` records the
+    latter during the joint loop, before ``assembly.solve`` has run, so it
+    is a snapshot of a partially-solved state that depends on the order the
+    joints appear in the script. A model built from it compiles, runs, and
+    drifts (hazard 1). An export inherits that hazard unchanged, which is
+    the reason it inherits this function rather than a copy of it.
+    """
+
+    import CadexDynamics
+
+    densities: dict[str, float] = {}
+    collision_shapes: dict[str, list[dict[str, Any]]] = {}
+    for body in list(properties.get("bodies") or []):
+        name = component_outputs[id(body.arguments[0])]
+        body_properties = _properties(body, "body")
+        densities[name] = float(body_properties.get("density_kg_m3"))
+        collision_shapes[name] = [
+            dict(_properties(shape, "collision"))
+            for shape in list(body_properties.get("collision") or [])
+        ]
+
+    model_components: list[dict[str, Any]] = []
+    for name, component in components.items():
+        context = f"{operation} body {name!r}"
+        shape = _component_local_shape(component, context=context)
+        readings = _solid_inertia_readings(shape, context=context)
+        try:
+            inertial = CadexDynamics.body_inertial(
+                readings, densities[name], context=context
+            )
+            # The deflection is resolved in the pure module, not here: the
+            # worker cannot tessellate without a number and cannot choose
+            # one without becoming a second place the default lives. None
+            # means this body is made of primitives and never needs the
+            # BREP at all, which is the case that must stay free.
+            deflection = CadexDynamics.collision_deflection_mm(
+                collision_shapes[name], context=context
+            )
+        except CadexDynamics.DynamicsError as error:
+            raise _dynamics_failure(output_name, error, operation=operation) from error
+        collision: dict[str, Any] = {
+            "shapes": collision_shapes[name],
+            "mesh": None,
+        }
+        if deflection is not None:
+            collision["mesh"] = _collision_mesh_reading(
+                shape, deflection, context=context
+            )
+        model_components.append(
+            {
+                "name": name,
+                "grounded": bool(component_data[name]["grounded"]),
+                "flexible": bool(component_data[name]["flexible"]),
+                "solved_matrix": list(component_placements[name]["matrix"]),
+                "inertial": inertial,
+                "collision": collision,
+            }
+        )
+
+    model_joints = [
+        {
+            "name": joint_output,
+            "kind": str(data["kind"]),
+            "suppressed": bool(data["suppressed"]),
+            "parameters": dict(data["parameters"] or {}),
+            "length_limits_mm": data["length_limits_mm"],
+            "angle_limits_degrees": data["angle_limits_degrees"],
+            "connectors": [
+                {
+                    "component": str(connector["component_output"]),
+                    "local_matrix": list(connector["local_frame"]["matrix"]),
+                }
+                for connector in list(data["connectors"])
+            ],
+        }
+        for joint_output, data in joint_data.items()
+    ]
+
+    # Actuation parameters come off the graph, never off FreeCAD -- there is
+    # nothing here to read out of a document -- so this forwards property
+    # dicts and computes nothing. That is what keeps the M2 split rule
+    # holding through later slices: every unit conversion is in
+    # CadexDynamics, and the worker's only job is to say which joint each
+    # entry meant.
+    return {
+        "components": model_components,
+        "joints": model_joints,
+        "joint_dynamics": [
+            {
+                "joint": joint_outputs[id(entry.arguments[0])],
+                **_properties(entry, "joint_dynamics"),
+            }
+            for entry in list(properties.get("joint_dynamics") or [])
+        ],
+        "actuators": [
+            {
+                "joint": joint_outputs[id(entry.arguments[0])],
+                **_properties(entry, "actuator"),
+            }
+            for entry in list(properties.get("actuators") or [])
+        ],
+    }
+
+
 def _execute_dynamics_simulation(
     *,
     assembly_output: str,
@@ -2710,94 +2971,21 @@ def _execute_dynamics_simulation(
     import CadexDynamics
 
     properties = _properties(simulation_value, "dynamics")
-    densities: dict[str, float] = {}
-    collision_shapes: dict[str, list[dict[str, Any]]] = {}
-    for body in list(properties.get("bodies") or []):
-        name = component_outputs[id(body.arguments[0])]
-        body_properties = _properties(body, "body")
-        densities[name] = float(body_properties.get("density_kg_m3"))
-        collision_shapes[name] = [
-            dict(_properties(shape, "collision"))
-            for shape in list(body_properties.get("collision") or [])
-        ]
-
-    dynamics_components: list[dict[str, Any]] = []
-    for name, component in components.items():
-        context = f"dynamics body {name!r}"
-        shape = _component_local_shape(component, context=context)
-        readings = _solid_inertia_readings(shape, context=context)
-        try:
-            inertial = CadexDynamics.body_inertial(
-                readings, densities[name], context=context
-            )
-            # The deflection is resolved in the pure module, not here: the
-            # worker cannot tessellate without a number and cannot choose
-            # one without becoming a second place the default lives. None
-            # means this body is made of primitives and never needs the
-            # BREP at all, which is the case that must stay free.
-            deflection = CadexDynamics.collision_deflection_mm(
-                collision_shapes[name], context=context
-            )
-        except CadexDynamics.DynamicsError as error:
-            raise _dynamics_failure(simulation_output, error) from error
-        collision: dict[str, Any] = {
-            "shapes": collision_shapes[name],
-            "mesh": None,
-        }
-        if deflection is not None:
-            collision["mesh"] = _collision_mesh_reading(
-                shape, deflection, context=context
-            )
-        dynamics_components.append(
-            {
-                "name": name,
-                "grounded": bool(component_data[name]["grounded"]),
-                "flexible": bool(component_data[name]["flexible"]),
-                "solved_matrix": list(component_placements[name]["matrix"]),
-                "inertial": inertial,
-                "collision": collision,
-            }
-        )
-
-    dynamics_joints = [
-        {
-            "name": joint_output,
-            "kind": str(data["kind"]),
-            "suppressed": bool(data["suppressed"]),
-            "parameters": dict(data["parameters"] or {}),
-            "length_limits_mm": data["length_limits_mm"],
-            "angle_limits_degrees": data["angle_limits_degrees"],
-            "connectors": [
-                {
-                    "component": str(connector["component_output"]),
-                    "local_matrix": list(connector["local_frame"]["matrix"]),
-                }
-                for connector in list(data["connectors"])
-            ],
-        }
-        for joint_output, data in joint_data.items()
-    ]
-
-    # Actuation parameters come off the graph, never off FreeCAD -- there is
-    # nothing here to read out of a document -- so this loop forwards
-    # property dicts and computes nothing. That is what keeps the M2 split
-    # rule holding through a second slice: every unit conversion in M4 is in
-    # CadexDynamics, and the worker's only job is to say which joint each
-    # entry meant.
-    dynamics_joint_dynamics = [
-        {
-            "joint": joint_outputs[id(entry.arguments[0])],
-            **_properties(entry, "joint_dynamics"),
-        }
-        for entry in list(properties.get("joint_dynamics") or [])
-    ]
-    dynamics_actuators = [
-        {
-            "joint": joint_outputs[id(entry.arguments[0])],
-            **_properties(entry, "actuator"),
-        }
-        for entry in list(properties.get("actuators") or [])
-    ]
+    model_inputs = _mujoco_model_inputs(
+        output_name=simulation_output,
+        properties=properties,
+        component_outputs=component_outputs,
+        components=components,
+        component_data=component_data,
+        component_placements=component_placements,
+        joint_data=joint_data,
+        joint_outputs=joint_outputs,
+        operation="dynamics",
+    )
+    dynamics_components = model_inputs["components"]
+    dynamics_joints = model_inputs["joints"]
+    dynamics_joint_dynamics = model_inputs["joint_dynamics"]
+    dynamics_actuators = model_inputs["actuators"]
 
     start_time = float(properties["start_time_s"])
     end_time = float(properties["end_time_s"])
@@ -2890,15 +3078,132 @@ def _execute_dynamics_simulation(
     )
 
 
-def _dynamics_failure(
-    simulation_output: str, error: Any
-) -> AssemblyCandidateError:
-    """One DynamicsError, as a candidate failure the model can act on."""
+def _execute_mjcf_export(
+    *,
+    assembly_output: str,
+    output_name: str,
+    value: DomainValue,
+    component_outputs: Mapping[int, str],
+    components: Mapping[str, Any],
+    component_data: Mapping[str, Mapping[str, Any]],
+    component_placements: Mapping[str, Mapping[str, Any]],
+    joint_data: Mapping[str, Mapping[str, Any]],
+    joint_outputs: Mapping[int, str],
+    artifact_root: Path,
+    outputs_by_name: Mapping[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Export the assembly as one MJCF file (docs/MUJOCO.md M5, ADR-066).
 
+    The same reading ``_execute_dynamics_simulation`` does, through the same
+    ``_mujoco_model_inputs``, into the same ``build_model`` -- and then
+    ``export_mjcf`` instead of ``simulate``. Nothing is integrated, so there
+    is no time range, no frame budget and no trace: what leaves is one
+    self-contained XML file carrying exact OCCT inertia and a keyframe at
+    the pose the assembly solver produced.
+
+    Each export names its artifact from its own output, unlike the trace's
+    single hardcoded filename: a script may declare more than one
+    ``api.mjcf`` and two of them writing to one path would leave the second
+    silently winning.
+    """
+
+    import CadexDynamics
+
+    properties = _properties(value, "mjcf")
+    model_inputs = _mujoco_model_inputs(
+        output_name=output_name,
+        properties=properties,
+        component_outputs=component_outputs,
+        components=components,
+        component_data=component_data,
+        component_placements=component_placements,
+        joint_data=joint_data,
+        joint_outputs=joint_outputs,
+        operation="mjcf",
+    )
+    # ``None`` means the script did not say, so the module's own default
+    # applies -- read from the module rather than restated here, the same
+    # rule the collision deflection follows.
+    gravity = properties.get("gravity_m_s2")
+    solver_step = properties.get("solver_step_s")
+    try:
+        built = CadexDynamics.build_model(
+            model_inputs["components"],
+            model_inputs["joints"],
+            gravity_m_s2=(
+                CadexDynamics.DEFAULT_GRAVITY_M_S2
+                if gravity is None
+                else [float(item) for item in gravity]
+            ),
+            time_step_s=(
+                CadexDynamics.DEFAULT_TIME_STEP_S
+                if solver_step is None
+                else float(solver_step)
+            ),
+            joint_dynamics=model_inputs["joint_dynamics"],
+            actuators=model_inputs["actuators"],
+        )
+        exported = CadexDynamics.export_mjcf(
+            built, context=f"assembly output {assembly_output!r}"
+        )
+    except CadexDynamics.DynamicsError as error:
+        raise _dynamics_failure(output_name, error, operation="mjcf") from error
+
+    evidence = dict(exported["evidence"])
+    evidence.update(
+        {
+            "solver_step_s": float(built["time_step_s"]),
+            "gravity_m_s2": list(built["gravity_m_s2"]),
+            "solver_disableflags": int(built["disableflags"]),
+            "solver_enableflags": int(built["enableflags"]),
+            "solver_integrator": "implicitfast",
+        }
+    )
+    model = CadexDynamics.model_evidence(built, model_inputs["components"])
+    retained = _retain_artifact(
+        output_name=output_name,
+        relative=Path("outputs") / f"{output_name}-model.xml",
+        payload=exported["xml"],
+        artifact_kind=_MJCF_ARTIFACT_KIND,
+        schema=_MJCF_SCHEMA,
+        maximum_bytes=CadexDynamics.MAXIMUM_MJCF_BYTES,
+        subject="MJCF model",
+        stage="mjcf_artifact",
+        correction=(
+            "Collision meshes are written into the file itself. Raise the "
+            "collision deflection, or use primitive collision shapes for the "
+            "parts that do not need a mesh."
+        ),
+        artifact_root=artifact_root,
+        outputs_by_name=outputs_by_name,
+    )
+    summary = {
+        "assembly_output": assembly_output,
+        "mjcf_output": output_name,
+        "component_outputs": list(components),
+        **retained,
+        "mjcf": evidence,
+        "dynamics": model,
+    }
+    outputs_by_name[output_name]["assembly_data"] = summary
+    return summary
+
+
+def _dynamics_failure(
+    simulation_output: str, error: Any, *, operation: str = "dynamics"
+) -> AssemblyCandidateError:
+    """One DynamicsError, as a candidate failure the model can act on.
+
+    ``operation`` names which surface asked, because a refusal that says
+    "Dynamics output" about an ``api.mjcf`` sends a reader looking for a
+    simulation that is not in the script (M5 phase 3).
+    """
+
+    subject = "MJCF" if operation == "mjcf" else "Dynamics"
     return AssemblyCandidateError(
-        f"Dynamics output {simulation_output!r} could not be built: {error}",
+        f"{subject} output {simulation_output!r} could not be built: {error}",
         details={
-            "stage": "dynamics_model",
+            "stage": f"{operation}_model",
             "simulation_output": simulation_output,
             "reason": str(getattr(error, "reason", "")),
             "correction": str(getattr(error, "correction", "")),
@@ -3653,6 +3958,10 @@ def validate_and_solve_assembly(
         assembly_value=assembly_value,
         joint_outputs=joint_outputs,
     )
+    mjcf_contract = _mjcf_outputs_contract(
+        raw_result,
+        assembly_value=assembly_value,
+    )
     exploded_view_contract = _exploded_view_contract(
         raw_result,
         assembly_value=assembly_value,
@@ -3660,6 +3969,10 @@ def validate_and_solve_assembly(
     )
     if skip_derived:
         simulation_contract = None
+        # An export is derived exactly as a trace is: it cannot move a
+        # solved placement, so a pose-only preview would be paying to build
+        # and verify a model it is about to discard (ADR-055).
+        mjcf_contract = []
         exploded_view_contract = []
     assembly_properties = _properties(assembly_value, "assembly")
     component_values = list(assembly_properties.get("components") or [])
@@ -4105,6 +4418,47 @@ def validate_and_solve_assembly(
                 outputs_by_name=by_name,
             )
         diagnostics["simulation"] = simulation_summary
+    mjcf_summaries: list[dict[str, Any]] = []
+    for mjcf_output, mjcf_value in mjcf_contract:
+        if diagnostics["status"] != "solved":
+            raise AssemblyCandidateError(
+                f"MJCF output {mjcf_output!r} requires a clean solved assembly "
+                "graph even when api.solve(..., require_solved=False).",
+                details={
+                    "stage": "mjcf_precondition",
+                    "output": mjcf_output,
+                    "solver_code": solver_code,
+                    "solver_verdict": solver_verdict,
+                    "correction": (
+                        "An exported model carries the solved pose as its "
+                        "keyframe. Repair the reported joint or grounding "
+                        "failure, obtain Diagnostics status='solved', then "
+                        "export."
+                    ),
+                },
+            )
+        if artifact_root is None:
+            raise AssemblyCandidateError(
+                "An MJCF export requires the isolated candidate artifact root.",
+                details={"stage": "mjcf_artifact", "output": mjcf_output},
+            )
+        mjcf_summaries.append(
+            _execute_mjcf_export(
+                assembly_output=assembly_output,
+                output_name=mjcf_output,
+                value=mjcf_value,
+                component_outputs=component_outputs,
+                components=components,
+                component_data=component_data,
+                component_placements=component_placements,
+                joint_data=joint_data,
+                joint_outputs=joint_outputs,
+                artifact_root=artifact_root,
+                outputs_by_name=by_name,
+            )
+        )
+    if mjcf_summaries:
+        diagnostics["mjcf"] = mjcf_summaries
     exploded_view_summaries: list[dict[str, Any]] = []
     for exploded_view_output, exploded_view_value in exploded_view_contract:
         if diagnostics["status"] != "solved":

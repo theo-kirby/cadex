@@ -399,6 +399,54 @@ def _ensure_assembly_simulation_properties(obj: Any) -> None:
             obj.addProperty(property_type, name, "Simulation", description, locked=True)
 
 
+def _ensure_assembly_mjcf_properties(obj: Any) -> None:
+    """The settings an exported model was built under, as live properties.
+
+    Deliberately the *inputs* rather than the file's contents: gravity and
+    the solver step are what a reader would change and re-export, while the
+    XML itself is retained as a program artifact and identified by its
+    digest. There is no ``Group`` here -- an export has no motions and
+    nothing hangs off it (M5 phase 4).
+    """
+
+    for property_type, name, description in (
+        ("App::PropertyString", "aKeyframe", "The keyframe holding the solved pose."),
+        (
+            "App::PropertyFloatList",
+            "bGravity",
+            "Gravity the model was exported under, in metres per second squared.",
+        ),
+        (
+            "App::PropertyFloat",
+            "cSolverStep",
+            "Solver time step recorded in the exported model, in seconds.",
+        ),
+    ):
+        if name not in _properties(obj):
+            obj.addProperty(property_type, name, "MJCF", description, locked=True)
+
+
+class AssemblyMjcfProxy:
+    """Persistent proxy for one exported MuJoCo model's settings."""
+
+    def __init__(self, obj: Any | None = None) -> None:
+        if obj is not None:
+            obj.Proxy = self
+            _ensure_assembly_mjcf_properties(obj)
+
+    def onDocumentRestored(self, obj: Any) -> None:  # noqa: N802
+        _ensure_assembly_mjcf_properties(obj)
+
+    def execute(self, _obj: Any) -> None:
+        return None
+
+    def dumps(self) -> None:
+        return None
+
+    def loads(self, _state: Any) -> None:
+        return None
+
+
 class AssemblyMotionProxy:
     """Persistent headless-safe proxy for a native Assembly motion contract."""
 
@@ -1728,6 +1776,127 @@ def _configure_assembly_simulation(
     )
 
 
+def _configure_assembly_mjcf(obj: Any, item: Mapping[str, Any]) -> None:
+    """Publish one exported MuJoCo model's authenticated identity (ADR-066).
+
+    Everything here is worker-computed and re-read after assignment, the
+    same discipline ``_configure_assembly_simulation`` follows: this
+    publishes facts about a file that already exists, and never recomputes
+    one. The digest is the file's identity and the counts are what a reader
+    checks it against without opening it.
+
+    ``mujoco_version`` is published for hazard 3's sake. An exported file's
+    bytes are in no project digest -- ``compute_project_digest`` hashes an
+    output's canonical definition JSON for anything that is not ``brep`` or
+    ``mesh`` -- so a MuJoCo release changes every exported model silently.
+    ADR-064 routed the real fix to ``main`` because the digest code is
+    shared with the kinematics trace; until then the drift is at least
+    legible here.
+    """
+
+    data = item.get("assembly_data")
+    if not isinstance(data, Mapping):
+        raise RuntimeError("An Assembly MJCF export has no authenticated summary.")
+    data = dict(data)
+    evidence = data.get("mjcf")
+    if not isinstance(evidence, Mapping):
+        raise RuntimeError("An Assembly MJCF export has no verification evidence.")
+    evidence = dict(evidence)
+    if not isinstance(getattr(obj, "Proxy", None), AssemblyMjcfProxy):
+        AssemblyMjcfProxy(obj)
+    else:
+        _ensure_assembly_mjcf_properties(obj)
+
+    obj.aKeyframe = str(evidence["keyframe"])
+    obj.bGravity = [float(value) for value in evidence["gravity_m_s2"]]
+    obj.cSolverStep = float(evidence["solver_step_s"])
+    if (
+        str(obj.aKeyframe) != str(evidence["keyframe"])
+        or [float(value) for value in obj.bGravity]
+        != [float(value) for value in evidence["gravity_m_s2"]]
+        or not math.isclose(
+            float(obj.cSolverStep),
+            float(evidence["solver_step_s"]),
+            rel_tol=1.0e-12,
+            abs_tol=1.0e-15,
+        )
+    ):
+        raise RuntimeError(
+            f"Live Assembly MJCF export {item['name']!r} changed its validated "
+            "settings."
+        )
+
+    for property_type, name, value, description in (
+        (
+            "App::PropertyString",
+            "CadexMjcfSHA256",
+            str(data["artifact_sha256"]),
+            "SHA-256 of the retained exported MuJoCo model.",
+        ),
+        (
+            "App::PropertyInteger",
+            "CadexMjcfBytes",
+            int(data["artifact_bytes"]),
+            "Size of the retained exported MuJoCo model, in bytes.",
+        ),
+        (
+            "App::PropertyInteger",
+            "CadexMjcfBodyCount",
+            int(evidence["body_count"]),
+            "Bodies in the exported model, world included.",
+        ),
+        (
+            "App::PropertyInteger",
+            "CadexMjcfJointCount",
+            int(evidence["joint_count"]),
+            "Joints in the exported model.",
+        ),
+        (
+            "App::PropertyInteger",
+            "CadexMjcfActuatorCount",
+            int(evidence["actuator_count"]),
+            "Actuators in the exported model.",
+        ),
+        (
+            "App::PropertyInteger",
+            "CadexMjcfGeomCount",
+            int(evidence["geom_count"]),
+            "Collision geoms in the exported model; an export carries no visual ones.",
+        ),
+        (
+            "App::PropertyString",
+            "CadexMjcfMuJoCoVersion",
+            str(evidence["mujoco_version"]),
+            "The MuJoCo release that wrote the exported model.",
+        ),
+    ):
+        _add_property(obj, property_type, name, description)
+        setattr(obj, name, value)
+        observed = getattr(obj, name)
+        expected = value
+        if isinstance(expected, int) and not isinstance(expected, bool):
+            observed = int(observed)
+        else:
+            observed = str(observed)
+        if observed != expected:
+            raise RuntimeError(
+                f"Live Assembly MJCF export {item['name']!r} changed {name}."
+            )
+    _add_string_property(
+        obj,
+        "CadexAssemblyMjcfValidation",
+        "Authenticated exported MuJoCo model identity, settings, and verification "
+        "evidence.",
+    )
+    obj.CadexAssemblyMjcfValidation = json.dumps(
+        data,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
 def _configure_assembly_exploded_view(
     doc: Any,
     obj: Any,
@@ -2442,6 +2611,8 @@ def _configure_object(
         _configure_assembly_motion(obj, item, outputs)
     elif prepared["pack"].domain == "assembly" and output_type == "simulation":
         _configure_assembly_simulation(obj, item, outputs)
+    elif prepared["pack"].domain == "assembly" and output_type == "mjcf":
+        _configure_assembly_mjcf(obj, item)
     elif prepared["pack"].domain == "assembly" and output_type == "exploded_view":
         _configure_assembly_exploded_view(doc, obj, item, outputs, prepared)
     elif output_type == "solver_diagnostics":
