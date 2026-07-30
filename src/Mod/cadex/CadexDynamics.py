@@ -111,6 +111,14 @@ __all__ = [
     "build_model",
     "simulate",
     "model_evidence",
+    # export
+    "export_mjcf",
+    "MAXIMUM_MJCF_BYTES",
+    "MJCF_KEYFRAME_NAME",
+    "MJCF_MASS_TOLERANCE",
+    "MJCF_INERTIA_TOLERANCE",
+    "MJCF_FIELD_TOLERANCE",
+    "MJCF_POSE_TOLERANCE_MM",
     "DEFAULT_TIME_STEP_S",
     "CLOSURE_RESIDUAL_MM",
     "CLOSURE_RESIDUAL_RADIANS",
@@ -3403,6 +3411,10 @@ def build_model(
         "spec": spec,
         "model": model,
         "tree": tree,
+        # Kept rather than discarded so an exporter can re-run the OCCT
+        # comparison against a *reloaded* model without recomputing what
+        # the numbers were meant to be (M5 phase 1).
+        "inertials": inertials,
         "joint_records": joint_records,
         "couplings": couplings,
         "qpos_solved": qpos,
@@ -3927,6 +3939,406 @@ def model_evidence(
     }
 
 
+#: The exported file's own byte cap, sized from what a collision mesh costs
+#: rather than copied from the trace's reasoning. Collision meshes are
+#: written *inline* as ``<mesh vertex= face=>``, at about 51 bytes a vertex
+#: measured, so one mesh at ``MAXIMUM_COLLISION_VERTICES`` is roughly 11 MB
+#: of XML. 64 MiB admits five of those and refuses a file no mechanism a
+#: person designed produces. It is the same number the trace carries, and
+#: that is a coincidence of arithmetic rather than an inheritance.
+MAXIMUM_MJCF_BYTES = 64 * 1024 * 1024
+
+#: The keyframe the export writes, and the name anything reading the file
+#: has to ask for. Without it a stock load opens at the configuration where
+#: every joint's connector frames coincide -- 61 mm out of pose on the
+#: four-bar, and it looks like a model rather than an error.
+MJCF_KEYFRAME_NAME = "solved"
+
+#: What a round trip through ``to_xml()`` is allowed to cost. Measured, not
+#: guessed, and deliberately three separate numbers because the formatter
+#: charges wildly different amounts for them (M5 phase 0):
+#:
+#: * mass is one number and survives to 1e-16 relative;
+#: * an inertia triple's smallest entry is 1e-5 of its largest, so six
+#:   significant figures leave 2.4e-6 of relative-to-largest error;
+#: * everything else -- positions, axes, actuator gains -- lands under
+#:   2e-6, and 1e-5 is the bound with headroom over all of them.
+#:
+#: There is no precision knob on ``MjSpec``. These are the terms on which
+#: the exported file is the model, and stating them is the honest version
+#: of "matches the in-engine simulation".
+MJCF_MASS_TOLERANCE = 1.0e-12
+MJCF_INERTIA_TOLERANCE = 1.0e-5
+MJCF_FIELD_TOLERANCE = 1.0e-5
+
+#: How far a body may sit from where the engine put it, at the solved pose,
+#: in millimetres. The worst fixture measured 2.5e-4 mm; a hundredth of a
+#: millimetre is two orders of headroom and is still far finer than any
+#: tolerance a machined part carries.
+MJCF_POSE_TOLERANCE_MM = 1.0e-2
+
+#: Every count an exported file must reproduce exactly. A field comparison
+#: over a model of a different shape is meaningless, so these are checked
+#: before any of them.
+_MJCF_COUNT_FIELDS = (
+    "nbody", "njnt", "nq", "nv", "neq", "ngeom", "nsite", "nmesh", "nu",
+    "nmeshvert", "nmeshface",
+)
+
+#: Every numeric field the reload is diffed on, written out rather than
+#: derived from ``dir(model)``: a MuJoCo release adding a field should be a
+#: decision to extend this tuple, never a silent widening of what "the same
+#: model" means. ``test_dynamics_mjcf_measured`` carries the same list and
+#: the measured drift of each entry.
+_MJCF_MODEL_FIELDS = (
+    "body_mass", "body_inertia", "body_ipos", "body_iquat", "body_pos",
+    "body_quat", "jnt_type", "jnt_bodyid", "jnt_pos", "jnt_axis", "jnt_range",
+    "jnt_limited", "jnt_qposadr", "jnt_dofadr", "eq_type", "eq_obj1id",
+    "eq_obj2id", "eq_data", "eq_active0", "eq_solref", "eq_solimp",
+    "geom_type", "geom_size", "geom_pos", "geom_quat", "geom_friction",
+    "geom_solref", "geom_solimp", "geom_condim", "geom_margin", "geom_gap",
+    "geom_contype", "geom_conaffinity", "actuator_gainprm", "actuator_biasprm",
+    "actuator_ctrlrange", "actuator_forcerange", "actuator_gear",
+    "actuator_trnid", "actuator_ctrllimited", "actuator_forcelimited",
+    "dof_damping", "dof_armature", "dof_frictionloss", "site_pos", "site_quat",
+    "mesh_vert", "mesh_face", "qpos0",
+)
+
+#: The solver settings M3 chose deliberately. A file that lost one would
+#: integrate differently from the engine that wrote it while looking
+#: identical in every other respect.
+_MJCF_OPTION_FIELDS = (
+    "timestep", "gravity", "integrator", "disableflags", "enableflags",
+    "iterations", "tolerance", "solver", "impratio", "cone", "jacobian",
+    "noslip_iterations", "o_margin", "o_solref", "o_solimp", "wind",
+    "density", "viscosity", "ls_iterations", "ls_tolerance",
+)
+
+
+def _flattened(value: Any) -> list[float]:
+    """One MuJoCo model field as a flat list of floats.
+
+    ``tolist`` rather than numpy, so this module keeps importing nothing
+    that ``test_engine_purity_guardrails`` would have to hear about.
+    """
+
+    listed = value.tolist() if hasattr(value, "tolist") else value
+    flat: list[float] = []
+    stack: list[Any] = [listed]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, (list, tuple)):
+            stack.extend(reversed(item))
+        else:
+            flat.append(float(item))
+    return flat
+
+
+def _field_drift(first: Any, second: Any) -> float:
+    """The worst absolute difference between two fields, over their scale.
+
+    Relative to the field's own largest magnitude rather than element by
+    element: a ``diaginertia`` whose smallest entry is 1e-5 of its largest
+    would otherwise report the formatter's rounding of a near-zero number
+    as total disagreement.
+    """
+
+    left = _flattened(first)
+    right = _flattened(second)
+    if len(left) != len(right):
+        return float("inf")
+    if not left:
+        return 0.0
+    scale = max(max(abs(value) for value in left), 1.0e-30)
+    return max(abs(a - b) for a, b in zip(left, right)) / scale
+
+
+def export_mjcf(
+    built: Mapping[str, Any], *, context: str = "this assembly"
+) -> dict[str, Any]:
+    """One built model, as an MJCF file that is provably the same model.
+
+    The engineering here is not "write an MJCF writer" -- MuJoCo has one,
+    and ``MjSpec.to_xml()`` already emits a valid self-contained file with
+    collision meshes inline, so there are no sidecars and no asset
+    directory. The engineering is making the file *demonstrably* the model
+    the engine simulated, and it is three things:
+
+    * **The solved keyframe.** ``build_model`` deliberately builds at the
+      configuration where each joint's connector frames coincide, so that
+      the solved pose is derived and checkable rather than assumed
+      (ADR-062). ``to_xml()`` writes no keyframe, so a stock load opens the
+      mechanism folded up -- 61 mm out of pose on the four-bar, and it
+      looks like a model rather than an error. This adds one, named
+      ``solved``, **on a copy of the spec**: a script carrying both
+      ``api.dynamics`` and ``api.mjcf`` must not have its simulation's
+      numbers moved by an export, and a copy makes that structural rather
+      than careful.
+    * **The verification.** The file is reloaded and diffed against the
+      model it came from, field by field, counts first, and refused if
+      anything exceeds the tolerances phase 0 measured. The OCCT
+      comparison is re-run against the *reloaded* model rather than the
+      original, because the claim being sold is about the file.
+    * **``explicitinertial``.** It is already set for other reasons; this
+      asserts it, because the whole differentiator rides on it and its
+      absence is silent. Measured: without it a body with a collision geom
+      loads with inertia inferred from the geom and says nothing.
+
+    **No arithmetic happens here.** The spec is already SI, ``to_xml()``
+    converts nothing, and ``qpos_solved`` is already in MuJoCo's
+    coordinates -- so there is no number for a second unit-conversion site
+    to appear in, which is the structural answer to hazard 1 rather than a
+    promise to be careful. The only division in this function is the one
+    inside :func:`_field_drift`, which is dimensionless by construction.
+
+    Returns ``{"xml": bytes, "evidence": {...}}``.
+    """
+
+    mujoco = _mujoco_module()
+    spec = built["spec"]
+    model = built["model"]
+    qpos = [float(value) for value in built["qpos_solved"]]
+
+    _verify_explicit_inertia(spec, context=context)
+
+    exported = spec.copy()
+    exported.add_key(name=MJCF_KEYFRAME_NAME, qpos=list(qpos))
+    exported.compile()
+    xml = exported.to_xml().encode("utf-8")
+    if len(xml) > MAXIMUM_MJCF_BYTES:
+        raise DynamicsError(
+            f"The MJCF model for {context} requires {len(xml)} bytes; the "
+            f"accepted maximum is {MAXIMUM_MJCF_BYTES}.",
+            reason="mjcf_too_large",
+            correction=(
+                "Collision meshes are written into the file itself, at about "
+                "50 bytes a vertex. Raise the collision deflection, or use "
+                "primitive collision shapes for the parts that do not need a "
+                "mesh."
+            ),
+            observed={"bytes": len(xml), "maximum": MAXIMUM_MJCF_BYTES},
+        )
+
+    reloaded = mujoco.MjModel.from_xml_string(xml.decode("utf-8"))
+    _verify_exported_counts(reloaded, model, context=context)
+    worst_field, worst_field_name = _verify_exported_fields(
+        reloaded, model, context=context
+    )
+    # The exactness claim, re-taken on the file rather than on the model it
+    # came from: this compares the reloaded body inertias against the
+    # numbers OCCT produced, not against what MuJoCo compiled a moment ago.
+    worst_inertia = _verify_compiled_inertia(
+        mujoco,
+        reloaded,
+        built["inertials"],
+        built["tree"],
+        mass_tolerance=MJCF_MASS_TOLERANCE,
+        inertia_tolerance=MJCF_INERTIA_TOLERANCE,
+        subject="The exported MJCF",
+        reason="mjcf_lost_inertia",
+        correction=(
+            "MuJoCo's XML writer emits about six significant figures and has "
+            "no precision setting. An inertia that moved by more than that "
+            "means something rewrote it, not that it was rounded."
+        ),
+    )
+    worst_mass = _field_drift(model.body_mass, reloaded.body_mass)
+    worst_pose_mm = _verify_exported_pose(mujoco, reloaded, model, qpos, context=context)
+
+    tree = built["tree"]
+    return {
+        "xml": xml,
+        "evidence": {
+            "bytes": len(xml),
+            "keyframe": MJCF_KEYFRAME_NAME,
+            "keyframe_count": int(reloaded.nkey),
+            "body_count": int(reloaded.nbody),
+            "joint_count": int(reloaded.njnt),
+            "geom_count": int(reloaded.ngeom),
+            "mesh_count": int(reloaded.nmesh),
+            "equality_count": int(reloaded.neq),
+            "actuator_count": int(reloaded.nu),
+            "coordinate_count": int(reloaded.nq),
+            "degree_of_freedom_count": int(reloaded.nv),
+            "component_outputs": [str(body["name"]) for body in tree["bodies"]],
+            # The three numbers the exit criterion is stated against, and
+            # the bound each was checked at. Reported rather than merely
+            # asserted: "within tolerance" is not a fact anyone can act on
+            # without knowing how much of it was used.
+            "worst_mass_rel_error": worst_mass,
+            "worst_inertia_rel_error": worst_inertia,
+            "worst_field_rel_error": worst_field,
+            "worst_field": worst_field_name,
+            "worst_pose_error_mm": worst_pose_mm,
+            "mass_tolerance": MJCF_MASS_TOLERANCE,
+            "inertia_tolerance": MJCF_INERTIA_TOLERANCE,
+            "field_tolerance": MJCF_FIELD_TOLERANCE,
+            "pose_tolerance_mm": MJCF_POSE_TOLERANCE_MM,
+            # Hazard 3, made legible exactly as the trace makes it (M3):
+            # an exported file's bytes are in no project digest, so a MuJoCo
+            # version bump changes every one of them silently. Until that
+            # decision is taken -- ADR-064 routes it to main, because the
+            # digest code is shared with the kinematics trace -- the file at
+            # least says which MuJoCo wrote it.
+            "mujoco_version": str(built["mujoco_version"]),
+        },
+    }
+
+
+def _verify_explicit_inertia(spec: Any, *, context: str) -> None:
+    """Every body states its own inertia, rather than letting one be guessed.
+
+    A flag is a promise about a default, and this is the promise M5 cannot
+    take on trust: with ``explicitinertial`` off, ``to_xml()`` omits the
+    ``<inertial>`` element entirely. Measured on mujoco 3.10.0, a body with
+    no collision geom then makes the file unloadable -- loud, and survivable
+    -- while a body that has one loads with inertia inferred from the geom
+    instead of from OCCT, which is the silent failure this whole slice
+    exists to avoid.
+    """
+
+    for body in list(spec.bodies):
+        name = str(body.name)
+        if name == "world":
+            continue
+        if not bool(body.explicitinertial):
+            raise DynamicsError(
+                f"Body {name!r} in {context} does not carry an explicit "
+                "inertial, so an exported MJCF would not contain its mass "
+                "properties.",
+                reason="mjcf_inertia_not_explicit",
+                correction=(
+                    "build_model sets explicitinertial on every body. Exact "
+                    "OCCT inertia is what an exported model is for, and "
+                    "without the flag MuJoCo omits it from the file."
+                ),
+                observed={"body": name},
+            )
+
+
+def _verify_exported_counts(reloaded: Any, model: Any, *, context: str) -> None:
+    """The file describes a model of the same shape, before any number is."""
+
+    for field in _MJCF_COUNT_FIELDS:
+        here = int(getattr(model, field))
+        there = int(getattr(reloaded, field))
+        if here != there:
+            raise DynamicsError(
+                f"The MJCF exported for {context} reloads as a different "
+                f"model: {field} is {there}, not {here}.",
+                reason="mjcf_shape_changed",
+                observed={"field": field, "expected": here, "observed": there},
+            )
+
+
+def _verify_exported_fields(
+    reloaded: Any, model: Any, *, context: str
+) -> tuple[float, str]:
+    """Field by field, at the tolerance phase 0 measured.
+
+    Returns the worst drift and the field it was on, which is the number
+    the evidence reports -- an export that quietly consumed nine tenths of
+    its tolerance is worth being able to see before it consumes the tenth.
+    """
+
+    worst = 0.0
+    worst_field = ""
+    for field in _MJCF_MODEL_FIELDS + tuple(
+        f"opt.{name}" for name in _MJCF_OPTION_FIELDS
+    ):
+        if field.startswith("opt."):
+            here = getattr(model.opt, field[4:])
+            there = getattr(reloaded.opt, field[4:])
+            # Solver settings are not rounded by the writer, they are
+            # written or lost; anything but equality is a changed solver.
+            if _flattened(here) != _flattened(there):
+                raise DynamicsError(
+                    f"The MJCF exported for {context} does not preserve "
+                    f"{field}: the file would integrate differently from the "
+                    "engine that wrote it.",
+                    reason="mjcf_option_changed",
+                    observed={
+                        "field": field,
+                        "expected": _flattened(here),
+                        "observed": _flattened(there),
+                    },
+                )
+            continue
+        drift = _field_drift(getattr(model, field), getattr(reloaded, field))
+        if drift > worst:
+            worst, worst_field = drift, field
+        if drift > MJCF_FIELD_TOLERANCE:
+            raise DynamicsError(
+                f"The MJCF exported for {context} changed {field} by "
+                f"{drift:.6g} relative; the accepted maximum is "
+                f"{MJCF_FIELD_TOLERANCE:g}.",
+                reason="mjcf_field_drift",
+                correction=(
+                    "MuJoCo's XML writer emits about six significant figures "
+                    "and has no precision setting, so a drift this large is "
+                    "not rounding."
+                ),
+                observed={"field": field, "drift": drift},
+            )
+    return worst, worst_field
+
+
+def _verify_exported_pose(
+    mujoco: Any,
+    reloaded: Any,
+    model: Any,
+    qpos: Sequence[float],
+    *,
+    context: str,
+) -> float:
+    """The file opens where the engine left the mechanism.
+
+    Everything above compares numbers in a model; this compares *where the
+    parts are*, which is the only form of the claim a person can check by
+    looking. It resets the reloaded model to its own ``solved`` keyframe
+    rather than to the qpos it was handed, so a keyframe that failed to
+    survive the file is caught here rather than assumed away.
+    """
+
+    key = mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_KEY, MJCF_KEYFRAME_NAME)
+    if key < 0:
+        raise DynamicsError(
+            f"The MJCF exported for {context} carries no {MJCF_KEYFRAME_NAME!r} "
+            "keyframe, so it would open at the pose where every joint's "
+            "connector frames coincide rather than at the solved one.",
+            reason="mjcf_keyframe_missing",
+            observed={"keyframe": MJCF_KEYFRAME_NAME},
+        )
+    there = mujoco.MjData(reloaded)
+    mujoco.mj_resetDataKeyframe(reloaded, there, key)
+    mujoco.mj_forward(reloaded, there)
+    here = mujoco.MjData(model)
+    here.qpos[:] = list(qpos)
+    mujoco.mj_forward(model, here)
+    worst_m = max(
+        (
+            abs(a - b)
+            for a, b in zip(_flattened(here.xpos), _flattened(there.xpos))
+        ),
+        default=0.0,
+    )
+    worst_mm = length_mm(worst_m)
+    if worst_mm > MJCF_POSE_TOLERANCE_MM:
+        raise DynamicsError(
+            f"The MJCF exported for {context} opens {worst_mm:.6g} mm away "
+            f"from the solved pose; the accepted maximum is "
+            f"{MJCF_POSE_TOLERANCE_MM:g} mm.",
+            reason="mjcf_pose_drift",
+            correction=(
+                "The exported keyframe is what puts the mechanism back where "
+                "the assembly solver left it. A drift this large means the "
+                "keyframe is describing a different configuration."
+            ),
+            observed={"pose_error_mm": worst_mm},
+        )
+    return worst_mm
+
+
 def _verify_solver_flags(mujoco: Any, model: Any) -> None:
     """The determinism flags survived the compile, and nothing else joined.
 
@@ -4079,7 +4491,16 @@ def _verify_compiled_inertia(
     model: Any,
     inertials: Mapping[str, Mapping[str, Any]],
     tree: Mapping[str, Any],
-) -> None:
+    *,
+    mass_tolerance: float = 1.0e-12,
+    inertia_tolerance: float = 1.0e-9,
+    subject: str = "MuJoCo's compiler",
+    reason: str = "compiler_rewrote_inertia",
+    correction: str = (
+        "balanceinertia, boundinertia and boundmass must stay off. "
+        "Exact OCCT inertia is what this model is for."
+    ),
+) -> float:
     """The compiler may not have touched the numbers we gave it.
 
     ``balanceinertia`` is asserted off above; this asserts the *effect* of
@@ -4088,20 +4509,29 @@ def _verify_compiled_inertia(
     the ones computed from OCCT, per body, and refuses a model whose inertia
     was rewritten -- silently rewritten exact inertia is the failure this
     whole slice exists to avoid.
+
+    The tolerances are parameters because there is a second caller with a
+    different one and the same question (M5 phase 1): a model reloaded from
+    an exported MJCF carries the *same* OCCT inertia through a formatter
+    that writes six significant figures, so it lands 2.4e-6 out rather than
+    1e-9 out. Making that a second copy of this function is how the two
+    would eventually stop asking the same thing. Returns the worst inertia
+    drift observed, which is what the export records as evidence.
     """
 
+    worst = 0.0
     for body in tree["bodies"]:
         name = str(body["name"])
         body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
         expected = inertials[name]
         mass = float(model.body_mass[body_id])
-        if abs(mass - float(expected["mass_kg"])) > 1.0e-12 * max(
+        if abs(mass - float(expected["mass_kg"])) > mass_tolerance * max(
             1.0, abs(float(expected["mass_kg"]))
         ):
             raise DynamicsError(
-                f"MuJoCo's compiler changed body {name!r}'s mass from "
+                f"{subject} changed body {name!r}'s mass from "
                 f"{expected['mass_kg']:.12g} to {mass:.12g} kg.",
-                reason="compiler_rewrote_inertia",
+                reason=reason,
                 observed={"body": name},
             )
         compiled = sorted(float(value) for value in model.body_inertia[body_id])
@@ -4110,17 +4540,16 @@ def _verify_compiled_inertia(
         drift = max(
             abs(compiled[index] - principal[index]) / scale for index in range(3)
         )
-        if drift > 1.0e-9:
+        worst = max(worst, drift)
+        if drift > inertia_tolerance:
             raise DynamicsError(
-                f"MuJoCo's compiler rewrote body {name!r}'s inertia: asked for "
+                f"{subject} rewrote body {name!r}'s inertia: asked for "
                 f"{principal}, compiled {compiled} kg·m².",
-                reason="compiler_rewrote_inertia",
-                correction=(
-                    "balanceinertia, boundinertia and boundmass must stay off. "
-                    "Exact OCCT inertia is what this model is for."
-                ),
+                reason=reason,
+                correction=correction,
                 observed={"body": name, "asked": principal, "compiled": compiled},
             )
+    return worst
 
 
 def _solved_joint_values(

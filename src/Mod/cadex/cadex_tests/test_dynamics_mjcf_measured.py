@@ -37,9 +37,6 @@ Six findings, each with a test rather than a comment:
 
 from __future__ import annotations
 
-import hashlib
-import json
-import math
 import os
 from pathlib import Path
 import subprocess
