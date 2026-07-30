@@ -121,6 +121,23 @@ def _import_roots(path: Path) -> set[str]:
     return roots
 
 
+def _module_scope_import_roots(path: Path) -> set[str]:
+    """Only the imports that run at import time, not the deferred ones.
+
+    The distinction is the whole point for ``mujoco``: an import inside a
+    function body costs nothing until that function is called, which is how
+    a 53 MB dependency stays out of a service that never builds a model.
+    """
+
+    roots: set[str] = set()
+    for node in ast.parse(path.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Import):
+            roots.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            roots.add(node.module.split(".")[0])
+    return roots
+
+
 def _engine_closure() -> dict[str, set[str]]:
     """In-tree modules reachable from the entry points -> what each imports."""
 
@@ -242,7 +259,7 @@ def test_mujoco_never_enters_the_engine_closure() -> None:
     )
     assert not leaked, f"{leaked} import mujoco inside the engine closure."
 
-    dynamics = _import_roots(MODULE_DIR / "CadexDynamics.py")
+    dynamics = _module_scope_import_roots(MODULE_DIR / "CadexDynamics.py")
     assert "mujoco" not in dynamics, (
         "CadexDynamics imports mujoco at module scope. The import belongs "
         "inside the functions that build a model, so the graph algebra stays "

@@ -1156,6 +1156,523 @@ def extract_tree(
     }
 
 
+# ---------------------------------------------------------------------------
+# Joint coordinates, derived from the solved placements by inversion.
+# ---------------------------------------------------------------------------
+
+
+def joint_transform(
+    parent_world: Sequence[float],
+    parent_local: Sequence[float],
+    child_world: Sequence[float],
+    child_local: Sequence[float],
+) -> list[float]:
+    """The motion one joint has undergone, in its own connector frame.
+
+    ``inv(L_p) ∘ inv(T_wp) ∘ T_wc ∘ L_c``. Every term is either a *solved*
+    component placement or a component-local connector frame -- never
+    ``global_frame``, which ``setJointConnectors`` records *before*
+    ``assembly.solve`` runs and which therefore depends on the order the
+    joints appear in the script (hazard 1). Composing the component-local
+    frame with the solved placement is rigid-body invariant and cannot
+    disagree with the pose the trace starts from.
+    """
+
+    return matrix_multiply(
+        matrix_inverse(parent_local),
+        matrix_multiply(
+            matrix_inverse(parent_world),
+            matrix_multiply(child_world, child_local),
+        ),
+    )
+
+
+def joint_coordinates(
+    kind: str, transform: Sequence[float], *, context: str
+) -> dict[str, Any]:
+    """One joint's coordinates, plus the residual its kind cannot express.
+
+    The residual is the cheapest possible detector for a frame-composition,
+    unit or handedness error, and it needs no MuJoCo at all: a revolute
+    joint's connector frames must differ by a pure rotation about their
+    shared +Z, so anything else in the transform is a mistake made
+    somewhere upstream. The caller decides what to do with it -- the tree
+    build refuses, the closure gate reports.
+    """
+
+    rotation = matrix_rotation(transform)
+    translation = matrix_translation_mm(transform)
+    quaternion = quaternion_wxyz_from_matrix(transform)
+    # The rotation about +Z, and how much of the rotation is not about +Z.
+    about_z = math.atan2(rotation[3], rotation[0])
+    residual_rotation = rotation_angle_between(
+        quaternion, quaternion_from_axis_angle_wxyz((0.0, 0.0, 1.0), about_z)
+    )
+    off_axis_mm = math.sqrt(translation[0] ** 2 + translation[1] ** 2)
+    along_axis_mm = translation[2]
+    if kind in {"revolute", "screw", "rack_pinion"}:
+        values = [about_z]
+        residual_mm = math.sqrt(off_axis_mm**2 + along_axis_mm**2)
+        residual_radians = residual_rotation
+    elif kind == "slider":
+        values = [length_m(along_axis_mm)]
+        residual_mm = off_axis_mm
+        residual_radians = rotation_angle_between(quaternion, [1.0, 0.0, 0.0, 0.0])
+    elif kind == "cylindrical":
+        values = [length_m(along_axis_mm), about_z]
+        residual_mm = off_axis_mm
+        residual_radians = residual_rotation
+    elif kind == "ball":
+        values = list(quaternion)
+        residual_mm = math.sqrt(sum(item * item for item in translation))
+        residual_radians = 0.0
+    elif kind == "fixed":
+        values = []
+        residual_mm = math.sqrt(sum(item * item for item in translation))
+        residual_radians = rotation_angle_between(quaternion, [1.0, 0.0, 0.0, 0.0])
+    else:
+        raise DynamicsError(
+            f"{context} has no joint coordinate for kind {kind!r}.",
+            reason="unknown_joint_type",
+            observed={"context": context, "kind": kind},
+        )
+    return {
+        "kind": kind,
+        "values": values,
+        "residual_mm": residual_mm,
+        "residual_radians": residual_radians,
+    }
+
+
+#: How far a solved joint may sit from the pose its kind describes before
+#: the model is refused. FreeCAD's own solver converges to ~1e-6 mm, and a
+#: frame composed the wrong way is out by millimetres or by whole degrees --
+#: there is nothing in between, so the threshold is not delicate.
+CLOSURE_RESIDUAL_MM = 1.0e-4
+CLOSURE_RESIDUAL_RADIANS = 1.0e-6
+
+
+def closure_residuals(
+    components: Sequence[Mapping[str, Any]],
+    joints: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Every live joint's residual against the pose its kind demands.
+
+    Cheap, exact, and available before a single line of MuJoCo runs. If the
+    solved placements and the connector frames are composed correctly, each
+    joint's two JCS coincide up to that joint's own freedom; if a frame was
+    inverted, a unit was missed or a handedness flipped, this is where it
+    shows -- in millimetres, against the joint that caused it.
+    """
+
+    placements = {
+        str(component["name"]): checked_rigid_matrix(
+            component["solved_matrix"],
+            context=f"component {component.get('name')!r} solved placement",
+        )
+        for component in components
+    }
+    results: list[dict[str, Any]] = []
+    for joint in classify_joints(joints):
+        if joint["suppressed"] or joint["kind"] in _PLACEMENT_ONLY:
+            continue
+        first, second = joint["components"]
+        transform = joint_transform(
+            placements[first],
+            joint["local_matrices"][0],
+            placements[second],
+            joint["local_matrices"][1],
+        )
+        kind = joint["kind"]
+        if kind in {"gears", "belt"}:
+            # A gear pair constrains rates, not poses: there is no residual
+            # to take, and pretending otherwise would refuse working models.
+            continue
+        results.append(
+            {"joint": joint["name"], **joint_coordinates(kind, transform, context=f"joint {joint['name']!r}")}
+        )
+    return results
+
+
+# ---------------------------------------------------------------------------
+# The model. This is where mujoco is imported, and nowhere else.
+# ---------------------------------------------------------------------------
+
+#: What a one-sided limit becomes. MuJoCo's ``range`` needs both ends, so
+#: the open side is pushed out to somewhere the mechanism cannot reach: a
+#: hundred turns, or a kilometre. Recorded per joint in the evidence rather
+#: than quietly substituted -- a limit the model never meets is still a
+#: number somebody may later wonder about.
+_OPEN_ANGLE_MARGIN_RADIANS = 100.0 * 2.0 * math.pi
+_OPEN_LENGTH_MARGIN_M = 1000.0
+
+#: The default solver step. Deliberately not a script parameter in M2: one
+#: number to be wrong about while the translator is being proved, and M3
+#: splits solver step from trace step properly.
+DEFAULT_TIME_STEP_S = 0.002
+
+
+def _limit_range(
+    limits: Any, *, angular: bool, context: str
+) -> tuple[list[float], dict[str, Any]] | None:
+    """One FreeCAD limit pair as a MuJoCo range, in radians or metres."""
+
+    if limits is None:
+        return None
+    values = list(limits)
+    if len(values) != 2 or values == [None, None]:
+        return None
+    margin = _OPEN_ANGLE_MARGIN_RADIANS if angular else _OPEN_LENGTH_MARGIN_M
+
+    def _convert(value: Any) -> float:
+        return math.radians(float(value)) if angular else length_m(float(value))
+
+    low = None if values[0] is None else _convert(values[0])
+    high = None if values[1] is None else _convert(values[1])
+    if low is None:
+        low = high - margin
+    if high is None:
+        high = low + margin
+    if not (math.isfinite(low) and math.isfinite(high)) or low >= high:
+        raise DynamicsError(
+            f"{context} has an empty limit range.",
+            reason="malformed_limits",
+            observed={"context": context, "limits": values},
+        )
+    return [low, high], {
+        "declared": values,
+        "range": [low, high],
+        "unit": "radians" if angular else "metres",
+        "one_sided": values[0] is None or values[1] is None,
+    }
+
+
+def _mujoco_module() -> Any:
+    """The one import site, with the payload failure named if it is missing."""
+
+    try:
+        import mujoco  # noqa: PLC0415 - deliberately not module scope
+    except ImportError as exc:  # pragma: no cover - a broken payload only
+        raise DynamicsError(
+            "This engine build cannot import mujoco, so assembly.dynamics "
+            "cannot run.",
+            reason="mujoco_unavailable",
+            correction=(
+                "The engine payload carries mujoco as a pypi wheel (ADR-061). "
+                "Rebuild the payload with pixi run stage-engine."
+            ),
+        ) from exc
+    return mujoco
+
+
+def build_model(
+    components: Sequence[Mapping[str, Any]],
+    joints: Sequence[Mapping[str, Any]],
+    *,
+    gravity_m_s2: Sequence[float] = DEFAULT_GRAVITY_M_S2,
+    time_step_s: float = DEFAULT_TIME_STEP_S,
+) -> dict[str, Any]:
+    """One assembly, as a compiled MuJoCo model plus the evidence for it.
+
+    The construction, stated once because everything downstream depends on
+    it being this and not something that merely looks like it:
+
+    * The MuJoCo body frame **is** the FreeCAD component frame, with the
+      mass offset carried in ``body.ipos``. Putting the body frame at the
+      centre of mass instead offsets every part inside itself, which reads
+      on screen as "the mesh is wrong" (hazard 4).
+    * A tree body's frame relative to its parent is ``L_p ∘ inv(L_c)`` --
+      the configuration in which the two connector frames *coincide* -- and
+      the joint sits at ``L_c``'s origin along ``L_c``'s +Z. That makes the
+      model's reference configuration a canonical one rather than the
+      solved one, so the solved pose has to be *derived* as a joint
+      coordinate and can be checked against ``component_placements``.
+      Building at the solved pose instead would make that check a
+      tautology: it passes on a model whose joint axes are entirely wrong.
+    * Grounded components are static bodies. Unreached ones get a free
+      joint and fall.
+
+    Returns the spec, the compiled model, the tree, and per-joint records
+    carrying each joint's qpos address and its solved coordinate.
+    """
+
+    mujoco = _mujoco_module()
+    tree = extract_tree(components, joints)
+    placements = {
+        str(component["name"]): checked_rigid_matrix(
+            component["solved_matrix"],
+            context=f"component {component.get('name')!r} solved placement",
+        )
+        for component in components
+    }
+    inertials = {
+        str(component["name"]): dict(component["inertial"])
+        for component in components
+    }
+
+    spec = mujoco.MjSpec()
+    spec.modelname = "cadex-assembly"
+    # Every one of these is load-bearing and none is a default worth
+    # trusting. balanceinertia rewrites an exact tensor into invented
+    # numbers -- [0.001, 0.001, 1.0] compiles to [0.334, 0.334, 0.334] --
+    # and exact inertia is this slice's whole differentiator. boundinertia
+    # and boundmass do the same thing more quietly. inertiafromgeom would
+    # infer mass from geometry we deliberately do not add.
+    spec.compiler.balanceinertia = False
+    spec.compiler.boundinertia = 0.0
+    spec.compiler.boundmass = 0.0
+    spec.compiler.inertiafromgeom = mujoco.mjtInertiaFromGeom.mjINERTIAFROMGEOM_FALSE
+    # Radians everywhere. The default is degrees, and it silently turned a
+    # [-1, 1] joint range into [-0.017, 0.017] the first time this was
+    # measured.
+    spec.compiler.degree = False
+    spec.option.gravity = list(gravity_m_s2)
+    spec.option.timestep = float(time_step_s)
+
+    native_bodies: dict[str, Any] = {"": spec.worldbody}
+    joint_records: list[dict[str, Any]] = []
+    for body in tree["bodies"]:
+        name = str(body["name"])
+        parent_name = body["parent"]
+        if parent_name is None:
+            frame = placements[name]
+            parent = spec.worldbody
+        else:
+            frame = matrix_multiply(
+                body["parent_local_matrix"], matrix_inverse(body["child_local_matrix"])
+            )
+            parent = native_bodies[str(parent_name)]
+        native = parent.add_body(
+            name=name,
+            pos=vector_m(matrix_translation_mm(frame)),
+            quat=quaternion_wxyz_from_matrix(frame),
+        )
+        native_bodies[name] = native
+
+        inertial = inertials[name]
+        native.explicitinertial = True
+        native.mass = float(inertial["mass_kg"])
+        native.ipos = vector_m(inertial["center_of_mass_mm"])
+        native.fullinertia = full_inertia_six(inertial["inertia_kg_m2"])
+
+        if body["attachment"] == "free":
+            native.add_freejoint(name=f"{name}/free")
+            joint_records.append(
+                {
+                    "body": name,
+                    "joint": None,
+                    "kind": "free",
+                    "mujoco_joint": f"{name}/free",
+                    "mujoco_type": "free",
+                    "limits": None,
+                }
+            )
+            continue
+        if not body["mujoco_joints"]:
+            continue
+
+        local = body["child_local_matrix"]
+        anchor = vector_m(matrix_translation_mm(local))
+        axis = _axis_normalised(
+            matrix_z_axis(local), context=f"joint {body['joint']!r}"
+        )
+        classified = next(
+            item
+            for item in tree["classified_joints"]
+            if item["name"] == body["joint"]
+        )
+        for mujoco_type in body["mujoco_joints"]:
+            angular = mujoco_type in {"hinge", "ball"}
+            limits = _limit_range(
+                classified["angle_limits_degrees"]
+                if angular
+                else classified["length_limits_mm"],
+                angular=angular,
+                context=f"joint {body['joint']!r}",
+            )
+            joint_name = (
+                str(body["joint"])
+                if len(body["mujoco_joints"]) == 1
+                else f"{body['joint']}/{mujoco_type}"
+            )
+            native_joint = native.add_joint(
+                name=joint_name,
+                type={
+                    "hinge": mujoco.mjtJoint.mjJNT_HINGE,
+                    "slide": mujoco.mjtJoint.mjJNT_SLIDE,
+                    "ball": mujoco.mjtJoint.mjJNT_BALL,
+                }[mujoco_type],
+                pos=anchor,
+                axis=axis,
+            )
+            if limits is not None and mujoco_type != "ball":
+                native_joint.limited = mujoco.mjtLimited.mjLIMITED_TRUE
+                native_joint.range = limits[0]
+            joint_records.append(
+                {
+                    "body": name,
+                    "joint": str(body["joint"]),
+                    "kind": str(body["joint_kind"]),
+                    "mujoco_joint": joint_name,
+                    "mujoco_type": mujoco_type,
+                    "limits": None if limits is None else limits[1],
+                }
+            )
+
+    try:
+        model = spec.compile()
+    except Exception as exc:
+        raise DynamicsError(
+            f"MuJoCo refused the assembly's model: {exc}",
+            reason="model_compile_failed",
+            correction=(
+                "The tree, the inertias and the joint frames all come from the "
+                "solved assembly, so a refusal here means one of them is "
+                "degenerate. Check the reported body."
+            ),
+            observed={"compiler_error": str(exc)},
+        ) from exc
+
+    _verify_compiled_inertia(mujoco, model, inertials, tree)
+    qpos = _solved_qpos(mujoco, model, tree, placements, joint_records)
+    return {
+        "spec": spec,
+        "model": model,
+        "tree": tree,
+        "joint_records": joint_records,
+        "qpos_solved": qpos,
+        "placements": placements,
+        "time_step_s": float(time_step_s),
+        "gravity_m_s2": list(gravity_m_s2),
+    }
+
+
+def _verify_compiled_inertia(
+    mujoco: Any,
+    model: Any,
+    inertials: Mapping[str, Mapping[str, Any]],
+    tree: Mapping[str, Any],
+) -> None:
+    """The compiler may not have touched the numbers we gave it.
+
+    ``balanceinertia`` is asserted off above; this asserts the *effect* of
+    it being off, which is the assertion that survives a MuJoCo upgrade
+    changing a default. It compares the compiled principal moments against
+    the ones computed from OCCT, per body, and refuses a model whose inertia
+    was rewritten -- silently rewritten exact inertia is the failure this
+    whole slice exists to avoid.
+    """
+
+    for body in tree["bodies"]:
+        name = str(body["name"])
+        body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
+        expected = inertials[name]
+        mass = float(model.body_mass[body_id])
+        if abs(mass - float(expected["mass_kg"])) > 1.0e-12 * max(
+            1.0, abs(float(expected["mass_kg"]))
+        ):
+            raise DynamicsError(
+                f"MuJoCo's compiler changed body {name!r}'s mass from "
+                f"{expected['mass_kg']:.12g} to {mass:.12g} kg.",
+                reason="compiler_rewrote_inertia",
+                observed={"body": name},
+            )
+        compiled = sorted(float(value) for value in model.body_inertia[body_id])
+        principal = list(expected["principal_inertia_kg_m2"])
+        scale = max(principal[2], 1.0e-30)
+        drift = max(
+            abs(compiled[index] - principal[index]) / scale for index in range(3)
+        )
+        if drift > 1.0e-9:
+            raise DynamicsError(
+                f"MuJoCo's compiler rewrote body {name!r}'s inertia: asked for "
+                f"{principal}, compiled {compiled} kg·m².",
+                reason="compiler_rewrote_inertia",
+                correction=(
+                    "balanceinertia, boundinertia and boundmass must stay off. "
+                    "Exact OCCT inertia is what this model is for."
+                ),
+                observed={"body": name, "asked": principal, "compiled": compiled},
+            )
+
+
+def _solved_qpos(
+    mujoco: Any,
+    model: Any,
+    tree: Mapping[str, Any],
+    placements: Mapping[str, Sequence[float]],
+    joint_records: Sequence[Mapping[str, Any]],
+) -> list[float]:
+    """The configuration that reproduces FreeCAD's solved placements.
+
+    Derived by inversion from the solved placements, joint by joint, rather
+    than read back out of the model it is about to be checked against.
+    """
+
+    qpos = [float(value) for value in model.qpos0]
+    addresses = {
+        str(record["mujoco_joint"]): int(
+            model.jnt_qposadr[
+                mujoco.mj_name2id(
+                    model, mujoco.mjtObj.mjOBJ_JOINT, str(record["mujoco_joint"])
+                )
+            ]
+        )
+        for record in joint_records
+    }
+    for body in tree["bodies"]:
+        name = str(body["name"])
+        if body["attachment"] == "free":
+            address = addresses[f"{name}/free"]
+            frame = placements[name]
+            qpos[address : address + 3] = vector_m(matrix_translation_mm(frame))
+            qpos[address + 3 : address + 7] = quaternion_wxyz_from_matrix(frame)
+            continue
+        if not body["mujoco_joints"]:
+            continue
+        transform = joint_transform(
+            placements[str(body["parent"])],
+            body["parent_local_matrix"],
+            placements[name],
+            body["child_local_matrix"],
+        )
+        coordinates = joint_coordinates(
+            str(body["joint_kind"]), transform, context=f"joint {body['joint']!r}"
+        )
+        if (
+            coordinates["residual_mm"] > CLOSURE_RESIDUAL_MM
+            or coordinates["residual_radians"] > CLOSURE_RESIDUAL_RADIANS
+        ):
+            raise DynamicsError(
+                f"Joint {body['joint']!r} does not hold in the solved assembly: "
+                f"its connector frames are {coordinates['residual_mm']:.6g} mm "
+                f"and {coordinates['residual_radians']:.6g} rad apart in "
+                f"directions a {body['joint_kind']} joint cannot move.",
+                reason="joint_residual",
+                correction=(
+                    "The solved placements and the connector frames disagree. "
+                    "Re-solve the assembly, and check that the joint's two "
+                    "connectors select the geometry they were meant to."
+                ),
+                observed={
+                    "joint": str(body["joint"]),
+                    "residual_mm": coordinates["residual_mm"],
+                    "residual_radians": coordinates["residual_radians"],
+                },
+            )
+        values = list(coordinates["values"])
+        if str(body["joint_kind"]) == "cylindrical":
+            # The tree adds slide then hinge, and joint_coordinates returns
+            # them in that order.
+            for mujoco_type, value in zip(("slide", "hinge"), values, strict=True):
+                address = addresses[f"{body['joint']}/{mujoco_type}"]
+                qpos[address] = value
+        elif values:
+            address = addresses[str(body["joint"])]
+            qpos[address : address + len(values)] = values
+    return qpos
+
+
 def _axis_normalised(axis: Sequence[float], *, context: str) -> list[float]:
     values = [float(item) for item in axis]
     magnitude = math.sqrt(sum(item * item for item in values))
