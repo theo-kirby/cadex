@@ -749,12 +749,14 @@ JOINT_TABLE: dict[str, dict[str, Any]] = {
     "slider": {"tree": ("slide",), "closure": None, "coupling": False},
     "ball": {"tree": ("ball",), "closure": "connect", "coupling": False},
     "cylindrical": {"tree": ("slide", "hinge"), "closure": None, "coupling": False},
-    # A screw and a rack-and-pinion are a rotation plus a coupling to the
-    # companion slider FreeCAD already insists exists (the worker's
-    # _coupled_joint_issues refuses the graph without it), so the body
-    # attachment they contribute is a plain hinge.
-    "screw": {"tree": ("hinge",), "closure": "connect", "coupling": True},
-    "rack_pinion": {"tree": ("hinge",), "closure": "connect", "coupling": True},
+    # All four coupled kinds attach nothing. FreeCAD says so itself:
+    # AssemblyObject::isJointTypeConnecting returns false for exactly these
+    # four, so its own solver will not use them to locate a part. A screw
+    # constrains the relative twist between two components that a slider and
+    # a revolute have already placed; docs/MUJOCO.md M2's "a hinge plus a
+    # coupling" had it one joint too generous.
+    "screw": {"tree": None, "closure": None, "coupling": True},
+    "rack_pinion": {"tree": None, "closure": None, "coupling": True},
     "gears": {"tree": None, "closure": None, "coupling": True},
     "belt": {"tree": None, "closure": None, "coupling": True},
     "distance": {"tree": None, "closure": None, "coupling": False},
@@ -1305,6 +1307,16 @@ def closure_residuals(
 # The model. This is where mujoco is imported, and nowhere else.
 # ---------------------------------------------------------------------------
 
+#: Constraint impedance for every equality this module writes -- loop
+#: closures and couplings alike. MuJoCo's default (0.9, 0.95) leaves a
+#: constraint that yields under load, and a screw is where that shows: a
+#: heavy nut on a fine thread has to be held by a shaft with almost no
+#: inertia, and at the default the coupling was overwhelmed completely --
+#: 610 mm of travel where the pitch allows 105, with an 893 mm residual.
+#: At (0.99, 0.9999) the same run tracks its pitch to 0.8% with a 1.2 mm
+#: residual, which is a real screw's elasticity rather than a broken model.
+_EQUALITY_SOLIMP = (0.99, 0.9999, 0.0001, 0.5, 2.0)
+
 #: What a one-sided limit becomes. MuJoCo's ``range`` needs both ends, so
 #: the open side is pushed out to somewhere the mechanism cannot reach: a
 #: hundred turns, or a kilometre. Recorded per joint in the evidence rather
@@ -1352,6 +1364,212 @@ def _limit_range(
         "unit": "radians" if angular else "metres",
         "one_sided": values[0] is None or values[1] is None,
     }
+
+
+def _coupling_records(
+    tree: Mapping[str, Any],
+    placements: Mapping[str, Sequence[float]],
+    solved_values: Mapping[str, Sequence[float]],
+) -> list[dict[str, Any]]:
+    """Gear, belt and screw couplings, as MuJoCo ``equality/joint`` rows.
+
+    The laws are **measured against OndselSolver**, not guessed, because a
+    wrong ratio or a wrong sign is a gear train running backwards, which
+    looks exactly like a working mechanism. Driving one revolution through
+    the real kinematics path gave:
+
+    * **gears** (r1=20, r2=10): the second wheel turns −2x the first, both
+      measured against their common housing. So ``a1 = −(r1/r2)``, and
+      external gears counter-rotate. FreeCAD builds a belt as a gear with
+      ``radiusJ`` negated (AssemblyObject.cpp), so a belt is ``+(r1/r2)``,
+      and the measurement agrees.
+    * **screw** (pitch 4 mm): one turn of the shaft moved the nut −4.00 mm,
+      so ``pitch`` is millimetres per **revolution** and the relation is
+      ``Δz = pitch·Δθ / 2π``. That is hazard 7's 2π ambiguity settled by
+      experiment; OndselSolver's own ``ScrewConstraintIJ`` agrees
+      (``2π·z − pitch·θz = const``).
+
+    ``rack_pinion`` is refused. Its native constraint acts along a marker
+    frame OndselSolver builds specially (``getRackPinionMarkers``), the one
+    measurement run on it did not produce the clean ``x = R·θ`` the sign
+    convention would need, and shipping the guess is precisely what hazard 7
+    warns against.
+
+    Every coupling also carries strict preconditions, because a coupling is
+    only expressible as a scalar relation when each side *is* one scalar
+    joint coordinate: both components attached by tree joints, to the same
+    parent, on axes parallel to the coupling's own.
+    """
+
+    bodies = {str(body["name"]): body for body in tree["bodies"]}
+    records: list[dict[str, Any]] = []
+    for coupling in tree["couplings"]:
+        name = str(coupling["name"])
+        kind = str(coupling["kind"])
+        if kind == "rack_pinion":
+            raise DynamicsError(
+                f"Joint {name!r} is a rack-and-pinion, which M2 does not "
+                "translate.",
+                reason="unmapped_coupled_joint",
+                correction=(
+                    "The native rack constraint acts along a marker frame "
+                    "OndselSolver derives from the rack's geometry, and this "
+                    "slice will not guess its sign: a rack running backwards "
+                    "looks like a working mechanism. Model the pair as a "
+                    "gears joint, or leave it out of the dynamics assembly."
+                ),
+                observed={"joint": name, "kind": kind},
+            )
+        first, second = coupling["components"]
+        axis = _axis_normalised(
+            matrix_z_axis(
+                matrix_multiply(placements[first], coupling["local_matrices"][0])
+            ),
+            context=f"joint {name!r}",
+        )
+        sides: list[dict[str, Any]] = []
+        for component, local in zip(
+            coupling["components"], coupling["local_matrices"], strict=True
+        ):
+            body = bodies[component]
+            # The coupling's own two connector frames must agree about the
+            # axis before anything else is asked about it: FreeCAD requires
+            # collinear JCS for all four of these, and a pair that disagrees
+            # is a joint whose relative rotation is not a scalar at all.
+            connector_axis = _axis_normalised(
+                matrix_z_axis(matrix_multiply(placements[component], local)),
+                context=f"joint {name!r}",
+            )
+            connector_alignment = sum(
+                a * b for a, b in zip(connector_axis, axis, strict=True)
+            )
+            if abs(connector_alignment) < 1.0 - 1.0e-6:
+                raise DynamicsError(
+                    f"Joint {name!r} has connector frames whose +Z axes are not "
+                    f"collinear (alignment {connector_alignment:.6f}).",
+                    reason="coupled_axes_not_parallel",
+                    correction=(
+                        "A gear, belt or screw joint relates rotation about one "
+                        "shared axis. Point both connector +Z axes the same way."
+                    ),
+                    observed={"joint": name, "component": component},
+                )
+            if body["attachment"] != "tree" or len(body["mujoco_joints"]) != 1:
+                raise DynamicsError(
+                    f"Joint {name!r} couples component {component!r}, which has "
+                    "no single joint coordinate to couple: it is "
+                    f"{body['attachment']} with "
+                    f"{len(body['mujoco_joints'])} degree(s) of freedom.",
+                    reason="uncouplable_component",
+                    correction=(
+                        f"A {kind} joint constrains motion that other joints "
+                        "provide. Give each coupled component exactly one "
+                        "revolute or slider joint to the same parent component."
+                    ),
+                    observed={"joint": name, "component": component},
+                )
+            side_axis = _axis_normalised(
+                matrix_z_axis(
+                    matrix_multiply(
+                        placements[component], body["child_local_matrix"]
+                    )
+                ),
+                context=f"joint {body['joint']!r}",
+            )
+            alignment = sum(a * b for a, b in zip(side_axis, axis, strict=True))
+            if abs(alignment) < 1.0 - 1.0e-6:
+                raise DynamicsError(
+                    f"Joint {name!r} couples component {component!r} about an "
+                    f"axis its {body['joint_kind']} joint does not share "
+                    f"(alignment {alignment:.6f}).",
+                    reason="coupled_axes_not_parallel",
+                    correction=(
+                        "Gear, belt and screw couplings relate rotation about "
+                        "one shared axis. Align the coupled joint's connector "
+                        "+Z with the joints that place the two components."
+                    ),
+                    observed={"joint": name, "component": component},
+                )
+            sides.append(
+                {
+                    "component": component,
+                    "body": body,
+                    "sign": 1.0 if alignment > 0.0 else -1.0,
+                    "joint": str(body["joint"]),
+                    "kind": str(body["joint_kind"]),
+                    "value": float(solved_values[str(body["joint"])][0]),
+                }
+            )
+        if sides[0]["body"]["parent"] != sides[1]["body"]["parent"]:
+            raise DynamicsError(
+                f"Joint {name!r} couples two components that hang off different "
+                f"parents ({sides[0]['body']['parent']!r} and "
+                f"{sides[1]['body']['parent']!r}).",
+                reason="coupled_parents_differ",
+                correction=(
+                    "A coupling relates two joint coordinates, and coordinates "
+                    "are only comparable against a common frame. Join both "
+                    "coupled components to the same parent component."
+                ),
+                observed={"joint": name},
+            )
+        parameters = dict(coupling["parameters"])
+        if kind in {"gears", "belt"}:
+            for side in sides:
+                if side["kind"] != "revolute":
+                    raise DynamicsError(
+                        f"Joint {name!r} is a {kind} joint, but component "
+                        f"{side['component']!r} is placed by a {side['kind']} "
+                        "joint rather than a revolute one.",
+                        reason="coupled_joint_kind",
+                        correction=(
+                            "Gears and belts couple two rotations. Place both "
+                            "wheels with revolute joints."
+                        ),
+                        observed={"joint": name, "component": side["component"]},
+                    )
+            ratio = float(parameters["radius1_mm"]) / float(parameters["radius2_mm"])
+            slope = (-ratio if kind == "gears" else ratio) * sides[0]["sign"] * sides[1]["sign"]
+            dependent, independent = sides[1], sides[0]
+        else:
+            sliders = [side for side in sides if side["kind"] == "slider"]
+            rotators = [side for side in sides if side["kind"] == "revolute"]
+            if len(sliders) != 1 or len(rotators) != 1:
+                raise DynamicsError(
+                    f"Joint {name!r} is a screw, which needs one component on a "
+                    "slider and the other on a revolute joint; this one has "
+                    f"{[side['kind'] for side in sides]}.",
+                    reason="coupled_joint_kind",
+                    correction=(
+                        "FreeCAD's screw joint constrains a slide against a "
+                        "rotation that other joints provide. Add the missing "
+                        "slider or revolute joint to the same parent."
+                    ),
+                    observed={"joint": name},
+                )
+            pitch_m = length_m(float(parameters["thread_pitch_mm"]))
+            slope = (
+                -sliders[0]["sign"]
+                * rotators[0]["sign"]
+                * pitch_m
+                / (2.0 * math.pi)
+            )
+            dependent, independent = sliders[0], rotators[0]
+        # a0 carries the solved offset: the coupling holds where FreeCAD
+        # solved it, not only where the model's reference configuration is.
+        intercept = dependent["value"] - slope * independent["value"]
+        records.append(
+            {
+                "joint_output": name,
+                "joint_kind": kind,
+                "dependent_joint": dependent["joint"],
+                "independent_joint": independent["joint"],
+                "slope": slope,
+                "intercept": intercept,
+                "parameters": parameters,
+            }
+        )
+    return records
 
 
 def _mujoco_module() -> Any:
@@ -1567,10 +1785,30 @@ def build_model(
         # answer that looks right, which is the class of failure this whole
         # slice is organised against.
         equality.solref = [2.0 * float(time_step_s), 1.0]
+        equality.solimp = list(_EQUALITY_SOLIMP)
         if closure["closure_kind"] == "weld":
             data = [0.0] * 11
             data[10] = 1.0  # torquescale: the rotational rows are the point
             equality.data = data
+
+    solved_values = _solved_joint_values(tree, placements)
+    couplings = _coupling_records(tree, placements, solved_values)
+    for coupling in couplings:
+        equality = spec.add_equality()
+        equality.name = str(coupling["joint_output"])
+        equality.type = mujoco.mjtEq.mjEQ_JOINT
+        equality.objtype = mujoco.mjtObj.mjOBJ_JOINT
+        # name1 is the dependent coordinate and name2 the independent one:
+        # y − y0 = a0 + a1·(x − x0). Measured, because the documentation's
+        # "joint1/joint2" says nothing about which side is which.
+        equality.name1 = str(coupling["dependent_joint"])
+        equality.name2 = str(coupling["independent_joint"])
+        data = [0.0] * 11
+        data[0] = float(coupling["intercept"])
+        data[1] = float(coupling["slope"])
+        equality.data = data
+        equality.solref = [2.0 * float(time_step_s), 1.0]
+        equality.solimp = list(_EQUALITY_SOLIMP)
 
     try:
         model = spec.compile()
@@ -1587,7 +1825,9 @@ def build_model(
         ) from exc
 
     _verify_compiled_inertia(mujoco, model, inertials, tree)
-    qpos = _solved_qpos(mujoco, model, tree, placements, joint_records)
+    qpos = _solved_qpos(
+        mujoco, model, tree, placements, joint_records, solved_values
+    )
     closure_violation = _closure_violation(mujoco, model, qpos)
     if closure_violation > CLOSURE_EQUALITY_TOLERANCE:
         raise DynamicsError(
@@ -1608,6 +1848,7 @@ def build_model(
         "model": model,
         "tree": tree,
         "joint_records": joint_records,
+        "couplings": couplings,
         "qpos_solved": qpos,
         "placements": placements,
         "time_step_s": float(time_step_s),
@@ -1824,6 +2065,17 @@ def model_evidence(
             for closure in tree["closures"]
         ],
         "static_joints": list(tree["static_joints"]),
+        "couplings": [
+            {
+                "joint_output": str(coupling["joint_output"]),
+                "joint_kind": str(coupling["joint_kind"]),
+                "dependent_joint": str(coupling["dependent_joint"]),
+                "independent_joint": str(coupling["independent_joint"]),
+                "slope": float(coupling["slope"]),
+                "intercept": float(coupling["intercept"]),
+            }
+            for coupling in built["couplings"]
+        ],
         "tree_joint_count": int(tree["tree_joint_count"]),
         "maximum_depth": int(tree["maximum_depth"]),
         "grounded_components": list(tree["grounded"]),
@@ -1890,44 +2142,24 @@ def _verify_compiled_inertia(
             )
 
 
-def _solved_qpos(
-    mujoco: Any,
-    model: Any,
-    tree: Mapping[str, Any],
-    placements: Mapping[str, Sequence[float]],
-    joint_records: Sequence[Mapping[str, Any]],
-) -> list[float]:
-    """The configuration that reproduces FreeCAD's solved placements.
+def _solved_joint_values(
+    tree: Mapping[str, Any], placements: Mapping[str, Sequence[float]]
+) -> dict[str, list[float]]:
+    """Each tree joint's coordinate at the solved pose, by joint output name.
 
-    Derived by inversion from the solved placements, joint by joint, rather
-    than read back out of the model it is about to be checked against.
+    Derived by inversion from the solved placements rather than read back
+    out of the model it is about to be checked against, and computed before
+    the model is compiled because the coupling equalities need it too.
     """
 
-    qpos = [float(value) for value in model.qpos0]
-    addresses = {
-        str(record["mujoco_joint"]): int(
-            model.jnt_qposadr[
-                mujoco.mj_name2id(
-                    model, mujoco.mjtObj.mjOBJ_JOINT, str(record["mujoco_joint"])
-                )
-            ]
-        )
-        for record in joint_records
-    }
+    values: dict[str, list[float]] = {}
     for body in tree["bodies"]:
-        name = str(body["name"])
-        if body["attachment"] == "free":
-            address = addresses[f"{name}/free"]
-            frame = placements[name]
-            qpos[address : address + 3] = vector_m(matrix_translation_mm(frame))
-            qpos[address + 3 : address + 7] = quaternion_wxyz_from_matrix(frame)
-            continue
-        if not body["mujoco_joints"]:
+        if body["attachment"] == "free" or not body["mujoco_joints"]:
             continue
         transform = joint_transform(
             placements[str(body["parent"])],
             body["parent_local_matrix"],
-            placements[name],
+            placements[str(body["name"])],
             body["child_local_matrix"],
         )
         coordinates = joint_coordinates(
@@ -1954,7 +2186,42 @@ def _solved_qpos(
                     "residual_radians": coordinates["residual_radians"],
                 },
             )
-        values = list(coordinates["values"])
+        values[str(body["joint"])] = list(coordinates["values"])
+    return values
+
+
+def _solved_qpos(
+    mujoco: Any,
+    model: Any,
+    tree: Mapping[str, Any],
+    placements: Mapping[str, Sequence[float]],
+    joint_records: Sequence[Mapping[str, Any]],
+    solved_values: Mapping[str, Sequence[float]],
+) -> list[float]:
+    """The configuration that reproduces FreeCAD's solved placements."""
+
+    qpos = [float(value) for value in model.qpos0]
+    addresses = {
+        str(record["mujoco_joint"]): int(
+            model.jnt_qposadr[
+                mujoco.mj_name2id(
+                    model, mujoco.mjtObj.mjOBJ_JOINT, str(record["mujoco_joint"])
+                )
+            ]
+        )
+        for record in joint_records
+    }
+    for body in tree["bodies"]:
+        name = str(body["name"])
+        if body["attachment"] == "free":
+            address = addresses[f"{name}/free"]
+            frame = placements[name]
+            qpos[address : address + 3] = vector_m(matrix_translation_mm(frame))
+            qpos[address + 3 : address + 7] = quaternion_wxyz_from_matrix(frame)
+            continue
+        if not body["mujoco_joints"]:
+            continue
+        values = list(solved_values[str(body["joint"])])
         if str(body["joint_kind"]) == "cylindrical":
             # The tree adds slide then hinge, and joint_coordinates returns
             # them in that order.

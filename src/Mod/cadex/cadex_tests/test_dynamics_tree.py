@@ -389,7 +389,15 @@ def test_gears_and_belts_are_never_tree_edges() -> None:
     ]
 
 
-def test_a_screw_contributes_a_hinge_and_a_coupling() -> None:
+def test_a_screw_attaches_nothing_and_only_couples() -> None:
+    """FreeCAD says so itself, and M2's plan had it one joint too generous.
+
+    ``AssemblyObject::isJointTypeConnecting`` returns false for screw,
+    rack-and-pinion, gears and belt: its own solver will not use them to
+    locate a part. A screw constrains the twist between two components a
+    slider and a revolute have already placed.
+    """
+
     components = [
         _component("body", grounded=True),
         _component("nut"),
@@ -397,10 +405,14 @@ def test_a_screw_contributes_a_hinge_and_a_coupling() -> None:
     ]
     joints = [
         _joint("guide", "slider", "body", "nut"),
-        _joint("thread", "screw", "body", "shaft"),
+        _joint("spin", "revolute", "body", "shaft"),
+        _joint("thread", "screw", "nut", "shaft"),
     ]
     tree = dyn.extract_tree(components, joints)
+    assert tree["bodies"][1]["mujoco_joints"] == ["slide"]
     assert tree["bodies"][2]["mujoco_joints"] == ["hinge"]
+    assert tree["tree_joint_count"] == 2
+    assert tree["closures"] == []
     assert [item["name"] for item in tree["couplings"]] == ["thread"]
 
 
