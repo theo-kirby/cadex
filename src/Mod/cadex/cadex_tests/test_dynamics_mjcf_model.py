@@ -22,13 +22,21 @@ nothing produces is a refusal that does not fire.
 from __future__ import annotations
 
 import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
 import CadexDynamics as dyn
 import dynamics_fixtures as fx
+import dynamics_mjcf_digest
 
 mujoco = pytest.importorskip("mujoco")
+
+DIGEST_MODULE = Path(dynamics_mjcf_digest.__file__).resolve()
 
 
 def _servo(**overrides):
@@ -510,3 +518,115 @@ def test_the_exported_pendulum_actually_swings() -> None:
     # One second at the default step. Measured: 0.40 rad of swing, from
     # gravity alone and with nothing in the file prescribing it.
     assert abs(float(data.qpos[0]) - start) == pytest.approx(0.401, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# Stock MuJoCo, and across processes -- which is the only honest reading of
+# "loads in stock MuJoCo" and of "the same bytes".
+# ---------------------------------------------------------------------------
+
+
+def _run(arguments, *, stock: bool):
+    """The digest module, in a fresh interpreter.
+
+    ``stock`` runs it with ``-P`` and a scrubbed ``PYTHONPATH``, so the
+    script's own directory is *not* prepended to ``sys.path`` and nothing
+    Cadex is reachable. The subprocess reports whether it could import
+    ``CadexDynamics``, and the tests below assert the negative rather than
+    trusting the invocation -- an environment variable that leaked would
+    otherwise make a stock-MuJoCo claim quietly untrue.
+    """
+
+    environment = dict(os.environ)
+    environment.pop("PYTHONHASHSEED", None)
+    if stock:
+        environment.pop("PYTHONPATH", None)
+    command = [sys.executable]
+    if stock:
+        command.append("-P")
+    command += [str(DIGEST_MODULE), *arguments]
+    finished = subprocess.run(
+        command, capture_output=True, text=True, timeout=300, env=environment
+    )
+    assert finished.returncode == 0, finished.stderr
+    return json.loads(finished.stdout)
+
+
+@pytest.mark.parametrize("name", sorted(dynamics_mjcf_digest.FIXTURE_NAMES))
+def test_the_same_fixture_exports_the_same_bytes_in_two_processes(
+    name: str,
+) -> None:
+    """An exported file is compared between machines, not between iterations.
+
+    ``to_xml()`` is trusted as a determinism oracle inside one interpreter
+    today (``test_dynamics_model``), where a stable dict order and a warm
+    allocator are doing part of the work. This re-takes the claim in two
+    interpreters that have never seen each other.
+    """
+
+    first = _run(["digest", name], stock=False)
+    second = _run(["digest", name], stock=False)
+    assert first == second
+    assert first["fixture"] == name
+    assert len(first["digest"]) == 64
+    assert first["keyframe_count"] == 1
+
+
+@pytest.mark.parametrize("name", sorted(CASES))
+def test_a_stock_mujoco_loads_the_file_and_reaches_the_solved_pose(
+    name: str, tmp_path: Path
+) -> None:
+    """The exit criterion's shape, at unit scale and on every fixture.
+
+    No Cadex on the subprocess's path -- asserted by the subprocess, which
+    tried to import it and failed -- and no help beyond the file itself: it
+    finds the ``solved`` keyframe by name, resets to it, lands on the pose
+    the engine solved, and integrates from there to the same trajectory.
+    """
+
+    built = _built(name)
+    target = tmp_path / "model.xml"
+    target.write_bytes(dyn.export_mjcf(built)["xml"])
+    result = _run(["load", str(target), "500"], stock=True)
+
+    assert result["cadex_importable"] is False, (
+        "the subprocess could reach Cadex, so it proves nothing about a "
+        "stock MuJoCo"
+    )
+    assert result["mujoco_version"] == mujoco.__version__
+    assert result["keyframe_id"] == 0
+    assert result["nkey"] == 1
+    assert result["nbody"] == int(built["model"].nbody)
+    assert result["nq"] == int(built["model"].nq)
+
+    # It opened at the solved pose, before a single step.
+    solved = mujoco.MjData(built["model"])
+    solved.qpos[:] = list(built["qpos_solved"])
+    mujoco.mj_forward(built["model"], solved)
+    start = [float(value) for value in result["start_xpos"]]
+    worst = max(
+        abs(a - b)
+        for a, b in zip(solved.xpos.ravel().tolist(), start, strict=True)
+    )
+    assert dyn.length_mm(worst) < dyn.MJCF_POSE_TOLERANCE_MM
+
+    # ...and it integrated to the same trajectory the engine did.
+    for _ in range(500):
+        mujoco.mj_step(built["model"], solved)
+    there = [float(value) for value in result["xpos"]]
+    worst = max(
+        abs(a - b)
+        for a, b in zip(solved.xpos.ravel().tolist(), there, strict=True)
+    )
+    assert dyn.length_mm(worst) < dyn.MJCF_POSE_TOLERANCE_MM, dyn.length_mm(worst)
+
+    # The masses in the file are the OCCT ones, read by a MuJoCo that has
+    # never heard of OCCT.
+    for body in built["tree"]["bodies"]:
+        index = mujoco.mj_name2id(
+            built["model"], mujoco.mjtObj.mjOBJ_BODY, str(body["name"])
+        )
+        expected = float(built["inertials"][str(body["name"])]["mass_kg"])
+        assert float(result["body_mass"][index]) == pytest.approx(
+            expected, rel=dyn.MJCF_MASS_TOLERANCE
+        )
