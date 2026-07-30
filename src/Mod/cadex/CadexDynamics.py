@@ -54,6 +54,14 @@ __all__ = [
     "vector_mm",
     "mass_kg",
     "inertia_kg_m2",
+    "torque_nm",
+    "angle_radians",
+    "speed_m_s",
+    "stiffness_nm_per_rad",
+    "stiffness_n_per_m",
+    "damping_nms_per_rad",
+    "damping_ns_per_m",
+    "armature_kg_m2",
     "checked_density",
     "IDENTITY_MATRIX",
     "checked_rigid_matrix",
@@ -100,6 +108,8 @@ __all__ = [
     "CLOSURE_RESIDUAL_MM",
     "CLOSURE_RESIDUAL_RADIANS",
     "CLOSURE_EQUALITY_TOLERANCE",
+    "MAXIMUM_ACTUATOR_OMEGA_STEP",
+    "MAXIMUM_DAMPING_RATE_PER_S",
 ]
 
 
@@ -204,6 +214,82 @@ def inertia_kg_m2(density_kg_m3: float, tensor_mm5: Sequence[float]) -> list[flo
     """
 
     return [float(density_kg_m3) * float(item) * 1.0e-15 for item in tensor_mm5]
+
+
+def torque_nm(value_nmm: float) -> float:
+    """Newton-millimetres to newton-metres.
+
+    A torque is a force times a lever arm and only the arm carries a length,
+    so this is the same thousand :func:`length_m` divides by. 8000 N·mm is a
+    small servo; 8000 N·m is a driveshaft.
+    """
+
+    return float(value_nmm) / MM_PER_METRE
+
+
+def angle_radians(value_degrees: float) -> float:
+    """Degrees to radians, at the one boundary that is allowed to do it.
+
+    ``compiler.degree`` is False for every model this module builds (M2
+    measured what leaving it alone costs), so a setpoint that arrived in
+    degrees and was not converted would be a 57x error that runs.
+    """
+
+    return math.radians(float(value_degrees))
+
+
+def speed_m_s(value_mm_per_s: float) -> float:
+    """Millimetres per second to metres per second."""
+
+    return length_m(value_mm_per_s)
+
+
+def stiffness_nm_per_rad(value_nmm_per_deg: float) -> float:
+    """N·mm per degree to N·m per radian -- two conversions in one factor.
+
+    The length divides by a thousand and the angle multiplies by 180/π, and
+    both moves are in the *same* direction, so getting one right and the
+    other wrong lands within a factor of sixty of correct: an arm that still
+    holds, badly, and that nobody looks at again.
+    """
+
+    return torque_nm(value_nmm_per_deg) / math.radians(1.0)
+
+
+def stiffness_n_per_m(value_n_per_mm: float) -> float:
+    """N per millimetre to N per metre.
+
+    Note the direction: this *multiplies* by a thousand where the angular
+    gain above divides. That opposition is the whole argument for the
+    suffixed parameter pairs -- one ``stiffness=`` whose meaning depended on
+    the joint's kind would be off by five million between its two readings
+    of the same number.
+    """
+
+    return float(value_n_per_mm) * MM_PER_METRE
+
+
+def damping_nms_per_rad(value_nmms_per_deg: float) -> float:
+    """N·mm·s per degree to N·m·s per radian -- the gain factor, per second."""
+
+    return stiffness_nm_per_rad(value_nmms_per_deg)
+
+
+def damping_ns_per_m(value_ns_per_mm: float) -> float:
+    """N·s per millimetre to N·s per metre."""
+
+    return stiffness_n_per_m(value_ns_per_mm)
+
+
+def armature_kg_m2(value_kg_mm2: float) -> float:
+    """kg·mm² to kg·m².
+
+    Unlike :func:`inertia_kg_m2` there is no density in it: an armature is a
+    rotor inertia the script states outright, so only the length unit moves
+    and the exponent is 6 rather than 15.
+    """
+
+    return float(value_kg_mm2) * 1.0e-6
 
 
 def checked_density(value: Any, *, context: str) -> float:
@@ -2045,6 +2131,37 @@ MAXIMUM_STEPS_PER_SAMPLE = 2000
 #: time on a mechanism-sized model, which is long for a script and finite,
 #: and it is two orders above anything M3 itself needs.
 MAXIMUM_SOLVER_STEPS = 2_000_000
+
+#: How stiff a position actuator may be at a given solver step, as the
+#: dimensionless ``ω·h`` -- the joint's natural frequency under the gain,
+#: times the step. Measured (M4 phase 0), and it is exactly the textbook
+#: explicit-integration limit: ``implicitfast`` integrates *damping*
+#: implicitly and stiffness explicitly, so a position actuator's spring term
+#: inherits ``ω·h < 2`` and an undamped one was measured to diverge at
+#: 2.02 at four different steps and across a 400x range of inertia.
+#:
+#: It is the *undamped* boundary on purpose. Actuator damping buys real
+#: headroom -- ζ = 1 survives to 5.09 -- but a model whose stability rests
+#: on a damping number the author chose for how the motion looks is a model
+#: that breaks when somebody smooths it, and nothing would say why. The
+#: refusal names the finer step instead, which is the same shape as M3's
+#: restitution refusal and for the same reason.
+MAXIMUM_ACTUATOR_OMEGA_STEP = 2.0
+
+#: How much damping one joint coordinate may carry, as damping divided by
+#: that coordinate's own inertia -- a rate, in reciprocal seconds. This is
+#: the *other* failure a gain can produce and it is the worse one, because
+#: it is silent: past ``c / M ≈ 1.2e10`` a velocity actuator commanded to
+#: 1 rad/s delivers 1e-9 instead, finite the whole way, warned about by
+#: nothing. Measured (M4 phase 0) at 1.218e10 for an actuator's damping and
+#: 2.89e10 for a joint's, invariant across four decades of inertia and both
+#: solver steps -- so one ceiling a decade below the smaller of them covers
+#: both, and the two cannot drift apart.
+#:
+#: Nothing real approaches it: 1e9 s⁻¹ is an actuator that settles in a
+#: nanosecond. It exists so that the regime where MuJoCo stops moving a
+#: joint without saying so is a refusal rather than a mystery.
+MAXIMUM_DAMPING_RATE_PER_S = 1.0e9
 
 
 def _limit_range(

@@ -110,6 +110,122 @@ def test_density_bounds_name_their_anchors() -> None:
     assert CadexDynamics.checked_density(7850, context="body 'arm'") == 7850.0
 
 
+# ---------------------------------------------------------------------------
+# M4's conversions, written before they have a caller (docs/MUJOCO.md M4,
+# phase 0). Actuators are the second predicted regression of hazard 1 and
+# they are a worse one than contact was: a gain, a setpoint, an effort limit
+# and an armature are four quantities whose unit depends on whether the
+# joint coordinate is angular or linear, and every one of them has a wrong
+# answer that runs.
+# ---------------------------------------------------------------------------
+
+
+def test_torque_is_newton_millimetres_at_the_surface() -> None:
+    """N·mm in, N·m out -- the same thousand as every other length.
+
+    A torque is a force times a lever arm, and only the arm carries a unit
+    that changes. 8000 N·mm is 8 N·m, which is a small servo; 8000 N·m is a
+    car's driveshaft, and the difference between them is a script that
+    holds an arm and a script that throws it across the room.
+    """
+
+    assert CadexDynamics.torque_nm(8000.0) == pytest.approx(8.0, rel=1.0e-12)
+    assert CadexDynamics.torque_nm(-1.0) == pytest.approx(-1.0e-3, rel=1.0e-12)
+    assert CadexDynamics.torque_nm(0.0) == 0.0
+
+
+def test_a_setpoint_in_degrees_reaches_mujoco_in_radians() -> None:
+    """The 57x error, and the reason the parameter is named ``control_deg``.
+
+    ``compiler.degree`` is False for the whole model (M2 measured what
+    leaving it alone costs), so every angle this module writes is radians.
+    A ``control="30"`` that meant 30 radians would run, look like physics,
+    and be four and three-quarter turns out.
+    """
+
+    assert CadexDynamics.angle_radians(180.0) == pytest.approx(math.pi)
+    assert CadexDynamics.angle_radians(30.0) == pytest.approx(0.5235987755982988)
+    assert CadexDynamics.angle_radians(0.0) == 0.0
+    assert CadexDynamics.angle_radians(-90.0) == pytest.approx(-math.pi / 2.0)
+
+
+def test_an_angular_gain_carries_two_conversions_at_once() -> None:
+    """N·mm per degree to N·m per radian: divide by 1000, multiply by 180/π.
+
+    Both factors move the same way, so getting one right and the other
+    wrong lands within a factor of 60 of correct -- close enough that the
+    arm still holds, badly, and nobody looks again.
+    """
+
+    assert CadexDynamics.stiffness_nm_per_rad(1.0) == pytest.approx(
+        180.0 / (1000.0 * math.pi), rel=1.0e-12
+    )
+    # 4000 N·mm/deg is 4 N·m/deg is 229.18 N·m/rad.
+    assert CadexDynamics.stiffness_nm_per_rad(4000.0) == pytest.approx(
+        229.1831180523293, rel=1.0e-12
+    )
+    # And the damping term takes exactly the same factor: N·mm·s/deg differs
+    # from N·mm/deg by a second, which is SI on both sides.
+    assert CadexDynamics.damping_nms_per_rad(4000.0) == pytest.approx(
+        CadexDynamics.stiffness_nm_per_rad(4000.0), rel=1.0e-15
+    )
+
+
+def test_a_linear_gain_is_the_other_thousand() -> None:
+    """N per mm to N per metre multiplies by 1000; the angular pair divides.
+
+    The two directions are what makes a suffixed pair worth its verbosity.
+    A ``stiffness=`` argument whose meaning depended on the joint's kind
+    would be off by 5.7 million between the two readings of 4000.
+    """
+
+    assert CadexDynamics.stiffness_n_per_m(1.0) == pytest.approx(1000.0)
+    assert CadexDynamics.stiffness_n_per_m(4000.0) == pytest.approx(4.0e6)
+    assert CadexDynamics.damping_ns_per_m(2.5) == pytest.approx(2500.0)
+    ratio = CadexDynamics.stiffness_n_per_m(4000.0) / CadexDynamics.stiffness_nm_per_rad(
+        4000.0
+    )
+    assert ratio == pytest.approx(1000.0 * 1000.0 * math.pi / 180.0, rel=1.0e-12)
+
+
+def test_armature_is_kilogram_millimetres_squared() -> None:
+    """kg·mm² to kg·m² is 1e-6 -- the moment arm squared and nothing else.
+
+    Unlike ``inertia_kg_m2`` there is no density in it: an armature is a
+    rotor inertia the author states directly, so only the length unit
+    moves.
+    """
+
+    assert CadexDynamics.armature_kg_m2(1.0) == pytest.approx(1.0e-6, rel=1.0e-12)
+    assert CadexDynamics.armature_kg_m2(50.0) == pytest.approx(5.0e-5, rel=1.0e-12)
+    assert CadexDynamics.armature_kg_m2(0.0) == 0.0
+
+
+def test_a_linear_speed_is_a_length_per_second_and_converts_as_one() -> None:
+    """mm/s to m/s is the ordinary thousand, stated so it is not re-derived."""
+
+    assert CadexDynamics.speed_m_s(1234.5) == pytest.approx(1.2345, rel=1.0e-12)
+    assert CadexDynamics.speed_m_s(-50.0) == pytest.approx(-0.05, rel=1.0e-12)
+
+
+def test_every_m4_conversion_round_trips_through_a_known_physical_case() -> None:
+    """One worked example end to end, because six factors invite a typo.
+
+    A 4 N·m/deg servo holding 30° with a 120 N·mm·s/deg damper and an
+    8 N·m ceiling, in the numbers MuJoCo will actually see.
+    """
+
+    assert CadexDynamics.stiffness_nm_per_rad(4000.0) == pytest.approx(229.183118)
+    assert CadexDynamics.damping_nms_per_rad(120.0) == pytest.approx(6.8754935)
+    assert CadexDynamics.angle_radians(30.0) == pytest.approx(0.523598775)
+    assert CadexDynamics.torque_nm(8000.0) == pytest.approx(8.0)
+    # The restoring torque at 1° of error: gain times error, in SI.
+    torque = CadexDynamics.stiffness_nm_per_rad(4000.0) * CadexDynamics.angle_radians(1.0)
+    assert torque == pytest.approx(4.0, rel=1.0e-12), (
+        "4 N·m per degree of error is what 4000 N·mm/deg means, by definition"
+    )
+
+
 _CONVERSION_ARITHMETIC = re.compile(
     r"""
     (?:[*/]\s*(?:1000(?:\.0)?|1\.?0?e-?(?:9|15))\b)   # * 1000, / 1e-9, ...
