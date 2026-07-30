@@ -731,6 +731,431 @@ def full_inertia_six(tensor: Sequence[float]) -> list[float]:
     return [values[0], values[4], values[8], values[1], values[2], values[5]]
 
 
+# ---------------------------------------------------------------------------
+# The joint table, and the spanning forest.
+# ---------------------------------------------------------------------------
+
+#: How each of FreeCAD's thirteen joint types reaches MuJoCo's four.
+#:
+#: ``tree`` is the MuJoCo joint chain a tree edge builds, in the order the
+#: joints are added to the child body. ``closure`` is the equality
+#: constraint a *non-tree* edge becomes, or ``None`` when M2 refuses to
+#: close that kind. ``coupling`` marks the joints that are never tree edges
+#: at all: a gear pair is a polynomial relation between two hinges that
+#: other joints provide, not a body attachment.
+JOINT_TABLE: dict[str, dict[str, Any]] = {
+    "fixed": {"tree": (), "closure": "weld", "coupling": False},
+    "revolute": {"tree": ("hinge",), "closure": "connect", "coupling": False},
+    "slider": {"tree": ("slide",), "closure": None, "coupling": False},
+    "ball": {"tree": ("ball",), "closure": "connect", "coupling": False},
+    "cylindrical": {"tree": ("slide", "hinge"), "closure": None, "coupling": False},
+    # A screw and a rack-and-pinion are a rotation plus a coupling to the
+    # companion slider FreeCAD already insists exists (the worker's
+    # _coupled_joint_issues refuses the graph without it), so the body
+    # attachment they contribute is a plain hinge.
+    "screw": {"tree": ("hinge",), "closure": "connect", "coupling": True},
+    "rack_pinion": {"tree": ("hinge",), "closure": "connect", "coupling": True},
+    "gears": {"tree": None, "closure": None, "coupling": True},
+    "belt": {"tree": None, "closure": None, "coupling": True},
+    "distance": {"tree": None, "closure": None, "coupling": False},
+    "parallel": {"tree": None, "closure": None, "coupling": False},
+    "perpendicular": {"tree": None, "closure": None, "coupling": False},
+    "angle": {"tree": None, "closure": None, "coupling": False},
+}
+
+#: The four with no runtime meaning at all. They are *placement*
+#: constraints: they told the solver where to put a part once, and a
+#: dynamics model has no use for them afterwards. Refused with a sentence
+#: naming the joint rather than dropped, because dropping one leaves a
+#: mechanism with a degree of freedom the author does not know it has.
+_PLACEMENT_ONLY = ("distance", "parallel", "perpendicular", "angle")
+
+#: What each closure actually constrains, and what it lets go. A ``connect``
+#: pins one point and nothing else, which is exactly right for a planar
+#: four-bar and under-constrained for a spatial one -- so it is recorded in
+#: the published evidence rather than hidden.
+_CLOSURE_EVIDENCE = {
+    "weld": {
+        "constrained_dof": 6,
+        "note": "A weld closure pins position and orientation; nothing is lost.",
+    },
+    "connect": {
+        "constrained_dof": 3,
+        "note": (
+            "A connect closure pins the shared connector point only. Axis "
+            "alignment is not constrained, which is exact for a planar loop "
+            "and one constraint short for a spatial one."
+        ),
+    },
+}
+
+
+def _connector_frames(
+    joint: Mapping[str, Any], *, index: int
+) -> list[tuple[str, list[float]]]:
+    connectors = list(joint.get("connectors") or [])
+    name = str(joint.get("name") or f"joint {index}")
+    if len(connectors) != 2:
+        raise DynamicsError(
+            f"Joint {name!r} does not have exactly two connectors.",
+            reason="malformed_graph",
+            observed={"joint": name, "connector_count": len(connectors)},
+        )
+    return [
+        (
+            str(connector.get("component") or ""),
+            checked_rigid_matrix(
+                connector.get("local_matrix"),
+                context=f"joint {name!r} connector {position} frame",
+            ),
+        )
+        for position, connector in enumerate(connectors, start=1)
+    ]
+
+
+def classify_joints(joints: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Every joint, resolved to its MuJoCo meaning, in script order.
+
+    Classification happens before any traversal so a refusal can name the
+    script rather than a half-built tree: an author who wrote
+    ``api.joint('angle', ...)`` wants to be told that sentence, not told
+    that component 4 is unreachable.
+    """
+
+    classified: list[dict[str, Any]] = []
+    for index, joint in enumerate(joints):
+        name = str(joint.get("name") or f"joint {index}")
+        kind = str(joint.get("kind") or "")
+        entry = JOINT_TABLE.get(kind)
+        if entry is None:
+            raise DynamicsError(
+                f"Joint {name!r} has unknown type {kind!r}.",
+                reason="unknown_joint_type",
+                observed={"joint": name, "kind": kind},
+            )
+        suppressed = bool(joint.get("suppressed"))
+        if not suppressed and kind in _PLACEMENT_ONLY:
+            raise DynamicsError(
+                f"Joint {name!r} is a {kind} joint, which has no dynamics "
+                "meaning: it constrains where the solver puts a part, not how "
+                "the mechanism moves.",
+                reason="placement_only_joint",
+                correction=(
+                    f"Remove {name!r} from the assembly passed to "
+                    "assembly.dynamics, or replace it with the joint that "
+                    "describes the real connection -- a revolute, slider, ball, "
+                    "cylindrical or fixed joint. Its solved placement is already "
+                    "carried into the dynamics model as the starting pose."
+                ),
+                observed={"joint": name, "kind": kind},
+            )
+        connectors = _connector_frames(joint, index=index)
+        if connectors[0][0] == connectors[1][0]:
+            raise DynamicsError(
+                f"Joint {name!r} connects component {connectors[0][0]!r} to "
+                "itself.",
+                reason="malformed_graph",
+                observed={"joint": name, "component": connectors[0][0]},
+            )
+        classified.append(
+            {
+                "name": name,
+                "index": index,
+                "kind": kind,
+                # A suppressed joint is not an edge at all: FreeCAD's solver
+                # ignored it, so the solved pose it would have produced is
+                # not the pose the model starts from.
+                "suppressed": suppressed,
+                "tree": entry["tree"],
+                "closure": entry["closure"],
+                "coupling": bool(entry["coupling"]),
+                "components": [connectors[0][0], connectors[1][0]],
+                "local_matrices": [connectors[0][1], connectors[1][1]],
+                "parameters": dict(joint.get("parameters") or {}),
+                "length_limits_mm": joint.get("length_limits_mm"),
+                "angle_limits_degrees": joint.get("angle_limits_degrees"),
+            }
+        )
+    return classified
+
+
+def _closure_refusal(
+    joint: Mapping[str, Any], bodies: Mapping[str, Mapping[str, Any]]
+) -> DynamicsError:
+    """Why this joint could not close the loop, and what would change it.
+
+    The advice has to be specific to be worth printing, so it names the
+    joints that *did* reach both of this one's components. The spanning tree
+    is grown breadth-first from the grounded components, which means a joint
+    becomes a tree edge when it is the shortest way to one of its
+    components; two components already reached more directly leave it
+    nothing to attach.
+    """
+
+    kind = str(joint["kind"])
+    name = str(joint["name"])
+    first, second = joint["components"]
+    reached_by = {
+        component: (
+            repr(str(bodies[component]["joint"]))
+            if bodies[component].get("joint")
+            else f"its {bodies[component]['attachment']} attachment to the world"
+        )
+        for component in (first, second)
+    }
+    return DynamicsError(
+        f"Joint {name!r} closes a loop and is a {kind} joint, which M2 cannot "
+        "express as an equality constraint: a sliding closure needs a tendon, "
+        "which is real design work and belongs to a later slice.",
+        reason="unclosable_loop_joint",
+        correction=(
+            f"The spanning tree already reaches {first!r} through "
+            f"{reached_by[first]} and {second!r} through {reached_by[second]}, "
+            f"so {name!r} has no body left to attach. Make it the way one of "
+            "them is reached: ground a different component, remove the more "
+            "direct joint, or -- when two joints connect the same pair of "
+            f"components -- list {name!r} first, because the tree takes the "
+            "earlier joint and closes the later one."
+        ),
+        observed={
+            "joint": name,
+            "kind": kind,
+            "components": [first, second],
+            "reached_by": [
+                str(bodies[first].get("joint") or ""),
+                str(bodies[second].get("joint") or ""),
+            ],
+        },
+    )
+
+
+def extract_tree(
+    components: Sequence[Mapping[str, Any]],
+    joints: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """A MuJoCo kinematic tree plus its loop closures, from a constraint graph.
+
+    Our assembly graph is a constraint graph and may contain loops; MuJoCo
+    is a tree plus equality constraints. The spanning forest is grown
+    breadth-first from the grounded components, because tree *depth* is
+    what costs: it is the chain over which pose error accumulates and the
+    chain the solver walks every step.
+
+    Every ordering is total and explicit -- components in script order,
+    joints in script order, the frontier keyed ``(depth, joint index,
+    component index)``. ``component_outputs`` and ``joint_outputs`` upstream
+    are ``id()``-keyed dicts whose keys vary per run, so nothing here may
+    iterate a set or hash an object.
+    """
+
+    ordered = [str(component.get("name") or "") for component in components]
+    if len(set(ordered)) != len(ordered) or not all(ordered):
+        raise DynamicsError(
+            "Assembly components must have unique non-empty names.",
+            reason="malformed_graph",
+            observed={"components": ordered},
+        )
+    positions = {name: index for index, name in enumerate(ordered)}
+    grounded = [
+        str(component["name"])
+        for component in components
+        if bool(component.get("grounded"))
+    ]
+    if not grounded:
+        raise DynamicsError(
+            "This assembly has no grounded component, so a dynamics model has "
+            "no reference frame and every part would fall together.",
+            reason="no_grounded_component",
+            correction=(
+                "Ground the fixed base with api.component(..., grounded=True) "
+                "and reuse that variable throughout the graph."
+            ),
+            observed={"component_count": len(ordered)},
+        )
+    for component in components:
+        if bool(component.get("flexible")):
+            raise DynamicsError(
+                f"Component {component.get('name')!r} is a flexible "
+                "subassembly, and M2 builds exactly one rigid body per "
+                "component.",
+                reason="flexible_component",
+                correction=(
+                    "Set flexible=False. A flexible subassembly expands into "
+                    "many bodies with internal joints, which the dynamics "
+                    "translator does not walk yet."
+                ),
+                observed={"component": str(component.get("name") or "")},
+            )
+
+    classified = classify_joints(joints)
+    for joint in classified:
+        for name in joint["components"]:
+            if name not in positions:
+                raise DynamicsError(
+                    f"Joint {joint['name']!r} references component {name!r}, "
+                    "which is not part of this assembly.",
+                    reason="malformed_graph",
+                    observed={"joint": joint["name"], "component": name},
+                )
+
+    #: Adjacency in joint order: only joints that can attach a body.
+    adjacency: dict[str, list[int]] = {name: [] for name in ordered}
+    for joint in classified:
+        if joint["suppressed"] or joint["tree"] is None:
+            continue
+        first, second = joint["components"]
+        adjacency[first].append(joint["index"])
+        adjacency[second].append(joint["index"])
+    by_index = {joint["index"]: joint for joint in classified}
+
+    def _other_index(joint_index: int, component: str) -> int:
+        first, second = by_index[joint_index]["components"]
+        return positions[second if first == component else first]
+
+    bodies: list[dict[str, Any]] = []
+    attached: dict[str, int] = {}
+    used_joints: set[int] = set()
+
+    def _attach(
+        name: str,
+        *,
+        parent: str | None,
+        joint: Mapping[str, Any] | None,
+        attachment: str,
+        depth: int,
+    ) -> None:
+        record: dict[str, Any] = {
+            "name": name,
+            "parent": parent,
+            "depth": depth,
+            "attachment": attachment,
+            "joint": None if joint is None else str(joint["name"]),
+            "joint_kind": None if joint is None else str(joint["kind"]),
+            "mujoco_joints": (
+                ["free"]
+                if attachment == "free"
+                else ([] if joint is None else list(joint["tree"]))
+            ),
+            "parent_local_matrix": None,
+            "child_local_matrix": None,
+        }
+        if joint is not None:
+            first, second = joint["components"]
+            parent_side = 0 if first == parent else 1
+            record["parent_local_matrix"] = joint["local_matrices"][parent_side]
+            record["child_local_matrix"] = joint["local_matrices"][1 - parent_side]
+        attached[name] = len(bodies)
+        bodies.append(record)
+
+    def _expand(root: str) -> None:
+        # (depth, joint index, component index, parent): a total order, so
+        # the same graph produces the same tree on every run, and depth
+        # first so the traversal stays breadth-first.
+        frontier = sorted(
+            (1, joint_index, _other_index(joint_index, root), root)
+            for joint_index in sorted(adjacency[root])
+        )
+        while frontier:
+            depth, joint_index, component_index, parent = frontier.pop(0)
+            child = ordered[component_index]
+            if child in attached:
+                continue
+            used_joints.add(joint_index)
+            _attach(
+                child,
+                parent=parent,
+                joint=by_index[joint_index],
+                attachment="tree",
+                depth=depth,
+            )
+            for next_joint in sorted(adjacency[child]):
+                next_component = _other_index(next_joint, child)
+                if ordered[next_component] in attached:
+                    continue
+                frontier.append((depth + 1, next_joint, next_component, child))
+            frontier.sort()
+
+    # Every grounded component is a static root *before* any traversal
+    # starts. A grounded component may not become another body's child: it
+    # is fixed to the world, and hanging it off a moving parent would give
+    # it degrees of freedom FreeCAD's solver says it does not have. A joint
+    # between two grounded components therefore reaches neither the tree nor
+    # the closures -- it is already satisfied, permanently.
+    for name in ordered:
+        if name in grounded:
+            _attach(name, parent=None, joint=None, attachment="grounded", depth=0)
+    for name in grounded:
+        _expand(name)
+    for name in ordered:
+        if name not in attached:
+            # An island the joints never reach from ground. Its first
+            # component in script order gets a free joint and falls; the rest
+            # of the island hangs off it as an ordinary subtree.
+            _attach(name, parent=None, joint=None, attachment="free", depth=0)
+            _expand(name)
+
+    closures: list[dict[str, Any]] = []
+    couplings: list[dict[str, Any]] = []
+    static_joints: list[dict[str, Any]] = []
+    grounded_names = frozenset(grounded)
+    for joint in classified:
+        if joint["suppressed"]:
+            continue
+        if joint["coupling"]:
+            couplings.append(joint)
+        if joint["tree"] is None or joint["index"] in used_joints:
+            continue
+        first_component, second_component = joint["components"]
+        if (
+            first_component in grounded_names
+            and second_component in grounded_names
+        ):
+            static_joints.append(
+                {
+                    "joint": joint["name"],
+                    "kind": joint["kind"],
+                    "components": [first_component, second_component],
+                    "note": (
+                        "Both components are grounded, so this joint is "
+                        "satisfied by the solved placements and needs no "
+                        "constraint in the dynamics model."
+                    ),
+                }
+            )
+            continue
+        closure = joint["closure"]
+        if closure is None:
+            raise _closure_refusal(
+                joint, {body["name"]: body for body in bodies}
+            )
+        evidence = _CLOSURE_EVIDENCE[closure]
+        first, second = joint["components"]
+        closures.append(
+            {
+                "joint": joint["name"],
+                "kind": joint["kind"],
+                "closure_kind": closure,
+                "constrained_dof": evidence["constrained_dof"],
+                "note": evidence["note"],
+                "components": [first, second],
+                "local_matrices": [
+                    joint["local_matrices"][0],
+                    joint["local_matrices"][1],
+                ],
+            }
+        )
+    return {
+        "bodies": bodies,
+        "closures": closures,
+        "couplings": couplings,
+        "static_joints": static_joints,
+        "classified_joints": classified,
+        "grounded": grounded,
+        "tree_joint_count": len(used_joints),
+        "maximum_depth": max((body["depth"] for body in bodies), default=0),
+    }
+
+
 def _axis_normalised(axis: Sequence[float], *, context: str) -> list[float]:
     values = [float(item) for item in axis]
     magnitude = math.sqrt(sum(item * item for item in values))
