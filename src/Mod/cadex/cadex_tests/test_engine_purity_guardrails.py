@@ -219,6 +219,37 @@ def test_every_engine_module_is_installed_by_cmake() -> None:
     )
 
 
+def test_mujoco_never_enters_the_engine_closure() -> None:
+    """Dynamics is a staged worker dependency, not an engine dependency (ADR-062).
+
+    ``CadexDynamics`` is the one module in the tree that imports ``mujoco``,
+    and it is staged into the sandbox by filename like every other worker
+    module. Were anything in the closure to import it -- a convenience
+    helper reached from ``cadexd``, say -- the service would pull 53 MB of
+    physics engine into a process whose job is to read NDJSON off a pipe,
+    and :func:`test_engine_closure_is_the_declared_module_list` would be the
+    only thing that noticed. This says why, so the next failure reads as a
+    decision rather than as a list to append to.
+    """
+
+    closure = _engine_closure()
+    assert "CadexDynamics" not in closure, (
+        "CadexDynamics reached the engine closure. It is staged by filename "
+        "into the worker bundle (ADR-062); cadexd must never import it."
+    )
+    leaked = sorted(
+        module for module, roots in closure.items() if "mujoco" in roots
+    )
+    assert not leaked, f"{leaked} import mujoco inside the engine closure."
+
+    dynamics = _import_roots(MODULE_DIR / "CadexDynamics.py")
+    assert "mujoco" not in dynamics, (
+        "CadexDynamics imports mujoco at module scope. The import belongs "
+        "inside the functions that build a model, so the graph algebra stays "
+        "testable in an environment without it."
+    )
+
+
 def test_the_conversation_store_left_the_engine() -> None:
     """History lives in the .blend now (ADR-020, decision 4)."""
 

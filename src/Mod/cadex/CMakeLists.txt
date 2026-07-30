@@ -9,6 +9,7 @@ set(Cadex_Scripts
     CadexReferenceContracts.py
     CadexRouting.py
     CadexBundle.py
+    CadexDynamics.py
     CadexProject.py
     CadexScriptStore.py
     CadexSubshapeQuery.py

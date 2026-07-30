@@ -57,6 +57,12 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         "cadex_mesh_worker.py",
         "cadex_assembly_api.py",
         "cadex_assembly_worker.py",
+        # The MuJoCo translator (ADR-062). Staged by filename for the same
+        # reason as CadexRouting, plus one of its own: it is the only module
+        # in the tree that imports mujoco, and the engine's import closure is
+        # asserted to equal DECLARED_ENGINE_MODULES exactly. Reachable from
+        # the sandboxed worker, never from cadexd.
+        "CadexDynamics.py",
         "cadex_tessellation.py",
         # The resident preview worker's entry (ADR-055). In the bundle rather
         # than beside cadexd because it runs inside the same --safe-mode
