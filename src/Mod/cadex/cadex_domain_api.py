@@ -99,6 +99,11 @@ _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
         # A collision shape is an argument to a body, never an output: it
         # has no native type and nothing publishes it (M3 phase 1).
         "collision": "collision",
+        # A joint's damping and its motor are arguments to a dynamics run
+        # for the same reason a collision shape is: they have no native
+        # type, nothing publishes them, and a script that returned one would
+        # be declaring a fact about a joint rather than a result (M4).
+        "joint_dynamics": "joint_dynamics",
         "exploded_view": "exploded_view",
     },
     "material": {

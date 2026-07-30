@@ -100,6 +100,8 @@ __all__ = [
     "joint_transform",
     "joint_coordinates",
     "closure_residuals",
+    # actuation
+    "joint_dynamics_records",
     # the model
     "build_model",
     "simulate",
@@ -2405,6 +2407,200 @@ def _coupling_records(
     return records
 
 
+#: Which unit family each MuJoCo joint type's coordinate speaks. ``ball``
+#: and ``free`` are absent because neither has a scalar coordinate, which is
+#: why neither can be damped or driven.
+_MOTION_BY_MUJOCO_TYPE = {"hinge": "angular", "slide": "linear"}
+
+
+def _coordinate_table(
+    tree: Mapping[str, Any], joint_records: Sequence[Mapping[str, Any]]
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Every joint coordinate a script may damp or drive, and why the rest not.
+
+    Built from ``joint_records`` rather than from the tree directly, so the
+    MuJoCo joint names here are the ones ``build_model`` actually wrote --
+    a second copy of the ``joint`` vs ``joint/hinge`` naming rule is a bug
+    waiting for a cylindrical joint.
+
+    The second return is the *refusal* map, and it is the reason this exists
+    as a table rather than a lookup: a joint that is missing from the model
+    is missing for a specific reason -- it closes a loop, it is a coupling
+    that attaches nothing, it is suppressed, both its components are
+    grounded -- and a refusal that cannot say which is a bug report
+    addressed to nobody.
+    """
+
+    table: dict[tuple[str, str], dict[str, Any]] = {}
+    for record in joint_records:
+        joint = record.get("joint")
+        if joint is None:
+            continue
+        motion = _MOTION_BY_MUJOCO_TYPE.get(str(record["mujoco_type"]))
+        if motion is None:
+            continue
+        table[(str(joint), motion)] = dict(record)
+    return table
+
+
+def _coordinate_refusals(tree: Mapping[str, Any]) -> dict[str, str]:
+    """Why each live joint that owns no coordinate owns none."""
+
+    reasons: dict[str, str] = {}
+    for closure in tree["closures"]:
+        reasons[str(closure["joint"])] = (
+            "closes a loop, so the dynamics model expresses it as an equality "
+            "constraint and there is no MuJoCo joint on it to drive. Drive one "
+            "of the joints the spanning tree did use, or reorder the joints so "
+            "that this one becomes a tree edge and another closes the loop"
+        )
+    for coupling in tree["couplings"]:
+        reasons[str(coupling["name"])] = (
+            f"is a {coupling['kind']} joint, which attaches nothing: it relates "
+            "coordinates that other joints provide. Drive one of those joints "
+            "instead -- the coupling will carry the motion across"
+        )
+    for static in tree["static_joints"]:
+        reasons[str(static["joint"])] = (
+            "connects two grounded components, so it is satisfied by the "
+            "solved placements and has no coordinate in the dynamics model"
+        )
+    for joint in tree["classified_joints"]:
+        if joint["suppressed"]:
+            reasons[str(joint["name"])] = (
+                "is suppressed, so FreeCAD's solver ignored it and the dynamics "
+                "model has no joint there at all"
+            )
+    return reasons
+
+
+def _coordinate_context(joint: str, motion: str) -> str:
+    return f"joint {joint!r} ({motion})"
+
+
+def _resolve_coordinate(
+    entry: Mapping[str, Any],
+    table: Mapping[tuple[str, str], Mapping[str, Any]],
+    refusals: Mapping[str, str],
+    *,
+    what: str,
+) -> dict[str, Any]:
+    """One graph entry, against the coordinate it claims to configure."""
+
+    joint = str(entry.get("joint") or "")
+    motion = str(entry.get("motion_type") or "")
+    record = table.get((joint, motion))
+    if record is not None:
+        return dict(record)
+    reason = refusals.get(joint)
+    if reason is not None:
+        raise DynamicsError(
+            f"{what} targets joint {joint!r}, which {reason}.",
+            reason="joint_has_no_coordinate",
+            observed={"joint": joint, "motion_type": motion, "what": what},
+        )
+    if any(name == joint for name, _motion in table):
+        available = sorted(
+            other for name, other in table if name == joint
+        )
+        raise DynamicsError(
+            f"{what} targets the {motion} coordinate of joint {joint!r}, which "
+            f"owns only {' and '.join(available)}.",
+            reason="joint_has_no_coordinate",
+            correction=(
+                "A revolute joint has an angular coordinate and a slider a "
+                "linear one; only a cylindrical joint has both."
+            ),
+            observed={"joint": joint, "motion_type": motion},
+        )
+    raise DynamicsError(
+        f"{what} targets joint {joint!r}, which is not part of this assembly.",
+        reason="joint_not_in_assembly",
+        correction=(
+            "Pass the same api.joint variable the assembly was built from."
+        ),
+        observed={"joint": joint},
+    )
+
+
+def joint_dynamics_records(
+    entries: Sequence[Mapping[str, Any]],
+    tree: Mapping[str, Any],
+    joint_records: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Damping, armature and friction loss for named joint coordinates, in SI.
+
+    Every conversion happens here and nowhere else, which is the M2 split
+    rule holding through a second slice: the script surface speaks
+    newton-millimetres per degree and kilogram-millimetres squared, the
+    model speaks newton-metre-seconds per radian and kilogram-metres
+    squared, and the worker -- which is the only place with FreeCAD in it --
+    reads these numbers straight off the graph without touching them.
+    """
+
+    table = _coordinate_table(tree, joint_records)
+    refusals = _coordinate_refusals(tree)
+    records: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for entry in entries:
+        joint = str(entry.get("joint") or "")
+        motion = str(entry.get("motion_type") or "")
+        what = f"joint_dynamics for {_coordinate_context(joint, motion)}"
+        record = _resolve_coordinate(entry, table, refusals, what=what)
+        if (joint, motion) in seen:
+            raise DynamicsError(
+                f"{_coordinate_context(joint, motion)} is configured twice.",
+                reason="duplicate_joint_dynamics",
+                observed={"joint": joint, "motion_type": motion},
+            )
+        seen.add((joint, motion))
+        angular = motion == "angular"
+        damping = float(
+            (
+                entry.get("damping_nmms_per_deg")
+                if angular
+                else entry.get("damping_ns_per_mm")
+            )
+            or 0.0
+        )
+        armature = float(
+            (entry.get("armature_kgmm2") if angular else entry.get("armature_kg"))
+            or 0.0
+        )
+        friction = float(
+            (
+                entry.get("friction_loss_nmm")
+                if angular
+                else entry.get("friction_loss_n")
+            )
+            or 0.0
+        )
+        records.append(
+            {
+                "joint": joint,
+                "motion_type": motion,
+                "mujoco_joint": str(record["mujoco_joint"]),
+                "mujoco_type": str(record["mujoco_type"]),
+                "joint_kind": str(record["kind"]),
+                "damping_si": (
+                    damping_nms_per_rad(damping) if angular else damping_ns_per_m(damping)
+                ),
+                "armature_si": (
+                    armature_kg_m2(armature) if angular else float(armature)
+                ),
+                "friction_loss_si": (
+                    torque_nm(friction) if angular else float(friction)
+                ),
+                "declared": {
+                    "damping": damping,
+                    "armature": armature,
+                    "friction_loss": friction,
+                },
+            }
+        )
+    return records
+
+
 def _mujoco_module() -> Any:
     """The one import site, with the payload failure named if it is missing."""
 
@@ -2531,6 +2727,7 @@ def build_model(
     *,
     gravity_m_s2: Sequence[float] = DEFAULT_GRAVITY_M_S2,
     time_step_s: float = DEFAULT_TIME_STEP_S,
+    joint_dynamics: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """One assembly, as a compiled MuJoCo model plus the evidence for it.
 
@@ -2635,7 +2832,15 @@ def build_model(
     # implicit was measured too and is worse than either: it *loses* 29%.
     spec.option.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
 
+    # ``autolimits`` defaults *on* and would turn any range this module
+    # writes into a limit by inference. Off, a range without its flag is a
+    # compile error instead -- which is the version worth having, and the
+    # reason every ``limited`` below is stated rather than implied (M4
+    # phase 0).
+    spec.compiler.autolimits = False
+
     native_bodies: dict[str, Any] = {"": spec.worldbody}
+    native_joints: dict[str, Any] = {}
     joint_records: list[dict[str, Any]] = []
     for body in tree["bodies"]:
         name = str(body["name"])
@@ -2715,6 +2920,9 @@ def build_model(
             if limits is not None and mujoco_type != "ball":
                 native_joint.limited = mujoco.mjtLimited.mjLIMITED_TRUE
                 native_joint.range = limits[0]
+            else:
+                native_joint.limited = mujoco.mjtLimited.mjLIMITED_FALSE
+            native_joints[joint_name] = native_joint
             joint_records.append(
                 {
                     "body": name,
@@ -2725,6 +2933,25 @@ def build_model(
                     "limits": None if limits is None else limits[1],
                 }
             )
+
+    # Damping, armature and friction loss, resolved against the tree that
+    # was just built rather than against the script -- which is what lets
+    # the refusal say "that joint closes a loop" instead of "no such joint".
+    # MuJoCo's defaults for all three are zero, so a joint nobody configured
+    # behaves exactly as it did before M4 and a mechanism that only falls
+    # pays nothing for this existing.
+    joint_dynamics_applied = joint_dynamics_records(
+        joint_dynamics, tree, joint_records
+    )
+    for record in joint_dynamics_applied:
+        native_joint = native_joints[str(record["mujoco_joint"])]
+        # ``damping`` is a three-vector on an MjsJoint -- one entry per dof,
+        # for a ball joint's three -- while ``armature`` and
+        # ``frictionloss`` are scalars. Measured; assigning a float to the
+        # first is a TypeError, which is at least the loud kind of wrong.
+        native_joint.damping = [float(record["damping_si"]), 0.0, 0.0]
+        native_joint.armature = float(record["armature_si"])
+        native_joint.frictionloss = float(record["friction_loss_si"])
 
     # Closures are written against *sites* placed at the two connector
     # frames, not against bodies. Measured, and it matters: a body-anchored
@@ -2836,6 +3063,7 @@ def build_model(
     qpos = _solved_qpos(
         mujoco, model, tree, placements, joint_records, solved_values
     )
+    _verify_damping_is_resolvable(mujoco, model, qpos)
     closure_violation = _closure_violation(mujoco, model, qpos)
     if closure_violation > CLOSURE_EQUALITY_TOLERANCE:
         raise DynamicsError(
@@ -2865,8 +3093,71 @@ def build_model(
         "enableflags": int(model.opt.enableflags),
         "geoms": geoms,
         "excluded_pairs": excluded_pairs,
+        "joint_dynamics": joint_dynamics_applied,
         "mujoco_version": str(getattr(mujoco, "__version__", "unknown")),
     }
+
+
+def _dof_inertia(mujoco: Any, model: Any, qpos: Sequence[float]) -> list[float]:
+    """Each degree of freedom's own diagonal of the mass matrix, at one pose.
+
+    This is the number every actuator refusal is stated against, and it is
+    the reason those refusals can be dimensionless: a maximum *gain* would
+    be right only for the mechanism it was measured on, while ``ω·h`` is
+    right for all of them. ``qM`` is sparse and ``dof_Madr`` addresses its
+    diagonal directly, so no dense copy is made -- and armature is already
+    in it, which is exactly the sense in which an armature buys stability.
+    """
+
+    data = mujoco.MjData(model)
+    data.qpos[:] = list(qpos)
+    mujoco.mj_forward(model, data)
+    return [
+        float(data.qM[int(model.dof_Madr[index])]) for index in range(int(model.nv))
+    ]
+
+
+def _verify_damping_is_resolvable(
+    mujoco: Any, model: Any, qpos: Sequence[float]
+) -> None:
+    """Damping so large the solver stops the joint rather than damping it.
+
+    The failure this catches does not diverge: past ``c / M ≈ 1.2e10`` per
+    second MuJoCo's own regularisation wins, and a joint commanded to a
+    radian per second delivers a nanoradian instead -- finite the whole way,
+    warned about by nothing (M4 phase 0). Silence is the worse of the two
+    failure modes, so it is the one with a refusal in front of it.
+    """
+
+    inertia = _dof_inertia(mujoco, model, qpos)
+    for index in range(int(model.nv)):
+        mass = inertia[index]
+        if mass <= 0.0:
+            continue
+        rate = float(model.dof_damping[index]) / mass
+        if rate <= MAXIMUM_DAMPING_RATE_PER_S:
+            continue
+        joint = int(model.dof_jntid[index])
+        name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, joint)
+        raise DynamicsError(
+            f"Joint {name!r} carries {model.dof_damping[index]:.6g} of damping "
+            f"against {mass:.6g} of inertia, a rate of {rate:.4g} per second; "
+            f"the accepted maximum is {MAXIMUM_DAMPING_RATE_PER_S:g}.",
+            reason="damping_rate_too_high",
+            correction=(
+                "Past this the solver does not damp the joint, it stops it: "
+                "measured, a joint commanded to one radian per second delivers "
+                "a nanoradian instead, and nothing reports it. Lower the "
+                "damping, or raise the joint's armature if the intent was a "
+                "heavy rotor rather than a stiff damper."
+            ),
+            observed={
+                "joint": name,
+                "damping": float(model.dof_damping[index]),
+                "inertia": mass,
+                "rate_per_s": rate,
+            },
+        )
 
 
 def _closure_violation(mujoco: Any, model: Any, qpos: Sequence[float]) -> float:
@@ -2896,6 +3187,7 @@ def simulate(
     frames_per_second: int,
     time_step_s: float = DEFAULT_TIME_STEP_S,
     gravity_m_s2: Sequence[float] = DEFAULT_GRAVITY_M_S2,
+    joint_dynamics: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """Run the model and return trace frames in the schema the shell plays.
 
@@ -2983,6 +3275,7 @@ def simulate(
         joints,
         gravity_m_s2=gravity_m_s2,
         time_step_s=solver_step,
+        joint_dynamics=joint_dynamics,
     )
     model = built["model"]
     names = [str(component["name"]) for component in components]
@@ -3197,6 +3490,23 @@ def model_evidence(
                 "limits": record["limits"],
             }
             for record in built["joint_records"]
+        ],
+        # What resistance each joint was given, in the script's units beside
+        # the model's. MuJoCo's defaults are zero for all three, so a joint
+        # absent from this list is frictionless, undamped and has no rotor --
+        # which is a fact about the run somebody comparing two of them will
+        # want without re-reading the script.
+        "joint_dynamics": [
+            {
+                "joint_output": str(record["joint"]),
+                "motion_type": str(record["motion_type"]),
+                "mujoco_joint": str(record["mujoco_joint"]),
+                "damping_si": float(record["damping_si"]),
+                "armature_si": float(record["armature_si"]),
+                "friction_loss_si": float(record["friction_loss_si"]),
+                "declared": dict(record["declared"]),
+            }
+            for record in built["joint_dynamics"]
         ],
     }
 

@@ -413,6 +413,148 @@ def _limits(
     return result
 
 
+#: Which unit family each drivable joint kind's coordinate speaks. A
+#: `cylindrical` joint owns one of each and is therefore absent: like
+#: `api.motion`, it requires an explicit `motion_type`.
+_COORDINATE_BY_JOINT_KIND = {"revolute": "angular", "slider": "linear"}
+
+#: The four joints that relate coordinates other joints provide. FreeCAD's
+#: own `isJointTypeConnecting` returns false for exactly these, so they
+#: attach nothing and there is no MuJoCo joint on them to damp or drive.
+_COUPLED_JOINT_KINDS = {
+    "screw": "the slider and the revolute joint it relates",
+    "gears": "the two revolute joints it relates",
+    "belt": "the two revolute joints it relates",
+    "rack_pinion": "the slider and the revolute joint it relates",
+}
+_PLACEMENT_ONLY_JOINT_KINDS = ("distance", "parallel", "perpendicular", "angle")
+
+
+def _coordinate(operation: str, joint: DomainValue, motion_type: Any) -> str:
+    """Which unit family this joint's coordinate speaks, or a refusal.
+
+    Every quantity M4 adds -- a setpoint, a gain, an effort limit, an
+    armature -- has one meaning on a joint that turns and another on a joint
+    that slides, so nothing can be validated until this is settled. The
+    refusals are the point: a joint with no coordinate, three coordinates or
+    somebody else's coordinate is an authoring mistake that would otherwise
+    arrive as a MuJoCo compiler error naming an element id.
+    """
+
+    kind = str(joint.properties.get("kind") or "")
+    if bool(joint.properties.get("suppressed")):
+        raise _error(
+            operation,
+            "joint",
+            "cannot damp or drive a suppressed joint: FreeCAD's solver ignored "
+            "it, so the dynamics model has no joint there at all",
+            kind,
+        )
+    if kind in _COUPLED_JOINT_KINDS:
+        raise _error(
+            operation,
+            "joint",
+            f"a {kind} joint attaches nothing -- it relates motion that other "
+            f"joints provide, so there is no coordinate on it to damp or "
+            f"drive. Target {_COUPLED_JOINT_KINDS[kind]} instead",
+            kind,
+        )
+    if kind == "fixed":
+        raise _error(
+            operation,
+            "joint",
+            "a fixed joint has no coordinate: it removes all six degrees of "
+            "freedom, and there is nothing left to damp or drive",
+            kind,
+        )
+    if kind == "ball":
+        raise _error(
+            operation,
+            "joint",
+            "a ball joint has three coordinates and no scalar setpoint means "
+            "anything on it. Model the axis that is actually driven as a "
+            "revolute joint",
+            kind,
+        )
+    if kind in _PLACEMENT_ONLY_JOINT_KINDS:
+        raise _error(
+            operation,
+            "joint",
+            f"a {kind} joint is a placement constraint, not a runtime one: it "
+            "told the solver where to put a part and a dynamics model has no "
+            "use for it",
+            kind,
+        )
+    clean_type = str(motion_type or "").strip().lower()
+    if kind == "cylindrical":
+        if clean_type not in {"angular", "linear"}:
+            raise _error(
+                operation,
+                "motion_type",
+                "a cylindrical joint owns both a rotation and a slide, so it "
+                "requires an explicit 'angular' or 'linear'",
+                motion_type,
+            )
+        return clean_type
+    coordinate = _COORDINATE_BY_JOINT_KIND.get(kind)
+    if coordinate is None:
+        raise _error(operation, "joint", f"has no drivable coordinate", kind)
+    if clean_type not in {"auto", coordinate}:
+        raise _error(
+            operation,
+            "motion_type",
+            f"must be {coordinate!r} or 'auto' for a {kind} joint",
+            motion_type,
+        )
+    return coordinate
+
+
+def _unit_pair(
+    operation: str,
+    coordinate: str,
+    angular: tuple[str, Any],
+    linear: tuple[str, Any],
+    *,
+    minimum: float = 0.0,
+    maximum: float = 1.0e9,
+    strict_minimum: bool = False,
+) -> tuple[str, float] | None:
+    """One quantity from a suffixed pair, with the other one refused.
+
+    This verbosity is the whole design, and it is hazard 1 answered in the
+    parameter names. ``api.motion``'s single ``formula`` whose unit depends
+    on a sibling argument is exactly the shape that fails silently: a
+    ``control="30"`` meaning 30 radians is 57 times what the author wrote,
+    runs, looks like physics and errors nowhere. Naming the unit means the
+    wrong one cannot be passed at all -- ``stiffness_n_per_mm`` on a hinge is
+    a refusal, not a factor of five million.
+    """
+
+    wanted, unwanted = (
+        (angular, linear) if coordinate == "angular" else (linear, angular)
+    )
+    unwanted_name, unwanted_value = unwanted
+    wanted_name, wanted_value = wanted
+    if unwanted_value is not None:
+        raise _error(
+            operation,
+            unwanted_name,
+            f"is the {'linear' if coordinate == 'angular' else 'angular'} form "
+            f"and this joint's coordinate is {coordinate}; use {wanted_name!r}",
+            unwanted_value,
+        )
+    if wanted_value is None:
+        return None
+    return wanted_name, _number(
+        operation,
+        wanted_name,
+        wanted_value,
+        minimum=minimum,
+        maximum=maximum,
+        strict_minimum=strict_minimum,
+    )
+
+
 def _motion_formula(value: Any) -> str:
     operation = "motion"
     if not isinstance(value, str):
@@ -515,6 +657,7 @@ class AssemblyDomainAPI:
         "dynamics",
         "body",
         "collision",
+        "joint_dynamics",
         "exploded_view",
     )
 
@@ -1328,6 +1471,102 @@ class AssemblyDomainAPI:
             "collides_with": clean_collides,
         }
 
+    def joint_dynamics(
+        self,
+        joint: DomainValue,
+        *,
+        motion_type: str = "auto",
+        damping_nmms_per_deg: float | None = None,
+        damping_ns_per_mm: float | None = None,
+        armature_kgmm2: float | None = None,
+        armature_kg: float | None = None,
+        friction_loss_nmm: float | None = None,
+        friction_loss_n: float | None = None,
+        label: str = "",
+    ) -> DomainValue:
+        """Give one joint the resistance a real one has, which MuJoCo's has not.
+
+        MuJoCo's defaults for all three of these are **zero**: a joint out of
+        the box is frictionless, massless in its own rotor, and undamped.
+        That is a perfectly good model of nothing in particular, and a
+        position actuator stiff enough to hold an arm against gravity will
+        ring on it forever -- measured, sixty degrees peak to peak, not
+        decaying. So this is not tuning: it is the difference between a
+        mechanism and a mechanism-shaped oscillator, and it is declared
+        rather than defaulted for the same reason density is.
+
+        ``damping_*`` is viscous resistance, proportional to speed, and it is
+        the one that stops the ringing. ``armature_*`` is the rotor inertia a
+        motor and its gearbox add on the far side of the reduction, which is
+        often more than the link's own -- it also raises the gain the joint
+        can carry before the solver step has to shrink. ``friction_loss_*``
+        is dry friction: a constant resisting effort that does not care how
+        fast the joint moves, and it is what makes a joint stay where it is
+        left.
+
+        **Units are in the names and the wrong one is a refusal.** A joint
+        that turns takes ``damping_nmms_per_deg``, ``armature_kgmm2`` and
+        ``friction_loss_nmm``; a joint that slides takes ``damping_ns_per_mm``,
+        ``armature_kg`` and ``friction_loss_n``. A ``cylindrical`` joint owns
+        one coordinate of each, so it needs an explicit
+        ``motion_type='angular'`` or ``'linear'`` exactly as ``api.motion``
+        does.
+
+        Loop-closing, coupled (``screw``, ``gears``, ``belt``,
+        ``rack_pinion``), ``fixed``, ``ball`` and suppressed joints are all
+        refused, each with the reason: none of them owns a scalar coordinate
+        in the dynamics model.
+
+        A joint_dynamics is an intermediate value like ``connector``: pass it
+        to ``api.dynamics``, and do not return it as an output of its own.
+        """
+
+        operation = "joint_dynamics"
+        value = _domain_value(operation, "joint", joint, output_type="joint")
+        coordinate = _coordinate(operation, value, motion_type)
+        damping = _unit_pair(
+            operation,
+            coordinate,
+            ("damping_nmms_per_deg", damping_nmms_per_deg),
+            ("damping_ns_per_mm", damping_ns_per_mm),
+        )
+        armature = _unit_pair(
+            operation,
+            coordinate,
+            ("armature_kgmm2", armature_kgmm2),
+            ("armature_kg", armature_kg),
+        )
+        friction_loss = _unit_pair(
+            operation,
+            coordinate,
+            ("friction_loss_nmm", friction_loss_nmm),
+            ("friction_loss_n", friction_loss_n),
+        )
+        if damping is None and armature is None and friction_loss is None:
+            raise _error(
+                operation,
+                "damping/armature/friction_loss",
+                "declares nothing: give at least one of damping, armature or "
+                "friction loss, or leave the joint out entirely. An empty "
+                "joint_dynamics reads like a joint that was configured and is "
+                "a joint that was not",
+            )
+        properties: dict[str, Any] = {
+            "motion_type": coordinate,
+            "damping_nmms_per_deg": None,
+            "damping_ns_per_mm": None,
+            "armature_kgmm2": None,
+            "armature_kg": None,
+            "friction_loss_nmm": None,
+            "friction_loss_n": None,
+        }
+        for entry in (damping, armature, friction_loss):
+            if entry is not None:
+                properties[entry[0]] = entry[1]
+        return self._value(
+            operation, "joint_dynamics", value, label=label, **properties
+        )
+
     def body(
         self,
         component: DomainValue,
@@ -1422,6 +1661,7 @@ class AssemblyDomainAPI:
         assembly: DomainValue,
         bodies: Sequence[DomainValue],
         *,
+        joint_dynamics: Sequence[DomainValue] = (),
         start_time_s: float = 0.0,
         end_time_s: float = 1.0,
         frames_per_second: int = 60,
@@ -1444,8 +1684,13 @@ class AssemblyDomainAPI:
         A body touches nothing until ``api.body`` is given ``collision``
         shapes, so a mechanism with none is held together by its joints
         alone and passes through everything -- which is exactly what a
-        kinematics-shaped model already assumed. Damping and actuators are
-        not in this slice.
+        kinematics-shaped model already assumed.
+
+        ``joint_dynamics`` takes ``api.joint_dynamics`` values, at most one
+        per joint coordinate. Without them every joint is frictionless,
+        undamped and has no rotor inertia, because those are MuJoCo's
+        defaults -- fine for a mechanism falling under gravity, and not fine
+        under a motor stiff enough to hold it.
 
         ``gravity_m_s2`` is a vector in **metres** per second squared --
         the one place besides density where this surface is SI, because
@@ -1498,6 +1743,38 @@ class AssemblyDomainAPI:
                 "in a dynamics model is not a lighter part -- it is an "
                 "unsolvable one",
             )
+        joint_dynamics_values = _values(
+            operation,
+            "joint_dynamics",
+            joint_dynamics,
+            output_type="joint_dynamics",
+            minimum=0,
+        )
+        joints = list(model.properties.get("joints", ()))
+        joint_ids = {id(item) for item in joints}
+        # Keyed by *coordinate*, not by joint: a cylindrical joint owns a
+        # rotation and a slide, and damping one of them says nothing about
+        # the other. Two declarations on one coordinate is a script whose
+        # second one silently wins, which is the shape of thing this slice
+        # is organised against.
+        declared: set[tuple[int, str]] = set()
+        for index, entry in enumerate(joint_dynamics_values):
+            target = entry.arguments[0]
+            if id(target) not in joint_ids:
+                raise _error(
+                    operation,
+                    f"joint_dynamics[{index}]",
+                    "configures a joint that is not listed in this assembly",
+                )
+            coordinate = (id(target), str(entry.properties.get("motion_type")))
+            if coordinate in declared:
+                raise _error(
+                    operation,
+                    f"joint_dynamics[{index}]",
+                    f"gives one {coordinate[1]} joint coordinate two sets of "
+                    "damping, armature and friction loss",
+                )
+            declared.add(coordinate)
         start = _number(operation, "start_time_s", start_time_s)
         end = _number(operation, "end_time_s", end_time_s)
         if end <= start:
@@ -1588,6 +1865,7 @@ class AssemblyDomainAPI:
             "simulation",
             model,
             bodies=body_values,
+            joint_dynamics=joint_dynamics_values,
             start_time_s=start,
             end_time_s=end,
             frames_per_second=frames_per_second,

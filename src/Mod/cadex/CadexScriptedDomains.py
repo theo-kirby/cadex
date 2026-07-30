@@ -278,6 +278,11 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "dynamics",
             "body",
             "collision",
+            # Two more intermediates, and deliberately absent from
+            # output_types above: like `collision`, a joint's damping and a
+            # motor are arguments to a dynamics run, not things a script
+            # publishes (M4).
+            "joint_dynamics",
             "exploded_view",
         ),
         production_ready=True,

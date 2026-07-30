@@ -1802,6 +1802,34 @@ def _dynamics_contract(
                     details={"stage": "dynamics_graph", "body_index": index},
                 )
         covered.append(id(component))
+    # Provenance, exactly as it is checked for collision shapes above: each
+    # entry came from the API that makes it, and targets a joint this
+    # assembly lists. The worker validates the graph it is handed rather
+    # than the graph it hopes was authored -- a DomainValue is a plain
+    # object and a script can construct one that looks close enough.
+    joints = list(_properties(assembly_value, "assembly").get("joints") or [])
+    joint_ids = {id(value) for value in joints}
+    for index, entry in enumerate(
+        list(properties.get("joint_dynamics") or [])
+    ):
+        if (
+            not isinstance(entry, DomainValue)
+            or entry.domain != "assembly"
+            or entry.operation != "joint_dynamics"
+            or entry.output_type != "joint_dynamics"
+            or len(entry.arguments) != 1
+        ):
+            raise AssemblyCandidateError(
+                f"Dynamics joint_dynamics {index} must come from "
+                "api.joint_dynamics.",
+                details={"stage": "dynamics_graph", "joint_dynamics_index": index},
+            )
+        if id(entry.arguments[0]) not in joint_ids:
+            raise AssemblyCandidateError(
+                f"Dynamics output {simulation_output!r} configures a joint that "
+                "is not listed in this assembly.",
+                details={"stage": "dynamics_graph", "joint_dynamics_index": index},
+            )
     if len(covered) != len(components):
         raise AssemblyCandidateError(
             f"Dynamics output {simulation_output!r} needs one api.body per "
@@ -2659,6 +2687,7 @@ def _execute_dynamics_simulation(
     component_data: Mapping[str, Mapping[str, Any]],
     component_placements: Mapping[str, Mapping[str, Any]],
     joint_data: Mapping[str, Mapping[str, Any]],
+    joint_outputs: Mapping[int, str],
     artifact_root: Path,
     outputs_by_name: Mapping[str, dict[str, Any]],
 ) -> dict[str, Any]:
@@ -2750,6 +2779,20 @@ def _execute_dynamics_simulation(
         for joint_output, data in joint_data.items()
     ]
 
+    # Actuation parameters come off the graph, never off FreeCAD -- there is
+    # nothing here to read out of a document -- so this loop forwards
+    # property dicts and computes nothing. That is what keeps the M2 split
+    # rule holding through a second slice: every unit conversion in M4 is in
+    # CadexDynamics, and the worker's only job is to say which joint each
+    # entry meant.
+    dynamics_joint_dynamics = [
+        {
+            "joint": joint_outputs[id(entry.arguments[0])],
+            **_properties(entry, "joint_dynamics"),
+        }
+        for entry in list(properties.get("joint_dynamics") or [])
+    ]
+
     start_time = float(properties["start_time_s"])
     end_time = float(properties["end_time_s"])
     frames_per_second = int(properties["frames_per_second"])
@@ -2775,6 +2818,7 @@ def _execute_dynamics_simulation(
                 if solver_step is None
                 else float(solver_step)
             ),
+            joint_dynamics=dynamics_joint_dynamics,
         )
     except CadexDynamics.DynamicsError as error:
         raise _dynamics_failure(simulation_output, error) from error
@@ -4034,6 +4078,7 @@ def validate_and_solve_assembly(
                 component_data=component_data,
                 component_placements=component_placements,
                 joint_data=joint_data,
+                joint_outputs=joint_outputs,
                 artifact_root=artifact_root,
                 outputs_by_name=by_name,
             )
