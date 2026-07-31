@@ -6177,3 +6177,153 @@ then bakes it *inside the shipped bundle*, through
 base stationary, the swing arm translated and rotated. That is the evidence
 ADR-062 exists to demand — a trace the engine is happy with and the shell
 declines to bake is the failure this whole output-type decision prevents.
+
+---
+
+## ADR-072 — `MJC` is a product vertical, and its docs are its own (2026-07-31)
+
+**Decision.** `MJC` is **a version of Cadex with dynamics and control built
+in** — a product vertical, not a branch in a holding pattern. It is not
+provisional, not a merge candidate, and not awaiting anything. The
+documentation on this branch is rewritten to say that, and **ADR-063's
+append-only rule for shared docs is retired** with it: `VISION.md`,
+`ROADMAP.md` and `CLAUDE.md` on `MJC` become `MJC`'s own documents rather
+than `main`'s documents with a block bolted to the end.
+
+**Why now, and why this is the hook firing rather than an overturning.**
+ADR-067 §3 named three facts that would re-open the branch-vs-product
+question and refused to guess at more. The third was: *"A product decision
+that dynamics is core, which is not an engineering finding and would not
+arrive through this log."* That is exactly what has happened. The owner
+decided, after M8 closed the arc, that the dynamics vertical is a product
+rather than an experiment. ADR-067 said this would need a fresh ADR; this is
+it, and it is arriving through the mechanism ADR-067 built for it rather than
+around one.
+
+The arc closing is what makes the decision available. ADR-067's own argument
+for the branch was that *"a branch is where a direction change belongs until
+the arc it opened is finished, and the arc is three slices from finished."*
+M6, M7 and M8 closed (ADR-069, ADR-070, ADR-071). The condition that
+paragraph attached to has expired on its own terms.
+
+### 1. What a product vertical means, and what it does not
+
+It means the docs stop hedging. A reader arriving on this branch cold is
+reading the documentation of a product that simulates and controls
+mechanisms, not the documentation of `main` plus an appendix explaining what
+they are looking at.
+
+It does **not** mean the branch merges. ADR-067's verdict stands unchanged
+and for its own reasons: `export_mjcf` calls MuJoCo's writer, so the
+capability is not separable from the dependency; a bracket-modeller should
+not ship 53.5 MB of physics engine; and a `WITH_DYNAMICS` flag is still two
+configurations of one product, which VISION forbids. Nothing in this entry
+weakens any of that. What changes is the *framing* — "permanent branch"
+described the mechanism and implied a waiting room; "product vertical"
+describes what the mechanism carries.
+
+### 2. Why the append-only doc rule is retired
+
+ADR-063 required the dynamics material in `VISION.md`, `ROADMAP.md` and
+`CLAUDE.md` to be an appended, branch-marked block rather than an in-place
+edit, so that a sync from `main` would resolve as an insertion instead of a
+conflict. That was the right call when it was made. It is worth almost
+nothing now, and it is already broken.
+
+**Its protection is near-zero.** `MJC..main` is **0** — `main`'s tip is
+already an ancestor of this branch. Across the arc's whole life there has
+been one relevant landing on `main` (ADR-068, the retained-artifact digest
+rule), and that one was authored from `MJC`'s own evidence and routed to
+`main` deliberately. The rule is insuring against a rate of change that has
+not occurred.
+
+**It is already broken, in two files, unnoticed.** `docs/XSCRIPT.md:121-272`
+is 152 lines of dynamics, task, policy and rollout surface inserted straight
+into the middle of the domain-API list with no branch marker at all, and
+`docs/ARCHITECTURE.md:151` is the `CadexDynamics.py` row in the middle of the
+engine file map. Both are correct where they sit and both would be wrong
+anywhere else — a reader looking up `assembly.rollout` looks in the list of
+assembly operations. The rule survived in the three files nobody needed to
+edit and lost in the two where the material genuinely belonged in the body.
+A rule that holds only where it is not tested is not a constraint; it is a
+record of which files were convenient.
+
+**The cost of retiring it is a hand-resolved conflict, occasionally.** That
+is the trade taken here, explicitly: doc conflicts on sync are resolved by
+hand, in favour of `MJC`'s wording, keeping whatever `main` changed
+underneath. The alternative — accurate docs behind an appendix that says
+"this section describes the `MJC` branch only" on a branch that *is* the
+product — costs every reader something on every read.
+
+### 3. What does not change
+
+- **One-way sync.** Changes flow `main` → `MJC` and never back. Non-dynamics
+  fixes found here still belong on `main` first (ADR-063).
+- **Nothing merges to `main`.** No PR, no merge window, no reading the
+  absence of MuJoCo from `main` as unfinished work (ADR-063, ADR-067).
+- **The three purity invariants and their tests.** Nothing in `shell/`
+  imports mujoco; `CadexDynamics.py` is reachable from the sandboxed worker
+  and never from `cadexd`; no `jax` or `mjx` under `src/Mod/cadex` or in a
+  staged payload (ADR-062, ADR-070). `test_engine_purity_guardrails.py` is
+  untouched by this pass.
+- **The empty `shell/` diff.** `git diff main...MJC -- shell/` prints
+  nothing, and this entry does not spend it.
+- **No version bump, no tag, no rename.** This is a coherent state, not a
+  release. Binaries, bundles, manifests and identifiers stay "Cadex".
+
+### 4. What this newly makes available, and is deliberately not taken here
+
+Retiring the doc rule does not retire the `shell/`-diff rule — but two of the
+rough edges the arc recorded were blocked on *documentation* framing rather
+than on the diff, and they are worth naming so the next pass does not
+re-derive them:
+
+1. **`import_geometry`'s success message advises `mesh.import_file(...)`,
+   which is wrong for a policy.** ADR-070 recorded it as deliberate; it is a
+   `shell/` diff and stays one. Named as available, not taken.
+2. **`_ASSET_SUFFIXES` keeps exactly three members only because a `shell/`
+   comment mirrors the constant by name.** Same shape of cost, same answer
+   for now.
+3. **Pruning `mujoco/experimental/`** — 30 MB of the payload's 53.5, the
+   MuJoCo studio viewer the engine never imports (ADR-067 §4). `MJC`-owned,
+   still worth doing, still wants its own gate run rather than riding along
+   with a documentation pass.
+
+### 5. `pixi run gate` is run, not substituted for
+
+Four ADRs in a row on this branch (ADR-064, ADR-065, ADR-066, and then
+ADR-070) record that `pixi run gate` "was not re-run and did not need to
+be", each pointing at the empty `shell/` diff as the invariant the shell
+claim rests on. That reasoning is sound about *what the gate would catch* and
+poor as a habit: after four slices the branch could no longer say when the
+product had last been launched at all. **M8 broke the streak — ADR-071 §8
+records `pixi run gate` passing** — and this pass runs it again.
+
+An empty diff is a good argument for not *needing* the gate and a bad
+substitute for having run it: it proves the shell's *source* is unchanged and
+says nothing about the payload the shell loads, which is exactly what the
+dynamics arc has been changing every slice. The rule going forward is the
+plain one already in `CLAUDE.md`: anything touching `shell/` runs
+`pixi run gate` — and a branch whose whole argument rests on an empty
+`shell/` diff owes the product gate a run per slice, not per arc.
+
+### 6. Consequences
+
+- `CLAUDE.md`, `docs/VISION.md` and `docs/ROADMAP.md` lose their
+  branch-marked appendices; the material moves into the body. Dynamics and
+  control become capability areas **6** and **7** in VISION's numbered scope
+  list, and Phase 14 joins ROADMAP's phase list rather than sitting after its
+  end matter.
+- `docs/ARCHITECTURE.md`, `docs/PROVENANCE.md`,
+  `docs/cadex-release-packaging.md`, `docs/INTEGRATION.md`,
+  `docs/BLENDER.md` and `README.md` are brought current with the arc. Four of
+  them had never been touched by it; `PROVENANCE.md` is the consequential one,
+  because the payload redistributes an Apache-2.0 wheel that document did not
+  name.
+- **ADR-063's "Not decided here" paragraph, ADR-066 §11's deferred
+  merge-back, and ADR-067 §2's "three slices from finished" are not edited.**
+  This log is append-only and records what was believed when. This entry
+  supersedes them; it does not rewrite them.
+- Nothing in the engine's behaviour changes. The suite is **1105 passed, 12
+  skipped** before this pass and after it, which is the assertion that the
+  documentation work stayed documentation work.
