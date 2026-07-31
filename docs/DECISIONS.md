@@ -6808,3 +6808,112 @@ position.
 - Engine suite unmoved at **1108 passed, 12 skipped**: §3–§5 are one
   `training/` change and two documents, and `training/` is in no suite the
   engine runs.
+
+## ADR-076 — Dispatching a training run is three steps, and two of them are checks (2026-07-31)
+
+**Status:** accepted. **Branch:** `MJC` only, per ADR-063's date-order rule.
+
+**Decision.** Add `training/remote_train.sh` and `training/SETUP.md` so a
+run can be sent to a GPU box with one command. It is **dispatch machinery
+only**: it copies two files out, runs the trainer that is already on the
+box, and copies one file back — the same three steps `training/README.md`
+documented by hand. ADR-070's boundary does not move.
+
+### 1. What it does not change
+
+Everything ADR-070 asserts still holds, and the guardrails that assert it
+were not touched:
+
+- Nothing enters `pixi.toml`; `CARRIED_PYPI_PACKAGES` stays one entry long.
+- No `CMakeLists.txt` gains the substring `training/`
+  (`test_dynamics_policy_trainer.py:94` scans for it).
+- No new op, no protocol change, no shell surface. There is still no train
+  button and still nothing to press.
+- Every existing guardrail is anchored to the literal name `cadex_train.py`,
+  so a second file in `training/` breaks none of them — checked before
+  writing it rather than discovered afterwards.
+
+It is a shell script on the *author's* machine that runs `ssh` and `rsync`.
+The engine cannot train, and after this it still cannot.
+
+### 2. Two checks, because both failures are silent
+
+The reason this is worth a file rather than a paragraph of copy-pasteable
+commands is that the two ways a remote run goes wrong both produce a result
+that looks fine.
+
+**A CPU fallback is a valid policy.** `jax` falls back silently, the run
+converges, the numbers are real, the artifact is correct — it just cost
+hours it did not need to. The trainer already records `device` into the
+policy for exactly this reason (ADR-070), and until now the only person who
+would notice was one who thought to read it back afterwards. `train` now
+**asserts `device == "gpu"`** and exits non-zero, naming the file it already
+copied back so nothing is lost, unless `--allow-cpu` says that was the
+intent.
+
+**A version skew is a wrong answer, not a slow one.** MuJoCo's own
+`VERSIONING.md` disclaims cross-version numerical reproducibility, which is
+why `requirements.txt` is `==` throughout. A box one patch release off
+produces numbers that cannot be compared with the engine's. `check` reports
+the four pinned packages against `requirements.txt` and refuses on any
+mismatch. `jaxlib` is reported and *not* compared: `jax[cuda12]` chooses it.
+
+`check` also verifies the policy's digest locally after transfer. The digest
+pasted into a script is the one the engine recomputes on the file it is
+given, so a truncated transfer is otherwise discovered much later as a
+policy refusal with no obvious cause.
+
+### 3. It fails loudly rather than repairing
+
+**`CADEX_TRAIN_VENV` is checked and never created.** If it is absent,
+`check` exits non-zero naming the path and printing the three commands. A
+venv this script silently built is a venv nobody knows the contents of, and
+exact pins exist precisely so the contents are known — a repair here would
+destroy the property the rest of the design is spent on.
+
+`check` reports *everything* wrong in one round trip rather than stopping at
+the first problem: the remote half prints facts and always exits 0, the
+local half judges them. Learning about the missing venv, then the wrong
+mujoco, then the CPU-only jax over three separate trips to a machine that is
+not in the room is the experience this avoids.
+
+### 4. Authentication is a path to a key, and there is no password
+
+`CADEX_TRAIN_SSH_KEY` is a path passed to `ssh -i`. There is no password
+variable and there will not be one: `ssh` has no non-interactive password
+path without `sshpass`, so supporting one would mean either a new dependency
+or a plaintext secret on disk — and a plaintext secret is a worse thing to
+own than a path to a key file the user already manages.
+
+`training/.remote.env` is a dotfile, already ignored by `.gitignore:2`'s
+`.*` rule (verified with `git check-ignore`). It is named explicitly under
+the file's "explicitly ignore local env" block anyway, because the `!`
+allowlist beside that rule shows the rule gets edited.
+
+**The config is read literally, not sourced.** Two reasons, the first found
+by testing: `CADEX_TRAIN_REPO=~/cadex` sourced by bash expands the tilde
+against the *laptop's* `$HOME`, silently, and the value means a path on the
+box. Read literally it survives to be expanded against the box's own `$HOME`.
+Second, a configuration file that can also run commands is one that
+eventually does.
+
+### 5. Consequences
+
+- Written for **bash 3.2**, which is what macOS ships: no `${x@Q}`, no
+  `${arr[@]}` on a possibly-empty array. Verified against `/bin/bash`
+  3.2.57. Remote paths may not contain spaces, which is stated in the file
+  rather than pretended about — supporting them would need
+  `rsync --protect-args`, which the rsync macOS ships does not have.
+- `training/SETUP.md` documents four paths — one GPU machine, CPU only, a
+  separate GPU box, and driving that box with this script — because three of
+  them do not involve this file at all and the script must not become the
+  only documented way to train. Indexed in `CLAUDE.md`'s doc table beside
+  `training/README.md`.
+- `training/README.md`'s two overlapping sections collapse to pointers.
+  Duplicated commands are how two documents drift.
+- No test suite covers it: it is a shell script whose subject is a machine
+  CI does not have. It was instead exercised end to end against a simulated
+  box — healthy, missing venv, not-a-venv, missing repo, version skew, CPU
+  backend, unimportable jax, digest mismatch, separated bundle-and-model, and
+  quoted trainer arguments — before it was committed. Engine suite unmoved at
+  **1108 passed, 12 skipped**; nothing here is in a suite the engine runs.

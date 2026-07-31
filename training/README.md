@@ -75,16 +75,17 @@ range; two implementations were measured at 1.5e-5 apart at worst). A policy
 whose weights are fine but whose architecture the engine reads differently
 is a refusal, not a bad gait.
 
-## Standing up a box
+## Standing up a box, and running it
 
-Any machine with a CUDA GPU and Python 3.11+. Nothing Cadex is installed on
-it and nothing Cadex needs to be.
+**`training/SETUP.md` is the end-to-end version**, and there are four of
+them: (a) one machine with a GPU, (b) CPU only, (c) a separate GPU box, and
+(d) driving (c) with `training/remote_train.sh` (ADR-076). This file stays
+*what the trainer is*; that one is *how to run it*. Duplicating the commands
+here is how the two drift.
 
-```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt          # CPU
-.venv/bin/pip install "jax[cuda12]==0.7.2"         # ...or replace jax with the GPU wheel
-```
+The short form: any machine with a CUDA GPU and Python 3.11+, a venv built
+from `requirements.txt` with `jax[cuda12]==0.7.2` installed over the pinned
+CPU jax, the `outputs/` pair copied across, and one command.
 
 `mujoco` must match the release that wrote the model. The bundle records it
 as `mujoco_version`; a mismatch is a run whose numbers cannot be compared
@@ -92,19 +93,10 @@ with the engine's, because MuJoCo's own `VERSIONING.md` disclaims
 cross-version numerical reproducibility. That is why every line of
 `requirements.txt` is `==` and not `>=`.
 
-## Dispatching a run
-
-```bash
-outputs=<project>/script_artifacts/<revision>/attempt-<id>/outputs
-scp -r "${outputs}" box:~/job/
-ssh box '.venv/bin/python cadex_train.py ~/job/outputs/walk-task.json \
-    --out ~/job/walk.cxpolicy --seed 0 --iterations 400'
-scp box:~/job/walk.cxpolicy .
-```
-
-It prints one line of JSON on success — the output path, its size, its
-**sha256**, the parameter count, the task digest, the final reward per step,
-the wall time, the device, and `cadex_importable` (which must be `false`).
+The trainer prints its reward curve on **stderr** and, on success, exactly
+one line of JSON on **stdout** — the output path, its size, its **sha256**,
+the parameter count, the task digest, the final reward per step, the wall
+time, the device, and `cadex_importable` (which must be `false`).
 
 The sha256 is the one you paste into the script:
 

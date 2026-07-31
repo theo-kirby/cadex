@@ -72,6 +72,7 @@ Read `docs/VISION.md` before designing anything.
 | `docs/IDEAS.md` | Parking lot for uncommitted ideas. |
 | `docs/cadex-release-packaging.md` | One bundle: what ships, how it is gated. |
 | `training/README.md` | The offboard trainer: why training is not in the engine, what it reads and writes, how a policy comes home. |
+| `training/SETUP.md` | How to actually run it, four ways: one GPU machine, CPU only, a separate GPU box, and driving that box with `remote_train.sh` (ADR-076). |
 | `docs/history/` | Superseded VibeCAD-era docs. Historical context only — never cite as current. |
 
 Doc conventions: each doc carries a `Verified against source:` date;
@@ -100,6 +101,8 @@ shell/lib/<platform>      submodules, NEVER content (1.3 GB prebuilt each)
 training/                 the offboard PPO trainer (ADR-070). NOT the engine:
                           CMake never installs it, no payload carries it,
                           nothing in it enters pixi.toml. Read its README
+                          and SETUP.md; remote_train.sh dispatches to a GPU
+                          box and is dispatch machinery only (ADR-076)
 package/engine/           the engine payload build (ADR-023)
 package/app/build_app.sh  the shell build, with the conda env scrubbed off
                           PATH — read its header before touching the build
