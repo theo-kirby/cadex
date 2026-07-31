@@ -1,6 +1,6 @@
 # Packaging — One Bundle
 
-Verified against source: 2026-07-28
+Verified against source: 2026-07-31
 
 **One repository builds one application** (ADR-030). `pixi run app` produces
 the bundle, and the *engine payload* — a relocatable directory the shell
@@ -210,11 +210,25 @@ every `MESH_*` variable unset. The artifact is the application.
 The `engine` job builds and gates the engine on Linux. We do not build a
 Linux shell yet; keeping that job is a decision, not an oversight.
 
+**Both jobs have been red since at least 2026-07-25, and neither has ever
+reached its gate** (ADR-060). They fail at `Engine unit suite` — `pixi run
+python -m pytest src/Mod/cadex/cadex_tests` — with `No module named pytest`,
+because `pytest` was not declared in `pixi.toml` until ADR-060, and every
+later step is skipped. So the sentence above describes an intent, not an
+observation: the packaged gate has never run in CI on either platform, which
+is how a payload that broke every assembly joint shipped on both. Verified
+locally on Linux; what the macOS gates say when they first run is not yet
+known.
+
 ## Open
 
 - **macOS notarization of the embedded engine.** Hardened runtime plus
   per-binary entitlements: `freecadcmd` spawns subprocesses and dlopens
   OCCT. Not yet exercised end to end.
+- **The first green CI run.** ADR-060 removes the step that stopped every
+  run before its gate. Nothing downstream of that step has ever executed on
+  either platform, so the next run is the first real report either job has
+  made — treat its output as new information, not as a regression.
 - **Linux and Windows.** The payload builds for both; only macOS arm64
   builds a shell bundle, in CI or anywhere else.
 - **A relocated payload has never been built on this machine.** The

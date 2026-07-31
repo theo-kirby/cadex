@@ -1,6 +1,6 @@
 # CLAUDE.md — Agent Entry Point
 
-Verified against source: 2026-07-28. This file replaces the retired
+Verified against source: 2026-07-31. This file replaces the retired
 `AGENTS.md` (see `docs/DECISIONS.md` ADR-005).
 
 Cadex is an AI-native CAD app. **This repository is the whole product**
@@ -96,6 +96,13 @@ shell/build_darwin/       the shell build tree and the installed bundle
 git lfs install               # once per machine, BEFORE cloning
 pixi run setup                # first time: check out shell/lib/<platform>
 pixi run app                  # build engine + payload + shell, then launch
+
+# Engine only -- no shell, no git-lfs, no 1.3 GB of prebuilt libraries. This
+# is the whole setup on a headless box (ADR-060); the shell is macOS-only so
+# far, but the engine is not.
+pixi run setup-engine         # just src/3rdParty/{OndselSolver,GSL}
+pixi run build-engine
+
 pixi run install-app          # ...and copy it to /Applications so it opens like
                               # an app. Local install: the staged payload keeps
                               # resolving its libs out of this repo (ADR-058).

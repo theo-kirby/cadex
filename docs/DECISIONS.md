@@ -4200,3 +4200,95 @@ step copies the new file and Launch Services picks it up. Verified by
 extracting the icns back out of `/Applications/Cadex.app` after
 `pixi run install-app`. No behaviour changes; `CADEX-BLENDER-GATE` is
 unaffected and was not re-run for the icon alone.
+
+## ADR-060 — The engine runs headless on Linux (2026-07-31)
+
+**Decision.** Five changes, one pass: the engine now builds, tests, packages
+and models on a headless Linux box.
+
+1. `src/Mod/Assembly/JointObject.py` imports `Preferences` in its own
+   `try/except ImportError`, not in the one guarding `pivy` and
+   `SoSwitchMarker`.
+2. `package/engine/build_engine_payload.sh` prunes `site-packages/pivy` and
+   names `pivy` in its GUI-leak gate.
+3. `pytest` is declared in `pixi.toml`. It never was.
+4. A `setup-engine` task checks out the two submodules the engine compiles
+   and nothing else.
+5. `cadex_tests/test_headless_import_guardrails.py` pins the class of bug
+   (1) is an instance of.
+
+**Why — the same break three times, behind a gate that never ran.**
+`src/Mod/Assembly/JointObject.py` has now broken the headless engine once per
+GUI dependency it touches:
+
+1. It imported Qt at module scope. The first payload the
+   `CadexEnginePayloadSmoke` gate ever ran could not model at all —
+   `No module named 'PySide'` — while every test in the source tree passed,
+   because a development environment has Qt installed. Fixed with the
+   `try: from PySide import QtCore` guard the file still carries; this is the
+   episode `docs/cadex-release-packaging.md` cites for *"a source tree that
+   passes proves nothing about a payload."*
+2. **ADR-047.** `Preferences.py` imported `FreeCADGui` at module scope, so
+   `import Preferences` raised headless, `JointObject`'s guard bound
+   `Preferences = None`, and `solveIfAllowed()` died on `'NoneType' object
+   has no attribute 'preferences'`. Fixed by deferring the GUI import in
+   `Preferences.py` — i.e. in the importee.
+3. **This one.** The *block* was never revisited, and it still imported
+   `pivy` beside `Preferences`. The payload prunes `libCoin` (as it must;
+   nothing headless draws) while carrying pivy, so `from pivy import coin`
+   raised `ImportError` and reproduced (2) exactly, symptom for symptom.
+   Every joint refused at `native_connector_frames`.
+
+Three fixes, each aimed at whichever import happened to fail that time, and
+the shape that produced all three went unaddressed.
+
+This is not a Linux bug. `libCoin*` is pruned unconditionally on every
+platform, so every payload ever staged has carried a pivy that cannot
+import. It presented as a Linux bug because Linux is where the packaged gate
+was first run to completion.
+
+**Which is the more useful finding.** `test_cadexd_lifecycle.py` already
+covers this — `JOINT_SCRIPT` exists precisely because ADR-047 taught us to
+drive a joint over the protocol — and CI already runs it against the staged
+payload. It has never once executed. Both CI jobs fail at the *preceding*
+step, `Engine unit suite`, with `No module named pytest`, and every step
+after it is skipped. The workflow has been red on every push and every
+nightly since at least 2026-07-25. A gate that cannot be reached is not a
+gate, and the engine job's value was entirely notional.
+
+**The guardrail is on the block, not the module.** Fixing `Preferences.py`
+did not generalise, because the hazard is structural: whatever a workbench
+guards behind `ImportError`, it may not guard App-level code along with it.
+The new test walks the `try` bodies (not the handlers — `Show/ShowUtils.py`
+legitimately imports `FreeCAD` in its `except`) of every workbench the
+payload carries, reading that list out of `keep_mods` in the packaging
+script so a newly-carried workbench cannot escape the check. It reports one
+violation against the pre-fix tree, at the exact line, and none against this
+one.
+
+**pivy is pruned for the FreeCADGui reason, not the disk-space reason.** 19 MB
+is incidental. A binding whose native library has been deleted does not fail
+to exist, it fails to *import*, and an `ImportError` is control flow — the
+same sentence the script already carries about a surviving `FreeCADGui.so`.
+The leak gate now refuses it, so pruning cannot be undone by an edit to one
+`rm`.
+
+**Consequences.** Verified on Ubuntu 24.04 / x86-64: `build-engine` green;
+`pytest src/Mod/cadex/cadex_tests` 314 passed; `stage-engine` produces
+`cadex-engine-0.0.0-linux-x64`; the packaged gate goes 4 failed → 6 passed.
+End to end over raw NDJSON against the payload, a parametric bracket
+publishes a BREP output whose detached artifact exports to AP214 STEP
+(`Part.Shape.exportStep`) and STL, volume 14575.885 mm³ against 14575.9
+computed by hand. macOS is untouched by (1) and (2) in behaviour but not in
+effect — its payloads carried the same broken pivy, so its joints were
+broken too and its gate was equally unreached. Nothing here fixes CI's
+`app` job beyond letting it reach its own gates for the first time; what
+those gates then say about macOS is not yet known.
+
+**Not done, deliberately.** The payload copies only `bin lib Mod share`, so
+`Ext/freecad` is absent and `init_applications` prints a
+`ModuleNotFoundError: No module named 'freecad'` traceback on every cadexd
+start. It is cosmetic — the addon namespace package has no user here, the
+text goes to stderr, and `CadexdClient` discards stderr — and restoring a
+directory to silence a message would be additive. Left as noise, recorded
+here so the next person does not re-diagnose it.
