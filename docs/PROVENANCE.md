@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-07-28
+Verified against source: 2026-07-31
 
 Cadex is not written from scratch. It is a **derivative work of two large
 free-software projects**, carrying the design lessons of a third that we
@@ -22,11 +22,11 @@ for the shell.
 | [Blender](https://projects.blender.org/blender/blender) | **the shell** — `shell/` | GPL-2.0-or-later |
 | VibeCAD (ours, predecessor) | the scripted-modeling engine inside `src/Mod/cadex/` | LGPL-2.1-or-later |
 
-Cadex adds roughly **40,000 lines** of its own across both halves —
-~33,700 in the engine (`src/Mod/cadex/`), ~4,600 in the shell add-on
-(`mesh_agent/`), ~1,800 in the app template and the shell's Cadex test
-suites. Everything else in this repository, which is the overwhelming
-majority of it, belongs to FreeCAD or Blender.
+Cadex adds roughly **44,000 lines** of its own — ~33,700 in the engine
+(`src/Mod/cadex/`), ~4,600 in the shell add-on (`mesh_agent/`), ~4,400 in
+the headless CLI (`cli/`, ADR-061), and ~1,800 in the app template and the
+shell's Cadex test suites. Everything else in this repository, which is the
+overwhelming majority of it, belongs to FreeCAD or Blender.
 
 We do not track either upstream. Both were imported as squashed snapshots,
 and the direction of travel is **subtractive**: we delete from these trees
@@ -170,6 +170,15 @@ program linked together:
 - The protocol is pinned by tests on both the request and the response side
   (`docs/INTEGRATION.md`, ADR-027), which is also what keeps either half
   replaceable.
+- `cli/` is a **third** client of that protocol (ADR-061,
+  [`CLI.md`](CLI.md)) and is on the engine's side of the line:
+  LGPL-2.1-or-later, like everything else we wrote outside `shell/`. The
+  boundary runs one way and is not a judgement call — the shell's
+  `cadexd_client.py`, `backend.py`, `mcp_shim.py` and `modes.py` solve four
+  of the same problems and **not one line of them is copied there**. They
+  were read as reference; every equivalent derives from the LGPL
+  engine-side precedents in `src/Mod/cadex/cadex_tests/`, and the system
+  prompt is written fresh.
 
 The shipped bundle distributes both, so the distribution as a whole carries
 GPL-2.0-or-later obligations, and the complete corresponding source is this

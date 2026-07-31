@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-07-27
+Verified against source: 2026-07-31
 
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),
@@ -165,6 +165,16 @@ There is no shell under `src/`. `CadexGui`, `CadexSession`,
 `src/Mod/cadex/**` may import `PySide*`, `FreeCADGui`, `tool_impl` or
 `jsonschema`, and cadexd's transitive module closure must equal a declared
 list.
+
+### The CLI `[Cadex-new — ADR-061]`
+
+`cli/` is a second front end and a third client of the same protocol: no
+Blender, no display, no shell code (`docs/CLI.md`). It is on the engine's
+side of the licence line (LGPL) and lives outside `src/` because it is a
+*client*, not part of the engine — it spawns `cadexd` and imports nothing
+from it except `CadexdProtocol`, loaded by path out of whichever engine it
+resolved. Its whole model-facing tool surface is generated from
+`OP_ARG_SPECS`, so it cannot drift from the contract it drives.
 
 ### Contracts and surfaces `[Cadex-new]`
 

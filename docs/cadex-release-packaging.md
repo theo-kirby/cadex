@@ -80,6 +80,21 @@ achievable and is not the goal. The goal, and what the build asserts, is:
 The script *prints* the Qt libraries it does carry, so the exception is
 visible rather than assumed.
 
+## What deliberately does *not* ship
+
+The **CLI** (`cli/`, ADR-061). It is a third client of the protocol, not a
+part of the engine: it spawns `cadexd` and imports nothing from it but
+`CadexdProtocol`, so shipping it inside the payload would put a *consumer*
+of the manifest inside the thing the manifest describes. It runs from the
+repository, against a built engine or against a staged payload through
+`--engine` / `CADEX_ENGINE_ROOT` — which is exactly how the Linux CI job
+exercises it, and how anyone can point it at a payload without a checkout of
+the engine sources.
+
+Packaging it — a wheel, a `pipx`-installable console script, or a second
+tarball beside the engine's — is a real question and an unanswered one. It
+is not blocked by anything here; nobody has needed it yet.
+
 ## What is accidentally in the payload
 
 Measured 2026-07-25, a **staged** payload is **2.3 GB**, and most of that is

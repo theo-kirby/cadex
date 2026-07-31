@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-07-27
+Verified against source: 2026-07-31
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -682,6 +682,47 @@ pytest src/Mod/cadex/cadex_tests/differential/ --domain=<mesh|part|sketcher|part
 | Assembly is the biggest single item | Scheduled last; oracle on joint residuals, not placements |
 | OCCT version drift re-indexes saved scripts | Pin the version; gate the enumeration |
 | Stall midway | Order chosen so every resting place is shippable: engine done + Blender shell is a product |
+
+## Off-phase — `cli/`, a headless CLI (ADR-061, 2026-07-31)
+
+A second front end landed on **no phase**, for the same reason `part.cable`
+did: it is new scope, not a work item any phase declared.
+
+What shipped: `cli/` plus a `./cadex` shim — a third client of the cadexd
+protocol, no Blender and no display, with four subcommands
+(`-p`, `params`, `script`, `export`) of which exactly one spends tokens. No
+engine change and **no protocol change**: `OP_ARG_SPECS`, the ADR-027
+goldens and `docs/INTEGRATION.md`'s op table are untouched, which is the
+point — a third client that needed the contract widened would have been
+evidence against the contract. Documented in `docs/CLI.md`; suite in
+`cli/tests` (76 tests, the engine-needing half skipped without a build).
+
+- [x] `cli/` scaffolded; `pixi run python -m pytest cli/tests` green
+- [x] the engine suite unchanged at 314
+- [x] end to end on Linux: a fresh `-p` run produces a parametric script,
+      STEP + STL and a `--json` envelope; `params --set` moves the digest
+      with no `claude` spawned; `--resume` continues the conversation and
+      the second turn edits the first turn's script
+- [x] CI: `cli/tests` runs in both jobs of `cadex-app.yml`, after the engine
+      build (half of it skips without one). The Linux job runs it twice —
+      build tree and staged payload — on the ADR-023 argument.
+- [ ] macOS: never run there **by hand**. Nothing in it is macOS-hostile —
+      POSIX `flock`, a short unix socket path, `FreeCADCmd` — but "should
+      work" is not evidence, and the `app` job above is where the evidence
+      will first appear. Expect that job to be the one that finds anything.
+
+**What it is for, and what it is not.** The point is a cost asymmetry, not a
+GUI-less GUI: one expensive turn authors a parametric script, and a cheap
+loop then sweeps it while an external simulator feeds results back. It is
+also the first *second* caller the protocol has ever had, which is direct
+evidence for the Phase 11/12 claim that either half is replaceable.
+
+**Known gaps**, all deliberate and all recorded in ADR-061: export runs as a
+`FreeCADCmd` subprocess rather than an `export_model` op; BREP outputs only,
+with mesh and component outputs reported `skipped`; no `resolve_pin`, no
+offscreen rendering, so the agent verifies through `inspect` facts and
+script stdout and is told so in its prompt; the CLI does not ship inside the
+engine payload; Windows is not supported.
 
 ## Off-phase — `part.cable` and `part.bundle`, experimental (ADR-056, ADR-057, 2026-07-27)
 

@@ -4292,3 +4292,173 @@ start. It is cosmetic — the addon namespace package has no user here, the
 text goes to stderr, and `CadexdClient` discards stderr — and restoring a
 directory to silence a message would be additive. Left as noise, recorded
 here so the next person does not re-diagnose it.
+
+## ADR-061 — Cadex has a headless CLI (2026-07-31)
+
+**Decision.** A new top-level `cli/` and a `./cadex` shim: a **third client
+of the cadexd protocol**, peer to the Blender shell, with no Blender, no
+display and no shell code. Four subcommands over one project —
+`cadex -p "<prompt>"`, `cadex params --set k=v`, `cadex script`,
+`cadex export` — of which exactly one spends tokens. Documented in
+`docs/CLI.md`; `cli/tests` is its suite.
+
+**Why.** Cadex had one front end, macOS-only, and it needed a screen. The
+engine underneath it never did: it is a headless NDJSON service, and ADR-060
+made it build, test, package and model on a headless Linux box. The thing
+the CLI adds is not "the shell without a window" — it is a **cost
+asymmetry**. An expensive model turn authors a *parametric* script once;
+after that a cheap loop sweeps its parameters and re-exports with no model
+in the loop at all, and an external simulator (airflow, FEA, print-time)
+feeds its numbers back. The expensive call happens only when the shape has
+to change. That loop is not expressible through a GUI chat window, and it is
+the reason to build this rather than to port the shell.
+
+It is also the first thing that makes the protocol's second client cheap to
+have. Phases 11 and 12 rest on the claim that either half can be replaced
+behind an unchanged protocol; until now that claim had one caller and a test
+harness. It now has two callers that share no code, and the CLI validates
+every reply against `OP_RESPONSE_SPECS` as a hard error, so a drift shows up
+as a third client failing rather than as a shell quietly coping.
+
+**The licence boundary, which is a hard constraint and not a preference.**
+`cli/` is engine-side and therefore `LGPL-2.1-or-later`; `shell/**` is
+`GPL-2.0-or-later` (`docs/PROVENANCE.md` §1, §5). The shell solved four of
+these problems already — `cadexd_client.py`, `backend.py`, `mcp_shim.py`,
+`modes.py::CADEX_OVERLAY` — and **not one line of them is copied here**.
+They were read as reference. Every equivalent derives instead from the LGPL
+engine-side precedents that already existed for exactly these jobs:
+`cadex_tests/cadexd_latency_integration.py` (the raw-NDJSON client, the
+`CADEX_ENGINE_ROOT` manifest resolution) and
+`cadex_tests/test_cadexd_lifecycle.py` (ready banner, events vs responses,
+response-contract checking). The system prompt is written fresh, and says
+different things: it is talking to an agent with no viewport.
+
+**The tension, stated plainly: this is a second turn orchestration.** The
+CLI drives the same Claude Code CLI the shell drives, with `--resume` for
+continuity, `--strict-mcp-config`, `--tools ""`, and an MCP server relaying
+to the engine — and it does so from its own code. There are now two of
+those, and two is where drift starts. Three things bound it, and they were
+chosen rather than fallen into:
+
+1. **The tool contract is single-sourced.** Tool names *are* op names, and
+   their input schemas are generated from `CadexdProtocol.OP_ARG_SPECS`. A
+   tool cannot offer an argument the engine does not take, and adding an op
+   argument adds it to both front ends by construction. The shell's
+   friendlier names were a reasonable answer to a problem the CLI does not
+   have (Blender's own vocabulary); a third vocabulary would have been a
+   third thing to keep in sync.
+2. **Neither front end states the xscript API.** Both paste
+   `describe_api`'s live `instructions`, `program_schema` and
+   `source_globals` into the prompt. The API has one source and it is the
+   engine.
+3. **What is duplicated is the cheap half.** Spawning `claude -p`, parsing
+   stream-json, and persisting a session id are ~200 lines that will not
+   move. What would have been expensive to duplicate — the protocol, the
+   authoring contract, the tool surface — is not duplicated at all.
+
+What is *not* claimed: that these two loops will stay identical. They will
+not, and should not. The shell's agent can see its work and take a pin from
+a click; this one is told, in the prompt, that it cannot, and is pointed at
+`inspect scope=output` facts and the script's own stdout instead. Those are
+different agents doing different jobs against one engine.
+
+**`expected_revision` is injected rather than asked for.** The protocol
+guards every mutation with the revision the caller believes is current. The
+guard exists for concurrent writers; a CLI run has exactly one. So the
+bridge fills it in from the last reply — **including refusals**, because a
+rejected candidate still becomes the working revision, and tracking only
+successes would make the retry after a rejection fail with
+`STALE_PROGRAM_REVISION` for a reason unrelated to what the model got wrong.
+The value used is surfaced in every tool result as `expected_revision_used`,
+so the model can still see drift; it simply cannot fail on it. This deletes
+an entire class of avoidable tool failures without weakening a guard that
+was never protecting anything here.
+
+**Process topology.** `claude` spawns MCP servers as its own children, so
+some IPC is unavoidable. The parent owns the single `cadexd` child and a
+unix-domain socket in a 0700 temp directory (plus a token); the MCP shim,
+spawned by `claude`, relays down it. This is the shell's bridge shape
+without the reason the shell needed it — there, `bpy` may only be touched
+from Blender's main thread. Here it earns its keep differently: the parent
+**observes every tool call**, which is what lets it print progress, know the
+final revision without asking, and hold the display block the export reads.
+A unix socket rather than the shell's localhost TCP, so the filesystem
+enforces what the token asserts.
+
+**Export is a subprocess, not a protocol op, and that is temporary.** The
+engine already stages a detached BREP per output and hands back its path;
+`export.py` runs a short `FreeCADCmd` job that reads it and calls
+`exportStep` / `exportStl` / `exportBrep`. It is structured as one seam —
+a plan of `(source, format, destination)` triples — so promoting it to an
+`export_model` op is a local change. Two findings worth keeping:
+
+- **STEP is not reproducible.** AP214 writes a wall-clock timestamp into
+  `FILE_NAME`, so two exports of an identical model differ byte for byte
+  across a second boundary. Pipelines must compare the engine's content
+  `digest`, which the `--json` envelope reports for that reason. The BREP
+  beside it *is* byte-stable, which is what makes the instability the
+  format's and not the model's.
+- **`FreeCADCmd -c <code>` has a trap.** The argument is `stat()`ed as a
+  path before it is run as Python (`Application::processCmdLineFiles`), so
+  any *component* of it longer than `NAME_MAX` — 255 bytes, and newlines do
+  not delimit components — dies with a bare "Application unexpectedly
+  terminated". The `pixi run cadexd` one-liner survives only because it
+  contains slashes. Any real script must be written to a file and named as
+  a file; this one is.
+
+**`inspect` is bounded, and a CLI is not.** Worth writing down because it
+bit during this work and will bite again. `open_project` returns the whole
+`script` block; `inspect scope="script"` returns a *page* of it — mappings
+50 keys at a time, and any value over 1 KiB replaced by a stub naming the
+path to fetch it from. That is exactly right for an agent reading a page at
+a time, and exactly wrong for `cadex script`, which has to print the file.
+It fails in the worst possible way: a short script comes back verbatim and
+passes every test, and a long one comes back as
+`{"type": "string", "characters": 1574, "inspect_path": "/source"}` —
+printed, cheerfully, as the script. Every read in `session.py` now follows
+the pointer paths and the `next_offset` chain to the end, and a test builds
+a 7 KB script with 60 parameters (over both caps) to keep it that way.
+Nothing in the engine changed; the paging was doing its job.
+
+**Consequences.** Verified on Ubuntu 24.04 / x86-64 against the dev-tree
+engine: `pytest cli/tests` 76 passed; `pytest src/Mod/cadex/cadex_tests`
+314 passed, unchanged; the packaged gate
+(`CADEX_ENGINE_ROOT=build/engine/cadex-engine-0.0.0-linux-x64 pytest
+.../test_cadexd_lifecycle.py`) 6 passed, and the CLI suite passes against
+that payload too — the same script produces the same digest through the
+payload as through the dev tree. End to end, `cadex -p "a 40x25x15 mm bracket with a
+6 mm bore…"` produced a parametric script on the first write, verified
+itself through `inspect scope=output` (volume 14575.88 mm³ against
+15000 − π·3²·15, and 7 faces — six planes and a cylinder, so the bore went
+through), and wrote STEP and STL. `cadex params --set` then moved the digest
+with no `claude` process spawned at all. `--resume` continued the
+conversation, and the second turn reached for `edit_script` rather than
+rewriting — it had the first turn's script in context — and added a new
+fillet parameter to it. Forcing a stale session id degraded to a fresh
+conversation with a note in the report, and still did the work.
+
+Nothing in `src/` or `shell/` changed. The protocol is untouched —
+`OP_ARG_SPECS`, the ADR-027 goldens and `docs/INTEGRATION.md`'s op table are
+all unmodified, which is the point: a third client that needed the contract
+widened would have been evidence against the contract.
+
+**The suite is wired into CI in the same commit**, in both jobs of
+`cadex-app.yml`, after the engine build — because half of it skips without
+one, and a suite that skips silently is the failure ADR-060 has just
+finished writing up. The Linux job runs it twice, build tree and staged
+payload. The macOS job is the first time any of this will have run on
+macOS at all; if something there is wrong, that job is where it surfaces,
+which is the point of putting it there rather than asserting it works.
+
+**`docs/VISION.md` moved, and that is worth flagging rather than burying.**
+Its non-goals said "one shell … one model loop" and "no second model loop".
+A second front end is a real amendment to that, so the bullet now names the
+CLI as a deliberate exception and says what earns it — interactive design
+and batch design are different jobs — while the model-loop non-goal is
+narrowed to what still holds, which is that there is no second *provider*
+stack. If the owner disagrees with the amendment, this ADR and that bullet
+are the two places to reverse, and `cli/` is one directory to delete.
+
+**Out of scope, deliberately.** `export_model` as a protocol op;
+`resolve_pin` and picking; offscreen rendering so the agent can see its
+work; shipping the CLI inside the engine payload; Windows.

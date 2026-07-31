@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-07-27
+Verified against source: 2026-07-31
 
 **This document is the contract between the two halves of the product.**
 They live in one repository (ADR-030) and in two processes, under two
@@ -38,12 +38,23 @@ The two halves:
 - **the shell** (`shell/`) — Blender fork; the product UI
   (`docs/BLENDER.md`). Carries the engine payload inside its bundle.
   GPL-2.0+.
+
 - **vibecad** — parent fork; historical reference only (teardown history on
   its `cadex-teardown` branch, at `github.com/theo-kirby/vibecad`).
   **mesh** — the shell's former home; its pre-merge history is at
   `github.com/theo-kirby/mesh` (branch `mesh-main`). Neither has a local
   working copy any more: both were deleted 2026-07-25, remotes verified
   first.
+
+**There is now a third client of this contract**: `cli/`, the headless CLI
+(`docs/CLI.md`, ADR-061). It is not a half of the product and it changes
+nothing here — it was built against this document without widening it, which
+is the strongest evidence the protocol has yet produced for the Phase 11/12
+claim that either half is replaceable behind it. Two consequences worth
+knowing when editing the tables below: the CLI validates **every** reply
+against `OP_RESPONSE_SPECS` as a hard error rather than tolerating an
+undeclared key, and it generates its whole model-facing tool surface from
+`OP_ARG_SPECS`. An op-table change therefore lands in three places, not two.
 
 ## Options considered
 
