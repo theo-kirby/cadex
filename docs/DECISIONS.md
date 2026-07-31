@@ -6665,3 +6665,146 @@ already defined and already tested.
   be positive. That is reported rather than filtered, because a pair the
   solver is already watching is a fact about the model.
 - Engine suite **1108 passed, 12 skipped** (1105 before).
+
+---
+
+## ADR-075 — The hopper that uses the ground, and three findings from it (2026-07-31)
+
+**Status:** accepted. **Branch:** `MJC` only, per ADR-063's date-order rule.
+
+**Decision.** Record what the corrected one-leg hopper actually does, and
+land the three cheap findings the exercise produced: a divergence guard in
+`training/cadex_train.py`, the reward-conditioning note in
+`docs/MUJOCO.md`, and the `part.box` origin note in `docs/XSCRIPT.md`. The
+collision-frame finding that made the exercise necessary is ADR-074.
+
+### 1. The corrected hopper, and what it measures
+
+Four script-level changes, no new engine capability:
+
+1. **The floor's collision box is offset** `[0, 0, -20]`, so its top
+   coincides with the visible top at z = 0 (ADR-074).
+2. **The torso is steel**, 1040 → 7850 kg/m³: 1.75 kg → **13.19 kg**,
+   taking the leg from 23% of the machine to **3.79%**. At 23% a flailing
+   leg genuinely moves the body and the ground is optional; at 3.79% it is
+   not.
+3. **The actuators are `kind="position"` servos**, not `motor`. MuJoCo's
+   position actuator is a PD loop closed in C (ADR-065) — the direct answer
+   to the bang-bang the motor version measured at 49 torque sign changes in
+   75 frames.
+4. **The reward requires the ground**: `rail_p + 26.3` at weight 0.02, over
+   a 16 s episode at 50 Hz control.
+
+**26.3 is measured, not derived**, and the gap is worth recording: the
+foot's geometric contact is at `rail_p = -20`, and the machine settles
+6.3 mm further down into the contact's own compliance under 134 N. A
+baseline taken from the drawing would have been 6 mm wrong in a term whose
+whole job is to be ~0 at rest.
+
+**The geometry was proved before any training was spent** — the ordering
+matters more than the result. Against the exported file, opened by stock
+MuJoCo: the keyframe has **`ncon == 0`** and the foot's bottom is at
+z = 20.0 against a floor top at z = 0.0, a 20 mm gap; and a zero-control
+episode **falls, contacts at 0.07 s, and settles** at `rail_p = -26.283`
+with one contact and zero velocity. On the broken floor that check would
+have failed at its first assertion, before an hour of CPU.
+
+### 2. One training run, and what came out
+
+Per the stopping rule taken up front — one run, whatever gait emerges is
+reported rather than iterated on. 400 iterations, 110 s wall on CPU in the
+`jax` venv: **reward/step −1.29 → −0.30, loss 80.1 → 1.7**, monotone after
+iteration ~40, no divergence.
+
+The deterministic rollout, at 25 fps:
+
+```
+t      torso_z   foot_low_z
+0.00    505.00     20.00     <- starts 20 mm clear of the floor
+0.08    477.48      0.60     <- reaches the VISIBLE floor
+0.16    460.64    -10.45     <- lands, into the contact spring
+0.16..0.92        ~ -6.2     <- stands on it, torso 464 -> 449
+0.96    438.18      4.09     <- tucks the leg up
+1.08    331.14     56.82     <- foot 57 mm off the ground, torso falling
+1.14    244.31     24.70     <- "bottomed" terminates at rail_p < -240
+```
+
+**It is not a hop.** The policy stands on the floor for 0.9 s, folds the
+leg up under itself, and the machine falls to the rail's lower limit. Total
+reward −39.72, and the `rise` term is −39.53 of it: the episode is scored
+almost entirely by falling.
+
+What it **is** — and what the whole exercise was for — is a mechanism that
+uses the ground. The foot reaches z ≈ 0, rests in the contact, and leaves
+it. In the version this replaces, the foot never moved from z = 20 because
+there was an invisible shelf under it, and both stories told about that
+behaviour were explanations of an artefact.
+
+Two honest observations, neither acted on:
+
+- **The deterministic rollout scores worse than the stochastic training
+  average**: −0.70/step here against −0.30/step over training. The engine
+  plays the mean action; PPO trained under sampled ones. That gap is
+  ordinary and is recorded rather than tuned away.
+- **The motion is controlled**: 2 torso direction changes in 30 frames,
+  against the motor version's 49 in 75. Change 3 did what it was chosen to
+  do, independent of whether the gait is good.
+
+### 3. Finding: the trainer had no divergence guard
+
+Observed on an earlier run: `reward/step` was `+nan` from **iteration 0**,
+the trainer ran 150 more iterations on diverged parameters, and then died
+in `json.dumps` with an encoder traceback about a float — an hour after the
+information that would have explained it.
+
+`cadex_train.py` now stops at the first non-finite `reward/step` or `loss`,
+naming the iteration and which one went, and pointing at the conditioning
+note in §4. `encode_policy`'s `allow_nan=False` stays exactly where it is:
+that is the last line of defence against writing an unusable policy, this
+is the diagnosis, and neither replaces the other.
+
+Deliberately a `SystemExit` rather than a recovery: diverged parameters do
+not come back, so every iteration after the first `nan` is spent producing
+a policy that cannot be written.
+
+### 4. Finding: rewards against mm/degree channels fail silently
+
+`docs/MUJOCO.md` hazard 9, with the measurement. Cadex observation channels
+are in millimetres and degrees, so they arrive in the hundreds to thousands
+against a normaliser starting at mean 0 / variance 1. Measured both ways on
+one mechanism: `body_z` (≈ 451 mm baseline) went **4.46 → 3.66** — worse
+than not training — while `rail_p` (baseline 0) went **−0.243 → −0.028**
+with loss 8.7 → 0.026.
+
+Not fixed in the trainer, and the reason is the point: normalising the
+reward internally would make a run's reported numbers depend on a hidden
+transform, which is the property that makes two runs incomparable. The fix
+belongs in the script, where `"rail_p + 26.3"` is visible arithmetic in a
+channel that still means millimetres.
+
+### 5. Finding: `part.box`'s origin is a corner
+
+`docs/XSCRIPT.md`, in the script vocabulary where an author is standing
+when it matters. `part.box(40, 40, 200)` occupies z ∈ [0, 200], not
+[−100, 100]; centring needs an explicit `origin=`. It is worth its own note
+because of what reads the component frame afterwards — `connector`'s
+`offset` and `collision`'s `offset` are both in that frame and neither can
+know where the solid was put, so a corner-origin box with offsets written
+as though it were centred is a legal model that is half its own size out of
+position.
+
+### 6. Consequences
+
+- `training/cadex_train.py` exits non-zero on divergence where it used to
+  crash later and less usefully. A run that was going to produce nothing now
+  says so at the iteration it became true. Nothing else in the trainer
+  moves, its four pinned dependencies are unchanged, and it still imports
+  only the standard library at module scope (ADR-070).
+- The hopper project itself is **not** added to `cadex_tests`. It would not
+  have caught the bug it exposed — every gate it has was green while the
+  model was wrong — and the change policy is remove more than we add.
+  ADR-074's three regression cases are the part that earns its place. The
+  runnable project stays outside the repo at `~/cadex-hopper/`.
+- Engine suite unmoved at **1108 passed, 12 skipped**: §3–§5 are one
+  `training/` change and two documents, and `training/` is in no suite the
+  engine runs.

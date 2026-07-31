@@ -704,6 +704,31 @@ def train(bundle: dict[str, Any], options: argparse.Namespace) -> dict[str, Any]
                 f"  loss {entry['loss']:+.6g}",
                 file=sys.stderr,
             )
+        # Stop at the first non-finite number, naming the iteration and which
+        # one went. Observed: a run whose reward/step was +nan from iteration
+        # 0 trained on for 150 more iterations and then died in json.dumps --
+        # an encoder traceback about a float, an hour after the information
+        # that would have explained it. Diverged parameters do not recover,
+        # so every iteration after the first nan is spent producing a policy
+        # that cannot be written. ``encode_policy``'s ``allow_nan=False``
+        # stays where it is: this is the diagnosis, that is the last line of
+        # defence, and neither replaces the other.
+        diverged = [
+            name for name in ("reward_per_step", "loss")
+            if not math.isfinite(entry[name])
+        ]
+        if diverged:
+            raise SystemExit(
+                f"Training diverged at iteration {iteration}: "
+                f"{' and '.join(diverged)} went non-finite "
+                f"(reward/step {entry['reward_per_step']}, "
+                f"loss {entry['loss']}). Nothing after this iteration can "
+                "produce a writable policy. The usual causes are a learning "
+                "rate too high for the reward's scale and a reward built on "
+                "raw millimetre or degree channels, which arrive in the "
+                "hundreds against a normaliser that starts at mean 0 and "
+                "variance 1 -- see docs/MUJOCO.md on reward conditioning."
+            )
     wall = time.perf_counter() - started
 
     # ---------------------------------------------------------------------

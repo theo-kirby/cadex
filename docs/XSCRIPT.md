@@ -71,6 +71,19 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `description` — the `CONTROL_FIELDS` vocabulary). Collected specs are
   cached in `script.json`; **values** live there too and are patched by
   `set_params` without touching source.
+- **`part.box`'s `origin` is a corner, not a centre.** `part.box(40, 40, 200)`
+  occupies x ∈ [0, 40], y ∈ [0, 40], z ∈ [0, 200] — the origin is the
+  minimum corner, and the solid is entirely on the positive side of the
+  component frame. Centring it takes an explicit
+  `origin=[-20, -20, -100]`. This is worth stating because of what reads
+  the frame *afterwards*: `assembly.connector(...)`'s `offset` and
+  `assembly.collision(...)`'s `offset` are both in the **component frame**,
+  not in the solid's bounding box, and neither has any way to know where
+  the solid was put. A corner-origin box with connector offsets written as
+  if it were centred is a perfectly legal model that is half its own size
+  out of position, and nothing refuses it. The measured instance is in
+  ADR-074: a floor whose collision box stood 20 mm above the floor it was
+  drawn on, through a whole training run.
 - `assembly.component()` accepts same-script part/partdesign values: the
   worker records the source payload under a deterministic inline token
   (`document_uid: "xscript-project"`) and requires the value to ALSO be a

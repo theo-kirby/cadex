@@ -1426,6 +1426,36 @@ Ranked by how quietly they fail.
    the real fix: this bug is obvious in one second and invisible in an hour
    of reading. It is a `shell/` diff, so it is a decision (ADR-072 §4), and
    it is named here rather than smuggled in.
+9. **A reward built on raw Cadex channels is badly conditioned, and it fails
+   by training worse rather than by failing.** Observation channels are in
+   **millimetres and degrees** (§3.2 — that is the surface's whole unit
+   policy, and it is right), so they arrive in the hundreds to thousands
+   while `cadex_train.py`'s observation normaliser starts at mean 0 and
+   variance 1 and has to walk to them. Nothing warns, nothing refuses, and
+   the run completes.
+   **Measured both ways on one mechanism**, same trainer, same iteration
+   count, same everything but the channel the reward reads:
+   - `body_z`, a torso height sitting at ≈ 451 mm: reward/step **4.46 →
+     3.66** over the run. It got *worse than doing nothing*.
+   - `rail_p`, a slider displacement whose baseline is 0: **−0.243 →
+     −0.028**, with loss **8.7 → 0.026**.
+   The difference is not the mechanism and not the reward's meaning — both
+   terms describe the same height. It is that one channel is an absolute
+   position with a large offset and the other is a displacement about zero.
+   **What to do:** write rewards against quantities that are naturally near
+   zero, or subtract the baseline in the expression —
+   `assembly.reward("rail_p + 26.3", ...)` is a term whose value is ~0 at
+   rest and positive only for leaving it. Subtracting in the *expression*
+   rather than rescaling the channel keeps the units policy intact: the
+   channel still means millimetres, and the arithmetic is visible in the
+   script.
+   **Not fixed in code, deliberately.** Normalising the reward inside the
+   trainer would make a run's numbers depend on a hidden transform, which
+   is exactly the property that makes two runs incomparable. The trainer
+   does now **stop at the first non-finite `reward/step` or `loss`** and
+   name the iteration (ADR-075), which is the other half of this hazard:
+   the badly-conditioned case that does not merely train worse but diverges
+   used to run 150 more iterations and die in `json.dumps`.
 
 ## 6. Open questions
 
