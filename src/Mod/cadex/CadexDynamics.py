@@ -242,6 +242,17 @@ def torque_nm(value_nmm: float) -> float:
     return float(value_nmm) / MM_PER_METRE
 
 
+def torque_nmm(value_nm: float) -> float:
+    """Newton-metres to newton-millimetres, for a torque leaving MuJoCo.
+
+    The inverse of :func:`torque_nm`, and it exists for the same reason
+    :func:`angle_degrees` does: an ``actuator_force`` observation is a
+    torque, and the surface that reads it speaks N·mm.
+    """
+
+    return float(value_nm) * MM_PER_METRE
+
+
 def angle_radians(value_degrees: float) -> float:
     """Degrees to radians, at the one boundary that is allowed to do it.
 
@@ -253,10 +264,35 @@ def angle_radians(value_degrees: float) -> float:
     return math.radians(float(value_degrees))
 
 
+def angle_degrees(value_radians: float) -> float:
+    """Radians to degrees -- the first angle to travel *out* of MuJoCo.
+
+    Every conversion above carries a number the script wrote into the unit
+    MuJoCo reads. This one goes the other way, and the reason that is more
+    dangerous rather than less is who does the arithmetic downstream: an
+    observation channel is read by a *trainer*, outside this process, out of
+    a raw ``sensordata`` array. So the factor is not applied here and hoped
+    for -- it is emitted into the task bundle as that channel's ``scale``,
+    and the trainer multiplies rather than converts (M6).
+
+    Note it is also the only conversion on this boundary that is not a power
+    of ten: a decimal point in the wrong place looks wrong, and 57x looks
+    like a mechanism.
+    """
+
+    return math.degrees(float(value_radians))
+
+
 def speed_m_s(value_mm_per_s: float) -> float:
     """Millimetres per second to metres per second."""
 
     return length_m(value_mm_per_s)
+
+
+def speed_mm_per_s(value_m_s: float) -> float:
+    """Metres per second to millimetres per second."""
+
+    return length_mm(value_m_s)
 
 
 def stiffness_nm_per_rad(value_nmm_per_deg: float) -> float:
@@ -4054,7 +4090,10 @@ def _field_drift(first: Any, second: Any) -> float:
 
 
 def export_mjcf(
-    built: Mapping[str, Any], *, context: str = "this assembly"
+    built: Mapping[str, Any],
+    *,
+    observations: Sequence[Mapping[str, Any]] = (),
+    context: str = "this assembly",
 ) -> dict[str, Any]:
     """One built model, as an MJCF file that is provably the same model.
 
@@ -4091,6 +4130,20 @@ def export_mjcf(
     promise to be careful. The only division in this function is the one
     inside :func:`_field_drift`, which is dimensionless by construction.
 
+    ``observations`` are :func:`observation_records`, added as MJCF
+    ``<sensor>`` elements to the same copy the keyframe goes on (M6). They
+    are what makes the file *readable as a task*: stock MuJoCo computes the
+    observation vector and the bundle names the channels, so no Cadex code
+    is on the path between the mechanism and a trainer's array.
+
+    Adding them does not weaken anything above. M6 phase 0 measured what a
+    sensor costs the simulation -- 500 steps with four of them give ``qpos``
+    bit-identical to the same model without, exactly zero -- so "the
+    exported file is the model the engine simulated" survives the addition
+    rather than being quietly re-scoped by it. :func:`_verify_exported_sensors`
+    re-takes that as a check on every export rather than trusting the
+    measurement.
+
     Returns ``{"xml": bytes, "evidence": {...}}``.
     """
 
@@ -4102,8 +4155,15 @@ def export_mjcf(
     _verify_explicit_inertia(spec, context=context)
 
     exported = spec.copy()
+    _add_observation_sensors(mujoco, exported, observations)
     exported.add_key(name=MJCF_KEYFRAME_NAME, qpos=list(qpos))
-    exported.compile()
+    # The copy's own compiled model, kept: it is the only thing that has
+    # both the sensors and the engine's own numbers, so it is what the
+    # reload's ``sensordata`` is compared against below. Every other
+    # comparison in this function stays against ``built["model"]`` -- the
+    # model the engine actually simulated -- because that is the claim M5
+    # sells and a re-compile would be a weaker one.
+    with_sensors = exported.compile()
     xml = exported.to_xml().encode("utf-8")
     if len(xml) > MAXIMUM_MJCF_BYTES:
         raise DynamicsError(
@@ -4144,6 +4204,9 @@ def export_mjcf(
     )
     worst_mass = _field_drift(model.body_mass, reloaded.body_mass)
     worst_pose_mm = _verify_exported_pose(mujoco, reloaded, model, qpos, context=context)
+    worst_sensor = _verify_exported_sensors(
+        mujoco, reloaded, with_sensors, observations, context=context
+    )
 
     tree = built["tree"]
     return {
@@ -4170,6 +4233,17 @@ def export_mjcf(
             "worst_field_rel_error": worst_field,
             "worst_field": worst_field_name,
             "worst_pose_error_mm": worst_pose_mm,
+            # M6: how many channels the file carries and how far the worst
+            # one moved through it. Zero when the export declares none, so
+            # an ``api.mjcf`` with no observations reads exactly as it did.
+            "sensor_count": int(reloaded.nsensor),
+            "sensor_value_count": int(reloaded.nsensordata),
+            "observation_channels": [
+                str(name)
+                for record in observations
+                for name in record["channels"]
+            ],
+            "worst_sensor_rel_error": worst_sensor,
             "mass_tolerance": MJCF_MASS_TOLERANCE,
             "inertia_tolerance": MJCF_INERTIA_TOLERANCE,
             "field_tolerance": MJCF_FIELD_TOLERANCE,
@@ -4658,3 +4732,1410 @@ def _axis_normalised(axis: Sequence[float], *, context: str) -> list[float]:
             observed={"context": context},
         )
     return [item / magnitude for item in values]
+
+
+# ---------------------------------------------------------------------------
+# M6 -- a task is part of the script.
+#
+# A model is not a task. Training needs an observation space, an action
+# space, a reward, a termination rule, an episode length and domain
+# randomisation -- none of which is geometry, all of which is *data*, and the
+# script is already the sole source of truth for data.
+#
+# Three decisions shape everything below, and each was measured in phase 0
+# rather than chosen:
+#
+# * **MuJoCo computes the observation vector.** A channel is an MJCF
+#   ``<sensor>`` element, so a trainer reads ``data.sensordata`` and no Cadex
+#   code is anywhere on the path between the mechanism and the array. What
+#   this module contributes is the *naming*: which channel is which slice,
+#   what unit it is in, and what to multiply it by.
+# * **Component channels are ``xbody`` channels.** MuJoCo's frame sensors
+#   accept an ``objtype`` that a reader would take for one thing and that is
+#   two: ``body`` is the frame the principal axes of inertia define, and
+#   ``xbody`` is the frame the assembly solver placed. Phase 0 measured them
+#   a half turn apart on a plain box.
+# * **The action bound is derived or refused.** A policy needs a bounded
+#   action space; the model M4 builds has none. Where the mechanism states a
+#   bound -- a two-sided joint limit, an effort limit -- that bound is the
+#   action range. Where it does not, this refuses, because the alternative is
+#   inventing a mechanical limit and a one-sided limit's synthetic endpoint
+#   is worth a hundred turns.
+# ---------------------------------------------------------------------------
+
+
+#: How many scalar channels one task may observe. A vector channel expands
+#: to its components, so this counts what a reward formula could name rather
+#: than what the script wrote. Sized for comprehensibility rather than for
+#: bytes: phase 0 measured a sensor at 54 XML bytes, so even the ceiling is
+#: under 4 KB of file, and a task naming more than this many quantities is
+#: one nobody can read.
+MAXIMUM_OBSERVATION_CHANNELS = 64
+
+#: Reward terms, termination rules and randomisation entries. Each is a
+#: whitelisted expression or a field write evaluated once per control step,
+#: so the cost is real but small; these bound the *description* rather than
+#: the arithmetic.
+MAXIMUM_REWARD_TERMS = 16
+MAXIMUM_TERMINATION_TERMS = 8
+MAXIMUM_RANDOMISATION_ENTRIES = 32
+
+#: Control steps in one episode. At the 50 Hz the surface encourages this is
+#: over an hour of simulated time, which is far past any episode a person
+#: designs; what it really bounds is a typo in ``episode_seconds``.
+MAXIMUM_EPISODE_STEPS = 200_000
+
+#: The bundle's own byte cap. A task is names, numbers and short
+#: expressions -- no geometry -- so this is three orders of magnitude below
+#: ``MAXIMUM_MJCF_BYTES`` on purpose: a task file approaching a megabyte is
+#: not a task, it is a mistake with a loop in it.
+MAXIMUM_TASK_BYTES = 1024 * 1024
+
+#: The schema the bundle declares, and the version a reader checks first.
+TASK_SCHEMA = "cadex-training-task-v1"
+
+#: What the observation vector may contain, script word by script word.
+#:
+#: Each row maps a word a script writes to an ``mjtSensor``, the MuJoCo
+#: object it attaches to, its dimension, the suffixes a vector channel
+#: expands to, and the unit its value reaches the surface in. ``units`` is
+#: keyed on the joint coordinate where the unit depends on one -- a joint
+#: position is degrees on a hinge and millimetres on a slider -- and on
+#: ``None`` where it does not.
+#:
+#: Deliberately small. ``touch`` and ``accelerometer`` are the obvious next
+#: rows and both need a *site*, which is a placement the assembly graph does
+#: not carry; they are named here as deferred rather than half-built, so a
+#: reader looking for them finds the reason instead of the absence.
+OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
+    "position": {
+        "sensor": "mjSENS_JOINTPOS",
+        "target": "joint",
+        "objtype": "mjOBJ_JOINT",
+        "dim": 1,
+        "suffixes": ("",),
+        "units": {"angular": ("deg", angle_degrees), "linear": ("mm", length_mm)},
+    },
+    "velocity": {
+        "sensor": "mjSENS_JOINTVEL",
+        "target": "joint",
+        "objtype": "mjOBJ_JOINT",
+        "dim": 1,
+        "suffixes": ("",),
+        "units": {
+            "angular": ("deg/s", angle_degrees),
+            "linear": ("mm/s", speed_mm_per_s),
+        },
+    },
+    "actuator_force": {
+        "sensor": "mjSENS_ACTUATORFRC",
+        "target": "actuator",
+        "objtype": "mjOBJ_ACTUATOR",
+        "dim": 1,
+        "suffixes": ("",),
+        "units": {"angular": ("nmm", torque_nmm), "linear": ("n", float)},
+    },
+    # The four frame channels. ``xbody`` throughout, which is the phase 0
+    # finding: ``body`` would report the inertial frame, and a reward that
+    # named a position would silently be given the centre of mass.
+    "component_position": {
+        "sensor": "mjSENS_FRAMEPOS",
+        "target": "component",
+        "objtype": "mjOBJ_XBODY",
+        "dim": 3,
+        "suffixes": ("_x", "_y", "_z"),
+        "units": {None: ("mm", length_mm)},
+    },
+    "component_orientation": {
+        "sensor": "mjSENS_FRAMEQUAT",
+        "target": "component",
+        "objtype": "mjOBJ_XBODY",
+        "dim": 4,
+        "suffixes": ("_qw", "_qx", "_qy", "_qz"),
+        # A unit quaternion is dimensionless, so the scale is exactly one --
+        # stated as a row rather than special-cased, so that every channel
+        # in the bundle carries a scale and a reader never has to ask
+        # whether a missing one means "1" or "forgot".
+        "units": {None: ("quat", float)},
+    },
+    "component_linear_velocity": {
+        "sensor": "mjSENS_FRAMELINVEL",
+        "target": "component",
+        "objtype": "mjOBJ_XBODY",
+        "dim": 3,
+        "suffixes": ("_x", "_y", "_z"),
+        "units": {None: ("mm/s", speed_mm_per_s)},
+    },
+    "component_angular_velocity": {
+        "sensor": "mjSENS_FRAMEANGVEL",
+        "target": "component",
+        "objtype": "mjOBJ_XBODY",
+        "dim": 3,
+        "suffixes": ("_x", "_y", "_z"),
+        "units": {None: ("deg/s", angle_degrees)},
+    },
+    # ``subtreecom`` is a mass-weighted quantity over a subtree rather than
+    # a frame, so the body/xbody distinction does not arise for it and
+    # ``mjOBJ_BODY`` is the only object type it takes.
+    "centre_of_mass": {
+        "sensor": "mjSENS_SUBTREECOM",
+        "target": "component",
+        "objtype": "mjOBJ_BODY",
+        "dim": 3,
+        "suffixes": ("_x", "_y", "_z"),
+        "units": {None: ("mm", length_mm)},
+    },
+}
+
+#: Observation kinds named here on purpose, with the reason they are not
+#: rows above. A refusal that says "unknown kind" about something MuJoCo
+#: plainly supports sends a reader looking for a typo.
+DEFERRED_OBSERVATION_KINDS = {
+    "touch": (
+        "needs a site with a size, which is a placement the assembly graph "
+        "does not carry: a touch sensor measures contact normal force inside "
+        "a volume somebody has to draw"
+    ),
+    "accelerometer": (
+        "needs a site to be mounted on, for the same reason. A component's "
+        "acceleration is also not a quantity MuJoCo exposes per body"
+    ),
+    "contact_force": (
+        "reports per-contact rather than per-body, so its dimension depends "
+        "on what is touching what at the instant it is read -- which is not "
+        "a fixed-width observation channel"
+    ),
+}
+
+#: What a randomisation entry may vary, and every compiled-model field one
+#: draw has to move.
+#:
+#: ``mass`` is the row that is not obvious, and phase 0 is why: MuJoCo keeps
+#: ``body_mass`` and ``body_inertia`` in independent arrays and derives
+#: ``body_subtreemass`` from the first at ``mj_setConst``. Scaling the mass
+#: alone leaves a body whose rotational inertia no longer matches it -- not
+#: a heavier part, a part whose density depends on which equation you ask.
+#: One draw therefore scales both, which is exactly what changing the
+#: density of a fixed shape means, and is how :func:`mass_kg` and
+#: :func:`inertia_kg_m2` produced the two numbers in the first place: each
+#: linear in the density.
+RANDOMISATION_TARGETS: dict[str, dict[str, Any]] = {
+    "mass": {"on": "component", "fields": ("body_mass", "body_inertia"), "positive": True},
+    "damping": {"on": "joint", "fields": ("dof_damping",), "positive": False},
+    "armature": {"on": "joint", "fields": ("dof_armature",), "positive": False},
+    "friction_loss": {"on": "joint", "fields": ("dof_frictionloss",), "positive": False},
+}
+
+#: Everything a reward or termination expression may name beyond the
+#: observation channels themselves. ``_CONTROL_GLOBALS`` plus the three a
+#: reward actually wants: ``exp`` for a shaped bell, ``sqrt`` for a distance,
+#: ``tanh`` for a bounded term.
+#:
+#: This is deliberately *not* the control whitelist widened. ``api.motion``
+#: renders its formula back to Ondsel, which has no ``tanh``, so a shared
+#: set would export an expression Ondsel cannot read; the extension point is
+#: a parameter, not a bigger common set.
+_REWARD_GLOBALS: dict[str, Any] = {
+    **_CONTROL_GLOBALS,
+    "exp": math.exp,
+    "sqrt": math.sqrt,
+    "tanh": math.tanh,
+}
+
+#: The sorted function names the bundle ships, so that the reference runner's
+#: own evaluator can be asserted equal to this rather than kept equal to it
+#: by attention. Two evaluators is a place for a whitelist to drift, and this
+#: codebase keeps catching drift by writing the second copy down; here it
+#: costs one array.
+REWARD_FUNCTIONS = tuple(
+    sorted(
+        name
+        for name, value in _REWARD_GLOBALS.items()
+        if callable(value) and not name.startswith("__")
+    )
+)
+
+
+def _observation_unit(kind: str, motion_type: str | None) -> tuple[str, float]:
+    """One channel's surface unit and the number a trainer multiplies by.
+
+    The scale is the conversion applied to 1.0 -- a single number computed
+    here and emitted into the bundle, so the trainer multiplies rather than
+    converts. That is hazard 1's answer on this boundary: a reward formula
+    is evaluated outside this process, and a conversion that has to be
+    *performed* over there is a conversion that can be performed wrongly.
+    """
+
+    units = OBSERVATION_KINDS[kind]["units"]
+    entry = units.get(motion_type if motion_type in units else None)
+    if entry is None:
+        raise DynamicsError(
+            f"A {kind!r} observation has no unit for a {motion_type} coordinate.",
+            reason="malformed_observation",
+            observed={"kind": kind, "motion_type": motion_type},
+        )
+    unit, convert = entry
+    return str(unit), float(convert(1.0))
+
+
+def observation_records(
+    entries: Sequence[Mapping[str, Any]],
+    tree: Mapping[str, Any],
+    joint_records: Sequence[Mapping[str, Any]],
+    actuators: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Every declared channel, resolved to something the model really carries.
+
+    The same shape and the same refusals as :func:`actuator_records`, for
+    the same reason: a joint the spanning forest turned into a loop closure,
+    a suppressed joint and a joint from some other assembly are all
+    authoring mistakes, and only the tree can say which one this is.
+
+    Two things happen here that do not happen for an actuator. A **vector
+    channel expands** to suffixed scalar names -- ``name="hand"`` on a
+    position gives ``hand_x``, ``hand_y``, ``hand_z`` -- because reward
+    formulas do arithmetic on scalars, and the set of names a formula may
+    use has to be enumerable for every one of them to be checkable. And a
+    **duplicate name is refused**, including one produced by expansion: two
+    channels called the same thing make a reward that reads correctly and
+    means whichever one came second.
+    """
+
+    table = _coordinate_table(tree, joint_records)
+    refusals = _coordinate_refusals(tree)
+    bodies = [str(body["name"]) for body in tree["bodies"]]
+    by_actuator = {
+        (str(record["joint"]), str(record["motion_type"]), str(record["kind"])): record
+        for record in actuators
+    }
+    records: list[dict[str, Any]] = []
+    taken: dict[str, str] = {}
+    for index, entry in enumerate(entries):
+        kind = str(entry.get("kind") or "")
+        name = str(entry.get("name") or "")
+        row = OBSERVATION_KINDS.get(kind)
+        if row is None:
+            deferred = DEFERRED_OBSERVATION_KINDS.get(kind)
+            raise DynamicsError(
+                f"Observation {name!r} asks for {kind!r}, which "
+                + (
+                    f"{deferred}."
+                    if deferred
+                    else "is not an observation kind this engine supports."
+                ),
+                reason="unknown_observation_kind",
+                correction=(
+                    "The supported kinds are "
+                    f"{', '.join(sorted(OBSERVATION_KINDS))}."
+                ),
+                observed={"kind": kind, "observation": name},
+            )
+        what = f"observation {name!r}"
+
+        motion_type: str | None = None
+        if row["target"] == "joint":
+            resolved = _resolve_coordinate(entry, table, refusals, what=what)
+            motion_type = str(entry.get("motion_type") or "")
+            object_name = str(resolved["mujoco_joint"])
+            target = str(entry.get("joint") or "")
+        elif row["target"] == "actuator":
+            motion_type = str(entry.get("motion_type") or "")
+            key = (
+                str(entry.get("joint") or ""),
+                motion_type,
+                str(entry.get("actuator_kind") or ""),
+            )
+            actuator = by_actuator.get(key)
+            if actuator is None:
+                raise DynamicsError(
+                    f"{what} reads the effort of an actuator this model does "
+                    "not carry.",
+                    reason="observation_actuator_missing",
+                    correction=(
+                        "Pass the same assembly.actuator value that was given "
+                        "to the api.mjcf this task observes."
+                    ),
+                    observed={
+                        "observation": name,
+                        "joint": key[0],
+                        "motion_type": key[1],
+                        "actuator_kind": key[2],
+                        "available": sorted(
+                            str(record["mujoco_actuator"]) for record in actuators
+                        ),
+                    },
+                )
+            object_name = str(actuator["mujoco_actuator"])
+            target = str(entry.get("joint") or "")
+        else:
+            target = str(entry.get("component") or "")
+            if target not in bodies:
+                raise DynamicsError(
+                    f"{what} reads component {target!r}, which is not a body "
+                    "in this assembly's dynamics model.",
+                    reason="observation_component_missing",
+                    correction=(
+                        "Pass the same assembly.component value the assembly "
+                        "was built from. A component with no api.body has no "
+                        "mass and is not part of the model."
+                    ),
+                    observed={"observation": name, "component": target,
+                              "available": list(bodies)},
+                )
+            object_name = target
+
+        unit, scale = _observation_unit(kind, motion_type)
+        channels = [f"{name}{suffix}" for suffix in row["suffixes"]]
+        for channel in channels:
+            if channel in taken:
+                raise DynamicsError(
+                    f"Two observation channels are both called {channel!r}.",
+                    reason="duplicate_observation_channel",
+                    correction=(
+                        "A reward formula names channels, so two with one name "
+                        "means whichever was declared second. Rename one. Note "
+                        "that a vector channel expands: a component_position "
+                        "named 'hand' occupies hand_x, hand_y and hand_z."
+                    ),
+                    observed={
+                        "channel": channel,
+                        "observation": name,
+                        "conflicts_with": taken[channel],
+                    },
+                )
+            taken[channel] = name
+        records.append(
+            {
+                "name": name,
+                "kind": kind,
+                "target": target,
+                "sensor": str(row["sensor"]),
+                "objtype": str(row["objtype"]),
+                "object_name": object_name,
+                "dim": int(row["dim"]),
+                "channels": channels,
+                "unit": unit,
+                "scale": scale,
+                "motion_type": motion_type,
+                # The MJCF element's own name. Positional rather than
+                # derived from the script's name, because a channel name is
+                # authored text and an XML name attribute is an identifier;
+                # keeping them separate means a rename cannot collide with
+                # anything MuJoCo already carries.
+                "mujoco_sensor": f"obs/{index}",
+            }
+        )
+    if len(taken) > MAXIMUM_OBSERVATION_CHANNELS:
+        raise DynamicsError(
+            f"This task observes {len(taken)} scalar channels; the accepted "
+            f"maximum is {MAXIMUM_OBSERVATION_CHANNELS}.",
+            reason="too_many_observation_channels",
+            correction=(
+                "A vector channel counts as its components: a "
+                "component_position is three. Observe the quantities the "
+                "reward and the policy actually use."
+            ),
+            observed={"channels": len(taken),
+                      "maximum": MAXIMUM_OBSERVATION_CHANNELS},
+        )
+    return records
+
+
+def _add_observation_sensors(
+    mujoco: Any, spec: Any, observations: Sequence[Mapping[str, Any]]
+) -> None:
+    """Each channel as one MJCF ``<sensor>`` element, on the exported copy.
+
+    On the *copy*, which is the same structural care the keyframe gets: a
+    script carrying both an ``api.dynamics`` and an ``api.mjcf`` must not
+    have its simulation's numbers moved by an export, and phase 0's
+    inertness measurement is only worth having if nothing can reach the
+    simulated spec to test it against.
+    """
+
+    for record in observations:
+        sensor = spec.add_sensor()
+        sensor.name = str(record["mujoco_sensor"])
+        sensor.type = getattr(mujoco.mjtSensor, str(record["sensor"]))
+        sensor.objtype = getattr(mujoco.mjtObj, str(record["objtype"]))
+        sensor.objname = str(record["object_name"])
+
+
+def _verify_exported_sensors(
+    mujoco: Any,
+    reloaded: Any,
+    with_sensors: Any,
+    observations: Sequence[Mapping[str, Any]],
+    *,
+    context: str,
+) -> float:
+    """The file's observation vector is the one the engine declared.
+
+    Three claims, in the order that makes a failure legible: the file
+    carries the channels that were asked for, each lands at the address and
+    width the bundle will record, and the values agree with the engine's own
+    compiled model at the tolerance M5 measured.
+
+    The third is the one that matters and the one that is cheap to skip. A
+    bundle records ``adr`` and ``dim`` per channel and a trainer slices
+    ``sensordata`` with them; an off-by-one there is a policy trained on the
+    wrong number, and it looks exactly like a policy that failed to learn.
+    """
+
+    expected = int(len(observations))
+    if int(reloaded.nsensor) != expected:
+        raise DynamicsError(
+            f"The MJCF exported for {context} carries {int(reloaded.nsensor)} "
+            f"observation channels, not the {expected} that were declared.",
+            reason="mjcf_sensor_count",
+            observed={"expected": expected, "observed": int(reloaded.nsensor)},
+        )
+    if not observations:
+        return 0.0
+
+    width = sum(int(record["dim"]) for record in observations)
+    if int(reloaded.nsensordata) != width:
+        raise DynamicsError(
+            f"The MJCF exported for {context} reloads with "
+            f"{int(reloaded.nsensordata)} observation values, not {width}.",
+            reason="mjcf_sensor_width",
+            observed={"expected": width, "observed": int(reloaded.nsensordata)},
+        )
+    for index, record in enumerate(observations):
+        name = mujoco.mj_id2name(reloaded, mujoco.mjtObj.mjOBJ_SENSOR, index)
+        if str(name) != str(record["mujoco_sensor"]):
+            raise DynamicsError(
+                f"The MJCF exported for {context} reordered its observation "
+                f"channels: slot {index} is {name!r}, not "
+                f"{record['mujoco_sensor']!r}.",
+                reason="mjcf_sensor_order",
+                observed={"index": index, "expected": str(record["mujoco_sensor"]),
+                          "observed": str(name)},
+            )
+        if int(reloaded.sensor_dim[index]) != int(record["dim"]):
+            raise DynamicsError(
+                f"Observation {record['name']!r} in {context} reloads "
+                f"{int(reloaded.sensor_dim[index])} values wide, not "
+                f"{int(record['dim'])}.",
+                reason="mjcf_sensor_width",
+                observed={"observation": str(record["name"]),
+                          "expected": int(record["dim"]),
+                          "observed": int(reloaded.sensor_dim[index])},
+            )
+
+    # The values, at the solved keyframe, against the engine's own compiled
+    # model rather than against the reload alone.
+    here = mujoco.MjData(with_sensors)
+    key_here = mujoco.mj_name2id(
+        with_sensors, mujoco.mjtObj.mjOBJ_KEY, MJCF_KEYFRAME_NAME
+    )
+    mujoco.mj_resetDataKeyframe(with_sensors, here, key_here)
+    mujoco.mj_forward(with_sensors, here)
+    there = mujoco.MjData(reloaded)
+    key_there = mujoco.mj_name2id(
+        reloaded, mujoco.mjtObj.mjOBJ_KEY, MJCF_KEYFRAME_NAME
+    )
+    mujoco.mj_resetDataKeyframe(reloaded, there, key_there)
+    mujoco.mj_forward(reloaded, there)
+    drift = _field_drift(here.sensordata, there.sensordata)
+    if drift > MJCF_FIELD_TOLERANCE:
+        raise DynamicsError(
+            f"The MJCF exported for {context} changed its observation values "
+            f"by {drift:.6g} relative; the accepted maximum is "
+            f"{MJCF_FIELD_TOLERANCE:g}.",
+            reason="mjcf_sensor_drift",
+            correction=(
+                "A sensor reads state MuJoCo already computed, so a drift "
+                "this large is the state having moved, not the reading."
+            ),
+            observed={"drift": drift},
+        )
+    return drift
+
+
+# ---------------------------------------------------------------------------
+# The action space, and the refusals that are the point.
+# ---------------------------------------------------------------------------
+
+
+#: Where an action range may come from, per actuator kind and coordinate:
+#: the surface unit the bound is quoted in, the conversion that carries one
+#: unit of it into what ``data.ctrl`` reads, and the name of the declaration
+#: it is derived from.
+#:
+#: Note the direction. An observation's ``scale`` converts *out* of MuJoCo;
+#: an action's converts *in*, because an action travels the other way. Both
+#: are one number in the bundle and the arithmetic on both sides is a
+#: multiply, which is the only shape that cannot be performed backwards.
+_ACTION_SOURCES = {
+    ("motor", "angular"): ("nmm", torque_nm, "torque_limit_nmm"),
+    ("motor", "linear"): ("n", float, "force_limit_n"),
+    ("position", "angular"): ("deg", angle_radians, "angle_limits_degrees"),
+    ("position", "linear"): ("mm", length_m, "length_limits_mm"),
+}
+
+
+def _action_bound(
+    record: Mapping[str, Any], joint_limits: Mapping[str, Any] | None, *, what: str
+) -> dict[str, Any]:
+    """One actuator's action range, derived from the mechanism or refused.
+
+    The whole fork, in one function. A policy needs a bounded action space
+    and the model M4 builds has none -- phase 0 measured ``ctrllimited`` as
+    FALSE on every actuator -- so the bound is new, and the only defensible
+    place to get it is something the mechanism already states:
+
+    * a **motor** is bounded by its effort limit, which is the most a real
+      motor can produce and is exactly the number a saturating mechanism
+      already sags against;
+    * a **position** servo is bounded by its joint's own limits, because a
+      setpoint outside them is a command the joint cannot obey.
+
+    Everything else is a refusal with the correction attached, and the two
+    that matter are worth naming:
+
+    * a **one-sided** limit. ``_limit_range`` fills the missing endpoint
+      from ``_OPEN_ANGLE_MARGIN_RADIANS``, which phase 0 measured at a
+      hundred full turns. That number is a solver convenience -- it keeps
+      the joint effectively free while still being a declared range -- and
+      it is not a mechanical bound. A policy handed it would spend its whole
+      action budget in a region the mechanism cannot reach.
+    * a **velocity** actuator. Its control is a speed, and nothing in a
+      FreeCAD assembly states one: a joint carries position limits, not
+      velocity limits. Deriving a speed from an angle needs a time, and
+      there is no time in the model to take it from.
+    """
+
+    kind = str(record["kind"])
+    motion = str(record["motion_type"])
+    source = _ACTION_SOURCES.get((kind, motion))
+    if source is None:
+        raise DynamicsError(
+            f"{what} is a {kind} actuator, and its action range cannot be "
+            "derived: a velocity command is a speed, and this assembly states "
+            "no speed limit anywhere.",
+            reason="action_range_underivable",
+            correction=(
+                "A joint carries position limits, not velocity limits, so "
+                "there is no number to bound a speed with and inventing one "
+                "would be inventing a mechanism. Drive this coordinate with a "
+                "motor actuator, whose range is its torque limit, or with a "
+                "position actuator, whose range is the joint's own limits."
+            ),
+            observed={"actuator": str(record["mujoco_actuator"]), "kind": kind},
+        )
+    unit, convert, declared = source
+
+    if kind == "motor":
+        effort = record.get("effort_limit_si")
+        if effort is None:
+            raise DynamicsError(
+                f"{what} has no effort limit, so its action range cannot be "
+                "derived.",
+                reason="action_range_underivable",
+                correction=(
+                    f"Give the actuator {declared}=... -- the most the real "
+                    "motor can produce. A policy needs a bounded action space, "
+                    "and an unbounded torque is not a motor anybody can build."
+                ),
+                observed={"actuator": str(record["mujoco_actuator"])},
+            )
+        # Back to the surface unit the script wrote, so the bundle quotes a
+        # number the author would recognise.
+        limit = float(record["declared"]["effort_limit"])
+        low, high = -limit, limit
+    else:
+        if joint_limits is None:
+            raise DynamicsError(
+                f"{what} drives a joint with no limits, so its action range "
+                "cannot be derived.",
+                reason="action_range_underivable",
+                correction=(
+                    f"Give the joint {declared} in FreeCAD -- both endpoints. "
+                    "A position command outside a joint's travel is not an "
+                    "action, and a policy with no bound will spend most of its "
+                    "exploration there."
+                ),
+                observed={"actuator": str(record["mujoco_actuator"])},
+            )
+        if bool(joint_limits.get("one_sided")):
+            raise DynamicsError(
+                f"{what} drives a joint whose limit states only one endpoint, "
+                "so its action range cannot be derived.",
+                reason="action_range_underivable",
+                correction=(
+                    "The missing endpoint is filled in with a margin worth a "
+                    "hundred turns so the solver treats the joint as free. "
+                    "That is a convenience, not a mechanical bound, and an "
+                    "action range taken from it would be a limit nobody "
+                    f"designed. State both endpoints of {declared}."
+                ),
+                observed={
+                    "actuator": str(record["mujoco_actuator"]),
+                    "declared": list(joint_limits.get("declared") or []),
+                },
+            )
+        declared_pair = [float(value) for value in joint_limits["declared"]]
+        low, high = declared_pair[0], declared_pair[1]
+
+    if not (math.isfinite(low) and math.isfinite(high)) or low >= high:
+        raise DynamicsError(
+            f"{what} has an empty action range.",
+            reason="action_range_underivable",
+            observed={"low": low, "high": high},
+        )
+    return {
+        "unit": unit,
+        "low": float(low),
+        "high": float(high),
+        # One unit of the surface quantity, in what ``data.ctrl`` reads.
+        "scale": float(convert(1.0)),
+        "source": declared,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Reward and termination: expressions over the observation namespace.
+# ---------------------------------------------------------------------------
+
+
+def compile_reward(formula: str, *, names: Sequence[str], context: str) -> Any:
+    """One reward or termination expression, checked against the channels.
+
+    The API whitelists the expression's *syntax*; this checks its
+    *vocabulary* against the channels that actually resolved, which is the
+    check the API cannot make -- a vector observation expands to suffixed
+    names, and whether ``hand_x`` exists depends on what the model carried.
+
+    Compiled rather than kept as text for the same reason a control formula
+    is: an episode evaluates every term at every control step.
+    """
+
+    allowed = set(names) | {
+        name for name in _REWARD_GLOBALS if not name.startswith("__")
+    }
+    try:
+        tree = ast.parse(str(formula), mode="eval")
+    except SyntaxError as exc:
+        raise DynamicsError(
+            f"{context} is not an expression: {exc}",
+            reason="malformed_reward_formula",
+            observed={"context": context, "formula": str(formula)},
+        ) from exc
+    used = sorted(
+        {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    )
+    unknown = [name for name in used if name not in allowed]
+    if unknown:
+        raise DynamicsError(
+            f"{context} names {', '.join(repr(name) for name in unknown)}, "
+            "which is not an observation channel of this task.",
+            reason="reward_names_unknown_channel",
+            correction=(
+                "A reward may name the observation channels this task "
+                "declares and the functions "
+                f"{', '.join(REWARD_FUNCTIONS)}. The channels here are "
+                f"{', '.join(sorted(names)) or '(none declared)'}. Note that a "
+                "vector observation expands: one named 'hand' is hand_x, "
+                "hand_y and hand_z rather than 'hand'."
+            ),
+            observed={"context": context, "unknown": unknown,
+                      "channels": sorted(names)},
+        )
+    return compile(tree, filename="<reward>", mode="eval")
+
+
+def evaluate_reward(code: Any, values: Mapping[str, float], *, context: str) -> float:
+    """One compiled expression against one observation, as a finite number."""
+
+    try:
+        value = float(eval(code, _REWARD_GLOBALS, dict(values)))
+    except Exception as exc:
+        raise DynamicsError(
+            f"{context} could not be evaluated: {exc}",
+            reason="reward_formula_failed",
+            correction=(
+                "A reward is arithmetic on the task's observation channels. "
+                "Check for a division by zero, a sqrt of a negative, or an "
+                "exp that overflowed."
+            ),
+            observed={"context": context},
+        ) from exc
+    if not math.isfinite(value):
+        raise DynamicsError(
+            f"{context} evaluated to {value}.",
+            reason="reward_formula_failed",
+            correction=(
+                "A reward that is not a finite number is not a reward: it "
+                "makes every episode incomparable with every other."
+            ),
+            observed={"context": context},
+        )
+    return value
+
+
+# ---------------------------------------------------------------------------
+# The task bundle, and the episode that is run from it.
+# ---------------------------------------------------------------------------
+
+
+def _episode_schedule(model: Any, *, control_hz: int, episode_seconds: float,
+                      context: str) -> dict[str, Any]:
+    """How many solver steps one action lasts, and how many actions an episode.
+
+    The rounding ``api.dynamics`` already does for trace frames, applied to
+    control steps: a whole number of solver steps has to land exactly on
+    each action boundary, or the last step of an episode integrates a
+    different amount of time from the first and two runs at different
+    control rates stop being comparable.
+
+    The *actual* rate after rounding is reported rather than the one that
+    was asked for, because that is the number the episode really ran at.
+    """
+
+    timestep = float(model.opt.timestep)
+    interval = 1.0 / float(control_hz)
+    steps = int(round(interval / timestep))
+    if steps < 1:
+        raise DynamicsError(
+            f"{context} asks for {control_hz} control steps a second, which is "
+            f"faster than the solver's own step of {timestep:g} s.",
+            reason="control_rate_too_high",
+            correction=(
+                "An action has to last at least one solver step. Lower "
+                "control_hz, or lower solver_step_s on the api.mjcf this task "
+                f"reads -- at this step the ceiling is {1.0 / timestep:.0f} Hz."
+            ),
+            observed={"control_hz": int(control_hz), "solver_step_s": timestep},
+        )
+    max_steps = int(round(float(episode_seconds) * float(control_hz)))
+    if max_steps < 1:
+        raise DynamicsError(
+            f"{context} describes an episode of no control steps.",
+            reason="episode_too_short",
+            observed={"episode_seconds": float(episode_seconds),
+                      "control_hz": int(control_hz)},
+        )
+    if max_steps > MAXIMUM_EPISODE_STEPS:
+        raise DynamicsError(
+            f"{context} describes an episode of {max_steps} control steps; the "
+            f"accepted maximum is {MAXIMUM_EPISODE_STEPS}.",
+            reason="episode_too_long",
+            observed={"steps": max_steps, "maximum": MAXIMUM_EPISODE_STEPS},
+        )
+    solver_steps = max_steps * steps
+    if solver_steps > MAXIMUM_SOLVER_STEPS:
+        raise DynamicsError(
+            f"{context} would integrate {solver_steps} solver steps; the "
+            f"accepted maximum is {MAXIMUM_SOLVER_STEPS}.",
+            reason="episode_too_long",
+            correction=(
+                "The episode length times the control rate times the solver "
+                "steps per action is the real cost. Shorten the episode or "
+                "coarsen solver_step_s on the api.mjcf this task reads."
+            ),
+            observed={"solver_steps": solver_steps,
+                      "maximum": MAXIMUM_SOLVER_STEPS},
+        )
+    return {
+        "control_hz": int(control_hz),
+        "solver_steps_per_action": steps,
+        "max_steps": max_steps,
+        "solver_step_s": timestep,
+        "control_interval_s": steps * timestep,
+        "episode_seconds": max_steps * steps * timestep,
+        "reset_keyframe": MJCF_KEYFRAME_NAME,
+        # Which observation a reward is computed from, stated in the file so
+        # that two evaluators cannot disagree about it silently. The gym
+        # convention: observe, act, integrate, and the reward is a property
+        # of where the action *landed*.
+        "reward_stage": "after_step",
+    }
+
+
+def _randomisation_records(
+    mujoco: Any,
+    reloaded: Any,
+    entries: Sequence[Mapping[str, Any]],
+    tree: Mapping[str, Any],
+    joint_records: Sequence[Mapping[str, Any]],
+    *,
+    context: str,
+) -> list[dict[str, Any]]:
+    """Every randomisation entry, resolved to compiled-model field indices.
+
+    Resolved *here*, at export time, so that the process applying a draw
+    needs no name lookup and no MuJoCo introspection -- one multiply into a
+    flat array. That is what lets the reference runner stay small enough to
+    be obviously correct.
+
+    One draw may move more than one field: a mass draw scales ``body_mass``
+    and the body's three ``body_inertia`` entries together, because phase 0
+    measured that MuJoCo keeps them independent and a body scaled in one
+    alone is a body whose density depends on which equation you ask.
+    """
+
+    table = _coordinate_table(tree, joint_records)
+    refusals = _coordinate_refusals(tree)
+    bodies = [str(body["name"]) for body in tree["bodies"]]
+    records: list[dict[str, Any]] = []
+    for entry in entries:
+        target = str(entry.get("target") or "")
+        row = RANDOMISATION_TARGETS.get(target)
+        label = str(entry.get("label") or target)
+        what = f"randomisation {label!r} in {context}"
+        if row is None:
+            raise DynamicsError(
+                f"{what} varies {target!r}, which is not a randomisable "
+                "property.",
+                reason="unknown_randomisation_target",
+                correction=(
+                    f"The supported targets are "
+                    f"{', '.join(sorted(RANDOMISATION_TARGETS))}."
+                ),
+                observed={"target": target},
+            )
+        low = float(entry.get("low"))
+        high = float(entry.get("high"))
+        if not (math.isfinite(low) and math.isfinite(high)) or low > high:
+            raise DynamicsError(
+                f"{what} has an empty range.",
+                reason="malformed_randomisation",
+                observed={"low": low, "high": high},
+            )
+        if row["positive"] and low <= 0.0:
+            raise DynamicsError(
+                f"{what} would scale a mass by {low:g}, which is not a mass.",
+                reason="malformed_randomisation",
+                correction=(
+                    "A scale range multiplies the value the assembly computed, "
+                    "so it has to stay positive: [0.9, 1.1] is a ten per cent "
+                    "spread. A body of zero or negative mass has undefined "
+                    "acceleration and MuJoCo will not compile it."
+                ),
+                observed={"low": low, "high": high},
+            )
+
+        fields: list[dict[str, Any]] = []
+        if row["on"] == "component":
+            component = str(entry.get("component") or "")
+            if component not in bodies:
+                raise DynamicsError(
+                    f"{what} varies component {component!r}, which is not a "
+                    "body in this assembly's dynamics model.",
+                    reason="randomisation_component_missing",
+                    correction=(
+                        "Pass the same assembly.component value the assembly "
+                        "was built from."
+                    ),
+                    observed={"component": component, "available": list(bodies)},
+                )
+            body_id = int(mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_BODY, component))
+            fields.append({"field": "body_mass", "index": body_id})
+            # The three principal moments, flat: MuJoCo stores body_inertia
+            # as (nbody, 3), so the row starts at 3*body_id.
+            fields.extend(
+                {"field": "body_inertia", "index": 3 * body_id + axis}
+                for axis in range(3)
+            )
+            subject = component
+        else:
+            resolved = _resolve_coordinate(entry, table, refusals, what=what)
+            joint_name = str(resolved["mujoco_joint"])
+            joint_id = int(
+                mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+            )
+            dof = int(reloaded.jnt_dofadr[joint_id])
+            fields.extend(
+                {"field": field, "index": dof} for field in row["fields"]
+            )
+            subject = joint_name
+        records.append(
+            {
+                "label": label,
+                "target": target,
+                "subject": subject,
+                # Multiplicative, always. An additive range would mean
+                # something different for a mass than for a damping, and a
+                # single scale is comparable across mechanisms.
+                "mode": "scale",
+                "low": low,
+                "high": high,
+                "fields": fields,
+            }
+        )
+    if len(records) > MAXIMUM_RANDOMISATION_ENTRIES:
+        raise DynamicsError(
+            f"{context} declares {len(records)} randomisation entries; the "
+            f"accepted maximum is {MAXIMUM_RANDOMISATION_ENTRIES}.",
+            reason="too_many_randomisation_entries",
+            observed={"entries": len(records),
+                      "maximum": MAXIMUM_RANDOMISATION_ENTRIES},
+        )
+    return records
+
+
+def task_records(
+    built: Mapping[str, Any],
+    reloaded: Any,
+    task: Mapping[str, Any],
+    *,
+    observations: Sequence[Mapping[str, Any]],
+    context: str = "this task",
+) -> dict[str, Any]:
+    """One task declaration, as the self-contained bundle a trainer reads.
+
+    Everything is resolved against ``reloaded`` -- the model compiled from
+    the **exported bytes** -- rather than against the model the engine
+    simulated. That is deliberate and it is what makes the exit criterion a
+    claim about the task spec rather than a second proof of M5's physics: an
+    address recorded here is an address into the file somebody else will
+    load, so if the file and the engine disagreed about it, this is where it
+    shows.
+
+    The bundle carries no path and no digest. Those are the worker's to add,
+    because they describe where the model landed and this function has never
+    seen a filesystem.
+    """
+
+    mujoco = _mujoco_module()
+    tree = built["tree"]
+    joint_records = built["joint_records"]
+    actuators = list(built["actuators"])
+    by_actuator = {
+        (str(record["joint"]), str(record["motion_type"]), str(record["kind"])): record
+        for record in actuators
+    }
+    limits_by_joint = {
+        str(record["mujoco_joint"]): record.get("limits")
+        for record in joint_records
+    }
+
+    # -- observations -------------------------------------------------------
+    observation_rows: list[dict[str, Any]] = []
+    channels: list[str] = []
+    for index, record in enumerate(observations):
+        adr = int(reloaded.sensor_adr[index])
+        dim = int(reloaded.sensor_dim[index])
+        observation_rows.append(
+            {
+                "name": str(record["name"]),
+                "kind": str(record["kind"]),
+                "target": str(record["target"]),
+                "sensor": str(record["mujoco_sensor"]),
+                "adr": adr,
+                "dim": dim,
+                "channels": [str(name) for name in record["channels"]],
+                "unit": str(record["unit"]),
+                "scale": float(record["scale"]),
+            }
+        )
+        channels.extend(str(name) for name in record["channels"])
+
+    # -- actions ------------------------------------------------------------
+    action_rows: list[dict[str, Any]] = []
+    seen_actions: set[str] = set()
+    for entry in task.get("actions") or ():
+        key = (
+            str(entry.get("joint") or ""),
+            str(entry.get("motion_type") or ""),
+            str(entry.get("actuator_kind") or ""),
+        )
+        record = by_actuator.get(key)
+        what = f"the action on {_coordinate_context(key[0], key[1])}"
+        if record is None:
+            raise DynamicsError(
+                f"{what} names an actuator this model does not carry.",
+                reason="action_actuator_missing",
+                correction=(
+                    "An action list names assembly.actuator values that were "
+                    "given to the api.mjcf this task reads. An actuator the "
+                    "model does not have is a coordinate nothing can drive."
+                ),
+                observed={
+                    "joint": key[0],
+                    "motion_type": key[1],
+                    "actuator_kind": key[2],
+                    "available": sorted(
+                        str(item["mujoco_actuator"]) for item in actuators
+                    ),
+                },
+            )
+        name = str(record["mujoco_actuator"])
+        if name in seen_actions:
+            raise DynamicsError(
+                f"{what} is listed twice.",
+                reason="duplicate_action",
+                correction=(
+                    "One actuator is one action. Two entries would give a "
+                    "policy two numbers for one motor and use whichever came "
+                    "second."
+                ),
+                observed={"actuator": name},
+            )
+        seen_actions.add(name)
+        index = int(mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_ACTUATOR, name))
+        if index < 0:
+            raise DynamicsError(
+                f"{what} resolves to actuator {name!r}, which the exported "
+                "model does not contain.",
+                reason="action_actuator_missing",
+                observed={"actuator": name},
+            )
+        bound = _action_bound(
+            record, limits_by_joint.get(str(record["mujoco_joint"])), what=what
+        )
+        action_rows.append(
+            {
+                "actuator": name,
+                "joint": str(record["joint"]),
+                "motion_type": str(record["motion_type"]),
+                "kind": str(record["kind"]),
+                "index": index,
+                # The control formula the script already had to write. It is
+                # the deterministic fallback: the action taken when no policy
+                # is driving, which is what lets an episode run -- and be
+                # compared -- before any policy exists (M8 swaps it out).
+                "fallback": str(record["control"]),
+                **bound,
+            }
+        )
+    if not action_rows:
+        raise DynamicsError(
+            f"{context} declares no actions, so nothing a policy does could "
+            "change what happens.",
+            reason="task_has_no_actions",
+            correction=(
+                "Give the task at least one assembly.actuator to drive."
+            ),
+            observed={"task": context},
+        )
+
+    # -- reward and termination --------------------------------------------
+    reward_rows: list[dict[str, Any]] = []
+    for entry in task.get("reward") or ():
+        label = str(entry.get("label") or "reward")
+        expression = str(entry.get("expression") or "")
+        compile_reward(expression, names=channels, context=f"reward {label!r}")
+        reward_rows.append(
+            {
+                "label": label,
+                "weight": float(entry.get("weight", 1.0)),
+                "expression": expression,
+            }
+        )
+    if not reward_rows:
+        raise DynamicsError(
+            f"{context} declares no reward terms.",
+            reason="task_has_no_reward",
+            correction=(
+                "A task without a reward is a simulation. Give it at least "
+                "one assembly.reward term naming the channels it observes."
+            ),
+            observed={"task": context},
+        )
+    if len(reward_rows) > MAXIMUM_REWARD_TERMS:
+        raise DynamicsError(
+            f"{context} declares {len(reward_rows)} reward terms; the accepted "
+            f"maximum is {MAXIMUM_REWARD_TERMS}.",
+            reason="too_many_reward_terms",
+            observed={"terms": len(reward_rows), "maximum": MAXIMUM_REWARD_TERMS},
+        )
+
+    termination_rows: list[dict[str, Any]] = []
+    for entry in task.get("termination") or ():
+        label = str(entry.get("label") or "termination")
+        expression = str(entry.get("expression") or "")
+        compile_reward(expression, names=channels, context=f"termination {label!r}")
+        above = entry.get("above")
+        below = entry.get("below")
+        if above is None and below is None:
+            raise DynamicsError(
+                f"Termination {label!r} in {context} states no threshold.",
+                reason="malformed_termination",
+                correction=(
+                    "A termination rule is an expression and a bound it must "
+                    "not cross: give it above=... or below=..."
+                ),
+                observed={"termination": label},
+            )
+        termination_rows.append(
+            {
+                "label": label,
+                "expression": expression,
+                "above": None if above is None else float(above),
+                "below": None if below is None else float(below),
+            }
+        )
+    if len(termination_rows) > MAXIMUM_TERMINATION_TERMS:
+        raise DynamicsError(
+            f"{context} declares {len(termination_rows)} termination rules; "
+            f"the accepted maximum is {MAXIMUM_TERMINATION_TERMS}.",
+            reason="too_many_termination_terms",
+            observed={"terms": len(termination_rows),
+                      "maximum": MAXIMUM_TERMINATION_TERMS},
+        )
+
+    schedule = _episode_schedule(
+        reloaded,
+        control_hz=int(task.get("control_hz") or 0),
+        episode_seconds=float(task.get("episode_seconds") or 0.0),
+        context=context,
+    )
+    randomisation = _randomisation_records(
+        mujoco,
+        reloaded,
+        task.get("randomisation") or (),
+        tree,
+        joint_records,
+        context=context,
+    )
+    return {
+        "schema": TASK_SCHEMA,
+        "label": str(task.get("label") or ""),
+        "observations": observation_rows,
+        "actions": action_rows,
+        "reward": reward_rows,
+        "termination": termination_rows,
+        "episode": schedule,
+        "randomisation": randomisation,
+        # Shipped so the reference runner's own evaluator can be asserted
+        # equal to this array rather than kept equal to it by attention.
+        "functions": list(REWARD_FUNCTIONS),
+        "mujoco_version": str(built["mujoco_version"]),
+    }
+
+
+def observation_values(
+    task: Mapping[str, Any], sensordata: Sequence[float]
+) -> dict[str, float]:
+    """One raw ``sensordata`` array as the named, scaled channels of a task.
+
+    Three lines of arithmetic, and every one of them is the bundle's:
+    ``adr`` and ``dim`` say which slice, ``scale`` says what to multiply by,
+    ``channels`` say what to call the results. Nothing is looked up in a
+    model here, which is exactly why a process with no Cadex on its path can
+    do the same thing from the same file.
+    """
+
+    values: dict[str, float] = {}
+    for record in task["observations"]:
+        adr = int(record["adr"])
+        dim = int(record["dim"])
+        scale = float(record["scale"])
+        for offset, channel in enumerate(record["channels"][:dim]):
+            values[str(channel)] = float(sensordata[adr + offset]) * scale
+    return values
+
+
+def apply_randomisation(
+    mujoco: Any, model: Any, data: Any, task: Mapping[str, Any], *, seed: int
+) -> list[dict[str, Any]]:
+    """Draw one factor per entry and multiply it into the model, in place.
+
+    ``random.Random(seed)`` drawing ``uniform(low, high)`` in bundle order:
+    a stated algorithm rather than an implicit one, because the reference
+    runner has to reproduce the same draws from the same seed and "whatever
+    the RNG did" is not reproducible across two implementations.
+
+    ``mj_setConst`` afterwards is not optional -- phase 0 measured that
+    ``body_subtreemass`` is derived from ``body_mass`` there, so a mass draw
+    that skipped it would change the mass and not what the solver does with
+    it.
+    """
+
+    import random
+
+    rng = random.Random(int(seed))
+    drawn: list[dict[str, Any]] = []
+    for entry in task.get("randomisation") or ():
+        factor = rng.uniform(float(entry["low"]), float(entry["high"]))
+        for field in entry["fields"]:
+            array = getattr(model, str(field["field"]))
+            array.flat[int(field["index"])] *= factor
+        drawn.append({"label": str(entry["label"]), "factor": float(factor)})
+    if drawn:
+        mujoco.mj_setConst(model, data)
+    return drawn
+
+
+def evaluate_episode(
+    model: Any,
+    task: Mapping[str, Any],
+    *,
+    actions: Any = None,
+    seed: int | None = None,
+) -> dict[str, Any]:
+    """One full episode, from the bundle, in the engine.
+
+    **This is M8's rollout path.** M8 swaps where the action comes from and
+    changes nothing else, which is why ``actions`` is a callable taking the
+    step and the observation rather than a precomputed array.
+
+    The bundle is the only input besides the model: no ``built``, no tree,
+    no records. That is what makes the comparison against the reference
+    runner meaningful -- both evaluators consume the same file, so a
+    disagreement is a disagreement about the *task spec* and not about which
+    side had more information.
+
+    One control step is: observe, act, integrate
+    ``solver_steps_per_action`` times, observe again, and score. The reward
+    is a property of where the action landed rather than of where it started
+    (``episode.reward_stage``), and the termination rules are checked on the
+    same post-step observation, so a run that ends does so at the step whose
+    action ended it.
+
+    ``actions`` is a callable ``(step, observation) -> sequence`` in the
+    surface units the bundle advertises; without one, each actuator's own
+    control formula is evaluated at the step's time, which is the
+    deterministic fallback that lets an episode run before any policy
+    exists. Either way the value is clamped to the advertised range before
+    it is scaled into ``data.ctrl``: the bound is what the bundle promised a
+    policy, and a runner that quietly exceeded it would be running a
+    different mechanism from the one it described.
+    """
+
+    mujoco = _mujoco_module()
+    episode = task["episode"]
+    per_action = int(episode["solver_steps_per_action"])
+    max_steps = int(episode["max_steps"])
+    control_interval = float(episode["control_interval_s"])
+
+    reward_terms = [
+        (
+            str(term["label"]),
+            float(term["weight"]),
+            compile_reward(
+                str(term["expression"]),
+                names=_task_channels(task),
+                context=f"reward {term['label']!r}",
+            ),
+        )
+        for term in task["reward"]
+    ]
+    termination_terms = [
+        (
+            str(term["label"]),
+            term.get("above"),
+            term.get("below"),
+            compile_reward(
+                str(term["expression"]),
+                names=_task_channels(task),
+                context=f"termination {term['label']!r}",
+            ),
+        )
+        for term in task["termination"]
+    ]
+    fallbacks = [
+        compile_control(str(action["fallback"]), context=f"action {action['actuator']!r}")
+        for action in task["actions"]
+    ]
+
+    data = mujoco.MjData(model)
+    drawn = (
+        []
+        if seed is None
+        else apply_randomisation(mujoco, model, data, task, seed=int(seed))
+    )
+    key = mujoco.mj_name2id(
+        model, mujoco.mjtObj.mjOBJ_KEY, str(episode["reset_keyframe"])
+    )
+    if key < 0:
+        raise DynamicsError(
+            "The model this task reads carries no "
+            f"{episode['reset_keyframe']!r} keyframe, so an episode has no "
+            "starting pose.",
+            reason="task_keyframe_missing",
+            observed={"keyframe": str(episode["reset_keyframe"])},
+        )
+    mujoco.mj_resetDataKeyframe(model, data, key)
+    mujoco.mj_forward(model, data)
+
+    steps: list[dict[str, Any]] = []
+    total = 0.0
+    terminated_step: int | None = None
+    termination_label = ""
+    for step in range(max_steps):
+        time_s = step * control_interval
+        observation = observation_values(task, data.sensordata)
+        if actions is None:
+            commanded = [
+                evaluate_control(code, time_s, context=f"action {index}")
+                for index, code in enumerate(fallbacks)
+            ]
+        else:
+            commanded = [float(value) for value in actions(step, observation)]
+        if len(commanded) != len(task["actions"]):
+            raise DynamicsError(
+                f"An episode of {task.get('label') or 'this task'} was given "
+                f"{len(commanded)} action values for "
+                f"{len(task['actions'])} actuators.",
+                reason="action_shape_mismatch",
+                observed={"given": len(commanded),
+                          "expected": len(task["actions"])},
+            )
+        applied: list[float] = []
+        for value, action in zip(commanded, task["actions"], strict=True):
+            clamped = min(max(float(value), float(action["low"])), float(action["high"]))
+            applied.append(clamped)
+            data.ctrl[int(action["index"])] = clamped * float(action["scale"])
+        for _ in range(per_action):
+            mujoco.mj_step(model, data)
+
+        landed = observation_values(task, data.sensordata)
+        contributions = []
+        reward = 0.0
+        for label, weight, code in reward_terms:
+            raw = evaluate_reward(code, landed, context=f"reward {label!r}")
+            contributions.append({"label": label, "value": raw,
+                                  "weighted": weight * raw})
+            reward += weight * raw
+        total += reward
+        reason = ""
+        for label, above, below, code in termination_terms:
+            value = evaluate_reward(code, landed, context=f"termination {label!r}")
+            if (above is not None and value > float(above)) or (
+                below is not None and value < float(below)
+            ):
+                reason = label
+                break
+        steps.append(
+            {
+                "step": step,
+                "time_s": time_s + control_interval,
+                "action": applied,
+                "observation": landed,
+                "reward": reward,
+                "reward_terms": contributions,
+                "terminated": bool(reason),
+                "termination": reason,
+            }
+        )
+        if reason:
+            terminated_step = step
+            termination_label = reason
+            break
+    return {
+        "label": str(task.get("label") or ""),
+        "steps": steps,
+        "step_count": len(steps),
+        "total_reward": total,
+        "terminated_step": terminated_step,
+        "termination": termination_label,
+        # A run that used its whole budget and one that was cut short are
+        # different outcomes, and a trainer has to be able to tell them
+        # apart: the first is a horizon, the second is a failure.
+        "truncated": terminated_step is None,
+        "randomisation": drawn,
+        "seed": None if seed is None else int(seed),
+    }
+
+
+def _task_channels(task: Mapping[str, Any]) -> list[str]:
+    """Every scalar channel name the bundle declares, in slice order."""
+
+    return [
+        str(channel)
+        for record in task["observations"]
+        for channel in record["channels"]
+    ]

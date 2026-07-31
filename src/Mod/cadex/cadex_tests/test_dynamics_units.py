@@ -226,6 +226,90 @@ def test_every_m4_conversion_round_trips_through_a_known_physical_case() -> None
     )
 
 
+# ---------------------------------------------------------------------------
+# M6: the conversions that carry numbers *out* of MuJoCo.
+#
+# Hazard 1's fourth instalment, and a new shape of it. Everything above
+# converts a number the script wrote into the unit MuJoCo reads; these go the
+# other way, and the reason that is more dangerous rather than less is who
+# does the arithmetic. A reward formula is evaluated **outside the engine**,
+# by a trainer holding raw ``sensordata``, so a reward written in degrees and
+# evaluated in radians is a silent factor of 57 in a number nobody inspects.
+#
+# The answer is the M2/M4 one: every conversion is one number computed here
+# and emitted into the task bundle as a per-channel ``scale``, so the trainer
+# multiplies rather than converts. These tests were written before the
+# functions had a caller, which is what §3.2 asks for.
+# ---------------------------------------------------------------------------
+
+
+def test_an_angle_leaves_mujoco_in_radians_and_reaches_the_surface_in_degrees() -> None:
+    """The inverse of :func:`angle_radians`, and the factor is 57.29578.
+
+    This is the one that matters most. Every other conversion on this
+    boundary is a power of ten, so getting one wrong moves a decimal point
+    and looks wrong; 180/pi does not, and a reward that is 57 times too
+    large trains a policy that works and cannot be compared with anything.
+    """
+
+    assert CadexDynamics.angle_degrees(math.pi) == pytest.approx(180.0, rel=1.0e-15)
+    assert CadexDynamics.angle_degrees(0.0) == 0.0
+    assert CadexDynamics.angle_degrees(-math.pi / 4.0) == pytest.approx(-45.0)
+    # The scale factor the bundle ships is exactly this function applied to
+    # one radian, which is what lets a trainer multiply instead of convert.
+    assert CadexDynamics.angle_degrees(1.0) == pytest.approx(
+        57.29577951308232, rel=1.0e-15
+    )
+    for value in (0.0, 0.7, -2.5, 100.0):
+        assert CadexDynamics.angle_radians(
+            CadexDynamics.angle_degrees(value)
+        ) == pytest.approx(value, abs=1.0e-12)
+
+
+def test_a_speed_leaves_mujoco_in_metres_per_second() -> None:
+    """m/s to mm/s -- the ordinary thousand, in the other direction."""
+
+    assert CadexDynamics.speed_mm_per_s(1.2345) == pytest.approx(1234.5, rel=1.0e-12)
+    assert CadexDynamics.speed_mm_per_s(-0.05) == pytest.approx(-50.0, rel=1.0e-12)
+    for value in (0.0, 3.7, -1.0e3):
+        assert CadexDynamics.speed_m_s(
+            CadexDynamics.speed_mm_per_s(value)
+        ) == pytest.approx(value, abs=1.0e-12)
+
+
+def test_a_torque_leaves_mujoco_in_newton_metres() -> None:
+    """N·m to N·mm. 8 N·m is a small servo; 8 N·mm turns nothing."""
+
+    assert CadexDynamics.torque_nmm(8.0) == pytest.approx(8000.0, rel=1.0e-12)
+    assert CadexDynamics.torque_nmm(-0.5) == pytest.approx(-500.0, rel=1.0e-12)
+    for value in (0.0, 12.5, -3.25):
+        assert CadexDynamics.torque_nm(
+            CadexDynamics.torque_nmm(value)
+        ) == pytest.approx(value, abs=1.0e-12)
+
+
+def test_every_inverse_conversion_is_the_exact_inverse_of_its_forward() -> None:
+    """Four pairs, checked as pairs rather than as eight separate numbers.
+
+    A conversion and its inverse drifting apart is the failure this codebase
+    keeps catching by writing the second copy down, and here the second copy
+    costs one loop.
+    """
+
+    pairs = (
+        (CadexDynamics.length_m, CadexDynamics.length_mm),
+        (CadexDynamics.angle_radians, CadexDynamics.angle_degrees),
+        (CadexDynamics.speed_m_s, CadexDynamics.speed_mm_per_s),
+        (CadexDynamics.torque_nm, CadexDynamics.torque_nmm),
+    )
+    for forward, inverse in pairs:
+        for value in (1.0, -37.5, 0.125):
+            assert forward(inverse(value)) == pytest.approx(value, rel=1.0e-14)
+            assert inverse(forward(value)) == pytest.approx(value, rel=1.0e-14)
+        assert forward(0.0) == 0.0
+        assert inverse(0.0) == 0.0
+
+
 _CONVERSION_ARITHMETIC = re.compile(
     r"""
     (?:[*/]\s*(?:1000(?:\.0)?|1\.?0?e-?(?:9|15))\b)   # * 1000, / 1e-9, ...
