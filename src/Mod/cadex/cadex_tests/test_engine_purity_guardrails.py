@@ -267,6 +267,55 @@ def test_mujoco_never_enters_the_engine_closure() -> None:
     )
 
 
+def test_the_training_stack_never_enters_the_engine_closure() -> None:
+    """Training is offboard by design, and this is what makes that a fact.
+
+    ADR-060 recorded the constraint and ADR-070 kept it: MJX needs
+    JAX-on-GPU, so the trainer runs on a machine we do not ship to. It reads
+    the bundle, writes a ``.cxpolicy``, and the engine *verifies* that file
+    with a pure-Python forward pass that imports nothing at all.
+
+    So neither ``jax`` nor ``mjx`` may appear anywhere in ``src/Mod/cadex``,
+    at module scope or deferred. The engine is not merely able to run
+    without them -- it must not be able to reach them, or the day one is
+    installed the payload quietly grows a machine-learning framework.
+    """
+
+    offenders: list[str] = []
+    for path in sorted(MODULE_DIR.glob("*.py")):
+        roots = _import_roots(path)
+        for forbidden in ("jax", "jaxlib", "flax", "optax", "brax"):
+            if forbidden in roots:
+                offenders.append(f"{path.name} -> {forbidden}")
+        if "mujoco.mjx" in path.read_text(encoding="utf-8"):
+            offenders.append(f"{path.name} -> mujoco.mjx")
+    assert not offenders, (
+        f"The engine reached for the training stack: {offenders}. Training "
+        "is offboard (ADR-060, ADR-070); the engine verifies a policy and "
+        "never produces one."
+    )
+
+
+def test_the_offboard_trainer_is_not_an_engine_module() -> None:
+    """``training/`` is copied to another machine, not installed by CMake.
+
+    Stated as its own assertion because the placement *is* the mechanism:
+    ``DECLARED_ENGINE_MODULES`` is what the payload ships, and a trainer
+    that lived under ``src/Mod/cadex`` would be one CMake line away from
+    dragging jax into it.
+    """
+
+    assert "cadex_train" not in DECLARED_ENGINE_MODULES
+    assert not (MODULE_DIR / "cadex_train.py").exists()
+    trainer = MODULE_DIR.parents[2] / "training" / "cadex_train.py"
+    assert trainer.is_file(), (
+        "training/cadex_train.py is gone; this guardrail would now pass "
+        "vacuously"
+    )
+    # ...and it is the trainer, rather than some other file that took the name.
+    assert "mujoco.mjx" in trainer.read_text(encoding="utf-8")
+
+
 def test_the_shell_never_learns_about_mujoco() -> None:
     """Dynamics is engine-side, permanently (ADR-060 decision 4, ADR-062).
 

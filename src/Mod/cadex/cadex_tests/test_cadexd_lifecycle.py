@@ -1544,3 +1544,145 @@ def _reload_mjcf(text: str) -> int | None:
     except Exception:
         return None
     return int(mujoco.MjModel.from_xml_string(text).nbody)
+
+
+#: The M7 script: the M6 task, plus the policy declared against it. The
+#: digest is substituted once the weights exist, which is the real authoring
+#: order -- train, store, paste the digest ``put_asset`` reported.
+POLICY_SCRIPT = TASK_SCRIPT.replace(
+    'result = {"plate"',
+    """gait = assembly.policy(job, weights="walk.cxpolicy",
+                       sha256="__SHA256__", label="gait")
+result = {"gait": gait, "plate\"""",
+)
+
+
+@pytest.mark.skipif(
+    FREECADCMD is None, reason="No FreeCADCmd binary available for cadexd CI."
+)
+def test_cadexd_verifies_a_trained_policy_and_ships_no_trainer() -> None:
+    """A policy comes home through the packaged engine (ADR-070).
+
+    M7's shippable capability, and the eleventh gate test. It exists for
+    ADR-023's reason -- a source tree that passes proves nothing about a
+    payload, the rule that caught the dangling ``bin/python`` in M0 -- and
+    what it adds over the unit suites is that the weights were stored,
+    staged, decoded and verified by the engine a user actually runs.
+
+    It also asserts the **negative**, which is the half that would otherwise
+    rot silently: **no jax and no mjx anywhere in the staged payload.**
+    Training is offboard by design (ADR-060), the engine verifies a policy
+    and never produces one, and the day that stops being true the payload
+    grows a machine-learning framework without anybody deciding to.
+
+    No protocol change is involved and none should appear here: the weights
+    arrive through ``put_asset``, which performs no suffix check of its own,
+    and the receipt is an ordinary output with an ``artifact_kind`` the
+    shell has never heard of.
+    """
+
+    import dynamics_policy_fixtures as pf
+
+    root = Path(tempfile.mkdtemp(prefix="cadexd-policy-ci-"))
+    client = None
+    try:
+        client = _spawn_cadexd()
+        opened = client.request("open_project", {"project_root": str(root)})
+        assert opened["ok"] is True, opened
+
+        written = client.request(
+            "write_script", {"source": TASK_SCRIPT, "expected_revision": ""}
+        )
+        assert written["ok"] is True, written
+        revision = str(written["revision"])
+        bundle_path = Path(written["display"]["job"]["artifact_path"])
+        bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+
+        # The container is built against the bundle the *payload* wrote, so
+        # the digests being checked are the ones it really produced.
+        container = pf.policy_container(
+            {"bundle": bundle,
+             "task_sha256": hashlib.sha256(bundle_path.read_bytes()).hexdigest()},
+            normalise=True,
+        )
+        weights = root.parent / "walk.cxpolicy"
+        weights.write_bytes(container["blob"])
+
+        stored = client.request(
+            "put_asset", {"source_path": str(weights), "name": "walk.cxpolicy"}
+        )
+        assert stored["ok"] is True, stored
+        assert stored["sha256"] == container["sha256"]
+
+        written = client.request(
+            "write_script",
+            {"source": POLICY_SCRIPT.replace("__SHA256__", container["sha256"]),
+             "expected_revision": revision},
+        )
+        assert written["ok"] is True, json.dumps(written)[:4000]
+
+        entry = written["display"]["gait"]
+        assert entry["artifact_kind"] == "assembly_policy_receipt_json", entry
+        assert entry["tessellation"] is None
+        assert entry["placement"] is None
+
+        receipt = json.loads(
+            Path(entry["artifact_path"]).read_text(encoding="utf-8")
+        )
+        assert receipt["schema"] == "cadex-policy-receipt-v1"
+        assert receipt["policy_sha256"] == container["sha256"]
+        assert receipt["task_sha256"] == hashlib.sha256(
+            bundle_path.read_bytes()
+        ).hexdigest()
+        assert receipt["model_sha256"] == bundle["model"]["sha256"]
+        assert receipt["witness_samples"] >= 8
+        assert receipt["witness_error"] < 1.0e-4
+
+        live = written["live_outputs"]["gait"]
+        assert live["domain"] == "assembly"
+        assert live["output_type"] == "policy"
+        assert live["type_id"] == "App::FeaturePython"
+
+        _assert_no_training_framework()
+
+        done = client.request("shutdown", timeout=60)
+        assert done["ok"] is True
+    finally:
+        _stop(client)
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def _assert_no_training_framework() -> None:
+    """No jax and no mjx anywhere in the staged payload (ADR-070).
+
+    The negative M7 owes, checked where it can actually be false.
+    ``test_engine_purity_guardrails`` asserts the *source* imports none of
+    this; a payload is a relocated conda environment, and things arrive in
+    one by dependency rather than by import, so it is a different claim.
+
+    A no-op without ``CADEX_ENGINE_ROOT`` -- there is no payload to inspect
+    and the source-tree claim is already made elsewhere -- which is why this
+    rides inside the gate test rather than standing as a twelfth one that
+    would skip.
+    """
+
+    raw = os.environ.get("CADEX_ENGINE_ROOT", "").strip()
+    if not raw:
+        return
+    root = Path(raw).resolve()
+    offenders = sorted(
+        str(path.relative_to(root))
+        for path in root.rglob("*")
+        if path.is_dir()
+        and path.name in {"jax", "jaxlib", "mjx", "flax", "optax", "brax"}
+    )
+    assert not offenders, (
+        f"the staged payload carries a training framework: {offenders}. "
+        "Training is offboard (ADR-060, ADR-070); the engine verifies a "
+        "policy and never produces one."
+    )
+    assert not list(root.rglob("cadex_train.py")), (
+        "training/cadex_train.py reached the payload; no CMake rule should "
+        "install it (ADR-070)."
+    )
+
