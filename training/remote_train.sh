@@ -33,6 +33,11 @@
 # Remote paths must not contain spaces. They are interpolated into a command
 # line the remote shell parses, and pretending otherwise would take
 # `rsync --protect-args`, which the rsync macOS ships does not have.
+#
+# EDITING THE `REMOTE` HEREDOC: no apostrophes, not even in a comment. It
+# sits inside a `$( )`, where bash scans the body honouring quotes, so one
+# unpaired single quote is an unterminated string -- and the error it
+# reports points at the last line of this file rather than at the quote.
 
 set -euo pipefail
 
@@ -231,9 +236,44 @@ PROBE
 fi
 
 if command -v nvidia-smi >/dev/null 2>&1; then
-    nvidia-smi --query-gpu=name,memory.total,driver_version \
-               --format=csv,noheader 2>/dev/null |
-        while IFS= read -r line; do echo "gpu ${line}"; done
+    if smi="$(nvidia-smi --query-gpu=name,memory.total,driver_version \
+                         --format=csv,noheader 2>&1)"; then
+        echo "${smi}" | while IFS= read -r line; do echo "gpu ${line}"; done
+    else
+        # nvidia-smi itself failed. The usual cause is a driver package
+        # upgraded without a reboot, leaving the loaded kernel module a
+        # different version from the userspace library -- so report both
+        # numbers, which is the difference between "it is broken" and a
+        # thing somebody can fix.
+        echo "gpubroken yes"
+        echo "${smi}" | head -2 |
+            while IFS= read -r line; do echo "gpu ${line}"; done
+        if [ -r /proc/driver/nvidia/version ]; then
+            echo "gpukernel $(sed -n \
+                's/.*Kernel Module *\([0-9][0-9.]*\).*/\1/p' \
+                /proc/driver/nvidia/version | head -1)"
+        fi
+        # The pattern needs the dot: `libnvidia-ml.so.1` is the SONAME
+        # symlink and sorts first, so a looser glob reports the library
+        # version as "1" and the comparison below silently stops meaning
+        # anything. Only `libnvidia-ml.so.<major>.<minor>` is the real file.
+        for candidate in \
+            /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.[0-9]*.[0-9]* \
+            /usr/lib/libnvidia-ml.so.[0-9]*.[0-9]*; do
+            [ -f "${candidate}" ] && [ ! -L "${candidate}" ] || continue
+            echo "gpulib ${candidate##*libnvidia-ml.so.}"
+            break
+        done
+        # Failing that, the error line from nvidia-smi carries it.
+        # (No apostrophes anywhere in this heredoc, deliberately. It sits
+        # inside a $( ) and bash scans the body honouring quotes, so one
+        # unpaired single quote -- in a comment, even -- is an unterminated
+        # string, and the whole file stops parsing with an error that points
+        # at the LAST line of the script rather than at the quote.)
+        echo "${smi}" | sed -n \
+            's/.*NVML library version: *\([0-9][0-9.]*\).*/gpulibsmi \1/p' | head -1
+        [ -f /var/run/reboot-required ] && echo "gpureboot yes"
+    fi
 else
     echo "gpu -none on PATH-"
 fi
@@ -297,6 +337,49 @@ REMOTE
 
     local backend
     backend="$(grep '^backend ' <<<"${report}" | head -1 | cut -d' ' -f2-)"
+
+    # A broken `nvidia-smi` is judged AGAINST the backend, because on its own
+    # it does not say whether the box can train. NVML and the CUDA driver API
+    # are separate libraries, and a box was measured doing 23 TFLOP/s through
+    # jax while `nvidia-smi` refused to start. So:
+    #
+    #   * jax has the GPU  -> a warning. You lose nvidia-smi, which means no
+    #     utilisation or temperature reading during a run. The run is fine.
+    #   * jax does NOT     -> a failure, and the LIKELY CAUSE of it, which is
+    #     why this is worth reporting at all: "install the GPU wheel" is
+    #     misleading advice when the driver is the thing that is broken.
+    local driver_broken=0
+    if grep -q '^gpubroken yes$' <<<"${report}"; then
+        driver_broken=1
+        local kernel library label
+        kernel="$(grep '^gpukernel ' <<<"${report}" | head -1 | cut -d' ' -f2-)"
+        library="$(grep '^gpulib ' <<<"${report}" | head -1 | cut -d' ' -f2-)"
+        if [ -z "${library}" ]; then
+            library="$(grep '^gpulibsmi ' <<<"${report}" | head -1 \
+                       | cut -d' ' -f2-)"
+        fi
+        if [ "${backend}" = "gpu" ]; then label="WARN"; else label="FAIL"; fi
+        echo "${label}: nvidia-smi does not run on the box."
+        if [ -n "${kernel}" ] && [ -n "${library}" ] \
+           && [ "${kernel}" != "${library}" ]; then
+            echo "      The loaded kernel module is ${kernel} and the userspace"
+            echo "      library is ${library} -- a driver package upgraded without"
+            echo "      a reboot. Reboot the box, or reload the nvidia modules."
+        else
+            echo "      Reboot the box, or reinstall the driver."
+        fi
+        if grep -q '^gpureboot yes$' <<<"${report}"; then
+            echo "      /var/run/reboot-required exists, which agrees."
+        fi
+        if [ "${backend}" = "gpu" ]; then
+            echo "      NOT counted as a problem: jax has the GPU and computes on"
+            echo "      it. What you lose is monitoring -- no utilisation or"
+            echo "      temperature reading while a run is going."
+        else
+            failures=$((failures + 1))
+        fi
+    fi
+
     if [ "${backend}" = "gpu" ]; then
         printf '    %-14s %s\n' "jax backend" gpu
     elif [ "${backend}" = "unimportable" ]; then
@@ -308,6 +391,11 @@ REMOTE
         echo "      The box would train on CPU: valid numbers, hours it does not"
         echo "      need to take. Install the GPU wheel:"
         echo "        ${remote_venv}/bin/pip install 'jax[cuda12]==0.7.2'"
+        if [ "${driver_broken}" -eq 1 ]; then
+            echo "      ...but fix the driver FIRST. With nvidia-smi failing, the"
+            echo "      GPU wheel installs cleanly and still finds no GPU, so"
+            echo "      doing this one first looks like it did not work."
+        fi
         failures=$((failures + 1))
     fi
 

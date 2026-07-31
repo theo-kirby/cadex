@@ -223,9 +223,20 @@ reads differently is a refusal, not a bad gait.
 ## When it will not train
 
 - **`jax.default_backend()` is `cpu` on a box with a GPU.** The GPU wheel
-  was not installed over the pinned CPU one, or the CUDA driver is older
-  than the wheel. `nvidia-smi` in `check`'s output is there to tell those
-  two apart.
+  was not installed over the pinned CPU one, or the driver is broken.
+  `nvidia-smi` in `check`'s output is there to tell those two apart — and
+  when the driver is the problem, installing the wheel looks like it did not
+  work, so `check` says which to do first.
+- **`nvidia-smi` fails but jax has the GPU anyway.** Real, and measured on
+  `sb9x`: NVML and the CUDA driver API are separate libraries, so a
+  driver package upgraded without a reboot can leave
+  `Failed to initialize NVML: Driver/library version mismatch` while jax
+  still runs at 23 TFLOP/s. `check` reports this as a **WARN, not a
+  failure** — the box trains fine; what you lose is monitoring, with no
+  utilisation or temperature reading during a run. `check` prints the loaded
+  kernel-module version beside the userspace library version, because those
+  two numbers are the difference between "it is broken" and something
+  somebody can act on: when they differ, reboot.
 - **A version mismatch `check` refuses.** MuJoCo's own `VERSIONING.md`
   disclaims cross-version numerical reproducibility, so a box one patch
   release off yields numbers that cannot be compared against the engine's.
