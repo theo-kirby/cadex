@@ -6152,3 +6152,882 @@ def _task_channels(task: Mapping[str, Any]) -> list[str]:
         for record in task["observations"]
         for channel in record["channels"]
     ]
+
+
+# ---------------------------------------------------------------------------
+# The trained policy (docs/MUJOCO.md M7, ADR-070).
+#
+# Training happens on a machine this engine will never see -- ADR-060 said
+# offboard and M7 kept it that way -- so what comes back is a *file*, and the
+# whole of this section is about that file being checkable rather than
+# trusted. A policy whose weights are fine but whose architecture the engine
+# reads differently is not a bad gait, it is a different network; the witness
+# below is what turns that from something you notice in a viewport into a
+# refusal.
+#
+# Nothing here imports numpy. Phase 0 measured a pure-Python forward pass at
+# 219 us for the 16x64x64x2 network an arm task trains and 5.29 ms for a
+# 231 000-parameter humanoid-scale one -- 4 564 Hz and 189 Hz against a
+# control rate the surface encourages at 50 Hz. ``scipy.spatial`` is
+# deferred-imported at line ~996 because a convex hull genuinely needs it;
+# this does not, so the module stays what its docstring says it is.
+# ---------------------------------------------------------------------------
+
+
+#: The schema the container declares, and the version a reader checks first.
+POLICY_SCHEMA = "cadex-policy-v1"
+
+#: The container's first bytes. A magic line rather than a suffix check,
+#: because the store accepts the suffix and this is what says the bytes are
+#: what the name claimed.
+POLICY_MAGIC = b"CXPOLICY1\n"
+
+#: The container's own byte cap.
+#:
+#: Phase 0 measured what a PPO policy is actually made of, because
+#: docs/MUJOCO.md 3.1 guessed "tens of megabytes" and that guess is three
+#: orders of magnitude high. An MLP with its observation normaliser:
+#: 4.6 KiB for a one-hinge swing-up, 21.1 KiB for a two-link arm, 20.4 KiB
+#: for brax's PPO default, and 902 KiB for a 123-observation humanoid at
+#: 512x256x128. Four mebibytes is headroom over the largest of those plus a
+#: witness, and is still small enough that a policy approaching it is a
+#: network nobody meant to train.
+MAXIMUM_POLICY_BYTES = 4 * 1024 * 1024
+
+#: Bounds on the network itself, so a malformed header is refused before a
+#: length is trusted to allocate anything.
+MAXIMUM_POLICY_PARAMETERS = 1_000_000
+MAXIMUM_POLICY_LAYERS = 8
+MAXIMUM_POLICY_WIDTH = 1024
+
+#: How many observation/action pairs the trainer must record, and may.
+#:
+#: The witness is the whole safety argument, so it cannot be optional and it
+#: cannot be one sample: a single vector agrees by accident far more often
+#: than eight do, and eight of them across the observation range exercise
+#: every layer's nonlinearity in both directions.
+MINIMUM_POLICY_WITNESS_SAMPLES = 8
+MAXIMUM_POLICY_WITNESS_SAMPLES = 256
+
+#: How far the engine's forward pass may differ from the trainer's, relative
+#: to each action's own advertised range.
+#:
+#: Measured (phase 0), not chosen, in the style of M5's inertia bound. A
+#: float32 JAX network against a float64 numpy one over 64 random
+#: observations: max relative error **1.46e-5**, max absolute error 2.16e-7
+#: on tanh-bounded outputs. JAX's own jitted and un-jitted evaluations of the
+#: same weights in the same process differ by ~1e-7, so no tolerance tighter
+#: than that is meaningful about anything. This is seven times the worst
+#: measurement and four orders below a difference a person would call a
+#: different gait.
+POLICY_WITNESS_TOLERANCE = 1.0e-4
+
+#: What a hidden layer may do. Deliberately two rows, and named rather than
+#: open: an activation the engine guesses wrong is a network that reads as
+#: plausible and is not the one that trained.
+POLICY_ACTIVATIONS = ("tanh", "relu")
+
+#: What the output layer may do. One row, and it is load-bearing rather than
+#: restrictive: ``network.output_scale`` and ``network.output_bias`` map a
+#: bounded output onto the bundle's advertised action range, and that map is
+#: only checkable because the thing it maps is known to lie in [-1, 1].
+POLICY_OUTPUT_ACTIVATIONS = ("tanh",)
+
+
+def _policy_error(
+    message: str, *, reason: str, correction: str = "", **observed: Any
+) -> DynamicsError:
+    return DynamicsError(
+        message, reason=reason, correction=correction, observed=dict(observed)
+    )
+
+
+def _float32_bytes(values: Sequence[float]) -> bytes:
+    """One flat parameter vector as little-endian float32.
+
+    ``struct`` rather than ``array`` because ``array('f')`` is
+    native-endian, and a container whose bytes depend on the machine that
+    wrote it is not a container a digest can identify.
+    """
+
+    import struct
+
+    return struct.pack(f"<{len(values)}f", *[float(value) for value in values])
+
+
+def _float32_values(blob: bytes) -> list[float]:
+    """The inverse, as Python floats holding exactly the float32 that landed."""
+
+    import struct
+
+    count = len(blob) // 4
+    return [float(value) for value in struct.unpack(f"<{count}f", blob)]
+
+
+def _canonical_header(header: Mapping[str, Any]) -> bytes:
+    """One header as the only bytes it can be.
+
+    Sorted keys, no whitespace, ASCII, and no NaN -- so two writers with the
+    same header produce the same file and the project digest is about the
+    policy rather than about when it was written. Python's ``repr`` for
+    floats round-trips exactly, and ``json`` uses it, so nothing is lost to
+    the text form.
+    """
+
+    import json
+
+    return json.dumps(
+        dict(header),
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("ascii")
+
+
+def encode_policy(header: Mapping[str, Any], weights: Sequence[float]) -> bytes:
+    """One header and one parameter vector, as the bytes that are the policy.
+
+    ``CXPOLICY1\\n | <u64 LE header length> | <canonical JSON> | <f32 LE blob>``
+
+    Hand-rolled rather than ``np.savez``, and phase 0 is why the *stated*
+    reason for that is not the one docs/MUJOCO.md's plan gave. The plan
+    expected a zip container to stamp entries with an mtime and so not be
+    byte-deterministic. **It is deterministic** -- numpy writes a fixed
+    ``date_time``, and two processes an hour apart produced the same
+    sha256 -- so that argument does not hold and is recorded as wrong rather
+    than quietly dropped.
+
+    What does hold is smaller and still decides it. The engine reads this
+    file inside a ``--safe-mode`` sandbox with no numpy import in this
+    module at all, and ``np.load`` on an untrusted archive is a zip parser
+    plus an ``allow_pickle`` flag that has to stay false. A length-prefixed
+    header and a flat float32 blob need neither, are readable by the
+    fourteen lines of ``decode_policy`` below, and carry the schema, the
+    task digest and the witness in one file rather than in a naming
+    convention over several arrays.
+    """
+
+    payload = _canonical_header(header)
+    return b"".join(
+        (
+            POLICY_MAGIC,
+            len(payload).to_bytes(8, "little"),
+            payload,
+            _float32_bytes(weights),
+        )
+    )
+
+
+def decode_policy(blob: bytes, *, context: str = "this policy") -> dict[str, Any]:
+    """The inverse of :func:`encode_policy`, refusing everything malformed.
+
+    Every length is checked against the bytes that are actually there before
+    it is used, because this is the one function in the module that reads a
+    file a user supplied rather than a value the engine computed.
+    """
+
+    import json
+
+    data = bytes(blob)
+    if len(data) > MAXIMUM_POLICY_BYTES:
+        raise _policy_error(
+            f"{context} is {len(data)} bytes; the accepted maximum is "
+            f"{MAXIMUM_POLICY_BYTES} bytes.",
+            reason="policy_too_large",
+            correction=(
+                "A trained control policy is a small multilayer perceptron: "
+                "a humanoid-scale one measures under a megabyte. A file this "
+                "large is a checkpoint, an optimiser state or a replay "
+                "buffer rather than a policy."
+            ),
+            bytes=len(data),
+            maximum=MAXIMUM_POLICY_BYTES,
+        )
+    if not data.startswith(POLICY_MAGIC):
+        raise _policy_error(
+            f"{context} does not begin with the {POLICY_SCHEMA} magic line.",
+            reason="policy_not_a_container",
+            correction=(
+                "A .cxpolicy file is what training/cadex_train.py writes. "
+                "An MJCF model, a task bundle or a raw checkpoint stored "
+                "under that name is refused here rather than read as one."
+            ),
+            observed_prefix=repr(data[:16]),
+        )
+    start = len(POLICY_MAGIC)
+    if len(data) < start + 8:
+        raise _policy_error(
+            f"{context} ends inside its header length.",
+            reason="policy_truncated",
+            correction="The file was cut short in transit; copy it again.",
+            bytes=len(data),
+        )
+    header_bytes = int.from_bytes(data[start : start + 8], "little")
+    body = start + 8
+    if header_bytes > len(data) - body:
+        raise _policy_error(
+            f"{context} declares a {header_bytes}-byte header but carries "
+            f"{len(data) - body} bytes after the length.",
+            reason="policy_truncated",
+            correction="The file was cut short in transit; copy it again.",
+            declared=header_bytes,
+            available=len(data) - body,
+        )
+    try:
+        header = json.loads(data[body : body + header_bytes].decode("ascii"))
+    except Exception as exc:
+        raise _policy_error(
+            f"{context} carries a header that is not the canonical JSON this "
+            f"container declares: {exc}",
+            reason="policy_header_malformed",
+            correction=(
+                "The header is written by encode_policy and is ASCII JSON. "
+                "A file edited by hand, or one written by a different "
+                "container version, lands here."
+            ),
+        ) from exc
+    if not isinstance(header, dict):
+        raise _policy_error(
+            f"{context} carries a header that is not an object.",
+            reason="policy_header_malformed",
+            correction="The header is a JSON object; this file's is not.",
+        )
+    remainder = data[body + header_bytes :]
+    if len(remainder) % 4:
+        raise _policy_error(
+            f"{context} carries {len(remainder)} weight bytes, which is not a "
+            "whole number of float32 values.",
+            reason="policy_truncated",
+            correction="The file was cut short in transit; copy it again.",
+            weight_bytes=len(remainder),
+        )
+    return {"header": header, "weights": _float32_values(remainder)}
+
+
+def _policy_layers(
+    header: Mapping[str, Any], *, context: str
+) -> list[tuple[int, int]]:
+    """The declared layer shapes, checked before any of them is trusted."""
+
+    network = header.get("network")
+    if not isinstance(network, Mapping):
+        raise _policy_error(
+            f"{context} declares no network.",
+            reason="policy_network_malformed",
+            correction="A cadex-policy-v1 header carries a 'network' object.",
+        )
+    if str(network.get("kind") or "") != "mlp":
+        raise _policy_error(
+            f"{context} declares a {network.get('kind')!r} network; this "
+            "engine evaluates 'mlp'.",
+            reason="policy_network_malformed",
+            correction=(
+                "The forward pass the engine runs is a multilayer "
+                "perceptron. A recurrent or convolutional policy would need "
+                "an engine that knows how to step it."
+            ),
+            kind=str(network.get("kind") or ""),
+        )
+    activation = str(network.get("activation") or "")
+    if activation not in POLICY_ACTIVATIONS:
+        raise _policy_error(
+            f"{context} declares a {activation!r} hidden activation.",
+            reason="policy_network_malformed",
+            correction=(
+                "The engine evaluates "
+                f"{' and '.join(repr(name) for name in POLICY_ACTIVATIONS)}. "
+                "An activation it guessed wrong would read as a plausible "
+                "network and not be the one that trained."
+            ),
+            activation=activation,
+        )
+    output = str(network.get("output") or "")
+    if output not in POLICY_OUTPUT_ACTIVATIONS:
+        raise _policy_error(
+            f"{context} declares a {output!r} output activation.",
+            reason="policy_network_malformed",
+            correction=(
+                "The output activation is 'tanh'. The container maps a "
+                "bounded output onto the task's action range through "
+                "network.output_scale and network.output_bias, and that map "
+                "is only checkable because its input is known to lie in "
+                "[-1, 1]."
+            ),
+            output=output,
+        )
+    raw = network.get("layers")
+    if not isinstance(raw, (list, tuple)) or not raw:
+        raise _policy_error(
+            f"{context} declares no layers.",
+            reason="policy_network_malformed",
+            correction="A network is at least one [inputs, outputs] pair.",
+        )
+    if len(raw) > MAXIMUM_POLICY_LAYERS:
+        raise _policy_error(
+            f"{context} declares {len(raw)} layers; the accepted maximum is "
+            f"{MAXIMUM_POLICY_LAYERS}.",
+            reason="policy_network_malformed",
+            correction=(
+                "A control policy for a mechanism is a few layers deep. This "
+                "bounds a header that was generated by a loop."
+            ),
+            layers=len(raw),
+        )
+    shapes: list[tuple[int, int]] = []
+    for index, entry in enumerate(raw):
+        if (
+            not isinstance(entry, (list, tuple))
+            or len(entry) != 2
+            or any(isinstance(value, bool) or not isinstance(value, int)
+                   for value in entry)
+            or any(value < 1 for value in entry)
+        ):
+            raise _policy_error(
+                f"{context} layer {index} is not a pair of positive integers.",
+                reason="policy_network_malformed",
+                correction="Each layer is [inputs, outputs].",
+                layer=index,
+            )
+        inputs, outputs = int(entry[0]), int(entry[1])
+        if max(inputs, outputs) > MAXIMUM_POLICY_WIDTH:
+            raise _policy_error(
+                f"{context} layer {index} is {inputs}x{outputs}; the accepted "
+                f"maximum width is {MAXIMUM_POLICY_WIDTH}.",
+                reason="policy_network_malformed",
+                correction=(
+                    "A wider layer than this is not a mechanism controller, "
+                    "and evaluating it at the control rate is not free."
+                ),
+                layer=index,
+            )
+        if shapes and shapes[-1][1] != inputs:
+            raise _policy_error(
+                f"{context} layer {index} takes {inputs} inputs where layer "
+                f"{index - 1} produces {shapes[-1][1]}.",
+                reason="policy_network_malformed",
+                correction="The layers have to chain; these do not.",
+                layer=index,
+            )
+        shapes.append((inputs, outputs))
+    total = sum(inputs * outputs + outputs for inputs, outputs in shapes)
+    if total > MAXIMUM_POLICY_PARAMETERS:
+        raise _policy_error(
+            f"{context} declares {total} parameters; the accepted maximum is "
+            f"{MAXIMUM_POLICY_PARAMETERS}.",
+            reason="policy_network_malformed",
+            correction=(
+                "A humanoid-scale gait policy measures 231 000 parameters. "
+                "This is a network trained for something else."
+            ),
+            parameters=total,
+        )
+    return shapes
+
+
+def _policy_vector(
+    header: Mapping[str, Any],
+    observation: Any,
+    *,
+    context: str,
+) -> list[float]:
+    """One observation as the ordered vector the network's first layer takes.
+
+    Accepts the named mapping :func:`observation_values` produces -- which is
+    what an episode holds -- or an already-ordered sequence, which is what
+    the container's witness records. Either way the order is the *header's*
+    channel list, so a policy trained against a different observation order
+    cannot be silently fed this one.
+    """
+
+    channels = [str(name) for name in header.get("observations") or ()]
+    if isinstance(observation, Mapping):
+        missing = [name for name in channels if name not in observation]
+        if missing:
+            raise _policy_error(
+                f"{context} was given an observation with no "
+                f"{', '.join(repr(name) for name in missing[:4])} in it.",
+                reason="policy_observation_mismatch",
+                correction=(
+                    "The observation a policy is evaluated on carries every "
+                    "channel the policy was trained on, under the same name."
+                ),
+                missing=missing[:8],
+            )
+        return [float(observation[name]) for name in channels]
+    values = [float(value) for value in observation]
+    if len(values) != len(channels):
+        raise _policy_error(
+            f"{context} was given {len(values)} observation values for "
+            f"{len(channels)} channels.",
+            reason="policy_observation_mismatch",
+            correction=(
+                "An ordered observation is the header's 'observations' list, "
+                "in that order and at that length."
+            ),
+            given=len(values),
+            expected=len(channels),
+        )
+    return values
+
+
+def policy_forward(
+    header: Mapping[str, Any],
+    weights: Sequence[float],
+    observation: Any,
+    *,
+    context: str = "this policy",
+) -> list[float]:
+    """One observation through the network, as actions in the task's own units.
+
+    **This is hazard 1's fifth payment, and it is paid structurally.** The
+    number that leaves here is already in the unit the bundle advertised for
+    that actuator -- newton-millimetres for a motor, degrees for a servo --
+    so :func:`evaluate_episode` applies it through exactly the ``clamp then
+    x scale`` it already applies to a fallback formula, and M7 adds **no**
+    conversion site at all. ``test_dynamics_units`` greps for that, now
+    including the trainer.
+
+    Two arithmetic stages here are not unit conversions and are still
+    arithmetic that must round-trip, so both are explicit arrays in the
+    container rather than conventions:
+
+    * the **observation normaliser**, ``(x - mean) / std``, which is what
+      makes a 300 mm channel and a 0.3 rad one comparable to a network; and
+    * the **output map**, ``tanh(z) * output_scale + output_bias``, whose
+      two arrays :func:`verify_policy` checks against the action ranges the
+      *bundle* derived -- so the numbers come from the mechanism rather than
+      from the trainer's imagination.
+    """
+
+    shapes = _policy_layers(header, context=context)
+    network = header["network"]
+    activation = str(network.get("activation") or "")
+    normaliser = header.get("normaliser")
+    if not isinstance(normaliser, Mapping):
+        raise _policy_error(
+            f"{context} declares no observation normaliser.",
+            reason="policy_normaliser_malformed",
+            correction=(
+                "A cadex-policy-v1 header carries 'normaliser' with a 'mean' "
+                "and a 'std' the same length as its observation list. A "
+                "policy trained without one records zeros and ones."
+            ),
+        )
+    mean = [float(value) for value in normaliser.get("mean") or ()]
+    std = [float(value) for value in normaliser.get("std") or ()]
+    values = _policy_vector(header, observation, context=context)
+    if len(mean) != len(values) or len(std) != len(values):
+        raise _policy_error(
+            f"{context} normalises {len(mean)} means and {len(std)} standard "
+            f"deviations over {len(values)} channels.",
+            reason="policy_normaliser_malformed",
+            correction="The normaliser is one mean and one std per channel.",
+            mean=len(mean), std=len(std), channels=len(values),
+        )
+    if any(value == 0.0 for value in std):
+        raise _policy_error(
+            f"{context} normalises a channel by a standard deviation of zero.",
+            reason="policy_normaliser_malformed",
+            correction=(
+                "A channel that never moved during training has no scale. "
+                "The trainer writes 1.0 for those rather than 0.0."
+            ),
+        )
+    if shapes[0][0] != len(values):
+        raise _policy_error(
+            f"{context} takes {shapes[0][0]} inputs for {len(values)} "
+            "observation channels.",
+            reason="policy_network_malformed",
+            correction=(
+                "The first layer's input width is the number of scalar "
+                "observation channels the task declares."
+            ),
+            inputs=shapes[0][0], channels=len(values),
+        )
+    expected = sum(inputs * outputs + outputs for inputs, outputs in shapes)
+    if len(weights) != expected:
+        raise _policy_error(
+            f"{context} carries {len(weights)} parameters for a network that "
+            f"needs {expected}.",
+            reason="policy_weights_mismatch",
+            correction=(
+                "The blob is each layer's weight matrix row-major followed by "
+                "its bias, in layer order. A count that disagrees with the "
+                "header means the two halves of the file came from different "
+                "runs."
+            ),
+            carried=len(weights), expected=expected,
+        )
+
+    activations = [(value - mean[index]) / std[index]
+                   for index, value in enumerate(values)]
+    cursor = 0
+    last = len(shapes) - 1
+    for index, (inputs, outputs) in enumerate(shapes):
+        matrix = weights[cursor : cursor + inputs * outputs]
+        cursor += inputs * outputs
+        bias = weights[cursor : cursor + outputs]
+        cursor += outputs
+        result = [0.0] * outputs
+        for column in range(outputs):
+            total = bias[column]
+            offset = column
+            for row in range(inputs):
+                total += activations[row] * matrix[offset]
+                offset += outputs
+            result[column] = total
+        if index < last:
+            if activation == "tanh":
+                result = [math.tanh(value) for value in result]
+            else:
+                result = [value if value > 0.0 else 0.0 for value in result]
+        activations = result
+
+    squashed = [math.tanh(value) for value in activations]
+    scale = [float(value) for value in network.get("output_scale") or ()]
+    bias_out = [float(value) for value in network.get("output_bias") or ()]
+    if len(scale) != len(squashed) or len(bias_out) != len(squashed):
+        raise _policy_error(
+            f"{context} maps {len(squashed)} outputs through {len(scale)} "
+            f"scales and {len(bias_out)} biases.",
+            reason="policy_network_malformed",
+            correction=(
+                "network.output_scale and network.output_bias carry one "
+                "number per action, and they are what put the network's "
+                "bounded output into the units the task advertised."
+            ),
+        )
+    return [
+        value * scale[index] + bias_out[index]
+        for index, value in enumerate(squashed)
+    ]
+
+
+def _policy_action_map(task: Mapping[str, Any]) -> tuple[list[float], list[float]]:
+    """The output map the bundle's own action ranges imply.
+
+    Half-range and midpoint, per action. Computed from the task rather than
+    read from the policy, so that :func:`verify_policy` compares the
+    trainer's arithmetic against the *mechanism's* numbers -- the same move
+    ``_action_bound`` makes when it derives a range from a joint limit
+    instead of defaulting one.
+    """
+
+    scale = [
+        (float(action["high"]) - float(action["low"])) / 2.0
+        for action in task["actions"]
+    ]
+    bias = [
+        (float(action["high"]) + float(action["low"])) / 2.0
+        for action in task["actions"]
+    ]
+    return scale, bias
+
+
+#: What a policy's action row must restate from the bundle, and nothing else.
+#: ``source`` and ``fallback`` are deliberately absent: they describe how the
+#: bundle *derived* the bound and what to do without a policy, neither of
+#: which a trained network has an opinion about.
+_POLICY_ACTION_FIELDS = ("actuator", "index", "unit", "low", "high", "scale")
+
+
+def _same_action_field(found: Any, wanted: Any) -> bool:
+    """Whether a policy's copy of one bundle field is that field.
+
+    Exact rather than approximate, and typed by what the *bundle* holds: an
+    action row is copied verbatim by the trainer, so anything but equality
+    means it was copied from a different bundle. A number that arrives as a
+    string, or as nothing at all, is a difference rather than an exception --
+    this reads a file somebody else wrote.
+    """
+
+    if isinstance(wanted, bool) or not isinstance(wanted, (int, float)):
+        return isinstance(found, str) and found == str(wanted)
+    if isinstance(found, bool) or not isinstance(found, (int, float)):
+        return False
+    return float(found) == float(wanted)
+
+
+def verify_policy(
+    container: Mapping[str, Any],
+    task: Mapping[str, Any],
+    *,
+    task_sha256: str,
+    context: str = "this policy",
+) -> dict[str, Any]:
+    """Cross-check one decoded container against the task it claims to be for.
+
+    Six claims, each of which is a way for a policy to be confidently wrong
+    about a mechanism:
+
+    1. it was trained on **this** task bundle, by digest;
+    2. against **this** model, by the digest the bundle itself recorded;
+    3. observing **these** channels, in this order;
+    4. driving **these** actuators, at these indices, in these units, within
+       these ranges;
+    5. through an output map the bundle's own action ranges imply; and
+    6. reproducing, under the engine's forward pass, the actions the
+       trainer's own network produced for the observations it recorded.
+
+    Six is M5's self-verification idea reused, and it is the one that makes
+    M8 safe: a container whose weights are intact but whose layer order,
+    activation or parameter layout the engine reads differently passes the
+    first five and fails this one. The refusal is then about the *file*
+    rather than about a gait somebody has to watch to distrust.
+    """
+
+    header = container.get("header")
+    weights = container.get("weights")
+    if not isinstance(header, Mapping) or not isinstance(weights, (list, tuple)):
+        raise _policy_error(
+            f"{context} is not a decoded policy container.",
+            reason="policy_header_malformed",
+            correction="Pass what decode_policy returned.",
+        )
+    if str(header.get("schema") or "") != POLICY_SCHEMA:
+        raise _policy_error(
+            f"{context} declares schema {header.get('schema')!r}; this engine "
+            f"reads {POLICY_SCHEMA!r}.",
+            reason="policy_schema_unknown",
+            correction=(
+                "The container version is written by training/cadex_train.py. "
+                "Retrain, or use the trainer that matches this engine."
+            ),
+            schema=str(header.get("schema") or ""),
+        )
+
+    declared_task = header.get("task")
+    declared_task = dict(declared_task) if isinstance(declared_task, Mapping) else {}
+    if str(declared_task.get("sha256") or "") != str(task_sha256):
+        raise _policy_error(
+            f"{context} was trained on a task bundle whose digest is "
+            f"{declared_task.get('sha256')!r}, and the task it is declared "
+            f"against digests to {task_sha256!r}.",
+            reason="policy_task_mismatch",
+            correction=(
+                "A policy is only meaningful for the exact task it was "
+                "trained on: change a reward weight or an episode length and "
+                "the policy is optimising something else. Retrain against "
+                "the current bundle, or point the script at the task that "
+                "produced this policy."
+            ),
+            policy_task_sha256=str(declared_task.get("sha256") or ""),
+            task_sha256=str(task_sha256),
+        )
+
+    declared_model = header.get("model")
+    declared_model = dict(declared_model) if isinstance(declared_model, Mapping) else {}
+    model_sha256 = str((task.get("model") or {}).get("sha256") or "")
+    if str(declared_model.get("sha256") or "") != model_sha256:
+        raise _policy_error(
+            f"{context} was trained against a model digesting to "
+            f"{declared_model.get('sha256')!r}; this task's model digests to "
+            f"{model_sha256!r}.",
+            reason="policy_model_mismatch",
+            correction=(
+                "The task and the model are two artifacts that only mean "
+                "anything together. A policy trained on a mechanism whose "
+                "geometry has since changed is a policy for a different "
+                "robot."
+            ),
+            policy_model_sha256=str(declared_model.get("sha256") or ""),
+            model_sha256=model_sha256,
+        )
+
+    channels = _task_channels(task)
+    declared_channels = [str(name) for name in header.get("observations") or ()]
+    if declared_channels != channels:
+        raise _policy_error(
+            f"{context} observes {len(declared_channels)} channels where this "
+            f"task declares {len(channels)}.",
+            reason="policy_channels_mismatch",
+            correction=(
+                "The observation vector is positional: the policy's first "
+                "input is the task's first channel. Reordering the "
+                "observations in the script changes what every weight means. "
+                f"The task's channels are {', '.join(channels)}; the policy's "
+                f"are {', '.join(declared_channels)}."
+            ),
+            task_channels=channels,
+            policy_channels=declared_channels,
+        )
+
+    actions = list(task["actions"])
+    declared_actions = header.get("actions")
+    declared_actions = (
+        list(declared_actions) if isinstance(declared_actions, (list, tuple)) else []
+    )
+    if len(declared_actions) != len(actions):
+        raise _policy_error(
+            f"{context} drives {len(declared_actions)} actuators where this "
+            f"task declares {len(actions)}.",
+            reason="policy_actions_mismatch",
+            correction=(
+                "One action is one actuator, in the order the task lists "
+                "them. A policy with a different width was trained elsewhere."
+            ),
+            policy_actions=len(declared_actions),
+            task_actions=len(actions),
+        )
+    for index, (declared, action) in enumerate(zip(declared_actions, actions)):
+        entry = dict(declared) if isinstance(declared, Mapping) else {}
+        for field in _POLICY_ACTION_FIELDS:
+            wanted = action[field]
+            found = entry.get(field)
+            if not _same_action_field(found, wanted):
+                raise _policy_error(
+                    f"{context} action {index} declares {field}={found!r} "
+                    f"where the task declares {wanted!r}.",
+                    reason="policy_actions_mismatch",
+                    correction=(
+                        "The action table is copied from the bundle "
+                        "verbatim, so a difference means the policy was "
+                        "trained against a task whose actuators, units or "
+                        "derived limits are not these. Retrain."
+                    ),
+                    action=index, field=str(field),
+                    policy_value=found, task_value=wanted,
+                )
+
+    shapes = _policy_layers(header, context=context)
+    if shapes[-1][1] != len(actions):
+        raise _policy_error(
+            f"{context} produces {shapes[-1][1]} outputs for {len(actions)} "
+            "actuators.",
+            reason="policy_network_malformed",
+            correction=(
+                "The last layer's width is the number of actions the task "
+                "declares."
+            ),
+            outputs=shapes[-1][1], actions=len(actions),
+        )
+    network = dict(header["network"])
+    wanted_scale, wanted_bias = _policy_action_map(task)
+    for label, found, wanted in (
+        ("output_scale", network.get("output_scale"), wanted_scale),
+        ("output_bias", network.get("output_bias"), wanted_bias),
+    ):
+        values = [float(value) for value in found or ()]
+        if len(values) != len(wanted) or any(
+            abs(value - target) > POLICY_WITNESS_TOLERANCE * max(abs(target), 1.0)
+            for value, target in zip(values, wanted)
+        ):
+            raise _policy_error(
+                f"{context} declares network.{label}={values} where this "
+                f"task's action ranges imply {wanted}.",
+                reason="policy_output_range_mismatch",
+                correction=(
+                    "The output map is half-range and midpoint of each "
+                    "action's own advertised bound, which the bundle derived "
+                    "from the mechanism. A policy that scaled its outputs "
+                    "differently is driving the actuator to a limit nobody "
+                    "designed."
+                ),
+                field=label, policy_value=values, task_value=wanted,
+            )
+
+    evaluation = header.get("evaluation")
+    evaluation = dict(evaluation) if isinstance(evaluation, Mapping) else {}
+    witness_observations = list(evaluation.get("observations") or ())
+    witness_actions = list(evaluation.get("actions") or ())
+    if len(witness_observations) < MINIMUM_POLICY_WITNESS_SAMPLES:
+        raise _policy_error(
+            f"{context} records {len(witness_observations)} witness samples; "
+            f"at least {MINIMUM_POLICY_WITNESS_SAMPLES} are required.",
+            reason="policy_witness_missing",
+            correction=(
+                "The witness is what makes a policy checkable rather than "
+                "trusted: the trainer records observation vectors and the "
+                "actions its own network produced for them, and the engine "
+                "recomputes those actions. Without it, an architecture the "
+                "engine reads differently is a bad gait instead of a "
+                "refusal."
+            ),
+            samples=len(witness_observations),
+            minimum=MINIMUM_POLICY_WITNESS_SAMPLES,
+        )
+    if len(witness_observations) > MAXIMUM_POLICY_WITNESS_SAMPLES:
+        raise _policy_error(
+            f"{context} records {len(witness_observations)} witness samples; "
+            f"the accepted maximum is {MAXIMUM_POLICY_WITNESS_SAMPLES}.",
+            reason="policy_witness_missing",
+            correction=(
+                "The witness proves the forward pass agrees; it is not a "
+                "dataset. A few dozen samples across the observation range "
+                "is what it is for."
+            ),
+            samples=len(witness_observations),
+            maximum=MAXIMUM_POLICY_WITNESS_SAMPLES,
+        )
+    if len(witness_actions) != len(witness_observations):
+        raise _policy_error(
+            f"{context} records {len(witness_observations)} witness "
+            f"observations and {len(witness_actions)} witness actions.",
+            reason="policy_witness_missing",
+            correction="One recorded action vector per recorded observation.",
+            observations=len(witness_observations),
+            actions=len(witness_actions),
+        )
+
+    worst = 0.0
+    worst_sample = -1
+    worst_action = -1
+    ranges = [
+        max(float(action["high"]) - float(action["low"]), _TINY)
+        for action in actions
+    ]
+    for sample, (observed, recorded) in enumerate(
+        zip(witness_observations, witness_actions)
+    ):
+        produced = policy_forward(
+            header, weights, observed, context=f"{context} witness {sample}"
+        )
+        expected_values = [float(value) for value in recorded]
+        if len(expected_values) != len(produced):
+            raise _policy_error(
+                f"{context} witness {sample} records {len(expected_values)} "
+                f"actions for {len(produced)} actuators.",
+                reason="policy_witness_disagrees",
+                correction="One recorded action per actuator, in task order.",
+                sample=sample,
+            )
+        for index, (found, target) in enumerate(zip(produced, expected_values)):
+            error = abs(found - target) / ranges[index]
+            if error > worst:
+                worst, worst_sample, worst_action = error, sample, index
+    if worst > POLICY_WITNESS_TOLERANCE:
+        raise _policy_error(
+            f"{context} does not reproduce its own recorded actions: witness "
+            f"{worst_sample}, action {worst_action}, relative error {worst:g} "
+            f"against a tolerance of {POLICY_WITNESS_TOLERANCE:g}.",
+            reason="policy_witness_disagrees",
+            correction=(
+                "The weights survived the trip and the engine reads the "
+                "network differently -- a layer order, a bias layout or an "
+                "activation. This is refused rather than run, because a "
+                "policy the engine evaluates differently from the trainer is "
+                "a different network and would look like a badly trained one."
+            ),
+            witness=worst_sample, action=worst_action,
+            error=float(worst), tolerance=POLICY_WITNESS_TOLERANCE,
+        )
+
+    parameters = sum(inputs * outputs + outputs for inputs, outputs in shapes)
+    return {
+        "schema": POLICY_SCHEMA,
+        "label": str(header.get("label") or ""),
+        "task_sha256": str(task_sha256),
+        "model_sha256": model_sha256,
+        "observation_channels": list(channels),
+        "action_count": len(actions),
+        "layers": [[inputs, outputs] for inputs, outputs in shapes],
+        "activation": str(network.get("activation") or ""),
+        "output": str(network.get("output") or ""),
+        "parameters": int(parameters),
+        "witness_samples": len(witness_observations),
+        "witness_error": float(worst),
+        "witness_tolerance": POLICY_WITNESS_TOLERANCE,
+        "training": dict(header.get("training") or {}),
+    }
+
