@@ -113,7 +113,107 @@ def hydrate(payload, animate=True):
             hydration["simulation"] = {"baked": False,
                                        "error": traceback.format_exc()}
             traceback.print_exc()
+
+    # The collision overlay (ADR-078), on the same terms as the bake: a
+    # sibling module, wrapped, so a malformed collision record costs the
+    # overlay and never the geometry.
+    #
+    # Mid-drag (``animate=False``) it CLEARS rather than lags. The shapes it
+    # draws are attached to a model that is being re-solved every debounce
+    # tick, and a wire cage left over from the previous shape is worse than
+    # no wire cage -- this whole feature exists because collision geometry
+    # in the wrong place is invisible. Same trade the bake already makes.
+    try:
+        import bpy
+        from . import cadex_collision
+        root = project_root(bpy.context.scene)
+        if animate:
+            state = _state_for(root)
+            state.accepted = {"display": payload.get("display") or {},
+                              "revision": str(payload.get("revision") or "")}
+            hydration["collision"] = cadex_collision.apply(payload, root)
+        elif cadex_collision.enabled():
+            cadex_collision.clear()
+            hydration["collision"] = {"shown": False, "reason": "mid-drag"}
+    except Exception:
+        hydration["collision"] = {"shown": False,
+                                  "error": traceback.format_exc()}
+        traceback.print_exc()
     return hydration
+
+
+def last_accepted(root=None):
+    """The last accepted response's ``{display, revision}`` for this project.
+
+    What lets the overlay be switched on between rebuilds instead of
+    requiring one.
+    """
+
+    import bpy
+    root = root or project_root(bpy.context.scene)
+    return dict(_state_for(root).accepted or {})
+
+
+def mjcf_validation_evidence(root=None):
+    """``model_evidence`` read off the mjcf publication object (path B).
+
+    The reader the trace cannot replace: a model that is mjcf-only has no
+    trace at all, and a **rollout's** trace carries the small evidence dict
+    without the ``collisions`` block.
+
+    Nothing new crosses the boundary. This is ``inspect scope="object"`` on
+    a property the engine already publishes, read through ``_inspect_full``,
+    which already follows the pager and already concatenates
+    ``kind == "string"`` pages -- which is exactly what a ~6 KiB JSON string
+    property needs and is why this cost no protocol change.
+
+    Cached on the project state by accepted revision: one round trip per
+    revision, not one per redraw.
+    """
+
+    import bpy
+    from . import cadex_collision
+
+    root = root or project_root(bpy.context.scene)
+    state = _state_for(root)
+    accepted = dict(state.accepted or {})
+    revision = str(accepted.get("revision") or "")
+    cached_revision, cached = state.collision_evidence
+    if cached is not None and cached_revision == revision and revision:
+        return cached
+
+    wanted = cadex_collision.mjcf_outputs(accepted.get("display") or {})
+    if not wanted:
+        return None
+
+    client = _client(root)
+    # The objects page carries `label` beside `name`, so the output we want
+    # is found without a request per object: a published output's label IS
+    # its declared name. The scan below is the fallback for a publisher that
+    # ever stops being true of.
+    identities = _inspect_full(client, "document", "/objects") or []
+    targets = [str(item.get("name")) for item in identities
+               if isinstance(item, dict) and str(item.get("label") or "") in wanted]
+    if not targets:
+        targets = [str(item.get("name")) for item in identities
+                   if isinstance(item, dict)
+                   and str(item.get("type") or "") == "App::FeaturePython"]
+
+    for target in targets:
+        value = _inspect_full(
+            client, "object",
+            "/properties/CadexAssemblyMjcfValidation/value", target)
+        if not isinstance(value, str) or not value:
+            continue
+        try:
+            evidence = (json.loads(value) or {}).get("dynamics")
+        except ValueError:
+            continue
+        if isinstance(evidence, dict) and evidence.get("collisions"):
+            state.collision_evidence = (revision, evidence)
+            return evidence
+    state.collision_evidence = (revision, None)
+    return None
 
 
 STALE_REVISION_CODE = "STALE_PROGRAM_REVISION"
@@ -145,6 +245,16 @@ class _State:
         #: (ADR-044). Rides on every tool result from such a project so the
         #: caller cannot mistake a rewrite-in-progress for a healthy model.
         self.restore_warning = ""
+        #: The last accepted response's ``display`` block and revision, so
+        #: the collision overlay (ADR-078) can be switched on between
+        #: rebuilds without asking for one. Just those two keys -- the whole
+        #: payload holds artifact paths and stdout nobody needs kept alive.
+        self.accepted = {}
+        #: ``model_evidence`` for ``self.accepted["revision"]``, cached
+        #: because path B is a round trip and a redraw is not a reason to
+        #: take one. Keyed by revision, so an accepted rebuild invalidates it
+        #: by construction rather than by anyone remembering to.
+        self.collision_evidence = ("", None)
 
 
 def _preferences():

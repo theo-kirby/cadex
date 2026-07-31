@@ -1395,17 +1395,22 @@ Ranked by how quietly they fail.
    outright (ADR-070: there is no train button and nothing to press; the
    agent authors the task, dispatches with its own shell, and declares the
    result), and M8 needed no button at all because a rollout is a line in a
-   script that produces a trace the shell was already baking. The whole arc's
-   `shell/` diff is empty. Still worth listing as a hazard for whatever comes
-   next, but the answer is now four slices of precedent rather than a
-   pending ADR.
+   script that produces a trace the shell was already baking. **The whole
+   arc M0–M8 landed with an empty `shell/` diff.** Still worth listing as a
+   hazard for whatever comes next, but the answer is now four slices of
+   precedent rather than a pending ADR.
+   The diff was spent afterwards, once and deliberately, on the collision
+   overlay (ADR-078) — which is the counter-example worth keeping beside
+   this one: it is a `shell/` change no engine surface could have made,
+   because the thing that was wrong was invisible rather than unreported.
 8. **A collision shape and the solid it stands for are in the same frame
    and are otherwise unrelated** (ADR-074). `collision(...)`'s `offset`
    places a primitive in the **component frame**; `part.box(..., origin=…)`
-   moves the solid within that same frame. Nothing connects them, nothing
-   checks them, and there is no view of the collision geometry. So a shape
-   can be the right kind, the right size, in the right units, on the right
-   body — and 20 mm from the surface it stands for.
+   moves the solid within that same frame. Nothing connects them and nothing
+   checks them, so a shape can be the right kind, the right size, in the
+   right units, on the right body — and 20 mm from the surface it stands
+   for. It is now at least **drawn** (ADR-078); it was not when this hazard
+   was written, and that is what made it the quietest one here.
    **Measured, on the one-leg hopper.** A floor authored
    `part.box(4000, 600, 40, origin=[-2000, -300, -40])` has its visible top
    at z = 0; its collision `box` with the same extents and no offset spans
@@ -1422,10 +1427,25 @@ Ranked by how quietly they fail.
    at z = 20.00 mm; on the corrected one it is none. Evidence rather than a
    refusal, because a mechanism designed to start on its feet is ordinary —
    ADR-074 §3 has the reasoning and §2 has why no bounding-box rule works.
-   **What is not done.** There is no view of collision geometry, and that is
-   the real fix: this bug is obvious in one second and invisible in an hour
-   of reading. It is a `shell/` diff, so it is a decision (ADR-072 §4), and
-   it is named here rather than smuggled in.
+   **The real fix, now done** (ADR-078). There is a view of collision
+   geometry: `collision_view` / the **Collision Shapes** toggle draws an
+   edge-only wire cage per shape, on the part it belongs to, named exactly
+   what MuJoCo calls the geom, and the panel carries the initial-contact
+   line above. This bug is obvious in one second and invisible in an hour of
+   reading, and that asymmetry is the whole argument. It cost a `shell/`
+   diff, which was a decision and was taken as one rather than smuggled in.
+   The gate now reproduces this exact floor and asserts the overlay draws
+   its top 20.000 mm proud, then that the corrected script draws the gap as
+   0.000.
+   **What is still not done**, and is kept honest here rather than implied
+   away: a `mesh` or `hull` shape draws a fixed-size frame cross, not its
+   geometry, because the evidence deliberately strips the vertices. So the
+   overlay says *where* such a shape is and not *what* it is — and for a
+   `hull`, whose accepted volume differs from the part's, that residue is
+   exactly where this hazard still lives. Drawing the component's own
+   display mesh instead would show the **wrong** volume, which is worse than
+   showing none. And **escalating interpenetration to a refusal** is still
+   waiting on evidence across fixtures (ADR-074 §3).
 9. **A reward built on raw Cadex channels is badly conditioned, and it fails
    by training worse rather than by failing.** Observation channels are in
    **millimetres and degrees** (§3.2 — that is the surface's whole unit

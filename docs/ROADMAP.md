@@ -803,8 +803,36 @@ ordinary assembly surface, `assembly.mjcf` exports it, `assembly.task`
 defines the problem, `training/cadex_train.py` solves it on a machine we do
 not ship to, `assembly.policy` verifies what comes back, and
 `assembly.rollout` plays it. Each slice carries its own "done when", in
-`docs/MUJOCO.md` §4. The whole arc's `shell/` diff is empty and its protocol
-diff is empty, which is what ADR-063 said the branch rested on.
+`docs/MUJOCO.md` §4. **The whole arc M0–M8 landed with an empty `shell/`
+diff**, which is what ADR-063 said the branch rested on; the protocol diff
+is still empty and stays that way. The `shell/` diff was spent afterwards,
+deliberately and once, on the collision overlay (ADR-078) — and only inside
+`mesh_agent/` and the gate suite, with the inherited Blender tree untouched.
+
+**After the arc closed**, three things the first real model asked for, in
+the order they had to happen:
+
+- [x] **Remote training dispatch** (ADR-076). `training/remote_train.sh`
+      sends a run to a GPU box and `training/SETUP.md` documents the four
+      ways to train. Dispatch machinery only — nothing enters `pixi.toml`,
+      no CMake rule references it, no new op, and the engine still cannot
+      train. It refuses a run that silently fell back to CPU and a box whose
+      pinned versions do not match, because both otherwise show up only as a
+      number nobody compares.
+- [x] **The hopper's leg re-sized, and ADR-075 corrected** (ADR-077). The
+      leg was under-actuated: 26.9 N·m to hold a crouch against 12 given, so
+      **0 of 27** scripted push-offs left the ground and no policy could have
+      hopped. ADR-075 §2 read that collapse as a deliberate tuck. At 60 N·m
+      it is **27 of 27**, best 304 ms of flight. A feasibility gate now runs
+      before any GPU time is bought. Exposed and fixed one engine defect —
+      `MJCF_MASS_TOLERANCE` at 1e-12 against a writer that emits six
+      significant figures, which refused every body whose mass was not a
+      short decimal.
+- [x] **The collision overlay** (ADR-078). Two of two dynamics bugs on this
+      branch were collision geometry that nothing drew, so it is drawn now.
+      Zero engine change and zero protocol change — every number it shows
+      was already published. **This is what spent the `shell/` diff**, and
+      only inside `mesh_agent/` and the gate suite.
 
 **Standing constraints for this phase**, both from ADR-062 and both cheap to
 lose by accident:

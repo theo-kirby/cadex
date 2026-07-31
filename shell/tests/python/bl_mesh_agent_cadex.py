@@ -2463,6 +2463,405 @@ def test_edit_script_and_inspection(root):
           "the mirror is labelled as approximate")
 
 
+# ---------------------------------------------------------------------------
+# The collision overlay (ADR-078).
+# ---------------------------------------------------------------------------
+#
+# The load-bearing case here is ADR-074's own failure, reproduced and then
+# corrected. That bug shipped a hopper that trained for an hour standing on
+# an invisible 20 mm shelf, and every gate the project had was green while
+# the model was wrong -- because nothing drew the shape that was wrong.
+
+#: A floor whose collision box is NOT offset. `part.box`'s origin is a
+#: corner, so the solid sits at z = -40..0 while an unoffset collision box of
+#: the same extents sits at -20..+20: the collision top stands 20 mm proud of
+#: the visible top, and anything resting on the floor rests on nothing.
+COLLISION_BAD_SCRIPT = """
+floor_solid = part.box(400, 200, 40, origin=[-200, -100, -40])
+ball_solid = part.box(20, 20, 20, origin=[-10, -10, -10])
+ground = assembly.component(floor_solid, grounded=True)
+body = assembly.component(ball_solid, placement=[0, 0, 100])
+rail = assembly.joint("slider",
+                      assembly.connector(ground, "origin",
+                                         offset={"position": [0, 0, 100]}),
+                      assembly.connector(body, "origin"),
+                      length_limits_mm=[-200, 200])
+asm = assembly.assembly([ground, body], [rail])
+diag = assembly.solve(asm)
+model = assembly.mjcf(asm, [
+    assembly.body(ground, density_kg_m3=7850,
+                  collision=assembly.collision("box", size_mm=[400, 200, 40])),
+    assembly.body(body, density_kg_m3=1040,
+                  collision=assembly.collision("sphere", radius_mm=10)),
+])
+result = {"floor_solid": floor_solid, "ball_solid": ball_solid,
+          "ground": ground, "body": body, "rail": rail, "asm": asm,
+          "diag": diag, "model": model}
+"""
+
+#: The same script with the one-line fix ADR-074 landed.
+COLLISION_GOOD_SCRIPT = COLLISION_BAD_SCRIPT.replace(
+    'assembly.collision("box", size_mm=[400, 200, 40])',
+    'assembly.collision("box", size_mm=[400, 200, 40], '
+    'offset={"position": [0, 0, -20]})')
+
+#: The same model with the mjcf output removed and NOTHING else changed.
+#: Swapping in a wholly different script instead would be refused by the
+#: engine's output-retirement guard -- the live App::Link components still
+#: reference the parts it would drop -- which is a real wrinkle in output
+#: retirement and nothing to do with the overlay.
+COLLISION_NO_DYNAMICS_SCRIPT = COLLISION_GOOD_SCRIPT.replace(
+    """model = assembly.mjcf(asm, [
+    assembly.body(ground, density_kg_m3=7850,
+                  collision=assembly.collision("box", size_mm=[400, 200, 40], offset={"position": [0, 0, -20]})),
+    assembly.body(body, density_kg_m3=1040,
+                  collision=assembly.collision("sphere", radius_mm=10)),
+])
+""", "").replace(', "model": model}', "}")
+
+
+#: One of every primitive, to pin the size conversion per type.
+COLLISION_SHAPES_SCRIPT = """
+floor_solid = part.box(400, 200, 40, origin=[-200, -100, -40])
+ball_solid = part.box(20, 20, 20, origin=[-10, -10, -10])
+ground = assembly.component(floor_solid, grounded=True)
+body = assembly.component(ball_solid, placement=[0, 0, 100])
+rail = assembly.joint("slider",
+                      assembly.connector(ground, "origin",
+                                         offset={"position": [0, 0, 100]}),
+                      assembly.connector(body, "origin"),
+                      length_limits_mm=[-200, 200])
+asm = assembly.assembly([ground, body], [rail])
+diag = assembly.solve(asm)
+model = assembly.mjcf(asm, [
+    assembly.body(ground, density_kg_m3=7850,
+                  collision=assembly.collision("box", size_mm=[400, 200, 40],
+                                               offset={"position": [0, 0, -20]})),
+    assembly.body(body, density_kg_m3=1040, collision=[
+        assembly.collision("sphere", radius_mm=10),
+        assembly.collision("cylinder", radius_mm=6, length_mm=30,
+                           offset={"position": [40, 0, 0]}),
+        assembly.collision("capsule", radius_mm=5, length_mm=20,
+                           offset={"position": [-40, 0, 0]}),
+    ]),
+])
+result = {"floor_solid": floor_solid, "ball_solid": ball_solid,
+          "ground": ground, "body": body, "rail": rail, "asm": asm,
+          "diag": diag, "model": model}
+"""
+
+
+def _collision_objects():
+    from mesh_agent import cadex_collision
+    collection = bpy.data.collections.get(cadex_collision.COLLECTION_NAME)
+    return {} if collection is None else {obj.name: obj
+                                          for obj in collection.objects}
+
+
+def _world_z_range(obj):
+    """The object's world-space z extent, through the depsgraph."""
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    matrix = evaluated.matrix_world
+    zs = [(matrix @ vertex.co).z for vertex in evaluated.data.vertices]
+    return (min(zs), max(zs)) if zs else (0.0, 0.0)
+
+
+def test_the_collision_overlay_draws_adr074(root):
+    """The bug that shipped, drawn -- then the fix, drawn (ADR-078).
+
+    Nothing drew collision geometry, so a floor whose collision box stood
+    20 mm proud of its visible top was invisible and a hopper trained
+    against it for an hour. This asserts the overlay would have shown it:
+    the wire cage's top at z = +20 against a visible solid top at z = 0.
+    Then the corrected script, where the same measurement is 0.
+    """
+
+    print("test_the_collision_overlay_draws_adr074")
+    from mesh_agent import cadex_collision
+
+    reset_scene(root)
+    ok, report = run_tool("write_script", {"content": COLLISION_BAD_SCRIPT})
+    check(ok, "the unoffset-collision script accepted ({:s})".format(
+        (report or "").splitlines()[0] if report else ""))
+    if not ok:
+        return
+
+    # Off by default: an overlay nobody asked for is not a feature.
+    check(not _collision_objects(),
+          "no overlay until it is asked for")
+
+    ok, message = run_tool("collision_view", {"show": True})
+    check(ok, "collision_view turned it on ({:s})".format(
+        (message or "").splitlines()[0] if message else ""))
+    objects = _collision_objects()
+    check("ground/collision0" in objects,
+          "the wire is named exactly what MuJoCo calls the geom "
+          "(got {})".format(sorted(objects)))
+    if "ground/collision0" not in objects:
+        return
+
+    floor = bpy.data.objects.get("ground")
+    check(floor is not None, "the floor component hydrated")
+    if floor is None:
+        return
+    _low, solid_top = _world_z_range(floor)
+    _low, wire_top = _world_z_range(objects["ground/collision0"])
+    check(abs(solid_top) < 1e-3,
+          "the VISIBLE floor top is at z = 0 (got {:.3f})".format(solid_top))
+    check(abs(wire_top - 20.0) < 1e-3,
+          "and the collision box's top is drawn 20 mm above it, which is the "
+          "bug ADR-074 found by arithmetic (got {:.3f})".format(wire_top))
+    check(abs(wire_top - solid_top - 20.0) < 1e-3,
+          "so the overlay shows a 20.00 mm gap (got {:.3f})".format(
+              wire_top - solid_top))
+
+    # ...and the corrected script, where the same measurement is zero.
+    ok, report = run_tool("write_script", {"content": COLLISION_GOOD_SCRIPT,
+                                           "replace": True})
+    check(ok, "the offset-collision script accepted ({:s})".format(
+        (report or "").splitlines()[0] if report else ""))
+    if not ok:
+        return
+    objects = _collision_objects()
+    check("ground/collision0" in objects,
+          "the overlay survived the rebuild and refreshed itself")
+    if "ground/collision0" not in objects:
+        return
+    floor = bpy.data.objects.get("ground")
+    _low, solid_top = _world_z_range(floor)
+    _low, wire_top = _world_z_range(objects["ground/collision0"])
+    check(abs(wire_top - solid_top) < 1e-3,
+          "with offset [0,0,-20] the gap is 0.00 mm (got {:.3f})".format(
+              wire_top - solid_top))
+
+    GATE["collision_overlay"] = {"shapes": len(objects)}
+
+
+def test_the_collision_overlay_measures_every_primitive(root):
+    """Extents per type, against the record's own independently-computed size.
+
+    ``size_mm`` is a different arithmetic on the engine side from the
+    ``size_m`` this module converts, so a doubled or halved conversion
+    cannot pass both. The capsule is the one that matters most: MuJoCo's
+    half-length is of the CYLINDRICAL SECTION ONLY, so its total extent is
+    ``2*(half + radius)`` and a cage that stopped at the cylinder would
+    understate it by a full diameter.
+    """
+
+    print("test_the_collision_overlay_measures_every_primitive")
+    from mesh_agent import cadex_collision
+
+    reset_scene(root)
+    ok, report = run_tool("write_script", {"content": COLLISION_SHAPES_SCRIPT})
+    check(ok, "the four-primitive script accepted ({:s})".format(
+        (report or "").splitlines()[0] if report else ""))
+    if not ok:
+        return
+    ok, _message = run_tool("collision_view", {"show": True})
+    check(ok, "overlay on")
+
+    evidence, source = cadex_collision.read_evidence(
+        cadex_backend.last_accepted(root), root)
+    check(evidence is not None,
+          "a collision record was found (via {:s})".format(source))
+    if evidence is None:
+        return
+    records = cadex_collision.records_from_evidence(evidence)
+    check(len(records) == 4,
+          "four shapes in the record (got {:d})".format(len(records)))
+
+    agreed = 0
+    for record in records:
+        declared = [round(value, 6) for value in record["declared_size_mm"]]
+        computed = [round(value, 6) for value in record["extents_mm"]]
+        if declared == computed:
+            agreed += 1
+        else:
+            check(False, "{:s}: extents {} != the engine's size_mm {}".format(
+                record["kind"], computed, declared))
+    check(agreed == len(records),
+          "every type's extents match the engine's own size_mm "
+          "({:d}/{:d})".format(agreed, len(records)))
+
+    by_kind = {record["kind"]: record for record in records}
+    objects = _collision_objects()
+
+    box = by_kind.get("box")
+    if box is not None:
+        obj = objects.get(box["name"])
+        low, high = _world_z_range(obj) if obj else (0.0, 0.0)
+        check(abs((high - low) - 40.0) < 1e-3,
+              "the box is drawn at its FULL 40 mm extent, not its 20 mm "
+              "half-extent (got {:.3f})".format(high - low))
+
+    capsule = by_kind.get("capsule")
+    if capsule is not None:
+        obj = objects.get(capsule["name"])
+        check(obj is not None, "the capsule is drawn")
+        if obj is not None:
+            vertices = [vertex.co for vertex in obj.data.vertices]
+            span = max(v.z for v in vertices) - min(v.z for v in vertices)
+            check(abs(span - 30.0) < 1e-2,
+                  "the capsule spans 2*(half+radius) = 30 mm including its "
+                  "caps, not its 20 mm length (got {:.3f})".format(span))
+
+    check(all(len(obj.data.polygons) == 0 for obj in objects.values()),
+          "every overlay mesh has zero polygons")
+
+
+def test_the_collision_overlay_is_isolated(root):
+    """It follows the parts, and nothing else in the add-on can see it.
+
+    Four independent ways this could go wrong, all cheap to break by
+    accident: the hydrate GC sweeping it (it walks ``all_objects``, which
+    recurses into child collections -- hence a SIBLING collection); picking
+    resolving to a wire cage instead of a face; ``export_stl`` writing the
+    overlay out as a part; and the wire not following the component it
+    belongs to.
+    """
+
+    print("test_the_collision_overlay_is_isolated")
+    from mesh_agent import cadex_collision
+
+    reset_scene(root)
+    ok, _report = run_tool("write_script", {"content": COLLISION_GOOD_SCRIPT})
+    check(ok, "script accepted")
+    ok, _message = run_tool("collision_view", {"show": True})
+    check(ok, "overlay on")
+    objects = _collision_objects()
+    check(len(objects) == 2, "two shapes drawn (got {:d})".format(len(objects)))
+    if not objects:
+        return
+
+    # A sibling of Model, not a child: the hydrate GC would sweep a child.
+    collection = bpy.data.collections.get(cadex_collision.COLLECTION_NAME)
+    scene = bpy.context.scene
+    check(collection is not None
+          and collection.name in scene.collection.children,
+          "the Collision collection is a sibling at the scene root")
+    model_collection = bpy.data.collections.get("Model")
+    check(model_collection is not None
+          and cadex_collision.COLLECTION_NAME not in
+          [child.name for child in model_collection.children],
+          "and is NOT a child of Model")
+
+    # Not tagged with the property the hydrate GC hunts for.
+    check(all(cadex_hydrate.OUTPUT_PROP not in obj for obj in objects.values()),
+          "no overlay object carries cadex_output")
+    swept = [obj.name for obj in
+             cadex_hydrate._cadex_objects(cadex_hydrate._model_collection())]
+    check(not any(name in swept for name in objects),
+          "so hydrate's own object walk does not see them")
+
+    # A rebuild is the GC. The overlay must still be there afterwards.
+    ok, _report = run_tool("rebuild_model", {})
+    check(ok, "rebuild accepted")
+    check(len(_collision_objects()) == 2,
+          "the overlay survives a rebuild's contract-driven GC")
+
+    # It follows the component through the depsgraph.
+    body = bpy.data.objects.get("body")
+    wire = _collision_objects().get("body/collision0")
+    check(body is not None and wire is not None, "the body and its wire exist")
+    if body is not None and wire is not None:
+        check(wire.parent is body, "the wire is parented to the component")
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        here = wire.evaluated_get(depsgraph).matrix_world.translation
+        there = body.evaluated_get(depsgraph).matrix_world.translation
+        check((here - there).length < 1e-3,
+              "and sits at the component's origin, where the record puts it")
+
+    # Picking still resolves to a face, not to a wire cage.
+    ok, summary = run_tool("scene_summary", {})
+    check(ok and "ground" in (summary or ""),
+          "scene_summary still describes the model")
+
+    # export_stl must not write the overlay out as a part.
+    written = tempfile.mkdtemp(prefix="mesh-cadex-collision-stl-")
+    try:
+        ok, report = run_tool("export_stl", {"directory": written})
+        check(ok, "export_stl ran ({:s})".format(
+            (report or "").splitlines()[0] if report else ""))
+        names = os.listdir(written)
+        check(not any("collision" in name for name in names),
+              "and wrote no collision wire ({})".format(sorted(names)))
+    finally:
+        import shutil
+        shutil.rmtree(written, ignore_errors=True)
+
+    # Losing the dynamics output clears it: a wire cage for a model that no
+    # longer has collision geometry is a drawing of nothing.
+    ok, report = run_tool("write_script",
+                          {"content": COLLISION_NO_DYNAMICS_SCRIPT,
+                           "replace": True})
+    check(ok, "a revision without dynamics accepted ({:s})".format(
+        (report or "").splitlines()[0] if report else ""))
+    check(not _collision_objects(),
+          "losing the dynamics output clears the overlay")
+    check(cadex_collision.SCENE_FLAG not in bpy.context.scene,
+          "and the panel flag goes with it")
+
+    ok, _message = run_tool("collision_view", {"show": False})
+    check(not _collision_objects(), "and turning it off is idempotent")
+
+
+def test_both_collision_readers_agree(root):
+    """Path A (the trace) and path B (inspect) place the same shape.
+
+    Both are needed and neither is redundant: a model that is mjcf-only has
+    no trace, and a rollout's trace carries the small evidence dict without
+    the collisions block. If the two ever disagreed, the overlay would
+    depend on which reader happened to answer.
+    """
+
+    print("test_both_collision_readers_agree")
+    from mesh_agent import cadex_collision
+
+    reset_scene(root)
+    ok, _report = run_tool("write_script", {"content": COLLISION_GOOD_SCRIPT})
+    check(ok, "script accepted")
+
+    accepted = cadex_backend.last_accepted(root)
+    check(bool(accepted), "the accepted payload was cached for the overlay")
+
+    # Path B directly -- this model is mjcf-only, so it has no trace at all,
+    # which is exactly the case path A cannot serve.
+    check(not cadex_collision.trace_entries(accepted.get("display") or {}),
+          "an mjcf-only model has no simulation trace")
+    from_inspect = cadex_backend.mjcf_validation_evidence(root)
+    check(from_inspect is not None and from_inspect.get("collisions"),
+          "path B read the collision record off the publication object")
+    if not from_inspect:
+        return
+    b_records = cadex_collision.records_from_evidence(from_inspect)
+
+    # Path A, on a model that has a simulation. A SECOND store, because
+    # writing an unrelated model over the first is refused by the output
+    # retirement guard rather than accepted.
+    trace_root = tempfile.mkdtemp(prefix="mesh-cadex-readers-trace-")
+    reset_scene(trace_root)
+    ok, report = run_tool("write_script", {"content": SIMULATION_SCRIPT})
+    check(ok, "a simulation script accepted ({:s})".format(
+        (report or "").splitlines()[0] if report else ""))
+    accepted = cadex_backend.last_accepted(trace_root)
+    check(bool(cadex_collision.trace_entries(accepted.get("display") or {})),
+          "a simulation model does have a trace on disk")
+    import shutil
+    shutil.rmtree(trace_root, ignore_errors=True)
+
+    names = sorted(record["name"] for record in b_records)
+    check(names == ["body/collision0", "ground/collision0"],
+          "path B named both geoms exactly as MuJoCo does (got {})".format(
+              names))
+    positions = {record["name"]: [round(value, 6)
+                                  for value in record["position_mm"]]
+                 for record in b_records}
+    check(positions.get("ground/collision0") == [0.0, 0.0, -20.0],
+          "and placed the floor's box at the offset the script gave it "
+          "(got {})".format(positions.get("ground/collision0")))
+
+
 def main():
     registered = False
     # Resolve the engine exactly as the add-on does -- explicit preference,
@@ -2515,6 +2914,10 @@ def main():
     preview_root = tempfile.mkdtemp(prefix="mesh-cadex-preview-")
     fallback_root = tempfile.mkdtemp(prefix="mesh-cadex-fallback-")
     supersede_root = tempfile.mkdtemp(prefix="mesh-cadex-supersede-")
+    collision_root = tempfile.mkdtemp(prefix="mesh-cadex-collision-")
+    shapes_root = tempfile.mkdtemp(prefix="mesh-cadex-shapes-")
+    isolate_root = tempfile.mkdtemp(prefix="mesh-cadex-isolate-")
+    readers_root = tempfile.mkdtemp(prefix="mesh-cadex-readers-")
     try:
         test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
@@ -2559,6 +2962,10 @@ def main():
         test_a_simulation_plays(sim_root)
         test_a_pose_only_slider_previews_at_interactive_rate(preview_root)
         test_a_shape_slider_falls_back_to_set_params(fallback_root)
+        test_the_collision_overlay_draws_adr074(collision_root)
+        test_the_collision_overlay_measures_every_primitive(shapes_root)
+        test_the_collision_overlay_is_isolated(isolate_root)
+        test_both_collision_readers_agree(readers_root)
     finally:
         try:
             cadex_backend.close_all()
@@ -2580,7 +2987,8 @@ def main():
                      long_root, guard_root, history_root, prune_root,
                      assembly_root, shared_root, sim_root,
                      drag_root, supersede_root, skip_root,
-                     preview_root, fallback_root):
+                     preview_root, fallback_root, collision_root,
+                     shapes_root, isolate_root, readers_root):
             shutil.rmtree(root, ignore_errors=True)
 
     GATE["ok"] = not FAILURES

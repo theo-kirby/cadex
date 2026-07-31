@@ -7056,3 +7056,142 @@ The change is confined to `CadexDynamics.py`, which is `MJC`-only, so the
   outside the repository, as ADR-075 §6 decided.
 - Training is now worth dispatching, and not before: `feasibility.py` green,
   then `training/remote_train.sh check` green (ADR-076), then a run.
+
+## ADR-078 — The collision shapes are drawn, and the `shell/` diff is spent on it (2026-07-31)
+
+**Status:** accepted. **Branch:** `MJC` only, per ADR-063's date-order rule.
+**Supersedes the present-tense claim in ADR-072 §3/§4 and ADR-074 §5 that
+`git diff main...MJC -- shell/` prints nothing.** Both stay as written —
+`docs/DECISIONS.md` is append-only — and this entry is what makes them
+historical, the precedent ADR-072 set with ADR-063.
+
+**Decision.** Draw the collision geometry a dynamics model actually
+simulates, as an edge-only wire cage per shape, in a new
+`mesh_agent/cadex_collision.py`. Spend the `shell/` diff to do it, with the
+owner's authorisation.
+
+### 1. Why this and not something cheaper
+
+Two bugs in one small model, both caused by collision geometry that nothing
+draws, both found by arithmetic after the fact:
+
+- **ADR-074**: the floor's collision box stood 20 mm proud of the floor's
+  visible top, and a hopper trained for an hour standing on the invisible
+  shelf. Every gate the project had was green while the model was wrong.
+- **ADR-077**: the foot was a 25 mm sphere at the end of a shin with no foot
+  on it, so the drawn leg ended 25 mm above the ground with nothing between.
+
+A collision shape is **not** the solid it stands for. It is placed in the
+*component* frame and it may legitimately sit outside the part — a rounded
+foot protrudes below a shin on purpose — so no bounding-box rule can flag a
+wrong one, and nothing about the drawn part says where it is. The only
+general fix is to draw it.
+
+Two of two dynamics bugs on this branch were this. That is the argument.
+
+### 2. Zero engine change and zero protocol change
+
+Everything drawn is **already published**, which is why this cost neither.
+Two readers, both needed:
+
+- **Path A — the trace.** A simulation trace artifact carries the whole of
+  `model_evidence` at `trace["dynamics"]`
+  (`cadex_assembly_worker.py` `trace_extra`). Free: the shell already opens
+  that file to bake the animation.
+- **Path B — `inspect`.** `scope="object"` on the mjcf publication object's
+  `CadexAssemblyMjcfValidation`, read through the **existing**
+  `cadex_backend._inspect_full`, which already follows the pager and already
+  concatenates `kind == "string"` pages — exactly what a ~6 KiB JSON string
+  property needs.
+
+Neither is redundant. A model that is mjcf-only has no trace at all, and a
+**rollout's** trace carries the small evidence dict *without* the
+`collisions` block. Cached on the project state by accepted revision, so
+path B is one round trip per revision rather than one per redraw.
+
+### 3. The four things that would have gone wrong
+
+- **A sibling collection, not a child.** `cadex_hydrate._cadex_objects`
+  walks `collection.all_objects`, which **recurses into child collections**,
+  and the contract-driven GC removes every tagged object it finds outside
+  the pass's `keep` set. A child collection would be swept on the next
+  rebuild. Tagged `cadex_collision_of` and **never** `OUTPUT_PROP`, so the
+  isolation holds on both axes independently. `clear()` is the entire
+  cleanup story.
+- **Edge-only meshes, zero polygons.** Three requirements at once: invisible
+  to `scene.ray_cast` so picking is unaffected (measured: fidelity still
+  1.000 over 372 picks); unable to occlude the surface being compared
+  against; and edge meshes are the construction already proven to render
+  through `GPUOffScreen.draw_view3d`, which is what makes them visible to
+  the agent's `viewport_screenshot`. A GPU draw handler would likely not be.
+- **Parented with an identity `matrix_parent_inverse`**, so the cage follows
+  the simulation bake, the preview path and the solved placement for free.
+  Valid because the MuJoCo body frame *is* the component frame
+  (`build_model`) and placements are rigid.
+- **`size_m` semantics.** The table lives in the pure half exactly once. Box
+  is HALF-extents; cylinder is `[r, half_length]`; **capsule is
+  `[r, half_length of the cylindrical section only]`, total extent
+  `2(hl + r)`**; sphere is `[r]`. The gate asserts every type against the
+  record's *independently computed* `size_mm`, which is different arithmetic
+  on the engine side, so a doubled conversion cannot pass both.
+
+`mesh`/`hull` shapes draw a fixed-size frame cross, because the evidence
+deliberately strips `vertices_m`. Never the component's own display mesh:
+for a `hull` that would show the **wrong** volume, which is the exact class
+of quiet error this feature exists to end.
+
+### 4. Surfaces
+
+A toggle in the chat button row, `depress=` while on — the add-on's
+established affordance. `CADEX_PARAMS_PT_collision` polls a scene flag the
+way the Simulation panel does, and surfaces **ADR-074's initial-contact
+line**: *"touching at t = 0 … at z = 20.00 mm"*, the one row that would have
+caught the shipped hopper.
+
+And an agent tool, **`collision_view`** — warranted because the agent is the
+party that catches this class of bug, via `viewport_screenshot`, and cannot
+press a button. Read-only: not in `_ENGINE_TOOLS`, and deliberately **not in
+`MUTATING_TOOLS`**, because a view toggle must not enter the undo stack or
+undoing a modelling mistake would first undo looking at it. One sentence
+added to `modes.CADEX_OVERLAY`.
+
+**Mid-drag the overlay clears rather than lags.** A wire cage left over from
+the previous shape is worse than none — the whole feature exists because
+collision geometry in the wrong place is invisible. Same trade the bake
+already makes.
+
+### 5. What the diff actually cost, stated precisely
+
+`git diff main...MJC -- shell/` no longer prints nothing. But **every
+changed path is under `shell/scripts/addons_core/mesh_agent/` or
+`shell/tests/python/`** — code that is ours, where `CLAUDE.md` encourages
+subtractive change. The **inherited Blender tree is untouched**:
+`docs/BLENDER-TREE.md` §2a still lists eight files of product identity and
+**still must stay eight**, §2b and §2c are unmoved, and nothing here is a
+future merge conflict against upstream Blender. That distinction is the one
+worth keeping; "the diff is empty" was always a proxy for it.
+
+One new module (546 lines), ~270 lines across four existing add-on files,
+and ~410 lines of gate suite.
+
+The two ADR-072 §4 rough edges — `import_geometry`'s success wording and
+`_ASSET_SUFFIXES` staying at three members — are **still not taken**. The
+empty diff's rationale was per-line merge cost, and one authorised feature
+does not license unrelated edits.
+
+### 6. Consequences
+
+- `pixi run gate` green, `"ok": true`, with the load-bearing case being
+  **ADR-074's own failure reproduced and then corrected**: the unoffset
+  floor draws its collision top at z = +20.000 against a visible solid top
+  at z = 0.000, and the same script with `offset=[0,0,-20]` draws the gap as
+  0.000. Plus per-type extents against `size_mm`, the capsule's caps
+  (30 mm, not 20), zero polygons, picking fidelity 1.000, following the bake
+  through the depsgraph, surviving hydrate's sweep, clearing when the
+  dynamics output goes, both readers agreeing, and `export_stl` not writing
+  a wire cage out as a part.
+- Verified on the real v4 hopper: floor cage top at 0.000 mm, foot cage
+  bottom at +20.000 mm, and the **drawn** shin bottom now also at
+  +20.000 mm — zero gap to its own cage, where v3 had 25 mm of nothing.
+- Engine suite unmoved at **1109 passed, 12 skipped**. No engine file
+  changed for this ADR.

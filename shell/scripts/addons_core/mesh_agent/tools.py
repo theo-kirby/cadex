@@ -272,6 +272,29 @@ TOOL_DEFS = [
         },
     },
     {
+        "name": "collision_view",
+        "description": (
+            "Show or hide the collision shapes the physics solver actually uses, "
+            "drawn as wire cages on the parts they belong to. A collision shape "
+            "is placed in the COMPONENT frame and may sit outside the solid it "
+            "stands for, so nothing about the drawn part says where it is -- "
+            "turn this on and take a viewport_screenshot to check that a foot "
+            "meets the floor where it looks like it does. Also reports what is "
+            "already touching at t = 0, which is what catches a collision shape "
+            "placed in the wrong frame. Read-only: it draws an overlay and "
+            "changes no geometry."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "show": {
+                    "type": "boolean",
+                    "description": "True to show, false to hide, omitted to toggle.",
+                },
+            },
+        },
+    },
+    {
         "name": "export_stl",
         "description": (
             "Export model parts as STL files for 3D printing, one file per "
@@ -795,6 +818,40 @@ def _tool_focus_view(tool_input):
     return _text("No 3D viewport found"), True
 
 
+def _tool_collision_view(tool_input):
+    """Draw the collision geometry, for the party that cannot press a button.
+
+    Warranted as a tool rather than only a button because the agent is the
+    one that catches this class of bug -- it is the caller of
+    ``viewport_screenshot`` -- and a button is not reachable from there.
+
+    Deliberately **not** in ``MUTATING_TOOLS``: a view toggle changes no
+    geometry and must not enter the undo stack, or undoing a modelling
+    mistake would first undo looking at it. Not in ``_ENGINE_TOOLS`` either
+    -- it reads a record already cached against the accepted revision.
+    """
+
+    from . import cadex_collision
+
+    show = tool_input.get("show")
+    report = cadex_collision.toggle(None if show is None else bool(show))
+    message = str(report.get("message") or "")
+    if message:
+        return _text(message), False
+    if not report.get("shown"):
+        return _text("Collision shapes hidden."), False
+
+    lines = ["Collision shapes shown: {:d}.".format(int(report.get("shapes") or 0))]
+    contacts = int(report.get("contacts") or 0)
+    lines.append("Nothing is touching at t = 0." if not contacts
+                 else "{:d} contact(s) already touching at t = 0.".format(contacts))
+    for name in report.get("skipped") or ():
+        lines.append("Not drawn, its part is not in the viewport: {:s}".format(
+            str(name)))
+    lines.append("Take a viewport_screenshot to see them.")
+    return _text("\n".join(lines)), False
+
+
 _HANDLERS = {
     "get_script": _tool_get_script,
     "write_script": _tool_write_script,
@@ -810,6 +867,7 @@ _HANDLERS = {
     "export_stl": _tool_export_stl,
     "import_geometry": _tool_import_geometry,
     "focus_view": _tool_focus_view,
+    "collision_view": _tool_collision_view,
 }
 
 # Handlers that additionally receive the calling Agent.

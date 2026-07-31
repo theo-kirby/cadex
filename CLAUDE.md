@@ -250,11 +250,19 @@ Working rules on top of the change policy above:
   branches, so conflicts there are expected and resolved in date order. The
   rule still stands, unchanged, for the inherited `shell/` tree
   (`docs/BLENDER-TREE.md`) — that tree is not ours to rewrite.
-- **The `shell/` diff stays empty.** `git diff main...MJC -- shell/` prints
-  nothing, and the whole arc landed without spending it. Two known rough
-  edges wait behind it (`import_geometry`'s success wording, `_ASSET_SUFFIXES`
-  staying at three members) — ADR-072 §4 names them. Spending the diff is a
-  decision, not a fix you slip in.
+- **The `shell/` diff is spent, and only where it is ours** (ADR-078).
+  `git diff main...MJC -- shell/` no longer prints nothing: the collision
+  overlay is `mesh_agent/cadex_collision.py` plus edits to four add-on files
+  and the gate suite. What still holds — and is what the empty-diff rule was
+  always a proxy for — is that **every line of it is under
+  `shell/scripts/addons_core/mesh_agent/` or `shell/tests/python/`, and the
+  inherited Blender tree is untouched.** `docs/BLENDER-TREE.md` §2a is still
+  eight files and **must stay eight**; §2b and §2c are unmoved. Adding to
+  *those* is still a decision, not a fix you slip in, because every line
+  there is a future merge conflict against upstream Blender. The two ADR-072
+  §4 rough edges (`import_geometry`'s success wording, `_ASSET_SUFFIXES`
+  staying at three members) are deliberately **still not taken**: one
+  authorised feature does not license unrelated edits.
 - **Three invariants that are cheap to break by accident**, all test-pinned:
   nothing in `shell/` imports mujoco; `CadexDynamics.py` is reachable
   from the sandboxed worker but never from `cadexd`

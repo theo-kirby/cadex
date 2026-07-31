@@ -22,6 +22,7 @@ import bpy
 from bpy.types import Operator, Panel
 
 from . import agent as agent_module
+from . import cadex_collision
 
 # Fraction of the viewport's height a freshly split parameters editor takes.
 PARAMS_SPLIT = 0.3
@@ -309,6 +310,91 @@ class MESH_AGENT_OT_toggle_params(Operator):
         return {'FINISHED'}
 
 
+class MESH_AGENT_OT_toggle_collision(Operator):
+    """Show or hide the collision geometry the solver actually simulates.
+
+    A collision shape is placed in the *component* frame and may sit outside
+    the part it stands for, so nothing about the drawn solid says where it
+    is. Two bugs in one model came of that (ADR-074, ADR-077) and both were
+    found by arithmetic after the fact. This draws it.
+    """
+
+    bl_idname = "mesh_agent.toggle_collision"
+    bl_label = "Collision Shapes"
+    bl_description = ("Show or hide the collision shapes the physics solver "
+                      "uses, as wire cages on the parts they belong to")
+
+    def execute(self, context):
+        from . import cadex_collision
+        try:
+            report = cadex_collision.toggle()
+        except Exception as error:
+            self.report({'WARNING'}, str(error))
+            return {'CANCELLED'}
+        message = str(report.get("message") or "")
+        if message:
+            self.report({'INFO'}, message)
+        return {'FINISHED'}
+
+
+class CADEX_PARAMS_PT_collision(Panel):
+    """What the solver touches, for a model that has collision geometry.
+
+    Polls on the scene flag exactly as the Simulation panel does, so a model
+    without dynamics sees the parameters editor as it was.
+
+    The initial-contact line is the one row that would have caught the
+    shipped hopper: it says what is *already touching before anything
+    moves*, which is the only observable that distinguishes a collision
+    shape placed where its author meant from one placed 20 mm out (ADR-074).
+    """
+
+    bl_space_type = 'CADEX_PARAMS'
+    bl_region_type = 'WINDOW'
+    bl_label = "Collision"
+
+    @classmethod
+    def poll(cls, context):
+        from . import cadex_collision
+        return cadex_collision.SCENE_FLAG in context.scene
+
+    def draw(self, context):
+        from . import cadex_collision
+        info = dict(context.scene.get(cadex_collision.SCENE_FLAG) or {})
+        layout = self.layout
+
+        row = layout.row()
+        row.label(text="{:d} shape{:s} on {:d} part{:s}".format(
+            int(info.get("shapes") or 0),
+            "" if int(info.get("shapes") or 0) == 1 else "s",
+            int(info.get("components") or 0),
+            "" if int(info.get("components") or 0) == 1 else "s"),
+            icon='MESH_CUBE')
+
+        contacts = int(info.get("contacts") or 0)
+        penetrating = int(info.get("penetrating") or 0)
+        if not contacts:
+            layout.label(text="Nothing touching at t = 0", icon='CHECKMARK')
+        else:
+            box = layout.box()
+            box.label(
+                text="Touching at t = 0: {:d} contact{:s}".format(
+                    contacts, "" if contacts == 1 else "s"),
+                icon='ERROR' if penetrating else 'INFO')
+            for line in info.get("contact_lines") or ():
+                box.label(text=str(line))
+            omitted = int(info.get("contacts_omitted") or 0)
+            if omitted:
+                box.label(text="...and {:d} more".format(omitted))
+            if penetrating:
+                box.label(text="{:d} interpenetrating".format(penetrating),
+                          icon='ERROR')
+
+        for name in info.get("skipped") or ():
+            layout.label(text="not drawn: {:s}".format(str(name)),
+                         icon='GHOST_DISABLED')
+
+
 class CADEX_PARAMS_PT_simulation(Panel):
     """Playback for a model that has a simulation, and nothing otherwise.
 
@@ -540,6 +626,11 @@ def draw_chat_buttons(layout, context):
     layout.operator(MESH_AGENT_OT_toggle_params.bl_idname, text="",
                     icon='OPTIONS',
                     depress=params_area(context.screen) is not None)
+    # And the collision overlay, depressed while it is on -- the same
+    # one-button-reads-as-the-state affordance (ADR-078).
+    layout.operator(MESH_AGENT_OT_toggle_collision.bl_idname, text="",
+                    icon='MOD_PHYSICS',
+                    depress=cadex_collision.SCENE_FLAG in context.scene)
     # And the same for the script view -- a Text Editor pointed at the mirror.
     # It sits here rather than in the chat header (where a one-way opener used
     # to live) so the two views are one pair of buttons with one meaning.
@@ -558,6 +649,8 @@ classes = (
     MESH_AGENT_OT_rebuild_model,
     MESH_AGENT_OT_apply_slider_defaults,
     MESH_AGENT_OT_toggle_params,
+    MESH_AGENT_OT_toggle_collision,
+    CADEX_PARAMS_PT_collision,
     CADEX_PARAMS_PT_simulation,
     CADEX_PARAMS_PT_parameters,
     CADEX_CHAT_PT_transcript,

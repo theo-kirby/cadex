@@ -1,6 +1,6 @@
 # BLENDER-TREE.md — Inherited Shell Substrate Inventory
 
-Verified against source: 2026-07-28
+Verified against source: 2026-07-31
 
 `shell/` is a Blender fork. This is its ledger — what we keep, what is
 slated for removal, what is already gone — the peer of `docs/FREECAD.md`
@@ -28,11 +28,11 @@ These files exist in no upstream Blender and cannot conflict with one.
 
 | Path | What | Lines |
 |---|---|---|
-| `shell/scripts/addons_core/mesh_agent/` | the add-on: chat, params, headers, the top bar, the cadexd protocol client, hydration, playback, picking | 6,976 (20 files) |
+| `shell/scripts/addons_core/mesh_agent/` | the add-on: chat, params, headers, the top bar, the cadexd protocol client, hydration, playback, picking, and — on `MJC` — the collision overlay | 8,486 (21 files) |
 | `shell/source/blender/editors/space_cadex_chat/` | the Cadex Chat editor: transcript, message box, header (ADR-035) | 202 |
 | `shell/source/blender/editors/space_cadex_params/` | the Cadex Parameters editor (ADR-035) | 170 |
 | `shell/scripts/startup/bl_app_templates_system/Mesh/` | the app template: `startup.blend` carries the layout, `__init__.py` enables the add-on, installs the Cadex top bar and suppresses the splash (ADR-037, ADR-041, ADR-042) | 111 + a 267 KB `.blend` |
-| `shell/tests/python/bl_mesh_agent{,_cadex}.py` | the agent suites; `bl_mesh_agent_cadex.py` prints the `CADEX-BLENDER-GATE` evidence line | 3,229 (2 files) |
+| `shell/tests/python/bl_mesh_agent{,_cadex}.py` | the agent suites; `bl_mesh_agent_cadex.py` prints the `CADEX-BLENDER-GATE` evidence line | 4,115 (2 files) |
 | `shell/release/darwin/Blender.app/Contents/Resources/cadex_icon.icns` | the Dock icon. Generated from `cadex-logo-white.png` by `package/app/make_app_icon.py` — regenerate rather than edit (ADR-059) | a 249 KB binary |
 
 The add-on was 5,714 lines across 20 files at import; ADR-030 took it to
@@ -41,7 +41,14 @@ and took ~250 lines of geometry machinery out of `ui.py` (705 → 449);
 ADR-041 added `topbar.py`; ADR-043 added the import-geometry operator and
 tool (5,937 → 5,987). The app template was 294 lines, then 340, and is
 now 111 because the layout is a file.
-Counted 2026-07-26 — treat these as of that date, not as a contract.
+
+On branch `MJC` only, ADR-078 added `cadex_collision.py` (546) and ~270
+lines across `cadex_backend.py`, `ui.py`, `tools.py` and `modes.py`, plus
+~410 lines of gate suite — the first and so far only `shell/` change this
+branch has made. **It is entirely inside code that is ours.** Nothing in
+§2 moved: the inherited-tree delta is unchanged, §2a is still eight files
+and must stay eight.
+Counted 2026-07-31 — treat these as of that date, not as a contract.
 
 ## 2. Modified upstream files — the whole delta
 

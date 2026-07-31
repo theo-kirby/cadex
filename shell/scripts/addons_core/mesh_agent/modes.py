@@ -44,6 +44,12 @@ message as `@face-N of <output>`. Treat a pin as ground truth for which \
 face they mean.
 - Engine rebuilds take from half a second to a few seconds. Batch value \
 changes into one call rather than spamming small ones.
+- A collision shape is NOT the solid it stands for: it is placed in the \
+component frame and may sit outside the part. Nothing about the drawn part \
+says where it is, so after building anything with `assembly.mjcf` use \
+`collision_view` and then `viewport_screenshot` to check the shapes are \
+where you meant -- and read the "touching at t = 0" line it returns, which \
+is what catches a shape placed in the wrong frame.
 """
 
 
