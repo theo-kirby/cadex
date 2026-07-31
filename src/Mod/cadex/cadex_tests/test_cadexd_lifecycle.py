@@ -1362,6 +1362,173 @@ def test_cadexd_exports_an_mjcf_model() -> None:
         shutil.rmtree(root, ignore_errors=True)
 
 
+TASK_SCRIPT = """
+plate = part.box(60, 60, 6)
+arm = part.box(80, 8, 8)
+base = assembly.component(plate, grounded=True)
+swing = assembly.component(arm, placement=[0, 0, 40])
+j = assembly.joint("revolute",
+                   assembly.connector(base, "origin",
+                                      offset={"position": [12, 0, 6],
+                                              "axis": [1, 0, 0],
+                                              "angle_degrees": 90}),
+                   assembly.connector(swing, "origin",
+                                      offset={"position": [0, 0, 0],
+                                              "axis": [1, 0, 0],
+                                              "angle_degrees": 90}))
+asm = assembly.assembly([base, swing], [j])
+diag = assembly.solve(asm)
+motor = assembly.actuator(j, kind="motor", control_nmm="120*sin(2*pi*time)",
+                          torque_limit_nmm=400)
+model = assembly.mjcf(asm, [
+    assembly.body(base, density_kg_m3=2700),
+    assembly.body(swing, density_kg_m3=7850),
+], actuators=[motor], observations=[
+    assembly.observation(j, "position", name="angle"),
+    assembly.observation(swing, "centre_of_mass", name="com"),
+    assembly.observation(motor, "actuator_force", name="effort"),
+])
+job = assembly.task(model, actions=[motor],
+                    reward=[assembly.reward("-(com_z - 60)^2", weight=1.0e-4,
+                                            label="lift"),
+                            assembly.reward("abs(effort)", weight=-1.0e-6,
+                                            label="control_cost")],
+                    episode_seconds=1.0, control_hz=50, label="lift")
+result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
+          "j": j, "asm": asm, "diag": diag, "model": model, "job": job}
+"""
+
+
+@pytest.mark.skipif(
+    FREECADCMD is None, reason="No FreeCADCmd binary available for cadexd CI."
+)
+def test_cadexd_writes_a_training_task() -> None:
+    """A task leaves the building, through the packaged engine (ADR-069).
+
+    M6's shippable capability: design a mechanism in Cadex, get a trainable
+    environment out. This is the tenth gate test and it exists for ADR-023's
+    reason -- a source tree that passes proves nothing about a payload, the
+    rule that caught the dangling ``bin/python`` in M0. What it adds over
+    the unit suites is that the bundle and the model beside it were written
+    by the engine a user actually runs, with mujoco resolved out of the
+    payload's own environment.
+
+    No protocol change is involved and none should appear here: the bundle
+    arrives as an ordinary output with an ``artifact_kind`` the shell has
+    never heard of, which ``cadex_hydrate`` skips for want of a tessellation
+    and ``cadex_animate`` skips for want of the simulation kind.
+    """
+
+    root = Path(tempfile.mkdtemp(prefix="cadexd-task-ci-"))
+    client = None
+    try:
+        client = _spawn_cadexd()
+        opened = client.request("open_project", {"project_root": str(root)})
+        assert opened["ok"] is True, opened
+
+        written = client.request(
+            "write_script", {"source": TASK_SCRIPT, "expected_revision": ""}
+        )
+        assert written["ok"] is True, written
+
+        entry = written["display"]["job"]
+        assert entry["artifact_kind"] == "assembly_training_task_json", entry
+        assert entry["tessellation"] is None
+        assert entry["placement"] is None
+
+        path = Path(entry["artifact_path"])
+        assert path.name == "job-task.json", path.name
+        bundle = json.loads(path.read_text(encoding="utf-8"))
+        assert bundle["schema"] == "cadex-training-task-v1"
+
+        # The model it references is the *other* output's retained file, by
+        # a relative path and a digest. Two artifacts that only mean
+        # anything together, and this is what makes that checkable.
+        model_path = path.parent.parent / bundle["model"]["path"]
+        assert bundle["model"]["path"] == "outputs/model-model.xml"
+        assert model_path.exists()
+        assert bundle["model"]["sha256"] == hashlib.sha256(
+            model_path.read_bytes()
+        ).hexdigest()
+
+        # The observation vector is MuJoCo's: the channels are sensors in
+        # the exported file, and a component channel reads the frame the
+        # assembly solver placed rather than the inertial one.
+        text = model_path.read_text(encoding="utf-8")
+        assert "<sensor>" in text
+        assert '<jointpos joint="j" name="obs/0"' in text
+        assert [
+            channel
+            for record in bundle["observations"]
+            for channel in record["channels"]
+        ] == ["angle", "com_x", "com_y", "com_z", "effort"]
+
+        # Degrees and millimetres reach the trainer as scale factors, so
+        # nothing outside this engine has to know a conversion.
+        scales = {record["name"]: record["unit"] for record in bundle["observations"]}
+        assert scales == {"angle": "deg", "com": "mm", "effort": "nmm"}
+
+        # The action range came off the mechanism rather than a default.
+        action = bundle["actions"][0]
+        assert (action["low"], action["high"]) == (-400.0, 400.0)
+        assert action["source"] == "torque_limit_nmm"
+        assert action["unit"] == "nmm"
+
+        # The episode is a whole number of solver steps per action.
+        episode = bundle["episode"]
+        assert episode["control_hz"] == 50
+        assert episode["max_steps"] == 50
+        assert episode["reset_keyframe"] == "solved"
+        assert episode["solver_steps_per_action"] >= 1
+
+        # It published, and the native type is the one
+        # _NATIVE_TYPE_BY_OUTPUT declares.
+        live = written["live_outputs"]["job"]
+        assert live["domain"] == "assembly"
+        assert live["output_type"] == "task"
+        assert live["type_id"] == "App::FeaturePython"
+
+        # The engine ran one episode from this bundle before publishing it,
+        # so a spec that could not execute never became an artifact.
+        # Re-checked here on the payload's own bytes.
+        assert _run_task_episode(bundle, model_path) in (None, 50)
+
+        done = client.request("shutdown", timeout=60)
+        assert done["ok"] is True
+    finally:
+        _stop(client)
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def _run_task_episode(bundle: dict, model_path: Path) -> int | None:
+    """Steps a stock reload runs, or ``None`` where mujoco is absent.
+
+    Same bonus-check status as :func:`_reload_mjcf` and for the same reason:
+    this module is the packaged gate and runs wherever ``FreeCADCmd`` is,
+    which is not necessarily where the test environment has ``mujoco``. The
+    claim itself is in ``test_dynamics_task_live``.
+    """
+
+    try:
+        import mujoco
+    except Exception:
+        return None
+    model = mujoco.MjModel.from_xml_string(
+        model_path.read_text(encoding="utf-8")
+    )
+    data = mujoco.MjData(model)
+    key = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, "solved")
+    mujoco.mj_resetDataKeyframe(model, data, key)
+    episode = bundle["episode"]
+    for _ in range(int(episode["max_steps"])):
+        for _ in range(int(episode["solver_steps_per_action"])):
+            mujoco.mj_step(model, data)
+    assert len(data.sensordata) == sum(
+        int(record["dim"]) for record in bundle["observations"]
+    )
+    return int(episode["max_steps"])
+
+
 def _reload_mjcf(text: str) -> int | None:
     """Body count after a stock reload, or ``None`` where mujoco is absent.
 
