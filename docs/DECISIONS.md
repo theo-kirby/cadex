@@ -5514,3 +5514,227 @@ existing; a mesh is still its vertices and not its bytes; a decimate tree
 still falls back to its definition; an output with no artifact is still its
 recipe. Plus the three live restart-determinism tests the change rests on,
 committed before it.
+
+---
+
+## ADR-069 — A task is data, and the observation vector is MuJoCo's (2026-07-31)
+
+**Status:** accepted. **Branch:** `MJC` only — this ADR describes work that
+does not exist on `main`, and `docs/DECISIONS.md` is append-only on both
+branches, so conflicts here resolve in date order (ADR-063).
+
+### 1. What this decides
+
+`assembly.task(model, ...)` — a publishable xscript output that writes one
+JSON bundle, `cadex-training-task-v1`, beside the `api.mjcf` model it
+references. Four intermediates compose it: `assembly.observation`,
+`assembly.reward`, `assembly.termination`, `assembly.randomise`.
+`assembly.mjcf` gains one defaulted keyword-only parameter, `observations=`.
+That is the whole surface change.
+
+M6 said this slice "deserves design time rather than a first guess", so four
+forks were decided before planning: observations are MJCF `<sensor>`
+elements; the exit criterion is a reference episode runner importing only
+`mujoco`; action bounds are derived from the mechanism or refused;
+randomisation is in scope and resolves to compiled-model field indices.
+
+### 2. Why MuJoCo computes the observation vector
+
+The alternative was a Cadex-side reader that pulls quantities out of `MjData`
+and assembles an array. It was rejected before it was written, for a reason
+that outlives this slice: **a trainer is not going to run our code.** M7
+sends the bundle somewhere else, and anything on the path between the
+mechanism and the array is something that has to be shipped, versioned and
+kept correct in an environment we do not control.
+
+A sensor moves that computation into the file. The bundle's job shrinks to
+*naming*: which slice of `sensordata` a channel is, what to multiply it by,
+what to call the result. All three are numbers in a JSON file, and the
+reference runner is a hundred lines because of it.
+
+This is only affordable because sensors are **dynamically inert**, which was
+measured rather than assumed: 500 steps with four of them give `qpos`
+bit-identical — a difference of exactly `[0.0, 0.0]` — to the same model
+without. M5 sold the exported file as *being* the model the engine
+simulated, and that claim had to survive M6 adding elements to it.
+
+### 3. The measurement that changed the design
+
+MuJoCo's frame sensors accept an `objtype` that reads as one thing and is
+two. `body` resolves to `xipos`/`ximat` — the frame the principal axes of
+inertia define — and `xbody` to `xpos`/`xquat`, the frame the assembly solver
+placed and the one `_verify_exported_pose` already compares against.
+
+On the M6 fixtures they differ by a **half turn** in orientation, because
+MuJoCo orders principal axes by eigenvalue and that order is not the link's
+local x, y, z; and by the full **60 mm** offset in position on a body whose
+centre of mass is not at its origin. Neither is a rounding error. A reward
+naming a component's position, written against `body`, would have been
+scored on its centre of mass — and a quaternion term would have been exactly
+reversed.
+
+Every `component_*` channel is therefore an **xbody** channel. This is the
+kind of thing a phase 0 exists to find: the two spellings are one character
+apart, both compile, both produce plausible numbers, and nothing downstream
+would have complained.
+
+### 4. Action bounds: derived, or refused
+
+A policy needs a bounded action space. The model M4 builds has none —
+`ctrllimited` is `mjLIMITED_FALSE` on every actuator, deliberately, and only
+`forcerange` is capped. So the bound is new work, and the only defensible
+place to get one is something the mechanism already states:
+
+- a **motor** is bounded by its effort limit, which is the most a real motor
+  can produce and the number a saturating mechanism already sags against;
+- a **position** servo is bounded by its joint's own limits, both endpoints
+  declared.
+
+Everything else is a refusal carrying the correction that resolves it. Two
+are worth naming:
+
+- A **velocity** actuator. Its control is a speed, and a FreeCAD joint
+  carries position limits and never velocity limits. Deriving a speed from
+  an angle range needs a time, and there is no time in the model to take one
+  from. This is a real capability gap and is recorded as one rather than
+  papered over with a default: a policy driving a velocity actuator needs an
+  explicit speed bound on `api.actuator`, which is an API change outside M6's
+  scope.
+- A **one-sided** limit. `_limit_range` fills a missing endpoint from
+  `_OPEN_ANGLE_MARGIN_RADIANS`, measured at a **hundred full turns**. That
+  number keeps the joint effectively free while still being a declared range
+  — a solver convenience — and it is not a mechanical bound. A policy handed
+  it would spend its whole action budget in a region the mechanism cannot
+  reach.
+
+**The bound is advertised, not compiled in.** `ctrlrange` is left alone, and
+that is a decision rather than an omission: one model may serve several tasks
+with different action sets, and writing the range into the file would force a
+second XML per task. The bundle states the range and whoever runs the episode
+clamps to it, while `forcerange` and `jnt_range` still hold in the model — so
+a policy that ignores the bound cannot drive a different mechanism than the
+one advertised. Note, because it bears on how much an action range promises:
+MuJoCo's joint limits are *soft*, and a joint driven hard into one overshoots
+by around ten degrees before being pushed back.
+
+### 5. Where a reward's names are checked, and why not at the API
+
+`api.reward` is a standalone intermediate: it is written before there is a
+task for it to belong to, so it cannot know which observation channels exist.
+The check is therefore split, and the split is the useful part:
+
+- **The API checks syntax and function calls** — what a reader of the script
+  could check by looking.
+- **The engine checks vocabulary** — where the channel list is not only known
+  but *expanded*, so a `component_position` named `hand` is `hand_x`,
+  `hand_y`, `hand_z` and never `hand`, and the refusal can list what was
+  available instead of merely saying no.
+
+`_checked_formula` grew a `functions=` parameter to carry this, replacing both
+of its hardcoded uses. **`api.motion`'s whitelist did not move.** Its formula
+is rendered back into an Ondsel expression and Ondsel has no `tanh`, so a
+shared wider set would export something the solver on the other side cannot
+read. Two whitelists, one checker.
+
+### 6. Units — hazard 1's fourth payment, in a new direction
+
+Every conversion before M6 carried a number the script wrote into the unit
+MuJoCo reads. These go the other way, and that is *more* dangerous rather
+than less because of who does the arithmetic downstream: a reward formula is
+evaluated **outside the engine**, by a trainer holding raw `sensordata`. A
+reward written in degrees and evaluated in radians is a silent factor of 57.
+
+The answer is the M2/M4 one. Every conversion is one number computed in
+`CadexDynamics` and emitted into the bundle as a per-channel `scale`, so the
+trainer **multiplies rather than converts** — the only shape of the operation
+that cannot be performed backwards. The four new inverse conversions
+(`angle_degrees`, `speed_mm_per_s`, `torque_nmm`, reusing `length_mm`) went
+into `test_dynamics_units.py` before they had a caller and were committed
+failing, per §3.2 of `docs/MUJOCO.md`.
+
+`angle_degrees` is the one that matters. Every other conversion on this
+boundary is a power of ten, so getting one wrong moves a decimal point and
+looks wrong. 57.29578 does not — it looks like a mechanism.
+
+### 7. Two evaluators, and the array that keeps them together
+
+The exit criterion needs a second implementation of the reward evaluator, in
+a process that cannot import ours. Two evaluators is exactly where a
+whitelist drifts.
+
+So the bundle ships a `functions` array, a test asserts the runner's globals
+keys equal the engine's `REWARD_FUNCTIONS` equal that array, and the runner
+**refuses outright** when they differ rather than failing mid-episode with a
+`NameError`. This codebase keeps catching drift by writing the second copy
+down; here it costs one array in a file that was being written anyway.
+
+### 8. One draw, several fields
+
+MuJoCo keeps `body_mass` and `body_inertia` in independent arrays and derives
+`body_subtreemass` from the first at `mj_setConst`. Scaling a mass alone
+therefore leaves a body whose rotational inertia no longer matches it — not a
+heavier part, a part whose density depends on which equation you ask.
+
+A mass draw scales **both**, from one draw, which is what changing the density
+of a fixed shape means and is how `mass_kg` and `inertia_kg_m2` produced the
+two numbers in the first place, each linear in the density. A randomisation
+entry is consequently `{label, target, mode, low, high, fields: [...]}` rather
+than a single field/index pair.
+
+The draw itself is a **stated algorithm** — `random.Random(seed)` drawing
+`uniform(low, high)` in bundle order — because two implementations cannot
+agree on "whatever the RNG did", and the seeded episode is inside the exit
+criterion rather than beside it.
+
+### 9. Consequences
+
+- **`api.task` is the first output that consumes another output.** It
+  references one `api.mjcf` value; the worker's task loop runs after the mjcf
+  loop so the model's retained path and sha256 exist to record, and the
+  `id()`-keyed `mjcf_outputs` map follows the `component_outputs` precedent.
+  A task referencing a model this script does not *return* is refused: a
+  model built but not published has no retained file, so the bundle would
+  point at a path nobody wrote.
+- **Two digests are published**, `CadexTaskSHA256` and
+  `CadexTaskModelSHA256`. A task and its model only mean anything together,
+  so a project where one was replaced without the other is one a reader can
+  detect.
+- **The project digest needed no work.** ADR-068's clause is keyed on an
+  output *having an artifact* rather than on a roster of kinds, so
+  `assembly_training_task_json` joined by inheritance — the property that
+  clause was written for, now claimed twice. A test asserts the outcome.
+- **The model is reloaded from disk before anything is resolved against it.**
+  Every address the bundle records is an address into the file somebody else
+  will open. It is also what keeps the exit criterion honest: the engine
+  evaluates its episode on the reloaded exported bytes too, so the model is
+  not a variable in the comparison and the agreement is about the *task spec*
+  rather than a second proof of M5's physics.
+- **The worker runs one episode before publishing.** Not the training run —
+  the receipt that the spec executes, taken before anybody is told the task
+  exists.
+- **No protocol change, no `shell/` diff.** A bundle arrives as an ordinary
+  output with an `artifact_kind` the shell has never heard of, which
+  `cadex_hydrate` skips for want of a tessellation and `cadex_animate` for
+  want of the simulation kind. `docs/MUJOCO.md` §6's open question about the
+  policy asset is **M7's** and is not answered here.
+- **`touch`, `accelerometer` and `contact_force` are deferred by name.** The
+  first two need a site with a placement the assembly graph does not carry;
+  the third reports per-contact, so its width depends on what is touching
+  what at the instant it is read. `DEFERRED_OBSERVATION_KINDS` carries each
+  reason, so a refusal about one is not mistaken for a typo.
+
+### 10. Verification
+
+Engine suite **928 passed** (838 before M6). Phase 0's 11 measured tests, 35
+model tests, 29 API/publication/worker-contract tests, 6 exit-criterion tests
+and 4 live tests. `test_dynamics_units` grew four inverse-conversion tests,
+written before the functions existed and committed failing.
+
+Against the **staged payload**, which is the gate that counts (ADR-023):
+`test_cadexd_lifecycle` **10 passed**, up from 9; plus the task-live,
+mjcf-live, restart-determinism and task-episode suites, all green with
+`CADEX_ENGINE_ROOT` pointed at `build/engine`.
+
+`git diff --name-only main...MJC -- shell/` is empty, which is the invariant
+the shell claim rests on rather than a re-run of `pixi run gate` (ADR-062,
+ADR-063, ADR-067).

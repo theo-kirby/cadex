@@ -163,6 +163,57 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   writer emits about six significant figures and has no precision setting, so
   the match is a stated tolerance and the published evidence reports how much
   of it this file used.
+- `assembly.task()` turns one `assembly.mjcf` value into a **trainable
+  reinforcement-learning task** (ADR-069, **experimental**) and writes one
+  JSON bundle, `cadex-training-task-v1`, beside that model's file. It is the
+  only output that consumes another output; a script may declare more than
+  one, and two tasks may share one model, for the same reason two
+  `assembly.mjcf` outputs are legal — nothing bakes either. The bundle
+  references its model by relative path *and* sha256, so a pair that came
+  apart is detectable rather than merely unlucky.
+  The **observation space is declared on the model, not the task**:
+  `assembly.mjcf(..., observations=[assembly.observation(target, kind,
+  name=...)])` writes each channel into the exported file as a MuJoCo
+  `<sensor>`, so **stock MuJoCo computes the observation vector** and no
+  Cadex code is on the path between the mechanism and the array a trainer
+  reads. The kinds are `position`/`velocity` on a joint,
+  `component_position`/`component_orientation`/`component_linear_velocity`/
+  `component_angular_velocity`/`centre_of_mass` on a component, and
+  `actuator_force` on an actuator. Values reach a trainer in this API's own
+  units — degrees, millimetres, N·mm — as a per-channel `scale` in the
+  bundle, so the trainer *multiplies* rather than converting. A vector
+  channel expands to suffixed scalar names — `name="hand"` on a
+  `component_position` is `hand_x`, `hand_y`, `hand_z` — and those are the
+  names a reward writes; two channels that would produce one name are
+  refused, including when the collision comes from an expansion. One thing
+  worth knowing before choosing a channel: a `component_position` reads the
+  component's **frame origin**, so a link hinged at its own origin never
+  moves in it — `centre_of_mass` is the channel for where a part actually
+  is.
+  `assembly.reward(expression, weight=...)` terms are summed and a policy
+  maximises the total, reported term by term so "which part of the reward is
+  doing the work" is answerable; a cost is a positive quantity with a
+  negative weight. An expression may call `abs`, `asin`/`arcsin`, `arctan`,
+  `cos`, `sin`, `exp`, `sqrt` and `tanh` — three more than `assembly.motion`,
+  which does not get them because its formula is rendered back into an
+  Ondsel expression. `assembly.termination(expression, above=...)` (or
+  `below=`) ends an episode early, which is what distinguishes a failure
+  from a horizon. `assembly.randomise(target, property, scale=[low, high])`
+  varies `mass` on a component or `damping`/`armature`/`friction_loss` on a
+  joint, once per episode; a mass draw scales the inertia tensor with it,
+  because scaling one alone leaves a body whose rotational inertia no longer
+  matches its mass.
+  **Action ranges are derived from the mechanism or refused, never
+  defaulted.** A `motor` is bounded by its `torque_limit_nmm`/`force_limit_n`
+  and a `position` servo by its joint's own limits with *both* endpoints
+  declared. A `velocity` actuator has no derivable range at all — a joint
+  states position limits and never a speed — and a one-sided limit is
+  likewise refused, because its missing endpoint is filled in with a margin
+  worth a hundred turns to keep the solver treating the joint as free, which
+  is a convenience rather than a bound anybody designed. Each actuator keeps
+  the control formula it already required; that becomes its deterministic
+  action when no policy is driving, which is what lets the engine run and
+  verify one episode from the bundle before publishing it.
 - `assembly.collision(kind, ...)` says what a body may touch things with
   (ADR-064, **experimental**), and a body given none touches nothing — it is
   carried by its joints and passes through the rest of the mechanism, which

@@ -751,20 +751,201 @@ no protocol change and no `shell/` diff. The packaged gate is **9 tests**.
 
 ---
 
-### M6 — A task is part of the script
+### M6 — A task is part of the script — **closed (ADR-069)**
 
-Training needs more than a model: observation space, action space, reward,
-termination, episode length, domain randomisation. All of it is
-declarative, all of it belongs in the project script, and none of it is
-geometry.
+`assembly.task(model, ...)` — a new publishable xscript output that writes
+one JSON bundle describing a trainable task, beside the model it
+references. Four new intermediates compose it: `assembly.observation`,
+`assembly.reward`, `assembly.termination`, `assembly.randomise`. **No
+protocol change and no `shell/` diff**, which is the invariant ADR-063 says
+the shell claim rests on.
 
-This is the slice where the xscript language grows a genuinely new concept,
-and it deserves design time rather than a first guess. The constraint that
-saves us: it is all *data*, and the script is already the sole source of
-truth for data.
+A model is not a task. Training needs observation space, action space,
+reward, termination, episode length and domain randomisation — none of
+which is geometry, all of which is *data*, and the script is already the
+sole source of truth for data.
 
-**Done when:** a script fully specifies a trainable task, and the spec
-round-trips into a training-ready bundle.
+**The four forks, decided before planning:**
+
+| Fork | Decision |
+|---|---|
+| **Observations** | MJCF `<sensor>` elements, declared on `assembly.mjcf(..., observations=[...])`. Stock MuJoCo computes the observation vector; the task names the channels. |
+| **Exit criterion** | A reference episode runner importing only `mujoco` runs a full episode from the bundle and matches an in-engine episode. |
+| **Action bounds** | Derived from the joint's limits (position) or the effort limit (motor); underivable is a refusal, not a default. |
+| **Randomisation** | In scope, resolved to concrete compiled-model field indices at export time. |
+
+**What was measured before anything was built** (phase 0,
+`test_dynamics_task_measured.py`, 11 tests):
+
+| Finding | Number |
+|---|---|
+| Sensors added, 500 steps, `qpos` difference | **exactly 0.0** |
+| XML cost per sensor | ~54 bytes |
+| A frame sensor's `objtype="body"` vs `"xbody"` | **180°** apart on a plain box |
+| ...and in position, on an offset centre of mass | **60 mm** apart |
+| `ctrlrange` with `ctrllimited` FALSE (what M4 builds) | inert; action space unbounded |
+| `ctrlrange` set: control 5.0 into ±0.2 | `actuator_force` clamped to 0.2, `data.ctrl` **unchanged** |
+| A one-sided limit's synthetic endpoint | **100 full turns** |
+| `body_mass` scaled alone | `body_subtreemass` follows, `body_inertia` does **not** |
+| The keyframe through `to_xml()` | 0.3000000000000001 → **0.3** |
+
+**Two of these changed the design before it was written**, which is what a
+phase 0 is for:
+
+* **`objtype="body"` is the inertial frame.** MuJoCo's frame sensors accept
+  two object types a reader would take for one thing. `body` resolves to
+  `xipos`/`ximat` — the frame the principal axes of inertia define — and
+  `xbody` to `xpos`/`xquat`, the frame the assembly solver placed and the
+  one `_verify_exported_pose` already compares against. On a plain box the
+  orientations differ by a **half turn**, because MuJoCo orders principal
+  axes by eigenvalue and that order is not the link's local x, y, z. Every
+  `component_*` channel is an **xbody** channel because of this
+  measurement. A reward naming a position would otherwise have been handed
+  the centre of mass, silently.
+* **A mass draw has to scale the inertia too.** MuJoCo keeps `body_mass`
+  and `body_inertia` in independent arrays and derives `body_subtreemass`
+  from the first at `mj_setConst`. Scaling the mass alone leaves a body
+  whose rotational inertia no longer matches it — not a heavier part, a
+  part whose density depends on which equation you ask. One draw therefore
+  scales both, which is what changing the density of a fixed shape means
+  and is how `mass_kg` and `inertia_kg_m2` produced the two numbers in the
+  first place, each linear in the density. The bundle's randomisation entry
+  is consequently `{label, target, mode, low, high, fields: [...]}` — one
+  draw, several field indices — rather than the single `field`/`index` pair
+  the plan sketched.
+
+**The design, and why each part is what it is:**
+
+* **Surface.** `observation`, `reward`, `termination` and `randomise` are
+  **intermediates** — like `body`, `collision`, `actuator` and
+  `joint_dynamics` they have no native type and nothing publishes them.
+  `task` is the one new publishable output, and the **first output that
+  consumes another output**: it takes one `api.mjcf` value and writes one
+  JSON that references that model by relative path and sha256. One output,
+  one artifact — no second XML, and a bundle whose model moved is
+  detectable. Like `api.mjcf` and for the same reason it is *not* under the
+  "exactly one simulation" rule: nothing bakes a task, so two of them
+  sharing one model is a reasonable script.
+* **A vector channel expands to suffixed scalar names.** `name="hand"` on a
+  `component_position` gives `hand_x/_y/_z`; an orientation gives
+  `hand_qw/_qx/_qy/_qz`. Reward formulas do arithmetic on scalars, so the
+  names a formula may use are enumerable and every one is checked —
+  including a collision produced *by* an expansion.
+* **The whitelist division.** `api.reward` is written before there is a
+  task to belong to and cannot know which channels exist, so the **API
+  checks syntax and function calls** and the **engine checks vocabulary** —
+  where the channel list is not only known but expanded, and the refusal
+  can name what was available instead. `_checked_formula` grew a
+  `functions=` parameter for this; `api.motion`'s whitelist did not move,
+  because its formula is rendered back into an Ondsel expression and Ondsel
+  has no `tanh`.
+* **The action bound is derived or refused.** A motor is bounded by its
+  effort limit; a position servo by its joint's own two-sided limits. Four
+  refusals, each with the correction that resolves it: a velocity actuator
+  (its control is a speed, and a FreeCAD joint states position limits and
+  never a speed — deriving one would need a time the model does not carry),
+  a motor with no effort limit, an unlimited joint, and a **one-sided**
+  limit, whose filled-in endpoint phase 0 measured at a hundred turns and
+  which is a solver convenience rather than a mechanical bound.
+* **The bound is advertised, not compiled in.** `ctrlrange` is deliberately
+  left alone: one model may serve several tasks with different action sets,
+  so the bundle states the range and whoever runs the episode clamps to it.
+  `forcerange` and `jnt_range` still hold independently in the model, so a
+  policy that ignores the bound cannot drive a different mechanism. Note
+  that MuJoCo's joint limits are *soft* — a driven joint overshoots one by
+  ~10° and is pushed back — so an action range is not a hard promise about
+  where the joint can go.
+* **Control formulas stay required on `api.actuator`, unchanged.** A
+  policy-driven actuator's formula becomes its deterministic fallback
+  action, which is exactly what the in-engine episode needs to run without
+  a policy. Zero diff on an existing surface.
+* **The engine evaluates the episode on the reloaded exported bytes**, not
+  on `built["model"]` — so the comparison against the stock runner is a
+  claim about the *task spec* rather than a re-proof of M5's physics. The
+  worker also runs one episode from the bundle it just wrote before
+  publishing it: not the training run, the receipt that the spec executes.
+
+**Units — hazard 1's fourth payment, and a new shape of it.** Everything
+before M6 converted a number the script wrote into the unit MuJoCo reads.
+These go the other way, and that is *more* dangerous rather than less
+because of who does the arithmetic: a reward formula is evaluated **outside
+the engine**, by a trainer holding raw `sensordata`. A reward written in
+degrees and evaluated in radians is a silent factor of 57.
+
+The answer is the M2/M4 one. Every conversion is one number computed in
+`CadexDynamics` and emitted into the bundle as a per-channel `scale`, so the
+trainer **multiplies rather than converts** — the only shape that cannot be
+performed backwards. The four inverse conversions (`angle_degrees`,
+`speed_mm_per_s`, `torque_nmm`, reusing `length_mm`) went into
+`test_dynamics_units.py` before they had a caller, per §3.2, and were
+committed failing. `angle_degrees` is the one that matters: every other
+conversion on this boundary is a power of ten, so getting one wrong moves a
+decimal point and *looks* wrong. 57.29578 does not. **Fourth payment,
+fourth time it held.**
+
+**The bundle — `cadex-training-task-v1`.** `observations` (name, sensor,
+`adr`, `dim`, channels, unit, scale), `actions` (actuator, index, unit,
+low, high, scale, source, fallback), `reward`, `termination`, `episode`,
+`randomisation`, `model` (path, sha256, bytes), and `functions`.
+
+That last array is in the file on purpose: the reference runner has its own
+evaluator, and **two evaluators is a place for a whitelist to drift**. A
+test asserts the runner's globals keys equal the engine's `REWARD_FUNCTIONS`
+equal this array, and the runner *refuses outright* when they differ rather
+than failing mid-episode. This codebase keeps catching drift by writing the
+second copy down; here it costs one array.
+
+**The caps** (`CadexDynamics`): 64 observation channels (counted on
+*scalars*, so a `component_position` is three), 16 reward terms, 8
+termination rules, 32 randomisation entries, 200 000 episode steps, and
+`MAXIMUM_TASK_BYTES` of 1 MiB — three orders of magnitude below
+`MAXIMUM_MJCF_BYTES` on purpose, because a task is names, numbers and short
+expressions and a megabyte of it is a mistake with a loop in it.
+
+**Two findings the live path surfaced**, both recorded where they are
+visible:
+
+* **`component_position` reads the body frame origin**, and a link hinged
+  at its own origin has that point *on* the rotation axis — so its position
+  channel never moves however far the arm swings. Correct, and useless
+  there, which is exactly why `centre_of_mass` is a separate kind. The live
+  test asserts it as a constant rather than working around it.
+* **A one-sided limit reports its declared pair intact** (`[None, 95.0]`),
+  so the refusal says *which* endpoint is missing rather than merely that
+  one is.
+
+**Deferred, and named rather than half-built:** `touch` and
+`accelerometer` need a *site* with a placement the assembly graph does not
+carry; `contact_force` reports per-contact, so its width depends on what is
+touching what at the instant it is read, which is not a fixed-width
+channel. `DEFERRED_OBSERVATION_KINDS` carries the reason each is absent, so
+a refusal about one is not mistaken for a typo.
+
+**§6's open question — "does the policy asset extend `put_asset` or get its
+own op" — is M7's and is not answered here.** M6 adds no op and no protocol
+field; a bundle arrives as an ordinary output with an `artifact_kind` the
+shell has never heard of, which `cadex_hydrate` skips for want of a
+tessellation and `cadex_animate` for want of the simulation kind.
+
+**The digest needed no work.** ADR-068's clause is keyed on an output
+*having an artifact* rather than on a roster of kinds, so
+`assembly_training_task_json` joined the project digest by inheritance. A
+test asserts that outcome rather than trusting the reasoning — a reward
+weight changed in the bundle and nothing else moves the project's identity,
+which is what stops a stored task being retrained against different numbers
+under the same digest.
+
+**Done when — and it is:** a script fully specifies a trainable task; the
+bundle it writes is read by a process with no Cadex on its path (asserted
+by the subprocess, which tries to import `CadexDynamics` and reports that
+it could not), which resets the model to the solved keyframe, acts,
+observes, accumulates reward and terminates — producing the same numbers
+the engine produced, compared step by step as `repr` text, seeded domain
+randomisation included, through the live cadexd gate, with no protocol
+change and no `shell/` diff. The packaged gate is **10 tests**.
+
+`cadex_tests/dynamics_task_episode.py` **is** the environment. M7 becomes
+dispatch rather than debugging.
 
 ---
 
@@ -834,8 +1015,24 @@ Ranked by how quietly they fail.
    arithmetic at all*. The spec is already SI, `to_xml()` converts nothing,
    and `qpos_solved` is already in MuJoCo coordinates, so there is no number
    for a second conversion site to appear in — the failure mode this entry
-   predicted was not avoided, it was made unavailable. Still live for M6–M8,
-   where a reward function is a number in units nobody has named yet.
+   predicted was not avoided, it was made unavailable.
+   **M6 was the fourth payment, and it was a new direction.** Every
+   conversion before it carried a number the script wrote *into* the unit
+   MuJoCo reads; an observation channel carries one *out*, and that is more
+   dangerous rather than less because of who does the arithmetic downstream:
+   a reward formula is evaluated **outside the engine**, by a trainer
+   holding raw `sensordata`. A reward written in degrees and evaluated in
+   radians is a silent factor of 57. The answer is the M2/M4 one — every
+   conversion is one number computed in `CadexDynamics` and emitted into the
+   bundle as a per-channel `scale`, so the trainer *multiplies* rather than
+   converts, which is the only shape of the operation that cannot be
+   performed backwards. The four inverse conversions went into
+   `test_dynamics_units.py` before they had a caller and were committed
+   failing. `angle_degrees` is the one that matters: every other conversion
+   on this boundary is a power of ten, so getting one wrong moves a decimal
+   point and *looks* wrong, while 57.29578 looks like a mechanism.
+   Still live for M7–M8, where a policy's own action vector crosses the same
+   boundary in the opposite direction.
 2. ~~**Convexity.**~~ **Handled in M3** (ADR-064), and it needed *two*
    measurements rather than the one this list assumed. Concavity is the
    hull's volume against the **mesh's own**, both from the same vertices —
@@ -945,7 +1142,11 @@ Ranked by how quietly they fail.
   GPU box under their credentials? M7 has to answer this and it is as much
   a product question as a technical one.
 - Does the policy asset extend `put_asset` (which today gates extensions to
-  STL/OBJ/PLY) or get its own op?
+  STL/OBJ/PLY) or get its own op? **Still open, and M7's.** M6 did not
+  answer it and did not need to: a task bundle is an *output* the engine
+  writes, not an asset a user supplies, so it travels the path every other
+  retained artifact travels and adds no op. A trained policy comes back the
+  other way, which is the half this question is about.
 - Is there a Phase 11 story here? A pybind11 binding over OCCT and a
   MuJoCo integration are independent, but the `assembly` domain is
   Phase 11f — the largest — and this plan puts new weight on it.

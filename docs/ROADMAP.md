@@ -819,8 +819,25 @@ with the phase numbers above. Every slice is a resting place.
       not separable from the 51 MB dependency, and the round-trip proof that
       makes the file trustworthy only means anything while the writer and the
       compiler are the same pair.
-- [ ] **M6 — A task is part of the script.** Observation, action, reward,
-      termination, randomisation — all data, all declarative.
+- [x] **M6 — A task is part of the script** (ADR-069).
+      `assembly.task(model, ...)` writes one JSON bundle beside the model it
+      references, describing observation channels, an action space, a
+      reward, termination rules, an episode and domain randomisation — all
+      data, all declarative. A process with no Cadex on its path reads the
+      bundle, opens the model beside it and runs a full episode, producing
+      the engine's numbers step for step. **The measurement that changed the
+      design before it was written:** MuJoCo's frame sensors take an
+      `objtype` that reads as one thing and is two — `body` is the inertial
+      frame and `xbody` the frame the assembly solver placed, a half turn
+      apart on a plain box — so a reward naming a component's position would
+      silently have been handed its centre of mass. Action bounds are
+      derived from the mechanism or **refused**: a velocity actuator's
+      control is a speed and a FreeCAD joint states no speed, and a
+      one-sided limit's filled-in endpoint is a hundred turns of solver
+      convenience rather than a bound anybody designed. No protocol change,
+      no `shell/` diff; the packaged gate is 10 tests.
+      `cadex_tests/dynamics_task_episode.py` is the environment, so M7 is
+      dispatch rather than debugging.
 - [ ] **M7 — Training happens elsewhere.** Offboard by design; training does
       not run on the user's laptop and that is a clean boundary, not a
       compromise.
