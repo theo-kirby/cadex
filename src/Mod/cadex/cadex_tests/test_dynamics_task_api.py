@@ -644,3 +644,146 @@ def test_a_task_inherits_its_models_own_graph_checks() -> None:
             assembly_value=scene["assembly"],
             mjcf_exports=[("model", scene["model"])],
         )
+
+
+# ---------------------------------------------------------------------------
+# Publication (phase 4).
+# ---------------------------------------------------------------------------
+
+
+def test_a_training_task_is_part_of_the_project_digest() -> None:
+    """It got there without a line of M6 code, which was the design.
+
+    ADR-068 keyed the digest's bytes clause on an output *having an
+    artifact* rather than on a roster of known kinds, precisely so that a
+    later branch's new artifact kind would be covered by inheritance rather
+    than by somebody remembering it. M5 asserted that outcome for
+    ``assembly_mjcf_xml``; this asserts it for ``assembly_training_task_json``
+    rather than trusting the reasoning twice.
+    """
+
+    from pathlib import Path
+    import shutil
+    import tempfile
+
+    from cadex_project_worker import compute_project_digest
+
+    root = Path(tempfile.mkdtemp(prefix="m6-task-digest-"))
+    try:
+        artifact = root / "outputs" / "job-task.json"
+        artifact.parent.mkdir(parents=True)
+        artifact.write_bytes(b'{"schema":"cadex-training-task-v1"}')
+        outputs = [
+            {
+                "name": "job",
+                "domain": "assembly",
+                "type": "task",
+                "artifact_kind": "assembly_training_task_json",
+                "artifact_path": "outputs/job-task.json",
+                "definition": {"operation": "task"},
+            }
+        ]
+        before = compute_project_digest(root, outputs)
+        # A reward weight changed and nothing else: the model is untouched,
+        # the definition is untouched, and the project's identity still has
+        # to move -- otherwise a stored task could be retrained against
+        # different numbers under the same digest.
+        artifact.write_bytes(b'{"schema":"cadex-training-task-v1","w":1}')
+        assert compute_project_digest(root, outputs) != before
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_the_task_output_is_publishable_and_has_a_configurator() -> None:
+    """The dispatch that turns a task output into a live document object."""
+
+    import inspect as _inspect
+
+    from CadexScriptedDomainPublication import (
+        AssemblyTaskProxy,
+        _configure_assembly_task,
+        _ensure_assembly_task_properties,
+    )
+    import CadexScriptedDomainPublication as publication
+
+    assert _NATIVE_TYPE_BY_OUTPUT["task"] == "App::FeaturePython"
+    # The dispatch really routes `task` somewhere, rather than falling
+    # through and publishing a bare FeaturePython with no identity on it.
+    source = _inspect.getsource(publication._configure_object)
+    assert 'output_type == "task"' in source
+    assert "_configure_assembly_task(obj, item)" in source
+
+    # A proxy that adds its properties on restore, like every sibling.
+    assert hasattr(AssemblyTaskProxy, "onDocumentRestored")
+    assert callable(_ensure_assembly_task_properties)
+    assert callable(_configure_assembly_task)
+
+
+def test_a_task_publishes_both_digests_and_refuses_a_summary_without_one() -> None:
+    """A task and its model only mean anything together.
+
+    Two digests rather than one is the whole reason this output type is not
+    just a file beside the model: a project where the bundle was replaced
+    and the model was not is a project a reader can detect.
+    """
+
+    from CadexScriptedDomainPublication import _configure_assembly_task
+
+    class _Fake:
+        """The smallest thing that behaves like a FeaturePython object."""
+
+        def __init__(self) -> None:
+            self.Proxy = None
+            self._declared: set[str] = set()
+
+        def addProperty(self, _type, name, _group=None, _doc=None, locked=False):
+            self._declared.add(name)
+            setattr(self, name, "" if "SHA" in name or name == "aLabel" else 0)
+            return self
+
+        def getPropertyByName(self, name):
+            return getattr(self, name)
+
+    obj = _Fake()
+    summary = {
+        "artifact_sha256": "a" * 64,
+        "artifact_bytes": 1234,
+        "task": {
+            "label": "reach",
+            "model_sha256": "b" * 64,
+            "observation_channels": ["a", "b", "c"],
+            "action_count": 1,
+            "reward_terms": ["reach", "cost"],
+            "termination_rules": ["spun_out"],
+            "randomisation": [],
+            "mujoco_version": "3.10.0",
+            "episode": {
+                "control_hz": 50,
+                "episode_seconds": 4.0,
+                "max_steps": 200,
+            },
+        },
+    }
+    _configure_assembly_task(obj, {"name": "job", "assembly_data": summary})
+
+    assert obj.CadexTaskSHA256 == "a" * 64
+    assert obj.CadexTaskModelSHA256 == "b" * 64
+    assert obj.CadexTaskSHA256 != obj.CadexTaskModelSHA256
+    assert obj.CadexTaskObservationCount == 3
+    assert obj.CadexTaskActionCount == 1
+    assert obj.CadexTaskRewardTerms == 2
+    assert obj.CadexTaskEpisodeSteps == 200
+    assert obj.CadexTaskMuJoCoVersion == "3.10.0"
+    assert obj.aLabel == "reach"
+    assert obj.bControlHz == 50
+    assert obj.cEpisodeSeconds == 4.0
+    # The whole authenticated summary travels too, so a reader can check
+    # anything the individual properties left out.
+    import json as _json
+
+    assert _json.loads(obj.CadexAssemblyTaskValidation) == summary
+
+    with pytest.raises(RuntimeError, match="authenticated summary"):
+        _configure_assembly_task(_Fake(), {"name": "job"})
+    with pytest.raises(RuntimeError, match="verification evidence"):
+        _configure_assembly_task(_Fake(), {"name": "job", "assembly_data": {}})

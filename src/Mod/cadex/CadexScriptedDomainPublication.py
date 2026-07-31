@@ -448,6 +448,53 @@ class AssemblyMjcfProxy:
         return None
 
 
+def _ensure_assembly_task_properties(obj: Any) -> None:
+    """The episode a task describes, as live properties.
+
+    The same rule ``_ensure_assembly_mjcf_properties`` follows: the
+    *inputs* a reader would change and re-run, not the bundle's contents.
+    The bundle itself is retained as a program artifact and identified by
+    its digest, and the model it references by that model's own (M6).
+    """
+
+    for property_type, name, description in (
+        ("App::PropertyString", "aLabel", "The task's own label."),
+        (
+            "App::PropertyInteger",
+            "bControlHz",
+            "Control steps per second the policy acts at.",
+        ),
+        (
+            "App::PropertyFloat",
+            "cEpisodeSeconds",
+            "Length of one episode, in seconds, after rounding to whole solver steps.",
+        ),
+    ):
+        if name not in _properties(obj):
+            obj.addProperty(property_type, name, "Task", description, locked=True)
+
+
+class AssemblyTaskProxy:
+    """Persistent proxy for one training task's settings."""
+
+    def __init__(self, obj: Any | None = None) -> None:
+        if obj is not None:
+            obj.Proxy = self
+            _ensure_assembly_task_properties(obj)
+
+    def onDocumentRestored(self, obj: Any) -> None:  # noqa: N802
+        _ensure_assembly_task_properties(obj)
+
+    def execute(self, _obj: Any) -> None:
+        return None
+
+    def dumps(self) -> None:
+        return None
+
+    def loads(self, _state: Any) -> None:
+        return None
+
+
 class AssemblyMotionProxy:
     """Persistent headless-safe proxy for a native Assembly motion contract."""
 
@@ -1898,6 +1945,130 @@ def _configure_assembly_mjcf(obj: Any, item: Mapping[str, Any]) -> None:
     )
 
 
+def _configure_assembly_task(obj: Any, item: Mapping[str, Any]) -> None:
+    """Publish one training task's authenticated identity (ADR-069).
+
+    Everything here is worker-computed and re-read after assignment, the
+    same discipline ``_configure_assembly_mjcf`` follows: this publishes
+    facts about a file that already exists and never recomputes one.
+
+    Two digests rather than one, and that is the point of the output type.
+    ``CadexTaskSHA256`` identifies the bundle; ``CadexTaskModelSHA256`` is
+    the digest of the *model* the bundle references, recorded here as well
+    as inside the file. A task and its model are two artifacts that only
+    mean anything together, so a project where one was replaced without the
+    other is a project a reader can detect rather than one that trains
+    something subtly different.
+    """
+
+    data = item.get("assembly_data")
+    if not isinstance(data, Mapping):
+        raise RuntimeError("An Assembly task has no authenticated summary.")
+    data = dict(data)
+    evidence = data.get("task")
+    if not isinstance(evidence, Mapping):
+        raise RuntimeError("An Assembly task has no verification evidence.")
+    evidence = dict(evidence)
+    episode = dict(evidence.get("episode") or {})
+    if not isinstance(getattr(obj, "Proxy", None), AssemblyTaskProxy):
+        AssemblyTaskProxy(obj)
+    else:
+        _ensure_assembly_task_properties(obj)
+
+    obj.aLabel = str(evidence["label"])
+    obj.bControlHz = int(episode["control_hz"])
+    obj.cEpisodeSeconds = float(episode["episode_seconds"])
+    if (
+        str(obj.aLabel) != str(evidence["label"])
+        or int(obj.bControlHz) != int(episode["control_hz"])
+        or not math.isclose(
+            float(obj.cEpisodeSeconds),
+            float(episode["episode_seconds"]),
+            rel_tol=1.0e-12,
+            abs_tol=1.0e-15,
+        )
+    ):
+        raise RuntimeError(
+            f"Live Assembly task {item['name']!r} changed its validated settings."
+        )
+
+    for property_type, name, value, description in (
+        (
+            "App::PropertyString",
+            "CadexTaskSHA256",
+            str(data["artifact_sha256"]),
+            "SHA-256 of the retained training task bundle.",
+        ),
+        (
+            "App::PropertyInteger",
+            "CadexTaskBytes",
+            int(data["artifact_bytes"]),
+            "Size of the retained training task bundle, in bytes.",
+        ),
+        (
+            "App::PropertyString",
+            "CadexTaskModelSHA256",
+            str(evidence["model_sha256"]),
+            "SHA-256 of the exported MuJoCo model this task is defined against.",
+        ),
+        (
+            "App::PropertyInteger",
+            "CadexTaskObservationCount",
+            int(len(evidence["observation_channels"])),
+            "Scalar observation channels, after vector channels are expanded.",
+        ),
+        (
+            "App::PropertyInteger",
+            "CadexTaskActionCount",
+            int(evidence["action_count"]),
+            "Actuators a policy drives.",
+        ),
+        (
+            "App::PropertyInteger",
+            "CadexTaskRewardTerms",
+            int(len(evidence["reward_terms"])),
+            "Reward terms whose weighted sum is what a policy maximises.",
+        ),
+        (
+            "App::PropertyInteger",
+            "CadexTaskEpisodeSteps",
+            int(episode["max_steps"]),
+            "Control steps in one episode before it is truncated.",
+        ),
+        (
+            "App::PropertyString",
+            "CadexTaskMuJoCoVersion",
+            str(evidence["mujoco_version"]),
+            "The MuJoCo release that wrote the model this task reads.",
+        ),
+    ):
+        _add_property(obj, property_type, name, description)
+        setattr(obj, name, value)
+        observed = getattr(obj, name)
+        expected = value
+        if isinstance(expected, int) and not isinstance(expected, bool):
+            observed = int(observed)
+        else:
+            observed = str(observed)
+        if observed != expected:
+            raise RuntimeError(
+                f"Live Assembly task {item['name']!r} changed {name}."
+            )
+    _add_string_property(
+        obj,
+        "CadexAssemblyTaskValidation",
+        "Authenticated training task identity, episode settings, and the "
+        "episode the engine ran from the bundle it wrote.",
+    )
+    obj.CadexAssemblyTaskValidation = json.dumps(
+        data,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
 def _configure_assembly_exploded_view(
     doc: Any,
     obj: Any,
@@ -2614,6 +2785,8 @@ def _configure_object(
         _configure_assembly_simulation(obj, item, outputs)
     elif prepared["pack"].domain == "assembly" and output_type == "mjcf":
         _configure_assembly_mjcf(obj, item)
+    elif prepared["pack"].domain == "assembly" and output_type == "task":
+        _configure_assembly_task(obj, item)
     elif prepared["pack"].domain == "assembly" and output_type == "exploded_view":
         _configure_assembly_exploded_view(doc, obj, item, outputs, prepared)
     elif output_type == "solver_diagnostics":
