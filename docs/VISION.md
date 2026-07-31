@@ -20,12 +20,25 @@ but not dependent on either FreeCAD or Blender (ADR-025), combining:
   egui shell. Blender is the reference, not the permanent host.
 - **The xscript methodology** — the AI authors a declarative Python program;
   the program is the model.
+- **Robotics-class dynamics and control on MuJoCo** — the mechanism you
+  designed falls, collides, is actuated, exports as MJCF with *exact* OCCT
+  inertias, and plays back a policy trained on it. MuJoCo is a kernel we
+  keep, like OCCT. This is the `MJC` vertical (ADR-060, ADR-072); `main` is
+  the same product without it.
 
 Until the replacements land, both forks remain the working substrate, and
 since ADR-030 both live **in this repository**: the engine at the root, the
 shell under `shell/`. Replacing either is unscheduled and unblocked; what is
 live is deleting from both, in place. The staging is in `docs/ROADMAP.md`;
 every resting place in it is shippable.
+
+**What the last claim buys, concretely.** "Design me a quadruped and teach it
+to walk" is a sequence of chat turns that terminates in a viewport playing a
+learned gait: the mechanism is designed through the ordinary assembly
+surface, `assembly.mjcf` exports it, `assembly.task` defines the problem,
+`training/cadex_train.py` solves it on a machine we do not ship to,
+`assembly.policy` verifies what comes back, and `assembly.rollout` plays it.
+That arc closed on 2026-07-31 (ADR-071).
 
 ### Everything is driven by the script
 
@@ -61,13 +74,34 @@ every resting place in it is shippable.
 
 ### Scope
 
-Five capability areas — four modeling, plus the sketcher they rest on:
+Seven capability areas — four modeling, the sketcher they rest on, and the
+two that make a mechanism move (ADR-060, ADR-072):
 
 1. **Part** — direct OCC shape modeling.
 2. **Part Design** — sketch-based feature modeling (bodies, pads, pockets…).
 3. **Sketcher** — the constraint solver the other two build on.
 4. **Assemblies** — links, joints, solved placements, motion.
 5. **Mesh** — import, tessellate, boolean, decimate (Phase 4, ADR-016).
+6. **Dynamics** — mass, inertia, gravity, contact and force, on MuJoCo
+   (Phase 14, ADR-062). Not a replacement for area 4's kinematics but its
+   complement: kinematics prescribes motion and reports where things end up,
+   dynamics is given inertia and forces and reports what the mechanism
+   actually does. Both exist; `api.motion` and `api.dynamics` are siblings,
+   and a script uses one, the other, or a policy rollout — never two.
+7. **Control** — task definitions, offboard training, and trained policies
+   rolled out in-engine (`docs/MUJOCO.md` M5–M8; ADR-066, ADR-069, ADR-070,
+   ADR-071). This is the genuine direction change: Cadex is a robot design
+   *and* control tool.
+
+Areas 6 and 7 add **no sixth domain**: they are operations on the `assembly`
+domain, which is why they cost no protocol op, no new output type and no
+`shell/` diff. Seven capability areas, still five domain APIs.
+
+**Areas 6 and 7 are the `MJC` vertical** (ADR-072). They are the product on
+this branch and absent from `main`, which carries areas 1–5 and neither the
+53.5 MB MuJoCo payload nor a reason to want it. That is a packaging decision
+about who pays for a physics engine, not a statement that dynamics is
+provisional; ADR-072 records why the split is permanent and one-directional.
 
 **Correction worth stating plainly:** this list used to promise "real mesh
 editing arrives with the Blender shell (BMesh)". The Blender shell arrived;
@@ -84,7 +118,11 @@ the runtime level; the remaining source trees are slated for removal
 
 **Interchange is in scope and first-class.** A parametric CAD app that
 cannot emit STEP is not a product; STEP import/export is an engine
-deliverable (Phase 11), not a shell convenience (ADR-025).
+deliverable (Phase 11), not a shell convenience (ADR-025). **MJCF export is
+the same commitment on the dynamics side** and it is already built
+(ADR-066): `assembly.mjcf` writes one self-contained file that loads in a
+stock MuJoCo which cannot import Cadex, and verifies its own output before
+returning it.
 
 ## Non-goals
 
@@ -100,9 +138,13 @@ deliverable (Phase 11), not a shell convenience (ADR-025).
   the first one we own, and `shell/` is deleted when it lands.
 - A second model loop. The AI runs as the Claude Code CLI inside the shell;
   there is no API-key provider path (ADR-020).
-- **Dependence on FreeCAD or Blender.** OCCT stays as the geometry kernel.
+- **Dependence on FreeCAD or Blender.** OCCT stays as the geometry kernel,
+  and so does **MuJoCo** as the dynamics kernel — a dependency in the OCCT
+  category, kept upstream and unmodified rather than forked (ADR-060). What
+  we fork we intend to replace; what we keep, we keep.
   Vendored LGPL components (OCCT, planegcs, OndselSolver, `modelRefine`)
-  keep their attribution obligation in the NOTICE file; "references to
+  keep their attribution obligation in the NOTICE file, as does MuJoCo's
+  Apache-2.0 (`docs/PROVENANCE.md` §6); "references to
   neither" applies to dependencies, API names and runtime, and never to
   attribution (ADR-025).
 
@@ -115,11 +157,40 @@ deliverable (Phase 11), not a shell convenience (ADR-025).
    removal logged in `docs/DECISIONS.md`).
 3. **The script is the truth; everything else is a cache.** Any state that
    can't be rebuilt from the script is a bug.
+
+   **One exception, stated rather than smuggled: a trained policy is an
+   asset, not a derivation** (`docs/MUJOCO.md` §3.1, ADR-070). Weights come
+   out of hours of stochastic GPU compute on a machine we do not ship to.
+   They cannot be rebuilt from a script and never will be, so they live in
+   `assets/` beside an imported STL, referenced by name and sha256, while the
+   script declares reproducibly *how* the policy was trained and the engine
+   verifies the file against that declaration before it publishes anything.
+   The property that actually matters survives intact: **a rollout of a fixed
+   policy on a fixed model is deterministic**, and its trace digest joins the
+   project digest like every other artifact (ADR-068).
 4. **Validated results only.** Geometry is produced in sandboxed headless
    workers and published to the live document only after validation, under a
-   transaction. The live process never runs user/AI code.
+   transaction. The live process never runs user/AI code. A policy is held to
+   the same standard by different means: the engine re-computes the trainer's
+   recorded **witness** with its own forward pass and refuses past a measured
+   tolerance, so a policy whose weights arrived intact but whose architecture
+   the engine reads differently is a refusal rather than a bad gait.
 5. **The AI is the only modeler; the human is the only judge.** Humans steer
    via chat and sliders, accept or reject; they never push geometry buttons.
+
+   **There is no train button, and there is nothing to press** (ADR-070).
+   "No user-accessible modeling tools" is clear about fillet buttons and says
+   nothing about a *train* button, which is not a modeling tool but would
+   still be something a human presses. The question had to be answered before
+   a UI could be built for it, and the answer is that training does not run
+   in the engine and cannot — it needs JAX on a GPU — so the trainer is a
+   program the agent copies to a machine that has one and runs with its own
+   shell. The weights come home through `put_asset`, the path an imported STL
+   already travels. No UI was built, no dispatch machinery, no protocol op:
+   the answer is *recorded* rather than designed around. The agent authors
+   the task, dispatches the run and declares the result; the human reads a
+   viewport and says yes or no. What a trained policy adds to that loop is a
+   thing to judge, not a control to operate.
 
 ## Open questions
 
@@ -145,55 +216,16 @@ deliverable (Phase 11), not a shell convenience (ADR-025).
   weeks; the characterization corpus is the unknown that sets the scale.
 - macOS notarization of a Rust app bundling an OCCT engine that spawns
   subprocesses (inherited open item, ADR-023).
-
----
-
-## Branch `MJC` — dynamics and control `(ADR-060, ADR-063; 2026-07-30)`
-
-**This section describes the `MJC` branch only.** On `main` it does not
-apply: `main` has no dynamics, no MuJoCo dependency, and this section is not
-in its copy of the file. ADR-063 records why the branch is permanent and
-which way changes flow.
-
-ADR-060 extended the scope list above by two areas. They are stated here
-rather than folded into the numbered list, so that a sync from `main` lands
-as an insertion instead of a conflict:
-
-6. **Dynamics** — mass, inertia, gravity, contact and force. Not a
-   replacement for area 4's kinematics but its complement: kinematics
-   prescribes motion and reports where things end up, dynamics is given
-   inertia and forces and reports what the mechanism actually does. Both
-   exist; `api.motion` and `api.dynamics` are siblings, and a script uses
-   one or the other.
-7. **Control** — task definitions, offboard training, and trained policies
-   rolled out in-engine (`docs/MUJOCO.md` M6–M8). This is the genuine
-   direction change: Cadex becomes a robot design *and* control tool.
-
-**What does not change, and is the reason this fits at all.** A dynamics run
-publishes through the trace path that already existed — same schema, same
-`output_type`, no protocol op, no `shell/` diff. Principle 3 survives
-intact everywhere except one place, which §3.1 of `docs/MUJOCO.md` resolves
-explicitly: **a trained policy is an asset, not a derivation.** It cannot be
-rebuilt from the script and never will be, so it lives in `assets/` beside
-an imported STL, referenced by name and digest, while the script declares
-reproducibly *how* it was trained. The property that matters is preserved —
-a rollout of a fixed policy on a fixed model is deterministic.
-
-**The open question ADR-060 left for M5–M8, answered by M7 (ADR-070).** "No
-user-accessible modeling tools" is clear about fillet buttons and says
-nothing about a **train** button, which is not a modeling tool but would
-still be something a human presses. It had to be answered before M7 built a
-UI for it.
-
-**There is no train button, and there is nothing to press.** Training does
-not run in the engine and cannot — it needs JAX on a GPU — so the trainer is
-a program the agent copies to a machine that has one and runs with its own
-shell. The weights come home through `put_asset`, the path an imported STL
-already travels, and the script declares the policy by name and digest like
-any other asset. M7 built no UI, no dispatch machinery and no new protocol
-op, so the answer is *recorded* rather than designed around.
-
-Principle 5 is therefore untouched: the agent authors the task, dispatches
-the run and declares the result; the human reads a viewport and says yes or
-no. What a trained policy adds to that loop is a thing to judge, not a
-control to operate.
+- ~~Whether dynamics extends `api.simulation` or becomes a sibling
+  `api.dynamics`~~ — answered 2026-07-30 (ADR-062): **a sibling authoring
+  surface sharing the output type**, so the "exactly one simulation" rule
+  covers both solvers and the shell never has to choose between two bakes.
+- ~~Whether there is a **train** button~~ — answered 2026-07-31 (ADR-070):
+  **no, and there is nothing to press.** Recorded in principle 5 above.
+- **How a project migrates when the solver moves.** A retained artifact's
+  digest is part of the project's identity (ADR-068), so a MuJoCo or OCCT
+  upgrade makes an existing project refuse to open — and nothing tells the
+  user that `open_project restore=false` and a re-accept is the way through.
+  The rule is right; the migration path is missing.
+- **Whether interactive mesh editing ever arrives**, and if so as engine ops
+  rather than shell tools — see the correction under Scope.

@@ -7,7 +7,9 @@ in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
 `docs/INTEGRATION.md`.
 
 Phases 0–7 built the engine/shell split on two forks. Phases 8–13 reduce
-both forks toward one application we own, keeping OCCT (ADR-025).
+both forks toward one application we own, keeping OCCT (ADR-025). **Phase 14
+is the dynamics and control vertical** — closed, and the reason this branch
+exists (ADR-072).
 
 **Phase 13a came early (ADR-030).** Merging the repositories never depended
 on owning the engine or the shell — it was a repo-layout and
@@ -21,7 +23,9 @@ what keeps them available.
 
 Dependencies: 0 → 1 → 2 strict; 3 and 4 run in parallel after 2; 5 needs 2;
 6 needs 4 + 5; 7 needs 6. Then 8, 9 and **13a** are independent; **10 gates
-11**; 12 needs 11; 13b needs 13a and otherwise runs forever.
+11**; 12 needs 11; 13b needs 13a and otherwise runs forever. **14 depends on
+nothing after 9 and nothing depends on it** — which is exactly what made it
+a separable vertical rather than a fork in the roadmap.
 
 ```
 0 truth ─► 1 shrink ─► 2 one-script ─┬─► 3 Qt UX (capped)
@@ -31,8 +35,9 @@ Dependencies: 0 → 1 → 2 strict; 3 and 4 run in parallel after 2; 5 needs 2;
    ┌────────────────────────────────────────────────────────────────────────────────┘
    ├─► 8 delete src/Gui
    ├─► 13a MERGE (done) ─► 13b source reduction, ongoing ──────────────┐
-   └─► 9 one surface ─► 10 probe + characterize ═► 11 our engine ─► 12 our shell
-                                    (go/no-go)      └── unscheduled, behind the unchanged protocol ──┘
+   ├─► 9 one surface ─► 10 probe + characterize ═► 11 our engine ─► 12 our shell
+   │                                (go/no-go)      └── unscheduled, behind the unchanged protocol ──┘
+   └─► 14 dynamics + control (M0–M8, closed) ── the MJC vertical, off everyone's path
 ```
 
 **Every resting place is shippable.** A stall anywhere after 13a leaves a
@@ -48,7 +53,7 @@ from facts instead of re-exploration.
 
 - [x] Documentation set written (`README.md`, `CLAUDE.md`, `docs/*.md`).
 - [x] Stale `_DOMAIN_WORKER_BUNDLES` entries deleted (14 culled domains) —
-      `src/Mod/cadex/CadexScriptedRuntime.py:65`.
+      `src/Mod/cadex/CadexScriptedRuntime.py:38` (`_DOMAIN_WORKER_BUNDLES`).
 - [x] Dead lazy imports of deleted `xscript_*` workers pruned from
       `src/Mod/cadex/CadexScriptedDomains.py`.
 - [x] `AGENTS.md` retired; change policy now in `CLAUDE.md`.
@@ -232,7 +237,10 @@ restart rehydration. Evidence in ADR-019 and
 - [x] **Qt shell deleted** (C1–C7, ADR-021): the UI layer, the provider and
       session stack, and the protocol seam. 57 Python modules → 34; 36 test
       files / 425 tests → 20 / 154. `requirements.txt` deleted — the engine
-      has no third-party Python dependency left.
+      had no third-party Python dependency left. *(True until M0. Phase 14
+      added exactly one, `mujoco == 3.10.0`, deferred-imported inside
+      `CadexDynamics.py` so `cadexd`'s own closure still has none — ADR-060,
+      ADR-061.)*
 - [x] **GUI build off** (C6b, ADR-022): `BUILD_GUI=OFF` for release and
       package configs; `isVibeExperimentalModeSession` reverted to stock,
       which *reduces* the fork's delta against upstream FreeCAD.
@@ -271,7 +279,7 @@ this phase.
 
 - [ ] Dependency audit: `src/Gui` (66 MB, 729 files) plus every
       `src/Mod/*/Gui`, `tests/src/Gui`, and the `setup_qt_test` helper.
-- [ ] **`cadex_assembly_worker.py:2038` imports `CommandCreateView`** —
+- [ ] **`cadex_assembly_worker.py:2553` imports `CommandCreateView`** —
       GUI-lineage code used headlessly for exploded views, and the one
       import that makes this deletion more than mechanical. Resolve it
       here, not in Phase 11 (ADR-025).
@@ -503,7 +511,9 @@ deadline pressure is gone.
       (`cadex_partdesign_api.py:311` instantiates `SketcherDomainAPI`; the
       worker imports from `cadex_sketcher_worker`). ~6k lines of new
       feature-history semantics plus a documentless execution model.
-- [ ] **11f — `assembly` (8 ops, 13 joints).** The largest. Vendor
+- [ ] **11f — `assembly` (21 ops, 10 output types, 13 joints).** The
+      largest, and larger here than on `main`: Phase 14 put nine of those
+      ops on it. Vendor
       OndselSolver; rewrite the 2,218-line bridge and ~4,900 lines of
       FreeCAD Python whose joints are `App::FeaturePython` proxies driven by
       the document's recompute graph. *Oracle:* compare **joint residuals**
@@ -636,114 +646,15 @@ Not a phase that "completes" — a standing mode of work.
       GitHub remotes first (`cadex-teardown` was local-only until then);
       history is recoverable, the disks are not carrying it.
 
-## Verification
+## Phase 14 — Dynamics and control `(ADR-060, ADR-072; closed 2026-07-31)`
 
-Every phase keeps the existing gates green and adds one.
-
-```bash
-# unchanged throughout
-pixi run python -m pytest src/Mod/cadex/cadex_tests
-pixi run stage-engine && \
-  CADEX_ENGINE_ROOT=build/engine/cadex-engine-<v>-<os>-<arch> \
-  pixi run python -m pytest -q \
-  src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py
-
-# new in Phase 13a — the whole thing, from one place
-pixi run setup && pixi run app       # builds engine + payload + shell, launches
-pixi run gate                        # CADEX-BLENDER-GATE against the built bundle
-#   -> {"ok":true, "engine_from_bundle":true, picking>=0.99, median<=0.65}
-#   and no MESH_FREECADCMD / MESH_CADEXD_MODULE / MESH_CADEX_ENGINE set
-
-# new in Phase 9  (also ctest CadexResponseSchemas / CadexSubshapeEnumeration)
-pytest src/Mod/cadex/cadex_tests/test_response_schemas.py      # golden per-op response shapes
-pytest src/Mod/cadex/cadex_tests/test_subshape_enumeration.py  # OCCT ordering fingerprint
-
-# new in Phase 10b
-pytest src/Mod/cadex/cadex_tests/test_subshape_selectors.py    # selectors resolve, indices rejected
-#   the real-kernel case also runs against a payload:
-#   CADEX_ENGINE_ROOT=<payload> pytest .../test_subshape_selectors.py
-
-# new in Phase 11 — the differential harness, both engines in one FreeCADCmd
-pytest src/Mod/cadex/cadex_tests/differential/ --domain=<mesh|part|sketcher|partdesign|assembly>
-#   volume (rel 1e-9) / area (rel 1e-6) / COM / bbox, counts, ordering,
-#   two-sided Hausdorff; tolerances reported, not asserted
-```
-
-## Risks
-
-| Risk | Mitigation |
-|---|---|
-| **Unverifiability** — 84% of the `part` surface has no recorded behaviour | Characterization corpus recorded *before* porting; the Phase 10c time-box is the go/no-go |
-| Subshape enumeration not reproducible | **Retired 2026-07-25 (ADR-028)** — the probe ran; raw OCCT reproduces it ordinal-for-ordinal with `modelRefine` vendored |
-| A *substituted* refine silently re-indexes every saved script | ADR-028: `UnifySameDomain` matches counts but not order. Vendor `modelRefine`; the Phase 11 oracle must include a refine-firing shape |
-| Index arguments silently build wrong geometry | **Retired 2026-07-25 (ADR-029)** — the five ops take geometric selectors; the index form is deleted |
-| Phase 11 grind with no "done" signal | Per-domain gates; each domain ships behind the unchanged protocol |
-| Response shape is unpinned | Golden fixtures in Phase 9 |
-| Assembly is the biggest single item | Scheduled last; oracle on joint residuals, not placements |
-| OCCT version drift re-indexes saved scripts | Pin the version; gate the enumeration |
-| Stall midway | Order chosen so every resting place is shippable: engine done + Blender shell is a product |
-
-## Off-phase — `part.cable` and `part.bundle`, experimental (ADR-056, ADR-057, 2026-07-27)
-
-Procedural wire routing landed on **no phase**. It is new scope, not a work
-item any phase declared, and it is recorded here as experimental rather than
-checked off against something it does not belong to.
-
-What shipped: two part ops, `part.cable` and `part.bundle`, plus
-`CadexRouting.py` and `CadexBundle.py`; no shell code and no protocol change
-(`OP_ARG_SPECS` untouched, so the goldens and `docs/INTEGRATION.md`'s op
-table are unaffected). `wcv8.cadex` is wired with 22 conductors across seven
-routes: a twisted battery pair, three twisted phases per motor, and two
-four-way flat ribbons.
-
-`part.bundle` (ADR-057) lays N conductors about one shared centreline and
-publishes one row per conductor. It reuses `part.cable`'s corridor, search,
-spline fit and sweep wholesale — the extraction that made them shared changed
-no numerics, proved by rebuilding the drone to an unchanged digest. What is
-its own is the frame and the offsets, in `CadexBundle.py`.
-
-What makes them experimental, and what would settle it:
-
-- **Ports are literals.** Selector-anchored ports — so a port rides the
-  geometry when the part changes, per the ADR-029 rule — are the obvious next
-  step and are not built. `resolve_pin` already returns `center_mm` and
-  `normal`, which is exactly a port, so the pick→port path needs no new code.
-- **Mesh obstacles are bounding boxes.** Fine for boards and motors, wrong
-  for anything concave; the workaround is to pass such a body as a part
-  solid.
-- **Cost is not yet interactive.** ~0.75 s per cable on the drone, and a
-  slider drag pays full price because moving a port invalidates the memo.
-  Bundles help rather than hurt: the drone's 22 conductors rebuild in 17.0 s
-  against 13.3 s for the 7 single wires they replaced, because a bundle is
-  one search and N sweeps and a sweep is the cheap half.
-- **A bundle's conductors do not fan out by port position.** Conductor `k`
-  takes lay position `k`, so a `connections` list ordered against the pad
-  layout crosses once near the breakout. Reordering the list fixes it; doing
-  it automatically is not possible in general, because on a twisted run the
-  phase rotates along the route and the two ends cannot both be matched.
-- **`CadexRouting._sag` folds a run that is parallel to Z**, because sag is
-  applied along −Z regardless of the run's own direction. Pre-existing and
-  shared with `part.cable`, where it is silent; `part.bundle` refuses on it
-  via its bend floor. Fixing it moves accepted digests, so it needs its own
-  ADR — see ADR-057's closing note.
-
-## Later — identified, not scheduled
-
-- **A1: `display` on `open_project`.** Would fold the restore pass and the
-  hydration rebuild into one script run; measured cost of not having it is
-  0.49 s per project open.
-- **Linux and Windows shell bundles.** The engine payload builds for both;
-  only macOS arm64 has shell CI. Moot once Phase 12 lands — revisit then.
-
----
-
-## Phase 14 — Dynamics and control, on branch `MJC` `(ADR-060, ADR-063; 2026-07-30)`
-
-**This phase exists on the `MJC` branch only** and is deliberately absent
-from the dependency graph at the top of this file. It depends on nothing in
-Phases 0–13 beyond what already shipped, and nothing in Phases 0–13 depends
-on it. ADR-063 records why the branch is permanent, which way changes flow
-(`main` → `MJC`, never back), and what a sync must not drop.
+**This is the `MJC` vertical**, and it is absent from the dependency graph at
+the top of this file for a reason rather than an oversight: it depends on
+nothing in Phases 0–13 beyond what already shipped, and nothing in Phases
+0–13 depends on it. That independence is what made it branchable. ADR-072
+records that `MJC` is a product vertical rather than a branch awaiting a
+merge, ADR-063 which way changes flow (`main` → `MJC`, never back), and both
+together what a sync must not drop.
 
 **Goal:** rigid-body dynamics on MuJoCo, and then the whole arc that
 capability opens — a mechanism designed in Cadex, exported, trained, and
@@ -818,7 +729,7 @@ met below.
       the packaged gate is 9 tests. **ADR-063's deferred merge-back question
       is answered by ADR-067: no — and M5 is the reason rather than the
       exception.** The export calls MuJoCo's own writer, so the capability is
-      not separable from the 51 MB dependency, and the round-trip proof that
+      not separable from the 53.5 MB dependency, and the round-trip proof that
       makes the file trustworthy only means anything while the writer and the
       compiler are the same pair.
 - [x] **M6 — A task is part of the script** (ADR-069).
@@ -904,7 +815,7 @@ lose by accident:
 - **`CadexDynamics.py` is reachable from the sandboxed worker and never from
   `cadexd`.** `test_engine_purity_guardrails` asserts the import closure
   equals `DECLARED_ENGINE_MODULES` exactly; a service whose job is reading
-  NDJSON off a pipe does not need 53 MB of physics engine resident. M3 added
+  NDJSON off a pipe does not need 53.5 MB of physics engine resident. M3 added
   `scipy.spatial` to that module and it is imported the same deferred way
   `mujoco` is, for the same reason.
 - **A default is a promise, not a decision** (ADR-064). Every MuJoCo option
@@ -912,3 +823,117 @@ lose by accident:
   the compiler's inertia handling — is set explicitly and re-asserted on the
   *compiled* model, which is where a release changing a default would land.
   Moving one is a measurement, not an edit.
+
+## Verification
+
+Every phase keeps the existing gates green and adds one.
+
+```bash
+# unchanged throughout
+pixi run python -m pytest src/Mod/cadex/cadex_tests
+pixi run stage-engine && \
+  CADEX_ENGINE_ROOT=build/engine/cadex-engine-<v>-<os>-<arch> \
+  pixi run python -m pytest -q \
+  src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py
+
+# new in Phase 13a — the whole thing, from one place
+pixi run setup && pixi run app       # builds engine + payload + shell, launches
+pixi run gate                        # CADEX-BLENDER-GATE against the built bundle
+#   -> {"ok":true, "engine_from_bundle":true, picking>=0.99, median<=0.65}
+#   and no MESH_FREECADCMD / MESH_CADEXD_MODULE / MESH_CADEX_ENGINE set
+
+# new in Phase 9  (also ctest CadexResponseSchemas / CadexSubshapeEnumeration)
+pytest src/Mod/cadex/cadex_tests/test_response_schemas.py      # golden per-op response shapes
+pytest src/Mod/cadex/cadex_tests/test_subshape_enumeration.py  # OCCT ordering fingerprint
+
+# new in Phase 10b
+pytest src/Mod/cadex/cadex_tests/test_subshape_selectors.py    # selectors resolve, indices rejected
+#   the real-kernel case also runs against a payload:
+#   CADEX_ENGINE_ROOT=<payload> pytest .../test_subshape_selectors.py
+
+# new in Phase 14 — the dynamics vertical (38 test_dynamics_*.py suites)
+pytest src/Mod/cadex/cadex_tests -k dynamics       # headless, no build, no GPU
+#   naming convention across the arc, four files a slice:
+#     *_api       the authoring surface and its refusals
+#     *_model     what reaches the compiled mjSpec
+#     *_measured  numbers checked against a reference, not against ourselves
+#     *_live      the whole path through a real worker
+pytest src/Mod/cadex/cadex_tests/test_dynamics_units.py          # the one conversion boundary
+pytest src/Mod/cadex/cadex_tests/test_engine_purity_guardrails.py  # the three invariants
+#   the packaged gate is 12 tests at M8, up from 6 at M0:
+#   CADEX_ENGINE_ROOT=<payload> pytest .../test_cadexd_lifecycle.py
+#   MJX-gated tests (phase 0 measurements, real training runs) SKIP in the pixi
+#   env by design — 12 skips is the expected count. To run them, use a venv
+#   built from training/requirements.txt; the suites run from either interpreter.
+
+# new in Phase 11 — the differential harness, both engines in one FreeCADCmd
+pytest src/Mod/cadex/cadex_tests/differential/ --domain=<mesh|part|sketcher|partdesign|assembly>
+#   volume (rel 1e-9) / area (rel 1e-6) / COM / bbox, counts, ordering,
+#   two-sided Hausdorff; tolerances reported, not asserted
+```
+
+## Risks
+
+| Risk | Mitigation |
+|---|---|
+| **Unverifiability** — 84% of the `part` surface has no recorded behaviour | Characterization corpus recorded *before* porting; the Phase 10c time-box is the go/no-go |
+| Subshape enumeration not reproducible | **Retired 2026-07-25 (ADR-028)** — the probe ran; raw OCCT reproduces it ordinal-for-ordinal with `modelRefine` vendored |
+| A *substituted* refine silently re-indexes every saved script | ADR-028: `UnifySameDomain` matches counts but not order. Vendor `modelRefine`; the Phase 11 oracle must include a refine-firing shape |
+| Index arguments silently build wrong geometry | **Retired 2026-07-25 (ADR-029)** — the five ops take geometric selectors; the index form is deleted |
+| Phase 11 grind with no "done" signal | Per-domain gates; each domain ships behind the unchanged protocol |
+| Response shape is unpinned | Golden fixtures in Phase 9 |
+| Assembly is the biggest single item | Scheduled last; oracle on joint residuals, not placements |
+| OCCT version drift re-indexes saved scripts | Pin the version; gate the enumeration |
+| Stall midway | Order chosen so every resting place is shippable: engine done + Blender shell is a product |
+
+## Off-phase — `part.cable` and `part.bundle`, experimental (ADR-056, ADR-057, 2026-07-27)
+
+Procedural wire routing landed on **no phase**. It is new scope, not a work
+item any phase declared, and it is recorded here as experimental rather than
+checked off against something it does not belong to.
+
+What shipped: two part ops, `part.cable` and `part.bundle`, plus
+`CadexRouting.py` and `CadexBundle.py`; no shell code and no protocol change
+(`OP_ARG_SPECS` untouched, so the goldens and `docs/INTEGRATION.md`'s op
+table are unaffected). `wcv8.cadex` is wired with 22 conductors across seven
+routes: a twisted battery pair, three twisted phases per motor, and two
+four-way flat ribbons.
+
+`part.bundle` (ADR-057) lays N conductors about one shared centreline and
+publishes one row per conductor. It reuses `part.cable`'s corridor, search,
+spline fit and sweep wholesale — the extraction that made them shared changed
+no numerics, proved by rebuilding the drone to an unchanged digest. What is
+its own is the frame and the offsets, in `CadexBundle.py`.
+
+What makes them experimental, and what would settle it:
+
+- **Ports are literals.** Selector-anchored ports — so a port rides the
+  geometry when the part changes, per the ADR-029 rule — are the obvious next
+  step and are not built. `resolve_pin` already returns `center_mm` and
+  `normal`, which is exactly a port, so the pick→port path needs no new code.
+- **Mesh obstacles are bounding boxes.** Fine for boards and motors, wrong
+  for anything concave; the workaround is to pass such a body as a part
+  solid.
+- **Cost is not yet interactive.** ~0.75 s per cable on the drone, and a
+  slider drag pays full price because moving a port invalidates the memo.
+  Bundles help rather than hurt: the drone's 22 conductors rebuild in 17.0 s
+  against 13.3 s for the 7 single wires they replaced, because a bundle is
+  one search and N sweeps and a sweep is the cheap half.
+- **A bundle's conductors do not fan out by port position.** Conductor `k`
+  takes lay position `k`, so a `connections` list ordered against the pad
+  layout crosses once near the breakout. Reordering the list fixes it; doing
+  it automatically is not possible in general, because on a twisted run the
+  phase rotates along the route and the two ends cannot both be matched.
+- **`CadexRouting._sag` folds a run that is parallel to Z**, because sag is
+  applied along −Z regardless of the run's own direction. Pre-existing and
+  shared with `part.cable`, where it is silent; `part.bundle` refuses on it
+  via its bend floor. Fixing it moves accepted digests, so it needs its own
+  ADR — see ADR-057's closing note.
+
+## Later — identified, not scheduled
+
+- **A1: `display` on `open_project`.** Would fold the restore pass and the
+  hydration rebuild into one script run; measured cost of not having it is
+  0.49 s per project open.
+- **Linux and Windows shell bundles.** The engine payload builds for both;
+  only macOS arm64 has shell CI. Moot once Phase 12 lands — revisit then.

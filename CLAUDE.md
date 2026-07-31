@@ -7,6 +7,15 @@ Cadex is an AI-native CAD app. **This repository is the whole product**
 (Phase 13a, ADR-030): clone it, `pixi run setup && pixi run app`, and you
 have a running application.
 
+**You are on `MJC`, and `MJC` is a product vertical** (ADR-072): Cadex with
+**dynamics and control built in**. Not a feature branch, not a merge
+candidate, not awaiting anything — a version of the product that simulates
+mechanisms on MuJoCo, exports them, and plays back policies trained on them.
+`main` is the same product without that vertical, and stays that way so a
+user modeling a bracket does not build or ship 53.5 MB of physics engine.
+Changes flow `main` → `MJC` and never back. The branch rules are at the end
+of this file; the arc itself is `docs/MUJOCO.md`.
+
 Two halves, one repo, separated by a process boundary rather than a
 repository boundary:
 
@@ -15,10 +24,15 @@ repository boundary:
   headless service speaking NDJSON over stdio, runs them in sandboxed
   `FreeCADCmd` workers that produce detached BREP, publish into an
   ephemeral document, and stream tessellation back. Five domains:
-  partdesign, sketcher, part, mesh, assembly.
+  partdesign, sketcher, part, mesh, assembly — the assembly one carrying
+  dynamics, MJCF export, tasks, policies and rollouts on this branch.
 - **the shell**, under `shell/` — a Blender fork carrying the
   `mesh_agent` add-on. It is the product UI, it speaks the protocol in
-  `docs/INTEGRATION.md`, and it ships the engine inside its own bundle.
+  `docs/INTEGRATION.md`, and it ships the engine inside its own bundle. It
+  knows nothing about dynamics and never will: a policy rollout reaches it
+  as the simulation trace it already played.
+- **`training/`**, at the repo root — the offboard PPO trainer. Not part of
+  the engine, in no payload, copied to a machine with a GPU (ADR-070).
 
 There is no Qt shell, no provider stack, and no API-key model loop — the AI
 runs as the Claude Code CLI inside the shell. `pixi run build-engine`
@@ -47,7 +61,8 @@ Read `docs/VISION.md` before designing anything.
 | `docs/VISION.md` | What the product is; principles; non-goals. **Authoritative.** |
 | `docs/ARCHITECTURE.md` | What exists today: pipeline, file map, project store, substrate. |
 | `docs/XSCRIPT.md` | The scripting model — today (per-domain programs) vs target (one project script). |
-| `docs/ROADMAP.md` | Phases 0–13, status checkboxes, exit criteria. Living status lives here. |
+| `docs/ROADMAP.md` | Phases 0–14, status checkboxes, exit criteria. Living status lives here. |
+| `docs/MUJOCO.md` | **This branch's vertical**: dynamics and control, slices M0–M8 (all closed), the hazards, and the measured facts. ROADMAP Phase 14 is its status line. |
 | `docs/DECISIONS.md` | ADR log. Append an entry for every removal or direction change. |
 | `docs/PROVENANCE.md` | Which code came from FreeCAD, from Blender, and from VibeCAD; licences, credit, and how two licences share one repo. |
 | `docs/FREECAD.md` | Inherited-tree ledger for the **engine**: kept / disabled / already-deleted. |
@@ -56,6 +71,7 @@ Read `docs/VISION.md` before designing anything.
 | `docs/BLENDER.md` | The shell: `mesh_agent`'s file map, its tools, and how to run its suites. |
 | `docs/IDEAS.md` | Parking lot for uncommitted ideas. |
 | `docs/cadex-release-packaging.md` | One bundle: what ships, how it is gated. |
+| `training/README.md` | The offboard trainer: why training is not in the engine, what it reads and writes, how a policy comes home. |
 | `docs/history/` | Superseded VibeCAD-era docs. Historical context only — never cite as current. |
 
 Doc conventions: each doc carries a `Verified against source:` date;
@@ -81,9 +97,15 @@ shell/scripts/addons_core/mesh_agent/   the add-on: ours, subtractive
 shell/lib/<platform>      submodules, NEVER content (1.3 GB prebuilt each)
                           NOTE: shell/ also carries ~790 MB in git-LFS
                           (binary assets, per shell/.gitattributes)
+training/                 the offboard PPO trainer (ADR-070). NOT the engine:
+                          CMake never installs it, no payload carries it,
+                          nothing in it enters pixi.toml. Read its README
 package/engine/           the engine payload build (ADR-023)
 package/app/build_app.sh  the shell build, with the conda env scrubbed off
                           PATH — read its header before touching the build
+package/rattler-build/scripts/relocate_conda_environment.py
+                          CARRIED_PYPI_PACKAGES — how the mujoco wheel
+                          reaches the payload (ADR-061)
 docs/                     the documentation set above
 build/release/bin/        FreeCADCmd, CadexGeometryWorker  (no FreeCAD binary)
 build/engine/             the staged engine payload
@@ -199,17 +221,16 @@ tests and logging the decision; don't commit secrets or machine paths.
    the boundary in any other way.
 7. **Update `docs/ROADMAP.md` checkboxes** when a work item lands.
 
-## You are on branch `MJC` (ADR-063)
+## The dynamics vertical (ADR-060, ADR-063, ADR-067, ADR-072)
 
-**This section is on `MJC` only.** If you are reading it, you are on the
-permanent dynamics branch, not on `main`.
-
-`MJC` carries the MuJoCo dynamics arc — `docs/MUJOCO.md`, slices M0–M8, **all
-closed** (M8, ADR-071). It is **not a feature branch awaiting a merge**.
-Do not merge it to `main`, do
-not open a PR against `main`, and do not read its absence from `main` as
-unfinished work. `main` stays free of MuJoCo so that a user who is not going
-to simulate a mechanism does not build or ship 53.5 MB of physics engine.
+What this version of the product carries that `main` does not:
+`docs/MUJOCO.md` and its slices M0–M8 (**all closed**, ADR-071);
+`CadexDynamics.py` and the `assembly.{body,dynamics,collision,actuator,
+joint_dynamics,mjcf,task,policy,rollout}` surface; the `test_dynamics_*`
+suites; `training/`; the mujoco lines in `pixi.toml`/`pixi.lock`; and
+`CARRIED_PYPI_PACKAGES` in
+`package/rattler-build/scripts/relocate_conda_environment.py`. A sync from
+`main` must never drop those.
 
 Working rules on top of the change policy above:
 
@@ -217,12 +238,19 @@ Working rules on top of the change policy above:
   dynamics-specific — a bug in the trace path, a payload prune, a doc that is
   wrong on both branches — it belongs on `main` first and reaches here on the
   next sync. Ask before landing such a fix here.
-- **Shared docs get appended, branch-marked blocks — not in-place rewrites.**
-  `VISION.md`, `ROADMAP.md` and this file each carry exactly one such block.
-  An insertion resolves on sync; a rewritten paragraph conflicts. Same rule
-  `docs/BLENDER-TREE.md` applies to the inherited shell tree, same reason.
-  `docs/DECISIONS.md` is the exception — it is append-only on both branches,
-  so conflicts there are expected and resolved in date order.
+- **The docs here are this branch's own** (ADR-072). The append-only,
+  branch-marked-block rule ADR-063 imposed on `VISION.md`, `ROADMAP.md` and
+  this file is **retired**: write the dynamics material into the body where
+  it belongs, and resolve the occasional sync conflict by hand in favour of
+  this branch's wording. `docs/DECISIONS.md` is still append-only on both
+  branches, so conflicts there are expected and resolved in date order. The
+  rule still stands, unchanged, for the inherited `shell/` tree
+  (`docs/BLENDER-TREE.md`) — that tree is not ours to rewrite.
+- **The `shell/` diff stays empty.** `git diff main...MJC -- shell/` prints
+  nothing, and the whole arc landed without spending it. Two known rough
+  edges wait behind it (`import_geometry`'s success wording, `_ASSET_SUFFIXES`
+  staying at three members) — ADR-072 §4 names them. Spending the diff is a
+  decision, not a fix you slip in.
 - **Three invariants that are cheap to break by accident**, all test-pinned:
   nothing in `shell/` imports mujoco; `CadexDynamics.py` is reachable
   from the sandboxed worker but never from `cadexd`
