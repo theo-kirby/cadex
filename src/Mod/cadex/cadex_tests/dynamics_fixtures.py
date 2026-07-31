@@ -382,8 +382,17 @@ def pendulum(*, angle: float = 0.7) -> tuple[list[dict], list[dict], dict]:
     )
 
 
+#: What ``two_link_arm(limits=True)`` puts on each hinge, in degrees. Both
+#: endpoints are declared and neither is round, because a *one-sided* limit
+#: is filled in from ``_OPEN_ANGLE_MARGIN_RADIANS`` -- a solver convenience
+#: worth ±100 turns, not a mechanical bound -- and M6 derives an action
+#: range from these. A fixture carrying a synthetic endpoint would make a
+#: test pass against a limit nobody designed (M6 phase 0).
+ARM_LIMITS_DEGREES = {"shoulder": [-95.0, 95.0], "elbow": [-140.0, 5.0]}
+
+
 def two_link_arm(
-    *, shoulder: float = 0.0, elbow: float = 0.0
+    *, shoulder: float = 0.0, elbow: float = 0.0, limits: bool = False
 ) -> tuple[list[dict], list[dict], dict]:
     """A grounded post, an upper arm and a forearm: M4's exit criterion.
 
@@ -398,6 +407,11 @@ def two_link_arm(
     along +X, so the connector frames are simple and the solved placements
     are not -- the same construction the four-bar uses, for the same
     reason.
+
+    ``limits`` puts a two-sided angle limit on both hinges. It is off by
+    default so that every suite written before M6 keeps the model it
+    measured -- ``jnt_limited`` is one of the fields the MJCF reload diff
+    compares -- and on for the ones that need an action range to exist.
     """
 
     upper_length = 300.0
@@ -420,6 +434,9 @@ def two_link_arm(
                 "parent_frame": frame((0.0, 0.0, 200.0), (1.0, 0.0, 0.0), -90.0),
                 "child_frame": frame((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), -90.0),
                 "values": [shoulder],
+                "angle_limits_degrees": (
+                    list(ARM_LIMITS_DEGREES["shoulder"]) if limits else None
+                ),
             },
             {
                 "name": "elbow",
@@ -431,6 +448,9 @@ def two_link_arm(
                 ),
                 "child_frame": frame((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), -90.0),
                 "values": [elbow],
+                "angle_limits_degrees": (
+                    list(ARM_LIMITS_DEGREES["elbow"]) if limits else None
+                ),
             },
         ],
     )
