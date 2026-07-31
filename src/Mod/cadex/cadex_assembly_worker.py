@@ -1791,6 +1791,58 @@ def _dynamics_contract(
     )
 
 
+def _rollout_contract(
+    output_name: str,
+    value: DomainValue,
+    *,
+    policy_exports: Sequence[tuple[str, DomainValue]],
+) -> None:
+    """The policy a rollout plays must be an output this script returned.
+
+    ``_policy_outputs_contract``'s one check, one link further along the
+    chain and for the same reason. A policy that nothing published has no
+    retained receipt -- and the receipt is where the engine records that it
+    checked the weights against the task they claim, by digest. Playing an
+    unpublished policy would be playing a network nothing verified, which is
+    exactly the gait ``verify_policy`` exists so that nobody has to watch and
+    distrust.
+
+    The rollout needs no ``api.body`` of its own and no graph re-walk: it
+    reloads a model somebody else's ``api.mjcf`` already exported and
+    ``_mjcf_contract`` already validated, which is why this is four lines
+    where ``_dynamics_contract`` is a whole traversal.
+    """
+
+    exported = {id(entry): name for name, entry in policy_exports}
+    policy = value.arguments[0]
+    if (
+        not isinstance(policy, DomainValue)
+        or policy.domain != "assembly"
+        or policy.operation != "policy"
+        or policy.output_type != "policy"
+    ):
+        raise AssemblyCandidateError(
+            f"Rollout output {output_name!r} must consume an api.policy value.",
+            details={"stage": "rollout_graph", "output": output_name},
+        )
+    if id(policy) not in exported:
+        raise AssemblyCandidateError(
+            f"Rollout output {output_name!r} plays a trained policy this "
+            "script does not return as an output.",
+            details={
+                "stage": "rollout_graph",
+                "output": output_name,
+                "returned_policies": sorted(exported.values()),
+                "correction": (
+                    "A policy is verified against its task before anything "
+                    "plays it, and the receipt of that verification is what "
+                    "publishing it produces. Return the api.policy value in "
+                    "result alongside the rollout."
+                ),
+            },
+        )
+
+
 def _mjcf_contract(
     output_name: str,
     value: DomainValue,
@@ -1920,6 +1972,7 @@ def _simulation_contract(
     *,
     assembly_value: DomainValue,
     joint_outputs: Mapping[int, str],
+    policy_exports: Sequence[tuple[str, DomainValue]] = (),
 ) -> tuple[str, DomainValue, dict[int, str]] | None:
     simulations = [
         (name, value)
@@ -1943,29 +1996,38 @@ def _simulation_contract(
             },
         )
     simulation_output, simulation_value = simulations[0]
-    # Kinematics and dynamics produce the same output type on purpose. A
-    # sibling type would let one script declare both and silently lose an
-    # animation: cadex_animate._simulation_entries finds two
+    # Kinematics, dynamics and a policy rollout produce the same output type
+    # on purpose. A sibling type would let one script declare two and
+    # silently lose an animation: cadex_animate._simulation_entries finds two
     # assembly_simulation_json artifacts, bakes NEITHER, clears the scene and
-    # reports into a message the UI never shows. Sharing the type puts both
-    # under the "exactly one" rule below (ADR-062).
+    # reports into a message the UI never shows. Sharing the type puts all
+    # three under the "exactly one" rule below (ADR-062, ADR-071).
     if (
-        simulation_value.operation not in {"simulation", "dynamics"}
+        simulation_value.operation not in {"simulation", "dynamics", "rollout"}
         or len(simulation_value.arguments) != 1
     ):
         raise AssemblyCandidateError(
-            f"Simulation output {simulation_output!r} must come from api.simulation "
-            "or api.dynamics."
+            f"Simulation output {simulation_output!r} must come from "
+            "api.simulation, api.dynamics or api.rollout."
         )
-    if simulation_value.arguments[0] is not assembly_value:
+    # A rollout's one argument is the policy it plays, not the assembly:
+    # everything it needs about the mechanism it reads out of the exported
+    # model that policy was verified against.
+    if (
+        simulation_value.operation != "rollout"
+        and simulation_value.arguments[0] is not assembly_value
+    ):
         raise AssemblyCandidateError(
             f"Simulation output {simulation_output!r} must consume the exact returned "
             "api.assembly value."
         )
-    if simulation_value.operation == "dynamics":
+    if simulation_value.operation in {"dynamics", "rollout"}:
         if motion_outputs:
+            subject = (
+                "Rollout" if simulation_value.operation == "rollout" else "Dynamics"
+            )
             raise AssemblyCandidateError(
-                f"Dynamics output {simulation_output!r} cannot be combined with "
+                f"{subject} output {simulation_output!r} cannot be combined with "
                 "api.motion outputs.",
                 details={
                     "stage": "simulation_graph",
@@ -1973,16 +2035,24 @@ def _simulation_contract(
                     "motion_outputs": list(motion_outputs.values()),
                     "correction": (
                         "api.motion prescribes movement for the kinematics solver; "
-                        "a dynamics run computes movement from mass and gravity. "
-                        "Keep one or the other in a script, not both."
+                        "a dynamics run computes movement from mass and gravity, "
+                        "and a rollout computes it from a trained policy. Keep "
+                        "one of the three in a script, not two."
                     ),
                 },
             )
-        _dynamics_contract(
-            simulation_output,
-            simulation_value,
-            assembly_value=assembly_value,
-        )
+        if simulation_value.operation == "rollout":
+            _rollout_contract(
+                simulation_output,
+                simulation_value,
+                policy_exports=policy_exports,
+            )
+        else:
+            _dynamics_contract(
+                simulation_output,
+                simulation_value,
+                assembly_value=assembly_value,
+            )
         return simulation_output, simulation_value, {}
     properties = _properties(simulation_value, "simulation")
     motions = list(properties.get("motions") or [])
@@ -3627,6 +3697,7 @@ def _execute_policy(
     task_outputs: Mapping[int, str],
     artifact_root: Path,
     outputs_by_name: Mapping[str, dict[str, Any]],
+    containers: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     """One declared policy, verified against its task and published as a receipt.
 
@@ -3649,6 +3720,13 @@ def _execute_policy(
     ``put_asset``'s reply and in no project identity at all -- so a project
     could be reopened with different weights under the same digest, which is
     precisely what the digest exists to catch.
+
+    ``containers`` is where the decoded container, its task and its model's
+    path are left for the rollout that may run after this loop -- the same
+    move the mjcf loop makes with ``models`` and for the same reason. A
+    rollout that re-read and re-verified what was just verified would be
+    describing a *second* reading of the file, and the one thing a rollout
+    must not be wrong about is which policy it played.
     """
 
     import CadexDynamics
@@ -3777,7 +3855,175 @@ def _execute_policy(
         "policy": dict(receipt),
     }
     outputs_by_name[output_name]["assembly_data"] = summary
+    containers[output_name] = {
+        "container": container,
+        "task": task,
+        "task_output": task_output,
+        "task_sha256": task_digest,
+        "policy_sha256": observed_digest,
+        "weights": weights_name,
+    }
     return summary
+
+
+def _execute_policy_rollout(
+    *,
+    assembly_output: str,
+    simulation_output: str,
+    simulation_value: DomainValue,
+    policy_outputs: Mapping[int, str],
+    containers: Mapping[str, Mapping[str, Any]],
+    components: Mapping[str, Any],
+    artifact_root: Path,
+    outputs_by_name: Mapping[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Play one verified policy and retain the trace (docs/MUJOCO.md M8).
+
+    Runs after the policy loop for the reason that loop runs after the task
+    loop: it plays a policy that has been verified, and verification is what
+    the receipt records. Every other simulation executes at the simulation
+    site, before the mjcf, task and policy loops; a rollout depends on all
+    three, so the simulation site skips it and this runs here.
+
+    The model is **reloaded from the file the bundle names**, and its digest
+    re-checked, exactly as ``_execute_task_bundle`` does. That is not
+    ceremony: M8 phase 0 measured the same policy against the reloaded model
+    and against the one still in memory and got trajectories 5.8e-3 apart by
+    the end of an episode. The file is the one the policy's digest attests
+    to, so the file is the one that runs.
+
+    What leaves is a ``cadex-assembly-simulation-trace-v1`` through
+    ``_retain_simulation_trace`` **unchanged** -- the same path the
+    kinematics solver and the dynamics solver reach the shell by. That is
+    the whole design: the viewport plays a learned gait without a protocol
+    change, without a ``shell/`` diff, and without a fourth dialect of the
+    frame schema.
+    """
+
+    import CadexDynamics
+
+    properties = _properties(simulation_value, "rollout")
+    policy_output = policy_outputs[id(simulation_value.arguments[0])]
+    stashed = containers[policy_output]
+    task = stashed["task"]
+
+    model_path = Path(str(task["model"]["path"]))
+    declared_digest = str(task["model"]["sha256"])
+    xml = (artifact_root / model_path).read_bytes()
+    digest = hashlib.sha256(xml).hexdigest()
+    if digest != declared_digest:
+        raise AssemblyCandidateError(
+            f"The MuJoCo model the policy {policy_output!r} was trained "
+            "against does not match the digest its task bundle recorded.",
+            details={
+                "stage": "rollout_artifact",
+                "simulation_output": simulation_output,
+                "policy_output": policy_output,
+                "model_path": model_path.as_posix(),
+                "declared_sha256": declared_digest,
+                "observed_sha256": digest,
+            },
+        )
+
+    frames_per_second = int(properties["frames_per_second"])
+    seed = properties.get("seed")
+    try:
+        reloaded = CadexDynamics.load_model(xml)
+        run = CadexDynamics.rollout_policy(
+            reloaded,
+            task,
+            stashed["container"],
+            components=list(components),
+            frames_per_second=frames_per_second,
+            seed=None if seed is None else int(seed),
+            context=f"rollout output {simulation_output!r}",
+        )
+    except CadexDynamics.DynamicsError as error:
+        raise _dynamics_failure(
+            simulation_output, error, operation="rollout"
+        ) from error
+
+    frames = list(run["frames"])
+    estimated_limit = int(properties["estimated_frame_limit"])
+    pose_count = len(frames) * len(components)
+    if len(frames) < 2 or len(frames) > estimated_limit or pose_count > 100_000:
+        raise AssemblyCandidateError(
+            f"Rollout output {simulation_output!r} produced {len(frames)} frames "
+            f"({pose_count} component poses), outside the declared schedule.",
+            details={
+                "stage": "simulation_trace",
+                "simulation_output": simulation_output,
+                "frame_count": len(frames),
+                "estimated_frame_limit": estimated_limit,
+                "correction": (
+                    "Lower frames_per_second, or shorten the task's "
+                    "episode_seconds."
+                ),
+            },
+        )
+
+    episode = dict(run["episode"])
+    evidence = {
+        "solver": "mujoco",
+        "solver_step_s": float(run["solver_step_s"]),
+        "control_hz": int(episode["control_hz"]),
+        "frames_per_second": frames_per_second,
+        "steps_per_frame": int(run["steps_per_frame"]),
+        "component_outputs": list(components),
+        "mujoco_version": str(task["mujoco_version"]),
+    }
+    policy_evidence = {
+        "policy_output": policy_output,
+        "task_output": str(stashed["task_output"]),
+        "weights": str(stashed["weights"]),
+        # The three digests that make a policy, a task and a model mean
+        # anything together -- the same three the receipt carries, restated
+        # here so a trace can be checked without opening the receipt.
+        "policy_sha256": str(stashed["policy_sha256"]),
+        "task_sha256": str(stashed["task_sha256"]),
+        "model_sha256": digest,
+        "model_path": model_path.as_posix(),
+        "label": str(episode["label"]),
+        "total_reward": float(episode["total_reward"]),
+        "reward_totals": list(episode["reward_totals"]),
+        "step_count": int(episode["step_count"]),
+        "terminated_step": episode["terminated_step"],
+        "termination": str(episode["termination"]),
+        "truncated": bool(episode["truncated"]),
+        "seed": episode["seed"],
+        "randomisation": list(episode["randomisation"]),
+    }
+    return _retain_simulation_trace(
+        assembly_output=assembly_output,
+        simulation_output=simulation_output,
+        component_names=list(components),
+        frames=frames,
+        parameters={
+            "start_time_s": 0.0,
+            "end_time_s": float(episode["episode_seconds"]),
+            # The *trace* step, as everywhere else: the interval between
+            # frames. What the solver did is in the evidence beside it.
+            "time_step_s": float(run["frame_interval_s"]),
+            "error_tolerance": float(run["solver_tolerance"]),
+            "frames_per_second": frames_per_second,
+        },
+        trace_extra={
+            # An empty list, and it has to be present: the publisher reads
+            # motion_outputs from every simulation, and the shell's bake
+            # reads the same trace whichever thing produced it.
+            "motion_outputs": [],
+            "dynamics": evidence,
+            "policy": policy_evidence,
+        },
+        summary_extra={
+            "motion_outputs": [],
+            "native_code": 0,
+            "dynamics": evidence,
+            "policy": policy_evidence,
+        },
+        artifact_root=artifact_root,
+        outputs_by_name=outputs_by_name,
+    )
 
 
 def _randomisation_input(
@@ -4569,11 +4815,6 @@ def validate_and_solve_assembly(
         component_outputs,
         joint_outputs,
     ) = _graph_contract(raw_result)
-    simulation_contract = _simulation_contract(
-        raw_result,
-        assembly_value=assembly_value,
-        joint_outputs=joint_outputs,
-    )
     mjcf_contract = _mjcf_outputs_contract(
         raw_result,
         assembly_value=assembly_value,
@@ -4586,6 +4827,15 @@ def validate_and_solve_assembly(
     policy_contract = _policy_outputs_contract(
         raw_result,
         task_exports=task_contract,
+    )
+    # After the three above rather than before them, which is M8's one
+    # ordering change: a rollout is a simulation whose argument is a policy,
+    # so validating it needs to know which policies this script returned.
+    simulation_contract = _simulation_contract(
+        raw_result,
+        assembly_value=assembly_value,
+        joint_outputs=joint_outputs,
+        policy_exports=policy_contract,
     )
     exploded_view_contract = _exploded_view_contract(
         raw_result,
@@ -5022,7 +5272,13 @@ def validate_and_solve_assembly(
                     "simulation_output": simulation_output,
                 },
             )
-        if simulation_value.operation == "dynamics":
+        if simulation_value.operation == "rollout":
+            # Deferred to after the policy loop: a rollout plays a verified
+            # policy against the model its task bundle names, and neither
+            # exists yet. Its preconditions are checked here with every other
+            # simulation's, because they are the same preconditions.
+            pass
+        elif simulation_value.operation == "dynamics":
             simulation_summary = _execute_dynamics_simulation(
                 assembly_output=assembly_output,
                 simulation_output=simulation_output,
@@ -5051,7 +5307,8 @@ def validate_and_solve_assembly(
                 artifact_root=artifact_root,
                 outputs_by_name=by_name,
             )
-        diagnostics["simulation"] = simulation_summary
+        if simulation_summary is not None:
+            diagnostics["simulation"] = simulation_summary
     mjcf_summaries: list[dict[str, Any]] = []
     mjcf_models: dict[str, dict[str, Any]] = {}
     mjcf_outputs = {id(value): name for name, value in mjcf_contract}
@@ -5141,6 +5398,7 @@ def validate_and_solve_assembly(
         diagnostics["task"] = task_summaries
     task_outputs = {id(value): name for name, value in task_contract}
     policy_summaries: list[dict[str, Any]] = []
+    policy_containers: dict[str, dict[str, Any]] = {}
     for policy_output, policy_value in policy_contract:
         # After the task loop, so the bundle's retained digest exists for the
         # policy to be verified against. There is no solver precondition of
@@ -5159,10 +5417,30 @@ def validate_and_solve_assembly(
                 task_outputs=task_outputs,
                 artifact_root=artifact_root,
                 outputs_by_name=by_name,
+                containers=policy_containers,
             )
         )
     if policy_summaries:
         diagnostics["policy"] = policy_summaries
+    if (
+        simulation_contract is not None
+        and simulation_contract[1].operation == "rollout"
+    ):
+        # The one simulation that runs here rather than at the simulation
+        # site, because it is the one that depends on everything above it: a
+        # model exported, a task bundled, and a policy verified against both.
+        simulation_output, simulation_value, _motions = simulation_contract
+        simulation_summary = _execute_policy_rollout(
+            assembly_output=assembly_output,
+            simulation_output=simulation_output,
+            simulation_value=simulation_value,
+            policy_outputs={id(value): name for name, value in policy_contract},
+            containers=policy_containers,
+            components=components,
+            artifact_root=artifact_root,
+            outputs_by_name=by_name,
+        )
+        diagnostics["simulation"] = simulation_summary
     exploded_view_summaries: list[dict[str, Any]] = []
     for exploded_view_output, exploded_view_value in exploded_view_contract:
         if diagnostics["status"] != "solved":
