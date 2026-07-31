@@ -838,11 +838,36 @@ with the phase numbers above. Every slice is a resting place.
       no `shell/` diff; the packaged gate is 10 tests.
       `cadex_tests/dynamics_task_episode.py` is the environment, so M7 is
       dispatch rather than debugging.
-- [ ] **M7 — Training happens elsewhere.** Offboard by design; training does
-      not run on the user's laptop and that is a clean boundary, not a
-      compromise.
+- [x] **M7 — Training happens elsewhere** (ADR-070).
+      `assembly.policy(task, weights=..., sha256=...)` names a trained
+      policy by file and digest, verifies it against the task it claims, and
+      publishes a receipt whose bytes join the project digest. The trainer is
+      `training/cadex_train.py` at the repository root — Cadex-free, never
+      installed by CMake, in no payload, four exactly-pinned dependencies,
+      and **nothing entered `pixi.toml`**. Offboard by design turned out to
+      make the *engine* simpler: it verifies a policy and never produces one,
+      so it needs no optimiser, no accelerator and — measured — no numpy.
+      **The three questions ADR-067 named as M7's are answered:** training
+      runs on the user's own GPU box dispatched by the agent's shell; the
+      policy extends `put_asset` rather than getting its own op, because a
+      new op would cost the `shell/` diff ADR-063 says the branch rests on
+      not having; and there is **no train button and nothing to press**.
+      **Four phase 0 findings changed the design**, including one that
+      contradicted the plan outright — `np.savez` *is* byte-deterministic —
+      and one that prevented an import rather than justifying one: a
+      pure-Python forward pass runs at 4 564 Hz against a 50 Hz control rate,
+      so numpy stayed out of `CadexDynamics`. The container carries a
+      **witness** the engine re-computes, so a policy whose weights survived
+      but whose architecture the engine reads differently is a refusal rather
+      than a bad gait. No protocol change, no `shell/` diff; the packaged
+      gate is 11 tests. The CI training gate converges a one-hinge swing-up
+      on CPU (1.10 → 2.487 reward per step, ceiling 2.5) and is honest that
+      it does not prove the GPU path.
 - [ ] **M8 — The policy comes home.** A rollout is a trace, played by the
-      shell code that has existed since ADR-050.
+      shell code that has existed since ADR-050. M7 leaves this a *swap*
+      rather than a discovery: `evaluate_episode`'s `actions=` callable
+      already takes `policy_forward`, and through the live gate a trained
+      policy scores 243.4 against 98.4 for doing nothing.
 
 **Exit criteria (the arc's, not a slice's):** "design me a quadruped and
 teach it to walk" is a sequence of chat turns that terminates in a viewport

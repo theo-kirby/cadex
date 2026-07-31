@@ -1,6 +1,6 @@
 # VISION.md — What Cadex Is Becoming
 
-Verified against source: 2026-07-25
+Verified against source: 2026-07-31
 
 This document is the product vision. It is authoritative: when a change
 conflicts with this document, the change is wrong or the vision needs an
@@ -179,7 +179,21 @@ an imported STL, referenced by name and digest, while the script declares
 reproducibly *how* it was trained. The property that matters is preserved —
 a rollout of a fixed policy on a fixed model is deterministic.
 
-**The open question ADR-060 left for M5–M8.** "No user-accessible modeling
-tools" is clear about fillet buttons and says nothing about a **train**
-button, which is not a modeling tool but is still something a human presses.
-Unanswered, and it must be answered before M7 builds a UI for it.
+**The open question ADR-060 left for M5–M8, answered by M7 (ADR-070).** "No
+user-accessible modeling tools" is clear about fillet buttons and says
+nothing about a **train** button, which is not a modeling tool but would
+still be something a human presses. It had to be answered before M7 built a
+UI for it.
+
+**There is no train button, and there is nothing to press.** Training does
+not run in the engine and cannot — it needs JAX on a GPU — so the trainer is
+a program the agent copies to a machine that has one and runs with its own
+shell. The weights come home through `put_asset`, the path an imported STL
+already travels, and the script declares the policy by name and digest like
+any other asset. M7 built no UI, no dispatch machinery and no new protocol
+op, so the answer is *recorded* rather than designed around.
+
+Principle 5 is therefore untouched: the agent authors the task, dispatches
+the run and declares the result; the human reads a viewport and says yes or
+no. What a trained policy adds to that loop is a thing to judge, not a
+control to operate.

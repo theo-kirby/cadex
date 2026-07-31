@@ -1,6 +1,6 @@
 # CLAUDE.md — Agent Entry Point
 
-Verified against source: 2026-07-28. This file replaces the retired
+Verified against source: 2026-07-31. This file replaces the retired
 `AGENTS.md` (see `docs/DECISIONS.md` ADR-005).
 
 Cadex is an AI-native CAD app. **This repository is the whole product**
@@ -204,8 +204,9 @@ tests and logging the decision; don't commit secrets or machine paths.
 **This section is on `MJC` only.** If you are reading it, you are on the
 permanent dynamics branch, not on `main`.
 
-`MJC` carries the MuJoCo dynamics arc — `docs/MUJOCO.md`, slices M0–M8. It
-is **not a feature branch awaiting a merge**. Do not merge it to `main`, do
+`MJC` carries the MuJoCo dynamics arc — `docs/MUJOCO.md`, slices M0–M8
+(M0–M7 closed; M8 is plan). It is **not a feature branch awaiting a merge**.
+Do not merge it to `main`, do
 not open a PR against `main`, and do not read its absence from `main` as
 unfinished work. `main` stays free of MuJoCo so that a user who is not going
 to simulate a mechanism does not build or ship 53.5 MB of physics engine.
@@ -222,12 +223,26 @@ Working rules on top of the change policy above:
   `docs/BLENDER-TREE.md` applies to the inherited shell tree, same reason.
   `docs/DECISIONS.md` is the exception — it is append-only on both branches,
   so conflicts there are expected and resolved in date order.
-- **Two invariants that are cheap to break by accident**, both test-pinned:
-  nothing in `shell/` imports mujoco, and `CadexDynamics.py` is reachable
+- **Three invariants that are cheap to break by accident**, all test-pinned:
+  nothing in `shell/` imports mujoco; `CadexDynamics.py` is reachable
   from the sandboxed worker but never from `cadexd`
-  (`test_engine_purity_guardrails` asserts the import closure exactly).
+  (`test_engine_purity_guardrails` asserts the import closure exactly); and
+  **no `jax` or `mjx` anywhere under `src/Mod/cadex` or in a staged payload**
+  (ADR-070 — training is offboard, and the engine verifies a policy but never
+  produces one).
+- **`training/` is not part of the engine** (ADR-070). `training/cadex_train.py`
+  is the offboard PPO trainer: it lives at the repo root because CMake never
+  installs it, it is in no payload, and its four exactly-pinned dependencies
+  are in `training/requirements.txt` and installed into a venv **on whatever
+  machine trains**. Nothing in it enters `pixi.toml` — `CARRIED_PYPI_PACKAGES`
+  stays one entry long. It imports only the standard library at module scope
+  and reports whether `CadexDynamics` was importable so a test can assert the
+  negative. Read `training/README.md` before touching it.
 - **Verify dynamics work with `pixi run python -m pytest
   src/Mod/cadex/cadex_tests`** — the `test_dynamics_*` suites run headless
   with no build. Anything touching the payload still needs the packaged gate;
   ADR-023's rule that a passing source tree proves nothing about a payload
-  is what caught the dangling `bin/python` in M0.
+  is what caught the dangling `bin/python` in M0. The MJX-gated tests
+  (phase 0 measurements, real training runs) **skip** in the pixi environment
+  by design; to run them, use a venv built from `training/requirements.txt`
+  — the suites are written to run from either interpreter.

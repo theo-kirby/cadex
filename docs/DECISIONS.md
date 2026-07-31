@@ -5738,3 +5738,254 @@ mjcf-live, restart-determinism and task-episode suites, all green with
 `git diff --name-only main...MJC -- shell/` is empty, which is the invariant
 the shell claim rests on rather than a re-run of `pixi run gate` (ADR-062,
 ADR-063, ADR-067).
+
+---
+
+## ADR-070 — Training happens elsewhere, and a policy is a file we can check (2026-07-31)
+
+**Status:** accepted. **Branch:** `MJC` only — this ADR describes work that
+does not exist on `main`, and `docs/DECISIONS.md` is append-only on both
+branches, so conflicts here resolve in date order (ADR-063).
+
+### 1. What this decides
+
+`assembly.policy(task, weights=..., sha256=...)` — a publishable xscript
+output that names a trained control policy by file and digest, verifies it
+against the task it claims to be trained on, and writes one receipt,
+`cadex-policy-receipt-v1`. No new intermediates.
+
+`training/cadex_train.py` — a Cadex-free PPO trainer at the **repository
+root**, which reads an M6 bundle and writes one `.cxpolicy` file
+(`cadex-policy-v1`). It is never installed by CMake, is in no payload, and
+its four exactly-pinned dependencies live in `training/requirements.txt`.
+**Nothing entered `pixi.toml`**; `CARRIED_PYPI_PACKAGES` stays one entry
+long, which is what ADR-061 named it for.
+
+**No protocol change and no `shell/` diff.**
+
+### 2. The three questions ADR-067 named as M7's
+
+| Question | Answer |
+|---|---|
+| Where does training run? | **The user's own machine with a GPU**, dispatched by the agent's own shell. M7 ships a movable run directory and a trainer, and builds no dispatch machinery, no network I/O and no new op. Three independent mechanisms would each have to be breached for a worker to open a socket — `worker_environment`'s allowlist, `--safe-mode`, and the no-imports AST policy — and ADR-043's invariant is that every byte enters through `put_asset`. |
+| Does the policy extend `put_asset` or get its own op? | **It extends `put_asset`.** A new op costs `OP_ARG_SPECS`, `OP_RESPONSE_SPECS`, both `docs/INTEGRATION.md` tables, a golden fixture, a handler — *and* `shell/scripts/addons_core/mesh_agent/cadexd_client.py`. That is a `shell/` diff, and ADR-063 says the branch rests on there not being one. Extending the store's accepted suffixes costs none. |
+| Is there a **train** button? | **No, and there is nothing to press.** The agent authors the task, dispatches with its own shell, and calls the existing `put_asset` path to bring the weights back. `docs/VISION.md` principle 5 is untouched: the human still only judges. The question had to be answered before M7 built a UI; M7 builds none, so the answer is recorded rather than designed around. |
+
+### 3. Why offboard is a boundary rather than a compromise
+
+ADR-060 recorded the constraint and it has not moved: MJX needs JAX-on-GPU,
+`jax-metal` is 0.1.0, MuJoCo Warp needs CUDA, and the published reference for
+a humanoid gait is 4096 environments on an RTX 4090. On CPU that is days.
+
+What M7 found is that this makes the *engine* simpler rather than poorer. The
+engine verifies a policy and never produces one, so it needs no optimiser, no
+autodiff, no accelerator and no numpy — `CadexDynamics` is still a pure-Python
+module with `math` and `ast` at the top of it. The whole training stack lives
+on a machine we do not ship to, and `test_engine_purity_guardrails` now
+asserts it can never arrive: no `jax`, no `jaxlib`, no `mjx` anywhere under
+`src/Mod/cadex`, and none in the staged payload.
+
+**MJX is not adopted, and ADR-060's sentence still stands.** That sentence was
+about the *engine* — one user, one mechanism, CPU stepping at 2 kHz — where
+MJX buys nothing. Here MJX is the offboard trainer's dependency on a machine
+we do not ship to, is in no payload, and is asserted absent from one. The two
+statements are about different processes and the distinction is stated here
+rather than left to contradict itself.
+
+### 4. What phase 0 measured, and the four findings that changed the design
+
+Measured in a venv built from `training/requirements.txt`, because the engine
+environment deliberately has none of it.
+
+| Question | Answer |
+|---|---|
+| Does MJX load our exported models? | **Yes, all three fixtures.** Four-bar with `equality/connect`: 3.8e-8 from CPU MuJoCo after 5 steps. Two-link arm with position actuators and joint limits: 4.8e-10. Mesh geom against a slab: loads and steps. |
+| Does MJX compute our eight observation kinds? | **Yes, all eight**, worst channel disagreement 3.5e-7, and `vmap` over 8 environments reproduces the unbatched run to **exactly 0.0**. |
+| Does a reward expression evaluate under `jnp`? | **Yes.** All nine whitelisted functions exist in `jax.numpy`; traces under `jit`, vectorises under `vmap`, agrees with the engine's float64 evaluator to 9.5e-8. |
+| Is `np.savez` byte-deterministic? | **Yes** — which contradicts the plan (see below). |
+| How big is a PPO policy? | 4.6 KiB (one hinge) to **902 KiB** (123-observation humanoid at 512×256×128). |
+| numpy float64 vs JAX float32 forward pass? | max **1.46e-5** relative, 2.16e-7 absolute. JAX's own jitted and un-jitted passes differ by ~1e-7 *in one process*. |
+| Is a pure-Python forward pass fast enough? | **Yes.** 219 µs arm-sized (4 564 Hz), 5.29 ms humanoid-sized (189 Hz), against a 50 Hz control rate. |
+| Is JAX-on-CPU reproducible across processes? | **Yes**, bit-identical at a fixed seed. Says nothing about GPU. |
+| How does randomisation vectorise? | `seed = base + index`; 1000 seeds give 1000 distinct tuples and index 0 reproduces the bundle exactly. |
+| How costly is `_asset_entry`'s re-hash? | sha256 at ~2.8 GB/s: the full 128 MB budget re-hashes in ~46 ms, a 21 KiB policy adds ~0.01 ms. Not M7's to fix; recorded because M8 adds rollouts on top. |
+
+**Four findings changed the design:**
+
+1. **`np.savez` is byte-deterministic, and the plan said it would not be.**
+   The plan justified a hand-rolled container by "zip entries carry an
+   mtime". numpy writes a fixed `date_time`; two processes an hour apart
+   produced the same sha256. **That argument does not hold and is recorded as
+   wrong rather than quietly dropped.** The container is still hand-rolled,
+   for reasons that survive: the engine reads it inside a `--safe-mode`
+   sandbox from a module that imports no numpy at all, and a length-prefixed
+   header plus a flat float32 blob needs neither a zip parser nor an
+   `allow_pickle` flag that has to stay false.
+2. **A policy is kilobytes, not "tens of megabytes"** as `docs/MUJOCO.md`
+   §3.1 guessed — three orders of magnitude out. `MAXIMUM_POLICY_BYTES` is
+   4 MiB, sized from the 902 KiB measurement.
+3. **Pure Python is fast enough, so numpy did not enter `CadexDynamics`.**
+   The plan said numpy would be added deferred, as `scipy.spatial` is, *if*
+   the measurement demanded it. It did not, so the module stays what its
+   docstring says it is. This is the measurement paying for itself by
+   preventing an import rather than by justifying one.
+4. **A mesh geom that never touches proves nothing.** The first contact
+   measurement stepped 20 times, made zero contacts, and would have reported
+   success. Rewritten to drop a free box onto a slab and assert `ncon > 0`:
+   MJX then agrees with CPU MuJoCo to 1.3e-5 m on box–box and **3.4e-4 m
+   (0.34 mm)** on mesh–box, settling 0.12 mm lower. Recorded as a fidelity
+   note for M8 rather than a defect — MJX is float32 with its own contact
+   path, training happens there and evaluation happens on CPU, and a policy
+   that cannot survive 0.1 mm of contact difference is not a policy.
+
+### 5. The container, and why it carries a witness
+
+`CXPOLICY1\n | <u64 LE header length> | <canonical JSON header> | <raw f32 LE blob>`
+
+The header carries what it was trained on (task and model digests), what it
+observes (the bundle's expanded scalar channels, in order), what it drives
+(the bundle's action table, verbatim), the network, the observation
+normaliser, the training provenance — and the **witness**: N observation
+vectors and the actions the trainer's own JAX network produced for them.
+
+The witness is M5's self-verification idea reused, and it is what makes M8
+safe. `verify_policy` checks six claims, five of which are equality against
+the bundle; the sixth re-computes those actions with the engine's own
+forward pass and refuses past a pinned tolerance. **A container whose weights
+are intact but whose layer order, bias layout or activation the engine reads
+differently passes the first five and fails the sixth.** Without it, that
+failure is a gait somebody has to watch and distrust.
+
+`POLICY_WITNESS_TOLERANCE = 1e-4`, relative to each action's own advertised
+range — measured, not chosen, the way M5's inertia bound was. It is seven
+times the worst measured disagreement between the two implementations, and
+above the ~1e-7 that JAX differs from *itself* between jitted and un-jitted
+evaluation. Relative to the range rather than absolute, because 2 N·mm of
+error is nothing on a 2000 N·mm motor and everything on a 2 N·mm one.
+
+In practice the trained policies verify at **1.7e-9 to 3.6e-8**, five orders
+inside the bound, because the trainer rounds its weights to float32 *before*
+computing the witness — so only the arithmetic differs between the two
+implementations, not the values.
+
+### 6. Hazard 1's fifth payment, and it cost nothing
+
+The direction is new again: a policy's action vector crosses the boundary
+*out* of a trainer and *into* `data.ctrl`. The answer is M5's — structural,
+not disciplined. The network's bounded output is mapped through
+`network.output_scale` and `network.output_bias`, **which `verify_policy`
+checks against the half-range and midpoint the *bundle* derived from the
+mechanism** — so the numbers come from a torque limit or a joint limit rather
+than from the trainer's imagination. What leaves the forward pass is already
+in newton-millimetres, and the only conversion is the `clamp then × scale`
+that `evaluate_episode` has performed since M6.
+
+**M7 added zero conversion sites**, and that is now test-pinned rather than
+asserted: `test_dynamics_units`'s existing conversion-arithmetic regex runs
+over `training/cadex_train.py` as well as the engine's assembly stack. Fifth
+payment, fifth time it held.
+
+The observation normaliser is *not* a unit conversion — the units are the
+bundle's and do not change — but it is arithmetic two implementations must
+agree on, so it is explicit arrays in the container and gets the same
+two-implementations-must-agree test the reward whitelist has.
+
+### 7. Three evaluators, and two encoders
+
+M6 had two evaluators of the reward expressions and said so. M7 makes
+**three**: `CadexDynamics`, `dynamics_task_episode.py`, and the trainer
+under `jax.numpy`. Three is where a whitelist drifts, so the bundle's
+`functions` array is now asserted equal to all three, and the trainer refuses
+outright when it differs rather than failing mid-run.
+
+The container format has **two** implementations for the same structural
+reason: the engine cannot import the trainer and the trainer must not import
+the engine, so neither can be made correct by sharing code. A test compares
+their bytes. This is the codebase's standing move — catch drift by writing
+the second copy down — applied twice more.
+
+### 8. Why the receipt is an output rather than the asset speaking for itself
+
+`compute_project_digest` takes `(root, outputs)` and **does not walk
+`assets/`**. A policy that nothing published would land with a sha256 in
+`put_asset`'s reply and in no project identity at all — so a project could be
+reopened with different weights under the same digest, which is precisely
+what the digest exists to catch.
+
+Declaring it as an output fixes that twice over: the declared `sha256` is
+inside the definition JSON (`payload_sha256`), and the retained receipt's
+bytes join by ADR-068's have-an-artifact clause — the third time that clause
+has paid out with no code. A live test changes one float in a container and
+asserts the project's identity moves.
+
+### 9. Consequences
+
+- **`sha256=` is required and never inferred.** A policy is the one artifact
+  in a project that cannot be rebuilt from the script (VISION principle 3),
+  so the script carries the one thing that *can* be checked. A policy that
+  changed under a fixed script is exactly what the digest exists to catch,
+  and the refusal names the observed digest so the agent can paste it back.
+- **`_ASSET_SUFFIXES` keeps its exact three members.** The shell mirrors that
+  constant by name in a comment at `cadex_backend.py:53`, so widening it
+  would make that comment false. `_POLICY_ASSET_SUFFIXES` sits beside it and
+  `_STORED_ASSET_SUFFIXES` is the union, used by `store_project_asset`,
+  `list_project_assets` and `_stage_project_assets`.
+  `cadex_mesh_api._asset_filename` gained a `suffixes=` parameter with an
+  unchanged default, so the mesh module never learns what a policy is.
+- **`api.policy` is the second output that consumes another output**, after
+  `api.task`. Its loop runs after the task loop for the same reason the task
+  loop runs after the mjcf loop: it needs the bundle's `artifact_sha256` to
+  exist. Like `mjcf` and `task` it is exempt from the "exactly one
+  simulation" rule — nothing bakes a policy — so two seeds against one task
+  is a reasonable script.
+- **Three digests are published**: `CadexPolicySHA256`,
+  `CadexPolicyTaskSHA256`, `CadexPolicyModelSHA256`, plus
+  `CadexPolicyWitnessError`. A policy, a task and a model are three artifacts
+  that only mean anything together, and the witness error is the one float
+  that says whether the engine and the trainer agree about the network.
+- **M8 is a swap, not a discovery.** `evaluate_episode`'s `actions=` callable
+  was written in M6 as M8's seam, and it already takes
+  `policy_forward`. Measured through the live gate: the trained policy scores
+  243.4 against 98.4 for doing nothing, holding the pendulum inverted, at
+  17 ms per 100 control steps in pure Python.
+- **One rough edge, taken deliberately.** The tool the weights arrive through
+  is called `import_geometry` and its success message advises
+  `mesh.import_file(...)`, which is wrong for a policy. Fixing the wording is
+  a `shell/` diff and is therefore **not** taken; the engine-side refusals
+  carry the correct advice instead.
+
+### 10. What the CI gate proves, and what it does not
+
+The live training gate trains a **tiny** task — one hinge, swing-up, seed 0,
+150 iterations, 128 environments — on **CPU**, because that is what a test
+machine has. It converges visibly, which is what makes it a gate rather than
+a smoke test: reward per step goes 1.10 → **2.487** against a theoretical
+ceiling of 2.5, in 4.2 seconds.
+
+**The GPU is a speed difference, not a semantic one**, and it is the same
+trainer file — but this gate does not prove the GPU path, and
+`docs/MUJOCO.md` says so rather than implying otherwise. A remote GPU run is
+exercised manually.
+
+### 11. Verification
+
+Engine suite **1041 passed, 12 skipped** (928 at M6's close). The 12 skips
+are the MJX-gated phase 0 measurements and the training runs, which skip in
+the engine environment by design and were run for real in a venv built from
+`training/requirements.txt` — where the same files give **18 measured**,
+**15 trainer** and **7 live** tests passing, the last including a real
+training run driven through live `cadexd`.
+
+New: `test_dynamics_policy_{measured,model,api,trainer,live}.py`. Extended:
+`test_dynamics_units` (the trainer joins the conversion grep),
+`test_engine_purity_guardrails` (no training framework in the source or the
+payload), `test_dynamics_task_episode` (the third evaluator),
+`test_mesh_domain` (the store's refusal now names two kinds of file).
+
+Against the **staged payload**, which is the gate that counts (ADR-023):
+`test_cadexd_lifecycle` **11 passed**, up from 10.
+
+`git diff --name-only main...MJC -- shell/` is empty, which is the invariant
+the shell claim rests on rather than a re-run of `pixi run gate` (ADR-062,
+ADR-063, ADR-067).
+
