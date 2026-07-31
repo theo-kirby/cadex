@@ -4337,3 +4337,125 @@ existing; a mesh is still its vertices and not its bytes; a decimate tree
 still falls back to its definition; an output with no artifact is still its
 recipe. Plus the three live restart-determinism tests the change rests on,
 committed before it.
+
+---
+
+## ADR-073 — Opening a file does not show the model (2026-07-31)
+
+**Decision.** Record, as a known and measured gap, that opening a `.blend`
+that already has a `.cadex` project beside it puts **nothing** in the
+viewport. The model appears only when something else provokes an engine
+request — an agent tool call, a slider drag, or the **Rebuild Model** button.
+This entry does not fix it: the fix is a `shell/` change and therefore a
+decision of its own (§5). It exists because the A1 roadmap item said
+something else, and reading A1 was how a reasonable person concluded the
+opposite.
+
+### 1. What was measured
+
+A project built in one session, saved, and reopened in a fresh launch of the
+shipped bundle: `model_objects_on_open = 0`. No BREP objects, no Model
+collection contents, no error, no status line. The engine side is healthy —
+`open_project` runs its restore pass, the re-run reproduces the accepted
+digest, and the script state comes back intact. The shell simply never asks
+for the display.
+
+### 2. The path, in full
+
+`bpy.app.handlers.load_post` → `mesh_agent/__init__.py:159`
+`_load_post_handler` → `:169` `_report_file_change` →
+`cadex_backend.on_file_changed` (`cadex_backend.py:1931`).
+
+`on_file_changed` closes every cadexd child and drops all cached engine
+state, which is its actual job (ADR-046's Save-As problem: a second `.blend`
+must not answer from the first file's project store). It then decides
+whether to say anything, at `:1962`:
+
+```python
+if os.path.isdir(current) or not scene_remembers_a_model(scene):
+    return ""
+```
+
+The `.cadex` directory exists, so this returns early. That branch is correct
+for what the function is documented to do — its return value is *a status
+line for a file with no engine project*, and this file has one. What is
+missing is that **nothing else runs**. No caller queues a rebuild, and
+`load_post` has no other cadex handler.
+
+The hydrating run does exist, and it is not far away: `ensure_open`
+(`cadex_backend.py:539`) performs the restore-verified `open_project` and
+then a second `rebuild` with a `display` request, whose tessellation it
+hydrates. That second run is the 0.49 s that A1 was written about. But
+`ensure_open` is called from the request paths — `write_script`,
+`set_params`, `rebuild_model`, the tool handlers — and from none of them on
+the load path. Hydration is therefore **deferred to the first engine
+request**, not absent from the product; on a session where the user opens a
+file and looks at it, that first request never comes.
+
+The panel does not provoke one either, deliberately: `cached_script_state`
+(`:390`) is read-only and documented as not opening the project, because it
+runs on every panel draw.
+
+### 3. Why the escape hatch is hard to find
+
+The remedy is `mesh_agent.rebuild_model`. Its button lives in
+`CADEX_PT_script` (`spaces.py:241`), a sidebar panel whose `poll` requires
+the active text editor to be showing the `model.py` mirror — so it is
+invisible until the user opens the script editor and selects that text. The
+only other placement (`ui.py:387`) is inside the parameters panel's error
+box and draws only when `model.last_error()` is set, which after a clean
+open it is not. F3 search finds the operator, which is how it is reachable
+in practice, and that is not a discovery path a user should need.
+
+### 4. What A1 actually is
+
+`docs/ROADMAP.md`'s and `docs/ARCHITECTURE.md`'s A1 entries both read as a
+latency item — "`display` on `open_project` … measured cost of not having it
+is 0.49 s per project open" — and both presuppose that a hydration rebuild
+happens on open. The presupposition is what makes them misleading: the
+0.49 s is real and is the cost of the second script run, but it is paid on
+the first **engine request**, not on the file open, and until that request
+arrives the cost is not 0.49 s but an empty viewport.
+
+Both entries are re-scoped in this commit to say so. A1 keeps its original
+content — folding the two runs into one is still the engine-side win it
+always was — and gains the sentence that the file-open path does not run
+either of them.
+
+### 5. Why the fix is not here
+
+Hydrating on load means calling `ensure_open` (or queueing a rebuild) from
+`_load_post_handler`, in `shell/`. That has three properties that make it a
+decision rather than a patch:
+
+- It spends the `shell/` diff. On `main` that is an ordinary conservative-zone
+  change; on `MJC` `git diff main...MJC -- shell/` is empty and staying that
+  way is a stated position.
+- It makes opening a file spawn a `FreeCADCmd` child and run two scripts,
+  synchronously, inside a `load_post` handler — which is the wrong place for
+  a second of blocking work, so it wants the asynchronous lifecycle
+  (`begin_rebuild_model`) and therefore a policy for what the viewport shows
+  while it runs.
+- It changes what a failed restore does at file-open time. Today a project
+  whose script no longer reproduces its geometry reports that at the first
+  request, where there is a conversation to report it into. On load there is
+  not one yet.
+
+A1 landing on the engine side (`display` on `open_project`) reduces the cost
+but does not remove any of the three, because the shell would still have to
+issue the request.
+
+### 6. Consequences
+
+- No behaviour changes. This is a documentation commit: ADR plus the two A1
+  entries.
+- The A1 entries stop implying hydration-on-open, which is what let this go
+  unnoticed. Anyone reading them now learns the gap in the same paragraph as
+  the optimisation.
+- `cadex_backend.py`'s module docstring — "open the project root (beside the
+  .blend), rebuild once to hydrate the viewport" — describes `ensure_open`
+  and remains accurate for it. It is not edited, because the sentence is
+  true of the seam it documents; what is untrue is only the inference that
+  the seam is entered on load.
+- The eventual fix is named and unscheduled. Whoever takes it should read §5
+  first and expect to land the asynchronous path, not the one-line call.
