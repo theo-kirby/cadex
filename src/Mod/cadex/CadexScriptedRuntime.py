@@ -73,7 +73,27 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
 }
 
 #: Mesh assets stageable into the isolated worker (mesh.import_file).
+#:
+#: **These three members are load-bearing and must stay exactly three.** The
+#: shell mirrors this set at ``cadex_backend.py:53`` in a comment that names
+#: this constant, and ADR-063 says the whole MJC branch rests on
+#: ``git diff main...MJC -- shell/`` printing nothing. Widening *this* name
+#: would make that comment false; widening the union below costs no shell
+#: diff at all, which is why M7 needed no new op (ADR-070).
 _ASSET_SUFFIXES = frozenset({".stl", ".obj", ".ply"})
+
+#: Trained control policies (ADR-070). A separate constant rather than three
+#: more members above, so that "what mesh.import_file reads" and "what the
+#: project store holds" stay two questions with two answers.
+_POLICY_ASSET_SUFFIXES = frozenset({".cxpolicy"})
+
+#: Everything the store accepts, stages and lists. ``put_asset`` and
+#: ``import_geometry`` perform no suffix check of their own -- they pass the
+#: path through and let the engine refuse -- so widening this is the whole of
+#: what it takes for a policy to reach the store through the tool that
+#: already exists.
+_STORED_ASSET_SUFFIXES = _ASSET_SUFFIXES | _POLICY_ASSET_SUFFIXES
+
 _MAX_ASSET_FILES = 64
 _MAX_ASSET_BYTES = 128 * 1024 * 1024
 
@@ -256,7 +276,7 @@ def _stage_project_assets(project_root: Path, staging: Path) -> list[str]:
     for path in sorted(source_dir.iterdir()):
         if path.is_symlink() or not path.is_file():
             continue
-        if path.suffix.lower() not in _ASSET_SUFFIXES:
+        if path.suffix.lower() not in _STORED_ASSET_SUFFIXES:
             continue
         total_bytes += path.stat().st_size
         if len(staged) >= _MAX_ASSET_FILES or total_bytes > _MAX_ASSET_BYTES:
@@ -300,7 +320,7 @@ def list_project_assets(project_root: Path | str) -> list[dict[str, Any]]:
         for path in sorted(source_dir.iterdir())
         if not path.is_symlink()
         and path.is_file()
-        and path.suffix.lower() in _ASSET_SUFFIXES
+        and path.suffix.lower() in _STORED_ASSET_SUFFIXES
     ]
 
 
@@ -309,7 +329,7 @@ def store_project_asset(
     source_path: str,
     name: str = "",
 ) -> dict[str, Any]:
-    """Copy one mesh file into ``<project_root>/assets`` under a checked name.
+    """Copy one storable file into ``<project_root>/assets`` under a checked name.
 
     The engine is the sole writer of the project store
     (docs/ARCHITECTURE.md), so this is how a file the user picked outside the
@@ -317,13 +337,20 @@ def store_project_asset(
     same 64-file / 128 MB budget, counted *including* the incoming file, so a
     run can never be staged into a budget this write already broke.
     Overwriting an existing name is allowed: that is re-import.
+
+    Two kinds of file rather than one since ADR-070: the three mesh formats
+    ``mesh.import_file`` reads, and the ``.cxpolicy`` a trained control
+    policy arrives in. Both travel the same ``put_asset`` path because that
+    path performs **no suffix check of its own** — it passes the path through
+    and lets the engine refuse — so a policy needed no new op and no
+    ``shell/`` diff to come home.
     """
 
     from cadex_mesh_api import _asset_filename
 
     raw_source = str(source_path or "").strip()
     if not raw_source:
-        raise ValueError("source_path must name a readable mesh file.")
+        raise ValueError("source_path must name a readable file.")
     try:
         source = Path(raw_source).expanduser().resolve(strict=True)
     except OSError as exc:
@@ -331,12 +358,18 @@ def store_project_asset(
     if not source.is_file():
         raise ValueError(f"{raw_source!r} is not a regular file.")
     source_suffix = source.suffix.lower()
-    if source_suffix not in _ASSET_SUFFIXES:
+    if source_suffix not in _STORED_ASSET_SUFFIXES:
         raise ValueError(
-            f"{source.name!r} is not one of the importable mesh formats "
-            f"{sorted(_ASSET_SUFFIXES)}."
+            f"{source.name!r} is not one of the formats this project store "
+            f"holds {sorted(_STORED_ASSET_SUFFIXES)}: the mesh formats "
+            "mesh.import_file reads, or the .cxpolicy a trained control "
+            "policy arrives in."
         )
-    target_name = _asset_filename("put_asset", str(name or "").strip() or source.name)
+    target_name = _asset_filename(
+        "put_asset",
+        str(name or "").strip() or source.name,
+        suffixes=_STORED_ASSET_SUFFIXES,
+    )
     if Path(target_name).suffix.lower() != source_suffix:
         raise ValueError(
             f"name {target_name!r} must keep the source file's {source_suffix} "
@@ -1688,7 +1721,24 @@ def _capability_api_listing() -> dict[str, dict[str, Any]]:
         "declared. A velocity actuator has no derivable range at all, "
         "because a joint states position limits and never a speed. Each "
         "actuator keeps its control formula, which becomes its deterministic "
-        "action when no policy is driving."
+        "action when no policy is driving. "
+        "assembly.policy(task, weights='walk.cxpolicy', sha256='<64 hex>') "
+        "declares a trained control policy for one task. Training does not "
+        "run in the engine and cannot: it needs JAX on a GPU. The trainer is "
+        "training/cadex_train.py in the repository, it runs on a machine that "
+        "has one, and the .cxpolicy file it writes is brought back with "
+        "put_asset like any other asset -- so weights= names a file in the "
+        "project assets directory. sha256 is required and never inferred: a "
+        "policy is the one part of a project that cannot be rebuilt from the "
+        "script, so the script carries which bytes it meant and the engine "
+        "refuses anything else, naming the digest it observed. Before "
+        "publishing, the engine checks the policy against the task it claims "
+        "-- the bundle's digest, the model that bundle references, the "
+        "observation channels in order, the action table, and the output map "
+        "the task's action ranges imply -- and re-evaluates the witness the "
+        "trainer recorded with its own forward pass. A policy whose weights "
+        "arrived intact but whose network the engine reads differently is "
+        "refused rather than run. A script may declare more than one."
     )
     return listing
 

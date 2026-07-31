@@ -129,7 +129,18 @@ def _part_shape(operation: str, parameter: str, value: Any) -> DomainValue:
     return value
 
 
-def _asset_filename(operation: str, value: Any) -> str:
+def _asset_filename(
+    operation: str, value: Any, *, suffixes: Any = ASSET_SUFFIXES
+) -> str:
+    """One name for a file directly inside the project assets directory.
+
+    ``suffixes`` defaults to the three mesh formats this module is about, so
+    ``mesh.import_file`` reads exactly as it did. The project store passes
+    its own wider set (ADR-070) — the same name check, the same traversal
+    refusal, one more accepted extension — rather than this module learning
+    what a trained control policy is.
+    """
+
     result = str(value or "").strip()
     if not result or len(result) > 120:
         raise _error(
@@ -143,11 +154,11 @@ def _asset_filename(operation: str, value: Any) -> str:
             value,
         )
     suffix = ("." + result.rsplit(".", 1)[-1]).lower() if "." in result else ""
-    if suffix not in ASSET_SUFFIXES:
+    if suffix not in suffixes:
         raise _error(
             operation,
             "filename",
-            f"must use one of the mesh formats {sorted(ASSET_SUFFIXES)}",
+            f"must use one of the formats {sorted(suffixes)}",
             value,
         )
     return result

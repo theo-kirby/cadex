@@ -451,7 +451,10 @@ def test_store_project_asset_rejects_bad_sources_and_names(tmp_path: Path) -> No
         runtime.store_project_asset(project_root, "")
     with pytest.raises(ValueError, match="Could not read"):
         runtime.store_project_asset(project_root, str(tmp_path / "missing.stl"))
-    with pytest.raises(ValueError, match="importable mesh formats"):
+    # The store holds two kinds of file since ADR-070 -- the three mesh
+    # formats and a trained policy's .cxpolicy -- so the refusal names the
+    # set rather than "mesh formats". A .txt is still not one of them.
+    with pytest.raises(ValueError, match="formats this project store holds"):
         runtime.store_project_asset(project_root, str(notes))
     for name in ("nested/scan.stl", "../scan.stl", "scan", "x" * 121 + ".stl"):
         with pytest.raises(ValueError, match="filename"):

@@ -118,6 +118,11 @@ _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
         # term, a termination rule and a randomisation range are arguments
         # to a task, not results a script declares on their own.
         "task": "task",
+        # A trained policy is the *second* output that consumes another
+        # output -- one api.task value -- and it publishes a receipt rather
+        # than the weights, which are an asset that no script can rebuild
+        # (ADR-070).
+        "policy": "policy",
         "observation": "observation",
         "reward": "reward",
         "termination": "termination",

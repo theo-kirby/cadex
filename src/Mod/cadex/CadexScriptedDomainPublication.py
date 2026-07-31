@@ -65,6 +65,7 @@ _NATIVE_TYPE_BY_OUTPUT: dict[str, str] = {
     "simulation": "App::FeaturePython",
     "mjcf": "App::FeaturePython",
     "task": "App::FeaturePython",
+    "policy": "App::FeaturePython",
 }
 
 _BREP_OUTPUT_TYPES = frozenset(
@@ -484,6 +485,53 @@ class AssemblyTaskProxy:
 
     def onDocumentRestored(self, obj: Any) -> None:  # noqa: N802
         _ensure_assembly_task_properties(obj)
+
+    def execute(self, _obj: Any) -> None:
+        return None
+
+    def dumps(self) -> None:
+        return None
+
+    def loads(self, _state: Any) -> None:
+        return None
+
+
+def _ensure_assembly_policy_properties(obj: Any) -> None:
+    """The policy a script declared, as live properties.
+
+    The same rule the mjcf and task proxies follow: the *inputs* a reader
+    would change and re-run. For a policy those are exactly two -- which file
+    and which digest -- because everything else about it was decided on a
+    machine this engine never saw.
+    """
+
+    for property_type, name, description in (
+        ("App::PropertyString", "aLabel", "The policy's own label."),
+        (
+            "App::PropertyString",
+            "bWeights",
+            "The .cxpolicy file in the project assets directory.",
+        ),
+        (
+            "App::PropertyString",
+            "cDeclaredSHA256",
+            "The digest the script declared for those weights.",
+        ),
+    ):
+        if name not in _properties(obj):
+            obj.addProperty(property_type, name, "Policy", description, locked=True)
+
+
+class AssemblyPolicyProxy:
+    """Persistent proxy for one trained control policy's declaration."""
+
+    def __init__(self, obj: Any | None = None) -> None:
+        if obj is not None:
+            obj.Proxy = self
+            _ensure_assembly_policy_properties(obj)
+
+    def onDocumentRestored(self, obj: Any) -> None:  # noqa: N802
+        _ensure_assembly_policy_properties(obj)
 
     def execute(self, _obj: Any) -> None:
         return None
@@ -2069,6 +2117,146 @@ def _configure_assembly_task(obj: Any, item: Mapping[str, Any]) -> None:
     )
 
 
+def _configure_assembly_policy(obj: Any, item: Mapping[str, Any]) -> None:
+    """Publish one trained policy's verified identity (ADR-070).
+
+    Everything here is worker-computed and re-read after assignment, the
+    discipline ``_configure_assembly_task`` follows: this publishes facts
+    about a verification that already happened and never re-runs one.
+
+    **Three digests**, and each answers a different question a reader has.
+    ``CadexPolicySHA256`` is the weights themselves -- the bytes that live in
+    ``assets/`` and that nothing else in the project identifies.
+    ``CadexPolicyTaskSHA256`` is the bundle it was trained on, so a task
+    edited under a fixed policy is detectable. ``CadexPolicyModelSHA256`` is
+    the model that bundle referenced, so a mechanism whose geometry moved
+    under a fixed policy is detectable too. A policy, a task and a model are
+    three artifacts that only mean anything together.
+
+    ``CadexPolicyWitnessError`` is the number that makes this a verification
+    rather than a filename: how far the engine's own forward pass fell from
+    the actions the trainer recorded for its own observations. A reader who
+    wants to know whether the engine and the trainer agree about this network
+    reads one float.
+    """
+
+    data = item.get("assembly_data")
+    if not isinstance(data, Mapping):
+        raise RuntimeError("An Assembly policy has no authenticated summary.")
+    data = dict(data)
+    evidence = data.get("policy")
+    if not isinstance(evidence, Mapping):
+        raise RuntimeError("An Assembly policy has no verification evidence.")
+    evidence = dict(evidence)
+    if not isinstance(getattr(obj, "Proxy", None), AssemblyPolicyProxy):
+        AssemblyPolicyProxy(obj)
+    else:
+        _ensure_assembly_policy_properties(obj)
+
+    obj.aLabel = str(evidence["label"])
+    obj.bWeights = str(evidence["weights"])
+    obj.cDeclaredSHA256 = str(evidence["policy_sha256"])
+    if (
+        str(obj.aLabel) != str(evidence["label"])
+        or str(obj.bWeights) != str(evidence["weights"])
+        or str(obj.cDeclaredSHA256) != str(evidence["policy_sha256"])
+    ):
+        raise RuntimeError(
+            f"Live Assembly policy {item['name']!r} changed its validated settings."
+        )
+
+    for property_type, name, value, description in (
+        (
+            "App::PropertyString",
+            "CadexPolicySHA256",
+            str(evidence["policy_sha256"]),
+            "SHA-256 of the trained weights this output verified.",
+        ),
+        (
+            "App::PropertyInteger",
+            "CadexPolicyBytes",
+            int(evidence["policy_bytes"]),
+            "Size of the trained weights, in bytes.",
+        ),
+        (
+            "App::PropertyString",
+            "CadexPolicyTaskSHA256",
+            str(evidence["task_sha256"]),
+            "SHA-256 of the training task bundle this policy was trained on.",
+        ),
+        (
+            "App::PropertyString",
+            "CadexPolicyModelSHA256",
+            str(evidence["model_sha256"]),
+            "SHA-256 of the MuJoCo model that task is defined against.",
+        ),
+        (
+            "App::PropertyInteger",
+            "CadexPolicyParameters",
+            int(evidence["parameters"]),
+            "Weights and biases in the network the engine evaluates.",
+        ),
+        (
+            "App::PropertyInteger",
+            "CadexPolicyObservationCount",
+            int(len(evidence["observation_channels"])),
+            "Scalar observation channels the network takes.",
+        ),
+        (
+            "App::PropertyInteger",
+            "CadexPolicyActionCount",
+            int(evidence["action_count"]),
+            "Actuators the network drives.",
+        ),
+        (
+            "App::PropertyInteger",
+            "CadexPolicyWitnessSamples",
+            int(evidence["witness_samples"]),
+            "Observation/action pairs the trainer recorded and the engine "
+            "re-evaluated.",
+        ),
+        (
+            "App::PropertyFloat",
+            "CadexPolicyWitnessError",
+            float(evidence["witness_error"]),
+            "How far the engine's forward pass fell from the trainer's, "
+            "relative to each action's range.",
+        ),
+    ):
+        _add_property(obj, property_type, name, description)
+        setattr(obj, name, value)
+        observed = getattr(obj, name)
+        if isinstance(value, float):
+            if not math.isclose(
+                float(observed), value, rel_tol=1.0e-12, abs_tol=1.0e-15
+            ):
+                raise RuntimeError(
+                    f"Live Assembly policy {item['name']!r} changed {name}."
+                )
+            continue
+        if isinstance(value, int) and not isinstance(value, bool):
+            observed = int(observed)
+        else:
+            observed = str(observed)
+        if observed != value:
+            raise RuntimeError(
+                f"Live Assembly policy {item['name']!r} changed {name}."
+            )
+    _add_string_property(
+        obj,
+        "CadexAssemblyPolicyValidation",
+        "Authenticated trained policy identity, the task and model it was "
+        "trained against, and the witness the engine re-evaluated.",
+    )
+    obj.CadexAssemblyPolicyValidation = json.dumps(
+        data,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
 def _configure_assembly_exploded_view(
     doc: Any,
     obj: Any,
@@ -2787,6 +2975,8 @@ def _configure_object(
         _configure_assembly_mjcf(obj, item)
     elif prepared["pack"].domain == "assembly" and output_type == "task":
         _configure_assembly_task(obj, item)
+    elif prepared["pack"].domain == "assembly" and output_type == "policy":
+        _configure_assembly_policy(obj, item)
     elif prepared["pack"].domain == "assembly" and output_type == "exploded_view":
         _configure_assembly_exploded_view(doc, obj, item, outputs, prepared)
     elif output_type == "solver_diagnostics":

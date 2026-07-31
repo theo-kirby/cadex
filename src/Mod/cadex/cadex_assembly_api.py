@@ -39,6 +39,13 @@ _PUBLISHABLE_TYPES = frozenset(
         # output -- one api.mjcf value -- and two tasks may share one model
         # (ADR-069).
         "task",
+        # A trained policy, on the same terms and for the same reasons: it is
+        # the *second* output that consumes another output -- one api.task
+        # value -- nothing bakes it, and two policies against one task (two
+        # seeds, two reward weightings) is a reasonable script. What it
+        # publishes is a receipt rather than the weights, which are an asset
+        # and cannot be rebuilt from any script (ADR-070).
+        "policy",
         "exploded_view",
     }
 )
@@ -814,6 +821,7 @@ class AssemblyDomainAPI:
         "dynamics",
         "mjcf",
         "task",
+        "policy",
         "body",
         "collision",
         "joint_dynamics",
@@ -2862,6 +2870,93 @@ class AssemblyDomainAPI:
             randomisation=randomisation_values,
             episode_seconds=seconds,
             control_hz=control_hz,
+            label=label,
+        )
+
+    def policy(
+        self,
+        task: DomainValue,
+        *,
+        weights: str,
+        sha256: str,
+        label: str = "",
+    ) -> DomainValue:
+        """Declare a trained control policy for one task, by name and digest.
+
+        Training does not happen here and cannot: it needs JAX on a GPU, and
+        the engine is a geometry-and-dynamics service. ``training/`` carries
+        the trainer, it runs on a machine that has one, and the ``.cxpolicy``
+        it writes comes back into the project store through the same
+        ``put_asset`` path an imported mesh travels (ADR-070). **There is no
+        train button and nothing to press** -- the agent authors the task,
+        dispatches the run with its own shell, and declares the result here.
+
+        ``weights`` names a file in the project's ``assets`` directory.
+        ``sha256`` is **required and never inferred**, and that is the whole
+        point of the surface: VISION principle 3 says any state that cannot
+        be rebuilt from the script is a bug, and a trained policy is hours of
+        stochastic GPU compute that genuinely cannot be. So the script
+        carries the one thing that *can* be checked -- which bytes it meant --
+        and the engine refuses anything else, naming the digest it observed
+        so it can be pasted back.
+
+        What the worker verifies, before publishing anything, is that the
+        policy and the task agree about the mechanism: the task bundle's own
+        digest, the model that bundle references, the observation channels in
+        their exact order, the action table verbatim, and the output map the
+        task's derived action ranges imply. Then it re-evaluates the witness
+        the trainer recorded -- observation vectors and the actions the
+        trainer's own network produced for them -- with the engine's forward
+        pass, and refuses past a measured tolerance. A policy whose weights
+        survived the trip but whose architecture the engine reads differently
+        is a refusal rather than a bad gait.
+
+        Like ``api.mjcf`` and ``api.task``, this is *not* under the "exactly
+        one simulation" rule: nothing bakes a policy, so several against one
+        task -- two seeds, two reward weightings -- is a reasonable script.
+        It is the second output that consumes another output, after
+        ``api.task`` itself.
+        """
+
+        operation = "policy"
+        value = _domain_value(operation, "task", task, output_type="task")
+        clean_weights = str(weights or "").strip()
+        if not clean_weights or len(clean_weights) > 120:
+            raise _error(
+                operation, "weights",
+                "must name a policy file in the project assets directory, "
+                "1-120 characters", weights,
+            )
+        if any(separator in clean_weights for separator in ("/", "\\")) or (
+            ".." in clean_weights
+        ):
+            raise _error(
+                operation, "weights",
+                "must name a file directly inside the project assets "
+                "directory", weights,
+            )
+        if not clean_weights.lower().endswith(".cxpolicy"):
+            raise _error(
+                operation, "weights",
+                "must be a .cxpolicy file, which is what training/"
+                "cadex_train.py writes", weights,
+            )
+        clean_digest = str(sha256 or "").strip().lower()
+        if len(clean_digest) != 64 or any(
+            character not in "0123456789abcdef" for character in clean_digest
+        ):
+            raise _error(
+                operation, "sha256",
+                "expected the 64 hex characters of the policy file's SHA-256. "
+                "put_asset reports it when the file is stored",
+                sha256,
+            )
+        return self._value(
+            operation,
+            "policy",
+            value,
+            weights=clean_weights,
+            sha256=clean_digest,
             label=label,
         )
 
