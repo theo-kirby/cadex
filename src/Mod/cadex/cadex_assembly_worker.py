@@ -58,6 +58,12 @@ _MAX_SIMULATION_TRACE_BYTES = 64 * 1024 * 1024
 #: told if it ever changed (ADR-066).
 _MJCF_SCHEMA = "mujoco-mjcf-v1"
 _MJCF_ARTIFACT_KIND = "assembly_mjcf_xml"
+#: A training task, unlike the model it references, *is* a Cadex schema: the
+#: observation names, the action bounds, the reward terms and the episode
+#: are ours, and nothing else defines them. The name is carried in the file
+#: itself as well as here, so a reader checks the version before the
+#: contents (M6, ADR-069).
+_TASK_ARTIFACT_KIND = "assembly_training_task_json"
 _EXPLODED_VIEW_SCHEMA = "cadex-assembly-exploded-view-v1"
 _ASSEMBLY_HIERARCHY_SCHEMA = "cadex-assembly-source-hierarchy-v1"
 _MAX_HIERARCHY_NODES = 512
@@ -2050,6 +2056,126 @@ def _mjcf_outputs_contract(
     return exports
 
 
+def _task_outputs_contract(
+    raw_result: Mapping[str, Any],
+    *,
+    assembly_value: DomainValue,
+    mjcf_exports: Sequence[tuple[str, DomainValue]],
+) -> list[tuple[str, DomainValue]]:
+    """Every ``api.task`` output, and the model each one belongs to.
+
+    Not under the "exactly one" rule, for the same reason ``api.mjcf`` is
+    not: nothing bakes a task, so two of them -- a reach and a balance
+    against one arm -- is a reasonable script and each names its own bundle.
+
+    The check that matters is the one no earlier contract could make: a task
+    must reference an ``api.mjcf`` value **this script returned as an
+    output**. A model that was built but not published has no retained file
+    and no digest, so a bundle pointing at it would reference a path that
+    does not exist -- and it is exactly the sort of thing that would be
+    discovered later, by whoever tried to train it.
+    """
+
+    exported_ids = {id(value): name for name, value in mjcf_exports}
+    tasks = [
+        (name, value)
+        for name, value in raw_result.items()
+        if isinstance(value, DomainValue) and value.output_type == "task"
+    ]
+    for output_name, value in tasks:
+        if value.operation != "task" or len(value.arguments) != 1:
+            raise AssemblyCandidateError(
+                f"Task output {output_name!r} must come from api.task.",
+                details={"stage": "task_graph", "output": output_name},
+            )
+        model = value.arguments[0]
+        if id(model) not in exported_ids:
+            raise AssemblyCandidateError(
+                f"Task output {output_name!r} references a MuJoCo model this "
+                "script does not return as an output.",
+                details={
+                    "stage": "task_graph",
+                    "output": output_name,
+                    "returned_models": sorted(exported_ids.values()),
+                    "correction": (
+                        "A task bundle references its model by path and "
+                        "sha256, so the model has to be published too. Return "
+                        "the api.mjcf value in result alongside the task."
+                    ),
+                },
+            )
+        _task_contract(output_name, value, assembly_value=assembly_value)
+    return tasks
+
+
+def _task_contract(
+    output_name: str,
+    value: DomainValue,
+    *,
+    assembly_value: DomainValue,
+) -> None:
+    """Tier-3 re-validation of one task graph, on top of its model's.
+
+    The model half is ``_mjcf_contract``'s and is re-run through it, because
+    a task inherits every claim its model makes -- same bodies, same
+    actuators, same assembly. What is checked here is only what a task adds:
+    that each action, reward term, termination rule and randomisation entry
+    really came from the API that makes it.
+
+    A ``DomainValue`` is a plain object and a script can construct one that
+    looks close enough, so this is not a restatement of what ``api.task``
+    already checked -- it is the check that the thing reaching the worker
+    went through ``api.task`` at all.
+    """
+
+    model = value.arguments[0]
+    _mjcf_contract(output_name, model, assembly_value=assembly_value)
+    properties = _properties(value, "task")
+    declared_actuators = {id(item) for item in _properties(model, "mjcf").get("actuators") or ()}
+    expected = {
+        "actions": ("actuator", "actuator"),
+        "reward": ("reward", "reward"),
+        "termination": ("termination", "termination"),
+        "randomisation": ("randomise", "randomise"),
+    }
+    for parameter, (operation, output_type) in expected.items():
+        for index, entry in enumerate(list(properties.get(parameter) or [])):
+            if (
+                not isinstance(entry, DomainValue)
+                or entry.domain != "assembly"
+                or entry.operation != operation
+                or entry.output_type != output_type
+            ):
+                raise AssemblyCandidateError(
+                    f"Task {parameter} {index} in {output_name!r} must come "
+                    f"from api.{operation}.",
+                    details={"stage": "task_graph", "output": output_name},
+                )
+            if parameter == "actions" and id(entry) not in declared_actuators:
+                raise AssemblyCandidateError(
+                    f"Task action {index} in {output_name!r} drives an "
+                    "actuator its model does not carry.",
+                    details={"stage": "task_graph", "output": output_name},
+                )
+    # An observation channel is validated with the model rather than here:
+    # it is an argument to api.mjcf, so it is already inside the graph
+    # _mjcf_contract just walked.
+    for index, entry in enumerate(
+        list(_properties(model, "mjcf").get("observations") or [])
+    ):
+        if (
+            not isinstance(entry, DomainValue)
+            or entry.domain != "assembly"
+            or entry.operation != "observation"
+            or entry.output_type != "observation"
+        ):
+            raise AssemblyCandidateError(
+                f"Observation {index} on the model {output_name!r} reads must "
+                "come from api.observation.",
+                details={"stage": "task_graph", "output": output_name},
+            )
+
+
 def _exploded_view_contract(
     raw_result: Mapping[str, Any],
     *,
@@ -2934,7 +3060,46 @@ def _mujoco_model_inputs(
             }
             for entry in list(properties.get("actuators") or [])
         ],
+        # An observation names one of three things and the worker's only
+        # job is to say which -- an id-keyed map turned back into the output
+        # name the engine knows the part by (M6).
+        "observations": [
+            _observation_input(entry, component_outputs, joint_outputs)
+            for entry in list(properties.get("observations") or [])
+        ],
     }
+
+
+def _observation_input(
+    entry: DomainValue,
+    component_outputs: Mapping[int, str],
+    joint_outputs: Mapping[int, str],
+) -> dict[str, Any]:
+    """One ``api.observation`` value, as the entry CadexDynamics resolves.
+
+    An actuator channel is the one that needs unfolding: its target is an
+    ``api.actuator``, whose own target is the joint, and the pure module
+    identifies a motor by the coordinate it drives plus its kind -- which is
+    what the compiled model names it after.
+    """
+
+    properties = dict(_properties(entry, "observation"))
+    target = entry.arguments[0]
+    kind = str(properties.get("kind"))
+    resolved: dict[str, Any] = {
+        "kind": kind,
+        "name": str(properties.get("name")),
+    }
+    if target.output_type == "actuator":
+        resolved["joint"] = joint_outputs[id(target.arguments[0])]
+        resolved["motion_type"] = str(properties.get("motion_type"))
+        resolved["actuator_kind"] = str(properties.get("actuator_kind"))
+    elif target.output_type == "joint":
+        resolved["joint"] = joint_outputs[id(target)]
+        resolved["motion_type"] = str(properties.get("motion_type"))
+    else:
+        resolved["component"] = component_outputs[id(target)]
+    return resolved
 
 
 def _execute_dynamics_simulation(
@@ -3091,6 +3256,7 @@ def _execute_mjcf_export(
     joint_outputs: Mapping[int, str],
     artifact_root: Path,
     outputs_by_name: Mapping[str, dict[str, Any]],
+    models: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     """Export the assembly as one MJCF file (docs/MUJOCO.md M5, ADR-066).
 
@@ -3105,6 +3271,12 @@ def _execute_mjcf_export(
     single hardcoded filename: a script may declare more than one
     ``api.mjcf`` and two of them writing to one path would leave the second
     silently winning.
+
+    ``models`` is where the built model and its resolved observation
+    channels are left for the task loop that runs after this one. Kept
+    rather than rebuilt: an ``api.task`` that re-derived its model would be
+    describing a *second* build of it, and the one thing a bundle must not
+    be wrong about is which model it belongs to.
     """
 
     import CadexDynamics
@@ -3143,8 +3315,20 @@ def _execute_mjcf_export(
             joint_dynamics=model_inputs["joint_dynamics"],
             actuators=model_inputs["actuators"],
         )
+        # Resolved against the tree that was just built, not against the
+        # graph: a channel on a joint the spanning forest turned into a loop
+        # closure is refused with that reason (M6 phase 1), which is a thing
+        # only the built model knows.
+        observations = CadexDynamics.observation_records(
+            model_inputs["observations"],
+            built["tree"],
+            built["joint_records"],
+            built["actuators"],
+        )
         exported = CadexDynamics.export_mjcf(
-            built, context=f"assembly output {assembly_output!r}"
+            built,
+            observations=observations,
+            context=f"assembly output {assembly_output!r}",
         )
     except CadexDynamics.DynamicsError as error:
         raise _dynamics_failure(output_name, error, operation="mjcf") from error
@@ -3160,9 +3344,10 @@ def _execute_mjcf_export(
         }
     )
     model = CadexDynamics.model_evidence(built, model_inputs["components"])
+    retained_relative = Path("outputs") / f"{output_name}-model.xml"
     retained = _retain_artifact(
         output_name=output_name,
-        relative=Path("outputs") / f"{output_name}-model.xml",
+        relative=retained_relative,
         payload=exported["xml"],
         artifact_kind=_MJCF_ARTIFACT_KIND,
         schema=_MJCF_SCHEMA,
@@ -3186,7 +3371,199 @@ def _execute_mjcf_export(
         "dynamics": model,
     }
     outputs_by_name[output_name]["assembly_data"] = summary
+    models[output_name] = {
+        "built": built,
+        "observations": observations,
+        "relative": Path(retained_relative),
+    }
     return summary
+
+
+def _execute_task_bundle(
+    *,
+    assembly_output: str,
+    output_name: str,
+    value: DomainValue,
+    mjcf_outputs: Mapping[int, str],
+    models: Mapping[str, Mapping[str, Any]],
+    component_outputs: Mapping[int, str],
+    joint_outputs: Mapping[int, str],
+    artifact_root: Path,
+    outputs_by_name: Mapping[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """One declared task, as the self-contained bundle a trainer reads.
+
+    Runs after the ``api.mjcf`` loop rather than beside it, and the ordering
+    is the design: the bundle records its model's **path and sha256**, and
+    those exist only once the model has been retained. Reading them out of
+    ``outputs_by_name`` rather than recomputing them means the digest in the
+    bundle is the digest of the bytes that actually landed.
+
+    The model is then **reloaded from that file**, not reused from memory.
+    Everything the bundle records -- a sensor's address, an actuator's
+    index, a randomisation's field offset -- is an address into the file
+    somebody else will open, so resolving them against anything but the file
+    would be describing a model nobody has. It is also what makes the exit
+    criterion a claim about the *task spec*: the reference runner and the
+    engine load the same bytes, so a disagreement between them is about the
+    task and not about the physics M5 already proved.
+    """
+
+    import CadexDynamics
+
+    mjcf_output = mjcf_outputs[id(value.arguments[0])]
+    stashed = models[mjcf_output]
+    declared = outputs_by_name[mjcf_output]
+    model_path = Path(str(declared["artifact_path"]))
+    xml = (artifact_root / model_path).read_bytes()
+    digest = hashlib.sha256(xml).hexdigest()
+    if digest != str(declared["artifact_sha256"]):
+        raise AssemblyCandidateError(
+            f"The MuJoCo model {mjcf_output!r} on disk does not match the "
+            "digest that was recorded for it.",
+            details={
+                "stage": "task_artifact",
+                "output": output_name,
+                "mjcf_output": mjcf_output,
+            },
+        )
+
+    properties = _properties(value, "task")
+    declaration = {
+        "label": str(properties.get("label") or ""),
+        "episode_seconds": float(properties.get("episode_seconds")),
+        "control_hz": int(properties.get("control_hz")),
+        "actions": [
+            {
+                "joint": joint_outputs[id(entry.arguments[0])],
+                "motion_type": str(entry.properties.get("motion_type")),
+                "actuator_kind": str(entry.properties.get("kind")),
+            }
+            for entry in list(properties.get("actions") or [])
+        ],
+        "reward": [
+            {
+                "label": str(entry.properties.get("label") or "reward"),
+                "expression": str(entry.properties.get("expression")),
+                "weight": float(entry.properties.get("weight")),
+            }
+            for entry in list(properties.get("reward") or [])
+        ],
+        "termination": [
+            {
+                "label": str(entry.properties.get("label") or "termination"),
+                "expression": str(entry.properties.get("expression")),
+                "above": entry.properties.get("above"),
+                "below": entry.properties.get("below"),
+            }
+            for entry in list(properties.get("termination") or [])
+        ],
+        "randomisation": [
+            _randomisation_input(entry, component_outputs, joint_outputs)
+            for entry in list(properties.get("randomisation") or [])
+        ],
+    }
+
+    try:
+        reloaded = CadexDynamics.load_model(xml)
+        bundle = CadexDynamics.task_records(
+            stashed["built"],
+            reloaded,
+            declaration,
+            observations=stashed["observations"],
+            context=f"task output {output_name!r}",
+        )
+        episode = CadexDynamics.evaluate_episode(reloaded, bundle)
+    except CadexDynamics.DynamicsError as error:
+        raise _dynamics_failure(output_name, error, operation="task") from error
+
+    bundle["model"] = {
+        "path": model_path.as_posix(),
+        "sha256": digest,
+        "bytes": len(xml),
+        "output": mjcf_output,
+        "mujoco_version": str(bundle["mujoco_version"]),
+    }
+    payload = json.dumps(bundle, indent=2, sort_keys=True).encode("utf-8")
+    retained = _retain_artifact(
+        output_name=output_name,
+        relative=Path("outputs") / f"{output_name}-task.json",
+        payload=payload,
+        artifact_kind=_TASK_ARTIFACT_KIND,
+        schema=str(CadexDynamics.TASK_SCHEMA),
+        maximum_bytes=CadexDynamics.MAXIMUM_TASK_BYTES,
+        subject="Training task",
+        stage="task_artifact",
+        correction=(
+            "A task is names, numbers and short expressions. A bundle this "
+            "large means an observation or reward list that grew by accident."
+        ),
+        artifact_root=artifact_root,
+        outputs_by_name=outputs_by_name,
+    )
+    summary = {
+        "assembly_output": assembly_output,
+        "task_output": output_name,
+        "mjcf_output": mjcf_output,
+        **retained,
+        "task": {
+            "label": str(bundle["label"]),
+            "model_sha256": digest,
+            "model_path": model_path.as_posix(),
+            "observation_channels": [
+                str(channel)
+                for record in bundle["observations"]
+                for channel in record["channels"]
+            ],
+            "action_count": len(bundle["actions"]),
+            "reward_terms": [str(term["label"]) for term in bundle["reward"]],
+            "termination_rules": [
+                str(rule["label"]) for rule in bundle["termination"]
+            ],
+            "randomisation": [
+                str(entry["label"]) for entry in bundle["randomisation"]
+            ],
+            "episode": dict(bundle["episode"]),
+            "mujoco_version": str(bundle["mujoco_version"]),
+        },
+        # One episode, run here from the file that was just written. It is
+        # not the training run -- it is the receipt that the bundle
+        # describes something that executes, taken before anybody is told
+        # the task exists. A spec that refers to a channel MuJoCo will not
+        # produce fails here rather than in a trainer.
+        "episode": {
+            "steps": int(episode["step_count"]),
+            "total_reward": float(episode["total_reward"]),
+            "terminated_step": episode["terminated_step"],
+            "termination": str(episode["termination"]),
+            "truncated": bool(episode["truncated"]),
+        },
+    }
+    outputs_by_name[output_name]["assembly_data"] = summary
+    return summary
+
+
+def _randomisation_input(
+    entry: DomainValue,
+    component_outputs: Mapping[int, str],
+    joint_outputs: Mapping[int, str],
+) -> dict[str, Any]:
+    """One ``api.randomise`` value, as the entry CadexDynamics resolves."""
+
+    properties = dict(_properties(entry, "randomise"))
+    target = entry.arguments[0]
+    resolved: dict[str, Any] = {
+        "target": str(properties.get("target")),
+        "label": str(properties.get("label") or properties.get("target")),
+        "low": float(properties.get("low")),
+        "high": float(properties.get("high")),
+    }
+    if target.output_type == "joint":
+        resolved["joint"] = joint_outputs[id(target)]
+        resolved["motion_type"] = str(properties.get("motion_type"))
+    else:
+        resolved["component"] = component_outputs[id(target)]
+    return resolved
 
 
 def _dynamics_failure(
@@ -3199,7 +3576,7 @@ def _dynamics_failure(
     simulation that is not in the script (M5 phase 3).
     """
 
-    subject = "MJCF" if operation == "mjcf" else "Dynamics"
+    subject = {"mjcf": "MJCF", "task": "Task"}.get(operation, "Dynamics")
     return AssemblyCandidateError(
         f"{subject} output {simulation_output!r} could not be built: {error}",
         details={
@@ -3962,6 +4339,11 @@ def validate_and_solve_assembly(
         raw_result,
         assembly_value=assembly_value,
     )
+    task_contract = _task_outputs_contract(
+        raw_result,
+        assembly_value=assembly_value,
+        mjcf_exports=mjcf_contract,
+    )
     exploded_view_contract = _exploded_view_contract(
         raw_result,
         assembly_value=assembly_value,
@@ -3971,8 +4353,12 @@ def validate_and_solve_assembly(
         simulation_contract = None
         # An export is derived exactly as a trace is: it cannot move a
         # solved placement, so a pose-only preview would be paying to build
-        # and verify a model it is about to discard (ADR-055).
+        # and verify a model it is about to discard (ADR-055). A task is
+        # derived from an export, so dropping the export drops it too --
+        # and it would be the more expensive of the two to keep, since
+        # building the bundle runs a whole episode.
         mjcf_contract = []
+        task_contract = []
         exploded_view_contract = []
     assembly_properties = _properties(assembly_value, "assembly")
     component_values = list(assembly_properties.get("components") or [])
@@ -4419,6 +4805,8 @@ def validate_and_solve_assembly(
             )
         diagnostics["simulation"] = simulation_summary
     mjcf_summaries: list[dict[str, Any]] = []
+    mjcf_models: dict[str, dict[str, Any]] = {}
+    mjcf_outputs = {id(value): name for name, value in mjcf_contract}
     for mjcf_output, mjcf_value in mjcf_contract:
         if diagnostics["status"] != "solved":
             raise AssemblyCandidateError(
@@ -4455,10 +4843,54 @@ def validate_and_solve_assembly(
                 joint_outputs=joint_outputs,
                 artifact_root=artifact_root,
                 outputs_by_name=by_name,
+                models=mjcf_models,
             )
         )
     if mjcf_summaries:
         diagnostics["mjcf"] = mjcf_summaries
+    task_summaries: list[dict[str, Any]] = []
+    for task_output, task_value in task_contract:
+        # After the export loop, so the model's retained path and sha256
+        # exist for the bundle to record (M6 phase 3). The precondition is
+        # the export's own: a task carries the solved pose through its
+        # model's keyframe, so an unsolved graph has nothing to reset to.
+        if diagnostics["status"] != "solved":
+            raise AssemblyCandidateError(
+                f"Task output {task_output!r} requires a clean solved assembly "
+                "graph even when api.solve(..., require_solved=False).",
+                details={
+                    "stage": "task_precondition",
+                    "output": task_output,
+                    "solver_code": solver_code,
+                    "solver_verdict": solver_verdict,
+                    "correction": (
+                        "A task's episodes start from the solved keyframe of "
+                        "the model it reads. Repair the reported joint or "
+                        "grounding failure, obtain Diagnostics "
+                        "status='solved', then declare the task."
+                    ),
+                },
+            )
+        if artifact_root is None:
+            raise AssemblyCandidateError(
+                "A training task requires the isolated candidate artifact root.",
+                details={"stage": "task_artifact", "output": task_output},
+            )
+        task_summaries.append(
+            _execute_task_bundle(
+                assembly_output=assembly_output,
+                output_name=task_output,
+                value=task_value,
+                mjcf_outputs=mjcf_outputs,
+                models=mjcf_models,
+                component_outputs=component_outputs,
+                joint_outputs=joint_outputs,
+                artifact_root=artifact_root,
+                outputs_by_name=by_name,
+            )
+        )
+    if task_summaries:
+        diagnostics["task"] = task_summaries
     exploded_view_summaries: list[dict[str, Any]] = []
     for exploded_view_output, exploded_view_value in exploded_view_contract:
         if diagnostics["status"] != "solved":

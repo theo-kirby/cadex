@@ -5906,6 +5906,19 @@ def task_records(
     }
 
 
+def load_model(xml: bytes) -> Any:
+    """One exported file's bytes, as a compiled model.
+
+    Here rather than in the worker because this module is the only one in
+    the tree allowed to import ``mujoco`` -- ``test_engine_purity_guardrails``
+    asserts that import closure exactly, and a worker that loaded a model
+    itself would be the second place it entered.
+    """
+
+    mujoco = _mujoco_module()
+    return mujoco.MjModel.from_xml_string(bytes(xml).decode("utf-8"))
+
+
 def observation_values(
     task: Mapping[str, Any], sensordata: Sequence[float]
 ) -> dict[str, float]:

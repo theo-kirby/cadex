@@ -2310,6 +2310,7 @@ class AssemblyDomainAPI:
         kind: str,
         *,
         name: str,
+        motion_type: str = "auto",
         label: str = "",
     ) -> DomainValue:
         """Declare one channel of a task's observation space.
@@ -2375,9 +2376,24 @@ class AssemblyDomainAPI:
         properties: dict[str, Any] = {"kind": clean_kind, "name": clean_name}
         if wanted == "actuator":
             # An actuator is identified by the coordinate it drives and the
-            # kind it is, because that is what the model names it after.
+            # kind it is, because that is what the model names it after. Its
+            # own coordinate is already resolved, so there is nothing for
+            # ``motion_type`` to disambiguate here.
+            if str(motion_type or "auto").strip().lower() != "auto":
+                raise _error(
+                    operation,
+                    "motion_type",
+                    "does not apply to an actuator_force channel: the actuator "
+                    "already names the coordinate it drives",
+                    motion_type,
+                )
             properties["motion_type"] = str(value.properties.get("motion_type"))
             properties["actuator_kind"] = str(value.properties.get("kind"))
+        elif wanted == "joint":
+            # A cylindrical joint owns a rotation and a slide, so observing
+            # "the position" of one says nothing about which -- the same
+            # reason api.actuator and api.joint_dynamics ask.
+            properties["motion_type"] = _coordinate(operation, value, motion_type)
         return self._value(operation, "observation", value, label=label, **properties)
 
     def reward(

@@ -517,3 +517,130 @@ def test_the_actuator_surface_did_not_change() -> None:
     _assembly_value, _components, joints = _assembly(api)
     with pytest.raises(ValueError, match="control_nmm"):
         api.actuator(joints[0], kind="motor", torque_limit_nmm=100)
+
+
+# ---------------------------------------------------------------------------
+# The worker's tier-3 re-validation (phase 3).
+#
+# A DomainValue is a plain object and a script can construct one that looks
+# close enough, so the worker validates the graph it is handed rather than
+# the graph it hopes was authored. These forge payloads the API would have
+# refused, which is what a rewritten one could look like.
+# ---------------------------------------------------------------------------
+
+
+def _forge(value, **properties):
+    object.__setattr__(value, "properties", {**value.properties, **properties})
+    return value
+
+
+def test_the_worker_contract_accepts_a_task_and_finds_its_model() -> None:
+    from cadex_assembly_worker import _mjcf_outputs_contract, _task_outputs_contract
+
+    api = _api()
+    scene = _scene(api)
+    task = _task(api, scene)
+    raw = {"asm": scene["assembly"], "model": scene["model"], "job": task}
+    exports = _mjcf_outputs_contract(raw, assembly_value=scene["assembly"])
+    tasks = _task_outputs_contract(
+        raw, assembly_value=scene["assembly"], mjcf_exports=exports
+    )
+    assert [name for name, _value in tasks] == ["job"]
+    assert tasks[0][1] is task
+
+
+def test_a_task_whose_model_is_not_returned_is_refused() -> None:
+    """A bundle references its model by path and sha256, so it must exist.
+
+    The check no earlier contract could make: the API knows the task got an
+    ``api.mjcf`` value, and only the worker knows whether that value was
+    *published*. A model built but not returned has no retained file, so the
+    bundle would point at a path nobody wrote -- discovered later, by
+    whoever tried to train it.
+    """
+
+    from cadex_assembly_worker import AssemblyCandidateError, _task_outputs_contract
+
+    api = _api()
+    scene = _scene(api)
+    task = _task(api, scene)
+    with pytest.raises(AssemblyCandidateError, match="does not return as an output"):
+        _task_outputs_contract(
+            {"asm": scene["assembly"], "job": task},
+            assembly_value=scene["assembly"],
+            mjcf_exports=[],
+        )
+
+
+def test_the_worker_re_checks_every_part_of_a_task_graph() -> None:
+    from cadex_assembly_worker import (
+        AssemblyCandidateError,
+        _mjcf_outputs_contract,
+        _task_outputs_contract,
+    )
+
+    api = _api()
+
+    def _contract(task, scene):
+        raw = {"asm": scene["assembly"], "model": scene["model"], "job": task}
+        exports = _mjcf_outputs_contract(raw, assembly_value=scene["assembly"])
+        return _task_outputs_contract(
+            raw, assembly_value=scene["assembly"], mjcf_exports=exports
+        )
+
+    # A reward that did not come from api.reward.
+    scene = _scene(api)
+    with pytest.raises(AssemblyCandidateError, match="api.reward"):
+        _contract(_forge(_task(api, scene), reward=(scene["motor"],)), scene)
+
+    # A termination that did not come from api.termination.
+    scene = _scene(api)
+    with pytest.raises(AssemblyCandidateError, match="api.termination"):
+        _contract(
+            _forge(_task(api, scene), termination=(api.reward("x"),)), scene
+        )
+
+    # A randomisation that did not come from api.randomise.
+    scene = _scene(api)
+    with pytest.raises(AssemblyCandidateError, match="api.randomise"):
+        _contract(
+            _forge(_task(api, scene), randomisation=(api.reward("x"),)), scene
+        )
+
+    # An action naming an actuator the model does not carry.
+    scene = _scene(api)
+    stray = api.actuator(scene["joints"][1], kind="motor", control_nmm="1",
+                         torque_limit_nmm=10)
+    with pytest.raises(AssemblyCandidateError, match="does not carry"):
+        _contract(_forge(_task(api, scene), actions=(stray,)), scene)
+
+    # An observation that did not come from api.observation. It rides on the
+    # model rather than on the task, which is where it was declared.
+    scene = _scene(api)
+    task = _task(api, scene)
+    _forge(scene["model"], observations=(api.reward("x"),))
+    with pytest.raises(AssemblyCandidateError, match="api.observation"):
+        _contract(task, scene)
+
+
+def test_a_task_inherits_its_models_own_graph_checks() -> None:
+    """Same bodies, same actuators, same assembly -- re-run, not restated."""
+
+    from cadex_assembly_worker import (
+        AssemblyCandidateError,
+        _mjcf_outputs_contract,
+        _task_outputs_contract,
+    )
+
+    api = _api()
+    scene = _scene(api)
+    task = _task(api, scene)
+    bodies = scene["model"].properties["bodies"]
+    _forge(scene["model"], bodies=tuple(bodies[:1]))
+    raw = {"asm": scene["assembly"], "model": scene["model"], "job": task}
+    with pytest.raises(AssemblyCandidateError, match="one api.body per"):
+        _task_outputs_contract(
+            raw,
+            assembly_value=scene["assembly"],
+            mjcf_exports=[("model", scene["model"])],
+        )
