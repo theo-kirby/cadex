@@ -5977,13 +5977,27 @@ def evaluate_episode(
     task: Mapping[str, Any],
     *,
     actions: Any = None,
+    sample: Any = None,
     seed: int | None = None,
 ) -> dict[str, Any]:
     """One full episode, from the bundle, in the engine.
 
-    **This is M8's rollout path.** M8 swaps where the action comes from and
-    changes nothing else, which is why ``actions`` is a callable taking the
-    step and the observation rather than a precomputed array.
+    **This is M8's rollout path**, and M8 took it: ``actions`` is a callable
+    taking the step and the observation rather than a precomputed array
+    precisely so that a trained policy could be dropped into it, and
+    :func:`rollout_policy` is what does the dropping. ``sample`` is the other
+    half of that swap and is the only thing M8 added to this loop.
+
+    ``sample`` is a callable ``(step, data, final) -> record | None`` invoked
+    once at the reset pose and once after every control step's integration,
+    with ``final`` true on the last invocation whether the episode was
+    terminated or truncated. Every non-``None`` return joins ``samples`` in
+    order. **The caller decides what a frame is**: this loop knows control
+    steps and nothing about frame rates, so a rollout that wants one frame
+    per five control steps returns ``None`` on the other four. One episode
+    loop stays one episode loop, which matters more here than anywhere --
+    M7 already carries three evaluators of the reward whitelist, and a
+    second loop would be a fourth place for the same drift.
 
     The bundle is the only input besides the model: no ``built``, no tree,
     no records. That is what makes the comparison against the reference
@@ -6065,9 +6079,19 @@ def evaluate_episode(
     mujoco.mj_forward(model, data)
 
     steps: list[dict[str, Any]] = []
+    samples: list[Any] = []
+
+    def _sampled(step: int, final: bool) -> None:
+        if sample is None:
+            return
+        record = sample(step, data, final)
+        if record is not None:
+            samples.append(record)
+
     total = 0.0
     terminated_step: int | None = None
     termination_label = ""
+    _sampled(0, max_steps < 1)
     for step in range(max_steps):
         time_s = step * control_interval
         observation = observation_values(task, data.sensordata)
@@ -6124,6 +6148,7 @@ def evaluate_episode(
                 "termination": reason,
             }
         )
+        _sampled(step + 1, bool(reason) or step == max_steps - 1)
         if reason:
             terminated_step = step
             termination_label = reason
@@ -6131,6 +6156,9 @@ def evaluate_episode(
     return {
         "label": str(task.get("label") or ""),
         "steps": steps,
+        # Empty unless a ``sample`` callable was given, and never inspected
+        # by this loop: what a record *is* belongs to whoever asked for one.
+        "samples": samples,
         "step_count": len(steps),
         "total_reward": total,
         "terminated_step": terminated_step,
@@ -7031,3 +7059,238 @@ def verify_policy(
         "training": dict(header.get("training") or {}),
     }
 
+
+# ---------------------------------------------------------------------------
+# The rollout (docs/MUJOCO.md M8, ADR-071).
+#
+# The whole arc's last step, and the smallest: the policy drives the episode
+# loop M6 already wrote, and what comes out is a trace in the schema the
+# shell has played since ADR-050. A swap, not a discovery.
+# ---------------------------------------------------------------------------
+
+#: What a rollout may leave behind, on the same two axes ``api.dynamics``
+#: bounds a trace on: frames are what the artifact carries, poses are what
+#: the shell bakes into keyframes. The solver's own cost is bounded
+#: separately by ``_episode_schedule`` -- an episode is budgeted before it
+#: runs, and these are re-checked against the frames that really came out.
+MAXIMUM_TRACE_FRAMES = 10_000
+MAXIMUM_TRACE_POSES = 100_000
+
+
+def rollout_policy(
+    model: Any,
+    task: Mapping[str, Any],
+    container: Mapping[str, Any],
+    *,
+    components: Sequence[str],
+    frames_per_second: int,
+    seed: int | None = None,
+    context: str = "this rollout",
+) -> dict[str, Any]:
+    """One trained policy, driving one episode, as trace frames.
+
+    The end of the arc, and it adds no physics: :func:`evaluate_episode` runs
+    the episode exactly as M6 wrote it, :func:`policy_forward` supplies the
+    action exactly as M7 wrote it, and what is new here is only *sampling* --
+    turning control steps into the frames ``cadex_animate`` has baked since
+    ADR-050.
+
+    Three details are contract rather than choice, and all three are
+    ``simulate``'s rather than this function's:
+
+    * **The frame schema is copied, not re-derived.** An untimed ``input``
+      frame first, then ``solver_output`` frames carrying ``position_mm`` and
+      ``rotation_xyzw`` for every component in every frame. The shell reads
+      exactly this, and a rollout that wrote a fourth dialect of it would be
+      a bake the viewport declines with nothing to point at.
+    * **Every component is in every frame** (hazard 5). ``cadex_animate``
+      skips a missing pose and Blender interpolates the gap, so a part that
+      stopped moving would look like a physics result.
+    * **``frames_per_second`` divides ``control_hz`` exactly**, which is the
+      control-step form of ``simulate``'s rule that a whole number of solver
+      steps lands on each frame. A policy picks its own control rate, so this
+      cannot be defaulted away; phase 0 measured what 50 Hz played at 60 fps
+      does, which is to put frames 1, 2 and 4 between two different actions.
+
+    **Zero new conversion sites** (hazard 1's sixth payment). The action
+    leaves ``policy_forward`` in the unit the bundle advertised and goes
+    through the ``clamp then x scale`` the episode loop has performed since
+    M6; the pose goes through :func:`vector_mm` and
+    :func:`quaternion_xyzw_from_wxyz`, which are the same two calls
+    ``simulate`` makes. ``test_dynamics_units`` greps this module's callers
+    for a third.
+
+    Returns the frames, the sampling schedule, and a summary of the episode
+    the frames came from -- total reward, per-term totals, step count,
+    whether it terminated or ran its horizon, and the seed and draws behind
+    it.
+    """
+
+    mujoco = _mujoco_module()
+    episode_schedule = task["episode"]
+    control_hz = int(episode_schedule["control_hz"])
+    control_interval = float(episode_schedule["control_interval_s"])
+    max_steps = int(episode_schedule["max_steps"])
+
+    rate = int(frames_per_second)
+    if rate < 1 or control_hz % rate:
+        divisors = ", ".join(
+            str(value) for value in range(1, control_hz + 1) if not control_hz % value
+        )
+        raise DynamicsError(
+            f"{context} samples at {rate} frames a second from a task that "
+            f"acts at {control_hz} Hz, which is not a whole number of control "
+            "steps a frame.",
+            reason="frame_rate_indivisible",
+            correction=(
+                "A trace frame is taken at a control-step boundary, the same "
+                "way a simulation's frame is taken at a solver-step boundary: "
+                "a frame between two actions would depend on floating-point "
+                "accumulation. This task can be played at "
+                f"{divisors} frames a second."
+            ),
+            observed={"frames_per_second": rate, "control_hz": control_hz},
+        )
+    steps_per_frame = control_hz // rate
+
+    names = [str(name) for name in components]
+    body_ids: dict[str, int] = {}
+    for name in names:
+        found = int(mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name))
+        if found < 0:
+            raise DynamicsError(
+                f"{context} plays a component named {name!r}, and the model it "
+                "reads carries no body of that name.",
+                reason="rollout_component_missing",
+                correction=(
+                    "The rollout resolves poses by component name against the "
+                    "exported model, so a component the export did not carry "
+                    "cannot be played. Export the model from the same "
+                    "assembly the rollout names."
+                ),
+                observed={"component": name, "components": names},
+            )
+        body_ids[name] = found
+
+    # Bounded before it runs, on the two axes api.dynamics bounds a trace on.
+    # The horizon is the worst case: an episode that terminates early
+    # produces fewer frames, never more.
+    frames_expected = max_steps // steps_per_frame + 2
+    poses_expected = frames_expected * len(names)
+    if frames_expected > MAXIMUM_TRACE_FRAMES or poses_expected > MAXIMUM_TRACE_POSES:
+        raise DynamicsError(
+            f"{context} would produce up to {frames_expected} frames and "
+            f"{poses_expected} component poses; the accepted maxima are "
+            f"{MAXIMUM_TRACE_FRAMES} and {MAXIMUM_TRACE_POSES}.",
+            reason="rollout_budget_exceeded",
+            correction=(
+                "Lower frames_per_second, or shorten the task's "
+                "episode_seconds. What the solver does is budgeted "
+                "separately, when the task bundle is built."
+            ),
+            observed={
+                "frames": frames_expected,
+                "poses": poses_expected,
+                "components": len(names),
+                "maximum_frames": MAXIMUM_TRACE_FRAMES,
+                "maximum_poses": MAXIMUM_TRACE_POSES,
+            },
+        )
+
+    header = container["header"]
+    weights = container["weights"]
+
+    def _actions(_step: int, observation: Mapping[str, float]) -> list[float]:
+        return policy_forward(header, weights, observation, context=context)
+
+    def _placements(data: Any) -> dict[str, dict[str, list[float]]]:
+        poses = {
+            name: {
+                "position_mm": vector_mm(data.xpos[body_ids[name]]),
+                "rotation_xyzw": quaternion_xyzw_from_wxyz(
+                    quaternion_normalised(data.xquat[body_ids[name]])
+                ),
+            }
+            for name in names
+        }
+        # Hazard 5, copied from ``simulate`` rather than shared with it: a
+        # component missing from one frame is not an error the shell reports
+        # -- cadex_animate skips it and Blender interpolates the gap, so a
+        # part that stops moving looks like a physics result.
+        if set(poses) != set(names):
+            raise DynamicsError(
+                "A rollout frame is missing a component pose.",
+                reason="incomplete_frame",
+                observed={"expected": names, "observed": sorted(poses)},
+            )
+        return poses
+
+    def _sample(step: int, data: Any, final: bool) -> dict[str, Any] | None:
+        # The last state is always recorded, however the episode ended: a
+        # trace that stopped at the previous frame boundary would show a
+        # mechanism that had not yet fallen over.
+        if step % steps_per_frame and not final:
+            return None
+        return {
+            "frame_kind": "solver_output",
+            "nominal_time_s": step * control_interval,
+            "component_placements": _placements(data),
+        }
+
+    episode = evaluate_episode(
+        model, task, actions=_actions, sample=_sample, seed=seed
+    )
+    sampled = list(episode["samples"])
+    if not sampled:
+        raise DynamicsError(
+            f"{context} produced no frames.",
+            reason="rollout_produced_no_frames",
+            observed={"steps": int(episode["step_count"])},
+        )
+
+    # The input frame is the reset pose, untimed, in front of the solved
+    # frame at t=0 -- ``simulate``'s first contract detail, and the one M1
+    # found by running its prototype against ``cadex_animate`` rather than by
+    # reading it.
+    frames: list[dict[str, Any]] = [
+        {
+            "frame_index": 0,
+            "frame_kind": "input",
+            "nominal_time_s": None,
+            "component_placements": sampled[0]["component_placements"],
+        }
+    ]
+    for record in sampled:
+        frames.append({"frame_index": len(frames), **record})
+
+    totals: dict[str, float] = {}
+    for step in episode["steps"]:
+        for term in step["reward_terms"]:
+            label = str(term["label"])
+            totals[label] = totals.get(label, 0.0) + float(term["weighted"])
+
+    return {
+        "frames": frames,
+        "frames_per_second": rate,
+        "steps_per_frame": steps_per_frame,
+        "frame_interval_s": steps_per_frame * control_interval,
+        # Read off the reloaded model rather than off the bundle: these are
+        # facts about the file that ran, and the file is the claim.
+        "solver_step_s": float(model.opt.timestep),
+        "solver_tolerance": float(model.opt.tolerance),
+        "episode": {
+            "label": str(episode["label"]),
+            "step_count": int(episode["step_count"]),
+            "episode_seconds": episode["step_count"] * control_interval,
+            "control_hz": control_hz,
+            "total_reward": float(episode["total_reward"]),
+            "reward_totals": [
+                {"label": label, "total": value} for label, value in totals.items()
+            ],
+            "terminated_step": episode["terminated_step"],
+            "termination": str(episode["termination"]),
+            "truncated": bool(episode["truncated"]),
+            "seed": episode["seed"],
+            "randomisation": list(episode["randomisation"]),
+        },
+    }
