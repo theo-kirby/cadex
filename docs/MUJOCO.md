@@ -1457,6 +1457,45 @@ Ranked by how quietly they fail.
    the badly-conditioned case that does not merely train worse but diverges
    used to run 150 more iterations and die in `json.dumps`.
 
+10. **A limb can be under-actuated, and the trained policy will look like a
+    gait rather than like a failure.** *Discovered by ADR-077, and the most
+    expensive hazard in this list so far: it cost a training run and a
+    written-down misreading.*
+    **The arithmetic is one line.** Holding a limb out against gravity takes
+    about **weight × limb length**:
+    ```
+    machine 13.708 kg -> 134.5 N;  shin 200 mm
+    static torque to hold a 90-degree crouch   26.9 N*m
+    torque the script gave hip and knee        12.0 N*m
+    ```
+    A joint that cannot *hold* a pose certainly cannot accelerate out of
+    one. That hopper's leg was short by 2.2x for holding, so nothing it
+    could have learned would have left the ground — and the training run
+    that "found a gait" was answering a question the mechanism had already
+    closed.
+    **Why it fails quietly.** The policy still converges, the reward still
+    improves, and the rollout still plays. ADR-075 §2 read the resulting
+    trace as the machine *tucking its leg up*; it was **falling**. Standing
+    straight is free because the moment arm is zero, so a policy under this
+    constraint learns to stand still and the trace looks deliberate. Nothing
+    refuses, because nothing is invalid — the model is exactly what was
+    asked for.
+    **The number that would have said so is not where the reader was
+    looking.** `model_evidence` reports `peak_effort_si` and `saturated`;
+    **a rollout's evidence does not.** In all 27 scripted push-offs against
+    that model the knee sat at exactly **12.00 N·m — its limit** — which is
+    unambiguous, and was not in front of anyone reading the rollout. Treat
+    an actuator pinned at its limit for a sustained stretch as a mechanism
+    finding, not a control one.
+    **What to do:** compute weight × limb length before training and compare
+    it to `torque_limit_nmm`, and prove the mechanism with a scripted
+    open-loop attempt *before* buying GPU time.
+    `~/cadex-hopper/feasibility.py` is the worked example — a 3x3x3 grid of
+    crouch-and-extend attempts against the exported MJCF, which runs in
+    seconds and has no learning in it. Sizing that leg at 60 N·m took it
+    from **0 of 27** configurations leaving the ground to **27 of 27**, best
+    **304 ms** of flight.
+
 ## 6. Open questions
 
 - ~~Does the script surface speak millimetres or metres?~~ — answered by M2:

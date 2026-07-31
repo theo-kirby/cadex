@@ -630,3 +630,50 @@ def test_a_stock_mujoco_loads_the_file_and_reaches_the_solved_pose(
         assert float(result["body_mass"][index]) == pytest.approx(
             expected, rel=dyn.MJCF_MASS_TOLERANCE
         )
+
+
+# ---------------------------------------------------------------------------
+# The mass a short decimal was hiding (ADR-077).
+# ---------------------------------------------------------------------------
+
+
+def test_a_body_whose_mass_is_not_a_short_decimal_still_exports() -> None:
+    """``MJCF_MASS_TOLERANCE`` was 1e-12 and the writer emits six figures.
+
+    Every fixture above has a mass that is a short decimal -- box volumes at
+    round densities -- and a short decimal round-trips six significant
+    figures exactly, so a bound seven orders tighter than the formatter
+    never fired. The first real body whose mass was not one, a shin with a
+    fused spherical foot, was refused as ``mjcf_lost_inertia``.
+
+    The density here is deliberately ugly. What it asserts is not merely
+    that the export succeeds but that it succeeds *while actually losing
+    precision* -- otherwise this passes for the same reason the fixtures
+    did, and pins nothing.
+    """
+
+    components, joints, _placements = fx.pendulum()
+    for component in components:
+        if component["name"] == "arm":
+            component["inertial"] = fx.box_inertial(
+                300.0, 40.0, 20.0, density=979.0783218
+            )
+    built = dyn.build_model(components, joints)
+
+    source = float(built["inertials"]["arm"]["mass_kg"])
+    assert len(f"{source:.12g}".split(".")[-1]) > 6, (
+        f"{source} is a short decimal; this fixture no longer exercises the bug"
+    )
+
+    exported = dyn.export_mjcf(built)          # refused before ADR-077
+    reloaded = mujoco.MjModel.from_xml_string(exported["xml"].decode("utf-8"))
+    index = mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_BODY, "arm")
+    written = float(reloaded.body_mass[index])
+
+    drift = abs(written - source)
+    assert drift > 1.0e-12, (
+        "the writer round-tripped this mass exactly, so the fixture does not "
+        "reach the code path ADR-077 fixed"
+    )
+    assert drift <= dyn.MJCF_MASS_TOLERANCE * max(1.0, abs(source))
+    assert written == pytest.approx(source, rel=1.0e-5)

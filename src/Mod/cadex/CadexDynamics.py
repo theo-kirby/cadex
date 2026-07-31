@@ -4014,7 +4014,8 @@ MJCF_KEYFRAME_NAME = "solved"
 #: guessed, and deliberately three separate numbers because the formatter
 #: charges wildly different amounts for them (M5 phase 0):
 #:
-#: * mass is one number and survives to 1e-16 relative;
+#: * mass is written with the same six significant figures as everything
+#:   else, so it lands under 1e-6 relative;
 #: * an inertia triple's smallest entry is 1e-5 of its largest, so six
 #:   significant figures leave 2.4e-6 of relative-to-largest error;
 #: * everything else -- positions, axes, actuator gains -- lands under
@@ -4023,7 +4024,18 @@ MJCF_KEYFRAME_NAME = "solved"
 #: There is no precision knob on ``MjSpec``. These are the terms on which
 #: the exported file is the model, and stating them is the honest version
 #: of "matches the in-engine simulation".
-MJCF_MASS_TOLERANCE = 1.0e-12
+#:
+#: The mass bound was 1e-12 until ADR-077, on a phase-0 measurement that
+#: read "survives to 1e-16 relative". That measurement was real and its
+#: generalisation was wrong: every fixture it was taken on had a mass that
+#: is a short decimal -- 13.188, 0.3328, 0.1872, all box volumes -- and a
+#: short decimal round-trips six significant figures exactly. The first
+#: body in this project whose mass was not one, a shin with a fused
+#: spherical foot at 0.234978783943 kg, was written back as `0.234979` and
+#: refused: 2.2e-7 of drift against a bound compared ABSOLUTELY for a
+#: sub-kilogram body. The formatter charges mass exactly what it charges
+#: everything else, so the bound is now the same 1e-5 as the others.
+MJCF_MASS_TOLERANCE = 1.0e-5
 MJCF_INERTIA_TOLERANCE = 1.0e-5
 MJCF_FIELD_TOLERANCE = 1.0e-5
 

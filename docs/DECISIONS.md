@@ -6917,3 +6917,142 @@ eventually does.
   backend, unimportable jax, digest mismatch, separated bundle-and-model, and
   quoted trainer arguments — before it was committed. Engine suite unmoved at
   **1108 passed, 12 skipped**; nothing here is in a suite the engine runs.
+
+## ADR-077 — The leg could not push, and ADR-075 read the collapse as a tuck (2026-07-31)
+
+**Status:** accepted. **Branch:** `MJC` only, per ADR-063's date-order rule.
+**Supersedes ADR-075 §2's reading of the policy**, which is wrong in a way
+someone would rely on. `docs/DECISIONS.md` is append-only, so ADR-075 stays
+as written and this entry corrects it — the precedent ADR-072 set with
+ADR-063.
+
+**Decision.** Size the hopper's actuators for the machine they move, give it
+a foot that exists, and put a feasibility gate in front of training. Record
+the correction to ADR-075, and fix the one engine defect the new geometry
+exposed.
+
+### 1. The correction: the leg was falling, not tucking
+
+ADR-075 §2 read the trained policy as standing for 0.9 s and then *tucking
+the leg up*. It was not tucking. **It was collapsing**, and the arithmetic
+that says so is one line:
+
+```
+machine 13.708 kg -> 134.5 N; shin 200 mm
+static torque to hold a 90-degree crouch   26.9 N*m
+torque the script gave hip and knee        12.0 N*m
+```
+
+The leg could not **hold** a 90-degree crouch, never mind accelerate out of
+one. Measured against the exported v3 model, all **27** scripted
+crouch-and-extend attempts left the knee pinned at exactly **12.00 N·m — its
+limit —** while the machine lay collapsed at the rail's −260 mm hard stop,
+and **0 of 27 left the ground**.
+
+That explains the observed policy completely and better than the tuck did.
+Standing straight is free because the moment arm is zero; every bend
+collapses. The policy found the only non-losing behaviour available to it,
+and the gait it "chose" was a property of the mechanism, not of the
+training. **No policy could have hopped**, so ADR-075's one training run was
+answering a question the mechanism had already closed.
+
+The general lesson, and the reason this is an ADR rather than a commit
+message: ADR-075 §2 was a *plausible reading of a trace*, written without
+checking whether the actuator was saturated. `model_evidence` reports
+`peak_effort_si` and `saturated`; **a rollout's evidence does not**, so the
+one number that would have contradicted the reading was not in front of the
+reader. That asymmetry is now recorded in `docs/MUJOCO.md`.
+
+### 2. The mechanism, v4
+
+Script-level, in `~/cadex-hopper/`, no new engine capability:
+
+1. **A real foot.** `part.fuse([shin_box, part.sphere(25, center=[0,0,-100])])`.
+   v3 collided on a 25 mm sphere that nothing drew, so the shin's visible
+   bottom sat 25 mm above the floor with an invisible ball bridging the gap
+   — the **second** bug in one model caused by collision geometry nobody can
+   see. The first was the floor's box (ADR-074). ADR-078's overlay makes
+   such geometry visible; a leg whose *drawn* shape floats is wrong
+   independently of that, so it is fixed rather than merely made visible.
+2. **Actuators sized for the job.** `torque_limit_nmm` 12 000 → **60 000**;
+   `stiffness_nmm_per_deg` 150 → **3491** (200 N·m·rad⁻¹);
+   `damping_nmms_per_deg` 15 → **349** (20 N·m·s·rad⁻¹). 60 N·m is 5× v3 and
+   **2.2× the static hold**, because accelerating out of a crouch costs more
+   than holding it. Clears the engine's `ω·h < 2` gain refusal with room:
+   ~0.024 kg·m² of hip inertia gives ω ≈ 91 rad·s⁻¹, and 91 × 0.002 s = 0.18.
+3. **`episode_seconds` 16 → 20.**
+4. **The reward baseline re-measured**, not carried over. From the solved
+   keyframe under zero control the machine settles at **rail_p = −25.399 mm**
+   (|v| = 2.6e-16), so the term is `rail_p + 25.4` where v3's was `+ 26.3`.
+   The settle point moves when the foot solid and the gains change, and
+   ADR-075 already records that taking it from the drawing rather than the
+   measurement was 6.3 mm wrong in the one term whose whole job is to read
+   ~0 at rest.
+5. **No policy.** `hop5.cxpolicy` was trained against v3's task and the
+   engine would refuse it here on the task digest alone, correctly. It is
+   not re-pointed at v4: a policy trained on a mechanism that could not hop
+   is not a starting point for one that can.
+
+**Measured after:** 27 of 27 configurations leave the ground, best **304 ms
+of flight**; at t = 0 the foot's bottom is at z = +20.00 mm against a floor
+top at 0.00 mm with `ncon == 0`.
+
+### 3. The gate, and where it lives
+
+`~/cadex-hopper/feasibility.py`: the arithmetic above, then a 3×3×3 grid of
+scripted crouch-and-extend attempts against the exported MJCF opened by
+stock MuJoCo. Flight is `ncon == 0` after the machine has first settled. It
+exits non-zero when nothing leaves the ground, and says so in the terms that
+act: *under-actuated by N×, raise `torque_limit_nmm` to at least M*.
+
+**Beside the project, not in `cadex_tests`** — ADR-075 §6 stands. It would
+not generalise: it hard-codes one machine's limb length and one model's
+joint names. What it replaces is not a test but an ordering, and the
+ordering is the point: **prove the mechanism, then spend the GPU.** It runs
+in seconds with no learning in it, and it would have made ADR-075's training
+run unnecessary.
+
+### 4. The engine defect the foot exposed
+
+**Beyond this ADR's script-level scope, and load-bearing, so it is stated
+plainly rather than buried.** The fused foot made the export fail:
+
+```
+The exported MJCF changed body 'shin''s mass from 0.234978783943 to 0.234979 kg.
+```
+
+`MJCF_INERTIA_TOLERANCE` is `1e-5`, sized in M5 phase 0 for a writer that
+emits six significant figures. `MJCF_MASS_TOLERANCE` was **`1e-12`** on the
+*same reload path*, from a phase-0 measurement recorded as "mass survives to
+1e-16 relative". That measurement was real and **its generalisation was
+wrong**: every fixture it was taken on has a mass that is a short decimal —
+13.188, 0.3328, 0.1872, all box volumes at round densities — and a short
+decimal round-trips six significant figures exactly. Worse, the comparison
+is `> tolerance * max(1.0, |mass|)`, so for a sub-kilogram body it is an
+*absolute* bound of 1e-12.
+
+Measured directly rather than inferred: MuJoCo's writer emits `0.234979` for
+`0.234978783943` — 2.2e-7 absolute, 9.2e-7 relative. It charges mass exactly
+what it charges everything else. `MJCF_MASS_TOLERANCE` is now `1e-5`, the
+same as the other two, and the comment that misstated the measurement is
+corrected in place.
+
+This is the class of defect that only real geometry finds: **any** body
+whose mass is not a short decimal was refused, which is most of them. A
+regression test pins it — `test_a_body_whose_mass_is_not_a_short_decimal_still_exports`
+— and it asserts not merely that the export succeeds but that it succeeds
+*while actually losing precision*, because otherwise it would pass for the
+same reason the old fixtures did and pin nothing. Verified to fail against
+the old bound with the identical error.
+
+The change is confined to `CadexDynamics.py`, which is `MJC`-only, so the
+"fix it on `main` first" rule does not apply — the file does not exist there.
+
+### 5. Consequences
+
+- Engine suite **1109 passed, 12 skipped**, up one for the regression test.
+- `~/cadex-hopper/` gains `feasibility.py` and `rebuild.py` (a headless
+  `cadexd` driver, so the loop does not need the app). The project stays
+  outside the repository, as ADR-075 §6 decided.
+- Training is now worth dispatching, and not before: `feasibility.py` green,
+  then `training/remote_train.sh check` green (ADR-076), then a run.
