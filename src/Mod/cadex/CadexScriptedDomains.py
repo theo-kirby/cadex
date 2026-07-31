@@ -283,6 +283,9 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "mjcf",
             "task",
             "policy",
+            # No new output type: a rollout is a `simulation`, which is the
+            # whole point of it (ADR-071).
+            "rollout",
             "body",
             "collision",
             # Six more intermediates, and deliberately absent from

@@ -1738,7 +1738,22 @@ def _capability_api_listing() -> dict[str, dict[str, Any]]:
         "the task's action ranges imply -- and re-evaluates the witness the "
         "trainer recorded with its own forward pass. A policy whose weights "
         "arrived intact but whose network the engine reads differently is "
-        "refused rather than run. A script may declare more than one."
+        "refused rather than run. A script may declare more than one. "
+        "assembly.rollout(policy, frames_per_second=..., seed=...) plays one "
+        "trained policy against its own task and produces a simulation trace "
+        "-- the same output api.simulation and api.dynamics produce, so a "
+        "script has exactly one of the three and a rollout cannot sit beside "
+        "assembly.motion. The policy it names must also be returned as an "
+        "output, because an unpublished policy is one the engine has not "
+        "verified. The model is reloaded from the file the task bundle names, "
+        "so the rollout runs the exact model the policy's digest attests to. "
+        "frames_per_second must divide the task's control_hz exactly and "
+        "defaults to it, which is one frame per control step; the refusal "
+        "lists the rates that task can be played at. seed draws the task's "
+        "assembly.randomise entries for this one episode, and without it "
+        "nothing is randomised. This is what closes the loop: design a "
+        "mechanism, train a policy for it offboard, and watch the mechanism "
+        "move under it."
     )
     return listing
 

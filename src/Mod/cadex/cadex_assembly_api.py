@@ -822,6 +822,12 @@ class AssemblyDomainAPI:
         "mjcf",
         "task",
         "policy",
+        # A rollout produces a `simulation`, not a type of its own, for
+        # exactly the reason `dynamics` does: it is baked, a script has one
+        # simulation whichever thing produced it, and two
+        # assembly_simulation_json artifacts would leave the shell baking
+        # neither (ADR-062, ADR-071).
+        "rollout",
         "body",
         "collision",
         "joint_dynamics",
@@ -2957,6 +2963,140 @@ class AssemblyDomainAPI:
             value,
             weights=clean_weights,
             sha256=clean_digest,
+            label=label,
+        )
+
+    def rollout(
+        self,
+        policy: DomainValue,
+        *,
+        frames_per_second: int | None = None,
+        seed: int | None = None,
+        label: str = "",
+    ) -> DomainValue:
+        """Play one trained policy against its own task, as a simulation.
+
+        The end of the arc that ``api.mjcf``, ``api.task`` and ``api.policy``
+        begin: the network that was trained offboard drives the mechanism it
+        was trained on, and what comes back is an ordinary ``simulation``
+        output -- the same trace the shell has baked since the kinematics
+        solver produced the first one. Nothing new reaches the viewport;
+        what reaches it is a learned gait instead of a prescribed motion.
+
+        ``policy`` is an ``api.policy`` value, and it must be **returned as
+        an output too**: a policy that nothing published has no verified
+        receipt, and an unverified policy is one the engine has not checked
+        against the task it claims. The model is then reloaded from the file
+        the task bundle names, so the rollout runs the exact model the
+        policy's digest attests to rather than whichever one is in memory --
+        phase 0 measured that those two are not the same trajectory.
+
+        This *is* under the "exactly one simulation" rule (ADR-062), unlike
+        ``api.mjcf``, ``api.task`` and ``api.policy``. A rollout is baked, so
+        a script with a rollout and an ``api.dynamics`` in it is a refusal
+        rather than a scene ``cadex_animate`` silently clears -- and for the
+        same reason a rollout cannot sit beside ``api.motion``.
+
+        ``frames_per_second`` **must divide the task's ``control_hz``
+        exactly** and defaults to it, which is one frame per control step.
+        The trace samples on control-step boundaries the way a dynamics run
+        samples on solver-step boundaries: a frame between two actions would
+        depend on floating-point accumulation. A policy picks its own control
+        rate, so the refusal names the rates that task can be played at.
+
+        ``seed`` draws the task's ``api.randomise`` entries for this one
+        episode, by the algorithm the bundle states. Without it nothing is
+        randomised and the rollout is the nominal mechanism.
+        """
+
+        operation = "rollout"
+        value = _domain_value(operation, "policy", policy, output_type="policy")
+        task = value.arguments[0] if value.arguments else None
+        if (
+            not isinstance(task, DomainValue)
+            or task.output_type != "task"
+        ):
+            raise _error(
+                operation,
+                "policy",
+                "must come from api.policy, which consumes one api.task value",
+            )
+        control_hz = int(task.properties.get("control_hz") or 0)
+        episode_seconds = float(task.properties.get("episode_seconds") or 0.0)
+        if control_hz < 1 or episode_seconds <= 0.0:
+            raise _error(
+                operation,
+                "policy",
+                "names a task with no episode to play; pass the api.policy "
+                "value built from an api.task",
+            )
+        if frames_per_second is None:
+            # One frame per control step, which is the only rate that is
+            # always available: it divides control_hz by construction.
+            rate = control_hz
+        else:
+            if isinstance(frames_per_second, bool) or not isinstance(
+                frames_per_second, int
+            ):
+                raise _error(
+                    operation,
+                    "frames_per_second",
+                    "expected an integer from 1 through 240",
+                    frames_per_second,
+                )
+            if not 1 <= frames_per_second <= 240:
+                raise _error(
+                    operation,
+                    "frames_per_second",
+                    "must be from 1 through 240",
+                    frames_per_second,
+                )
+            rate = frames_per_second
+        if seed is not None:
+            if isinstance(seed, bool) or not isinstance(seed, int):
+                raise _error(
+                    operation, "seed",
+                    "expected a non-negative integer, or None for no "
+                    "randomisation", seed,
+                )
+            if not 0 <= seed <= 2**31 - 1:
+                raise _error(
+                    operation, "seed",
+                    "must be from 0 through 2147483647", seed,
+                )
+        # The same two caps api.dynamics declares, from the schedule the task
+        # already fixed rather than from a time range: an episode's length is
+        # episode_seconds and its step count is not known until the bundle is
+        # built, so this is an upper bound the worker re-checks against the
+        # frames that really came out.
+        model = task.arguments[0] if task.arguments else None
+        assembly = (
+            model.arguments[0]
+            if isinstance(model, DomainValue) and model.arguments
+            else None
+        )
+        components = (
+            list(assembly.properties.get("components") or ())
+            if isinstance(assembly, DomainValue)
+            else []
+        )
+        estimated_frames = math.ceil(episode_seconds * rate) + 2
+        if estimated_frames > 10_000 or (
+            components and estimated_frames * len(components) > 100_000
+        ):
+            raise _error(
+                operation,
+                "frames_per_second",
+                "would exceed 10000 frames or 100000 component-pose samples; "
+                "lower frames_per_second or shorten the task's episode_seconds",
+            )
+        return self._value(
+            operation,
+            "simulation",
+            value,
+            frames_per_second=rate,
+            seed=seed,
+            estimated_frame_limit=estimated_frames,
             label=label,
         )
 

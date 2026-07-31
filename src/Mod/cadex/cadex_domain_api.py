@@ -123,6 +123,10 @@ _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
         # than the weights, which are an asset that no script can rebuild
         # (ADR-070).
         "policy": "policy",
+        # A rollout plays a trained policy and produces a `simulation`, the
+        # same type `dynamics` produces and for the same reason: it is baked,
+        # and a script has exactly one thing that is (ADR-062, ADR-071).
+        "rollout": "simulation",
         "observation": "observation",
         "reward": "reward",
         "termination": "termination",
