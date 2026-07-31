@@ -64,6 +64,16 @@ _MJCF_ARTIFACT_KIND = "assembly_mjcf_xml"
 #: itself as well as here, so a reader checks the version before the
 #: contents (M6, ADR-069).
 _TASK_ARTIFACT_KIND = "assembly_training_task_json"
+#: A policy *receipt*, and the distinction is the design (ADR-070). The
+#: weights are an asset -- hours of GPU compute that no script can rebuild --
+#: so what an output publishes is not the policy but the engine's verified
+#: statement about it: which task, which model, which channels, and how far
+#: the engine's own forward pass fell from the witness the trainer recorded.
+#: The receipt's bytes carry the policy's digest, which is how a policy
+#: enters the project's identity at all: ``compute_project_digest`` takes
+#: ``(root, outputs)`` and never walks ``assets/``.
+_POLICY_ARTIFACT_KIND = "assembly_policy_receipt_json"
+_POLICY_RECEIPT_SCHEMA = "cadex-policy-receipt-v1"
 _EXPLODED_VIEW_SCHEMA = "cadex-assembly-exploded-view-v1"
 _ASSEMBLY_HIERARCHY_SCHEMA = "cadex-assembly-source-hierarchy-v1"
 _MAX_HIERARCHY_NODES = 512
@@ -2108,6 +2118,72 @@ def _task_outputs_contract(
     return tasks
 
 
+def _policy_outputs_contract(
+    raw_result: Mapping[str, Any],
+    *,
+    task_exports: Sequence[tuple[str, DomainValue]],
+) -> list[tuple[str, DomainValue]]:
+    """Every ``api.policy`` output, and the task each one belongs to.
+
+    The same shape as ``_task_outputs_contract`` and the same one check that
+    matters: a policy must reference an ``api.task`` value **this script
+    returned as an output**. An unpublished task has no retained bundle and
+    no digest, and the digest is the entire claim a policy makes -- so a
+    policy pointing at one would be verified against a file nobody has.
+
+    Not under the "exactly one" rule, for the reason ``api.mjcf`` and
+    ``api.task`` are not: nothing bakes a policy, so two seeds against one
+    task is a reasonable script.
+    """
+
+    exported = {id(value): name for name, value in task_exports}
+    policies = [
+        (name, value)
+        for name, value in raw_result.items()
+        if isinstance(value, DomainValue) and value.output_type == "policy"
+    ]
+    for output_name, value in policies:
+        if value.operation != "policy" or len(value.arguments) != 1:
+            raise AssemblyCandidateError(
+                f"Policy output {output_name!r} must come from api.policy.",
+                details={"stage": "policy_graph", "output": output_name},
+            )
+        task = value.arguments[0]
+        if (
+            not isinstance(task, DomainValue)
+            or task.domain != "assembly"
+            or task.operation != "task"
+            or task.output_type != "task"
+        ):
+            raise AssemblyCandidateError(
+                f"Policy output {output_name!r} must consume an api.task value.",
+                details={"stage": "policy_graph", "output": output_name},
+            )
+        if id(task) not in exported:
+            raise AssemblyCandidateError(
+                f"Policy output {output_name!r} references a training task "
+                "this script does not return as an output.",
+                details={
+                    "stage": "policy_graph",
+                    "output": output_name,
+                    "returned_tasks": sorted(exported.values()),
+                    "correction": (
+                        "A policy is verified against its task bundle by "
+                        "digest, so the task has to be published too. Return "
+                        "the api.task value in result alongside the policy."
+                    ),
+                },
+            )
+        properties = _properties(value, "policy")
+        for field in ("weights", "sha256"):
+            if not str(properties.get(field) or ""):
+                raise AssemblyCandidateError(
+                    f"Policy output {output_name!r} declares no {field}.",
+                    details={"stage": "policy_graph", "output": output_name},
+                )
+    return policies
+
+
 def _task_contract(
     output_name: str,
     value: DomainValue,
@@ -3543,6 +3619,167 @@ def _execute_task_bundle(
     return summary
 
 
+def _execute_policy(
+    *,
+    assembly_output: str,
+    output_name: str,
+    value: DomainValue,
+    task_outputs: Mapping[int, str],
+    artifact_root: Path,
+    outputs_by_name: Mapping[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """One declared policy, verified against its task and published as a receipt.
+
+    Runs after the task loop for the reason the task loop runs after the
+    mjcf loop: it needs the task output's ``artifact_sha256`` to exist,
+    because the whole claim a policy makes is *which bundle it was trained
+    on* and that bundle's digest is only real once the bytes have landed.
+
+    The weights themselves are **an asset, not a derivation** (docs/MUJOCO.md
+    3.1). A policy is hours of stochastic GPU compute and cannot be rebuilt
+    from a script, so what the script carries is the one thing that can be
+    checked -- the name and the digest -- and what this publishes is a
+    *receipt*: an output whose retained bytes join the project digest by
+    ADR-068's have-an-artifact clause, exactly as M6's bundle did and with as
+    little code.
+
+    Why a receipt at all, rather than letting the asset speak for itself:
+    ``compute_project_digest`` takes ``(root, outputs)`` and does not walk
+    ``assets/``. A policy that nothing published would land with a sha256 in
+    ``put_asset``'s reply and in no project identity at all -- so a project
+    could be reopened with different weights under the same digest, which is
+    precisely what the digest exists to catch.
+    """
+
+    import CadexDynamics
+
+    task_output = task_outputs[id(value.arguments[0])]
+    declared = outputs_by_name[task_output]
+    task_path = Path(str(declared["artifact_path"]))
+    task_bytes = (artifact_root / task_path).read_bytes()
+    task_digest = hashlib.sha256(task_bytes).hexdigest()
+    if task_digest != str(declared["artifact_sha256"]):
+        raise AssemblyCandidateError(
+            f"The training task {task_output!r} on disk does not match the "
+            "digest that was recorded for it.",
+            details={
+                "stage": "policy_artifact",
+                "output": output_name,
+                "task_output": task_output,
+            },
+        )
+    task = json.loads(task_bytes.decode("utf-8"))
+
+    properties = _properties(value, "policy")
+    weights_name = str(properties.get("weights") or "")
+    declared_digest = str(properties.get("sha256") or "")
+
+    # The same confinement ``cadex_mesh_worker._import_asset`` applies, and
+    # for the same reason: the name came out of a script.
+    assets = (artifact_root / "assets").resolve()
+    path = (assets / weights_name).resolve()
+    if path.parent != assets or not path.is_file():
+        raise AssemblyCandidateError(
+            f"Policy output {output_name!r} names no staged asset "
+            f"{weights_name!r}.",
+            details={
+                "stage": "policy_asset",
+                "output": output_name,
+                "weights": weights_name,
+                "correction": (
+                    "Store the .cxpolicy file in the project assets directory "
+                    "with put_asset before running the script; the runtime "
+                    "stages assets for the isolated worker."
+                ),
+            },
+        )
+    blob = path.read_bytes()
+    observed_digest = hashlib.sha256(blob).hexdigest()
+    if observed_digest != declared_digest:
+        raise AssemblyCandidateError(
+            f"Policy output {output_name!r} declares sha256 "
+            f"{declared_digest!r} and {weights_name!r} digests to "
+            f"{observed_digest!r}.",
+            details={
+                "stage": "policy_asset",
+                "output": output_name,
+                "weights": weights_name,
+                "declared_sha256": declared_digest,
+                "observed_sha256": observed_digest,
+                "correction": (
+                    "A policy is the one part of a project that cannot be "
+                    "rebuilt from the script, so the script states which "
+                    "bytes it meant. Either the file was retrained or "
+                    "replaced -- paste the observed digest into "
+                    f"assembly.policy(..., sha256='{observed_digest}') if "
+                    "these are the weights you meant."
+                ),
+            },
+        )
+
+    try:
+        container = CadexDynamics.decode_policy(
+            blob, context=f"policy output {output_name!r}"
+        )
+        evidence = CadexDynamics.verify_policy(
+            container,
+            task,
+            task_sha256=task_digest,
+            context=f"policy output {output_name!r}",
+        )
+    except CadexDynamics.DynamicsError as error:
+        raise _dynamics_failure(output_name, error, operation="policy") from error
+
+    # Two labels, kept apart on purpose: the *script* names this output and
+    # the *container* carries whatever the training run was called. Folding
+    # the evidence in wholesale would let the second silently overwrite the
+    # first, and the published aLabel would be a name nobody wrote here.
+    trained_label = str(evidence.get("label") or "")
+    folded = {
+        key: value
+        for key, value in evidence.items()
+        if key not in ("schema", "label")
+    }
+    receipt = {
+        "schema": _POLICY_RECEIPT_SCHEMA,
+        "label": str(properties.get("label") or ""),
+        "trained_label": trained_label,
+        "weights": weights_name,
+        "policy_sha256": observed_digest,
+        "policy_bytes": len(blob),
+        "task_output": task_output,
+        "task_path": task_path.as_posix(),
+        **folded,
+        "policy_schema": str(evidence["schema"]),
+    }
+    payload = json.dumps(receipt, indent=2, sort_keys=True).encode("utf-8")
+    retained = _retain_artifact(
+        output_name=output_name,
+        relative=Path("outputs") / f"{output_name}-policy.json",
+        payload=payload,
+        artifact_kind=_POLICY_ARTIFACT_KIND,
+        schema=_POLICY_RECEIPT_SCHEMA,
+        maximum_bytes=CadexDynamics.MAXIMUM_TASK_BYTES,
+        subject="Policy receipt",
+        stage="policy_artifact",
+        correction=(
+            "A receipt is names, digests and a witness error. A file this "
+            "large means an observation channel list that grew by accident."
+        ),
+        artifact_root=artifact_root,
+        outputs_by_name=outputs_by_name,
+    )
+    summary = {
+        "assembly_output": assembly_output,
+        "policy_output": output_name,
+        "task_output": task_output,
+        **retained,
+        "policy": dict(receipt),
+    }
+    outputs_by_name[output_name]["assembly_data"] = summary
+    return summary
+
+
 def _randomisation_input(
     entry: DomainValue,
     component_outputs: Mapping[int, str],
@@ -3576,7 +3813,9 @@ def _dynamics_failure(
     simulation that is not in the script (M5 phase 3).
     """
 
-    subject = {"mjcf": "MJCF", "task": "Task"}.get(operation, "Dynamics")
+    subject = {"mjcf": "MJCF", "task": "Task", "policy": "Policy"}.get(
+        operation, "Dynamics"
+    )
     return AssemblyCandidateError(
         f"{subject} output {simulation_output!r} could not be built: {error}",
         details={
@@ -4344,6 +4583,10 @@ def validate_and_solve_assembly(
         assembly_value=assembly_value,
         mjcf_exports=mjcf_contract,
     )
+    policy_contract = _policy_outputs_contract(
+        raw_result,
+        task_exports=task_contract,
+    )
     exploded_view_contract = _exploded_view_contract(
         raw_result,
         assembly_value=assembly_value,
@@ -4359,6 +4602,11 @@ def validate_and_solve_assembly(
         # building the bundle runs a whole episode.
         mjcf_contract = []
         task_contract = []
+        # A policy is derived from a task which is derived from an export, so
+        # dropping the export drops all three -- and this is the most
+        # expensive of them to keep, since verifying one re-evaluates the
+        # trainer's whole witness.
+        policy_contract = []
         exploded_view_contract = []
     assembly_properties = _properties(assembly_value, "assembly")
     component_values = list(assembly_properties.get("components") or [])
@@ -4891,6 +5139,30 @@ def validate_and_solve_assembly(
         )
     if task_summaries:
         diagnostics["task"] = task_summaries
+    task_outputs = {id(value): name for name, value in task_contract}
+    policy_summaries: list[dict[str, Any]] = []
+    for policy_output, policy_value in policy_contract:
+        # After the task loop, so the bundle's retained digest exists for the
+        # policy to be verified against. There is no solver precondition of
+        # its own: a policy makes no claim about the solved graph that its
+        # task has not already made and been refused for.
+        if artifact_root is None:
+            raise AssemblyCandidateError(
+                "A policy requires the isolated candidate artifact root.",
+                details={"stage": "policy_artifact", "output": policy_output},
+            )
+        policy_summaries.append(
+            _execute_policy(
+                assembly_output=assembly_output,
+                output_name=policy_output,
+                value=policy_value,
+                task_outputs=task_outputs,
+                artifact_root=artifact_root,
+                outputs_by_name=by_name,
+            )
+        )
+    if policy_summaries:
+        diagnostics["policy"] = policy_summaries
     exploded_view_summaries: list[dict[str, Any]] = []
     for exploded_view_output, exploded_view_value in exploded_view_contract:
         if diagnostics["status"] != "solved":
