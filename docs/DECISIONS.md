@@ -6327,3 +6327,49 @@ plain one already in `CLAUDE.md`: anything touching `shell/` runs
 - Nothing in the engine's behaviour changes. The suite is **1105 passed, 12
   skipped** before this pass and after it, which is the assertion that the
   documentation work stayed documentation work.
+
+### 7. Removals landed under this entry
+
+The hygiene phase of the same pass, logged here per `CLAUDE.md`'s rule that
+every removal gets a `docs/DECISIONS.md` line. All verified by the engine
+suite at **1105 passed, 12 skipped**, unmoved.
+
+- **`MUJOCO_LOG.TXT` un-indexed** (`git rm --cached`). It was tracked *and*
+  gitignored: `.gitignore` gained the rule at M4 but the file was never
+  removed from the index, so the rule was inert and 352 lines of MuJoCo NaN
+  warnings were re-committed five times. A runtime artifact of a test that
+  deliberately diverges, never a source file.
+- **`CadexDynamics.__all__` deleted** — 75 entries against 123 public names,
+  50 missing, 2 stale, and nothing anywhere does `from CadexDynamics import
+  *`. It was a second inventory of the module, and it had already drifted
+  four slices' worth. Completing it would recreate exactly the thing that
+  drifted. **The three sibling modules keep theirs** (`CadexRouting.py`,
+  `CadexBundle.py`, `CadexSubshapeQuery.py`, all measured accurate) — at
+  400–600 lines an export list is checkable at a glance, and at 7,296 it is
+  not. That is the distinction, rather than a change of convention.
+- **Five dead names deleted**, each appearing exactly once in the whole
+  repository — the definition and no caller:
+  `cadex_assembly_worker.encoded_diagnostics`,
+  `CadexScriptedDomainPublication.compact_persisted_input_snapshots` and
+  `.migrate_assembly_dependency_anchors` (both one-shot migrations for
+  document shapes no live publication produces), and
+  `CadexScriptedDomains.PROGRAM_SCHEMAS` / `.XSCRIPT_VERSION` (residue of
+  the per-domain multi-program surface ADR-013 dissolved). 174 lines.
+- **`pixi.toml`'s platform-neutral `freecad-debug` / `freecad-release`
+  removed.** They pointed at `build/{debug,release}/bin/FreeCAD` — precisely
+  the build-tree binary the comment twenty lines above says must never be
+  run, because it carries both `.pixi` and `build/release/lib` on its rpath,
+  which loads two copies of `libFreeCADApp`, duplicates `App::GeoFeature`
+  type IDs, and makes PartDesign documents fail to restore. macOS and
+  Windows shadowed them with the installed binary; **Linux did not**, so
+  `pixi run freecad` there hit the forbidden path. Vestigial upstream
+  definitions. Verified that a dangling task alias does not break the
+  manifest — pixi reports "could not find the task" and every other task
+  still runs, which is the correct outcome on a platform where a release
+  build produces no FreeCAD binary at all (ADR-022).
+- **Added, not removed: `pixi run test-engine`.** `pixi run test` is the
+  inherited FreeCAD ctest with ~160 environmental failures; the 1,105-test
+  suite this project actually lives on was reachable only by typing a path
+  out of `CLAUDE.md`. A task, not a dependency — ADR-070's `pixi.toml`
+  prohibition is about `CARRIED_PYPI_PACKAGES` staying one entry long, and a
+  task adds nothing to solve.

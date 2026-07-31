@@ -122,10 +122,11 @@ pixi run install-app          # ...and copy it to /Applications so it opens like
                               # an app. Local install: the staged payload keeps
                               # resolving its libs out of this repo (ADR-058).
 
-pixi run python -m pytest src/Mod/cadex/cadex_tests   # engine tests, no build needed
+pixi run test-engine          # THE engine suite (1105 tests), no build needed
 pixi run configure            # CMake configure (debug, GUI ON)
 pixi run build                # build debug        | pixi run build-release (GUI OFF)
-pixi run test                 # ctest              | pixi run test-release
+pixi run test                 # inherited FreeCAD ctest, NOT the above
+                              #                    | pixi run test-release
 pixi run build-engine         # configure + build + install the engine (release)
 pixi run stage-engine         # the payload -> build/engine/cadex-engine-<v>-<os>-<arch>/
 pixi run build-shell          # the shell, with that payload installed into the bundle

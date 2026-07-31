@@ -265,6 +265,19 @@ install = [{ task = "install-debug" }]
 test = [{ task = "test-debug" }]
 freecad = [{ task = "freecad-debug" }]
 
+# The suite this project actually lives on: 1105 tests over src/Mod/cadex/,
+# headless, no build needed (conftest.py stubs FreeCAD). `test` above is the
+# *inherited FreeCAD* ctest, which is a different and much noisier thing --
+# ~160 pre-existing environmental failures, diffed against
+# build/ctest_baseline_failures.txt. Naming both makes which is which
+# obvious at the command line instead of in a doc.
+#
+# A task, not a dependency: ADR-070's pixi.toml prohibition is about
+# CARRIED_PYPI_PACKAGES staying one entry long, and this adds nothing to
+# solve. The 12 skips are the MJX-gated tests and are expected here; to run
+# them, use a venv built from training/requirements.txt.
+test-engine = { cmd = ["python", "-m", "pytest", "src/Mod/cadex/cadex_tests"]}
+
 build-debug = { cmd = ["cmake", "--build", "build/debug"]}
 build-release = { cmd = ["cmake", "--build", "build/release"]}
 install-debug = { cmd = ["cmake", "--install", "build/debug"]}
@@ -278,5 +291,13 @@ rebuild = { cmd = [".pixi/envs/default/bin/FreeCADCmd", "-c", "import sys; sys.p
 # NDJSON over stdio (docs/INTEGRATION.md, ADR-017). One process per project;
 # the shell (or a test harness) owns stdin/stdout.
 cadexd = { cmd = [".pixi/envs/default/bin/FreeCADCmd", "-c", "import sys; sys.path.insert(0, 'src/Mod/cadex'); import cadexd; raise SystemExit(cadexd.main())"]}
-freecad-debug = "build/debug/bin/FreeCAD"
-freecad-release = "build/release/bin/FreeCAD"
+# NOTE: there are deliberately no platform-neutral `freecad-debug` /
+# `freecad-release` definitions here. They used to point at
+# build/{debug,release}/bin/FreeCAD -- exactly the build-tree binary the
+# comment above the osx/win definitions says must never be run, because it
+# carries both .pixi and build/release/lib on its rpath and PartDesign
+# documents then fail to restore. macOS and Windows shadowed them with the
+# installed binary; Linux did not, so `pixi run freecad` there hit the
+# forbidden path. Vestigial upstream definitions, removed rather than fixed:
+# a release build has no FreeCAD binary at all (ADR-022), and the
+# application you launch is the shell.

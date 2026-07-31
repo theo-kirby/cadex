@@ -5541,14 +5541,3 @@ def validate_and_solve_assembly(
     if exploded_view_summaries:
         result["exploded_views"] = exploded_view_summaries
     return result
-
-
-def encoded_diagnostics(value: Mapping[str, Any]) -> str:
-    """Return a bounded stable representation for worker error messages/tests."""
-
-    return json.dumps(
-        _json_safe(value),
-        ensure_ascii=True,
-        sort_keys=True,
-        separators=(",", ":"),
-    )

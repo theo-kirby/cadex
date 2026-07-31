@@ -43,91 +43,6 @@ import ast
 import math
 from typing import Any, Mapping, Sequence
 
-__all__ = [
-    "DynamicsError",
-    "MM_PER_METRE",
-    "DEFAULT_GRAVITY_M_S2",
-    "MINIMUM_DENSITY_KG_M3",
-    "MAXIMUM_DENSITY_KG_M3",
-    "length_m",
-    "length_mm",
-    "vector_m",
-    "vector_mm",
-    "mass_kg",
-    "inertia_kg_m2",
-    "torque_nm",
-    "angle_radians",
-    "speed_m_s",
-    "stiffness_nm_per_rad",
-    "stiffness_n_per_m",
-    "damping_nms_per_rad",
-    "damping_ns_per_m",
-    "armature_kg_m2",
-    "checked_density",
-    "IDENTITY_MATRIX",
-    "checked_rigid_matrix",
-    "matrix_multiply",
-    "matrix_inverse",
-    "matrix_translation_mm",
-    "matrix_rotation",
-    "matrix_z_axis",
-    "matrix_from_rotation_translation",
-    "quaternion_wxyz_from_matrix",
-    "matrix_from_quaternion_wxyz",
-    "quaternion_wxyz_from_xyzw",
-    "quaternion_xyzw_from_wxyz",
-    "quaternion_multiply_wxyz",
-    "quaternion_conjugate_wxyz",
-    "quaternion_rotate_wxyz",
-    "quaternion_normalised",
-    "quaternion_from_axis_angle_wxyz",
-    "rotation_angle_between",
-    # inertia
-    "body_inertial",
-    "full_inertia_six",
-    # collision
-    "DEFAULT_COLLISION_DEFLECTION_MM",
-    "COLLISION_CONVEXITY_TOLERANCE",
-    "COLLISION_TESSELLATION_TOLERANCE",
-    "MAXIMUM_COLLISION_VERTICES",
-    "collision_deflection_mm",
-    "mesh_volume_mm3",
-    "convex_hull_volume_mm3",
-    "collision_geoms",
-    # the graph
-    "JOINT_TABLE",
-    "classify_joints",
-    "extract_tree",
-    "joint_transform",
-    "joint_coordinates",
-    "closure_residuals",
-    # actuation
-    "joint_dynamics_records",
-    "actuator_records",
-    "compile_control",
-    "evaluate_control",
-    "control_si",
-    # the model
-    "build_model",
-    "simulate",
-    "model_evidence",
-    # export
-    "export_mjcf",
-    "MAXIMUM_MJCF_BYTES",
-    "MJCF_KEYFRAME_NAME",
-    "MJCF_MASS_TOLERANCE",
-    "MJCF_INERTIA_TOLERANCE",
-    "MJCF_FIELD_TOLERANCE",
-    "MJCF_POSE_TOLERANCE_MM",
-    "DEFAULT_TIME_STEP_S",
-    "CLOSURE_RESIDUAL_MM",
-    "CLOSURE_RESIDUAL_RADIANS",
-    "CLOSURE_EQUALITY_TOLERANCE",
-    "MAXIMUM_ACTUATOR_OMEGA_STEP",
-    "MAXIMUM_DAMPING_RATE_PER_S",
-]
-
-
 #: One metre, in the unit FreeCAD speaks.
 MM_PER_METRE = 1000.0
 
@@ -2173,14 +2088,18 @@ MAXIMUM_STEPS_PER_SAMPLE = 2000
 #: the same 600-frame trace costs 4 800 steps at the default step and
 #: 1 200 000 at the finest one the per-frame cap allows.
 #:
-#: Naming them separately is the answer to docs/MUJOCO.md §6's remaining
-#: open question -- what the cap should count once an M7-scale rollout
-#: exists. A policy rollout is long in *steps* and short in frames: it
-#: wants to integrate for minutes and report a hundred poses. Under one
-#: combined cap that trade is impossible; under two it is exactly what the
-#: numbers describe. Two million steps is about forty seconds of solver
-#: time on a mechanism-sized model, which is long for a script and finite,
-#: and it is two orders above anything M3 itself needs.
+#: Naming them separately answered docs/MUJOCO.md §6's question about what
+#: the cap should count -- and M8 (ADR-071) built the rollout this
+#: anticipated, so the answer is settled rather than pending. A policy
+#: rollout is long in *steps* and short in frames: it integrates for minutes
+#: and reports a hundred poses. Under one combined cap that trade is
+#: impossible; under two it is exactly what the numbers describe. Two
+#: million steps is about forty seconds of solver time on a mechanism-sized
+#: model, which is long for a script and finite, and it is two orders above
+#: anything M3 itself needs. Note that a rollout's *frame* budget is
+#: ``MAXIMUM_TRACE_FRAMES`` / ``MAXIMUM_TRACE_POSES``, checked before it
+#: integrates rather than during: what the episode does was already bounded
+#: by ``_episode_schedule`` when the bundle was built.
 MAXIMUM_SOLVER_STEPS = 2_000_000
 
 #: How stiff a position actuator may be at a given solver step, as the

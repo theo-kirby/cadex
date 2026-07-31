@@ -23,9 +23,7 @@ PROGRAM_SCHEMA = "cadex-program-v2"
 # The xscript engine reuses this identical v2 program shape; only the schema
 # tag differs so a program manifest can be attributed to its authoring engine.
 XSCRIPT_PROGRAM_SCHEMA = "cadex-xscript-program-v2"
-PROGRAM_SCHEMAS = frozenset({PROGRAM_SCHEMA, XSCRIPT_PROGRAM_SCHEMA})
 PROJECT_SCRIPT_SCHEMA = "cadex-xscript-project-v1"
-XSCRIPT_VERSION = "2"
 MAX_SOURCE_BYTES = 256_000
 
 PROP_PROGRAM_ID = "CadexXScriptProgramId"
