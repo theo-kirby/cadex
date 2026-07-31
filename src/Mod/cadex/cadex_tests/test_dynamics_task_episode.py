@@ -242,13 +242,15 @@ def test_the_runner_checks_the_model_against_the_digest_the_bundle_recorded(
     assert "does not match the digest" in completed.stderr
 
 
-def test_the_two_evaluators_share_one_function_whitelist(tmp_path: Path) -> None:
-    """Two evaluators is where a whitelist drifts, so the file carries it.
+def test_the_three_evaluators_share_one_function_whitelist(tmp_path: Path) -> None:
+    """Two evaluators is where a whitelist drifts; M7 made it three.
 
-    Three things asserted equal rather than two: the runner's own globals,
-    the array in the bundle, and the engine's ``REWARD_FUNCTIONS``. This
-    codebase keeps catching drift by writing the second copy down; here it
-    costs one array.
+    Four things asserted equal rather than two: the runner's own globals, the
+    array in the bundle, the engine's ``REWARD_FUNCTIONS``, and -- since
+    ADR-070 -- the offboard trainer's, which compiles the same expressions a
+    third time under ``jax.numpy`` so they vectorise. This codebase keeps
+    catching drift by writing the second copy down; here it costs one array
+    and one more assertion.
     """
 
     bundle_path, bundle, _model = _write_bundle(tmp_path)
@@ -257,6 +259,26 @@ def test_the_two_evaluators_share_one_function_whitelist(tmp_path: Path) -> None
     assert there["functions"] == list(dyn.REWARD_FUNCTIONS)
     assert bundle["functions"] == list(dyn.REWARD_FUNCTIONS)
     assert there["functions"] == bundle["functions"]
+
+    # The third evaluator. Loaded from source rather than imported as a
+    # package -- it lives at the repository root and is in no payload -- and
+    # asked for its whitelist with a stand-in for jax.numpy, so this runs in
+    # an engine environment that has no jax at all.
+    import importlib.util
+
+    trainer_path = RUNNER.parents[4] / "training" / "cadex_train.py"
+    assert trainer_path.is_file(), "the offboard trainer is gone"
+    spec = importlib.util.spec_from_file_location("cadex_train", trainer_path)
+    trainer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(trainer)
+
+    class _Spellings:
+        def __getattr__(self, name):
+            return lambda *args, **kwargs: None
+
+    assert trainer.function_names(trainer.globals_for(_Spellings())) == (
+        bundle["functions"]
+    )
     # The runner refuses outright rather than failing mid-episode when the
     # two differ, which is what makes this a seam and not a coincidence.
     tampered = dict(bundle)

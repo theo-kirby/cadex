@@ -1,0 +1,28 @@
+# The offboard trainer's dependencies (docs/MUJOCO.md M7, ADR-070).
+#
+# Exactly pinned, for the reason ADR-060 pins mujoco exactly: MuJoCo's own
+# VERSIONING.md disclaims cross-version numerical reproducibility, and a
+# training run is only reproducible if the thing it ran against is.
+#
+# NONE of this enters pixi.toml. The engine builds and ships without a line
+# of it, `CARRIED_PYPI_PACKAGES` stays one entry long, and
+# `test_engine_purity_guardrails` asserts that no `jax` and no `mjx` reach
+# the staged payload. Install these into a venv on whatever machine trains:
+#
+#     python3 -m venv .venv && .venv/bin/pip install -r training/requirements.txt
+#
+# `mujoco` must match the release that wrote the model -- the bundle records
+# it as `mujoco_version`, and a mismatch is a run whose numbers cannot be
+# compared with the engine's.
+mujoco==3.10.0
+mujoco-mjx==3.10.0
+jax==0.7.2
+numpy==2.5.1
+
+# On a CUDA box, install jax with its GPU wheel instead of the line above:
+#
+#     pip install "jax[cuda12]==0.7.2"
+#
+# The trainer records `jax.default_backend()` into the policy, so a run that
+# silently fell back to CPU is visible in the artifact rather than only in
+# how long it took.

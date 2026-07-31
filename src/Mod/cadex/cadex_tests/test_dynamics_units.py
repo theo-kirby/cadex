@@ -327,18 +327,50 @@ _NO_CONVERSION_MODULES = (
     "CadexScriptedDomainPublication.py",
 )
 
+#: **Hazard 1's fifth payment** (docs/MUJOCO.md M7, ADR-070). The offboard
+#: trainer is not under ``src/Mod/cadex`` and is in no payload, but it is on
+#: the same boundary and pointing the other way: a policy's action vector
+#: crosses *out* of a trainer and *into* ``data.ctrl``. M7's answer is M5's
+#: and it is structural rather than disciplined -- the network emits in the
+#: bundle's advertised units, and the only arithmetic is the ``clamp then
+#: x scale`` ``evaluate_episode`` already performs. M7 added no conversion
+#: site anywhere, and this is what keeps that true if one is added later.
+_OFFBOARD_NO_CONVERSION_FILES = (
+    Path("training") / "cadex_train.py",
+)
+
+_REPO_ROOT = MODULE_DIR.parents[2]
+
+
+def _conversion_offenders(label: str, text: str) -> list[str]:
+    return [
+        f"{label}:{number}: {line.strip()}"
+        for number, line in enumerate(text.splitlines(), start=1)
+        if _CONVERSION_ARITHMETIC.search(line)
+    ]
+
 
 def test_no_conversion_arithmetic_outside_the_pure_module() -> None:
     offenders: list[str] = []
     for filename in _NO_CONVERSION_MODULES:
-        text = (MODULE_DIR / filename).read_text(encoding="utf-8")
-        for number, line in enumerate(text.splitlines(), start=1):
-            if _CONVERSION_ARITHMETIC.search(line):
-                offenders.append(f"{filename}:{number}: {line.strip()}")
+        offenders += _conversion_offenders(
+            filename, (MODULE_DIR / filename).read_text(encoding="utf-8")
+        )
+    for relative in _OFFBOARD_NO_CONVERSION_FILES:
+        path = _REPO_ROOT / relative
+        assert path.is_file(), (
+            f"{relative.as_posix()} is named by this grep and does not exist; "
+            "the test would pass vacuously"
+        )
+        offenders += _conversion_offenders(
+            relative.as_posix(), path.read_text(encoding="utf-8")
+        )
     assert not offenders, (
         "Unit conversion escaped CadexDynamics:\n  " + "\n  ".join(offenders) + "\n"
         "The pure module does every arithmetic operation including every unit "
-        "conversion; the worker does every FreeCAD read and nothing else."
+        "conversion; the worker does every FreeCAD read and nothing else, and "
+        "the offboard trainer multiplies by the per-channel scale the bundle "
+        "already computed."
     )
 
 
