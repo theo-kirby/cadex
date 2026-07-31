@@ -6505,3 +6505,163 @@ issue the request.
   the seam is entered on load.
 - The eventual fix is named and unscheduled. Whoever takes it should read §5
   first and expect to land the asynchronous path, not the one-line call.
+
+---
+
+## ADR-074 — A model says what it is already touching (2026-07-31)
+
+**Status:** accepted. **Branch:** `MJC` only — this ADR describes work that
+does not exist on `main`, and `docs/DECISIONS.md` is append-only on both
+branches, so conflicts here resolve in date order (ADR-063).
+
+**Decision.** `CadexDynamics.model_evidence` reports the contacts present at
+the model's starting pose: how many, and for each one the two geom names,
+the two component outputs, the world position and the signed distance.
+**Evidence, not a refusal** (§3).
+
+### 1. The failure it exists for
+
+A one-leg hopper, taken end to end through M0–M8 on this machine: design,
+solve, MJCF export, task bundle, offboard training, `put_asset`, verified
+policy, rollout, 532 keyframes baked in the shipped bundle. Every gate
+green, twice.
+
+The model was not the mechanism it was described as. Its floor:
+
+```python
+floor_solid = part.box(4000, 600, 40, origin=[-2000, -300, -40])
+...
+assembly.body(ground, density_kg_m3=7850,
+              collision=assembly.collision("box", size_mm=[4000, 600, 40]))
+```
+
+The solid spans z = −40…0, so the floor you can see has its top at z = 0.
+The collision box has the same extents and no offset, so it is centred on
+the **component frame's** origin and spans z = −20…+20. The foot sphere's
+bottom sits at z = 20. Measured on the compiled model:
+
+```
+visible floor solid   z = -40 .. 0      (top at 0)
+floor COLLISION box   z = -20 .. +20    (top at +20)
+foot sphere bottom    z = 20
+contact 0: z = 20.00 mm, dist = 0.000   <- touching at t=0, ncon=1 every step
+```
+
+The policy was supported for the whole episode. Both readings offered for
+its behaviour — first "it learned to stand", then "reaction hovering" —
+were explanations of an artefact, and the second was additionally
+impossible: internal forces cannot hold a system's centre of mass up. What
+caught it was looking at the viewport. Nothing else did, and nothing else
+could have: there is no view of collision geometry, so a shape's position
+is visible only in the script that wrote it.
+
+The general statement, which is the finding rather than the instance:
+**a collision primitive is placed in the component frame, and the solid is
+placed in that same frame independently.** `part.box`'s `origin` is a
+*corner*, so a box authored to sit under its own origin and a primitive
+centred on that origin describe different volumes — legitimately, in both
+cases. Nothing ties them together and nothing checks them.
+
+### 2. Why the obvious guards do not work
+
+Recorded because the reasoning is most of the deliverable — the next person
+to reach for a bounding-box rule should find out here rather than by
+shipping one.
+
+- **Overlap** (primitive bbox ∩ solid bbox non-empty) — *misses this bug*.
+  The floor solid spans −40…0 and the collision spans −20…+20; they overlap
+  across −20…0, which is half the collision box. It passes.
+- **Containment** (primitive inside the solid's bbox) — *false-positives
+  legitimate geometry*. The hopper's foot sphere deliberately protrudes
+  25 mm below the shin. That is how a rounded foot is modelled, and it is
+  the single most ordinary use of an offset primitive in the whole surface.
+- **Centre-inside** (the primitive's centre within the solid) — the floor's
+  collision centre sits **exactly** on the solid's boundary, z = 0. A rule
+  that has to resolve a tie on a floating-point equality is not a rule.
+
+No bounding-box relation discriminates, because the bug is not a
+relationship between two boxes — it is a claim about which surface a
+mechanism stands on. **The observable that does discriminate is what is in
+contact at the exported keyframe.**
+
+### 3. Evidence rather than a refusal, and why
+
+A refusal here would be a behaviour change with real false positives. A
+mechanism designed to start on its feet is ordinary and common — a
+quadruped at rest, a block on a table, the settled pose the corrected
+hopper deliberately starts from — and every one of them would be noise.
+
+The precedent for a refusal is two hundred lines away and instructive by
+contrast: `build_model` refuses a loop closure violated at the starting
+pose (`CadexDynamics.py`, `reason="closure_inconsistent"`) on the grounds
+that a pre-stressed model "will begin with a snap". That is a refusal
+because a violated closure has **no** correct reading — nothing a script
+could have meant produces it. A resting contact has one.
+
+Interpenetration past `margin` is the case that might deserve to join that
+refusal, and it is deliberately deferred. Landing the evidence is what
+*produces the data* to decide: once the fixtures and real projects carry an
+`initial_contacts` record, whether penetration at t = 0 is always a mistake
+becomes a question about observations rather than a guess. `penetrating` is
+reported per contact so that escalation, if it comes, has its predicate
+already defined and already tested.
+
+### 4. What was added
+
+- **`CadexDynamics._initial_contacts`** — one `MjData`, `qpos` set to
+  `built["qpos_solved"]`, one `mj_forward`. The same three-line pattern
+  `_dof_inertia` and `_closure_violation` already use, so it costs nothing
+  structurally new. The pose is the *solved* one deliberately: that is what
+  the MJCF keyframe writes and what every rollout starts from, where
+  MuJoCo's reference configuration would describe a pose nothing runs.
+- **Three keys on `model_evidence`**: `initial_contact_count` (never
+  truncated), `initial_contacts` (capped at
+  `MAXIMUM_REPORTED_INITIAL_CONTACTS = 64`) and `initial_contacts_omitted`.
+- **`INITIAL_PENETRATION_TOLERANCE_M = 1e-9`.** Measured: a foot resting
+  exactly on a floor composes out of the placement chain at about 5e-17 m of
+  residue, and a bare `dist < 0` reported `penetrating: true` on the correct
+  model. One nanometre is four orders above the noise and eight below
+  anything a person could have drawn, so nothing real sits in the gap.
+- **`api.collision`'s docstring** gains the frame warning with the worked
+  failure in it, because that is where an author is standing when they make
+  this mistake.
+- **`docs/MUJOCO.md` hazard 8**, in the register the other seven use.
+- **Three regression cases** in `test_dynamics_contact.py`, on the hopper's
+  own chain rather than a synthetic fixture: the shipped floor reports one
+  contact at z = 20.00 mm, the corrected floor reports none, and a floor
+  raised 5 mm reports `penetrating`. The chain length is load-bearing — the
+  foot and the floor are three joints apart, so they are not an excluded
+  pair; a one-joint fixture reports nothing however wrong the floor is,
+  which is a way to write this test that passes and proves nothing.
+
+### 5. Where it can be read, measured rather than assumed
+
+- **A `dynamics` run**: the full evidence is already in the trace artifact
+  as `trace["dynamics"]`, so the new keys arrive there with no plumbing.
+- **An `mjcf` export**: through `inspect scope="object"` on the publication
+  object, at
+  `path="/properties/CadexAssemblyMjcfValidation/value"` — a JSON string
+  whose `dynamics` block is the whole of `model_evidence`. Verified against
+  a live `cadexd`.
+- **Not** through `inspect scope="output"`, and this was checked because it
+  was expected to work. Two independent reasons, neither dynamics-specific:
+  `_OUTPUT_DETAIL_KEYS` in `CadexInspection.py` does not list
+  `assembly_data`, and `publish_project_candidate` re-projects every
+  `live_outputs` row down to five keys, dropping `assembly_data`,
+  `facts`, `mesh_data` and `operation_diagnostics` — all four of which
+  `CadexdProtocol.py`'s `live_outputs.*` golden explicitly permits. That
+  second one looks like a plain bug and it affects `main` identically, so
+  under `CLAUDE.md`'s routing rule it is **not fixed here**. Recorded so the
+  next person does not re-derive it.
+
+### 6. Consequences
+
+- No behaviour change. Three keys are added to a record that was already
+  produced and already published; nothing is refused that was not refused
+  before, and no digest moves — `model_evidence` feeds evidence and
+  artifacts, not the content digest.
+- The evidence is **not** free of MuJoCo's own conventions: a contact
+  appears when the gap is inside the pair's `margin`, so `distance_mm` can
+  be positive. That is reported rather than filtered, because a pair the
+  solver is already watching is a fact about the model.
+- Engine suite **1108 passed, 12 skipped** (1105 before).

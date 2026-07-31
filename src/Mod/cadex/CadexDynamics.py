@@ -3720,6 +3720,100 @@ def _active_equality_residual(mujoco: Any, data: Any) -> float:
     )
 
 
+#: How many starting contacts the evidence names one by one. A mechanism
+#: that starts with more than this touching is telling the reader something
+#: with its count rather than its list, and the count is never truncated.
+MAXIMUM_REPORTED_INITIAL_CONTACTS = 64
+
+#: Below this much overlap, a contact is touching rather than interpenetrating.
+#: A foot resting exactly on a floor composes out of the placement chain at
+#: about 5e-17 m of residue -- measured on the hopper -- and calling that
+#: "penetrating" would put a true flag on every model that starts in contact
+#: on purpose. One nanometre is four orders above the noise and eight below
+#: anything a person could have meant to draw, so nothing real sits between.
+INITIAL_PENETRATION_TOLERANCE_M = 1.0e-9
+
+
+def _initial_contacts(built: Mapping[str, Any]) -> dict[str, Any]:
+    """Which collision shapes are already touching at the starting pose.
+
+    The observable that discriminates a collision shape placed where its
+    author meant from one placed 20 mm out. No bounding-box rule does
+    (ADR-074): a shape may legitimately sit outside its solid -- a rounded
+    foot protrudes below the shin on purpose -- and a shape wholly inside
+    the solid's box can still be in the wrong place, which is exactly the
+    floor whose collision box overlapped its own visible top surface across
+    half its span and still stood 20 mm proud of it. What that floor could
+    not hide is that something was resting on it at t=0.
+
+    Evidence, not a refusal. A mechanism designed to start on its feet is
+    ordinary and a quadruped standing still would be noise; the refusal
+    ``build_model`` does make two hundred lines up is for a loop closure
+    violated at the starting pose, and it is a refusal because a
+    pre-stressed model has no correct reading. A resting contact has one.
+    Whether interpenetration past ``margin`` should join that refusal is a
+    decision this block exists to inform rather than pre-empt.
+
+    The pose is ``qpos_solved`` -- the assembly's own solved configuration,
+    which is what the MJCF keyframe writes and what every rollout starts
+    from. Reporting contacts at MuJoCo's reference configuration instead
+    would describe a pose nothing runs.
+    """
+
+    mujoco = _mujoco_module()
+    model = built["model"]
+    data = mujoco.MjData(model)
+    data.qpos[:] = list(built["qpos_solved"])
+    mujoco.mj_forward(model, data)
+
+    def geom_name(index: int) -> str:
+        return str(
+            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, int(index)) or ""
+        )
+
+    def owning_body(index: int) -> str:
+        body = int(model.geom_bodyid[int(index)])
+        return str(
+            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, body) or ""
+        )
+
+    contacts = []
+    for index in range(int(data.ncon)):
+        contact = data.contact[index]
+        distance = float(contact.dist)
+        contacts.append(
+            {
+                "geoms": [geom_name(contact.geom1), geom_name(contact.geom2)],
+                # The body names *are* the component output names
+                # (``build_model`` names bodies after components), so this
+                # says which two parts touch without the reader having to
+                # parse ``<component>/collision<n>`` back apart.
+                "component_outputs": [
+                    owning_body(contact.geom1),
+                    owning_body(contact.geom2),
+                ],
+                "position_mm": vector_mm(list(contact.pos)),
+                # Signed, MuJoCo's convention: negative is interpenetration,
+                # zero is exact touching, and positive is a pair close enough
+                # that the solver is watching them but not yet resolving one.
+                # A contact only appears here at all when the gap is inside
+                # the geoms' margin, which is why the positive case is not
+                # noise.
+                "distance_mm": length_mm(distance),
+                "penetrating": distance < -INITIAL_PENETRATION_TOLERANCE_M,
+                "margin_mm": length_mm(float(contact.includemargin)),
+            }
+        )
+    contacts.sort(key=lambda record: (record["geoms"], record["position_mm"]))
+    return {
+        "initial_contact_count": len(contacts),
+        "initial_contacts": contacts[:MAXIMUM_REPORTED_INITIAL_CONTACTS],
+        "initial_contacts_omitted": max(
+            0, len(contacts) - MAXIMUM_REPORTED_INITIAL_CONTACTS
+        ),
+    }
+
+
 def model_evidence(
     built: Mapping[str, Any],
     components: Sequence[Mapping[str, Any]],
@@ -3832,6 +3926,13 @@ def model_evidence(
         # hinged to a grounded one, so without these a four-bar's crank
         # collides with the ground it turns on.
         "contact_exclusions": [list(pair) for pair in built["excluded_pairs"]],
+        # What is already touching before anything moves. The block above
+        # says what each body *may* touch; this one says what it *does*,
+        # at the pose the keyframe writes -- which is the only observable
+        # that catches a collision shape placed in the wrong frame
+        # (ADR-074, and :func:`_initial_contacts` for why nothing simpler
+        # works).
+        **_initial_contacts(built),
         "joints": [
             {
                 "joint_output": record["joint"],

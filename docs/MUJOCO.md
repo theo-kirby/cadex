@@ -1399,6 +1399,33 @@ Ranked by how quietly they fail.
    `shell/` diff is empty. Still worth listing as a hazard for whatever comes
    next, but the answer is now four slices of precedent rather than a
    pending ADR.
+8. **A collision shape and the solid it stands for are in the same frame
+   and are otherwise unrelated** (ADR-074). `collision(...)`'s `offset`
+   places a primitive in the **component frame**; `part.box(..., origin=…)`
+   moves the solid within that same frame. Nothing connects them, nothing
+   checks them, and there is no view of the collision geometry. So a shape
+   can be the right kind, the right size, in the right units, on the right
+   body — and 20 mm from the surface it stands for.
+   **Measured, on the one-leg hopper.** A floor authored
+   `part.box(4000, 600, 40, origin=[-2000, -300, -40])` has its visible top
+   at z = 0; its collision `box` with the same extents and no offset spans
+   z = −20…+20. The foot rested on that invisible shelf from frame 0, the
+   policy trained against it, every gate passed twice, and the thing that
+   caught it was looking at the viewport.
+   **Why this ranks where it does:** it is quieter than everything above it.
+   Hazard 1 refuses, hazard 3 changes a digest, hazard 5 drifts visibly.
+   This one produces a mechanism that runs, exports, trains and plays back —
+   and is not the mechanism it is described as.
+   **What is done about it.** `model_evidence` reports the contacts present
+   at the exported keyframe: the count, the two geom names, the world
+   position and the signed distance. On the broken floor that is one contact
+   at z = 20.00 mm; on the corrected one it is none. Evidence rather than a
+   refusal, because a mechanism designed to start on its feet is ordinary —
+   ADR-074 §3 has the reasoning and §2 has why no bounding-box rule works.
+   **What is not done.** There is no view of collision geometry, and that is
+   the real fix: this bug is obvious in one second and invisible in an hour
+   of reading. It is a `shell/` diff, so it is a decision (ADR-072 §4), and
+   it is named here rather than smuggled in.
 
 ## 6. Open questions
 

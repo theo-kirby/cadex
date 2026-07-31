@@ -549,3 +549,170 @@ def test_two_bodies_slide_to_a_stop_at_the_friction_they_were_given() -> None:
     # v²/(2µg): 2²/(2·0.8·9.81) = 0.255 m and 2²/(2·0.2·9.81) = 1.019 m.
     assert rough == pytest.approx(0.255, rel=0.15)
     assert smooth == pytest.approx(1.019, rel=0.15)
+
+
+# --- Initial contact: the collision/solid frame mismatch (ADR-074) ----------
+#
+# The bug this pair of tests exists for shipped a working one-leg hopper
+# whose foot never touched the floor it was drawn on. Every gate was green
+# twice; a viewport caught it and nothing else did.
+#
+# `part.box(4000, 600, 40, origin=[-2000, -300, -40])` puts the floor solid
+# at z = -40..0, so its visible top is z = 0. `collision("box",
+# size_mm=[4000, 600, 40])` with no offset puts the collision box in the
+# COMPONENT frame -- centred on the origin, z = -20..+20. The collision top
+# stands 20 mm above the visible one and the foot rests on an invisible
+# shelf from frame 0.
+#
+# No bounding-box rule finds it. The two boxes OVERLAP across z = -20..0, so
+# an overlap test passes; a containment test would fail the foot sphere,
+# which protrudes 25 mm below the shin on purpose; and the collision box's
+# centre sits exactly on the solid's boundary, which is marginal either way.
+# The observable that does discriminate is what is touching at t = 0.
+
+
+def _hopper(floor_offset_mm: float):
+    """The hopper's chain, with the floor's collision box where it was.
+
+    ground -rail- torso -hip- thigh -knee- shin, foot sphere bottom at
+    world z = 20 mm. ``floor_offset_mm`` of 0 is the shipped bug; -20 is
+    the correction that puts the collision top back on the visible top.
+
+    The chain length is load-bearing rather than incidental: ``shin`` and
+    ``ground`` are three joints apart, so they are not an excluded pair and
+    their geoms are free to meet. A one-joint fixture would report nothing
+    however wrong the floor was.
+    """
+
+    components = [
+        {
+            "name": "ground",
+            "grounded": True,
+            "size": (4000.0, 600.0, 40.0),
+            "collision": {
+                "shapes": [
+                    fx.collision_shape(
+                        "box",
+                        size_mm=[4000.0, 600.0, 40.0],
+                        friction=1.0,
+                        offset={"position": (0.0, 0.0, floor_offset_mm)},
+                    )
+                ],
+                "mesh": None,
+            },
+        },
+        {"name": "torso", "size": (140.0, 100.0, 120.0)},
+        {"name": "thigh", "size": (40.0, 40.0, 200.0)},
+        {
+            "name": "shin",
+            "size": (30.0, 30.0, 200.0),
+            "collision": {
+                "shapes": [
+                    fx.collision_shape(
+                        "sphere",
+                        radius_mm=25.0,
+                        friction=1.2,
+                        offset={"position": (0.0, 0.0, -100.0)},
+                    )
+                ],
+                "mesh": None,
+            },
+        },
+    ]
+    joints = [
+        {
+            "name": "rail",
+            "kind": "slider",
+            "parent": "ground",
+            "child": "torso",
+            "parent_frame": fx.frame(position=(0.0, 0.0, 505.0)),
+            "child_frame": fx.frame(),
+            "values": [0.0],
+            "length_limits_mm": [-260.0, 400.0],
+        },
+        {
+            "name": "hip",
+            "kind": "revolute",
+            "parent": "torso",
+            "child": "thigh",
+            "parent_frame": fx.frame(
+                position=(0.0, 0.0, -60.0), axis=(1.0, 0.0, 0.0), angle_degrees=-90.0
+            ),
+            "child_frame": fx.frame(
+                position=(0.0, 0.0, 100.0), axis=(1.0, 0.0, 0.0), angle_degrees=-90.0
+            ),
+            "values": [0.0],
+            "angle_limits_degrees": [-70.0, 70.0],
+        },
+        {
+            "name": "knee",
+            "kind": "revolute",
+            "parent": "thigh",
+            "child": "shin",
+            "parent_frame": fx.frame(
+                position=(0.0, 0.0, -100.0), axis=(1.0, 0.0, 0.0), angle_degrees=-90.0
+            ),
+            "child_frame": fx.frame(
+                position=(0.0, 0.0, 100.0), axis=(1.0, 0.0, 0.0), angle_degrees=-90.0
+            ),
+            "values": [0.0],
+            "angle_limits_degrees": [-5.0, 130.0],
+        },
+    ]
+    return fx.build(components, joints)
+
+
+def test_a_collision_shape_left_in_the_component_frame_starts_in_contact() -> None:
+    components, joints, _placements = _hopper(0.0)
+    evidence = dyn.model_evidence(dyn.build_model(components, joints), components)
+
+    assert evidence["initial_contact_count"] == 1
+    contact = evidence["initial_contacts"][0]
+    assert sorted(contact["component_outputs"]) == ["ground", "shin"]
+    assert sorted(contact["geoms"]) == ["ground/collision0", "shin/collision0"]
+    # The number that says where the invisible shelf is: the foot meets the
+    # floor 20 mm above the floor's own top surface.
+    assert contact["position_mm"][2] == pytest.approx(20.0, abs=1.0e-6)
+    assert contact["distance_mm"] == pytest.approx(0.0, abs=1.0e-6)
+    # Resting, not overlapping -- and the tolerance is why. The residue out
+    # of the placement chain is about 5e-17 m; a bare `dist < 0` would call
+    # that interpenetration and put a true flag on every model that starts
+    # on its feet by design.
+    assert contact["penetrating"] is False
+    assert evidence["initial_contacts_omitted"] == 0
+
+
+def test_the_same_hopper_with_the_floor_offset_starts_clear_of_the_ground() -> None:
+    components, joints, _placements = _hopper(-20.0)
+    evidence = dyn.model_evidence(dyn.build_model(components, joints), components)
+
+    assert evidence["initial_contact_count"] == 0
+    assert evidence["initial_contacts"] == []
+    # Nothing else moved: the same shapes are still declared on the same two
+    # bodies, so this is the offset and not a collision that went missing.
+    assert {entry["component_output"] for entry in evidence["collisions"]} == {
+        "ground",
+        "shin",
+    }
+
+
+def test_interpenetration_is_reported_as_penetrating() -> None:
+    """The case a refusal would be argued about, with the data to argue from.
+
+    Evidence rather than a refusal is a decision ADR-074 takes deliberately
+    -- a mechanism designed to start on its feet is ordinary -- but the
+    signal that would drive an escalation has to exist first, and be
+    distinguishable from resting contact. 5 mm of overlap is not float
+    residue.
+
+    ``+5`` rather than ``-5``: a positive offset raises the collision box,
+    so its top goes to z = +25 against a foot whose bottom is at z = 20.
+    """
+
+    components, joints, _placements = _hopper(5.0)
+    evidence = dyn.model_evidence(dyn.build_model(components, joints), components)
+
+    assert evidence["initial_contact_count"] == 1
+    contact = evidence["initial_contacts"][0]
+    assert contact["penetrating"] is True
+    assert contact["distance_mm"] == pytest.approx(-5.0, abs=1.0e-6)

@@ -1389,6 +1389,30 @@ class AssemblyDomainAPI:
         recommended answer: a bracket's real collision behaviour is usually
         two boxes, not its own outline.
 
+        **A primitive is placed in the component frame, which is not the
+        solid's bounding box.** With no ``offset`` a primitive is centred on
+        the component's origin -- and that coincides with the solid only if
+        the solid was authored centred on its own origin, which
+        ``part.box`` does not do: its ``origin`` is a *corner*. Nothing ties
+        the two together and nothing checks them, so a shape can be the
+        right size, in the right units, on the right body, and 20 mm from
+        the surface it is supposed to be.
+
+        The worked failure, from a one-leg hopper. The floor is
+        ``part.box(4000, 600, 40, origin=[-2000, -300, -40])`` -- so its
+        solid spans z = -40..0 and its visible top is z = 0. Its collision
+        is ``collision("box", size_mm=[4000, 600, 40])``, correct extents,
+        no offset -- so the box is centred on the component origin and spans
+        z = -20..+20. The collision top stands **20 mm above the floor you
+        can see**, and the foot rested on that invisible shelf from frame 0.
+        The two boxes overlap across half their span, so no containment or
+        overlap rule would have caught it; ``offset={"position":
+        [0, 0, -20]}`` is the fix. What does catch it is the evidence:
+        ``initial_contact_count`` is non-zero at the exported keyframe, with
+        the geom names and the world position of the contact beside it
+        (ADR-074). Read it after ``api.mjcf`` on anything that is supposed
+        to start clear of the ground.
+
         **The component's own shape** -- ``mesh`` tessellates the
         component's solids and hands MuJoCo the result. MuJoCo takes the
         *convex hull* of any collision mesh without saying so, so a bracket
