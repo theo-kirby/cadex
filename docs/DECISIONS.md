@@ -6289,6 +6289,13 @@ re-derive them:
    still worth doing, still wants its own gate run rather than riding along
    with a documentation pass.
 
+**One unit note, since re-measuring turned it up.** ADR-061 says 53.5 MB and
+ADR-067 says 51 MB, and those are **the same measurement** — 51 MiB as `du`
+reports it, 53.5 MB decimal — not two figures that disagree. Re-measured on
+this pass against a freshly staged payload: `mujoco/` is 51 MiB, of which
+`mujoco/experimental/` is 30 MiB. The docs on this branch now say 53.5 MB
+uniformly; nobody should spend another minute reconciling them.
+
 ### 5. `pixi run gate` is run, not substituted for
 
 Four ADRs in a row on this branch (ADR-064, ADR-065, ADR-066, and then
@@ -6297,7 +6304,10 @@ be", each pointing at the empty `shell/` diff as the invariant the shell
 claim rests on. That reasoning is sound about *what the gate would catch* and
 poor as a habit: after four slices the branch could no longer say when the
 product had last been launched at all. **M8 broke the streak — ADR-071 §8
-records `pixi run gate` passing** — and this pass runs it again.
+records `pixi run gate` passing** — and this pass ran it again:
+`ok: true`, `engine_from_bundle: true`, picking **372/372** (fidelity 1.0,
+bar >= 0.99), slider-drag median **0.495 s** (bar <= 0.65), restore
+performed and digest-matched, and a simulation baked to 147 keyframes.
 
 An empty diff is a good argument for not *needing* the gate and a bad
 substitute for having run it: it proves the shell's *source* is unchanged and

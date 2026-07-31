@@ -100,6 +100,10 @@ and that is the number every argument on this branch rests on: it is why
 the way it did (ADR-067). About 30 MB of it is `mujoco/experimental/`, which
 the engine never imports; pruning it is known, deferred and `MJC`-owned.
 
+*(ADR-067 writes the same measurement as "51 MB". It is 51 **MiB** as `du`
+reports it and 53.5 MB decimal — one measurement, two units, not a
+disagreement. Re-confirmed 2026-07-31 against a freshly staged payload.)*
+
 ### Joint mapping
 
 MuJoCo has exactly four joint types — `free`, `ball`, `slide`, `hinge` —
