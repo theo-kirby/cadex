@@ -1,12 +1,18 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""M7's exit criterion, end to end (docs/MUJOCO.md M7, phase 6).
+"""M7's and M8's exit criteria, end to end (docs/MUJOCO.md M7--M8).
 
 A script goes into a live ``cadexd`` and declares a mechanism, an exported
 model, a trainable task and a **trained policy**. The weights arrive the way
 every other byte arrives -- through ``put_asset`` (ADR-043) -- and the engine
 verifies them against the task they were trained on before publishing a
 receipt whose bytes are part of the project's identity.
+
+**M8 adds the last link** (ADR-071): ``assembly.rollout`` plays that verified
+policy against the model its task bundle names and publishes the result as an
+ordinary simulation trace. So the chain this file drives now ends where the
+arc was always going -- design a mechanism, train a policy for it offboard,
+and watch the mechanism move under it.
 
 **No protocol change and no ``shell/`` diff.** That is the invariant ADR-063
 says the whole branch rests on, and M7 is designed so it stays true: a
@@ -114,6 +120,16 @@ POLICY_SCRIPT = TASK_SCRIPT.replace(
     """gait = assembly.policy(job, weights="walk.cxpolicy",
                        sha256="__SHA256__", label="gait")
 result = {"gait": gait, "post\"""",
+)
+
+#: M8's script: the same again, played (docs/MUJOCO.md M8, ADR-071). The
+#: rollout samples at 25 fps against a 50 Hz task -- one frame per two
+#: control steps -- so the frame count below is arithmetic rather than an
+#: observation.
+ROLLOUT_SCRIPT = POLICY_SCRIPT.replace(
+    'result = {"gait": gait, "post"',
+    """play = assembly.rollout(gait, frames_per_second=25, label="walk")
+result = {"play": play, "gait": gait, "post\"""",
 )
 
 
@@ -267,6 +283,115 @@ def test_a_policy_comes_home_and_the_engine_verifies_it() -> None:
             )
             assert receipt["witness_error"] < dyn.POLICY_WITNESS_TOLERANCE
             assert receipt["witness_tolerance"] == dyn.POLICY_WITNESS_TOLERANCE
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_the_engine_plays_the_policy_it_verified_and_the_trace_is_a_trace() -> None:
+    """M8's exit criterion, minus the claim that the gait is any good.
+
+    The whole chain in one script -- mechanism, model, task, policy, rollout
+    -- through the engine a user runs, ending in the artifact the shell has
+    baked since ADR-050. Whether the policy *learned* anything is asserted by
+    the training gate at the bottom of this file, which needs jax; this
+    asserts the path, which needs nothing.
+
+    **No protocol change and no ``shell/`` diff**, which is what the artifact
+    kind below is really testing: a rollout is not a new kind of thing to the
+    shell, it is a trace.
+    """
+
+    root = Path(tempfile.mkdtemp(prefix="m8-live-"))
+    try:
+        with _Session(root) as session:
+            revision, bundle_path = _accepted(session.write(TASK_SCRIPT))
+            bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+
+            container = _container_for(bundle_path, label="run-17")
+            weights = root.parent / "walk.cxpolicy"
+            weights.write_bytes(container["blob"])
+            assert session.put_asset(weights, "walk.cxpolicy")["ok"] is True
+
+            written = session.write(
+                ROLLOUT_SCRIPT.replace("__SHA256__", container["sha256"]),
+                revision,
+            )
+            assert written["ok"] is True, json.dumps(written)[:4000]
+
+            entry = written["display"]["play"]
+            assert entry["artifact_kind"] == "assembly_simulation_json"
+
+            trace = json.loads(
+                Path(entry["artifact_path"]).read_text(encoding="utf-8")
+            )
+            assert trace["schema"] == "cadex-assembly-simulation-trace-v1"
+            assert trace["component_outputs"] == ["base", "swing"]
+            assert trace["motion_outputs"] == []
+            assert trace["parameters"]["frames_per_second"] == 25
+
+            # The three digests, restated in the trace so it can be checked
+            # without opening the receipt beside it.
+            policy = trace["policy"]
+            assert policy["policy_sha256"] == container["sha256"]
+            assert policy["task_sha256"] == hashlib.sha256(
+                bundle_path.read_bytes()
+            ).hexdigest()
+            assert policy["model_sha256"] == bundle["model"]["sha256"]
+            assert policy["weights"] == "walk.cxpolicy"
+
+            # The sampling rule, as arithmetic on what the episode did: one
+            # frame per two control steps, the input frame in front, and the
+            # final state whether or not it landed on a boundary. Random
+            # weights spin this pendulum out, so the episode length is not
+            # known here -- but the frame count follows from it exactly.
+            steps = int(policy["step_count"])
+            assert 0 < steps <= 100
+            assert len(trace["frames"]) == 2 + steps // 2 + steps % 2
+            assert trace["frames"][0]["frame_kind"] == "input"
+            assert trace["frames"][0]["nominal_time_s"] is None
+            assert all(frame["frame_kind"] == "solver_output"
+                       for frame in trace["frames"][1:])
+            assert trace["frames"][-1]["nominal_time_s"] == pytest.approx(
+                steps / 50.0
+            )
+
+            # ...and the receipt is still published beside it. A rollout
+            # consumes a policy; it does not replace one.
+            assert (written["display"]["gait"]["artifact_kind"]
+                    == "assembly_policy_receipt_json")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_a_rollout_of_a_policy_the_script_does_not_publish_is_refused_live() -> None:
+    """An unpublished policy is one the engine never verified.
+
+    The receipt is where the engine records that it checked the weights
+    against the task they claim, and publishing is what produces it. A
+    rollout of a policy with no receipt would be a gait nothing stands
+    behind -- which is the exact failure ``verify_policy`` exists to turn
+    into a refusal.
+    """
+
+    root = Path(tempfile.mkdtemp(prefix="m8-live-unpublished-"))
+    try:
+        with _Session(root) as session:
+            revision, bundle_path = _accepted(session.write(TASK_SCRIPT))
+            container = _container_for(bundle_path)
+            weights = root.parent / "walk.cxpolicy"
+            weights.write_bytes(container["blob"])
+            assert session.put_asset(weights, "walk.cxpolicy")["ok"] is True
+
+            # The policy is built and played, and simply not returned.
+            source = ROLLOUT_SCRIPT.replace(
+                "__SHA256__", container["sha256"]
+            ).replace('result = {"play": play, "gait": gait, "post"',
+                      'result = {"play": play, "post"')
+            written = session.write(source, revision)
+            assert written["ok"] is False
+            text = json.dumps(written)
+            assert "does not return as an output" in text
+            assert "Return the api.policy value in result" in text
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -514,7 +639,7 @@ def test_a_task_the_engine_wrote_trains_to_a_policy_the_engine_accepts() -> None
             assert stored["sha256"] == report["sha256"]
 
             written = session.write(
-                POLICY_SCRIPT.replace("__SHA256__", report["sha256"]),
+                ROLLOUT_SCRIPT.replace("__SHA256__", report["sha256"]),
                 revision,
             )
             assert written["ok"] is True, json.dumps(written)[:4000]
@@ -529,23 +654,41 @@ def test_a_task_the_engine_wrote_trains_to_a_policy_the_engine_accepts() -> None
             assert receipt["training"]["device"] == "cpu"
             assert receipt["training"]["seed"] == 0
 
-            # And the loop M8 closes: the engine rolls the trained policy out
-            # against the very model the bundle names, beating the fallback.
+            # And the loop M8 closes: the engine rolled the trained policy
+            # out against the very model the bundle names, and the trace it
+            # published is of a mechanism doing something.
             bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
             model = dyn.load_model(
                 (artifact_root / bundle["model"]["path"]).read_bytes()
             )
-            container = dyn.decode_policy(out.read_bytes())
             fallback = dyn.evaluate_episode(model, bundle)
-            driven = dyn.evaluate_episode(
+            trace = json.loads(
+                Path(written["display"]["play"]["artifact_path"]).read_text(
+                    encoding="utf-8"
+                )
+            )
+            driven = float(trace["policy"]["total_reward"])
+            assert driven > fallback["total_reward"] * 1.5, (
+                f"the trained policy ({driven:.1f}) did not beat doing "
+                f"nothing ({fallback['total_reward']:.1f})"
+            )
+            # It ran the whole horizon rather than spinning out, which is
+            # what "it learned to swing up and hold it" looks like in a
+            # trace: 100 control steps, sampled every second one.
+            assert trace["policy"]["truncated"] is True
+            assert trace["policy"]["step_count"] == 100
+            assert len(trace["frames"]) == 52
+
+            # ...and the engine's own rollout agrees with a plain call to
+            # evaluate_episode on the same file, which is the assertion that
+            # M8 added a sampler rather than a second episode loop.
+            container = dyn.decode_policy(out.read_bytes())
+            direct = dyn.evaluate_episode(
                 model, bundle,
                 actions=lambda step, observation: dyn.policy_forward(
                     container["header"], container["weights"], observation
                 ),
             )
-            assert driven["total_reward"] > fallback["total_reward"] * 1.5, (
-                f"the trained policy ({driven['total_reward']:.1f}) did not "
-                f"beat doing nothing ({fallback['total_reward']:.1f})"
-            )
+            assert driven == pytest.approx(direct["total_reward"], rel=1.0e-12)
     finally:
         shutil.rmtree(root, ignore_errors=True)

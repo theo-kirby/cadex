@@ -1686,3 +1686,128 @@ def _assert_no_training_framework() -> None:
         "install it (ADR-070)."
     )
 
+
+#: The M8 script: the M7 policy, played. The rollout is declared with
+#: ``frames_per_second=25`` against a 50 Hz task, which is one frame per two
+#: control steps -- a rate that divides, chosen so the frame count below is
+#: arithmetic rather than an observation.
+ROLLOUT_SCRIPT = POLICY_SCRIPT.replace(
+    'result = {"gait": gait, "plate"',
+    """play = assembly.rollout(gait, frames_per_second=25, label="walk")
+result = {"play": play, "gait": gait, "plate\"""",
+)
+
+
+@pytest.mark.skipif(
+    FREECADCMD is None, reason="No FreeCADCmd binary available for cadexd CI."
+)
+def test_cadexd_plays_a_trained_policy_into_a_simulation_trace() -> None:
+    """A learned gait leaves the building (ADR-071), and it is the twelfth gate.
+
+    M8's shippable capability, and the end of the MuJoCo arc: design a
+    mechanism in Cadex, train a policy for it offboard, and get back a
+    simulation trace of that policy driving that mechanism. It exists for
+    ADR-023's reason -- a source tree that passes proves nothing about a
+    payload, the rule that caught the dangling ``bin/python`` in M0.
+
+    **No protocol change and no shell diff, and this is where that is
+    proved.** The rollout arrives as ``assembly_simulation_json``, the
+    artifact kind ``cadex_animate`` has baked since ADR-050, carried by an
+    output type the shell already knows. What changed is what is *in* the
+    trace, not how it travels -- so the whole of M8 is invisible to a shell
+    nobody touched.
+
+    A random-weight container is enough here: this gate is about the path,
+    and whether the gait is any *good* is what ``test_dynamics_policy_live``
+    asserts with a real training run in the middle.
+    """
+
+    import dynamics_policy_fixtures as pf
+
+    root = Path(tempfile.mkdtemp(prefix="cadexd-rollout-ci-"))
+    client = None
+    try:
+        client = _spawn_cadexd()
+        opened = client.request("open_project", {"project_root": str(root)})
+        assert opened["ok"] is True, opened
+
+        written = client.request(
+            "write_script", {"source": TASK_SCRIPT, "expected_revision": ""}
+        )
+        assert written["ok"] is True, written
+        revision = str(written["revision"])
+        bundle_path = Path(written["display"]["job"]["artifact_path"])
+        bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+
+        container = pf.policy_container(
+            {"bundle": bundle,
+             "task_sha256": hashlib.sha256(bundle_path.read_bytes()).hexdigest()},
+            normalise=True,
+        )
+        weights = root.parent / "walk.cxpolicy"
+        weights.write_bytes(container["blob"])
+        stored = client.request(
+            "put_asset", {"source_path": str(weights), "name": "walk.cxpolicy"}
+        )
+        assert stored["ok"] is True, stored
+
+        written = client.request(
+            "write_script",
+            {"source": ROLLOUT_SCRIPT.replace("__SHA256__", container["sha256"]),
+             "expected_revision": revision},
+        )
+        assert written["ok"] is True, json.dumps(written)[:4000]
+
+        entry = written["display"]["play"]
+        # The artifact kind the shell has baked since ADR-050. A rollout is
+        # not a new kind of thing to the shell; it is a trace.
+        assert entry["artifact_kind"] == "assembly_simulation_json", entry
+
+        trace = json.loads(
+            Path(entry["artifact_path"]).read_text(encoding="utf-8")
+        )
+        assert trace["schema"] == "cadex-assembly-simulation-trace-v1"
+        assert trace["component_outputs"] == ["base", "swing"]
+        # An empty list, and it has to be present: the publisher reads
+        # motion_outputs from every simulation.
+        assert trace["motion_outputs"] == []
+
+        # One second at 50 Hz sampled every second control step: 50 // 2 + 1
+        # solver frames, plus the untimed input frame in front of them.
+        assert len(trace["frames"]) == 27
+        assert trace["frames"][0]["frame_kind"] == "input"
+        assert trace["frames"][0]["nominal_time_s"] is None
+        assert trace["parameters"]["frames_per_second"] == 25
+        assert trace["parameters"]["start_time_s"] == 0.0
+        assert trace["parameters"]["end_time_s"] == pytest.approx(1.0)
+        for frame in trace["frames"]:
+            assert sorted(frame["component_placements"]) == ["base", "swing"]
+
+        # The three digests that make a policy, a task and a model mean
+        # anything together, restated in the trace so it can be checked
+        # without opening the receipt beside it.
+        policy = trace["policy"]
+        assert policy["policy_sha256"] == container["sha256"]
+        assert policy["task_sha256"] == hashlib.sha256(
+            bundle_path.read_bytes()
+        ).hexdigest()
+        assert policy["model_sha256"] == bundle["model"]["sha256"]
+        assert policy["step_count"] == 50
+        assert policy["truncated"] is True
+        assert sorted(term["label"] for term in policy["reward_totals"]) == [
+            "control_cost", "lift"
+        ]
+
+        # It published as a simulation, which is what keeps it under the
+        # "exactly one" rule and inside the shell's existing bake.
+        live = written["live_outputs"]["play"]
+        assert live["domain"] == "assembly"
+        assert live["output_type"] == "simulation"
+
+        _assert_no_training_framework()
+
+        done = client.request("shutdown", timeout=60)
+        assert done["ok"] is True
+    finally:
+        _stop(client)
+        shutil.rmtree(root, ignore_errors=True)

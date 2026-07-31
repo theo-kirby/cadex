@@ -118,6 +118,45 @@ def test_a_simulation_publishes() -> None:
     assert obj.CadexSimulationTracePreview
 
 
+def test_a_policy_rollout_publishes_through_the_same_branch_unchanged() -> None:
+    """M8's phase 4, which is empty, asserted rather than assumed (ADR-071).
+
+    A rollout is an ``assembly_simulation_json`` like any other simulation,
+    so ``_configure_assembly_simulation`` already handles it and M8 changed
+    nothing here. What is worth pinning is that the *policy* block survives:
+    the publisher serialises the whole ``assembly_data`` into
+    ``CadexAssemblySimulationValidation``, so the three digests that make a
+    policy, a task and a model mean anything together are on the published
+    proxy without a property of their own.
+    """
+
+    import json
+
+    frames = _frames(27)
+    item = _item(frames)
+    item["assembly_data"]["motion_outputs"] = []
+    item["assembly_data"]["policy"] = {
+        "policy_output": "gait",
+        "policy_sha256": "a" * 64,
+        "task_sha256": "b" * 64,
+        "model_sha256": "c" * 64,
+        "total_reward": 243.4,
+        "step_count": 100,
+        "truncated": True,
+    }
+
+    obj = _StubObject()
+    _configure_assembly_simulation(obj, item, {})
+
+    assert obj.CadexFrameCount == 27
+    assert obj.Group == []
+    published = json.loads(obj.CadexAssemblySimulationValidation)
+    assert published["policy"]["policy_sha256"] == "a" * 64
+    assert published["policy"]["task_sha256"] == "b" * 64
+    assert published["policy"]["model_sha256"] == "c" * 64
+    assert published["policy"]["total_reward"] == 243.4
+
+
 def test_a_simulation_without_a_preview_is_still_refused() -> None:
     """The guard stays. It was right; nothing was answering it."""
 
