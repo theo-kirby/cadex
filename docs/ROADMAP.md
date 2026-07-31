@@ -934,6 +934,15 @@ What makes them experimental, and what would settle it:
 
 - **A1: `display` on `open_project`.** Would fold the restore pass and the
   hydration rebuild into one script run; measured cost of not having it is
-  0.49 s per project open.
+  0.49 s on the first engine request against a project.
+- **Nothing hydrates when a file is opened** (ADR-073). Distinct from A1 and
+  larger than it: `load_post` → `on_file_changed` closes the old sessions and
+  returns, and no caller queues a rebuild, so opening a `.blend` beside an
+  existing `.cadex` leaves the viewport empty — measured
+  `model_objects_on_open = 0` in the shipped bundle — until an agent tool
+  call, a slider drag, or **Rebuild Model** provokes the first request. A1
+  makes that request cheaper; it does not cause one. Landing hydrate-on-load
+  is a `shell/` diff and wants the asynchronous lifecycle, so it is a
+  decision — ADR-073 §5.
 - **Linux and Windows shell bundles.** The engine payload builds for both;
   only macOS arm64 has shell CI. Moot once Phase 12 lands — revisit then.

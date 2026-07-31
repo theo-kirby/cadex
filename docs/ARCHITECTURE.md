@@ -488,7 +488,17 @@ The steps:
   where every determinism guarantee gets hard and would be its own ADR.
 - **`display` on `open_project`** (A1). Would fold the restore pass and the
   hydration rebuild into one script run; the measured cost of not having it
-  is 0.49 s per project open.
+  is 0.49 s, paid on the first engine request against a project rather than
+  on the file open. The shell's `ensure_open` is where both runs happen.
+- **Nothing hydrates on the file-open path** (ADR-073). `load_post` reaches
+  `cadex_backend.on_file_changed`, which drops the previous file's sessions
+  and returns early when the `.cadex` directory already exists; nothing
+  queues a rebuild, and the read-only panel state deliberately does not open
+  the project. So a `.blend` opened beside its project shows an empty
+  viewport — measured `model_objects_on_open = 0` — until something provokes
+  a request. Fixing it is a `shell/` change and a decision of its own, for
+  the three reasons in ADR-073 §5; A1 shortens the run but does not cause
+  one.
 - Whether `CadexModelingSurface.py`'s surface resolution collapses further
   now that one global project surface exists and no provider consumes it.
 - What remains of `CadexProject.py` once the conversation store is gone —
