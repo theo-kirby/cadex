@@ -7,6 +7,8 @@
 
 # Cadex
 
+Verified against source: 2026-07-31 (branch `MJC`)
+
 Author:
 "Cadex is an experimental side project, far from production software.
 I've always liked Blender's interface and UX more than those of traditional CAD softwares,
@@ -32,6 +34,19 @@ any time.
 
 There are no modeling toolbars and no workbench concept to learn. Chat,
 sliders, model tree, script, viewport.
+
+**This branch (`MJC`) is Cadex with dynamics and control built in.** The
+mechanism you designed falls, collides and is actuated on
+[MuJoCo](https://github.com/google-deepmind/mujoco); `assembly.mjcf` exports
+it with *exact* OCCT inertias rather than the convex-hull guesses standard
+MJCF authoring settles for; `assembly.task` states the control problem as
+data; a trainer you copy to a GPU box solves it; and `assembly.rollout`
+plays the result back in the viewport. "Design me a quadruped and teach it
+to walk" is a sequence of chat turns. See [docs/MUJOCO.md](docs/MUJOCO.md).
+
+`main` is the same application without that vertical — no MuJoCo, no 53.5 MB
+of physics engine to build or ship. Changes flow `main` → `MJC` and never
+back ([ADR-072](docs/DECISIONS.md)).
 
 ![A ducted-fan drone frame in the Cadex viewport, its declared parameters as
 sliders below, and the conversation that authored it on the
@@ -87,6 +102,15 @@ Two halves in one repository, separated by a process boundary:
   `cadex-engine.json` manifest, so a built application needs no
   configuration at all.
 
+And one directory that is deliberately neither:
+
+- **`training/`** — the offboard PPO trainer (`MJC` only). It is not part of
+  the product: CMake never installs it, no payload carries it, and it cannot
+  import Cadex. You copy it to a machine with a GPU, run it, and copy one
+  `.cxpolicy` file back. There is no train button and nothing to press —
+  training needs JAX on a GPU, so the engine verifies a policy and never
+  produces one. [training/README.md](training/README.md).
+
 The protocol between them is pinned by tests on both the request and the
 response side (`docs/INTEGRATION.md`), which is what keeps either half
 replaceable.
@@ -108,7 +132,9 @@ API-key configuration.
 ## Tests
 
 ```bash
-pixi run python -m pytest src/Mod/cadex/cadex_tests   # engine suite, no build needed
+pixi run test-engine                                  # engine suite, no build needed
+                                                      # (1105 passed, 12 skipped; the
+                                                      # skips are MJX-gated by design)
 pixi run test-release                                 # ctest (diff against
                                                       # build/ctest_baseline_failures.txt)
 pixi run gate                                         # CADEX-BLENDER-GATE, the product gate
@@ -119,11 +145,13 @@ pixi run gate                                         # CADEX-BLENDER-GATE, the 
 Start with [`CLAUDE.md`](CLAUDE.md) (repo map, commands, change policy) and
 the doc set under [`docs/`](docs/):
 [VISION](docs/VISION.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) ·
-[XSCRIPT](docs/XSCRIPT.md) · [INTEGRATION](docs/INTEGRATION.md) ·
+[XSCRIPT](docs/XSCRIPT.md) · [MUJOCO](docs/MUJOCO.md) ·
+[INTEGRATION](docs/INTEGRATION.md) ·
 [BLENDER](docs/BLENDER.md) ·
 [FREECAD](docs/FREECAD.md) · [BLENDER-TREE](docs/BLENDER-TREE.md) ·
 [PROVENANCE](docs/PROVENANCE.md) ·
 [ROADMAP](docs/ROADMAP.md) · [DECISIONS](docs/DECISIONS.md).
+The trainer: [training/README.md](training/README.md).
 Packaging: [docs/cadex-release-packaging.md](docs/cadex-release-packaging.md).
 Policies: [PRIVACY_POLICY](PRIVACY_POLICY.md) · [SECURITY](SECURITY.md).
 
@@ -131,6 +159,8 @@ Policies: [PRIVACY_POLICY](PRIVACY_POLICY.md) · [SECURITY](SECURITY.md).
 
 Cadex is a derivative work of two projects, and keeps importing from
 neither's release stream — we delete from these trees rather than track them.
+It also depends on two kernels it does *not* fork, because we intend to keep
+them.
 
 - The geometry kernel is [OCCT](https://dev.opencascade.org/) (LGPL-2.1),
   reached through a fork of the [FreeCAD
@@ -138,6 +168,11 @@ neither's release stream — we delete from these trees rather than track them.
   wider [FreeCAD community](https://forum.freecad.org/).
 - The application shell is a fork of
   [Blender](https://projects.blender.org/blender/blender) (GPL-2.0+).
+- The dynamics kernel is
+  [MuJoCo](https://github.com/google-deepmind/mujoco) (Apache-2.0), kept
+  upstream and unmodified and redistributed inside the engine payload on
+  this branch. Cadex is not affiliated with or endorsed by the MuJoCo
+  project.
 - The CadexLight and CadexDark themes are based on [OpenTheme by
   Obelisk79](https://github.com/obelisk79/OpenTheme).
 

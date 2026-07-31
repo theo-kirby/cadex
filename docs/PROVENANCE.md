@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-07-28
+Verified against source: 2026-07-31
 
 Cadex is not written from scratch. It is a **derivative work of two large
 free-software projects**, carrying the design lessons of a third that we
@@ -18,15 +18,28 @@ for the shell.
 | Source | What it became | Licence |
 |---|---|---|
 | [OCCT](https://dev.opencascade.org/) | the geometry kernel — every solid, boolean, and fillet | LGPL-2.1 with an exception |
+| [MuJoCo](https://github.com/google-deepmind/mujoco) | the **dynamics** kernel — every simulation, MJCF export and policy rollout (`MJC` only) | Apache-2.0 |
 | [FreeCAD](https://github.com/FreeCAD/FreeCAD) | **the engine** — the repository root | LGPL-2.1-or-later |
 | [Blender](https://projects.blender.org/blender/blender) | **the shell** — `shell/` | GPL-2.0-or-later |
 | VibeCAD (ours, predecessor) | the scripted-modeling engine inside `src/Mod/cadex/` | LGPL-2.1-or-later |
 
-Cadex adds roughly **40,000 lines** of its own across both halves —
-~33,700 in the engine (`src/Mod/cadex/`), ~4,600 in the shell add-on
-(`mesh_agent/`), ~1,800 in the app template and the shell's Cadex test
-suites. Everything else in this repository, which is the overwhelming
-majority of it, belongs to FreeCAD or Blender.
+Cadex adds roughly **87,000 lines** of its own across both halves, or about
+**53,500** if you do not count tests:
+
+| Ours | Lines | Where |
+|---|---|---|
+| the engine, Python | 43,793 | `src/Mod/cadex/*.py` |
+| the engine's suites | 29,709 | `src/Mod/cadex/cadex_tests/` |
+| the engine, C++ | 1,031 | `CadexGeometryWorker.cpp` and its headers |
+| the shell add-on | 7,673 | `shell/scripts/addons_core/mesh_agent/` |
+| the shell's Cadex suites | 3,707 | `shell/tests/python/bl_mesh_agent*.py` |
+| the offboard trainer | 894 | `training/` — **not part of the product** (§5) |
+| the app template | 111 | `shell/scripts/startup/bl_app_templates_system/Mesh/` |
+
+Everything else in this repository, which is the overwhelming majority of
+it, belongs to FreeCAD or Blender. Measured 2026-07-31 on branch `MJC`; the
+engine figure is about 25% larger than the last one recorded here, most of
+that being `CadexDynamics.py` and the dynamics suites.
 
 We do not track either upstream. Both were imported as squashed snapshots,
 and the direction of travel is **subtractive**: we delete from these trees
@@ -116,7 +129,70 @@ contributors. Cadex is not affiliated with or endorsed by the Blender
 project, is not a Blender add-on distribution, and should not be mistaken
 for either.
 
-## 4. VibeCAD — the predecessor
+## 4. MuJoCo — the dynamics kernel `(branch MJC only)`
+
+**What it is here.** MuJoCo is to dynamics what OCCT is to geometry: a kernel
+we keep, upstream and unmodified, rather than a tree we fork. `CadexDynamics.py`
+translates a Cadex assembly into an `mjSpec`, steps it, and reads the result
+back; `assembly.mjcf` writes MJCF by calling **MuJoCo's own writer**
+(`MjSpec.to_xml()`) rather than serialising the format ourselves. We fork
+FreeCAD and Blender because we intend to replace them. MuJoCo we keep.
+
+**Which branch.** This section describes `MJC` (ADR-060, ADR-072). `main`
+carries no MuJoCo, no dynamics and none of the obligations below.
+
+**How it reaches a user, and this is the part that matters.** MuJoCo is not
+a build dependency that stays behind on the build machine. `mujoco == 3.10.0`
+is a **pypi wheel redistributed inside the shipped engine payload**, carried
+there by name through `CARRIED_PYPI_PACKAGES` in
+`package/rattler-build/scripts/relocate_conda_environment.py` (ADR-061),
+because the pixi manifest has not been re-solvable as conda since
+conda-forge moved past our `occt == 7.8.1` pin. It is 53.5 MB of the payload,
+it ships inside `Cadex.app`, and the payload build hard-fails if it cannot
+import exactly that version out of the payload's own interpreter.
+
+That makes it a third category this document did not previously have.
+`src/3rdParty/` is vendored source; "build dependencies from conda-forge" stay
+on the build machine. A pypi wheel that ships is neither, and it is the one
+that carries a redistribution obligation.
+
+**Licence flow.** Apache-2.0 → the engine's LGPL-2.1-**or-later**. The "or
+later" is doing the work: Apache-2.0 is incompatible with LGPL-2.1-*only* and
+compatible with the v3 family, so the "or later" clause is what makes the
+combination clean. The shipped bundle as a whole carries GPL-2.0-or-later
+obligations (§7 below), and Apache-2.0 is compatible with GPL-3.0 the same
+way. **NOTICE carries the entry**, and Apache-2.0 §4(d) means the
+attribution requirement is real rather than courteous — see the vendored-LGPL
+note in `docs/VISION.md`'s non-goals, which now names MuJoCo alongside OCCT.
+
+**Version.** Exactly pinned, and for a stated reason rather than caution:
+MuJoCo's own `VERSIONING.md` disclaims cross-version numerical
+reproducibility, and Cadex asserts content-digest equality on every project
+open. A silent MuJoCo upgrade would make existing projects refuse to open.
+
+**Credit.** The physics Cadex simulates is MuJoCo's physics, computed by
+MuJoCo's own solver and written out by MuJoCo's own MJCF writer, and it
+exists because of the work of the MuJoCo team at Google DeepMind and its
+contributors. Cadex is not affiliated with or endorsed by the MuJoCo
+project. What Cadex adds is on the other side of the boundary: standard MJCF
+authoring guesses inertia from convex hulls or hand-tunes it, and we have the
+BREP, so `<inertial>` gets exact `GProp_GProps` mass properties.
+
+## 5. `training/` — ours, and not part of the product
+
+`training/cadex_train.py` is `[Cadex-new]`, LGPL-2.1-or-later like the rest
+of the engine, and **it ships in nothing**. CMake never installs it, no
+payload carries it, and it is copied by hand to a machine with a GPU
+(ADR-070). Its four dependencies — `jax`, `mujoco`, `mujoco-mjx`, `flax` —
+are pinned in `training/requirements.txt` and installed into a venv on that
+machine. None of them is in `pixi.toml`, none is in the payload, and a test
+asserts that no `jax` or `mjx` reaches either.
+
+It is listed here because a reader auditing what this repository
+redistributes should be able to find the one directory that looks like a
+dependency surface and confirm that it is not one.
+
+## 6. VibeCAD — the predecessor
 
 Cadex's relationship to VibeCAD is not inspiration. It is **descent**:
 `src/Mod/cadex/` was imported wholesale from the `cadex-teardown` branch of
@@ -154,7 +230,7 @@ six-phase history. Nothing deleted there returns without an ADR — that rule
 is in `CLAUDE.md`, and [`FREECAD.md`](FREECAD.md) §4 is the do-not-resurrect
 list.
 
-## 5. How two licences live in one repository
+## 7. How two licences live in one repository
 
 The engine is LGPL-2.1-or-later; the shell is GPL-2.0-or-later. They are
 **separate programs communicating over a documented protocol**, not one
@@ -177,7 +253,7 @@ public repository. This is a description of how the repository is
 structured, not legal advice; if you are redistributing Cadex, read the
 licences.
 
-## 6. Everything else
+## 8. Everything else
 
 - **Bundled third-party code** lives in `src/3rdParty/` (Clipper2, PyCXX,
   salomesmesh, libE57Format, OndselSolver, GSL and others) and in Blender's
@@ -187,11 +263,15 @@ licences.
   `projects.blender.org` library repositories, consumed as submodules under
   `shell/lib/<platform>`. They are never vendored into this tree.
 - **Build dependencies** for the engine (OCCT, Qt6, Coin3D, compilers) come
-  from conda-forge through pixi, pinned in `pixi.lock`.
+  from conda-forge through pixi, pinned in `pixi.lock`. These stay on the
+  build machine.
+- **The one pypi wheel that ships** is `mujoco == 3.10.0`, on `MJC` only —
+  §4. It is neither vendored source nor a build-only dependency, which is why
+  it has a section of its own rather than a bullet here.
 - **The CadexLight and CadexDark themes** are based on
   [OpenTheme by Obelisk79](https://github.com/obelisk79/OpenTheme).
 
-## 7. Where this goes
+## 9. Where this goes
 
 ADR-025 and ADR-030 record the intended endpoint: **one application we
 own** — a derivative of, but not dependent on, either FreeCAD or Blender.

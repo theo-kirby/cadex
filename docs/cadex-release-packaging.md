@@ -1,6 +1,6 @@
 # Packaging — One Bundle
 
-Verified against source: 2026-07-28
+Verified against source: 2026-07-31
 
 **One repository builds one application** (ADR-030). `pixi run app` produces
 the bundle, and the *engine payload* — a relocatable directory the shell
@@ -23,8 +23,11 @@ cadex-engine-<version>-<os>-<arch>/
   cadex-engine.json     the discovery manifest
   bin/freecadcmd        the engine host; cadexd runs inside it
   bin/CadexGeometryWorker
-  bin/python
-  lib/                  Qt6 Core/Xml/Concurrent/Network only
+  bin/python            a real interpreter, not the dangling symlink the
+                        payload shipped until M0 caught it
+  lib/                  Qt6 Core/Xml/Concurrent/Network/DBus only
+  lib/python3.11/site-packages/mujoco/
+                        53.5 MB, branch MJC only (ADR-060, ADR-061)
   Mod/cadex/            cadexd + the xscript pipeline
   Mod/{Part,PartDesign,Sketcher,Assembly,Mesh,MeshPart,Import,Material,
        Measure,Show}
@@ -35,7 +38,7 @@ The manifest is the contract (schema in ADR-020; consumed by the shell):
 ```json
 {
   "schema": "cadex-engine-v1",
-  "version": "0.0.2",
+  "version": "0.0.1",
   "protocol": "cadex-cadexd-v1",
   "freecadcmd": "bin/freecadcmd",
   "module_dir": "Mod/cadex"
@@ -67,9 +70,11 @@ own files are package-managed — see "Staged, or relocated" below.
 
 ## What is deliberately in the payload
 
-Non-GUI Qt. FreeCAD's App layer links **Qt6Core and Qt6Xml**, and
-`FreeCADCmd` inherits that — verifiable with `otool -L`. "Zero Qt" is not
-achievable and is not the goal. The goal, and what the build asserts, is:
+**Non-GUI Qt.** FreeCAD's App layer links **Qt6Core and Qt6Xml**, and
+`FreeCADCmd` inherits that — verifiable with `otool -L`. The keep list is
+five, not four: `qt_keep="Core Xml Concurrent Network DBus"`
+(`build_engine_payload.sh:125`). "Zero Qt" is not achievable and is not the
+goal. The goal, and what the build asserts, is:
 
 - no widget toolkit — no `Qt6Gui`, `Qt6Widgets`, `Qt6Quick`, `Qt6Qml`,
   `Qt6OpenGL`, `Qt6Svg`, `Qt6PrintSupport`, `Qt6UiTools`, `Qt6Designer`;
@@ -80,10 +85,44 @@ achievable and is not the goal. The goal, and what the build asserts, is:
 The script *prints* the Qt libraries it does carry, so the exception is
 visible rather than assumed.
 
+**MuJoCo, on branch `MJC` only** (ADR-060, ADR-061). The one deliberate
+non-Qt addition, and the only third-party Python package the engine carries:
+53.5 MB of `mujoco == 3.10.0`, without which `assembly.dynamics`,
+`assembly.mjcf` and `assembly.rollout` do not exist. It reaches the payload
+by **two different routes and both have silently dropped it before** — the
+relocated path carries it only because `CARRIED_PYPI_PACKAGES` names it in
+`package/rattler-build/scripts/relocate_conda_environment.py`, and the
+stage-only path only because it copies `lib/` wholesale.
+
+So the build **hard-fails** rather than trusting either
+(`build_engine_payload.sh:244`):
+
+```
+mujoco_version="$("${payload}/bin/python" -c 'import mujoco; print(mujoco.__version__)' ...)"
+[ "${mujoco_version}" = "3.10.0" ] || exit 1
+```
+
+Note that it *imports* rather than checking for a directory: a present
+package proves nothing about a bundled dylib whose rpath was just rewritten.
+That gate earned its keep on its first run by failing — not on mujoco, but
+on `bin/python`, which was a **dangling symlink**. A conda `bin/python`
+points at `bin/pythonX.Y`, the interpreter was not in the prune's keep list,
+and the payload had been shipping a broken link for as long as the prune has
+existed. Nothing noticed because nothing ran it: discovery goes through
+`cadex-engine.json`, which names `freecadcmd`. ADR-023's rule paying out
+exactly as written.
+
+**Known and deferred:** about 30 MB of the 53.5 is `mujoco/experimental/`,
+the MuJoCo studio viewer the engine never imports and which
+`relocate_macos_runtime_rpaths.py` currently re-signs and re-points for
+nothing. Pruning it would take the dynamics cost to roughly 21 MB. It is
+`MJC`-owned work, worth doing, and wants its own gate run rather than riding
+along with something else (ADR-067 §4, ADR-072 §4).
+
 ## What is accidentally in the payload
 
-Measured 2026-07-25, a **staged** payload is **2.3 GB**, and most of that is
-not engine:
+Measured 2026-07-25 on `main`, a **staged** payload is **2.3 GB**, and most
+of that is not engine:
 
 ```
 lib/       2.2 GB     of which  python3.11  856 MB
@@ -96,6 +135,12 @@ share/     171 MB     gir-1.0 27 MB · locale 26 MB · cmake-4.2 22 MB
 Mod/       4.4 MB     the workbenches the domains actually load
 bin/       452 KB     freecadcmd, CadexGeometryWorker, python
 ```
+
+**That measurement predates the dynamics arc.** A staged payload on `MJC`
+measures **2.4 GB** (ADR-061), the difference being MuJoCo's 53.5 MB plus
+the wheel's own bundled dylibs. Everything the section says about *why* the
+figure is what it is holds unchanged: the 53.5 MB is the only line item in
+either payload that is there on purpose.
 
 **Why.** The staged path copies `.pixi/envs/default`, which is a *development*
 environment: compilers, LLVM, node, a database client, CMake's documentation.
@@ -130,6 +175,11 @@ manifest exactly as the shell discovers it: open, `describe_api`,
 `write_script` with display, `set_params`, `inspect`, `resolve_pin`,
 `kill -9`, respawn, restore-digest equality, `rebuild`, mid-run `cancel`,
 `shutdown`.
+
+**On `MJC` it is 12 tests, up from 6 at M0**, because every slice of the
+dynamics arc added the one thing a source-tree run cannot prove: that the
+capability works out of a *packaged* engine. `12 passed` is the expected
+result; anything less is a payload problem, not a test problem.
 
 **This gate is not ceremonial.** The first payload it ran against could not
 model at all — `No module named 'PySide'`, because

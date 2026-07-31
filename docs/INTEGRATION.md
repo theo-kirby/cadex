@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-07-27
+Verified against source: 2026-07-31
 
 **This document is the contract between the two halves of the product.**
 They live in one repository (ADR-030) and in two processes, under two
@@ -105,7 +105,7 @@ lifetime signal.
 | `describe_api` | — | `describe_project_api()` verbatim |
 | `write_script` / `edit_script` / `set_params` | today's tool args + optional `display {quality, deflection, edges}`; `write_script` also takes `replace?` (ADR-045) | **byte-identical** to the in-process tool payload (accept payload / `tool_failure` envelope, `STALE_PROGRAM_REVISION` guard included) + per-output `display {artifact_kind, artifact_path (abs), placement, tessellation\|null}` |
 | `rebuild` | `display?` | explicit deterministic re-run of the stored script (same payload shape) |
-| `put_asset` | `source_path`, `name?` | copies one STL/OBJ/PLY into the project store's `assets/` under a validated name (overwrite = re-import), returns its `{name, bytes, sha256}` plus the full listing. A **modeling** op: it writes the store, and exclusion against an in-flight rebuild is what stops a half-copied asset being staged. A path, not bytes — the asset budget is 128 MB against an 8 MB frame cap |
+| `put_asset` | `source_path`, `name?` | copies **one file the project store accepts** into `assets/` under a validated name (overwrite = re-import), returns its `{name, bytes, sha256}` plus the full listing. Accepted suffixes are `.stl`/`.obj`/`.ply` — geometry a script imports with `mesh.import_file` or `part.shape_from_mesh` — **and, on branch `MJC`, `.cxpolicy`**, a trained control policy `assembly.policy` names by file and digest (ADR-070). The op performs no suffix check of its own: it passes the path through and lets the engine refuse, which is exactly why widening what the store holds cost no protocol change and no `shell/` diff. A **modeling** op: it writes the store, and exclusion against an in-flight rebuild is what stops a half-copied asset being staged. A path, not bytes — the asset budget is 128 MB against an 8 MB frame cap |
 | `resolve_pin` | `output`, `selection` (fingerprint query or `{element_type, index}`) | `{ok, output, revision, subelements, details}` against the accepted revision's staged BREP (`CadexPinResolution.py`) |
 | `inspect` | today's `core.inspect` args | same contract; `document/object` serve the ephemeral doc, `script/api/image/assets/history` the store; `selection` rejected (shell-only) |
 | `preview_params` | `values`, `expected_revision` | solved component placements for a **pose-only** parameter change, from a resident read-only worker (ADR-055) — no BREP, no tessellation, no digest, no publication, **no store write**. A **read** op: it queues behind an in-flight modeling request rather than refusing one. Answers `previewable: false` with a `reason` whenever the change was not pose-only, the revision is stale, or the worker is unavailable; the debounced `set_params` behind it is the real answer either way |
@@ -171,6 +171,31 @@ consumer that does not know the key sees exactly the shape it saw before.
 A client rendering a solved assembly instances `source_output`'s geometry
 at the component's `placement` — without it, an entry with no tessellation
 looks like nothing to draw, which is what made solved assemblies invisible.
+
+**`artifact_kind` is an open set, and a client must treat it as one.** The
+kinds a shell may see today:
+
+| Value of `artifact_kind` | What the file is | Since |
+|---|---|---|
+| **`brep`** | an exported BREP shape — the geometry outputs | Phase 2 |
+| **`mesh`** | a triangle mesh | Phase 4, ADR-016 |
+| **`assembly_simulation_json`** | a `cadex-assembly-simulation-trace-v1` time series. **Three different things produce it** — `assembly.simulation` (kinematics), `assembly.dynamics` (MuJoCo), and `assembly.rollout` (a trained policy) — and that is deliberate: a script has exactly one simulation whichever produced it | ADR-048, ADR-062, ADR-071 |
+| **`assembly_mjcf_xml`** | a self-contained MJCF model file (`MJC` only) | ADR-066 |
+| **`assembly_training_task_json`** | a `cadex-training-task-v1` bundle (`MJC` only) | ADR-069 |
+| **`assembly_policy_receipt_json`** | the engine's receipt for a verified policy (`MJC` only) | ADR-070 |
+
+**The rule the table exists to state:** a client selects on the kinds it
+knows and must **ignore, not fail on, an `artifact_kind` it has never heard
+of**. The shell's `cadex_animate._simulation_entries` is the worked example
+— it selects `assembly_simulation_json` and leaves the other four alone, and
+because a policy rollout reuses that kind rather than inventing one, the
+shell bakes a learned gait without knowing policies exist. Inventing a new
+kind for a rollout would have made a `shell/` change mandatory, which is the
+cost ADR-071 was avoiding.
+
+Note also that these are `artifact_kind` values, not output *types*: the
+protocol's output-type set is separate and did not grow for the rollout at
+all.
 
 **`inspect` is a bounded reader, and a client that wants a whole value has
 to say so.** It caps a reply at 32 KiB: containers are paged (`page.kind`,
