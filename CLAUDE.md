@@ -204,8 +204,8 @@ tests and logging the decision; don't commit secrets or machine paths.
 **This section is on `MJC` only.** If you are reading it, you are on the
 permanent dynamics branch, not on `main`.
 
-`MJC` carries the MuJoCo dynamics arc — `docs/MUJOCO.md`, slices M0–M8
-(M0–M7 closed; M8 is plan). It is **not a feature branch awaiting a merge**.
+`MJC` carries the MuJoCo dynamics arc — `docs/MUJOCO.md`, slices M0–M8, **all
+closed** (M8, ADR-071). It is **not a feature branch awaiting a merge**.
 Do not merge it to `main`, do
 not open a PR against `main`, and do not read its absence from `main` as
 unfinished work. `main` stays free of MuJoCo so that a user who is not going

@@ -3,7 +3,9 @@
 Verified against source: 2026-07-31
 Status: **M0 recorded (ADR-060, ADR-061), M1 passed, M2 closed (ADR-062),
 M3 closed (ADR-064), M4 closed (ADR-065), M5 closed (ADR-066), M6 closed
-(ADR-069), M7 closed (ADR-070).** M8 is plan, not built.
+(ADR-069), M7 closed (ADR-070), M8 closed (ADR-071).** The arc is complete:
+a mechanism designed in Cadex trains to a policy offboard and comes home to
+a viewport playing the gait.
 
 **Branch `MJC`, permanently (ADR-063).** This file, and everything it
 describes, exists on `MJC` and not on `main`. The branch is not awaiting a
@@ -1116,20 +1118,79 @@ no protocol change and no `shell/` diff. The packaged gate is **11 tests**.
 
 ---
 
-### M8 — The policy comes home
+### M8 — The policy comes home — **closed (ADR-071)**
 
-The loop closes, and it closes on the same seam it opened on.
+`assembly.rollout(policy, frames_per_second=..., seed=...)` — the verified
+policy plays against the model its task bundle names, and the rollout leaves
+as `cadex-assembly-simulation-trace-v1`. The shell bakes it with the code it
+has had since ADR-050. **No protocol change and no `shell/` diff**, for the
+third slice running.
 
-A trained policy is loaded from the project store, rolled out in-engine
-against the M2 model, and the rollout is emitted as
-`cadex-assembly-simulation-trace-v1`. The shell plays it with the code it
-has had since ADR-050.
+**A new operation and no new output type**, which is the whole design. A
+rollout produces a `simulation`, the type `api.simulation` and `api.dynamics`
+already share, so the "exactly one simulation" rule and the `api.motion`
+incompatibility catch a rollout for free — and so does the shell's bake,
+which never learned that a third kind of producer exists.
+
+**Nothing here was a discovery.** M6 wrote `evaluate_episode`'s `actions=` as
+a callable so that a policy could be dropped into it and said so; M7 wrote
+`policy_forward` to emit in the bundle's advertised units so that no
+conversion would be needed at the seam; M2 gave a dynamics run the shared
+output type so a third producer would need no shell work. What M8 adds to the
+pure module is **sampling**: `evaluate_episode` gained a keyword-only
+`sample` callable invoked at control-step boundaries, and `rollout_policy`
+turns what it returns into frames. One episode loop stays one episode loop —
+M7 already made three evaluators of the reward whitelist, and a second
+stepping loop would have been a fourth place for the same drift.
+
+**What was measured before anything was built** (phase 0,
+`test_dynamics_rollout_measured.py`, 6 tests — and unlike M7's phase 0,
+**none of it needs MJX**, because M8 measures the engine rather than a
+trainer):
+
+| Finding | Number |
+|---|---|
+| Reloaded model vs the one in memory, same policy, one episode | **8.1e-6 at step 1, 5.8e-3 worst** |
+| ...their episode reward totals | **9.4e-6 apart** |
+| A policy-driven rollout across two processes at a fixed seed | **byte-identical** |
+| float32 vs float64 forward pass, compounded over an episode | **2.8e-5 at step 1, 5.8e-3 worst** |
+| ...their episode reward totals | **7.0e-6 out of 61.9** |
+| A ten-second 50 Hz episode, 4609-parameter net | **85 ms**, 0.17 ms/step |
+| 50 Hz control played at 60 fps | frames 1, 2, 4 land **between two actions** |
+
+**Two of these mattered:**
+
+* **Reloading the model is load-bearing, not tasteful.** The plan chose to
+  reload the exported MJCF on the rule M6 and M7 follow — resolve against the
+  bytes somebody else opens — and expected the two models to agree. They do
+  not: the XML writer's six significant figures become a different trajectory
+  within a hundred closed-loop control steps. So *which* model ran is a fact
+  about the numbers, and the answer is the file the policy's digest attests
+  to.
+* **The trajectory is not portable and the reward is.** The float32/float64
+  gap M7 measured at 1.7e-9…3.6e-8 for one forward pass compounds five orders
+  of magnitude over an episode, while the total survives it and each precision
+  reproduces itself exactly. The trace's sha256 is therefore a claim about
+  **this engine's own arithmetic**, never about somebody else's inference of
+  the same weights — recorded here rather than discovered in a gait.
+
+**`frames_per_second` must divide `control_hz` exactly** and defaults to it.
+This is `simulate`'s solver-step rule one level up: an action is held for a
+whole control step, so a frame between two of them makes the trace depend on
+floating-point accumulation. The refusal lists the rates that task can be
+played at, which matters because the *policy* picked the control rate.
+
+**Done when — and it is:** a mechanism designed in Cadex, a task defined in
+M6, a policy trained offboard in M7 and verified on arrival, played by the
+engine and baked by the shell. Through the live cadexd gate; the packaged
+gate is **12 tests**. The bake is real evidence rather than a formality:
+`rollout_bake_integration.py` writes a trace from a live `cadexd` and bakes
+it inside the shipped bundle through `mesh_agent.cadex_animate`'s own
+functions — **357 keyframes per component**, the grounded base stationary,
+the swing arm translated and rotated.
 
 At which point the agent can be asked for a robot, and answer with one that
 walks.
-
-**Done when:** "design me a quadruped and teach it to walk" is a sequence
-of chat turns that terminates in a viewport playing a learned gait.
 
 ---
 
@@ -1185,8 +1246,16 @@ Ranked by how quietly they fail.
    has performed since M6. **Zero new conversion sites**, and
    `test_dynamics_units`'s existing regex now greps `training/cadex_train.py`
    too, so one appearing later is a test failure rather than a silent factor.
-   Still live for M8, where a rollout carries the same vector back into a
-   trace.
+   **M8 was the sixth payment and it cost nothing again.** The same action
+   vector now reaches a *trace* as well as `data.ctrl`, and there is no new
+   arithmetic on either path: the action goes through the `clamp then × scale`
+   `evaluate_episode` has performed since M6, and the pose goes through
+   `vector_mm` and `quaternion_xyzw_from_wxyz` — the same two calls `simulate`
+   makes, in the one module where the factors are allowed to live. It needed
+   no new test to stay true: `_NO_CONVERSION_MODULES` already covers both
+   halves of the worker and the API, so a conversion appearing in the
+   rollout's worker half is already a failure. Six payments, six holds; the
+   entry can be considered settled unless a new direction appears.
 
 2. ~~**Convexity.**~~ **Handled in M3** (ADR-064), and it needed *two*
    measurements rather than the one this list assumed. Concavity is the
@@ -1216,6 +1285,14 @@ Ranked by how quietly they fail.
    list of known kinds, which is why M5's `assembly_mjcf_xml` is covered too
    without a line of code on this branch. A version bump is now a loud
    `open_project` refusal instead of a silent substitution.
+
+   **M8's rollout trace joined the same way, for free** — the fourth payout of
+   that clause. Which is what makes M8 phase 0's cross-process determinism
+   measurement load-bearing rather than reassuring: a rollout puts a
+   pure-Python float64 forward pass inside the inner loop, and if its result
+   were not byte-identical across two processes then every project containing
+   one would fail to reopen. Measured: it is.
+
    **What is left is the migration, not the detection.** A project containing
    a simulation, opened after a solver upgrade, refuses to open;
    `open_project restore=false` is the existing escape hatch and re-accepting
@@ -1249,9 +1326,16 @@ Ranked by how quietly they fail.
    the same 600-frame trace is 4 800 steps at the default step and 1 200 000
    at the finest allowed. An RL rollout wants exactly that trade — minutes of
    integration, a hundred poses — and one cap cannot express it.
-7. **Scope creep into a UI.** M5–M8 want buttons — train, stop, load
-   policy — and "no user-accessible modeling tools" does not obviously
-   answer whether those are allowed. ADR-060 should.
+7. ~~**Scope creep into a UI.**~~ **It did not happen, across four slices
+   that wanted it.** M5–M8 each had an obvious button — export, define,
+   train, play — and none was built. M7 answered the load-bearing one
+   outright (ADR-070: there is no train button and nothing to press; the
+   agent authors the task, dispatches with its own shell, and declares the
+   result), and M8 needed no button at all because a rollout is a line in a
+   script that produces a trace the shell was already baking. The whole arc's
+   `shell/` diff is empty. Still worth listing as a hazard for whatever comes
+   next, but the answer is now four slices of precedent rather than a
+   pending ADR.
 
 ## 6. Open questions
 
@@ -1321,6 +1405,14 @@ Ranked by how quietly they fail.
   `mesh.import_file(...)` on success, which is wrong for a policy. Fixing
   the wording is a `shell/` diff, so the engine-side refusals carry the
   correct advice instead.
+- ~~At what frame rate is a policy rollout played?~~ — answered by M8
+  (ADR-071): **any rate that divides the task's `control_hz` exactly, and by
+  default that rate itself.** It is `simulate`'s solver-step rule one level
+  up — an action is held for a whole control step, so a frame between two of
+  them makes the trace depend on floating-point accumulation. The refusal
+  names the rates a given task can be played at, because the *policy* chose
+  the control rate and the author of the rollout did not necessarily pick it
+  with a frame rate in mind.
 - Is there a Phase 11 story here? A pybind11 binding over OCCT and a
   MuJoCo integration are independent, but the `assembly` domain is
   Phase 11f — the largest — and this plan puts new weight on it.

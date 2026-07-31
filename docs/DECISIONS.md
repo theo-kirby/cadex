@@ -5989,3 +5989,191 @@ Against the **staged payload**, which is the gate that counts (ADR-023):
 the shell claim rests on rather than a re-run of `pixi run gate` (ADR-062,
 ADR-063, ADR-067).
 
+## ADR-071 — A rollout is a simulation, and the loop closes on the seam M6 opened (2026-07-31)
+
+**Status:** accepted. **Branch:** `MJC` only — this ADR describes work that
+does not exist on `main`, and `docs/DECISIONS.md` is append-only on both
+branches, so conflicts here resolve in date order (ADR-063).
+
+### 1. What this decides
+
+`assembly.rollout(policy, frames_per_second=..., seed=...)` — an xscript
+**operation** that plays one verified trained policy against the model its
+task bundle names, and emits the result as
+`cadex-assembly-simulation-trace-v1`.
+
+**No new output type.** A rollout produces a `simulation`, which is the same
+type `api.simulation` and `api.dynamics` produce and for exactly the reason
+ADR-062 gave: a rollout is *baked*, `cadex_animate._simulation_entries`
+bakes neither of two `assembly_simulation_json` artifacts, and a sibling type
+would let one script silently lose an animation. So the "exactly one
+simulation" rule catches a rollout beside an `api.dynamics` for free, and so
+does the `api.motion` incompatibility.
+
+**No protocol change and no `shell/` diff**, for the third slice running.
+`git diff --name-only main...MJC -- shell/` is still empty.
+
+This closes the MuJoCo arc. "Design me a quadruped and teach it to walk" now
+terminates in a viewport playing a learned gait.
+
+### 2. Why this slice is small, and where the smallness was bought
+
+Nothing here is a discovery. M6 wrote `evaluate_episode`'s `actions=` as a
+callable *specifically* so a policy could be dropped into it and said so in
+the docstring; M7 wrote `policy_forward` to emit in the bundle's advertised
+units *specifically* so no conversion would be needed at the seam; ADR-050
+gave the shell a trace player and M2 gave a dynamics run the same output type
+so that a third producer would need no shell work at all.
+
+So M8 adds one thing to the pure module — **sampling**. `evaluate_episode`
+gained a keyword-only `sample` callable invoked at control-step boundaries,
+and `rollout_policy` turns what it returns into frames. One episode loop
+stays one episode loop, which matters more here than anywhere: ADR-070
+recorded that M7 made **three** evaluators of the reward whitelist, and a
+rollout with its own stepping loop would have been a fourth place for the
+same drift.
+
+The frame policy lives with the rollout rather than in the loop: `sample`
+returns `None` on the control steps that are not frames, so
+`evaluate_episode` knows about control steps and nothing about frame rates.
+
+### 3. What phase 0 measured, and the finding that settled a design decision
+
+`test_dynamics_rollout_measured.py`, six measurements. **Unlike M7's phase
+0, none of it needs MJX** — M8 measures the engine rolling a policy out,
+which is the environment `pixi run python -m pytest` provides — so all six
+run everywhere `mujoco` does.
+
+| Question | Answer |
+|---|---|
+| Reloaded model vs the one in memory, same policy, one episode | **8.1e-6 at step 1, up to 5.8e-3 later; reward 9.4e-6 apart** |
+| A policy-driven rollout across two processes at a fixed seed | **byte-identical** |
+| float32 vs float64 forward pass, compounded over an episode | **2.8e-5 at step 1, 5.8e-3 worst; totals 7.0e-6 apart out of 61.9** |
+| A ten-second 50 Hz episode, 4609-parameter net | **85 ms**, 0.17 ms a control step, 5000 solver steps |
+| 50 Hz control played at 60 fps | frames 1, 2 and 4 each land **between two actions** |
+
+**The finding that changed the design's status from taste to evidence.** The
+plan chose to reload the exported MJCF rather than reuse `built["model"]`, on
+the rule M6 and M7 follow — resolve against the bytes somebody else opens —
+and expected the two to agree. **They do not.** MuJoCo's XML writer emits
+about six significant figures, which M5 already knew and bounds at export,
+and a closed loop turns that rounding into a different trajectory within a
+hundred control steps. So *which* model ran is a fact about the numbers, and
+the only defensible answer is the one a reader can check: the file the
+policy's digest attests to.
+
+**The second finding is about what a rollout's determinism claim covers.**
+The float32/float64 gap M7 measured at 1.7e-9…3.6e-8 for a single forward
+pass compounds by roughly five orders of magnitude over a hundred closed-loop
+steps — while the *episode total* survives it (7.0e-6 out of 61.9) and each
+precision reproduces itself exactly. So the reward is worth watching and the
+trajectory is not portable: the trace's sha256 is a claim about **this
+engine's own arithmetic**, never about somebody else's inference of the same
+weights. That is recorded here rather than discovered in a gait.
+
+### 4. Frame sampling, and why the rate must divide
+
+`frames_per_second` **must divide the task's `control_hz` exactly**, and
+defaults to it — one frame per control step, the only rate that always
+divides.
+
+This is `simulate`'s rule one level up. `simulate` chooses a solver step so a
+whole number of them lands on each frame, because a sample interpolated
+between steps would make the trace depend on floating-point accumulation. A
+rollout's actions are held for a whole control step, so a frame between two
+of them has the same defect. The refusal names the rates that task can be
+played at, which matters because a *policy* picks the control rate and the
+author did not necessarily choose it with a frame rate in mind.
+
+Aliasing is the other half and stays a schema contract rather than a check,
+exactly as `simulate`'s docstring says. Phase 0 records the arithmetic on the
+gate's own mechanism: the swing-up terminates at 3000 deg/s, so one frame per
+control step is at most 60° of rotation between samples, and one frame per
+five is 300° — past half a circle, unrecoverable, and looking like 60° the
+other way.
+
+### 5. Hazard 1's sixth payment, and it cost nothing again
+
+The direction is the one M7 opened, one step further along: the action vector
+that left `policy_forward` in newton-millimetres now reaches a **trace** as
+well as `data.ctrl`. There is no new arithmetic on either path. The action
+goes through the `clamp then × scale` `evaluate_episode` has performed since
+M6; the pose goes through `vector_mm` and `quaternion_xyzw_from_wxyz`, which
+are the same two calls `simulate` makes and which are in `CadexDynamics`
+where the factors are allowed to live.
+
+**Zero new conversion sites**, and it needed no new test to keep it that way:
+`test_dynamics_units`'s `_NO_CONVERSION_MODULES` already covers
+`cadex_assembly_worker.py` and `cadex_assembly_api.py`, so a conversion
+appearing in the rollout's worker half is already a failure. Sixth payment,
+sixth time it held.
+
+### 6. Hazard 3 pays out again, and for free
+
+A rollout's trace has an artifact, so its SHA-256 joins the project digest by
+ADR-068's have-an-artifact clause — **without a line of code on this branch**,
+the fourth time that clause has paid out. That is what makes the phase 0
+determinism measurement load-bearing rather than reassuring: if a rollout
+were not reproducible across processes, every project containing one would
+fail to reopen.
+
+The migration half of hazard 3 is unchanged and still open: a solver upgrade
+refuses to open the project, and nothing tells the user that
+`open_project restore=false` and a re-accept is the way through.
+
+### 7. Consequences
+
+- **A rollout's one argument is a policy, not the assembly.** Every other
+  simulation must consume the exact returned `api.assembly` value; a rollout
+  reads everything it needs about the mechanism out of the exported model its
+  policy was verified against — a file `_mjcf_contract` already tied to that
+  assembly, two links back up the chain. This is the one contract line M8
+  relaxed and `_rollout_contract` is what replaces it.
+- **The policy must be returned as an output.** `_policy_outputs_contract`'s
+  check, one link further along: an unpublished policy has no receipt, and
+  the receipt is where the engine records that it checked the weights against
+  the task they claim. Playing one would be playing a network nothing
+  verified — the exact gait `verify_policy` exists so nobody has to watch and
+  distrust.
+- **One ordering change in the worker.** `_simulation_contract` now runs
+  *after* the mjcf, task and policy contracts, because validating a rollout
+  needs to know which policies the script returned. Execution moved the same
+  way: the simulation site skips a rollout and a block after the policy loop
+  runs it, since a rollout depends on a model exported, a task bundled and a
+  policy verified. Its preconditions are still checked at the simulation
+  site, because they are the same preconditions.
+- **`_execute_policy` stashes**, exactly as the mjcf loop stashes into
+  `models` and for the same reason: a rollout that re-read and re-verified
+  what was just verified would be describing a *second* reading of the file.
+- **Publication needed nothing.** A rollout is an `assembly_simulation_json`,
+  so `_configure_assembly_simulation` and the Simulations-group placement
+  already handled it. The three digests reach the published proxy inside
+  `CadexAssemblySimulationValidation` without a property of their own, and a
+  test pins that rather than leaving "phase 4 was empty" as a memory.
+- **Two new module constants**, `MAXIMUM_TRACE_FRAMES` and
+  `MAXIMUM_TRACE_POSES`, so `rollout_policy` can refuse an over-long rollout
+  *before* it integrates. They are hazard 6's frame budget, not its solver
+  budget — what the episode does was already bounded by `_episode_schedule`
+  when the bundle was built.
+
+### 8. Verification
+
+Engine suite **1105 passed, 12 skipped** (1041 at M7's close). New:
+`test_dynamics_rollout_{measured,model,api}.py` and
+`rollout_bake_integration.py`. Extended: `test_dynamics_policy_live` (M8's
+exit criterion, and the training gate now asserts the *published trace's*
+reward beats doing nothing), `test_assembly_simulation_publication` (a
+rollout publishes through the unchanged branch), `test_cadexd_lifecycle`.
+
+Against the **staged payload**, which is the gate that counts (ADR-023):
+`test_cadexd_lifecycle` **12 passed**, up from 11.
+
+**`pixi run gate` passes**, and separately — because the gate suite lives
+under `shell/` and this branch does not diff it —
+`rollout_bake_integration.py` writes a rollout trace from a live `cadexd` and
+then bakes it *inside the shipped bundle*, through
+`mesh_agent.cadex_animate`'s own functions on real Blender objects:
+**357 keyframes per component** (51 solver frames × 7 channels), the grounded
+base stationary, the swing arm translated and rotated. That is the evidence
+ADR-062 exists to demand — a trace the engine is happy with and the shell
+declines to bake is the failure this whole output-type decision prevents.

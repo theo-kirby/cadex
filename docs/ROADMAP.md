@@ -751,7 +751,9 @@ played back walking. The framework, the slices, the hazards and the measured
 facts are `docs/MUJOCO.md`; only status lives here.
 
 Slices are numbered **M0–M8** rather than sub-phases, to avoid colliding
-with the phase numbers above. Every slice is a resting place.
+with the phase numbers above. Every slice is a resting place. **All nine are
+closed** (M8, ADR-071, 2026-07-31); the arc's exit criteria are recorded as
+met below.
 
 - [x] **M0 — Decide, depend, deliver** (ADR-060, ADR-061). Scope approved
       including the M5–M8 direction change; `mujoco-python` 3.10.0 exactly
@@ -863,16 +865,35 @@ with the phase numbers above. Every slice is a resting place.
       gate is 11 tests. The CI training gate converges a one-hinge swing-up
       on CPU (1.10 → 2.487 reward per step, ceiling 2.5) and is honest that
       it does not prove the GPU path.
-- [ ] **M8 — The policy comes home.** A rollout is a trace, played by the
-      shell code that has existed since ADR-050. M7 leaves this a *swap*
-      rather than a discovery: `evaluate_episode`'s `actions=` callable
-      already takes `policy_forward`, and through the live gate a trained
-      policy scores 243.4 against 98.4 for doing nothing.
+- [x] **M8 — The policy comes home** (ADR-071).
+      `assembly.rollout(policy, frames_per_second=..., seed=...)` plays the
+      verified policy against the model its task bundle names and emits a
+      `cadex-assembly-simulation-trace-v1` — **a new operation and no new
+      output type**, so the "exactly one simulation" rule, the `api.motion`
+      incompatibility and the shell's bake all apply for free. It was the
+      *swap* M7 left rather than a discovery: `evaluate_episode` gained one
+      keyword-only `sample` callable and nothing else, so one episode loop
+      stays one episode loop. **Two phase 0 findings mattered** — reloading
+      the exported model turned out to be load-bearing rather than tasteful
+      (the writer's six significant figures become a different trajectory
+      within a hundred closed-loop steps), and the float32/float64 gap
+      compounds five orders of magnitude over an episode while the reward
+      total survives it, so a trace's digest is a claim about this engine's
+      arithmetic and not about anybody else's inference of the same weights.
+      `frames_per_second` must divide the task's `control_hz` exactly and
+      defaults to it. No protocol change, no `shell/` diff; the packaged gate
+      is 12 tests, and the shell — unmodified, from the shipped bundle —
+      bakes a rollout trace into 357 keyframes a component.
 
-**Exit criteria (the arc's, not a slice's):** "design me a quadruped and
-teach it to walk" is a sequence of chat turns that terminates in a viewport
-playing a learned gait. Each slice carries its own "done when", in
-`docs/MUJOCO.md` §4.
+**Exit criteria (the arc's, not a slice's) — met at M8.** "Design me a
+quadruped and teach it to walk" is a sequence of chat turns that terminates
+in a viewport playing a learned gait: the mechanism is designed through the
+ordinary assembly surface, `assembly.mjcf` exports it, `assembly.task`
+defines the problem, `training/cadex_train.py` solves it on a machine we do
+not ship to, `assembly.policy` verifies what comes back, and
+`assembly.rollout` plays it. Each slice carries its own "done when", in
+`docs/MUJOCO.md` §4. The whole arc's `shell/` diff is empty and its protocol
+diff is empty, which is what ADR-063 said the branch rested on.
 
 **Standing constraints for this phase**, both from ADR-062 and both cheap to
 lose by accident:

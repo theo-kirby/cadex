@@ -214,6 +214,41 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   the control formula it already required; that becomes its deterministic
   action when no policy is driving, which is what lets the engine run and
   verify one episode from the bundle before publishing it.
+- `assembly.policy()` and `assembly.rollout()` close the arc that
+  `assembly.task` opens (ADR-070, ADR-071, **experimental**).
+  `assembly.policy(task, weights="walk.cxpolicy", sha256="<64 hex>")`
+  declares a **trained control policy** for one task. Training does not run
+  in the engine and cannot — it needs JAX on a GPU — so
+  `training/cadex_train.py` runs on a machine that has one and the `.cxpolicy` it
+  writes comes back through `put_asset` like any other asset. There is **no
+  train button and nothing to press**. `sha256` is required and never
+  inferred: a trained policy is the one part of a project that cannot be
+  rebuilt from the script (VISION principle 3), so the script carries which
+  bytes it meant and the engine refuses anything else, naming the digest it
+  observed. Before publishing a receipt the engine checks the policy against
+  the task it claims — the bundle's digest, the model that bundle
+  references, the observation channels in order, the action table, the
+  output map the task's action ranges imply — and re-evaluates the
+  **witness** the trainer recorded with its own forward pass, so a policy
+  whose weights arrived intact but whose network the engine reads
+  differently is a refusal rather than a bad gait. A script may declare more
+  than one; nothing bakes a policy.
+  `assembly.rollout(policy, frames_per_second=..., seed=...)` **plays** one,
+  and this is the one that reaches the viewport. It produces the same
+  `simulation` output `assembly.simulation` and `assembly.dynamics` produce,
+  so a script has exactly one of the three, a rollout cannot sit beside
+  `assembly.motion`, and the shell bakes it with code that never learned a
+  third kind of producer exists. The policy it names must also be **returned
+  as an output**, because an unpublished policy is one the engine never
+  verified. The model is reloaded from the file the task bundle names rather
+  than reused from memory — measured, those are not the same trajectory
+  after a hundred closed-loop steps — so a rollout runs the exact model the
+  policy's digest attests to. `frames_per_second` must **divide the task's
+  `control_hz` exactly** and defaults to it: an action is held for a whole
+  control step, so a frame between two of them would make the trace depend
+  on floating-point accumulation, and the refusal names the rates that task
+  can be played at. `seed` draws the task's `assembly.randomise` entries for
+  that one episode.
 - `assembly.collision(kind, ...)` says what a body may touch things with
   (ADR-064, **experimental**), and a body given none touches nothing — it is
   carried by its joints and passes through the rest of the mechanism, which
