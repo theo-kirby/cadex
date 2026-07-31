@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: LGPL-2.1-or-later
+#
+# ./cadex -- Cadex as a headless CLI (docs/CLI.md, ADR-061).
+#
+# A shim, not a launcher: it picks an interpreter and hands over. The CLI
+# itself is plain Python with no compiled dependency -- it *spawns*
+# FreeCADCmd rather than importing FreeCAD -- so the only thing this has to
+# get right is running a Python new enough for the source, with `cli/` on the
+# path.
+#
+# The pixi environment's interpreter is preferred because it is the one this
+# repository is known to work with, and because `pixi run` puts it in front
+# of everything anyway. Any Python 3.11+ will do if there is no pixi
+# environment yet: the engine still has to be built, but `--engine` can point
+# at a payload built elsewhere.
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+python="${here}/.pixi/envs/default/bin/python"
+if [ ! -x "${python}" ]; then
+    python="$(command -v python3 || true)"
+fi
+if [ -z "${python}" ]; then
+    echo "cadex: no Python found. Run 'pixi run setup-engine' first, or put" >&2
+    echo "       a python3 on PATH." >&2
+    exit 1
+fi
+
+export PYTHONPATH="${here}/cli${PYTHONPATH:+:${PYTHONPATH}}"
+exec "${python}" -m cadex_cli "$@"

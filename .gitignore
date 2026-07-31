@@ -78,6 +78,10 @@ goals.md
 .env
 build/engine/
 
+# the CLI's default project root, so `./cadex -p ...` run without --project
+# in a checkout leaves a project rather than a diff (docs/CLI.md)
+.cadex/
+
 # the shell's build trees (its GNUmakefile picks the name per platform)
 /shell/build_darwin/
 /shell/build_linux/
