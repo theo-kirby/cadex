@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-07-31
+Verified against source: 2026-08-01
 Status: **M0 recorded (ADR-060, ADR-061), M1 passed, M2 closed (ADR-062),
 M3 closed (ADR-064), M4 closed (ADR-065), M5 closed (ADR-066), M6 closed
 (ADR-069), M7 closed (ADR-070), M8 closed (ADR-071).** The arc is complete:
@@ -1515,6 +1515,66 @@ Ranked by how quietly they fail.
     seconds and has no learning in it. Sizing that leg at 60 N·m took it
     from **0 of 27** configurations leaving the ground to **27 of 27**, best
     **304 ms** of flight.
+    **A gate can also fail for the gate's own reasons**, and ADR-079 §5 is
+    the worked example: the biped's first feasibility run reported that a
+    machine which stands perfectly could not be held up, because the PD
+    sweep ran gains a hundred times too stiff for a 307 g machine. Read a
+    gate failure as a claim about the *pair* — mechanism and controller —
+    and bracket the sweep from both sides so a pass is bounded rather than
+    lucky.
+
+11. **A floating base is not a mechanism with the ground left out: an
+    ungrounded island does not keep the pose its component placements
+    state.** *Discovered by ADR-079, on the first floating-base model on this
+    branch.*
+    The natural way to pose an assembly is
+    `assembly.component(placement=...)`, and for an island the joints never
+    reach from ground it is a **starting point rather than a statement**.
+    Such an island has six free degrees of freedom, the constraint system is
+    under-determined, and the native solver is free to answer with its own
+    member of the solution family.
+    **Measured.** A three-part probe — ground, `a`, `b`, one revolute, and
+    `b` placed at exactly 30° about that hinge's own axis — solves with the
+    hinge reading **zero** and the free root `a` carrying `b`'s placement.
+    The biped did the same at scale: all eight joints zeroed and the whole
+    machine displaced by (90.2, 18.0, 58.1) mm and about 40°. Four control
+    probes (zero joints, one revolute, a `fixed` joint, a branching root)
+    leave an all-identity island exactly where it was, so the trigger is
+    specifically **two connector frames that do not already coincide**.
+    **Why it is quiet:** every joint is satisfied, `solve` reports solved,
+    the model exports, and the mass and inertia are all correct. What is
+    wrong is only *where the machine is*, and on a grounded mechanism — every
+    fixture before this one — the question never arises.
+    **What to do:** put the pose in the solids, and give the two connectors
+    of a joint the **identical posed world frame**. The residual is then zero
+    at any slider setting and there is nothing to collapse. The cost is worth
+    stating in the script: each joint's zero becomes the posed configuration,
+    so declared limits are measured from the slider pose rather than from the
+    anatomical neutral. At the neutral pose they coincide, which is where a
+    task is staged — and the staging is worth enforcing, because the reset
+    pose is the project's **stored** `param_values` and a `num(0, ...)` in
+    the source is only a default (ADR-079 §4).
+
+12. **`_field_drift` normalises by the field's own largest magnitude, so a
+    model whose every body coincides with its parent refuses on float dust.**
+    *Discovered by ADR-079.*
+    The MJCF round-trip check is right in general — normalising element by
+    element would report the writer's rounding of a near-zero entry as total
+    disagreement — and it is pathological when a whole field is identically
+    zero. A figure drawn in **one** frame does exactly that: put every
+    component at the identity and every relative body placement is the
+    identity, so every entry of `body_pos` should be zero. But
+    `matrix_multiply(A, matrix_inverse(A))` leaves ~1e-16 m of dust, the
+    writer emits six significant figures, and **dust over dust is a relative
+    drift of exactly 1.0**. Moving each part onto its own proximal joint
+    fixes `body_pos` and moves the same refusal to **`jnt_pos`**, which is a
+    joint's position in its *child's* frame.
+    **What to do:** give each part a component frame at its own limb's
+    **middle**, which is the modelling the hopper already documents ("every
+    solid is centred on its own component frame") and which makes both fields
+    carry real half-lengths. Note that an exactly-zero field is *fine* —
+    `dof_damping` with no `joint_dynamics` is all zeros and passes — so the
+    hazard is specifically **a field that should be zero and is dust**.
 
 ## 6. Open questions
 

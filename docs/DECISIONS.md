@@ -7195,3 +7195,188 @@ does not license unrelated edits.
   +20.000 mm — zero gap to its own cage, where v3 had 25 mm of nothing.
 - Engine suite unmoved at **1109 passed, 12 skipped**. No engine file
   changed for this ADR.
+
+## ADR-079 — A floating base is not a mechanism with the ground left out (2026-08-01)
+
+**Status:** accepted. **Branch:** `MJC` only, per ADR-063's date-order rule.
+**Subject:** `~/cadex-legs`, a 250 mm biped — pelvis, two hip links, two
+thighs, two calves, two feet, two toes — given a dynamics model and a
+standing task. Outside the repository, per ADR-075 §6; nothing here is a
+fixture and nothing here is in `cadex_tests`.
+
+**What this entry does and does not claim.** Everything below is measured:
+the mass from OCCT, the gate from stock MuJoCo. The **training run is
+separate** and is not reported here — a policy that stands is the next
+entry's evidence, not this one's, and §5 is the reason to keep the two
+apart.
+
+**Decision.** Author the first floating-base, contact-rich, torque-controlled
+model on this branch, and record the four things that had to be learned to
+get one to export at all. Three of them are properties of the existing
+surface that no fixture had reached, and none of them is a bug in it.
+
+### 1. What the project was, and what it was not
+
+The brief said "it has joints and constraints already; design the RL loop".
+It did not. Measured before anything was written: `grep -c "assembly\."
+script.py` was **0**, the accepted contract was **eleven `part` solids and
+nothing else**, and no revision in `script_history/` had ever named the
+assembly domain. The "joints" were *parameters that rotate solids at build
+time* — a genuinely useful parametric posed model, with anatomically correct
+axes, and one carrying no bodies, no joints, no mass, no collision and no
+MJCF. The RL loop was the small half of the work.
+
+Two further facts were found by looking rather than by reading: the accepted
+parameter values were a **contorted pose** (`hip_pitch_r` 49.3°,
+`knee_pitch_r` 79.8°), and there was **no floor in the model at all**.
+
+### 2. An ungrounded island does not keep the pose its placements state
+
+This is the finding worth the entry, and it cost three structural rewrites.
+
+The natural way to give a posed parametric model an assembly is to stop
+transforming the solids and put the same rotation into
+`assembly.component(placement=...)`. It is provably consistent — every
+joint's pivot lies *on* its own rotation axis, so the anchors stay coincident
+at any angle — and it is what the plan for this exercise specified. It does
+not survive the native solver.
+
+**Measured, on a three-part probe.** Ground (grounded), `a`, `b`, one
+revolute between `a` and `b`, and `b` placed at exactly 30° about the hinge's
+own axis — a configuration the hinge permits and the constraint satisfies.
+After `assembly.solve`, the exported model has the hinge reading **zero** and
+the free root `a` carrying `b`'s 30° placement. The solver satisfied the
+constraint by moving the **root**, not by giving the joint a coordinate.
+
+**Measured, on the biped.** All eight joints zeroed, and the whole machine
+displaced by (90.2, 18.0, 58.1) mm and about 40°.
+
+Nothing is wrong with either answer. An island the joints never reach from
+ground has six free degrees of freedom, the system is under-determined, and
+both configurations satisfy every constraint. The point is narrower and it is
+the one a floating base always hits: **a component placement is a starting
+point, not a statement, and for an ungrounded island the solver is free to
+answer with its own member of the solution family.** Four control probes
+pin it down — zero joints, one revolute, a `fixed` joint, and a branching
+root all leave an all-identity island exactly where it was — so the trigger
+is specifically *two connector frames that do not already coincide*.
+
+**The rule this branch should follow for a floating base:** the pose goes in
+the solids, and the two connectors of a joint carry the **identical posed
+world frame**. The residual is then zero at any slider setting, the solver
+has nothing to collapse, and the exported model is the machine that is
+drawn. The price is stated rather than hidden: each joint's zero becomes the
+posed configuration rather than the anatomical one, so declared limits are
+measured from the slider pose. At the neutral pose they coincide exactly, and
+the neutral pose is where a task is staged.
+
+### 3. A one-frame drawing makes the field-drift check's own scale zero
+
+`export_mjcf` compares the model it built against the model reloaded from the
+file it wrote, field by field, and `_field_drift` normalises by *the field's
+own largest magnitude*. That is right in general — a `diaginertia` whose
+smallest entry is 1e-5 of its largest would otherwise report the formatter's
+rounding as total disagreement — and it is pathological for a model in which
+one field is identically zero.
+
+A figure is drawn in **one** frame. Put every component at the identity and
+every body coincides with its parent, so **every entry of `body_pos` is
+zero** — except that `matrix_multiply(A, matrix_inverse(A))` leaves about
+1e-16 m of float dust, the MJCF writer emits six significant figures, and
+dust over dust is a relative drift of exactly **1.0**. The export refuses.
+
+Moving each part onto its own origin fixed `body_pos` and moved the same
+refusal to **`jnt_pos`** — a joint's position is expressed in its *child's*
+frame, and each part's origin was its own proximal joint. The fix that holds
+is to put each limb's frame at its **middle**: both fields then carry the
+limb's real half-lengths (0, 0, −97.5) mm from thigh to calf, and dust is
+1e-15 of the scale instead of all of it.
+
+Two consequences worth keeping. First, this is a **modelling** answer, not a
+tolerance answer, and it is the same modelling the hopper already documents
+("every solid is centred on its own component frame"). Second, an
+exactly-zero field is *fine* — `dof_damping` with no `joint_dynamics` is all
+zeros and passes — so the hazard is specifically **a field that should be
+zero and is dust**.
+
+### 4. The reset pose is the stored parameters, and the script does not say so
+
+`num(0, ...)` in the source is a **default**. The project stores its own
+accepted `param_values`, and this project's were the contorted pose left over
+from posing it by hand. The first build measured a machine at
+`hip_pitch_r` = 49.3° and reported its mass and centre of mass perfectly
+correctly for a machine nobody meant to train.
+
+Nothing in the script says this, and nothing in the exported model does
+either — the pose *is* the reset keyframe, which is a feature. So the driver
+enforces it rather than remembering it: `rebuild.py` reads `script.json`,
+names every pose parameter that is not zero, and zeroes it with `set_params`
+before the bundle is staged.
+
+### 5. A gate can fail for the gate's own reasons
+
+`feasibility.py` runs five checks before any GPU time — arithmetic, exact
+gravity compensation by `mj_inverse`, contact sanity, a drop test that must
+FALL, and a hand-written PD that must hold. On its first run it reported that
+the machine **could not be held up**. It could: the gains were wrong.
+
+`data.ctrl` on a motor is newton-metres, the errors are radians, and these
+links carry about 1e-4 kg·m² about their own joints. The first sweep ran
+kp 2 → 40 N·m/rad, which is a hundred times what a 307 g machine needs, and
+the binding constraint is the *damping*: explicit damping is stable only
+while kd·h/I is below about one, so with h = 2 ms and I = 1e-4, kd above
+~0.05 diverges on its own. Measured: kd = 0.05 saturates every actuator at
+750 N·mm within ten milliseconds and launches the machine; kd = 0.02 holds it
+at 3.5 N·mm.
+
+The lesson is not "tune better". It is that **a gate whose whole job is to
+distinguish "the mechanism cannot" from "the controller is wrong" can itself
+be the controller that is wrong**, and it has to be read that way — the
+sweep now brackets the working range from both sides (kp 0.1 falls, kd 0.05
+diverges) so that a pass is bounded evidence rather than one lucky row.
+
+### 6. What was measured
+
+From OCCT, at the neutral pose, aluminium at 2700 kg/m³ throughout:
+
+```
+pelvis 74.74 g   hip 16.90 g   thigh 41.85 g   calf 34.71 g
+foot 16.58 g     toe 6.12 g    TOTAL 307.06 g -> 3.012 N
+centre of mass   X0 -0.005   Y0 +1.305   Z0 146.341 mm
+```
+
+The gate, against the exported MJCF in stock MuJoCo:
+
+```
+static hold        hip_roll  90.4    hip_pitch 301.2   knee 286.2   ankle 117.5 N*mm
+torque limit                250.0              750.0        750.0         300.0 N*mm
+margin                      2.77x              2.49x        2.62x         2.55x
+gravity compensation at the reset pose   1.97 N*mm  (0.3-0.7% of every limit)
+contacts at frame 0   ncon 0, four soles with their bottoms at z = +0.0000 mm
+drop test (zero torque)   falls at 1.148 s
+PD hold                   upright +1.000, settles 0.37 mm, peak effort 3.5 N*mm
+```
+
+**Standing straight is nearly free** — 1.97 N·mm against a 300 N·mm ankle —
+which is ADR-077's observation from the other side. It is also exactly why
+the actuators are **motors and not servos**: with a position servo, a policy
+that emits the reset pose would stand without learning anything and the
+reward would be measuring nothing. Zero action is zero torque, the machine
+falls in 1.148 s, and there is no degenerate solution to find.
+
+### 7. What is deliberately not done
+
+- **Only the soles collide.** Thighs, calves, pelvis and hip links carry no
+  collision shape, which keeps `ngeom` at five and the contact solver out of
+  the mechanism. The consequence is honest and visible in the drop test: a
+  machine that has *already* fallen sinks through the floor, because nothing
+  but the feet can touch it. The terminations fire long before, so no
+  training step is spent there.
+- **The toe is welded.** Two floppy unactuated degrees of freedom a
+  stationary task has no use for. The pin, the notch and the tongue are all
+  still drawn, so unwelding it for walking is one word.
+- **No engine change**, and none was needed. §2 and §3 are both properties of
+  the existing surface used in a way no fixture had used it, and both have
+  modelling answers. `pixi run test-engine` is 1109 passed, 12 skipped,
+  unchanged.
+- **Walking.** Standing first.
