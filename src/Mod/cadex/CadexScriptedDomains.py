@@ -262,12 +262,14 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "motion",
             "simulation",
             "mjcf",
+            "task",
             "exploded_view",
         ),
         "Define native assembly links, grounding, connector references, joints, "
         "solved placements, structured solver diagnostics, and worker-generated "
         "kinematic simulations, rigid-body dynamics runs, exported MuJoCo MJCF "
-        "models, exploded views, and flexible source hierarchies.",
+        "models, trainable reinforcement-learning tasks, exploded views, and "
+        "flexible source hierarchies.",
         (
             "assembly",
             "component",
@@ -278,14 +280,21 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "simulation",
             "dynamics",
             "mjcf",
+            "task",
             "body",
             "collision",
-            # Two more intermediates, and deliberately absent from
+            # Six more intermediates, and deliberately absent from
             # output_types above: like `collision`, a joint's damping and a
             # motor are arguments to a dynamics run, not things a script
-            # publishes (M4).
+            # publishes (M4) -- and an observation channel, a reward term, a
+            # termination rule and a randomisation range are arguments to a
+            # task on exactly the same terms (M6).
             "joint_dynamics",
             "actuator",
+            "observation",
+            "reward",
+            "termination",
+            "randomise",
             "exploded_view",
         ),
         production_ready=True,

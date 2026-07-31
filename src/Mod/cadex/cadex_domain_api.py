@@ -110,6 +110,18 @@ _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
         # be declaring a fact about a joint rather than a result (M4).
         "joint_dynamics": "joint_dynamics",
         "actuator": "actuator",
+        # A training task *is* a publishable output, and the first one that
+        # consumes another output rather than the assembly directly: it
+        # references one api.mjcf value and writes a bundle beside that
+        # model's file (ADR-069). Its four companions are intermediates for
+        # the same reason `collision` is -- an observation channel, a reward
+        # term, a termination rule and a randomisation range are arguments
+        # to a task, not results a script declares on their own.
+        "task": "task",
+        "observation": "observation",
+        "reward": "reward",
+        "termination": "termination",
+        "randomise": "randomise",
         "exploded_view": "exploded_view",
     },
     "material": {

@@ -64,6 +64,7 @@ _NATIVE_TYPE_BY_OUTPUT: dict[str, str] = {
     "solver_diagnostics": "App::FeaturePython",
     "simulation": "App::FeaturePython",
     "mjcf": "App::FeaturePython",
+    "task": "App::FeaturePython",
 }
 
 _BREP_OUTPUT_TYPES = frozenset(

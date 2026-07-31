@@ -33,6 +33,12 @@ _PUBLISHABLE_TYPES = frozenset(
         # neither, and an MJCF file is baked by nothing. A script may
         # declare several (ADR-066).
         "mjcf",
+        # A training task is its own type for the same reason an exported
+        # model is: nothing bakes it, so two in one script is a reasonable
+        # thing to write. It is also the first output that consumes another
+        # output -- one api.mjcf value -- and two tasks may share one model
+        # (ADR-069).
+        "task",
         "exploded_view",
     }
 )
@@ -577,10 +583,11 @@ def _checked_formula(
     parameter: str,
     value: Any,
     *,
-    names: frozenset[str],
+    names: frozenset[str] | None,
     refusals: Mapping[str, str] = {},
+    functions: frozenset[str] = _MOTION_FUNCTIONS,
 ) -> str:
-    """One expression of ``time``, whitelisted node by node, in Python syntax.
+    """One expression, whitelisted node by node, in Python syntax.
 
     Extracted from ``_motion_formula`` so that ``api.motion`` and
     ``api.actuator`` share one whitelist rather than two that drift. The
@@ -589,6 +596,23 @@ def _checked_formula(
     a control formula keeps Python syntax, because it is *this* engine that
     evaluates it, and refuses ``initialValue``, because a dynamics run's
     initial value is a solved pose rather than a scalar a script can name.
+
+    ``functions`` is the third such difference and the reason it is a
+    parameter rather than a wider shared set (M6). A reward wants ``exp``,
+    ``sqrt`` and ``tanh``; ``api.motion`` must not get them, because its
+    formula is rendered back into an Ondsel expression and Ondsel has no
+    ``tanh`` -- a shared whitelist would export something the solver on the
+    other side cannot read.
+
+    ``names=None`` means *any identifier is a variable reference*, and it is
+    how a reward formula is checked. ``api.reward`` is a standalone
+    intermediate: it is written before there is a task to belong to, so it
+    cannot know which observation channels exist. That check is the
+    engine's, where the channel list is not only known but *expanded* -- a
+    vector observation becomes three names -- and where the refusal can
+    therefore say which names were available. What stays here is the part a
+    reader of the script could check: the syntax, and that every call is to
+    a function this surface supports.
 
     An AST whitelist rather than a sandbox: what is accepted is enumerated,
     so a Python release growing a new expression node adds nothing here.
@@ -657,8 +681,10 @@ def _checked_formula(
                     "constants must be finite numbers",
                     node.value,
                 )
-        elif isinstance(node, ast.Name) and node.id not in (
-            names | _MOTION_FUNCTIONS
+        elif (
+            isinstance(node, ast.Name)
+            and names is not None
+            and node.id not in (names | functions)
         ):
             if node.id in refusals:
                 raise _error(operation, parameter, refusals[node.id], node.id)
@@ -667,20 +693,20 @@ def _checked_formula(
                 parameter,
                 f"unknown name {node.id!r}; use "
                 f"{', '.join(sorted(names))}, or a supported function "
-                f"{sorted(_MOTION_FUNCTIONS)}",
+                f"{sorted(functions)}",
             )
         elif isinstance(node, ast.Call):
             if (
                 not isinstance(node.func, ast.Name)
-                or node.func.id not in _MOTION_FUNCTIONS
+                or node.func.id not in functions
                 or len(node.args) != 1
                 or node.keywords
             ):
                 raise _error(
                     operation,
                     parameter,
-                    "functions must be one-argument calls to abs, asin/arcsin, "
-                    "arctan, cos, or sin",
+                    "functions must be one-argument calls to "
+                    f"{', '.join(sorted(functions))}",
                     value,
                 )
     return formula.replace("^", "**")
@@ -693,6 +719,71 @@ def _motion_formula(value: Any) -> str:
         "motion", "formula", value, names=_MOTION_NAMES
     ).replace("**", "^")
 
+
+#: What a reward or termination expression may call, on top of the motion
+#: set. Three additions and no more: ``exp`` for a shaped bell, ``sqrt`` for
+#: a distance, ``tanh`` for a term that saturates instead of dominating.
+#:
+#: This set is *not* ``api.motion``'s widened -- that formula is rendered
+#: back into an Ondsel expression, and Ondsel has no ``tanh``. The two are
+#: separate whitelists passed to one checker, which is the extension point
+#: `_checked_formula(functions=...)` exists to be.
+_REWARD_FUNCTIONS = _MOTION_FUNCTIONS | frozenset({"exp", "sqrt", "tanh"})
+
+#: Every observation kind, and what a script must hand it.
+#:
+#: The second copy of :data:`CadexDynamics.OBSERVATION_KINDS`, deliberately:
+#: this surface does not import the pure module, and a table written twice
+#: is this codebase's answer to drift wherever the alternative is attention.
+#: ``test_dynamics_task_api`` asserts the two agree kind for kind, so the
+#: copy costs a test rather than a maintenance promise.
+#:
+#: The value is the output type the target has to be, which is the whole
+#: validation: a ``position`` reads a joint, a ``component_position`` reads
+#: a component, an ``actuator_force`` reads a motor.
+_OBSERVATION_KINDS: dict[str, str] = {
+    "position": "joint",
+    "velocity": "joint",
+    "actuator_force": "actuator",
+    "component_position": "component_link",
+    "component_orientation": "component_link",
+    "component_linear_velocity": "component_link",
+    "component_angular_velocity": "component_link",
+    "centre_of_mass": "component_link",
+}
+
+#: What each observation kind's declared name expands to. A vector channel
+#: becomes suffixed scalars because reward formulas do arithmetic on
+#: scalars, and the set of names a formula may write has to be enumerable
+#: for every one of them to be checkable.
+_OBSERVATION_SUFFIXES: dict[str, tuple[str, ...]] = {
+    "position": ("",),
+    "velocity": ("",),
+    "actuator_force": ("",),
+    "component_position": ("_x", "_y", "_z"),
+    "component_orientation": ("_qw", "_qx", "_qy", "_qz"),
+    "component_linear_velocity": ("_x", "_y", "_z"),
+    "component_angular_velocity": ("_x", "_y", "_z"),
+    "centre_of_mass": ("_x", "_y", "_z"),
+}
+
+
+def _observation_channels(kind: str, name: str) -> list[str]:
+    return [f"{name}{suffix}" for suffix in _OBSERVATION_SUFFIXES[kind]]
+
+
+#: What a randomisation entry may vary, and what it has to be given.
+_RANDOMISATION_TARGETS: dict[str, str] = {
+    "mass": "component_link",
+    "damping": "joint",
+    "armature": "joint",
+    "friction_loss": "joint",
+}
+
+#: An observation's name, which becomes a name a reward formula writes. The
+#: same shape as a Python identifier because that is what it turns into,
+#: and short enough that the suffixed forms stay readable.
+_CHANNEL_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,47}$")
 
 #: What a control formula may name. ``initialValue`` is deliberately absent
 #: and refused by name below.
@@ -722,10 +813,15 @@ class AssemblyDomainAPI:
         "simulation",
         "dynamics",
         "mjcf",
+        "task",
         "body",
         "collision",
         "joint_dynamics",
         "actuator",
+        "observation",
+        "reward",
+        "termination",
+        "randomise",
         "exploded_view",
     )
 
@@ -2208,6 +2304,254 @@ class AssemblyDomainAPI:
             label=label,
         )
 
+    def observation(
+        self,
+        target: DomainValue,
+        kind: str,
+        *,
+        name: str,
+        label: str = "",
+    ) -> DomainValue:
+        """Declare one channel of a task's observation space.
+
+        An observation is a **sensor in the exported model**, so the
+        observation vector is computed by stock MuJoCo and no Cadex code is
+        anywhere between the mechanism and the array a trainer reads. What
+        this declares is the naming: which quantity, off which part, called
+        what.
+
+        ``kind`` is one of:
+
+        * ``position`` / ``velocity`` -- a joint's own coordinate, in
+          degrees or millimetres and their per-second forms. ``target`` is
+          an ``api.joint``.
+        * ``component_position`` / ``component_orientation`` /
+          ``component_linear_velocity`` / ``component_angular_velocity`` --
+          where a part is and how it is moving, in the world frame.
+          ``target`` is an ``api.component``.
+        * ``centre_of_mass`` -- the centre of mass of a component *and
+          everything hanging off it*, which is the quantity a balance
+          reward wants.
+        * ``actuator_force`` -- the effort a motor is actually producing, in
+          N·mm or N. ``target`` is an ``api.actuator``.
+
+        **A vector channel expands to suffixed names.** ``name="hand"`` on a
+        ``component_position`` gives ``hand_x``, ``hand_y`` and ``hand_z``;
+        an orientation gives ``hand_qw`` through ``hand_qz``. Reward
+        formulas do arithmetic on scalars, so those suffixed names are what
+        a formula writes -- and two channels that would produce one name are
+        refused, including when the collision comes from an expansion.
+
+        **Units are the surface's, not MuJoCo's.** An angle observed here is
+        degrees and a position is millimetres, exactly as everywhere else in
+        this API. The conversion is one number per channel carried in the
+        task bundle, so the trainer multiplies rather than converts.
+
+        An observation is an intermediate value like ``api.collision``: pass
+        it to ``api.mjcf``, and do not return it as an output of its own.
+        """
+
+        operation = "observation"
+        clean_kind = str(kind or "").strip().lower()
+        wanted = _OBSERVATION_KINDS.get(clean_kind)
+        if wanted is None:
+            raise _error(
+                operation,
+                "kind",
+                f"must be one of {sorted(_OBSERVATION_KINDS)}",
+                kind,
+            )
+        value = _domain_value(operation, "target", target, output_type=wanted)
+        clean_name = str(name or "").strip()
+        if not _CHANNEL_NAME.fullmatch(clean_name):
+            raise _error(
+                operation,
+                "name",
+                "must be a short identifier: a letter followed by up to 47 "
+                "letters, digits or underscores. It becomes a name reward "
+                "formulas write, so it has to be one they can",
+                name,
+            )
+        properties: dict[str, Any] = {"kind": clean_kind, "name": clean_name}
+        if wanted == "actuator":
+            # An actuator is identified by the coordinate it drives and the
+            # kind it is, because that is what the model names it after.
+            properties["motion_type"] = str(value.properties.get("motion_type"))
+            properties["actuator_kind"] = str(value.properties.get("kind"))
+        return self._value(operation, "observation", value, label=label, **properties)
+
+    def reward(
+        self,
+        expression: str,
+        *,
+        weight: float = 1.0,
+        label: str = "",
+    ) -> DomainValue:
+        """One term of a task's reward, as arithmetic on its channels.
+
+        The reward a policy maximises is the weighted sum of these. Terms
+        rather than one expression because a training run's most common
+        question is *which part of the reward is doing the work*, and a sum
+        that was written as one string cannot answer it -- an episode
+        reports every term's own contribution separately.
+
+        ``expression`` names the channels the task's ``api.observation``
+        values declare, remembering that a vector channel expands:
+        ``"-(hand_x - 300)^2"`` rather than ``"hand"``. It may use
+        arithmetic, powers, and the one-argument functions ``abs``,
+        ``asin``/``arcsin``, ``arctan``, ``cos``, ``sin``, ``exp``, ``sqrt``
+        and ``tanh``. Naming a channel the task does not declare is a
+        refusal, not a zero.
+
+        ``weight`` is what the term is multiplied by, and its sign is how a
+        cost is written: a control cost is a positive quantity with a
+        negative weight, which keeps the expression readable as the thing it
+        measures.
+
+        A reward is an intermediate value: pass it to ``api.task``.
+        """
+
+        operation = "reward"
+        formula = _checked_formula(
+            operation,
+            "expression",
+            expression,
+            names=None,
+            functions=_REWARD_FUNCTIONS,
+        )
+        return self._value(
+            operation,
+            "reward",
+            expression=formula,
+            weight=_number(operation, "weight", weight, minimum=-1.0e12,
+                           maximum=1.0e12),
+            label=_label(operation, label),
+        )
+
+    def termination(
+        self,
+        expression: str,
+        *,
+        above: float | None = None,
+        below: float | None = None,
+        label: str = "",
+    ) -> DomainValue:
+        """End an episode early when something goes out of range.
+
+        A termination rule is an expression over the task's channels and a
+        bound it must not cross. Exactly one of ``above`` and ``below`` is
+        required -- a rule with neither is not a rule, and one with both
+        reads as an interval when it would mean a union.
+
+        This is what separates a failure from a horizon. An episode that
+        used its whole budget and one that was cut short by a mechanism
+        spinning out are different outcomes, and a trainer that cannot tell
+        them apart learns from the difference anyway.
+
+        A termination is an intermediate value: pass it to ``api.task``.
+        """
+
+        operation = "termination"
+        formula = _checked_formula(
+            operation,
+            "expression",
+            expression,
+            names=None,
+            functions=_REWARD_FUNCTIONS,
+        )
+        if (above is None) == (below is None):
+            raise _error(
+                operation,
+                "above",
+                "requires exactly one of above or below: a rule with neither "
+                "never fires, and one with both would read as an interval "
+                "when it means a union. Declare two terminations instead",
+            )
+        return self._value(
+            operation,
+            "termination",
+            expression=formula,
+            above=(
+                None if above is None else _number(operation, "above", above)
+            ),
+            below=(
+                None if below is None else _number(operation, "below", below)
+            ),
+            label=_label(operation, label),
+        )
+
+    def randomise(
+        self,
+        target: DomainValue,
+        property_name: str,
+        *,
+        scale: Sequence[float],
+        label: str = "",
+    ) -> DomainValue:
+        """Vary one physical property between episodes.
+
+        Domain randomisation, and the reason it belongs in the script rather
+        than in a trainer's configuration: the properties worth varying are
+        the ones the assembly computed, and the amount worth varying them by
+        is a statement about how well the real part is known. A forearm
+        whose density is a guess to ten per cent is
+        ``scale=[0.9, 1.1]`` here.
+
+        ``property_name`` is one of:
+
+        * ``mass`` on an ``api.component`` -- scales the part's mass **and
+          its inertia tensor together**, which is what changing the density
+          of a fixed shape means. Scaling one alone would leave a body whose
+          rotational inertia no longer matches its mass.
+        * ``damping`` / ``armature`` / ``friction_loss`` on an
+          ``api.joint`` -- the three ``api.joint_dynamics`` properties. A
+          joint whose declared value is zero stays zero however it is
+          scaled, which is worth knowing before expecting a spread.
+
+        ``scale`` is a multiplicative range ``[low, high]``, drawn uniformly
+        once per episode. Multiplicative rather than additive so that one
+        range means the same thing on a 20 g link and a 20 kg one.
+
+        A randomisation is an intermediate value: pass it to ``api.task``.
+        """
+
+        operation = "randomise"
+        clean_property = str(property_name or "").strip().lower()
+        wanted = _RANDOMISATION_TARGETS.get(clean_property)
+        if wanted is None:
+            raise _error(
+                operation,
+                "property_name",
+                f"must be one of {sorted(_RANDOMISATION_TARGETS)}",
+                property_name,
+            )
+        value = _domain_value(operation, "target", target, output_type=wanted)
+        bounds = _vector(operation, "scale", scale, size=2)
+        low, high = bounds
+        if low <= 0.0:
+            raise _error(
+                operation,
+                "scale",
+                "is a multiplicative range and must stay positive: [0.9, 1.1] "
+                "is a ten per cent spread. A zero or negative factor is not a "
+                "scale, and on a mass it is a body with undefined acceleration",
+                scale,
+            )
+        if high < low:
+            raise _error(
+                operation, "scale", "must be ordered [low, high]", scale
+            )
+        properties: dict[str, Any] = {
+            "target": clean_property,
+            "low": low,
+            "high": high,
+        }
+        if wanted == "joint":
+            properties["motion_type"] = _coordinate(operation, value, "auto")
+        return self._value(
+            operation, "randomise", value, label=label, **properties
+        )
+
     def mjcf(
         self,
         assembly: DomainValue,
@@ -2215,6 +2559,7 @@ class AssemblyDomainAPI:
         *,
         actuators: Sequence[DomainValue] = (),
         joint_dynamics: Sequence[DomainValue] = (),
+        observations: Sequence[DomainValue] = (),
         gravity_m_s2: Sequence[float] | None = None,
         solver_step_s: float | None = None,
         label: str = "",
@@ -2254,6 +2599,13 @@ class AssemblyDomainAPI:
         ``api.dynamics`` in the same script, or beside ``api.motion``
         outputs -- kinematics on screen and a dynamics model on disk is a
         useful pair and a legal one.
+
+        ``observations`` takes ``api.observation`` values and writes them
+        into the file as MJCF sensors, which is what makes the exported
+        model readable as a task rather than only as a mechanism. They are
+        dynamically inert -- measured, not assumed -- so a model that gains
+        channels integrates identically to the one that had none, and
+        everything this docstring promises above stays true of it.
         """
 
         operation = "mjcf"
@@ -2266,6 +2618,9 @@ class AssemblyDomainAPI:
             gravity_m_s2,
             solver_step_s,
         )
+        channels = self._observations(
+            operation, observations, shared, assembly=shared["model"]
+        )
         return self._value(
             operation,
             "mjcf",
@@ -2273,8 +2628,224 @@ class AssemblyDomainAPI:
             bodies=shared["bodies"],
             actuators=shared["actuators"],
             joint_dynamics=shared["joint_dynamics"],
+            observations=channels,
             gravity_m_s2=shared["gravity_m_s2"],
             solver_step_s=shared["solver_step_s"],
+            label=label,
+        )
+
+    @staticmethod
+    def _observations(
+        operation: str,
+        observations: Sequence[DomainValue],
+        shared: Mapping[str, Any],
+        *,
+        assembly: DomainValue,
+    ) -> list[DomainValue]:
+        """Every declared channel, against the model it claims to observe.
+
+        The API's half of the resolution. It can check that a channel reads
+        a part this assembly lists and a motor this model carries, and that
+        two channels do not collide by name once the vector ones expand --
+        which is everything a reader of the script could check by looking.
+
+        What it cannot check is whether the joint survives into the dynamics
+        model: a joint the spanning forest turns into a loop closure owns no
+        coordinate, and only the engine knows which one that is. That
+        refusal is :func:`CadexDynamics.observation_records`'s, and it names
+        the reason rather than the absence.
+        """
+
+        entries = _values(
+            operation, "observations", observations, output_type="observation",
+            minimum=0,
+        )
+        component_ids = {id(item) for item in assembly.properties.get("components", ())}
+        joint_ids = {id(item) for item in assembly.properties.get("joints", ())}
+        actuator_ids = {id(item) for item in shared["actuators"]}
+        taken: dict[str, str] = {}
+        for index, entry in enumerate(entries):
+            where = f"observations[{index}]"
+            target = entry.arguments[0]
+            kind = str(entry.properties.get("kind"))
+            wanted = _OBSERVATION_KINDS[kind]
+            if wanted == "component_link" and id(target) not in component_ids:
+                raise _error(
+                    operation, where,
+                    "observes a component that is not listed in this assembly",
+                )
+            if wanted == "joint" and id(target) not in joint_ids:
+                raise _error(
+                    operation, where,
+                    "observes a joint that is not listed in this assembly",
+                )
+            if wanted == "actuator" and id(target) not in actuator_ids:
+                raise _error(
+                    operation, where,
+                    "reads the effort of an actuator this model does not "
+                    "carry; pass the same api.actuator value given to "
+                    f"api.{operation}(actuators=...)",
+                )
+            name = str(entry.properties.get("name"))
+            for channel in _observation_channels(kind, name):
+                if channel in taken:
+                    raise _error(
+                        operation, where,
+                        f"declares a channel {channel!r} that "
+                        f"{taken[channel]!r} already declares. A vector "
+                        "observation expands: one named 'hand' occupies "
+                        "hand_x, hand_y and hand_z",
+                    )
+                taken[channel] = name
+        return entries
+
+    def task(
+        self,
+        model: DomainValue,
+        *,
+        actions: Sequence[DomainValue],
+        reward: Sequence[DomainValue],
+        episode_seconds: float,
+        control_hz: int,
+        termination: Sequence[DomainValue] = (),
+        randomisation: Sequence[DomainValue] = (),
+        label: str = "",
+    ) -> DomainValue:
+        """Turn one exported model into a trainable task.
+
+        A model is not a task. Training needs an observation space, an
+        action space, a reward, a termination rule, an episode length and
+        domain randomisation -- none of which is geometry, all of which is
+        data, and the script is already the sole source of truth for data.
+
+        This consumes an ``api.mjcf`` value and writes **one JSON bundle**
+        that references that model by relative path and sha256. One output,
+        one artifact: there is no second XML, and a bundle whose model moved
+        is detectable rather than merely unlucky.
+
+        ``actions`` names the ``api.actuator`` values a policy drives. **Each
+        one's range is derived from the mechanism**, and where it cannot be
+        derived this refuses rather than defaulting:
+
+        * a ``motor`` is bounded by its ``torque_limit_nmm`` /
+          ``force_limit_n``;
+        * a ``position`` servo is bounded by its joint's own limits, both
+          endpoints declared;
+        * a ``velocity`` actuator has no derivable range at all, because a
+          joint states position limits and never a speed.
+
+        A joint with no limits, or with only one endpoint, is the same
+        refusal. The missing endpoint of a one-sided limit is filled in with
+        a margin worth a hundred turns so the solver treats the joint as
+        free; that is a convenience, not a mechanical bound, and an action
+        range taken from it would be a limit nobody designed.
+
+        ``episode_seconds`` and ``control_hz`` set the horizon and the rate
+        a policy acts at. The rate is rounded so that a whole number of
+        solver steps lands exactly on each action, the way ``api.dynamics``
+        rounds frames, and the rate that really ran is what the bundle
+        records.
+
+        **The actuators keep their control formulas.** A policy-driven
+        actuator's formula becomes its deterministic fallback action, which
+        is what lets the episode run -- and be compared against a stock
+        MuJoCo -- before any policy exists.
+
+        Like ``api.mjcf`` and for the same reason, ``api.task`` is not under
+        the "exactly one simulation" rule: a script may declare several,
+        each named from its own output, and two tasks may share one model.
+        """
+
+        operation = "task"
+        value = _domain_value(operation, "model", model, output_type="mjcf")
+        action_values = _values(
+            operation, "actions", actions, output_type="actuator", minimum=1
+        )
+        declared_actuators = {
+            id(item) for item in value.properties.get("actuators", ())
+        }
+        # One actuator is one action, and ``_values`` already refuses a list
+        # that repeats a graph value -- so what is left to check here is
+        # only that each one belongs to *this* model.
+        for index, entry in enumerate(action_values):
+            if id(entry) not in declared_actuators:
+                raise _error(
+                    operation,
+                    f"actions[{index}]",
+                    "drives an actuator this model does not carry; pass the "
+                    "same api.actuator value given to api.mjcf(actuators=...)",
+                )
+        reward_values = _values(
+            operation, "reward", reward, output_type="reward", minimum=1
+        )
+        termination_values = _values(
+            operation, "termination", termination, output_type="termination",
+            minimum=0,
+        )
+        randomisation_values = _values(
+            operation, "randomisation", randomisation, output_type="randomise",
+            minimum=0,
+        )
+        # The assembly the model was exported from is its one argument, so
+        # a randomisation is checked against the same lists api.mjcf was.
+        assembly = value.arguments[0]
+        component_ids = {
+            id(item) for item in assembly.properties.get("components", ())
+        }
+        joint_ids = {id(item) for item in assembly.properties.get("joints", ())}
+        varied: set[tuple[int, str, str]] = set()
+        for index, entry in enumerate(randomisation_values):
+            target = entry.arguments[0]
+            property_name = str(entry.properties.get("target"))
+            wanted = _RANDOMISATION_TARGETS[property_name]
+            if wanted == "component_link" and id(target) not in component_ids:
+                raise _error(
+                    operation,
+                    f"randomisation[{index}]",
+                    "varies a component that is not listed in this assembly",
+                )
+            if wanted == "joint" and id(target) not in joint_ids:
+                raise _error(
+                    operation,
+                    f"randomisation[{index}]",
+                    "varies a joint that is not listed in this assembly",
+                )
+            key = (
+                id(target),
+                property_name,
+                str(entry.properties.get("motion_type") or ""),
+            )
+            if key in varied:
+                raise _error(
+                    operation,
+                    f"randomisation[{index}]",
+                    f"varies {property_name!r} on one target twice; the second "
+                    "draw would silently replace the first",
+                )
+            varied.add(key)
+        seconds = _number(
+            operation, "episode_seconds", episode_seconds,
+            minimum=0.0, maximum=3600.0, strict_minimum=True,
+        )
+        if isinstance(control_hz, bool) or not isinstance(control_hz, int):
+            raise _error(
+                operation, "control_hz",
+                "expected an integer from 1 through 1000", control_hz,
+            )
+        if not 1 <= control_hz <= 1000:
+            raise _error(
+                operation, "control_hz", "must be from 1 through 1000", control_hz
+            )
+        return self._value(
+            operation,
+            "task",
+            value,
+            actions=action_values,
+            reward=reward_values,
+            termination=termination_values,
+            randomisation=randomisation_values,
+            episode_seconds=seconds,
+            control_hz=control_hz,
             label=label,
         )
 

@@ -159,13 +159,17 @@ def test_mjcf_takes_no_trace_parameters() -> None:
         "bodies",
         "actuators",
         "joint_dynamics",
+        # M6's one addition to an M5 surface: channels are written into the
+        # exported file, and there is nothing for them to be in a trace --
+        # a dynamics run reports poses, not sensors.
+        "observations",
         "gravity_m_s2",
         "solver_step_s",
         "label",
     }
-    # And the parameters it does take are the six api.dynamics shares.
+    # And everything else it takes, api.dynamics shares.
     shared = set(inspect.signature(AssemblyDomainAPI.dynamics).parameters)
-    assert parameters <= shared
+    assert parameters - {"observations"} <= shared
 
 
 def test_the_shared_parameters_have_the_same_defaults_on_both() -> None:
@@ -174,10 +178,15 @@ def test_the_shared_parameters_have_the_same_defaults_on_both() -> None:
     dynamics = inspect.signature(AssemblyDomainAPI.dynamics).parameters
     mjcf = inspect.signature(AssemblyDomainAPI.mjcf).parameters
     for name, parameter in mjcf.items():
-        if name in {"self", "assembly", "bodies"}:
+        if name in {"self", "assembly", "bodies", "observations"}:
             continue
         assert parameter.default == dynamics[name].default, name
         assert parameter.kind == dynamics[name].kind, name
+    # The addition is defaulted and keyword-only, which is what makes it
+    # additive: every M5 call site means exactly what it meant.
+    observations = mjcf["observations"]
+    assert observations.default == ()
+    assert observations.kind is inspect.Parameter.KEYWORD_ONLY
 
 
 # ---------------------------------------------------------------------------
