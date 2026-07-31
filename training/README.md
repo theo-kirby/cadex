@@ -1,7 +1,8 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-07-31. Branch **`MJC` only** (ADR-063).
-Provenance: `[Cadex-new]`. See `docs/MUJOCO.md` slice M7 and ADR-070.
+Verified against source: 2026-07-31. Branch **`MJC` only** (ADR-063,
+ADR-072). Provenance: `[Cadex-new]`. See `docs/MUJOCO.md` slice M7 and
+ADR-070.
 
 This directory is **not part of the engine**. CMake never installs it, it is
 in no payload, and nothing in it enters `pixi.toml` — `test_engine_purity_guardrails`
@@ -34,13 +35,24 @@ principle 5 is untouched — the human still only judges.
 
 ## What it reads and what it writes
 
-Reads the pair M6 already makes movable:
+Reads the pair M6 already makes movable. They are **retained artifacts of
+the accepted attempt**, so they live under the project's staging tree rather
+than at the project root:
 
 ```
-<project>/outputs/<name>-task.json    a cadex-training-task-v1 bundle
-<project>/outputs/<name>-model.xml    the MJCF it references, by relative
+<project>/script_artifacts/<revision>/attempt-<id>/outputs/<name>-task.json
+                                      a cadex-training-task-v1 bundle
+<project>/script_artifacts/<revision>/attempt-<id>/outputs/<name>-model.xml
+                                      the MJCF it references, by relative
                                       path and sha256
 ```
+
+The two must stay **side by side**, because the bundle references the model
+by *relative* path and sha256 — which is the whole reason copying the
+`outputs/` directory works and copying two files out of it into a flat
+folder does not. `inspect scope="output"` is the supported way to find the
+accepted attempt's directory without guessing at the revision and attempt
+ids.
 
 Writes one self-contained file:
 
@@ -83,7 +95,8 @@ cross-version numerical reproducibility. That is why every line of
 ## Dispatching a run
 
 ```bash
-scp -r <project>/outputs box:~/job/
+outputs=<project>/script_artifacts/<revision>/attempt-<id>/outputs
+scp -r "${outputs}" box:~/job/
 ssh box '.venv/bin/python cadex_train.py ~/job/outputs/walk-task.json \
     --out ~/job/walk.cxpolicy --seed 0 --iterations 400'
 scp box:~/job/walk.cxpolicy .
@@ -104,16 +117,22 @@ result = {"job_model": model, "job_task": task, "job_policy": policy}
 ```
 
 Bring the file into the project store with the tool that already exists —
-`import_geometry` / `put_asset`, which perform no suffix check of their own —
-then rebuild. The engine verifies the policy against the task it was trained
+`import_geometry` / `put_asset`. Those two perform no suffix check *of their
+own*: they pass the path through and let the engine decide, and the engine's
+list (`_STORED_ASSET_SUFFIXES`, `CadexScriptedRuntime.py:361`) is what
+accepts `.cxpolicy` alongside the three mesh formats. That is the whole
+mechanism by which a policy reaches the store through a tool named for
+geometry, and why it cost no protocol change. Then rebuild. The engine verifies the policy against the task it was trained
 on and publishes a receipt.
 
 > One rough edge, stated rather than papered over: the tool the shell offers
 > is called **`import_geometry`**, and on success it advises
 > `mesh.import_file(...)`, which is wrong for a policy. Fixing that wording
-> is a `shell/` diff, and ADR-063 says the whole branch rests on
-> `git diff main...MJC -- shell/` printing nothing — so it is deliberately
-> not taken. The engine-side refusals carry the correct advice instead.
+> is a `shell/` diff, and the branch rests on
+> `git diff main...MJC -- shell/` printing nothing (ADR-063) — so it is
+> deliberately not taken. ADR-072 §4 names it as available-and-not-taken
+> rather than blocked; the engine-side refusals carry the correct advice in
+> the meantime.
 
 ## Options that matter
 

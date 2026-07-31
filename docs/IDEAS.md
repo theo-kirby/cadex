@@ -1,6 +1,6 @@
 # IDEAS.md — Parking Lot
 
-Verified against source: 2026-07-25 (paths only; the ideas are uncommitted)
+Verified against source: 2026-07-31 (paths only; the ideas are uncommitted)
 
 Uncommitted ideas surfaced during exploration. Nothing here is planned or
 approved — promoting an idea means writing a `docs/DECISIONS.md` entry and a
@@ -34,9 +34,11 @@ roadmap item. Add freely, prune ruthlessly.
   reconciles against a background `rebuild` digest — open fast, verify
   lazily.
 
-- **Progressive tessellation for slider latency.** Stream a coarse mesh
-  during drag, refine on release (noted as an open question in
-  `docs/INTEGRATION.md`).
+- ~~**Progressive tessellation for slider latency.**~~ **Built.** Stream a
+  coarse mesh during drag, refine on release — this is the `draft` quality
+  preset plus the shell's background standard refine, landed with the
+  Blender shell (ADR-019). `docs/INTEGRATION.md` describes it as shipped;
+  this entry pointed at it as an open question, which it stopped being.
 
 - **Script regions as undo/diff units.** If the one script is executed as
   content-hashed regions, chat-turn diffs and partial re-execution fall out

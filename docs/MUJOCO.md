@@ -7,12 +7,16 @@ M3 closed (ADR-064), M4 closed (ADR-065), M5 closed (ADR-066), M6 closed
 a mechanism designed in Cadex trains to a policy offboard and comes home to
 a viewport playing the gait.
 
-**Branch `MJC`, permanently (ADR-063).** This file, and everything it
-describes, exists on `MJC` and not on `main`. The branch is not awaiting a
-merge window: a user who is not going to simulate a mechanism should not
-build a physics engine or ship 53.5 MB of one. Changes flow `main` → `MJC`
-and never back; ADR-063 lists what a sync must not drop, and why a branch
-was chosen over a `WITH_DYNAMICS` build flag.
+**This is the `MJC` vertical (ADR-063, ADR-067, ADR-072).** This file, and
+everything it describes, is the product on `MJC` and absent from `main`.
+`MJC` is not awaiting a merge window and is not provisional: it is a version
+of Cadex with dynamics and control built in, kept separate because a user
+who is not going to simulate a mechanism should not build a physics engine
+or ship 53.5 MB of one. Changes flow `main` → `MJC` and never back. ADR-063
+lists what a sync must not drop and why a branch beat a `WITH_DYNAMICS`
+flag; ADR-067 why M5 closed the merge-back question rather than re-opening
+it; ADR-072 why the docs on this branch are now `MJC`'s own rather than
+`main`'s with a block appended.
 
 This is the framework for adding **rigid-body dynamics** to Cadex on
 MuJoCo, and then following that capability all the way to its end: an agent
@@ -85,8 +89,16 @@ Checked 2026-07-30 against conda-forge, the MuJoCo docs, and this tree.
 | Determinism | deterministic for a **fixed binary, fixed platform, single-threaded**. Explicitly **not** bitwise-reproducible across versions — MuJoCo's own `VERSIONING.md` says so. Multi-threaded island solving has open reproducibility issues upstream. |
 | Licence flow | Apache-2.0 → engine LGPL-2.1**+**. The "+" is doing the work: Apache-2.0 is incompatible with LGPL-2.1-*only* and compatible with the v3 family. Clean, and it is a Python import in a payload-carried conda package like every other. NOTICE gets an entry. |
 
-**Correction to the earlier estimate:** the payload cost is ~14 MB, not
-"tens of MB." It is cheaper than expected.
+**The 14 MB figure is the one to distrust, and it is the conda package.**
+An earlier revision of this document read the ~14 MB conda-forge package and
+recorded the payload cost as "cheaper than expected." We do not ship that
+package — the manifest has not been re-solvable as conda since conda-forge
+moved past `occt ==7.8.1`, so what ships is the **pypi wheel**, which bundles
+the plugin dylibs conda-forge splits out. **53.5 MB, measured** (ADR-061),
+and that is the number every argument on this branch rests on: it is why
+`main` stays free of MuJoCo (ADR-063) and why the merge-back question closed
+the way it did (ADR-067). About 30 MB of it is `mujoco/experimental/`, which
+the engine never imports; pruning it is known, deferred and `MJC`-owned.
 
 ### Joint mapping
 
@@ -113,10 +125,19 @@ hardest piece of slice M2.
 ### 3.1 A trained policy is not rebuildable from the script
 
 VISION principle 3: *the script is the truth; everything else is a cache.
-Any state that can't be rebuilt from the script is a bug.* A policy is tens
-of megabytes of weights produced by hours of stochastic GPU compute. It
-cannot be rebuilt from a script, ever, and pretending otherwise would be a
-lie the tests eventually catch.
+Any state that can't be rebuilt from the script is a bug.* A policy is
+weights produced by hours of stochastic GPU compute. It cannot be rebuilt
+from a script, ever, and pretending otherwise would be a lie the tests
+eventually catch.
+
+**Correction to this paragraph's own arithmetic**, recorded because ADR-070
+names it as a plan claim the measurements contradicted. It read "tens of
+megabytes of weights", and a policy is nothing of the sort: measured
+**4.6 KiB to 902 KiB** for the networks this arc trains. That mattered
+rather than being a footnote — a multi-megabyte asset would have argued for
+its own op and its own transport, and a kilobyte-scale one fits through
+`put_asset` and the 128 MB asset budget without anyone noticing. The size
+being small is part of why M7 needed no protocol change.
 
 **Resolution: a policy is an asset, not a derivation.** The project store
 already has `assets/` — a name-checked, sha256'd, 128 MB-budgeted directory
@@ -144,7 +165,11 @@ plan; it gets a test before it gets a feature.
 
 ### 3.3 Scope, and the ADR
 
-VISION lists five capability areas and dynamics is not one of them.
+*(Written before M0. **Both questions it raises are now answered**, and the
+answers are recorded inline rather than by deleting what was asked — the
+shape of the question is why the answers came out as they did.)*
+
+VISION listed five capability areas and dynamics was not one of them.
 
 - Slices **M1–M4** are defensible as living inside "Assemblies — links,
   joints, solved placements, **motion**." They extend ADR-048 rather than
@@ -155,9 +180,25 @@ VISION lists five capability areas and dynamics is not one of them.
   and it is the owner's call, recorded in an ADR before a line is written.
 
 The ADR is cheap. Drifting into a robotics simulator without one is not.
-It also has to answer a UI question the current principles do not: "no
+
+**Answered (ADR-060, then ADR-072).** The scope extension was approved
+before M1, including M5–M8. `docs/VISION.md` now carries dynamics and
+control as capability areas **6 and 7** in its numbered list rather than as
+an appendix, and this branch is the product that has them.
+
+It also had to answer a UI question the principles did not: "no
 user-accessible modeling tools" is clear, but a **train** button is not a
 modeling tool and the human has to be able to press something.
+
+**Answered outright by M7 (ADR-070): there is no train button, and there is
+nothing to press.** Training does not run in the engine and cannot — it
+needs JAX on a GPU — so the trainer is a program the agent copies to a
+machine that has one and runs with its own shell. The weights come home
+through `put_asset`, the path an imported STL already travels. M7 built no
+UI, no dispatch machinery and no new op, so this is *recorded* rather than
+designed around. VISION principle 5 is untouched: the agent authors the
+task, dispatches the run and declares the result; the human reads a viewport
+and says yes or no.
 
 ### Why not a fork, and why not a new repo
 
@@ -176,13 +217,31 @@ pinned. Code lands under `src/Mod/cadex/`. Nothing in `shell/` ever imports
 mujoco — a physics authoring path in the shell would violate "nothing
 happens outside the script" the same way the deleted bpy modes did.
 
+**What the branch turned out to be, which is not what "branch" suggests
+(ADR-072).** `MJC` is a **product vertical** — a version of Cadex with
+dynamics and control built in — rather than a staging area waiting for a
+merge window. Two facts settled it. The arc finished: M0–M8 are closed, so
+ADR-067's "a branch is where a direction change belongs *until the arc it
+opened is finished*" expired on its own terms. And M5 produced evidence
+pointing the *opposite* way from what ADR-063 anticipated: `export_mjcf`
+calls MuJoCo's own writer, so the capability is not separable from the
+dependency, and the round-trip proof that makes the exported file
+trustworthy only means anything while the writer and the compiler are the
+same pair.
+
+So the three-way choice above resolves as: not a fork, not a new repo, and
+not a build flag either (VISION principle 1 — a `WITH_DYNAMICS` option is
+two configurations of one product) — but a permanent second edition of the
+product, one-directionally synced, whose documentation is its own.
+
 ---
 
 ## 4. The slices
 
 Numbered **M0–M8** to avoid colliding with ROADMAP's phases. The whole
-sequence is a candidate ROADMAP Phase 14 once ADR-060 lands. Every slice is
-a resting place: the product works at the end of each one.
+sequence **is** ROADMAP Phase 14, and all nine slices are closed (M8,
+ADR-071). Every slice is a resting place: the product works at the end of
+each one, which is what made stopping at any of them survivable.
 
 ---
 

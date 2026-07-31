@@ -17,13 +17,15 @@ replaced the VibeCAD-era per-domain multi-program surface `[Cadex-new]`.
 - A project has exactly one script: `<project>/script.py`. It composes all
   five capability domains and is the sole source of truth — the user can
   open it, read it, and diff it; nothing model-shaped exists outside it.
-  Mesh assets the script imports live under `<project>/assets/` (flat,
-  `.stl`/`.obj`/`.ply`). Nothing outside cadexd writes that directory: the
-  `put_asset` op copies a file the user picked into it and returns the name
-  the script may then import (ADR-043), and `inspect scope="assets"` lists
-  what is there.
+  Assets the script names live under `<project>/assets/` (flat): mesh
+  geometry `.stl`/`.obj`/`.ply` (ADR-043) and, on branch `MJC`, trained
+  policies `.cxpolicy` (ADR-070). Nothing outside cadexd writes that
+  directory: the `put_asset` op copies a file the user picked into it and
+  returns the name the script may then reference, and
+  `inspect scope="assets"` lists what is there.
 - Sidecar state: `<project>/script.json` (schema `cadex-project-script-v1`,
-  `CadexProject.py:CadexProjectScriptStore`) — cached `param_specs`,
+  `CadexScriptStore.py:62`, class `CadexProjectScriptStore` — split out of
+  `CadexProject.py` in C1) — cached `param_specs`,
   `param_values`, working/accepted revision, accepted contract (output
   names/types/domains), `accepted_digest`, latest candidate/failure.
   Writes are atomic; unknown fields are rejected.
@@ -124,7 +126,10 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   swings and settles under gravity on MuJoCo. It produces the same
   `simulation` output type `assembly.simulation` does — a script has one
   simulation whichever solver ran it, and two would leave the shell baking
-  neither — so a script carries `api.motion` *or* `api.dynamics`, not both.
+  neither. **Three things now produce one** — `assembly.simulation`
+  (kinematics), `assembly.dynamics` (MuJoCo) and `assembly.rollout` (a
+  trained policy, ADR-071) — and a script carries **exactly one of the
+  three**, never two. Mixing `api.motion` with `api.dynamics` is refused.
   `density_kg_m3` has **no default**: mass, inertia and every fall time scale
   with it, and a guessed density makes the animation plausible and wrong
   (steel 7850, aluminium 2700, ABS 1040). Mass and the inertia tensor come
@@ -340,12 +345,14 @@ The dissolved per-domain operations (`create_program`, `edit_source`,
 `delete_program`, `inspect_program`) stay gone — the guardrail test
 asserts no registered tool may carry them again. Reads go through the
 bounded **`core.inspect`** tool (`CadexInspection.py`; scopes `document`,
-`object`, `script`, `api`, `image`, `output`, `assets` — `script` pages the
-source and reports specs/values, revisions, accepted contract + digest, and
-the latest candidate; `output` serves any accepted output's measured facts
-from the pinned accepted attempt, so they are readable long after the
-rebuild that produced them; `assets` lists what `mesh.import_file` can name;
-both added in ADR-043). There was one more scope, `selection`; it read the
+`object`, `script`, `api`, `image`, `output`, `assets`, `history` — `script`
+pages the source and reports specs/values, revisions, accepted contract +
+digest, and the latest candidate; `output` serves any accepted output's
+measured facts from the pinned accepted attempt, so they are readable long
+after the rebuild that produced them; `assets` lists what a script can name
+by filename; the first two added in ADR-043, and `history` in ADR-045 — the
+accepted-revision undo trail that `restore_version` reads before writing the
+result back through `write_script`). There was one more scope, `selection`; it read the
 Qt shell's selection and died with it (ADR-021), and the engine rejects it.
 
 ### Sandbox rules
@@ -365,9 +372,15 @@ Source is validated before any worker runs (AST policy in
 - One attempt = one windowless `FreeCADCmd --safe-mode -c …` subprocess
   (runner in `CadexScriptedProcess.py`). The project bundle stages all five
   `cadex_<domain>_{api,worker}.py` modules with entry
-  `cadex_project_worker.py` (`_DOMAIN_WORKER_BUNDLES["project"]`,
-  `CadexScriptedRuntime.py`), plus the project's flat mesh `assets/`
-  directory (bounded: 64 files / 128 MB, known suffixes only).
+  `cadex_project_worker.py` — **and six more modules by filename**:
+  `CadexSubshapeQuery.py`, `CadexRouting.py`, `CadexBundle.py`,
+  `CadexDynamics.py`, `cadex_tessellation.py` and `cadex_preview_worker.py`
+  (`_DOMAIN_WORKER_BUNDLES["project"]`, `CadexScriptedRuntime.py:38`). Copied
+  in rather than imported, so a worker module can `import` them inside the
+  sandbox while `cadexd`'s own module closure never reaches them — which for
+  `CadexDynamics.py` is a test-pinned invariant rather than a convenience.
+  Plus the project's flat `assets/` directory (bounded: 64 files / 128 MB,
+  known suffixes only).
 - Hard bounds from preferences (`ScriptedTimeoutSeconds`,
   `ScriptedMemoryLimitMB`); a parent-side watchdog kills over-budget
   workers and reports `MEMORY_LIMIT_EXCEEDED` with observed usage.

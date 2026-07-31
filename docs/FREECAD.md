@@ -1,6 +1,6 @@
 # FREECAD.md — Inherited Substrate Inventory
 
-Verified against source: 2026-07-27
+Verified against source: 2026-07-31
 
 Cadex's **engine** is a FreeCAD fork. This is the ledger of what we keep,
 what is slated for removal, and what is already gone. Its peer for the shell
@@ -55,6 +55,13 @@ the product installs contains them:
 
 - `src/3rdParty`, `cMake`, `pixi.toml` — build substrate (OCCT, Coin3D, Qt6
   come from pixi/conda deps).
+- **One shipping pypi wheel**, on branch `MJC` only: `mujoco == 3.10.0`, the
+  dynamics kernel. It is not inherited FreeCAD substrate and it is not a
+  build-only dependency — it is redistributed **inside the engine payload**,
+  carried there by name through `CARRIED_PYPI_PACKAGES` because the manifest
+  has not been re-solvable as conda since conda-forge moved past our `occt`
+  pin (ADR-060, ADR-061). Ledger entry: `docs/PROVENANCE.md` §4; the payload
+  build hard-fails if it cannot import it.
 - `src/Tools`, `tests/` — upstream tooling and native test trees (audited,
   not blanket-kept, during Phase 1).
 
@@ -121,7 +128,7 @@ itself, in the Phase 7 Qt-shell deletion (ADR-021).
 - `src/Mod/Start`, `Test` and `Help` build but ship in nothing. They look
   like a cheap Phase 13b batch; the audit has not been done.
 - Which `tests/` subtrees cover removed workbenches and go with them?
-- `cadex_assembly_worker.py:2038` imports `CommandCreateView` — GUI-lineage
+- `cadex_assembly_worker.py:2553` imports `CommandCreateView` — GUI-lineage
   code used headlessly for exploded views, and the one import that makes
   deleting `src/Gui` more than mechanical. Scheduled for Phase 8.
   **Partly answered (ADR-047):** the import is no longer *broken* — the
