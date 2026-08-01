@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-07-27
+Verified against source: 2026-08-01
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -91,8 +91,13 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   coplanar regions differently for identical geometry. `decimate` is
   approximating (run-dependent result), so decimate trees are
   digest-identified by their canonical definition instead (ADR-016).
+- `part.terminals()` / `mesh.terminals()` name the places a wire attaches to
+  a component, from its geometry rather than from a measured constant
+  (ADR-062) — see *Terminals* below. The result is not geometry: it
+  publishes nothing and is subscripted by signal name to produce a port.
 - `part.cable()` routes a wire instead of authoring one (ADR-056,
-  **experimental**): given two `(point, direction)` ports and a `gauge_mm`,
+  **experimental**): given two ports — a terminal or a literal
+  `(point, direction)` pair, interchangeably — and a `gauge_mm`,
   it searches a path clearing the `avoid` obstacles — `part` values and
   `mesh` values mixed — and sweeps a round conductor along it, one `solid`
   per wire. The route is recomputed every rebuild, so a cable follows the
@@ -118,6 +123,12 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   carried along it rather than re-levelled. Everything else — `avoid`,
   `clearance_mm`, `slack`, `cell_mm`, `min_bend_radius_mm` — means what it
   does on `part.cable` and applies to the bundle as a whole.
+- `part.solder()` builds the joint that lands a wire on the component it
+  connects to (ADR-063, **experimental**): given one terminal — never a
+  literal port — and the `gauge_mm` of the lead, it fuses the filled bore
+  barrel, the meniscus fillet and the far-face cap, and cuts the lead out of
+  the lot. One call, one joint, one `solid`, sized entirely from the terminal
+  so it moves when the terminal moves. See *Soldering a terminal* below.
 - Outputs are evaluated per domain in fixed order sketcher → part →
   partdesign → mesh → assembly, reusing the per-domain evaluators and
   serializers.
@@ -167,6 +178,105 @@ click and an argument written into the script name geometry identically
 (`CadexSubshapeQuery.py`). When a selector fails, the envelope carries
 `expected_count`, `actual_count` and the full `available` list, so the next
 attempt is a re-query rather than a guess.
+
+### Terminals: ports that name geometry `[ADR-062]`
+
+`part.cable` and `part.bundle` (ADR-056, ADR-057) route a wire between two
+ports. A port used to be a literal `(point, direction)` pair, which is wrong
+by construction for a through-hole, goes stale the moment a slider moves the
+component it was measured off, and does not say which signal it is. A
+**terminal** is a port derived from geometry and looked up by name:
+
+```python
+fc  = part.terminals(board,
+                     holes={"geometry_type": "Cylinder", "radius": 0.5},
+                     exit=(0, 0, 1), order_by=(1, 0, 0),
+                     names=["vbat", "gnd", "tx", "rx", "sda", "scl"])
+esp = mesh.terminals(esp_placed,
+                     header=dict(origin=(-11.3, -4.0, 3.8), along=(0, 1, 0),
+                                 axis=(-1, 0, 0), pitch=2.54, count=4,
+                                 hole_dia=1.0, depth=1.6),
+                     names=["vcc", "gnd", "sda", "scl"])
+
+result["i2c_sda"] = part.cable(esp["sda"], fc["sda"], gauge_mm=0.4,
+                               avoid=[frame])
+```
+
+**A terminal is not geometry.** It has no output type, publishes nothing,
+and cannot be returned as an output — it exists to be subscripted by name
+and handed to `cable`/`bundle`, which serialise it into their own arguments.
+Literal pairs still work everywhere and are unchanged, so a script that uses
+no terminals rebuilds byte-identically.
+
+Two ways to state a set:
+
+| form | where | resolves to |
+|---|---|---|
+| `holes=` selector | `part.terminals` | the axis point on the face **opposite** `exit`, leaving along `exit`; stand-off floors at the bore depth |
+| `pads=` selector | `part.terminals` | the face's `CenterOfMass`, leaving along its normal (agreeing with `exit` if given) |
+| `header=` / `terminals=` declared | both | `origin + along*pitch*k + axis*depth`, leaving along `-axis`; `depth=0` is a pad |
+
+`holes=` **requires** `exit`: a cylindrical face states an axis but not which
+end is outward. A hole lands on the *far* face on purpose — the wire comes in
+from the `exit` side, threads the barrel and stops flush on the other one, so
+two holes wired together meet in true centres rather than each stopping a
+board thickness short. A declared row says the same thing the other way
+round: `axis` is the drilling direction, the terminal is
+`origin + axis*depth`, and the wire leaves along `-axis`.
+
+`order_by` is a **direction**, and it is what matches `names` to matched
+faces: they are projected onto it and taken in ascending order. It is never
+the kernel's enumeration order, for the reason above this section. `len(names)`
+*is* the selector's `expected_count`.
+
+`mesh.terminals` is declared-only — a triangle mesh has no `Cylinder` face to
+select — and its coordinates are the **asset's own**, before any
+`mesh.transform`. That is what makes define-once/place-many work: one header
+from the datasheet, four placed motors, four correct sets. Non-uniform scale
+on the chain is refused rather than silently skewing an axis. On a *part*
+value the declared form is a fallback and the selector form is recommended:
+a part value is built in final coordinates, so declared numbers there are
+world coordinates and go stale exactly like the literals they replace.
+
+#### Soldering a terminal `[ADR-063, ADR-064]`
+
+`part.solder(terminal, gauge_mm=...)` builds the joint that lands the wire —
+one call, one joint, one `solid`:
+
+```python
+result["sda"]       = part.cable(esp["sda"], fc["sda"], gauge_mm=0.4)
+result["sda_joint"] = part.solder(fc["sda"], gauge_mm=0.4)
+```
+
+On a **through-hole** that is the barrel of the plating filled around the
+lead, a meniscus fillet where the lead leaves the board, and a cap over the
+lead's end on the far face. On a **pad** it is the meniscus alone. Every
+dimension is sized from the terminal, so the joint moves when the terminal
+does.
+
+The meniscus is **concave**: it sweeps up off the pad, flattens as it reaches
+the lead, and then runs parallel to the wire for a short collar standing a
+tenth of the lead's radius clear of it. That is what stops a joint reading as
+a cone on a render. The whole joint is one solid of revolution — one closed
+outline, one `revolve`, no booleans (ADR-064).
+
+It is the one operation that takes a terminal and **never** a literal port: a
+joint is built from the bore's radius and depth and the two faces it runs
+between, and a literal `(point, direction)` pair carries none of them. This
+is the first thing a terminal *unlocks* rather than merely improves.
+
+`gauge_mm` is required — the same number the `cable`/`bundle` landing there
+was given. `bore_dia_mm` defaults to the hole's measured diameter,
+`pad_dia_mm` to twice that (or, for a `pads=` selector, to the matched face's
+equivalent-area diameter), and `fillet_mm` to the width of pad the meniscus
+sweeps across — which makes the arc an exact quarter round, tangent to the
+board where it lands and to the lead where it arrives. That default is also
+the **floor**: a shorter fillet spreads further than it climbs, so it would
+undercut the board, and it is refused with the floor named. **A declared
+layout has no measurements to fall back on**: a declared hole without
+`hole_dia` needs `bore_dia_mm`, and a declared pad — which carries no area at
+all — needs `pad_dia_mm`. Everything is refused by naming the value it
+measured and the one it conflicts with.
 
 ### Lifecycle tools
 
@@ -334,6 +444,15 @@ the same thing by "that face" — but only the selector is durable in a saved
 script, which is the point of the split. Nothing in the shell yet *writes* a
 selector into a script from a click; that round trip is half built
 (`docs/ROADMAP.md` Phase 10b).
+
+**A pin is not a terminal.** The two words mean different things here and
+must not be swapped. A *pin* is this: a click-captured geometry reference,
+in chat (`CadexPinResolution.py`, `resolve_pin`, `pick_pin`). A *terminal*
+is an electrical attachment point on a component, named in a script and
+resolved from geometry (ADR-062, above). `resolve_pin`'s answer —
+`center_mm` plus `normal` — happens to be exactly the shape of a literal
+port, which is how a picked pad can be pasted into a `part.cable` call; that
+is a coincidence of shape, not the same concept.
 
 ---
 

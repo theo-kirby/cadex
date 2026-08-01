@@ -14,6 +14,7 @@ import math
 from typing import Any, Iterable, Sequence
 
 from CadexSubshapeQuery import SELECTOR_KEYS
+from CadexTerminals import Terminal, TerminalError, TerminalSet, declared_layout, selector_layout
 from cadex_domain_api import DomainValue
 from cadex_mesh_api import payload_tree_is_deterministic
 
@@ -142,21 +143,106 @@ def _mesh_value(operation: str, parameter: str, value: Any) -> DomainValue:
     return value
 
 
-def _port(operation: str, parameter: str, value: Any) -> list[list[float]]:
+def _port(operation: str, parameter: str, value: Any) -> Any:
     """One connection point: where a wire attaches and which way it leaves.
 
-    The shape ``resolve_pin`` already answers a pick with — ``center_mm``
-    plus ``normal`` — so a picked pad is a port with no conversion.
+    Two forms, interchangeable at either end of any run.
+
+    A **terminal** from ``part.terminals`` or ``mesh.terminals`` (ADR-062) —
+    named, and derived from the component's geometry on every rebuild, so it
+    rides a slider instead of going stale. It converts to plain JSON here,
+    *before* the :class:`DomainValue` is constructed, with the component's
+    payload nested inside; that is the whole reason a terminal never needs to
+    be a domain value, an output type, or a row in the tree.
+
+    A literal ``(point, direction)`` pair, which is what ADR-056 took and
+    what ``resolve_pin`` already answers a pick with — ``center_mm`` plus
+    ``normal``, so a picked pad is a port with no conversion.
     """
 
+    if isinstance(value, Terminal):
+        return value.to_port()
+    if isinstance(value, TerminalSet):
+        raise _error(
+            operation,
+            parameter,
+            "expected one terminal, not the whole set; subscript it by name, "
+            f"e.g. component[{value.names[0]!r}]",
+        )
     if not isinstance(value, (list, tuple)) or len(value) != 2:
         raise _error(
-            operation, parameter, "expected ([x, y, z], [dx, dy, dz])", value
+            operation,
+            parameter,
+            "expected a terminal from part.terminals/mesh.terminals, or a "
+            "literal ([x, y, z], [dx, dy, dz])",
+            value,
         )
     return [
         _vector(operation, f"{parameter}[0]", value[0]),
         _vector(operation, f"{parameter}[1]", value[1], nonzero=True),
     ]
+
+
+def _solder_terminal(operation: str, parameter: str, value: Any) -> dict[str, Any]:
+    """One terminal, and never a literal port (ADR-063).
+
+    The one place in this api where a literal ``(point, direction)`` pair is
+    *not* interchangeable with a terminal, and the reason is not strictness for
+    its own sake: a joint is built from a bore's radius and depth and the two
+    faces it runs between, and a literal carries none of them.  There is
+    nothing to refuse *later* either — a literal port would leave the operation
+    with no numbers at all, so it is named here, where the correction can be
+    "declare the attachment" rather than "the kernel produced a null shape".
+    """
+
+    if isinstance(value, Terminal):
+        return value.to_port()
+    if isinstance(value, TerminalSet):
+        raise _error(
+            operation,
+            parameter,
+            "expected one terminal, not the whole set; a joint is soldered per "
+            f"terminal, so subscript it by name, e.g. component[{value.names[0]!r}]",
+        )
+    raise _error(
+        operation,
+        parameter,
+        "expected a terminal from part.terminals/mesh.terminals. A literal "
+        "(point, direction) port carries no bore radius, no depth and no face, "
+        "so there is nothing to build a joint from",
+        value,
+    )
+
+
+def _port_separation(operation: str, parameter: str, start: Any, end: Any) -> None:
+    """Refuse two literal ports at one point, while a terminal is still opaque.
+
+    Only literals can be compared here: a terminal's point is geometry, and
+    geometry is resolved in the worker.  The worker refuses the same case —
+    ``RoutingError`` with reason ``bounds`` for a cable, the ``reach`` check
+    for a bundle — so nothing is lost, it is just reported later.
+    """
+
+    if not isinstance(start, list) or not isinstance(end, list):
+        return
+    separation = math.sqrt(
+        sum((end[0][index] - start[0][index]) ** 2 for index in range(3))
+    )
+    if separation <= 1.0e-9:
+        raise _error(
+            operation,
+            parameter,
+            "the two ports must be at different points for there to be a run",
+        )
+
+
+def _terminal_layout(operation: str, builder: Any, **arguments: Any) -> dict[str, Any]:
+    """Build one terminal layout, naming the operation in whatever it refuses."""
+
+    try:
+        return builder(**arguments)
+    except TerminalError as exc:
+        raise TerminalError(f"api.{operation}: {exc}", details=exc.details) from exc
 
 
 def _obstacles(operation: str, parameter: str, values: Any) -> list[DomainValue]:
@@ -1192,6 +1278,140 @@ class PartDomainAPI:
             label=label,
         )
 
+    def terminals(
+        self,
+        component: DomainValue,
+        *,
+        holes: Mapping[str, Any] | None = None,
+        pads: Mapping[str, Any] | None = None,
+        terminals: Sequence[Mapping[str, Any]] | None = None,
+        header: Mapping[str, Any] | None = None,
+        exit: Sequence[float] | None = None,
+        order_by: Sequence[float] | None = None,
+        names: Sequence[str],
+    ) -> TerminalSet:
+        """Name the places a wire attaches to one component (ADR-062).
+
+        A **terminal** is a port that rides the geometry.  Where ``part.cable``
+        took two hand-measured ``(point, direction)`` literals, this names
+        them once, from the shape itself, and every wire that lands on this
+        component refers to them by signal::
+
+            fc = part.terminals(board,
+                                holes={"geometry_type": "Cylinder",
+                                       "radius": 0.5, "expected_count": 8},
+                                exit=(0, 0, 1), order_by=(1, 0, 0),
+                                names=["vbat", "gnd", "tx", "rx",
+                                       "sda", "scl", "io4", "io5"])
+
+            wire = part.cable(esp["sda"], fc["sda"], gauge_mm=0.4,
+                              avoid=[frame])
+
+        The result is **not** geometry.  It publishes nothing, appears in no
+        tree row, and cannot be returned as an output; it exists to be
+        subscripted by name and handed to ``part.cable`` or ``part.bundle``.
+
+        **The selector forms.**  ``holes=`` and ``pads=`` are ADR-029
+        selectors over this shape's faces, the same vocabulary ``fillet`` and
+        ``subshape`` take, so the terminals move when the geometry does.
+
+        - ``holes=`` names drilled barrels.  A hole's attachment is an axis
+          and a depth, not a surface point, and the terminal lands on the
+          **far** face: the wire threads the barrel and ends flush on the
+          other side, so two holes wired together meet in true centres.
+          ``exit=`` is **required** — a cylindrical face states an axis but
+          not which end of it is outward, and inferring that from the solid's
+          shape is wrong on any board that is not roughly symmetric.
+        - ``pads=`` names flat contacts.  The terminal is the face's centre
+          of mass, leaving along its normal (flipped to agree with ``exit=``
+          when you give one, so a face's orientation in the shell is not
+          something the script has to know about).
+
+        ``order_by=`` is a **direction**, and it is what matches ``names`` to
+        the matched faces: they are projected onto it and taken in ascending
+        order, ties broken by a fixed secondary axis.  It is required as soon
+        as there is more than one name.  Ordering is never the kernel's
+        enumeration order — that is precisely the index reference ADR-029
+        deleted, and a saved ``names`` list ordered that way would silently
+        start naming different holes the moment a parameter changed topology.
+        ``len(names)`` is the selector's ``expected_count``, so a selector
+        that matches a different number of faces fails loudly, reporting both
+        counts and every candidate it did see.
+
+        **The declared form.**  ``header=`` (one row) or ``terminals=``
+        (several) state a layout directly, for geometry that has no face to
+        select::
+
+            header=dict(origin=(-11.3, -4.0, 3.8), along=(0, 1, 0),
+                        axis=(-1, 0, 0), pitch=2.54, count=4,
+                        hole_dia=1.0, depth=1.6)
+
+        ``origin`` is the first terminal's entry point, ``along`` and
+        ``pitch`` step the row, and ``axis`` is the direction the holes are
+        drilled *into* the body — so the wire leaves back along ``-axis``,
+        and a ``depth`` of zero is a pad rather than a hole.  ``names`` runs
+        over the rows in declaration order.
+
+        On a *part* value the declared form is a fallback and the selector
+        form is the recommended one: a part value is built in final
+        coordinates, so declared numbers are world coordinates and go stale
+        exactly like the literals they replace.  ``mesh.terminals`` is the
+        other way round — there is no BREP face on a triangle mesh, so the
+        declared form is all there is, and there the coordinates are the
+        asset's own and ride its placement.
+        """
+
+        operation = "terminals"
+        forms = {
+            "holes": holes,
+            "pads": pads,
+            "terminals": terminals,
+            "header": header,
+        }
+        given = sorted(name for name, value in forms.items() if value is not None)
+        if len(given) != 1:
+            raise _error(
+                operation,
+                "holes/pads/terminals/header",
+                "state exactly one of holes= (drilled barrels), pads= (flat "
+                "contacts), header= (one declared row) or terminals= (several "
+                f"declared rows); received {given or 'none'}",
+            )
+        clean_component = _shape(operation, "component", component)
+        form = given[0]
+        if form in {"holes", "pads"}:
+            if not isinstance(names, (list, tuple)) or isinstance(names, str) or not names:
+                raise _error(
+                    operation, "names", "expected a non-empty list of signal names", names
+                )
+            layout = _terminal_layout(
+                operation,
+                selector_layout,
+                kind=form,
+                selector=_selector(
+                    operation, form, forms[form], fixed_count=len(names)
+                ),
+                exit=exit,
+                order_by=order_by,
+                names=names,
+            )
+        else:
+            if exit is not None or order_by is not None:
+                raise _error(
+                    operation,
+                    "exit/order_by",
+                    "a declared layout already states its own axis and its own "
+                    "order, so exit= and order_by= have nothing to do here",
+                )
+            layout = _terminal_layout(
+                operation,
+                declared_layout,
+                entries=terminals,
+                header=header,
+                names=names,
+            )
+        return TerminalSet(clean_component, layout)
+
     def cable(
         self,
         start: Sequence[Sequence[float]],
@@ -1208,15 +1428,26 @@ class PartDomainAPI:
         """Route a wire between two connection points and sweep it as a solid.
 
         The harness operation: you declare where the wire attaches, not where
-        it goes.  ``start`` and ``end`` are ``(point, direction)`` pairs — the
-        point sits on a component's surface and the direction points away
-        from it, which is exactly the ``center_mm`` and ``normal`` a picked
-        pad resolves to.  ``gauge_mm`` is the outer diameter of the insulated
-        conductor.  The result is one ``solid``::
+        it goes.  ``gauge_mm`` is the outer diameter of the insulated
+        conductor, and the result is one ``solid``.
 
+        Each end is a **terminal** from ``part.terminals``/``mesh.terminals``,
+        or a literal ``(point, direction)`` pair — interchangeably, at either
+        end.  Prefer the terminal: it is named, and it is derived from the
+        component's geometry on every rebuild, so it rides a slider instead
+        of going stale (ADR-062).  A literal's point sits on a component's
+        surface and its direction points away from it, which is exactly the
+        ``center_mm`` and ``normal`` a picked pad resolves to::
+
+            part.cable(esp["sda"], board["sda"],
+                       gauge_mm=0.4, avoid=[frame])
             part.cable(((0, 4, 8.6), (0, 1, 0)),
                        ((12, 9, 6.2), (0, 0, 1)),
                        gauge_mm=0.8, avoid=[frame, flight_controller])
+
+        A terminal on a through-hole lands on the hole's **far** face and
+        carries the bore's depth, so the search anchor clears the board the
+        wire has just threaded rather than starting inside it.
 
         The route is searched afresh on every rebuild, so a cable follows the
         things it connects: change a parameter that moves a component and the
@@ -1252,15 +1483,7 @@ class PartDomainAPI:
         operation = "cable"
         clean_start = _port(operation, "start", start)
         clean_end = _port(operation, "end", end)
-        separation = math.sqrt(
-            sum((clean_end[0][index] - clean_start[0][index]) ** 2 for index in range(3))
-        )
-        if separation <= 1.0e-9:
-            raise _error(
-                operation,
-                "start/end",
-                "the two ports must be at different points for there to be a run",
-            )
+        _port_separation(operation, "start/end", clean_start, clean_end)
         clean_slack = _number(operation, "slack", slack, minimum=1.0)
         properties: dict[str, Any] = {
             "gauge_mm": _number(operation, "gauge_mm", gauge_mm, minimum=0.0, strict=True),
@@ -1315,9 +1538,10 @@ class PartDomainAPI:
         separating only at the ends, where each lands on its own port.
 
         ``connections`` is one ``(start_port, end_port)`` pair per conductor,
-        and each port is the same ``(point, direction)`` pair ``part.cable``
-        takes.  ``conductor`` is the 0-based index of the one *this call*
-        returns, so N conductors are N calls that differ only in that index::
+        and each port is whatever ``part.cable`` takes — a terminal or a
+        literal pair, mixed freely.  ``conductor`` is the 0-based index of
+        the one *this call* returns, so N conductors are N calls that differ
+        only in that index::
 
             pair = [(batt_pos, esc_pos), (batt_neg, esc_neg)]
             red   = part.bundle(pair, gauge_mm=1.6, conductor=0, avoid=[frame])
@@ -1389,15 +1613,7 @@ class PartDomainAPI:
                 )
             start = _port(operation, f"{name}[0]", pair[0])
             end = _port(operation, f"{name}[1]", pair[1])
-            separation = math.sqrt(
-                sum((end[0][axis] - start[0][axis]) ** 2 for axis in range(3))
-            )
-            if separation <= 1.0e-9:
-                raise _error(
-                    operation,
-                    name,
-                    "the two ports must be at different points for there to be a run",
-                )
+            _port_separation(operation, name, start, end)
             clean_connections.append([start, end])
         clean_style = str(style)
         if clean_style not in _LAY_STYLES:
@@ -1448,6 +1664,98 @@ class PartDomainAPI:
             operation,
             "solid",
             clean_connections,
+            label=label,
+            **properties,
+        )
+
+    def solder(
+        self,
+        terminal: Any,
+        *,
+        gauge_mm: float,
+        pad_dia_mm: float | None = None,
+        fillet_mm: float | None = None,
+        bore_dia_mm: float | None = None,
+        refine: bool = True,
+        label: str = "",
+    ) -> DomainValue:
+        """Build the joint that lands a wire on the component it connects to.
+
+        The third harness operation.  ``part.cable`` and ``part.bundle`` sweep
+        a conductor that stops flush on a face or in a bore, and nothing joins
+        it to the board — which is visibly wrong on a render, and is the last
+        thing between a routed harness and a model that looks like the object.
+        One call is one joint and one ``solid``::
+
+            fc = part.terminals(board, holes={"geometry_type": "Cylinder"},
+                                exit=(0, 0, 1), order_by=(1, 0, 0),
+                                names=["vcc", "gnd", "sda", "scl"])
+            wire  = part.cable(esp["sda"], fc["sda"], gauge_mm=0.4)
+            joint = part.solder(fc["sda"], gauge_mm=0.4, label="sda joint")
+
+        **It takes a terminal, never a literal port.**  A joint is built from
+        the bore's radius and depth and the two faces it runs between, and a
+        literal ``(point, direction)`` pair carries none of that.  This is the
+        first operation a terminal *unlocks* rather than merely improves.
+
+        On a **through-hole** the result is the barrel of the plating filled
+        around the lead, a meniscus fillet where the lead leaves the board, and
+        a cap over the lead's end on the far face.  On a **pad** it is the
+        meniscus alone.  Everything is sized from the terminal, so the joint
+        moves when the terminal does — which is the whole point of both.
+
+        The meniscus is **concave**: it sweeps up off the pad, flattens as it
+        reaches the lead, and then runs parallel to the wire for a short collar
+        that stands a tenth of the lead's radius clear of it.  That is what
+        stops a joint reading as a cone on a render.
+
+        ``gauge_mm`` is required, and is the same number the ``cable`` or
+        ``bundle`` that lands here was given.
+
+        ``pad_dia_mm`` is how far the joint spreads across the face.  It
+        defaults to twice the bore diameter on a hole, and to the
+        equivalent-area diameter of the matched face on a ``pads=`` terminal.
+        A *declared* pad carries no area, so there it is required.
+
+        ``bore_dia_mm`` defaults to the hole's measured diameter; a declared
+        hole that stated no ``hole_dia`` has none, so there it is required.
+
+        ``fillet_mm`` is how far the meniscus climbs the lead, and defaults to
+        the width of pad the meniscus sweeps across — which makes the arc an
+        exact quarter round, tangent to the board where it lands and tangent to
+        the lead where it arrives.  That default is also the floor: a shorter
+        fillet spreads further than it climbs, so it would meet the board from
+        underneath.  The collar's height and the cap's both derive from it; a
+        joint has enough numbers.
+
+        Every refusal names the value it measured and the one it conflicts
+        with: a lead that does not fit its bore, a pad narrower than the hole
+        it rings, a hole whose width was never stated.
+        """
+
+        operation = "solder"
+        clean_terminal = _solder_terminal(operation, "terminal", terminal)
+        properties: dict[str, Any] = {
+            "gauge_mm": _number(
+                operation, "gauge_mm", gauge_mm, minimum=0.0, strict=True
+            ),
+            "refine": bool(refine),
+        }
+        # Each override is omitted when unset rather than defaulted here: what
+        # it falls back to is geometry, and geometry resolves in the worker.
+        for name, value in (
+            ("pad_dia_mm", pad_dia_mm),
+            ("fillet_mm", fillet_mm),
+            ("bore_dia_mm", bore_dia_mm),
+        ):
+            if value is not None:
+                properties[name] = _number(
+                    operation, name, value, minimum=0.0, strict=True
+                )
+        return self._value(
+            operation,
+            "solid",
+            clean_terminal,
             label=label,
             **properties,
         )
@@ -2113,8 +2421,10 @@ class PartDomainAPI:
             "revolve",
             "loft",
             "sweep",
+            "terminals",
             "cable",
             "bundle",
+            "solder",
             "ruled_surface",
             "filled_surface",
             "fuse",

@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-07-31
+Verified against source: 2026-08-01
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -724,7 +724,7 @@ offscreen rendering, so the agent verifies through `inspect` facts and
 script stdout and is told so in its prompt; the CLI does not ship inside the
 engine payload; Windows is not supported.
 
-## Off-phase — `part.cable` and `part.bundle`, experimental (ADR-056, ADR-057, 2026-07-27)
+## Off-phase — the harness ops, experimental (ADR-056, ADR-057, ADR-062, ADR-063, 2026-07-27 → 2026-08-01)
 
 Procedural wire routing landed on **no phase**. It is new scope, not a work
 item any phase declared, and it is recorded here as experimental rather than
@@ -743,12 +743,61 @@ spline fit and sweep wholesale — the extraction that made them shared changed
 no numerics, proved by rebuilding the drone to an unchanged digest. What is
 its own is the frame and the offsets, in `CadexBundle.py`.
 
+**Then ports stopped being literals (ADR-062, 2026-08-01).**
+`part.terminals` / `mesh.terminals` and `CadexTerminals.py`: a third
+pure-Python module, still no shell code and still no protocol change. It
+settles the first gap below and changes nothing for a script that does not
+use it — literal ports take the same path and produce the same digest.
+
+**Then the wires stopped ending in mid-air (ADR-063, 2026-08-01).**
+`part.solder` and `CadexSolder.py`: a fourth pure-Python module, and a third
+operation in a row with no shell code and no protocol change. One call is one
+joint and one `solid` — the filled bore, the meniscus and the far-face cap,
+with the lead cut out of them — sized entirely from a terminal, which is why
+it takes a terminal and never a literal: a literal carries no radius, no
+depth and no face. `wcv8.cadex` migrated onto terminals plus 42 joints, which
+cost 0.21 s against the 18.1 s its 22 conductors already take, and which
+removed thirteen hand-written `1/sqrt(2)` factors and six frozen world
+constants. The migration also found that the drone's four motor leads were
+never one spec placed four times — see ADR-063.
+
+**Then the joint stopped looking like a cone (ADR-064, 2026-08-01).** The
+meniscus became a concave arc, and with it the whole joint became **one solid
+of revolution**: a closed outline, one face, one `revolve`, and no boolean at
+all. That deleted the fuse, the cut, `CUT_OVERSHOOT_MM` and every kernel
+hazard ADR-063 documented — nine OCC calls per joint down to three, and eight
+joints on the probe plate from 54 ms to 20.9 ms. The risk moved out of OCC and
+into pure Python, where a simple, correctly-wound closed loop is decidable
+headless over a parameter sweep. No new parameters, no payload change, no
+protocol change; the cost is one new refusal (a fillet shorter than the pad it
+spans would undercut the board, and the default sits exactly on that floor)
+and that **existing accepted projects must be re-accepted**, which is one
+click or one `pixi run rebuild`. Both affected projects were re-accepted here.
+
 What makes them experimental, and what would settle it:
 
-- **Ports are literals.** Selector-anchored ports — so a port rides the
-  geometry when the part changes, per the ADR-029 rule — are the obvious next
-  step and are not built. `resolve_pin` already returns `center_mm` and
-  `normal`, which is exactly a port, so the pick→port path needs no new code.
+- [x] **Ports are literals** — **settled by ADR-062 (2026-08-01).**
+  `part.terminals` / `mesh.terminals` name a component's attachment points
+  from its geometry: a `holes=`/`pads=` selector on a BREP board, a declared
+  layout on an imported STL, ordered by a *direction* rather than by kernel
+  enumeration. A hole terminal lands on its far face and carries the bore's
+  depth as a stand-off floor, which is what made `route_path` take one
+  stand-off per end. Terminals ride their component's placement, so one spec
+  places four motors. `CadexTerminals.py` is the new pure-Python module; no
+  shell code, no protocol change, and literal ports are unchanged, so a
+  script that uses none rebuilds byte-identically. Still not built: writing a
+  terminal into a script from a viewport click (Phase 10b), and mesh hole
+  detection, which is deferred by decision rather than pending.
+- **A joint and its wire share a sliver above the board.** Zero *inside* it —
+  the lead runs straight down the radius the joint's outline leaves empty —
+  but the wire is a spline fitted through a searched route and starts to turn
+  before the meniscus tops out. ~6% of the joint on the probe plate, and a
+  wider stand-off makes it worse. Structural: `part.solder` takes a terminal,
+  not a wire, and a joint must build whether or not a cable was routed to it.
+- **Terminals cannot ride a non-uniform placement.** Refused rather than
+  silently skewed (ADR-062). A pad has no radius and no depth, so a
+  relaxation carrying only its point and normal is available and unbuilt; it
+  is what keeps `wcv8`'s battery pair on literal ports.
 - **Mesh obstacles are bounding boxes.** Fine for boards and motors, wrong
   for anything concave; the workaround is to pass such a body as a part
   solid.

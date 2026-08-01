@@ -482,7 +482,8 @@ def route_path(
     occupied: Callable[[int, int, int], bool],
     cell_mm: float,
     clearance_mm: float,
-    standoff_mm: float,
+    start_standoff_mm: float,
+    end_standoff_mm: float,
     slack: float,
     bounds: Sequence[Sequence[float]],
     max_cells: int,
@@ -494,6 +495,11 @@ def route_path(
     between ``point + dir * standoff_mm`` at each end; the two short stubs
     back to the ports are collision-exempt straight runs, because a port cell
     is by construction inside the component it belongs to.
+
+    **The two stand-offs are separate numbers** (ADR-062).  A wire that lands
+    in a through-hole at one end and on a pad at the other needs a different
+    one at each: the hole's anchor has to clear the whole board it threads,
+    and forcing the pad end out that far would make a short run a hairpin.
 
     ``occupied(i, j, k)`` answers whether one lattice cell is inside solid
     material.  It is called only for cells the search reaches, and never
@@ -537,9 +543,10 @@ def route_path(
     port_end = _point(end_point)
     exit_start = _unit(start_dir, name="start direction")
     exit_end = _unit(end_dir, name="end direction")
-    standoff = max(0.0, float(standoff_mm))
-    anchor_start = tuple(port_start[k] + exit_start[k] * standoff for k in range(3))
-    anchor_end = tuple(port_end[k] + exit_end[k] * standoff for k in range(3))
+    start_standoff = max(0.0, float(start_standoff_mm))
+    end_standoff = max(0.0, float(end_standoff_mm))
+    anchor_start = tuple(port_start[k] + exit_start[k] * start_standoff for k in range(3))
+    anchor_end = tuple(port_end[k] + exit_end[k] * end_standoff for k in range(3))
 
     lattice = _Lattice(
         occupied,

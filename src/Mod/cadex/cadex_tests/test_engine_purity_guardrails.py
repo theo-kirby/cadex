@@ -93,6 +93,8 @@ DECLARED_ENGINE_MODULES = frozenset(
         "CadexPinResolution",
         "CadexRouting",
         "CadexBundle",
+        "CadexTerminals",
+        "CadexSolder",
         "CadexSubshapeQuery",
         "cadex_tessellation",
         # the five domain APIs and the host-side workers they pull in

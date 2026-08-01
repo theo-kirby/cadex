@@ -65,6 +65,10 @@ def _solid_box(low, high, *, calls=None):
 
 
 def _route(**overrides):
+    # ``standoff_mm`` is this helper's shorthand for "the same at both ends",
+    # which is what every test here wants; the router itself takes one per end
+    # (ADR-062), and test_terminals exercises them differing.
+    standoff = overrides.pop("standoff_mm", 1.0)
     kwargs = dict(
         start_point=(0.0, 0.0, 0.0),
         start_dir=(1.0, 0.0, 0.0),
@@ -73,7 +77,8 @@ def _route(**overrides):
         occupied=_empty,
         cell_mm=CELL_MM,
         clearance_mm=0.0,
-        standoff_mm=1.0,
+        start_standoff_mm=standoff,
+        end_standoff_mm=standoff,
         slack=1.0,
         bounds=CORRIDOR,
         max_cells=200000,

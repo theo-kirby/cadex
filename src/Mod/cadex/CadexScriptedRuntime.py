@@ -51,6 +51,13 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         # The multi-conductor lay (ADR-057). Staged the same way, for the same
         # reason: cadex_part_worker imports it inside the sandbox.
         "CadexBundle.py",
+        # Named, geometry-anchored ports (ADR-062). Imported by both the part
+        # api and the part worker inside the sandbox, so it stages like the
+        # two above it.
+        "CadexTerminals.py",
+        # The joint a terminal implies (ADR-063). Imported by the part worker
+        # inside the sandbox, like the three above it.
+        "CadexSolder.py",
         "cadex_partdesign_api.py",
         "cadex_partdesign_worker.py",
         "cadex_mesh_api.py",

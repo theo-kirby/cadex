@@ -206,6 +206,10 @@ def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None
         # The multi-conductor lay part.bundle places around that route: pure
         # Python, staged for the same reason (ADR-057).
         "CadexBundle.py",
+        # The named ports part.cable and part.bundle now take: pure Python,
+        # staged for the same reason again (ADR-062).
+        "CadexTerminals.py",
+        "CadexSolder.py",
         "cadex_partdesign_api.py",
         "cadex_partdesign_worker.py",
         "cadex_mesh_api.py",

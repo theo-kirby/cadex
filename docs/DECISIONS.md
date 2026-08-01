@@ -4462,3 +4462,483 @@ are the two places to reverse, and `cli/` is one directory to delete.
 **Out of scope, deliberately.** `export_model` as a protocol op;
 `resolve_pin` and picking; offscreen rendering so the agent can see its
 work; shipping the CLI inside the engine payload; Windows.
+
+## ADR-062 — Ports that name geometry: terminals (2026-08-01)
+
+**Decision.** Two new operations, `part.terminals(component, *, holes, pads,
+terminals, header, exit, order_by, names)` and the declared-only
+`mesh.terminals(component, *, terminals, header, names)`. Each returns a
+`TerminalSet` — a named collection of attachment points derived from the
+component's geometry — and `part.cable`/`part.bundle` now take a `Terminal`
+anywhere they took a literal `(point, direction)` pair. The layout, the
+ordering and the placement arithmetic live in a new pure-Python module,
+`src/Mod/cadex/CadexTerminals.py`, staged into the sandbox by filename like
+`CadexRouting.py` and `CadexBundle.py` before it.
+
+**Why.** ADR-056 named this as the gap it was leaving — "ports are literals
+for now" — and the real model, `wcv8.cadex`, shows all three ways that is
+wrong. *Wrong by construction:* a through-hole has no surface point to
+attach to; its correct attachment is an axis and a depth, and no literal
+expresses that, so the script's ports are surface points on bounding boxes.
+*Stale:* `fc_edge = 9.0`, `esp_face, esp_mid = 11.3, 3.8`, `mot_face = 5.14`
+are hand-measured constants that do not move when a slider does — which
+defeats the one property `part.cable` exists for. *Unnamed:*
+`((esp_face, -4.0 + j * 0.45, esp_mid), (1, 0, 0))` does not say that this
+wire is SDA, so neither the script nor the model tree records it.
+
+**A terminal is never geometry.** This is the decision the whole design
+turns on. A `Terminal` is not a `DomainValue`: it has no output type, no
+entry in `_OPERATION_OUTPUT_TYPES`, no branch in `build_part_shape`, and it
+appears in no pack's `output_types` — `PROJECT_PACK.output_types` is the
+union of every pack's, so declaring one there would have made a terminal a
+declarable project output. It is never built, published, digested,
+garbage-collected or hydrated as a tree row. `_port()` converts it to plain
+JSON *before* the `DomainValue` is constructed, with the component's payload
+nested inside, and `_json_value`/`_immutable_value` already recurse through
+mappings containing domain values — so **nothing in `cadex_domain_api.py`
+changed**. Putting a `TerminalSet` in `result` is refused by the existing
+result-grouping path, by the same rule that refuses a plain dict.
+
+The consequence worth stating plainly: a script that uses no terminals
+builds and re-solves byte-identically. Literal ports remain fully supported,
+take exactly the ADR-056 code path, and floor their stand-off at zero.
+
+**Ordering is geometric, never ordinal.** `order_by` is a *direction*;
+matched faces are projected onto it and sorted ascending, ties broken by a
+secondary axis derived from `order_by` itself (so it is a pure function of
+what the script wrote, not of the model). Taking `TopExp::MapShapes` order
+would have reintroduced exactly the index reference ADR-029 deleted: a saved
+`names` list would silently start naming different holes the moment a
+parameter changed topology. `len(names)` *is* the selector's
+`expected_count`, so a selector that matches a different number of faces
+fails loudly with both counts and the full candidate list, in the existing
+`SubshapeSelectionError` envelope.
+
+**A hole lands on its far face.** The wire comes in from the `exit` side,
+threads the barrel and ends flush on the opposite one, so two hole terminals
+wired to each other meet in true centres rather than each stopping a board
+thickness short. A declared row states the same relation from the other
+direction — `axis` is the drilling direction, the terminal is
+`origin + axis*depth`, and the wire leaves along `-axis` — and a test
+asserts the two forms produce the same terminal for the same physical hole,
+because they very nearly did not: the first implementation of the selector
+form took the near end, and the kernel-side test is what caught it. `exit` is
+**required** for `holes=`: a `Cylinder` surface gives an axis but not which
+end of it is outward, and inferring that from the centre of mass is a
+heuristic that fails on any board that is not roughly symmetric. Loud beats
+clever.
+
+**Terminals ride placement.** `mesh.terminals` coordinates are the asset's
+own — the numbers off a datasheet, stated once for a component placed four
+times. Resolution walks the mesh value tree to its `import_file` leaf and
+composes each `mesh.transform` above it (`composed_placement`, new in
+`cadex_mesh_worker`). Points transform by the whole matrix and directions by
+its rotation part only — the point-vs-normal distinction ADR-056's point-pin
+work was already bitten by, and the reason the suite's transform fixture
+rotates rather than only translating. **Non-uniform scale on a
+terminal-bearing tree is refused** rather than silently skewing an axis off
+the hole it belongs to. Part values resolve on the built shape, which is
+already in final coordinates, so no walk is needed and none was added —
+which is why a declared layout on a part value is a fallback and the
+selector form is the recommended one, as the docstring says.
+
+**One change to `CadexRouting`.** `route_path`'s single `standoff_mm` became
+`start_standoff_mm`/`end_standoff_mm`. A hole at one end and a pad at the
+other need different values: the hole's anchor has to clear the whole board
+it threads, and forcing the pad end out that far would make a short run a
+hairpin the sweep cannot turn. `_build_cable` and `_build_bundle` compute
+`max(clearance + gauge/2, floor + clearance)` per end and use the same
+per-end value when they build the corridor, since they compute anchors
+independently of `route_path`. `_bundle_gather` takes the **max** floor
+across each end's terminals — the bundle leaves as one run, and a run that
+clears three pads but starts inside the fourth's board has cleared nothing.
+No other routing change was needed: the existing `cells_along(port, anchor)`
+stub exemption already covers a wire threading a barrel, because the stub
+now spans the hole.
+
+**Resolution is memoised per request.** `_resolve_port` returns
+`(point, direction, standoff_floor, metrics)`; terminal payloads resolve the
+whole set once, keyed by `_memo_key` of the payload minus the terminal name,
+so a four-way ribbon resolves *and builds* its board once rather than four
+times. Same idiom and same bounded-dict discipline as `_CABLE_MESH_BOXES`,
+cleared in `reset_part_shape_memo` alongside the shape memo and the bundle
+routes, for the reason recorded there: a resolved terminal that leaked
+across requests would place a wire on the previous request's geometry under
+a self-consistent digest. Selector resolution reuses `build_part_shape`'s
+content-keyed memo (ADR-053), so a board that is also an output or an
+`avoid` obstacle costs nothing extra. A third binding on
+`configure_part_assets` carries the mesh placement callable, for the same
+import-boundary reason the second one exists.
+
+**`metrics`** — the axis, radius, depth and the two faces behind a
+terminal — is carried and unused by this ADR. `part.solder` is its consumer;
+a joint cannot be built from a point and a direction.
+
+**Containment.** No shell code and no protocol change:
+`CadexdProtocol.OP_ARG_SPECS` is untouched, so `docs/INTEGRATION.md`'s op
+table and the ADR-027 response goldens are unaffected. Same containment as
+ADR-056 and ADR-057.
+
+**Naming.** The electrical concept is `terminals`/`terminal`, deliberately
+**not** `pin`. `pin` is taken: `CadexPinResolution.py`, `resolve_pin`,
+`pick_pin` and the "Reference pins" section of `docs/XSCRIPT.md` all mean a
+click-captured geometry reference. Two senses of one word in one system is a
+bug waiting for a reader, so `docs/XSCRIPT.md` now says so in both places.
+
+**Deferred by decision, not by oversight.** *Mesh hole detection* —
+cylinder-fitting to triangle bands — is not built: iterative fitting is a
+determinism risk against the rebuild digest and is fragile on the coarse
+STLs vendors ship. Declared layout covers the case. Also out of scope:
+selectors on mesh values, transform-chain composition for part values,
+shell terminal markers and a connection list, and writing a terminal into a
+script from a viewport click (still the half-built round trip in
+`docs/ROADMAP.md` Phase 10b).
+
+## ADR-063 — The joint a terminal implies: `part.solder` (2026-08-01)
+
+**Decision.** One new operation, `part.solder(terminal, *, gauge_mm,
+pad_dia_mm, fillet_mm, bore_dia_mm, refine, label)`, returning one `solid`
+per joint. It takes a `Terminal` from `part.terminals`/`mesh.terminals` and
+**never** a literal port. The derivation and every refusal live in a new
+pure-Python module, `src/Mod/cadex/CadexSolder.py`, staged into the sandbox
+by filename like `CadexRouting.py`, `CadexBundle.py` and `CadexTerminals.py`
+before it; the worker turns its specs into four OCC calls and nothing else.
+
+**Why.** A wire ended in mid-air. `part.cable`/`part.bundle` sweep a
+conductor that stops flush on a face or in a bore and nothing joined it to
+the board — visibly wrong on a render, and the last thing between the harness
+operations and a model that looks like the object.
+
+**Why it must be an engine op.** A script cannot compute the joint itself.
+The geometry a joint needs — where the bore starts and ends, how wide it is,
+which way the lead leaves — is known only *after* a terminal resolves, and
+terminals resolve in the worker. The script holds a name. Composing the joint
+from `part.cylinder`/`part.cone`/`part.fuse` at script level would mean
+re-measuring by hand exactly the constants terminals exist to delete. This is
+the ADR-056 argument in a different key: not "the search is too expensive in
+the sandbox" but "the numbers are not in the sandbox at all". It is also the
+first operation a terminal *unlocks* rather than merely improves, which is
+why the literal port is refused here and nowhere else: a literal carries no
+radius, no depth and no face, so there is nothing to build from.
+
+**The shape.** Let `a` be the terminal's axis (unit, pointing out of the
+board on the side the lead leaves), `E` the face the lead leaves from and `X`
+the far face it ends flush on (`E == X` for a pad). A **through-hole** is
+three primitives fused and one bore cut: a *barrel* `makeCylinder(b, depth)`
+from `X` along `+a`, a *meniscus* `makeCone(q, w, fillet)` from `E` along
+`+a`, a *cap* `makeCone(q, 0, cap)` from `X` along `-a`, less
+`makeCylinder(w, depth + fillet + eps)` from `X` along `+a`. A **pad** is the
+meniscus alone with the same cut. Nothing enters the board but the barrel,
+which fills the bore exactly: both cones sit *on* their faces and grow away
+from the solid. The cut starts at `X`, not below it, so the **cap stays
+solid** — correct, because the lead ends flush at `X` and there is nothing
+there to cut around.
+
+**A straight conical meniscus, not a revolved concave arc.** A cone cannot
+degenerate, needs no new kernel call, and at the one-to-two millimetre scale
+of a real joint the difference does not survive tessellation. This is a
+*shape*, not a process simulation: no wetting angle, no solder volume budget.
+The `eps` past the meniscus tip is a fixed micron, so the result stays
+reproducible under the rebuild digest; it exists because the cone's top
+radius *is* the lead radius, and a cut ending exactly there would put the
+cut's end face tangent to the cone's — the one place OCC would be entitled to
+hand back a shell.
+
+**One call per joint, `output_type="solid"`.** Matches ADR-056/057's "one
+output per wire" and keeps every joint separately selectable and measurable.
+`wcv8` gains 42 rows; that is the accepted cost.
+
+**What derives, and what is required.** `gauge_mm` is required — the lead's
+diameter, the same number the `cable`/`bundle` landing here was given.
+`bore_dia_mm` defaults to the terminal's measured diameter; a *declared* hole
+that stated no `hole_dia` has none, so there it is required. `pad_dia_mm`
+defaults to twice the bore diameter on a hole and to the equivalent-area
+diameter on a `pads=` selector terminal; a *declared pad carries no area*, so
+there it is required and refused loudly if missing. `fillet_mm` defaults to
+`q - w`, a 45° meniscus, which is what a correctly wetted joint looks like.
+The cap's height derives from the fillet and is **not** a knob: a joint has
+enough numbers. An explicit override always wins, and an unset override is
+*absent from the payload* rather than defaulted in the api — what it falls
+back to is geometry, and freezing that into the payload is exactly what a
+terminal exists to stop.
+
+**Refusals, all loud, each naming the value it measured and the one it
+conflicts with:** `q <= w` (no annulus for a fillet) · `q <= b` (a pad
+narrower than the hole it rings) · `b <= w` (the lead does not fit the bore)
+· `fillet <= 0` · a hole with no radius and no `bore_dia_mm` · a declared pad
+with no area and no `pad_dia_mm` · a hole of no depth · anything that is not
+a terminal. `SolderError.reason` maps to a model-facing correction in the
+worker, the contract `CadexRouting.RoutingError` and `CadexBundle.BundleError`
+already have, and a test asserts every reason the module can raise has one.
+
+**A thin annulus is permitted, not refused.** A press-fit lead with a film of
+solder around it is a real joint. Only `b <= w`, where there is no annulus at
+all, is refused.
+
+**Cost.** `_resolve_port` is reused unchanged, so N joints on one board cost
+one terminal resolution and one board build — the ADR-062 `_TERMINAL_SETS`
+memo plus `build_part_shape`'s content memo, *shared with the cables landing
+on the same component in the same request*. Measured in the kernel probe:
+eight joints on one board in **54 ms**, one resolved terminal set, one board
+build.
+
+**Verified against the kernel, not asserted.** A joint on a real drilled
+plate is one valid closed solid whose volume matches the closed form for
+`barrel + meniscus + cap − lead` to 14 digits — the assertion that catches a
+fuse which silently dropped a primitive, since a joint missing its cap is
+still one valid closed solid. Its bounding box is the pad diameter across and
+straddles both faces, which is what catches an axis-sign flip.
+
+**A measured finding: the joint and its wire share a sliver, and it is not
+zero.** *Inside the board they agree exactly* — the shared volume through the
+barrel is 0.0 to the kernel's own precision, because the lead runs straight
+down the bore the joint was cut for. Above the board it is ~13% of what an
+unbored joint would share (0.086 mm³ against 0.65 mm³ on the probe plate,
+4.3% of the joint). The cause is structural: a joint is built from the
+terminal's *straight* bore, while the wire is a spline fitted through a
+searched route, and that spline begins to turn as soon as it leaves the board
+— before the meniscus has finished climbing it. A wider stand-off makes it
+*worse*, not better, because the route then sags over a longer lead. Nothing
+here can remove it: `part.solder` takes a terminal, not a wire, and a joint
+must build whether or not a cable was ever routed to it. The test asserts the
+exact claim (zero inside the board) and bounds the residual.
+
+**Containment.** No shell code and no protocol change:
+`CadexdProtocol.OP_ARG_SPECS` is untouched, so `docs/INTEGRATION.md`'s op
+table and the ADR-027 response goldens are unaffected and the shell needs no
+change. Third operation in a row with that containment.
+
+### The `wcv8.cadex` migration
+
+The proving ground again, as for ADR-056 and ADR-057. Its harness is 22
+conductors in four groups, all `part.bundle`, all on hand-measured literals,
+and **every board is an imported STL** — there is no BREP board with drilled
+holes anywhere in it, so this is `mesh.terminals`' first real user, on
+geometry nobody wrote for it. Measured, both revisions accepted and rebuilt
+twice:
+
+| | before | after |
+|---|---|---|
+| outputs | 36 | 78 |
+| joints | 0 | **42** |
+| harness lines (code) | 92 (54) | 147 (95) |
+| `1/sqrt(2)` factors in the harness | 13 | **0** |
+| frozen world constants | `fc_edge`, `fc_mid`, `esp_face`, `esp_mid`, `rf_face`, `mot_face` | none |
+| execute | 18.11 s | 18.32 s |
+| digest | `c69c2788…` | `bb2c83ae…` |
+| rebuild reproducible | yes | yes |
+
+**42 joints cost 0.21 s** against the 18.1 s the 22 conductors already take —
+about 1%. **The harness got longer, not shorter**, and that is the honest
+result: it gained 42 operations that did not exist. What it lost is the part
+that was wrong — the `k = 0.7071067811865476` written out by hand and used
+thirteen times, and six world-space constants that did not move when a slider
+did.
+
+**One correctness fix, not merely a tidiness one.** The four motors were
+placed by `rotation_degrees = mbase + 90` but their ports were four
+hand-signed `sx`/`sy` copies of one axis-aligned expression. Mapping those
+world ports back through each motor's own placement gives **four different
+layouts at three different radii** — they were never one spec placed four
+times, only an approximation that looked like one. The migration declares one
+motor spec on the tab, in the motor's frame, and the placement carries it.
+
+**One known obstacle, and it is a finding.** The battery is placed with
+`scale=(1.0, 68.0/74.5515, 1.0)` — a **non-uniform** scale, which ADR-062
+refuses to carry terminals through. Its two pads therefore stay literal while
+the flight-controller end of the same pair is a terminal: a demonstration of
+the mixing ADR-062 explicitly supports, not a gap. A principled relaxation
+exists — a *pad* has no radius and no depth, so only its point and normal
+need carrying, and a normal transforms by the inverse transpose — and is
+deliberately **not** here: it is a change to `apply_placement` with its own
+edge cases and should not ride in on an ADR about joints.
+
+**A second finding, minor and worth stating.** The ESP32 and the range finder
+were authored in metres and scaled ×1000 on import, so *the asset's own
+frame is metric* and their declared layouts read `0.00045` where the model
+reads `0.45`. That is what "the asset's own coordinates" means — the numbers
+belong to the file, not to the model — but it is a sharp edge for a reader.
+
+**Deferred by decision.** Colouring solder differently from wire (the part
+domain has no appearance vocabulary; only `label` reaches publication), shell
+terminal markers and a connection list, non-uniform placement for pad
+terminals, a concave revolved meniscus, a solder *volume* budget, wetting
+angles, and joints for anything that is not a wire end — no board-to-board
+reflow, no SMD pads without a lead.
+
+## ADR-064 — A concave meniscus: the joint stops looking like a cone (2026-08-01)
+
+**Decision.** `part.solder`'s meniscus becomes a **revolved concave arc**, and
+the whole joint becomes **one solid of revolution**: a closed outline in the
+`(r, z)` half-plane, one `Part.Face`, one `revolve`. The straight conical
+meniscus, the fuse, the cut and `CUT_OVERSHOOT_MM` are deleted. No new
+parameters: the same four knobs (`gauge_mm`, `pad_dia_mm`, `fillet_mm`,
+`bore_dia_mm`), one call per joint, `output_type="solid"`, terminals only.
+
+| before (ADR-063) | after |
+|---|---|
+| ![a straight cone](images/adr-064-joint-before-cone.png) | ![a concave meniscus](images/adr-064-joint-after-meniscus.png) |
+
+**This reverses ADR-063.** That ADR fixed "a straight conical meniscus, **not**
+a revolved concave arc" and listed the concave version under *Deferred by
+decision*. The argument was that "at the one-to-two millimetre scale of a real
+joint the difference does not survive tessellation". The renders above are what
+overturned it: at the scale a joint is actually *looked* at, a cone reads as a
+cone. Solder sweeps up from the pad concavely, flattens as it meets the lead,
+and runs parallel to the wire for a short distance before it ends.
+
+**The shape.** With `z` measured from the far face `X` along the axis (the
+entry face at `z = depth`, and `depth = 0` for a pad), and radii `w` lead,
+`b` bore, `q` pad:
+
+| symbol | value | why |
+|---|---|---|
+| `c` collar | `w + min(0.10 w, 0.25 (q - w))` | ~1.1x the lead — the subtle collar. The second term guarantees `w < c < q` on even the tightest pad, so it needs no clamp and no refusal |
+| `H` fillet | `fillet_mm`, default `q - c` | at the default an exact **quarter circle**, tangent to the board *and* to the lead: the softest fillet that exists |
+| `K` collar height | `0.5 H` | the straight sleeve, half the fillet again |
+| `cap` | `0.5 H` | unchanged, and **still a cone** |
+
+The meniscus is one circular arc, tangent to the line `r = c` at its top and
+passing through the pad rim. With `d = q - c`, tangency puts the centre level
+with the top and the through-point fixes the radius: `R = (d² + H²) / 2d`,
+centre `(c + R, z_face + H)`, swept from `θ = π + φ` to `θ = π` with
+`φ = atan2(H, R - d)`. It is emitted as a three-point `Part.Arc`, the only arc
+constructor this codebase uses. At `H = d` this collapses to `R = d` and
+`φ = 90°`, which is why the default is an exact quarter round.
+
+**One revolve, no booleans.** The whole joint is one closed loop: cap cone,
+exposed cap rim, bore wall, entry-face annulus, **the arc**, the collar, the
+collar top, the lead bore, and back along the axis. A pad is the same loop
+without the cap and the barrel, and it never touches the axis.
+
+**This deletes more than it adds.** Gone: the fuse, the cut,
+`CUT_OVERSHOOT_MM`, and every kernel hazard ADR-063 documented — fuse
+connectivity, coincident faces, cut tangency. OCC calls per joint go from nine
+to three; boolean operations from two to **zero**. Eight joints on the probe
+plate now cost **20.9 ms** against ADR-063's 54 ms. Gone too is the **knife
+edge**: the old cone tapered to exactly the lead radius, i.e. zero wall
+thickness at its tip, while the new shape's minimum wall is `c - w` everywhere
+(0.02–0.03 mm on real joints).
+
+**The risk moved, it did not vanish.** It left OCC and entered pure Python,
+where this repo tests best. A closed loop with positive signed area and no
+crossing between non-adjacent segments is a valid lathe profile, and all three
+are decidable headless — so `test_solder.py` sweeps them over
+gauge × pad × fillet × bore × {hole, pad} rather than probing them in a
+subprocess. Every inequality the outline needs (`w < b < q`) is already
+guaranteed by refusals that shipped in ADR-063.
+
+**The radial basis is part of the digest.** A solid of revolution is
+rotationally symmetric, so *any* perpendicular to the axis gives the same
+shape — but it fixes where the BREP's seam edge lands, and the exported BREP is
+what `compute_project_digest` hashes. So the choice is a pure, stated function
+of the axis: Gram-Schmidt from the world axis with the smallest `|component|`,
+ties to the lowest index — the rule `CadexTerminals._order_frame` already uses,
+for the same reason.
+
+**Two new refusals, both `fillet`/`pad`-reasoned so the five correction keys
+are unchanged.**
+
+- **Undercut.** `φ ≤ 90°` iff `H ≥ d`, so `fillet_mm < q - c` is refused: a
+  shorter arc spreads further than it climbs and meets the board from
+  underneath, curling under the pad. The message names the floor *and* the
+  `pad_dia_mm` that would also fix it, because the two are not independent.
+  The default is computed by the same expression as the floor, so it sits
+  *exactly* on it and passes by equality — **the refusal is only reachable by
+  an explicit override**. The cost is real and stated: `fillet_mm` can now only
+  go up from the default.
+- **Collapsed arc.** ADR-063's `q > w` check is strict-greater only, so
+  `q = w + 1e-12` shipped and merely produced a cone that was effectively a
+  cylinder. Under an arc the three points collapse into one and the kernel
+  throws, so `q - c < 1e-6` is refused in the pure module with the floor named,
+  rather than arriving as an OCC traceback.
+
+**`joint_volume` becomes a contour integral**, `V = π ∮ r² dz` around the
+outline itself — Green's theorem on the half-section, exact for lines and for
+the arc alike. It integrates the *same* segments the worker builds the face
+from, so the two cannot drift; what breaks the circularity is that it is
+asserted against the kernel's own `Volume` and, headless, against a
+high-resolution quadrature of the same loop.
+
+**Verified against the kernel, not asserted.** A joint on the real drilled
+plate is **one valid closed solid**, nine faces for a hole and five for a pad,
+whose volume matches the contour integral to **3e-15** — there is no boolean
+left to lose precision in. Refined and unrefined are the same shape, which
+retires ADR-063's coincident-face worry outright. The tangency case (the torus
+tangent to the entry-face plane) and a near-spindle torus both build.
+
+**A shape assertion, not only a volume one.** Total volume cannot tell a
+concave arc from a convex one with the same endpoints and the same integral. So
+the joint is sliced with thin slabs and each ring is compared to
+`π (r(z)² - w²)` from the module's own arc (agreement: 1.5e-13 relative) *and*
+to the straight chord between the arc's two endpoints — which, because both
+that chord and ADR-063's cone have slope exactly −1, is the very shape this
+replaced. Every ring is inside it, at 45–46% of its area. A convex arc through
+the same endpoints would sit outside it. **That is the assertion that pins
+"concave".**
+
+**A measured finding: `BoundBox` over-estimates a revolved arc.** OCC boxes the
+whole toroidal surface rather than the trimmed patch, by up to 0.16 mm in `z`
+on these joints. It is a bound, so it never under-states — but ADR-063's
+bounding-box assertions were to 1e-6 and would have failed for that reason and
+looked like a geometry bug. The suite uses `optimalBoundingBox()`, which is
+exact.
+
+**Real joint numbers (subtle collar):**
+
+| case | collar r | min wall | flare `H` | total height | was | volume | was |
+|---|---|---|---|---|---|---|---|
+| wcv8 ribbon 0.4/1.2 | 0.2200 | 0.0200 | 0.3800 | 0.5700 | 0.4000 | 0.0744 | 0.1676 |
+| demo plate 0.6/2.0 (pad) | 0.3300 | 0.0300 | 0.6700 | 1.0050 | 0.7000 | 0.3500 | 0.8210 |
+| tight pad 0.6/0.7 | 0.3125 | 0.0125 | 0.0375 | 0.0562 | 0.0500 | 0.0020 | 0.0025 |
+
+~1.43x taller, ~44% of the volume — the concave sweep hollows it out, which is
+exactly why it stops reading as a cone.
+
+**Containment.** No shell code and no protocol change:
+`CadexdProtocol.OP_ARG_SPECS` is untouched, so `docs/INTEGRATION.md`'s op table
+and the ADR-027 response goldens are unaffected. The operation's *payload* is
+unchanged too, so no script anywhere needs an edit — only the digest moves,
+because the geometry did. No in-repo fixture pins a digest, so no test goldens
+change.
+
+**The road not taken.** Changing *only* the meniscus and keeping the fuse and
+the cut avoids none of the new machinery — a revolved arc solid still needs a
+closed profile, a face, a revolve, an arc solver and the refusals — and adds a
+hazard the unified version does not have: at `H = d` the meniscus surface is
+tangent to the barrel's top face, which the unified version meets as a G1
+vertex in a wire and the split version would meet as a *tangential fuse between
+two solids*, the exact failure class `CUT_OVERSHOOT_MM` existed to dodge.
+
+**Not done, by decision.** Rounding the underside cap to a dome (it stays a
+cone). Colour, shell terminal markers, non-uniform placement for pad terminals.
+Wetting angles, a solder volume budget, anything that makes this a process
+simulation rather than a shape.
+
+### Migration — this breaks existing accepted projects
+
+Changing the geometry changes each joint's `shape_sha256` and therefore the
+project digest. On open, `cadexd.py` rolls back the accepted fields and returns
+`CADEXD_RESTORE_FAILED` — a hard error, not a warning.
+
+**Recovery needs no script edit**, because every rebuild goes through
+`write_script`, which is the accepting op: in the app, **"Rebuild From Saved
+Script"** (`ui.py`, `adopt_saved_script` in `cadex_backend.py`); headless,
+`pixi run rebuild <project>.cadex`, which prints `digest_matches_accepted:
+false` and exits 2 while the store is already healed.
+
+Done here, both affected projects re-accepted and rebuilt twice to one
+byte-identical digest:
+
+| project | outputs | digest before | after |
+|---|---|---|---|
+| `~/arch/wcv8-solder.cadex` | 78 | `bb2c83ae…` | `65609915…` |
+| `~/arch/wiring-test.cadex` | 9 | `4c2cef67…` | `021da17b…` |
+
+**Three sharp edges, recorded rather than fixed here.** The
+`CADEXD_RESTORE_FAILED` message says the store is inconsistent and to rewrite
+the script or restore a backup — wrong advice when the *engine* moved.
+"Rebuild Model" is gated behind `unrestored_ok=False`, so the one button named
+for this cannot run in the state it would fix. And opening a stale project
+repeatedly can GC the pinned accepted attempt (`ATTEMPT_KEEP = 3`), so
+re-accept rather than reopening. All three want fixing separately.
