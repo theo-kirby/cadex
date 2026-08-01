@@ -1576,6 +1576,52 @@ Ranked by how quietly they fail.
     `dof_damping` with no `joint_dynamics` is all zeros and passes — so the
     hazard is specifically **a field that should be zero and is dust**.
 
+13. **A witness records what the GPU rounded the network to, not what the
+    network computes.**
+    *Discovered by ADR-081, after it cost 3 h 49 m of an RTX 4070.*
+    `training/cadex_train.py` builds its witness with `jax.vmap`, which turns
+    each layer's matrix-*vector* product into a **batched matmul** — and XLA
+    puts a batched float32 matmul on Ampere+ tensor cores at **TF32**, a
+    10-bit mantissa with eps ~4.9e-4. The engine evaluates the same weights
+    in float64. The witness therefore compares a tensor-core result against
+    an exact one, and the difference is nothing to do with the policy.
+    Measured on the same shipped weights: the vmapped path sits **1.4336e-4**
+    from float64 while the identical arithmetic run one row at a time sits at
+    **5.14e-8** — 2800x closer.
+    **Why no short run catches it:** the error is a fixed *relative* one, so
+    its absolute size grows with the activations a policy learns. The same
+    task, same seed, same box measured **7.3e-6 at iteration 2** and
+    **1.43e-4 at iteration 2000**. A smoke test passes and the real run is
+    refused.
+    **What to do:** record the witness under
+    `jax.default_matmul_precision("highest")` — training itself stays at the
+    default, because TF32 is why the GPU is fast and no training step needs
+    the last four mantissa bits. Then check it *before writing the file*:
+    `witness_disagreement()` is a pure-float64 Python copy of the engine's
+    own test, copied rather than imported because ADR-070 forbids the import.
+    It prints the margin and warns under 100x, because **14x was the visible
+    warning nobody was shown.**
+
+14. **A feasibility gate can encode a worst case the task never reaches, and
+    a red gate is then worse than no gate.**
+    *Discovered by ADR-082.*
+    `feasibility.py`'s arithmetic check multiplies the machine's whole weight
+    by a **full limb length**. That is the moment arm when the leg is
+    *horizontal* and the machine hangs off one hip — a one-legged iron cross,
+    not a stance. On a PLA biped with real MG90S torque limits it read 0.84x
+    at the hip and printed DO NOT DISPATCH, while `mj_inverse` wanted
+    **2.39 N*mm** of a 216 N*mm servo and a hand-written PD stood a whole
+    episode on a peak of **4.5**. Four physical checks said sound; one
+    closed-form inequality said no.
+    **What to do:** make the arm the arm the *task* uses — for standing, a
+    lean of ~30 degrees, and for the ankle the sole's own forward reach,
+    because the centre of pressure cannot leave the foot. Keep printing the
+    old column beside it rather than deleting it: it is a real bound on what
+    the machine could do if it ever had to hold a leg out, and it is the
+    reason not to ask this one to walk yet. The failure mode to avoid is not
+    "the gate was wrong", it is **learning to click past a red gate** — so
+    re-specifying one is a decision to record, not a fix to slip in.
+
 ## 6. Open questions
 
 - ~~Does the script surface speak millimetres or metres?~~ — answered by M2:
@@ -1655,3 +1701,104 @@ Ranked by how quietly they fail.
 - Is there a Phase 11 story here? A pybind11 binding over OCCT and a
   MuJoCo integration are independent, but the `assembly` domain is
   Phase 11f — the largest — and this plan puts new weight on it.
+
+## 7. From a drawing to a standing policy
+
+The slices above say what was built. This says **how to use it**, because
+three machines have now gone through it end to end (a hopper, and two bipeds)
+and the order is the same every time. It is written down because the order is
+load-bearing: every step but the last is cheap, and the last one costs hours
+of a rented GPU.
+
+**The projects themselves are not in this repository** (ADR-075 section 6).
+They are ordinary Cadex projects in a directory of their own, and each
+carries three small driver scripts of about a hundred lines — `rebuild.py`,
+`measure.py`, `feasibility.py` — that drive `cadexd` over NDJSON on stdio and
+need no application running. What is reproducible is the *method*, not a
+model file.
+
+### The order
+
+1. **Check what is actually there.** `grep -c "assembly\." script.py`. A
+   parametric model with pose sliders is not a mechanism: the "joints" may be
+   `part.transform` calls that rotate solids at build time. If the count is
+   zero, authoring the dynamics layer is the large half of the job and the
+   RL loop is the small half.
+
+2. **Pose the JOINT FRAMES, not the components.** The tempting design —
+   neutral solids, pose in `assembly.component(placement=...)` — does not
+   survive the native solver, because an island the joints never reach from
+   ground has six free degrees of freedom and the solver answers with its own
+   member of the solution family. Measured: it zeroed all eight joints and
+   displaced a biped by (90, 18, 58) mm and 40 degrees. Instead give **both
+   connectors of a joint the identical posed world frame**; the residual is
+   then zero at whatever the sliders say and there is nothing to collapse.
+
+3. **Give every part its own component frame, at its limb's MIDDLE.** Not the
+   origin, and not the proximal joint. See hazard 12: both are fields of
+   dust, and the MJCF drift check refuses them at exactly 1.0.
+
+4. **Measure before sizing anything.** `measure.py` reads
+   `model_evidence.inertials`, so mass and inertia come from OCCT, not from a
+   tessellation and not from a guess. It reports total mass, the standing
+   centre of mass, each joint's height, and the mass hung below it. Every
+   number the next two steps use comes from here — hazard 9's baselines
+   included, which are **measured at the exported keyframe** and not read off
+   the drawing.
+
+5. **Choose the actuator honestly, and say which question you are answering.**
+   Torque motors rather than position servos, so that zero action is
+   collapse and there is no degenerate "hold the setpoint" solution
+   (ADR-079). Then decide whether the limit models *the hardware* or *the
+   mechanism*: an MG90S stalls at 216 N*mm and a mechanism-derived limit for
+   the same biped was 750, and a policy trained on the second will command
+   torque the bench cannot produce. Both are defensible; only one is what you
+   will build.
+
+6. **Run the gate, and read what it says rather than whether it is green.**
+   `feasibility.py` is five checks and none of them learn anything: static
+   arithmetic, exact gravity compensation by `mj_inverse`, contact sanity, a
+   drop test that must **fall**, and a hand-written PD that must **hold**. If
+   a PD can stand it, PPO can. If the gate is red, find out which check and
+   why — hazard 14 is the case where the gate is wrong, and hazard 10 is the
+   case where it is right and the machine cannot do the task.
+
+7. **Dispatch, once.** `training/remote_train.sh check` then `train`
+   (ADR-076). Do not pipe it through `tail`: a pipeline reports the last
+   command's status, which hides a failed dispatch, and it buffers the
+   per-iteration curve until the process exits (ADR-080 section 4). The
+   trainer now proves its own witness against the engine's tolerance before
+   it writes a file, and prints the margin — **if that margin is under 100x,
+   stop and read hazard 13 rather than starting a long run.**
+
+8. **Bring it home through `put_asset`.** The digest is required and never
+   inferred: `assembly.policy` names a policy by file *and* SHA-256 because
+   VISION principle 3 says any state that cannot be rebuilt from the script
+   is a bug, and hours of stochastic GPU compute genuinely cannot be. On
+   rebuild the worker re-checks the bundle digest, the model it references,
+   the observation channels in order, the action table, and re-evaluates the
+   trainer's witness with its own float64 forward pass.
+
+9. **Report what the rollout does, rather than iterating on it.** ADR-075's
+   stopping rule. The trace is the evidence: frame count against the episode
+   length says whether it terminated early, and pelvis height, tilt and drift
+   over the episode say what "it stands" actually meant.
+
+### What a good result looks like
+
+The mg-legs run (ADR-082), for calibration — 263 g of PLA and eight 13.4 g
+MG90S, 2000 iterations at 4096 environments, 1 h 16 m on an RTX 5090:
+
+| | |
+|---|---|
+| reward/step | -1.76 -> +0.391 (peak +0.445 at iteration 1200) |
+| episode | 151 frames of 151 — never terminated |
+| pelvis height | 284.00 -> 283.60 mm, worst drop 0.84 mm |
+| tilt | settles ~5.5 degrees against a 45 degree termination |
+| drift | 6.97 mm horizontally over 6 s |
+| witness | 1.009e-07, 991x inside the engine's tolerance |
+
+The comparison that makes it mean something is the gate's own drop test:
+**zero torque falls at 0.96 s.** A machine that stands for six seconds is
+balancing, not merely stable.
+

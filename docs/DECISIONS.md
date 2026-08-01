@@ -7533,3 +7533,107 @@ died on one experiment that took a minute: run the *same weights* through a
 different code path. When a measured gate refuses something, the cheap move
 is not to re-measure the gate, it is to reproduce the number the gate is
 complaining about.
+
+## ADR-082 — The foot limits this robot, not the servo (2026-08-01)
+
+**Status:** accepted. **Branch:** `MJC` only. **Subject:** the second biped
+(`mg-legs`), and two decisions taken while getting it to stand — what an
+actuator limit models, and what a feasibility gate is allowed to ask.
+
+**Decision.** Model the actuator as **the hardware on the bench** rather than
+as the mechanism's worst case, and re-specify `feasibility.py`'s arithmetic
+check to the worst case **the task actually reaches**, keeping the old
+column printed beside it.
+
+### 1. What was built
+
+A ~284 mm biped drawn with real MG90S geometry, carrying no assembly layer
+(`grep -c "assembly\." script.py` -> 0, the same finding ADR-079 opens with).
+The dynamics layer was authored the way ADR-079 landed on: posed joint
+frames, each part on its own limb's middle, twelve moving components, a
+welded toe, and a free pelvis with no joint to the floor.
+
+Two things are new.
+
+**Servos are their own bodies.** The drawing already assigned each servo to
+the link it is bolted into, with the matching horn in the link it drives.
+But `assembly.body` takes `density_kg_m3` and there is **no mass override**,
+so a servo fused into a printed bracket must be made of the bracket's
+material. Eight MG90S at 13.4 g are **two fifths of this machine**, sitting
+exactly on the joints where they do the most to the inertia the servo has to
+fight. So each is a separate component welded to its carrier — eight bodies
+and eight fixed joints, bought for the one thing a single density cannot
+express. `SERVO_DENSITY` is set so the exported body weighs 13.40 g and
+`measure.py` checks it.
+
+**PLA, not aluminium.** A machine actuated by hobby servos is printed, and
+1240 kg/m3 (solid PLA, no infill discount — these are 2.5 mm plates) against
+2700 halves it: **491.85 g -> 263.07 g**, 2.581 N.
+
+### 2. What the halving revealed
+
+In aluminium the MG90S was matched to the footprint to within 2%. In PLA it
+is not, and the constraint changes hands:
+
+| | aluminium 4.825 N | PLA 2.581 N |
+|---|---|---|
+| ankle torque the foot can transmit | 219 N*mm | **117 N*mm** |
+| what one MG90S delivers at 6 V | 216 N*mm | 216 N*mm |
+| which one binds | they are the same | **the foot** |
+
+The centre of pressure cannot leave the sole, and the sole reaches 45.5 mm
+ahead of the ankle. Past `weight x 45.5 mm` the foot **rolls instead of
+pushing** and more servo buys nothing. There is now 1.8x more actuator here
+than the footprint can spend — which is a fact about the foot, not a reason
+to fit a smaller servo.
+
+### 3. The gate said DO NOT DISPATCH, and it was wrong
+
+Four checks passed and one failed:
+
+| check | |
+|---|---|
+| arithmetic | **FAIL** — hip 0.84x, knee 0.88x |
+| gravity compensation (`mj_inverse`) | 2.39 N*mm of 216 — **1.1%** |
+| contacts | all four soles at z +0.0000 |
+| drop test | falls at 0.960 s |
+| PD hold | stands a full episode on a peak of **4.5 N*mm** |
+
+The arithmetic check multiplies the whole machine's weight by a **full limb
+length** — the arm when the leg is horizontal and the machine hangs off one
+hip. A standing biped never loads a hip that way, which is why the exact
+answer was two orders of magnitude smaller.
+
+So `ARM_MM` becomes the standing worst case — a ~30 degree lean for the
+pitch joints, and for the ankle the sole's own reach, which is not a choice
+at all — and every joint clears at >= 1.67x. `FULL_ARM_MM` is **kept and
+printed in a second column**, because it is a real bound on holding a leg out
+and therefore a real reason not to ask this machine to walk yet.
+
+This is recorded rather than quietly fixed for one reason: the failure mode
+worth fearing is not a mis-specified gate, it is **learning to click past a
+red one**. See hazard 14.
+
+### 4. The run
+
+2000 iterations, 4096 environments, seed 0, 1 h 16 m on an RTX 5090 (the
+same configuration took 3 h 49 m on a 4070). reward/step **-1.76 -> +0.391**,
+peaking at +0.445 near iteration 1200.
+
+The rollout stands the full six seconds and never terminates: pelvis
+284.00 -> 283.60 mm with a worst drop of 0.84 mm, tilt settling near 5.5
+degrees against a 45 degree termination, 6.97 mm of horizontal drift, and a
+last second varying 0.300 mm in height and 0.380 degrees in tilt. Against the
+gate's own drop test — **zero torque falls at 0.96 s** — that is balancing
+rather than being stable.
+
+The witness agreed to **1.009e-07**, 991x inside the tolerance, on the first
+run after ADR-081. That is the fix working: the previous machine's policy
+failed the identical check at 1.43e-4 after 3 h 49 m.
+
+### 5. Not done
+
+No ADR is spent on the reward, which is ADR-079's unchanged apart from
+baselines re-measured on this machine. Walking is still out of scope, and
+section 2 is now the reason why: an ankle that can only transmit 117 N*mm has
+no push-off. Unwelding the toe is one word when that changes.

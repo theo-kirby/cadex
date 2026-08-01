@@ -62,7 +62,7 @@ Read `docs/VISION.md` before designing anything.
 | `docs/ARCHITECTURE.md` | What exists today: pipeline, file map, project store, substrate. |
 | `docs/XSCRIPT.md` | The scripting model — today (per-domain programs) vs target (one project script). |
 | `docs/ROADMAP.md` | Phases 0–14, status checkboxes, exit criteria. Living status lives here. |
-| `docs/MUJOCO.md` | **This branch's vertical**: dynamics and control, slices M0–M8 (all closed), the hazards, and the measured facts. ROADMAP Phase 14 is its status line. |
+| `docs/MUJOCO.md` | **This branch's vertical**: dynamics and control, slices M0–M8 (all closed), the hazards, and the measured facts. §7 is the **end-to-end walkthrough** — how to take a drawing to a trained policy, in the order that costs least. ROADMAP Phase 14 is its status line. |
 | `docs/DECISIONS.md` | ADR log. Append an entry for every removal or direction change. |
 | `docs/PROVENANCE.md` | Which code came from FreeCAD, from Blender, and from VibeCAD; licences, credit, and how two licences share one repo. |
 | `docs/FREECAD.md` | Inherited-tree ledger for the **engine**: kept / disabled / already-deleted. |
