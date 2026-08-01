@@ -37,7 +37,7 @@ a separable vertical rather than a fork in the roadmap.
    ├─► 13a MERGE (done) ─► 13b source reduction, ongoing ──────────────┐
    ├─► 9 one surface ─► 10 probe + characterize ═► 11 our engine ─► 12 our shell
    │                                (go/no-go)      └── unscheduled, behind the unchanged protocol ──┘
-   └─► 14 dynamics + control (M0–M8, closed) ── the MJC vertical, off everyone's path
+   └─► 14 dynamics + control (M0–M9, closed) ── independent of 0–13, in main since ADR-102
 ```
 
 **Every resting place is shippable.** A stall anywhere after 13a leaves a
@@ -646,15 +646,14 @@ Not a phase that "completes" — a standing mode of work.
       GitHub remotes first (`cadex-teardown` was local-only until then);
       history is recoverable, the disks are not carrying it.
 
-## Phase 14 — Dynamics and control `(ADR-075, ADR-086; 14a closed 2026-07-31, 14b closed 2026-08-01)`
+## Phase 14 — Dynamics and control `(ADR-075, ADR-102; 14a closed 2026-07-31, 14b closed 2026-08-01)`
 
-**This is the `MJC` vertical**, and it is absent from the dependency graph at
-the top of this file for a reason rather than an oversight: it depends on
-nothing in Phases 0–13 beyond what already shipped, and nothing in Phases
-0–13 depends on it. That independence is what made it branchable. ADR-086
-records that `MJC` is a product vertical rather than a branch awaiting a
-merge, ADR-078 which way changes flow (`main` → `MJC`, never back), and both
-together what a sync must not drop.
+**This phase stands apart in the dependency graph** at the top of this file
+for a reason rather than an oversight: it depends on nothing in Phases 0–13
+beyond what already shipped, and nothing in Phases 0–13 depends on it. That
+independence is what let it live on its own branch, `MJC`, for two days; it
+is also why merging it back cost nothing structural. ADR-102 records the
+merge and the measurements behind it.
 
 **Goal:** rigid-body dynamics on MuJoCo, and then the whole arc that
 capability opens — a mechanism designed in Cadex, exported, trained, and

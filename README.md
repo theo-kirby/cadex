@@ -7,7 +7,7 @@
 
 # Cadex
 
-Verified against source: 2026-07-31 (branch `MJC`)
+Verified against source: 2026-08-01
 
 Author:
 "Cadex is an experimental side project, far from production software.
@@ -35,7 +35,7 @@ any time.
 There are no modeling toolbars and no workbench concept to learn. Chat,
 sliders, model tree, script, viewport.
 
-**This branch (`MJC`) is Cadex with dynamics and control built in.** The
+**Cadex has dynamics and control built in.** The
 mechanism you designed falls, collides and is actuated on
 [MuJoCo](https://github.com/google-deepmind/mujoco); `assembly.mjcf` exports
 it with *exact* OCCT inertias rather than the convex-hull guesses standard
@@ -44,9 +44,10 @@ data; a trainer you copy to a GPU box solves it; and `assembly.rollout`
 plays the result back in the viewport. "Design me a quadruped and teach it
 to walk" is a sequence of chat turns. See [docs/MUJOCO.md](docs/MUJOCO.md).
 
-`main` is the same application without that vertical — no MuJoCo, no 53.5 MB
-of physics engine to build or ship. Changes flow `main` → `MJC` and never
-back ([ADR-086](docs/DECISIONS.md)).
+This lived on a branch called `MJC` until 2026-08-01. It was merged once
+the cost was measured rather than assumed: 53.5 MB on a 3.3 GB application,
+and nothing at all at runtime for anyone who never calls it
+([ADR-102](docs/DECISIONS.md)).
 
 ![A ducted-fan drone frame in the Cadex viewport, its declared parameters as
 sliders below, and the conversation that authored it on the
@@ -104,7 +105,7 @@ Two halves in one repository, separated by a process boundary:
 
 And one directory that is deliberately neither:
 
-- **`training/`** — the offboard PPO trainer (`MJC` only). It is not part of
+- **`training/`** — the offboard PPO trainer. It is not part of
   the product: CMake never installs it, no payload carries it, and it cannot
   import Cadex. You copy it to a machine with a GPU, run it, and copy one
   `.cxpolicy` file back. There is no train button and nothing to press —

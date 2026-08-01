@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-07-31
+Verified against source: 2026-08-01
 
 Cadex is not written from scratch. It is a **derivative work of two large
 free-software projects**, carrying the design lessons of a third that we
@@ -18,7 +18,7 @@ for the shell.
 | Source | What it became | Licence |
 |---|---|---|
 | [OCCT](https://dev.opencascade.org/) | the geometry kernel — every solid, boolean, and fillet | LGPL-2.1 with an exception |
-| [MuJoCo](https://github.com/google-deepmind/mujoco) | the **dynamics** kernel — every simulation, MJCF export and policy rollout (`MJC` only) | Apache-2.0 |
+| [MuJoCo](https://github.com/google-deepmind/mujoco) | the **dynamics** kernel — every simulation, MJCF export and policy rollout | Apache-2.0 |
 | [FreeCAD](https://github.com/FreeCAD/FreeCAD) | **the engine** — the repository root | LGPL-2.1-or-later |
 | [Blender](https://projects.blender.org/blender/blender) | **the shell** — `shell/` | GPL-2.0-or-later |
 | VibeCAD (ours, predecessor) | the scripted-modeling engine inside `src/Mod/cadex/` | LGPL-2.1-or-later |
@@ -38,9 +38,9 @@ Cadex adds roughly **109,000 lines** of its own across both halves, or about
 | the app template | 111 | `shell/scripts/startup/bl_app_templates_system/Mesh/` |
 
 Everything else in this repository, which is the overwhelming majority of
-it, belongs to FreeCAD or Blender. Measured 2026-08-01 on branch `MJC`,
-after the merge that brought the CLI, terminals, solder and the wiring graph
-across from `main`.
+it, belongs to FreeCAD or Blender. Measured 2026-08-01, after the merge
+that brought the CLI, terminals, solder and the wiring graph together with
+the dynamics vertical (ADR-102).
 
 We do not track either upstream. Both were imported as squashed snapshots,
 and the direction of travel is **subtractive**: we delete from these trees
@@ -130,7 +130,7 @@ contributors. Cadex is not affiliated with or endorsed by the Blender
 project, is not a Blender add-on distribution, and should not be mistaken
 for either.
 
-## 4. MuJoCo — the dynamics kernel `(branch MJC only)`
+## 4. MuJoCo — the dynamics kernel
 
 **What it is here.** MuJoCo is to dynamics what OCCT is to geometry: a kernel
 we keep, upstream and unmodified, rather than a tree we fork. `CadexDynamics.py`
@@ -138,9 +138,6 @@ translates a Cadex assembly into an `mjSpec`, steps it, and reads the result
 back; `assembly.mjcf` writes MJCF by calling **MuJoCo's own writer**
 (`MjSpec.to_xml()`) rather than serialising the format ourselves. We fork
 FreeCAD and Blender because we intend to replace them. MuJoCo we keep.
-
-**Which branch.** This section describes `MJC` (ADR-075, ADR-086). `main`
-carries no MuJoCo, no dynamics and none of the obligations below.
 
 **How it reaches a user, and this is the part that matters.** MuJoCo is not
 a build dependency that stays behind on the build machine. `mujoco == 3.10.0`
@@ -275,7 +272,7 @@ licences.
 - **Build dependencies** for the engine (OCCT, Qt6, Coin3D, compilers) come
   from conda-forge through pixi, pinned in `pixi.lock`. These stay on the
   build machine.
-- **The one pypi wheel that ships** is `mujoco == 3.10.0`, on `MJC` only —
+- **The one pypi wheel that ships** is `mujoco == 3.10.0` —
   §4. It is neither vendored source nor a build-only dependency, which is why
   it has a section of its own rather than a bullet here.
 - **The CadexLight and CadexDark themes** are based on

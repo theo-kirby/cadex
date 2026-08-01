@@ -18,7 +18,7 @@ replaced the VibeCAD-era per-domain multi-program surface `[Cadex-new]`.
   five capability domains and is the sole source of truth — the user can
   open it, read it, and diff it; nothing model-shaped exists outside it.
   Assets the script names live under `<project>/assets/` (flat): mesh
-  geometry `.stl`/`.obj`/`.ply` (ADR-043) and, on branch `MJC`, trained
+  geometry `.stl`/`.obj`/`.ply` (ADR-043) and trained
   policies `.cxpolicy` (ADR-084). Nothing outside cadexd writes that
   directory: the `put_asset` op copies a file the user picked into it and
   returns the name the script may then reference, and

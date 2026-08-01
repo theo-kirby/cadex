@@ -260,7 +260,7 @@ def test_the_simulation_trace_is_part_of_the_project_digest() -> None:
 
 
 def test_an_exported_mjcf_model_is_part_of_the_project_digest() -> None:
-    """And it got there without a line of MJC code, which was the design.
+    """And it got there without a line of dynamics-aware code, by design.
 
     ADR-068 keyed the digest's bytes clause on *having an artifact* rather
     than on a roster of known kinds, precisely so that this branch's

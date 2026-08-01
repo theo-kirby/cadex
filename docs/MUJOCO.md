@@ -7,16 +7,16 @@ M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 a mechanism designed in Cadex trains to a policy offboard and comes home to
 a viewport playing the gait.
 
-**This is the `MJC` vertical (ADR-078, ADR-082, ADR-086).** This file, and
-everything it describes, is the product on `MJC` and absent from `main`.
-`MJC` is not awaiting a merge window and is not provisional: it is a version
-of Cadex with dynamics and control built in, kept separate because a user
-who is not going to simulate a mechanism should not build a physics engine
-or ship 53.5 MB of one. Changes flow `main` → `MJC` and never back. ADR-078
-lists what a sync must not drop and why a branch beat a `WITH_DYNAMICS`
-flag; ADR-082 why M5 closed the merge-back question rather than re-opening
-it; ADR-086 why the docs on this branch are now `MJC`'s own rather than
-`main`'s with a block appended.
+**This is part of the product (ADR-102).** Everything this file describes
+lived on a branch called `MJC` from 2026-07-30 to 2026-08-01, kept separate
+on the reasoning that a user who is not going to simulate a mechanism should
+not build a physics engine or ship 53.5 MB of one. Measured, that cost is
+2.3% of a staged payload, 1.6% of the shipped application and nothing at all
+at runtime — mujoco is imported nowhere at module scope — so the branch was
+merged and its rules retired. ADR-078, ADR-082 and ADR-086 are the split and
+are superseded; ADR-102 is the merge and carries the numbers. Passages below
+written while the branch existed are left as they were: they are the record
+of how the decision looked from inside it.
 
 This is the framework for adding **rigid-body dynamics** to Cadex on
 MuJoCo, and then following that capability all the way to its end: an agent
@@ -95,10 +95,10 @@ recorded the payload cost as "cheaper than expected." We do not ship that
 package — the manifest has not been re-solvable as conda since conda-forge
 moved past `occt ==7.8.1`, so what ships is the **pypi wheel**, which bundles
 the plugin dylibs conda-forge splits out. **53.5 MB, measured** (ADR-076),
-and that is the number every argument on this branch rests on: it is why
-`main` stays free of MuJoCo (ADR-078) and why the merge-back question closed
-the way it did (ADR-082). About 30 MB of it is `mujoco/experimental/`, which
-the engine never imports; pruning it is known, deferred and `MJC`-owned.
+and that is the number the whole branch argument rested on (ADR-078,
+ADR-082) — and, once weighed against a 3.3 GB application, the number that
+ended it (ADR-102). About 30 MB of it is `mujoco/experimental/`, which the
+engine never imports; pruning it is known and deferred.
 
 *(ADR-082 writes the same measurement as "51 MB". It is 51 **MiB** as `du`
 reports it and 53.5 MB decimal — one measurement, two units, not a
@@ -222,9 +222,9 @@ mujoco — a physics authoring path in the shell would violate "nothing
 happens outside the script" the same way the deleted bpy modes did.
 
 **What the branch turned out to be, which is not what "branch" suggests
-(ADR-086).** `MJC` is a **product vertical** — a version of Cadex with
-dynamics and control built in — rather than a staging area waiting for a
-merge window. Two facts settled it. The arc finished: M0–M8 are closed, so
+(ADR-086; superseded by ADR-102, which merged it).** `MJC` was a **product
+vertical** — a version of Cadex with dynamics and control built in — rather
+than a staging area waiting for a merge window. Two facts settled it. The arc finished: M0–M8 are closed, so
 ADR-082's "a branch is where a direction change belongs *until the arc it
 opened is finished*" expired on its own terms. And M5 produced evidence
 pointing the *opposite* way from what ADR-078 anticipated: `export_mjcf`

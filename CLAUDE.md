@@ -7,14 +7,12 @@ Cadex is an AI-native CAD app. **This repository is the whole product**
 (Phase 13a, ADR-030): clone it, `pixi run setup && pixi run app`, and you
 have a running application.
 
-**You are on `MJC`, and `MJC` is a product vertical** (ADR-086): Cadex with
-**dynamics and control built in**. Not a feature branch, not a merge
-candidate, not awaiting anything — a version of the product that simulates
-mechanisms on MuJoCo, exports them, and plays back policies trained on them.
-`main` is the same product without that vertical, and stays that way so a
-user modeling a bracket does not build or ship 53.5 MB of physics engine.
-Changes flow `main` → `MJC` and never back. The branch rules are at the end
-of this file; the arc itself is `docs/MUJOCO.md`.
+**Dynamics and control are built in** (ADR-102): Cadex simulates mechanisms
+on MuJoCo, exports them as MJCF, and plays back policies trained on them.
+This lived on a branch called `MJC` until 2026-08-01, when it was measured
+and merged — 53.5 MB on a 3.3 GB application, and nothing at all at runtime
+for a user who never calls it. **There is one branch.** The arc itself is
+`docs/MUJOCO.md`; ADR-102 records why the split ended and what it cost.
 
 Two halves, one repo, separated by a process boundary rather than a
 repository boundary:
@@ -24,8 +22,8 @@ repository boundary:
   headless service speaking NDJSON over stdio, runs them in sandboxed
   `FreeCADCmd` workers that produce detached BREP, publish into an
   ephemeral document, and stream tessellation back. Five domains:
-  partdesign, sketcher, part, mesh, assembly — the assembly one carrying
-  dynamics, MJCF export, tasks, policies and rollouts on this branch.
+  partdesign, sketcher, part, mesh, assembly — the assembly one also
+  carrying dynamics, MJCF export, tasks, policies and rollouts.
 - **the shell**, under `shell/` — a Blender fork carrying the
   `mesh_agent` add-on. It is the product UI, it speaks the protocol in
   `docs/INTEGRATION.md`, and it ships the engine inside its own bundle. It
@@ -261,48 +259,41 @@ tests and logging the decision; don't commit secrets or machine paths.
    the boundary in any other way.
 7. **Update `docs/ROADMAP.md` checkboxes** when a work item lands.
 
-## The dynamics vertical (ADR-075, ADR-078, ADR-082, ADR-086)
+## The dynamics vertical (ADR-102)
 
-What this version of the product carries that `main` does not:
 `docs/MUJOCO.md` and its slices M0–M9 (**all closed**, ADR-085 for M0–M8,
-ADR-097/085/086 for M9, ADR-100 for M9b, ADR-101 for M9c);
+ADR-097/098/099 for M9, ADR-100 for M9b, ADR-101 for M9c);
 `CadexDynamics.py` and the
 `assembly.{body,dynamics,collision,actuator,joint_dynamics,mjcf,task,policy,
 rollout,reset_variation,disturbance}` surface; the `test_dynamics_*` suites;
 `training/`; `mesh_agent/cadex_collision.py` and
 `mesh_agent/cadex_training.py`; the mujoco lines in `pixi.toml`/`pixi.lock`;
 and `CARRIED_PYPI_PACKAGES` in
-`package/rattler-build/scripts/relocate_conda_environment.py`. A sync from
-`main` must never drop those.
+`package/rattler-build/scripts/relocate_conda_environment.py`.
+
+This was a separate branch, `MJC`, from 2026-07-30 to 2026-08-01. The rules
+that governed the split — one-way syncs, branch-marked doc blocks, an empty
+`shell/` diff — are **retired with it** (ADR-102), and if you find a doc
+still saying otherwise, the doc is stale. The `MJC` ref still exists,
+pointing at the merge; nothing should be committed to it.
 
 Working rules on top of the change policy above:
 
-- **Changes flow `main` → `MJC`, never back.** If what you are fixing is not
-  dynamics-specific — a bug in the trace path, a payload prune, a doc that is
-  wrong on both branches — it belongs on `main` first and reaches here on the
-  next sync. Ask before landing such a fix here.
-- **The docs here are this branch's own** (ADR-086). The append-only,
-  branch-marked-block rule ADR-078 imposed on `VISION.md`, `ROADMAP.md` and
-  this file is **retired**: write the dynamics material into the body where
-  it belongs, and resolve the occasional sync conflict by hand in favour of
-  this branch's wording. `docs/DECISIONS.md` is still append-only on both
-  branches, so conflicts there are expected and resolved in date order. The
-  rule still stands, unchanged, for the inherited `shell/` tree
-  (`docs/BLENDER-TREE.md`) — that tree is not ours to rewrite.
-- **The `shell/` diff is spent, and only where it is ours** (ADR-091).
-  `git diff main...MJC -- shell/` no longer prints nothing: the collision
-  overlay is `mesh_agent/cadex_collision.py` plus edits to four add-on files
-  and the gate suite. What still holds — and is what the empty-diff rule was
-  always a proxy for — is that **every line of it is under
-  `shell/scripts/addons_core/mesh_agent/` or `shell/tests/python/`, and the
-  inherited Blender tree is untouched.** `docs/BLENDER-TREE.md` §2a is still
-  eight files and **must stay eight**; §2b and §2c are unmoved. Adding to
-  *those* is still a decision, not a fix you slip in, because every line
-  there is a future merge conflict against upstream Blender. The two ADR-086
-  §4 rough edges (`import_geometry`'s success wording, `_ASSET_SUFFIXES`
-  staying at three members) are deliberately **still not taken**: one
-  authorised feature does not license unrelated edits.
-- **Three invariants that are cheap to break by accident**, all test-pinned:
+- **The `shell/` diff is spent, and only where it is ours** (ADR-091). The
+  collision overlay is `mesh_agent/cadex_collision.py` plus edits to four
+  add-on files and the gate suite. What holds — and is what the old
+  empty-diff rule was always a proxy for — is that **every line of our
+  `shell/` diff is under `shell/scripts/addons_core/mesh_agent/` or
+  `shell/tests/python/`, and the inherited Blender tree is untouched.**
+  `docs/BLENDER-TREE.md` §2a is still eight files and **must stay eight**;
+  §2b and §2c are unmoved. Adding to *those* is a decision, not a fix you
+  slip in, because every line there is a future merge conflict against
+  upstream Blender. The two rough edges ADR-086 §4 parked
+  (`import_geometry`'s success wording, `_ASSET_SUFFIXES` staying at three
+  members) are deliberately **still not taken**: one authorised feature does
+  not license unrelated edits.
+- **Three invariants that are cheap to break by accident**, all test-pinned
+  and none of them about a branch:
   nothing in `shell/` imports mujoco; `CadexDynamics.py` is reachable
   from the sandboxed worker but never from `cadexd`
   (`test_engine_purity_guardrails` asserts the import closure exactly); and

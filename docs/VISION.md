@@ -1,6 +1,6 @@
 # VISION.md — What Cadex Is Becoming
 
-Verified against source: 2026-07-31
+Verified against source: 2026-08-01
 
 This document is the product vision. It is authoritative: when a change
 conflicts with this document, the change is wrong or the vision needs an
@@ -23,8 +23,8 @@ but not dependent on either FreeCAD or Blender (ADR-025), combining:
 - **Robotics-class dynamics and control on MuJoCo** — the mechanism you
   designed falls, collides, is actuated, exports as MJCF with *exact* OCCT
   inertias, and plays back a policy trained on it. MuJoCo is a kernel we
-  keep, like OCCT. This is the `MJC` vertical (ADR-075, ADR-086); `main` is
-  the same product without it.
+  keep, like OCCT (ADR-075). This shipped on a branch of its own until
+  2026-08-01 and is now simply part of the product (ADR-102).
 
 Until the replacements land, both forks remain the working substrate, and
 since ADR-030 both live **in this repository**: the engine at the root, the
@@ -97,11 +97,13 @@ Areas 6 and 7 add **no sixth domain**: they are operations on the `assembly`
 domain, which is why they cost no protocol op, no new output type and no
 `shell/` diff. Seven capability areas, still five domain APIs.
 
-**Areas 6 and 7 are the `MJC` vertical** (ADR-086). They are the product on
-this branch and absent from `main`, which carries areas 1–5 and neither the
-53.5 MB MuJoCo payload nor a reason to want it. That is a packaging decision
-about who pays for a physics engine, not a statement that dynamics is
-provisional; ADR-086 records why the split is permanent and one-directional.
+**Areas 6 and 7 shipped on a separate branch until 2026-08-01** and are now
+part of the one product (ADR-102). The split existed to keep a bracket
+modeller from paying for a physics engine; measured, that cost is 53.5 MB on
+a 3.3 GB application and nothing at all at runtime, which did not justify a
+second branch. What the merge did *not* dissolve is the boundary underneath
+it: dynamics is engine-side, the shell never learns MuJoCo exists, and
+training happens on a machine we do not ship to.
 
 **Correction worth stating plainly:** this list used to promise "real mesh
 editing arrives with the Blender shell (BMesh)". The Blender shell arrived;

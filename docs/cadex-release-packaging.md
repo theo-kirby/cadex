@@ -1,6 +1,6 @@
 # Packaging — One Bundle
 
-Verified against source: 2026-07-31
+Verified against source: 2026-08-01
 
 **One repository builds one application** (ADR-030). `pixi run app` produces
 the bundle, and the *engine payload* — a relocatable directory the shell
@@ -27,7 +27,7 @@ cadex-engine-<version>-<os>-<arch>/
                         payload shipped until M0 caught it
   lib/                  Qt6 Core/Xml/Concurrent/Network/DBus only
   lib/python3.11/site-packages/mujoco/
-                        53.5 MB, branch MJC only (ADR-075, ADR-076)
+                        53.5 MB (ADR-075, ADR-076)
   Mod/cadex/            cadexd + the xscript pipeline
   Mod/{Part,PartDesign,Sketcher,Assembly,Mesh,MeshPart,Import,Material,
        Measure,Show}
@@ -85,7 +85,7 @@ goal. The goal, and what the build asserts, is:
 The script *prints* the Qt libraries it does carry, so the exception is
 visible rather than assumed.
 
-**MuJoCo, on branch `MJC` only** (ADR-075, ADR-076). The one deliberate
+**MuJoCo** (ADR-075, ADR-076). The one deliberate
 non-Qt addition, and the only third-party Python package the engine carries:
 53.5 MB of `mujoco == 3.10.0`, without which `assembly.dynamics`,
 `assembly.mjcf` and `assembly.rollout` do not exist. It reaches the payload
@@ -116,8 +116,8 @@ exactly as written.
 the MuJoCo studio viewer the engine never imports and which
 `relocate_macos_runtime_rpaths.py` currently re-signs and re-points for
 nothing. Pruning it would take the dynamics cost to roughly 21 MB. It is
-`MJC`-owned work, worth doing, and wants its own gate run rather than riding
-along with something else (ADR-082 §4, ADR-086 §4).
+worth doing, and it wants its own gate run rather than riding along with
+something else (ADR-082 §4, ADR-102 §5).
 ## What deliberately does *not* ship
 
 The **CLI** (`cli/`, ADR-061). It is a third client of the protocol, not a
@@ -150,7 +150,7 @@ Mod/       4.4 MB     the workbenches the domains actually load
 bin/       452 KB     freecadcmd, CadexGeometryWorker, python
 ```
 
-**That measurement predates the dynamics arc.** A staged payload on `MJC`
+**That measurement predates the dynamics arc.** A staged payload now
 measures **2.4 GB** (ADR-076), the difference being MuJoCo's 53.5 MB plus
 the wheel's own bundled dylibs. Everything the section says about *why* the
 figure is what it is holds unchanged: the 53.5 MB is the only line item in
@@ -190,7 +190,7 @@ manifest exactly as the shell discovers it: open, `describe_api`,
 `kill -9`, respawn, restore-digest equality, `rebuild`, mid-run `cancel`,
 `shutdown`.
 
-**On `MJC` it is 12 tests, up from 6 at M0**, because every slice of the
+**It is 12 tests, up from 6 at M0**, because every slice of the
 dynamics arc added the one thing a source-tree run cannot prove: that the
 capability works out of a *packaged* engine. `12 passed` is the expected
 result; anything less is a payload problem, not a test problem.

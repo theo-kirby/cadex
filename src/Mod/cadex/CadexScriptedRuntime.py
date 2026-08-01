@@ -87,9 +87,9 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
 #:
 #: **These three members are load-bearing and must stay exactly three.** The
 #: shell mirrors this set at ``cadex_backend.py:53`` in a comment that names
-#: this constant, and ADR-078 says the whole MJC branch rests on
-#: ``git diff main...MJC -- shell/`` printing nothing. Widening *this* name
-#: would make that comment false; widening the union below costs no shell
+#: this constant, and every line of our ``shell/`` diff is a future merge
+#: conflict against upstream Blender (ADR-091). Widening *this* name would
+#: make that comment false; widening the union below costs no shell
 #: diff at all, which is why M7 needed no new op (ADR-084).
 _ASSET_SUFFIXES = frozenset({".stl", ".obj", ".ply"})
 

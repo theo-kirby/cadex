@@ -1,7 +1,7 @@
 # Training a policy: the four ways
 
-Verified against source: 2026-08-01. Branch **`MJC` only** (ADR-086).
-Provenance: `[Cadex-new]`. See ADR-084 (training is offboard) and ADR-089
+Verified against source: 2026-08-01. Provenance: `[Cadex-new]`. See
+ADR-084 (training is offboard) and ADR-089
 (remote dispatch).
 
 `training/README.md` is *what the trainer is*. This is *how to run it*, end

@@ -1,8 +1,7 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-08-01. Branch **`MJC` only** (ADR-078,
-ADR-086). Provenance: `[Cadex-new]`. See `docs/MUJOCO.md` slice M7 and
-ADR-084.
+Verified against source: 2026-08-01. Provenance: `[Cadex-new]`. See
+`docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
 in no payload, and nothing in it enters `pixi.toml` — `test_engine_purity_guardrails`
@@ -120,11 +119,11 @@ on and publishes a receipt.
 > One rough edge, stated rather than papered over: the tool the shell offers
 > is called **`import_geometry`**, and on success it advises
 > `mesh.import_file(...)`, which is wrong for a policy. Fixing that wording
-> is a `shell/` diff, and the branch rests on
-> `git diff main...MJC -- shell/` printing nothing (ADR-078) — so it is
-> deliberately not taken. ADR-086 §4 names it as available-and-not-taken
-> rather than blocked; the engine-side refusals carry the correct advice in
-> the meantime.
+> is a `shell/` diff, and every line of one is a future merge conflict
+> against upstream Blender (ADR-091), so it wants to be a change somebody
+> makes on purpose rather than one that rides along. ADR-086 §4 named it
+> available-and-not-taken and ADR-102 §4 left it that way; the engine-side
+> refusals carry the correct advice in the meantime.
 
 ## Options that matter
 

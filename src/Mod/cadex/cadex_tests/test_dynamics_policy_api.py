@@ -312,7 +312,7 @@ def test_a_policy_value_missing_a_required_property_is_refused(missing) -> None:
 
 
 def test_the_api_note_says_where_training_happens_and_that_it_is_not_here() -> None:
-    """The answer to docs/VISION.md's open MJC question, on the surface.
+    """The answer to docs/VISION.md's open training question, on the surface.
 
     There is no train button and nothing to press. The note has to say so,
     because the alternative is a model that keeps looking for one.

@@ -1,6 +1,6 @@
 # FREECAD.md — Inherited Substrate Inventory
 
-Verified against source: 2026-07-31
+Verified against source: 2026-08-01
 
 Cadex's **engine** is a FreeCAD fork. This is the ledger of what we keep,
 what is slated for removal, and what is already gone. Its peer for the shell
@@ -55,7 +55,7 @@ the product installs contains them:
 
 - `src/3rdParty`, `cMake`, `pixi.toml` — build substrate (OCCT, Coin3D, Qt6
   come from pixi/conda deps).
-- **One shipping pypi wheel**, on branch `MJC` only: `mujoco == 3.10.0`, the
+- **One shipping pypi wheel**: `mujoco == 3.10.0`, the
   dynamics kernel. It is not inherited FreeCAD substrate and it is not a
   build-only dependency — it is redistributed **inside the engine payload**,
   carried there by name through `CARRIED_PYPI_PACKAGES` because the manifest

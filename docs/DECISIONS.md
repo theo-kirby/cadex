@@ -6105,6 +6105,10 @@ empty. Protocol change: none.
 
 ## ADR-078 — `MJC` is a permanent branch, not a merge candidate (2026-07-30)
 
+**Superseded by ADR-102 (2026-08-01):** `MJC` was merged into `main` and
+this policy is reversed. Kept for the reasoning, which is still the reasoning
+ADR-102 answers.
+
 **Decision.** The MuJoCo dynamics arc — `docs/MUJOCO.md` slices M0–M8,
 ADR-075, ADR-076, ADR-077 and everything after them — lives on the branch
 `MJC` **permanently**. It is not a feature branch awaiting a merge window.
@@ -6821,6 +6825,10 @@ what the shell claim rests on.
 ---
 
 ## ADR-082 — `MJC` stays, and M5 is why rather than why not (2026-07-31)
+
+**Superseded by ADR-102 (2026-08-01):** the answer recorded here as "no,
+closed rather than deferred again" was reopened and reversed once the cost
+was measured rather than assumed.
 
 **Decision.** The question ADR-078 deferred — *whether the MuJoCo arc ever
 returns to `main`* — is answered **no**, and closed rather than deferred
@@ -7588,6 +7596,10 @@ declines to bake is the failure this whole output-type decision prevents.
 ---
 
 ## ADR-086 — `MJC` is a product vertical, and its docs are its own (2026-07-31)
+
+**Superseded by ADR-102 (2026-08-01):** there is one branch again, so the
+vertical is simply the product. The doc rules this entry set are moot; the
+`shell/` rules it restated are not, and survive in ADR-091.
 
 **Decision.** `MJC` is **a version of Cadex with dynamics and control built
 in** — a product vertical, not a branch in a holding pattern. It is not
@@ -10065,3 +10077,93 @@ since the iteration window is 20 steps against a 50-step episode the restart
 falls in a different place each iteration. The curve is now a band 9.4e-5
 wide, against the 9.0e-4 the variation moves the same curve — so the test
 asserts an order of magnitude between the two instead of a fixed point.
+
+## ADR-102 — The vertical is the product: `MJC` merges into `main` (2026-08-01)
+
+**Decision.** The dynamics and control vertical ships in `main`. `MJC` is
+merged, its branch policy is retired, and there is **one branch** again.
+ADR-078, ADR-082 and ADR-086 are superseded in full: their conclusion
+("`MJC` is permanent, `main` stays free of MuJoCo, changes flow one way and
+never back") is reversed here, deliberately and with the numbers ADR-078
+never had.
+
+### 1. What the split was protecting, measured
+
+ADR-078's premise was a user's cost: *"a user modeling a bracket does not
+build or ship 53.5 MB of physics engine."* That claim was made before there
+was a payload to weigh. Measured on this tree, 2026-08-01:
+
+```
+git objects, MJC over main          12.5 MB    (208 MB object store; the
+                                                1.1 GB of submodules and
+                                                790 MB of LFS are shared)
+mujoco in the pixi environment      50.6 MB    (29.5 MB of it experimental/,
+                                                which the engine never imports)
+staged engine payload         2.3 -> 2.4 GB    +53.5 MB, +2.3%
+shipped Cadex.app                     3.3 GB    mujoco is 1.6% of it
+```
+
+Runtime cost to someone who never calls `assembly.dynamics`: **none**.
+mujoco is imported nowhere at module scope; every import is deferred, inside
+a function, in the sandboxed worker. `cadexd`'s import closure is pinned by
+`test_engine_purity_guardrails` to never reach `CadexDynamics.py`, and the
+shell is pinned never to learn mujoco exists. The 53.5 MB sits on disk
+unread. mujoco resolves on all five platforms `pixi.toml` targets, so the
+split was not buying portability either.
+
+**So the bracket user pays 1.6% of a download and nothing at runtime.** That
+is not a product split; it is a rounding error that cost a branch.
+
+### 2. What the split was costing
+
+The merge that preceded this entry took an afternoon: eleven conflicts, and
+then a twenty-seven-entry renumbering because both branches had issued
+ADR-060 through ADR-067 and ADR-074 to different decisions. That tax is not
+one-time — it recurs on every sync, and grows each time both sides touch the
+same file. `docs/` alone carried 55 branch markers across 15 files.
+
+The one-way rule (ADR-078) also had a perverse effect worth naming: a bug
+found while doing dynamics work but living in shared code had to be fixed on
+`main` and waited for a sync to reach the branch where it was observed.
+
+### 3. The cost that is real, and is not solved by branching
+
+`cadex_assembly_api.py` is 39 KB on `main` before this merge and 139 KB
+after; the assembly authoring surface goes from 8 names to 23. That is what
+the model reads through `describe_api`, so every turn spent on a bracket now
+carries fifteen call descriptions about bodies, rewards, actuators and
+policies — a token cost and a wrong-tool risk.
+
+This is a **scoping problem in `describe_api`**, and branching was a very
+expensive way to not solve it. Recorded here as the open item it is; the
+answer is a surface the engine narrows to what the project uses, which
+serves the five modeling domains equally.
+
+### 4. What does not change
+
+The three invariants outlive the branch and stay test-pinned, because each
+one is about a boundary rather than about `MJC`:
+
+- nothing under `shell/` imports mujoco — the shell plays a trace and does
+  not know what produced it;
+- `CadexDynamics.py` is reachable from the sandboxed worker and never from
+  `cadexd` — the service stays a service;
+- no `jax` or `mjx` under `src/Mod/cadex` or in a staged payload (ADR-084) —
+  training is offboard, and the engine verifies a policy but never produces
+  one.
+
+`training/` remains outside the engine and in no payload. The `shell/` rule
+that ADR-091 restated — every line of our diff under `mesh_agent/` or
+`shell/tests/python/`, `docs/BLENDER-TREE.md` §2a still eight files — is
+unchanged and was never about the branch.
+
+### 5. Consequences
+
+- `main` carries MuJoCo, `training/`, `docs/MUJOCO.md` and the dynamics
+  suites. A build from `main` is a build with dynamics in it.
+- The `MJC` ref is left in place pointing at the merge, as history. Nothing
+  should be committed to it.
+- The two deferred items ADR-082 §4 and ADR-086 §4 parked as "`MJC`-owned"
+  are now simply owned: pruning `mujoco/experimental/` (−29.5 MB) and the
+  `describe_api` scoping in §3 above. Neither is scheduled by this entry.
+- `docs/ROADMAP.md` Phase 14 stops being "off everyone's path".

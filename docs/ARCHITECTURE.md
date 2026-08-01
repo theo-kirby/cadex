@@ -419,7 +419,7 @@ vertical rather than `main` plus a feature.
   easy to find and delete the day the manifest is repaired.
 - **53.5 MB in the payload, measured** — about 30 MB of which is
   `mujoco/experimental/`, the studio viewer the engine never imports.
-  Pruning it is known, `MJC`-owned, and deferred (ADR-082 §4).
+  Pruning it is known and deferred (ADR-082 §4, ADR-102 §5).
 - **`scipy.spatial`** joins it as `CadexDynamics`'s second deferred import
   (M3, for the convex-hull volume that refuses a part MuJoCo would silently
   hull). Both are imported inside functions, and both are therefore outside
