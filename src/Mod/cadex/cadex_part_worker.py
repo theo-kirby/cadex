@@ -749,6 +749,41 @@ _SWEEP_CORRECTION = (
 )
 
 
+def _tangent_constraints(start_tangent: Any, end_tangent: Any) -> dict[str, Any]:
+    """The end-tangent keywords for ``BSplineCurve.interpolate``, or none.
+
+    Both or neither: ``BSplineCurvePy::interpolate`` loads the pair together
+    (``if (t1 && t2)``), so one alone is silently ignored — which would be a
+    fix that looks applied and is not.  The vectors are copied before they are
+    normalised because ``Vector.normalize`` normalises **in place**, and the
+    directions handed here are the caller's ports, still owed to the router.
+
+    ``Scale=False`` and a **unit** magnitude, which is the part that had to be
+    measured.  OCC's own scaling (the default, ``Scale=True``) keeps the
+    direction and picks the speed itself, and on a five-waypoint route it
+    picks one that makes the whole fit wavy: the 40 mm probe run measured
+    45.5 mm of spline against 37.6 mm free, swinging 5.5 mm below a board it
+    started 0.4 mm under, and the true-Frenet pipe shell folded on it.
+    ``GeomAPI_Interpolate`` parameterises by chord length, so the natural
+    speed is ~1 whatever the model's size — a unit tangent asks for the
+    direction and leaves the shape alone (38.2 mm of spline, against 37.6 mm
+    free, and the same excursions).
+    """
+
+    import FreeCAD as App
+
+    if start_tangent is None or end_tangent is None:
+        return {}
+    pair = []
+    for vector in (start_tangent, end_tangent):
+        copy = App.Vector(vector)
+        if copy.Length <= 1.0e-12:
+            return {}
+        copy.normalize()
+        pair.append(copy)
+    return {"InitialTangent": pair[0], "FinalTangent": pair[1], "Scale": False}
+
+
 def _sweep_conductor(
     waypoints: list[Any],
     *,
@@ -759,6 +794,9 @@ def _sweep_conductor(
     bend_samples: int | None = None,
     bend_correction: str = _BEND_CORRECTION,
     sweep_correction: str = _SWEEP_CORRECTION,
+    start_tangent: Any = None,
+    end_tangent: Any = None,
+    frenet: bool = True,
     context: str = "",
 ):
     """Fit a spline through ``waypoints`` and sweep a round conductor along it.
@@ -766,11 +804,32 @@ def _sweep_conductor(
     Shared by ``part.cable`` and ``part.bundle`` (ADR-057).  ``centre`` is
     where the profile circle sits — the run's first point.
 
-    The sweep runs in OCC's **true** Frenet mode.  The section is a circle
-    centred on the spine, so in principle the mode cannot matter; in practice
-    corrected Frenet collapses helical spines, measured at up to 51% of the
-    volume missing on a six-way lay while still returning one closed, valid
-    solid.  True Frenet held every measured case to within 0.62%.
+    ``start_tangent`` and ``end_tangent`` are the directions the run must
+    leave and arrive on, and they are the difference between a wire that meets
+    its terminal square and one that clips through the joint on it (ADR-074).
+    Without them the interpolation is free at both ends: a global C2 fit picks
+    whatever tangent minimises its own energy, so the "straight stub" the
+    router puts in front of every port is straight only as a polyline, and the
+    spline through it bows from parameter zero.  The profile circle is
+    oriented off that same first tangent below, so the error shows up twice —
+    as a bowed lead *and* as a start face tilted against the terminal's axis.
+
+    ``frenet`` picks the sweep frame, and the two callers want opposite
+    answers — which ADR-057 half-found and ADR-074 finishes.  The section is a
+    circle centred on the spine, so in principle the mode cannot matter; in
+    practice each mode has a shape it cannot carry.  **Corrected** Frenet
+    collapses helical spines — up to 51% of the volume missing on a six-way
+    lay, and still one closed, valid solid — which is why a bundle's
+    conductors sweep in true Frenet.  **True** Frenet needs a curvature to
+    take its normal from, and a routed cable is mostly straight: measured
+    against ``pi r^2 L``, ordinary two-port runs came out at 0.78 and 0.58 of
+    the volume they should have, folding through themselves wherever the
+    normal swung.  Corrected held all three probe runs to within 0.06%, so
+    that is what a cable sweeps in.
+
+    A wrong frame is invisible in every cheap check — the solid is closed, it
+    is valid, it has one shell — so the assertion that catches it is volume
+    against the spine's own length, and both callers have one.
     """
 
     import FreeCAD as App
@@ -781,6 +840,7 @@ def _sweep_conductor(
         Points=[App.Vector(*point) for point in waypoints],
         PeriodicFlag=False,
         Tolerance=1.0e-7,
+        **_tangent_constraints(start_tangent, end_tangent),
     )
     path_edge = curve.toShape()
 
@@ -809,7 +869,7 @@ def _sweep_conductor(
     except Exception:
         tangent = App.Vector(*waypoints[1]) - App.Vector(*waypoints[0])
     profile = Part.Wire([Part.makeCircle(gauge / 2.0, centre, tangent)])
-    result = Part.Wire([path_edge]).makePipeShell([profile], True, True)
+    result = Part.Wire([path_edge]).makePipeShell([profile], True, bool(frenet))
     if result is None or result.isNull() or not result.Solids:
         raise PartOperationError(
             f"api.{operation}: the conductor could not be swept along the "
@@ -1141,12 +1201,13 @@ def _build_cable(payload: dict[str, Any], properties: dict[str, Any]):
     """
 
     import CadexRouting
+    import CadexSolder
 
     operation = "cable"
-    start_point, start_dir, start_floor, _start_metrics = _resolve_port(
+    start_point, start_dir, start_floor, start_metrics = _resolve_port(
         operation, "start", _argument(payload, 0, "start")
     )
-    end_point, end_dir, end_floor, _end_metrics = _resolve_port(
+    end_point, end_dir, end_floor, end_metrics = _resolve_port(
         operation, "end", _argument(payload, 1, "end")
     )
 
@@ -1156,8 +1217,22 @@ def _build_cable(payload: dict[str, Any], properties: dict[str, Any]):
     if gauge <= 0.0:
         raise _error(operation, "gauge_mm", "must be greater than zero")
     standoff = clearance + gauge / 2.0
-    start_standoff = _end_standoff(standoff, start_floor, clearance)
-    end_standoff = _end_standoff(standoff, end_floor, clearance)
+    # A joint on either end holds the lead straight for the meniscus and the
+    # collar together, and the anchor is where the route stops being straight
+    # — so a stand-off shorter than that run puts the wire's first bend inside
+    # the joint that is meant to grip it (ADR-074). The floor is applied here
+    # rather than inside `_end_standoff` because it is not the router's idea:
+    # `part.cable` never learns whether a joint exists, it just leaves enough
+    # straight lead that one *could* be there. Both floors are measured from
+    # the same place as `standoff_floor`, the far face, so they add.
+    start_standoff = max(
+        _end_standoff(standoff, start_floor, clearance),
+        start_floor + CadexSolder.lead_run_mm(start_metrics, gauge),
+    )
+    end_standoff = max(
+        _end_standoff(standoff, end_floor, clearance),
+        end_floor + CadexSolder.lead_run_mm(end_metrics, gauge),
+    )
     solids, boxes = _cable_obstacles(operation, properties.get("avoid", []))
 
     # Not Vector.normalize(), which normalizes in place: start_dir is handed
@@ -1223,6 +1298,14 @@ def _build_cable(payload: dict[str, Any], properties: dict[str, Any]):
         gauge=gauge,
         centre=start_point,
         min_bend_radius_mm=properties.get("min_bend_radius_mm"),
+        # Both ports point *out* of their component, and the run arrives at
+        # the far one against its direction — so the final tangent is its
+        # negative, not the direction itself.
+        start_tangent=start_dir,
+        end_tangent=end_dir * -1.0,
+        # A routed cable is mostly straight, and a straight stretch has no
+        # curvature for a true Frenet normal to follow. See _sweep_conductor.
+        frenet=False,
     )
 
 
@@ -1546,6 +1629,16 @@ def _build_bundle(payload: dict[str, Any], properties: dict[str, Any]):
                 ),
             )
 
+        # No end-tangent constraint here, unlike the cable's spline, and the
+        # reason is measured rather than assumed (ADR-074). A conductor is
+        # swept along a *lay* resampled off this spine at 97 points, so the
+        # spine's end tangent reaches the wire only through that resample --
+        # and the pipe shell's true-Frenet frame is already a coin flip across
+        # neighbouring parameters: at fixed geometry the baseline sweep
+        # measures between 0.75x and 1.47x of `pi r^2 L` as twist_pitch_mm and
+        # slack move by a few percent. Constraining the spine re-rolls that
+        # dice for a tangent the resample mostly absorbs. The cable, whose
+        # spline *is* the wire, gets the constraint; this waits for the frame.
         spine = Part.BSplineCurve()
         spine.interpolate(
             Points=[App.Vector(*point) for point in span_points],
@@ -1610,6 +1703,9 @@ def _build_bundle(payload: dict[str, Any], properties: dict[str, Any]):
         gauge=gauge,
         centre=App.Vector(*waypath[0]),
         min_bend_radius_mm=declared,
+        # A lay *is* curvature, everywhere, and corrected Frenet collapses it
+        # (ADR-057). The opposite of the cable's answer, for the same reason.
+        frenet=True,
         # The check has to see the lay, not a fixed 97 samples spread over a
         # run that may hold fifty turns -- too coarse and it over-reports the
         # radius, which makes it pass conductors it should refuse.

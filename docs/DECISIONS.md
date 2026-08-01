@@ -4049,6 +4049,12 @@ valid solid. True Frenet held every measured configuration to within 0.62%.
 The section is a circle centred on the spine, so in principle the mode cannot
 matter; it does, so the measurement decides and the test pins it.
 
+**Narrowed by ADR-074 to bundles only.** That measurement was taken on lays
+and generalised to `_sweep_conductor`'s other caller without being retaken
+there. On a routed *cable* — mostly straight, so mostly without a curvature
+for a true Frenet normal to follow — the same mode loses 22% and 42% of the
+volume on ordinary two-port runs. The frame is now chosen per operation.
+
 **One search, by memo.** `_SHAPE_MEMO` is keyed on the whole payload and
 `conductor` is part of it, so without a second memo each conductor would
 re-route. `_BUNDLE_ROUTES` is keyed on the payload with `conductor` and
@@ -5293,3 +5299,159 @@ scribble refused, the two queues staying apart, nineteen picks batching, and
 the overlay carrying the instruction. **Not verified:** the gesture in a real
 viewport — `poll` needs `context.edit_object`, and the operator has only been
 driven through `measure_selection` headlessly.
+
+---
+
+## ADR-074 — The wire meets its terminal square (2026-08-01)
+
+**Decision.** Three fixes to things that shipped wrong in the first real
+session with the Wiring editor. Two are one-line-shaped and one is not.
+
+1. `CadexWiringTree` gains **`get_from_context`**, so the node editor's
+   canvas shows the tree its own sidebar was already listing.
+2. The chat's controls become **one row of buttons under the message box**,
+   with an always-drawable **Rebuild Model** in it, and the header keeps
+   status only.
+3. `part.cable`'s spline is **constrained to leave and arrive on the
+   terminal's axis**, its stand-off is floored by the run a joint needs, and
+   it is swept in the **corrected** frame rather than the true Frenet one.
+
+### 1. The graph canvas was blank while the sidebar was full
+
+`node_draw_space` wraps *everything it draws* in `if (snode.treepath.last)`
+(`editors/space_node/node_draw.cc`), and only `ED_node_tree_start` pushes
+onto `treepath`. `snode_set_context` calls it on every redraw — but only for
+a tree type that supplies a `get_from_context` callback, and ours did not, so
+`ntree` stayed null and the editor drew an empty grid.
+
+Nothing noticed, because `wiring_ui._tree` reads `context.scene.cadex_wiring`
+**directly** and uses `space_data.tree_type` only as a filter. That is
+exactly why the panels looked healthy: boards, wires, gauges and terminals
+all listed, on a blank canvas.
+
+The callback is the fix rather than a patch, because it repairs the editor
+**however it is opened** — from the editor-type menu, from a restored
+`.blend`, from a split — with no operator involved and nothing to keep in
+sync. `MESH_AGENT_OT_toggle_wiring` is the secondary half: an explicit
+open/close for the button row. Its predicate matches on
+`area.spaces.active.tree_type`, not on `area.type`, because `NODE_EDITOR` is
+a shared space type and a toggle keyed on the type alone would close somebody
+else's compositor. And its ordering is load-bearing:
+`rna_SpaceNodeEditor_node_tree_poll` rejects a `node_tree =` assignment
+unless `snode->tree_idname` already agrees, so `ui_type` is set first, inside
+a `temp_override` carrying the window — without which an area-type change
+silently no-ops. A test asserts that order against the operator's own source,
+because the order *is* the bug.
+
+### 2. One row of buttons, and something safe to press
+
+The controls were split across two places — the two pin gestures in the chat
+header, everything else under the message box — so the answer to "where is
+the button" depended on which button. The header now carries only what is
+*status* (the model dropdown, which is a setting, and the pinned count) and
+one row carries every action, in four groups: what the next message will
+carry, what acts on the model, what opens a view, and the turn itself.
+
+**Rebuild Model** is the addition. Its poll is only "the assistant is idle",
+so it is always drawable, and it re-runs the script the engine already holds
+without sending anything — the documented safe thing to press when it is
+unclear which side is wrong (ADR-039). Deliberately *not* "Rebuild From Saved
+Script", which pushes this file's text buffer over the engine: wrong
+semantics for a button that is always on.
+
+**Define Terminal is drawn disabled rather than hidden** outside Edit Mode.
+A row that changes width as you enter and leave Edit Mode moves every other
+button under the pointer.
+
+### 3. The wire clipped through its solder joint
+
+Three independent faults, found in that order, each one uncovering the next.
+
+**The spline had no tangent constraint.** `_sweep_conductor` interpolated
+with free ends, so a global C2 fit left the port on whatever tangent
+minimised its own energy — measured at **9.7 degrees off a bore's own axis**
+on the probe plate. The router's straight stub is straight only as a
+polyline; the spline through it bows from parameter zero. And the profile
+circle is oriented off that same first tangent, so the error showed up twice:
+as a bowed lead, and as a start face tilted against the axis — the misaligned
+ring where the collar meets the wire.
+
+Passing `InitialTangent`/`FinalTangent` fixes the direction. The *magnitude*
+had to be measured: OCC's default `Scale=True` keeps the direction and picks
+the speed itself, and on a five-waypoint route it picks one that makes the
+whole fit wavy — 45.5 mm of spline against 37.6 mm free, swinging 5.5 mm
+below a board it started 0.4 mm under. `GeomAPI_Interpolate` parameterises by
+chord length, so the natural speed is ~1 whatever the model's size: a **unit
+tangent with `Scale=False`** asks for the direction and leaves the shape
+alone (38.2 mm, same excursions).
+
+**The stand-off was shorter than the joint.** A joint holds the lead straight
+for `fillet_height + collar_height` above the entry face — 1.005 mm on the
+probe plate — while the router's anchor, the first point the search may move,
+sat 0.5 mm above it. Nothing connected the two numbers. `CadexSolder`
+gains **`lead_run_mm(metrics, gauge_mm)`**, which reads the arithmetic
+`solder_specs` already does rather than restating it, and the part worker
+floors each end's stand-off with it *at the call site* — leaving
+`_end_standoff`'s signature and its pinned test intact. `part.cable` never
+learns whether a joint exists; it leaves enough straight lead that one
+*could* be there, which keeps the two operations independent. A terminal that
+cannot be soldered at all (a literal port, a lead too fat for its bore)
+reserves nothing, because refusing a route over a joint nobody asked for
+would couple them in exactly the direction this is keeping apart.
+
+**And the sweep frame was wrong for cables the whole time.** With the tangent
+constrained, the pinned four-hole-plate test still failed: the swept tube
+bulged 1.1 mm sideways. ADR-057 pinned **true** Frenet because *corrected*
+Frenet collapses helical spines — up to 51% of the volume missing on a
+six-way lay. But true Frenet takes its normal from the curve's curvature, and
+a routed cable is mostly straight. Measured against `pi r^2 L`, ordinary
+two-port runs came out at **0.78 and 0.58** of the volume they should have,
+folded through themselves. Corrected held all three probe runs to within
+0.06%. So the frame is now per-operation: a cable sweeps corrected, a
+bundle's conductors sweep true Frenet, and both call sites say why.
+
+The part worth remembering: **boolean operations against a folded sweep
+silently return nothing.** That is how a wire drifting 0.09 mm off-axis
+inside a 0.3 mm bore reported *exactly zero* shared volume with the joint
+around it, and how a test asserting that zero passed for two ADRs. It was
+pinning a broken sweep, not a straight wire. It now asserts a bound on the
+sliver a straight-bore joint and a fitted spline must share, and the real
+measurements moved the right way: mid-barrel drift 0.093 mm → 0.031 mm, total
+shared volume 0.094 mm³ → 0.038 mm³.
+
+**What was tried and dropped.** The same tangent constraint on `part.bundle`'s
+shared spine. A conductor is swept along a *lay* resampled off that spine at
+97 points, so the spine's end tangent reaches the wire only through the
+resample — and the pipe shell's frame is already a coin flip across
+neighbouring parameters: at fixed geometry the baseline sweep measures between
+**0.75x and 1.47x** of `pi r^2 L` as `twist_pitch_mm` and `slack` move by a few
+percent. Constraining the spine re-rolled that dice and the pinned three-phase
+case landed badly. The cable, whose spline *is* the wire, gets the constraint;
+the bundle waits for its frame to be fixed, which is now a known issue in
+ROADMAP with numbers attached.
+
+### The cost, stated plainly
+
+Every cable's swept BREP moves, so **`shape_sha256` moves and every saved
+project with a cable must be re-accepted** — one click, or one
+`pixi run rebuild`. Same class of change as ADR-064 and the same remedy.
+ROADMAP records the sibling `_sag` −Z fold as unfixed *for this reason*; the
+difference is that this one is not cosmetic. A wire that clips through the
+joint holding it is wrong in the render, and a conductor missing 42% of its
+volume is wrong in anything downstream that measures it.
+
+### Verification
+
+Engine: 615 tests green, including four new ones — `lead_run_mm` read off the
+joint's own outline and zero for a terminal that cannot carry one (pure
+Python), and two kernel probes: the wire's start tangent and start-cap normal
+against the terminal's axis, its volume against `pi r^2 L`, its centreline
+drift at five heights through barrel and collar, and the anchor sitting
+exactly `depth + lead_run` along the axis. Shell: `bl_mesh_agent_wiring.py`
+and `bl_mesh_agent.py` green on the shipped bundle, with new tests for
+`get_from_context`, the toggle's ordering and its discriminating predicate,
+and the button row's contents, ordering and greyed-out-not-hidden width.
+
+**Not verified headless, and unchanged from ADR-066:** the link-drag gesture
+itself. `node.link` does not exist in a bundle that never registered the
+space type, so it has only ever been driven from Python.

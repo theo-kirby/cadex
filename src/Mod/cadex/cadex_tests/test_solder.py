@@ -371,6 +371,50 @@ def test_the_collar_hugs_the_lead_and_is_half_the_fillet_tall() -> None:
     assert tight["lead_radius"] < tight["collar_radius"] < tight["pad_radius"]
 
 
+def test_the_lead_run_is_the_meniscus_and_the_collar_together() -> None:
+    """What ``part.cable`` has to leave straight for a joint to fit (ADR-074).
+
+    Read off the joint rather than restated beside it: the whole point of the
+    function is that the router cannot drift from the shape.
+    """
+
+    for metrics, gauge in ((HOLE, 0.4), (PAD, 0.6), (HOLE, 0.8)):
+        specs = solder_specs(metrics, gauge_mm=gauge)
+        assert CadexSolder.lead_run_mm(metrics, gauge) == pytest.approx(
+            specs["fillet_height"] + specs["collar_height"]
+        )
+
+    # And it is the height the joint actually reaches above the entry face,
+    # which is the property the stand-off floor is really about.
+    specs = solder_specs(HOLE, gauge_mm=0.4)
+    collar_top = _segment(specs, "collar")["end"][1]
+    assert collar_top - specs["depth"] == pytest.approx(
+        CadexSolder.lead_run_mm(HOLE, 0.4)
+    )
+
+
+@pytest.mark.parametrize(
+    "metrics, gauge",
+    [
+        ({}, 0.4),                      # a literal (point, direction) port
+        (HOLE, 0.0),                    # no lead at all
+        (HOLE, 1.2),                    # a lead too fat for its own bore
+        ({**PAD, "area": 1.0e-9}, 0.6),  # a pad with no annulus to sit on
+    ],
+)
+def test_a_terminal_that_cannot_be_soldered_reserves_no_lead(metrics, gauge) -> None:
+    """A run that could never carry a joint needs no room left for one.
+
+    The alternative is for ``part.cable`` to refuse a route because a joint
+    nobody asked for would not build — which would couple the two operations
+    in exactly the direction ADR-074 is keeping them apart.
+    """
+
+    assert CadexSolder.lead_run_mm(metrics, gauge) == 0.0
+    with pytest.raises(SolderError):
+        solder_specs(metrics, gauge_mm=gauge)
+
+
 def test_the_collar_and_the_cap_derive_and_are_not_knobs() -> None:
     """ADR-063's "a joint has enough numbers", pinned against drift.
 
@@ -1125,6 +1169,7 @@ try:
     metrics = worker._resolve_terminal_set("solder", "terminal", terminal("sda"))
     specs = CadexSolder.solder_specs(metrics["sda"]["metrics"], gauge_mm=0.6)
     report["ideal_volume"] = CadexSolder.joint_volume(specs)
+    report["lead_run"] = CadexSolder.lead_run_mm(metrics["sda"]["metrics"], 0.6)
     report["pad_radius"] = specs["pad_radius"]
     report["collar_radius"] = specs["collar_radius"]
     report["fillet_height"] = specs["fillet_height"]
@@ -1197,12 +1242,66 @@ try:
             worker.build_part_shape(solder(terminal("sda"), fillet_mm=fillet))
         )
 
-    # How much material the joint shares with the wire that lands in it.
-    # Inside the board the lead runs straight down the bore the joint's own
-    # outline leaves for it; above it the routed spline begins to turn away.
-    wire = worker.build_part_shape(
-        cable(terminal("vbat"), terminal("scl"), cell_mm=1.0)
+    # How much material the joint shares with the wire that lands in it, and
+    # how straight the wire is where the joint grips it (ADR-074). The spine
+    # is caught on its way through so the swept solid can be measured against
+    # `pi r^2 L` -- a folded sweep is closed, valid and short, so volume
+    # against its own path length is the only assertion that sees it.
+    caught = {}
+    uncaught_sweep = worker._sweep_conductor
+
+    def catching(waypoints, **kwargs):
+        caught["waypoints"] = [list(point) for point in waypoints]
+        caught["gauge"] = float(kwargs["gauge"])
+        caught["frenet"] = bool(kwargs.get("frenet", True))
+        caught["start_tangent"] = list(kwargs["start_tangent"])
+        return uncaught_sweep(waypoints, **kwargs)
+
+    worker._sweep_conductor = catching
+    try:
+        wire = worker.build_part_shape(
+            cable(terminal("vbat"), terminal("scl"), cell_mm=1.0)
+        )
+    finally:
+        worker._sweep_conductor = uncaught_sweep
+    report["wire_waypoints"] = caught["waypoints"]
+    report["wire_frenet"] = caught["frenet"]
+    report["wire_start_tangent"] = caught["start_tangent"]
+    spine = Part.BSplineCurve()
+    spine.interpolate(
+        Points=[App.Vector(*point) for point in caught["waypoints"]],
+        PeriodicFlag=False, Tolerance=1.0e-7,
+        **worker._tangent_constraints(
+            App.Vector(*caught["start_tangent"]), App.Vector(0.0, 0.0, -1.0)
+        ),
     )
+    report["wire_volume"] = float(wire.Volume)
+    report["wire_ideal_volume"] = (
+        math.pi * (caught["gauge"] / 2.0) ** 2 * float(spine.toShape().Length)
+    )
+    # The start cap of the pipe shell: a flat disc whose normal *is* the
+    # tangent the wire leaves on. A tilted one is the misaligned ring you see
+    # where the collar meets the wire.
+    planar = [
+        face for face in wire.Faces
+        if isinstance(face.Surface, Part.Plane)
+        and (face.CenterOfMass - App.Vector(5.0, 10.0, 0.0)).Length < 1.0
+    ]
+    report["wire_start_faces"] = len(planar)
+    if planar:
+        surface = planar[0].Surface
+        report["wire_start_normal"] = list(surface.Axis)
+    # ...and how far the wire's centreline has wandered off the terminal's
+    # axis by the time it leaves the barrel and the collar behind.
+    drift = {}
+    for height in (0.4, 1.2, 1.6, 2.0, 2.6):
+        sections = wire.slice(App.Vector(0.0, 0.0, 1.0), height)
+        faces = [Part.Face(section) for section in sections]
+        nearest = min(faces, key=lambda f: abs(f.CenterOfMass.x - 5.0))
+        drift["%%.1f" %% height] = [
+            abs(float(nearest.CenterOfMass.x) - 5.0), float(nearest.Area)
+        ]
+    report["wire_drift"] = drift
     barrel_zone = Part.makeBox(60.0, 40.0, 1.6, App.Vector(-10.0, -10.0, 0.0))
     for name in ("vbat", "scl"):
         shared = worker.build_part_shape(solder(terminal(name))).common((wire,))
@@ -1400,33 +1499,106 @@ def test_the_revolve_leaves_no_seam_and_survives_both_torus_extremes() -> None:
     __import__("test_cadexd_lifecycle", fromlist=["FREECADCMD"]).FREECADCMD is None,
     reason="No FreeCADCmd binary available to revolve a joint against OCC.",
 )
-def test_the_lead_bore_is_exact_inside_the_board_and_close_above_it() -> None:
+def test_the_wire_leaves_its_terminal_along_the_axis_it_was_given() -> None:
+    """The assertion that would have caught ADR-074, at both ends of it.
+
+    A cable's spline used to be fitted with **free** ends, so it left the
+    terminal on whatever tangent a global C2 fit produced — measured here at
+    9.7 degrees off a bore's own axis — and the profile circle, which is
+    oriented off that same first tangent, was tilted with it.  That is the
+    misaligned ring where the collar meets the wire, and the wire clipping
+    through the joint that is meant to grip it.
+
+    The sweep frame is the other half.  True Frenet takes its normal from the
+    curve's curvature, and a routed cable is mostly straight: the same run
+    swept in true Frenet came out at 78% of ``pi r^2 L``, folded through
+    itself, and — the part worth remembering — *boolean operations against it
+    silently returned nothing*, which is how a wire drifting 0.09 mm off-axis
+    inside a 0.3 mm bore reported exactly zero shared volume with the joint
+    around it.  The zero this test used to assert was a broken sweep, not a
+    straight wire.
+    """
+
+    report = _kernel_report()
+
+    assert "crashed" not in report, report.get("crashed")
+    # Corrected frame, and volume against the spine's own length: closed and
+    # valid say nothing here, a folded sweep is both.
+    assert report["wire_frenet"] is False
+    assert report["wire_volume"] == pytest.approx(
+        report["wire_ideal_volume"], rel=0.01
+    )
+
+    # The terminal leaves along +Z, and so does the wire: exactly, not nearly.
+    assert report["wire_start_tangent"] == pytest.approx([0.0, 0.0, 1.0])
+    assert report["wire_start_faces"] == 1
+    assert abs(report["wire_start_normal"][2]) == pytest.approx(1.0, abs=1.0e-9)
+
+    # ...and it stays on that axis for the whole run the joint grips: a lead
+    # that wandered its own radius would leave the bore entirely.
+    for height, (drift, area) in sorted(report["wire_drift"].items()):
+        assert drift < 0.05, (height, drift)
+        # Still a full round conductor at every height — the section a
+        # collapsed sweep loses.
+        assert area == pytest.approx(math.pi * 0.3 * 0.3, rel=0.05), height
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle", fromlist=["FREECADCMD"]).FREECADCMD is None,
+    reason="No FreeCADCmd binary available to revolve a joint against OCC.",
+)
+def test_the_router_leaves_the_lead_the_joint_needs_before_it_turns() -> None:
+    """Where the route is allowed to start bending (ADR-074).
+
+    ``part.cable`` never learns whether a joint exists — it floors its
+    stand-off with :func:`CadexSolder.lead_run_mm` so that one *could* be
+    there.  On this plate that is the 1.6 mm barrel plus the meniscus and the
+    collar, and the anchor is exactly that far along the axis: the first
+    waypoint the search is free to move.
+    """
+
+    report = _kernel_report()
+
+    assert "crashed" not in report, report.get("crashed")
+    waypoints = report["wire_waypoints"]
+    # From the far face, up the bore, and clear of the joint before the first
+    # searched cell.
+    assert waypoints[0] == pytest.approx([5.0, 10.0, 0.0])
+    assert waypoints[1][0] == pytest.approx(5.0)
+    assert waypoints[1][2] == pytest.approx(1.6 + report["lead_run"])
+    # Which is more than the clearance alone would have given: without the
+    # floor the anchor sat 0.5 mm above the face, inside the collar.
+    assert report["lead_run"] > 0.5
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle", fromlist=["FREECADCMD"]).FREECADCMD is None,
+    reason="No FreeCADCmd binary available to revolve a joint against OCC.",
+)
+def test_the_lead_bore_leaves_the_wire_a_radius_of_its_own() -> None:
     """What the joint and its wire share, and where.
 
-    Measured, not assumed.  **Inside the board the two agree exactly**: the
-    lead runs straight down the radius the joint's outline leaves empty, and
-    the shared volume through the barrel is zero to the kernel's own precision.
+    Measured, not assumed.  A joint is built from the terminal's *straight*
+    bore while the wire is a spline fitted through a searched route, so the
+    two agree exactly only where the route is straight — and since ADR-074
+    that is the whole run the joint holds.  What is left is a sliver, and it
+    is measured against the counterfactual rather than against zero: without
+    the empty radius in the joint's own outline, the wire's whole length
+    through the barrel, the meniscus and the collar would be shared.
 
-    Above the board it is a sliver rather than nothing, and the cause is worth
-    stating: a joint is built from the terminal's *straight* bore, while the
-    wire is a spline fitted through a searched route, and that spline begins
-    to turn as soon as it leaves the board — before the meniscus has finished
-    climbing it.  Nothing here can remove that: ``part.solder`` takes a
-    terminal, not a wire, and a joint must build whether or not a cable was
-    ever routed to it.  What the empty radius buys is measured against the
-    counterfactual instead — without it the wire's whole length through the
-    barrel, the meniscus and the collar would be shared.
+    ``part.solder`` takes a terminal, not a wire, and must build whether or
+    not a cable was ever routed to it — which is why this is a bound and not
+    an equality.
     """
 
     report = _kernel_report()
 
     assert "crashed" not in report, report.get("crashed")
     for name in ("vbat", "scl"):
-        assert report["overlap_in_barrel_" + name] == pytest.approx(0.0, abs=1.0e-9)
-        # A fraction of what an unbored joint would share, and a small part of
-        # the joint itself — which the concave sweep made smaller, so this is
-        # a tighter claim than the cone's was.
-        assert report["overlap_" + name] < 0.2 * report["unbored_overlap"]
+        # A few percent of what an unbored joint would share, and a small part
+        # of the joint itself.
+        assert report["overlap_in_barrel_" + name] < 0.05 * report["unbored_overlap"]
+        assert report["overlap_" + name] < 0.1 * report["unbored_overlap"]
         assert report["overlap_" + name] < 0.1 * report["joint"]["volume"]
 
 

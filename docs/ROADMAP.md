@@ -830,12 +830,12 @@ What makes them experimental, and what would settle it:
   differently from wire, which needs an appearance vocabulary the part domain
   does not have, and rounding the underside cap to a dome (decided: it stays
   a cone).
-- **A joint and its wire share a sliver above the board.** Zero *inside* it —
-  the lead runs straight down the radius the joint's outline leaves empty —
-  but the wire is a spline fitted through a searched route and starts to turn
-  before the meniscus tops out. ~6% of the joint on the probe plate, and a
-  wider stand-off makes it worse. Structural: `part.solder` takes a terminal,
-  not a wire, and a joint must build whether or not a cable was routed to it.
+- **A joint and its wire share a sliver.** Since ADR-074 the wire leaves the
+  terminal on the axis and runs straight for the whole length the joint grips
+  — measured drift 0.031 mm at mid-barrel, against 0.093 mm before — so what
+  is left is 0.038 mm³ on the probe plate, 5% of what an unbored joint would
+  share. Structural, and now small: `part.solder` takes a terminal, not a
+  wire, and a joint must build whether or not a cable was routed to it.
 - **Terminals cannot ride a non-uniform placement.** Refused rather than
   silently skewed (ADR-062). A pad has no radius and no depth, so a
   relaxation carrying only its point and normal is available and unbuilt; it
@@ -858,6 +858,17 @@ What makes them experimental, and what would settle it:
   shared with `part.cable`, where it is silent; `part.bundle` refuses on it
   via its bend floor. Fixing it moves accepted digests, so it needs its own
   ADR — see ADR-057's closing note.
+- **A bundle conductor's sweep frame is a coin flip.** True Frenet takes its
+  normal from the curvature, and on a lay that normal spins: at fixed
+  geometry the swept solid measures between **0.75x and 1.47x** of
+  `pi r^2 L` as `twist_pitch_mm` and `slack` move a few percent, while
+  staying closed, valid and one solid. The three-phase probe currently lands
+  on a good roll, which is all the pinned 2% tolerance is really asserting.
+  ADR-074 fixed the same class of fault for `part.cable` by sweeping in the
+  corrected frame; a lay cannot take that mode (ADR-057: up to 51% missing),
+  so the fix here is a frame of our own — the spine's own binormal carried
+  along the run rather than recomputed per sample. Not scheduled; it moves
+  digests, and the visible fault so far has been on cables.
 
 ## Later — identified, not scheduled
 

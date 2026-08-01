@@ -63,6 +63,7 @@ from typing import Any, Mapping, Sequence
 __all__ = [
     "SolderError",
     "joint_volume",
+    "lead_run_mm",
     "solder_specs",
 ]
 
@@ -520,6 +521,33 @@ def solder_specs(
         "arc_radius": arc["radius"],
         "depth": depth,
     }
+
+
+def lead_run_mm(metrics: Mapping[str, Any], gauge_mm: float) -> float:
+    """How much straight lead a joint on this terminal would need (ADR-074).
+
+    The meniscus climbs the lead for ``fillet_height`` and the collar hugs it
+    for ``collar_height`` more, so a joint holds the lead straight for their
+    sum above the entry face.  A wire that starts turning inside that run
+    leaves the collar's top ring meeting it at an angle, and clips through it.
+
+    This is what lets ``part.cable`` leave room for a joint **without learning
+    whether one exists**: the router floors its stand-off with this number, so
+    the wire runs straight far enough that a joint *could* be there.  The two
+    operations stay independent, which is the property that makes them
+    composable at all.
+
+    Zero when the terminal cannot carry a joint — a literal ``(point,
+    direction)`` port with no metrics, or numbers :func:`solder_specs` refuses.
+    A run that could never be soldered needs no room reserved for solder, and
+    a caller asking this question is not the place to raise about it.
+    """
+
+    try:
+        specs = solder_specs(metrics, gauge_mm=gauge_mm)
+    except SolderError:
+        return 0.0
+    return float(specs["fillet_height"]) + float(specs["collar_height"])
 
 
 def _line_moment(start: Sequence[float], end: Sequence[float]) -> float:
