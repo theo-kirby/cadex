@@ -563,7 +563,9 @@ def train(
         qpos = jnp.tile(reset_qpos, (envs, 1))
         qvel = jnp.tile(reset_qvel, (envs, 1))
         for entry in variation_entries:
-            key, k_tilt, k_azimuth, k_height, k_spin = jax.random.split(key, 5)
+            key, k_tilt, k_azimuth, k_height, k_spin, k_speed, k_way = (
+                jax.random.split(key, 7)
+            )
             tilt = jax.random.uniform(
                 k_tilt, (envs,), dtype=jnp.float32,
                 minval=float(entry["tilt_low_rad"]),
@@ -583,6 +585,18 @@ def train(
                 minval=float(entry["angular_velocity_low_rad_s"]),
                 maxval=float(entry["angular_velocity_high_rad_s"]),
             )
+            # The stumble: a speed and a direction, drawn whether or not the
+            # bundle declares any, because a branch here is a branch in the
+            # stream's position.
+            speed = jax.random.uniform(
+                k_speed, (envs,), dtype=jnp.float32,
+                minval=float(entry.get("linear_velocity_low_m_s") or 0.0),
+                maxval=float(entry.get("linear_velocity_high_m_s") or 0.0),
+            )
+            speed_azimuth = jax.random.uniform(
+                k_way, (envs,), dtype=jnp.float32,
+                minval=0.0, maxval=2.0 * math.pi,
+            )
             adr = int(entry["qpos_adr"])
             half = 0.5 * tilt
             sine = jnp.sin(half)
@@ -600,8 +614,13 @@ def train(
             qpos = qpos.at[:, adr + 2].add(height)
             dof = int(entry["qvel_adr"])
             # The base's own frame, which is where MuJoCo keeps a free
-            # joint's angular velocity (M9 phase 0).
+            # joint's angular velocity (M9 phase 0)...
             qvel = qvel.at[:, dof + 3 : dof + 6].set(spin)
+            # ...and the WORLD frame, three numbers earlier in the same
+            # array, which is where it keeps the linear one.
+            qvel = qvel.at[:, dof + 0].set(speed * jnp.cos(speed_azimuth))
+            qvel = qvel.at[:, dof + 1].set(speed * jnp.sin(speed_azimuth))
+            qvel = qvel.at[:, dof + 2].set(jnp.zeros_like(speed))
         return key, qpos, qvel
 
     def drawn_pushes(key):
@@ -620,10 +639,16 @@ def train(
                 minval=float(entry["newtons_low"]),
                 maxval=float(entry["newtons_high"]),
             )
-            azimuth = jax.random.uniform(
+            drawn = jax.random.uniform(
                 k_way, (envs,), dtype=jnp.float32,
                 minval=0.0, maxval=2.0 * math.pi,
             )
+            # Folded into the arc the task declares, with no draw of its own
+            # -- the engine does exactly this, and on the full circle it is
+            # the identity, so a task that narrows nothing is unchanged.
+            arc_low = float(entry.get("azimuth_low_rad") or 0.0)
+            arc_high = float(entry.get("azimuth_high_rad", 2.0 * math.pi))
+            azimuth = arc_low + drawn * ((arc_high - arc_low) / (2.0 * math.pi))
             starts.append(
                 jax.random.uniform(
                     k_when, (envs,), dtype=jnp.float32,
@@ -1082,6 +1107,15 @@ def train(
         return {
             "parameters": flat_parameters(np, stored),
             "layers": [[int(a), int(b)] for a, b in shapes],
+            # The exploration width these weights were rolled out at, which
+            # is a *trained* parameter and until ADR-103 reached no file at
+            # all. The engine plays the mean action and the trainer plays a
+            # sample drawn about it, so without this number nobody could ask
+            # whether those are the same policy -- see docs/MUJOCO.md 6
+            # candidate (b). Recorded per action and in the pre-activation
+            # space the noise is actually added in.
+            "log_std": [float(v) for v in
+                        np.asarray(params["log_std"], dtype=np.float32)],
             "normaliser": {
                 "mean": [float(v) for v in stored_mean],
                 "std": [float(v) for v in stored_std],
@@ -1132,13 +1166,22 @@ def train(
                  # getting worse while the reward climbs shows up here first,
                  # as an episode length that falls. M9b's fell 170 -> 30 over
                  # 400 iterations with nothing recording it.
-                 "episode_steps": float(mean_steps)}
+                 "episode_steps": float(mean_steps),
+                 # The row ADR-103 added, for the same reason. The loss is
+                 # `... - entropy_weight * entropy` with `entropy` linear in
+                 # `log_std`, so minimising it pushes this number UP with
+                 # nothing bounding it. A run whose sigma has walked away
+                 # from --initial-std is a run sampling in a space its mean
+                 # action never visits, and reading that live is cheaper
+                 # than reading it off a finished checkpoint.
+                 "action_std": float(jnp.mean(jnp.exp(params["log_std"])))}
         curve.append(entry)
         if not options.quiet:
             print(
                 f"iteration {iteration:4d}  reward/step {entry['reward_per_step']:+.6g}"
                 f"  loss {entry['loss']:+.6g}"
-                f"  episode {entry['episode_steps']:.1f}",
+                f"  episode {entry['episode_steps']:.1f}"
+                f"  sigma {entry['action_std']:.4f}",
                 file=sys.stderr,
             )
         # Stop at the first non-finite number, naming the iteration and which
@@ -1312,6 +1355,24 @@ def policy_header(
             "output_bias": trained["output_bias"],
         },
         "normaliser": trained["normaliser"],
+        # Top level, and deliberately NOT inside `network` (ADR-103). What
+        # `network` describes is the deterministic forward pass the engine
+        # evaluates and witnesses; this describes the distribution the
+        # trainer sampled from around it, which the engine neither plays nor
+        # checks. Filing it under `network` would invite a reader to think
+        # the witness covers it.
+        #
+        # `space` is load-bearing and any reader has to honour it: the noise
+        # is added to the network's raw output BEFORE the output tanh --
+        # `surface = tanh(raw + noise * exp(log_std)) * scale + bias`, see
+        # `rollout` above. Adding noise to a policy's surface action instead
+        # would be noise in the wrong space, unbounded by the tanh, and
+        # would answer a question nobody asked.
+        "exploration": {
+            "distribution": "gaussian",
+            "log_std": [float(v) for v in trained["log_std"]],
+            "space": "pre_activation",
+        },
         "training": {
             "trainer_sha256": hashlib.sha256(
                 Path(__file__).resolve().read_bytes()
@@ -1571,6 +1632,14 @@ def main(argv: Sequence[str]) -> int:
                 None if not curve or curve[-1].get("episode_steps") is None
                 else float(curve[-1]["episode_steps"])
             ),
+            # Additive on exactly the same terms as `episode_steps` above,
+            # under the same unchanged schema (ADR-103): mean exploration
+            # sigma, so a runaway entropy bonus is visible in the panel and
+            # in `watch` while the run is still going rather than after it.
+            "action_std": (
+                None if not curve or curve[-1].get("action_std") is None
+                else float(curve[-1]["action_std"])
+            ),
             "best_reward_per_step": (
                 None if not best or best.get("iteration", -1) < 0
                 else float(best["reward_per_step"])
@@ -1651,6 +1720,7 @@ def main(argv: Sequence[str]) -> int:
         "witness_tolerance": POLICY_WITNESS_TOLERANCE,
         "reward_per_step": (curve[-1]["reward_per_step"] if curve else None),
         "episode_steps": (curve[-1].get("episode_steps") if curve else None),
+        "action_std": (curve[-1].get("action_std") if curve else None),
         "best_reward_per_step": (
             best_row["reward_per_step"] if best_row else None
         ),

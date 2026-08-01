@@ -537,6 +537,20 @@ def test_the_trainers_reset_variation_is_the_engines_arithmetic() -> None:
     assert "xfrc_applied=applied_forces" in source
     assert "int(entry[\"body_id\"]), :3" in source
 
+    # B1b's stumble lands in the dofs beside the spin, and in the OTHER
+    # frame. Two implementations of one asymmetry, so the second one is
+    # written down and pinned like the four lines above it.
+    assert "qvel.at[:, dof + 0].set(speed * jnp.cos(speed_azimuth))" in source
+    assert "qvel.at[:, dof + 1].set(speed * jnp.sin(speed_azimuth))" in source
+    assert "linear_velocity_low_m_s" in source
+
+    # B1a's arc, with the bracketing that makes the full circle exactly the
+    # identity. Written as `drawn * span / (2*pi)` it rounds twice and every
+    # task that declares no arc quietly moves by an ulp.
+    assert (
+        "arc_low + drawn * ((arc_high - arc_low) / (2.0 * math.pi))" in source
+    )
+
 
 def test_the_trainer_runs_a_varied_and_shoved_task(tmp_path) -> None:
     """The paths a compile check cannot reach.

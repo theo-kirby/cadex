@@ -707,10 +707,12 @@ d = json.load(open(sys.argv[1]))
 eta = d.get("eta_s") or 0.0
 best = d.get("best_reward_per_step")
 steps = d.get("episode_steps")
-print("%-8s %5d/%-5d  reward/step %s  episode %s  best %s @%s  %4.0fs elapsed  %4.0fs left  %d checkpoints" % (
+sigma = d.get("action_std")
+print("%-8s %5d/%-5d  reward/step %s  episode %s  sigma %s  best %s @%s  %4.0fs elapsed  %4.0fs left  %d checkpoints" % (
     d.get("state",""), d.get("iteration",-1) + 1, d.get("total",0),
     ("%+.6g" % d["reward_per_step"]) if d.get("reward_per_step") is not None else "-",
     ("%.1f" % steps) if steps is not None else "-",
+    ("%.3f" % sigma) if sigma is not None else "-",
     ("%+.6g" % best) if best is not None else "-",
     d.get("best_iteration",-1), d.get("wall_time_s") or 0.0, eta,
     len(d.get("checkpoints") or [])))' "${progress}" 2>/dev/null || echo "")"

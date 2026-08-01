@@ -893,12 +893,18 @@ CONDIM_VALUES = (1, 3, 4, 6)
 #: cheap end of the same lesson the flags taught.
 CONTACT_GROUP_COUNT = 31
 
-#: The five MuJoCo geom types this surface can produce, and how many size
+#: The six MuJoCo geom types this surface can produce, and how many size
 #: numbers each takes. ``mesh`` and ``hull`` are the same MuJoCo type: they
 #: differ only in whether a concave part is refused, which is a decision
 #: this module makes before MuJoCo ever sees the geometry.
+#:
+#: ``plane`` is the odd one and the reason the size handling below is not a
+#: single loop: its three numbers are two half-widths and a rendering grid
+#: spacing, where every other primitive's are lengths, and zero is a legal
+#: width meaning "no edge at all" where zero is refused everywhere else.
 _COLLISION_GEOM_TYPES = {
     "box": "box",
+    "plane": "plane",
     "sphere": "sphere",
     "cylinder": "cylinder",
     "capsule": "capsule",
@@ -1208,7 +1214,49 @@ def collision_geoms(
                 shape, context=f"{context} collision {index}"
             ),
         }
-        if kind == "box":
+        if kind == "plane":
+            numbers = _floats(
+                shape["size_mm"], count=3,
+                context=f"{context} collision {index} size",
+            )
+            for position in (0, 1):
+                if numbers[position] < 0.0:
+                    raise DynamicsError(
+                        f"{context} collision {index} declares a plane "
+                        f"{numbers[position]:g} mm wide.",
+                        reason="malformed_plane_size",
+                        correction=(
+                            "A plane's first two sizes are its full widths "
+                            "along local X and Y, or 0 for a plane with no "
+                            "edge in that direction. Neither can be negative."
+                        ),
+                        observed={"size_mm": numbers},
+                    )
+            if numbers[2] <= 0.0:
+                raise DynamicsError(
+                    f"{context} collision {index} declares a plane whose "
+                    f"grid spacing is {numbers[2]:g} mm.",
+                    reason="malformed_plane_grid",
+                    correction=(
+                        "A plane's third size is the spacing MuJoCo rules "
+                        "its surface with for display -- it is not a "
+                        "thickness, because a plane has none -- and it must "
+                        "be greater than 0."
+                    ),
+                    observed={"size_mm": numbers},
+                )
+            # The widths are halved exactly as a box's extents are, so that
+            # `size_mm=[1200, 1200, 50]` is 1200 mm of floor either way and
+            # not 2400. The grid spacing is a length MuJoCo draws with and
+            # is converted but never halved -- halving it would be halving a
+            # different kind of number for consistency's sake.
+            record["size_m"] = [
+                length_m(numbers[0]) / 2.0,
+                length_m(numbers[1]) / 2.0,
+                length_m(numbers[2]),
+            ]
+            record["size_mm"] = numbers
+        elif kind == "box":
             extents = _floats(
                 shape["size_mm"], count=3, context=f"{context} collision {index} size"
             )
@@ -2934,6 +2982,7 @@ def _add_collision_geoms(
 
     types = {
         "box": mujoco.mjtGeom.mjGEOM_BOX,
+        "plane": mujoco.mjtGeom.mjGEOM_PLANE,
         "sphere": mujoco.mjtGeom.mjGEOM_SPHERE,
         "cylinder": mujoco.mjtGeom.mjGEOM_CYLINDER,
         "capsule": mujoco.mjtGeom.mjGEOM_CAPSULE,
@@ -5000,10 +5049,18 @@ RANDOMISATION_TARGETS: dict[str, dict[str, Any]] = {
 #: "whatever the RNG did" is not a thing two implementations can agree on.
 #:
 #: Note the deliberate wastefulness -- three draws per disturbance whether or
-#: not it is sustained, six per reset variation whether or not every range is
-#: a point. A stream whose *position* depends on a branch is a stream two
+#: not it is sustained, eight per reset variation whether or not every range
+#: is a point. A stream whose *position* depends on a branch is a stream two
 #: implementations get wrong differently, and the cost of not branching is
 #: three floats nobody reads.
+#:
+#: It was six per reset variation until B1b added the linear velocity, and
+#: the two extra draws are taken **unconditionally** for exactly that reason:
+#: taking them only when a script declares a speed would put a branch in the
+#: stream's position and buy nothing. The cost is that every bundle written
+#: before B1b now draws a different sequence when replayed -- the numbers are
+#: as valid as they ever were, but they are not the same numbers, so a
+#: rollout digest from before it does not reproduce.
 #:
 #: This is a **different** algorithm from ``RANDOMISATION_ALGORITHM``, and
 #: the trainer deliberately does not reproduce it: MJX draws on device every
@@ -5015,11 +5072,17 @@ EPISODE_VARIATION_ALGORITHM = (
     "random.Random(seed) continuing in bundle order after the randomisation "
     "draws: for each reset_variation entry uniform(tilt_low_rad, "
     "tilt_high_rad), uniform(0, 2*pi) for the azimuth, uniform(height_low_m, "
-    "height_high_m) and three uniform(angular_velocity_low_rad_s, "
-    "angular_velocity_high_rad_s); then for each disturbance entry "
-    "uniform(newtons_low, newtons_high), uniform(0, 2*pi) read as an azimuth "
-    "when horizontal and as a sign when vertical, and uniform(at_low_s, "
-    "at_high_s) -- always three, the last ignored when sustained"
+    "height_high_m), three uniform(angular_velocity_low_rad_s, "
+    "angular_velocity_high_rad_s), then uniform(linear_velocity_low_m_s, "
+    "linear_velocity_high_m_s) and uniform(0, 2*pi) for its azimuth -- "
+    "always eight; then for each disturbance entry uniform(newtons_low, "
+    "newtons_high), uniform(0, 2*pi) mapped onto the declared arc by "
+    "azimuth_low_rad + drawn * ((azimuth_high_rad - azimuth_low_rad) / "
+    "(2*pi)) -- the ratio first, so that the full circle multiplies by "
+    "exactly 1.0 -- and read as an azimuth when horizontal and as a sign "
+    "when vertical, and "
+    "uniform(at_low_s, at_high_s) -- always three, the last ignored when "
+    "sustained"
 )
 
 #: Everything a reward or termination expression may name beyond the
@@ -5877,6 +5940,16 @@ def _reset_variation_records(
                 "angular_velocity_high_rad_s": math.radians(
                     float(entry.get("angular_velocity_dps_high") or 0.0)
                 ),
+                # A speed, drawn with an azimuth like the tilt. It lands in
+                # the free joint's LINEAR dofs, which MuJoCo keeps in the
+                # world frame -- the other half of the same six numbers,
+                # kept in the body frame. That asymmetry is MuJoCo's.
+                "linear_velocity_low_m_s": (
+                    float(entry.get("linear_velocity_mm_s_low") or 0.0) / 1000.0
+                ),
+                "linear_velocity_high_m_s": (
+                    float(entry.get("linear_velocity_mm_s_high") or 0.0) / 1000.0
+                ),
                 # Measured below, once the schedule has named the keyframe.
                 "clearance_mm": None,
             }
@@ -5949,6 +6022,40 @@ def _disturbance_records(
                 reason="malformed_disturbance",
                 observed={"low": low, "high": high},
             )
+        # The arc a horizontal push is drawn from, 0 degrees at +X. Absent
+        # is the full circle, which is both what every bundle written before
+        # this carried and what an undeclared arc means.
+        arc_low = float(entry.get("azimuth_degrees_low") or 0.0)
+        arc_high = float(entry.get("azimuth_degrees_high", 360.0))
+        if not (math.isfinite(arc_low) and math.isfinite(arc_high)) or (
+            arc_high < arc_low or arc_high - arc_low > 360.0
+        ):
+            raise DynamicsError(
+                f"{what} draws its direction from a {arc_low:g} to "
+                f"{arc_high:g} degree arc.",
+                reason="malformed_disturbance_azimuth",
+                correction=(
+                    "An arc is [low, high] in degrees about +X, at most one "
+                    "full circle wide. Omit it for the whole circle."
+                ),
+                observed={"azimuth_degrees_low": arc_low,
+                          "azimuth_degrees_high": arc_high},
+            )
+        if direction != "horizontal" and (arc_low, arc_high) != (0.0, 360.0):
+            raise DynamicsError(
+                f"{what} points {direction!r} and also declares an azimuth "
+                f"arc.",
+                reason="disturbance_azimuth_on_vertical",
+                correction=(
+                    "A vertical push reads its draw as a sign rather than an "
+                    "angle, so an arc of the ground plane would mean "
+                    "something other than what it says. Drop the arc, or "
+                    "make the push horizontal."
+                ),
+                observed={"direction": direction,
+                          "azimuth_degrees_low": arc_low,
+                          "azimuth_degrees_high": arc_high},
+            )
         sustained = bool(entry.get("sustained"))
         start_low = float(entry.get("at_seconds_low") or 0.0)
         start_high = float(entry.get("at_seconds_high") or 0.0)
@@ -5996,6 +6103,12 @@ def _disturbance_records(
                 "direction": direction,
                 "newtons_low": low,
                 "newtons_high": high,
+                # Radians, like every other angle in a bundle. The full
+                # circle -- 0 to 2*pi -- is the identity remap in
+                # `draw_episode_variation`, exactly, so a task that declares
+                # no arc draws precisely the numbers it always did.
+                "azimuth_low_rad": math.radians(arc_low),
+                "azimuth_high_rad": math.radians(arc_high),
                 "sustained": sustained,
                 "at_low_s": 0.0 if sustained else start_low,
                 "at_high_s": 0.0 if sustained else start_high,
@@ -6428,6 +6541,7 @@ def _write_reset_variation(
     azimuth_rad: float,
     height_m: float,
     angular_velocity_rad_s: Sequence[float],
+    linear_velocity_m_s: Sequence[float] = (0.0, 0.0, 0.0),
 ) -> None:
     """One drawn reset variation, written into ``qpos`` and ``qvel``.
 
@@ -6448,6 +6562,12 @@ def _write_reset_variation(
     phase 0 measured to be in the **base's own frame**: ``qvel[3:6] =
     (1, 0, 0)`` on a body yawed 90 degrees produces a world-frame angular
     velocity of ``(0, 1, 0)``.
+
+    ``linear_velocity_m_s`` lands in the three dofs beside them, and those
+    are **world-frame** -- the same six numbers, two frames, which is
+    MuJoCo's asymmetry and not one this module can hide. It is written after
+    the tilt for no physical reason: the two do not interact, because a
+    velocity is not rotated by a change to the pose it is written alongside.
     """
 
     address = int(record["qpos_adr"])
@@ -6470,6 +6590,7 @@ def _write_reset_variation(
 
     velocity = int(record["qvel_adr"])
     for axis in range(3):
+        data.qvel[velocity + axis] = float(linear_velocity_m_s[axis])
         data.qvel[velocity + 3 + axis] = float(angular_velocity_rad_s[axis])
 
 
@@ -6501,6 +6622,15 @@ def draw_episode_variation(
             )
             for _ in range(3)
         ]
+        # A stumble, as a speed and a direction. Drawn even when the entry
+        # declares no speed, for the reason the sustained disturbance still
+        # draws a start time: the stream's position must not depend on what
+        # the bundle happens to say.
+        speed = rng.uniform(
+            float(entry.get("linear_velocity_low_m_s") or 0.0),
+            float(entry.get("linear_velocity_high_m_s") or 0.0),
+        )
+        speed_azimuth = rng.uniform(0.0, 2.0 * math.pi)
         variations.append(
             {
                 "label": str(entry["label"]),
@@ -6508,6 +6638,16 @@ def draw_episode_variation(
                 "azimuth_rad": float(azimuth),
                 "height_m": float(height),
                 "angular_velocity_rad_s": [float(value) for value in angular],
+                "linear_speed_m_s": float(speed),
+                "linear_azimuth_rad": float(speed_azimuth),
+                # World frame, horizontal: MuJoCo keeps a free joint's
+                # linear velocity in the world frame even though the three
+                # numbers beside it are in the body's own.
+                "linear_velocity_m_s": [
+                    float(speed * math.cos(speed_azimuth)),
+                    float(speed * math.sin(speed_azimuth)),
+                    0.0,
+                ],
             }
         )
 
@@ -6520,7 +6660,20 @@ def draw_episode_variation(
         # the ground plane; a vertical one takes which half of the circle it
         # landed in as the sign. Same stream either way, which is what makes
         # the algorithm one sentence instead of two.
-        azimuth = rng.uniform(0.0, 2.0 * math.pi)
+        drawn = rng.uniform(0.0, 2.0 * math.pi)
+        # ...and then folded into the declared arc, which adds NO draw. On
+        # the full circle -- what every task that declares no arc carries --
+        # `(2*pi - 0) / (2*pi)` is exactly 1.0 and the low end is exactly 0,
+        # so this is the identity and the stream is bit-for-bit what it was.
+        #
+        # The bracketing is load-bearing and measured: written as
+        # `drawn * span / (2*pi)` the multiply happens first, rounds, and
+        # the divide rounds back to one ulp *off* the number the old code
+        # produced. Take the ratio first and the full circle multiplies by
+        # exactly 1.0.
+        arc_low = float(entry.get("azimuth_low_rad") or 0.0)
+        arc_high = float(entry.get("azimuth_high_rad", 2.0 * math.pi))
+        azimuth = arc_low + drawn * ((arc_high - arc_low) / (2.0 * math.pi))
         start = rng.uniform(float(entry["at_low_s"]), float(entry["at_high_s"]))
         if str(entry["direction"]) == "vertical":
             sign = 1.0 if azimuth < math.pi else -1.0
@@ -6573,6 +6726,9 @@ def apply_reset_variation(
             azimuth_rad=float(draw["azimuth_rad"]),
             height_m=float(draw["height_m"]),
             angular_velocity_rad_s=draw["angular_velocity_rad_s"],
+            linear_velocity_m_s=draw.get(
+                "linear_velocity_m_s", (0.0, 0.0, 0.0)
+            ),
         )
     mujoco.mj_forward(model, data)
 

@@ -4087,6 +4087,12 @@ def _reset_variation_input(
         "angular_velocity_dps_high": float(
             properties.get("angular_velocity_dps_high")
         ),
+        "linear_velocity_mm_s_low": float(
+            properties.get("linear_velocity_mm_s_low") or 0.0
+        ),
+        "linear_velocity_mm_s_high": float(
+            properties.get("linear_velocity_mm_s_high") or 0.0
+        ),
     }
 
 
@@ -4103,6 +4109,14 @@ def _disturbance_input(
         "direction": str(properties.get("direction")),
         "newtons_low": float(properties.get("newtons_low")),
         "newtons_high": float(properties.get("newtons_high")),
+        # The full circle unless the script narrowed it. Always present, so
+        # that the engine's draw is one remap rather than a branch.
+        "azimuth_degrees_low": float(
+            properties.get("azimuth_degrees_low") or 0.0
+        ),
+        "azimuth_degrees_high": float(
+            properties.get("azimuth_degrees_high", 360.0)
+        ),
         "sustained": bool(properties.get("sustained")),
         "at_seconds_low": float(properties.get("at_seconds_low")),
         "at_seconds_high": float(properties.get("at_seconds_high")),

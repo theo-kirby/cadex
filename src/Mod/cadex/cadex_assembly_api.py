@@ -71,6 +71,7 @@ _JOINT_TYPES = (
 #: puts the acceptance in the script's own text, where a reader sees it.
 _COLLISION_KINDS: dict[str, frozenset[str]] = {
     "box": frozenset({"size_mm"}),
+    "plane": frozenset({"size_mm"}),
     "sphere": frozenset({"radius_mm"}),
     "cylinder": frozenset({"radius_mm", "length_mm"}),
     "capsule": frozenset({"radius_mm", "length_mm"}),
@@ -1391,15 +1392,34 @@ class AssemblyDomainAPI:
         run did before this existed. Contact is opted into, per body, by
         saying what shape does the touching.
 
-        Six kinds, in two groups.
+        Seven kinds, in two groups.
 
         **Primitives** -- ``box`` (``size_mm=[x, y, z]``, the full extents),
         ``sphere`` (``radius_mm``), ``cylinder`` and ``capsule``
-        (``radius_mm`` plus ``length_mm``, along the component's local +Z).
-        ``offset`` places the shape in the component's own frame, in the
-        same form ``api.connector`` takes. These are exact, cheap and the
-        recommended answer: a bracket's real collision behaviour is usually
-        two boxes, not its own outline.
+        (``radius_mm`` plus ``length_mm``, along the component's local +Z),
+        and ``plane``. ``offset`` places the shape in the component's own
+        frame, in the same form ``api.connector`` takes. These are exact,
+        cheap and the recommended answer: a bracket's real collision
+        behaviour is usually two boxes, not its own outline.
+
+        **``plane`` is the floor, and it is not a thin box.** Its
+        ``size_mm=[x, y, grid]`` is two full widths and a rendering grid
+        spacing -- not three extents -- and a width of ``0`` means the plane
+        has no edge in that direction at all. Its surface passes through the
+        component's own origin facing local +Z, where a box's colliding
+        surface is its *top face*, so a floor built as a box needs an
+        ``offset`` of half its thickness and a plane needs none. Prefer it
+        for ground: a box floor is a six-faced solid whose corners and sides
+        MuJoCo has to consider on every step, and two MuJoCo builds asked
+        the same question about one can answer differently -- measured on
+        this mechanism, a box floor made MJX and MuJoCo disagree about the
+        contact count on a fifth of all steps, and a plane took the same
+        disagreement from 2.3e-7 to 4.4e-16 (ADR-103).
+
+        A plane carries no volume and therefore no mass, which does not
+        matter here: a body's mass comes from its *solids*, never from its
+        collision shapes. Keep the ground's solid a box you can see and give
+        it a plane to touch with.
 
         **A primitive is placed in the component frame, which is not the
         solid's bounding box.** With no ``offset`` a primitive is centred on
@@ -1500,16 +1520,46 @@ class AssemblyDomainAPI:
         properties: dict[str, Any] = {"kind": clean_kind}
         if "size_mm" in required:
             if size_mm is None:
-                raise _error(operation, "size_mm", "is required for a box")
+                raise _error(
+                    operation, "size_mm", f"is required for a {clean_kind}"
+                )
             extents = _vector(operation, "size_mm", size_mm, size=3)
-            for index, extent in enumerate(extents):
-                if not 0.0 < extent <= 1.0e6:
+            if clean_kind == "plane":
+                # A plane's three numbers are not three extents, which is why
+                # this cannot share the box's check. The first two are the
+                # half-widths of the *drawn* patch and zero means infinite --
+                # a legal, and for a floor the usual, value. The third is a
+                # rendering grid spacing with no collision meaning at all,
+                # and it is required to be positive so that nobody writes
+                # [0, 0, 0] believing they have declared three sizes.
+                for index, extent in enumerate(extents[:2]):
+                    if not 0.0 <= extent <= 1.0e6:
+                        raise _error(
+                            operation,
+                            f"size_mm[{index}]",
+                            "is a plane's full width along that axis, or 0 "
+                            "for a plane with no edge at all; it cannot be "
+                            "negative and is at most 1e6 mm",
+                            extent,
+                        )
+                if not 0.0 < extents[2] <= 1.0e6:
                     raise _error(
                         operation,
-                        f"size_mm[{index}]",
-                        "must be a full extent greater than 0 and at most 1e6 mm",
-                        extent,
+                        "size_mm[2]",
+                        "is a plane's grid SPACING, not a thickness: a plane "
+                        "has no third dimension. It is what the viewer rules "
+                        "the surface with, and it must be greater than 0",
+                        extents[2],
                     )
+            else:
+                for index, extent in enumerate(extents):
+                    if not 0.0 < extent <= 1.0e6:
+                        raise _error(
+                            operation,
+                            f"size_mm[{index}]",
+                            "must be a full extent greater than 0 and at most 1e6 mm",
+                            extent,
+                        )
             properties["size_mm"] = extents
         if "radius_mm" in required:
             if radius_mm is None:
@@ -2625,6 +2675,7 @@ class AssemblyDomainAPI:
         tilt_degrees: Sequence[float] | None = None,
         height_mm: Sequence[float] | None = None,
         angular_velocity_dps: Sequence[float] | None = None,
+        linear_velocity_mm_s: Sequence[float] | None = None,
         label: str = "",
     ) -> DomainValue:
         """Start each episode somewhere else, and already moving.
@@ -2656,6 +2707,21 @@ class AssemblyDomainAPI:
           angular velocity components, drawn independently, in the **base's
           own frame**, which is where MuJoCo keeps a free joint's angular
           velocity.
+        * ``linear_velocity_mm_s=[low, high]`` -- a speed, drawn as a
+          magnitude with its azimuth drawn over the full circle exactly as
+          the tilt's is, written into the base's linear velocity in the
+          **world frame**. Note the asymmetry, which is MuJoCo's and not
+          ours: a free joint's *linear* velocity is world-frame and its
+          *angular* velocity is body-frame, in the same six numbers.
+
+        **A stumble is an initial velocity**, and that is what this one is
+        for. A machine that begins every episode at rest has nothing to
+        recover from until something pushes it, so the first second or so of
+        every episode teaches only how to stand still; starting it already
+        moving gives every episode a recovery to do from step 1. It is safe
+        for the same reason the rigid tilt is -- it cannot change the
+        mechanism's shape, so it cannot drive a sole through the floor --
+        and so it needs no clearance check.
 
         **Joint angles are never perturbed, and that is the load-bearing
         decision.** The reset pose is the configuration the solver found with
@@ -2677,6 +2743,7 @@ class AssemblyDomainAPI:
             ("tilt_degrees", tilt_degrees, 0.0),
             ("height_mm", height_mm, 0.0),
             ("angular_velocity_dps", angular_velocity_dps, None),
+            ("linear_velocity_mm_s", linear_velocity_mm_s, 0.0),
         ):
             if source is None:
                 low, high = 0.0, 0.0
@@ -2687,8 +2754,8 @@ class AssemblyDomainAPI:
                 raise _error(
                     operation,
                     parameter,
-                    "is a magnitude and cannot be negative: a tilt's "
-                    "direction is drawn rather than declared, and a "
+                    "is a magnitude and cannot be negative: a tilt's and a "
+                    "speed's direction are drawn rather than declared, and a "
                     "downward height offset is a sole through the floor",
                     source,
                 )
@@ -2703,8 +2770,9 @@ class AssemblyDomainAPI:
                 operation,
                 "tilt_degrees",
                 "varies nothing: give at least one of tilt_degrees, "
-                "height_mm or angular_velocity_dps. An entry that draws only "
-                "zeros costs an episode's arithmetic and changes no episode",
+                "height_mm, angular_velocity_dps or linear_velocity_mm_s. An "
+                "entry that draws only zeros costs an episode's arithmetic "
+                "and changes no episode",
             )
         return self._value(
             operation,
@@ -2720,6 +2788,7 @@ class AssemblyDomainAPI:
         *,
         newtons: Sequence[float],
         direction: str = "horizontal",
+        azimuth_degrees: Sequence[float] | None = None,
         at_seconds: Sequence[float] | None = None,
         duration_s: float | None = None,
         sustained: bool = False,
@@ -2737,6 +2806,24 @@ class AssemblyDomainAPI:
         ``newtons=[low, high]`` is the magnitude, drawn per episode.
         ``direction`` is ``"horizontal"``, whose azimuth is drawn uniformly
         over the full circle, or ``"vertical"``, whose sign is drawn.
+
+        ``azimuth_degrees=[low, high]`` narrows a horizontal push to an arc,
+        where **0 degrees is +X** -- the mechanism's forward -- and the angle
+        runs anticlockwise seen from above. Omitted means the full circle,
+        exactly as before. It exists because a mechanism is not symmetric
+        and its task should not have to be: a biped with hip pitch but no
+        ankle roll can answer a shove from the front and cannot answer one
+        from the side, and drawing uniformly over the whole circle spends
+        two-thirds of every batch in the direction the machine has no
+        actuator for. Declaring the arc is how a task asks the question the
+        mechanism can be trained to answer, and widening it later is how the
+        question gets harder.
+
+        It is **refused on a vertical disturbance**, not ignored. A vertical
+        push reads the same uniform draw as a *sign*, so an arc there would
+        silently mean something else -- and a parameter that means one thing
+        on one direction and another thing on the other is a parameter that
+        will eventually be read wrong.
 
         ``at_seconds=[low, high]`` draws when the push starts and
         ``duration_s`` says how long it lasts -- a fixed number, because a
@@ -2783,10 +2870,47 @@ class AssemblyDomainAPI:
             raise _error(
                 operation, "sustained", "expected True or False", sustained
             )
+        # The full circle when nothing is declared, so that the bundle always
+        # carries an arc and the draw is one remap with no special case in
+        # it. `[0, 360]` maps a drawn angle onto itself, exactly.
+        arc_low, arc_high = 0.0, 360.0
+        if azimuth_degrees is not None:
+            if clean_direction != "horizontal":
+                raise _error(
+                    operation,
+                    "azimuth_degrees",
+                    f"is not accepted on a {clean_direction} disturbance: a "
+                    "vertical push reads its draw as a sign, up or down, so "
+                    "an arc of the ground plane would silently mean "
+                    "something other than what it says",
+                    azimuth_degrees,
+                )
+            arc_low, arc_high = _vector(
+                operation, "azimuth_degrees", azimuth_degrees, size=2
+            )
+            if arc_high < arc_low:
+                raise _error(
+                    operation,
+                    "azimuth_degrees",
+                    "must be ordered [low, high]; to sweep through 0 give a "
+                    "negative low, as [-60, 60] does",
+                    azimuth_degrees,
+                )
+            if arc_high - arc_low > 360.0:
+                raise _error(
+                    operation,
+                    "azimuth_degrees",
+                    "spans more than one full circle, so part of it is drawn "
+                    "twice as often as the rest. Give at most 360 degrees, or "
+                    "omit it for the whole circle",
+                    azimuth_degrees,
+                )
         properties: dict[str, Any] = {
             "direction": clean_direction,
             "newtons_low": low,
             "newtons_high": high,
+            "azimuth_degrees_low": arc_low,
+            "azimuth_degrees_high": arc_high,
             "sustained": bool(sustained),
         }
         if sustained:

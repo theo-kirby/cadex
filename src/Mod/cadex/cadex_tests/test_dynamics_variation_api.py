@@ -207,6 +207,34 @@ def test_an_unordered_range_is_refused() -> None:
     assert "[low, high]" in str(excinfo.value)
 
 
+def test_a_stumble_is_declared_as_a_speed_and_the_direction_is_drawn() -> None:
+    """``linear_velocity_mm_s``, in the script's own units like the rest.
+
+    The point of it, stated where it can be read: a machine that begins
+    every episode at rest has nothing to recover from until something pushes
+    it, so an initial speed is the cheapest way to make a batch be *about*
+    recovering. It is a magnitude with its azimuth drawn, exactly as the
+    tilt is, and so it cannot be negative for exactly the same reason.
+    """
+
+    api = _api()
+    scene = _scene(api)
+    start = api.reset_variation(
+        scene["components"][1], linear_velocity_mm_s=[0.0, 250.0]
+    )
+    assert start.properties["linear_velocity_mm_s_low"] == 0.0
+    assert start.properties["linear_velocity_mm_s_high"] == 250.0
+    # ...and it is enough on its own: an entry that declares only a stumble
+    # varies something, so the "varies nothing" refusal must not fire.
+    assert start.properties["tilt_degrees_high"] == 0.0
+
+    with pytest.raises(ValueError) as excinfo:
+        api.reset_variation(
+            scene["components"][1], linear_velocity_mm_s=[-10.0, 250.0]
+        )
+    assert "cannot be negative" in str(excinfo.value)
+
+
 def test_a_signed_angular_velocity_range_is_allowed() -> None:
     """...and is the only one of the three that may go negative, because a
     spin has a direction the mechanism can tell apart and a tilt magnitude
@@ -284,6 +312,69 @@ def test_only_the_two_declared_directions_are_accepted() -> None:
         api.disturbance(scene["components"][1], newtons=[0.1, 0.2],
                         direction="sideways", sustained=True)
     assert "horizontal" in str(excinfo.value) and "vertical" in str(excinfo.value)
+
+
+def test_an_undeclared_arc_is_the_whole_circle_and_says_so() -> None:
+    """Absent is not missing: the entry carries ``[0, 360]``.
+
+    Every field present is the same decision ``height_mm`` took -- "what
+    does absent mean" belongs in one constructor rather than in the three
+    evaluators that read the bundle.
+    """
+
+    api = _api()
+    scene = _scene(api)
+    entry = api.disturbance(scene["components"][1], newtons=[0.1, 0.2],
+                            sustained=True)
+    assert entry.properties["azimuth_degrees_low"] == 0.0
+    assert entry.properties["azimuth_degrees_high"] == 360.0
+
+
+def test_an_arc_aims_a_horizontal_push_and_is_refused_on_a_vertical_one() -> None:
+    """The one refusal B1a exists to make.
+
+    A vertical push reads the same uniform draw as a *sign*, so an arc there
+    would silently mean something else. A parameter that means one thing on
+    one direction and another on the other is one that gets read wrong, so
+    it is refused rather than ignored.
+    """
+
+    api = _api()
+    scene = _scene(api)
+    aimed = api.disturbance(scene["components"][1], newtons=[0.15, 0.9],
+                            azimuth_degrees=[-60.0, 60.0],
+                            at_seconds=[0.3, 1.5], duration_s=0.12)
+    assert aimed.properties["azimuth_degrees_low"] == -60.0
+    assert aimed.properties["azimuth_degrees_high"] == 60.0
+
+    with pytest.raises(ValueError) as excinfo:
+        api.disturbance(scene["components"][1], newtons=[0.1, 0.2],
+                        direction="vertical", azimuth_degrees=[-60.0, 60.0],
+                        sustained=True)
+    assert "reads its draw as a sign" in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    "arc, expected",
+    [
+        ([60.0, -60.0], "[low, high]"),
+        ([-180.0, 240.0], "more than one full circle"),
+    ],
+)
+def test_a_malformed_arc_is_refused(arc, expected: str) -> None:
+    """An arc the wrong way round, and one that overlaps itself.
+
+    The second is the one worth a message: a span past 360 degrees draws
+    part of the circle twice as often as the rest, which is a distribution
+    nobody wrote and nobody would notice.
+    """
+
+    api = _api()
+    scene = _scene(api)
+    with pytest.raises(ValueError) as excinfo:
+        api.disturbance(scene["components"][1], newtons=[0.1, 0.2],
+                        azimuth_degrees=arc, sustained=True)
+    assert expected in str(excinfo.value)
 
 
 def test_a_negative_force_is_refused_because_the_direction_is_drawn() -> None:

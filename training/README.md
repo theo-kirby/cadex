@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-08-01. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-08-02. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -158,7 +158,7 @@ iteration:
 ```json
 {"schema": "cadex-training-progress-v1", "state": "training",
  "iteration": 419, "total": 2000, "reward_per_step": 0.391,
- "episode_steps": 137.5,
+ "episode_steps": 137.5, "action_std": 0.318,
  "best_reward_per_step": 0.402, "best_iteration": 388,
  "wall_time_s": 913.0, "eta_s": 3440.0, "device": "gpu",
  "checkpoints": [...]}
@@ -170,6 +170,17 @@ while this falls is a policy failing sooner and being paid more for it** —
 which is what two runs did, unnoticed, before there was a number for it. It
 is additive under the same schema, so a `progress.json` from before ADR-101
 still reads; the panel draws it as a dash.
+
+`action_std` is the second row to watch (ADR-103): the mean of
+`exp(log_std)`, the width of the Gaussian the rollout samples its actions
+from. It **starts at `--initial-std` and nothing bounds it** — the loss
+subtracts `--entropy` times an entropy that is linear in `log_std`, so
+minimising it pushes this number up for the whole run. A σ that has walked
+well off its start is a policy whose rollouts and whose mean action are no
+longer the same policy, which is the first thing to rule out when a training
+curve and a local replay disagree. Additive on the same terms as
+`episode_steps`; it is also written into every `.cxpolicy` header, per
+action, as the top-level `exploration` key.
 
 This is the one artifact everything downstream reads —
 `remote_train.sh watch` over rsync, and the shell's Training panel locally.

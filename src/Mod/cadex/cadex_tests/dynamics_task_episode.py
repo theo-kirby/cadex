@@ -136,8 +136,9 @@ def draw_variation(task: dict, rng: Any) -> dict[str, list]:
     the bundle does not say enough for a trainer to run the task.
 
     Note what is *not* branched on: three draws per disturbance whether or
-    not it is sustained, six per reset variation whatever its ranges. A
-    stream whose position depends on a branch is a stream two
+    not it is sustained, eight per reset variation whatever its ranges --
+    including the two the linear velocity takes from a bundle that declares
+    none. A stream whose position depends on a branch is a stream two
     implementations get wrong differently.
     """
 
@@ -152,14 +153,33 @@ def draw_variation(task: dict, rng: Any) -> dict[str, list]:
                         float(entry["angular_velocity_high_rad_s"]))
             for _ in range(3)
         ]
+        speed = rng.uniform(float(entry.get("linear_velocity_low_m_s") or 0.0),
+                            float(entry.get("linear_velocity_high_m_s") or 0.0))
+        speed_azimuth = rng.uniform(0.0, 2.0 * math.pi)
         variations.append({"label": str(entry["label"]), "tilt_rad": tilt,
                            "azimuth_rad": azimuth, "height_m": height,
-                           "angular_velocity_rad_s": angular})
+                           "angular_velocity_rad_s": angular,
+                           "linear_speed_m_s": speed,
+                           "linear_azimuth_rad": speed_azimuth,
+                           # World frame -- the other half of the same six
+                           # numbers, which MuJoCo keeps in the body's.
+                           "linear_velocity_m_s": [
+                               speed * math.cos(speed_azimuth),
+                               speed * math.sin(speed_azimuth),
+                               0.0]})
     pushes = []
     for entry in task.get("disturbance") or []:
         magnitude = rng.uniform(float(entry["newtons_low"]),
                                 float(entry["newtons_high"]))
-        azimuth = rng.uniform(0.0, 2.0 * math.pi)
+        drawn = rng.uniform(0.0, 2.0 * math.pi)
+        # Folded into the declared arc, which takes no draw of its own. The
+        # full circle is the identity, exactly, so a task with no arc gets
+        # the numbers it always did.
+        arc_low = float(entry.get("azimuth_low_rad") or 0.0)
+        arc_high = float(entry.get("azimuth_high_rad", 2.0 * math.pi))
+        # The ratio first: `drawn * span / (2*pi)` rounds twice and lands an
+        # ulp away from what the same seed used to produce.
+        azimuth = arc_low + drawn * ((arc_high - arc_low) / (2.0 * math.pi))
         start = rng.uniform(float(entry["at_low_s"]), float(entry["at_high_s"]))
         if str(entry["direction"]) == "vertical":
             sign = 1.0 if azimuth < math.pi else -1.0
@@ -200,7 +220,11 @@ def write_variation(data: Any, entry: dict, draw: dict) -> None:
     data.qpos[address + 6] = tw * qz - tx * qy + ty * qx
     data.qpos[address + 2] = float(data.qpos[address + 2]) + float(draw["height_m"])
     velocity = int(entry["qvel_adr"])
+    linear = draw.get("linear_velocity_m_s") or (0.0, 0.0, 0.0)
     for axis in range(3):
+        # Linear first, then angular: world frame and body frame, side by
+        # side in one array, which is MuJoCo's asymmetry.
+        data.qvel[velocity + axis] = float(linear[axis])
         data.qvel[velocity + 3 + axis] = float(draw["angular_velocity_rad_s"][axis])
 
 

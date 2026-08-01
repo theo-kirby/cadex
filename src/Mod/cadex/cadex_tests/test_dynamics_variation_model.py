@@ -336,15 +336,31 @@ def test_the_draw_order_is_the_order_the_bundle_states() -> None:
         )
         for _ in range(3)
     ]
+    # Eight draws, not six: the linear velocity takes a magnitude and an
+    # azimuth whether or not the entry declares one, for the same reason the
+    # sustained disturbance below still draws a start time.
+    speed = expected.uniform(
+        variation.get("linear_velocity_low_m_s", 0.0),
+        variation.get("linear_velocity_high_m_s", 0.0),
+    )
+    speed_azimuth = expected.uniform(0.0, 2.0 * math.pi)
     assert drawn["reset_variation"][0]["tilt_rad"] == tilt
     assert drawn["reset_variation"][0]["azimuth_rad"] == azimuth
     assert drawn["reset_variation"][0]["height_m"] == height
     assert drawn["reset_variation"][0]["angular_velocity_rad_s"] == angular
+    assert drawn["reset_variation"][0]["linear_speed_m_s"] == speed
+    assert drawn["reset_variation"][0]["linear_azimuth_rad"] == speed_azimuth
 
     for index in range(2):
         entry = bundle["disturbance"][index]
         magnitude = expected.uniform(entry["newtons_low"], entry["newtons_high"])
+        # The arc remap takes no draw of its own, and on the full circle --
+        # which is what an entry that declares no arc carries -- it is the
+        # identity, so the number a reader predicts is the number drawn.
         orientation = expected.uniform(0.0, 2.0 * math.pi)
+        assert (entry["azimuth_low_rad"], entry["azimuth_high_rad"]) == (
+            0.0, 2.0 * math.pi
+        )
         # Drawn even for the sustained entry, whose window is the whole
         # episode and which therefore ignores it. A stream whose *position*
         # depends on a branch is a stream two implementations get wrong
@@ -357,6 +373,101 @@ def test_the_draw_order_is_the_order_the_bundle_states() -> None:
         assert push["force_n"] == pytest.approx(
             [magnitude * math.cos(orientation), magnitude * math.sin(orientation), 0.0]
         )
+
+
+def test_a_declared_arc_reaches_the_bundle_in_radians() -> None:
+    """Degrees in, radians out, like every other angle here.
+
+    And an entry that declares no arc carries the full circle rather than
+    nothing, so that the draw is one remap and never a branch.
+    """
+
+    aimed = dict(SHOVE, azimuth_degrees_low=-60.0, azimuth_degrees_high=60.0)
+    _built, _reloaded, bundle = _bundle(task={"disturbance": [aimed, WIND]})
+    shove, wind = bundle["disturbance"]
+
+    assert shove["azimuth_low_rad"] == pytest.approx(math.radians(-60.0))
+    assert shove["azimuth_high_rad"] == pytest.approx(math.radians(60.0))
+    assert (wind["azimuth_low_rad"], wind["azimuth_high_rad"]) == (
+        0.0, 2.0 * math.pi
+    )
+
+
+def test_an_arc_narrows_the_drawn_direction_without_touching_the_stream() -> None:
+    """The property B1a was designed around, asserted both ways.
+
+    Every draw lands inside the declared arc -- that is the feature -- and
+    the *magnitudes and start times* are the identical numbers the same
+    seeds produced before the arc was declared, which is what "adds no draw
+    to the RNG stream" means. If the remap had cost a draw, the second half
+    of this would fail and no amount of reading would have shown it.
+    """
+
+    wide = dict(SHOVE)
+    narrow = dict(SHOVE, azimuth_degrees_low=-60.0, azimuth_degrees_high=60.0)
+    _b1, _r1, open_bundle = _bundle(task={"disturbance": [wide, WIND]})
+    _b2, _r2, aimed_bundle = _bundle(task={"disturbance": [narrow, WIND]})
+
+    def signed_degrees(radians: float) -> float:
+        return (math.degrees(radians) + 180.0) % 360.0 - 180.0
+
+    outside = 0
+    for seed in range(40):
+        loose = dyn.draw_episode_variation(open_bundle, random.Random(seed))
+        tight = dyn.draw_episode_variation(aimed_bundle, random.Random(seed))
+        assert -60.0 <= signed_degrees(
+            tight["disturbance"][0]["azimuth_rad"]
+        ) <= 60.0
+        outside += abs(
+            signed_degrees(loose["disturbance"][0]["azimuth_rad"])
+        ) > 60.0
+        for index in range(2):
+            assert (tight["disturbance"][index]["newtons"]
+                    == loose["disturbance"][index]["newtons"])
+            assert (tight["disturbance"][index]["start_s"]
+                    == loose["disturbance"][index]["start_s"])
+        # The undeclared entry beside it is untouched, angle and all.
+        assert (tight["disturbance"][1]["azimuth_rad"]
+                == loose["disturbance"][1]["azimuth_rad"])
+    assert outside, "the open bundle must reach outside the arc, or this proves nothing"
+
+
+def test_the_full_circle_remap_is_the_identity_to_the_last_bit() -> None:
+    """Not approximately: exactly, or every task written before B1a moved.
+
+    ``0 + drawn * (2*pi - 0) / (2*pi)`` is the identity in float64 because
+    the divisor and the multiplier are the same number. That is the whole
+    reason the arc is stored as an arc rather than applied as a scale, and
+    it is worth an assertion because it is the kind of thing a later
+    simplification would quietly break.
+    """
+
+    _built, _reloaded, bundle = _bundle(task={"disturbance": [SHOVE, WIND]})
+    for seed in range(20):
+        drawn = dyn.draw_episode_variation(bundle, random.Random(seed))
+        expected = random.Random(seed)
+        for index, entry in enumerate(bundle["disturbance"]):
+            expected.uniform(entry["newtons_low"], entry["newtons_high"])
+            assert drawn["disturbance"][index]["azimuth_rad"] == (
+                expected.uniform(0.0, 2.0 * math.pi)
+            )
+            expected.uniform(entry["at_low_s"], entry["at_high_s"])
+
+
+def test_an_arc_on_a_vertical_push_is_refused_by_the_engine_too() -> None:
+    """The API refuses it; so does the bundle builder, on its own evidence.
+
+    Not duplication for its own sake: a bundle can be hand-written, and the
+    reading it would get here -- an arc of the ground plane applied to a
+    draw that means up or down -- is exactly the silent wrongness the
+    parameter was refused to prevent.
+    """
+
+    vertical = dict(WIND, direction="vertical",
+                    azimuth_degrees_low=-60.0, azimuth_degrees_high=60.0)
+    with pytest.raises(dyn.DynamicsError) as excinfo:
+        _bundle(task={"disturbance": [vertical]})
+    assert excinfo.value.reason == "disturbance_azimuth_on_vertical"
 
 
 def test_a_vertical_disturbance_reads_the_same_draw_as_a_sign() -> None:
@@ -483,6 +594,88 @@ def test_the_angular_velocity_lands_in_the_bodys_own_frame() -> None:
     )
     world = [float(value) for value in data.cvel[int(entry["body_id"])][:3]]
     assert world == pytest.approx([0.0, 1.0, 0.0], abs=1.0e-9)
+
+
+def test_the_linear_velocity_lands_in_the_world_frame_beside_it() -> None:
+    """The other half of the same six numbers, and the other frame.
+
+    MuJoCo keeps a free joint's linear velocity in the **world** frame and
+    its angular velocity in the **body's**, in one array, and the test above
+    plus this one are the pair that says so. Same yawed base, same draw
+    shape: a stumble declared along world +X stays along world +X however
+    the machine is facing, where the spin above did not.
+
+    That asymmetry is why the docstring states it twice and why two
+    implementations copy it. A stumble that rotated with the base would be a
+    different experiment on every episode whose tilt azimuth differed.
+    """
+
+    _built, reloaded, bundle = _bundle(task={"reset_variation": [VARIATION]})
+    (entry,) = bundle["reset_variation"]
+
+    data = mujoco.MjData(reloaded)
+    key = mujoco.mj_name2id(
+        reloaded, mujoco.mjtObj.mjOBJ_KEY, str(bundle["episode"]["reset_keyframe"])
+    )
+    mujoco.mj_resetDataKeyframe(reloaded, data, key)
+    address = int(entry["qpos_adr"])
+    half = math.sqrt(0.5)
+    data.qpos[address + 3 : address + 7] = [half, 0.0, 0.0, half]
+    mujoco.mj_forward(reloaded, data)
+
+    dyn.apply_reset_variation(
+        mujoco,
+        reloaded,
+        data,
+        bundle,
+        {
+            "reset_variation": [
+                {
+                    "label": "start",
+                    "tilt_rad": 0.0,
+                    "azimuth_rad": 0.0,
+                    "height_m": 0.0,
+                    "angular_velocity_rad_s": [0.0, 0.0, 0.0],
+                    "linear_velocity_m_s": [0.25, 0.0, 0.0],
+                }
+            ],
+            "disturbance": [],
+        },
+    )
+    velocity = int(entry["qvel_adr"])
+    assert [float(v) for v in data.qvel[velocity : velocity + 3]] == (
+        pytest.approx([0.25, 0.0, 0.0])
+    )
+    # ...and the body really is moving that way in the world, on a base
+    # yawed 90 degrees, which is the assertion that distinguishes the frames.
+    world = [float(value) for value in data.cvel[int(entry["body_id"])][3:]]
+    assert world == pytest.approx([0.25, 0.0, 0.0], abs=1.0e-9)
+
+
+def test_a_stumble_reaches_the_bundle_in_metres_per_second() -> None:
+    """Millimetres per second in, metres per second out, converted once."""
+
+    stumbling = dict(VARIATION, linear_velocity_mm_s_low=0.0,
+                     linear_velocity_mm_s_high=250.0)
+    _built, _reloaded, bundle = _bundle(task={"reset_variation": [stumbling]})
+    (entry,) = bundle["reset_variation"]
+    assert entry["linear_velocity_low_m_s"] == 0.0
+    assert entry["linear_velocity_high_m_s"] == pytest.approx(0.25)
+
+    # Drawn as a magnitude with an azimuth, exactly as the tilt is -- so the
+    # speed is bounded by the declared range and the direction covers the
+    # circle. A velocity declared as three independent components would draw
+    # a *corner* of a cube at up to sqrt(2) times the declared speed.
+    speeds = []
+    for seed in range(40):
+        (draw,) = dyn.draw_episode_variation(
+            bundle, random.Random(seed)
+        )["reset_variation"]
+        vector = draw["linear_velocity_m_s"]
+        assert vector[2] == 0.0
+        speeds.append(math.hypot(vector[0], vector[1]))
+        assert speeds[-1] == pytest.approx(draw["linear_speed_m_s"])
+    assert 0.0 <= min(speeds) and max(speeds) <= 0.25
 
 
 def test_a_disturbance_pushes_only_inside_its_own_window() -> None:

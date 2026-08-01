@@ -91,6 +91,7 @@ def test_collision_is_exported_and_is_not_publishable() -> None:
     "kind, parameters",
     [
         ("box", {"size_mm": [10.0, 20.0, 30.0]}),
+        ("plane", {"size_mm": [1200.0, 1200.0, 50.0]}),
         ("sphere", {"radius_mm": 4.0}),
         ("cylinder", {"radius_mm": 4.0, "length_mm": 25.0}),
         ("capsule", {"radius_mm": 4.0, "length_mm": 25.0}),
@@ -338,6 +339,104 @@ def test_a_box_becomes_half_extents_in_metres() -> None:
     )
     assert records[0]["size_m"] == pytest.approx([0.05, 0.02, 0.01])
     assert records[0]["size_mm"] == [100.0, 40.0, 20.0]
+
+
+def test_a_planes_three_numbers_are_not_three_extents() -> None:
+    """Two half-widths and a grid spacing, which is why it has its own branch.
+
+    A plane is the one primitive whose ``size_mm`` is not a size in all
+    three places: MuJoCo reads it as ``(x_half, y_half, grid)``, and the
+    grid is what the viewer rules the surface with rather than a thickness,
+    because a plane has none. The widths are halved exactly as a box's
+    extents are so that ``1200`` means 1200 mm of floor either way; the grid
+    is converted and never halved.
+    """
+
+    records = dyn.collision_geoms(
+        [fx.collision_shape("plane", size_mm=[1200.0, 800.0, 50.0])],
+        None,
+        exact_volume_mm3=1.0,
+        context="component 'ground'",
+    )
+    assert records[0]["size_m"] == pytest.approx([0.6, 0.4, 0.05])
+    assert records[0]["size_mm"] == [1200.0, 800.0, 50.0]
+
+
+def test_a_plane_with_no_edge_is_the_usual_floor() -> None:
+    """Zero is a legal width meaning infinite, and only here.
+
+    Every other primitive refuses a zero size, because a box 0 mm thick is
+    a mistake. A plane 0 mm wide is a plane with no edge at all, which is
+    what a ground plane usually wants -- so the two checks cannot be shared,
+    and this is the case that says so.
+    """
+
+    records = dyn.collision_geoms(
+        [fx.collision_shape("plane", size_mm=[0.0, 0.0, 50.0])],
+        None,
+        exact_volume_mm3=1.0,
+        context="component 'ground'",
+    )
+    assert records[0]["size_m"] == pytest.approx([0.0, 0.0, 0.05])
+    # ...and the API agrees, rather than refusing what the engine accepts.
+    assert list(
+        _api().collision("plane", size_mm=[0.0, 0.0, 50.0]).properties["size_mm"]
+    ) == [0.0, 0.0, 50.0]
+
+
+@pytest.mark.parametrize(
+    "size, message",
+    [
+        ([-1.0, 0.0, 50.0], "cannot be negative"),
+        ([1200.0, 1200.0, 0.0], "grid SPACING"),
+    ],
+)
+def test_a_malformed_plane_is_refused_on_the_number_that_is_wrong(
+    size, message: str
+) -> None:
+    """A negative width, and a third number read as a thickness.
+
+    The second is the one this message exists for: ``[1200, 1200, 40]``
+    looks exactly like the box floor it replaces, and a reader who has not
+    been told will write the thickness there and get a 40 mm grid instead of
+    a 40 mm slab. Refusing zero is what forces the question to be asked.
+    """
+
+    with pytest.raises(ValueError, match=message):
+        _api().collision("plane", size_mm=size)
+
+
+def test_a_plane_compiles_and_only_a_static_body_may_carry_one() -> None:
+    """MuJoCo's own refusal, pinned rather than duplicated.
+
+    A plane on a moving body is meaningless -- an infinite half-space with
+    momentum -- and MuJoCo says so by name, naming the geom. A second check
+    here would be a second opinion about a question that already has a good
+    answer; what this pins is that the answer keeps arriving.
+    """
+
+    components, joints, _placements = _pendulum_with(
+        {
+            "shapes": [fx.collision_shape("plane", size_mm=[1200.0, 1200.0, 50.0])],
+            "mesh": None,
+        },
+        on="base",
+    )
+    model = dyn.build_model(components, joints)["model"]
+    assert int(model.geom_type[0]) == int(mujoco.mjtGeom.mjGEOM_PLANE)
+    # The surface is the component's own origin facing local +Z, where a
+    # box's colliding surface is its top face -- which is the whole reason a
+    # plane floor drops the offset a box floor needs (ADR-074).
+    assert model.geom_pos[0] == pytest.approx([0.0, 0.0, 0.0])
+
+    moving, joints, _placements = _pendulum_with(
+        {
+            "shapes": [fx.collision_shape("plane", size_mm=[100.0, 100.0, 10.0])],
+            "mesh": None,
+        }
+    )
+    with pytest.raises(dyn.DynamicsError, match="static bodies"):
+        dyn.build_model(moving, joints)
 
 
 def test_a_sphere_keeps_its_radius_and_a_cylinder_halves_its_length() -> None:
