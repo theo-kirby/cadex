@@ -46,7 +46,7 @@ to walk" is a sequence of chat turns. See [docs/MUJOCO.md](docs/MUJOCO.md).
 
 `main` is the same application without that vertical — no MuJoCo, no 53.5 MB
 of physics engine to build or ship. Changes flow `main` → `MJC` and never
-back ([ADR-072](docs/DECISIONS.md)).
+back ([ADR-086](docs/DECISIONS.md)).
 
 ![A ducted-fan drone frame in the Cadex viewport, its declared parameters as
 sliders below, and the conversation that authored it on the

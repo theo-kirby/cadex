@@ -8,7 +8,7 @@ payload.** It lives at the repository root because it is a thing you *copy*
 to another machine: ``pixi`` never sees it, CMake never installs it, and its
 dependencies are pinned in ``training/requirements.txt`` and installed into
 a venv on whatever box does the training. ``CARRIED_PYPI_PACKAGES`` stays
-one entry long, which is what ADR-061 named that constant for.
+one entry long, which is what ADR-076 named that constant for.
 
 The sibling of ``src/Mod/cadex/cadex_tests/dynamics_task_episode.py``, and
 held to the same discipline: it imports only ``jax``, ``mujoco``,
@@ -20,7 +20,7 @@ nothing about what a trainer can do with the bundle alone.
 
 **Why training is offboard.** MJX needs JAX-on-GPU, ``jax-metal`` is 0.1.0,
 and the published reference for a humanoid gait is 4096 parallel
-environments on an RTX 4090. ADR-060 recorded that as a design constraint
+environments on an RTX 4090. ADR-075 recorded that as a design constraint
 rather than a temporary one, and M7 does not build dispatch machinery for
 it: no network I/O, no new op, no daemon. You scp two files to a box, run
 this, and scp one file back. What comes home enters the project the way
@@ -509,7 +509,7 @@ def train(
     # The episode the *bundle* declares, and the only horizon this file may
     # use. It is read here and enforced in `rollout`'s scan; for two runs it
     # was read here and never used again, and an environment whose policy did
-    # not fall over therefore never reset -- see ADR-088. A constant would be
+    # not fall over therefore never reset -- see ADR-101. A constant would be
     # a second declaration of the episode, and the engine's
     # ``evaluate_episode`` would be honouring the other one.
     horizon = int(episode["max_steps"])
@@ -545,7 +545,7 @@ def train(
     # ``draw_episode_variation`` and ``apply_disturbance``. Written out in
     # ``jnp`` rather than shared, for the reason this file's reward whitelist
     # and ``encode_policy`` are written out: it cannot import the engine
-    # (ADR-070), so the second copy is written down and a test pins it.
+    # (ADR-084), so the second copy is written down and a test pins it.
     variation_entries = list(task.get("reset_variation") or ())
     push_entries = list(task.get("disturbance") or ())
 
@@ -725,7 +725,7 @@ def train(
     # The environment state carried between iterations. It grew from one
     # `mjx.Data` to a four-tuple in M9: a disturbance is a property of the
     # episode, so its draw and the episode-local clock it is tested against
-    # have to live exactly as long as the physics state does. ADR-088 added
+    # have to live exactly as long as the physics state does. ADR-101 added
     # the fifth member: the step counter the horizon is tested against, which
     # is episode-local for exactly the same reason `elapsed` is.
     state = (data, first_forces, first_starts,
@@ -787,7 +787,7 @@ def train(
         that made it and the reset that replaces it, and the window has to be
         tested against a clock that rewinds when the episode does.
 
-        It gained ``steps`` in ADR-088, and that member is what makes this an
+        It gained ``steps`` in ADR-101, and that member is what makes this an
         episode at all. Before it, ``done`` was the task's termination terms
         and nothing else, so an environment the policy kept upright ran for
         ever: past the last shove window, never pushed again, never re-drawn,
@@ -877,7 +877,7 @@ def train(
         """GAE, with a timeout bootstrapped and a failure cut.
 
         **The one line in this file where a plausible-looking edit is
-        silently wrong** (ADR-088), so it is written out rather than folded
+        silently wrong** (ADR-101), so it is written out rather than folded
         together: ``terminal`` cuts the bootstrap, ``done`` cuts the carry.
 
         A *failure* ends the future, so the state that follows it is worth
@@ -960,7 +960,7 @@ def train(
 
         # Mean episode length: steps taken in this batch over episodes that
         # ended in it. There was no external observable for this at all until
-        # ADR-088, which is why two runs reported a rising reward while the
+        # ADR-101, which is why two runs reported a rising reward while the
         # policy they were reporting on got worse. With nothing ending, this
         # reads the size of the whole batch -- a number that cannot be an
         # episode length, and is meant to be read as "nothing is resetting".
@@ -1070,7 +1070,7 @@ def train(
         # The error is a fixed *relative* one, so it grows with the
         # activations a policy learns: the same run measured 7.3e-6 at
         # iteration 2 and 1.43e-4 at iteration 2000. That is why it survived
-        # every short run and only appeared after four hours -- see ADR-081.
+        # every short run and only appeared after four hours -- see ADR-094.
         #
         # This costs microseconds on 32 samples and nothing at all during
         # training, which is left at the default precision deliberately.
@@ -1128,7 +1128,7 @@ def train(
         entry = {"iteration": iteration,
                  "reward_per_step": float(average),
                  "loss": float(last_loss),
-                 # The row ADR-088 added, and the one to watch: a policy
+                 # The row ADR-101 added, and the one to watch: a policy
                  # getting worse while the reward climbs shows up here first,
                  # as an episode length that falls. M9b's fell 170 -> 30 over
                  # 400 iterations with nothing recording it.
@@ -1223,7 +1223,7 @@ def witness_disagreement(header: dict[str, Any],
 
     A fourth evaluator, and written down here for the reason the reward
     whitelist and :func:`encode_policy` are: this file cannot import
-    ``CadexDynamics`` (ADR-070), so the check that decides whether hours of
+    ``CadexDynamics`` (ADR-084), so the check that decides whether hours of
     GPU time produced a usable file is copied rather than imported, and a
     test pins the two together.
 
@@ -1341,7 +1341,7 @@ def policy_header(
             },
             # The second stream, recorded beside the first because it is a
             # *different* algorithm and a reader has to be able to tell which
-            # numbers came from where (M9, ADR-084).
+            # numbers came from where (M9, ADR-097).
             "episode_variation": {
                 "mode": RESET_VARIATION_MODE,
                 "algorithm": RESET_VARIATION_ALGORITHM,
@@ -1379,7 +1379,7 @@ def checked_policy(
     Run on **checkpoints too**, and that is the point of it being a function.
     The witness error is a relative one that grows with the activations a
     policy learns, so a checkpoint that fails it is a run that is going to
-    fail it -- and the whole reason ADR-081 cost four hours is that nothing
+    fail it -- and the whole reason ADR-094 cost four hours is that nothing
     checked until the end.
     """
 
@@ -1394,7 +1394,7 @@ def checked_policy(
             f"  The witness is recorded under "
             f"jax.default_matmul_precision('highest') precisely so that a "
             f"tensor-core matmul cannot round it (see the comment beside "
-            f"it, and ADR-081). An error near 1e-4 that survives that is "
+            f"it, and ADR-094). An error near 1e-4 that survives that is "
             f"something else: a layer order, a bias layout, an activation, "
             f"or a normaliser that disagrees with the weights it shipped "
             f"with."
@@ -1534,7 +1534,7 @@ def main(argv: Sequence[str]) -> int:
         The one artifact everything downstream reads: `remote_train.sh
         watch` polls it over rsync, and the shell's Training panel polls the
         copy that lands next to the project. Neither of them parses this
-        program's stderr, and that is deliberate -- ADR-080's finding was
+        program's stderr, and that is deliberate -- ADR-093's finding was
         that a receipt taken from a stream is a receipt something else can
         write into.
         """
@@ -1565,7 +1565,7 @@ def main(argv: Sequence[str]) -> int:
             ),
             "loss": float(curve[-1]["loss"]) if curve else None,
             # Additive under the same schema: `cadex_training.py` reads with
-            # `.get`, so a `progress.json` written before ADR-088 still
+            # `.get`, so a `progress.json` written before ADR-101 still
             # renders -- it renders this row as "-".
             "episode_steps": (
                 None if not curve or curve[-1].get("episode_steps") is None

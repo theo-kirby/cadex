@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 """``assembly.reset_variation`` and ``assembly.disturbance`` on the script
-surface (docs/MUJOCO.md M9, ADR-084).
+surface (docs/MUJOCO.md M9, ADR-097).
 
 Two new intermediates and two new keyword arguments on ``api.task``, modelled
 line for line on ``api.randomise`` -- and the division of labour is the point

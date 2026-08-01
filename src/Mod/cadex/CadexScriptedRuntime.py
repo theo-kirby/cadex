@@ -68,7 +68,7 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         "cadex_mesh_worker.py",
         "cadex_assembly_api.py",
         "cadex_assembly_worker.py",
-        # The MuJoCo translator (ADR-062). Staged by filename for the same
+        # The MuJoCo translator (ADR-077). Staged by filename for the same
         # reason as CadexRouting, plus one of its own: it is the only module
         # in the tree that imports mujoco, and the engine's import closure is
         # asserted to equal DECLARED_ENGINE_MODULES exactly. Reachable from
@@ -87,13 +87,13 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
 #:
 #: **These three members are load-bearing and must stay exactly three.** The
 #: shell mirrors this set at ``cadex_backend.py:53`` in a comment that names
-#: this constant, and ADR-063 says the whole MJC branch rests on
+#: this constant, and ADR-078 says the whole MJC branch rests on
 #: ``git diff main...MJC -- shell/`` printing nothing. Widening *this* name
 #: would make that comment false; widening the union below costs no shell
-#: diff at all, which is why M7 needed no new op (ADR-070).
+#: diff at all, which is why M7 needed no new op (ADR-084).
 _ASSET_SUFFIXES = frozenset({".stl", ".obj", ".ply"})
 
-#: Trained control policies (ADR-070). A separate constant rather than three
+#: Trained control policies (ADR-084). A separate constant rather than three
 #: more members above, so that "what mesh.import_file reads" and "what the
 #: project store holds" stay two questions with two answers.
 _POLICY_ASSET_SUFFIXES = frozenset({".cxpolicy"})
@@ -349,7 +349,7 @@ def store_project_asset(
     run can never be staged into a budget this write already broke.
     Overwriting an existing name is allowed: that is re-import.
 
-    Two kinds of file rather than one since ADR-070: the three mesh formats
+    Two kinds of file rather than one since ADR-084: the three mesh formats
     ``mesh.import_file`` reads, and the ``.cxpolicy`` a trained control
     policy arrives in. Both travel the same ``put_asset`` path because that
     path performs **no suffix check of its own** — it passes the path through

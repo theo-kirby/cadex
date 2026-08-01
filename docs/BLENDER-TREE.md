@@ -42,9 +42,9 @@ ADR-041 added `topbar.py`; ADR-043 added the import-geometry operator and
 tool (5,937 → 5,987). The app template was 294 lines, then 340, and is
 now 111 because the layout is a file.
 
-On branch `MJC` only, ADR-078 added `cadex_collision.py` (546) and ~270
+On branch `MJC` only, ADR-091 added `cadex_collision.py` (546) and ~270
 lines across `cadex_backend.py`, `ui.py`, `tools.py` and `modes.py`, plus
-~410 lines of gate suite; ADR-083 then added the Policy Outputs panel —
+~410 lines of gate suite; ADR-096 then added the Policy Outputs panel —
 ~100 lines of `cadex_animate.py`, ~75 of `ui.py`, 27 of `__init__.py` and
 ~95 of gate suite. `git diff --stat <merge-base> -- shell/` is **8 files,
 +1,518/-4**, and every one of those files is under
@@ -53,7 +53,7 @@ entirely inside code that is ours.** Nothing in §2 moved: the
 inherited-tree delta is unchanged, §2a is still eight files and must stay
 eight.
 
-ADR-083 is worth reading as the worked example of *why* that holds. The
+ADR-096 is worth reading as the worked example of *why* that holds. The
 panel wanted a window; a window is a space type, and a space type is
 `DNA_space_enums.h` + `spacetypes.cc` + `rna_space.cc` + `BKE_context` +
 two CMake lists + a new C++ directory — the whole of §2b, for a readout.

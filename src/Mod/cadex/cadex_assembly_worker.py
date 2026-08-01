@@ -55,16 +55,16 @@ _MAX_SIMULATION_TRACE_BYTES = 64 * 1024 * 1024
 #: matters for reading it is MuJoCo's rather than ours. What is versioned
 #: here is the *artifact contract* -- one XML file, one keyframe named
 #: ``solved``, collision geoms only -- which is what a reader would need
-#: told if it ever changed (ADR-066).
+#: told if it ever changed (ADR-081).
 _MJCF_SCHEMA = "mujoco-mjcf-v1"
 _MJCF_ARTIFACT_KIND = "assembly_mjcf_xml"
 #: A training task, unlike the model it references, *is* a Cadex schema: the
 #: observation names, the action bounds, the reward terms and the episode
 #: are ours, and nothing else defines them. The name is carried in the file
 #: itself as well as here, so a reader checks the version before the
-#: contents (M6, ADR-069).
+#: contents (M6, ADR-083).
 _TASK_ARTIFACT_KIND = "assembly_training_task_json"
-#: A policy *receipt*, and the distinction is the design (ADR-070). The
+#: A policy *receipt*, and the distinction is the design (ADR-084). The
 #: weights are an asset -- hours of GPU compute that no script can rebuild --
 #: so what an output publishes is not the policy but the engine's verified
 #: statement about it: which task, which model, which channels, and how far
@@ -2001,7 +2001,7 @@ def _simulation_contract(
     # silently lose an animation: cadex_animate._simulation_entries finds two
     # assembly_simulation_json artifacts, bakes NEITHER, clears the scene and
     # reports into a message the UI never shows. Sharing the type puts all
-    # three under the "exactly one" rule below (ADR-062, ADR-071).
+    # three under the "exactly one" rule below (ADR-077, ADR-085).
     if (
         simulation_value.operation not in {"simulation", "dynamics", "rollout"}
         or len(simulation_value.arguments) != 1
@@ -2112,7 +2112,7 @@ def _mjcf_outputs_contract(
     one ``assembly_simulation_json`` and silently bakes neither on finding
     two; nothing bakes an MJCF file, so two exports of one assembly -- under
     Earth gravity and lunar, say -- is a reasonable script and each names
-    its own artifact (ADR-066).
+    its own artifact (ADR-081).
     """
 
     exports = [
@@ -2753,7 +2753,7 @@ def _retain_simulation_trace(
     """Encode, bound, retain and publish one simulation trace.
 
     Extracted from ``_execute_native_simulation`` so both solvers reach the
-    trace through one path (ADR-062). The schema, the byte cap, the digest,
+    trace through one path (ADR-077). The schema, the byte cap, the digest,
     the preview and the item keys the publisher reads are all here, once:
     a MuJoCo run that wrote its own copy of this would be a second place for
     ``artifact_kind`` or ``simulation_trace_preview`` to drift, and the
@@ -3262,7 +3262,7 @@ def _execute_dynamics_simulation(
     artifact_root: Path,
     outputs_by_name: Mapping[str, dict[str, Any]],
 ) -> dict[str, Any]:
-    """Run the assembly as rigid-body dynamics on MuJoCo (ADR-062).
+    """Run the assembly as rigid-body dynamics on MuJoCo (ADR-077).
 
     The worker's whole share of the work is *reading*: densities off the
     graph, mass properties off the solids, solved placements and
@@ -3404,7 +3404,7 @@ def _execute_mjcf_export(
     outputs_by_name: Mapping[str, dict[str, Any]],
     models: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
-    """Export the assembly as one MJCF file (docs/MUJOCO.md M5, ADR-066).
+    """Export the assembly as one MJCF file (docs/MUJOCO.md M5, ADR-081).
 
     The same reading ``_execute_dynamics_simulation`` does, through the same
     ``_mujoco_model_inputs``, into the same ``build_model`` -- and then

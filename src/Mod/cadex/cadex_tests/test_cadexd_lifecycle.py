@@ -180,7 +180,7 @@ result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
           "j": j, "asm": asm, "diag": diag}
 """
 
-#: The same mechanism as a *dynamics* run (ADR-062). No motion formula: the
+#: The same mechanism as a *dynamics* run (ADR-077). No motion formula: the
 #: arm has mass, the hinge axis is horizontal, and gravity does the rest.
 #: The connector offsets rotate both JCS 90 degrees about X so the joint's
 #: +Z -- FreeCAD's axis convention -- is horizontal; a vertical hinge under
@@ -763,7 +763,7 @@ def test_cadexd_publishes_a_simulation() -> None:
     FREECADCMD is None, reason="No FreeCADCmd binary available for cadexd CI."
 )
 def test_cadexd_publishes_a_dynamics_run() -> None:
-    """A mechanism with mass falls, through the whole pipeline (ADR-062).
+    """A mechanism with mass falls, through the whole pipeline (ADR-077).
 
     The end-to-end claim of slice M2: an ``assembly.dynamics`` script runs
     OndselSolver for the placements, MuJoCo for the motion, and publishes
@@ -1277,7 +1277,7 @@ result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
     FREECADCMD is None, reason="No FreeCADCmd binary available for cadexd CI."
 )
 def test_cadexd_exports_an_mjcf_model() -> None:
-    """The model leaves the building, through the packaged engine (ADR-066).
+    """The model leaves the building, through the packaged engine (ADR-081).
 
     M5's shippable capability: design a mechanism in Cadex, export MJCF with
     exact inertias. This is the ninth gate test and it exists because a
@@ -1403,7 +1403,7 @@ result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
     FREECADCMD is None, reason="No FreeCADCmd binary available for cadexd CI."
 )
 def test_cadexd_writes_a_training_task() -> None:
-    """A task leaves the building, through the packaged engine (ADR-069).
+    """A task leaves the building, through the packaged engine (ADR-083).
 
     M6's shippable capability: design a mechanism in Cadex, get a trainable
     environment out. This is the tenth gate test and it exists for ADR-023's
@@ -1561,7 +1561,7 @@ result = {"gait": gait, "plate\"""",
     FREECADCMD is None, reason="No FreeCADCmd binary available for cadexd CI."
 )
 def test_cadexd_verifies_a_trained_policy_and_ships_no_trainer() -> None:
-    """A policy comes home through the packaged engine (ADR-070).
+    """A policy comes home through the packaged engine (ADR-084).
 
     M7's shippable capability, and the eleventh gate test. It exists for
     ADR-023's reason -- a source tree that passes proves nothing about a
@@ -1571,7 +1571,7 @@ def test_cadexd_verifies_a_trained_policy_and_ships_no_trainer() -> None:
 
     It also asserts the **negative**, which is the half that would otherwise
     rot silently: **no jax and no mjx anywhere in the staged payload.**
-    Training is offboard by design (ADR-060), the engine verifies a policy
+    Training is offboard by design (ADR-075), the engine verifies a policy
     and never produces one, and the day that stops being true the payload
     grows a machine-learning framework without anybody deciding to.
 
@@ -1653,7 +1653,7 @@ def test_cadexd_verifies_a_trained_policy_and_ships_no_trainer() -> None:
 
 
 def _assert_no_training_framework() -> None:
-    """No jax and no mjx anywhere in the staged payload (ADR-070).
+    """No jax and no mjx anywhere in the staged payload (ADR-084).
 
     The negative M7 owes, checked where it can actually be false.
     ``test_engine_purity_guardrails`` asserts the *source* imports none of
@@ -1678,12 +1678,12 @@ def _assert_no_training_framework() -> None:
     )
     assert not offenders, (
         f"the staged payload carries a training framework: {offenders}. "
-        "Training is offboard (ADR-060, ADR-070); the engine verifies a "
+        "Training is offboard (ADR-075, ADR-084); the engine verifies a "
         "policy and never produces one."
     )
     assert not list(root.rglob("cadex_train.py")), (
         "training/cadex_train.py reached the payload; no CMake rule should "
-        "install it (ADR-070)."
+        "install it (ADR-084)."
     )
 
 
@@ -1702,7 +1702,7 @@ result = {"play": play, "gait": gait, "plate\"""",
     FREECADCMD is None, reason="No FreeCADCmd binary available for cadexd CI."
 )
 def test_cadexd_plays_a_trained_policy_into_a_simulation_trace() -> None:
-    """A learned gait leaves the building (ADR-071), and it is the twelfth gate.
+    """A learned gait leaves the building (ADR-085), and it is the twelfth gate.
 
     M8's shippable capability, and the end of the MuJoCo arc: design a
     mechanism in Cadex, train a policy for it offboard, and get back a

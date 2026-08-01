@@ -14,7 +14,7 @@ every FreeCAD read and nothing else. :func:`test_no_conversion_arithmetic_
 outside_the_pure_module` is what keeps that true -- the factors 1000, 1e-9
 and 1e-15 may be multiplied nowhere else in the assembly stack.
 
-ADR-060 says the units boundary "gets a test before it gets a feature".
+ADR-075 says the units boundary "gets a test before it gets a feature".
 This file is that promise honoured literally: it was committed failing on
 import and the module was written to make it pass.
 """
@@ -327,7 +327,7 @@ _NO_CONVERSION_MODULES = (
     "CadexScriptedDomainPublication.py",
 )
 
-#: **Hazard 1's fifth payment** (docs/MUJOCO.md M7, ADR-070). The offboard
+#: **Hazard 1's fifth payment** (docs/MUJOCO.md M7, ADR-084). The offboard
 #: trainer is not under ``src/Mod/cadex`` and is in no payload, but it is on
 #: the same boundary and pointing the other way: a policy's action vector
 #: crosses *out* of a trainer and *into* ``data.ctrl``. M7's answer is M5's

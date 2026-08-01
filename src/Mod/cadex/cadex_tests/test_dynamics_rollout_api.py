@@ -4,7 +4,7 @@
 
 **A new operation and no new output type**, which is the whole design. A
 rollout produces a ``simulation`` -- the same type ``api.simulation`` and
-``api.dynamics`` produce -- so it lands under ADR-062's "exactly one
+``api.dynamics`` produce -- so it lands under ADR-077's "exactly one
 simulation" rule for free, reaches the shell through a trace format that has
 not changed since ADR-050, and needs no protocol change and no ``shell/``
 diff.
@@ -247,7 +247,7 @@ def test_a_rollout_of_a_policy_the_script_never_returned_is_refused() -> None:
 
 
 def test_a_rollout_cannot_sit_beside_a_dynamics_run() -> None:
-    """ADR-062, inherited rather than restated.
+    """ADR-077, inherited rather than restated.
 
     Both are ``simulation`` outputs, so this is the *existing* "exactly one"
     refusal firing on a new pair. That is the reason a rollout has no output

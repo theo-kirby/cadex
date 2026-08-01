@@ -170,7 +170,7 @@ def _asset_filename(
 
     ``suffixes`` defaults to the three mesh formats this module is about, so
     ``mesh.import_file`` reads exactly as it did. The project store passes
-    its own wider set (ADR-070) — the same name check, the same traversal
+    its own wider set (ADR-084) — the same name check, the same traversal
     refusal, one more accepted extension — rather than this module learning
     what a trained control policy is.
     """

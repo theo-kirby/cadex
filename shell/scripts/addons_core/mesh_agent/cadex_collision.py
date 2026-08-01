@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 """
-Draw the collision geometry a dynamics model actually simulates (cadex ADR-078).
+Draw the collision geometry a dynamics model actually simulates (cadex ADR-091).
 
 A collision shape is not the solid it stands for. It is placed in the
 *component* frame, it may legitimately sit outside the part -- a rounded foot
@@ -11,9 +11,9 @@ protrudes below a shin on purpose -- and until now **nothing drew it**. Two
 bugs in one small model came out of that:
 
 - the floor's collision box sat 20 mm proud of the floor's visible top, and a
-  hopper stood on the invisible shelf for an entire training run (ADR-074);
+  hopper stood on the invisible shelf for an entire training run (ADR-087);
 - the foot was a 25 mm sphere at the end of a shin that had no foot on it, so
-  the drawn leg ended 25 mm above the ground with nothing between (ADR-077).
+  the drawn leg ended 25 mm above the ground with nothing between (ADR-090).
 
 Both were found by arithmetic, after the fact. This module makes them
 visible: an edge-only wire cage per collision shape, named exactly what
@@ -283,7 +283,7 @@ def records_from_evidence(evidence):
 def contact_summary(evidence):
     """The one line that would have caught the shipped hopper.
 
-    ADR-074's observable: *what is already touching before anything moves*.
+    ADR-087's observable: *what is already touching before anything moves*.
     A model designed to start on its feet reads "touching at t = 0"; a model
     that should start clear and does not is a collision shape in the wrong
     frame, and this is the only thing that says so.

@@ -1,21 +1,21 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
 Verified against source: 2026-08-01
-Status: **M0 recorded (ADR-060, ADR-061), M1 passed, M2 closed (ADR-062),
-M3 closed (ADR-064), M4 closed (ADR-065), M5 closed (ADR-066), M6 closed
-(ADR-069), M7 closed (ADR-070), M8 closed (ADR-071).** The arc is complete:
+Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
+M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
+(ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
 a mechanism designed in Cadex trains to a policy offboard and comes home to
 a viewport playing the gait.
 
-**This is the `MJC` vertical (ADR-063, ADR-067, ADR-072).** This file, and
+**This is the `MJC` vertical (ADR-078, ADR-082, ADR-086).** This file, and
 everything it describes, is the product on `MJC` and absent from `main`.
 `MJC` is not awaiting a merge window and is not provisional: it is a version
 of Cadex with dynamics and control built in, kept separate because a user
 who is not going to simulate a mechanism should not build a physics engine
-or ship 53.5 MB of one. Changes flow `main` → `MJC` and never back. ADR-063
+or ship 53.5 MB of one. Changes flow `main` → `MJC` and never back. ADR-078
 lists what a sync must not drop and why a branch beat a `WITH_DYNAMICS`
-flag; ADR-067 why M5 closed the merge-back question rather than re-opening
-it; ADR-072 why the docs on this branch are now `MJC`'s own rather than
+flag; ADR-082 why M5 closed the merge-back question rather than re-opening
+it; ADR-086 why the docs on this branch are now `MJC`'s own rather than
 `main`'s with a block appended.
 
 This is the framework for adding **rigid-body dynamics** to Cadex on
@@ -25,7 +25,7 @@ control policy running on it.
 
 `docs/VISION.md` is still authoritative. Where this plan extends the
 product's scope it says so, and the extension is a decision the owner makes
-in `docs/DECISIONS.md` (ADR-060, slice M0) — not something this document
+in `docs/DECISIONS.md` (ADR-075, slice M0) — not something this document
 grants itself.
 
 Provenance: everything described here is `[Cadex-new]`. MuJoCo is a
@@ -83,7 +83,7 @@ Checked 2026-07-30 against conda-forge, the MuJoCo docs, and this tree.
 | Package | `mujoco-python` **3.10.0** (conda-forge, 2026-06-22), Apache-2.0 |
 | Platforms | all five pixi platforms, including `osx-arm64` |
 | Python/numpy fit | an `np2py311` build exists depending on `numpy >=1.23,<3` — **compatible** with our `python >=3.11,<3.12` and `numpy >=1.26,<1.27` pins. No conflict. |
-| Payload cost | **53.5 MB**, measured (ADR-061). The conda package is ~14 MB, but what we ship is the pypi wheel, which bundles the plugin dylibs conda-forge splits out. |
+| Payload cost | **53.5 MB**, measured (ADR-076). The conda package is ~14 MB, but what we ship is the pypi wheel, which bundles the plugin dylibs conda-forge splits out. |
 | Unwanted deps | pulls `glfw`, `pyopengl`, `pyglfw`, `absl-py`, `etils`, `fsspec`. The GL ones are for `mujoco.viewer` only; core `import mujoco` must not need them, and the payload should prune them (slice M0). |
 | Model construction | **`mjSpec`** — programmatic build (`spec.worldbody.add_body(...)`, `spec.compile()`), one-to-one with MJCF. No XML string-building layer needed. |
 | Determinism | deterministic for a **fixed binary, fixed platform, single-threaded**. Explicitly **not** bitwise-reproducible across versions — MuJoCo's own `VERSIONING.md` says so. Multi-threaded island solving has open reproducibility issues upstream. |
@@ -94,13 +94,13 @@ An earlier revision of this document read the ~14 MB conda-forge package and
 recorded the payload cost as "cheaper than expected." We do not ship that
 package — the manifest has not been re-solvable as conda since conda-forge
 moved past `occt ==7.8.1`, so what ships is the **pypi wheel**, which bundles
-the plugin dylibs conda-forge splits out. **53.5 MB, measured** (ADR-061),
+the plugin dylibs conda-forge splits out. **53.5 MB, measured** (ADR-076),
 and that is the number every argument on this branch rests on: it is why
-`main` stays free of MuJoCo (ADR-063) and why the merge-back question closed
-the way it did (ADR-067). About 30 MB of it is `mujoco/experimental/`, which
+`main` stays free of MuJoCo (ADR-078) and why the merge-back question closed
+the way it did (ADR-082). About 30 MB of it is `mujoco/experimental/`, which
 the engine never imports; pruning it is known, deferred and `MJC`-owned.
 
-*(ADR-067 writes the same measurement as "51 MB". It is 51 **MiB** as `du`
+*(ADR-082 writes the same measurement as "51 MB". It is 51 **MiB** as `du`
 reports it and 53.5 MB decimal — one measurement, two units, not a
 disagreement. Re-confirmed 2026-07-31 against a freshly staged payload.)*
 
@@ -113,7 +113,7 @@ Our thirteen map in three groups:
 | Group | Cadex joints | How |
 |---|---|---|
 | **Direct** (5) | `fixed`, `revolute`, `slider`, `ball`, `cylindrical` | no joint / `hinge` / `slide` / `ball` / `hinge`+`slide` on one axis |
-| **Coupled** (4) | `screw`, `gears`, `belt`, `rack_pinion` | `equality/joint` between coordinates *other* joints own — they attach nothing (M2, ADR-062). `rack_pinion` is refused until its convention is measured |
+| **Coupled** (4) | `screw`, `gears`, `belt`, `rack_pinion` | `equality/joint` between coordinates *other* joints own — they attach nothing (M2, ADR-077). `rack_pinion` is refused until its convention is measured |
 | **No equivalent** (4) | `distance`, `parallel`, `perpendicular`, `angle` | these are *placement* constraints, not runtime ones. **Refuse with a sentence.** |
 
 **Loops.** Our assembly graph is a constraint graph and may contain loops;
@@ -134,7 +134,7 @@ weights produced by hours of stochastic GPU compute. It cannot be rebuilt
 from a script, ever, and pretending otherwise would be a lie the tests
 eventually catch.
 
-**Correction to this paragraph's own arithmetic**, recorded because ADR-070
+**Correction to this paragraph's own arithmetic**, recorded because ADR-084
 names it as a plan claim the measurements contradicted. It read "tens of
 megabytes of weights", and a policy is nothing of the sort: measured
 **4.6 KiB to 902 KiB** for the networks this arc trains. That mattered
@@ -185,7 +185,7 @@ VISION listed five capability areas and dynamics was not one of them.
 
 The ADR is cheap. Drifting into a robotics simulator without one is not.
 
-**Answered (ADR-060, then ADR-072).** The scope extension was approved
+**Answered (ADR-075, then ADR-086).** The scope extension was approved
 before M1, including M5–M8. `docs/VISION.md` now carries dynamics and
 control as capability areas **6 and 7** in its numbered list rather than as
 an appendix, and this branch is the product that has them.
@@ -194,7 +194,7 @@ It also had to answer a UI question the principles did not: "no
 user-accessible modeling tools" is clear, but a **train** button is not a
 modeling tool and the human has to be able to press something.
 
-**Answered outright by M7 (ADR-070): there is no train button, and there is
+**Answered outright by M7 (ADR-084): there is no train button, and there is
 nothing to press.** Training does not run in the engine and cannot — it
 needs JAX on a GPU — so the trainer is a program the agent copies to a
 machine that has one and runs with its own shell. The weights come home
@@ -222,12 +222,12 @@ mujoco — a physics authoring path in the shell would violate "nothing
 happens outside the script" the same way the deleted bpy modes did.
 
 **What the branch turned out to be, which is not what "branch" suggests
-(ADR-072).** `MJC` is a **product vertical** — a version of Cadex with
+(ADR-086).** `MJC` is a **product vertical** — a version of Cadex with
 dynamics and control built in — rather than a staging area waiting for a
 merge window. Two facts settled it. The arc finished: M0–M8 are closed, so
-ADR-067's "a branch is where a direction change belongs *until the arc it
+ADR-082's "a branch is where a direction change belongs *until the arc it
 opened is finished*" expired on its own terms. And M5 produced evidence
-pointing the *opposite* way from what ADR-063 anticipated: `export_mjcf`
+pointing the *opposite* way from what ADR-078 anticipated: `export_mjcf`
 calls MuJoCo's own writer, so the capability is not separable from the
 dependency, and the round-trip proof that makes the exported file
 trustworthy only means anything while the writer and the compiler are the
@@ -244,16 +244,16 @@ product, one-directionally synced, whose documentation is its own.
 
 Numbered **M0–M8** to avoid colliding with ROADMAP's phases. The whole
 sequence **is** ROADMAP Phase 14, and all nine slices are closed (M8,
-ADR-071). Every slice is a resting place: the product works at the end of
+ADR-085). Every slice is a resting place: the product works at the end of
 each one, which is what made stopping at any of them survivable.
 
 ---
 
-### M0 — Decide, depend, deliver `(ADR-060, ADR-061)`
+### M0 — Decide, depend, deliver `(ADR-075, ADR-076)`
 
 The paperwork slice, and it was not as small as billed.
 
-ADR-060 records the direction: dynamics is in scope, MuJoCo is the engine,
+ADR-075 records the direction: dynamics is in scope, MuJoCo is the engine,
 MuJoCo is a kept dependency and not a fork, and M5–M8 either are or are not
 approved. `mujoco-python` is added to `pixi.toml` **exactly pinned**, with
 the ADR-025-style comment explaining that the pin is exact because MuJoCo's
@@ -267,7 +267,7 @@ conda package forces a full re-solve, and the manifest has not been
 re-solvable for some time — conda-forge moved past `occt ==7.8.1` and
 `qt6-main <6.9`, which we hold on purpose. `pixi.lock` has been carrying it.
 So MuJoCo arrives as a pypi wheel, and `relocate_conda_environment.py` gains
-`CARRIED_PYPI_PACKAGES` to carry it into the payload by name (ADR-061). The
+`CARRIED_PYPI_PACKAGES` to carry it into the payload by name (ADR-076). The
 GL prune the slice planned turned out to be unnecessary — the wheel imports
 no GL module at all.
 
@@ -335,11 +335,11 @@ guessed:
 therefore worth ~335 000 poses and the API's 100 000-pose cap binds first —
 so M3's budget work was about the API limit, not the byte limit, and it
 turned out to be about a *second* limit the API never had: what the solver
-does between frames (§5 hazard 6, ADR-064).
+does between frames (§5 hazard 6, ADR-079).
 
 ---
 
-### M2 — `assembly` → `mjSpec` `(DONE 2026-07-30, ADR-062)`
+### M2 — `assembly` → `mjSpec` `(DONE 2026-07-30, ADR-077)`
 
 The real builder, and the largest single piece of engineering in M1–M4.
 
@@ -368,9 +368,9 @@ invalidate it: `git diff main...MJC` names no file under `shell/`. That
 invariant, not a repeated run, is what the shell claim rests on.
 
 Closed 2026-07-30 with its two documentation debts paid: `docs/VISION.md`
-gained the scope ADR-060 owed it and `docs/ROADMAP.md` gained Phase 14, both
-as branch-marked appended blocks per ADR-063. **Nothing in M2 is left
-open.** What M2 deferred is named in ADR-062's "not in this slice" list and
+gained the scope ADR-075 owed it and `docs/ROADMAP.md` gained Phase 14, both
+as branch-marked appended blocks per ADR-078. **Nothing in M2 is left
+open.** What M2 deferred is named in ADR-077's "not in this slice" list and
 belongs to M3 or later — read that list before assuming a gap is a bug.
 
 **Nine things this slice learned by measuring, seven of which contradict
@@ -429,7 +429,7 @@ Ondsel solve (the first solved frame of a dynamics trace reproduces
 FreeCAD's placements to the micrometre), plus the perturbation test, plus a
 closure-residual gate that needs no MuJoCo at all.
 
-### M3 — Dynamics for real `(DONE 2026-07-30, ADR-064)`
+### M3 — Dynamics for real `(DONE 2026-07-30, ADR-079)`
 
 Contact, friction, restitution, gravity as a script parameter, and the
 determinism gate. Phased like M2 was, and for the same reason: the phase
@@ -474,7 +474,7 @@ determinism assumption gets a number before contact exists to blame.
 - **Assert `mjENBL_SLEEP` off.** Measured off by default in 3.10.0. A
   sleeping body freezes a settling mechanism, which is exactly the M3
   scenario, and the trace difference is silent.
-- **Prove OndselSolver's own byte reproducibility.** ADR-062 made this the
+- **Prove OndselSolver's own byte reproducibility.** ADR-077 made this the
   precondition for deciding whether trace bytes enter the project digest.
   Answer it here, in this phase, and record the answer either way.
 
@@ -492,7 +492,7 @@ with a slot silently becomes a solid block.
   Measured today: `scipy` 1.17.0 with Qhull (`scipy.spatial._qhull`) is
   already in the staged payload, so a convex *hull* costs no new dependency
   and no new payload weight. CoACD would cost a second
-  `CARRIED_PYPI_PACKAGES` exception — the thing ADR-061 named so it would be
+  `CARRIED_PYPI_PACKAGES` exception — the thing ADR-076 named so it would be
   easy to find and delete, not so it would grow — plus a decomposition whose
   cross-version determinism nobody has established and which we assert digest
   equality over. That trade needs evidence, not enthusiasm.
@@ -538,7 +538,7 @@ identical trace digest across cadexd restarts, single-threading settled by
 phase 0 rather than asserted. Then the digest decision phase 0 gathered
 evidence for: whether a trace's `artifact_sha256` joins the project digest,
 given that today it is in **no** digest and so a MuJoCo version bump changes
-every trace and moves nothing — silent, which ADR-062 called strictly worse
+every trace and moves nothing — silent, which ADR-077 called strictly worse
 than loud.
 
 **Phase 6 — the falling thing.** A mechanism that topples, lands, and stops,
@@ -560,7 +560,7 @@ Qhull is really in it. `pixi run gate` was not re-run and did not need to
 be — `git diff main...MJC` still names no file under `shell/`.
 
 **What the six phases learned by measuring**, and the plan's own corrections
-are in ADR-064 in full. The six that contradict a name, a default or a
+are in ADR-079 in full. The six that contradict a name, a default or a
 documented rule:
 
 1. **`mjDSBL_ISLAND` is a *disable* bit, so islands were on** — the opposite
@@ -607,7 +607,7 @@ earns it.
 
 ---
 
-### M4 — Actuators and closed loop `(DONE 2026-07-30, ADR-065)`
+### M4 — Actuators and closed loop `(DONE 2026-07-30, ADR-080)`
 
 Three of MuJoCo's actuator kinds — `motor`, `position`, `velocity` — become
 an xscript surface, and with them the joint properties a driven mechanism
@@ -658,7 +658,7 @@ and it is hazard 1 answered in the surface: the two readings of
 `stiffness=4000` differ by five and a half million, and a `control="30"` that
 means radians is a 57× error that runs and errors nowhere.
 
-**Six things phase 0 measured**, four of which moved a decision; ADR-065 has
+**Six things phase 0 measured**, four of which moved a decision; ADR-080 has
 them in full.
 
 1. **`compiler.autolimits` defaults on**, so a `ctrlrange` silently becomes a
@@ -692,12 +692,12 @@ change.
 
 ---
 
-### M5 — The model leaves the building — **closed (ADR-066)**
+### M5 — The model leaves the building — **closed (ADR-081)**
 
 `assembly.mjcf(assembly, bodies, ...)` — a new publishable xscript output
 that writes one self-contained MJCF file carrying exact OCCT inertia and a
 keyframe at the pose the assembly solver produced. **No protocol change and
-no `shell/` diff**, which is the invariant ADR-063 says the shell claim
+no `shell/` diff**, which is the invariant ADR-078 says the shell claim
 rests on.
 
 Two corrections to what this section used to say, both found while
@@ -710,7 +710,7 @@ measuring:
   op: that would need `OP_ARG_SPECS`, `OP_RESPONSE_SPECS`, both
   `docs/INTEGRATION.md` tables, a golden fixture and the shell's client.
   A publishable output type needs none of them. The sentence also predates
-  ADR-063.
+  ADR-078.
 * **Not "no determinism problem".** `to_xml()` writes about six
   significant figures and has no precision knob. Mass survives a round trip
   to 1e-16 relative; an inertia triple whose smallest entry is 1e-5 of its
@@ -816,13 +816,13 @@ no protocol change and no `shell/` diff. The packaged gate is **9 tests**.
 
 ---
 
-### M6 — A task is part of the script — **closed (ADR-069)**
+### M6 — A task is part of the script — **closed (ADR-083)**
 
 `assembly.task(model, ...)` — a new publishable xscript output that writes
 one JSON bundle describing a trainable task, beside the model it
 references. Four new intermediates compose it: `assembly.observation`,
 `assembly.reward`, `assembly.termination`, `assembly.randomise`. **No
-protocol change and no `shell/` diff**, which is the invariant ADR-063 says
+protocol change and no `shell/` diff**, which is the invariant ADR-078 says
 the shell claim rests on.
 
 A model is not a task. Training needs observation space, action space,
@@ -1014,7 +1014,7 @@ dispatch rather than debugging.
 
 ---
 
-### M7 — Training happens elsewhere — **closed (ADR-070)**
+### M7 — Training happens elsewhere — **closed (ADR-084)**
 
 `assembly.policy(task, weights=..., sha256=...)` — a publishable xscript
 output that names a trained policy by file and digest, verifies it against
@@ -1033,12 +1033,12 @@ boundary rather than a compromise. It makes the *engine* simpler: the engine
 verifies a policy and never produces one, so it needs no optimiser, no
 autodiff, no accelerator and — measured, see below — no numpy.
 
-**The three questions ADR-067 named as M7's, answered:**
+**The three questions ADR-082 named as M7's, answered:**
 
 | Question | Answer |
 |---|---|
 | Where does training run? | The user's own machine with a GPU, dispatched by the agent's shell. M7 ships a movable run directory and a trainer; it builds **no dispatch machinery, no network I/O, no new op**. |
-| Does the policy extend `put_asset` or get its own op? | **Extends `put_asset`.** A new op would cost a `shell/` diff — `cadexd_client.py` — and ADR-063 says the branch rests on there not being one. Widening the store's accepted suffixes costs none. |
+| Does the policy extend `put_asset` or get its own op? | **Extends `put_asset`.** A new op would cost a `shell/` diff — `cadexd_client.py` — and ADR-078 says the branch rests on there not being one. Widening the store's accepted suffixes costs none. |
 | Is there a **train** button? | **No, and there is nothing to press.** The agent authors the task, dispatches with its own shell, and calls the existing `put_asset` path. VISION principle 5 is untouched: the human still only judges. |
 
 **What was measured before anything was built** (phase 0,
@@ -1086,7 +1086,7 @@ none of it):
   blocker: MJX is float32 with its own contact path, training happens there
   and evaluation happens on CPU.
 
-**ADR-069's central claim survived the trainer.** MJX evaluates all eight
+**ADR-083's central claim survived the trainer.** MJX evaluates all eight
 observation kinds and vectorises them exactly, so *MuJoCo computes the
 observation vector* still holds and no fourth implementation was needed —
 which was risk 2, and it did not fire. Nor did risk 1: MJX carries our
@@ -1129,7 +1129,7 @@ fallback was never reached.
 * **The trainer lives at the repository root**, never installed by CMake,
   in no payload, with four exactly-pinned dependencies in
   `training/requirements.txt`. **Nothing entered `pixi.toml`** —
-  `CARRIED_PYPI_PACKAGES` stays one entry long, which is what ADR-061 named
+  `CARRIED_PYPI_PACKAGES` stays one entry long, which is what ADR-076 named
   it for — and `test_engine_purity_guardrails` asserts no `jax` and no `mjx`
   reach the source or the staged payload.
 
@@ -1181,7 +1181,7 @@ no protocol change and no `shell/` diff. The packaged gate is **11 tests**.
 
 ---
 
-### M8 — The policy comes home — **closed (ADR-071)**
+### M8 — The policy comes home — **closed (ADR-085)**
 
 `assembly.rollout(policy, frames_per_second=..., seed=...)` — the verified
 policy plays against the model its task bundle names, and the rollout leaves
@@ -1257,10 +1257,10 @@ walks.
 
 ---
 
-### M9 — The episode stops starting in the same place — **closed (ADR-084, ADR-085, ADR-086; follow-ons M9b ADR-087, M9c ADR-088)**
+### M9 — The episode stops starting in the same place — **closed (ADR-097, ADR-098, ADR-099; follow-ons M9b ADR-100, M9c ADR-101)**
 
 M8 closed the arc and M9 is what reading the result of it forced. `mg-legs`
-stood, and ADR-083's Policy Outputs panel showed **how**: it held
+stood, and ADR-096's Policy Outputs panel showed **how**: it held
 `hip_pitch_l/r` and both knees between 93 % and 99 % of the MG90S limit for
 the entire six-second episode while both ankles sat under 72 N·mm. It did not
 balance — it **braced**, widening its stance from ±30.00 mm to ±37.2/37.4 mm
@@ -1282,7 +1282,7 @@ three:
    held fixed for the run. A posture found once was never tested, so
    "balance" was never the task.
 
-#### The mechanism (ADR-084)
+#### The mechanism (ADR-097)
 
 Two new intermediates beside `assembly.randomise`, both passed to
 `assembly.task`:
@@ -1361,7 +1361,7 @@ one more shove" compete for one seat.
 cadexd op table, so `CadexdProtocol.OP_ARG_SPECS` and `docs/INTEGRATION.md`
 are untouched.
 
-#### The run stops being a black box (ADR-085)
+#### The run stops being a black box (ADR-098)
 
 `--checkpoint-every N` writes a **complete, witness-checked `.cxpolicy`**
 mid-run — not a weight dump — plus `<out>.best.cxpolicy` tracking the best
@@ -1370,7 +1370,7 @@ thirty of its seventy-six minutes made the policy worse; `.best` alone would
 have saved them. Cost is about one iteration each, so every hundredth of two
 thousand is one per cent.
 
-The witness check runs on checkpoints too, which is ADR-081's lesson applied
+The witness check runs on checkpoints too, which is ADR-094's lesson applied
 where it now costs nothing: the error is *relative* and grows with the
 activations a policy learns, so a checkpoint that fails it is a run that is
 going to fail it.
@@ -1380,7 +1380,7 @@ everything downstream reads. `remote_train.sh` gained `train --detach`,
 `watch`, `pull` and `stop`; `watch` mirrors the file to
 `training-progress.json` beside the project, which is what the shell's
 Training panel polls. **No ssh in the shell, no protocol change, no engine
-change** — and nothing parses a log, which is ADR-080's finding kept.
+change** — and nothing parses a log, which is ADR-093's finding kept.
 
 **Two bugs the dispatch work surfaced, both silent:**
 
@@ -1395,7 +1395,7 @@ change** — and nothing parses a log, which is ADR-080's finding kept.
   string containing a quote, so it worked for a year and then broke the first
   command that did — with an error pointing at the wrong line.
 
-#### The re-rating, and the gate re-spec (ADR-086)
+#### The re-rating, and the gate re-spec (ADR-099)
 
 `MG90S_STALL_NMM = 216.0` → **`MG90S_CONTINUOUS_NMM = 86.0`**, ~40 % of
 stall. This is an **engineering judgment, not a datasheet number** — hobby
@@ -1406,7 +1406,7 @@ recorded. It is still ~19× the measured static requirement.
 **The feasibility gate had to be re-specified, and that is a decision rather
 than a fix.** `feasibility.py`'s arithmetic column reads 117–129 N·mm at the
 hip and knee; against 86 it goes red everywhere — on precisely the check
-ADR-082 already established is over-conservative, because it multiplies full
+ADR-095 already established is over-conservative, because it multiplies full
 body weight by a full limb length, which is a one-legged iron cross and not a
 stance. Hazard 14's own instruction is that the failure mode to avoid is
 *learning to click past a red gate*, so the answer is to stop printing a red
@@ -1429,7 +1429,7 @@ recorded because both looked right:
    base-attitude feedback, so it cannot resist the whole machine rotating
    about its ankles however good the mechanism is. That is a fact about the
    controller, and gating a mechanism on it would fail every mechanism.
-3. **The statics** — which is the same question ADR-082 asked about the foot.
+3. **The statics** — which is the same question ADR-095 asked about the foot.
    A horizontal force `F` at height `h` is a moment `F·h`, and exactly two
    things resist it: the footprint (the centre of pressure cannot leave the
    sole) and the ankles.
@@ -1457,13 +1457,13 @@ command can roll a foot.
 
 **Success metric, decided before dispatch:** recovery rate — episodes
 surviving a shove over episodes shoved — **not reward**. The curve gets
-noisier with variation in it, ADR-075's stopping rule gets harder to apply,
+noisier with variation in it, ADR-088's stopping rule gets harder to apply,
 and the +0.391 baseline is no longer comparable to anything. `compare.py`
 plays every checkpoint locally against five seeds and prints survival,
 drift, tilt and peak/mean torque per motor.
 
 **The first disturbed run may well fail, and that is the correct outcome to
-report rather than iterate on** (ADR-075). A policy with no torque headroom
+report rather than iterate on** (ADR-088). A policy with no torque headroom
 cannot reject a push; that is the whole finding. A shove big enough to need a
 *step* cannot be answered at all, because the toe is welded and this policy
 has no gait — which is why the shove is sized from what the ankle can absorb.
@@ -1476,7 +1476,7 @@ import mujoco, so that is a streaming-rollout feature over the existing
 protocol and its own slice); and training video streamed from the box (the
 progress file is the contract).
 
-#### M9b — the shove never left the foot (ADR-087)
+#### M9b — the shove never left the foot (ADR-100)
 
 **No engine, trainer or shell change: all three findings below are project
 script.** M9 dispatched, the run stood, and watching it showed hips moving
@@ -1492,7 +1492,7 @@ the centre of mass would have to be caught. Measured off the export: `h` =
 / 24.5 mm back / ±50 mm lateral. The M9 shove of 0.35 N × 0.12 s is 0.042 N·s
 → 0.16 m/s → **ξ = 19.5 mm**, inside the polygon in every direction including
 the narrow backward one. Nothing was asked of the knees because nothing
-needed to be. ADR-086 sized that shove deliberately and answered its own
+needed to be. ADR-099 sized that shove deliberately and answered its own
 question correctly; the question was the small one.
 
 **2. The reward made falling a better trade than recovering.** Price one step
@@ -1574,7 +1574,7 @@ wrong and more iterations will not fix it. Success is **not** a higher reward
 number — the reward function changed, so +0.391 and +0.243 are not
 comparable to anything this run prints.
 
-#### M9c — the trainer never ended an episode (ADR-088)
+#### M9c — the trainer never ended an episode (ADR-101)
 
 **Trainer only: no engine change, no protocol change, no new dependency, and
 one label row in the shell.** M9b's run reproduced M9's anti-correlation on a
@@ -1583,7 +1583,7 @@ different forces — which made the instrument the suspect rather than the
 task. Reading it found this:
 
 ```python
-# training/cadex_train.py, before ADR-088
+# training/cadex_train.py, before ADR-101
 horizon = int(episode["max_steps"])     # ...and never used again
 ```
 
@@ -1710,7 +1710,7 @@ Ranked by how quietly they fail.
    rollout's worker half is already a failure. Six payments, six holds; the
    entry can be considered settled unless a new direction appears.
 
-2. ~~**Convexity.**~~ **Handled in M3** (ADR-064), and it needed *two*
+2. ~~**Convexity.**~~ **Handled in M3** (ADR-079), and it needed *two*
    measurements rather than the one this list assumed. Concavity is the
    hull's volume against the **mesh's own**, both from the same vertices —
    a real OCCT cylinder measures −7.7e-16, a notched plate measures 20 000
@@ -1782,7 +1782,7 @@ Ranked by how quietly they fail.
 7. ~~**Scope creep into a UI.**~~ **It did not happen, across four slices
    that wanted it.** M5–M8 each had an obvious button — export, define,
    train, play — and none was built. M7 answered the load-bearing one
-   outright (ADR-070: there is no train button and nothing to press; the
+   outright (ADR-084: there is no train button and nothing to press; the
    agent authors the task, dispatches with its own shell, and declares the
    result), and M8 needed no button at all because a rollout is a line in a
    script that produces a trace the shell was already baking. **The whole
@@ -1790,16 +1790,16 @@ Ranked by how quietly they fail.
    hazard for whatever comes next, but the answer is now four slices of
    precedent rather than a pending ADR.
    The diff was spent afterwards, once and deliberately, on the collision
-   overlay (ADR-078) — which is the counter-example worth keeping beside
+   overlay (ADR-091) — which is the counter-example worth keeping beside
    this one: it is a `shell/` change no engine surface could have made,
    because the thing that was wrong was invisible rather than unreported.
 8. **A collision shape and the solid it stands for are in the same frame
-   and are otherwise unrelated** (ADR-074). `collision(...)`'s `offset`
+   and are otherwise unrelated** (ADR-087). `collision(...)`'s `offset`
    places a primitive in the **component frame**; `part.box(..., origin=…)`
    moves the solid within that same frame. Nothing connects them and nothing
    checks them, so a shape can be the right kind, the right size, in the
    right units, on the right body — and 20 mm from the surface it stands
-   for. It is now at least **drawn** (ADR-078); it was not when this hazard
+   for. It is now at least **drawn** (ADR-091); it was not when this hazard
    was written, and that is what made it the quietest one here.
    **Measured, on the one-leg hopper.** A floor authored
    `part.box(4000, 600, 40, origin=[-2000, -300, -40])` has its visible top
@@ -1816,8 +1816,8 @@ Ranked by how quietly they fail.
    position and the signed distance. On the broken floor that is one contact
    at z = 20.00 mm; on the corrected one it is none. Evidence rather than a
    refusal, because a mechanism designed to start on its feet is ordinary —
-   ADR-074 §3 has the reasoning and §2 has why no bounding-box rule works.
-   **The real fix, now done** (ADR-078). There is a view of collision
+   ADR-087 §3 has the reasoning and §2 has why no bounding-box rule works.
+   **The real fix, now done** (ADR-091). There is a view of collision
    geometry: `collision_view` / the **Collision Shapes** toggle draws an
    edge-only wire cage per shape, on the part it belongs to, named exactly
    what MuJoCo calls the geom, and the panel carries the initial-contact
@@ -1835,7 +1835,7 @@ Ranked by how quietly they fail.
    exactly where this hazard still lives. Drawing the component's own
    display mesh instead would show the **wrong** volume, which is worse than
    showing none. And **escalating interpenetration to a refusal** is still
-   waiting on evidence across fixtures (ADR-074 §3).
+   waiting on evidence across fixtures (ADR-087 §3).
 9. **A reward built on raw Cadex channels is badly conditioned, and it fails
    by training worse rather than by failing.** Observation channels are in
    **millimetres and degrees** (§3.2 — that is the surface's whole unit
@@ -1863,12 +1863,12 @@ Ranked by how quietly they fail.
    trainer would make a run's numbers depend on a hidden transform, which
    is exactly the property that makes two runs incomparable. The trainer
    does now **stop at the first non-finite `reward/step` or `loss`** and
-   name the iteration (ADR-075), which is the other half of this hazard:
+   name the iteration (ADR-088), which is the other half of this hazard:
    the badly-conditioned case that does not merely train worse but diverges
    used to run 150 more iterations and die in `json.dumps`.
 
 10. **A limb can be under-actuated, and the trained policy will look like a
-    gait rather than like a failure.** *Discovered by ADR-077, and the most
+    gait rather than like a failure.** *Discovered by ADR-090, and the most
     expensive hazard in this list so far: it cost a training run and a
     written-down misreading.*
     **The arithmetic is one line.** Holding a limb out against gravity takes
@@ -1884,7 +1884,7 @@ Ranked by how quietly they fail.
     that "found a gait" was answering a question the mechanism had already
     closed.
     **Why it fails quietly.** The policy still converges, the reward still
-    improves, and the rollout still plays. ADR-075 §2 read the resulting
+    improves, and the rollout still plays. ADR-088 §2 read the resulting
     trace as the machine *tucking its leg up*; it was **falling**. Standing
     straight is free because the moment arm is zero, so a policy under this
     constraint learns to stand still and the trace looks deliberate. Nothing
@@ -1905,7 +1905,7 @@ Ranked by how quietly they fail.
     seconds and has no learning in it. Sizing that leg at 60 N·m took it
     from **0 of 27** configurations leaving the ground to **27 of 27**, best
     **304 ms** of flight.
-    **A gate can also fail for the gate's own reasons**, and ADR-079 §5 is
+    **A gate can also fail for the gate's own reasons**, and ADR-092 §5 is
     the worked example: the biped's first feasibility run reported that a
     machine which stands perfectly could not be held up, because the PD
     sweep ran gains a hundred times too stiff for a 307 g machine. Read a
@@ -1915,7 +1915,7 @@ Ranked by how quietly they fail.
 
 11. **A floating base is not a mechanism with the ground left out: an
     ungrounded island does not keep the pose its component placements
-    state.** *Discovered by ADR-079, on the first floating-base model on this
+    state.** *Discovered by ADR-092, on the first floating-base model on this
     branch.*
     The natural way to pose an assembly is
     `assembly.component(placement=...)`, and for an island the joints never
@@ -1943,11 +1943,11 @@ Ranked by how quietly they fail.
     anatomical neutral. At the neutral pose they coincide, which is where a
     task is staged — and the staging is worth enforcing, because the reset
     pose is the project's **stored** `param_values` and a `num(0, ...)` in
-    the source is only a default (ADR-079 §4).
+    the source is only a default (ADR-092 §4).
 
 12. **`_field_drift` normalises by the field's own largest magnitude, so a
     model whose every body coincides with its parent refuses on float dust.**
-    *Discovered by ADR-079.*
+    *Discovered by ADR-092.*
     The MJCF round-trip check is right in general — normalising element by
     element would report the writer's rounding of a near-zero entry as total
     disagreement — and it is pathological when a whole field is identically
@@ -1968,7 +1968,7 @@ Ranked by how quietly they fail.
 
 13. **A witness records what the GPU rounded the network to, not what the
     network computes.**
-    *Discovered by ADR-081, after it cost 3 h 49 m of an RTX 4070.*
+    *Discovered by ADR-094, after it cost 3 h 49 m of an RTX 4070.*
     `training/cadex_train.py` builds its witness with `jax.vmap`, which turns
     each layer's matrix-*vector* product into a **batched matmul** — and XLA
     puts a batched float32 matmul on Ampere+ tensor cores at **TF32**, a
@@ -1988,13 +1988,13 @@ Ranked by how quietly they fail.
     default, because TF32 is why the GPU is fast and no training step needs
     the last four mantissa bits. Then check it *before writing the file*:
     `witness_disagreement()` is a pure-float64 Python copy of the engine's
-    own test, copied rather than imported because ADR-070 forbids the import.
+    own test, copied rather than imported because ADR-084 forbids the import.
     It prints the margin and warns under 100x, because **14x was the visible
     warning nobody was shown.**
 
 14. **A feasibility gate can encode a worst case the task never reaches, and
     a red gate is then worse than no gate.**
-    *Discovered by ADR-082.*
+    *Discovered by ADR-095.*
     `feasibility.py`'s arithmetic check multiplies the machine's whole weight
     by a **full limb length**. That is the moment arm when the leg is
     *horizontal* and the machine hangs off one hip — a one-legged iron cross,
@@ -2014,7 +2014,7 @@ Ranked by how quietly they fail.
 
 15. **A policy that stands can be standing on pinned motors, and the
     trajectory will not say so.**
-    *Discovered by ADR-083, on the first trace the Policy Outputs panel
+    *Discovered by ADR-096, on the first trace the Policy Outputs panel
     read.*
     The `mg-legs` standing policy plays as a clean stand and is one: it
     holds the full 6 s, the reward curve is healthy, the engine verified it.
@@ -2039,7 +2039,7 @@ Ranked by how quietly they fail.
 
 16. **A task in which nothing ever changes cannot tell balancing from
     bracing, and will reward the wrong one.**
-    *Discovered by ADR-084, working out why hazard 15 was rational.*
+    *Discovered by ADR-097, working out why hazard 15 was rational.*
     Before M9 every episode of a task reset to the identical keyframe with
     every velocity zero, and domain randomisation varied only the
     *mechanism* -- drawn per environment and held fixed for the run. So a
@@ -2058,7 +2058,7 @@ Ranked by how quietly they fail.
 
 17. **Perturbing joint angles at reset is not a smaller version of
     perturbing the base -- it is a contact impulse.**
-    *Measured by ADR-084 phase 0, which is why the surface has the shape it
+    *Measured by ADR-097 phase 0, which is why the surface has the shape it
     has.*
     The reset pose is the **solved** configuration, with the soles placed
     exactly on the floor. A +-3 degree knee jitter moves a foot about 5 mm
@@ -2079,7 +2079,7 @@ Ranked by how quietly they fail.
 
 18. **A check that looks like a measurement can be computing nothing, and
     a green light from one is worse than no check.**
-    *Discovered by ADR-086, three times in one afternoon.*
+    *Discovered by ADR-099, three times in one afternoon.*
     Re-specifying the feasibility gate produced two checks that ran, printed
     a table and gated on it while measuring nothing at all.
     **`mj_inverse` with an external force applied** returns leg torques
@@ -2105,7 +2105,7 @@ Ranked by how quietly they fail.
 
 19. **The number the trainer reports and the number that decides whether the
     machine stands can be anti-correlated.**
-    *Measured by the M9 run (ADR-086 §5), across all 2000 of its iterations.*
+    *Measured by the M9 run (ADR-099 §5), across all 2000 of its iterations.*
     The curve rose to a best of **+0.5118 at iteration 1944** and was still
     climbing. Played locally over 12 seeds, survival was **12/12 at iteration
     500** — where the trainer reported its *worst* numbers — and **0/12 from
@@ -2116,7 +2116,7 @@ Ranked by how quietly they fail.
     `reward_of(vector)` on the raw observation from the bundle's own
     expressions. The cause is unresolved (§6), and the rule does not wait on
     it.
-    **Reproduced on a second, unrelated task** (ADR-087, M9b): reward rose
+    **Reproduced on a second, unrelated task** (ADR-100, M9b): reward rose
     monotonically to its best at iteration 493 while episode length collapsed
     from 170 steps to 30. Different reward, different observations, different
     forces, same signature. Twice on two tasks makes this the **instrument**,
@@ -2124,7 +2124,7 @@ Ranked by how quietly they fail.
     **blocking**: no reward or shove change can be evaluated while the
     training signal disagrees end-to-end with what the policy does when
     played.
-    **Reproduced a third time on the fixed trainer (ADR-088, M9c), which is
+    **Reproduced a third time on the fixed trainer (ADR-101, M9c), which is
     what rules the trainer's episode handling out as the cause.** Same
     bundle, same hyperparameters, one thing changed: trainer reward rose to
     +0.175 and trainer-measured episode length to 149 steps, while the
@@ -2132,8 +2132,8 @@ Ranked by how quietly they fail.
     peaking at 162 and collapsing to 39. **The same quantity moves in
     opposite directions on the two sides of the seam** — which is the
     sharpest form this hazard has taken and is only measurable because
-    ADR-088 added the trainer-side number.
-    **One defect behind it has been found and fixed (ADR-088), and the first
+    ADR-101 added the trainer-side number.
+    **One defect behind it has been found and fixed (ADR-101), and the first
     two runs above predate the fix.** The trainer read the bundle's
     `max_steps` and
     never used it, so an environment whose policy did not fall over **never
@@ -2147,7 +2147,7 @@ Ranked by how quietly they fail.
     always honoured `max_steps`.
     **What to watch from now on:** mean episode length, reported beside
     `reward/step` in the trainer's stderr, in `progress.json`, in the policy
-    header's curve rows and in the shell's Training panel (ADR-088). A
+    header's curve rows and in the shell's Training panel (ADR-101). A
     reward that climbs while episode length falls is this hazard happening
     live, and M9b's 170 → 30 would have been visible while it happened.
     **What to do:** never install, rank or stop on the trainer's reward.
@@ -2169,7 +2169,7 @@ Ranked by how quietly they fail.
   FreeCAD read and nothing else. `test_dynamics_units.py` was written before
   the feature, per §3.2.
 - ~~Does dynamics extend `api.simulation` or become a sibling
-  `api.dynamics`?~~ — answered by M2 (ADR-062): **a sibling authoring
+  `api.dynamics`?~~ — answered by M2 (ADR-077): **a sibling authoring
   surface, sharing the output type.** Not a compromise but a forced move —
   `cadex_animate._simulation_entries` selects on `artifact_kind ==
   "assembly_simulation_json"` and on finding two bakes **neither**, clearing
@@ -2179,7 +2179,7 @@ Ranked by how quietly they fail.
   type puts both under the existing "exactly one simulation" rule, and mixing
   `api.motion` with `api.dynamics` is refused.
 - ~~Where the frame budget goes when a rollout needs more than 10 000
-  frames?~~ — answered by M3 phase 4 (ADR-064): **two budgets, because there
+  frames?~~ — answered by M3 phase 4 (ADR-079): **two budgets, because there
   are two costs.** The frame and pose caps count what *leaves* the engine —
   artifact bytes, keyframes the shell bakes — and stay where they were.
   `CadexDynamics.MAXIMUM_SOLVER_STEPS` counts what the engine *does*, which
@@ -2187,7 +2187,7 @@ Ranked by how quietly they fail.
   authorable. A rollout is long in steps and short in frames, and one
   combined cap cannot express that trade.
 - ~~**Does a trace's `artifact_sha256` join the project digest?**~~ — decided
-  *yes* by ADR-064 on M3's evidence (both solvers reproduce byte for byte
+  *yes* by ADR-079 on M3's evidence (both solvers reproduce byte for byte
   across processes), routed to `main` because `compute_project_digest` is
   shared code that treats a kinematics and a dynamics trace identically, and
   **landed there as ADR-068 on 2026-07-31** with `main`'s own three-process
@@ -2198,7 +2198,7 @@ Ranked by how quietly they fail.
   nothing tells the user that `restore=false` and a re-accept is the way
   through.
 - ~~Where does the training run — a service we operate, or the user's own
-  GPU box under their credentials?~~ — answered by M7 (ADR-070): **the
+  GPU box under their credentials?~~ — answered by M7 (ADR-084): **the
   user's own machine, dispatched by the agent's own shell.** Not a service
   we operate, and M7 built no dispatch machinery at all — no network I/O, no
   daemon, no new op. You copy two files to a box, run
@@ -2211,11 +2211,11 @@ Ranked by how quietly they fail.
   dispatches the run, and declares the result; VISION principle 5 is
   untouched.
 - ~~Does the policy asset extend `put_asset` (which today gates extensions
-  to STL/OBJ/PLY) or get its own op?~~ — answered by M7 (ADR-070): **it
+  to STL/OBJ/PLY) or get its own op?~~ — answered by M7 (ADR-084): **it
   extends `put_asset`, and the deciding cost is a `shell/` diff.** A new op
   needs `OP_ARG_SPECS`, `OP_RESPONSE_SPECS`, both `docs/INTEGRATION.md`
   tables, a golden fixture, a handler — *and* `cadexd_client.py` in the
-  add-on, which is exactly the diff ADR-063 says the branch rests on not
+  add-on, which is exactly the diff ADR-078 says the branch rests on not
   having. Widening the store's accepted suffixes costs none, and it works
   because `put_asset` and `import_geometry` perform **no** suffix check of
   their own: they pass the path through and let the engine refuse.
@@ -2227,7 +2227,7 @@ Ranked by how quietly they fail.
   the wording is a `shell/` diff, so the engine-side refusals carry the
   correct advice instead.
 - ~~At what frame rate is a policy rollout played?~~ — answered by M8
-  (ADR-071): **any rate that divides the task's `control_hz` exactly, and by
+  (ADR-085): **any rate that divides the task's `control_hz` exactly, and by
   default that rate itself.** It is `simulate`'s solver-step rule one level
   up — an action is held for a whole control step, so a frame between two of
   them makes the trace depend on floating-point accumulation. The refusal
@@ -2238,7 +2238,7 @@ Ranked by how quietly they fail.
   MuJoCo integration are independent, but the `assembly` domain is
   Phase 11f — the largest — and this plan puts new weight on it.
 - **Why does the trainer's reward disagree with locally-measured survival —
-  in sign, across a whole run?** Opened by the M9 run (ADR-086 §5, hazard
+  in sign, across a whole run?** Opened by the M9 run (ADR-099 §5, hazard
   19): the curve climbed to +0.5118 while survival went 12/12 → 0/12, and the
   two are anti-correlated end to end. Not the reward *function* — the trainer
   scores `reward_of(vector)` on the raw observation from the bundle's own
@@ -2255,7 +2255,7 @@ Ranked by how quietly they fail.
   not an episode return. The cheap discriminator is (b): play one checkpoint
   with sampled actions locally and see which number it reproduces. Until this
   is answered the operational rule in §7 stands regardless of the cause.
-  **A fourth candidate was found by reading, and it was real (ADR-088): the
+  **A fourth candidate was found by reading, and it was real (ADR-101): the
   trainer never ended an episode.** `horizon = int(episode["max_steps"])` was
   read and never used again, so `done` was the task's termination terms and
   nothing else and an environment the policy kept upright ran for ever —
@@ -2283,7 +2283,7 @@ and the order is the same every time. It is written down because the order is
 load-bearing: every step but the last is cheap, and the last one costs hours
 of a rented GPU.
 
-**The projects themselves are not in this repository** (ADR-075 section 6).
+**The projects themselves are not in this repository** (ADR-088 section 6).
 They are ordinary Cadex projects in a directory of their own, and each
 carries three small driver scripts of about a hundred lines — `rebuild.py`,
 `measure.py`, `feasibility.py` — that drive `cadexd` over NDJSON on stdio and
@@ -2322,14 +2322,14 @@ model file.
 5. **Choose the actuator honestly, and say which question you are answering.**
    Torque motors rather than position servos, so that zero action is
    collapse and there is no degenerate "hold the setpoint" solution
-   (ADR-079). Then decide whether the limit models *the hardware* or *the
+   (ADR-092). Then decide whether the limit models *the hardware* or *the
    mechanism*: an MG90S stalls at 216 N*mm and a mechanism-derived limit for
    the same biped was 750, and a policy trained on the second will command
    torque the bench cannot produce. Both are defensible; only one is what you
    will build.
 
 6. **Declare what changes between episodes, and decide the success metric
-   before you dispatch** (ADR-084). `assembly.reset_variation` starts the
+   before you dispatch** (ADR-097). `assembly.reset_variation` starts the
    episode tilted, lifted and moving; `assembly.disturbance` pushes it while
    it runs. Without both, "balance" is not the task and bracing wins —
    hazard 16, which is why hazard 15 happened. Never perturb joint angles
@@ -2339,7 +2339,7 @@ model file.
 
 7. **Run the gate, and read what it says rather than whether it is green.**
    `feasibility.py` is six checks and none of them learn anything: static
-   arithmetic (**advisory since ADR-086**), exact gravity compensation by
+   arithmetic (**advisory since ADR-099**), exact gravity compensation by
    `mj_inverse`, whether the mechanism can reject the **worst declared
    shove** in place, contact sanity, a drop test that must **fall**, and a
    hand-written PD that must **hold**. If a PD can stand it, PPO can. If the
@@ -2349,13 +2349,13 @@ model file.
    cannot do the task.
 
 8. **Dispatch detached, and watch it.** `training/remote_train.sh check`,
-   then `train ... --detach` (ADR-076, ADR-085), then `watch <run-id>
+   then `train ... --detach` (ADR-089, ADR-098), then `watch <run-id>
    <project.cadex>`. Detached because a run is over an hour and one ssh
    held open that long is a closed laptop away from a lost run; `watch`
    because the reward peaked at iteration 1200 of 2000 the last time and
    nobody could see it. Pass `--checkpoint-every 100`: each one is a
    complete `.cxpolicy` you can pull mid-run and play, and `<out>.best`
-   tracks the best so far. Do not pipe any of it through `tail` (ADR-080
+   tracks the best so far. Do not pipe any of it through `tail` (ADR-093
    §4). The trainer proves its own witness before writing each file and
    prints the margin — **if that margin is under 100x, stop and read hazard
    13 rather than continuing.**
@@ -2372,7 +2372,7 @@ model file.
    and **peak/mean torque per motor** as one table. That is what answers "at
    this many steps it looks like this", and the torque columns are what
    catch hazard 15 without a rebuild. Watching two policies *animate* at
-   once is not available and should not be faked: ADR-062 is exactly one
+   once is not available and should not be faked: ADR-077 is exactly one
    simulation per script and the shell has one timeline, so the numbers
    compare side by side and the animations do not.
 
@@ -2384,13 +2384,13 @@ model file.
    the observation channels in order, the action table, and re-evaluates the
    trainer's witness with its own float64 forward pass.
 
-11. **Report what the rollout does, rather than iterating on it.** ADR-075's
+11. **Report what the rollout does, rather than iterating on it.** ADR-088's
    stopping rule. The trace is the evidence: frame count against the episode
    length says whether it terminated early, and pelvis height, tilt and drift
    over the episode say what "it stands" actually meant.
 
 12. **Open the Policy Outputs panel before you believe any of it**
-    (ADR-083). It sits behind the same toggle as the sliders and draws each
+    (ADR-096). It sits behind the same toggle as the sliders and draws each
     actuator's command against its own limit, at the current frame. The
     trajectory says what the mechanism did; this says what the policy
     decided, and the two can disagree in a way only this one shows —
@@ -2400,7 +2400,7 @@ model file.
 
 ### What a good result looks like
 
-The mg-legs run (ADR-082), for calibration — 263 g of PLA and eight 13.4 g
+The mg-legs run (ADR-095), for calibration — 263 g of PLA and eight 13.4 g
 MG90S, 2000 iterations at 4096 environments, 1 h 16 m on an RTX 5090:
 
 | | |
@@ -2425,7 +2425,7 @@ Calibrate against the whole table, not the top of it: a good result is one
 where the reward is high *and* the mechanism is doing something a machine
 could actually do.
 
-### The reward curve is not the result — measured (ADR-086)
+### The reward curve is not the result — measured (ADR-099)
 
 The M9 run makes the point far more sharply than the table above, and it is
 the single most important thing in this section. 2000 iterations × 4096
@@ -2473,7 +2473,7 @@ Two corollaries, both learned by nearly being caught:
   commanding 1–2 N·mm of 86 is not balancing, it is doing nothing.
 
 **One of the three candidates has since been eliminated, and a fourth found
-(ADR-088).** The trainer read the bundle's episode length and never used it,
+(ADR-101).** The trainer read the bundle's episode length and never used it,
 so an environment that did not fall over never reset — every number in the
 table above was measured against an unbounded episode and **is not a
 baseline for anything measured after the fix**. The rule in the quote box is
@@ -2486,7 +2486,7 @@ unchanged; what is new is a second number to read beside the reward:
 
 ### Sizing a shove: the capture point
 
-The reusable part of ADR-087, and the thing to compute **before** dispatching
+The reusable part of ADR-100, and the thing to compute **before** dispatching
 a disturbed run, because it decides what the run is even asking. A shove is
 an impulse, and what matters is not its newtons but where it puts the
 **capture point** — how far ahead of the feet the centre of mass would have
@@ -2505,7 +2505,7 @@ estimated:
 |---|---|---|
 | inside the support polygon | in-place recovery | ankle and hip torque; the feet never move |
 | polygon … polygon + `leg·sin(swing)` | one step | pick a foot up, place it, catch and return |
-| beyond that | nothing | falls are a **mechanism** limit, not a learning failure (ADR-075) |
+| beyond that | nothing | falls are a **mechanism** limit, not a learning failure (ADR-088) |
 
 For `mg-legs` — `h` = 146.0 mm so `ω₀` = 8.20 rad/s, m = 263.1 g, polygon
 45.5 mm forward / 24.5 mm back, leg 195 mm, 45° swing → 138 mm of step:

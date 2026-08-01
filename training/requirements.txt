@@ -1,6 +1,6 @@
-# The offboard trainer's dependencies (docs/MUJOCO.md M7, ADR-070).
+# The offboard trainer's dependencies (docs/MUJOCO.md M7, ADR-084).
 #
-# Exactly pinned, for the reason ADR-060 pins mujoco exactly: MuJoCo's own
+# Exactly pinned, for the reason ADR-075 pins mujoco exactly: MuJoCo's own
 # VERSIONING.md disclaims cross-version numerical reproducibility, and a
 # training run is only reproducible if the thing it ran against is.
 #

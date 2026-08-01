@@ -1,8 +1,8 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-08-01. Branch **`MJC` only** (ADR-063,
-ADR-072). Provenance: `[Cadex-new]`. See `docs/MUJOCO.md` slice M7 and
-ADR-070.
+Verified against source: 2026-08-01. Branch **`MJC` only** (ADR-078,
+ADR-086). Provenance: `[Cadex-new]`. See `docs/MUJOCO.md` slice M7 and
+ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
 in no payload, and nothing in it enters `pixi.toml` — `test_engine_purity_guardrails`
@@ -14,7 +14,7 @@ It is a thing you **copy to another machine**.
 ## Why training is offboard
 
 Training does not run on the user's laptop, and that is a design decision
-rather than a temporary state (ADR-060, restated by ADR-070):
+rather than a temporary state (ADR-075, restated by ADR-084):
 
 - MJX needs JAX-on-GPU. `jax-metal` is 0.1.0, and the two community MPS
   backends have known compatibility problems.
@@ -79,7 +79,7 @@ is a refusal, not a bad gait.
 
 **`training/SETUP.md` is the end-to-end version**, and there are four of
 them: (a) one machine with a GPU, (b) CPU only, (c) a separate GPU box, and
-(d) driving (c) with `training/remote_train.sh` (ADR-076). This file stays
+(d) driving (c) with `training/remote_train.sh` (ADR-089). This file stays
 *what the trainer is*; that one is *how to run it*. Duplicating the commands
 here is how the two drift.
 
@@ -121,8 +121,8 @@ on and publishes a receipt.
 > is called **`import_geometry`**, and on success it advises
 > `mesh.import_file(...)`, which is wrong for a policy. Fixing that wording
 > is a `shell/` diff, and the branch rests on
-> `git diff main...MJC -- shell/` printing nothing (ADR-063) — so it is
-> deliberately not taken. ADR-072 §4 names it as available-and-not-taken
+> `git diff main...MJC -- shell/` printing nothing (ADR-078) — so it is
+> deliberately not taken. ADR-086 §4 names it as available-and-not-taken
 > rather than blocked; the engine-side refusals carry the correct advice in
 > the meantime.
 
@@ -138,7 +138,7 @@ on and publishes a receipt.
 | `--checkpoint-every` | `0` (off) | write a complete `.cxpolicy` every N iterations, plus `<out>.best.cxpolicy` |
 | `--progress` | beside `--out` | where to rewrite `progress.json` |
 
-## Checkpoints, and the file a run publishes while it runs (ADR-085)
+## Checkpoints, and the file a run publishes while it runs (ADR-098)
 
 `--checkpoint-every 100` writes `walk.000100.cxpolicy`,
 `walk.000200.cxpolicy`, ... and keeps `walk.best.cxpolicy` tracking the best
@@ -149,7 +149,7 @@ a rollout for the witness observations plus 32 forward passes — so every
 hundredth of two thousand is 1 %.
 
 The witness is checked on checkpoints too. That error is *relative* and grows
-with the activations a policy learns (ADR-081), so a checkpoint that fails it
+with the activations a policy learns (ADR-094), so a checkpoint that fails it
 is a run that is going to fail it, and finding out at iteration 100 beats
 finding out after four hours.
 
@@ -165,16 +165,16 @@ iteration:
  "checkpoints": [...]}
 ```
 
-`episode_steps` is the row to actually watch (ADR-088): mean episode length,
+`episode_steps` is the row to actually watch (ADR-101): mean episode length,
 steps in the batch over episodes that ended in it. **A reward that climbs
 while this falls is a policy failing sooner and being paid more for it** —
 which is what two runs did, unnoticed, before there was a number for it. It
-is additive under the same schema, so a `progress.json` from before ADR-088
+is additive under the same schema, so a `progress.json` from before ADR-101
 still reads; the panel draws it as a dash.
 
 This is the one artifact everything downstream reads —
 `remote_train.sh watch` over rsync, and the shell's Training panel locally.
-Nothing parses this program's stderr, deliberately: ADR-080 measured what
+Nothing parses this program's stderr, deliberately: ADR-093 measured what
 happens when a receipt is taken from a stream something else can write into.
 
 Why it matters in minutes: `mg-legs` trained for 76 minutes and its reward
@@ -200,7 +200,7 @@ on. What this does *not* do is resample the *mechanism* per episode; that
 would need the batched model rebuilt inside the training loop, and the
 limitation is stated here rather than discovered.
 
-## Reset variation and disturbance, and a second algorithm (ADR-084)
+## Reset variation and disturbance, and a second algorithm (ADR-097)
 
 M9 added two things the bundle can declare that change **every episode**
 rather than every environment: where the episode starts
@@ -233,7 +233,7 @@ draw has to survive every step between the reset that made it and the reset
 that replaces it, and its window is tested against an **episode-local** clock
 rather than `data.time`, which this trainer's reset does not rewind.
 
-## The episode is the bundle's, not the trainer's (ADR-088)
+## The episode is the bundle's, not the trainer's (ADR-101)
 
 `steps` is the last member of that carry and the newest, and it is what makes
 this an episode at all. An episode ends when the task terminates **or** when
@@ -281,4 +281,4 @@ against a theoretical maximum of 2.5, in about four seconds.
 
 The GPU is a speed difference, not a semantic one, and it is the same
 trainer file. A remote GPU run is exercised manually and its numbers are
-recorded in ADR-070. **The gate does not prove the GPU path.**
+recorded in ADR-084. **The gate does not prove the GPU path.**

@@ -253,8 +253,8 @@ def test_the_trace_says_which_mujoco_wrote_it() -> None:
     """Hazard 3 made legible while the digest decision sits on `main`.
 
     A trace's bytes are in no project digest today, so a MuJoCo version
-    bump changes every trace and moves nothing -- silent, which ADR-062
-    called strictly worse than loud. ADR-064 decides that the trace should
+    bump changes every trace and moves nothing -- silent, which ADR-077
+    called strictly worse than loud. ADR-079 decides that the trace should
     join the digest and routes the change to `main`, because the digest
     code is shared with the kinematics trace and this branch does not edit
     shared code. Until then the artifact carries the version.

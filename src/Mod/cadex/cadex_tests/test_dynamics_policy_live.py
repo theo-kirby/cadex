@@ -8,13 +8,13 @@ every other byte arrives -- through ``put_asset`` (ADR-043) -- and the engine
 verifies them against the task they were trained on before publishing a
 receipt whose bytes are part of the project's identity.
 
-**M8 adds the last link** (ADR-071): ``assembly.rollout`` plays that verified
+**M8 adds the last link** (ADR-085): ``assembly.rollout`` plays that verified
 policy against the model its task bundle names and publishes the result as an
 ordinary simulation trace. So the chain this file drives now ends where the
 arc was always going -- design a mechanism, train a policy for it offboard,
 and watch the mechanism move under it.
 
-**No protocol change and no ``shell/`` diff.** That is the invariant ADR-063
+**No protocol change and no ``shell/`` diff.** That is the invariant ADR-078
 says the whole branch rests on, and M7 is designed so it stays true: a
 policy needed no new op because ``put_asset`` performs no suffix check of
 its own, and widening the store's accepted set is entirely engine-side.
@@ -33,7 +33,7 @@ available in different places:
 swing-up, a fixed seed -- on **CPU**, because that is what a test machine
 has. The GPU is a speed difference, not a semantic one, and it is the same
 trainer file. A remote GPU run is exercised manually and its numbers are
-recorded in ADR-070. This does not prove the GPU path.
+recorded in ADR-084. This does not prove the GPU path.
 """
 
 from __future__ import annotations
@@ -122,7 +122,7 @@ POLICY_SCRIPT = TASK_SCRIPT.replace(
 result = {"gait": gait, "post\"""",
 )
 
-#: M8's script: the same again, played (docs/MUJOCO.md M8, ADR-071). The
+#: M8's script: the same again, played (docs/MUJOCO.md M8, ADR-085). The
 #: rollout samples at 25 fps against a 50 Hz task -- one frame per two
 #: control steps -- so the frame count below is arithmetic rather than an
 #: observation.
@@ -229,7 +229,7 @@ def test_a_policy_comes_home_and_the_engine_verifies_it() -> None:
             assert stored["name"] == "walk.cxpolicy"
             assert stored["bytes"] == len(container["blob"])
             # The store lists it beside any meshes: one directory, two kinds
-            # of file, and no new op to hold the second (ADR-070).
+            # of file, and no new op to hold the second (ADR-084).
             assert "walk.cxpolicy" in [
                 str(item["name"]) for item in stored["assets"]
             ]
@@ -598,8 +598,8 @@ def test_a_task_the_engine_wrote_trains_to_a_policy_the_engine_accepts() -> None
     if python is None:
         pytest.skip(
             "jax and mujoco.mjx are the offboard trainer's dependencies and "
-            "are deliberately absent from the engine environment (ADR-060, "
-            "ADR-070). Run this file from a venv built from "
+            "are deliberately absent from the engine environment (ADR-075, "
+            "ADR-084). Run this file from a venv built from "
             "training/requirements.txt."
         )
 

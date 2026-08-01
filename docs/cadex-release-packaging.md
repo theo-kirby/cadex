@@ -27,7 +27,7 @@ cadex-engine-<version>-<os>-<arch>/
                         payload shipped until M0 caught it
   lib/                  Qt6 Core/Xml/Concurrent/Network/DBus only
   lib/python3.11/site-packages/mujoco/
-                        53.5 MB, branch MJC only (ADR-060, ADR-061)
+                        53.5 MB, branch MJC only (ADR-075, ADR-076)
   Mod/cadex/            cadexd + the xscript pipeline
   Mod/{Part,PartDesign,Sketcher,Assembly,Mesh,MeshPart,Import,Material,
        Measure,Show}
@@ -85,7 +85,7 @@ goal. The goal, and what the build asserts, is:
 The script *prints* the Qt libraries it does carry, so the exception is
 visible rather than assumed.
 
-**MuJoCo, on branch `MJC` only** (ADR-060, ADR-061). The one deliberate
+**MuJoCo, on branch `MJC` only** (ADR-075, ADR-076). The one deliberate
 non-Qt addition, and the only third-party Python package the engine carries:
 53.5 MB of `mujoco == 3.10.0`, without which `assembly.dynamics`,
 `assembly.mjcf` and `assembly.rollout` do not exist. It reaches the payload
@@ -117,7 +117,7 @@ the MuJoCo studio viewer the engine never imports and which
 `relocate_macos_runtime_rpaths.py` currently re-signs and re-points for
 nothing. Pruning it would take the dynamics cost to roughly 21 MB. It is
 `MJC`-owned work, worth doing, and wants its own gate run rather than riding
-along with something else (ADR-067 §4, ADR-072 §4).
+along with something else (ADR-082 §4, ADR-086 §4).
 ## What deliberately does *not* ship
 
 The **CLI** (`cli/`, ADR-061). It is a third client of the protocol, not a
@@ -151,7 +151,7 @@ bin/       452 KB     freecadcmd, CadexGeometryWorker, python
 ```
 
 **That measurement predates the dynamics arc.** A staged payload on `MJC`
-measures **2.4 GB** (ADR-061), the difference being MuJoCo's 53.5 MB plus
+measures **2.4 GB** (ADR-076), the difference being MuJoCo's 53.5 MB plus
 the wheel's own bundled dylibs. Everything the section says about *why* the
 figure is what it is holds unchanged: the 53.5 MB is the only line item in
 either payload that is there on purpose.

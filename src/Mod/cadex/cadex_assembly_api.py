@@ -31,20 +31,20 @@ _PUBLISHABLE_TYPES = frozenset(
         # run: `dynamics` shares `simulation` because two
         # assembly_simulation_json artifacts would leave the shell baking
         # neither, and an MJCF file is baked by nothing. A script may
-        # declare several (ADR-066).
+        # declare several (ADR-081).
         "mjcf",
         # A training task is its own type for the same reason an exported
         # model is: nothing bakes it, so two in one script is a reasonable
         # thing to write. It is also the first output that consumes another
         # output -- one api.mjcf value -- and two tasks may share one model
-        # (ADR-069).
+        # (ADR-083).
         "task",
         # A trained policy, on the same terms and for the same reasons: it is
         # the *second* output that consumes another output -- one api.task
         # value -- nothing bakes it, and two policies against one task (two
         # seeds, two reward weightings) is a reasonable script. What it
         # publishes is a receipt rather than the weights, which are an asset
-        # and cannot be rebuilt from any script (ADR-070).
+        # and cannot be rebuilt from any script (ADR-084).
         "policy",
         "exploded_view",
     }
@@ -832,7 +832,7 @@ class AssemblyDomainAPI:
         # exactly the reason `dynamics` does: it is baked, a script has one
         # simulation whichever thing produced it, and two
         # assembly_simulation_json artifacts would leave the shell baking
-        # neither (ADR-062, ADR-071).
+        # neither (ADR-077, ADR-085).
         "rollout",
         "body",
         "collision",
@@ -845,7 +845,7 @@ class AssemblyDomainAPI:
         # Two more intermediates on the same terms as `randomise`, and the
         # pair that stops an episode always starting in the same place: a
         # variation on the reset pose, and a force applied while the episode
-        # runs (M9, ADR-084).
+        # runs (M9, ADR-097).
         "reset_variation",
         "disturbance",
         "exploded_view",
@@ -1422,7 +1422,7 @@ class AssemblyDomainAPI:
         [0, 0, -20]}`` is the fix. What does catch it is the evidence:
         ``initial_contact_count`` is non-zero at the exported keyframe, with
         the geom names and the world position of the contact beside it
-        (ADR-074). Read it after ``api.mjcf`` on anything that is supposed
+        (ADR-087). Read it after ``api.mjcf`` on anything that is supposed
         to start clear of the ground.
 
         **The component's own shape** -- ``mesh`` tessellates the
@@ -3196,7 +3196,7 @@ class AssemblyDomainAPI:
         the engine is a geometry-and-dynamics service. ``training/`` carries
         the trainer, it runs on a machine that has one, and the ``.cxpolicy``
         it writes comes back into the project store through the same
-        ``put_asset`` path an imported mesh travels (ADR-070). **There is no
+        ``put_asset`` path an imported mesh travels (ADR-084). **There is no
         train button and nothing to press** -- the agent authors the task,
         dispatches the run with its own shell, and declares the result here.
 
@@ -3294,7 +3294,7 @@ class AssemblyDomainAPI:
         policy's digest attests to rather than whichever one is in memory --
         phase 0 measured that those two are not the same trajectory.
 
-        This *is* under the "exactly one simulation" rule (ADR-062), unlike
+        This *is* under the "exactly one simulation" rule (ADR-077), unlike
         ``api.mjcf``, ``api.task`` and ``api.policy``. A rollout is baked, so
         a script with a rollout and an ``api.dynamics`` in it is a refusal
         rather than a scene ``cadex_animate`` silently clears -- and for the

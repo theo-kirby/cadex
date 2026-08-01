@@ -633,7 +633,7 @@ def test_a_stock_mujoco_loads_the_file_and_reaches_the_solved_pose(
 
 
 # ---------------------------------------------------------------------------
-# The mass a short decimal was hiding (ADR-077).
+# The mass a short decimal was hiding (ADR-090).
 # ---------------------------------------------------------------------------
 
 
@@ -665,7 +665,7 @@ def test_a_body_whose_mass_is_not_a_short_decimal_still_exports() -> None:
         f"{source} is a short decimal; this fixture no longer exercises the bug"
     )
 
-    exported = dyn.export_mjcf(built)          # refused before ADR-077
+    exported = dyn.export_mjcf(built)          # refused before ADR-090
     reloaded = mujoco.MjModel.from_xml_string(exported["xml"].decode("utf-8"))
     index = mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_BODY, "arm")
     written = float(reloaded.body_mass[index])
@@ -673,7 +673,7 @@ def test_a_body_whose_mass_is_not_a_short_decimal_still_exports() -> None:
     drift = abs(written - source)
     assert drift > 1.0e-12, (
         "the writer round-tripped this mass exactly, so the fixture does not "
-        "reach the code path ADR-077 fixed"
+        "reach the code path ADR-090 fixed"
     )
     assert drift <= dyn.MJCF_MASS_TOLERANCE * max(1.0, abs(source))
     assert written == pytest.approx(source, rel=1.0e-5)

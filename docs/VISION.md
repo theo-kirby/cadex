@@ -23,7 +23,7 @@ but not dependent on either FreeCAD or Blender (ADR-025), combining:
 - **Robotics-class dynamics and control on MuJoCo** — the mechanism you
   designed falls, collides, is actuated, exports as MJCF with *exact* OCCT
   inertias, and plays back a policy trained on it. MuJoCo is a kernel we
-  keep, like OCCT. This is the `MJC` vertical (ADR-060, ADR-072); `main` is
+  keep, like OCCT. This is the `MJC` vertical (ADR-075, ADR-086); `main` is
   the same product without it.
 
 Until the replacements land, both forks remain the working substrate, and
@@ -38,7 +38,7 @@ learned gait: the mechanism is designed through the ordinary assembly
 surface, `assembly.mjcf` exports it, `assembly.task` defines the problem,
 `training/cadex_train.py` solves it on a machine we do not ship to,
 `assembly.policy` verifies what comes back, and `assembly.rollout` plays it.
-That arc closed on 2026-07-31 (ADR-071).
+That arc closed on 2026-07-31 (ADR-085).
 
 ### Everything is driven by the script
 
@@ -75,7 +75,7 @@ That arc closed on 2026-07-31 (ADR-071).
 ### Scope
 
 Seven capability areas — four modeling, the sketcher they rest on, and the
-two that make a mechanism move (ADR-060, ADR-072):
+two that make a mechanism move (ADR-075, ADR-086):
 
 1. **Part** — direct OCC shape modeling.
 2. **Part Design** — sketch-based feature modeling (bodies, pads, pockets…).
@@ -83,25 +83,25 @@ two that make a mechanism move (ADR-060, ADR-072):
 4. **Assemblies** — links, joints, solved placements, motion.
 5. **Mesh** — import, tessellate, boolean, decimate (Phase 4, ADR-016).
 6. **Dynamics** — mass, inertia, gravity, contact and force, on MuJoCo
-   (Phase 14, ADR-062). Not a replacement for area 4's kinematics but its
+   (Phase 14, ADR-077). Not a replacement for area 4's kinematics but its
    complement: kinematics prescribes motion and reports where things end up,
    dynamics is given inertia and forces and reports what the mechanism
    actually does. Both exist; `api.motion` and `api.dynamics` are siblings,
    and a script uses one, the other, or a policy rollout — never two.
 7. **Control** — task definitions, offboard training, and trained policies
-   rolled out in-engine (`docs/MUJOCO.md` M5–M8; ADR-066, ADR-069, ADR-070,
-   ADR-071). This is the genuine direction change: Cadex is a robot design
+   rolled out in-engine (`docs/MUJOCO.md` M5–M8; ADR-081, ADR-083, ADR-084,
+   ADR-085). This is the genuine direction change: Cadex is a robot design
    *and* control tool.
 
 Areas 6 and 7 add **no sixth domain**: they are operations on the `assembly`
 domain, which is why they cost no protocol op, no new output type and no
 `shell/` diff. Seven capability areas, still five domain APIs.
 
-**Areas 6 and 7 are the `MJC` vertical** (ADR-072). They are the product on
+**Areas 6 and 7 are the `MJC` vertical** (ADR-086). They are the product on
 this branch and absent from `main`, which carries areas 1–5 and neither the
 53.5 MB MuJoCo payload nor a reason to want it. That is a packaging decision
 about who pays for a physics engine, not a statement that dynamics is
-provisional; ADR-072 records why the split is permanent and one-directional.
+provisional; ADR-086 records why the split is permanent and one-directional.
 
 **Correction worth stating plainly:** this list used to promise "real mesh
 editing arrives with the Blender shell (BMesh)". The Blender shell arrived;
@@ -120,7 +120,7 @@ the runtime level; the remaining source trees are slated for removal
 cannot emit STEP is not a product; STEP import/export is an engine
 deliverable (Phase 11), not a shell convenience (ADR-025). **MJCF export is
 the same commitment on the dynamics side** and it is already built
-(ADR-066): `assembly.mjcf` writes one self-contained file that loads in a
+(ADR-081): `assembly.mjcf` writes one self-contained file that loads in a
 stock MuJoCo which cannot import Cadex, and verifies its own output before
 returning it.
 
@@ -159,8 +159,8 @@ returning it.
   front end would need the same discipline or it should not be built.
 - **Dependence on FreeCAD or Blender.** OCCT stays as the geometry kernel,
   and so does **MuJoCo** as the dynamics kernel — a dependency in the OCCT
-  category, kept upstream and unmodified rather than forked (ADR-060,
-  dynamics). What we fork we intend to replace; what we keep, we keep.
+  category, kept upstream and unmodified rather than forked (ADR-075).
+  What we fork we intend to replace; what we keep, we keep.
   Vendored LGPL components (OCCT, planegcs, OndselSolver, `modelRefine`)
   keep their attribution obligation in the NOTICE file, as does MuJoCo's
   Apache-2.0 (`docs/PROVENANCE.md` §6); "references to
@@ -178,7 +178,7 @@ returning it.
    can't be rebuilt from the script is a bug.
 
    **One exception, stated rather than smuggled: a trained policy is an
-   asset, not a derivation** (`docs/MUJOCO.md` §3.1, ADR-070). Weights come
+   asset, not a derivation** (`docs/MUJOCO.md` §3.1, ADR-084). Weights come
    out of hours of stochastic GPU compute on a machine we do not ship to.
    They cannot be rebuilt from a script and never will be, so they live in
    `assets/` beside an imported STL, referenced by name and sha256, while the
@@ -197,7 +197,7 @@ returning it.
 5. **The AI is the only modeler; the human is the only judge.** Humans steer
    via chat and sliders, accept or reject; they never push geometry buttons.
 
-   **There is no train button, and there is nothing to press** (ADR-070).
+   **There is no train button, and there is nothing to press** (ADR-084).
    "No user-accessible modeling tools" is clear about fillet buttons and says
    nothing about a *train* button, which is not a modeling tool but would
    still be something a human presses. The question had to be answered before
@@ -236,10 +236,10 @@ returning it.
 - macOS notarization of a Rust app bundling an OCCT engine that spawns
   subprocesses (inherited open item, ADR-023).
 - ~~Whether dynamics extends `api.simulation` or becomes a sibling
-  `api.dynamics`~~ — answered 2026-07-30 (ADR-062): **a sibling authoring
+  `api.dynamics`~~ — answered 2026-07-30 (ADR-077): **a sibling authoring
   surface sharing the output type**, so the "exactly one simulation" rule
   covers both solvers and the shell never has to choose between two bakes.
-- ~~Whether there is a **train** button~~ — answered 2026-07-31 (ADR-070):
+- ~~Whether there is a **train** button~~ — answered 2026-07-31 (ADR-084):
   **no, and there is nothing to press.** Recorded in principle 5 above.
 - **How a project migrates when the solver moves.** A retained artifact's
   digest is part of the project's identity (ADR-068), so a MuJoCo or OCCT

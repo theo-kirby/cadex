@@ -4,6 +4,22 @@ Append-only. One entry per decision, newest last. Every removal of code,
 files, or public surface gets an entry (policy in `CLAUDE.md`). Format:
 date, decision, rationale, consequences.
 
+**A note on numbering (2026-08-01).** `main` and `MJC` numbered independently
+from ADR-060 while the branches were apart, so the merge arrived with two
+ADR-060s, two ADR-061s and so on through ADR-067, plus two ADR-074s. `main`
+is the trunk, so its numbers stayed and the twenty-seven `MJC`-only entries
+moved to **ADR-075…ADR-101**, in the order they were written. Commit messages
+made before 2026-08-01 use the old numbers; the map is
+
+| was, on `MJC` | is now |
+|---|---|
+| ADR-060…067 | ADR-075…082 |
+| ADR-069…072 | ADR-083…086 |
+| ADR-074…088 | ADR-087…101 |
+
+ADR-069…072 are consequently **vacant**: `MJC` had reserved them and `main`
+never used them. ADR-054 has been vacant since the teardown.
+
 ---
 
 ## ADR-001 — Single-engine xscript (inherited, 2026-07)
@@ -4209,1180 +4225,6 @@ unaffected and was not re-run for the icon alone.
 
 ---
 
-## ADR-060 — Dynamics runs on MuJoCo (2026-07-30)
-
-**Decision.** Cadex gains rigid-body dynamics, and MuJoCo is the engine for
-it. Five parts:
-
-1. **Dynamics is in scope**, as a sibling of the kinematics
-   `api.simulation` already provides (ADR-048). `docs/VISION.md`'s
-   "Assemblies — links, joints, solved placements, motion" covers it.
-2. **The scope extends past dynamics** to task definitions, offboard
-   training, and policy rollout — the arc in `docs/MUJOCO.md`, slices
-   M5–M8. Cadex becomes a robot design *and* control tool. This is a
-   direction change and it is made deliberately here rather than arrived at.
-3. **MuJoCo is kept, not forked.** It joins OCCT in the category of
-   kernels we depend on and do not own. Apache-2.0, upstream, unmodified;
-   `mjSpec` and the plugin system are the extension points a fork would
-   otherwise be for. This is the opposite of the FreeCAD and Blender
-   relationship, where the fork exists because the thing is being replaced.
-4. **In this repository, engine-side.** Not a new repository: ADR-030
-   merged two into one and Phase 13a deleted the cross-repo payload
-   machinery a third would recreate. Nothing under `shell/` imports
-   mujoco — a physics authoring path in the shell would be a second source
-   of truth, the way the bpy modes were (ADR-025, ADR-030).
-5. **A trained policy is an asset, not a derivation.** VISION principle 3
-   says any state that cannot be rebuilt from the script is a bug. Policy
-   weights cannot be — they are the output of hours of stochastic compute.
-   They live in the project store's `assets/`, digest-pinned, exactly as an
-   imported STL does; the script declares reproducibly *how* they were
-   trained. What survives is the property that matters: a rollout of a
-   fixed policy on a fixed model is deterministic, so trace digests hold.
-
-**Why this is cheap enough to start now.** `cadex-assembly-simulation-trace-v1`
-does not care what produced it. A MuJoCo backend emitting the same schema
-needs no protocol op, no response key, no `docs/INTEGRATION.md` row and no
-`shell/` diff — `cadex_animate.py` has played traces since ADR-050. A policy
-rollout is also a trace, so one existing seam carries the whole arc. Doing
-this after Phases 11/12 would cost the same work against two moving targets.
-
-**Why MuJoCo and not the alternatives.** It is the only option that is
-Apache-2.0, headless-first, deterministic for a fixed binary, buildable into
-a 14 MB payload, and has a programmatic model-construction API (`mjSpec`)
-that maps onto an xscript graph without an XML round-trip. The GPU backends
-(MJX, MuJoCo Warp) are for massively parallel RL rollouts and are **not**
-adopted here — one user, one mechanism, CPU stepping at 2 kHz.
-
-**The version pin is exact**, `== 3.10.0`, for precisely the reason
-`occt == 7.8.1` is (ADR-025). MuJoCo's own `VERSIONING.md` disclaims
-numerical reproducibility across releases; the pipeline is deterministic for
-a fixed binary but contact integration is float-sensitive and the solver
-changes between versions routinely. Every `open_project` re-runs THE script
-and asserts digest equality, so an unpinned patch bump would silently turn
-every stored simulation into a restore failure. For the same reason MuJoCo
-is run **single-threaded** — upstream has open reproducibility issues with
-multi-threaded island solving.
-
-**Units are the highest-risk detail and get a test before a feature.**
-FreeCAD is millimetres; every MuJoCo default assumes SI metres and
-kilograms. The failure mode is silent: a part falls at 9810 mm/s² through
-the floor and looks entirely plausible.
-
-**Four of thirteen joint kinds do not map and are refused.** MuJoCo has
-`free`/`ball`/`slide`/`hinge` plus equality constraints. `fixed`,
-`revolute`, `slider`, `ball` and `cylindrical` map directly; `screw`,
-`gears`, `belt` and `rack_pinion` map through `equality/joint` polynomial
-coupling; `distance`, `parallel`, `perpendicular` and `angle` are
-*placement* constraints with no runtime equivalent and get a sentence
-saying so.
-
-**Training is offboard, by physics rather than preference.** MJX needs
-JAX-on-GPU and MuJoCo Warp needs CUDA; the reference result — a Unitree G1
-gait in ~90 minutes — is 4096 parallel environments on an RTX 4090. This
-repository's development platform is `osx-arm64`, where JAX's GPU story is
-`jax-metal` 0.1.0 plus community MPS backends with known problems. The
-boundary this forces is a good one: the engine stays a geometry-and-dynamics
-service, the shell stays a viewer, and the training bundle goes to a machine
-with a GPU.
-
-**Consequences.**
-
-- `docs/MUJOCO.md` is the framework: slices M0–M8, each a resting place.
-  M5 (MJCF export with exact OCCT inertias) is shippable on its own and is
-  the point past which the rest is optional.
-- `docs/VISION.md`'s scope list gains dynamics and control. Not done in this
-  ADR — it is a VISION edit and belongs with the slice that first ships user-
-  visible dynamics (M3), not with the decision to pursue it.
-- Exact mass properties from OCCT into `<inertial>` is the capability the
-  robotics ecosystem does not have and we get nearly free. It lands in M2.
-- The 10 000-frame / 100 000-pose-sample cap in `api.simulation` was sized
-  for kinematics and will not survive an RL rollout. M3.
-
-**How MuJoCo is delivered is NOT decided here.** M0 found the two routes
-each blocked, and the resolution is its own decision:
-
-- **conda `mujoco-python 3.10.0`** is the correct answer for shipping —
-  package-managed, so `relocate_conda_environment.py` carries it into the
-  payload. It cannot be installed today. Adding *any* dependency invalidates
-  `pixi.lock` and forces a full re-solve, and a full re-solve of the current
-  manifest **fails on its own, before MuJoCo is mentioned**: conda-forge has
-  moved to `qt6-main` 6.11 / `occt` 8.0 / `opencv` 5.0 while the manifest
-  pins `qt6-main >=6.8,<6.9` and `occt ==7.8.1`, so `opencv`, `vtk` and
-  `smesh` have no viable candidates. The manifest works only by lockfile
-  accident and has for some time.
-- **pypi `mujoco 3.10.0`** installs cleanly — it touches only the pypi half
-  of the lock — and is verified working: `mjSpec` builds, `mj_step` runs, a
-  free-fall integrates correctly, and **no GL module is imported at all**,
-  so the payload's no-renderer guarantee is not at risk. But the wheel is
-  not conda-package-managed (zero `conda-meta` entries), and
-  `relocate_conda_environment.py` deliberately ships only `is_conda` files,
-  so it **would be silently dropped from the payload**.
-
-Neither unblocking move is small, and neither is about MuJoCo: repairing the
-manifest means re-pinning the geometry environment, which can move accepted
-digests, and teaching the relocation script to carry pypi packages means
-changing ADR-023's shipping path. Recorded here so the next person does not
-rediscover it. M1 is throwaway prototyping in the dev environment and is
-**not** blocked by either.
-
----
-
-## ADR-061 — The payload carries the MuJoCo wheel, by name (2026-07-30)
-
-**Decision.** `relocate_conda_environment.py` gains `CARRIED_PYPI_PACKAGES`,
-a list of site-packages directories copied verbatim despite no conda package
-owning them. It contains one entry, `mujoco`. The engine payload build then
-asserts the payload can *import* it, at the pinned version, or fails.
-
-This resolves the delivery question ADR-060 left open, and rejects the two
-alternatives it named.
-
-**Why not repair the manifest instead.** That is the "correct" answer in the
-abstract — conda-forge `mujoco-python` is package-managed and would need no
-exception at all. But the repair is unbounded and its risk is in the wrong
-place. The root manifest cannot be re-solved because the channel moved past
-pins we hold deliberately (`occt ==7.8.1`, `qt6-main >=6.8,<6.9`), so the fix
-is to pin every drifting package — `opencv`, `vtk`, `smesh`, and whatever the
-solver reveals one layer down — across five platforms. `recipe.yaml`'s `run:`
-list is a second solve with the same drift. Every one of those pins touches
-the environment that builds geometry, and ADR-025 is a standing reminder that
-moving a geometry dependency moves accepted digests. Bundling that into
-"deliver a physics library" would be trading a large unrelated risk for a
-small related one. It is a real problem, it is now written down, and it
-deserves its own change.
-
-**Why carrying the wheel is safe here, specifically.** Shipping an unmanaged
-file is the exact thing this script exists to prevent, so the exception needs
-a reason rather than a convenience. MuJoCo's wheel bundles
-`libmujoco.<version>.dylib` and four plugin dylibs *beside* the extension
-modules and reaches them through `@loader_path`. It references nothing in the
-conda prefix. It is relocatable by construction — which is the property the
-`is_conda` filter is a proxy for, held directly instead of inferred.
-
-Verified rather than argued: a copy of the package was put through
-`relocate_macos_runtime_rpaths.py` and imported from its new location. The
-sanitizer deletes a stale absolute build rpath the wheel ships
-(`/Volumes/BuildData/...`), keeps `@loader_path`, re-points the
-`experimental/studio` extensions at `@loader_path/../..`, and re-signs. The
-relocated copy integrates the same free-fall to six decimals. No exclusion
-from rpath handling is needed or wanted — an earlier draft of this change
-asserted one, and the scan disproved it.
-
-**The list is names, never patterns.** A glob would make the next addition
-invisible; a name makes it a decision with a comment next to it. A named
-package that is not installed raises rather than being skipped, because the
-silent version of this failure ships a payload with no dynamics engine and
-breaks at the user.
-
-**The gate is an import, not a file check.** `build_engine_payload.sh` runs
-`bin/python -c 'import mujoco'` against the packaged tree and compares the
-version to the pin. A present directory proves nothing about a bundled dylib
-whose rpath was just rewritten, and ADR-023's rule — a source tree that
-passes proves nothing about a payload — is exactly this case. It also covers
-the stage-only path, which carries mujoco for an unrelated reason (it copies
-`lib/` wholesale) and could stop doing so without anyone noticing.
-
-**Consequences.**
-
-- The payload grows **53.5 MB**, not the ~14 MB `docs/MUJOCO.md` estimated
-  from the conda package. The wheel is fatter than the conda split — it
-  carries the plugin dylibs (`libactuator`, `libelasticity`, `libsdf_plugin`,
-  `libsensor`) that conda-forge separates. The estimate in MUJOCO.md §2 is
-  corrected.
-- 217 files, `__pycache__` excluded, `mujoco-3.10.0.dist-info` included so
-  the payload's own metadata stays honest about what is installed.
-- M2 has somewhere to ship to, which was the point.
-- When the manifest is eventually repaired, `CARRIED_PYPI_PACKAGES` should
-  empty and `mujoco-python` should move to `recipe.yaml`'s `run:` list. The
-  constant exists to be deleted; it is named so that the deletion is easy to
-  find.
-
-**Addendum (2026-07-30) — the gate found a dangling `bin/python`.** On its
-first run the import gate failed, and not on mujoco: the payload's
-`bin/python` was a broken symlink. A conda `bin/python` points at
-`bin/pythonX.Y`; the prune's keep list names `python` but not the versioned
-interpreter behind it, so `cp -a` carried the link and the next line deleted
-its target. The payload has shipped it broken for as long as the prune has
-existed, and nothing noticed because nothing ran it — discovery goes through
-`cadex-engine.json`, which names `freecadcmd`, and `INTEGRATION.md`'s payload
-listing shows `bin/{freecadcmd,CadexGeometryWorker,python}` as though all
-three worked. `build_engine_payload.sh` now carries one level of
-same-directory symlink target alongside the link.
-
-Worth stating plainly because it is the argument for the gate's shape: a file
-check would have passed. `test -e bin/python` is true for a dangling symlink,
-and `test -f` on the *directory listing* looks right too. Only running the
-interpreter found it. Same for the thing the gate was actually built for — a
-present `site-packages/mujoco` proves nothing about a bundled dylib whose
-rpath was just rewritten.
-
-Verified after the fix: `pixi run stage-engine` produces a 2.4 GB payload
-whose own `bin/python` imports mujoco 3.10.0 from its own site-packages,
-integrates the reference free fall to the same six decimals, and loads no GL
-module. Packaged lifecycle gate (`CADEX_ENGINE_ROOT=<payload> pytest
-test_cadexd_lifecycle.py`): 6 passed.
-
----
-
-## ADR-062 — `assembly.dynamics`, and the translator behind it (2026-07-30)
-
-**Decision.** Slice M2 of `docs/MUJOCO.md` lands: an assembly can be run as
-rigid-body dynamics on MuJoCo and publishes through the trace path
-`assembly.simulation` already used. Five parts, each with a reason a future
-reader can check.
-
-1. **`api.dynamics` produces `output_type: "simulation"`, not a new type.**
-   Not tidiness — `cadex_animate._simulation_entries` selects on
-   `artifact_kind == "assembly_simulation_json"` and, on finding two, bakes
-   **neither**: it clears the scene, drops the Simulation panel and reports
-   into a message the UI never shows. A sibling type would let a script
-   declare a kinematics *and* a dynamics run and silently lose the animation
-   it already had. Sharing the type puts both under the existing "exactly
-   one simulation" rule in `_simulation_contract`; relaxing that check from
-   `!= "simulation"` to `not in {"simulation", "dynamics"}` is the whole
-   change, and mixing `api.motion` with `api.dynamics` is refused.
-
-2. **`api.body` is a non-publishable intermediate**, exactly as `connector`
-   is: it wraps a component with dynamics-only data, is never returned as an
-   output, and therefore needs no native type, no publication branch and no
-   `configure_order` row. `api.component` is untouched, so the kinematics
-   path cannot regress. **Density is required and never defaulted** — it
-   scales mass, inertia and every fall time, and a guessed one produces an
-   animation that is plausible and wrong. The refusal names steel and
-   aluminium rather than picking one.
-
-3. **`CadexDynamics.py` is a pure module staged by filename**, like
-   `CadexRouting` (ADR-056). It imports no FreeCAD, and it imports `mujoco`
-   *inside* the functions that build a model. `test_engine_purity_guardrails`
-   asserts the engine's import closure equals `DECLARED_ENGINE_MODULES`
-   exactly, so this module must be reachable from the sandboxed worker and
-   never from `cadexd`: a service whose job is reading NDJSON off a pipe does
-   not need 53 MB of physics engine resident. The split rule is stated once
-   and greppable: the pure module does every arithmetic operation *including
-   every unit conversion*; the worker does every FreeCAD read and nothing
-   else.
-
-4. **The model's reference configuration is deliberately not the solved
-   pose.** A tree body's frame relative to its parent is `L_p ∘ inv(L_c)` —
-   where the two connector frames coincide — with the joint at `L_c`'s origin
-   along its +Z. The solved pose is then *derived* as a joint coordinate by
-   inversion and checked against `component_placements`. Building at the
-   solved pose and checking the model's own reference configuration would
-   assert only that the same numbers were written twice: it passes on a model
-   whose joint axes are entirely wrong. Perturbation parity — displace each
-   joint by δ, and exactly its subtree must move, by exactly that joint's own
-   motion — is what separates "the tree is right" from "the mechanism is
-   right".
-
-5. **Collision geometry is deferred to M3**, deviating from `docs/MUJOCO.md`
-   M2's "primitives only". That was written assuming geoms were needed to
-   infer mass; they are not, because we have the BREP. Bodies carry explicit
-   inertia and no geometry at all (`model.ngeom == 0`, asserted), so contact
-   cannot participate in a result this slice has not validated, and no
-   unvalidated collision primitive is carried around waiting for M3.
-
-**What was measured rather than assumed.** Five things, each of which was
-either wrong in the plan or unknowable from documentation:
-
-- **`Shape.MatrixOfInertia` is taken about the centre of mass**, not about
-  the origin as `docs/MUJOCO.md` M2 states. The reading is still taken from a
-  copy translated to the origin, which is correct under either convention and
-  cannot suffer the cancellation that reading-and-subtracting would: for a
-  part 500 mm out the origin term is 27x the centre-of-mass term here, and a
-  small feature far from the origin would lose most of its significant digits
-  to the difference.
-- **MuJoCo's `balanceinertia` rewrites exact inertia into invented numbers**
-  — `[0.001, 0.001, 1.0]` compiles to `[0.334, 0.334, 0.334]`. It, and
-  `boundinertia`/`boundmass`/`inertiafromgeom`, are set off; and because a
-  flag is only a promise about defaults, every build re-checks the compiled
-  mass and principal moments against the OCCT numbers per body.
-- **`compiler.degree` defaults to degrees**, which silently turned a
-  `[-1, 1]` joint range into `[-0.017, 0.017]`.
-- **A body-anchored `connect` resolves its second anchor through the model's
-  reference configuration.** With this model's reference configuration that
-  closed a four-bar 16 mm from where it belonged, in XML that looked
-  ordinary. Closures are written against **sites** placed at the two
-  connector frames instead, so nothing is inferred.
-- **Equality constraints are soft.** At MuJoCo's default time constant a
-  driven four-bar drifted 3 mm open on a 200 mm mechanism; at the default
-  impedance a heavy nut overwhelmed its screw coupling completely (610 mm of
-  travel where the pitch allows 105). `solref` at two timesteps and `solimp`
-  at (0.99, 0.9999) bring those to 0.05 mm and 0.8%.
-
-**The coupled joints are measured against OndselSolver, not derived.**
-Driving one revolution through the real kinematics path gave: gears
-counter-rotate at `−r1/r2`; a belt drives at `+r1/r2`; and a screw advances
-`pitch` millimetres per **revolution**, settling the 2π ambiguity in a
-property whose UI label says only "Thread pitch".
-`test_dynamics_ondsel_parity` keeps those measurements as a gate, because a
-wrong sign is a gear train running backwards, which looks exactly like a
-working mechanism. **`rack_pinion` is refused** in M2: its native constraint
-acts along a marker frame OndselSolver derives specially, the measurement
-run did not produce a clean `x = R·θ`, and the point of measuring is to not
-ship the guess.
-
-Also corrected from the plan and from `docs/MUJOCO.md` M2: **all four coupled
-kinds attach nothing.** `AssemblyObject::isJointTypeConnecting` returns false
-for exactly screw, rack-and-pinion, gears and belt, so FreeCAD's own solver
-never uses them to place a part. "A screw is a hinge plus a coupling" was one
-joint too generous; it is a coupling between coordinates a slider and a
-revolute already own.
-
-**A correction ADR-060 owes itself.** ADR-060 justifies the exact version pin
-by claiming "every `open_project` re-runs THE script and asserts digest
-equality, so an unpinned patch bump would silently turn every stored
-simulation into a restore failure." **That is not true.**
-`compute_project_digest` (`cadex_project_worker.py`) branches on
-`artifact_kind` for `brep` and `mesh` and falls through to `payload_sha256`
-over the script *definition* for everything else, so a simulation trace's
-`artifact_sha256` is in no digest at all. A MuJoCo version bump would change
-every trace completely and the digest would not move — which is strictly
-worse than the ADR describes, because it is silent rather than loud. The
-exact pin stands on its own merits (ADR-025's reasoning about kernels, and
-MuJoCo's own `VERSIONING.md`), but not on that argument. M2 therefore gates
-determinism with its own test — same inputs, byte-identical model and
-configuration, within one process — and leaves the question of bringing
-trace bytes into the digest to M3, which needs OndselSolver's own byte
-reproducibility proven first.
-
-**Not in this slice**, deliberately: contact and collision geometry,
-damping/armature/stiffness, gravity as a script parameter, split solver and
-trace timesteps, the cross-restart determinism gate, actuators (M4), MJCF
-export (M5), mesh collision (M3), slider and cylindrical loop closures (they
-need a tendon), and flexible subassemblies — one component is one body, and
-a flexible one is refused rather than quietly assumed rigid.
-
-**Evidence.** Engine suite 445 passed (312 before this slice). The live
-cadexd lifecycle gate publishes a dynamics script end to end: FreeCAD places
-the components, MuJoCo reproduces those placements to the micrometre in the
-first solved frame, and the arm then swings from rest at 0.095, 0.393,
-0.882 rad over three samples — growing as t², which is what a constant torque
-on a mass does and what nothing in that script prescribed. `shell/` diff:
-empty. Protocol change: none.
-
----
-
-## ADR-063 — `MJC` is a permanent branch, not a merge candidate (2026-07-30)
-
-**Decision.** The MuJoCo dynamics arc — `docs/MUJOCO.md` slices M0–M8,
-ADR-060, ADR-061, ADR-062 and everything after them — lives on the branch
-`MJC` **permanently**. It is not a feature branch awaiting a merge window.
-`main` stays free of MuJoCo, and a build from `main` neither carries the
-dependency nor pays for it.
-
-**Rationale.** Dynamics is not free to carry. The payload grows 53.5 MB
-(ADR-061) for a wheel that a user modeling a bracket will never import, and
-that wheel arrives through `CARRIED_PYPI_PACKAGES` — a named exception in
-`relocate_conda_environment.py` that exists only because the pixi manifest
-has not been re-solvable since conda-forge moved past our `occt ==7.8.1`
-pin. Someone who is not going to simulate a mechanism should not build a
-physics engine, ship one, or inherit that exception.
-
-That argument is about cost, and cost alone would also be satisfied by a
-build flag. A flag was not chosen, for the reason VISION principle 1 gives:
-prefer the design that removes a concept over the one that adds a switch. A
-`WITH_DYNAMICS` option would put a second configuration of the product into
-every gate, every payload test and every digest argument — two of something,
-which the non-goals list forbids in the finished product. A branch costs a
-periodic sync and nothing else.
-
-It also keeps ADR-060's scope decision honest. That ADR extended the product
-past "CAD" into task definitions, offboard training and control policies —
-a real direction change, approved, but one whose consequences are still being
-discovered a slice at a time. A branch is where a direction change belongs
-until the arc it opened is finished.
-
-**Consequences.**
-
-- **Changes flow `main` → `MJC`, never back.** `MJC` syncs from `main`;
-  nothing on `MJC` is merged to `main`. Work discovered on `MJC` that is
-  *not* dynamics-specific — a bug in the trace path, a payload prune fix —
-  belongs on `main` first, and reaches `MJC` on the next sync.
-- **What `MJC` owns**, and what a sync must therefore never drop:
-  `src/Mod/cadex/CadexDynamics.py`, its row in
-  `src/Mod/cadex/CMakeLists.txt`, the `api.dynamics` / `api.body` surface in
-  `cadex_assembly_api.py` and `cadex_assembly_worker.py`, the ten
-  `cadex_tests/test_dynamics_*.py` suites and their fixtures, `docs/MUJOCO.md`,
-  ADR-060…ADR-063, the mujoco lines in `pixi.toml` / `pixi.lock`, and
-  `CARRIED_PYPI_PACKAGES` in
-  `package/engine/scripts/relocate_conda_environment.py`.
-- **Shared docs diverge, and are written to minimise it.** `VISION.md`,
-  `ROADMAP.md` and `CLAUDE.md` differ between the branches. On `MJC` the
-  dynamics material is an **appended, branch-marked block** in each rather
-  than an in-place rewrite of an existing list, because an insertion resolves
-  on sync and a rewritten paragraph conflicts. This is the same rule
-  `CLAUDE.md` already states for the inherited `shell/` tree, applied to our
-  own docs for the same reason.
-- **`docs/DECISIONS.md` is the exception that cannot follow that rule**, since
-  it is append-only and both branches append. Sync conflicts there are
-  expected, mechanical, and resolved by keeping both sides in date order.
-- **The seam that made this possible is the same one M1 proved.** Dynamics
-  needed no protocol op, no response key and no `shell/` diff (ADR-062), so
-  the branch delta is confined to the engine and its docs. A dynamics arc
-  that had required protocol changes could not have been branched this
-  cheaply — which is an argument for keeping M3–M8 inside the existing trace
-  contract wherever it is honest to do so.
-- **Not decided here:** whether the arc ever returns to `main`. If M5 (MJCF
-  export with exact OCCT inertias) proves out as the independently shippable
-  capability `docs/MUJOCO.md` argues it is, that is the natural occasion to
-  revisit — and it would be a new ADR, not an assumption anyone may act on.
-
----
-
-## ADR-064 — Contact, and the six numbers M3 measured rather than inherited (2026-07-30)
-
-**Decision.** Slice M3 of `docs/MUJOCO.md` lands: dynamics bodies collide.
-`assembly.collision(kind, ...)` is a new non-publishable intermediate,
-`api.body` takes `collision=`, and `api.dynamics` takes `gravity_m_s2` and
-`solver_step_s`. Contact, friction, restitution and a cross-restart
-determinism gate exist, and a mechanism topples, lands and stops.
-
-No protocol change, no new response key, no `shell/` diff — `git diff
-main...MJC` still names no file under `shell/`, which is the invariant
-ADR-063 said the branch would keep.
-
-Six phases, each committed as a resting place, and phase 0 wrote no feature
-code at all. That ordering is deliberate and it is the reason this ADR is
-mostly a list of measurements: **the phase that measures comes before the
-phase that builds**, because M2 learned that a default is a promise and not
-a decision.
-
-### 1. What was measured, and what it contradicted
-
-Nine numbers, six of which contradict a name, a default, a documented rule
-or this plan's own text.
-
-1. **`mjDSBL_ISLAND` is a *disable* bit, so islands were on.** Hazard 4 was
-   written as "force single-threaded" and read like one switch. A bare
-   compile has `disableflags == 0`, which means islands are **on** — the
-   opposite of what the hazard implied. On a jointed model with no geoms the
-   flag moves nothing (zero delta over 300 steps of the four-bar); with three
-   boxes settling on a plane it moves qpos by ~2e-14 after 1500 steps.
-   Physically nothing, digest-wise decisive. Both settings are separately
-   reproducible across processes, so the choice is only about which is
-   *written down*: islands off, because that is the single monolithic
-   constraint solve whose row ordering does not depend on how contacts
-   partition — and it costs nothing, since MuJoCo parallelises only an
-   `mjData` handed a thread pool, which this module never does.
-
-2. **The restitution formula everyone quotes is the wrong one.** MuJoCo has
-   no restitution coefficient; bounce falls out of the contact spring's
-   damping ratio. Every reference gives `e = exp(−ζπ/√(1−ζ²))`, which is
-   derived for a *bilateral* spring holding the mass through a full half
-   period. A contact is unilateral: it separates the instant the normal
-   force would turn tensile, which is earlier. Solving `kx + cẋ = 0` for that
-   instant gives `ωd·t* = π − 2·arcsin ζ` and therefore
-   `e = exp(−ζ(π − 2 arcsin ζ)/√(1−ζ²))`. Against a dropped ball the second
-   matches to 1% where the first is out by 44% at ζ = 0.5.
-
-3. **And even the right formula needs the solver to keep up.** At ten steps
-   per contact time constant — which is exactly what 60 fps and
-   `DEFAULT_TIME_STEP_S` produce — a requested restitution of 0.9 measures
-   **3.45**: a ball bouncing higher than it was dropped from, forever, every
-   frame of it looking like physics. At twenty steps the worst error across
-   the authorable band is 12% and finer buys almost nothing. So a bouncing
-   contact is *refused* unless the step resolves it, with the required step
-   in the message.
-
-4. **MuJoCo's parent/child filter does not cover the case every mechanism
-   here has.** It excludes a body from its parent only when that parent is
-   not itself welded to the world — and in a model built the M2 way, every
-   grounded component *is* a static world child. Measured on a
-   world-child/hinge/hinge chain: the grandchild-child pair is filtered and
-   the child-parent pair is **not**. So the first link of every mechanism M2
-   could already build would have collided with the base it is hinged to the
-   moment geoms existed, and a four-bar overlaps at its pins by construction.
-
-5. **Euler manufactures energy on anything that tumbles.** MuJoCo's default
-   integrator, on a freely spinning asymmetric plate — the shape of any part
-   that falls over — *gains* 51% of its kinetic energy over twenty seconds at
-   the default step. `implicitfast` conserves energy and angular momentum to
-   the printed precision and reproduces RK4's trajectory through three
-   Dzhanibekov flips to three decimals, at one force evaluation per step
-   against RK4's four. MuJoCo's full `implicit` is worse than either: −29%.
-   A settled box stack, which is the obvious thing to test, integrates
-   identically under all four to 4e-12 and says nothing.
-
-6. **MuJoCo *sums* the two margins rather than taking the larger.** 20 mm and
-   30 mm produce a 50 mm margin, measured — not the max the documentation
-   led us to expect. It also averages the two `solref`s (so a bouncy part
-   dropped on a dead floor bounces about half as much as it asked to), takes
-   the elementwise maximum of friction, and the maximum `condim`.
-
-7. **`contype`/`conaffinity` are signed int32 in the binding.** An all-ones
-   `0xFFFFFFFF` is refused by `add_geom` outright, so the top bit is unusable
-   and there are **31** collision groups, not 32. Found by a compiler error,
-   which is the cheap end of the same lesson.
-
-8. **`mjENBL_SLEEP` is off by default** and now stays off by assertion. A
-   sleeping body stops integrating, and a settling mechanism is precisely the
-   M3 scenario.
-
-9. **OndselSolver writes byte-identical traces in two separate cadexd
-   processes**, and so does the whole M3 path with contact in it. ADR-062
-   made the first of those the precondition for the digest decision below.
-
-### 2. Convexity is two measurements, not one — a correction to the plan
-
-The plan said: compare the convex hull's volume against the exact
-`GProp_GProps` volume, and refuse the difference. That is wrong, and working
-out what a tessellated cylinder does is what showed it. A tessellated
-cylinder is an *inscribed* prism: at the default deflection a 5 mm pin is
-1.6% short of its exact volume before any concavity exists at all, and a
-44-gon is 0.34% short. Hull-against-exact would have reported concavity for
-every round part in every assembly.
-
-So there are two questions with two tolerances:
-
-- **Concavity** is the hull's volume against the *mesh's own* volume, both
-  computed from the same vertices. For a genuinely convex part they agree to
-  floating-point noise — measured at −7.7e-16 on a real OCCT cylinder — so any
-  gap is real. A 60×60×10 plate with a 40×40 notch measures 20 000 mm³ inside
-  a 28 000 mm³ hull and is refused, naming both ways out.
-- **Fidelity** is the mesh's volume against the exact BREP volume, which asks
-  a different question: is this still the part. It is *not* waived by the
-  `hull` opt-in, because an author who accepted the hull of their bracket has
-  not thereby accepted an eight-sided cylinder.
-
-**`mesh` and `hull` are two kinds rather than one kind and a boolean**, so the
-acceptance appears in the script's own text where a reader meets it. There is
-no way to get a hull by accident, which is the whole of hazard 2.
-
-**Convex decomposition stays out.** Phase 2 did not earn it: primitives cover
-the cases that came up, and CoACD would cost a second `CARRIED_PYPI_PACKAGES`
-exception — the thing ADR-061 named so it would be easy to *delete* — plus a
-decomposition whose cross-version determinism nobody has established and over
-which we assert digest equality. `scipy.spatial.ConvexHull` was already in the
-payload and costs nothing.
-
-### 3. The deflection is declared, never inherited
-
-`cadex_tessellation` scales its deflection by the bounding-box diagonal
-because it is choosing how a part *looks*. A collision mesh built from that
-would collide differently at draft quality than at fine — a physics result
-depending on a view setting. The collision deflection is a fixed absolute
-length in `CadexDynamics`, resolved in the pure module so the worker holds no
-second copy of the default, and it is only safe to have a fixed default
-because the fidelity check refuses a mesh too coarse to be the part.
-
-### 4. Joined parts do not collide, and that is authored intent
-
-Given measurement (4), the translator writes an explicit `exclude` for every
-pair of components a non-suppressed joint connects — tree edges, closures and
-couplings alike. Two parts joined by a revolute interpenetrate at the pin by
-construction, and simulating that is never what the script meant; a gear pair
-is coupled by an equality constraint *precisely because* we are not
-simulating tooth contact. The exclusions are listed in the trace evidence
-rather than being invisible behaviour.
-
-### 5. Two budgets, because there are two costs
-
-The 10 000 frame / 100 000 pose caps were sized for kinematics, where the
-trace step *was* the solver step. Now they are not: the same 600-frame trace
-costs 4 800 solver steps at the default step and 1 200 000 at the finest the
-per-frame cap allows. So `api.dynamics` keeps its frame and pose caps and
-they now say what they count — artifact bytes, keyframes the shell bakes,
-memory in Blender: **what leaves the engine**. `CadexDynamics` gains
-`MAXIMUM_SOLVER_STEPS`, which bounds **what the engine does**, checked before
-the model is built.
-
-This answers the last open question in `docs/MUJOCO.md` §6. A policy rollout
-is long in steps and short in frames — integrate for minutes, report a
-hundred poses — and one combined cap cannot express that trade while two can.
-
-### 6. The digest decision, and where it belongs
-
-ADR-062 left this open on one precondition, and the precondition holds: both
-solvers are byte-reproducible across processes, and so is the whole M3 path
-with mesh collision and bouncing contact in it. So the answer is **yes, a
-trace's `artifact_sha256` should join the project digest** — today it is in
-no digest at all, so a MuJoCo bump changes every trace and moves nothing,
-which is the silence ADR-062 called strictly worse than loud.
-
-**That change is not made on this branch.**
-`cadex_project_worker.compute_project_digest` is shared code and treats a
-kinematics trace and a dynamics trace identically — both are `simulation`
-outputs digested by their canonical definition. Making only the dynamics one
-count would be an asymmetry nobody could predict from the output type. Per
-ADR-063 the change belongs on `main` and reaches `MJC` by sync.
-
-What is done here is the branch-local half: the trace evidence records
-`solver_version`, so a MuJoCo bump is legible in the artifact even before it
-is digest-moving, and `test_dynamics_restart_determinism` pins the present
-state so the routed change has something to rewrite.
-
-### 7. What M3 deliberately did not ship
-
-- **`gap`.** The plan listed it beside `margin`. It changed
-  `contact.includemargin` at no value tried, so its combination rule was not
-  pinned, and an unmeasured knob is not something this slice ships.
-- **Restitution outside `{0} ∪ [0.3, 0.9]`.** Below 0.3 the discrete solver
-  damps the bounce away — a requested 0.15 measures 0.00 — and above 0.9 the
-  damping is light enough that the integrator adds energy. Both ends refused,
-  with the band in the message.
-- **Convex decomposition**, per §2. **Actuators and control callbacks** (M4),
-  **MJCF export** (M5), **tendons** and therefore slider and cylindrical loop
-  closures, and **flexible subassemblies**.
-
-### 8. Consequences
-
-- **Every dynamics trace digest moves.** The integrator changed, the island
-  flag changed, and geoms and exclusions are in the model. Nothing pins those
-  bytes today, which is exactly the silence §6 is about.
-- **A body still touches nothing by default.** M2 scripts run unchanged;
-  contact is opted into per body. The alternative default would be to *infer*
-  a collision shape, which is the one thing this surface exists to prevent.
-- **`CadexDynamics.py` keeps the M2 split rule.** Contact parameters were
-  named as the most likely place a second unit-conversion site would appear;
-  the API checks bounds and shapes, and every conversion — coefficients to
-  packed vectors, groups to bitmasks, restitution to a damping ratio, full
-  extents to half-extents, millimetres to metres — happens in the pure
-  module. `scipy.spatial` joins `mujoco` as a deferred, function-scoped
-  import with its own named payload failure.
-- **What a sync must not drop**, extending ADR-063's list:
-  `test_dynamics_collision.py`, `test_dynamics_contact.py`,
-  `test_dynamics_determinism.py`, `test_dynamics_environment.py`,
-  `test_dynamics_restart_determinism.py`, `dynamics_trace_digest.py`, and the
-  `collision` export in `CadexScriptedDomains.py` and `cadex_domain_api.py`.
-- **Verified.** Engine suite **556 passed** (447 at M2's close). Packaged
-  lifecycle gate **8 passed** against a payload restaged from this work
-  (7 before, plus the topple gate), and the collision and cross-restart
-  suites pass against that same payload — which is what proves Qhull is
-  really in it. `pixi run gate` was not re-run and did not need to be: the
-  branch still contains no `shell/` diff.
-
-## ADR-065 — Actuators, and the control callback that was not needed (2026-07-30)
-
-**Decision.** Slice M4 of `docs/MUJOCO.md` lands: dynamics mechanisms are
-driven. `assembly.actuator(joint, kind=..., control_deg=..., ...)` and
-`assembly.joint_dynamics(joint, damping_nmms_per_deg=..., ...)` are two new
-non-publishable intermediates, and `api.dynamics` takes `actuators=` and
-`joint_dynamics=`. A script specifies a motor and a setpoint, and the arm
-holds position against gravity.
-
-No protocol change, no new response key, no `shell/` diff — `git diff
-main...MJC` still names no file under `shell/`, which is the invariant
-ADR-063 said the branch would keep. Per-frame actuator state stays **out** of
-the trace frames: the schema is still `{frame_index, frame_kind,
-nominal_time_s, component_placements}`, and that is the whole reason this arc
-has cost the shell nothing.
-
-Seven phases, each a resting place, and phase 0 wrote no feature code. Same
-ordering rule as M3, for the same reason: **the phase that measures comes
-before the phase that builds**.
-
-### 1. Two corrections to the plan, both decided before code
-
-**A control callback is the wrong shape, and it is also unnecessary.** The
-plan this slice came from said "a control callback runs in the worker" — a
-Python callable invoked every solver step. That would put unbounded arbitrary
-code inside the determinism gate and break "nothing happens outside the
-script" the same way the deleted bpy modes did. It is also not needed, and
-phase 0 is what established that: MuJoCo's `position` and `velocity`
-actuators *are* the PD loop, written into `actuator_gainprm` and
-`actuator_biasprm` and closed in C. What a script has to supply is a
-**setpoint**, and a setpoint that varies is a formula of `time` — a
-vocabulary `api.motion` has had since ADR-048, whose AST whitelist M4
-extracted into `_checked_formula` rather than copying.
-
-**Joint damping and armature are part of this slice, not a later one.** A
-position gain stiff enough to hold an arm rings on a frictionless,
-armature-free joint — measured, sixty degrees peak to peak, not decaying —
-and MuJoCo's defaults for damping, armature and friction loss are all zero.
-A gain that only behaves because of an undeclared default is exactly the
-failure class M2 and M3 were each organised against, so the resistance is a
-declared intermediate rather than a tuning secret.
-
-### 2. What phase 0 measured
-
-Six questions, four of which moved a decision.
-
-1. **A `position` actuator is `gainprm = [kp]`, `biasprm = [0, −kp, −kv]`.**
-   The closed loop is three numbers in a compiled model. This is the
-   measurement the first correction above rests on.
-
-2. **`compiler.autolimits` defaults *on***, so a `ctrlrange` silently becomes
-   a `ctrllimited`. With it off, a `forcerange` without a `forcelimited` is a
-   compile error — the loud version, and the one to have. The translator now
-   sets `autolimits = False` and states every `limited` flag it relies on,
-   joints included.
-
-3. **`gear` rescales the setpoint, not just the effort.** At gear 2 a
-   commanded 0.5 rad holds the joint at 0.25, because `ctrl` addresses the
-   actuator's coordinate, which is `gear · q`. So M4 pins the gear at 1,
-   refuses anything else, and the surface has no ratio argument at all: two
-   ways to say a ratio is one way to be silently wrong. The pin is asserted
-   on the compiled model.
-
-4. **The stability ceiling is `ω·h = 2`, and it is dimensionless.** An
-   undamped position gain diverges at `ω·h = 2.02`, measured at four
-   different solver steps and invariant across a 400× range of inertia —
-   which is the textbook explicit-integration limit, showing up here because
-   `implicitfast` integrates damping implicitly and stiffness explicitly.
-   That invariance is what lets the refusal be stated once for every
-   mechanism rather than as a gain for one, and the translator has the
-   inertia to hand: it is the joint's own diagonal of the compiled mass
-   matrix. Damping buys real headroom (ζ = 1 survives to 5.09) and the limit
-   ignores it deliberately — a model whose stability rests on a number the
-   author picked for feel breaks when somebody smooths the motion.
-
-5. **A damping gain does not explode. It freezes, and says nothing.** Past
-   `c / M ≈ 1.2e10` per second MuJoCo's own regularisation wins: a velocity
-   actuator commanded to 1 rad/s delivers 1e-9, finite the whole way, warned
-   about by nothing. Joint damping does the same at 2.9e10. Silence is the
-   worse of the two failure modes, so it is the one with a refusal in front
-   of it — `MAXIMUM_DAMPING_RATE_PER_S`, a decade below the smaller, covering
-   both so they cannot drift apart. Nothing real approaches it; it exists so
-   that regime is a sentence rather than a mystery.
-
-6. **A `motor` at zero control is bitwise the unactuated run.** Measured on a
-   bare hinge in phase 0 and on the four-bar in phase 4: identical frames,
-   not close ones. Had that not held, the digest story would have had a
-   problem with nothing to do with actuators. Its converse is stated as its
-   own test, because "no actuator" and "an actuator asking for nothing" are
-   the same sentence in English and opposite models — a `position` actuator
-   at zero is a servo holding the joint at zero.
-
-`MjsJoint.damping` and `.stiffness` are three-vectors (one per dof, for a
-ball joint's three) while `.armature` and `.frictionloss` are scalars.
-Assigning a float to the first is a `TypeError`, which is at least the loud
-kind of wrong.
-
-### 3. Units are in the parameter names, and the wrong one is a refusal
-
-Every quantity whose meaning depends on whether the joint coordinate turns or
-slides gets a **suffixed pair**, and only the one matching the joint is
-accepted: `control_deg`/`control_mm`, `control_deg_per_s`/`control_mm_per_s`,
-`control_nmm`/`control_n`, `torque_limit_nmm`/`force_limit_n`,
-`stiffness_nmm_per_deg`/`stiffness_n_per_mm`,
-`damping_nmms_per_deg`/`damping_ns_per_mm`, `armature_kgmm2`/`armature_kg`,
-`friction_loss_nmm`/`friction_loss_n`.
-
-This is more parameter names than a single `control=` plus a `motion_type`
-would need, and that is the point. `api.motion`'s one formula whose unit
-depends on a sibling argument is hazard 1 exactly: a `control="30"` that
-means 30 radians is a 57× error that runs, looks like physics and errors
-nowhere. The two readings of `stiffness=4000` differ by five and a half
-million. `cylindrical` joints own one coordinate of each and, like
-`api.motion`, require an explicit `motion_type`.
-
-Hazard 1 was named as still live for M4 and this is the second time it has
-been paid rather than triggered: every M4 conversion is in `CadexDynamics`,
-`test_dynamics_units` grew all six before they had a caller, and the worker
-forwards property dicts without touching a number — which it can, because an
-actuator's parameters come off the graph and there is nothing to read out of
-FreeCAD for one. That is the property to protect in review.
-
-### 4. Which joints refuse a motor, and why each does
-
-A loop-closing joint (it has no MuJoCo joint to drive — the refusal says the
-spanning forest reached both its components another way, and what would
-change it), a coupled kind (`screw`, `gears`, `belt`, `rack_pinion` attach
-nothing; the refusal names the joints they relate), `fixed` (no coordinate),
-`ball` (three, and no scalar setpoint means anything), suppressed, and the
-four placement-only kinds. The tree-dependent refusals live in the pure
-module because only the tree knows; the rest are at the API, where the
-message can name the parameter.
-
-`initialValue` is refused in a control formula, with its reason: a dynamics
-run's initial value is a solved pose, not a scalar the script can name.
-`api.motion` keeps it, and keeps its `**` → `^` Ondsel rendering; the control
-path keeps Python syntax, because this engine is what evaluates it.
-
-### 5. Time is computed, not accumulated
-
-`t = start_time_s + index · solver_step` from an integer index, never the
-solver's own clock — which MuJoCo maintains by adding the step to itself.
-`simulate` already lands its samples on exact step boundaries for the same
-reason; a control signal that drifted off them would make the trace depend on
-the drift, and the determinism gate is what would have to catch it, after the
-fact, on a digest, with nothing to point at. The formula is compiled once per
-actuator and evaluated against a globals dict with no `__builtins__`, so the
-API's whitelist and the reachable namespace are two barriers that fail
-differently.
-
-### 6. The evidence reports what the motors had to do
-
-`model_evidence` gains `actuators` and `joint_dynamics` blocks carrying the
-declared numbers, the SI ones, the effort limit, the **peak effort actually
-reached** and whether it saturated. That last pair is the block's argument:
-"the arm sagged" is a complaint nobody can act on, and "it sat on its 0.1 N·m
-limit" is the same complaint with the answer in it — the same case the
-inertials block already makes about "the arm feels heavy".
-
-### 7. Verification
-
-Engine suite **684 passed** (556 at M3's close). The two-link arm holds 30°
-and settles at **30.44** — the 0.44 being the load's torque divided by the
-gain, on gravity's side, which is what a proportional servo does and is
-asserted as a signed bound rather than a magnitude. The same script with the
-`actuators=` list emptied falls to 75°, which is what makes the first number
-mean anything. A setpoint of `25*sin(2*pi*time)` is tracked through a 50°
-sweep. The cross-restart gate grew an actuated mechanism with both looped
-actuator kinds and a time-varying setpoint, and writes the same artifact byte
-for byte through two separate cadexd processes.
-
-Packaged lifecycle gate **8 passed** against a payload restaged from the
-closing commit, with the actuator and cross-restart suites passing against
-that same payload — ADR-023's rule being that a source tree proves nothing
-about a payload. `pixi run gate` was not re-run and did not need to be:
-`git diff --name-only main...MJC -- shell/` is empty, and that invariant, not
-a repeated run, is what the shell claim rests on.
-
----
-
-## ADR-066 — The model leaves the building, as a file that checks itself (2026-07-31)
-
-**Decision.** Slice M5 of `docs/MUJOCO.md` lands: a Cadex assembly exports as
-a MuJoCo MJCF model. `assembly.mjcf(assembly, bodies, *, actuators=(),
-joint_dynamics=(), gravity_m_s2=None, solver_step_s=None, label="")` is a new
-**publishable output type** — the first user-facing export path this engine
-has — and it writes one self-contained `.xml` per output, retained as a
-program artifact under `outputs/<output>-model.xml`.
-
-No protocol change, no new response key, no `shell/` diff. `git diff
---name-only main...MJC -- shell/` is still empty, which is the invariant
-ADR-063 said this branch would keep, and M5 is the slice that most easily
-could have broken it: an export is a file a user wants, and a file a user
-wants is normally a button.
-
-### 1. Why not an op, and why not a flag
-
-Three surfaces were available and two were rejected.
-
-A **cadexd op** would need `OP_ARG_SPECS`, `OP_RESPONSE_SPECS`, both
-`docs/INTEGRATION.md` tables, an ADR-027 golden fixture and a change to the
-shell's client — five coupled edits and a protocol version, to deliver a file
-that a publishable output already retains and already reports the path of. A
-**flag on `api.dynamics`** would be one edit and would couple exporting a
-model to running the solver loop that M5 exists to avoid: "give me the file,
-don't simulate it" is the request, and `end_time_s=0.001` is not an answer to
-it.
-
-A publishable output type costs five registration entries that already
-cross-check each other at import (`exported_names`, `_PUBLISHABLE_TYPES`,
-`_DOMAIN_OPERATION_OUTPUT_TYPES`, the pack's `output_types`/`api_exports`,
-`_NATIVE_TYPE_BY_OUTPUT`), and the shell needs no change because
-`cadex_hydrate.hydrate_display` skips any display entry without a
-`tessellation` and `cadex_animate` selects only
-`artifact_kind == "assembly_simulation_json"`. A new artifact kind is
-invisible to it.
-
-`docs/MUJOCO.md` M5 called this "a first-class engine op, alongside STEP".
-Both halves were wrong and the section now says so: there is no STEP export
-in this tree — `file.export_model` is a name in `CadexModelingSurface.py`
-with no op behind it, and Phase 11 owns it — and the sentence predates
-ADR-063.
-
-### 2. `mjcf` gets its own output type, where `dynamics` does not
-
-ADR-062 made `api.dynamics` produce a `simulation`, not a sibling type, for a
-concrete reason: `cadex_animate._simulation_entries` finds two
-`assembly_simulation_json` artifacts, bakes **neither**, clears the scene and
-reports into a message the UI never shows. Sharing the type puts both solvers
-under the "exactly one simulation" rule.
-
-Nothing bakes an MJCF file, so that rule has nothing to protect here, and
-enforcing it anyway would refuse a reasonable script. `api.mjcf` is therefore
-**not** under it: a script may declare several, each naming its artifact from
-its own output rather than the single hardcoded filename
-`_retain_simulation_trace` uses, and one may sit beside `api.dynamics` *or*
-beside `api.motion`. The last of those needed checking rather than asserting
-— the refusal that bans mixing `api.motion` with `api.dynamics` selects on
-`output_type`, and an `mjcf` output is neither a `simulation` nor a `motion`,
-so it is invisible to that contract. There is a live test for it.
-
-### 3. The exactness claim is a tolerance, and the number is published
-
-`MjSpec.to_xml()` writes about six significant figures and MuJoCo exposes no
-precision setting. Measured across six fixtures before any feature code was
-written (`test_dynamics_mjcf_measured.py`, phase 0):
-
-* mass survives a round trip to **3.2e-16** relative;
-* an inertia triple whose smallest entry is 1e-5 of its largest does not, and
-  lands at **2.4e-6**;
-* every other field — positions, axes, actuator gains — is under 1.8e-6;
-* every `mjOption` field is **bit-identical**, so the exported file
-  integrates with the solver M3 chose rather than MuJoCo's defaults;
-* over 500 solver steps the worst trajectory divergence is **4.1e-4 mm**, and
-  the four-bar — which has the *worst* inertia drift of the six — diverges by
-  nothing at all, because its loop closure keeps pulling both runs back onto
-  the same constraint manifold.
-
-So "matches the in-engine simulation" is a **tolerance**, not an identity, and
-`docs/MUJOCO.md`'s "no determinism problem" was wrong. The pinned bounds are
-mass 1e-12, inertia **1e-5**, fields 1e-5, pose **1e-2 mm**. The inertia one
-is tight — the four-bar spends a third of it and there is nothing to buy more
-with — and that is stated rather than hidden: `export_mjcf` reports
-`worst_inertia_rel_error`, `worst_mass_rel_error`, `worst_field_rel_error`
-and `worst_pose_error_mm` beside the bound each was checked against, because
-"within tolerance" is not a fact anybody can act on without the number.
-
-Rejected: a `.mjb` sidecar (two files describing one model, and the text one
-is the one people read) and a float-rewriting post-processor (which would
-build exactly the second unit-conversion site hazard 1 names).
-
-### 4. The file verifies itself before it is a file
-
-`export_mjcf` reloads its own XML with `MjModel.from_xml_string` and diffs it
-against the model it came from — counts first, because a field comparison
-over a model of a different shape is meaningless, then every numeric field,
-then every solver option — and re-runs the OCCT inertia comparison against
-the **reloaded** model rather than the original, because the claim being sold
-is about the file. Anything past tolerance is a `DynamicsError` and never an
-artifact.
-
-`_verify_compiled_inertia` grew `tolerance`/`subject`/`reason` parameters
-rather than gaining a near-copy: the reloaded model asks exactly the same
-question of exactly the same numbers, through a formatter. Two copies would
-have drifted, and the first thing to drift would have been the correction
-text — which is the part a model reads.
-
-### 5. `explicitinertial` is asserted, not inherited
-
-`build_model` sets it for reasons that predate M5, and M5's entire
-differentiator rides on it: without it `to_xml()` omits the `<inertial>`
-element and the exact OCCT tensor is simply not in the file. The export
-refuses a spec whose bodies do not carry it.
-
-Measured, the failure is worse than expected in one direction and better in
-another. On a mechanism with **no** collision geoms the file stops loading at
-all — `mass and inertia of moving bodies must be larger than mjMINVAL`, which
-is the loud kind of wrong. On a body that **has** a geom the same file loads
-fine and carries inertia inferred from the geom, silently, which is the
-failure this whole arc exists to avoid. Both have tests; the second is the
-one that justifies the assertion.
-
-### 6. The keyframe, and what it revealed about FreeCAD's solver
-
-`build_model` deliberately builds at the configuration where each joint's
-connector frames coincide, so the solved pose is *derived* and checkable
-rather than built in — ADR-062's exit criterion depends on it. `to_xml()`
-emits no `<keyframe>`, so a stock load opens the mechanism folded up: **61.3
-mm** out of pose on the four-bar, and it looks like a model rather than an
-error. The export adds one named `solved`, on `spec.copy()` and never on the
-caller's spec, so a script carrying both `api.dynamics` and `api.mjcf` cannot
-have its simulation's numbers moved by an export. That is structural rather
-than careful, and there is a live test comparing the retained trace bytes
-with and without the export.
-
-Two findings came out of building it. A solved pose of all zeros writes
-`<key name="solved"/>` with **no `qpos` attribute**, because `to_xml()` omits
-anything equal to a default — so every keyframe assertion is the pose after a
-reset and never the attribute text. And, recorded here because M5 is where it
-becomes visible: **FreeCAD's native assembly solver drives a tree mechanism
-to the configuration where each joint's connector frames coincide**, which is
-exactly MuJoCo's reference configuration. Initial placements do not move it
-and joint limits do not move it. So an exported tree opens correctly with a
-keyframe that happens to be all zeros, and the keyframe only becomes
-load-bearing when a loop closure forces a nonzero coordinate. That case is
-proved on the four-bar fixture rather than live, because a planar loop of
-revolutes is reported redundant by this tree's native solver
-(`has_partial_redundancies`) and cannot reach a live gate at all — which is a
-pre-existing property of the assembly workbench and not something M5 should
-have fought.
-
-### 7. Collision geometry only, and what that costs
-
-A component with no `api.collision` exports no geom, exactly as it
-contributes none in a dynamics run. That is what makes the exported file
-provably the simulated model, which is what the exit criterion asks. The
-consequence is stated in the API docstring, in `_capability_api_listing`, in
-`docs/XSCRIPT.md` and in a test, because it is surprising and silent: **a
-mechanism with no collision geometry opens invisible in MuJoCo's viewer.**
-Visual meshes are an M6+ question and were not smuggled in here.
-
-Collision meshes are written **inline**, as `<mesh vertex= face=>` inside
-`<asset>` — so an export is one self-contained file with no STL sidecars and
-no `to_zip()`. Measured at ~51 bytes a vertex, which is what
-`MAXIMUM_MJCF_BYTES` is sized from: one mesh at `MAXIMUM_COLLISION_VERTICES`
-is ~11 MB, and 64 MiB admits five of them.
-
-### 8. Hazard 1, paid a third time and this time made unavailable
-
-The export path performs **no arithmetic**. The spec is already SI,
-`to_xml()` converts nothing, and `qpos_solved` is already in MuJoCo
-coordinates, so there is no number for a second unit-conversion site to
-appear in. M2 answered this hazard with a rule and a grep, M3 and M4 with
-discipline and with suffixed parameter names; M5 answers it structurally,
-which is the first time the failure mode was not merely avoided but made
-impossible to write. `test_dynamics_units`'s grep over the worker half
-covers the rest for free.
-
-### 9. What was extracted rather than copied
-
-Three shared paths, each for a reason its own docstring already gave:
-
-* **`AssemblyDomainAPI._mujoco_model`** — the six parameters and every
-  validation `api.dynamics` and `api.mjcf` share. The test asserts both
-  surfaces produce the *same sentence*, prefix aside, rather than asserting
-  each refusal twice: two copies of the "Earth is 9.81" message is two places
-  for it to drift, and the message is the part a model reads.
-* **`_mujoco_model_inputs`** — the whole of the worker's share of a MuJoCo
-  model, which is reading. An export inherits the `local_frame`-not-
-  `global_frame` trap unchanged, which is precisely why it inherits the
-  function rather than a copy.
-* **`_retain_artifact`** — cap, write, sha256, declare the `artifact_*` keys.
-  Pulled out of `_retain_simulation_trace` for the reason that function's own
-  docstring gives about not having two places for `artifact_kind` to drift.
-
-`_mujoco_graph_contract` is the fourth: the tier-3 re-validation that a
-`body`, `actuator` or `joint_dynamics` really came from the API and not from
-a script-constructed lookalike. Identical question, identical graph.
-
-### 10. Hazard 3, inherited rather than reopened
-
-`compute_project_digest` gives anything that is not `brep`/`mesh` a
-`payload_sha256` of its canonical definition JSON, so the exported XML bytes
-are in **no** project digest — identical to how the trace behaves today. A
-MuJoCo version bump therefore changes every exported file silently. ADR-064
-already routed the real fix (artifact bytes joining the digest) to `main`,
-because the digest code is shared with the kinematics trace; M5 inherits that
-decision rather than reopening it, and publishes `CadexMjcfMuJoCoVersion` so
-the drift is at least legible.
-
-One correction fell out of the same reading: `pixi.toml` said of mujoco
-"DEVELOPMENT ONLY -- this does NOT ship". It ships.
-`CARRIED_PYPI_PACKAGES = ("mujoco",)` in `relocate_conda_environment.py`
-carries it and `build_engine_payload.sh` hard-fails the build if the payload
-cannot import it. The comment predates ADR-061 and was already wrong when M0
-closed. Fixed here because those lines are MJC-owned per ADR-063.
-
-### 11. Merge-back stays deferred
-
-Whether the arc rejoins `main` is ADR-063's question and remains a later
-ADR's answer. M5 existing does not settle it.
-
-### 12. Verification
-
-Engine suite **828 passed** (684 at M4's close). Phase 0 contributed 55 tests
-that import no export path at all — every assertion is about mujoco 3.10.0
-and the spec `build_model` already produces — so a failure there names MuJoCo
-rather than the translator.
-
-The exit criterion is proved by a subprocess run with `python -P` and a
-scrubbed `PYTHONPATH`, which reads the artifact off disk, finds the `solved`
-keyframe by name, resets to it and integrates. It reports whether it could
-import `CadexDynamics`, and every test asserts that it **could not** — a
-subprocess with the engine on its path would prove the file loads somewhere,
-which is not the claim. Two interpreters that have never seen each other
-export the same fixture to the same bytes, and two cadexd processes write the
-same file byte for byte.
-
-Packaged lifecycle gate **9 passed** (8 at M4's close) against a payload
-restaged from the closing commit, with `test_dynamics_mjcf_live.py` and
-`test_dynamics_restart_determinism.py` passing against that same payload —
-ADR-023's rule being that a source tree proves nothing about a payload.
-`pixi run gate` was not re-run and did not need to be: `git diff --name-only
-main...MJC -- shell/` is empty, and that invariant, not a repeated run, is
-what the shell claim rests on.
-
----
-
-## ADR-067 — `MJC` stays, and M5 is why rather than why not (2026-07-31)
-
-**Decision.** The question ADR-063 deferred — *whether the MuJoCo arc ever
-returns to `main`* — is answered **no**, and closed rather than deferred
-again. `MJC` remains permanent. ADR-063's "Not decided here" paragraph is
-superseded by this entry.
-
-**Why now.** ADR-063 named exactly one trigger: *"If M5 (MJCF export with
-exact OCCT inertias) proves out as the independently shippable capability
-`docs/MUJOCO.md` argues it is, that is the natural occasion to revisit."*
-M5 closed on 2026-07-31 (ADR-066). It proved out. So this is the occasion,
-and leaving the question open past its own trigger would be worse than
-either answer.
-
-### 1. The new fact M5 produced, and it points the other way
-
-"Independently shippable" and "free to ship" are different claims, and M5 is
-where they came apart.
-
-`export_mjcf` writes MJCF by calling **MuJoCo's own writer** —
-`MjSpec.to_xml()` — rather than serialising MJCF ourselves. So the capability
-requires `mujoco` at runtime, in the payload, on the machine of every user
-who has it. Measured against the payload built from ADR-066's closing commit:
-**51 MB**. A user modeling a bracket pays all of it and imports none of it.
-
-Had M5 written its own serialiser, "design a mechanism in Cadex, export MJCF
-with exact OCCT inertias" would be a few hundred lines of pure Python
-producing a text file, it would carry no dependency at all, and it could sit
-on `main` for free. That was a real fork in the road and it was taken
-deliberately in the other direction. The reason it was right is also the
-reason it closes this question rather than opening it: **M5's central claim
-is that the exported file is provably the model that was simulated**, and the
-proof is a round trip — write, reload, diff field by field, re-run the OCCT
-inertia comparison against the reloaded model, refuse past tolerance
-(ADR-066 §4). That proof only means anything when the writer and the compiler
-are the same pair. A serialiser of ours would verify against itself, would
-need its own conformance suite against every MJCF element we emit, and would
-drift from MuJoCo's schema on every release — three costs, to save one
-dependency on a branch that already carries it.
-
-So the trigger fired and produced evidence **for** the branch. That is worth
-recording precisely because it is the opposite of what ADR-063 anticipated.
-
-### 2. ADR-063's other arguments are unchanged, and were not weakened
-
-* **The build flag is still refused.** VISION principle 1 — prefer the design
-  that removes a concept over the one that adds a switch. A `WITH_DYNAMICS`
-  option would put a second configuration of the product into every gate,
-  every payload test and every digest argument. M5 made this *more* true, not
-  less: the flag would now also have to gate a publishable output type, five
-  registration entries that cross-check each other at import, and a ninth
-  packaged gate test.
-* **The direction change is still unfinished.** ADR-060 extended the product
-  past CAD into task definitions, offboard training and control policies. M0,
-  M1, M2, M3, M4 and M5 are closed; M6, M7 and M8 are not, and two of
-  `docs/MUJOCO.md` §6's open questions are product questions M6 and M7 cannot
-  dodge — where training runs, and whether a policy asset extends `put_asset`
-  or gets its own op. A branch is where a direction change belongs until the
-  arc it opened is finished, and the arc is three slices from finished.
-* **The sync cost has stayed what it was advertised as.** `main` and `MJC`
-  have not diverged in the wrong direction once: 44 commits ahead, **0
-  behind**, no `shell/` diff across the whole arc, and every non-dynamics fix
-  found on the branch has been routed to `main` rather than landed here
-  (ADR-064's digest change is the live example). The mechanism ADR-063
-  proposed is the mechanism that has been used.
-
-### 3. What would re-open this, so nobody has to guess
-
-The question is closed, not permanently unaskable. Three facts would be new
-enough to warrant a fresh ADR, and nothing less should:
-
-1. **A pure-Python MJCF writer with its own conformance suite**, making the
-   export separable from the dependency. §1 argues against building one for
-   M5's sake; a *different* reason to have one would change this calculus.
-2. **`mujoco` becoming an ordinary conda dependency** — that is, the pixi
-   manifest becoming re-solvable past the `occt ==7.8.1` pin, so
-   `CARRIED_PYPI_PACKAGES` can be deleted. ADR-061 named that exception so it
-   would be easy to remove; removing it would take one of the three costs off
-   the table.
-3. **A product decision that dynamics is core**, which is not an engineering
-   finding and would not arrive through this log.
-
-### 4. Known, measured, and deliberately not fixed here
-
-**30 MB of the 51 is `mujoco/experimental/`** — the MuJoCo studio viewer and
-its extensions, which the engine never imports and which
-`relocate_macos_runtime_rpaths.py` currently re-signs and re-points for
-nothing. Pruning it would take the dynamics payload cost to roughly 21 MB.
-That is `MJC`-owned work (`CARRIED_PYPI_PACKAGES` is on this branch per
-ADR-063) and it is worth doing, but it is not done here: it does not change
-this verdict — 21 MB is still 21 MB a bracket-modeller does not want — and a
-decision ADR is the wrong place to land a payload change. It belongs with the
-next payload work, with its own gate run.
-
-### 5. Consequences
-
-- `CLAUDE.md`'s `MJC` block stands unchanged and is now backed by two ADRs
-  rather than one: do not merge this branch, do not open a PR against `main`,
-  do not read its absence from `main` as unfinished work.
-- ADR-066 §11 said merge-back "remains a later ADR's answer". This is that
-  ADR; the two are consistent and neither is rewritten.
-- `docs/ROADMAP.md`'s M5 line is updated to point here instead of forward.
-- Nothing in the code changes. This entry is a decision, and its whole value
-  is that the next slice does not spend an hour re-deriving it.
 ## ADR-060 — The engine runs headless on Linux (2026-07-31)
 
 **Decision.** Five changes, one pass: the engine now builds, tests, packages
@@ -6615,11 +5457,1478 @@ committed before it.
 
 ---
 
-## ADR-069 — A task is data, and the observation vector is MuJoCo's (2026-07-31)
+## ADR-073 — Opening a file does not show the model (2026-07-31)
+
+**Decision.** Record, as a known and measured gap, that opening a `.blend`
+that already has a `.cadex` project beside it puts **nothing** in the
+viewport. The model appears only when something else provokes an engine
+request — an agent tool call, a slider drag, or the **Rebuild Model** button.
+This entry does not fix it: the fix is a `shell/` change and therefore a
+decision of its own (§5). It exists because the A1 roadmap item said
+something else, and reading A1 was how a reasonable person concluded the
+opposite.
+
+### 1. What was measured
+
+A project built in one session, saved, and reopened in a fresh launch of the
+shipped bundle: `model_objects_on_open = 0`. No BREP objects, no Model
+collection contents, no error, no status line. The engine side is healthy —
+`open_project` runs its restore pass, the re-run reproduces the accepted
+digest, and the script state comes back intact. The shell simply never asks
+for the display.
+
+### 2. The path, in full
+
+`bpy.app.handlers.load_post` → `mesh_agent/__init__.py:159`
+`_load_post_handler` → `:169` `_report_file_change` →
+`cadex_backend.on_file_changed` (`cadex_backend.py:1931`).
+
+`on_file_changed` closes every cadexd child and drops all cached engine
+state, which is its actual job (ADR-046's Save-As problem: a second `.blend`
+must not answer from the first file's project store). It then decides
+whether to say anything, at `:1962`:
+
+```python
+if os.path.isdir(current) or not scene_remembers_a_model(scene):
+    return ""
+```
+
+The `.cadex` directory exists, so this returns early. That branch is correct
+for what the function is documented to do — its return value is *a status
+line for a file with no engine project*, and this file has one. What is
+missing is that **nothing else runs**. No caller queues a rebuild, and
+`load_post` has no other cadex handler.
+
+The hydrating run does exist, and it is not far away: `ensure_open`
+(`cadex_backend.py:539`) performs the restore-verified `open_project` and
+then a second `rebuild` with a `display` request, whose tessellation it
+hydrates. That second run is the 0.49 s that A1 was written about. But
+`ensure_open` is called from the request paths — `write_script`,
+`set_params`, `rebuild_model`, the tool handlers — and from none of them on
+the load path. Hydration is therefore **deferred to the first engine
+request**, not absent from the product; on a session where the user opens a
+file and looks at it, that first request never comes.
+
+The panel does not provoke one either, deliberately: `cached_script_state`
+(`:390`) is read-only and documented as not opening the project, because it
+runs on every panel draw.
+
+### 3. Why the escape hatch is hard to find
+
+The remedy is `mesh_agent.rebuild_model`. Its button lives in
+`CADEX_PT_script` (`spaces.py:241`), a sidebar panel whose `poll` requires
+the active text editor to be showing the `model.py` mirror — so it is
+invisible until the user opens the script editor and selects that text. The
+only other placement (`ui.py:387`) is inside the parameters panel's error
+box and draws only when `model.last_error()` is set, which after a clean
+open it is not. F3 search finds the operator, which is how it is reachable
+in practice, and that is not a discovery path a user should need.
+
+### 4. What A1 actually is
+
+`docs/ROADMAP.md`'s and `docs/ARCHITECTURE.md`'s A1 entries both read as a
+latency item — "`display` on `open_project` … measured cost of not having it
+is 0.49 s per project open" — and both presuppose that a hydration rebuild
+happens on open. The presupposition is what makes them misleading: the
+0.49 s is real and is the cost of the second script run, but it is paid on
+the first **engine request**, not on the file open, and until that request
+arrives the cost is not 0.49 s but an empty viewport.
+
+Both entries are re-scoped in this commit to say so. A1 keeps its original
+content — folding the two runs into one is still the engine-side win it
+always was — and gains the sentence that the file-open path does not run
+either of them.
+
+### 5. Why the fix is not here
+
+Hydrating on load means calling `ensure_open` (or queueing a rebuild) from
+`_load_post_handler`, in `shell/`. That has three properties that make it a
+decision rather than a patch:
+
+- It spends the `shell/` diff. On `main` that is an ordinary conservative-zone
+  change; on `MJC` `git diff main...MJC -- shell/` is empty and staying that
+  way is a stated position.
+- It makes opening a file spawn a `FreeCADCmd` child and run two scripts,
+  synchronously, inside a `load_post` handler — which is the wrong place for
+  a second of blocking work, so it wants the asynchronous lifecycle
+  (`begin_rebuild_model`) and therefore a policy for what the viewport shows
+  while it runs.
+- It changes what a failed restore does at file-open time. Today a project
+  whose script no longer reproduces its geometry reports that at the first
+  request, where there is a conversation to report it into. On load there is
+  not one yet.
+
+A1 landing on the engine side (`display` on `open_project`) reduces the cost
+but does not remove any of the three, because the shell would still have to
+issue the request.
+
+### 6. Consequences
+
+- No behaviour changes. This is a documentation commit: ADR plus the two A1
+  entries.
+- The A1 entries stop implying hydration-on-open, which is what let this go
+  unnoticed. Anyone reading them now learns the gap in the same paragraph as
+  the optimisation.
+- `cadex_backend.py`'s module docstring — "open the project root (beside the
+  .blend), rebuild once to hydrate the viewport" — describes `ensure_open`
+  and remains accurate for it. It is not edited, because the sentence is
+  true of the seam it documents; what is untrue is only the inference that
+  the seam is entered on load.
+- The eventual fix is named and unscheduled. Whoever takes it should read §5
+  first and expect to land the asynchronous path, not the one-line call.
+
+---
+
+## ADR-074 — The wire meets its terminal square (2026-08-01)
+
+**Decision.** Three fixes to things that shipped wrong in the first real
+session with the Wiring editor. Two are one-line-shaped and one is not.
+
+1. `CadexWiringTree` gains **`get_from_context`**, so the node editor's
+   canvas shows the tree its own sidebar was already listing.
+2. The chat's controls become **one row of buttons under the message box**,
+   with an always-drawable **Rebuild Model** in it, and the header keeps
+   status only.
+3. `part.cable`'s spline is **constrained to leave and arrive on the
+   terminal's axis**, its stand-off is floored by the run a joint needs, and
+   it is swept in the **corrected** frame rather than the true Frenet one.
+
+### 1. The graph canvas was blank while the sidebar was full
+
+`node_draw_space` wraps *everything it draws* in `if (snode.treepath.last)`
+(`editors/space_node/node_draw.cc`), and only `ED_node_tree_start` pushes
+onto `treepath`. `snode_set_context` calls it on every redraw — but only for
+a tree type that supplies a `get_from_context` callback, and ours did not, so
+`ntree` stayed null and the editor drew an empty grid.
+
+Nothing noticed, because `wiring_ui._tree` reads `context.scene.cadex_wiring`
+**directly** and uses `space_data.tree_type` only as a filter. That is
+exactly why the panels looked healthy: boards, wires, gauges and terminals
+all listed, on a blank canvas.
+
+The callback is the fix rather than a patch, because it repairs the editor
+**however it is opened** — from the editor-type menu, from a restored
+`.blend`, from a split — with no operator involved and nothing to keep in
+sync. `MESH_AGENT_OT_toggle_wiring` is the secondary half: an explicit
+open/close for the button row. Its predicate matches on
+`area.spaces.active.tree_type`, not on `area.type`, because `NODE_EDITOR` is
+a shared space type and a toggle keyed on the type alone would close somebody
+else's compositor. And its ordering is load-bearing:
+`rna_SpaceNodeEditor_node_tree_poll` rejects a `node_tree =` assignment
+unless `snode->tree_idname` already agrees, so `ui_type` is set first, inside
+a `temp_override` carrying the window — without which an area-type change
+silently no-ops. A test asserts that order against the operator's own source,
+because the order *is* the bug.
+
+### 2. One row of buttons, and something safe to press
+
+The controls were split across two places — the two pin gestures in the chat
+header, everything else under the message box — so the answer to "where is
+the button" depended on which button. The header now carries only what is
+*status* (the model dropdown, which is a setting, and the pinned count) and
+one row carries every action, in four groups: what the next message will
+carry, what acts on the model, what opens a view, and the turn itself.
+
+**Rebuild Model** is the addition. Its poll is only "the assistant is idle",
+so it is always drawable, and it re-runs the script the engine already holds
+without sending anything — the documented safe thing to press when it is
+unclear which side is wrong (ADR-039). Deliberately *not* "Rebuild From Saved
+Script", which pushes this file's text buffer over the engine: wrong
+semantics for a button that is always on.
+
+**Define Terminal is drawn disabled rather than hidden** outside Edit Mode.
+A row that changes width as you enter and leave Edit Mode moves every other
+button under the pointer.
+
+### 3. The wire clipped through its solder joint
+
+Three independent faults, found in that order, each one uncovering the next.
+
+**The spline had no tangent constraint.** `_sweep_conductor` interpolated
+with free ends, so a global C2 fit left the port on whatever tangent
+minimised its own energy — measured at **9.7 degrees off a bore's own axis**
+on the probe plate. The router's straight stub is straight only as a
+polyline; the spline through it bows from parameter zero. And the profile
+circle is oriented off that same first tangent, so the error showed up twice:
+as a bowed lead, and as a start face tilted against the axis — the misaligned
+ring where the collar meets the wire.
+
+Passing `InitialTangent`/`FinalTangent` fixes the direction. The *magnitude*
+had to be measured: OCC's default `Scale=True` keeps the direction and picks
+the speed itself, and on a five-waypoint route it picks one that makes the
+whole fit wavy — 45.5 mm of spline against 37.6 mm free, swinging 5.5 mm
+below a board it started 0.4 mm under. `GeomAPI_Interpolate` parameterises by
+chord length, so the natural speed is ~1 whatever the model's size: a **unit
+tangent with `Scale=False`** asks for the direction and leaves the shape
+alone (38.2 mm, same excursions).
+
+**The stand-off was shorter than the joint.** A joint holds the lead straight
+for `fillet_height + collar_height` above the entry face — 1.005 mm on the
+probe plate — while the router's anchor, the first point the search may move,
+sat 0.5 mm above it. Nothing connected the two numbers. `CadexSolder`
+gains **`lead_run_mm(metrics, gauge_mm)`**, which reads the arithmetic
+`solder_specs` already does rather than restating it, and the part worker
+floors each end's stand-off with it *at the call site* — leaving
+`_end_standoff`'s signature and its pinned test intact. `part.cable` never
+learns whether a joint exists; it leaves enough straight lead that one
+*could* be there, which keeps the two operations independent. A terminal that
+cannot be soldered at all (a literal port, a lead too fat for its bore)
+reserves nothing, because refusing a route over a joint nobody asked for
+would couple them in exactly the direction this is keeping apart.
+
+**And the sweep frame was wrong for cables the whole time.** With the tangent
+constrained, the pinned four-hole-plate test still failed: the swept tube
+bulged 1.1 mm sideways. ADR-057 pinned **true** Frenet because *corrected*
+Frenet collapses helical spines — up to 51% of the volume missing on a
+six-way lay. But true Frenet takes its normal from the curve's curvature, and
+a routed cable is mostly straight. Measured against `pi r^2 L`, ordinary
+two-port runs came out at **0.78 and 0.58** of the volume they should have,
+folded through themselves. Corrected held all three probe runs to within
+0.06%. So the frame is now per-operation: a cable sweeps corrected, a
+bundle's conductors sweep true Frenet, and both call sites say why.
+
+The part worth remembering: **boolean operations against a folded sweep
+silently return nothing.** That is how a wire drifting 0.09 mm off-axis
+inside a 0.3 mm bore reported *exactly zero* shared volume with the joint
+around it, and how a test asserting that zero passed for two ADRs. It was
+pinning a broken sweep, not a straight wire. It now asserts a bound on the
+sliver a straight-bore joint and a fitted spline must share, and the real
+measurements moved the right way: mid-barrel drift 0.093 mm → 0.031 mm, total
+shared volume 0.094 mm³ → 0.038 mm³.
+
+**What was tried and dropped.** The same tangent constraint on `part.bundle`'s
+shared spine. A conductor is swept along a *lay* resampled off that spine at
+97 points, so the spine's end tangent reaches the wire only through the
+resample — and the pipe shell's frame is already a coin flip across
+neighbouring parameters: at fixed geometry the baseline sweep measures between
+**0.75x and 1.47x** of `pi r^2 L` as `twist_pitch_mm` and `slack` move by a few
+percent. Constraining the spine re-rolled that dice and the pinned three-phase
+case landed badly. The cable, whose spline *is* the wire, gets the constraint;
+the bundle waits for its frame to be fixed, which is now a known issue in
+ROADMAP with numbers attached.
+
+### The cost, stated plainly
+
+Every cable's swept BREP moves, so **`shape_sha256` moves and every saved
+project with a cable must be re-accepted.** Same class of change as ADR-064
+and the same remedy. ROADMAP records the sibling `_sag` −Z fold as unfixed
+*for this reason*; the difference is that this one is not cosmetic. A wire
+that clips through the joint holding it is wrong in the render, and a
+conductor missing 42% of its volume is wrong in anything downstream that
+measures it.
+
+**Corrected the same day, after the first project hit it:** this paragraph
+originally said the re-acceptance was "one click, or one `pixi run rebuild`".
+It is neither. The mismatch is caught by the **restore pass at open**, so the
+project does not open at all — `ensure_open` returns
+`CADEXD_RESTORE_FAILED`, and **Rebuild Model is behind that same call** and
+cannot be the remedy (nor should it be: re-running a model whose script no
+longer reproduces it is what the guard exists to stop). The remedy is
+`write_script`, which passes `unrestored_ok=True` and re-accepts — but the
+button that calls it, `adopt_script`, is drawn only for an *empty* engine
+project or a *dirty* buffer, and a project accepted under an older engine is
+neither. So there is no route out of the state in the UI, and recovery is
+`open_project restore=false` followed by `write_script` by hand. Measured on
+`wiring-demo/harness.cadex`: accepted `7e073ae6…`, restored `25fdf64f…`, four
+cables, recovered and reopened clean. The gap and the shape of its fix are in
+ROADMAP under *Later — identified, not scheduled*; it wants its own ADR
+because it is a `shell/` diff and a product decision, and it is now blocking
+in a way ADR-064 only predicted.
+
+### Verification
+
+Engine: 615 tests green, including four new ones — `lead_run_mm` read off the
+joint's own outline and zero for a terminal that cannot carry one (pure
+Python), and two kernel probes: the wire's start tangent and start-cap normal
+against the terminal's axis, its volume against `pi r^2 L`, its centreline
+drift at five heights through barrel and collar, and the anchor sitting
+exactly `depth + lead_run` along the axis. Shell: `bl_mesh_agent_wiring.py`
+and `bl_mesh_agent.py` green on the shipped bundle, with new tests for
+`get_from_context`, the toggle's ordering and its discriminating predicate,
+and the button row's contents, ordering and greyed-out-not-hidden width.
+
+**Not verified headless, and unchanged from ADR-066:** the link-drag gesture
+itself. `node.link` does not exist in a bundle that never registered the
+space type, so it has only ever been driven from Python.
+## ADR-075 — Dynamics runs on MuJoCo (2026-07-30)
+
+**Decision.** Cadex gains rigid-body dynamics, and MuJoCo is the engine for
+it. Five parts:
+
+1. **Dynamics is in scope**, as a sibling of the kinematics
+   `api.simulation` already provides (ADR-048). `docs/VISION.md`'s
+   "Assemblies — links, joints, solved placements, motion" covers it.
+2. **The scope extends past dynamics** to task definitions, offboard
+   training, and policy rollout — the arc in `docs/MUJOCO.md`, slices
+   M5–M8. Cadex becomes a robot design *and* control tool. This is a
+   direction change and it is made deliberately here rather than arrived at.
+3. **MuJoCo is kept, not forked.** It joins OCCT in the category of
+   kernels we depend on and do not own. Apache-2.0, upstream, unmodified;
+   `mjSpec` and the plugin system are the extension points a fork would
+   otherwise be for. This is the opposite of the FreeCAD and Blender
+   relationship, where the fork exists because the thing is being replaced.
+4. **In this repository, engine-side.** Not a new repository: ADR-030
+   merged two into one and Phase 13a deleted the cross-repo payload
+   machinery a third would recreate. Nothing under `shell/` imports
+   mujoco — a physics authoring path in the shell would be a second source
+   of truth, the way the bpy modes were (ADR-025, ADR-030).
+5. **A trained policy is an asset, not a derivation.** VISION principle 3
+   says any state that cannot be rebuilt from the script is a bug. Policy
+   weights cannot be — they are the output of hours of stochastic compute.
+   They live in the project store's `assets/`, digest-pinned, exactly as an
+   imported STL does; the script declares reproducibly *how* they were
+   trained. What survives is the property that matters: a rollout of a
+   fixed policy on a fixed model is deterministic, so trace digests hold.
+
+**Why this is cheap enough to start now.** `cadex-assembly-simulation-trace-v1`
+does not care what produced it. A MuJoCo backend emitting the same schema
+needs no protocol op, no response key, no `docs/INTEGRATION.md` row and no
+`shell/` diff — `cadex_animate.py` has played traces since ADR-050. A policy
+rollout is also a trace, so one existing seam carries the whole arc. Doing
+this after Phases 11/12 would cost the same work against two moving targets.
+
+**Why MuJoCo and not the alternatives.** It is the only option that is
+Apache-2.0, headless-first, deterministic for a fixed binary, buildable into
+a 14 MB payload, and has a programmatic model-construction API (`mjSpec`)
+that maps onto an xscript graph without an XML round-trip. The GPU backends
+(MJX, MuJoCo Warp) are for massively parallel RL rollouts and are **not**
+adopted here — one user, one mechanism, CPU stepping at 2 kHz.
+
+**The version pin is exact**, `== 3.10.0`, for precisely the reason
+`occt == 7.8.1` is (ADR-025). MuJoCo's own `VERSIONING.md` disclaims
+numerical reproducibility across releases; the pipeline is deterministic for
+a fixed binary but contact integration is float-sensitive and the solver
+changes between versions routinely. Every `open_project` re-runs THE script
+and asserts digest equality, so an unpinned patch bump would silently turn
+every stored simulation into a restore failure. For the same reason MuJoCo
+is run **single-threaded** — upstream has open reproducibility issues with
+multi-threaded island solving.
+
+**Units are the highest-risk detail and get a test before a feature.**
+FreeCAD is millimetres; every MuJoCo default assumes SI metres and
+kilograms. The failure mode is silent: a part falls at 9810 mm/s² through
+the floor and looks entirely plausible.
+
+**Four of thirteen joint kinds do not map and are refused.** MuJoCo has
+`free`/`ball`/`slide`/`hinge` plus equality constraints. `fixed`,
+`revolute`, `slider`, `ball` and `cylindrical` map directly; `screw`,
+`gears`, `belt` and `rack_pinion` map through `equality/joint` polynomial
+coupling; `distance`, `parallel`, `perpendicular` and `angle` are
+*placement* constraints with no runtime equivalent and get a sentence
+saying so.
+
+**Training is offboard, by physics rather than preference.** MJX needs
+JAX-on-GPU and MuJoCo Warp needs CUDA; the reference result — a Unitree G1
+gait in ~90 minutes — is 4096 parallel environments on an RTX 4090. This
+repository's development platform is `osx-arm64`, where JAX's GPU story is
+`jax-metal` 0.1.0 plus community MPS backends with known problems. The
+boundary this forces is a good one: the engine stays a geometry-and-dynamics
+service, the shell stays a viewer, and the training bundle goes to a machine
+with a GPU.
+
+**Consequences.**
+
+- `docs/MUJOCO.md` is the framework: slices M0–M8, each a resting place.
+  M5 (MJCF export with exact OCCT inertias) is shippable on its own and is
+  the point past which the rest is optional.
+- `docs/VISION.md`'s scope list gains dynamics and control. Not done in this
+  ADR — it is a VISION edit and belongs with the slice that first ships user-
+  visible dynamics (M3), not with the decision to pursue it.
+- Exact mass properties from OCCT into `<inertial>` is the capability the
+  robotics ecosystem does not have and we get nearly free. It lands in M2.
+- The 10 000-frame / 100 000-pose-sample cap in `api.simulation` was sized
+  for kinematics and will not survive an RL rollout. M3.
+
+**How MuJoCo is delivered is NOT decided here.** M0 found the two routes
+each blocked, and the resolution is its own decision:
+
+- **conda `mujoco-python 3.10.0`** is the correct answer for shipping —
+  package-managed, so `relocate_conda_environment.py` carries it into the
+  payload. It cannot be installed today. Adding *any* dependency invalidates
+  `pixi.lock` and forces a full re-solve, and a full re-solve of the current
+  manifest **fails on its own, before MuJoCo is mentioned**: conda-forge has
+  moved to `qt6-main` 6.11 / `occt` 8.0 / `opencv` 5.0 while the manifest
+  pins `qt6-main >=6.8,<6.9` and `occt ==7.8.1`, so `opencv`, `vtk` and
+  `smesh` have no viable candidates. The manifest works only by lockfile
+  accident and has for some time.
+- **pypi `mujoco 3.10.0`** installs cleanly — it touches only the pypi half
+  of the lock — and is verified working: `mjSpec` builds, `mj_step` runs, a
+  free-fall integrates correctly, and **no GL module is imported at all**,
+  so the payload's no-renderer guarantee is not at risk. But the wheel is
+  not conda-package-managed (zero `conda-meta` entries), and
+  `relocate_conda_environment.py` deliberately ships only `is_conda` files,
+  so it **would be silently dropped from the payload**.
+
+Neither unblocking move is small, and neither is about MuJoCo: repairing the
+manifest means re-pinning the geometry environment, which can move accepted
+digests, and teaching the relocation script to carry pypi packages means
+changing ADR-023's shipping path. Recorded here so the next person does not
+rediscover it. M1 is throwaway prototyping in the dev environment and is
+**not** blocked by either.
+
+---
+
+## ADR-076 — The payload carries the MuJoCo wheel, by name (2026-07-30)
+
+**Decision.** `relocate_conda_environment.py` gains `CARRIED_PYPI_PACKAGES`,
+a list of site-packages directories copied verbatim despite no conda package
+owning them. It contains one entry, `mujoco`. The engine payload build then
+asserts the payload can *import* it, at the pinned version, or fails.
+
+This resolves the delivery question ADR-075 left open, and rejects the two
+alternatives it named.
+
+**Why not repair the manifest instead.** That is the "correct" answer in the
+abstract — conda-forge `mujoco-python` is package-managed and would need no
+exception at all. But the repair is unbounded and its risk is in the wrong
+place. The root manifest cannot be re-solved because the channel moved past
+pins we hold deliberately (`occt ==7.8.1`, `qt6-main >=6.8,<6.9`), so the fix
+is to pin every drifting package — `opencv`, `vtk`, `smesh`, and whatever the
+solver reveals one layer down — across five platforms. `recipe.yaml`'s `run:`
+list is a second solve with the same drift. Every one of those pins touches
+the environment that builds geometry, and ADR-025 is a standing reminder that
+moving a geometry dependency moves accepted digests. Bundling that into
+"deliver a physics library" would be trading a large unrelated risk for a
+small related one. It is a real problem, it is now written down, and it
+deserves its own change.
+
+**Why carrying the wheel is safe here, specifically.** Shipping an unmanaged
+file is the exact thing this script exists to prevent, so the exception needs
+a reason rather than a convenience. MuJoCo's wheel bundles
+`libmujoco.<version>.dylib` and four plugin dylibs *beside* the extension
+modules and reaches them through `@loader_path`. It references nothing in the
+conda prefix. It is relocatable by construction — which is the property the
+`is_conda` filter is a proxy for, held directly instead of inferred.
+
+Verified rather than argued: a copy of the package was put through
+`relocate_macos_runtime_rpaths.py` and imported from its new location. The
+sanitizer deletes a stale absolute build rpath the wheel ships
+(`/Volumes/BuildData/...`), keeps `@loader_path`, re-points the
+`experimental/studio` extensions at `@loader_path/../..`, and re-signs. The
+relocated copy integrates the same free-fall to six decimals. No exclusion
+from rpath handling is needed or wanted — an earlier draft of this change
+asserted one, and the scan disproved it.
+
+**The list is names, never patterns.** A glob would make the next addition
+invisible; a name makes it a decision with a comment next to it. A named
+package that is not installed raises rather than being skipped, because the
+silent version of this failure ships a payload with no dynamics engine and
+breaks at the user.
+
+**The gate is an import, not a file check.** `build_engine_payload.sh` runs
+`bin/python -c 'import mujoco'` against the packaged tree and compares the
+version to the pin. A present directory proves nothing about a bundled dylib
+whose rpath was just rewritten, and ADR-023's rule — a source tree that
+passes proves nothing about a payload — is exactly this case. It also covers
+the stage-only path, which carries mujoco for an unrelated reason (it copies
+`lib/` wholesale) and could stop doing so without anyone noticing.
+
+**Consequences.**
+
+- The payload grows **53.5 MB**, not the ~14 MB `docs/MUJOCO.md` estimated
+  from the conda package. The wheel is fatter than the conda split — it
+  carries the plugin dylibs (`libactuator`, `libelasticity`, `libsdf_plugin`,
+  `libsensor`) that conda-forge separates. The estimate in MUJOCO.md §2 is
+  corrected.
+- 217 files, `__pycache__` excluded, `mujoco-3.10.0.dist-info` included so
+  the payload's own metadata stays honest about what is installed.
+- M2 has somewhere to ship to, which was the point.
+- When the manifest is eventually repaired, `CARRIED_PYPI_PACKAGES` should
+  empty and `mujoco-python` should move to `recipe.yaml`'s `run:` list. The
+  constant exists to be deleted; it is named so that the deletion is easy to
+  find.
+
+**Addendum (2026-07-30) — the gate found a dangling `bin/python`.** On its
+first run the import gate failed, and not on mujoco: the payload's
+`bin/python` was a broken symlink. A conda `bin/python` points at
+`bin/pythonX.Y`; the prune's keep list names `python` but not the versioned
+interpreter behind it, so `cp -a` carried the link and the next line deleted
+its target. The payload has shipped it broken for as long as the prune has
+existed, and nothing noticed because nothing ran it — discovery goes through
+`cadex-engine.json`, which names `freecadcmd`, and `INTEGRATION.md`'s payload
+listing shows `bin/{freecadcmd,CadexGeometryWorker,python}` as though all
+three worked. `build_engine_payload.sh` now carries one level of
+same-directory symlink target alongside the link.
+
+Worth stating plainly because it is the argument for the gate's shape: a file
+check would have passed. `test -e bin/python` is true for a dangling symlink,
+and `test -f` on the *directory listing* looks right too. Only running the
+interpreter found it. Same for the thing the gate was actually built for — a
+present `site-packages/mujoco` proves nothing about a bundled dylib whose
+rpath was just rewritten.
+
+Verified after the fix: `pixi run stage-engine` produces a 2.4 GB payload
+whose own `bin/python` imports mujoco 3.10.0 from its own site-packages,
+integrates the reference free fall to the same six decimals, and loads no GL
+module. Packaged lifecycle gate (`CADEX_ENGINE_ROOT=<payload> pytest
+test_cadexd_lifecycle.py`): 6 passed.
+
+---
+
+## ADR-077 — `assembly.dynamics`, and the translator behind it (2026-07-30)
+
+**Decision.** Slice M2 of `docs/MUJOCO.md` lands: an assembly can be run as
+rigid-body dynamics on MuJoCo and publishes through the trace path
+`assembly.simulation` already used. Five parts, each with a reason a future
+reader can check.
+
+1. **`api.dynamics` produces `output_type: "simulation"`, not a new type.**
+   Not tidiness — `cadex_animate._simulation_entries` selects on
+   `artifact_kind == "assembly_simulation_json"` and, on finding two, bakes
+   **neither**: it clears the scene, drops the Simulation panel and reports
+   into a message the UI never shows. A sibling type would let a script
+   declare a kinematics *and* a dynamics run and silently lose the animation
+   it already had. Sharing the type puts both under the existing "exactly
+   one simulation" rule in `_simulation_contract`; relaxing that check from
+   `!= "simulation"` to `not in {"simulation", "dynamics"}` is the whole
+   change, and mixing `api.motion` with `api.dynamics` is refused.
+
+2. **`api.body` is a non-publishable intermediate**, exactly as `connector`
+   is: it wraps a component with dynamics-only data, is never returned as an
+   output, and therefore needs no native type, no publication branch and no
+   `configure_order` row. `api.component` is untouched, so the kinematics
+   path cannot regress. **Density is required and never defaulted** — it
+   scales mass, inertia and every fall time, and a guessed one produces an
+   animation that is plausible and wrong. The refusal names steel and
+   aluminium rather than picking one.
+
+3. **`CadexDynamics.py` is a pure module staged by filename**, like
+   `CadexRouting` (ADR-056). It imports no FreeCAD, and it imports `mujoco`
+   *inside* the functions that build a model. `test_engine_purity_guardrails`
+   asserts the engine's import closure equals `DECLARED_ENGINE_MODULES`
+   exactly, so this module must be reachable from the sandboxed worker and
+   never from `cadexd`: a service whose job is reading NDJSON off a pipe does
+   not need 53 MB of physics engine resident. The split rule is stated once
+   and greppable: the pure module does every arithmetic operation *including
+   every unit conversion*; the worker does every FreeCAD read and nothing
+   else.
+
+4. **The model's reference configuration is deliberately not the solved
+   pose.** A tree body's frame relative to its parent is `L_p ∘ inv(L_c)` —
+   where the two connector frames coincide — with the joint at `L_c`'s origin
+   along its +Z. The solved pose is then *derived* as a joint coordinate by
+   inversion and checked against `component_placements`. Building at the
+   solved pose and checking the model's own reference configuration would
+   assert only that the same numbers were written twice: it passes on a model
+   whose joint axes are entirely wrong. Perturbation parity — displace each
+   joint by δ, and exactly its subtree must move, by exactly that joint's own
+   motion — is what separates "the tree is right" from "the mechanism is
+   right".
+
+5. **Collision geometry is deferred to M3**, deviating from `docs/MUJOCO.md`
+   M2's "primitives only". That was written assuming geoms were needed to
+   infer mass; they are not, because we have the BREP. Bodies carry explicit
+   inertia and no geometry at all (`model.ngeom == 0`, asserted), so contact
+   cannot participate in a result this slice has not validated, and no
+   unvalidated collision primitive is carried around waiting for M3.
+
+**What was measured rather than assumed.** Five things, each of which was
+either wrong in the plan or unknowable from documentation:
+
+- **`Shape.MatrixOfInertia` is taken about the centre of mass**, not about
+  the origin as `docs/MUJOCO.md` M2 states. The reading is still taken from a
+  copy translated to the origin, which is correct under either convention and
+  cannot suffer the cancellation that reading-and-subtracting would: for a
+  part 500 mm out the origin term is 27x the centre-of-mass term here, and a
+  small feature far from the origin would lose most of its significant digits
+  to the difference.
+- **MuJoCo's `balanceinertia` rewrites exact inertia into invented numbers**
+  — `[0.001, 0.001, 1.0]` compiles to `[0.334, 0.334, 0.334]`. It, and
+  `boundinertia`/`boundmass`/`inertiafromgeom`, are set off; and because a
+  flag is only a promise about defaults, every build re-checks the compiled
+  mass and principal moments against the OCCT numbers per body.
+- **`compiler.degree` defaults to degrees**, which silently turned a
+  `[-1, 1]` joint range into `[-0.017, 0.017]`.
+- **A body-anchored `connect` resolves its second anchor through the model's
+  reference configuration.** With this model's reference configuration that
+  closed a four-bar 16 mm from where it belonged, in XML that looked
+  ordinary. Closures are written against **sites** placed at the two
+  connector frames instead, so nothing is inferred.
+- **Equality constraints are soft.** At MuJoCo's default time constant a
+  driven four-bar drifted 3 mm open on a 200 mm mechanism; at the default
+  impedance a heavy nut overwhelmed its screw coupling completely (610 mm of
+  travel where the pitch allows 105). `solref` at two timesteps and `solimp`
+  at (0.99, 0.9999) bring those to 0.05 mm and 0.8%.
+
+**The coupled joints are measured against OndselSolver, not derived.**
+Driving one revolution through the real kinematics path gave: gears
+counter-rotate at `−r1/r2`; a belt drives at `+r1/r2`; and a screw advances
+`pitch` millimetres per **revolution**, settling the 2π ambiguity in a
+property whose UI label says only "Thread pitch".
+`test_dynamics_ondsel_parity` keeps those measurements as a gate, because a
+wrong sign is a gear train running backwards, which looks exactly like a
+working mechanism. **`rack_pinion` is refused** in M2: its native constraint
+acts along a marker frame OndselSolver derives specially, the measurement
+run did not produce a clean `x = R·θ`, and the point of measuring is to not
+ship the guess.
+
+Also corrected from the plan and from `docs/MUJOCO.md` M2: **all four coupled
+kinds attach nothing.** `AssemblyObject::isJointTypeConnecting` returns false
+for exactly screw, rack-and-pinion, gears and belt, so FreeCAD's own solver
+never uses them to place a part. "A screw is a hinge plus a coupling" was one
+joint too generous; it is a coupling between coordinates a slider and a
+revolute already own.
+
+**A correction ADR-075 owes itself.** ADR-075 justifies the exact version pin
+by claiming "every `open_project` re-runs THE script and asserts digest
+equality, so an unpinned patch bump would silently turn every stored
+simulation into a restore failure." **That is not true.**
+`compute_project_digest` (`cadex_project_worker.py`) branches on
+`artifact_kind` for `brep` and `mesh` and falls through to `payload_sha256`
+over the script *definition* for everything else, so a simulation trace's
+`artifact_sha256` is in no digest at all. A MuJoCo version bump would change
+every trace completely and the digest would not move — which is strictly
+worse than the ADR describes, because it is silent rather than loud. The
+exact pin stands on its own merits (ADR-025's reasoning about kernels, and
+MuJoCo's own `VERSIONING.md`), but not on that argument. M2 therefore gates
+determinism with its own test — same inputs, byte-identical model and
+configuration, within one process — and leaves the question of bringing
+trace bytes into the digest to M3, which needs OndselSolver's own byte
+reproducibility proven first.
+
+**Not in this slice**, deliberately: contact and collision geometry,
+damping/armature/stiffness, gravity as a script parameter, split solver and
+trace timesteps, the cross-restart determinism gate, actuators (M4), MJCF
+export (M5), mesh collision (M3), slider and cylindrical loop closures (they
+need a tendon), and flexible subassemblies — one component is one body, and
+a flexible one is refused rather than quietly assumed rigid.
+
+**Evidence.** Engine suite 445 passed (312 before this slice). The live
+cadexd lifecycle gate publishes a dynamics script end to end: FreeCAD places
+the components, MuJoCo reproduces those placements to the micrometre in the
+first solved frame, and the arm then swings from rest at 0.095, 0.393,
+0.882 rad over three samples — growing as t², which is what a constant torque
+on a mass does and what nothing in that script prescribed. `shell/` diff:
+empty. Protocol change: none.
+
+---
+
+## ADR-078 — `MJC` is a permanent branch, not a merge candidate (2026-07-30)
+
+**Decision.** The MuJoCo dynamics arc — `docs/MUJOCO.md` slices M0–M8,
+ADR-075, ADR-076, ADR-077 and everything after them — lives on the branch
+`MJC` **permanently**. It is not a feature branch awaiting a merge window.
+`main` stays free of MuJoCo, and a build from `main` neither carries the
+dependency nor pays for it.
+
+**Rationale.** Dynamics is not free to carry. The payload grows 53.5 MB
+(ADR-076) for a wheel that a user modeling a bracket will never import, and
+that wheel arrives through `CARRIED_PYPI_PACKAGES` — a named exception in
+`relocate_conda_environment.py` that exists only because the pixi manifest
+has not been re-solvable since conda-forge moved past our `occt ==7.8.1`
+pin. Someone who is not going to simulate a mechanism should not build a
+physics engine, ship one, or inherit that exception.
+
+That argument is about cost, and cost alone would also be satisfied by a
+build flag. A flag was not chosen, for the reason VISION principle 1 gives:
+prefer the design that removes a concept over the one that adds a switch. A
+`WITH_DYNAMICS` option would put a second configuration of the product into
+every gate, every payload test and every digest argument — two of something,
+which the non-goals list forbids in the finished product. A branch costs a
+periodic sync and nothing else.
+
+It also keeps ADR-075's scope decision honest. That ADR extended the product
+past "CAD" into task definitions, offboard training and control policies —
+a real direction change, approved, but one whose consequences are still being
+discovered a slice at a time. A branch is where a direction change belongs
+until the arc it opened is finished.
+
+**Consequences.**
+
+- **Changes flow `main` → `MJC`, never back.** `MJC` syncs from `main`;
+  nothing on `MJC` is merged to `main`. Work discovered on `MJC` that is
+  *not* dynamics-specific — a bug in the trace path, a payload prune fix —
+  belongs on `main` first, and reaches `MJC` on the next sync.
+- **What `MJC` owns**, and what a sync must therefore never drop:
+  `src/Mod/cadex/CadexDynamics.py`, its row in
+  `src/Mod/cadex/CMakeLists.txt`, the `api.dynamics` / `api.body` surface in
+  `cadex_assembly_api.py` and `cadex_assembly_worker.py`, the ten
+  `cadex_tests/test_dynamics_*.py` suites and their fixtures, `docs/MUJOCO.md`,
+  ADR-075…ADR-078, the mujoco lines in `pixi.toml` / `pixi.lock`, and
+  `CARRIED_PYPI_PACKAGES` in
+  `package/engine/scripts/relocate_conda_environment.py`.
+- **Shared docs diverge, and are written to minimise it.** `VISION.md`,
+  `ROADMAP.md` and `CLAUDE.md` differ between the branches. On `MJC` the
+  dynamics material is an **appended, branch-marked block** in each rather
+  than an in-place rewrite of an existing list, because an insertion resolves
+  on sync and a rewritten paragraph conflicts. This is the same rule
+  `CLAUDE.md` already states for the inherited `shell/` tree, applied to our
+  own docs for the same reason.
+- **`docs/DECISIONS.md` is the exception that cannot follow that rule**, since
+  it is append-only and both branches append. Sync conflicts there are
+  expected, mechanical, and resolved by keeping both sides in date order.
+- **The seam that made this possible is the same one M1 proved.** Dynamics
+  needed no protocol op, no response key and no `shell/` diff (ADR-077), so
+  the branch delta is confined to the engine and its docs. A dynamics arc
+  that had required protocol changes could not have been branched this
+  cheaply — which is an argument for keeping M3–M8 inside the existing trace
+  contract wherever it is honest to do so.
+- **Not decided here:** whether the arc ever returns to `main`. If M5 (MJCF
+  export with exact OCCT inertias) proves out as the independently shippable
+  capability `docs/MUJOCO.md` argues it is, that is the natural occasion to
+  revisit — and it would be a new ADR, not an assumption anyone may act on.
+
+---
+
+## ADR-079 — Contact, and the six numbers M3 measured rather than inherited (2026-07-30)
+
+**Decision.** Slice M3 of `docs/MUJOCO.md` lands: dynamics bodies collide.
+`assembly.collision(kind, ...)` is a new non-publishable intermediate,
+`api.body` takes `collision=`, and `api.dynamics` takes `gravity_m_s2` and
+`solver_step_s`. Contact, friction, restitution and a cross-restart
+determinism gate exist, and a mechanism topples, lands and stops.
+
+No protocol change, no new response key, no `shell/` diff — `git diff
+main...MJC` still names no file under `shell/`, which is the invariant
+ADR-078 said the branch would keep.
+
+Six phases, each committed as a resting place, and phase 0 wrote no feature
+code at all. That ordering is deliberate and it is the reason this ADR is
+mostly a list of measurements: **the phase that measures comes before the
+phase that builds**, because M2 learned that a default is a promise and not
+a decision.
+
+### 1. What was measured, and what it contradicted
+
+Nine numbers, six of which contradict a name, a default, a documented rule
+or this plan's own text.
+
+1. **`mjDSBL_ISLAND` is a *disable* bit, so islands were on.** Hazard 4 was
+   written as "force single-threaded" and read like one switch. A bare
+   compile has `disableflags == 0`, which means islands are **on** — the
+   opposite of what the hazard implied. On a jointed model with no geoms the
+   flag moves nothing (zero delta over 300 steps of the four-bar); with three
+   boxes settling on a plane it moves qpos by ~2e-14 after 1500 steps.
+   Physically nothing, digest-wise decisive. Both settings are separately
+   reproducible across processes, so the choice is only about which is
+   *written down*: islands off, because that is the single monolithic
+   constraint solve whose row ordering does not depend on how contacts
+   partition — and it costs nothing, since MuJoCo parallelises only an
+   `mjData` handed a thread pool, which this module never does.
+
+2. **The restitution formula everyone quotes is the wrong one.** MuJoCo has
+   no restitution coefficient; bounce falls out of the contact spring's
+   damping ratio. Every reference gives `e = exp(−ζπ/√(1−ζ²))`, which is
+   derived for a *bilateral* spring holding the mass through a full half
+   period. A contact is unilateral: it separates the instant the normal
+   force would turn tensile, which is earlier. Solving `kx + cẋ = 0` for that
+   instant gives `ωd·t* = π − 2·arcsin ζ` and therefore
+   `e = exp(−ζ(π − 2 arcsin ζ)/√(1−ζ²))`. Against a dropped ball the second
+   matches to 1% where the first is out by 44% at ζ = 0.5.
+
+3. **And even the right formula needs the solver to keep up.** At ten steps
+   per contact time constant — which is exactly what 60 fps and
+   `DEFAULT_TIME_STEP_S` produce — a requested restitution of 0.9 measures
+   **3.45**: a ball bouncing higher than it was dropped from, forever, every
+   frame of it looking like physics. At twenty steps the worst error across
+   the authorable band is 12% and finer buys almost nothing. So a bouncing
+   contact is *refused* unless the step resolves it, with the required step
+   in the message.
+
+4. **MuJoCo's parent/child filter does not cover the case every mechanism
+   here has.** It excludes a body from its parent only when that parent is
+   not itself welded to the world — and in a model built the M2 way, every
+   grounded component *is* a static world child. Measured on a
+   world-child/hinge/hinge chain: the grandchild-child pair is filtered and
+   the child-parent pair is **not**. So the first link of every mechanism M2
+   could already build would have collided with the base it is hinged to the
+   moment geoms existed, and a four-bar overlaps at its pins by construction.
+
+5. **Euler manufactures energy on anything that tumbles.** MuJoCo's default
+   integrator, on a freely spinning asymmetric plate — the shape of any part
+   that falls over — *gains* 51% of its kinetic energy over twenty seconds at
+   the default step. `implicitfast` conserves energy and angular momentum to
+   the printed precision and reproduces RK4's trajectory through three
+   Dzhanibekov flips to three decimals, at one force evaluation per step
+   against RK4's four. MuJoCo's full `implicit` is worse than either: −29%.
+   A settled box stack, which is the obvious thing to test, integrates
+   identically under all four to 4e-12 and says nothing.
+
+6. **MuJoCo *sums* the two margins rather than taking the larger.** 20 mm and
+   30 mm produce a 50 mm margin, measured — not the max the documentation
+   led us to expect. It also averages the two `solref`s (so a bouncy part
+   dropped on a dead floor bounces about half as much as it asked to), takes
+   the elementwise maximum of friction, and the maximum `condim`.
+
+7. **`contype`/`conaffinity` are signed int32 in the binding.** An all-ones
+   `0xFFFFFFFF` is refused by `add_geom` outright, so the top bit is unusable
+   and there are **31** collision groups, not 32. Found by a compiler error,
+   which is the cheap end of the same lesson.
+
+8. **`mjENBL_SLEEP` is off by default** and now stays off by assertion. A
+   sleeping body stops integrating, and a settling mechanism is precisely the
+   M3 scenario.
+
+9. **OndselSolver writes byte-identical traces in two separate cadexd
+   processes**, and so does the whole M3 path with contact in it. ADR-077
+   made the first of those the precondition for the digest decision below.
+
+### 2. Convexity is two measurements, not one — a correction to the plan
+
+The plan said: compare the convex hull's volume against the exact
+`GProp_GProps` volume, and refuse the difference. That is wrong, and working
+out what a tessellated cylinder does is what showed it. A tessellated
+cylinder is an *inscribed* prism: at the default deflection a 5 mm pin is
+1.6% short of its exact volume before any concavity exists at all, and a
+44-gon is 0.34% short. Hull-against-exact would have reported concavity for
+every round part in every assembly.
+
+So there are two questions with two tolerances:
+
+- **Concavity** is the hull's volume against the *mesh's own* volume, both
+  computed from the same vertices. For a genuinely convex part they agree to
+  floating-point noise — measured at −7.7e-16 on a real OCCT cylinder — so any
+  gap is real. A 60×60×10 plate with a 40×40 notch measures 20 000 mm³ inside
+  a 28 000 mm³ hull and is refused, naming both ways out.
+- **Fidelity** is the mesh's volume against the exact BREP volume, which asks
+  a different question: is this still the part. It is *not* waived by the
+  `hull` opt-in, because an author who accepted the hull of their bracket has
+  not thereby accepted an eight-sided cylinder.
+
+**`mesh` and `hull` are two kinds rather than one kind and a boolean**, so the
+acceptance appears in the script's own text where a reader meets it. There is
+no way to get a hull by accident, which is the whole of hazard 2.
+
+**Convex decomposition stays out.** Phase 2 did not earn it: primitives cover
+the cases that came up, and CoACD would cost a second `CARRIED_PYPI_PACKAGES`
+exception — the thing ADR-076 named so it would be easy to *delete* — plus a
+decomposition whose cross-version determinism nobody has established and over
+which we assert digest equality. `scipy.spatial.ConvexHull` was already in the
+payload and costs nothing.
+
+### 3. The deflection is declared, never inherited
+
+`cadex_tessellation` scales its deflection by the bounding-box diagonal
+because it is choosing how a part *looks*. A collision mesh built from that
+would collide differently at draft quality than at fine — a physics result
+depending on a view setting. The collision deflection is a fixed absolute
+length in `CadexDynamics`, resolved in the pure module so the worker holds no
+second copy of the default, and it is only safe to have a fixed default
+because the fidelity check refuses a mesh too coarse to be the part.
+
+### 4. Joined parts do not collide, and that is authored intent
+
+Given measurement (4), the translator writes an explicit `exclude` for every
+pair of components a non-suppressed joint connects — tree edges, closures and
+couplings alike. Two parts joined by a revolute interpenetrate at the pin by
+construction, and simulating that is never what the script meant; a gear pair
+is coupled by an equality constraint *precisely because* we are not
+simulating tooth contact. The exclusions are listed in the trace evidence
+rather than being invisible behaviour.
+
+### 5. Two budgets, because there are two costs
+
+The 10 000 frame / 100 000 pose caps were sized for kinematics, where the
+trace step *was* the solver step. Now they are not: the same 600-frame trace
+costs 4 800 solver steps at the default step and 1 200 000 at the finest the
+per-frame cap allows. So `api.dynamics` keeps its frame and pose caps and
+they now say what they count — artifact bytes, keyframes the shell bakes,
+memory in Blender: **what leaves the engine**. `CadexDynamics` gains
+`MAXIMUM_SOLVER_STEPS`, which bounds **what the engine does**, checked before
+the model is built.
+
+This answers the last open question in `docs/MUJOCO.md` §6. A policy rollout
+is long in steps and short in frames — integrate for minutes, report a
+hundred poses — and one combined cap cannot express that trade while two can.
+
+### 6. The digest decision, and where it belongs
+
+ADR-077 left this open on one precondition, and the precondition holds: both
+solvers are byte-reproducible across processes, and so is the whole M3 path
+with mesh collision and bouncing contact in it. So the answer is **yes, a
+trace's `artifact_sha256` should join the project digest** — today it is in
+no digest at all, so a MuJoCo bump changes every trace and moves nothing,
+which is the silence ADR-077 called strictly worse than loud.
+
+**That change is not made on this branch.**
+`cadex_project_worker.compute_project_digest` is shared code and treats a
+kinematics trace and a dynamics trace identically — both are `simulation`
+outputs digested by their canonical definition. Making only the dynamics one
+count would be an asymmetry nobody could predict from the output type. Per
+ADR-078 the change belongs on `main` and reaches `MJC` by sync.
+
+What is done here is the branch-local half: the trace evidence records
+`solver_version`, so a MuJoCo bump is legible in the artifact even before it
+is digest-moving, and `test_dynamics_restart_determinism` pins the present
+state so the routed change has something to rewrite.
+
+### 7. What M3 deliberately did not ship
+
+- **`gap`.** The plan listed it beside `margin`. It changed
+  `contact.includemargin` at no value tried, so its combination rule was not
+  pinned, and an unmeasured knob is not something this slice ships.
+- **Restitution outside `{0} ∪ [0.3, 0.9]`.** Below 0.3 the discrete solver
+  damps the bounce away — a requested 0.15 measures 0.00 — and above 0.9 the
+  damping is light enough that the integrator adds energy. Both ends refused,
+  with the band in the message.
+- **Convex decomposition**, per §2. **Actuators and control callbacks** (M4),
+  **MJCF export** (M5), **tendons** and therefore slider and cylindrical loop
+  closures, and **flexible subassemblies**.
+
+### 8. Consequences
+
+- **Every dynamics trace digest moves.** The integrator changed, the island
+  flag changed, and geoms and exclusions are in the model. Nothing pins those
+  bytes today, which is exactly the silence §6 is about.
+- **A body still touches nothing by default.** M2 scripts run unchanged;
+  contact is opted into per body. The alternative default would be to *infer*
+  a collision shape, which is the one thing this surface exists to prevent.
+- **`CadexDynamics.py` keeps the M2 split rule.** Contact parameters were
+  named as the most likely place a second unit-conversion site would appear;
+  the API checks bounds and shapes, and every conversion — coefficients to
+  packed vectors, groups to bitmasks, restitution to a damping ratio, full
+  extents to half-extents, millimetres to metres — happens in the pure
+  module. `scipy.spatial` joins `mujoco` as a deferred, function-scoped
+  import with its own named payload failure.
+- **What a sync must not drop**, extending ADR-078's list:
+  `test_dynamics_collision.py`, `test_dynamics_contact.py`,
+  `test_dynamics_determinism.py`, `test_dynamics_environment.py`,
+  `test_dynamics_restart_determinism.py`, `dynamics_trace_digest.py`, and the
+  `collision` export in `CadexScriptedDomains.py` and `cadex_domain_api.py`.
+- **Verified.** Engine suite **556 passed** (447 at M2's close). Packaged
+  lifecycle gate **8 passed** against a payload restaged from this work
+  (7 before, plus the topple gate), and the collision and cross-restart
+  suites pass against that same payload — which is what proves Qhull is
+  really in it. `pixi run gate` was not re-run and did not need to be: the
+  branch still contains no `shell/` diff.
+
+## ADR-080 — Actuators, and the control callback that was not needed (2026-07-30)
+
+**Decision.** Slice M4 of `docs/MUJOCO.md` lands: dynamics mechanisms are
+driven. `assembly.actuator(joint, kind=..., control_deg=..., ...)` and
+`assembly.joint_dynamics(joint, damping_nmms_per_deg=..., ...)` are two new
+non-publishable intermediates, and `api.dynamics` takes `actuators=` and
+`joint_dynamics=`. A script specifies a motor and a setpoint, and the arm
+holds position against gravity.
+
+No protocol change, no new response key, no `shell/` diff — `git diff
+main...MJC` still names no file under `shell/`, which is the invariant
+ADR-078 said the branch would keep. Per-frame actuator state stays **out** of
+the trace frames: the schema is still `{frame_index, frame_kind,
+nominal_time_s, component_placements}`, and that is the whole reason this arc
+has cost the shell nothing.
+
+Seven phases, each a resting place, and phase 0 wrote no feature code. Same
+ordering rule as M3, for the same reason: **the phase that measures comes
+before the phase that builds**.
+
+### 1. Two corrections to the plan, both decided before code
+
+**A control callback is the wrong shape, and it is also unnecessary.** The
+plan this slice came from said "a control callback runs in the worker" — a
+Python callable invoked every solver step. That would put unbounded arbitrary
+code inside the determinism gate and break "nothing happens outside the
+script" the same way the deleted bpy modes did. It is also not needed, and
+phase 0 is what established that: MuJoCo's `position` and `velocity`
+actuators *are* the PD loop, written into `actuator_gainprm` and
+`actuator_biasprm` and closed in C. What a script has to supply is a
+**setpoint**, and a setpoint that varies is a formula of `time` — a
+vocabulary `api.motion` has had since ADR-048, whose AST whitelist M4
+extracted into `_checked_formula` rather than copying.
+
+**Joint damping and armature are part of this slice, not a later one.** A
+position gain stiff enough to hold an arm rings on a frictionless,
+armature-free joint — measured, sixty degrees peak to peak, not decaying —
+and MuJoCo's defaults for damping, armature and friction loss are all zero.
+A gain that only behaves because of an undeclared default is exactly the
+failure class M2 and M3 were each organised against, so the resistance is a
+declared intermediate rather than a tuning secret.
+
+### 2. What phase 0 measured
+
+Six questions, four of which moved a decision.
+
+1. **A `position` actuator is `gainprm = [kp]`, `biasprm = [0, −kp, −kv]`.**
+   The closed loop is three numbers in a compiled model. This is the
+   measurement the first correction above rests on.
+
+2. **`compiler.autolimits` defaults *on***, so a `ctrlrange` silently becomes
+   a `ctrllimited`. With it off, a `forcerange` without a `forcelimited` is a
+   compile error — the loud version, and the one to have. The translator now
+   sets `autolimits = False` and states every `limited` flag it relies on,
+   joints included.
+
+3. **`gear` rescales the setpoint, not just the effort.** At gear 2 a
+   commanded 0.5 rad holds the joint at 0.25, because `ctrl` addresses the
+   actuator's coordinate, which is `gear · q`. So M4 pins the gear at 1,
+   refuses anything else, and the surface has no ratio argument at all: two
+   ways to say a ratio is one way to be silently wrong. The pin is asserted
+   on the compiled model.
+
+4. **The stability ceiling is `ω·h = 2`, and it is dimensionless.** An
+   undamped position gain diverges at `ω·h = 2.02`, measured at four
+   different solver steps and invariant across a 400× range of inertia —
+   which is the textbook explicit-integration limit, showing up here because
+   `implicitfast` integrates damping implicitly and stiffness explicitly.
+   That invariance is what lets the refusal be stated once for every
+   mechanism rather than as a gain for one, and the translator has the
+   inertia to hand: it is the joint's own diagonal of the compiled mass
+   matrix. Damping buys real headroom (ζ = 1 survives to 5.09) and the limit
+   ignores it deliberately — a model whose stability rests on a number the
+   author picked for feel breaks when somebody smooths the motion.
+
+5. **A damping gain does not explode. It freezes, and says nothing.** Past
+   `c / M ≈ 1.2e10` per second MuJoCo's own regularisation wins: a velocity
+   actuator commanded to 1 rad/s delivers 1e-9, finite the whole way, warned
+   about by nothing. Joint damping does the same at 2.9e10. Silence is the
+   worse of the two failure modes, so it is the one with a refusal in front
+   of it — `MAXIMUM_DAMPING_RATE_PER_S`, a decade below the smaller, covering
+   both so they cannot drift apart. Nothing real approaches it; it exists so
+   that regime is a sentence rather than a mystery.
+
+6. **A `motor` at zero control is bitwise the unactuated run.** Measured on a
+   bare hinge in phase 0 and on the four-bar in phase 4: identical frames,
+   not close ones. Had that not held, the digest story would have had a
+   problem with nothing to do with actuators. Its converse is stated as its
+   own test, because "no actuator" and "an actuator asking for nothing" are
+   the same sentence in English and opposite models — a `position` actuator
+   at zero is a servo holding the joint at zero.
+
+`MjsJoint.damping` and `.stiffness` are three-vectors (one per dof, for a
+ball joint's three) while `.armature` and `.frictionloss` are scalars.
+Assigning a float to the first is a `TypeError`, which is at least the loud
+kind of wrong.
+
+### 3. Units are in the parameter names, and the wrong one is a refusal
+
+Every quantity whose meaning depends on whether the joint coordinate turns or
+slides gets a **suffixed pair**, and only the one matching the joint is
+accepted: `control_deg`/`control_mm`, `control_deg_per_s`/`control_mm_per_s`,
+`control_nmm`/`control_n`, `torque_limit_nmm`/`force_limit_n`,
+`stiffness_nmm_per_deg`/`stiffness_n_per_mm`,
+`damping_nmms_per_deg`/`damping_ns_per_mm`, `armature_kgmm2`/`armature_kg`,
+`friction_loss_nmm`/`friction_loss_n`.
+
+This is more parameter names than a single `control=` plus a `motion_type`
+would need, and that is the point. `api.motion`'s one formula whose unit
+depends on a sibling argument is hazard 1 exactly: a `control="30"` that
+means 30 radians is a 57× error that runs, looks like physics and errors
+nowhere. The two readings of `stiffness=4000` differ by five and a half
+million. `cylindrical` joints own one coordinate of each and, like
+`api.motion`, require an explicit `motion_type`.
+
+Hazard 1 was named as still live for M4 and this is the second time it has
+been paid rather than triggered: every M4 conversion is in `CadexDynamics`,
+`test_dynamics_units` grew all six before they had a caller, and the worker
+forwards property dicts without touching a number — which it can, because an
+actuator's parameters come off the graph and there is nothing to read out of
+FreeCAD for one. That is the property to protect in review.
+
+### 4. Which joints refuse a motor, and why each does
+
+A loop-closing joint (it has no MuJoCo joint to drive — the refusal says the
+spanning forest reached both its components another way, and what would
+change it), a coupled kind (`screw`, `gears`, `belt`, `rack_pinion` attach
+nothing; the refusal names the joints they relate), `fixed` (no coordinate),
+`ball` (three, and no scalar setpoint means anything), suppressed, and the
+four placement-only kinds. The tree-dependent refusals live in the pure
+module because only the tree knows; the rest are at the API, where the
+message can name the parameter.
+
+`initialValue` is refused in a control formula, with its reason: a dynamics
+run's initial value is a solved pose, not a scalar the script can name.
+`api.motion` keeps it, and keeps its `**` → `^` Ondsel rendering; the control
+path keeps Python syntax, because this engine is what evaluates it.
+
+### 5. Time is computed, not accumulated
+
+`t = start_time_s + index · solver_step` from an integer index, never the
+solver's own clock — which MuJoCo maintains by adding the step to itself.
+`simulate` already lands its samples on exact step boundaries for the same
+reason; a control signal that drifted off them would make the trace depend on
+the drift, and the determinism gate is what would have to catch it, after the
+fact, on a digest, with nothing to point at. The formula is compiled once per
+actuator and evaluated against a globals dict with no `__builtins__`, so the
+API's whitelist and the reachable namespace are two barriers that fail
+differently.
+
+### 6. The evidence reports what the motors had to do
+
+`model_evidence` gains `actuators` and `joint_dynamics` blocks carrying the
+declared numbers, the SI ones, the effort limit, the **peak effort actually
+reached** and whether it saturated. That last pair is the block's argument:
+"the arm sagged" is a complaint nobody can act on, and "it sat on its 0.1 N·m
+limit" is the same complaint with the answer in it — the same case the
+inertials block already makes about "the arm feels heavy".
+
+### 7. Verification
+
+Engine suite **684 passed** (556 at M3's close). The two-link arm holds 30°
+and settles at **30.44** — the 0.44 being the load's torque divided by the
+gain, on gravity's side, which is what a proportional servo does and is
+asserted as a signed bound rather than a magnitude. The same script with the
+`actuators=` list emptied falls to 75°, which is what makes the first number
+mean anything. A setpoint of `25*sin(2*pi*time)` is tracked through a 50°
+sweep. The cross-restart gate grew an actuated mechanism with both looped
+actuator kinds and a time-varying setpoint, and writes the same artifact byte
+for byte through two separate cadexd processes.
+
+Packaged lifecycle gate **8 passed** against a payload restaged from the
+closing commit, with the actuator and cross-restart suites passing against
+that same payload — ADR-023's rule being that a source tree proves nothing
+about a payload. `pixi run gate` was not re-run and did not need to be:
+`git diff --name-only main...MJC -- shell/` is empty, and that invariant, not
+a repeated run, is what the shell claim rests on.
+
+---
+
+## ADR-081 — The model leaves the building, as a file that checks itself (2026-07-31)
+
+**Decision.** Slice M5 of `docs/MUJOCO.md` lands: a Cadex assembly exports as
+a MuJoCo MJCF model. `assembly.mjcf(assembly, bodies, *, actuators=(),
+joint_dynamics=(), gravity_m_s2=None, solver_step_s=None, label="")` is a new
+**publishable output type** — the first user-facing export path this engine
+has — and it writes one self-contained `.xml` per output, retained as a
+program artifact under `outputs/<output>-model.xml`.
+
+No protocol change, no new response key, no `shell/` diff. `git diff
+--name-only main...MJC -- shell/` is still empty, which is the invariant
+ADR-078 said this branch would keep, and M5 is the slice that most easily
+could have broken it: an export is a file a user wants, and a file a user
+wants is normally a button.
+
+### 1. Why not an op, and why not a flag
+
+Three surfaces were available and two were rejected.
+
+A **cadexd op** would need `OP_ARG_SPECS`, `OP_RESPONSE_SPECS`, both
+`docs/INTEGRATION.md` tables, an ADR-027 golden fixture and a change to the
+shell's client — five coupled edits and a protocol version, to deliver a file
+that a publishable output already retains and already reports the path of. A
+**flag on `api.dynamics`** would be one edit and would couple exporting a
+model to running the solver loop that M5 exists to avoid: "give me the file,
+don't simulate it" is the request, and `end_time_s=0.001` is not an answer to
+it.
+
+A publishable output type costs five registration entries that already
+cross-check each other at import (`exported_names`, `_PUBLISHABLE_TYPES`,
+`_DOMAIN_OPERATION_OUTPUT_TYPES`, the pack's `output_types`/`api_exports`,
+`_NATIVE_TYPE_BY_OUTPUT`), and the shell needs no change because
+`cadex_hydrate.hydrate_display` skips any display entry without a
+`tessellation` and `cadex_animate` selects only
+`artifact_kind == "assembly_simulation_json"`. A new artifact kind is
+invisible to it.
+
+`docs/MUJOCO.md` M5 called this "a first-class engine op, alongside STEP".
+Both halves were wrong and the section now says so: there is no STEP export
+in this tree — `file.export_model` is a name in `CadexModelingSurface.py`
+with no op behind it, and Phase 11 owns it — and the sentence predates
+ADR-078.
+
+### 2. `mjcf` gets its own output type, where `dynamics` does not
+
+ADR-077 made `api.dynamics` produce a `simulation`, not a sibling type, for a
+concrete reason: `cadex_animate._simulation_entries` finds two
+`assembly_simulation_json` artifacts, bakes **neither**, clears the scene and
+reports into a message the UI never shows. Sharing the type puts both solvers
+under the "exactly one simulation" rule.
+
+Nothing bakes an MJCF file, so that rule has nothing to protect here, and
+enforcing it anyway would refuse a reasonable script. `api.mjcf` is therefore
+**not** under it: a script may declare several, each naming its artifact from
+its own output rather than the single hardcoded filename
+`_retain_simulation_trace` uses, and one may sit beside `api.dynamics` *or*
+beside `api.motion`. The last of those needed checking rather than asserting
+— the refusal that bans mixing `api.motion` with `api.dynamics` selects on
+`output_type`, and an `mjcf` output is neither a `simulation` nor a `motion`,
+so it is invisible to that contract. There is a live test for it.
+
+### 3. The exactness claim is a tolerance, and the number is published
+
+`MjSpec.to_xml()` writes about six significant figures and MuJoCo exposes no
+precision setting. Measured across six fixtures before any feature code was
+written (`test_dynamics_mjcf_measured.py`, phase 0):
+
+* mass survives a round trip to **3.2e-16** relative;
+* an inertia triple whose smallest entry is 1e-5 of its largest does not, and
+  lands at **2.4e-6**;
+* every other field — positions, axes, actuator gains — is under 1.8e-6;
+* every `mjOption` field is **bit-identical**, so the exported file
+  integrates with the solver M3 chose rather than MuJoCo's defaults;
+* over 500 solver steps the worst trajectory divergence is **4.1e-4 mm**, and
+  the four-bar — which has the *worst* inertia drift of the six — diverges by
+  nothing at all, because its loop closure keeps pulling both runs back onto
+  the same constraint manifold.
+
+So "matches the in-engine simulation" is a **tolerance**, not an identity, and
+`docs/MUJOCO.md`'s "no determinism problem" was wrong. The pinned bounds are
+mass 1e-12, inertia **1e-5**, fields 1e-5, pose **1e-2 mm**. The inertia one
+is tight — the four-bar spends a third of it and there is nothing to buy more
+with — and that is stated rather than hidden: `export_mjcf` reports
+`worst_inertia_rel_error`, `worst_mass_rel_error`, `worst_field_rel_error`
+and `worst_pose_error_mm` beside the bound each was checked against, because
+"within tolerance" is not a fact anybody can act on without the number.
+
+Rejected: a `.mjb` sidecar (two files describing one model, and the text one
+is the one people read) and a float-rewriting post-processor (which would
+build exactly the second unit-conversion site hazard 1 names).
+
+### 4. The file verifies itself before it is a file
+
+`export_mjcf` reloads its own XML with `MjModel.from_xml_string` and diffs it
+against the model it came from — counts first, because a field comparison
+over a model of a different shape is meaningless, then every numeric field,
+then every solver option — and re-runs the OCCT inertia comparison against
+the **reloaded** model rather than the original, because the claim being sold
+is about the file. Anything past tolerance is a `DynamicsError` and never an
+artifact.
+
+`_verify_compiled_inertia` grew `tolerance`/`subject`/`reason` parameters
+rather than gaining a near-copy: the reloaded model asks exactly the same
+question of exactly the same numbers, through a formatter. Two copies would
+have drifted, and the first thing to drift would have been the correction
+text — which is the part a model reads.
+
+### 5. `explicitinertial` is asserted, not inherited
+
+`build_model` sets it for reasons that predate M5, and M5's entire
+differentiator rides on it: without it `to_xml()` omits the `<inertial>`
+element and the exact OCCT tensor is simply not in the file. The export
+refuses a spec whose bodies do not carry it.
+
+Measured, the failure is worse than expected in one direction and better in
+another. On a mechanism with **no** collision geoms the file stops loading at
+all — `mass and inertia of moving bodies must be larger than mjMINVAL`, which
+is the loud kind of wrong. On a body that **has** a geom the same file loads
+fine and carries inertia inferred from the geom, silently, which is the
+failure this whole arc exists to avoid. Both have tests; the second is the
+one that justifies the assertion.
+
+### 6. The keyframe, and what it revealed about FreeCAD's solver
+
+`build_model` deliberately builds at the configuration where each joint's
+connector frames coincide, so the solved pose is *derived* and checkable
+rather than built in — ADR-077's exit criterion depends on it. `to_xml()`
+emits no `<keyframe>`, so a stock load opens the mechanism folded up: **61.3
+mm** out of pose on the four-bar, and it looks like a model rather than an
+error. The export adds one named `solved`, on `spec.copy()` and never on the
+caller's spec, so a script carrying both `api.dynamics` and `api.mjcf` cannot
+have its simulation's numbers moved by an export. That is structural rather
+than careful, and there is a live test comparing the retained trace bytes
+with and without the export.
+
+Two findings came out of building it. A solved pose of all zeros writes
+`<key name="solved"/>` with **no `qpos` attribute**, because `to_xml()` omits
+anything equal to a default — so every keyframe assertion is the pose after a
+reset and never the attribute text. And, recorded here because M5 is where it
+becomes visible: **FreeCAD's native assembly solver drives a tree mechanism
+to the configuration where each joint's connector frames coincide**, which is
+exactly MuJoCo's reference configuration. Initial placements do not move it
+and joint limits do not move it. So an exported tree opens correctly with a
+keyframe that happens to be all zeros, and the keyframe only becomes
+load-bearing when a loop closure forces a nonzero coordinate. That case is
+proved on the four-bar fixture rather than live, because a planar loop of
+revolutes is reported redundant by this tree's native solver
+(`has_partial_redundancies`) and cannot reach a live gate at all — which is a
+pre-existing property of the assembly workbench and not something M5 should
+have fought.
+
+### 7. Collision geometry only, and what that costs
+
+A component with no `api.collision` exports no geom, exactly as it
+contributes none in a dynamics run. That is what makes the exported file
+provably the simulated model, which is what the exit criterion asks. The
+consequence is stated in the API docstring, in `_capability_api_listing`, in
+`docs/XSCRIPT.md` and in a test, because it is surprising and silent: **a
+mechanism with no collision geometry opens invisible in MuJoCo's viewer.**
+Visual meshes are an M6+ question and were not smuggled in here.
+
+Collision meshes are written **inline**, as `<mesh vertex= face=>` inside
+`<asset>` — so an export is one self-contained file with no STL sidecars and
+no `to_zip()`. Measured at ~51 bytes a vertex, which is what
+`MAXIMUM_MJCF_BYTES` is sized from: one mesh at `MAXIMUM_COLLISION_VERTICES`
+is ~11 MB, and 64 MiB admits five of them.
+
+### 8. Hazard 1, paid a third time and this time made unavailable
+
+The export path performs **no arithmetic**. The spec is already SI,
+`to_xml()` converts nothing, and `qpos_solved` is already in MuJoCo
+coordinates, so there is no number for a second unit-conversion site to
+appear in. M2 answered this hazard with a rule and a grep, M3 and M4 with
+discipline and with suffixed parameter names; M5 answers it structurally,
+which is the first time the failure mode was not merely avoided but made
+impossible to write. `test_dynamics_units`'s grep over the worker half
+covers the rest for free.
+
+### 9. What was extracted rather than copied
+
+Three shared paths, each for a reason its own docstring already gave:
+
+* **`AssemblyDomainAPI._mujoco_model`** — the six parameters and every
+  validation `api.dynamics` and `api.mjcf` share. The test asserts both
+  surfaces produce the *same sentence*, prefix aside, rather than asserting
+  each refusal twice: two copies of the "Earth is 9.81" message is two places
+  for it to drift, and the message is the part a model reads.
+* **`_mujoco_model_inputs`** — the whole of the worker's share of a MuJoCo
+  model, which is reading. An export inherits the `local_frame`-not-
+  `global_frame` trap unchanged, which is precisely why it inherits the
+  function rather than a copy.
+* **`_retain_artifact`** — cap, write, sha256, declare the `artifact_*` keys.
+  Pulled out of `_retain_simulation_trace` for the reason that function's own
+  docstring gives about not having two places for `artifact_kind` to drift.
+
+`_mujoco_graph_contract` is the fourth: the tier-3 re-validation that a
+`body`, `actuator` or `joint_dynamics` really came from the API and not from
+a script-constructed lookalike. Identical question, identical graph.
+
+### 10. Hazard 3, inherited rather than reopened
+
+`compute_project_digest` gives anything that is not `brep`/`mesh` a
+`payload_sha256` of its canonical definition JSON, so the exported XML bytes
+are in **no** project digest — identical to how the trace behaves today. A
+MuJoCo version bump therefore changes every exported file silently. ADR-079
+already routed the real fix (artifact bytes joining the digest) to `main`,
+because the digest code is shared with the kinematics trace; M5 inherits that
+decision rather than reopening it, and publishes `CadexMjcfMuJoCoVersion` so
+the drift is at least legible.
+
+One correction fell out of the same reading: `pixi.toml` said of mujoco
+"DEVELOPMENT ONLY -- this does NOT ship". It ships.
+`CARRIED_PYPI_PACKAGES = ("mujoco",)` in `relocate_conda_environment.py`
+carries it and `build_engine_payload.sh` hard-fails the build if the payload
+cannot import it. The comment predates ADR-076 and was already wrong when M0
+closed. Fixed here because those lines are MJC-owned per ADR-078.
+
+### 11. Merge-back stays deferred
+
+Whether the arc rejoins `main` is ADR-078's question and remains a later
+ADR's answer. M5 existing does not settle it.
+
+### 12. Verification
+
+Engine suite **828 passed** (684 at M4's close). Phase 0 contributed 55 tests
+that import no export path at all — every assertion is about mujoco 3.10.0
+and the spec `build_model` already produces — so a failure there names MuJoCo
+rather than the translator.
+
+The exit criterion is proved by a subprocess run with `python -P` and a
+scrubbed `PYTHONPATH`, which reads the artifact off disk, finds the `solved`
+keyframe by name, resets to it and integrates. It reports whether it could
+import `CadexDynamics`, and every test asserts that it **could not** — a
+subprocess with the engine on its path would prove the file loads somewhere,
+which is not the claim. Two interpreters that have never seen each other
+export the same fixture to the same bytes, and two cadexd processes write the
+same file byte for byte.
+
+Packaged lifecycle gate **9 passed** (8 at M4's close) against a payload
+restaged from the closing commit, with `test_dynamics_mjcf_live.py` and
+`test_dynamics_restart_determinism.py` passing against that same payload —
+ADR-023's rule being that a source tree proves nothing about a payload.
+`pixi run gate` was not re-run and did not need to be: `git diff --name-only
+main...MJC -- shell/` is empty, and that invariant, not a repeated run, is
+what the shell claim rests on.
+
+---
+
+## ADR-082 — `MJC` stays, and M5 is why rather than why not (2026-07-31)
+
+**Decision.** The question ADR-078 deferred — *whether the MuJoCo arc ever
+returns to `main`* — is answered **no**, and closed rather than deferred
+again. `MJC` remains permanent. ADR-078's "Not decided here" paragraph is
+superseded by this entry.
+
+**Why now.** ADR-078 named exactly one trigger: *"If M5 (MJCF export with
+exact OCCT inertias) proves out as the independently shippable capability
+`docs/MUJOCO.md` argues it is, that is the natural occasion to revisit."*
+M5 closed on 2026-07-31 (ADR-081). It proved out. So this is the occasion,
+and leaving the question open past its own trigger would be worse than
+either answer.
+
+### 1. The new fact M5 produced, and it points the other way
+
+"Independently shippable" and "free to ship" are different claims, and M5 is
+where they came apart.
+
+`export_mjcf` writes MJCF by calling **MuJoCo's own writer** —
+`MjSpec.to_xml()` — rather than serialising MJCF ourselves. So the capability
+requires `mujoco` at runtime, in the payload, on the machine of every user
+who has it. Measured against the payload built from ADR-081's closing commit:
+**51 MB**. A user modeling a bracket pays all of it and imports none of it.
+
+Had M5 written its own serialiser, "design a mechanism in Cadex, export MJCF
+with exact OCCT inertias" would be a few hundred lines of pure Python
+producing a text file, it would carry no dependency at all, and it could sit
+on `main` for free. That was a real fork in the road and it was taken
+deliberately in the other direction. The reason it was right is also the
+reason it closes this question rather than opening it: **M5's central claim
+is that the exported file is provably the model that was simulated**, and the
+proof is a round trip — write, reload, diff field by field, re-run the OCCT
+inertia comparison against the reloaded model, refuse past tolerance
+(ADR-081 §4). That proof only means anything when the writer and the compiler
+are the same pair. A serialiser of ours would verify against itself, would
+need its own conformance suite against every MJCF element we emit, and would
+drift from MuJoCo's schema on every release — three costs, to save one
+dependency on a branch that already carries it.
+
+So the trigger fired and produced evidence **for** the branch. That is worth
+recording precisely because it is the opposite of what ADR-078 anticipated.
+
+### 2. ADR-078's other arguments are unchanged, and were not weakened
+
+* **The build flag is still refused.** VISION principle 1 — prefer the design
+  that removes a concept over the one that adds a switch. A `WITH_DYNAMICS`
+  option would put a second configuration of the product into every gate,
+  every payload test and every digest argument. M5 made this *more* true, not
+  less: the flag would now also have to gate a publishable output type, five
+  registration entries that cross-check each other at import, and a ninth
+  packaged gate test.
+* **The direction change is still unfinished.** ADR-075 extended the product
+  past CAD into task definitions, offboard training and control policies. M0,
+  M1, M2, M3, M4 and M5 are closed; M6, M7 and M8 are not, and two of
+  `docs/MUJOCO.md` §6's open questions are product questions M6 and M7 cannot
+  dodge — where training runs, and whether a policy asset extends `put_asset`
+  or gets its own op. A branch is where a direction change belongs until the
+  arc it opened is finished, and the arc is three slices from finished.
+* **The sync cost has stayed what it was advertised as.** `main` and `MJC`
+  have not diverged in the wrong direction once: 44 commits ahead, **0
+  behind**, no `shell/` diff across the whole arc, and every non-dynamics fix
+  found on the branch has been routed to `main` rather than landed here
+  (ADR-079's digest change is the live example). The mechanism ADR-078
+  proposed is the mechanism that has been used.
+
+### 3. What would re-open this, so nobody has to guess
+
+The question is closed, not permanently unaskable. Three facts would be new
+enough to warrant a fresh ADR, and nothing less should:
+
+1. **A pure-Python MJCF writer with its own conformance suite**, making the
+   export separable from the dependency. §1 argues against building one for
+   M5's sake; a *different* reason to have one would change this calculus.
+2. **`mujoco` becoming an ordinary conda dependency** — that is, the pixi
+   manifest becoming re-solvable past the `occt ==7.8.1` pin, so
+   `CARRIED_PYPI_PACKAGES` can be deleted. ADR-076 named that exception so it
+   would be easy to remove; removing it would take one of the three costs off
+   the table.
+3. **A product decision that dynamics is core**, which is not an engineering
+   finding and would not arrive through this log.
+
+### 4. Known, measured, and deliberately not fixed here
+
+**30 MB of the 51 is `mujoco/experimental/`** — the MuJoCo studio viewer and
+its extensions, which the engine never imports and which
+`relocate_macos_runtime_rpaths.py` currently re-signs and re-points for
+nothing. Pruning it would take the dynamics payload cost to roughly 21 MB.
+That is `MJC`-owned work (`CARRIED_PYPI_PACKAGES` is on this branch per
+ADR-078) and it is worth doing, but it is not done here: it does not change
+this verdict — 21 MB is still 21 MB a bracket-modeller does not want — and a
+decision ADR is the wrong place to land a payload change. It belongs with the
+next payload work, with its own gate run.
+
+### 5. Consequences
+
+- `CLAUDE.md`'s `MJC` block stands unchanged and is now backed by two ADRs
+  rather than one: do not merge this branch, do not open a PR against `main`,
+  do not read its absence from `main` as unfinished work.
+- ADR-081 §11 said merge-back "remains a later ADR's answer". This is that
+  ADR; the two are consistent and neither is rewritten.
+- `docs/ROADMAP.md`'s M5 line is updated to point here instead of forward.
+- Nothing in the code changes. This entry is a decision, and its whole value
+  is that the next slice does not spend an hour re-deriving it.
+## ADR-083 — A task is data, and the observation vector is MuJoCo's (2026-07-31)
 
 **Status:** accepted. **Branch:** `MJC` only — this ADR describes work that
 does not exist on `main`, and `docs/DECISIONS.md` is append-only on both
-branches, so conflicts here resolve in date order (ADR-063).
+branches, so conflicts here resolve in date order (ADR-078).
 
 ### 1. What this decides
 
@@ -6834,16 +7143,16 @@ mjcf-live, restart-determinism and task-episode suites, all green with
 `CADEX_ENGINE_ROOT` pointed at `build/engine`.
 
 `git diff --name-only main...MJC -- shell/` is empty, which is the invariant
-the shell claim rests on rather than a re-run of `pixi run gate` (ADR-062,
-ADR-063, ADR-067).
+the shell claim rests on rather than a re-run of `pixi run gate` (ADR-077,
+ADR-078, ADR-082).
 
 ---
 
-## ADR-070 — Training happens elsewhere, and a policy is a file we can check (2026-07-31)
+## ADR-084 — Training happens elsewhere, and a policy is a file we can check (2026-07-31)
 
 **Status:** accepted. **Branch:** `MJC` only — this ADR describes work that
 does not exist on `main`, and `docs/DECISIONS.md` is append-only on both
-branches, so conflicts here resolve in date order (ADR-063).
+branches, so conflicts here resolve in date order (ADR-078).
 
 ### 1. What this decides
 
@@ -6857,21 +7166,21 @@ root**, which reads an M6 bundle and writes one `.cxpolicy` file
 (`cadex-policy-v1`). It is never installed by CMake, is in no payload, and
 its four exactly-pinned dependencies live in `training/requirements.txt`.
 **Nothing entered `pixi.toml`**; `CARRIED_PYPI_PACKAGES` stays one entry
-long, which is what ADR-061 named it for.
+long, which is what ADR-076 named it for.
 
 **No protocol change and no `shell/` diff.**
 
-### 2. The three questions ADR-067 named as M7's
+### 2. The three questions ADR-082 named as M7's
 
 | Question | Answer |
 |---|---|
 | Where does training run? | **The user's own machine with a GPU**, dispatched by the agent's own shell. M7 ships a movable run directory and a trainer, and builds no dispatch machinery, no network I/O and no new op. Three independent mechanisms would each have to be breached for a worker to open a socket — `worker_environment`'s allowlist, `--safe-mode`, and the no-imports AST policy — and ADR-043's invariant is that every byte enters through `put_asset`. |
-| Does the policy extend `put_asset` or get its own op? | **It extends `put_asset`.** A new op costs `OP_ARG_SPECS`, `OP_RESPONSE_SPECS`, both `docs/INTEGRATION.md` tables, a golden fixture, a handler — *and* `shell/scripts/addons_core/mesh_agent/cadexd_client.py`. That is a `shell/` diff, and ADR-063 says the branch rests on there not being one. Extending the store's accepted suffixes costs none. |
+| Does the policy extend `put_asset` or get its own op? | **It extends `put_asset`.** A new op costs `OP_ARG_SPECS`, `OP_RESPONSE_SPECS`, both `docs/INTEGRATION.md` tables, a golden fixture, a handler — *and* `shell/scripts/addons_core/mesh_agent/cadexd_client.py`. That is a `shell/` diff, and ADR-078 says the branch rests on there not being one. Extending the store's accepted suffixes costs none. |
 | Is there a **train** button? | **No, and there is nothing to press.** The agent authors the task, dispatches with its own shell, and calls the existing `put_asset` path to bring the weights back. `docs/VISION.md` principle 5 is untouched: the human still only judges. The question had to be answered before M7 built a UI; M7 builds none, so the answer is recorded rather than designed around. |
 
 ### 3. Why offboard is a boundary rather than a compromise
 
-ADR-060 recorded the constraint and it has not moved: MJX needs JAX-on-GPU,
+ADR-075 recorded the constraint and it has not moved: MJX needs JAX-on-GPU,
 `jax-metal` is 0.1.0, MuJoCo Warp needs CUDA, and the published reference for
 a humanoid gait is 4096 environments on an RTX 4090. On CPU that is days.
 
@@ -6883,7 +7192,7 @@ on a machine we do not ship to, and `test_engine_purity_guardrails` now
 asserts it can never arrive: no `jax`, no `jaxlib`, no `mjx` anywhere under
 `src/Mod/cadex`, and none in the staged payload.
 
-**MJX is not adopted, and ADR-060's sentence still stands.** That sentence was
+**MJX is not adopted, and ADR-075's sentence still stands.** That sentence was
 about the *engine* — one user, one mechanism, CPU stepping at 2 kHz — where
 MJX buys nothing. Here MJX is the offboard trainer's dependency on a machine
 we do not ship to, is in no payload, and is asserted absent from one. The two
@@ -7084,14 +7393,14 @@ Against the **staged payload**, which is the gate that counts (ADR-023):
 `test_cadexd_lifecycle` **11 passed**, up from 10.
 
 `git diff --name-only main...MJC -- shell/` is empty, which is the invariant
-the shell claim rests on rather than a re-run of `pixi run gate` (ADR-062,
-ADR-063, ADR-067).
+the shell claim rests on rather than a re-run of `pixi run gate` (ADR-077,
+ADR-078, ADR-082).
 
-## ADR-071 — A rollout is a simulation, and the loop closes on the seam M6 opened (2026-07-31)
+## ADR-085 — A rollout is a simulation, and the loop closes on the seam M6 opened (2026-07-31)
 
 **Status:** accepted. **Branch:** `MJC` only — this ADR describes work that
 does not exist on `main`, and `docs/DECISIONS.md` is append-only on both
-branches, so conflicts here resolve in date order (ADR-063).
+branches, so conflicts here resolve in date order (ADR-078).
 
 ### 1. What this decides
 
@@ -7102,7 +7411,7 @@ task bundle names, and emits the result as
 
 **No new output type.** A rollout produces a `simulation`, which is the same
 type `api.simulation` and `api.dynamics` produce and for exactly the reason
-ADR-062 gave: a rollout is *baked*, `cadex_animate._simulation_entries`
+ADR-077 gave: a rollout is *baked*, `cadex_animate._simulation_entries`
 bakes neither of two `assembly_simulation_json` artifacts, and a sibling type
 would let one script silently lose an animation. So the "exactly one
 simulation" rule catches a rollout beside an `api.dynamics` for free, and so
@@ -7126,7 +7435,7 @@ so that a third producer would need no shell work at all.
 So M8 adds one thing to the pure module — **sampling**. `evaluate_episode`
 gained a keyword-only `sample` callable invoked at control-step boundaries,
 and `rollout_policy` turns what it returns into frames. One episode loop
-stays one episode loop, which matters more here than anywhere: ADR-070
+stays one episode loop, which matters more here than anywhere: ADR-084
 recorded that M7 made **three** evaluators of the reward whitelist, and a
 rollout with its own stepping loop would have been a fourth place for the
 same drift.
@@ -7273,35 +7582,35 @@ then bakes it *inside the shipped bundle*, through
 `mesh_agent.cadex_animate`'s own functions on real Blender objects:
 **357 keyframes per component** (51 solver frames × 7 channels), the grounded
 base stationary, the swing arm translated and rotated. That is the evidence
-ADR-062 exists to demand — a trace the engine is happy with and the shell
+ADR-077 exists to demand — a trace the engine is happy with and the shell
 declines to bake is the failure this whole output-type decision prevents.
 
 ---
 
-## ADR-072 — `MJC` is a product vertical, and its docs are its own (2026-07-31)
+## ADR-086 — `MJC` is a product vertical, and its docs are its own (2026-07-31)
 
 **Decision.** `MJC` is **a version of Cadex with dynamics and control built
 in** — a product vertical, not a branch in a holding pattern. It is not
 provisional, not a merge candidate, and not awaiting anything. The
-documentation on this branch is rewritten to say that, and **ADR-063's
+documentation on this branch is rewritten to say that, and **ADR-078's
 append-only rule for shared docs is retired** with it: `VISION.md`,
 `ROADMAP.md` and `CLAUDE.md` on `MJC` become `MJC`'s own documents rather
 than `main`'s documents with a block bolted to the end.
 
 **Why now, and why this is the hook firing rather than an overturning.**
-ADR-067 §3 named three facts that would re-open the branch-vs-product
+ADR-082 §3 named three facts that would re-open the branch-vs-product
 question and refused to guess at more. The third was: *"A product decision
 that dynamics is core, which is not an engineering finding and would not
 arrive through this log."* That is exactly what has happened. The owner
 decided, after M8 closed the arc, that the dynamics vertical is a product
-rather than an experiment. ADR-067 said this would need a fresh ADR; this is
-it, and it is arriving through the mechanism ADR-067 built for it rather than
+rather than an experiment. ADR-082 said this would need a fresh ADR; this is
+it, and it is arriving through the mechanism ADR-082 built for it rather than
 around one.
 
-The arc closing is what makes the decision available. ADR-067's own argument
+The arc closing is what makes the decision available. ADR-082's own argument
 for the branch was that *"a branch is where a direction change belongs until
 the arc it opened is finished, and the arc is three slices from finished."*
-M6, M7 and M8 closed (ADR-069, ADR-070, ADR-071). The condition that
+M6, M7 and M8 closed (ADR-083, ADR-084, ADR-085). The condition that
 paragraph attached to has expired on its own terms.
 
 ### 1. What a product vertical means, and what it does not
@@ -7311,7 +7620,7 @@ reading the documentation of a product that simulates and controls
 mechanisms, not the documentation of `main` plus an appendix explaining what
 they are looking at.
 
-It does **not** mean the branch merges. ADR-067's verdict stands unchanged
+It does **not** mean the branch merges. ADR-082's verdict stands unchanged
 and for its own reasons: `export_mjcf` calls MuJoCo's writer, so the
 capability is not separable from the dependency; a bracket-modeller should
 not ship 53.5 MB of physics engine; and a `WITH_DYNAMICS` flag is still two
@@ -7322,7 +7631,7 @@ describes what the mechanism carries.
 
 ### 2. Why the append-only doc rule is retired
 
-ADR-063 required the dynamics material in `VISION.md`, `ROADMAP.md` and
+ADR-078 required the dynamics material in `VISION.md`, `ROADMAP.md` and
 `CLAUDE.md` to be an appended, branch-marked block rather than an in-place
 edit, so that a sync from `main` would resolve as an insertion instead of a
 conflict. That was the right call when it was made. It is worth almost
@@ -7356,13 +7665,13 @@ product — costs every reader something on every read.
 ### 3. What does not change
 
 - **One-way sync.** Changes flow `main` → `MJC` and never back. Non-dynamics
-  fixes found here still belong on `main` first (ADR-063).
+  fixes found here still belong on `main` first (ADR-078).
 - **Nothing merges to `main`.** No PR, no merge window, no reading the
-  absence of MuJoCo from `main` as unfinished work (ADR-063, ADR-067).
+  absence of MuJoCo from `main` as unfinished work (ADR-078, ADR-082).
 - **The three purity invariants and their tests.** Nothing in `shell/`
   imports mujoco; `CadexDynamics.py` is reachable from the sandboxed worker
   and never from `cadexd`; no `jax` or `mjx` under `src/Mod/cadex` or in a
-  staged payload (ADR-062, ADR-070). `test_engine_purity_guardrails.py` is
+  staged payload (ADR-077, ADR-084). `test_engine_purity_guardrails.py` is
   untouched by this pass.
 - **The empty `shell/` diff.** `git diff main...MJC -- shell/` prints
   nothing, and this entry does not spend it.
@@ -7377,18 +7686,18 @@ than on the diff, and they are worth naming so the next pass does not
 re-derive them:
 
 1. **`import_geometry`'s success message advises `mesh.import_file(...)`,
-   which is wrong for a policy.** ADR-070 recorded it as deliberate; it is a
+   which is wrong for a policy.** ADR-084 recorded it as deliberate; it is a
    `shell/` diff and stays one. Named as available, not taken.
 2. **`_ASSET_SUFFIXES` keeps exactly three members only because a `shell/`
    comment mirrors the constant by name.** Same shape of cost, same answer
    for now.
 3. **Pruning `mujoco/experimental/`** — 30 MB of the payload's 53.5, the
-   MuJoCo studio viewer the engine never imports (ADR-067 §4). `MJC`-owned,
+   MuJoCo studio viewer the engine never imports (ADR-082 §4). `MJC`-owned,
    still worth doing, still wants its own gate run rather than riding along
    with a documentation pass.
 
-**One unit note, since re-measuring turned it up.** ADR-061 says 53.5 MB and
-ADR-067 says 51 MB, and those are **the same measurement** — 51 MiB as `du`
+**One unit note, since re-measuring turned it up.** ADR-076 says 53.5 MB and
+ADR-082 says 51 MB, and those are **the same measurement** — 51 MiB as `du`
 reports it, 53.5 MB decimal — not two figures that disagree. Re-measured on
 this pass against a freshly staged payload: `mujoco/` is 51 MiB, of which
 `mujoco/experimental/` is 30 MiB. The docs on this branch now say 53.5 MB
@@ -7396,12 +7705,12 @@ uniformly; nobody should spend another minute reconciling them.
 
 ### 5. `pixi run gate` is run, not substituted for
 
-Four ADRs in a row on this branch (ADR-064, ADR-065, ADR-066, and then
-ADR-070) record that `pixi run gate` "was not re-run and did not need to
+Four ADRs in a row on this branch (ADR-079, ADR-080, ADR-081, and then
+ADR-084) record that `pixi run gate` "was not re-run and did not need to
 be", each pointing at the empty `shell/` diff as the invariant the shell
 claim rests on. That reasoning is sound about *what the gate would catch* and
 poor as a habit: after four slices the branch could no longer say when the
-product had last been launched at all. **M8 broke the streak — ADR-071 §8
+product had last been launched at all. **M8 broke the streak — ADR-085 §8
 records `pixi run gate` passing** — and this pass ran it again:
 `ok: true`, `engine_from_bundle: true`, picking **372/372** (fidelity 1.0,
 bar >= 0.99), slider-drag median **0.495 s** (bar <= 0.65), restore
@@ -7428,8 +7737,8 @@ plain one already in `CLAUDE.md`: anything touching `shell/` runs
   them had never been touched by it; `PROVENANCE.md` is the consequential one,
   because the payload redistributes an Apache-2.0 wheel that document did not
   name.
-- **ADR-063's "Not decided here" paragraph, ADR-066 §11's deferred
-  merge-back, and ADR-067 §2's "three slices from finished" are not edited.**
+- **ADR-078's "Not decided here" paragraph, ADR-081 §11's deferred
+  merge-back, and ADR-082 §2's "three slices from finished" are not edited.**
   This log is append-only and records what was believed when. This entry
   supersedes them; it does not rewrite them.
 - Nothing in the engine's behaviour changes. The suite is **1105 passed, 12
@@ -7478,139 +7787,17 @@ suite at **1105 passed, 12 skipped**, unmoved.
 - **Added, not removed: `pixi run test-engine`.** `pixi run test` is the
   inherited FreeCAD ctest with ~160 environmental failures; the 1,105-test
   suite this project actually lives on was reachable only by typing a path
-  out of `CLAUDE.md`. A task, not a dependency — ADR-070's `pixi.toml`
+  out of `CLAUDE.md`. A task, not a dependency — ADR-084's `pixi.toml`
   prohibition is about `CARRIED_PYPI_PACKAGES` staying one entry long, and a
   task adds nothing to solve.
 
 ---
 
-## ADR-073 — Opening a file does not show the model (2026-07-31)
-
-**Decision.** Record, as a known and measured gap, that opening a `.blend`
-that already has a `.cadex` project beside it puts **nothing** in the
-viewport. The model appears only when something else provokes an engine
-request — an agent tool call, a slider drag, or the **Rebuild Model** button.
-This entry does not fix it: the fix is a `shell/` change and therefore a
-decision of its own (§5). It exists because the A1 roadmap item said
-something else, and reading A1 was how a reasonable person concluded the
-opposite.
-
-### 1. What was measured
-
-A project built in one session, saved, and reopened in a fresh launch of the
-shipped bundle: `model_objects_on_open = 0`. No BREP objects, no Model
-collection contents, no error, no status line. The engine side is healthy —
-`open_project` runs its restore pass, the re-run reproduces the accepted
-digest, and the script state comes back intact. The shell simply never asks
-for the display.
-
-### 2. The path, in full
-
-`bpy.app.handlers.load_post` → `mesh_agent/__init__.py:159`
-`_load_post_handler` → `:169` `_report_file_change` →
-`cadex_backend.on_file_changed` (`cadex_backend.py:1931`).
-
-`on_file_changed` closes every cadexd child and drops all cached engine
-state, which is its actual job (ADR-046's Save-As problem: a second `.blend`
-must not answer from the first file's project store). It then decides
-whether to say anything, at `:1962`:
-
-```python
-if os.path.isdir(current) or not scene_remembers_a_model(scene):
-    return ""
-```
-
-The `.cadex` directory exists, so this returns early. That branch is correct
-for what the function is documented to do — its return value is *a status
-line for a file with no engine project*, and this file has one. What is
-missing is that **nothing else runs**. No caller queues a rebuild, and
-`load_post` has no other cadex handler.
-
-The hydrating run does exist, and it is not far away: `ensure_open`
-(`cadex_backend.py:539`) performs the restore-verified `open_project` and
-then a second `rebuild` with a `display` request, whose tessellation it
-hydrates. That second run is the 0.49 s that A1 was written about. But
-`ensure_open` is called from the request paths — `write_script`,
-`set_params`, `rebuild_model`, the tool handlers — and from none of them on
-the load path. Hydration is therefore **deferred to the first engine
-request**, not absent from the product; on a session where the user opens a
-file and looks at it, that first request never comes.
-
-The panel does not provoke one either, deliberately: `cached_script_state`
-(`:390`) is read-only and documented as not opening the project, because it
-runs on every panel draw.
-
-### 3. Why the escape hatch is hard to find
-
-The remedy is `mesh_agent.rebuild_model`. Its button lives in
-`CADEX_PT_script` (`spaces.py:241`), a sidebar panel whose `poll` requires
-the active text editor to be showing the `model.py` mirror — so it is
-invisible until the user opens the script editor and selects that text. The
-only other placement (`ui.py:387`) is inside the parameters panel's error
-box and draws only when `model.last_error()` is set, which after a clean
-open it is not. F3 search finds the operator, which is how it is reachable
-in practice, and that is not a discovery path a user should need.
-
-### 4. What A1 actually is
-
-`docs/ROADMAP.md`'s and `docs/ARCHITECTURE.md`'s A1 entries both read as a
-latency item — "`display` on `open_project` … measured cost of not having it
-is 0.49 s per project open" — and both presuppose that a hydration rebuild
-happens on open. The presupposition is what makes them misleading: the
-0.49 s is real and is the cost of the second script run, but it is paid on
-the first **engine request**, not on the file open, and until that request
-arrives the cost is not 0.49 s but an empty viewport.
-
-Both entries are re-scoped in this commit to say so. A1 keeps its original
-content — folding the two runs into one is still the engine-side win it
-always was — and gains the sentence that the file-open path does not run
-either of them.
-
-### 5. Why the fix is not here
-
-Hydrating on load means calling `ensure_open` (or queueing a rebuild) from
-`_load_post_handler`, in `shell/`. That has three properties that make it a
-decision rather than a patch:
-
-- It spends the `shell/` diff. On `main` that is an ordinary conservative-zone
-  change; on `MJC` `git diff main...MJC -- shell/` is empty and staying that
-  way is a stated position.
-- It makes opening a file spawn a `FreeCADCmd` child and run two scripts,
-  synchronously, inside a `load_post` handler — which is the wrong place for
-  a second of blocking work, so it wants the asynchronous lifecycle
-  (`begin_rebuild_model`) and therefore a policy for what the viewport shows
-  while it runs.
-- It changes what a failed restore does at file-open time. Today a project
-  whose script no longer reproduces its geometry reports that at the first
-  request, where there is a conversation to report it into. On load there is
-  not one yet.
-
-A1 landing on the engine side (`display` on `open_project`) reduces the cost
-but does not remove any of the three, because the shell would still have to
-issue the request.
-
-### 6. Consequences
-
-- No behaviour changes. This is a documentation commit: ADR plus the two A1
-  entries.
-- The A1 entries stop implying hydration-on-open, which is what let this go
-  unnoticed. Anyone reading them now learns the gap in the same paragraph as
-  the optimisation.
-- `cadex_backend.py`'s module docstring — "open the project root (beside the
-  .blend), rebuild once to hydrate the viewport" — describes `ensure_open`
-  and remains accurate for it. It is not edited, because the sentence is
-  true of the seam it documents; what is untrue is only the inference that
-  the seam is entered on load.
-- The eventual fix is named and unscheduled. Whoever takes it should read §5
-  first and expect to land the asynchronous path, not the one-line call.
-
----
-
-## ADR-074 — A model says what it is already touching (2026-07-31)
+## ADR-087 — A model says what it is already touching (2026-07-31)
 
 **Status:** accepted. **Branch:** `MJC` only — this ADR describes work that
 does not exist on `main`, and `docs/DECISIONS.md` is append-only on both
-branches, so conflicts here resolve in date order (ADR-063).
+branches, so conflicts here resolve in date order (ADR-078).
 
 **Decision.** `CadexDynamics.model_evidence` reports the contacts present at
 the model's starting pose: how many, and for each one the two geom names,
@@ -7766,28 +7953,28 @@ already defined and already tested.
 
 ---
 
-## ADR-075 — The hopper that uses the ground, and three findings from it (2026-07-31)
+## ADR-088 — The hopper that uses the ground, and three findings from it (2026-07-31)
 
-**Status:** accepted. **Branch:** `MJC` only, per ADR-063's date-order rule.
+**Status:** accepted. **Branch:** `MJC` only, per ADR-078's date-order rule.
 
 **Decision.** Record what the corrected one-leg hopper actually does, and
 land the three cheap findings the exercise produced: a divergence guard in
 `training/cadex_train.py`, the reward-conditioning note in
 `docs/MUJOCO.md`, and the `part.box` origin note in `docs/XSCRIPT.md`. The
-collision-frame finding that made the exercise necessary is ADR-074.
+collision-frame finding that made the exercise necessary is ADR-087.
 
 ### 1. The corrected hopper, and what it measures
 
 Four script-level changes, no new engine capability:
 
 1. **The floor's collision box is offset** `[0, 0, -20]`, so its top
-   coincides with the visible top at z = 0 (ADR-074).
+   coincides with the visible top at z = 0 (ADR-087).
 2. **The torso is steel**, 1040 → 7850 kg/m³: 1.75 kg → **13.19 kg**,
    taking the leg from 23% of the machine to **3.79%**. At 23% a flailing
    leg genuinely moves the body and the ground is optional; at 3.79% it is
    not.
 3. **The actuators are `kind="position"` servos**, not `motor`. MuJoCo's
-   position actuator is a PD loop closed in C (ADR-065) — the direct answer
+   position actuator is a PD loop closed in C (ADR-080) — the direct answer
    to the bang-bang the motor version measured at 49 torque sign changes in
    75 frames.
 4. **The reward requires the ground**: `rail_p + 26.3` at weight 0.02, over
@@ -7897,29 +8084,29 @@ position.
   crash later and less usefully. A run that was going to produce nothing now
   says so at the iteration it became true. Nothing else in the trainer
   moves, its four pinned dependencies are unchanged, and it still imports
-  only the standard library at module scope (ADR-070).
+  only the standard library at module scope (ADR-084).
 - The hopper project itself is **not** added to `cadex_tests`. It would not
   have caught the bug it exposed — every gate it has was green while the
   model was wrong — and the change policy is remove more than we add.
-  ADR-074's three regression cases are the part that earns its place. The
+  ADR-087's three regression cases are the part that earns its place. The
   runnable project stays outside the repo at `~/cadex-hopper/`.
 - Engine suite unmoved at **1108 passed, 12 skipped**: §3–§5 are one
   `training/` change and two documents, and `training/` is in no suite the
   engine runs.
 
-## ADR-076 — Dispatching a training run is three steps, and two of them are checks (2026-07-31)
+## ADR-089 — Dispatching a training run is three steps, and two of them are checks (2026-07-31)
 
-**Status:** accepted. **Branch:** `MJC` only, per ADR-063's date-order rule.
+**Status:** accepted. **Branch:** `MJC` only, per ADR-078's date-order rule.
 
 **Decision.** Add `training/remote_train.sh` and `training/SETUP.md` so a
 run can be sent to a GPU box with one command. It is **dispatch machinery
 only**: it copies two files out, runs the trainer that is already on the
 box, and copies one file back — the same three steps `training/README.md`
-documented by hand. ADR-070's boundary does not move.
+documented by hand. ADR-084's boundary does not move.
 
 ### 1. What it does not change
 
-Everything ADR-070 asserts still holds, and the guardrails that assert it
+Everything ADR-084 asserts still holds, and the guardrails that assert it
 were not touched:
 
 - Nothing enters `pixi.toml`; `CARRIED_PYPI_PACKAGES` stays one entry long.
@@ -7943,7 +8130,7 @@ that looks fine.
 **A CPU fallback is a valid policy.** `jax` falls back silently, the run
 converges, the numbers are real, the artifact is correct — it just cost
 hours it did not need to. The trainer already records `device` into the
-policy for exactly this reason (ADR-070), and until now the only person who
+policy for exactly this reason (ADR-084), and until now the only person who
 would notice was one who thought to read it back afterwards. `train` now
 **asserts `device == "gpu"`** and exits non-zero, naming the file it already
 copied back so nothing is lost, unless `--allow-cpu` says that was the
@@ -8016,22 +8203,22 @@ eventually does.
   quoted trainer arguments — before it was committed. Engine suite unmoved at
   **1108 passed, 12 skipped**; nothing here is in a suite the engine runs.
 
-## ADR-077 — The leg could not push, and ADR-075 read the collapse as a tuck (2026-07-31)
+## ADR-090 — The leg could not push, and ADR-088 read the collapse as a tuck (2026-07-31)
 
-**Status:** accepted. **Branch:** `MJC` only, per ADR-063's date-order rule.
-**Supersedes ADR-075 §2's reading of the policy**, which is wrong in a way
-someone would rely on. `docs/DECISIONS.md` is append-only, so ADR-075 stays
-as written and this entry corrects it — the precedent ADR-072 set with
-ADR-063.
+**Status:** accepted. **Branch:** `MJC` only, per ADR-078's date-order rule.
+**Supersedes ADR-088 §2's reading of the policy**, which is wrong in a way
+someone would rely on. `docs/DECISIONS.md` is append-only, so ADR-088 stays
+as written and this entry corrects it — the precedent ADR-086 set with
+ADR-078.
 
 **Decision.** Size the hopper's actuators for the machine they move, give it
 a foot that exists, and put a feasibility gate in front of training. Record
-the correction to ADR-075, and fix the one engine defect the new geometry
+the correction to ADR-088, and fix the one engine defect the new geometry
 exposed.
 
 ### 1. The correction: the leg was falling, not tucking
 
-ADR-075 §2 read the trained policy as standing for 0.9 s and then *tucking
+ADR-088 §2 read the trained policy as standing for 0.9 s and then *tucking
 the leg up*. It was not tucking. **It was collapsing**, and the arithmetic
 that says so is one line:
 
@@ -8051,11 +8238,11 @@ That explains the observed policy completely and better than the tuck did.
 Standing straight is free because the moment arm is zero; every bend
 collapses. The policy found the only non-losing behaviour available to it,
 and the gait it "chose" was a property of the mechanism, not of the
-training. **No policy could have hopped**, so ADR-075's one training run was
+training. **No policy could have hopped**, so ADR-088's one training run was
 answering a question the mechanism had already closed.
 
 The general lesson, and the reason this is an ADR rather than a commit
-message: ADR-075 §2 was a *plausible reading of a trace*, written without
+message: ADR-088 §2 was a *plausible reading of a trace*, written without
 checking whether the actuator was saturated. `model_evidence` reports
 `peak_effort_si` and `saturated`; **a rollout's evidence does not**, so the
 one number that would have contradicted the reading was not in front of the
@@ -8069,7 +8256,7 @@ Script-level, in `~/cadex-hopper/`, no new engine capability:
    v3 collided on a 25 mm sphere that nothing drew, so the shin's visible
    bottom sat 25 mm above the floor with an invisible ball bridging the gap
    — the **second** bug in one model caused by collision geometry nobody can
-   see. The first was the floor's box (ADR-074). ADR-078's overlay makes
+   see. The first was the floor's box (ADR-087). ADR-091's overlay makes
    such geometry visible; a leg whose *drawn* shape floats is wrong
    independently of that, so it is fixed rather than merely made visible.
 2. **Actuators sized for the job.** `torque_limit_nmm` 12 000 → **60 000**;
@@ -8083,7 +8270,7 @@ Script-level, in `~/cadex-hopper/`, no new engine capability:
    keyframe under zero control the machine settles at **rail_p = −25.399 mm**
    (|v| = 2.6e-16), so the term is `rail_p + 25.4` where v3's was `+ 26.3`.
    The settle point moves when the foot solid and the gains change, and
-   ADR-075 already records that taking it from the drawing rather than the
+   ADR-088 already records that taking it from the drawing rather than the
    measurement was 6.3 mm wrong in the one term whose whole job is to read
    ~0 at rest.
 5. **No policy.** `hop5.cxpolicy` was trained against v3's task and the
@@ -8103,11 +8290,11 @@ stock MuJoCo. Flight is `ncon == 0` after the machine has first settled. It
 exits non-zero when nothing leaves the ground, and says so in the terms that
 act: *under-actuated by N×, raise `torque_limit_nmm` to at least M*.
 
-**Beside the project, not in `cadex_tests`** — ADR-075 §6 stands. It would
+**Beside the project, not in `cadex_tests`** — ADR-088 §6 stands. It would
 not generalise: it hard-codes one machine's limb length and one model's
 joint names. What it replaces is not a test but an ordering, and the
 ordering is the point: **prove the mechanism, then spend the GPU.** It runs
-in seconds with no learning in it, and it would have made ADR-075's training
+in seconds with no learning in it, and it would have made ADR-088's training
 run unnecessary.
 
 ### 4. The engine defect the foot exposed
@@ -8151,17 +8338,17 @@ The change is confined to `CadexDynamics.py`, which is `MJC`-only, so the
 - Engine suite **1109 passed, 12 skipped**, up one for the regression test.
 - `~/cadex-hopper/` gains `feasibility.py` and `rebuild.py` (a headless
   `cadexd` driver, so the loop does not need the app). The project stays
-  outside the repository, as ADR-075 §6 decided.
+  outside the repository, as ADR-088 §6 decided.
 - Training is now worth dispatching, and not before: `feasibility.py` green,
-  then `training/remote_train.sh check` green (ADR-076), then a run.
+  then `training/remote_train.sh check` green (ADR-089), then a run.
 
-## ADR-078 — The collision shapes are drawn, and the `shell/` diff is spent on it (2026-07-31)
+## ADR-091 — The collision shapes are drawn, and the `shell/` diff is spent on it (2026-07-31)
 
-**Status:** accepted. **Branch:** `MJC` only, per ADR-063's date-order rule.
-**Supersedes the present-tense claim in ADR-072 §3/§4 and ADR-074 §5 that
+**Status:** accepted. **Branch:** `MJC` only, per ADR-078's date-order rule.
+**Supersedes the present-tense claim in ADR-086 §3/§4 and ADR-087 §5 that
 `git diff main...MJC -- shell/` prints nothing.** Both stay as written —
 `docs/DECISIONS.md` is append-only — and this entry is what makes them
-historical, the precedent ADR-072 set with ADR-063.
+historical, the precedent ADR-086 set with ADR-078.
 
 **Decision.** Draw the collision geometry a dynamics model actually
 simulates, as an edge-only wire cage per shape, in a new
@@ -8173,10 +8360,10 @@ owner's authorisation.
 Two bugs in one small model, both caused by collision geometry that nothing
 draws, both found by arithmetic after the fact:
 
-- **ADR-074**: the floor's collision box stood 20 mm proud of the floor's
+- **ADR-087**: the floor's collision box stood 20 mm proud of the floor's
   visible top, and a hopper trained for an hour standing on the invisible
   shelf. Every gate the project had was green while the model was wrong.
-- **ADR-077**: the foot was a 25 mm sphere at the end of a shin with no foot
+- **ADR-090**: the foot was a 25 mm sphere at the end of a shin with no foot
   on it, so the drawn leg ended 25 mm above the ground with nothing between.
 
 A collision shape is **not** the solid it stands for. It is placed in the
@@ -8242,7 +8429,7 @@ of quiet error this feature exists to end.
 
 A toggle in the chat button row, `depress=` while on — the add-on's
 established affordance. `CADEX_PARAMS_PT_collision` polls a scene flag the
-way the Simulation panel does, and surfaces **ADR-074's initial-contact
+way the Simulation panel does, and surfaces **ADR-087's initial-contact
 line**: *"touching at t = 0 … at z = 20.00 mm"*, the one row that would have
 caught the shipped hopper.
 
@@ -8272,7 +8459,7 @@ worth keeping; "the diff is empty" was always a proxy for it.
 One new module (546 lines), ~270 lines across four existing add-on files,
 and ~410 lines of gate suite.
 
-The two ADR-072 §4 rough edges — `import_geometry`'s success wording and
+The two ADR-086 §4 rough edges — `import_geometry`'s success wording and
 `_ASSET_SUFFIXES` staying at three members — are **still not taken**. The
 empty diff's rationale was per-line merge cost, and one authorised feature
 does not license unrelated edits.
@@ -8280,7 +8467,7 @@ does not license unrelated edits.
 ### 6. Consequences
 
 - `pixi run gate` green, `"ok": true`, with the load-bearing case being
-  **ADR-074's own failure reproduced and then corrected**: the unoffset
+  **ADR-087's own failure reproduced and then corrected**: the unoffset
   floor draws its collision top at z = +20.000 against a visible solid top
   at z = 0.000, and the same script with `offset=[0,0,-20]` draws the gap as
   0.000. Plus per-type extents against `size_mm`, the capsule's caps
@@ -8294,12 +8481,12 @@ does not license unrelated edits.
 - Engine suite unmoved at **1109 passed, 12 skipped**. No engine file
   changed for this ADR.
 
-## ADR-079 — A floating base is not a mechanism with the ground left out (2026-08-01)
+## ADR-092 — A floating base is not a mechanism with the ground left out (2026-08-01)
 
-**Status:** accepted. **Branch:** `MJC` only, per ADR-063's date-order rule.
+**Status:** accepted. **Branch:** `MJC` only, per ADR-078's date-order rule.
 **Subject:** `~/cadex-legs`, a 250 mm biped — pelvis, two hip links, two
 thighs, two calves, two feet, two toes — given a dynamics model and a
-standing task. Outside the repository, per ADR-075 §6; nothing here is a
+standing task. Outside the repository, per ADR-088 §6; nothing here is a
 fixture and nothing here is in `cadex_tests`.
 
 **What this entry does and does not claim.** Everything below is measured:
@@ -8456,7 +8643,7 @@ PD hold                   upright +1.000, settles 0.37 mm, peak effort 3.5 N*mm
 ```
 
 **Standing straight is nearly free** — 1.97 N·mm against a 300 N·mm ankle —
-which is ADR-077's observation from the other side. It is also exactly why
+which is ADR-090's observation from the other side. It is also exactly why
 the actuators are **motors and not servos**: with a position servo, a policy
 that emits the reset pose would stand without learning anything and the
 reward would be measuring nothing. Zero action is zero torque, the machine
@@ -8479,11 +8666,11 @@ falls in 1.148 s, and there is no degenerate solution to find.
   unchanged.
 - **Walking.** Standing first.
 
-## ADR-080 — The receipt is the last line, and a 3 h 49 m run proved it (2026-08-01)
+## ADR-093 — The receipt is the last line, and a 3 h 49 m run proved it (2026-08-01)
 
 **Status:** accepted. **Branch:** `MJC` only — `training/` exists nowhere
 else. **Subject:** one line of `training/remote_train.sh`, found by the first
-long run dispatched through it (ADR-079's biped).
+long run dispatched through it (ADR-092's biped).
 
 **Decision.** Parse the trainer's JSON receipt from the **last line** of its
 stdout rather than from the whole of it.
@@ -8520,9 +8707,9 @@ receipt that *was* printed — so this cost an hour of retrieval rather than
 the run. That it was recoverable is luck about where the failure landed, not
 a property of the design.
 
-### 3. What this says about ADR-076's shape
+### 3. What this says about ADR-089's shape
 
-ADR-076 is right that this script should **fail loudly rather than repair**,
+ADR-089 is right that this script should **fail loudly rather than repair**,
 and this is not a retreat from it: a receipt that cannot be parsed is still a
 hard failure. What changed is only *what is parsed*. The lesson is narrower
 and worth keeping — **a dispatch tool's parsing of its own tool's output is a
@@ -8543,10 +8730,10 @@ with `set -o pipefail`, or not through a pipe at all. It also cost the run's
 per-iteration curve: `tail` buffers, so 2000 iterations of `reward/step`
 streamed into a pipe nobody could read until the process exited.
 
-## ADR-081 — A tensor core rounded the witness, and four hours died of it (2026-08-01)
+## ADR-094 — A tensor core rounded the witness, and four hours died of it (2026-08-01)
 
 **Status:** accepted. **Branch:** `MJC` only — `training/` exists nowhere
-else. **Subject:** `training/cadex_train.py`; the witness ADR-070 put in the
+else. **Subject:** `training/cadex_train.py`; the witness ADR-084 put in the
 container and `CadexDynamics.POLICY_WITNESS_TOLERANCE` checks.
 
 **Decision.** Record the witness under
@@ -8555,7 +8742,7 @@ container is written**, with this file's own float64 forward pass.
 
 ### 1. What happened
 
-ADR-079's biped trained for 3 h 49 m on sb9x and came home refused:
+ADR-092's biped trained for 3 h 49 m on sb9x and came home refused:
 
 > policy output 'balance' does not reproduce its own recorded actions:
 > witness 11, action 6, relative error 0.000143349 against a tolerance of
@@ -8612,7 +8799,7 @@ about a training step needs the last four mantissa bits.
 Then the check moves. `witness_disagreement` is a fourth evaluator, pure
 Python and pure float64, written down here for the reason the reward
 whitelist and `encode_policy` are: this file cannot import `CadexDynamics`
-(ADR-070), so the test that decides whether hours of GPU time produced a
+(ADR-084), so the test that decides whether hours of GPU time produced a
 usable file is copied rather than imported. It runs in `main()` **before**
 `encode_policy`, and a run that fails it raises rather than writing a file
 somebody will scp home and paste a digest for. Verified end to end: the
@@ -8632,7 +8819,7 @@ different code path. When a measured gate refuses something, the cheap move
 is not to re-measure the gate, it is to reproduce the number the gate is
 complaining about.
 
-## ADR-082 — The foot limits this robot, not the servo (2026-08-01)
+## ADR-095 — The foot limits this robot, not the servo (2026-08-01)
 
 **Status:** accepted. **Branch:** `MJC` only. **Subject:** the second biped
 (`mg-legs`), and two decisions taken while getting it to stand — what an
@@ -8646,8 +8833,8 @@ column printed beside it.
 ### 1. What was built
 
 A ~284 mm biped drawn with real MG90S geometry, carrying no assembly layer
-(`grep -c "assembly\." script.py` -> 0, the same finding ADR-079 opens with).
-The dynamics layer was authored the way ADR-079 landed on: posed joint
+(`grep -c "assembly\." script.py` -> 0, the same finding ADR-092 opens with).
+The dynamics layer was authored the way ADR-092 landed on: posed joint
 frames, each part on its own limb's middle, twelve moving components, a
 welded toe, and a free pelvis with no joint to the floor.
 
@@ -8726,17 +8913,17 @@ gate's own drop test — **zero torque falls at 0.96 s** — that is balancing
 rather than being stable.
 
 The witness agreed to **1.009e-07**, 991x inside the tolerance, on the first
-run after ADR-081. That is the fix working: the previous machine's policy
+run after ADR-094. That is the fix working: the previous machine's policy
 failed the identical check at 1.43e-4 after 3 h 49 m.
 
 ### 5. Not done
 
-No ADR is spent on the reward, which is ADR-079's unchanged apart from
+No ADR is spent on the reward, which is ADR-092's unchanged apart from
 baselines re-measured on this machine. Walking is still out of scope, and
 section 2 is now the reason why: an ankle that can only transmit 117 N*mm has
 no push-off. Unwelding the toe is one word when that changes.
 
-## ADR-083 — A rollout trace now carries what the policy decided (2026-08-01)
+## ADR-096 — A rollout trace now carries what the policy decided (2026-08-01)
 
 **Status:** accepted. **Branch:** `MJC` only. **Subject:** the rollout trace
 schema, and the Policy Outputs panel that reads it.
@@ -8797,7 +8984,7 @@ invent decisions the policy never made.
 
 ### 3. What it found on the first real trace
 
-Pointed at the `mg-legs` standing policy (ADR-082) the panel immediately
+Pointed at the `mg-legs` standing policy (ADR-095) the panel immediately
 showed something the poses had hidden for a week. Over the full 6 s episode,
 against the MG90S limit of ±216 N·mm:
 
@@ -8844,7 +9031,7 @@ resolved through the instance, so it is absent from `dir()` on the type. The
 test asks `bpy.types.UILayout.bl_rna.functions` instead. The first version of
 that check failed the gate against a perfectly good panel.
 
-## ADR-084 — An episode stops starting in the same place (2026-08-01)
+## ADR-097 — An episode stops starting in the same place (2026-08-01)
 
 **Status:** accepted. **Branch:** `MJC` only. **Subject:** two new xscript
 intermediates — `assembly.reset_variation` and `assembly.disturbance` — and
@@ -8859,7 +9046,7 @@ bundle-build time, so none of the three evaluators introspects the model.
 
 ### 1. Why a reward term could not have fixed this
 
-ADR-083 recorded that `mg-legs` stands by **bracing**: it holds
+ADR-096 recorded that `mg-legs` stands by **bracing**: it holds
 `hip_pitch_l/r` and both knees between 93 % and 99 % of the MG90S limit for
 the entire six-second episode, widening its stance from ±30.00 mm to
 ±37.2/37.4 mm and holding that splay with torque. The obvious reading is that
@@ -8993,7 +9180,7 @@ trainer suite — **27 passed** in a venv built from `training/requirements.txt`
 two lists, trained at the same seed, where the unvaried one settles to
 +0.298921 and repeats it to six figures while the varied one keeps moving.
 
-## ADR-085 — A training run you can watch, interrupt and pull from (2026-08-01)
+## ADR-098 — A training run you can watch, interrupt and pull from (2026-08-01)
 
 **Status:** accepted. **Branch:** `MJC` only. **Subject:** mid-run
 checkpoints, `progress.json`, four new `remote_train.sh` subcommands, and the
@@ -9036,7 +9223,7 @@ so the same function writes the current policy and `<out>.best.cxpolicy`. The
 best parameters are *retained* every iteration — a pytree copy of a 64×64 MLP
 costs nothing — and *written* at checkpoint boundaries.
 
-**The witness is checked on checkpoints too**, which is ADR-081's lesson
+**The witness is checked on checkpoints too**, which is ADR-094's lesson
 applied where it is now free: the error is relative and grows with the
 activations a policy learns, so a checkpoint that fails it is a run that is
 going to fail it, and four hours died once because nothing checked until the
@@ -9048,7 +9235,7 @@ One file, `cadex-training-progress-v1`, rewritten temp-then-`replace` every
 iteration: state, iteration/total, reward, best-so-far and its iteration,
 wall seconds, ETA, device, and the checkpoint list. Three processes read it —
 `watch` over rsync, the shell's panel locally, and a person — and none of them
-reads this program's stderr. That is ADR-080's finding kept: a receipt taken
+reads this program's stderr. That is ADR-093's finding kept: a receipt taken
 from a stream is a receipt something else can write into, and MuJoCo without
 the optional `warp` backend prints two lines to stdout.
 
@@ -9081,7 +9268,7 @@ detach. The `cd` is its own statement now.
 ### 5. The shell learns about training from one JSON file
 
 `CADEX_PARAMS_PT_training` is a `Panel` with `bl_space_type =
-'CADEX_PARAMS'`, beside Simulation and Policy Outputs, for the reason ADR-083
+'CADEX_PARAMS'`, beside Simulation and Policy Outputs, for the reason ADR-096
 gives: **no new editor and no new space type**, so the inherited Blender tree
 takes **zero** lines and `docs/BLENDER-TREE.md` §2a stays eight files.
 
@@ -9105,7 +9292,7 @@ true`, with `test_the_training_panel_tracks_a_run` covering the absent case,
 a foreign schema, a truncated file, a live run, both terminal states, and the
 import closure.
 
-## ADR-086 — 86 N·mm, and a feasibility gate re-specified (2026-08-01)
+## ADR-099 — 86 N·mm, and a feasibility gate re-specified (2026-08-01)
 
 **Status:** accepted. **Branch:** `MJC` only. **Subject:** re-rating
 `mg-legs` from stall torque to continuous duty, and what gates a training run
@@ -9121,7 +9308,7 @@ task actually declares**, computed as statics.
 216 N·mm is MG90S **stall**: the torque at zero speed, at maximum current, in
 the instant before it stops turning. It is momentary, and no hobby servo
 holds it — the winding heats, the cutout trips or the gears go, and the
-datasheet does not say for how long because the answer is "not long". ADR-083
+datasheet does not say for how long because the answer is "not long". ADR-096
 measured the trained policy holding 93–99 % of it for six continuous seconds.
 
 **86 N·mm is an engineering judgment, not a datasheet number.** Hobby servos
@@ -9133,7 +9320,7 @@ not quietly. It is still **~19× the measured static requirement**:
 `mj_inverse` wants 2.39 N·mm and the hand-written PD peaks at 4.5.
 
 **Which constraint is active changes, and that is a mechanical improvement.**
-ADR-082 found the foot limiting this robot at 117 N·mm — the centre of
+ADR-095 found the foot limiting this robot at 117 N·mm — the centre of
 pressure cannot leave a sole that reaches 45.5 mm ahead of the ankle. At 216 a
 single ankle could out-torque the entire footprint by 1.8×, so the machine
 could tip *itself* by over-torquing one ankle. At 86 no single ankle command
@@ -9143,7 +9330,7 @@ can roll a foot.
 
 Against 86 N·mm the arithmetic column reads 0.67–0.73× and prints DO NOT
 DISPATCH on every hip, knee and ankle — while the other four checks pass and
-`mj_inverse` reports **2.8 % of limit used**. That is the check ADR-082
+`mj_inverse` reports **2.8 % of limit used**. That is the check ADR-095
 already established is over-conservative: it multiplies full body weight by a
 full limb length, which is a one-legged iron cross, not a stance.
 
@@ -9171,7 +9358,7 @@ green light meaning less than no check at all.
    about the controller; gating a mechanism on it fails every mechanism. It
    is reported as evidence instead, because the gap between what the PD can
    do and what the task asks is exactly what the policy has to learn.
-3. **The statics** — the same question ADR-082 asked about the foot, and what
+3. **The statics** — the same question ADR-095 asked about the foot, and what
    survived.
 
 A horizontal force `F` at height `h` is a moment `F·h`, and exactly two things
@@ -9200,21 +9387,21 @@ changes, it is not a check.
 ### 4. The success metric, decided before dispatch
 
 **Recovery rate** — episodes surviving a shove over episodes shoved — and
-**not reward**. With variation in the task the curve is noisier, ADR-075's
+**not reward**. With variation in the task the curve is noisier, ADR-088's
 stopping rule is harder to apply, and the +0.391 baseline is not comparable
 with anything. `compare.py` plays every checkpoint locally against five
 seeds — stock MuJoCo, no GPU, seconds — and prints survival, episode length,
 final tilt, drift and **peak/mean torque per motor**, which is what catches
 hazard 15 without a rebuild.
 
-Run against the *braced* policy it reproduces ADR-083's finding
+Run against the *braced* policy it reproduces ADR-096's finding
 independently: `hip_pitch_l/r` and `knee_l` above 90 % of the 216 N·mm limit
 **on average**, peaks of 213–215.
 
 ### 5. What the first disturbed run is expected to do
 
 **Fail, possibly.** That is the correct outcome to report rather than iterate
-on (ADR-075). A policy with no torque headroom cannot reject a push, and a
+on (ADR-088). A policy with no torque headroom cannot reject a push, and a
 shove big enough to need a *step* cannot be answered at all — the toe is
 welded and this policy has no gait — which is why the shove is sized from
 what the ankle can absorb and why the gate above prints its margin.
@@ -9254,7 +9441,7 @@ by reward, the one an unexamined pipeline installs — **falls in 43 steps of
 600, from every seed and every direction.** It does not survive to the first
 shove window: it is thrown down by the 6° reset tilt alone.
 
-**ADR-086 §4 is what makes this recoverable.** The decision recorded there,
+**ADR-099 §4 is what makes this recoverable.** The decision recorded there,
 before dispatch, was to judge on recovery rate and *not* reward, for reasons
 that were about noise and comparability. The reason turned out to be much
 stronger than the one given: reward here is not merely noisy, it points the
@@ -9291,11 +9478,11 @@ drift, tilt 0.025 against a 0.15 termination, and **no motor above 90 % of
 limit on average** (`knee_r` at 61 N·mm of 86, where iterations 700 and 800
 trip the bracing note at 82 and 81). Iteration 600 is its equal on survival
 and slightly better on drift, but spends `knee_r` at 75 N·mm — nearer the
-brace, less headroom, and ADR-083 is why that is the tie-breaker.
+brace, less headroom, and ADR-096 is why that is the tie-breaker.
 
 **It is deliberately NOT installed, and that is a decision rather than an
 omission.** By the time the run was judged, `script.py` had moved on to the
-M9b task (ADR-087): 46 observation channels against this policy's 40, a
+M9b task (ADR-100): 46 observation channels against this policy's 40, a
 different reward and different forces, so the engine refuses it by name and
 is right to. Installing it would mean reverting the script to the M9 task,
 which would orphan the M9b run training against the new one. The policy and
@@ -9337,7 +9524,7 @@ because both were near-misses:
 
 ---
 
-## ADR-087 — Sizing a shove by its capture point, and paying for the recovery (2026-08-01)
+## ADR-100 — Sizing a shove by its capture point, and paying for the recovery (2026-08-01)
 
 **Status:** accepted. **Branch:** `MJC` only. **Subject:** why the first
 disturbed `mg-legs` policy never moved its feet, and the three project-script
@@ -9378,7 +9565,7 @@ Measured off the exported model rather than the drawing: `h` = 146.0 mm so
 0.042 N·s → 0.16 m/s → **ξ = 19.5 mm** — inside the polygon in every
 direction *including* the narrow backward one.
 
-**Nothing was asked of the knees because nothing needed to be.** ADR-086
+**Nothing was asked of the knees because nothing needed to be.** ADR-099
 sized that shove deliberately, from what the ankles and the footprint could
 absorb, because the question it was asking was "can it reject this *in
 place*". It answered that question correctly. The question was the small one.
@@ -9448,7 +9635,7 @@ which "get back" beats "go down". It splits in two:
   wandering off instead of recovering; if it does, **raise this weight**, do
   not restore the old linear `over_feet`.
 
-`splay` is new and prices the ADR-083 brace where it actually lived. That
+`splay` is new and prices the ADR-096 brace where it actually lived. That
 policy did not stiffen everything — it drove the two hip rolls apart and
 stood on a widened stance. Loosening `posture` 4× to let the legs move would
 have made that free again, so the roll pair keeps its old price while the six
@@ -9496,7 +9683,7 @@ edit.
 
 ### 6. Feasibility check 3, specified a third time — for a different reason
 
-ADR-086 records two earlier versions of this check as **checks that measured
+ADR-099 records two earlier versions of this check as **checks that measured
 nothing**: `mj_inverse` with the force applied (a floating base absorbs it in
 the free joint's residual, so the leg torques came back bit-identical to the
 undisturbed case) and the hand-written PD pushed (a joint-space PD has no
@@ -9557,7 +9744,7 @@ stepping recovery from scratch typically wants 10–100× that. Read, in order:
 **Success is not a higher reward number.** The reward function changed, so
 +0.391 and +0.243 are not comparable with anything this run prints, and the
 checkpoint to install is the one with the best **survival**. A scrappy result
-here is a result, not a failure of the design (ADR-075).
+here is a result, not a failure of the design (ADR-088).
 
 #### What it did (2026-08-01, after the run)
 
@@ -9585,7 +9772,7 @@ peaking at 170 steps around iteration 100 and collapsing to 30 by 500.** By
 fix it, so this is **not** extended to 1000–2000.
 
 **But the reason not to extend it is no longer the one §7 anticipated.** This
-run reproduces ADR-086 §5's anti-correlation *exactly*, on a **different task
+run reproduces ADR-099 §5's anti-correlation *exactly*, on a **different task
 — different reward, different observations, different forces**: local
 performance degrades monotonically after iteration 100 while the trainer's
 reward rises monotonically to its best at 493. Once is an anomaly; twice, on
@@ -9635,7 +9822,7 @@ now reports that per file instead of aborting the table.
 
 ---
 
-## ADR-088 — The trainer never ends an episode (2026-08-01)
+## ADR-101 — The trainer never ends an episode (2026-08-01)
 
 **Status:** accepted. **Branch:** `MJC` only. **Subject:** a defect in
 `training/cadex_train.py` — the bundle's episode length was read and never
@@ -9652,13 +9839,13 @@ dependency**, and the shell edit is one label row inside `mesh_agent/`.
 **Decision.** The trainer implements the episode the bundle declares: the
 rollout truncates at `episode["max_steps"]`, a **timeout is bootstrapped and
 a failure is not**, and mean episode length becomes a reported number in
-three places. **Every reward figure measured before this — ADR-082's +0.391,
-ADR-086's +0.5118, ADR-087's +0.2149 — is non-comparable with anything
+three places. **Every reward figure measured before this — ADR-095's +0.391,
+ADR-099's +0.5118, ADR-100's +0.2149 — is non-comparable with anything
 measured after it**, because they were measured against an unbounded episode.
 
 ### 1. Two runs, and what was eliminated by reading
 
-ADR-086 §5 and ADR-087 record the same signature on two unrelated tasks: a
+ADR-099 §5 and ADR-100 record the same signature on two unrelated tasks: a
 rising reward curve and a policy getting steadily *worse* at the task. M9,
 best **+0.5118 at iteration 1944**, local survival **12/12 at 500 falling to
 0/12 by 1700**. M9b, different reward, different observations, different
@@ -9670,7 +9857,7 @@ changed. **Not the reward function** — `reward_of(vector)` scores the raw
 observation with the bundle's own compiled expressions, and the normaliser
 does not reach it. **Not the network or the normaliser** — the witness
 re-evaluates the trainer's forward pass in the engine's float64 and agrees
-to 1.02e-07 against a 1e-04 tolerance (ADR-081 is why that number is
+to 1.02e-07 against a 1e-04 tolerance (ADR-094 is why that number is
 trustworthy). **Not the batch aggregation** — a per-step mean over a rolling
 auto-reset stream is still a per-step mean.
 
@@ -9774,7 +9961,7 @@ panel.
 
 Every reward number this branch has recorded was measured against an
 unbounded episode. **They are not a baseline the new numbers can be compared
-against** — not ADR-082's +0.391, not ADR-086's +0.5118, not ADR-087's
+against** — not ADR-095's +0.391, not ADR-099's +0.5118, not ADR-100's
 +0.2149. Saying so plainly is the point of this section: the alternative is
 a table of figures that look comparable and are not.
 
@@ -9825,7 +10012,7 @@ the engine measures it peaking at 162 and collapsing to 39, on the same
 weights and the same bundle. Two simulators disagreeing about how long a
 policy stays up is not a reward-shaping question.
 
-That points at ADR-086 §6 candidate **(a) MJX versus MuJoCo**, and there is
+That points at ADR-099 §6 candidate **(a) MJX versus MuJoCo**, and there is
 an argument — not a proof — against candidate (b), sampled versus mean
 action: the trainer rolls out the *stochastic* policy and `compare.py` plays
 the *mean*, so (b) requires action noise to make a policy survive four times
@@ -9835,7 +10022,7 @@ and adding one is a project-script change. §6 of `docs/MUJOCO.md` stays
 **open**, and its candidate list is now two rather than three.
 
 One more thing the run says on its own: by iteration 500 the policy is
-commanding **79–85 N·mm of 86 on six of eight motors**. That is ADR-083's
+commanding **79–85 N·mm of 86 on six of eight motors**. That is ADR-096's
 brace signature again, at the limit, and it is what a policy converges to
 when the training signal rewards something the bench does not.
 
@@ -9878,174 +10065,3 @@ since the iteration window is 20 steps against a 50-step episode the restart
 falls in a different place each iteration. The curve is now a band 9.4e-5
 wide, against the 9.0e-4 the variation moves the same curve — so the test
 asserts an order of magnitude between the two instead of a fixed point.
-## ADR-074 — The wire meets its terminal square (2026-08-01)
-
-**Decision.** Three fixes to things that shipped wrong in the first real
-session with the Wiring editor. Two are one-line-shaped and one is not.
-
-1. `CadexWiringTree` gains **`get_from_context`**, so the node editor's
-   canvas shows the tree its own sidebar was already listing.
-2. The chat's controls become **one row of buttons under the message box**,
-   with an always-drawable **Rebuild Model** in it, and the header keeps
-   status only.
-3. `part.cable`'s spline is **constrained to leave and arrive on the
-   terminal's axis**, its stand-off is floored by the run a joint needs, and
-   it is swept in the **corrected** frame rather than the true Frenet one.
-
-### 1. The graph canvas was blank while the sidebar was full
-
-`node_draw_space` wraps *everything it draws* in `if (snode.treepath.last)`
-(`editors/space_node/node_draw.cc`), and only `ED_node_tree_start` pushes
-onto `treepath`. `snode_set_context` calls it on every redraw — but only for
-a tree type that supplies a `get_from_context` callback, and ours did not, so
-`ntree` stayed null and the editor drew an empty grid.
-
-Nothing noticed, because `wiring_ui._tree` reads `context.scene.cadex_wiring`
-**directly** and uses `space_data.tree_type` only as a filter. That is
-exactly why the panels looked healthy: boards, wires, gauges and terminals
-all listed, on a blank canvas.
-
-The callback is the fix rather than a patch, because it repairs the editor
-**however it is opened** — from the editor-type menu, from a restored
-`.blend`, from a split — with no operator involved and nothing to keep in
-sync. `MESH_AGENT_OT_toggle_wiring` is the secondary half: an explicit
-open/close for the button row. Its predicate matches on
-`area.spaces.active.tree_type`, not on `area.type`, because `NODE_EDITOR` is
-a shared space type and a toggle keyed on the type alone would close somebody
-else's compositor. And its ordering is load-bearing:
-`rna_SpaceNodeEditor_node_tree_poll` rejects a `node_tree =` assignment
-unless `snode->tree_idname` already agrees, so `ui_type` is set first, inside
-a `temp_override` carrying the window — without which an area-type change
-silently no-ops. A test asserts that order against the operator's own source,
-because the order *is* the bug.
-
-### 2. One row of buttons, and something safe to press
-
-The controls were split across two places — the two pin gestures in the chat
-header, everything else under the message box — so the answer to "where is
-the button" depended on which button. The header now carries only what is
-*status* (the model dropdown, which is a setting, and the pinned count) and
-one row carries every action, in four groups: what the next message will
-carry, what acts on the model, what opens a view, and the turn itself.
-
-**Rebuild Model** is the addition. Its poll is only "the assistant is idle",
-so it is always drawable, and it re-runs the script the engine already holds
-without sending anything — the documented safe thing to press when it is
-unclear which side is wrong (ADR-039). Deliberately *not* "Rebuild From Saved
-Script", which pushes this file's text buffer over the engine: wrong
-semantics for a button that is always on.
-
-**Define Terminal is drawn disabled rather than hidden** outside Edit Mode.
-A row that changes width as you enter and leave Edit Mode moves every other
-button under the pointer.
-
-### 3. The wire clipped through its solder joint
-
-Three independent faults, found in that order, each one uncovering the next.
-
-**The spline had no tangent constraint.** `_sweep_conductor` interpolated
-with free ends, so a global C2 fit left the port on whatever tangent
-minimised its own energy — measured at **9.7 degrees off a bore's own axis**
-on the probe plate. The router's straight stub is straight only as a
-polyline; the spline through it bows from parameter zero. And the profile
-circle is oriented off that same first tangent, so the error showed up twice:
-as a bowed lead, and as a start face tilted against the axis — the misaligned
-ring where the collar meets the wire.
-
-Passing `InitialTangent`/`FinalTangent` fixes the direction. The *magnitude*
-had to be measured: OCC's default `Scale=True` keeps the direction and picks
-the speed itself, and on a five-waypoint route it picks one that makes the
-whole fit wavy — 45.5 mm of spline against 37.6 mm free, swinging 5.5 mm
-below a board it started 0.4 mm under. `GeomAPI_Interpolate` parameterises by
-chord length, so the natural speed is ~1 whatever the model's size: a **unit
-tangent with `Scale=False`** asks for the direction and leaves the shape
-alone (38.2 mm, same excursions).
-
-**The stand-off was shorter than the joint.** A joint holds the lead straight
-for `fillet_height + collar_height` above the entry face — 1.005 mm on the
-probe plate — while the router's anchor, the first point the search may move,
-sat 0.5 mm above it. Nothing connected the two numbers. `CadexSolder`
-gains **`lead_run_mm(metrics, gauge_mm)`**, which reads the arithmetic
-`solder_specs` already does rather than restating it, and the part worker
-floors each end's stand-off with it *at the call site* — leaving
-`_end_standoff`'s signature and its pinned test intact. `part.cable` never
-learns whether a joint exists; it leaves enough straight lead that one
-*could* be there, which keeps the two operations independent. A terminal that
-cannot be soldered at all (a literal port, a lead too fat for its bore)
-reserves nothing, because refusing a route over a joint nobody asked for
-would couple them in exactly the direction this is keeping apart.
-
-**And the sweep frame was wrong for cables the whole time.** With the tangent
-constrained, the pinned four-hole-plate test still failed: the swept tube
-bulged 1.1 mm sideways. ADR-057 pinned **true** Frenet because *corrected*
-Frenet collapses helical spines — up to 51% of the volume missing on a
-six-way lay. But true Frenet takes its normal from the curve's curvature, and
-a routed cable is mostly straight. Measured against `pi r^2 L`, ordinary
-two-port runs came out at **0.78 and 0.58** of the volume they should have,
-folded through themselves. Corrected held all three probe runs to within
-0.06%. So the frame is now per-operation: a cable sweeps corrected, a
-bundle's conductors sweep true Frenet, and both call sites say why.
-
-The part worth remembering: **boolean operations against a folded sweep
-silently return nothing.** That is how a wire drifting 0.09 mm off-axis
-inside a 0.3 mm bore reported *exactly zero* shared volume with the joint
-around it, and how a test asserting that zero passed for two ADRs. It was
-pinning a broken sweep, not a straight wire. It now asserts a bound on the
-sliver a straight-bore joint and a fitted spline must share, and the real
-measurements moved the right way: mid-barrel drift 0.093 mm → 0.031 mm, total
-shared volume 0.094 mm³ → 0.038 mm³.
-
-**What was tried and dropped.** The same tangent constraint on `part.bundle`'s
-shared spine. A conductor is swept along a *lay* resampled off that spine at
-97 points, so the spine's end tangent reaches the wire only through the
-resample — and the pipe shell's frame is already a coin flip across
-neighbouring parameters: at fixed geometry the baseline sweep measures between
-**0.75x and 1.47x** of `pi r^2 L` as `twist_pitch_mm` and `slack` move by a few
-percent. Constraining the spine re-rolled that dice and the pinned three-phase
-case landed badly. The cable, whose spline *is* the wire, gets the constraint;
-the bundle waits for its frame to be fixed, which is now a known issue in
-ROADMAP with numbers attached.
-
-### The cost, stated plainly
-
-Every cable's swept BREP moves, so **`shape_sha256` moves and every saved
-project with a cable must be re-accepted.** Same class of change as ADR-064
-and the same remedy. ROADMAP records the sibling `_sag` −Z fold as unfixed
-*for this reason*; the difference is that this one is not cosmetic. A wire
-that clips through the joint holding it is wrong in the render, and a
-conductor missing 42% of its volume is wrong in anything downstream that
-measures it.
-
-**Corrected the same day, after the first project hit it:** this paragraph
-originally said the re-acceptance was "one click, or one `pixi run rebuild`".
-It is neither. The mismatch is caught by the **restore pass at open**, so the
-project does not open at all — `ensure_open` returns
-`CADEXD_RESTORE_FAILED`, and **Rebuild Model is behind that same call** and
-cannot be the remedy (nor should it be: re-running a model whose script no
-longer reproduces it is what the guard exists to stop). The remedy is
-`write_script`, which passes `unrestored_ok=True` and re-accepts — but the
-button that calls it, `adopt_script`, is drawn only for an *empty* engine
-project or a *dirty* buffer, and a project accepted under an older engine is
-neither. So there is no route out of the state in the UI, and recovery is
-`open_project restore=false` followed by `write_script` by hand. Measured on
-`wiring-demo/harness.cadex`: accepted `7e073ae6…`, restored `25fdf64f…`, four
-cables, recovered and reopened clean. The gap and the shape of its fix are in
-ROADMAP under *Later — identified, not scheduled*; it wants its own ADR
-because it is a `shell/` diff and a product decision, and it is now blocking
-in a way ADR-064 only predicted.
-
-### Verification
-
-Engine: 615 tests green, including four new ones — `lead_run_mm` read off the
-joint's own outline and zero for a terminal that cannot carry one (pure
-Python), and two kernel probes: the wire's start tangent and start-cap normal
-against the terminal's axis, its volume against `pi r^2 L`, its centreline
-drift at five heights through barrel and collar, and the anchor sitting
-exactly `depth + lead_run` along the axis. Shell: `bl_mesh_agent_wiring.py`
-and `bl_mesh_agent.py` green on the shipped bundle, with new tests for
-`get_from_context`, the toggle's ordering and its discriminating predicate,
-and the button row's contents, ordering and greyed-out-not-hidden width.
-
-**Not verified headless, and unchanged from ADR-066:** the link-drag gesture
-itself. `node.link` does not exist in a bundle that never registered the
-space type, so it has only ever been driven from Python.

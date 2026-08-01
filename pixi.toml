@@ -178,7 +178,7 @@ freecad-stubs = "*"
 # discovering -- and package/engine/build_engine_payload.sh hard-fails the
 # build if the payload cannot *import* mujoco 3.10.0. (This comment said
 # "DEVELOPMENT ONLY -- this does NOT ship" until 2026-07-31; it was written
-# before ADR-061 and was already wrong when M0 closed.)
+# before ADR-076 and was already wrong when M0 closed.)
 #
 # It is a pypi wheel rather than the correct home, conda-forge
 # `mujoco-python`, because that cannot be installed until the manifest is
@@ -186,8 +186,8 @@ freecad-stubs = "*"
 # full re-solve fails on its own today (qt6-main/occt drift against opencv,
 # vtk, smesh). Pinned exactly for the reason occt is -- MuJoCo disclaims
 # cross-version numerical reproducibility, every open_project asserts digest
-# equality, and since ADR-066 a version bump also changes every exported
-# MJCF file. See docs/DECISIONS.md ADR-060, ADR-061 and docs/MUJOCO.md M0.
+# equality, and since ADR-081 a version bump also changes every exported
+# MJCF file. See docs/DECISIONS.md ADR-075, ADR-076 and docs/MUJOCO.md M0.
 mujoco = "==3.10.0"
 
 ## Qt 6 Configuration Presets
@@ -286,7 +286,7 @@ freecad = [{ task = "freecad-debug" }]
 # build/ctest_baseline_failures.txt. Naming both makes which is which
 # obvious at the command line instead of in a doc.
 #
-# A task, not a dependency: ADR-070's pixi.toml prohibition is about
+# A task, not a dependency: ADR-084's pixi.toml prohibition is about
 # CARRIED_PYPI_PACKAGES staying one entry long, and this adds nothing to
 # solve. The 12 skips are the MJX-gated tests and are expected here; to run
 # them, use a venv built from training/requirements.txt.

@@ -231,7 +231,7 @@ def test_ondsel_advances_a_screw_one_pitch_per_revolution() -> None:
 def test_ondsel_writes_byte_identical_traces_in_two_separate_processes() -> None:
     """M3 phase 0's fourth measurement, and it decides a later question.
 
-    ADR-062 left the digest decision open on one precondition: a trace's
+    ADR-077 left the digest decision open on one precondition: a trace's
     ``artifact_sha256`` is in **no** project digest today, so a solver
     version bump changes every trace and moves nothing -- silent, which is
     strictly worse than loud. Putting it *in* a digest is only defensible

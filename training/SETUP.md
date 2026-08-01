@@ -1,7 +1,7 @@
 # Training a policy: the four ways
 
-Verified against source: 2026-08-01. Branch **`MJC` only** (ADR-072).
-Provenance: `[Cadex-new]`. See ADR-070 (training is offboard) and ADR-076
+Verified against source: 2026-08-01. Branch **`MJC` only** (ADR-086).
+Provenance: `[Cadex-new]`. See ADR-084 (training is offboard) and ADR-089
 (remote dispatch).
 
 `training/README.md` is *what the trainer is*. This is *how to run it*, end
@@ -16,7 +16,7 @@ to end, four ways. Pick the row that matches the hardware you have:
 
 Two facts shape all four. **The engine cannot train** — no `jax` and no
 `mjx` reaches `src/Mod/cadex` or a staged payload, and a test asserts it
-(ADR-070). And **the Mac cannot train**, in the sense that matters: MJX
+(ADR-084). And **the Mac cannot train**, in the sense that matters: MJX
 needs JAX-on-GPU, `jax-metal` is 0.1.0, and the community MPS backends have
 known compatibility problems. So every path below ends with a `.cxpolicy`
 file arriving back in the project, and none of them involves the engine
@@ -83,7 +83,7 @@ Each stderr line carries three numbers, and the third is the one to watch:
 iteration  419  reward/step +0.391  loss +0.0021  episode 137.5
 ```
 
-`episode` is the mean episode length in control steps (ADR-088). **A reward
+`episode` is the mean episode length in control steps (ADR-101). **A reward
 that climbs while it falls is a policy failing sooner and being paid more
 for it** — the failure two runs on this branch had, with no number recording
 it. If it reads as `envs × unroll` exactly, no episode is ending at all.
@@ -151,7 +151,7 @@ transfer is otherwise discovered as a policy refusal with no obvious cause.
 ## (d) Driving the box with `remote_train.sh`
 
 Path (c), as one command, with the checks that are easy to skip by hand made
-mandatory. `training/remote_train.sh` (ADR-076) does exactly the three steps
+mandatory. `training/remote_train.sh` (ADR-089) does exactly the three steps
 above — copy two files out, run the trainer, copy one file back — and adds
 nothing to the product: no new op, no protocol change, nothing in
 `pixi.toml`, no CMake rule.
@@ -208,7 +208,7 @@ configuration — use it once to accept the host key, since `check` and
 `train` run under `BatchMode` where any prompt reads as a connection
 failure. `training/remote_train.sh config` prints what it resolved.
 
-### Detached, which is what you want for a real run (ADR-085)
+### Detached, which is what you want for a real run (ADR-098)
 
 A run is an hour or more, and `train` without `--detach` is one ssh held open
 for all of it — so a closed laptop, a sleeping wifi chip or a dropped VPN is
@@ -242,7 +242,7 @@ run had already written is still on the box; `pull` brings it home.
 
 Do not pipe any of these through `tail`: a pipeline reports the last
 command's status, which hides a failed dispatch, and it buffers the output
-until the process exits (ADR-080 §4).
+until the process exits (ADR-093 §4).
 
 ### Choosing among the checkpoints
 
@@ -250,7 +250,7 @@ They are all real policies. `compare.py` in the project directory plays each
 one locally — stock MuJoCo, no GPU, seconds — and prints survival, episode
 length, final tilt, drift and peak/mean torque per motor as one table. That
 is the comparison; watching two *animate* at once is not available and should
-not be faked (ADR-062: exactly one simulation per script).
+not be faked (ADR-077: exactly one simulation per script).
 
 ---
 

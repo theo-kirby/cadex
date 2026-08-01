@@ -240,7 +240,7 @@ def test_every_engine_module_is_installed_by_cmake() -> None:
 
 
 def test_mujoco_never_enters_the_engine_closure() -> None:
-    """Dynamics is a staged worker dependency, not an engine dependency (ADR-062).
+    """Dynamics is a staged worker dependency, not an engine dependency (ADR-077).
 
     ``CadexDynamics`` is the one module in the tree that imports ``mujoco``,
     and it is staged into the sandbox by filename like every other worker
@@ -255,7 +255,7 @@ def test_mujoco_never_enters_the_engine_closure() -> None:
     closure = _engine_closure()
     assert "CadexDynamics" not in closure, (
         "CadexDynamics reached the engine closure. It is staged by filename "
-        "into the worker bundle (ADR-062); cadexd must never import it."
+        "into the worker bundle (ADR-077); cadexd must never import it."
     )
     leaked = sorted(
         module for module, roots in closure.items() if "mujoco" in roots
@@ -273,7 +273,7 @@ def test_mujoco_never_enters_the_engine_closure() -> None:
 def test_the_training_stack_never_enters_the_engine_closure() -> None:
     """Training is offboard by design, and this is what makes that a fact.
 
-    ADR-060 recorded the constraint and ADR-070 kept it: MJX needs
+    ADR-075 recorded the constraint and ADR-084 kept it: MJX needs
     JAX-on-GPU, so the trainer runs on a machine we do not ship to. It reads
     the bundle, writes a ``.cxpolicy``, and the engine *verifies* that file
     with a pure-Python forward pass that imports nothing at all.
@@ -294,7 +294,7 @@ def test_the_training_stack_never_enters_the_engine_closure() -> None:
             offenders.append(f"{path.name} -> mujoco.mjx")
     assert not offenders, (
         f"The engine reached for the training stack: {offenders}. Training "
-        "is offboard (ADR-060, ADR-070); the engine verifies a policy and "
+        "is offboard (ADR-075, ADR-084); the engine verifies a policy and "
         "never produces one."
     )
 
@@ -320,7 +320,7 @@ def test_the_offboard_trainer_is_not_an_engine_module() -> None:
 
 
 def test_the_shell_never_learns_about_mujoco() -> None:
-    """Dynamics is engine-side, permanently (ADR-060 decision 4, ADR-062).
+    """Dynamics is engine-side, permanently (ADR-075 decision 4, ADR-077).
 
     Slice M2 shipped with an empty ``shell/`` diff, which was its central
     claim: the shell already knows how to play a simulation trace and does

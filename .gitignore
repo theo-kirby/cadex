@@ -76,7 +76,7 @@ tsupdate_stdout.log
 goals.md
 #explicitly ignore local env
 .env
-# The remote-training config (ADR-076): a host, a repo path, a venv path and
+# The remote-training config (ADR-089): a host, a repo path, a venv path and
 # a path to an ssh key. Already ignored by the `.*` rule at the top of this
 # file -- named again here so it stays ignored if that rule is ever loosened,
 # because the allowlist beside it shows the rule is edited.

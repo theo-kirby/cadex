@@ -60,7 +60,7 @@ the product installs contains them:
   build-only dependency — it is redistributed **inside the engine payload**,
   carried there by name through `CARRIED_PYPI_PACKAGES` because the manifest
   has not been re-solvable as conda since conda-forge moved past our `occt`
-  pin (ADR-060, ADR-061). Ledger entry: `docs/PROVENANCE.md` §4; the payload
+  pin (ADR-075, ADR-076). Ledger entry: `docs/PROVENANCE.md` §4; the payload
   build hard-fails if it cannot import it.
 - `src/Tools`, `tests/` — upstream tooling and native test trees (audited,
   not blanket-kept, during Phase 1).

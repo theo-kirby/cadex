@@ -168,7 +168,7 @@ def test_a_weights_name_that_is_not_a_cxpolicy_is_refused(weights) -> None:
     """The suffix is what the store's own check keys on, so it is checked here.
 
     A .stl in this parameter would be stored happily -- ``put_asset`` holds
-    both kinds since ADR-070 -- and refused only once the worker tried to
+    both kinds since ADR-084 -- and refused only once the worker tried to
     read a mesh as a container. Refusing it in the script is the cheaper
     place.
     """

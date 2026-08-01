@@ -119,7 +119,7 @@ def test_a_simulation_publishes() -> None:
 
 
 def test_a_policy_rollout_publishes_through_the_same_branch_unchanged() -> None:
-    """M8's phase 4, which is empty, asserted rather than assumed (ADR-071).
+    """M8's phase 4, which is empty, asserted rather than assumed (ADR-085).
 
     A rollout is an ``assembly_simulation_json`` like any other simulation,
     so ``_configure_assembly_simulation`` already handles it and M8 changed

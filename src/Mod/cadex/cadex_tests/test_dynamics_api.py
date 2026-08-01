@@ -213,9 +213,9 @@ def test_the_worker_contract_accepts_a_dynamics_run() -> None:
 
 
 def test_the_simulation_trace_is_part_of_the_project_digest() -> None:
-    """The correction ADR-062 owed ADR-060, now finally true (ADR-068).
+    """The correction ADR-077 owed ADR-075, now finally true (ADR-068).
 
-    ADR-060 justified MuJoCo's exact version pin with "every open_project
+    ADR-075 justified MuJoCo's exact version pin with "every open_project
     asserts digest equality, so an unpinned patch bump would silently turn
     every stored simulation into a restore failure." M2 measured that and
     found it false: ``compute_project_digest`` branched on ``artifact_kind``
@@ -223,7 +223,7 @@ def test_the_simulation_trace_is_part_of_the_project_digest() -> None:
     for everything else, so a trace's bytes were in no digest. A version bump
     changed every trace and moved nothing.
 
-    ADR-064 decided that should change and routed it to ``main``, because
+    ADR-079 decided that should change and routed it to ``main``, because
     the digest code is shared with the kinematics trace. ADR-068 landed it
     there, and this is the test M3 wrote in its inverted form saying it would
     have to be rewritten. The pin's justification is now the truth rather

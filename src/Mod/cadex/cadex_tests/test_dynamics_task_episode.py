@@ -247,7 +247,7 @@ def test_the_three_evaluators_share_one_function_whitelist(tmp_path: Path) -> No
 
     Four things asserted equal rather than two: the runner's own globals, the
     array in the bundle, the engine's ``REWARD_FUNCTIONS``, and -- since
-    ADR-070 -- the offboard trainer's, which compiles the same expressions a
+    ADR-084 -- the offboard trainer's, which compiles the same expressions a
     third time under ``jax.numpy`` so they vectorise. This codebase keeps
     catching drift by writing the second copy down; here it costs one array
     and one more assertion.

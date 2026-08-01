@@ -98,7 +98,7 @@ def test_no_cmake_rule_installs_the_trainer() -> None:
 
 
 def test_the_requirements_are_exactly_pinned_and_stay_out_of_pixi() -> None:
-    """ADR-061's constant stays one entry long, which is what it is named for.
+    """ADR-076's constant stays one entry long, which is what it is named for.
 
     MuJoCo's own VERSIONING.md disclaims cross-version numerical
     reproducibility, so a training run is only reproducible if the thing it
@@ -120,7 +120,7 @@ def test_the_requirements_are_exactly_pinned_and_stay_out_of_pixi() -> None:
     for forbidden in ("jax", "mujoco-mjx", "mjx"):
         assert forbidden not in pixi, (
             f"{forbidden} entered pixi.toml; training is offboard by design "
-            "(ADR-060) and the engine must build and ship without it"
+            "(ADR-075) and the engine must build and ship without it"
         )
 
 
@@ -404,7 +404,7 @@ def test_the_trainer_writes_a_policy_the_engine_verifies(tmp_path, seed) -> None
     if python is None:
         pytest.skip(
             "jax and mujoco.mjx are the offboard trainer's dependencies and "
-            "are deliberately absent from the engine environment (ADR-070). "
+            "are deliberately absent from the engine environment (ADR-084). "
             "Run this file from a venv built from training/requirements.txt."
         )
 
@@ -555,7 +555,7 @@ def test_the_trainer_runs_a_varied_and_shoved_task(tmp_path) -> None:
     if python is None:
         pytest.skip(
             "jax and mujoco.mjx are the offboard trainer's dependencies and "
-            "are deliberately absent from the engine environment (ADR-070)."
+            "are deliberately absent from the engine environment (ADR-084)."
         )
 
     prepared = pf.shoved_bundle()
@@ -647,7 +647,7 @@ def test_the_variation_actually_reaches_the_physics(tmp_path) -> None:
     other test in this file.
 
     That band used to be a *point* -- +0.298921 repeated to six figures --
-    and ADR-088 is why it no longer is. The unvaried run's reward stopped
+    and ADR-101 is why it no longer is. The unvaried run's reward stopped
     moving because nothing ever ended its episode: one endless run of a block
     sitting still. It now restarts every ``max_steps``, and since the
     iteration window is 20 steps against a 50-step episode the restart falls
@@ -705,7 +705,7 @@ def test_the_variation_actually_reaches_the_physics(tmp_path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# M9 slice 2: a run you can watch, interrupt and pull from (ADR-085).
+# M9 slice 2: a run you can watch, interrupt and pull from (ADR-098).
 # ---------------------------------------------------------------------------
 
 
@@ -732,7 +732,7 @@ def test_a_checkpoint_is_a_whole_policy_rather_than_a_weight_dump() -> None:
 
 
 def test_the_witness_is_checked_on_checkpoints_too() -> None:
-    """ADR-081's lesson, applied where it now costs nothing.
+    """ADR-094's lesson, applied where it now costs nothing.
 
     The witness error is a *relative* one that grows with the activations a
     policy learns, so a checkpoint that fails it is a run that is going to
@@ -812,7 +812,7 @@ def test_the_dispatch_script_gained_four_subcommands() -> None:
     # `watch` writes the file the shell panel reads, and does it by name so
     # that the panel and the dispatch cannot disagree about it.
     assert "training-progress.json" in script
-    # Nothing parses the trainer's stderr. ADR-080 measured what happens
+    # Nothing parses the trainer's stderr. ADR-093 measured what happens
     # when a receipt is taken from a stream something else writes into.
     assert "progress.json" in script
 
@@ -835,7 +835,7 @@ def test_the_pid_file_holds_the_trainer_rather_than_its_wrapper() -> None:
 
 
 # ---------------------------------------------------------------------------
-# ADR-088: the episode the bundle declares is the episode the trainer runs.
+# ADR-101: the episode the bundle declares is the episode the trainer runs.
 #
 # Two runs on two different tasks produced a rising reward curve and a policy
 # that got steadily worse at the task. The cause was one line: `horizon` was
@@ -869,7 +869,7 @@ def test_the_horizon_the_trainer_uses_is_the_bundles_own() -> None:
     assert len(assignments) == 1, "the horizon is assigned in exactly one place"
     assert ast.unparse(assignments[0].value) == "int(episode['max_steps'])"
 
-    # ...and it is *used*, which is the whole of ADR-088. The bound is an
+    # ...and it is *used*, which is the whole of ADR-101. The bound is an
     # integer compare on a step counter rather than a float compare on the
     # episode-local clock: 600 additions of a 0.02 s interval do not land on
     # 12.0.
@@ -946,7 +946,7 @@ def test_a_timeout_is_bootstrapped_and_a_failure_is_not() -> None:
 def _no_termination_bundle():
     """A task nothing can fail, so only the horizon can end an episode.
 
-    Ten control steps at 50 Hz. Before ADR-088 no environment running this
+    Ten control steps at 50 Hz. Before ADR-101 no environment running this
     bundle ever reset, at any length of run.
     """
 
@@ -982,7 +982,7 @@ def _train(python, prepared, tmp_path, *, name, extra=()):
 
 
 def test_the_trainer_truncates_at_the_bundles_episode_length(tmp_path) -> None:
-    """The decisive one, and it fails hard on the code ADR-088 replaced.
+    """The decisive one, and it fails hard on the code ADR-101 replaced.
 
     The bundle declares a ten-step episode and can terminate for no other
     reason, so the only thing that can end one is the horizon. Twenty control
@@ -999,7 +999,7 @@ def test_the_trainer_truncates_at_the_bundles_episode_length(tmp_path) -> None:
     if python is None:
         pytest.skip(
             "jax and mujoco.mjx are the offboard trainer's dependencies and "
-            "are deliberately absent from the engine environment (ADR-070)."
+            "are deliberately absent from the engine environment (ADR-084)."
         )
 
     prepared = _no_termination_bundle()
@@ -1018,7 +1018,7 @@ def test_the_trainer_truncates_at_the_bundles_episode_length(tmp_path) -> None:
 def test_the_trainer_reports_episode_length(tmp_path) -> None:
     """The observable that did not exist, on a task that also terminates.
 
-    There was no external record of episode length at all before ADR-088,
+    There was no external record of episode length at all before ADR-101,
     which is both why two runs went wrong unnoticed and why the fix could not
     be checked from outside. It has to reach the curve rows -- the policy
     file's own record of the run -- and ``progress.json``, which is what

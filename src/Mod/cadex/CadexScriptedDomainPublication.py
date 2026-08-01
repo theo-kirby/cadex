@@ -1710,7 +1710,7 @@ def _configure_assembly_simulation(
 
 
 def _configure_assembly_mjcf(obj: Any, item: Mapping[str, Any]) -> None:
-    """Publish one exported MuJoCo model's authenticated identity (ADR-066).
+    """Publish one exported MuJoCo model's authenticated identity (ADR-081).
 
     Everything here is worker-computed and re-read after assignment, the
     same discipline ``_configure_assembly_simulation`` follows: this
@@ -1722,7 +1722,7 @@ def _configure_assembly_mjcf(obj: Any, item: Mapping[str, Any]) -> None:
     bytes are in no project digest -- ``compute_project_digest`` hashes an
     output's canonical definition JSON for anything that is not ``brep`` or
     ``mesh`` -- so a MuJoCo release changes every exported model silently.
-    ADR-064 routed the real fix to ``main`` because the digest code is
+    ADR-079 routed the real fix to ``main`` because the digest code is
     shared with the kinematics trace; until then the drift is at least
     legible here.
     """
@@ -1831,7 +1831,7 @@ def _configure_assembly_mjcf(obj: Any, item: Mapping[str, Any]) -> None:
 
 
 def _configure_assembly_task(obj: Any, item: Mapping[str, Any]) -> None:
-    """Publish one training task's authenticated identity (ADR-069).
+    """Publish one training task's authenticated identity (ADR-083).
 
     Everything here is worker-computed and re-read after assignment, the
     same discipline ``_configure_assembly_mjcf`` follows: this publishes
@@ -1955,7 +1955,7 @@ def _configure_assembly_task(obj: Any, item: Mapping[str, Any]) -> None:
 
 
 def _configure_assembly_policy(obj: Any, item: Mapping[str, Any]) -> None:
-    """Publish one trained policy's verified identity (ADR-070).
+    """Publish one trained policy's verified identity (ADR-084).
 
     Everything here is worker-computed and re-read after assignment, the
     discipline ``_configure_assembly_task`` follows: this publishes facts

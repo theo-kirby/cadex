@@ -533,7 +533,7 @@ def test_a_stock_load_starts_folded_up_without_a_keyframe() -> None:
     """61 mm of wrong, and it looks like a model rather than an error.
 
     ``build_model`` deliberately builds at the configuration where each
-    joint's connector frames coincide, not at the solved pose -- ADR-062's
+    joint's connector frames coincide, not at the solved pose -- ADR-077's
     exit criterion depends on the solved pose being *derived* rather than
     built in. ``to_xml()`` emits no ``<keyframe>``, so anyone opening the
     exported file gets that reference configuration.

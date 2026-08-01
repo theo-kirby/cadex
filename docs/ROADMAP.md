@@ -9,7 +9,7 @@ in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
 Phases 0–7 built the engine/shell split on two forks. Phases 8–13 reduce
 both forks toward one application we own, keeping OCCT (ADR-025). **Phase 14
 is the dynamics and control vertical** — closed, and the reason this branch
-exists (ADR-072).
+exists (ADR-086).
 
 **Phase 13a came early (ADR-030).** Merging the repositories never depended
 on owning the engine or the shell — it was a repo-layout and
@@ -239,8 +239,8 @@ restart rehydration. Evidence in ADR-019 and
       files / 425 tests → 20 / 154. `requirements.txt` deleted — the engine
       had no third-party Python dependency left. *(True until M0. Phase 14
       added exactly one, `mujoco == 3.10.0`, deferred-imported inside
-      `CadexDynamics.py` so `cadexd`'s own closure still has none — ADR-060,
-      ADR-061.)*
+      `CadexDynamics.py` so `cadexd`'s own closure still has none — ADR-075,
+      ADR-076.)*
 - [x] **GUI build off** (C6b, ADR-022): `BUILD_GUI=OFF` for release and
       package configs; `isVibeExperimentalModeSession` reverted to stock,
       which *reduces* the fork's delta against upstream FreeCAD.
@@ -646,14 +646,14 @@ Not a phase that "completes" — a standing mode of work.
       GitHub remotes first (`cadex-teardown` was local-only until then);
       history is recoverable, the disks are not carrying it.
 
-## Phase 14 — Dynamics and control `(ADR-060, ADR-072; 14a closed 2026-07-31, 14b closed 2026-08-01)`
+## Phase 14 — Dynamics and control `(ADR-075, ADR-086; 14a closed 2026-07-31, 14b closed 2026-08-01)`
 
 **This is the `MJC` vertical**, and it is absent from the dependency graph at
 the top of this file for a reason rather than an oversight: it depends on
 nothing in Phases 0–13 beyond what already shipped, and nothing in Phases
-0–13 depends on it. That independence is what made it branchable. ADR-072
+0–13 depends on it. That independence is what made it branchable. ADR-086
 records that `MJC` is a product vertical rather than a branch awaiting a
-merge, ADR-063 which way changes flow (`main` → `MJC`, never back), and both
+merge, ADR-078 which way changes flow (`main` → `MJC`, never back), and both
 together what a sync must not drop.
 
 **Goal:** rigid-body dynamics on MuJoCo, and then the whole arc that
@@ -664,16 +664,16 @@ facts are `docs/MUJOCO.md`; only status lives here.
 Slices are numbered **M0–M9** rather than sub-phases, to avoid colliding
 with the phase numbers above. Every slice is a resting place.
 
-**14a is M0–M8** — closed at M8 (ADR-071, 2026-07-31), and the arc's exit
+**14a is M0–M8** — closed at M8 (ADR-085, 2026-07-31), and the arc's exit
 criteria are recorded as met below. **14b is M9**, and it exists because
 *reading* what 14a produced found the arc had shipped a policy that stands
-by bracing (ADR-083, hazard 15) and a task that could not have told the
+by bracing (ADR-096, hazard 15) and a task that could not have told the
 difference (hazard 16). 14b is not a defect fix and not scope creep: an arc
 that ends at "it moves" and never asks "could a machine do that" is an arc
 missing its last question, and the answer needed a new authoring surface, a
 new trainer capability and a re-rated mechanism.
 
-- [x] **M0 — Decide, depend, deliver** (ADR-060, ADR-061). Scope approved
+- [x] **M0 — Decide, depend, deliver** (ADR-075, ADR-076). Scope approved
       including the M5–M8 direction change; `mujoco-python` 3.10.0 exactly
       pinned. The dependency could not be added as conda — the manifest has
       not been re-solvable since conda-forge moved past `occt ==7.8.1` — so
@@ -687,13 +687,13 @@ new trainer capability and a re-rated mechanism.
       falling box because its links pass through full rotations and so
       exercise the quaternion-hemisphere flip `cadex_animate` lists as one of
       its five silent failure modes. Trace played in the shell, unmodified.
-- [x] **M2 — `assembly` → `mjSpec`** (ADR-062). `api.dynamics` / `api.body`,
+- [x] **M2 — `assembly` → `mjSpec`** (ADR-077). `api.dynamics` / `api.body`,
       exact OCCT inertia, a breadth-first spanning forest from the grounded
       components, loop closures against sites, and gear/belt/screw couplings
       whose laws were **measured against OndselSolver** rather than derived.
       `rack_pinion` refused. Collision deferred to M3 (`model.ngeom == 0` is
       a test). No protocol change, no `shell/` diff.
-- [x] **M3 — Dynamics for real** (ADR-064). `api.collision` with four
+- [x] **M3 — Dynamics for real** (ADR-079). `api.collision` with four
       primitives plus `mesh`/`hull`; friction, restitution, `condim`, margin
       and collision groups; gravity and the solver step as script
       parameters; and the determinism gate, which holds across cadexd
@@ -707,7 +707,7 @@ new trainer capability and a re-rated mechanism.
       trace step in M2, so what M3 owed was the budget — which became two
       budgets, one for what leaves the engine and one for what the engine
       does. No protocol change, no `shell/` diff.
-- [x] **M4 — Actuators and closed loop** (ADR-065). `api.actuator` in three
+- [x] **M4 — Actuators and closed loop** (ADR-080). `api.actuator` in three
       kinds — `motor`, `position`, `velocity` — plus `api.joint_dynamics` for
       the damping, armature and friction loss MuJoCo defaults to zero. A
       two-link arm holds a commanded 30° and settles at 30.44, the 0.44 being
@@ -720,7 +720,7 @@ new trainer capability and a re-rated mechanism.
       joint rings at sixty degrees peak to peak forever. Units are in the
       parameter names and the wrong one is a refusal. No protocol change, no
       `shell/` diff.
-- [x] **M5 — MJCF export** (ADR-066). `assembly.mjcf(assembly, bodies, ...)`
+- [x] **M5 — MJCF export** (ADR-081). `assembly.mjcf(assembly, bodies, ...)`
       writes one self-contained MJCF file — collision meshes inline, no
       sidecars — carrying exact OCCT inertia and a keyframe at the pose the
       assembly solver produced. It loads in a stock MuJoCo whose interpreter
@@ -733,13 +733,13 @@ new trainer capability and a re-rated mechanism.
       cheap part was calling MuJoCo's writer; the slice was proving the file
       is the model. The export verifies its own output before returning it
       and refuses rather than writing. No protocol change, no `shell/` diff;
-      the packaged gate is 9 tests. **ADR-063's deferred merge-back question
-      is answered by ADR-067: no — and M5 is the reason rather than the
+      the packaged gate is 9 tests. **ADR-078's deferred merge-back question
+      is answered by ADR-082: no — and M5 is the reason rather than the
       exception.** The export calls MuJoCo's own writer, so the capability is
       not separable from the 53.5 MB dependency, and the round-trip proof that
       makes the file trustworthy only means anything while the writer and the
       compiler are the same pair.
-- [x] **M6 — A task is part of the script** (ADR-069).
+- [x] **M6 — A task is part of the script** (ADR-083).
       `assembly.task(model, ...)` writes one JSON bundle beside the model it
       references, describing observation channels, an action space, a
       reward, termination rules, an episode and domain randomisation — all
@@ -758,7 +758,7 @@ new trainer capability and a re-rated mechanism.
       no `shell/` diff; the packaged gate is 10 tests.
       `cadex_tests/dynamics_task_episode.py` is the environment, so M7 is
       dispatch rather than debugging.
-- [x] **M7 — Training happens elsewhere** (ADR-070).
+- [x] **M7 — Training happens elsewhere** (ADR-084).
       `assembly.policy(task, weights=..., sha256=...)` names a trained
       policy by file and digest, verifies it against the task it claims, and
       publishes a receipt whose bytes join the project digest. The trainer is
@@ -767,10 +767,10 @@ new trainer capability and a re-rated mechanism.
       and **nothing entered `pixi.toml`**. Offboard by design turned out to
       make the *engine* simpler: it verifies a policy and never produces one,
       so it needs no optimiser, no accelerator and — measured — no numpy.
-      **The three questions ADR-067 named as M7's are answered:** training
+      **The three questions ADR-082 named as M7's are answered:** training
       runs on the user's own GPU box dispatched by the agent's shell; the
       policy extends `put_asset` rather than getting its own op, because a
-      new op would cost the `shell/` diff ADR-063 says the branch rests on
+      new op would cost the `shell/` diff ADR-078 says the branch rests on
       not having; and there is **no train button and nothing to press**.
       **Four phase 0 findings changed the design**, including one that
       contradicted the plan outright — `np.savez` *is* byte-deterministic —
@@ -783,7 +783,7 @@ new trainer capability and a re-rated mechanism.
       gate is 11 tests. The CI training gate converges a one-hinge swing-up
       on CPU (1.10 → 2.487 reward per step, ceiling 2.5) and is honest that
       it does not prove the GPU path.
-- [x] **M8 — The policy comes home** (ADR-071).
+- [x] **M8 — The policy comes home** (ADR-085).
       `assembly.rollout(policy, frames_per_second=..., seed=...)` plays the
       verified policy against the model its task bundle names and emits a
       `cadex-assembly-simulation-trace-v1` — **a new operation and no new
@@ -811,50 +811,50 @@ defines the problem, `training/cadex_train.py` solves it on a machine we do
 not ship to, `assembly.policy` verifies what comes back, and
 `assembly.rollout` plays it. Each slice carries its own "done when", in
 `docs/MUJOCO.md` §4. **The whole arc M0–M8 landed with an empty `shell/`
-diff**, which is what ADR-063 said the branch rested on; the protocol diff
+diff**, which is what ADR-078 said the branch rested on; the protocol diff
 is still empty and stays that way. The `shell/` diff was spent afterwards,
-deliberately and once, on the collision overlay (ADR-078) — and only inside
+deliberately and once, on the collision overlay (ADR-091) — and only inside
 `mesh_agent/` and the gate suite, with the inherited Blender tree untouched.
 
 **After the arc closed**, three things the first real model asked for, in
 the order they had to happen:
 
-- [x] **Remote training dispatch** (ADR-076). `training/remote_train.sh`
+- [x] **Remote training dispatch** (ADR-089). `training/remote_train.sh`
       sends a run to a GPU box and `training/SETUP.md` documents the four
       ways to train. Dispatch machinery only — nothing enters `pixi.toml`,
       no CMake rule references it, no new op, and the engine still cannot
       train. It refuses a run that silently fell back to CPU and a box whose
       pinned versions do not match, because both otherwise show up only as a
       number nobody compares.
-- [x] **The hopper's leg re-sized, and ADR-075 corrected** (ADR-077). The
+- [x] **The hopper's leg re-sized, and ADR-088 corrected** (ADR-090). The
       leg was under-actuated: 26.9 N·m to hold a crouch against 12 given, so
       **0 of 27** scripted push-offs left the ground and no policy could have
-      hopped. ADR-075 §2 read that collapse as a deliberate tuck. At 60 N·m
+      hopped. ADR-088 §2 read that collapse as a deliberate tuck. At 60 N·m
       it is **27 of 27**, best 304 ms of flight. A feasibility gate now runs
       before any GPU time is bought. Exposed and fixed one engine defect —
       `MJCF_MASS_TOLERANCE` at 1e-12 against a writer that emits six
       significant figures, which refused every body whose mass was not a
       short decimal.
-- [x] **The collision overlay** (ADR-078). Two of two dynamics bugs on this
+- [x] **The collision overlay** (ADR-091). Two of two dynamics bugs on this
       branch were collision geometry that nothing drew, so it is drawn now.
       Zero engine change and zero protocol change — every number it shows
       was already published. **This is what spent the `shell/` diff**, and
       only inside `mesh_agent/` and the gate suite.
-- [x] **The Policy Outputs panel** (ADR-083). Each actuator's command
+- [x] **The Policy Outputs panel** (ADR-096). Each actuator's command
       against its own derived limit, at the current frame. It found hazard
       15 in one glance — a policy that plays as a clean stand while holding
       three motors above 95 % of stall on 100 % of frames — which is what
       opened 14b.
 
-### 14b — M9: the episode stops starting in the same place `(closed 2026-08-01; follow-ons M9b ADR-087, M9c ADR-088)`
+### 14b — M9: the episode stops starting in the same place `(closed 2026-08-01; follow-ons M9b ADR-100, M9c ADR-101)`
 
 - [x] **M9 — Reset variation, disturbance, checkpoints, and a re-rated
-      mechanism** (ADR-084, ADR-085, ADR-086). Three findings, one slice,
+      mechanism** (ADR-097, ADR-098, ADR-099). Three findings, one slice,
       because they are the same finding: `mg-legs` braced rather than
       balanced, and it did so because 216 N·mm of *stall* torque was
       available, bracing was cheap under the reward, and **nothing ever
       disturbed it**.
-      - **The mechanism (ADR-084).** `assembly.reset_variation` and
+      - **The mechanism (ADR-097).** `assembly.reset_variation` and
         `assembly.disturbance`, two intermediates beside `assembly.randomise`
         and passed to `assembly.task` the same way. A reset variation moves
         the floating base **rigidly** — a drawn tilt, a lift, a spin — and
@@ -870,7 +870,7 @@ the order they had to happen:
         stated in the bundle and deliberately different. **No protocol
         change and no `shell/` diff**: `assembly.*` is the xscript surface,
         not the op table.
-      - **Visibility (ADR-085).** `--checkpoint-every N` writes complete,
+      - **Visibility (ADR-098).** `--checkpoint-every N` writes complete,
         witness-checked `.cxpolicy` files mid-run plus `<out>.best`;
         `progress.json` is rewritten atomically every iteration and is the
         one artifact everything downstream reads; `remote_train.sh` gained
@@ -886,7 +886,7 @@ the order they had to happen:
         its module imports `json`, `os` and `bpy` and a gate check asserts
         exactly that. Zero lines to the inherited Blender tree, so
         `docs/BLENDER-TREE.md` §2a stays eight files.
-      - **The re-rating and the gate re-spec (ADR-086).** 216 → **86 N·mm**,
+      - **The re-rating and the gate re-spec (ADR-099).** 216 → **86 N·mm**,
         ~40 % of stall, an engineering judgment stated rather than buried.
         `feasibility.py`'s arithmetic column stops gating and stays printed
         (hazard 14), and what gates in its place took three attempts — two
@@ -896,7 +896,7 @@ the order they had to happen:
         **62.8 N·mm needed, 117.4 available, 1.87× margin, the foot
         binding.**
 - [x] **M9b — a shove that makes it stumble, and a reward that lets it
-      recover** (ADR-087). **No engine, trainer or shell change** — every
+      recover** (ADR-100). **No engine, trainer or shell change** — every
       change is in the project script beside the repo, which is the finding
       as much as the numbers are. The M9 run stood and never moved its feet,
       and three measurements say why: the shove put the **capture point** at
@@ -907,7 +907,7 @@ the order they had to happen:
       shove is sized by capture point instead (`[0.4, 2.0]` N → ξ 22–111 mm,
       a curriculum *inside* the distribution), `over_feet` becomes a
       saturating `tanh` plus a small linear `drift` term, `stillness`,
-      `spin`, `posture` and `height` come down, `splay` prices the ADR-083
+      `spin`, `posture` and `height` come down, `splay` prices the ADR-096
       brace where it lived, and the discount goes to 0.99. **`feasibility.py`
       check 3 is re-specified a third time** — not for being wrong, as the
       first two were, but because the task changed from "reject in place" to
@@ -916,7 +916,7 @@ the order they had to happen:
       forward / backward / lateral. `compare.py` splits survival by shove
       azimuth, because without ankle roll or hip yaw lateral recovery is
       capped by the **mechanism** and an aggregate count would hide it.
-- [x] **M9c — the trainer never ended an episode** (ADR-088). **Trainer
+- [x] **M9c — the trainer never ended an episode** (ADR-101). **Trainer
       only**: no engine change, no protocol change, no new dependency,
       nothing into `pixi.toml`, and one label row inside `mesh_agent/`.
       M9b reproduced M9's reward-versus-survival anti-correlation on a task
@@ -945,7 +945,7 @@ the order they had to happen:
       §6 stays open with two candidates; sampled-versus-mean is the cheap
       one and goes first, MJX-versus-MuJoCo the expensive one.
 
-**Standing constraints for this phase**, both from ADR-062 and both cheap to
+**Standing constraints for this phase**, both from ADR-077 and both cheap to
 lose by accident:
 
 - **Nothing in `shell/` imports mujoco, ever.** A physics authoring path in
@@ -957,7 +957,7 @@ lose by accident:
   NDJSON off a pipe does not need 53.5 MB of physics engine resident. M3 added
   `scipy.spatial` to that module and it is imported the same deferred way
   `mujoco` is, for the same reason.
-- **A default is a promise, not a decision** (ADR-064). Every MuJoCo option
+- **A default is a promise, not a decision** (ADR-079). Every MuJoCo option
   the translator depends on — the island and sleep flags, the integrator,
   the compiler's inertia handling — is set explicitly and re-asserted on the
   *compiled* model, which is where a release changing a default would land.

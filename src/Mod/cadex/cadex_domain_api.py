@@ -93,12 +93,12 @@ _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
         # Dynamics produces a `simulation`, not a type of its own: a script
         # has one simulation whichever solver ran it, and two
         # assembly_simulation_json artifacts would leave the shell baking
-        # neither (ADR-062). `body` is an intermediate, like `connector`.
+        # neither (ADR-077). `body` is an intermediate, like `connector`.
         "dynamics": "simulation",
         # An exported MuJoCo model *does* get a type of its own, for the
         # converse of the reason dynamics does not: nothing bakes it, so
         # two of them in one script is a reasonable thing to write and the
-        # "exactly one simulation" rule must not catch them (ADR-066).
+        # "exactly one simulation" rule must not catch them (ADR-081).
         "mjcf": "mjcf",
         "body": "body",
         # A collision shape is an argument to a body, never an output: it
@@ -113,7 +113,7 @@ _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
         # A training task *is* a publishable output, and the first one that
         # consumes another output rather than the assembly directly: it
         # references one api.mjcf value and writes a bundle beside that
-        # model's file (ADR-069). Its four companions are intermediates for
+        # model's file (ADR-083). Its four companions are intermediates for
         # the same reason `collision` is -- an observation channel, a reward
         # term, a termination rule and a randomisation range are arguments
         # to a task, not results a script declares on their own.
@@ -121,11 +121,11 @@ _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
         # A trained policy is the *second* output that consumes another
         # output -- one api.task value -- and it publishes a receipt rather
         # than the weights, which are an asset that no script can rebuild
-        # (ADR-070).
+        # (ADR-084).
         "policy": "policy",
         # A rollout plays a trained policy and produces a `simulation`, the
         # same type `dynamics` produces and for the same reason: it is baked,
-        # and a script has exactly one thing that is (ADR-062, ADR-071).
+        # and a script has exactly one thing that is (ADR-077, ADR-085).
         "rollout": "simulation",
         "observation": "observation",
         "reward": "reward",

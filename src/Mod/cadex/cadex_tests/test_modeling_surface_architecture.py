@@ -235,7 +235,7 @@ def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None
         "cadex_assembly_worker.py",
         # The MuJoCo translator assembly.dynamics runs: pure Python, staged
         # for the same reason again -- and, uniquely, the only module in the
-        # tree allowed to import mujoco (ADR-062).
+        # tree allowed to import mujoco (ADR-077).
         "CadexDynamics.py",
         "cadex_tessellation.py",
         # The resident preview worker's entry: a second entry point into the

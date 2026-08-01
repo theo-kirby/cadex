@@ -2,12 +2,12 @@
 
 """M8's exit evidence: the shell's own bake, on a real rollout trace.
 
-ADR-062 exists to prevent one failure -- *a trace the engine is happy with
+ADR-077 exists to prevent one failure -- *a trace the engine is happy with
 and* ``cadex_animate`` *declines to bake*. A rollout is the third thing to
 produce an ``assembly_simulation_json``, so that failure is exactly what M8
 has to rule out, and only the shell can rule it out.
 
-**Two halves, one file, and no ``shell/`` diff anywhere** (ADR-063):
+**Two halves, one file, and no ``shell/`` diff anywhere** (ADR-078):
 
 * under the engine's own interpreter it *writes* a rollout trace, by driving
   a live ``cadexd`` through the whole chain -- mechanism, model, task,

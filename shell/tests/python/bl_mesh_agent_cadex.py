@@ -2467,10 +2467,10 @@ def test_edit_script_and_inspection(root):
 
 
 # ---------------------------------------------------------------------------
-# The collision overlay (ADR-078).
+# The collision overlay (ADR-091).
 # ---------------------------------------------------------------------------
 #
-# The load-bearing case here is ADR-074's own failure, reproduced and then
+# The load-bearing case here is ADR-087's own failure, reproduced and then
 # corrected. That bug shipped a hopper that trained for an hour standing on
 # an invisible 20 mm shelf, and every gate the project had was green while
 # the model was wrong -- because nothing drew the shape that was wrong.
@@ -2502,7 +2502,7 @@ result = {"floor_solid": floor_solid, "ball_solid": ball_solid,
           "diag": diag, "model": model}
 """
 
-#: The same script with the one-line fix ADR-074 landed.
+#: The same script with the one-line fix ADR-087 landed.
 COLLISION_GOOD_SCRIPT = COLLISION_BAD_SCRIPT.replace(
     'assembly.collision("box", size_mm=[400, 200, 40])',
     'assembly.collision("box", size_mm=[400, 200, 40], '
@@ -2571,7 +2571,7 @@ def _world_z_range(obj):
 
 
 def test_the_collision_overlay_draws_adr074(root):
-    """The bug that shipped, drawn -- then the fix, drawn (ADR-078).
+    """The bug that shipped, drawn -- then the fix, drawn (ADR-091).
 
     Nothing drew collision geometry, so a floor whose collision box stood
     20 mm proud of its visible top was invisible and a hopper trained
@@ -2614,7 +2614,7 @@ def test_the_collision_overlay_draws_adr074(root):
           "the VISIBLE floor top is at z = 0 (got {:.3f})".format(solid_top))
     check(abs(wire_top - 20.0) < 1e-3,
           "and the collision box's top is drawn 20 mm above it, which is the "
-          "bug ADR-074 found by arithmetic (got {:.3f})".format(wire_top))
+          "bug ADR-087 found by arithmetic (got {:.3f})".format(wire_top))
     check(abs(wire_top - solid_top - 20.0) < 1e-3,
           "so the overlay shows a 20.00 mm gap (got {:.3f})".format(
               wire_top - solid_top))
@@ -2961,7 +2961,7 @@ def test_the_policy_outputs_panel_reads_a_rollout():
 
 
 def test_the_training_panel_tracks_a_run(training_root):
-    """The shell's view of a run happening on another machine (M9, ADR-085).
+    """The shell's view of a run happening on another machine (M9, ADR-098).
 
     Before this, a training run was a black box with one artifact at the
     end: dispatch it, wait, find out. The run that motivated M9 peaked at
@@ -3065,12 +3065,12 @@ def test_the_training_panel_tracks_a_run(training_root):
               "the current reward and the best are both shown")
         check("at iteration 388" in text,
               "and where the best happened, which is the decision to make")
-        # ADR-088's row. The reward alone is the number that lied for two
+        # ADR-101's row. The reward alone is the number that lied for two
         # runs; the episode length beside it is what shows a policy failing
         # sooner while being paid more for it.
         check("137.5 steps" in text,
               "mean episode length is shown beside the reward")
-        # ...and a report written before ADR-088 still draws. The schema did
+        # ...and a report written before ADR-101 still draws. The schema did
         # not change for an additive field, so old files keep arriving and a
         # panel that raised on one would be a Blender error popup.
         older = dict(live)

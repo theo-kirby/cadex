@@ -27,7 +27,7 @@ identity) with an accepted content digest. On this branch the assembly
 domain also carries the **dynamics and control vertical**: rigid-body
 simulation on MuJoCo, MJCF export, training-task bundles and rollouts of
 verified policies, all through that same worker and that same digest
-(ADR-072, `docs/MUJOCO.md`). Every `open_project` re-runs the
+(ADR-086, `docs/MUJOCO.md`). Every `open_project` re-runs the
 accepted script and asserts digest equality, so restart determinism is
 proven on every open rather than once per audit. The **shell is a Blender
 fork under `shell/`**: a protocol client that hydrates the tessellated
@@ -107,7 +107,7 @@ NDJSON client with no cadex imports.
   `mesh.import_file` — and, since ADR-043, for `part.shape_from_mesh`, which
   materializes a nested mesh value inside the part build through the entry
   point `configure_part_assets` binds. Trained policies
-  (`assets/*.cxpolicy`, ADR-070) are staged the same way and read by
+  (`assets/*.cxpolicy`, ADR-084) are staged the same way and read by
   `assembly.policy`. Wire schema: `cadex-xscript-project-worker-v1`.
 - **Publisher** (`src/Mod/cadex/CadexScriptedDomainPublication.py`,
   `CadexScriptedPublication.py`): `publish_project_candidate` applies all
@@ -166,7 +166,7 @@ Ownership closure, lint, and orphan queries live in
 | `CadexTerminals.py` | Named, geometry-anchored ports behind `part.terminals` / `mesh.terminals` (ADR-062, **experimental**): the declared and selector layouts, ordering along a *direction* rather than by kernel enumeration, the far-face landing rule for a through-hole, and the placement arithmetic that carries one asset-frame spec onto four placed components (points by the whole matrix, directions by its rotation part; non-uniform scale refused). Kernel-neutral and FreeCAD-free like the two above, unit-testable headless, staged into the worker bundle by filename. `[Cadex-new]` |
 | `CadexSolder.py` | The joint behind `part.solder` (ADR-063, ADR-064, **experimental**): from a terminal's `metrics` plus four numbers it derives the bore, pad, collar and fillet, refuses the eight ways they can fail to describe a joint, and returns a closed *outline* in the `(r, z)` half-plane — cap cone, bore wall, entry annulus, a concave meniscus arc solved to be tangent to the lead, the collar, and the lead's own radius back down — which the worker turns into one wire, one face and one `revolve`. No fuse and no cut, so no boolean at all. Also the contour-integral volume (`V = π ∮ r² dz`) the kernel probe asserts against, and the stated radial basis that fixes where the BREP seam lands. Kernel-neutral and FreeCAD-free, staged by filename. `[Cadex-new]` |
 | `CadexNets.py` | The connection table behind `nets(...)` / `wire(...)` (ADR-065, **experimental**): the declaration, its refusals, the `"<port>.<terminal>"` endpoint grammar, the canonical row shape shared by the declared table and the stored overrides, and the two rules the wiring editor rests on — a stored row list *replaces* the declaration rather than patching it, and a row whose port a rewritten script no longer declares is pruned rather than raised on (ADR-039). Kernel-neutral and FreeCAD-free like the four above, unit-testable headless, staged into the worker bundle by filename. `[Cadex-new]` |
-| `CadexDynamics.py` | **The dynamics and control vertical**, 7,296 lines, and the largest single module in the tree (ADR-062, ADR-064…066, ADR-069…071; **experimental**). Five things, in the order the arc built them. **(1) The translator** behind `assembly.dynamics`: the joint table, a breadth-first spanning forest with loop closures as equality constraints, exact OCCT inertia converted to SI, the `mjSpec` build and the stepping loop that emits a `cadex-assembly-simulation-trace-v1`. **(2) Collision and contact** (M3): the convexity measurement that refuses a part MuJoCo would silently hull (`scipy.spatial.ConvexHull`, imported the same deferred way `mujoco` is), restitution to a damping ratio, collision groups to bitmasks, full extents to half-extents, and the solver flags, integrator and two step budgets that make a trace reproducible across processes. **(3) Actuation** (M4): `motor`/`position`/`velocity` actuators, joint damping/armature/friction-loss, and a whitelisted formula-of-`time` compiler for setpoints — arbitrary Python would leave the determinism gate. **(4) MJCF export** (M5): `export_mjcf` calls MuJoCo's own `MjSpec.to_xml()`, then reloads the file and diffs it field by field against the model it just wrote, refusing rather than emitting past tolerance — the writer's six significant figures are why that check is a measured tolerance and not an identity. **(5) Tasks, policies and rollouts** (M6–M8): the `cadex-training-task-v1` bundle, the `cadex-policy-v1` container reader, a **pure-Python forward pass** (4,564 Hz against a 50 Hz control rate — measured, and the reason numpy is not imported here), the witness re-computation that turns an architecture mismatch into a refusal, and the episode loop whose one keyword-only `sample` callable is the whole difference between verifying a policy and rolling one out. Kernel-neutral and FreeCAD-free like `CadexRouting.py`, staged into the worker bundle by filename -- and the only module in the tree that may import `mujoco`, which it does inside functions so `cadexd`'s closure never reaches it. The worker does every FreeCAD read; this does every arithmetic operation including every unit conversion, and a test greps to keep that true. `[Cadex-new]` |
+| `CadexDynamics.py` | **The dynamics and control vertical**, 7,296 lines, and the largest single module in the tree (ADR-077, ADR-079…081, ADR-083…085; **experimental**). Five things, in the order the arc built them. **(1) The translator** behind `assembly.dynamics`: the joint table, a breadth-first spanning forest with loop closures as equality constraints, exact OCCT inertia converted to SI, the `mjSpec` build and the stepping loop that emits a `cadex-assembly-simulation-trace-v1`. **(2) Collision and contact** (M3): the convexity measurement that refuses a part MuJoCo would silently hull (`scipy.spatial.ConvexHull`, imported the same deferred way `mujoco` is), restitution to a damping ratio, collision groups to bitmasks, full extents to half-extents, and the solver flags, integrator and two step budgets that make a trace reproducible across processes. **(3) Actuation** (M4): `motor`/`position`/`velocity` actuators, joint damping/armature/friction-loss, and a whitelisted formula-of-`time` compiler for setpoints — arbitrary Python would leave the determinism gate. **(4) MJCF export** (M5): `export_mjcf` calls MuJoCo's own `MjSpec.to_xml()`, then reloads the file and diffs it field by field against the model it just wrote, refusing rather than emitting past tolerance — the writer's six significant figures are why that check is a measured tolerance and not an identity. **(5) Tasks, policies and rollouts** (M6–M8): the `cadex-training-task-v1` bundle, the `cadex-policy-v1` container reader, a **pure-Python forward pass** (4,564 Hz against a 50 Hz control rate — measured, and the reason numpy is not imported here), the witness re-computation that turns an architecture mismatch into a refusal, and the episode loop whose one keyword-only `sample` callable is the whole difference between verifying a policy and rolling one out. Kernel-neutral and FreeCAD-free like `CadexRouting.py`, staged into the worker bundle by filename -- and the only module in the tree that may import `mujoco`, which it does inside functions so `cadexd`'s closure never reaches it. The worker does every FreeCAD read; this does every arithmetic operation including every unit conversion, and a test greps to keep that true. `[Cadex-new]` |
 | `cadex_preview_worker.py` | The resident preview worker's entry point (ADR-055): a read-only oracle that answers a pose-only parameter change with solved placements in 33 ms and writes nothing at all. In the worker bundle rather than beside `cadexd`, because it runs in the same `--safe-mode` sandbox out of the same content-addressed directory and must never be importable by the service. `[Cadex-new]` |
 | `CadexWarmWorker.py` | cadexd's side of that: one resident worker per open project, spawned lazily on the first `preview_params`, bound to one `(source, api_contracts, assets)` generation and killed by anything that changes them. `[Cadex-new]` |
 | `cadex_domain_api.py` / `cadex_domain_worker.py` | Shared domain API/worker plumbing (`_execute_source` is the composition substrate). `[VibeCAD-era]` |
@@ -188,7 +188,7 @@ There is no shell under `src/`. `CadexGui`, `CadexSession`,
 list. Phase 14 added two more invariants to the same file — **`mujoco` never
 enters that closure** (it is reachable only from the sandboxed worker), and
 **no `jax` or `mjx` appears anywhere under `src/Mod/cadex` or in a staged
-payload** (ADR-070: training is offboard, and the engine verifies a policy
+payload** (ADR-084: training is offboard, and the engine verifies a policy
 but never produces one). A third asserts that nothing in `shell/` learns
 about mujoco at all.
 
@@ -252,7 +252,7 @@ macOS). Layout:
   assets/                       flat .stl/.obj/.ply the script imports by
                                 name (mesh.import_file, part.shape_from_mesh)
                                 plus .cxpolicy trained policies
-                                (assembly.policy, ADR-070); bounded at
+                                (assembly.policy, ADR-084); bounded at
                                 64 files / 128 MB, written only by the
                                 put_asset op (ADR-043)
 ```
@@ -296,7 +296,7 @@ per-domain program stores are not migrated (ADR-011).
 
 `training/cadex_train.py` (894 lines) is the offboard PPO trainer, and it is
 the one top-level directory in this repository that is **not part of the
-product** (ADR-070). CMake never installs it, no payload carries it, nothing
+product** (ADR-084). CMake never installs it, no payload carries it, nothing
 in it enters `pixi.toml`, and it cannot import Cadex — it reports whether
 `CadexDynamics` was importable so a test can assert the negative. Its four
 dependencies (`jax`, `mujoco`, `mujoco-mjx`, `flax`) are exactly pinned in
@@ -355,7 +355,7 @@ a declared list, and `docs/INTEGRATION.md`'s op table must equal
 `dynamics_inertia_integration.py`, and `rollout_bake_integration.py` — the
 last one writes a rollout trace from a live `cadexd` and then bakes it
 *inside the shipped bundle*, through `mesh_agent.cadex_animate`'s own
-functions on real Blender objects. That is the evidence ADR-062's shared
+functions on real Blender objects. That is the evidence ADR-077's shared
 output type exists to demand: a trace the engine is happy with and the shell
 declines to bake is exactly the failure the decision prevents.
 
@@ -415,17 +415,17 @@ vertical rather than `main` plus a feature.
   conda-forge moved past our `occt` and `qt6-main` pins.
   `CARRIED_PYPI_PACKAGES` in
   `package/rattler-build/scripts/relocate_conda_environment.py` carries it
-  into the payload by name (ADR-061); the name exists so the exception is
+  into the payload by name (ADR-076); the name exists so the exception is
   easy to find and delete the day the manifest is repaired.
 - **53.5 MB in the payload, measured** — about 30 MB of which is
   `mujoco/experimental/`, the studio viewer the engine never imports.
-  Pruning it is known, `MJC`-owned, and deferred (ADR-067 §4).
+  Pruning it is known, `MJC`-owned, and deferred (ADR-082 §4).
 - **`scipy.spatial`** joins it as `CadexDynamics`'s second deferred import
   (M3, for the convex-hull volume that refuses a part MuJoCo would silently
   hull). Both are imported inside functions, and both are therefore outside
   `cadexd`'s asserted module closure.
 - **Nothing else.** No `jax`, no `mjx`, in the tree or in a staged payload —
-  training is offboard (ADR-070) and a test asserts the negative.
+  training is offboard (ADR-084) and a test asserts the negative.
 
 ## 5. Build & run
 
@@ -475,7 +475,7 @@ The steps:
   is the product gate against the built bundle.
 - **`training/` is built by nothing and installed by nothing.** It is not a
   step in this table and never will be; it is copied to a GPU box and run
-  there with its own venv (ADR-070). `test_dynamics_policy_trainer` asserts
+  there with its own venv (ADR-084). `test_dynamics_policy_trainer` asserts
   that no CMake rule references the path.
 - Packaging: `docs/cadex-release-packaging.md` — one bundle. The payload
   build **hard-fails if it cannot `import mujoco` and get exactly 3.10.0**

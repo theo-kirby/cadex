@@ -17,10 +17,10 @@ only one that has to be running for this panel to be correct is the trainer.
 Why a file rather than a connection. The shell has no ssh credentials, no
 business having any, and a panel that opened a network connection would be
 a panel that blocks Blender's main thread the first time a box is slow. A
-file is already the contract ADR-085 chose for the same reason on the other
+file is already the contract ADR-098 chose for the same reason on the other
 side, and reading one is a stat.
 
-Nothing here parses a log. ADR-080's finding was that a receipt taken from a
+Nothing here parses a log. ADR-093's finding was that a receipt taken from a
 stream is a receipt something else can write into -- MuJoCo without the
 optional ``warp`` backend prints two lines to stdout, and that cost a 3 h
 49 m run's dispatch. ``progress.json`` is written atomically by the trainer

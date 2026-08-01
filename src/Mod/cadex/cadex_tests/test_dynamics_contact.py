@@ -551,7 +551,7 @@ def test_two_bodies_slide_to_a_stop_at_the_friction_they_were_given() -> None:
     assert smooth == pytest.approx(1.019, rel=0.15)
 
 
-# --- Initial contact: the collision/solid frame mismatch (ADR-074) ----------
+# --- Initial contact: the collision/solid frame mismatch (ADR-087) ----------
 #
 # The bug this pair of tests exists for shipped a working one-leg hopper
 # whose foot never touched the floor it was drawn on. Every gate was green
@@ -699,7 +699,7 @@ def test_the_same_hopper_with_the_floor_offset_starts_clear_of_the_ground() -> N
 def test_interpenetration_is_reported_as_penetrating() -> None:
     """The case a refusal would be argued about, with the data to argue from.
 
-    Evidence rather than a refusal is a decision ADR-074 takes deliberately
+    Evidence rather than a refusal is a decision ADR-087 takes deliberately
     -- a mechanism designed to start on its feet is ordinary -- but the
     signal that would drive an escalation has to exist first, and be
     distinguishable from resting contact. 5 mm of overlap is not float

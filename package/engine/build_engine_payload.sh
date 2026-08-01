@@ -85,7 +85,7 @@ for tool in freecadcmd FreeCADCmd CadexGeometryWorker python; do
         # A conda `bin/python` is a symlink to `bin/pythonX.Y`, and the
         # interpreter itself is not in the keep list -- so copying the link
         # alone leaves it dangling the moment bin_all is removed. The payload
-        # shipped a broken bin/python this way until ADR-061's import gate ran
+        # shipped a broken bin/python this way until ADR-076's import gate ran
         # and could not find an interpreter to run. Carry one level of
         # same-directory target; anything else is not ours to resolve.
         if [ -L "${payload}/bin_all/${tool}" ]; then
@@ -246,7 +246,7 @@ echo "==> Qt libraries carried (expected: Core, Xml, Concurrent, Network):"
 ls "${payload}/lib" 2>/dev/null | grep -i '^libQt' | sort || true
 
 # The dynamics engine has to be in the payload, not merely in the developer's
-# environment (cadex ADR-060). It reaches here by two different routes and
+# environment (cadex ADR-075). It reaches here by two different routes and
 # both have silently dropped it before: the relocated path carries it only
 # because CARRIED_PYPI_PACKAGES names it, and the stage-only path only
 # because it copies lib/ wholesale. Asserted rather than assumed, and
@@ -256,7 +256,7 @@ mujoco_version="$("${payload}/bin/python" -c 'import mujoco; print(mujoco.__vers
 if [ "${mujoco_version}" != "3.10.0" ]; then
     echo "FAIL: the payload cannot import mujoco 3.10.0 (got: ${mujoco_version})"
     echo "      CARRIED_PYPI_PACKAGES in relocate_conda_environment.py is what"
-    echo "      carries it; the pin lives in pixi.toml. See ADR-060."
+    echo "      carries it; the pin lives in pixi.toml. See ADR-075."
     exit 1
 fi
 echo "==> mujoco ${mujoco_version} imports from the payload"

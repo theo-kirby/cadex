@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Drive `training/cadex_train.py` on a remote GPU box (ADR-076).
+# Drive `training/cadex_train.py` on a remote GPU box (ADR-089).
 #
 #   training/remote_train.sh check                       pre-flight the box
 #   training/remote_train.sh train <bundle.json> <out.cxpolicy> [-- trainer args]
@@ -20,7 +20,7 @@
 # This is dispatch machinery and nothing more. It builds no bundle, installs
 # no package, and creates no virtualenv -- it copies two files out, runs the
 # trainer that is already on the box, and copies one file back, which is the
-# same three steps `training/README.md` documents by hand. ADR-070 stands:
+# same three steps `training/README.md` documents by hand. ADR-084 stands:
 # nothing here enters `pixi.toml`, no CMake rule references it, and the
 # engine still cannot train.
 #
@@ -583,7 +583,7 @@ PY
 # owned by nothing, and everything after that is polling files.
 #
 # `progress.json` is the contract. Nothing here parses the trainer stderr:
-# ADR-080 measured what happens when a receipt is taken from a stream that
+# ADR-093 measured what happens when a receipt is taken from a stream that
 # something else can write into, and the answer was a 3 h 49 m run whose
 # dispatch failed on two warp warnings. The trainer writes that file
 # atomically every iteration and this reads it, and neither of them cares

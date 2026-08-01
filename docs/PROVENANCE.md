@@ -33,7 +33,7 @@ Cadex adds roughly **109,000 lines** of its own across both halves, or about
 | the engine, C++ | 1,031 | `CadexGeometryWorker.cpp` and its headers |
 | the shell add-on | 10,544 | `shell/scripts/addons_core/mesh_agent/` |
 | the shell's Cadex suites | 5,331 | `shell/tests/python/bl_mesh_agent*.py` |
-| the headless CLI | 4,540 | `cli/` — a second front end, not a second engine (ADR-061, CLI) |
+| the headless CLI | 4,540 | `cli/` — a second front end, not a second engine (ADR-061) |
 | the offboard trainer | 2,516 | `training/` — **not part of the product** (§5) |
 | the app template | 111 | `shell/scripts/startup/bl_app_templates_system/Mesh/` |
 
@@ -139,14 +139,14 @@ back; `assembly.mjcf` writes MJCF by calling **MuJoCo's own writer**
 (`MjSpec.to_xml()`) rather than serialising the format ourselves. We fork
 FreeCAD and Blender because we intend to replace them. MuJoCo we keep.
 
-**Which branch.** This section describes `MJC` (ADR-060, ADR-072). `main`
+**Which branch.** This section describes `MJC` (ADR-075, ADR-086). `main`
 carries no MuJoCo, no dynamics and none of the obligations below.
 
 **How it reaches a user, and this is the part that matters.** MuJoCo is not
 a build dependency that stays behind on the build machine. `mujoco == 3.10.0`
 is a **pypi wheel redistributed inside the shipped engine payload**, carried
 there by name through `CARRIED_PYPI_PACKAGES` in
-`package/rattler-build/scripts/relocate_conda_environment.py` (ADR-061),
+`package/rattler-build/scripts/relocate_conda_environment.py` (ADR-076),
 because the pixi manifest has not been re-solvable as conda since
 conda-forge moved past our `occt == 7.8.1` pin. It is 53.5 MB of the payload,
 it ships inside `Cadex.app`, and the payload build hard-fails if it cannot
@@ -184,7 +184,7 @@ BREP, so `<inertial>` gets exact `GProp_GProps` mass properties.
 `training/cadex_train.py` is `[Cadex-new]`, LGPL-2.1-or-later like the rest
 of the engine, and **it ships in nothing**. CMake never installs it, no
 payload carries it, and it is copied by hand to a machine with a GPU
-(ADR-070). Its four dependencies — `jax`, `mujoco`, `mujoco-mjx`, `flax` —
+(ADR-084). Its four dependencies — `jax`, `mujoco`, `mujoco-mjx`, `flax` —
 are pinned in `training/requirements.txt` and installed into a venv on that
 machine. None of them is in `pixi.toml`, none is in the payload, and a test
 asserts that no `jax` or `mjx` reaches either.

@@ -31,9 +31,9 @@ PYTHON_RUNTIME_PROBE = (
 # is the exception this script exists to prevent, so each one is a decision
 # with a reason next to it.
 #
-# mujoco (cadex ADR-060) -- the dynamics engine. Its correct home is
+# mujoco (cadex ADR-075) -- the dynamics engine. Its correct home is
 # conda-forge `mujoco-python`, which cannot be installed until the manifest
-# is re-solvable again; see ADR-060 for why that is a separate problem with
+# is re-solvable again; see ADR-075 for why that is a separate problem with
 # a separate risk. Carrying the wheel is safe in a way a wheel usually is
 # not: it bundles its own libmujoco.<version>.dylib beside the extension
 # modules and reaches it through `@loader_path`, so it references nothing in

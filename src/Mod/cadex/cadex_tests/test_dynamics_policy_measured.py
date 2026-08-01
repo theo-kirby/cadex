@@ -7,7 +7,7 @@ standard library rather than anything we wrote. The M2--M6 shape: the phase
 that measures comes before the phase that builds, and every finding that
 contradicted the plan is recorded here rather than quietly absorbed.
 
-**Two environments, on purpose.** Training is offboard by design (ADR-060),
+**Two environments, on purpose.** Training is offboard by design (ADR-075),
 so ``jax`` and ``mujoco.mjx`` are deliberately *not* in the engine's pixi
 environment and never enter ``pixi.toml`` -- ``test_engine_purity_guardrails``
 asserts they reach no payload. The measurements that need them are therefore
@@ -47,7 +47,7 @@ def _mjx():
         "mujoco.mjx",
         reason=(
             "MJX is the offboard trainer's dependency and is deliberately "
-            "absent from the engine environment (ADR-060, ADR-070). Run this "
+            "absent from the engine environment (ADR-075, ADR-084). Run this "
             "file from a venv built from training/requirements.txt to "
             "re-measure."
         ),
@@ -186,7 +186,7 @@ def test_mjx_carries_position_actuators_and_joint_limits() -> None:
 # ---------------------------------------------------------------------------
 # 2. Does MJX produce sensordata for our eight observation kinds?
 #
-# ADR-069's central decision was that *MuJoCo computes the observation
+# ADR-083's central decision was that *MuJoCo computes the observation
 # vector*, so that nothing on the path needs shipping. If MJX evaluated no
 # sensors, the trainer would need a fourth implementation of the eight
 # channels -- the exact thing M6 exists to avoid. It evaluates all eight.

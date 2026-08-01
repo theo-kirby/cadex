@@ -7,7 +7,7 @@ Cadex is an AI-native CAD app. **This repository is the whole product**
 (Phase 13a, ADR-030): clone it, `pixi run setup && pixi run app`, and you
 have a running application.
 
-**You are on `MJC`, and `MJC` is a product vertical** (ADR-072): Cadex with
+**You are on `MJC`, and `MJC` is a product vertical** (ADR-086): Cadex with
 **dynamics and control built in**. Not a feature branch, not a merge
 candidate, not awaiting anything — a version of the product that simulates
 mechanisms on MuJoCo, exports them, and plays back policies trained on them.
@@ -32,7 +32,7 @@ repository boundary:
   knows nothing about dynamics and never will: a policy rollout reaches it
   as the simulation trace it already played.
 - **`training/`**, at the repo root — the offboard PPO trainer. Not part of
-  the engine, in no payload, copied to a machine with a GPU (ADR-070).
+  the engine, in no payload, copied to a machine with a GPU (ADR-084).
 
 Plus a **second front end**, under `cli/` — a third client of the same
 protocol, with no Blender and no display (ADR-061). `./cadex -p "…"` runs one
@@ -79,7 +79,7 @@ Read `docs/VISION.md` before designing anything.
 | `docs/IDEAS.md` | Parking lot for uncommitted ideas. |
 | `docs/cadex-release-packaging.md` | One bundle: what ships, how it is gated. |
 | `training/README.md` | The offboard trainer: why training is not in the engine, what it reads and writes, how a policy comes home. |
-| `training/SETUP.md` | How to actually run it, four ways: one GPU machine, CPU only, a separate GPU box, and driving that box with `remote_train.sh` (ADR-076). |
+| `training/SETUP.md` | How to actually run it, four ways: one GPU machine, CPU only, a separate GPU box, and driving that box with `remote_train.sh` (ADR-089). |
 | `docs/history/` | Superseded VibeCAD-era docs. Historical context only — never cite as current. |
 
 Doc conventions: each doc carries a `Verified against source:` date;
@@ -110,17 +110,17 @@ shell/scripts/addons_core/mesh_agent/   the add-on: ours, subtractive
 shell/lib/<platform>      submodules, NEVER content (1.3 GB prebuilt each)
                           NOTE: shell/ also carries ~790 MB in git-LFS
                           (binary assets, per shell/.gitattributes)
-training/                 the offboard PPO trainer (ADR-070). NOT the engine:
+training/                 the offboard PPO trainer (ADR-084). NOT the engine:
                           CMake never installs it, no payload carries it,
                           nothing in it enters pixi.toml. Read its README
                           and SETUP.md; remote_train.sh dispatches to a GPU
-                          box and is dispatch machinery only (ADR-076)
+                          box and is dispatch machinery only (ADR-089)
 package/engine/           the engine payload build (ADR-023)
 package/app/build_app.sh  the shell build, with the conda env scrubbed off
                           PATH — read its header before touching the build
 package/rattler-build/scripts/relocate_conda_environment.py
                           CARRIED_PYPI_PACKAGES — how the mujoco wheel
-                          reaches the payload (ADR-061)
+                          reaches the payload (ADR-076)
 docs/                     the documentation set above
 build/release/bin/        FreeCADCmd, CadexGeometryWorker  (no FreeCAD binary)
 build/engine/             the staged engine payload
@@ -261,11 +261,11 @@ tests and logging the decision; don't commit secrets or machine paths.
    the boundary in any other way.
 7. **Update `docs/ROADMAP.md` checkboxes** when a work item lands.
 
-## The dynamics vertical (ADR-060, ADR-063, ADR-067, ADR-072)
+## The dynamics vertical (ADR-075, ADR-078, ADR-082, ADR-086)
 
 What this version of the product carries that `main` does not:
-`docs/MUJOCO.md` and its slices M0–M9 (**all closed**, ADR-071 for M0–M8,
-ADR-084/085/086 for M9, ADR-087 for M9b, ADR-088 for M9c);
+`docs/MUJOCO.md` and its slices M0–M9 (**all closed**, ADR-085 for M0–M8,
+ADR-097/085/086 for M9, ADR-100 for M9b, ADR-101 for M9c);
 `CadexDynamics.py` and the
 `assembly.{body,dynamics,collision,actuator,joint_dynamics,mjcf,task,policy,
 rollout,reset_variation,disturbance}` surface; the `test_dynamics_*` suites;
@@ -281,15 +281,15 @@ Working rules on top of the change policy above:
   dynamics-specific — a bug in the trace path, a payload prune, a doc that is
   wrong on both branches — it belongs on `main` first and reaches here on the
   next sync. Ask before landing such a fix here.
-- **The docs here are this branch's own** (ADR-072). The append-only,
-  branch-marked-block rule ADR-063 imposed on `VISION.md`, `ROADMAP.md` and
+- **The docs here are this branch's own** (ADR-086). The append-only,
+  branch-marked-block rule ADR-078 imposed on `VISION.md`, `ROADMAP.md` and
   this file is **retired**: write the dynamics material into the body where
   it belongs, and resolve the occasional sync conflict by hand in favour of
   this branch's wording. `docs/DECISIONS.md` is still append-only on both
   branches, so conflicts there are expected and resolved in date order. The
   rule still stands, unchanged, for the inherited `shell/` tree
   (`docs/BLENDER-TREE.md`) — that tree is not ours to rewrite.
-- **The `shell/` diff is spent, and only where it is ours** (ADR-078).
+- **The `shell/` diff is spent, and only where it is ours** (ADR-091).
   `git diff main...MJC -- shell/` no longer prints nothing: the collision
   overlay is `mesh_agent/cadex_collision.py` plus edits to four add-on files
   and the gate suite. What still holds — and is what the empty-diff rule was
@@ -298,7 +298,7 @@ Working rules on top of the change policy above:
   inherited Blender tree is untouched.** `docs/BLENDER-TREE.md` §2a is still
   eight files and **must stay eight**; §2b and §2c are unmoved. Adding to
   *those* is still a decision, not a fix you slip in, because every line
-  there is a future merge conflict against upstream Blender. The two ADR-072
+  there is a future merge conflict against upstream Blender. The two ADR-086
   §4 rough edges (`import_geometry`'s success wording, `_ASSET_SUFFIXES`
   staying at three members) are deliberately **still not taken**: one
   authorised feature does not license unrelated edits.
@@ -307,9 +307,9 @@ Working rules on top of the change policy above:
   from the sandboxed worker but never from `cadexd`
   (`test_engine_purity_guardrails` asserts the import closure exactly); and
   **no `jax` or `mjx` anywhere under `src/Mod/cadex` or in a staged payload**
-  (ADR-070 — training is offboard, and the engine verifies a policy but never
+  (ADR-084 — training is offboard, and the engine verifies a policy but never
   produces one).
-- **`training/` is not part of the engine** (ADR-070). `training/cadex_train.py`
+- **`training/` is not part of the engine** (ADR-084). `training/cadex_train.py`
   is the offboard PPO trainer: it lives at the repo root because CMake never
   installs it, it is in no payload, and its four exactly-pinned dependencies
   are in `training/requirements.txt` and installed into a venv **on whatever

@@ -114,7 +114,7 @@ def hydrate(payload, animate=True):
                                        "error": traceback.format_exc()}
             traceback.print_exc()
 
-    # The collision overlay (ADR-078), on the same terms as the bake: a
+    # The collision overlay (ADR-091), on the same terms as the bake: a
     # sibling module, wrapped, so a malformed collision record costs the
     # overlay and never the geometry.
     #
@@ -246,7 +246,7 @@ class _State:
         #: caller cannot mistake a rewrite-in-progress for a healthy model.
         self.restore_warning = ""
         #: The last accepted response's ``display`` block and revision, so
-        #: the collision overlay (ADR-078) can be switched on between
+        #: the collision overlay (ADR-091) can be switched on between
         #: rebuilds without asking for one. Just those two keys -- the whole
         #: payload holds artifact paths and stdout nobody needs kept alive.
         self.accepted = {}

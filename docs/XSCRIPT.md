@@ -19,7 +19,7 @@ replaced the VibeCAD-era per-domain multi-program surface `[Cadex-new]`.
   open it, read it, and diff it; nothing model-shaped exists outside it.
   Assets the script names live under `<project>/assets/` (flat): mesh
   geometry `.stl`/`.obj`/`.ply` (ADR-043) and, on branch `MJC`, trained
-  policies `.cxpolicy` (ADR-070). Nothing outside cadexd writes that
+  policies `.cxpolicy` (ADR-084). Nothing outside cadexd writes that
   directory: the `put_asset` op copies a file the user picked into it and
   returns the name the script may then reference, and
   `inspect scope="assets"` lists what is there.
@@ -82,7 +82,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   the solid was put. A corner-origin box with connector offsets written as
   if it were centred is a perfectly legal model that is half its own size
   out of position, and nothing refuses it. The measured instance is in
-  ADR-074: a floor whose collision box stood 20 mm above the floor it was
+  ADR-087: a floor whose collision box stood 20 mm above the floor it was
   drawn on, through a whole training run.
 - `assembly.component()` accepts same-script part/partdesign values: the
   worker records the source payload under a deterministic inline token
@@ -145,14 +145,14 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   the lot. One call, one joint, one `solid`, sized entirely from the terminal
   so it moves when the terminal moves. See *Soldering a terminal* below.
 - `assembly.dynamics()` runs the assembly as rigid-body dynamics instead of
-  prescribing its motion (ADR-062, **experimental**): give every component an
+  prescribing its motion (ADR-077, **experimental**): give every component an
   `assembly.body(component, density_kg_m3=...)` and the mechanism falls,
   swings and settles under gravity on MuJoCo. It produces the same
   `simulation` output type `assembly.simulation` does — a script has one
   simulation whichever solver ran it, and two would leave the shell baking
   neither. **Three things now produce one** — `assembly.simulation`
   (kinematics), `assembly.dynamics` (MuJoCo) and `assembly.rollout` (a
-  trained policy, ADR-071) — and a script carries **exactly one of the
+  trained policy, ADR-085) — and a script carries **exactly one of the
   three**, never two. Mixing `api.motion` with `api.dynamics` is refused.
   `density_kg_m3` has **no default**: mass, inertia and every fall time scale
   with it, and a guessed density makes the animation plausible and wrong
@@ -162,7 +162,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   equality constraints and the published evidence records what each one gave
   up — a `connect` closing a revolute pins position and lets axis alignment
   go, which is exact for a planar four-bar and one constraint short for a
-  spatial one. `gravity_m_s2` and `solver_step_s` are authorable (ADR-064);
+  spatial one. `gravity_m_s2` and `solver_step_s` are authorable (ADR-079);
   gravity is metres per second squared, and `[0, 0, 0]` is how you isolate a
   joint's behaviour from the falling.
   Refused rather than approximated: `distance`/`parallel`/
@@ -170,7 +170,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   part, not how it moves), `rack_pinion`, slider and cylindrical loop
   closures, flexible subassemblies, and any component without a body.
 - `assembly.mjcf()` exports that same model as a MuJoCo MJCF file instead of
-  running it (ADR-066, **experimental**): the six parameters it shares with
+  running it (ADR-081, **experimental**): the six parameters it shares with
   `assembly.dynamics` mean what they mean there and are validated by the same
   code, and what is absent is everything that counts a *trace* —
   `start_time_s`, `end_time_s`, `frames_per_second` — because nothing is
@@ -193,7 +193,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   the match is a stated tolerance and the published evidence reports how much
   of it this file used.
 - `assembly.task()` turns one `assembly.mjcf` value into a **trainable
-  reinforcement-learning task** (ADR-069, **experimental**) and writes one
+  reinforcement-learning task** (ADR-083, **experimental**) and writes one
   JSON bundle, `cadex-training-task-v1`, beside that model's file. It is the
   only output that consumes another output; a script may declare more than
   one, and two tasks may share one model, for the same reason two
@@ -239,7 +239,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   is — pushes it while the episode runs. Both are drawn afresh **every
   episode**, unlike a randomisation, which a trainer holds per environment
   for a whole run. Without them a task never asks a posture a second
-  question, and bracing beats balancing (ADR-084). A reset variation moves
+  question, and bracing beats balancing (ADR-097). A reset variation moves
   the mechanism's floating base **rigidly** and never its joint angles: the
   reset pose is the solved one with the soles on the floor, so a few degrees
   at a knee is a foot through it, and the engine measures whether the
@@ -257,7 +257,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   action when no policy is driving, which is what lets the engine run and
   verify one episode from the bundle before publishing it.
 - `assembly.policy()` and `assembly.rollout()` close the arc that
-  `assembly.task` opens (ADR-070, ADR-071, **experimental**).
+  `assembly.task` opens (ADR-084, ADR-085, **experimental**).
   `assembly.policy(task, weights="walk.cxpolicy", sha256="<64 hex>")`
   declares a **trained control policy** for one task. Training does not run
   in the engine and cannot — it needs JAX on a GPU — so
@@ -292,7 +292,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   can be played at. `seed` draws the task's `assembly.randomise` entries for
   that one episode.
 - `assembly.collision(kind, ...)` says what a body may touch things with
-  (ADR-064, **experimental**), and a body given none touches nothing — it is
+  (ADR-079, **experimental**), and a body given none touches nothing — it is
   carried by its joints and passes through the rest of the mechanism, which
   is what every dynamics run did before M3. Four primitives — `box`,
   `sphere`, `cylinder`, `capsule` — placed with `offset` in the component's

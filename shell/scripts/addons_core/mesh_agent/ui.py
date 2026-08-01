@@ -315,7 +315,7 @@ class MESH_AGENT_OT_toggle_collision(Operator):
 
     A collision shape is placed in the *component* frame and may sit outside
     the part it stands for, so nothing about the drawn solid says where it
-    is. Two bugs in one model came of that (ADR-074, ADR-077) and both were
+    is. Two bugs in one model came of that (ADR-087, ADR-090) and both were
     found by arithmetic after the fact. This draws it.
     """
 
@@ -346,7 +346,7 @@ class CADEX_PARAMS_PT_collision(Panel):
     The initial-contact line is the one row that would have caught the
     shipped hopper: it says what is *already touching before anything
     moves*, which is the only observable that distinguishes a collision
-    shape placed where its author meant from one placed 20 mm out (ADR-074).
+    shape placed where its author meant from one placed 20 mm out (ADR-087).
     """
 
     bl_space_type = 'CADEX_PARAMS'
@@ -604,11 +604,11 @@ class CADEX_PARAMS_PT_training(Panel):
                 int(report.get("best_iteration", -1)),
             )
         )
-        # The row that would have caught ADR-088. Two runs reported a rising
+        # The row that would have caught ADR-101. Two runs reported a rising
         # reward while the policy got worse at the task, and the shape of it
         # is only visible here: an episode length that falls while the reward
         # climbs is a policy failing sooner and being paid more for it.
-        # Read with `.get`, so a report written before ADR-088 draws a dash
+        # Read with `.get`, so a report written before ADR-101 draws a dash
         # rather than raising in a panel.
         steps = report.get("episode_steps")
         column.label(
@@ -891,7 +891,7 @@ def draw_chat_buttons(layout, context):
                    depress=wiring_ui.wiring_area(context.screen) is not None)
     # The collision overlay is not a view but reads as one here: on or off,
     # depressed while it is on -- the same one-button-reads-as-the-state
-    # affordance (ADR-078).
+    # affordance (ADR-091).
     views.operator(MESH_AGENT_OT_toggle_collision.bl_idname, text="",
                    icon='MOD_PHYSICS',
                    depress=cadex_collision.SCENE_FLAG in context.scene)

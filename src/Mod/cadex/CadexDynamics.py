@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""The assembly-to-MuJoCo translator (ADR-062, docs/MUJOCO.md slice M2).
+"""The assembly-to-MuJoCo translator (ADR-077, docs/MUJOCO.md slice M2).
 
 This module imports nothing from FreeCAD and knows nothing about topology.
 The worker reads the solved assembly out of FreeCAD and hands this module
@@ -2089,7 +2089,7 @@ MAXIMUM_STEPS_PER_SAMPLE = 2000
 #: 1 200 000 at the finest one the per-frame cap allows.
 #:
 #: Naming them separately answered docs/MUJOCO.md §6's question about what
-#: the cap should count -- and M8 (ADR-071) built the rollout this
+#: the cap should count -- and M8 (ADR-085) built the rollout this
 #: anticipated, so the answer is settled rather than pending. A policy
 #: rollout is long in *steps* and short in frames: it integrates for minutes
 #: and reports a hundred poses. Under one combined cap that trade is
@@ -2855,7 +2855,7 @@ def _mujoco_module() -> Any:
             "cannot run.",
             reason="mujoco_unavailable",
             correction=(
-                "The engine payload carries mujoco as a pypi wheel (ADR-061). "
+                "The engine payload carries mujoco as a pypi wheel (ADR-076). "
                 "Rebuild the payload with pixi run stage-engine."
             ),
         ) from exc
@@ -3739,7 +3739,7 @@ def _initial_contacts(built: Mapping[str, Any]) -> dict[str, Any]:
 
     The observable that discriminates a collision shape placed where its
     author meant from one placed 20 mm out. No bounding-box rule does
-    (ADR-074): a shape may legitimately sit outside its solid -- a rounded
+    (ADR-087): a shape may legitimately sit outside its solid -- a rounded
     foot protrudes below the shin on purpose -- and a shape wholly inside
     the solid's box can still be in the wrong place, which is exactly the
     floor whose collision box overlapped its own visible top surface across
@@ -3894,7 +3894,7 @@ def model_evidence(
         # Hazard 3, made legible. MuJoCo disclaims numerical reproducibility
         # across its own releases, and a trace's bytes are in no project
         # digest today -- so a version bump changes every trace and moves
-        # nothing anybody would see. Until that decision is taken (ADR-064
+        # nothing anybody would see. Until that decision is taken (ADR-079
         # routes it to main, because the digest code is shared with the
         # kinematics trace), the artifact at least says which MuJoCo wrote
         # it, and a reader comparing two traces can tell drift from a bug.
@@ -3930,7 +3930,7 @@ def model_evidence(
         # says what each body *may* touch; this one says what it *does*,
         # at the pose the keyframe writes -- which is the only observable
         # that catches a collision shape placed in the wrong frame
-        # (ADR-074, and :func:`_initial_contacts` for why nothing simpler
+        # (ADR-087, and :func:`_initial_contacts` for why nothing simpler
         # works).
         **_initial_contacts(built),
         "joints": [
@@ -4025,7 +4025,7 @@ MJCF_KEYFRAME_NAME = "solved"
 #: the exported file is the model, and stating them is the honest version
 #: of "matches the in-engine simulation".
 #:
-#: The mass bound was 1e-12 until ADR-077, on a phase-0 measurement that
+#: The mass bound was 1e-12 until ADR-090, on a phase-0 measurement that
 #: read "survives to 1e-16 relative". That measurement was real and its
 #: generalisation was wrong: every fixture it was taken on had a mass that
 #: is a short decimal -- 13.188, 0.3328, 0.1872, all box volumes -- and a
@@ -4138,7 +4138,7 @@ def export_mjcf(
     * **The solved keyframe.** ``build_model`` deliberately builds at the
       configuration where each joint's connector frames coincide, so that
       the solved pose is derived and checkable rather than assumed
-      (ADR-062). ``to_xml()`` writes no keyframe, so a stock load opens the
+      (ADR-077). ``to_xml()`` writes no keyframe, so a stock load opens the
       mechanism folded up -- 61 mm out of pose on the four-bar, and it
       looks like a model rather than an error. This adds one, named
       ``solved``, **on a copy of the spec**: a script carrying both
@@ -4283,7 +4283,7 @@ def export_mjcf(
             # Hazard 3, made legible exactly as the trace makes it (M3):
             # an exported file's bytes are in no project digest, so a MuJoCo
             # version bump changes every one of them silently. Until that
-            # decision is taken -- ADR-064 routes it to main, because the
+            # decision is taken -- ADR-079 routes it to main, because the
             # digest code is shared with the kinematics trace -- the file at
             # least says which MuJoCo wrote it.
             "mujoco_version": str(built["mujoco_version"]),
@@ -6376,7 +6376,7 @@ def task_records(
         "disturbance": disturbance,
         # The two per-episode draw streams, both stated, because they are
         # deliberately different algorithms and a reader has to be able to
-        # tell which numbers came from where (M9, ADR-084).
+        # tell which numbers came from where (M9, ADR-097).
         "variation_algorithm": EPISODE_VARIATION_ALGORITHM,
         # Shipped so the reference runner's own evaluator can be asserted
         # equal to this array rather than kept equal to it by attention.
@@ -6900,9 +6900,9 @@ def _task_channels(task: Mapping[str, Any]) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# The trained policy (docs/MUJOCO.md M7, ADR-070).
+# The trained policy (docs/MUJOCO.md M7, ADR-084).
 #
-# Training happens on a machine this engine will never see -- ADR-060 said
+# Training happens on a machine this engine will never see -- ADR-075 said
 # offboard and M7 kept it that way -- so what comes back is a *file*, and the
 # whole of this section is about that file being checkable rather than
 # trusted. A policy whose weights are fine but whose architecture the engine
@@ -7778,7 +7778,7 @@ def verify_policy(
 
 
 # ---------------------------------------------------------------------------
-# The rollout (docs/MUJOCO.md M8, ADR-071).
+# The rollout (docs/MUJOCO.md M8, ADR-085).
 #
 # The whole arc's last step, and the smallest: the policy drives the episode
 # loop M6 already wrote, and what comes out is a trace in the schema the
