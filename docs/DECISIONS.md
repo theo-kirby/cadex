@@ -5694,12 +5694,30 @@ ROADMAP with numbers attached.
 ### The cost, stated plainly
 
 Every cable's swept BREP moves, so **`shape_sha256` moves and every saved
-project with a cable must be re-accepted** — one click, or one
-`pixi run rebuild`. Same class of change as ADR-064 and the same remedy.
-ROADMAP records the sibling `_sag` −Z fold as unfixed *for this reason*; the
-difference is that this one is not cosmetic. A wire that clips through the
-joint holding it is wrong in the render, and a conductor missing 42% of its
-volume is wrong in anything downstream that measures it.
+project with a cable must be re-accepted.** Same class of change as ADR-064
+and the same remedy. ROADMAP records the sibling `_sag` −Z fold as unfixed
+*for this reason*; the difference is that this one is not cosmetic. A wire
+that clips through the joint holding it is wrong in the render, and a
+conductor missing 42% of its volume is wrong in anything downstream that
+measures it.
+
+**Corrected the same day, after the first project hit it:** this paragraph
+originally said the re-acceptance was "one click, or one `pixi run rebuild`".
+It is neither. The mismatch is caught by the **restore pass at open**, so the
+project does not open at all — `ensure_open` returns
+`CADEXD_RESTORE_FAILED`, and **Rebuild Model is behind that same call** and
+cannot be the remedy (nor should it be: re-running a model whose script no
+longer reproduces it is what the guard exists to stop). The remedy is
+`write_script`, which passes `unrestored_ok=True` and re-accepts — but the
+button that calls it, `adopt_script`, is drawn only for an *empty* engine
+project or a *dirty* buffer, and a project accepted under an older engine is
+neither. So there is no route out of the state in the UI, and recovery is
+`open_project restore=false` followed by `write_script` by hand. Measured on
+`wiring-demo/harness.cadex`: accepted `7e073ae6…`, restored `25fdf64f…`, four
+cables, recovered and reopened clean. The gap and the shape of its fix are in
+ROADMAP under *Later — identified, not scheduled*; it wants its own ADR
+because it is a `shell/` diff and a product decision, and it is now blocking
+in a way ADR-064 only predicted.
 
 ### Verification
 
