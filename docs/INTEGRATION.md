@@ -38,12 +38,23 @@ The two halves:
 - **the shell** (`shell/`) — Blender fork; the product UI
   (`docs/BLENDER.md`). Carries the engine payload inside its bundle.
   GPL-2.0+.
+
 - **vibecad** — parent fork; historical reference only (teardown history on
   its `cadex-teardown` branch, at `github.com/theo-kirby/vibecad`).
   **mesh** — the shell's former home; its pre-merge history is at
   `github.com/theo-kirby/mesh` (branch `mesh-main`). Neither has a local
   working copy any more: both were deleted 2026-07-25, remotes verified
   first.
+
+**There is now a third client of this contract**: `cli/`, the headless CLI
+(`docs/CLI.md`, ADR-061). It is not a half of the product and it changes
+nothing here — it was built against this document without widening it, which
+is the strongest evidence the protocol has yet produced for the Phase 11/12
+claim that either half is replaceable behind it. Two consequences worth
+knowing when editing the tables below: the CLI validates **every** reply
+against `OP_RESPONSE_SPECS` as a hard error rather than tolerating an
+undeclared key, and it generates its whole model-facing tool surface from
+`OP_ARG_SPECS`. An op-table change therefore lands in three places, not two.
 
 ## Options considered
 
@@ -103,11 +114,11 @@ lifetime signal.
 |---|---|---|
 | `open_project` | `project_root`, `budgets?`, `restore?` | manifest + full script.json state; **restore pass** re-runs THE script into the fresh ephemeral document and asserts digest equality when an accepted digest exists; a script that will not run at all is retried once from the accepted revision's pinned source (ADR-044) |
 | `describe_api` | — | `describe_project_api()` verbatim |
-| `write_script` / `edit_script` / `set_params` | today's tool args + optional `display {quality, deflection, edges}`; `write_script` also takes `replace?` (ADR-045) | **byte-identical** to the in-process tool payload (accept payload / `tool_failure` envelope, `STALE_PROGRAM_REVISION` guard included) + per-output `display {artifact_kind, artifact_path (abs), placement, tessellation\|null}` |
+| `write_script` / `edit_script` / `set_params` | today's tool args + optional `display {quality, deflection, edges}`; `write_script` also takes `replace?` (ADR-045); `set_params` also takes `nets?` — the **complete** replacement row list for the connections a script declares with `nets(...)`, each row `{name, a, b, gauge_mm, solder, enabled}` with `a`/`b` addressed `<port>.<terminal>` (ADR-065). A full list rather than a patch, so the wiring editor can add and drop rows; a nets-only edit sends `values: {}` | **byte-identical** to the in-process tool payload (accept payload / `tool_failure` envelope, `STALE_PROGRAM_REVISION` guard included) + per-output `display {artifact_kind, artifact_path (abs), placement, tessellation\|null}` |
 | `rebuild` | `display?` | explicit deterministic re-run of the stored script (same payload shape) |
 | `put_asset` | `source_path`, `name?` | copies **one file the project store accepts** into `assets/` under a validated name (overwrite = re-import), returns its `{name, bytes, sha256}` plus the full listing. Accepted suffixes are `.stl`/`.obj`/`.ply` — geometry a script imports with `mesh.import_file` or `part.shape_from_mesh` — **and, on branch `MJC`, `.cxpolicy`**, a trained control policy `assembly.policy` names by file and digest (ADR-070). The op performs no suffix check of its own: it passes the path through and lets the engine refuse, which is exactly why widening what the store holds cost no protocol change and no `shell/` diff. A **modeling** op: it writes the store, and exclusion against an in-flight rebuild is what stops a half-copied asset being staged. A path, not bytes — the asset budget is 128 MB against an 8 MB frame cap |
 | `resolve_pin` | `output`, `selection` (fingerprint query or `{element_type, index}`) | `{ok, output, revision, subelements, details}` against the accepted revision's staged BREP (`CadexPinResolution.py`) |
-| `inspect` | today's `core.inspect` args | same contract; `document/object` serve the ephemeral doc, `script/api/image/assets/history` the store; `selection` rejected (shell-only) |
+| `inspect` | today's `core.inspect` args | same contract; `document/object` serve the ephemeral doc, `script/api/image/assets/history/wiring` the store; `selection` rejected (shell-only). `wiring` is the harness as a graph (ADR-065): the terminals the accepted run resolved, joined to the connection table, with `editable: false` and `source: "derived"` for a script written before `nets(...)` |
 | `preview_params` | `values`, `expected_revision` | solved component placements for a **pose-only** parameter change, from a resident read-only worker (ADR-055) — no BREP, no tessellation, no digest, no publication, **no store write**. A **read** op: it queues behind an in-flight modeling request rather than refusing one. Answers `previewable: false` with a `reason` whenever the change was not pose-only, the revision is stale, or the worker is unavailable; the debounced `set_params` behind it is the real answer either way |
 | `cancel` | `request_id?` | acks and cancels the in-flight modeling request (`RUN_CANCELLED` flows to that request) |
 | `shutdown` | — | graceful exit |
@@ -125,7 +136,7 @@ prose. Every response also carries `id` and `ok`.
 | Op | Response keys (success) |
 |---|---|
 | `open_project` | `schema`, `project_root`, `budgets`, `restore`, `script`, `manifest`? |
-| `describe_api` | `domain`, `domains`, `engine`, `instructions`, `program_schema`, `result_contract`, `revision_rule`, `source_globals`, `parameters`, `mutation_selection` |
+| `describe_api` | `domain`, `domains`, `engine`, `instructions`, `program_schema`, `result_contract`, `revision_rule`, `source_globals`, `parameters`, `connections`, `mutation_selection` |
 | `write_script` / `edit_script` / `set_params` / `rebuild` | `tool`, `revision`, `accepted_revision`, `digest`, `model_state`, `outputs`, `live_outputs`, `removed`, `display`?, `stdout`? |
 | `put_asset` | `name`, `bytes`, `sha256`, `assets` |
 | `resolve_pin` | `output`, `revision`, `subelements`, `details` |

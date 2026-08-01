@@ -74,9 +74,15 @@ OP_ARG_SPECS: dict[str, tuple[dict[str, type], dict[str, type]]] = {
         {"replacements": list, "expected_revision": str},
         {"display": dict},
     ),
+    # `nets` is the connection table's stored rows (ADR-065): a **full row
+    # list**, not a patch, which is what lets the wiring editor add and
+    # delete wires. One op rather than a second `set_nets`, because "set the
+    # values of declared controls without the AI" is one concept and a slider
+    # and a wire are both instances of it. A nets-only edit sends `values`
+    # empty.
     "set_params": (
         {"values": dict, "expected_revision": str},
-        {"display": dict},
+        {"display": dict, "nets": list},
     ),
     "rebuild": ({}, {"display": dict}),
     # A path, not bytes: the asset budget is 128 MB and the frame cap is 8 MB.
@@ -203,6 +209,10 @@ OP_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
                 "revision_rule",
                 "source_globals",
                 "parameters",
+                # The connection vocabulary (ADR-065), beside `parameters`
+                # and for the same reason: a table the script declares and
+                # something outside it sets.
+                "connections",
                 "mutation_selection",
             }
         ),

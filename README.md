@@ -115,8 +115,25 @@ The protocol between them is pinned by tests on both the request and the
 response side (`docs/INTEGRATION.md`), which is what keeps either half
 replaceable.
 
-The AI is the Claude Code CLI, driven from inside the shell. There is no
-API-key configuration.
+The AI is the Claude Code CLI — driven from inside the shell, or by `cli/`
+below. There is no API-key configuration either way.
+
+## Without a screen
+
+`cli/` is a second front end and a third client of the same protocol — no
+Blender, no display, no shell code ([`docs/CLI.md`](docs/CLI.md)). It needs
+a built engine and nothing else.
+
+```bash
+./cadex -p "a mounting bracket for a NEMA17, 4 mm wall" --project ./b --out ./b/out
+./cadex params --project ./b --set wall=6 --out ./b/wall6   # no AI, no tokens
+./cadex -p "make the fins 20% thinner" --project ./b --resume
+```
+
+One expensive turn writes a *parametric* script; after that a loop sweeps
+its parameters and re-exports STEP/STL for the price of a rebuild, so an
+external simulator can drive the design and the model is asked only when the
+shape must change.
 
 ## Use it
 
@@ -133,8 +150,8 @@ API-key configuration.
 
 ```bash
 pixi run test-engine                                  # engine suite, no build needed
-                                                      # (1105 passed, 12 skipped; the
-                                                      # skips are MJX-gated by design)
+                                                      # (the MJX-gated skips are by design)
+pixi run python -m pytest cli/tests                   # the CLI suite
 pixi run test-release                                 # ctest (diff against
                                                       # build/ctest_baseline_failures.txt)
 pixi run gate                                         # CADEX-BLENDER-GATE, the product gate
@@ -147,7 +164,7 @@ the doc set under [`docs/`](docs/):
 [VISION](docs/VISION.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) ·
 [XSCRIPT](docs/XSCRIPT.md) · [MUJOCO](docs/MUJOCO.md) ·
 [INTEGRATION](docs/INTEGRATION.md) ·
-[BLENDER](docs/BLENDER.md) ·
+[BLENDER](docs/BLENDER.md) · [CLI](docs/CLI.md) ·
 [FREECAD](docs/FREECAD.md) · [BLENDER-TREE](docs/BLENDER-TREE.md) ·
 [PROVENANCE](docs/PROVENANCE.md) ·
 [ROADMAP](docs/ROADMAP.md) · [DECISIONS](docs/DECISIONS.md).

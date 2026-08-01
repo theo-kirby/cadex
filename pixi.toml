@@ -53,6 +53,13 @@ pip = "*"
 pivy = "*"
 ply = "*"
 pre-commit = "*"
+# The engine suite's runner. Undeclared until ADR-060: it happened to be
+# importable in the environments the suite was first run in, so
+# `pixi run python -m pytest src/Mod/cadex/cadex_tests` -- the command
+# CLAUDE.md names as the minimum verification, and the one CI runs -- died
+# with "No module named pytest" on any clean checkout, taking both CI jobs
+# with it before they reached the packaged gate.
+pytest = "*"
 pyright = "==1.1.408"
 pybind11 = "*"
 pycollada = "*"
@@ -244,6 +251,13 @@ initialize = { cmd = ["git", "submodule", "update", "--init", "--recursive"]}
 # what a release must not ship.
 # ---------------------------------------------------------------------------
 setup = { cmd = ["bash", "package/app/build_app.sh", "setup"]}
+# Setup for an engine-only checkout: the two submodules the engine actually
+# compiles, and nothing else. `setup` above also checks out
+# shell/lib/<platform> -- 1.3 GB over git-lfs -- which a headless box never
+# uses and which hard-fails when git-lfs is not installed. Use this when you
+# want cadexd and no application (ADR-060).
+setup-engine = { cmd = ["git", "submodule", "update", "--init", "--recursive",
+                        "src/3rdParty/OndselSolver", "src/3rdParty/GSL"]}
 build-engine = { depends-on = ["configure-release", "build-release", "install-release"]}
 stage-engine = { cmd = ["bash", "package/engine/build_engine_payload.sh"], env = { CADEX_ENGINE_STAGE_ONLY = "1" }}
 stage-engine-release = { cmd = ["bash", "package/engine/build_engine_payload.sh"]}

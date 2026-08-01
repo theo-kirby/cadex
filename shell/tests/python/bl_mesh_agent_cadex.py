@@ -582,13 +582,15 @@ def test_both_pin_gestures_are_registered():
 
 
 def test_the_pick_finds_the_viewport_under_the_mouse():
-    """Both pins start from a button in the chat header, not the viewport.
+    """Both pins start from a button in the chat editor, not the viewport.
 
-    The modal cannot use the area it was invoked from -- that is the header's
-    own area, and gating on it cancels the gesture the instant it starts,
-    which is what the buttons did. The region has to come from where the
-    mouse ends up. Driving the modal needs a real window, so what is checked
-    here is the lookup the modal depends on.
+    The button row is under the message box (ADR-074 moved it there from the
+    header, which now carries only the pinned count) -- but either way it is
+    the chat's own area, and that is what matters here: the modal cannot use
+    the area it was invoked from, because gating on it cancels the gesture the
+    instant it starts, which is what the buttons did. The region has to come
+    from where the mouse ends up. Driving the modal needs a real window, so
+    what is checked here is the lookup the modal depends on.
     """
     print("test_the_pick_finds_the_viewport_under_the_mouse")
 

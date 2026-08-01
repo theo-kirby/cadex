@@ -318,7 +318,73 @@ def _stamp_source_output(
         item["source_output"] = str(source)
 
 
-def _validate_request(request: dict[str, Any]) -> tuple[str, dict, dict, dict]:
+def _wiring_registry(nets: Any, result: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every resolved terminal set, joined to its port and its output (ADR-065).
+
+    The run has already resolved each set once and memoised it; publishing
+    that registry is what lets the shell draw a harness at all, and it cannot
+    drift from the geometry that was actually built. Re-deriving it host-side
+    would reach declared layouts only — a ``holes=`` selector needs the shape.
+
+    Both joins come free. ``port`` is the ``nets(ports=...)`` name, matched on
+    the same memo key the worker resolves by; ``output`` is the ``result``
+    key whose payload *is* the set's component. A component that is neither a
+    declared port nor a declared output still yields a node, unnamed — that
+    is the legacy harness, and it is exactly what the read-only view draws.
+
+    Derived data, computed after the digest and never fed into it: a port the
+    script declares but never wires is resolved here and its failure reported,
+    never raised.
+    """
+
+    from cadex_domain_api import _json_value
+    from cadex_part_worker import (
+        published_terminal_sets,
+        resolve_terminal_set_for_publication,
+        terminal_set_key,
+    )
+
+    port_by_key: dict[str, str] = {}
+    for port_name, terminal_set in list(getattr(nets, "ports", []) or []):
+        payload = _json_value(
+            {
+                "component": terminal_set.component,
+                "layout": dict(terminal_set.layout),
+            }
+        )
+        # Resolve before reading the registry: an unwired port has not been
+        # resolved by the run, and an unwired board is precisely the node the
+        # editor needs in order to rewire onto it.
+        resolve_terminal_set_for_publication(payload)
+        port_by_key.setdefault(terminal_set_key(payload), port_name)
+
+    output_by_payload: dict[str, str] = {}
+    for name, value in result.items():
+        try:
+            output_by_payload.setdefault(_canonical_json(_payload(value)), str(name))
+        except (TypeError, ValueError):
+            continue
+
+    registry: list[dict[str, Any]] = []
+    for entry in published_terminal_sets():
+        component = entry.get("component")
+        try:
+            output = output_by_payload.get(_canonical_json(component), "")
+        except (TypeError, ValueError):
+            output = ""
+        registry.append(
+            {
+                "port": port_by_key.get(str(entry.get("key") or ""), ""),
+                "output": output,
+                "domain": str((component or {}).get("domain") or ""),
+                "kind": str((entry.get("layout") or {}).get("kind") or ""),
+                "terminals": list(entry.get("terminals") or []),
+            }
+        )
+    return registry
+
+
+def _validate_request(request: dict[str, Any]) -> tuple[str, dict, dict, dict, list]:
     """Structural checks shared by an accepting run and a preview."""
 
     if request.get("schema") != SCHEMA:
@@ -329,6 +395,10 @@ def _validate_request(request: dict[str, Any]) -> tuple[str, dict, dict, dict]:
     inputs = request.get("inputs")
     api_contracts = request.get("api_contracts")
     param_values = request.get("param_values")
+    # Absent rather than empty on a request written before ADR-065, and a
+    # full row list rather than a patch when present -- that is what lets the
+    # editor add and delete wires.
+    net_values = request.get("net_values") or []
     if not isinstance(inputs, dict):
         raise TypeError("inputs must be an object.")
     if not isinstance(api_contracts, dict) or set(api_contracts) != set(
@@ -339,18 +409,34 @@ def _validate_request(request: dict[str, Any]) -> tuple[str, dict, dict, dict]:
         )
     if not isinstance(param_values, dict):
         raise TypeError("param_values must be an object.")
-    return source, inputs, api_contracts, param_values
+    if not isinstance(net_values, list):
+        raise TypeError("net_values must be an array of connection rows.")
+    return source, inputs, api_contracts, param_values, net_values
 
 
 def _staged_globals(
     api_contracts: dict[str, Any],
     param_values: dict[str, Any],
     inline_sources: dict[str, dict[str, Any]],
-) -> tuple[dict[str, Any], ParamsCollector]:
-    """One API object per capability domain, plus the parameter vocabulary."""
+    net_values: Any = None,
+) -> tuple[dict[str, Any], ParamsCollector, Any]:
+    """One API object per capability domain, plus the declared-table vocabulary.
+
+    ``params``/``num`` declare the sliders and ``nets``/``wire`` declare the
+    connections (ADR-065); both are tables the script states and something
+    outside it currently sets.
+    """
+
+    from CadexNets import NetsCollector, wire
 
     collector = ParamsCollector(param_values)
-    globals_by_name: dict[str, Any] = {"params": collector, "num": num}
+    nets = NetsCollector(net_values)
+    globals_by_name: dict[str, Any] = {
+        "params": collector,
+        "num": num,
+        "nets": nets,
+        "wire": wire,
+    }
     for domain in EVALUATION_ORDER:
         contract = api_contracts[domain]
         exports = list(contract.get("exports") or [])
@@ -363,13 +449,13 @@ def _staged_globals(
             globals_by_name[domain] = create_domain_api(
                 domain, exports, output_types
             )
-    return globals_by_name, collector
+    return globals_by_name, collector, nets
 
 
 def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
     import FreeCAD as App
 
-    source, inputs, api_contracts, param_values = _validate_request(request)
+    source, inputs, api_contracts, param_values, net_values = _validate_request(request)
 
     output_directory = root / "outputs"
     output_directory.mkdir(parents=True, exist_ok=False)
@@ -378,17 +464,17 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
     # mesh.import_file names against <root>/assets. build_part_shape takes
     # neither a root nor the mesh kernel, so both are bound once here — this
     # module is staged into the sandbox, so it may own that edge (ADR-043).
-    from cadex_mesh_worker import canonical_mesh_from_payload
+    from cadex_mesh_worker import canonical_mesh_from_payload, composed_placement
     from cadex_part_worker import (
         configure_part_assets,
         reset_part_shape_memo,
     )
 
-    configure_part_assets(root, canonical_mesh_from_payload)
+    configure_part_assets(root, canonical_mesh_from_payload, composed_placement)
 
     inline_sources: dict[str, dict[str, Any]] = {}
-    globals_by_name, collector = _staged_globals(
-        api_contracts, param_values, inline_sources
+    globals_by_name, collector, nets = _staged_globals(
+        api_contracts, param_values, inline_sources, net_values
     )
 
     document = App.newDocument(
@@ -519,7 +605,8 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
             )
 
         # Digest first, display second: display artifacts are opt-in derived
-        # data and must never feed the content digest (Phase 5.1).
+        # data and must never feed the content digest (Phase 5.1). The wiring
+        # registry is derived data on exactly the same footing (ADR-065).
         digest = compute_project_digest(root, outputs)
         display_request = validate_display_request(request.get("display"))
         if display_request is not None:
@@ -532,6 +619,8 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
             "stdout": stdout,
             "budget": budget,
             "param_specs": collector.specs,
+            "net_specs": nets.specs,
+            "wiring": _wiring_registry(nets, result),
             "digest": digest,
             "validations": validations,
             "component_sources": component_sources,
@@ -662,19 +751,19 @@ def _run_preview(request: dict[str, Any], root: Path) -> dict[str, Any]:
 
     import FreeCAD as App
 
-    source, inputs, api_contracts, param_values = _validate_request(request)
+    source, inputs, api_contracts, param_values, net_values = _validate_request(request)
     baseline = request.get("baseline")
     if baseline is not None and not isinstance(baseline, dict):
         raise TypeError("baseline must be an object when present.")
 
-    from cadex_mesh_worker import canonical_mesh_from_payload
+    from cadex_mesh_worker import canonical_mesh_from_payload, composed_placement
     from cadex_part_worker import configure_part_assets
 
-    configure_part_assets(root, canonical_mesh_from_payload)
+    configure_part_assets(root, canonical_mesh_from_payload, composed_placement)
 
     inline_sources: dict[str, dict[str, Any]] = {}
-    globals_by_name, _collector = _staged_globals(
-        api_contracts, param_values, inline_sources
+    globals_by_name, _collector, _nets = _staged_globals(
+        api_contracts, param_values, inline_sources, net_values
     )
 
     document = App.newDocument(

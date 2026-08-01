@@ -14,7 +14,13 @@ from __future__ import annotations
 import math
 from typing import Any, Iterable
 
+from CadexTerminals import TerminalError, TerminalSet, declared_layout
 from cadex_domain_api import DomainValue
+
+#: Mesh operations one asset frame can be composed from, and therefore the
+#: only ones ``mesh.terminals`` accepts. A boolean of two placed meshes has
+#: two frames and no leaf, so a layout stated against it means nothing.
+_PLACEABLE_OPERATIONS = frozenset({"import_file", "from_shape", "transform"})
 
 #: Part topologies that tessellate into a triangle mesh.
 _TESSELLATABLE_PART_TYPES = frozenset({"solid", "shell", "face", "compound"})
@@ -108,6 +114,34 @@ def _mesh(operation: str, parameter: str, value: Any) -> DomainValue:
             "expected a value returned by this Mesh api",
             type(value).__name__,
         )
+    return value
+
+
+def _placeable(operation: str, value: DomainValue) -> DomainValue:
+    """Refuse a mesh value whose terminals would have no one frame to ride.
+
+    Checked here rather than in the worker as well as there: the worker sees
+    the composed chain and can only say *that* it failed, while this sees the
+    operation the script actually wrote and can name it.
+    """
+
+    node: Any = value
+    while isinstance(node, DomainValue):
+        if node.operation not in _PLACEABLE_OPERATIONS:
+            raise _error(
+                operation,
+                "component",
+                (
+                    f"api.{node.operation} reshapes or combines meshes rather "
+                    "than placing one, so its result has no single asset frame "
+                    "for a terminal layout to be stated in; declare the "
+                    "terminals on the imported component itself"
+                ),
+                node.operation,
+            )
+        if node.operation != "transform":
+            return value
+        node = node.arguments[0] if node.arguments else None
     return value
 
 
@@ -336,6 +370,56 @@ class MeshDomainAPI:
             label=label,
         )
 
+    def terminals(
+        self,
+        component: DomainValue,
+        *,
+        terminals: Iterable[Any] | None = None,
+        header: Any = None,
+        names: Iterable[str],
+    ) -> TerminalSet:
+        """Name the places a wire attaches to an imported component (ADR-062).
+
+        The mesh half of ``part.terminals``, and **declared only**: a
+        triangle mesh has no ``Cylinder`` face to select, so there is nothing
+        for a selector to name.  Detecting holes by fitting cylinders to
+        triangle bands is deliberately not done — iterative fitting is a
+        determinism risk against the rebuild digest, and it is fragile on the
+        coarse STLs vendors actually ship.
+
+        **The coordinates are the asset's own**, before any
+        ``mesh.transform``.  That is what makes define-once/place-many work:
+        state one header from the datasheet, place the component four times,
+        and each instance carries its own correctly placed terminals::
+
+            spec = dict(header=dict(origin=(0, 0, 4.2), along=(0, 1, 0),
+                                    axis=(0, 0, 1), pitch=1.2, count=3,
+                                    hole_dia=0.6, depth=0.8),
+                        names=["a", "b", "c"])
+            for index, (x, y, z) in enumerate(centers):
+                motors[index] = mesh.transform(motor_raw, translation=(x, y, z))
+                leads[index] = mesh.terminals(motors[index], **spec)
+
+        Resolution walks the value tree to its imported leaf and composes
+        every transform above it.  Points carry the whole placement and
+        directions only its rotation, so a rotated component's terminals face
+        the way the component does.  A **non-uniform scale** on the chain is
+        refused rather than silently skewing an axis off the hole it belongs
+        to.
+
+        ``header=`` and ``terminals=`` mean exactly what they do on
+        ``part.terminals``; see that docstring for the layout keys.
+        """
+
+        operation = "terminals"
+        clean_component = _mesh(operation, "component", component)
+        _placeable(operation, clean_component)
+        try:
+            layout = declared_layout(terminals, header=header, names=names)
+        except TerminalError as exc:
+            raise TerminalError(f"api.{operation}: {exc}", details=exc.details) from exc
+        return TerminalSet(clean_component, layout)
+
     @property
     def exported_names(self) -> tuple[str, ...]:
         return (
@@ -346,4 +430,5 @@ class MeshDomainAPI:
             "intersection",
             "decimate",
             "transform",
+            "terminals",
         )

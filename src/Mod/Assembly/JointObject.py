@@ -63,14 +63,23 @@ import UtilsAssembly
 
 try:
     from pivy import coin
-    import Preferences
     from SoSwitchMarker import SoSwitchMarker
 except ImportError:
-    # Coin scene graphs and the preferences page are view-provider concerns;
-    # see the QtCore fallback above.
+    # Coin scene graphs are view-provider concerns; see the QtCore fallback
+    # above.
     coin = None
-    Preferences = None
     SoSwitchMarker = None
+
+# Preferences is App-level -- a plain ParamGet -- and solveIfAllowed() below
+# calls it on the headless solver path. It must NOT share the try block
+# above: pivy is present in the engine payload but libCoin is not (the
+# engine builds GUI-off, cadex ADR-022), so a coin ImportError silently
+# turned Preferences into None and every joint failed to derive connector
+# frames. Preferences.py carries the same warning about its own GUI import.
+try:
+    import Preferences
+except ImportError:
+    Preferences = None
 
 translate = App.Qt.translate
 

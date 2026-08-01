@@ -70,10 +70,19 @@ void ED_spacetypes_init()
   /* Only the editors Cadex ships. An unregistered space type is not offered
    * in the editor menu (rna_Area_ui_type_itemf), so this list *is* the menu.
    * Not registered: space_action, space_clip, space_graph, space_image,
-   * space_nla, space_node, space_script, space_sequencer, space_spreadsheet.
+   * space_nla, space_script, space_sequencer, space_spreadsheet.
    * They are still *compiled* -- kept subsystems reference symbols across all
-   * nine, so dropping them from the build is the delete half of the protocol
-   * in docs/FREECAD.md S3 and belongs to Phase 13b. See ADR-036. */
+   * eight, so dropping them from the build is the delete half of the protocol
+   * in docs/FREECAD.md S3 and belongs to Phase 13b. See ADR-036.
+   *
+   * space_node left that list in ADR-066, and the rule above is what makes
+   * that safe rather than a reversal: a node tree type is a *subtype* of
+   * SPACE_NODE, and the menu lists subtypes rather than the space, so
+   * registering the space offers exactly the tree types that survive
+   * rna_SpaceNodeEditor_tree_type_poll. That poll is filtered to Cadex trees,
+   * so the menu gains one row -- "Wiring" -- and the four stock trees stay
+   * off it while staying registered, which materials still need. */
+  ED_spacetype_node();
   ED_spacetype_outliner();
   ED_spacetype_view3d();
   ED_spacetype_buttons();

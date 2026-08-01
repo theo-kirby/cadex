@@ -310,6 +310,11 @@ class Agent:
         note = self._attachment_note()
         from . import cadex_pick
         note += cadex_pick.consume_pin_notes()
+        # A measured terminal is not a pin (docs/XSCRIPT.md): its own queue,
+        # its own wording, drained here so several picks cost one turn
+        # rather than one turn each (ADR-067).
+        from . import cadex_terminal_pick
+        note += cadex_terminal_pick.consume_terminal_notes()
         self.backend.start_turn(prompt + note, self.events)
         self._ensure_timer()
         _tag_redraw()

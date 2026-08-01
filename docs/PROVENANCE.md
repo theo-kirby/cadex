@@ -23,23 +23,24 @@ for the shell.
 | [Blender](https://projects.blender.org/blender/blender) | **the shell** — `shell/` | GPL-2.0-or-later |
 | VibeCAD (ours, predecessor) | the scripted-modeling engine inside `src/Mod/cadex/` | LGPL-2.1-or-later |
 
-Cadex adds roughly **87,000 lines** of its own across both halves, or about
-**53,500** if you do not count tests:
+Cadex adds roughly **109,000 lines** of its own across both halves, or about
+**65,000** if you do not count tests:
 
 | Ours | Lines | Where |
 |---|---|---|
-| the engine, Python | 43,793 | `src/Mod/cadex/*.py` |
-| the engine's suites | 29,709 | `src/Mod/cadex/cadex_tests/` |
+| the engine, Python | 48,362 | `src/Mod/cadex/*.py` |
+| the engine's suites | 36,220 | `src/Mod/cadex/cadex_tests/` |
 | the engine, C++ | 1,031 | `CadexGeometryWorker.cpp` and its headers |
-| the shell add-on | 7,673 | `shell/scripts/addons_core/mesh_agent/` |
-| the shell's Cadex suites | 3,707 | `shell/tests/python/bl_mesh_agent*.py` |
-| the offboard trainer | 894 | `training/` — **not part of the product** (§5) |
+| the shell add-on | 10,544 | `shell/scripts/addons_core/mesh_agent/` |
+| the shell's Cadex suites | 5,331 | `shell/tests/python/bl_mesh_agent*.py` |
+| the headless CLI | 4,540 | `cli/` — a second front end, not a second engine (ADR-061, CLI) |
+| the offboard trainer | 2,516 | `training/` — **not part of the product** (§5) |
 | the app template | 111 | `shell/scripts/startup/bl_app_templates_system/Mesh/` |
 
 Everything else in this repository, which is the overwhelming majority of
-it, belongs to FreeCAD or Blender. Measured 2026-07-31 on branch `MJC`; the
-engine figure is about 25% larger than the last one recorded here, most of
-that being `CadexDynamics.py` and the dynamics suites.
+it, belongs to FreeCAD or Blender. Measured 2026-08-01 on branch `MJC`,
+after the merge that brought the CLI, terminals, solder and the wiring graph
+across from `main`.
 
 We do not track either upstream. Both were imported as squashed snapshots,
 and the direction of travel is **subtractive**: we delete from these trees
@@ -246,6 +247,15 @@ program linked together:
 - The protocol is pinned by tests on both the request and the response side
   (`docs/INTEGRATION.md`, ADR-027), which is also what keeps either half
   replaceable.
+- `cli/` is a **third** client of that protocol (ADR-061,
+  [`CLI.md`](CLI.md)) and is on the engine's side of the line:
+  LGPL-2.1-or-later, like everything else we wrote outside `shell/`. The
+  boundary runs one way and is not a judgement call — the shell's
+  `cadexd_client.py`, `backend.py`, `mcp_shim.py` and `modes.py` solve four
+  of the same problems and **not one line of them is copied there**. They
+  were read as reference; every equivalent derives from the LGPL
+  engine-side precedents in `src/Mod/cadex/cadex_tests/`, and the system
+  prompt is written fresh.
 
 The shipped bundle distributes both, so the distribution as a whole carries
 GPL-2.0-or-later obligations, and the complete corresponding source is this

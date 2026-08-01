@@ -1025,7 +1025,48 @@ pytest src/Mod/cadex/cadex_tests/differential/ --domain=<mesh|part|sketcher|part
 | OCCT version drift re-indexes saved scripts | Pin the version; gate the enumeration |
 | Stall midway | Order chosen so every resting place is shippable: engine done + Blender shell is a product |
 
-## Off-phase — `part.cable` and `part.bundle`, experimental (ADR-056, ADR-057, 2026-07-27)
+## Off-phase — `cli/`, a headless CLI (ADR-061, 2026-07-31)
+
+A second front end landed on **no phase**, for the same reason `part.cable`
+did: it is new scope, not a work item any phase declared.
+
+What shipped: `cli/` plus a `./cadex` shim — a third client of the cadexd
+protocol, no Blender and no display, with four subcommands
+(`-p`, `params`, `script`, `export`) of which exactly one spends tokens. No
+engine change and **no protocol change**: `OP_ARG_SPECS`, the ADR-027
+goldens and `docs/INTEGRATION.md`'s op table are untouched, which is the
+point — a third client that needed the contract widened would have been
+evidence against the contract. Documented in `docs/CLI.md`; suite in
+`cli/tests` (76 tests, the engine-needing half skipped without a build).
+
+- [x] `cli/` scaffolded; `pixi run python -m pytest cli/tests` green
+- [x] the engine suite unchanged at 314
+- [x] end to end on Linux: a fresh `-p` run produces a parametric script,
+      STEP + STL and a `--json` envelope; `params --set` moves the digest
+      with no `claude` spawned; `--resume` continues the conversation and
+      the second turn edits the first turn's script
+- [x] CI: `cli/tests` runs in both jobs of `cadex-app.yml`, after the engine
+      build (half of it skips without one). The Linux job runs it twice —
+      build tree and staged payload — on the ADR-023 argument.
+- [ ] macOS: never run there **by hand**. Nothing in it is macOS-hostile —
+      POSIX `flock`, a short unix socket path, `FreeCADCmd` — but "should
+      work" is not evidence, and the `app` job above is where the evidence
+      will first appear. Expect that job to be the one that finds anything.
+
+**What it is for, and what it is not.** The point is a cost asymmetry, not a
+GUI-less GUI: one expensive turn authors a parametric script, and a cheap
+loop then sweeps it while an external simulator feeds results back. It is
+also the first *second* caller the protocol has ever had, which is direct
+evidence for the Phase 11/12 claim that either half is replaceable.
+
+**Known gaps**, all deliberate and all recorded in ADR-061: export runs as a
+`FreeCADCmd` subprocess rather than an `export_model` op; BREP outputs only,
+with mesh and component outputs reported `skipped`; no `resolve_pin`, no
+offscreen rendering, so the agent verifies through `inspect` facts and
+script stdout and is told so in its prompt; the CLI does not ship inside the
+engine payload; Windows is not supported.
+
+## Off-phase — the harness ops, experimental (ADR-056, ADR-057, ADR-062, ADR-063, ADR-065, 2026-07-27 → 2026-08-01)
 
 Procedural wire routing landed on **no phase**. It is new scope, not a work
 item any phase declared, and it is recorded here as experimental rather than
@@ -1044,12 +1085,103 @@ spline fit and sweep wholesale — the extraction that made them shared changed
 no numerics, proved by rebuilding the drone to an unchanged digest. What is
 its own is the frame and the offsets, in `CadexBundle.py`.
 
+**Then ports stopped being literals (ADR-062, 2026-08-01).**
+`part.terminals` / `mesh.terminals` and `CadexTerminals.py`: a third
+pure-Python module, still no shell code and still no protocol change. It
+settles the first gap below and changes nothing for a script that does not
+use it — literal ports take the same path and produce the same digest.
+
+**Then the wires stopped ending in mid-air (ADR-063, 2026-08-01).**
+`part.solder` and `CadexSolder.py`: a fourth pure-Python module, and a third
+operation in a row with no shell code and no protocol change. One call is one
+joint and one `solid` — the filled bore, the meniscus and the far-face cap,
+with the lead cut out of them — sized entirely from a terminal, which is why
+it takes a terminal and never a literal: a literal carries no radius, no
+depth and no face. `wcv8.cadex` migrated onto terminals plus 42 joints, which
+cost 0.21 s against the 18.1 s its 22 conductors already take, and which
+removed thirteen hand-written `1/sqrt(2)` factors and six frozen world
+constants. The migration also found that the drone's four motor leads were
+never one spec placed four times — see ADR-063.
+
+**Then the joint stopped looking like a cone (ADR-064, 2026-08-01).** The
+meniscus became a concave arc, and with it the whole joint became **one solid
+of revolution**: a closed outline, one face, one `revolve`, and no boolean at
+all. That deleted the fuse, the cut, `CUT_OVERSHOOT_MM` and every kernel
+hazard ADR-063 documented — nine OCC calls per joint down to three, and eight
+joints on the probe plate from 54 ms to 20.9 ms. The risk moved out of OCC and
+into pure Python, where a simple, correctly-wound closed loop is decidable
+headless over a parameter sweep. No new parameters, no payload change, no
+protocol change; the cost is one new refusal (a fillet shorter than the pad it
+spans would undercut the board, and the default sits exactly on that floor)
+and that **existing accepted projects must be re-accepted**, which is one
+click or one `pixi run rebuild`. Both affected projects were re-accepted here.
+
+**Then the harness became something you can see (ADR-065, 2026-08-01).**
+`nets(ports=..., wires=...)` and `wire(...)` in a new pure module
+`CadexNets.py`: connections declared as a table, on exactly the terms
+`params()` already had — a declaration in the script whose current values live
+in `script.json`. `set_params` grew one optional `nets` argument, and
+`inspect scope="wiring"` publishes the harness as a graph: every terminal the
+accepted run resolved, joined to its port and its output, plus the connection
+table over them. The terminals were previously resolved inside the isolated
+worker and **discarded**, which is why the shell saw `wiring-test.cadex`'s
+seven components, ten cables and twenty joints as exactly two outputs. Scripts
+predating `nets()` answer the scope read-only, reconstructed from the
+`cable`/`bundle`/`solder` calls they made. No re-accepting: the digest hashes
+outputs only, and the revision covers nets only when non-empty. The editor
+that consumes this is ADR-066 and is not built.
+
 What makes them experimental, and what would settle it:
 
-- **Ports are literals.** Selector-anchored ports — so a port rides the
-  geometry when the part changes, per the ADR-029 rule — are the obvious next
-  step and are not built. `resolve_pin` already returns `center_mm` and
-  `normal`, which is exactly a port, so the pick→port path needs no new code.
+- [x] **Ports are literals** — **settled by ADR-062 (2026-08-01).**
+  `part.terminals` / `mesh.terminals` name a component's attachment points
+  from its geometry: a `holes=`/`pads=` selector on a BREP board, a declared
+  layout on an imported STL, ordered by a *direction* rather than by kernel
+  enumeration. A hole terminal lands on its far face and carries the bore's
+  depth as a stand-off floor, which is what made `route_path` take one
+  stand-off per end. Terminals ride their component's placement, so one spec
+  places four motors. `CadexTerminals.py` is the new pure-Python module; no
+  shell code, no protocol change, and literal ports are unchanged, so a
+  script that uses none rebuilds byte-identically. Still not built: writing a
+  terminal into a script from a viewport click (Phase 10b, ADR-067), and
+  mesh hole detection, which is deferred by decision rather than pending.
+- [x] **The harness is invisible** — **settled by ADR-065 (the engine),
+  ADR-066 (the editor) and ADR-067 (the pick), all 2026-08-01.** `nets(...)`
+  declares the connections, `set_params(nets=)` edits them with no AI turn,
+  `inspect scope="wiring"` publishes the terminals the run resolved, and the
+  Wiring editor draws all of it as a node graph in Blender's stock node
+  editor — re-registered for exactly one Python tree type, so the editor menu
+  gains "Wiring" and stays short. Selecting a hole rim in Edit Mode fits a
+  terminal and hands the measurement to the assistant to transcribe.
+  **Built and green end to end**, shell included: the editor menu test now
+  asserts "Wiring" is on it and the four stock node trees are not, the graph
+  survives a `.blend` round trip with its layout and socket identities
+  intact, and `pixi run gate` passes against the bundled engine. The one
+  thing no test covers is dragging a link with a mouse. Still not built: `part.bundle` as an
+  editable graph concept (deferred by decision — changing a bundle's
+  membership is a script edit); writing a terminal *into* the script from the
+  pick, rather than into the chat turn (Phase 10b, still open — ADR-067
+  supplies the measurement, not the write); and a per-output composed
+  placement matrix in the wiring scope, without which a pick on a transformed
+  mesh asset is expressed in the output's frame rather than the asset's and
+  the assistant has to resolve the difference.
+- [x] **A wire ends in mid-air** — **settled by ADR-063 (2026-08-01), and the
+  joint stopped reading as a cone in ADR-064 (2026-08-01).** `part.solder`
+  builds the joint a terminal implies, with a concave meniscus that flattens
+  into a short collar around the wire. Still not built: colouring solder
+  differently from wire, which needs an appearance vocabulary the part domain
+  does not have, and rounding the underside cap to a dome (decided: it stays
+  a cone).
+- **A joint and its wire share a sliver.** Since ADR-074 the wire leaves the
+  terminal on the axis and runs straight for the whole length the joint grips
+  — measured drift 0.031 mm at mid-barrel, against 0.093 mm before — so what
+  is left is 0.038 mm³ on the probe plate, 5% of what an unbored joint would
+  share. Structural, and now small: `part.solder` takes a terminal, not a
+  wire, and a joint must build whether or not a cable was routed to it.
+- **Terminals cannot ride a non-uniform placement.** Refused rather than
+  silently skewed (ADR-062). A pad has no radius and no depth, so a
+  relaxation carrying only its point and normal is available and unbuilt; it
+  is what keeps `wcv8`'s battery pair on literal ports.
 - **Mesh obstacles are bounding boxes.** Fine for boards and motors, wrong
   for anything concave; the workaround is to pass such a body as a part
   solid.
@@ -1068,6 +1200,17 @@ What makes them experimental, and what would settle it:
   shared with `part.cable`, where it is silent; `part.bundle` refuses on it
   via its bend floor. Fixing it moves accepted digests, so it needs its own
   ADR — see ADR-057's closing note.
+- **A bundle conductor's sweep frame is a coin flip.** True Frenet takes its
+  normal from the curvature, and on a lay that normal spins: at fixed
+  geometry the swept solid measures between **0.75x and 1.47x** of
+  `pi r^2 L` as `twist_pitch_mm` and `slack` move a few percent, while
+  staying closed, valid and one solid. The three-phase probe currently lands
+  on a good roll, which is all the pinned 2% tolerance is really asserting.
+  ADR-074 fixed the same class of fault for `part.cable` by sweeping in the
+  corrected frame; a lay cannot take that mode (ADR-057: up to 51% missing),
+  so the fix here is a frame of our own — the spine's own binormal carried
+  along the run rather than recomputed per sample. Not scheduled; it moves
+  digests, and the visible fault so far has been on cables.
 
 ## Later — identified, not scheduled
 
@@ -1083,5 +1226,30 @@ What makes them experimental, and what would settle it:
   makes that request cheaper; it does not cause one. Landing hydrate-on-load
   is a `shell/` diff and wants the asynchronous lifecycle, so it is a
   decision — ADR-073 §5.
+- **A digest-moving engine change locks a project out of the UI, with no
+  visible way back in.** ADR-064 called a friendlier migration path "worth
+  having and not built here"; ADR-074 is the first change to make a user hit
+  it, and it is worse than that note reads. The failure is at *open*, not at
+  the next edit: `ensure_open` runs the restore pass, `CADEXD_RESTORE_FAILED`
+  comes back, and every operation that would fix it is behind the same call.
+  **Rebuild Model cannot be the remedy** — `begin_rebuild_model` passes
+  `unrestored_ok=False`, correctly, because re-running a model whose script
+  no longer reproduces it is exactly what the guard exists to stop. The
+  operation that *is* the remedy is `write_script`, which already passes
+  `unrestored_ok=True` and re-accepts on success; what is missing is a
+  **button that reaches it in this state**. `adopt_script` is drawn only when
+  the engine project is *empty* (`orphaned_project`) or the script buffer is
+  *dirty* — and a project that opened fine yesterday under a different engine
+  build is neither, so nothing is drawn at all.
+
+  Measured on `wiring-demo/harness.cadex` after ADR-074: accepted
+  `7e073ae6…`, restored `25fdf64f…`, four cables. Recovered by hand with
+  `open_project restore=false` then `write_script`, which is precisely what
+  the missing button would do. The shape of the fix: cache the failure code
+  from the last open on the per-root state, and let the chat panel draw the
+  re-accept box it already draws for an orphan, saying the model was accepted
+  under a different engine build. That is a `shell/` diff and a decision, so
+  it wants its own ADR. Until it lands, **every digest-moving change ships
+  with a manual recovery** — a solver bump, a sweep-frame fix, the next one.
 - **Linux and Windows shell bundles.** The engine payload builds for both;
   only macOS arm64 has shell CI. Moot once Phase 12 lands — revisit then.

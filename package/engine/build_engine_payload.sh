@@ -158,10 +158,21 @@ find "${payload}/Mod" -name '*Gui.dylib' -delete 2>/dev/null || true
 find "${payload}/lib" -maxdepth 1 \( -iname 'libCoin*' -o -iname 'libQuarter*' \
     -o -iname 'libSoQt*' \) -exec rm -rf {} + 2>/dev/null || true
 
-# Python bindings for Qt, and Qt's own plugin/QML/translation trees.
+# Python bindings for Qt and for Coin, and Qt's own plugin/QML/translation
+# trees.
+#
+# pivy is to libCoin what PySide6 is to libQt6Widgets, and it is pruned for
+# the same reason the FreeCADGui binding above is: a binding whose native
+# library has been deleted does not fail to exist, it fails to *import*, and
+# an ImportError is control flow. Assembly's JointObject.py imported pivy and
+# the App-level Preferences module in one try block, so a payload carrying
+# pivy-without-Coin turned Preferences into None and broke every joint
+# (ADR-060). The import guard is fixed, but 19 MB of bindings for a library
+# nothing headless links is dead weight regardless.
 rm -rf "${payload}/lib/python"*/site-packages/PySide6 \
        "${payload}/lib/python"*/site-packages/shiboken6 \
        "${payload}/lib/python"*/site-packages/PySide2 \
+       "${payload}/lib/python"*/site-packages/pivy \
        "${payload}/lib/qt6" "${payload}/lib/qml" "${payload}/plugins" \
        "${payload}/translations" "${payload}/qml"
 
@@ -223,7 +234,7 @@ leaked="$(find "${payload}" \( \
         -o -iname 'libQt[65]PrintSupport*' -o -iname 'libQt[65]UiTools*' \
         -o -iname 'libQt[65]Designer*' \
         -o -iname 'libCoin*' -o -iname 'libQuarter*' -o -iname 'libsoqt*' \
-        -o -iname 'PySide[26]' -o -iname 'shiboken[26]' \
+        -o -iname 'PySide[26]' -o -iname 'shiboken[26]' -o -iname 'pivy' \
     \) -print 2>/dev/null | head -20 || true)"
 if [ -n "${leaked}" ]; then
     echo "FAIL: a GUI dependency leaked into the headless engine payload:"
