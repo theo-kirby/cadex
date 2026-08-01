@@ -86,6 +86,123 @@ SWING_UP_TASK = {
 }
 
 
+#: M9's mechanism: a block that floats, so there is a base to vary, resting
+#: on a floor, so a tilt has to pay for itself. The flap exists because a
+#: task must declare at least one action and this mechanism otherwise has
+#: nothing to drive.
+#:
+#: The lift is sized from the engine's own measurement rather than from
+#: trigonometry: a tilt pivots about the base's *frame origin*, and
+#: ``fx.build`` centres a box on its origin, so the far corner of this block
+#: is 67 mm from the pivot and 5 degrees swings it about 5.8 mm down.
+SHOVED_OBSERVATIONS = [
+    {"kind": "component_position", "component": "block", "name": "base"},
+    {"kind": "component_linear_velocity", "component": "block", "name": "drift"},
+    {"kind": "component_angular_velocity", "component": "block", "name": "spin"},
+    {"kind": "position", "joint": "wrist", "motion_type": "angular",
+     "name": "angle"},
+]
+
+SHOVED_TASK = {
+    "actions": [{"joint": "wrist", "motion_type": "angular",
+                 "actuator_kind": "motor"}],
+    "reward": [{"label": "height", "expression": "base_z", "weight": 0.01}],
+    "termination": [
+        {"label": "fell", "expression": "base_z", "below": 5.0}
+    ],
+    "episode_seconds": 1.0,
+    "control_hz": 50,
+    "randomisation": [],
+    "reset_variation": [
+        {"label": "start", "component": "block",
+         "tilt_degrees_low": 0.0, "tilt_degrees_high": 5.0,
+         "height_mm_low": 7.0, "height_mm_high": 10.0,
+         "angular_velocity_dps_low": -20.0, "angular_velocity_dps_high": 20.0},
+    ],
+    "disturbance": [
+        {"label": "shove", "component": "block", "direction": "horizontal",
+         "newtons_low": 10.0, "newtons_high": 30.0, "sustained": False,
+         "at_seconds_low": 0.2, "at_seconds_high": 0.6, "duration_s": 0.1},
+        {"label": "wind", "component": "block", "direction": "horizontal",
+         "newtons_low": 0.0, "newtons_high": 2.0, "sustained": True,
+         "at_seconds_low": 0.0, "at_seconds_high": 0.0, "duration_s": 0.0},
+    ],
+    "label": "shoved",
+}
+
+
+def shoved_built():
+    """A grounded floor, a free block on it, and a flap the block can drive."""
+
+    components, joints, _ = fx.build(
+        [
+            {"name": "floor", "grounded": True, "size": (600.0, 600.0, 20.0),
+             "collision": {"shapes": [fx.collision_shape(
+                 "box", size_mm=[600.0, 600.0, 20.0])], "mesh": None}},
+            {"name": "block", "size": (120.0, 60.0, 40.0),
+             "world": dyn.matrix_from_rotation_translation(
+                 (1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
+                 [0.0, 0.0, 30.0]),
+             "collision": {"shapes": [fx.collision_shape(
+                 "box", size_mm=[120.0, 60.0, 40.0])], "mesh": None}},
+            # No collision: a flap that could reach the floor would make the
+            # clearance measurement about the flap.
+            {"name": "flap", "size": (50.0, 20.0, 6.0)},
+        ],
+        [
+            {"name": "wrist", "kind": "revolute", "parent": "block",
+             "child": "flap",
+             "parent_frame": fx.frame((0.0, 0.0, 40.0), (1.0, 0.0, 0.0), -90.0),
+             "child_frame": fx.frame((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), -90.0),
+             "values": [0.0],
+             "angle_limits_degrees": [-60.0, 60.0]},
+        ],
+    )
+    return dyn.build_model(
+        components, joints,
+        actuators=[{
+            "joint": "wrist", "motion_type": "angular", "kind": "motor",
+            "control_nmm": "0", "torque_limit_nmm": 200.0,
+        }],
+    )
+
+
+def shoved_bundle(
+    *, task: Mapping[str, Any] | None = None,
+    model_path: str = "outputs/job-model.xml",
+) -> dict[str, Any]:
+    """:func:`swing_up_bundle`'s shape, on a mechanism M9 can vary and shove."""
+
+    import mujoco
+
+    built = shoved_built()
+    observations = dyn.observation_records(
+        list(SHOVED_OBSERVATIONS), built["tree"], built["joint_records"],
+        built["actuators"],
+    )
+    exported = dyn.export_mjcf(built, observations=observations)
+    reloaded = mujoco.MjModel.from_xml_string(exported["xml"].decode("utf-8"))
+    bundle = dyn.task_records(
+        built, reloaded, dict(task or SHOVED_TASK), observations=observations
+    )
+    bundle["model"] = {
+        "path": str(model_path),
+        "sha256": hashlib.sha256(exported["xml"]).hexdigest(),
+        "bytes": len(exported["xml"]),
+        "output": "job_model",
+        "mujoco_version": str(bundle["mujoco_version"]),
+    }
+    payload = json.dumps(bundle, indent=2, sort_keys=True).encode("utf-8")
+    return {
+        "built": built,
+        "model": reloaded,
+        "model_xml": exported["xml"],
+        "bundle": bundle,
+        "task_bytes": payload,
+        "task_sha256": hashlib.sha256(payload).hexdigest(),
+    }
+
+
 def swing_up_bundle(
     *, task: Mapping[str, Any] | None = None, model_path: str = "outputs/job-model.xml"
 ) -> dict[str, Any]:

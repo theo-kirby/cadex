@@ -32,6 +32,7 @@ import random
 import statistics
 import sys
 import tempfile
+import types
 import time
 
 import bpy
@@ -2956,6 +2957,247 @@ def test_the_policy_outputs_panel_reads_a_rollout():
           "and gone again when the rollout is dropped")
 
 
+
+def test_the_training_panel_tracks_a_run(training_root):
+    """The shell's view of a run happening on another machine (M9, ADR-085).
+
+    Before this, a training run was a black box with one artifact at the
+    end: dispatch it, wait, find out. The run that motivated M9 peaked at
+    iteration 1200 of 2000 -- thirty of its seventy-six minutes made the
+    policy worse, with no way to know while it was happening.
+
+    What the panel reads is one local file that `remote_train.sh watch`
+    mirrors off the box. **No ssh, no protocol change, no engine change and
+    no mujoco**: the assertion at the end of this test is the one that
+    matters most, because `test_the_shell_never_learns_about_mujoco` pins
+    that this side may never import it.
+
+    Driven directly rather than through `bpy.app.timers`, which do not fire
+    under `--background` -- the timer is the interactive convenience and
+    every function it calls is written to be callable without it.
+    """
+
+    from mesh_agent import cadex_training
+    from mesh_agent import ui as ui_module
+
+    scene = bpy.context.scene
+    scene[cadex_backend.ROOT_PROP] = training_root
+    panel = ui_module.CADEX_PARAMS_PT_training
+    path = os.path.join(training_root, cadex_training.PROGRESS_NAME)
+    try:
+        check(cadex_training.progress_path(scene) == path,
+              "the panel looks beside the project for training-progress.json")
+        check(cadex_training.read_progress(scene) is None,
+              "no run reports, no reading")
+        check(not panel.poll(bpy.context),
+              "and the panel is absent on a project with no run")
+
+        # A file that is not this file is not this file. A run reporting a
+        # schema nobody wrote would otherwise draw as a row of zeros.
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"schema": "something-else", "state": "training"}, handle)
+        check(cadex_training.read_progress(scene) is None,
+              "a foreign schema reads as no run rather than as an empty one")
+        check(not panel.poll(bpy.context), "so the panel stays away")
+
+        # Half a file reads as no file. The trainer writes atomically so
+        # this window does not exist in practice; what is asserted is that
+        # the panel survives it if it ever does.
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write('{"schema": "cadex-training-progress-v1", "state"')
+        check(cadex_training.read_progress(scene) is None,
+              "a truncated file reads as no run")
+
+        live = {
+            "schema": cadex_training.PROGRESS_SCHEMA,
+            "state": "training",
+            "iteration": 419,
+            "total": 2000,
+            "wall_time_s": 913.0,
+            "eta_s": 3440.0,
+            "reward_per_step": 0.391,
+            "loss": 0.0021,
+            "episode_steps": 137.5,
+            "best_reward_per_step": 0.402,
+            "best_iteration": 388,
+            "device": "gpu",
+            "out": "stand.cxpolicy",
+            "label": "stand",
+            "checkpoints": [
+                {"tag": "000100", "iteration": 99, "path": "stand.000100.cxpolicy",
+                 "reward_per_step": 0.21, "sha256": "a" * 64, "bytes": 30000},
+                {"tag": "best", "iteration": 388, "path": "stand.best.cxpolicy",
+                 "reward_per_step": 0.402, "sha256": "b" * 64, "bytes": 30000},
+            ],
+            "error": "",
+        }
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(live, handle)
+
+        report = cadex_training.read_progress(scene)
+        check(report is not None and report["iteration"] == 419,
+              "a live run reads back")
+        check(cadex_training.is_live(report), "and reads as live")
+        check(panel.poll(bpy.context), "so the panel appears")
+
+        # The one number the panel exists to put in front of somebody: how
+        # far behind the current iteration the best one is.
+        check(report["best_iteration"] == 388 and report["iteration"] == 419,
+              "best-so-far and where it happened are both carried")
+        check(cadex_training.format_eta(3440.0) == "57 min",
+              "an ETA is minutes, because a run is minutes to hours")
+        check(cadex_training.format_eta(0) == "-",
+              "and an absent one says so rather than reading zero")
+
+        # It draws. A panel that polls True and then raises in `draw` is a
+        # Blender error popup, and `--background` is where that is cheap to
+        # find.
+        drawn = _draw_panel(panel)
+        text = " ".join(part for row in drawn for part in row
+                        if isinstance(part, str))
+        check(any(row[0] == "progress" for row in drawn),
+              "the panel draws a progress bar")
+        check("420 / 2000 iterations" in text,
+              "iterations done over iterations asked for, 1-based")
+        check("+0.391" in text and "+0.402" in text,
+              "the current reward and the best are both shown")
+        check("at iteration 388" in text,
+              "and where the best happened, which is the decision to make")
+        # ADR-088's row. The reward alone is the number that lied for two
+        # runs; the episode length beside it is what shows a policy failing
+        # sooner while being paid more for it.
+        check("137.5 steps" in text,
+              "mean episode length is shown beside the reward")
+        # ...and a report written before ADR-088 still draws. The schema did
+        # not change for an additive field, so old files keep arriving and a
+        # panel that raised on one would be a Blender error popup.
+        older = dict(live)
+        older.pop("episode_steps")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(older, handle)
+        drawn_old = _draw_panel(panel)
+        check("episode      -" in " ".join(part for row in drawn_old
+                                           for part in row
+                                           if isinstance(part, str)),
+              "a report without the field draws a dash rather than raising")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(live, handle)
+
+        check("57 min" in text and "15 min" in text,
+              "elapsed and remaining, in minutes")
+        check("gpu" in text, "and the device, so a CPU fallback is visible")
+        check("stand.best.cxpolicy" in text and "stand.000100.cxpolicy" in text,
+              "the checkpoints pulled so far are listed")
+
+        # The terminal states keep the panel up rather than making it
+        # vanish: "it finished" is information and an empty panel is not.
+        for state in ("done", "failed"):
+            live["state"] = state
+            live["error"] = "SystemExit: diverged" if state == "failed" else ""
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(live, handle)
+            report = cadex_training.read_progress(scene)
+            check(report["state"] == state, "%s reads back" % state)
+            check(not cadex_training.is_live(report),
+                  "%s is terminal, so the timer stops caring" % state)
+            check(panel.poll(bpy.context),
+                  "but the panel stays up on %s" % state)
+            drawn = _draw_panel(panel)
+            text = " ".join(part for row in drawn for part in row
+                            if isinstance(part, str))
+            check(state.title() in text,
+                  "and says which terminal state on %s" % state)
+            if state == "failed":
+                check("diverged" in text,
+                      "a failed run shows why, rather than just stopping")
+            else:
+                check("remaining" not in text,
+                      "a finished run has no time remaining to report")
+
+        # And gone when the file goes, so a project that never trained is
+        # the parameters editor exactly as it was.
+        os.remove(path)
+        check(cadex_training.read_progress(scene) is None,
+              "a removed report reads as no run")
+        check(not panel.poll(bpy.context), "and the panel goes with it")
+
+        # The invariant this whole design exists to keep, asserted on the
+        # *imports* rather than on the prose: the shell learns about
+        # training from one JSON file and from nothing else. No mujoco
+        # (`test_the_shell_never_learns_about_mujoco` is the branch-wide
+        # form of that), and no transport -- a panel that opened a network
+        # connection would block Blender the first time a box was slow.
+        import ast as _ast
+
+        tree = _ast.parse(open(cadex_training.__file__, encoding="utf-8").read())
+        imported = set()
+        for node in _ast.walk(tree):
+            if isinstance(node, _ast.Import):
+                imported.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, _ast.ImportFrom) and node.module:
+                imported.add(node.module.split(".")[0])
+        check(imported - {"__future__"} == {"json", "os", "bpy"},
+              "the panel's module imports json, os and bpy -- nothing else "
+              "(got %r)" % (sorted(imported),))
+        for forbidden in ("mujoco", "subprocess", "socket", "paramiko",
+                          "urllib", "http"):
+            check(forbidden not in imported,
+                  "and never %s" % forbidden)
+    finally:
+        scene.pop(cadex_backend.ROOT_PROP, None)
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+class _RecordingLayout:
+    """Enough of `UILayout` to run a panel's `draw` and see what it drew.
+
+    `Panel.draw` needs a live layout and Blender only makes one while it is
+    drawing a region, which `--background` never does. A stub is not a
+    substitute for the real widget -- what it tests is the *body*: the
+    formatting, the None handling, the branch a failed run takes, and the
+    cap on the checkpoint list. Those are where a panel goes wrong in a way
+    a person only finds by looking at it.
+    """
+
+    def __init__(self, sink=None):
+        self.sink = [] if sink is None else sink
+        self.enabled = True
+        self.alert = False
+
+    def _child(self):
+        return _RecordingLayout(self.sink)
+
+    row = column = box = split = lambda self, *a, **k: self._child()
+
+    def label(self, text="", icon=""):
+        self.sink.append(("label", str(text), str(icon)))
+
+    def progress(self, factor=0.0, text=""):
+        self.sink.append(("progress", float(factor), str(text)))
+
+    def prop(self, *a, **k):
+        self.sink.append(("prop",))
+
+    def operator(self, *a, **k):
+        self.sink.append(("operator",))
+        return self._child()
+
+
+def _draw_panel(panel):
+    """Run one panel's `draw` against the stub and return what it emitted."""
+
+    # A plain object rather than `panel.__new__(panel)`: a registered
+    # `bpy_struct` refuses to be constructed that way ("expected a single
+    # argument"), and `draw` is an ordinary Python function that touches
+    # nothing but `self.layout`.
+    layout = _RecordingLayout()
+    panel.draw(types.SimpleNamespace(layout=layout), bpy.context)
+    return layout.sink
+
+
 def main():
     registered = False
     # Resolve the engine exactly as the add-on does -- explicit preference,
@@ -3012,6 +3254,7 @@ def main():
     shapes_root = tempfile.mkdtemp(prefix="mesh-cadex-shapes-")
     isolate_root = tempfile.mkdtemp(prefix="mesh-cadex-isolate-")
     readers_root = tempfile.mkdtemp(prefix="mesh-cadex-readers-")
+    training_root = tempfile.mkdtemp(prefix="mesh-cadex-training-")
     try:
         test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
@@ -3061,6 +3304,7 @@ def main():
         test_the_collision_overlay_measures_every_primitive(shapes_root)
         test_the_collision_overlay_is_isolated(isolate_root)
         test_both_collision_readers_agree(readers_root)
+        test_the_training_panel_tracks_a_run(training_root)
     finally:
         try:
             cadex_backend.close_all()

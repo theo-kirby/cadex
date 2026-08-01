@@ -3608,6 +3608,14 @@ def _execute_task_bundle(
             _randomisation_input(entry, component_outputs, joint_outputs)
             for entry in list(properties.get("randomisation") or [])
         ],
+        "reset_variation": [
+            _reset_variation_input(entry, component_outputs)
+            for entry in list(properties.get("reset_variation") or [])
+        ],
+        "disturbance": [
+            _disturbance_input(entry, component_outputs)
+            for entry in list(properties.get("disturbance") or [])
+        ],
     }
 
     try:
@@ -4051,6 +4059,55 @@ def _randomisation_input(
     else:
         resolved["component"] = component_outputs[id(target)]
     return resolved
+
+
+def _reset_variation_input(
+    entry: DomainValue,
+    component_outputs: Mapping[int, str],
+) -> dict[str, Any]:
+    """One ``api.reset_variation`` value, in the API's own units.
+
+    Degrees, millimetres and degrees-per-second here; CadexDynamics converts
+    once, at bundle-build time, and the bundle carries SI. That is the same
+    split every other surface on this boundary has -- the script says what a
+    person means, and exactly one place turns it into what MuJoCo means.
+    """
+
+    properties = dict(_properties(entry, "reset_variation"))
+    return {
+        "label": str(properties.get("label") or "reset_variation"),
+        "component": component_outputs[id(entry.arguments[0])],
+        "tilt_degrees_low": float(properties.get("tilt_degrees_low")),
+        "tilt_degrees_high": float(properties.get("tilt_degrees_high")),
+        "height_mm_low": float(properties.get("height_mm_low")),
+        "height_mm_high": float(properties.get("height_mm_high")),
+        "angular_velocity_dps_low": float(
+            properties.get("angular_velocity_dps_low")
+        ),
+        "angular_velocity_dps_high": float(
+            properties.get("angular_velocity_dps_high")
+        ),
+    }
+
+
+def _disturbance_input(
+    entry: DomainValue,
+    component_outputs: Mapping[int, str],
+) -> dict[str, Any]:
+    """One ``api.disturbance`` value, as the entry CadexDynamics resolves."""
+
+    properties = dict(_properties(entry, "disturbance"))
+    return {
+        "label": str(properties.get("label") or "disturbance"),
+        "component": component_outputs[id(entry.arguments[0])],
+        "direction": str(properties.get("direction")),
+        "newtons_low": float(properties.get("newtons_low")),
+        "newtons_high": float(properties.get("newtons_high")),
+        "sustained": bool(properties.get("sustained")),
+        "at_seconds_low": float(properties.get("at_seconds_low")),
+        "at_seconds_high": float(properties.get("at_seconds_high")),
+        "duration_s": float(properties.get("duration_s")),
+    }
 
 
 def _dynamics_failure(

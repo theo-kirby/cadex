@@ -286,18 +286,21 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "rollout",
             "body",
             "collision",
-            # Six more intermediates, and deliberately absent from
+            # Eight more intermediates, and deliberately absent from
             # output_types above: like `collision`, a joint's damping and a
             # motor are arguments to a dynamics run, not things a script
             # publishes (M4) -- and an observation channel, a reward term, a
-            # termination rule and a randomisation range are arguments to a
-            # task on exactly the same terms (M6).
+            # termination rule, a randomisation range, a reset variation and
+            # a disturbance are arguments to a task on exactly the same
+            # terms (M6, M9).
             "joint_dynamics",
             "actuator",
             "observation",
             "reward",
             "termination",
             "randomise",
+            "reset_variation",
+            "disturbance",
             "exploded_view",
         ),
         production_ready=True,

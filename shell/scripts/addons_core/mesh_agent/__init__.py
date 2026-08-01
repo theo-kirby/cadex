@@ -27,6 +27,7 @@ from bpy.app.handlers import persistent
 from . import agent as agent_module
 from . import cadex_backend as cadex_backend_module
 from . import cadex_pick as cadex_pick_module
+from . import cadex_training as cadex_training_module
 from . import model as model_module
 from . import spaces
 from . import topbar as topbar_module
@@ -214,6 +215,7 @@ def register():
     model_module.register()
     cadex_backend_module.register()
     cadex_pick_module.register()
+    cadex_training_module.register()
     ui.register()
     spaces.register()
     # Registers the menus; the app template is what puts them on the bar
@@ -237,6 +239,7 @@ def unregister():
     topbar_module.unregister()
     spaces.unregister()
     ui.unregister()
+    cadex_training_module.unregister()
     cadex_pick_module.unregister()
     cadex_backend_module.unregister()
     model_module.unregister()

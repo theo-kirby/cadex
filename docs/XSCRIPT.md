@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-07-31
+Verified against source: 2026-08-01
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -221,6 +221,19 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   joint, once per episode; a mass draw scales the inertia tensor with it,
   because scaling one alone leaves a body whose rotational inertia no longer
   matches its mass.
+  `assembly.reset_variation(component, tilt_degrees=..., height_mm=...,
+  angular_velocity_dps=...)` starts each episode somewhere else and already
+  moving, and `assembly.disturbance(component, newtons=..., direction=...,
+  at_seconds=..., duration_s=...)` — or `sustained=True`, which is what wind
+  is — pushes it while the episode runs. Both are drawn afresh **every
+  episode**, unlike a randomisation, which a trainer holds per environment
+  for a whole run. Without them a task never asks a posture a second
+  question, and bracing beats balancing (ADR-084). A reset variation moves
+  the mechanism's floating base **rigidly** and never its joint angles: the
+  reset pose is the solved one with the soles on the floor, so a few degrees
+  at a knee is a foot through it, and the engine measures whether the
+  declared tilt clears at the declared lift and refuses the pairing that
+  does not.
   **Action ranges are derived from the mechanism or refused, never
   defaulted.** A `motor` is bounded by its `torque_limit_nmm`/`force_limit_n`
   and a `position` servo by its joint's own limits with *both* endpoints

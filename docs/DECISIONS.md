@@ -7745,3 +7745,1038 @@ answers **False** for a method that exists and works — an RNA function is
 resolved through the instance, so it is absent from `dir()` on the type. The
 test asks `bpy.types.UILayout.bl_rna.functions` instead. The first version of
 that check failed the gate against a perfectly good panel.
+
+## ADR-084 — An episode stops starting in the same place (2026-08-01)
+
+**Status:** accepted. **Branch:** `MJC` only. **Subject:** two new xscript
+intermediates — `assembly.reset_variation` and `assembly.disturbance` — and
+what had to be measured before either could be designed.
+
+**Decision.** A task may declare **where an episode starts** and **what
+happens to it while it runs**, both drawn afresh every episode. A reset
+variation perturbs the mechanism's floating base **rigidly and never its
+joint angles**; a disturbance is one force event applied at a body's centre
+of mass in the world frame. Both are resolved to compiled-model indices at
+bundle-build time, so none of the three evaluators introspects the model.
+
+### 1. Why a reward term could not have fixed this
+
+ADR-083 recorded that `mg-legs` stands by **bracing**: it holds
+`hip_pitch_l/r` and both knees between 93 % and 99 % of the MG90S limit for
+the entire six-second episode, widening its stance from ±30.00 mm to
+±37.2/37.4 mm and holding that splay with torque. The obvious reading is that
+the effort term was too cheap — it is weighted −0.0002/N·mm, so pinning four
+motors costs ≈0.17 against a +0.39 reward/step.
+
+That reading is incomplete, and acting on it alone would have produced a
+weaker policy rather than a different one. **Bracing was also the most robust
+answer available**, because the task never tested robustness. Every episode
+reset to the identical keyframe with `qvel = 0`; `_RANDOMISATION_TARGETS`
+varies `mass`, `damping`, `armature` and `friction_loss`, and those are drawn
+**per environment and held for the whole run**. A posture found once was
+never asked a second question. Raise the effort penalty against that task and
+the policy braces slightly less hard, at the same single starting state, and
+learns nothing about balance — because balance was never what was being
+scored.
+
+So the fix is a property of the *task*, not of the reward, and it is two
+surfaces rather than one:
+
+```python
+start = assembly.reset_variation(pelvis_c, tilt_degrees=[0.0, 6.0],
+                                 height_mm=[5.5, 9.0],
+                                 angular_velocity_dps=[-20.0, 20.0])
+shove = assembly.disturbance(pelvis_c, newtons=[0.05, 0.35],
+                             direction="horizontal",
+                             at_seconds=[1.0, 2.5], duration_s=0.12)
+wind  = assembly.disturbance(pelvis_c, newtons=[0.0, 0.08],
+                             direction="horizontal", sustained=True)
+```
+
+**One entry is one event**, which is the shape `assembly.randomise` already
+has and what keeps the draw order statable in a sentence. Wind is a push
+whose window is the whole episode, which is why it is `sustained=True` on the
+same surface rather than a second one — reset variation and disturbance share
+the seeding algorithm, the bundle representation, all three evaluators and
+playback, and splitting them would have paid that four times.
+
+### 2. Phase 0, and the finding that shaped the surface
+
+Four questions, measured on one-body probes before any surface was written:
+
+| Question | Measured |
+|---|---|
+| Where does `xfrc_applied` act? | The **centre of mass**. 1 N on a body whose mass sits 100 mm from its frame origin gave **zero** angular acceleration; the frame-origin hypothesis predicted 10 rad/s². |
+| In which frame? | **World.** The same force on the body yawed 90° gave the same world-frame linear acceleration. |
+| A free joint's `qvel[3:6]`? | The **body's own frame**. `(1,0,0)` on a body yawed 90° reads `(0,1,0)` in world. |
+| Is a joint-angle perturbation survivable? | **No.** |
+
+The last one is load-bearing and it is why this surface is not the obvious
+one. The natural design is "jitter the joint angles a few degrees" — and the
+reset pose is the **solved** configuration with the soles placed exactly on
+the floor, so a ±3° knee moves a foot ~5 mm *through* it and MuJoCo resolves
+that overlap as an impulse. The first thing every episode would teach a
+policy is that the floor hits back.
+
+**A rigid tilt cannot do that**, because it cannot change the mechanism's
+shape at all: the free joint's seven `qpos` values move and nothing else
+does. The floor is still a question — a tilt swings the far side of a stance
+downward — and it is answered by *measurement* rather than by a formula: the
+engine applies the widest declared tilt at the smallest declared lift at
+sixteen azimuths, reads the deepest contact, and refuses the pairing that
+does not clear with the millimetres in the message.
+
+That check caught its own author within an hour. `mg-legs` was written with
+`height_mm=[0.0, 3.0]` against a 6° tilt, reasoning that 6° across a ±30 mm
+stance is about 3 mm at the sole. The engine printed **5.13 mm at 135°**. The
+estimate was wrong because **a tilt pivots about the base's own frame
+origin**, and the far thing from a pelvis origin is not the near sole edge —
+it is a toe, diagonally, most of a leg away. A documented formula would have
+shipped the wrong number.
+
+### 3. Two seeding algorithms, both stated
+
+Model randomisation is unchanged: `random.Random(base_seed + env)`, per
+environment, held for the run. Episode variation is per episode, and the two
+implementations **deliberately differ**:
+
+* the engine and the reference runner continue one `random.Random(seed)` in
+  bundle order, after the randomisation draws;
+* the trainer splits a `jax.random` key inside the jitted scan, because a
+  reset happens on device thousands of times an iteration.
+
+They do not produce the same numbers, `EPISODE_VARIATION_ALGORITHM` and
+`RESET_VARIATION_ALGORITHM` both say so, and the policy header records both.
+They do not need to agree: nobody replays a training episode, and what VISION
+principle 3 requires is that *the rollout* be reproducible from the script —
+which is the stdlib path. What must be identical is the **arithmetic**, and
+that is pinned by test.
+
+Both streams draw the same count whether or not a branch uses the value —
+three per disturbance, six per reset variation. A stream whose *position*
+depends on a branch is a stream two implementations get wrong differently,
+and three unread floats is a cheap price for not having one.
+
+### 4. Three evaluators, one arithmetic — hazard 1's seventh payment
+
+The mitigation is the one that has worked six times: **resolve to indices in
+the bundle**. A reset variation carries a `qpos` address, a `qvel` address
+and a body id; a disturbance carries a body id. No evaluator looks anything
+up. The six-line Hamilton product is written out in `CadexDynamics`, in
+`dynamics_task_episode.py` and in `training/cadex_train.py` rather than
+shared, because two of the three cannot call the third — and a test asserts
+the lines match.
+
+Budgets are separate — `MAXIMUM_RESET_VARIATIONS = 4`,
+`MAXIMUM_DISTURBANCES = 8` — because `MAXIMUM_RANDOMISATION_ENTRIES` was
+already 31 of 32 spent on `mg-legs`, and a shared ceiling would have made
+"vary one more mass" and "add one more shove" compete for one seat.
+
+### 5. What this is not
+
+**Not a protocol change.** `assembly.*` is the xscript authoring surface, not
+the cadexd op table, so `CadexdProtocol.OP_ARG_SPECS` and
+`docs/INTEGRATION.md` are untouched and the shell's client needs no change.
+`describe_api` moved and `test_project_tool_surface.py` with it.
+
+**Not a `shell/` change.** Nothing here reaches the shell at all: a disturbed
+rollout arrives as the simulation trace it already played.
+
+### 6. Verification
+
+`pixi run test-engine` — **1153 passed, 15 skipped**, including two new
+suites (`test_dynamics_variation_api.py`, `test_dynamics_variation_model.py`)
+and two new live tests that take a floating mechanism through a real
+`cadexd`, a real solve and a real export, and reproduce both the draws and
+the episode in a subprocess with a scrubbed `PYTHONPATH`. The MJX-gated
+trainer suite — **27 passed** in a venv built from `training/requirements.txt`
+— covers the third implementation, including a run that proves the feature is
+*live* rather than merely plumbed: two bundles differing in nothing but the
+two lists, trained at the same seed, where the unvaried one settles to
++0.298921 and repeats it to six figures while the varied one keeps moving.
+
+## ADR-085 — A training run you can watch, interrupt and pull from (2026-08-01)
+
+**Status:** accepted. **Branch:** `MJC` only. **Subject:** mid-run
+checkpoints, `progress.json`, four new `remote_train.sh` subcommands, and the
+shell's Training panel.
+
+**Decision.** `training/cadex_train.py` writes **complete, witness-checked
+policies** during a run, and rewrites one atomic `progress.json` every
+iteration. `remote_train.sh` gains `train --detach`, `watch`, `pull` and
+`stop`. `watch` mirrors the progress file beside the project, and a `Panel`
+in the parameters editor reads it. **No ssh in the shell, no protocol change,
+no engine change.**
+
+### 1. The cost of not having this, in minutes
+
+`mg-legs` trained for 76 minutes and its reward **peaked at iteration 1200 of
+2000**. Roughly thirty of those minutes made the policy worse, the run
+produced exactly one artifact — the iteration-2000 weights — and there was no
+way to know while it was happening or to stop it. Separately, `train` without
+`--detach` is one ssh held open for the length of the run, so a closed laptop
+is a lost run.
+
+### 2. A checkpoint is a policy, not a weight dump
+
+This is the decision inside the decision. The header-building and the witness
+path came out of `main()` into `policy_header()` and `checked_policy()`, so
+what lands at iteration 300 is **the same container** the final file is — you
+can pull it off the box mid-run, paste its digest into `assembly.policy`,
+rebuild and watch it. A weight dump would need a second reader nobody has
+written and would be a thing you cannot play.
+
+Cost is about one iteration each: a `rollout()` for the witness observations
+plus 32 forward passes at `highest` precision. Every hundredth of two
+thousand is **1 %**.
+
+Two properties make mid-run snapshots safe, and both are asserted: the
+snapshot is **pure with respect to the training state** (its witness rollout's
+returned state and key are discarded, so a run with checkpoints takes the
+identical trajectory), and it takes `params`/`mean`/`variance` as arguments,
+so the same function writes the current policy and `<out>.best.cxpolicy`. The
+best parameters are *retained* every iteration — a pytree copy of a 64×64 MLP
+costs nothing — and *written* at checkpoint boundaries.
+
+**The witness is checked on checkpoints too**, which is ADR-081's lesson
+applied where it is now free: the error is relative and grows with the
+activations a policy learns, so a checkpoint that fails it is a run that is
+going to fail it, and four hours died once because nothing checked until the
+end.
+
+### 3. `progress.json` is the contract, and nothing parses a log
+
+One file, `cadex-training-progress-v1`, rewritten temp-then-`replace` every
+iteration: state, iteration/total, reward, best-so-far and its iteration,
+wall seconds, ETA, device, and the checkpoint list. Three processes read it —
+`watch` over rsync, the shell's panel locally, and a person — and none of them
+reads this program's stderr. That is ADR-080's finding kept: a receipt taken
+from a stream is a receipt something else can write into, and MuJoCo without
+the optional `warp` backend prints two lines to stdout.
+
+Atomicity is not decoration. The writer runs every iteration and two readers
+poll; a plain write is a real window in which both read a truncated file and
+report a run that has gone wrong.
+
+### 4. Two silent bugs the dispatch work surfaced
+
+Both were found on a live RTX 5090, and both are the kind that report success:
+
+* **`train.pid` held the wrapper, not the trainer.** `echo $!` after
+  backgrounding records the wrapping subshell, and `setsid` forks again on
+  top of that. `stop` printed "stopped", killed the subshell, and left a
+  4000-iteration run training with nothing pointing at it. The inner shell now
+  writes its **own** pid and then `exec`s — which makes the recorded number
+  the trainer by construction — and `stop` verifies with `kill -0` rather
+  than trusting `kill` returning zero.
+* **`shquote` was wrong in bash 3.2.** The `${1//.../...}` form turns `a'b`
+  into `'a\'\\'\''b'` rather than `'a'\''b'`. Nothing had ever passed it a
+  string containing a quote, so it worked for a year and broke the first
+  command that did — with an unterminated-string error pointing at the last
+  line of the file rather than at the quote. Replaced with a `sed` form and
+  pinned by a round-trip test.
+
+A third, less interesting: `cd X && cmd &` backgrounds the whole AND-list, so
+the subshell keeps the ssh channel's descriptors open and `--detach` did not
+detach. The `cd` is its own statement now.
+
+### 5. The shell learns about training from one JSON file
+
+`CADEX_PARAMS_PT_training` is a `Panel` with `bl_space_type =
+'CADEX_PARAMS'`, beside Simulation and Policy Outputs, for the reason ADR-083
+gives: **no new editor and no new space type**, so the inherited Blender tree
+takes **zero** lines and `docs/BLENDER-TREE.md` §2a stays eight files.
+
+Its module imports `json`, `os` and `bpy` and a gate check asserts exactly
+that — no mujoco (`test_the_shell_never_learns_about_mujoco` is the
+branch-wide form), and no transport, because a panel that opened a network
+connection would block Blender's main thread the first time a box was slow.
+The timer is an interactive convenience; every function it calls is written
+to be callable directly, because `bpy.app.timers` do not fire under
+`--background` and that is where the gate runs.
+
+### 6. Verification
+
+Proven end to end on a real GPU box, not simulated: a detached 50-iteration
+run on an RTX 5090 returned a run id in 12 s, `watch` mirrored live progress
+and pulled five checkpoints, `pull` brought them home with digests, and
+`stop` verifiably ended a 4000-iteration run. **Every mid-run checkpoint
+from that GPU run passes `dyn.verify_policy` against the bundle** — 10, 20,
+30, 40 and best, witness errors 1.9e-9 to 1.3e-8. `pixi run gate` — `"ok":
+true`, with `test_the_training_panel_tracks_a_run` covering the absent case,
+a foreign schema, a truncated file, a live run, both terminal states, and the
+import closure.
+
+## ADR-086 — 86 N·mm, and a feasibility gate re-specified (2026-08-01)
+
+**Status:** accepted. **Branch:** `MJC` only. **Subject:** re-rating
+`mg-legs` from stall torque to continuous duty, and what gates a training run
+once that makes the old arithmetic red.
+
+**Decision.** The eight MG90S limits become **86 N·mm** — ~40 % of stall — and
+`feasibility.py`'s arithmetic column **stops gating and stays printed**. What
+gates in its place is whether the mechanism can reject the **worst shove the
+task actually declares**, computed as statics.
+
+### 1. The number, and that it is a judgment
+
+216 N·mm is MG90S **stall**: the torque at zero speed, at maximum current, in
+the instant before it stops turning. It is momentary, and no hobby servo
+holds it — the winding heats, the cutout trips or the gears go, and the
+datasheet does not say for how long because the answer is "not long". ADR-083
+measured the trained policy holding 93–99 % of it for six continuous seconds.
+
+**86 N·mm is an engineering judgment, not a datasheet number.** Hobby servos
+publish no continuous rating; 30–50 % of stall is the range in which small RC
+servos are conventionally run for sustained holding. It is written into the
+script beside the stall figure, with the reasoning, precisely so that if the
+machine cannot stand at it the number moves *with the reasoning recorded* and
+not quietly. It is still **~19× the measured static requirement**:
+`mj_inverse` wants 2.39 N·mm and the hand-written PD peaks at 4.5.
+
+**Which constraint is active changes, and that is a mechanical improvement.**
+ADR-082 found the foot limiting this robot at 117 N·mm — the centre of
+pressure cannot leave a sole that reaches 45.5 mm ahead of the ankle. At 216 a
+single ankle could out-torque the entire footprint by 1.8×, so the machine
+could tip *itself* by over-torquing one ankle. At 86 no single ankle command
+can roll a foot.
+
+### 2. Re-specifying a gate is a decision, not a fix
+
+Against 86 N·mm the arithmetic column reads 0.67–0.73× and prints DO NOT
+DISPATCH on every hip, knee and ankle — while the other four checks pass and
+`mj_inverse` reports **2.8 % of limit used**. That is the check ADR-082
+already established is over-conservative: it multiplies full body weight by a
+full limb length, which is a one-legged iron cross, not a stance.
+
+Hazard 14's instruction is that the failure mode to avoid is **learning to
+click past a red gate**. So the column stops gating — it stays printed,
+because it bounds what this robot could do if it ever had to hold a leg out,
+which is a real limit and a real reason not to ask it to walk yet — and
+something else gates.
+
+### 3. What gates instead took three attempts, and two of them measured nothing
+
+Recorded in full, because both looked right and both would have shipped a
+green light meaning less than no check at all.
+
+1. **`mj_inverse` with the force applied.** Inverse dynamics on a floating
+   base solves for the force needed at *every* dof including the six
+   unactuated ones, so a horizontal push at the pelvis is absorbed by the
+   free joint's own residual. The leg torques came back **bit-identical to
+   the undisturbed case**: 2.39 N·mm at every hip, and worst azimuth 0° for
+   all eight, which is the signature of a value that never varied.
+2. **The hand-written PD, pushed.** It fell from every direction on a 0.042
+   N·s impulse — but a **joint-space** PD holds joint angles and has no
+   base-attitude feedback at all, so it cannot resist the whole machine
+   rotating about its ankles however good the mechanism is. That is a fact
+   about the controller; gating a mechanism on it fails every mechanism. It
+   is reported as evidence instead, because the gap between what the PD can
+   do and what the task asks is exactly what the policy has to learn.
+3. **The statics** — the same question ADR-082 asked about the foot, and what
+   survived.
+
+A horizontal force `F` at height `h` is a moment `F·h`, and exactly two things
+resist it: the footprint, and the ankles. Measured on the re-rated build:
+
+| | |
+|---|---|
+| Worst instant the task's windows allow | 0.080 N sustained + 0.350 N for 0.12 s |
+| Righting moment needed, CoM 146.0 mm up | **62.8 N·mm** |
+| The footprint can give (2.581 N × 45.5 mm) | 117.4 N·mm |
+| The two ankles can give (2 × 86.0) | 172.0 N·mm |
+| Available, and what binds | **117.4 N·mm — the foot** |
+| Margin | **1.87×**; the CoP moves 24.3 mm of 45.5 mm |
+
+**Even this took two goes.** The first version summed every declared force
+and held it for three seconds — 2.34 N·s against the **0.042 N·s** a 0.35 N
+shove lasting 0.12 s delivers, 56× — which is the arithmetic column's own
+mistake in a new costume. The windows are read now: sustained entries apply
+always, and the worst windowed set is found by sweeping the boundaries of
+`[at_low, at_high + duration)`.
+
+The general lesson is hazard 18: **vary the input and check the output
+moves.** If a check's numbers do not change when the thing it measures
+changes, it is not a check.
+
+### 4. The success metric, decided before dispatch
+
+**Recovery rate** — episodes surviving a shove over episodes shoved — and
+**not reward**. With variation in the task the curve is noisier, ADR-075's
+stopping rule is harder to apply, and the +0.391 baseline is not comparable
+with anything. `compare.py` plays every checkpoint locally against five
+seeds — stock MuJoCo, no GPU, seconds — and prints survival, episode length,
+final tilt, drift and **peak/mean torque per motor**, which is what catches
+hazard 15 without a rebuild.
+
+Run against the *braced* policy it reproduces ADR-083's finding
+independently: `hip_pitch_l/r` and `knee_l` above 90 % of the 216 N·mm limit
+**on average**, peaks of 213–215.
+
+### 5. What the first disturbed run is expected to do
+
+**Fail, possibly.** That is the correct outcome to report rather than iterate
+on (ADR-075). A policy with no torque headroom cannot reject a push, and a
+shove big enough to need a *step* cannot be answered at all — the toe is
+welded and this policy has no gait — which is why the shove is sized from
+what the ankle can absorb and why the gate above prints its margin.
+
+#### What it actually did (2026-08-01, after the run)
+
+**It did not fail. It succeeded and then destroyed itself, and the training
+curve reported the destruction as improvement.**
+
+The run completed 2000 iterations × 4096 environments in 89 minutes on
+`sb1x`. The trainer's own curve: reward/step +0.0909 at iteration 0, a trough
+of −0.076 around 800, then a climb to a reported **best of +0.5118 at
+iteration 1944**, still rising at the end. Read as a training curve, that is a
+run that worked.
+
+Played locally — `compare.py`, stock MuJoCo through the engine's reference
+runner, 12 seeds, **against the bundle it was actually trained on** — it is
+the opposite:
+
+| iteration | survived | fwd | back | lat | steps of 600 | drift | trainer said |
+|---|---|---|---|---|---|---|---|
+| 100 | 10/12 | 2/2 | 2/2 | 6/8 | 563 | 130 mm | +0.208 |
+| **500** | **12/12** | 2/2 | 2/2 | 8/8 | **600** | **17.2 mm** | +0.034 |
+| 600 | 12/12 | 2/2 | 2/2 | 8/8 | 600 | 13.0 mm | −0.021 |
+| 800 | 12/12 | 2/2 | 2/2 | 8/8 | 600 | 23.4 mm | −0.076 |
+| 900 | 12/12 | 2/2 | 2/2 | 8/8 | 600 | 28.0 mm | −0.050 |
+| 1200 | 8/12 | 2/2 | 1/2 | 5/8 | 444 | 162 mm | +0.30 |
+| 1500 | 3/12 | 1/2 | 1/2 | 1/8 | 250 | 196 mm | +0.45 |
+| 1700 | 0/12 | 0/2 | 0/2 | 0/8 | 93 | 216 mm | +0.49 |
+| **2000 (`best`)** | **0/12** | 0/2 | 0/2 | 0/8 | **43** | 164 mm | **+0.5118** |
+
+**The two measurements are anti-correlated across the entire run.** Survival
+peaks at 12/12 through iterations 500–900 while the trainer reports its
+*worst* numbers there, and survival reaches zero exactly as the trainer
+reports its best. `stand2.best.cxpolicy` — the checkpoint the trainer selected
+by reward, the one an unexamined pipeline installs — **falls in 43 steps of
+600, from every seed and every direction.** It does not survive to the first
+shove window: it is thrown down by the 6° reset tilt alone.
+
+**ADR-086 §4 is what makes this recoverable.** The decision recorded there,
+before dispatch, was to judge on recovery rate and *not* reward, for reasons
+that were about noise and comparability. The reason turned out to be much
+stronger than the one given: reward here is not merely noisy, it points the
+wrong way. Had the success metric been the reward — or had `best` simply been
+installed — this run would have shipped a policy that cannot stand up, with a
+rising curve as its evidence.
+
+**The cause is not the reward function.** `training/cadex_train.py` computes
+`reward_of(vector)` on the **raw** observation (line 692), from the bundle's
+own expressions; observation normalisation is applied in the policy forward
+path and does not reach the reward. So both sides are scoring the same
+quantity, and the disagreement is elsewhere. Three candidates, **none of them
+verified and none of them to be repeated as fact**:
+
+* **MJX versus MuJoCo.** Training integrates in MJX, `compare.py` and the
+  engine in stock MuJoCo. A contact or solver difference the policy learns to
+  exploit would show exactly this signature.
+* **Stochastic versus deterministic action.** The trainer rolls out the
+  sampled policy; `compare.py` plays the mean action.
+* **The auto-reset batch mean.** `rewards.mean()` (line 930) averages over the
+  whole `unroll × envs` batch with environments resetting inside the scan, so
+  it is a per-*step* mean over a rolling stream, not a per-*episode* return.
+
+Distinguishing these is its own investigation and is **not** done here. What
+is established is the fact that matters operationally: **the number the
+trainer reports and the number that decides whether the machine stands are
+not the same number on this task, and only the second one may be trusted.**
+That is a hazard (see `docs/MUJOCO.md` §5) rather than a bug with a fix
+attached.
+
+The checkpoint to install is therefore **`stand2.000500`** — 12/12 survival
+across all three azimuths, a full 600-step episode every time, 17.2 mm of
+drift, tilt 0.025 against a 0.15 termination, and **no motor above 90 % of
+limit on average** (`knee_r` at 61 N·mm of 86, where iterations 700 and 800
+trip the bracing note at 82 and 81). Iteration 600 is its equal on survival
+and slightly better on drift, but spends `knee_r` at 75 N·mm — nearer the
+brace, less headroom, and ADR-083 is why that is the tie-breaker.
+
+**It is deliberately NOT installed, and that is a decision rather than an
+omission.** By the time the run was judged, `script.py` had moved on to the
+M9b task (ADR-087): 46 observation channels against this policy's 40, a
+different reward and different forces, so the engine refuses it by name and
+is right to. Installing it would mean reverting the script to the M9 task,
+which would orphan the M9b run training against the new one. The policy and
+**its own bundle** are kept together at `~/cdx-mjc/runs/m9a/` — checkpoints
+alongside `task/stand-task.json` and `task/model-model.xml` recovered from
+the box — which is what makes the install a five-minute job whenever it is
+wanted rather than a lost result. **A policy is only meaningful next to the
+task it was trained on, and storing the two apart is how a run becomes
+unusable.**
+
+### 6. Verification
+
+`pixi run python ~/cdx-mjc/feasibility.py` — arithmetic **red (advisory)**,
+gravity **pass**, disturbed **pass** at 1.87×, contacts **pass**, drop
+**pass** (falls at 0.960 s), hold **pass** (stands on 4.5 N·mm). The project
+rebuilds through a live `cadexd` with the eight limits at 86 N·mm, one reset
+variation and three disturbances in the bundle. The run itself is dispatched
+detached to `sb1x` at 2000 iterations × 4096 environments, checkpointing every
+100.
+
+**After the run (2026-08-01).** Completed 2000/2000 in 89 minutes, `state:
+done`, no error, 21 checkpoints home. `compare.py` over all 21 against the
+run's own bundle, 12 seeds: **best survival 12/12 at iteration 500**, zero
+from 1700 on. Two tooling facts fell out of doing it and are worth recording
+because both were near-misses:
+
+* **A local rebuild destroys the bundle a finished run was trained against.**
+  `script_artifacts/` is keyed by script digest, so the M9b rebuild replaced
+  it and `compare.py`'s newest-bundle default would have scored these
+  checkpoints against a task they never saw. It survived only because
+  `remote_train.sh train` rsyncs bundle and model to the box, so
+  `sb1x:<work>/<run-id>/stand-task.json` is still there. `compare.py` gained
+  **`--task PATH`** so a run can be judged against its own task; the default
+  is a trap the moment the script moves on.
+* **The engine's channel-count refusal is what makes that trap survivable.**
+  A 40-channel policy against the 46-channel M9b bundle is refused by name.
+  Had M9b happened to keep 40 channels, the mismatch would have been silent
+  and the table would have looked entirely reasonable.
+
+---
+
+## ADR-087 — Sizing a shove by its capture point, and paying for the recovery (2026-08-01)
+
+**Status:** accepted. **Branch:** `MJC` only. **Subject:** why the first
+disturbed `mg-legs` policy never moved its feet, and the three project-script
+changes that answer it. **Scope:** `~/cdx-mjc/mg-legs.cadex/script.py`,
+`~/cdx-mjc/feasibility.py`, `~/cdx-mjc/compare.py`, `docs/MUJOCO.md`. **No
+engine, trainer or shell change** — every finding below is a number in a
+project script, which is the point.
+
+**Decision.** A disturbance is sized by the **capture point** it produces, not
+by its newtons; a reward that pays for stillness must be re-priced before it
+can pay for a recovery; and `feasibility.py` check 3 becomes a **reach**
+question because the task changed category.
+
+### 1. What the M9 run actually showed
+
+It stood. It took its shove without much noticing. Watching it: the hips
+moved, the ankles and knees stayed put, the feet stayed planted. It looked
+like there were sandbags in the feet.
+
+There were not, and three measurements say so. None of them is a bug and none
+of them is a training failure — all three are the task asking a smaller
+question than it appeared to.
+
+### 2. The push never left the foot
+
+The right measure of a shove is the distance it moves the point where the
+machine would have to be caught:
+
+```
+ω₀ = √(g / h)          h = CoM height
+Δv = F · t / m         the impulse over the mass
+ξ  = Δv / ω₀           the capture point
+```
+
+Measured off the exported model rather than the drawing: `h` = 146.0 mm so
+`ω₀` = **8.20 rad/s**, m = 263.1 g, support polygon **45.5 mm** forward,
+**24.5 mm** back, **±50 mm** lateral. The M9 shove of 0.35 N × 0.12 s is
+0.042 N·s → 0.16 m/s → **ξ = 19.5 mm** — inside the polygon in every
+direction *including* the narrow backward one.
+
+**Nothing was asked of the knees because nothing needed to be.** ADR-086
+sized that shove deliberately, from what the ankles and the footprint could
+absorb, because the question it was asking was "can it reject this *in
+place*". It answered that question correctly. The question was the small one.
+
+What the mechanism can actually do, which is what bounds the new number:
+hip_pitch→knee 100 mm plus knee→ankle 95 mm is a **195 mm** leg; a 45° hip
+swing places a foot 138 mm out, so **one step** catches ξ at 183 mm forward
+or 162 mm backward. The usable band is therefore **ξ ∈ 45–180 mm**: past
+in-place recovery, inside single-step reach.
+
+| shove over 0.12 s | impulse | ξ | demands |
+|---|---|---|---|
+| 0.4 N | 0.048 N·s | 22 mm | ankle, in place |
+| 0.8 N | 0.096 N·s | 45 mm | at the edge — hip strategy |
+| 1.4 N | 0.168 N·s | 78 mm | a step |
+| 2.0 N | 0.240 N·s | **111 mm** | a definite step, still catchable |
+
+`newtons=[0.4, 2.0]` spans the whole band in one draw, which is **a
+curriculum inside the distribution**: the in-place problem and the stepping
+problem are both in the batch from the first iteration. There is no
+scheduling surface in the API and this deliberately does not need one.
+
+**Lateral is capped by the mechanism, not by learning.** There is no ankle
+roll and no hip yaw, so sideways balance is hip_roll plus a weight shift and
+the centre of pressure cannot be held at a sole's outer edge; effective
+lateral reach is nearer ±32 mm than ±50. Sagittal recovery will be better
+than lateral. If it is better by a lot, **that is a mechanism finding and it
+argues for ankle-roll servos, not for more iterations** — which is why
+`compare.py` now splits survival by shove azimuth (forward / backward /
+lateral) and its seed count went 5 → 12 so the buckets are not one episode
+each.
+
+### 3. The reward made falling a better trade than recovering
+
+Price one step of a stumble — CoM 100 mm out, moving 800 mm/s, tilted 20°,
+which is precisely the state a machine catching itself passes through:
+
+| term | M9 weight | there | M9b weight | there |
+|---|---|---|---|---|
+| `over_feet` | −0.02 /mm, linear | **−2.00** | −0.5 × tanh(d / 40 mm) | −0.49 |
+| `drift` (new) | — | — | −0.002 /mm | −0.20 |
+| `stillness` | −0.002 /(mm/s) | **−1.60** | −0.0005 | −0.40 |
+| `height` | −0.02 /mm | −0.60 | −0.010 | −0.30 |
+| `posture`, 8 joints | −0.004 /deg | −0.40 | −0.001 | −0.10 |
+| `splay` (new), 2 hip rolls | — | — | −0.004 /deg | −0.12 |
+| `tilt`, `spin`, `effort` | | −0.60 | | −0.30 |
+| `alive` | +1.0 | +1.00 | +1.0 | +1.00 |
+| | | **≈ −4.2 /step** | | **≈ −0.9 /step** |
+
+Falling over immediately forgoes the **+1 alive bonus and nothing else**. At
+−4.2/step, stumbling for 150 steps and then recovering scores *worse* than
+going down at once. **The policy was not refusing to step — it was correctly
+declining a bad deal.** At −0.9/step the same recovery is worth several
+hundred over a 600-step episode against 0 for falling, and that reversal is
+the whole change.
+
+**One term had to change shape rather than weight.** Linear in displacement,
+`over_feet` forbids stepping outright: every millimetre out costs the same,
+so a 200 mm excursion is twenty times a 10 mm one and there is no distance at
+which "get back" beats "go down". It splits in two:
+
+* `over_feet` = `−0.5 · tanh(d / 40 mm)` — **saturating**. Steep inside the
+  support polygon, flat past ~80 mm. Being far out is bad; being twice as far
+  out is not twice as bad, because from either the answer is the same step.
+* `drift` = `−0.002 · d` — **linear and tiny**, so there is still a gradient
+  pointing home from anywhere. This is the guard against the machine
+  wandering off instead of recovering; if it does, **raise this weight**, do
+  not restore the old linear `over_feet`.
+
+`splay` is new and prices the ADR-083 brace where it actually lived. That
+policy did not stiffen everything — it drove the two hip rolls apart and
+stood on a widened stance. Loosening `posture` 4× to let the legs move would
+have made that free again, so the roll pair keeps its old price while the six
+joints a recovery needs get cheap.
+
+**Every term still reads exactly 0 at the standing pose** (hazard 9),
+verified term by term against a synthetic standing observation: total +1.000,
+the alive bonus alone. `tanh(0)` = 0 and the standing hip rolls are 0.
+
+### 4. The discount could not see a recovery
+
+`--discount 0.97` at 100 Hz is an effective horizon of `1/(1−γ)` = 33 steps =
+**0.33 s**. A stumble-and-recover takes 1–2 s, so the payoff for catching
+yourself was *past the policy's horizon*. `--discount 0.99` is 100 steps =
+1.0 s. It is the single highest-leverage change here and it is a one-word
+edit.
+
+### 5. The rest of the task, and why
+
+* **Reset lift 5.5–9.0 → 15–45 mm, tilt 6° → 15°, spin ±20 → ±90 °/s.** A
+  15–45 mm drop lands at 0.54–0.94 m/s and absorbing that is knee and ankle
+  work — "use all its joints" demanded *before* anything pushes. The engine's
+  sixteen-azimuth clearance check accepted the 15 mm floor against 15° of
+  tilt; had it refused, its number is the one to take, exactly as the 5.13 mm
+  correction was taken in M9.
+* **Second shove window 3.0–5.0 → 2.8–4.2 s.** It lands on an
+  already-disturbed machine, which is how the asymmetric states — one foot
+  forward, weight on one leg — get sampled **without** perturbing joint
+  angles at reset. That route is M9 hazard 17: a ±3° knee jitter puts a foot
+  5 mm through the floor and MuJoCo answers with an impulse nothing survives.
+  A machine mid-recovery is in those states legally. Ending by 4.32 s leaves
+  1.68 s of the 6 s episode to recover in.
+* **`collapsed` 0.70 → 0.60 ×** standing height (102.2 → 87.6 mm), because a
+  45 mm drop absorbed by the knees passes through a low CoM on the way back
+  up and at 0.70 that transient was instant death. **`tipped` does not move**
+  — past ~45° this machine is going down whatever it does.
+* **Wind 0.08 → 0.15 N**, scaling with the shoves so it stays the same kind
+  of thing to lean against.
+* **Six new observation channels**: `component_position` on both feet, 40 →
+  **46** of the 64 allowed. A policy can in principle infer foot placement
+  from eight joint angles and a base pose — it is forward kinematics — but
+  foot-relative-to-CoM *is* the state variable a stepping recovery is written
+  in, and making the network re-derive it every step spends capacity on
+  arithmetic.
+
+### 6. Feasibility check 3, specified a third time — for a different reason
+
+ADR-086 records two earlier versions of this check as **checks that measured
+nothing**: `mj_inverse` with the force applied (a floating base absorbs it in
+the free joint's residual, so the leg torques came back bit-identical to the
+undisturbed case) and the hand-written PD pushed (a joint-space PD has no
+base-attitude feedback, so it fails for every mechanism). The third — the
+in-place statics, footprint versus ankles — was **correct**, and it is not
+being replaced for being wrong.
+
+It is being replaced because **the task changed category**. Against a 2.0 N
+shove it reads 304 N·mm needed against 117.4 available — margin **0.39×,
+red** — and it is right: this machine cannot reject that shove in place. We
+now *want* a shove it cannot reject in place. A gate that prints DO NOT
+DISPATCH about the entire point of the run is a gate nobody should obey, and
+hazard 14 says the failure mode to avoid is learning to click past one of
+those.
+
+So it becomes the reach question, with the in-place number still computed and
+still printed:
+
+```
+in place:  capture point vs support polygon
+stepping:  capture point vs support + 195 mm × sin(swing)
+gate:      worst declared capture point <= steppable reach
+```
+
+Two details that keep it honest. A **sustained** force is not an impulse and
+is not treated as one — it is a steady lean that offsets the CoP by `F·h/W`
+and so **shrinks** the polygon ξ must land in, so it is subtracted rather
+than added to the shove. And the **lateral** polygon is the geometric
+half-width × 0.65, a named estimate rather than a buried constant, because
+without ankle roll the CoP cannot reach a sole's outer edge.
+
+Measured on the M9b bundle, green in all three directions:
+
+| direction | in place | + step | available | ξ | margin |
+|---|---|---|---|---|---|
+| forward | 37.0 mm | 137.9 | 174.9 mm | 111.3 mm | **1.57×** |
+| backward | 16.0 mm | 137.9 | 153.9 mm | 111.3 mm | **1.38×** |
+| lateral | 24.0 mm | 97.5 | 121.5 mm | 111.3 mm | **1.09×** |
+
+with `A STEP IS REQUIRED` and the in-place `0.37×` printed rather than
+hidden. The module docstring's check list was also renumbered to match what
+`main()` runs, which it had drifted from.
+
+### 7. What this run can and cannot answer
+
+**500 iterations × 4096 environments is a probe, not a solution.** ~41 M
+env-steps, ~30 min, directly comparable in cost to the M9 run. Learning a
+stepping recovery from scratch typically wants 10–100× that. Read, in order:
+
+1. **Do the legs move at all?** `compare.py`'s peak-torque columns — knees
+   and hips well above the 21–56 N·mm the M9 policy spent, ankle work no
+   longer dominating.
+2. **Recovery-rate trend** across the 20 checkpoints, split by azimuth. Flat
+   at zero by 500 means the reward or the shove is still wrong and more
+   iterations will not fix it.
+3. **Rising?** Extend to 1000–2000 with the same script.
+
+**Success is not a higher reward number.** The reward function changed, so
++0.391 and +0.243 are not comparable with anything this run prints, and the
+checkpoint to install is the one with the best **survival**. A scrappy result
+here is a result, not a failure of the design (ADR-075).
+
+#### What it did (2026-08-01, after the run)
+
+500/500 in 45 minutes, no error, 20 checkpoints. Trainer's best **+0.2149 at
+iteration 493**, rising to the end. Played back over 12 seeds:
+
+| iteration | trainer said | survived | steps of 600 | peak hip_pitch | peak knee |
+|---|---|---|---|---|---|
+| 25 | — | 0/12 | 72 | 14–16 | 18–21 |
+| 100 | +0.020 | 0/12 | **170** | 52–54 | 46–51 |
+| 250 | — | 0/12 | 139 | 58–70 | 49–55 |
+| 400 | — | 0/12 | 103 | 72–82 | 64–75 |
+| 500 (`best`) | **+0.2149** | 0/12 | **30** | 63–84 | 70–71 |
+
+Two findings, and they point in opposite directions.
+
+**The reward re-weighting did what it was designed to do.** Peak hip and knee
+torque climbs from 14–21 N·mm to 63–84 across the run, and mean torque climbs
+with it — against the M9 policy's 21–56 with the ankles dominating. The legs
+move now. Question 1 of §7 is answered **yes**.
+
+**And it never recovers once — 0/12 at every checkpoint, with episode length
+peaking at 170 steps around iteration 100 and collapsing to 30 by 500.** By
+§7's own stated criterion, flat at zero by 500 means more iterations will not
+fix it, so this is **not** extended to 1000–2000.
+
+**But the reason not to extend it is no longer the one §7 anticipated.** This
+run reproduces ADR-086 §5's anti-correlation *exactly*, on a **different task
+— different reward, different observations, different forces**: local
+performance degrades monotonically after iteration 100 while the trainer's
+reward rises monotonically to its best at 493. Once is an anomaly; twice, on
+two unrelated tasks, is the instrument.
+
+At iteration 500 the machine dies in 0.3 s — it cannot absorb its own 15–45 mm
+drop, folding through the 87.6 mm `collapsed` threshold while commanding
+58–84 N·mm at the hips. A policy that drives its legs to fold, that the
+trainer scores as its best, is not a reward-tuning problem.
+
+**So the conclusion is a stop, not another iteration.** Whether the shove is
+still mis-sized or the reward still mis-weighted cannot be read off a run
+whose training signal disagrees end-to-end with what the policy does when
+played. **The open question in `docs/MUJOCO.md` §6 is now blocking**, and the
+next work is diagnosing it — MJX versus MuJoCo first, since training is the
+only thing that runs in MJX and it is also the candidate that would mean a
+policy which stands in the viewport need not stand on the bench. Nothing from
+this run is installed: nothing stands.
+
+### 8. Deliberately not in this pass
+
+* **Joint-angle reset variation** (`assembly.reset_joints`). It would give
+  literal spread-feet starts, and it costs an engine surface, three
+  evaluators, the clearance check extended over joint extremes, tests and its
+  own ADR. Revisit if the run shows recovery only from symmetric starts.
+* **A directional shove** (`direction="sagittal"`). Only worth it if the
+  azimuth split shows lateral pushes drowning the signal.
+* **Ankle-roll or hip-yaw servos.** A mechanism change, and the azimuth data
+  should decide it rather than an argument.
+* **Walking.** This is recovery stepping, not gait. The toe is still welded
+  and push-off is limited to whatever the ankle gives.
+
+### 9. Verification
+
+`pixi run python ~/cdx-mjc/rebuild.py` — the project rebuilds through a live
+`cadexd`; the engine accepted 15° of tilt against the 15 mm lift floor.
+`pixi run python ~/cdx-mjc/feasibility.py` — arithmetic **red (advisory)**,
+gravity **pass** (2.8 % of limit), disturbed **pass** at 1.09× worst
+(lateral), contacts **pass**, drop **pass** (falls at 0.960 s), hold **pass**
+(stands on 4.5 N·mm). The bundle carries **46** observation channels, **10**
+reward terms of the 16 allowed, and `collapsed` at 87.584 mm. Reward at the
+standing pose is **+1.000000**, every non-`alive` term exactly zero.
+Zero-torque episodes tip in 0.36–0.65 s, before the first shove window even
+opens. An M9 checkpoint played against this bundle is refused by name — "this
+policy was given 46 observation values for 40 channels" — and `compare.py`
+now reports that per file instead of aborting the table.
+
+---
+
+## ADR-088 — The trainer never ends an episode (2026-08-01)
+
+**Status:** accepted. **Branch:** `MJC` only. **Subject:** a defect in
+`training/cadex_train.py` — the bundle's episode length was read and never
+used, so an environment whose policy did not fall over never reset — the GAE
+change that honouring the horizon forces, and the episode-length observable
+that did not exist. **Scope:** `training/cadex_train.py`,
+`training/remote_train.sh`,
+`src/Mod/cadex/cadex_tests/test_dynamics_policy_trainer.py`,
+`shell/scripts/addons_core/mesh_agent/ui.py`,
+`shell/tests/python/bl_mesh_agent_cadex.py`, `docs/MUJOCO.md`,
+`docs/ROADMAP.md`. **No engine change, no protocol change, no new
+dependency**, and the shell edit is one label row inside `mesh_agent/`.
+
+**Decision.** The trainer implements the episode the bundle declares: the
+rollout truncates at `episode["max_steps"]`, a **timeout is bootstrapped and
+a failure is not**, and mean episode length becomes a reported number in
+three places. **Every reward figure measured before this — ADR-082's +0.391,
+ADR-086's +0.5118, ADR-087's +0.2149 — is non-comparable with anything
+measured after it**, because they were measured against an unbounded episode.
+
+### 1. Two runs, and what was eliminated by reading
+
+ADR-086 §5 and ADR-087 record the same signature on two unrelated tasks: a
+rising reward curve and a policy getting steadily *worse* at the task. M9,
+best **+0.5118 at iteration 1944**, local survival **12/12 at 500 falling to
+0/12 by 1700**. M9b, different reward, different observations, different
+forces: best **+0.2149 at iteration 493**, episode length peaking near
+**170 steps** around iteration 100 and collapsing to **30** by 500.
+
+Three cheap causes were eliminated by inspection before anything was
+changed. **Not the reward function** — `reward_of(vector)` scores the raw
+observation with the bundle's own compiled expressions, and the normaliser
+does not reach it. **Not the network or the normaliser** — the witness
+re-evaluates the trainer's forward pass in the engine's float64 and agrees
+to 1.02e-07 against a 1e-04 tolerance (ADR-081 is why that number is
+trustworthy). **Not the batch aggregation** — a per-step mean over a rolling
+auto-reset stream is still a per-step mean.
+
+### 2. The line
+
+```python
+# training/cadex_train.py, before this ADR
+horizon = int(episode["max_steps"])     # ...and never used again
+```
+
+Nothing else in the file read it. In the rollout scan, `done` came only from
+`done_of(vector)` — the task's `tipped` / `collapsed` terms — and there was
+no step counter anywhere in the carry. **So an environment whose policy did
+not fall over never reset.** Its `elapsed` grew past the last shove window
+(4.32 s on `mg-legs`), after which it was never pushed again, never
+re-drawn, and stood still indefinitely collecting `alive` +1 with every
+other term near zero.
+
+The bundle declares a 600-step episode and
+`CadexDynamics.evaluate_episode` honours it — `for step in range(max_steps)`
+— and reports `truncated` for reaching it. **The trainer was optimising a
+different problem from the one the script declared**, which on its own is
+enough to make its reported reward non-comparable with any evaluation,
+whatever else is or is not true.
+
+### 3. Truncate at the horizon
+
+The scan carries an integer step counter beside the episode-local clock it
+already carried, and resets it exactly where `elapsed` is reset:
+
+```python
+data, landed_obs, reward, terminated = batched_step(model, data, surface)
+elapsed = elapsed + control_interval
+steps   = steps + 1
+timeout = steps >= horizon          # exact; not a float compare on `elapsed`
+done    = jnp.logical_or(terminated, timeout)
+```
+
+An integer compare rather than a float one on `elapsed`, because 600
+additions of a 0.02 s interval do not land on 12.0 and an episode whose
+length depends on which side of the rounding the last step fell is not the
+episode the bundle declares. `done` drives the reset exactly as before;
+`terminated` is recorded separately, and §4 is why.
+
+### 4. Bootstrap a timeout, cut a failure — the part that is easy to get wrong
+
+A naive `done = terminated | timeout` fed into the existing GAE teaches the
+critic that **reaching step 600 is worth zero** — the same value as falling
+over. That is a new bias traded for the old one, and on a 600-step episode
+at `--discount 0.99` it is not small.
+
+The distinction is standard and the code now states it: a **failure** ends
+the future (bootstrap 0); a **timeout** ends only our looking at it
+(bootstrap the critic's estimate of the state we landed in). Two flags, two
+uses — `terminated` cuts the **bootstrap**, `done` cuts the **GAE carry**,
+because the trajectory genuinely discontinues either way.
+
+The state to bootstrap from is `landed`: the post-step, **pre-reset**
+observation the scan already returned and already fed to the normaliser.
+`values[t + 1]` cannot be used at a boundary — the environment has already
+been reset, so it is the value of a *fresh* state.
+
+This **simplified** `advantages` rather than complicating it. It used to
+shift `values` by one and append a separately-computed trailing `bootstrap`;
+with a critic pass over `landed` the shift and the extra bootstrap both
+disappear, because `V(landed[t])` *is* the next-state value at every step.
+The cost is one extra forward pass of a 64×64 critic per iteration.
+
+**This is the risky edit, not the truncation**, and it is the one with a
+test of its own. The wrong version still trains, still climbs, still
+produces a policy, and is wrong in a way no run-level number reveals — so
+`test_a_timeout_is_bootstrapped_and_a_failure_is_not` reads the two
+assignments out of the AST and asserts which flag appears in each.
+
+### 5. There was no observable for episode length at all
+
+Which is both why this survived two runs and why the fix could not be
+checked from outside. Mean episode length — steps in the batch over episodes
+that ended in it — now reaches:
+
+* the per-iteration stderr line, beside `reward/step` and `loss`;
+* the `reward_curve` rows in the policy header, which is a policy file's own
+  record of the run it came from. Pass-through for `_canonical_header`,
+  which copies `training` wholesale, so the trainer/engine byte-equality
+  contract is untouched;
+* `progress.json`, which is what `remote_train.sh watch` and the shell's
+  Training panel poll — and one label row in the panel itself.
+
+With nothing ending, the number reads the size of the whole batch. That is
+deliberate: it is a value no episode length can take, and it is what the
+defect this ADR fixes would have printed on its first iteration.
+
+`PROGRESS_SCHEMA` stays `cadex-training-progress-v1`. The field is additive,
+`cadex_training.py` reads with `.get`, and the gate asserts that a report
+written without it still draws — as a dash, not as a raised exception in a
+panel.
+
+**This is the row to watch.** M9b's 170 → 30 would have been visible live.
+
+### 6. What this invalidates
+
+Every reward number this branch has recorded was measured against an
+unbounded episode. **They are not a baseline the new numbers can be compared
+against** — not ADR-082's +0.391, not ADR-086's +0.5118, not ADR-087's
++0.2149. Saying so plainly is the point of this section: the alternative is
+a table of figures that look comparable and are not.
+
+The *survival* numbers are unaffected. They were measured by playing
+checkpoints through the engine's own reference runner, which has always
+honoured `max_steps`, and they remain the thing to install on (hazard 19).
+
+### 7. The hypothesis, and what tests it
+
+**Well-founded and not proven.** As more environments survive into the
+coast, the batch fills with trivial standing-still steps, the fraction of
+the batch carrying a disturbance falls toward zero, reported reward/step
+drifts up toward the `alive` bonus, and the policy forgets the disturbed
+states it no longer sees. That predicts exactly the observed shape — peak
+competence at the moment the policy first becomes able to survive, decay
+from there while the curve climbs.
+
+**The fix is correct regardless of whether the hypothesis holds**, which is
+why it landed without waiting for the experiment. The experiment was M9b
+rerun with the *identical* bundle and hyperparameters so that the trainer was
+the only thing that changed.
+
+**It was run, and it refutes the hypothesis.** Run
+`stand-task-20260801-210806`: same bundle (`a676b5b1…`), same
+hyperparameters, 500 iterations × 4096 environments, 43 minutes on the 5090,
+witness 1.112e-07 (899× inside tolerance). The trainer's reward rose
+monotonically, −0.259 at iteration 25 to **+0.175 at 499**, and its newly
+reported episode length rose with it, **58 → 149 steps**. Played locally over
+12 seeds through the engine's reference runner:
+
+| iteration | trainer reward | trainer episode | engine steps | engine reward | survived |
+|---|---|---|---|---|---|
+| 25 | −0.259 | 58 | 66 | −0.219 | 0/12 |
+| 125 | +0.045 | 113 | **162** | +0.080 | 0/12 |
+| 250 | +0.078 | 134 | 95 | −0.279 | 0/12 |
+| 350 | +0.125 | 140 | 29 | −0.772 | 0/12 |
+| 500 | **+0.175** | **149** | **39** | **−1.036** | 0/12 |
+
+**The anti-correlation reproduced exactly, on the fixed trainer.** So the
+never-ending episode was a real defect and was not the cause of hazard 19.
+
+**What the fix bought is the sharpest statement of the remaining question
+that has been available.** Before it there was no trainer-side episode
+length at all, so the two sides could only be compared through a reward. Now
+**the same quantity, measured on both sides of the seam, moves in opposite
+directions**: the trainer measures mean episode length rising 58 → 149 while
+the engine measures it peaking at 162 and collapsing to 39, on the same
+weights and the same bundle. Two simulators disagreeing about how long a
+policy stays up is not a reward-shaping question.
+
+That points at ADR-086 §6 candidate **(a) MJX versus MuJoCo**, and there is
+an argument — not a proof — against candidate (b), sampled versus mean
+action: the trainer rolls out the *stochastic* policy and `compare.py` plays
+the *mean*, so (b) requires action noise to make a policy survive four times
+longer, which is the wrong direction for noise. **(b) is still the cheap
+test and should be run first** — `compare.py` has no `--sample` flag today,
+and adding one is a project-script change. §6 of `docs/MUJOCO.md` stays
+**open**, and its candidate list is now two rather than three.
+
+One more thing the run says on its own: by iteration 500 the policy is
+commanding **79–85 N·mm of 86 on six of eight motors**. That is ADR-083's
+brace signature again, at the limit, and it is what a policy converges to
+when the training signal rewards something the bench does not.
+
+### 8. Deliberately not in this pass
+
+* **The MJX-versus-MuJoCo diagnostic.** The rerun refuted §7, so this is now
+  the live question rather than a contingency — it would mean a policy that
+  stands in the viewport need not stand on the bench. The cheap
+  discriminator (sampled versus mean action) goes first, and it is a
+  `compare.py` change in the project directory rather than one here.
+* **Any change to the `mg-legs` task, its reward or its shove sizing.** The
+  whole value of the rerun is that one thing changed.
+* **A `truncated` flag in the trace or the policy header.** The engine
+  already reports `truncated` from `evaluate_episode`; nothing downstream
+  asked for the trainer's.
+
+### 9. Verification
+
+`pixi run python -m pytest src/Mod/cadex/cadex_tests` — **1162 passed, 17
+skipped** (1160 before; the two new source-level tests). The MJX-gated suite
+run from `~/cdx-mjc/.venv`:
+`python -m pytest src/Mod/cadex/cadex_tests/test_dynamics_policy_trainer.py`
+— **31 passed**, including the decisive one: a bundle with no termination
+terms and a ten-step episode, trained three iterations at 8 environments ×
+20 unrolled steps, reports a mean episode length of **exactly 10.0** every
+iteration. On the code this ADR replaces, that bundle can end no episode at
+all, so the same run reports the whole batch over zero endings — **160**,
+which is the number the shoved fixture was measured printing before its own
+episodes had had time to end.
+
+`pixi run gate` — green, including the new panel row and the missing-field
+case.
+
+**One existing test changed its measured value, and the change is the
+finding.** `test_the_variation_actually_reaches_the_physics` asserted that
+the *unvaried* run's reward stops moving entirely — `+0.298921` repeated to
+six figures. It stopped moving because nothing ever ended its episode: one
+endless run of a block sitting still. It now restarts every `max_steps`, and
+since the iteration window is 20 steps against a 50-step episode the restart
+falls in a different place each iteration. The curve is now a band 9.4e-5
+wide, against the 9.0e-4 the variation moves the same curve — so the test
+asserts an order of magnitude between the two instead of a fixed point.

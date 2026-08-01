@@ -64,6 +64,12 @@ TASK_SCHEMA = "cadex-training-task-v1"
 POLICY_SCHEMA = "cadex-policy-v1"
 POLICY_MAGIC = b"CXPOLICY1\n"
 
+#: The schema of ``progress.json`` -- the one artifact a run publishes while
+#: it is still running, and the only thing ``remote_train.sh watch`` and the
+#: shell's Training panel read. Versioned like every other file this tree
+#: writes, because two of its three readers are on other machines.
+PROGRESS_SCHEMA = "cadex-training-progress-v1"
+
 #: Mirrors ``CadexDynamics.MAXIMUM_POLICY_BYTES``. Checked here so a run that
 #: would produce a file the engine refuses fails at the end of training
 #: rather than at the end of the trip home.
@@ -280,6 +286,31 @@ RANDOMISATION_ALGORITHM = (
     "in bundle order, held fixed for the run"
 )
 
+#: How the M9 per-episode draws are made *here*, which is deliberately not
+#: how the bundle's ``variation_algorithm`` says the engine makes them.
+#:
+#: The bundle's is ``random.Random(seed)`` continuing in bundle order. That
+#: is a host-side stream and it cannot run here: a reset happens **on device,
+#: inside a jitted scan**, thousands of times per iteration and whenever an
+#: environment's episode ends. So this splits a ``jax.random`` key instead,
+#: and the two do not produce the same numbers.
+#:
+#: They do not need to, and saying why is the point of writing this down.
+#: Nobody replays a training episode -- there are millions of them and none
+#: is referenced again. What VISION principle 3 requires is that *the
+#: rollout* be reproducible from the script, and the rollout runs in the
+#: engine on the stdlib path. What has to be identical between the two is the
+#: **arithmetic** -- the same quaternion product, the same window test, the
+#: same centre-of-mass application point -- not the stream that feeds it.
+RESET_VARIATION_MODE = "per_episode"
+RESET_VARIATION_ALGORITHM = (
+    "jax.random.split of the rollout key, drawing uniform(low, high) in "
+    "bundle order per environment on every reset. Deliberately NOT the "
+    "bundle's variation_algorithm: that one is a host-side random.Random "
+    "stream and a reset here happens on device inside a jitted scan. Same "
+    "arithmetic, different numbers, and nobody replays a training episode"
+)
+
 
 def randomised_models(mujoco: Any, xml: bytes, task: dict[str, Any], *,
                       base_seed: int, count: int) -> list[Any]:
@@ -373,13 +404,27 @@ def flat_parameters(np: Any, parameters) -> list[float]:
 # ---------------------------------------------------------------------------
 
 
-def train(bundle: dict[str, Any], options: argparse.Namespace) -> dict[str, Any]:
+def train(
+    bundle: dict[str, Any],
+    options: argparse.Namespace,
+    *,
+    emit: Any = None,
+    progress: Any = None,
+) -> dict[str, Any]:
     """Proximal policy optimisation over an MJX batch built from the bundle.
 
     Deliberately small and readable rather than a harness: everything it
     needs -- the observation slices, the action indices, the units, the
     reward, the termination rules, the episode schedule -- is in the bundle,
     and the point of M7 is that nothing else has to be.
+
+    ``emit(tag, iteration, reward, trained)`` is called for each checkpoint
+    and for the best-so-far policy; ``progress(**fields)`` after every
+    iteration.
+    Both are injected rather than done here because this function has never
+    seen a filesystem and there is no reason for it to start: it produces
+    ``trained`` dicts, and :func:`main` is what turns one into a file. A run
+    with neither passes no-ops and takes exactly the path it always took.
     """
 
     import jax
@@ -387,6 +432,9 @@ def train(bundle: dict[str, Any], options: argparse.Namespace) -> dict[str, Any]
     import numpy as np
     import mujoco
     import mujoco.mjx as mjx
+
+    emit = emit or (lambda tag, iteration, reward, trained: None)
+    progress = progress or (lambda **fields: None)
 
     table = globals_for(jnp)
     task = bundle["task"]
@@ -435,6 +483,7 @@ def train(bundle: dict[str, Any], options: argparse.Namespace) -> dict[str, Any]
         )
     reset_qpos = jnp.asarray(hosts[0].key_qpos[key_id], dtype=jnp.float32)
     reset_qvel = jnp.zeros((hosts[0].nv,), dtype=jnp.float32)
+    nbody = int(hosts[0].nbody)
 
     randomised_fields = sorted({
         str(field["field"])
@@ -457,6 +506,12 @@ def train(bundle: dict[str, Any], options: argparse.Namespace) -> dict[str, Any]
         model_axes = None
 
     per_action = int(episode["solver_steps_per_action"])
+    # The episode the *bundle* declares, and the only horizon this file may
+    # use. It is read here and enforced in `rollout`'s scan; for two runs it
+    # was read here and never used again, and an environment whose policy did
+    # not fall over therefore never reset -- see ADR-088. A constant would be
+    # a second declaration of the episode, and the engine's
+    # ``evaluate_episode`` would be honouring the other one.
     horizon = int(episode["max_steps"])
 
     def observe(data):
@@ -483,11 +538,143 @@ def train(bundle: dict[str, Any], options: argparse.Namespace) -> dict[str, Any]
                 flag = jnp.logical_or(flag, value < float(below))
         return flag
 
-    def reset(data):
-        data = data.replace(qpos=reset_qpos, qvel=reset_qvel,
-                            ctrl=jnp.zeros_like(data.ctrl),
-                            time=jnp.float32(0.0))
-        return mjx.forward(model, data) if model_axes is None else data
+    # -- M9: the episode stops starting in the same place ------------------
+    #
+    # Three functions, and every line of arithmetic in them is a second
+    # implementation of ``CadexDynamics._write_reset_variation``,
+    # ``draw_episode_variation`` and ``apply_disturbance``. Written out in
+    # ``jnp`` rather than shared, for the reason this file's reward whitelist
+    # and ``encode_policy`` are written out: it cannot import the engine
+    # (ADR-070), so the second copy is written down and a test pins it.
+    variation_entries = list(task.get("reset_variation") or ())
+    push_entries = list(task.get("disturbance") or ())
+
+    def varied_reset(key):
+        """One reset pose per environment, each with its own draw.
+
+        The tilt quaternion is left-multiplied onto the base's own, which is
+        a world-frame rotation about the base's frame origin -- so the whole
+        mechanism swings rigidly and every joint angle stays where the solve
+        left it. Joint angles are never touched here and there is no code
+        path that could: the reset pose is the solved one with the soles on
+        the floor, and a few degrees at a knee is a foot through it.
+        """
+
+        qpos = jnp.tile(reset_qpos, (envs, 1))
+        qvel = jnp.tile(reset_qvel, (envs, 1))
+        for entry in variation_entries:
+            key, k_tilt, k_azimuth, k_height, k_spin = jax.random.split(key, 5)
+            tilt = jax.random.uniform(
+                k_tilt, (envs,), dtype=jnp.float32,
+                minval=float(entry["tilt_low_rad"]),
+                maxval=float(entry["tilt_high_rad"]),
+            )
+            azimuth = jax.random.uniform(
+                k_azimuth, (envs,), dtype=jnp.float32,
+                minval=0.0, maxval=2.0 * math.pi,
+            )
+            height = jax.random.uniform(
+                k_height, (envs,), dtype=jnp.float32,
+                minval=float(entry["height_low_m"]),
+                maxval=float(entry["height_high_m"]),
+            )
+            spin = jax.random.uniform(
+                k_spin, (envs, 3), dtype=jnp.float32,
+                minval=float(entry["angular_velocity_low_rad_s"]),
+                maxval=float(entry["angular_velocity_high_rad_s"]),
+            )
+            adr = int(entry["qpos_adr"])
+            half = 0.5 * tilt
+            sine = jnp.sin(half)
+            tw = jnp.cos(half)
+            tx = sine * jnp.cos(azimuth)
+            ty = sine * jnp.sin(azimuth)
+            qw, qx = qpos[:, adr + 3], qpos[:, adr + 4]
+            qy, qz = qpos[:, adr + 5], qpos[:, adr + 6]
+            # Hamilton product, wxyz, with the tilt axis horizontal so its z
+            # term is identically zero.
+            qpos = qpos.at[:, adr + 3].set(tw * qw - tx * qx - ty * qy)
+            qpos = qpos.at[:, adr + 4].set(tw * qx + tx * qw - ty * qz)
+            qpos = qpos.at[:, adr + 5].set(tw * qy + tx * qz + ty * qw)
+            qpos = qpos.at[:, adr + 6].set(tw * qz - tx * qy + ty * qx)
+            qpos = qpos.at[:, adr + 2].add(height)
+            dof = int(entry["qvel_adr"])
+            # The base's own frame, which is where MuJoCo keeps a free
+            # joint's angular velocity (M9 phase 0).
+            qvel = qvel.at[:, dof + 3 : dof + 6].set(spin)
+        return key, qpos, qvel
+
+    def drawn_pushes(key):
+        """This episode's forces and start times, per environment.
+
+        Always three draws per entry, sustained or not, so that the stream's
+        position never depends on a branch -- the same deliberate waste the
+        engine's stream carries, and for the same reason.
+        """
+
+        forces, starts = [], []
+        for entry in push_entries:
+            key, k_size, k_way, k_when = jax.random.split(key, 4)
+            magnitude = jax.random.uniform(
+                k_size, (envs,), dtype=jnp.float32,
+                minval=float(entry["newtons_low"]),
+                maxval=float(entry["newtons_high"]),
+            )
+            azimuth = jax.random.uniform(
+                k_way, (envs,), dtype=jnp.float32,
+                minval=0.0, maxval=2.0 * math.pi,
+            )
+            starts.append(
+                jax.random.uniform(
+                    k_when, (envs,), dtype=jnp.float32,
+                    minval=float(entry["at_low_s"]),
+                    maxval=float(entry["at_high_s"]),
+                )
+            )
+            zero = jnp.zeros_like(magnitude)
+            if str(entry["direction"]) == "vertical":
+                sign = jnp.where(azimuth < math.pi, 1.0, -1.0)
+                forces.append(jnp.stack([zero, zero, magnitude * sign], axis=-1))
+            else:
+                forces.append(
+                    jnp.stack(
+                        [magnitude * jnp.cos(azimuth),
+                         magnitude * jnp.sin(azimuth),
+                         zero],
+                        axis=-1,
+                    )
+                )
+        if not push_entries:
+            return key, jnp.zeros((envs, 0, 3)), jnp.zeros((envs, 0))
+        return key, jnp.stack(forces, axis=1), jnp.stack(starts, axis=1)
+
+    def applied_forces(forces, starts, elapsed):
+        """``xfrc_applied`` for this control step, written from zero.
+
+        At the body's centre of mass in the world frame, which is what phase
+        0 measured ``xfrc_applied`` to mean. From zero rather than
+        accumulated, so a window that closed stops pushing.
+
+        ``elapsed`` is an **episode-local** clock carried in the scan rather
+        than ``data.time``, because this trainer's reset does not rewind
+        ``data.time`` -- an environment on its fortieth episode would test a
+        1.0 s shove window against a clock reading 240.
+        """
+
+        xfrc = jnp.zeros((envs, nbody, 6), dtype=jnp.float32)
+        for index, entry in enumerate(push_entries):
+            if bool(entry["sustained"]):
+                live = jnp.ones_like(elapsed)
+            else:
+                start = starts[:, index]
+                live = jnp.logical_and(
+                    elapsed >= start,
+                    elapsed < start + float(entry["duration_s"]),
+                ).astype(jnp.float32)
+            xfrc = xfrc.at[:, int(entry["body_id"]), :3].add(
+                forces[:, index, :] * live[:, None]
+            )
+        return xfrc
 
     def step_env(m, data, surface):
         """One control step: clamp, scale into ctrl, integrate, observe, score.
@@ -519,16 +706,31 @@ def train(bundle: dict[str, Any], options: argparse.Namespace) -> dict[str, Any]
         else jax.vmap(mjx.forward, in_axes=(model_axes, 0))
     )
 
-    make = jax.vmap(lambda _: mjx.make_data(put[0]))(jnp.arange(envs))
-    data = batched_forward(model, make.replace(
-        qpos=jnp.tile(reset_qpos, (envs, 1)),
-        qvel=jnp.tile(reset_qvel, (envs, 1)),
-    ))
-
     shapes = layer_shapes(len(names), len(actions), options.hidden)
     critic_shapes = layer_shapes(len(names), 1, options.hidden)
     key = jax.random.PRNGKey(int(options.seed))
-    key, actor_key, critic_key = jax.random.split(key, 3)
+    key, start_key, actor_key, critic_key = jax.random.split(key, 4)
+
+    make = jax.vmap(lambda _: mjx.make_data(put[0]))(jnp.arange(envs))
+    # The first episode is drawn like every other one. It would be easy to
+    # start the batch at the nominal pose and only vary on reset; that would
+    # make the first `unroll` steps of training the one episode M9 exists to
+    # stop happening.
+    start_key, first_qpos, first_qvel = varied_reset(start_key)
+    _start_key, first_forces, first_starts = drawn_pushes(start_key)
+    data = batched_forward(model, make.replace(
+        qpos=first_qpos, qvel=first_qvel,
+    ))
+    control_interval = float(episode["control_interval_s"])
+    # The environment state carried between iterations. It grew from one
+    # `mjx.Data` to a four-tuple in M9: a disturbance is a property of the
+    # episode, so its draw and the episode-local clock it is tested against
+    # have to live exactly as long as the physics state does. ADR-088 added
+    # the fifth member: the step counter the horizon is tested against, which
+    # is episode-local for exactly the same reason `elapsed` is.
+    state = (data, first_forces, first_starts,
+             jnp.zeros((envs,), dtype=jnp.float32),
+             jnp.zeros((envs,), dtype=jnp.int32))
     actor = initial_parameters(jax, jnp, actor_key, shapes)
     critic = initial_parameters(jax, jnp, critic_key, critic_shapes)
     log_std = jnp.full((len(actions),), math.log(float(options.initial_std)),
@@ -576,49 +778,132 @@ def train(bundle: dict[str, Any], options: argparse.Namespace) -> dict[str, Any]
 
     unroll = int(options.unroll)
 
-    def rollout(params, data, mean, variance, key):
-        """``unroll`` control steps of every environment, with resets."""
+    def rollout(params, state, mean, variance, key):
+        """``unroll`` control steps of every environment, with resets.
 
-        def one(carry, _):
-            data, key = carry
-            key, subkey = jax.random.split(key)
+        The carry grew from ``(data, key)`` to ``(data, forces, starts,
+        elapsed)`` because a disturbance is a property of the *episode* and
+        not of the step: the draw has to survive every step between the reset
+        that made it and the reset that replaces it, and the window has to be
+        tested against a clock that rewinds when the episode does.
+
+        It gained ``steps`` in ADR-088, and that member is what makes this an
+        episode at all. Before it, ``done`` was the task's termination terms
+        and nothing else, so an environment the policy kept upright ran for
+        ever: past the last shove window, never pushed again, never re-drawn,
+        standing still and collecting the ``alive`` bonus. The bundle
+        declares 600 steps and ``CadexDynamics.evaluate_episode`` honours it;
+        this now honours the same number.
+        """
+
+        def stepped(carry, _):
+            data, key, forces, starts, elapsed, steps = carry
+            key, act_key = jax.random.split(key)
             vector = jax.vmap(observe)(data)
             normalised = normalise(vector, mean, variance)
             raw = net(params["actor"], normalised)
-            noise = jax.random.normal(subkey, raw.shape, dtype=jnp.float32)
+            noise = jax.random.normal(act_key, raw.shape, dtype=jnp.float32)
             sampled = raw + noise * jnp.exp(params["log_std"])
             logp = gaussian_logp(sampled, raw, params["log_std"])
             surface = surface_of(sampled)
             value = net(params["critic"], normalised)[:, 0]
-            data, landed, reward, done = batched_step(model, data, surface)
+
+            if push_entries:
+                data = data.replace(
+                    xfrc_applied=applied_forces(forces, starts, elapsed)
+                )
+            data, landed, reward, terminated = batched_step(model, data, surface)
+            elapsed = elapsed + control_interval
+            steps = steps + 1
+            # An integer compare, not a float one on `elapsed`: 600 additions
+            # of a 0.02 s interval do not land on 12.0, and an episode whose
+            # length depends on which side of the rounding the last step fell
+            # is not the episode the bundle declares.
+            timeout = steps >= horizon
+            # Two flags from here down, and they are not interchangeable.
+            # `done` ends the episode either way; `terminated` says the
+            # *future* ended rather than merely our looking at it, and that
+            # is the one the bootstrap in `advantages` is cut on.
+            done = jnp.logical_or(terminated, timeout)
+
+            # Every environment redraws every step and the draw is *selected*
+            # where done, rather than drawn only where done. Under `vmap`
+            # there is no other shape available: a branch per environment is
+            # not something a jitted batch can take, and a uniform draw is
+            # cheaper than the `lax.cond` that would avoid it.
+            key, reset_key, push_key = jax.random.split(key, 3)
+            _unused, fresh_qpos, fresh_qvel = varied_reset(reset_key)
+            _unused, fresh_forces, fresh_starts = drawn_pushes(push_key)
             data = jax.tree.map(
                 lambda new, start: jnp.where(
                     done.reshape((-1,) + (1,) * (new.ndim - 1)), start, new),
                 data,
-                data.replace(qpos=jnp.tile(reset_qpos, (envs, 1)),
-                             qvel=jnp.tile(reset_qvel, (envs, 1))),
+                data.replace(qpos=fresh_qpos, qvel=fresh_qvel),
             )
-            return (data, key), (vector, sampled, logp, value, reward, done, landed)
+            if variation_entries:
+                # The reset pose is no longer a constant, so the observation
+                # a policy acts on after a reset has to be of *that* pose.
+                # Without this the first step of every episode is taken on
+                # the previous episode's last observation -- harmless while
+                # every episode started identically, and the whole feature
+                # otherwise. It costs one `mjx.forward` per control step and
+                # is skipped entirely by a task that declares no variation.
+                data = batched_forward(model, data)
+            forces = jnp.where(done[:, None, None], fresh_forces, forces)
+            starts = jnp.where(done[:, None], fresh_starts, starts)
+            elapsed = jnp.where(done, 0.0, elapsed)
+            steps = jnp.where(done, 0, steps)
+            return (data, key, forces, starts, elapsed, steps), (
+                vector, sampled, logp, value, reward, done, landed, terminated
+            )
 
-        (data, key), traces = jax.lax.scan(one, (data, key), None, length=unroll)
-        vector = jax.vmap(observe)(data)
-        bootstrap = net(params["critic"], normalise(vector, mean, variance))[:, 0]
-        return data, key, traces, bootstrap
+        data, forces, starts, elapsed, steps = state
+        carry, traces = jax.lax.scan(
+            stepped, (data, key, forces, starts, elapsed, steps), None,
+            length=unroll,
+        )
+        data, key, forces, starts, elapsed, steps = carry
+        # No trailing bootstrap: `landed` is the post-step, pre-reset
+        # observation at *every* step, so the critic's value of it is the
+        # next-state value the whole way through -- including at a boundary,
+        # where `values[t + 1]` is the value of an environment that has
+        # already been reset. `advantages` reads it directly.
+        return (data, forces, starts, elapsed, steps), key, traces
 
     discount = float(options.discount)
     lam = float(options.gae_lambda)
 
-    def advantages(rewards, values, dones, bootstrap):
+    def advantages(rewards, values, dones, terminals, following):
+        """GAE, with a timeout bootstrapped and a failure cut.
+
+        **The one line in this file where a plausible-looking edit is
+        silently wrong** (ADR-088), so it is written out rather than folded
+        together: ``terminal`` cuts the bootstrap, ``done`` cuts the carry.
+
+        A *failure* ends the future, so the state that follows it is worth
+        nothing. A *timeout* ends only our looking at it, and the state we
+        landed in is worth whatever the critic thinks -- feeding a timeout
+        into the ``(1 - done)`` bootstrap term teaches the critic that
+        surviving to step 600 is worth exactly as much as falling over, which
+        at ``--discount 0.99`` over a 600-step episode is not a small lie.
+        The *carry* is cut on ``done``, because the trajectory genuinely
+        discontinues either way: the next row belongs to a fresh episode.
+
+        ``following`` is ``V(landed)`` -- the value of the post-step,
+        pre-reset observation -- so there is no shift and no separate
+        trailing bootstrap to get wrong.
+        """
+
         def one(carry, row):
-            reward, value, done, following = row
-            delta = reward + discount * following * (1.0 - done) - value
+            reward, value, done, terminal, following = row
+            delta = reward + discount * following * (1.0 - terminal) - value
             carry = delta + discount * lam * (1.0 - done) * carry
             return carry, carry
 
-        following = jnp.concatenate([values[1:], bootstrap[None]], axis=0)
         _, out = jax.lax.scan(
             one, jnp.zeros((envs,), dtype=jnp.float32),
-            (rewards, values, dones.astype(jnp.float32), following),
+            (rewards, values, dones.astype(jnp.float32),
+             terminals.astype(jnp.float32), following),
             reverse=True,
         )
         return out
@@ -648,9 +933,9 @@ def train(bundle: dict[str, Any], options: argparse.Namespace) -> dict[str, Any]
     epochs = int(options.epochs)
 
     @jax.jit
-    def iterate(params, moment1, moment2, data, mean, variance, seen, key, step):
-        data, key, traces, bootstrap = rollout(params, data, mean, variance, key)
-        vectors, sampled, logp, values, rewards, dones, landed = traces
+    def iterate(params, moment1, moment2, state, mean, variance, seen, key, step):
+        state, key, traces = rollout(params, state, mean, variance, key)
+        vectors, sampled, logp, values, rewards, dones, landed, terminals = traces
 
         # The normaliser's statistics follow what the policy actually saw.
         flat = landed.reshape((-1, len(names)))
@@ -664,8 +949,23 @@ def train(bundle: dict[str, Any], options: argparse.Namespace) -> dict[str, Any]
             variance * seen + batch_var * count + delta**2 * seen * count / total
         ) / total
 
-        advantage = advantages(rewards, values, dones, bootstrap)
+        # One extra critic pass, over the states the steps actually landed
+        # in. It replaces the shifted `values` and the trailing bootstrap
+        # both, and it is the only value of the next state that is correct at
+        # an episode boundary.
+        landed_values = net(params["critic"],
+                            normalise(landed, mean, variance))[..., 0]
+        advantage = advantages(rewards, values, dones, terminals, landed_values)
         target = advantage + values
+
+        # Mean episode length: steps taken in this batch over episodes that
+        # ended in it. There was no external observable for this at all until
+        # ADR-088, which is why two runs reported a rising reward while the
+        # policy they were reporting on got worse. With nothing ending, this
+        # reads the size of the whole batch -- a number that cannot be an
+        # episode length, and is meant to be read as "nothing is resetting".
+        endings = jnp.sum(dones.astype(jnp.float32))
+        episode_steps = jnp.float32(unroll * envs) / jnp.maximum(endings, 1.0)
 
         shape = (-1,)
         flat_vectors = vectors.reshape((-1, len(names)))
@@ -694,24 +994,151 @@ def train(bundle: dict[str, Any], options: argparse.Namespace) -> dict[str, Any]
 
         (params, moment1, moment2, step), losses = jax.lax.scan(
             epoch, (params, moment1, moment2, step), None, length=epochs)
-        return (params, moment1, moment2, data, new_mean, new_variance, total,
-                key, step, rewards.mean(), losses[-1])
+        return (params, moment1, moment2, state, new_mean, new_variance, total,
+                key, step, rewards.mean(), losses[-1], episode_steps)
+
+    # -----------------------------------------------------------------
+    # A snapshot: everything `main` needs to write a complete, witnessed
+    # policy, as of whatever parameters it is handed.
+    # -----------------------------------------------------------------
+    #
+    # Lifted out of the tail of this function in M9 so that it can run
+    # *during* training as well as after it. Two properties make that safe
+    # and they are both worth stating:
+    #
+    #   * it is **pure with respect to the training state**. The witness
+    #     rollout it runs returns a new `state` and a new `key` and this
+    #     discards both, so a run with checkpoints on takes exactly the same
+    #     trajectory as one without. A checkpoint that perturbed the run it
+    #     was reporting on would be a measurement instrument that moved the
+    #     thing it measured.
+    #   * it takes `params`, `mean` and `variance` as arguments rather than
+    #     closing over them, so the same function writes the current policy
+    #     and the best-so-far one.
+    #
+    # Cost is roughly one iteration: a `rollout()` for the observations plus
+    # 32 forward passes at `highest` precision. Every hundredth iteration of
+    # two thousand is one per cent.
+    def snapshot(params, mean, variance, curve, wall):
+        _state, _key, traces = rollout(params, state, mean, variance, key)
+        seen_vectors = np.asarray(traces[6]).reshape((-1, len(names)))
+        if seen_vectors.shape[0] >= WITNESS_SAMPLES:
+            picks = np.linspace(
+                0, seen_vectors.shape[0] - 1, WITNESS_SAMPLES
+            ).astype(int)
+        else:
+            picks = np.arange(seen_vectors.shape[0])
+        witness_obs = seen_vectors[picks].astype(np.float32)
+
+        # The weights are rounded to float32 *before* the witness is
+        # computed, because float32 is what the container stores and what
+        # the engine reads back. A witness taken against unrounded weights
+        # would be a witness about numbers that never land.
+        stored = [
+            (np.asarray(w, dtype=np.float32), np.asarray(b, dtype=np.float32))
+            for w, b in params["actor"]
+        ]
+        stored_jax = [(jnp.asarray(w), jnp.asarray(b)) for w, b in stored]
+        stored_mean = np.asarray(mean, dtype=np.float32)
+        stored_std = np.sqrt(
+            np.maximum(np.asarray(variance, dtype=np.float32), 1.0e-8)
+        ).astype(np.float32)
+        stored_std = np.where(stored_std == 0.0, np.float32(1.0), stored_std)
+
+        def witness_action(vector):
+            normalised = (
+                jnp.asarray(vector) - jnp.asarray(stored_mean)
+            ) / jnp.asarray(stored_std)
+            raw = forward(jnp, stored_jax, normalised)
+            return (jnp.tanh(raw) * jnp.asarray(output_scale)
+                    + jnp.asarray(output_bias))
+
+        # ``highest`` is load-bearing, and the default is not merely slower
+        # to be right about -- it is wrong for this purpose.
+        #
+        # ``jax.vmap`` turns each layer's matrix-vector product into a
+        # *batched* matmul, and XLA puts a batched float32 matmul on Ampere+
+        # tensor cores at TF32: a 10-bit mantissa, eps ~4.9e-4. The engine
+        # evaluates the same weights in float64. Measured on the legs
+        # policy: the vmapped witness sits 1.43e-4 from float64 and the
+        # identical arithmetic run one row at a time sits 5.14e-8 -- 2800x
+        # closer, and the same weights either way. So the witness was not
+        # recording what the network computes, it was recording what a
+        # tensor core rounds it to, and the engine refused a sound policy
+        # for it.
+        #
+        # The error is a fixed *relative* one, so it grows with the
+        # activations a policy learns: the same run measured 7.3e-6 at
+        # iteration 2 and 1.43e-4 at iteration 2000. That is why it survived
+        # every short run and only appeared after four hours -- see ADR-081.
+        #
+        # This costs microseconds on 32 samples and nothing at all during
+        # training, which is left at the default precision deliberately.
+        with jax.default_matmul_precision("highest"):
+            witness_actions = np.asarray(
+                jax.vmap(witness_action)(jnp.asarray(witness_obs))
+            )
+
+        return {
+            "parameters": flat_parameters(np, stored),
+            "layers": [[int(a), int(b)] for a, b in shapes],
+            "normaliser": {
+                "mean": [float(v) for v in stored_mean],
+                "std": [float(v) for v in stored_std],
+            },
+            "output_scale": output_scale,
+            "output_bias": output_bias,
+            "witness_observations": [
+                [float(v) for v in row] for row in witness_obs
+            ],
+            "witness_actions": [
+                [float(v) for v in row] for row in witness_actions
+            ],
+            "reward_curve": list(curve),
+            "iterations": len(curve),
+            "wall_time_s": float(wall),
+            "backend": jax.default_backend(),
+            "devices": [str(device) for device in jax.devices()],
+            "versions": {
+                "python": platform.python_version(),
+                "numpy": np.__version__,
+                "mujoco": str(getattr(mujoco, "__version__", "unknown")),
+                "mjx": str(getattr(mjx, "__version__",
+                                    getattr(mujoco, "__version__", "unknown"))),
+                "jax": jax.__version__,
+            },
+        }
 
     curve = []
     step = jnp.int32(0)
     started = time.perf_counter()
-    for iteration in range(int(options.iterations)):
-        (params, moment1, moment2, data, mean, variance, seen, key, step,
-         average, last_loss) = iterate(
-            params, moment1, moment2, data, mean, variance, seen, key, step)
+    total_iterations = int(options.iterations)
+    every = max(0, int(getattr(options, "checkpoint_every", 0) or 0))
+    # The best parameters are retained every iteration and *written* only at
+    # a checkpoint. Retaining is a pytree copy of a 64x64 MLP and costs
+    # nothing; writing runs a witness pass. mg-legs peaked at iteration 1200
+    # of 2000 and came home with the iteration-2000 policy, so this alone
+    # would have saved thirty of that run's seventy-six minutes.
+    best = {"reward_per_step": -math.inf, "iteration": -1,
+            "params": None, "mean": None, "variance": None, "written": -1}
+    for iteration in range(total_iterations):
+        (params, moment1, moment2, state, mean, variance, seen, key, step,
+         average, last_loss, mean_steps) = iterate(
+            params, moment1, moment2, state, mean, variance, seen, key, step)
         entry = {"iteration": iteration,
                  "reward_per_step": float(average),
-                 "loss": float(last_loss)}
+                 "loss": float(last_loss),
+                 # The row ADR-088 added, and the one to watch: a policy
+                 # getting worse while the reward climbs shows up here first,
+                 # as an episode length that falls. M9b's fell 170 -> 30 over
+                 # 400 iterations with nothing recording it.
+                 "episode_steps": float(mean_steps)}
         curve.append(entry)
         if not options.quiet:
             print(
                 f"iteration {iteration:4d}  reward/step {entry['reward_per_step']:+.6g}"
-                f"  loss {entry['loss']:+.6g}",
+                f"  loss {entry['loss']:+.6g}"
+                f"  episode {entry['episode_steps']:.1f}",
                 file=sys.stderr,
             )
         # Stop at the first non-finite number, naming the iteration and which
@@ -739,89 +1166,50 @@ def train(bundle: dict[str, Any], options: argparse.Namespace) -> dict[str, Any]
                 "hundreds against a normaliser that starts at mean 0 and "
                 "variance 1 -- see docs/MUJOCO.md on reward conditioning."
             )
-    wall = time.perf_counter() - started
 
-    # ---------------------------------------------------------------------
-    # The witness: observations the policy actually saw, and the actions this
-    # trainer's own JAX network produced for them.
-    # ---------------------------------------------------------------------
-
-    data, key, traces, _ = rollout(params, data, mean, variance, key)
-    seen_vectors = np.asarray(traces[6]).reshape((-1, len(names)))
-    if seen_vectors.shape[0] >= WITNESS_SAMPLES:
-        picks = np.linspace(0, seen_vectors.shape[0] - 1, WITNESS_SAMPLES).astype(int)
-    else:
-        picks = np.arange(seen_vectors.shape[0])
-    witness_obs = seen_vectors[picks].astype(np.float32)
-
-    # The weights are rounded to float32 *before* the witness is computed,
-    # because float32 is what the container stores and what the engine reads
-    # back. A witness taken against unrounded weights would be a witness
-    # about numbers that never land.
-    stored = [
-        (np.asarray(w, dtype=np.float32), np.asarray(b, dtype=np.float32))
-        for w, b in params["actor"]
-    ]
-    stored_jax = [(jnp.asarray(w), jnp.asarray(b)) for w, b in stored]
-    stored_mean = np.asarray(mean, dtype=np.float32)
-    stored_std = np.sqrt(np.maximum(np.asarray(variance, dtype=np.float32), 1.0e-8)
-                          ).astype(np.float32)
-    stored_std = np.where(stored_std == 0.0, np.float32(1.0), stored_std)
-
-    def witness_action(vector):
-        normalised = (jnp.asarray(vector) - jnp.asarray(stored_mean)) / jnp.asarray(stored_std)
-        raw = forward(jnp, stored_jax, normalised)
-        return jnp.tanh(raw) * jnp.asarray(output_scale) + jnp.asarray(output_bias)
-
-    # ``highest`` is load-bearing, and the default is not merely slower to
-    # be right about -- it is wrong for this purpose.
-    #
-    # ``jax.vmap`` turns each layer's matrix-vector product into a *batched*
-    # matmul, and XLA puts a batched float32 matmul on Ampere+ tensor cores
-    # at TF32: a 10-bit mantissa, eps ~4.9e-4. The engine evaluates the same
-    # weights in float64. Measured on the legs policy: the vmapped witness
-    # sits 1.43e-4 from float64 and the identical arithmetic run one row at
-    # a time sits 5.14e-8 -- 2800x closer, and the same weights either way.
-    # So the witness was not recording what the network computes, it was
-    # recording what a tensor core rounds it to, and the engine refused a
-    # sound policy for it.
-    #
-    # The error is a fixed *relative* one, so it grows with the activations
-    # a policy learns: the same run measured 7.3e-6 at iteration 2 and
-    # 1.43e-4 at iteration 2000. That is why it survived every short run and
-    # only appeared after four hours -- see ADR-081.
-    #
-    # This costs microseconds on 32 samples and nothing at all during
-    # training, which is left at the default precision deliberately.
-    with jax.default_matmul_precision("highest"):
-        witness_actions = np.asarray(
-            jax.vmap(witness_action)(jnp.asarray(witness_obs))
+        elapsed_wall = time.perf_counter() - started
+        if entry["reward_per_step"] > best["reward_per_step"]:
+            best.update(
+                reward_per_step=entry["reward_per_step"],
+                iteration=iteration,
+                params=params,
+                mean=mean,
+                variance=variance,
+            )
+        due = every and (iteration + 1) % every == 0
+        if due and iteration + 1 < total_iterations:
+            emit(f"{iteration + 1:06d}", iteration, entry["reward_per_step"],
+                 snapshot(params, mean, variance, curve, elapsed_wall))
+            if best["written"] != best["iteration"]:
+                emit("best", best["iteration"], best["reward_per_step"],
+                     snapshot(best["params"], best["mean"], best["variance"],
+                              curve, elapsed_wall))
+                best["written"] = best["iteration"]
+        # Rewritten every iteration whether or not anything was checkpointed.
+        # This file is the one artifact everything downstream reads -- the
+        # `watch` subcommand, the shell's Training panel -- and a run you can
+        # only see the state of once every hundred iterations is a run you
+        # still cannot decide about.
+        progress(
+            state="training",
+            iteration=iteration,
+            total=total_iterations,
+            curve=curve,
+            best=best,
+            wall=elapsed_wall,
+            device=jax.default_backend(),
         )
 
-    return {
-        "parameters": flat_parameters(np, stored),
-        "layers": [[int(a), int(b)] for a, b in shapes],
-        "normaliser": {
-            "mean": [float(v) for v in stored_mean],
-            "std": [float(v) for v in stored_std],
-        },
-        "output_scale": output_scale,
-        "output_bias": output_bias,
-        "witness_observations": [[float(v) for v in row] for row in witness_obs],
-        "witness_actions": [[float(v) for v in row] for row in witness_actions],
-        "reward_curve": curve,
-        "wall_time_s": wall,
-        "backend": jax.default_backend(),
-        "devices": [str(device) for device in jax.devices()],
-        "versions": {
-            "python": platform.python_version(),
-            "numpy": np.__version__,
-            "mujoco": str(getattr(mujoco, "__version__", "unknown")),
-            "mjx": str(getattr(mjx, "__version__",
-                                getattr(mujoco, "__version__", "unknown"))),
-            "jax": jax.__version__,
-        },
-    }
+    wall = time.perf_counter() - started
+    # One last write of the best-so-far, if the run improved after the final
+    # checkpoint boundary. Without it a 2000-iteration run with
+    # --checkpoint-every 100 whose best landed at 1950 would come home with
+    # a `.best` file from iteration 1900.
+    if best["params"] is not None and best["written"] != best["iteration"]:
+        emit("best", best["iteration"], best["reward_per_step"],
+             snapshot(best["params"], best["mean"], best["variance"],
+                      curve, wall))
+    return snapshot(params, mean, variance, curve, wall)
 
 
 # ---------------------------------------------------------------------------
@@ -890,48 +1278,24 @@ def witness_disagreement(header: dict[str, Any],
     return worst, worst_sample, worst_action
 
 
-def arguments(argv: Sequence[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        prog="cadex_train.py",
-        description="Train a control policy from a cadex-training-task-v1 bundle.",
-    )
-    parser.add_argument("bundle", help="path to <root>/outputs/<name>-task.json")
-    parser.add_argument("--out", required=True, help="path to write the .cxpolicy")
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--iterations", type=int, default=200)
-    parser.add_argument("--envs", type=int, default=256)
-    parser.add_argument("--unroll", type=int, default=20)
-    parser.add_argument("--epochs", type=int, default=4)
-    parser.add_argument("--hidden", type=int, nargs="+", default=[64, 64])
-    parser.add_argument("--learning-rate", type=float, default=3.0e-4)
-    parser.add_argument("--discount", type=float, default=0.97)
-    parser.add_argument("--gae-lambda", type=float, default=0.95)
-    parser.add_argument("--clip", type=float, default=0.2)
-    parser.add_argument("--entropy", type=float, default=1.0e-3)
-    parser.add_argument("--value-weight", type=float, default=0.5)
-    parser.add_argument("--initial-std", type=float, default=0.3)
-    parser.add_argument("--label", default="")
-    parser.add_argument("--quiet", action="store_true")
-    return parser.parse_args(list(argv))
+def policy_header(
+    bundle: dict[str, Any],
+    options: argparse.Namespace,
+    trained: dict[str, Any],
+    *,
+    cadex_importable: bool,
+) -> dict[str, Any]:
+    """One ``trained`` dict, as the header the engine reads.
 
-
-def main(argv: Sequence[str]) -> int:
-    options = arguments(argv[1:])
-
-    try:
-        import CadexDynamics  # noqa: F401
-    except Exception:
-        cadex_importable = False
-    else:
-        cadex_importable = True
-
-    import jax.numpy as jnp
-
-    bundle = load_bundle(options.bundle, globals_for(jnp))
-    trained = train(bundle, options)
+    Lifted out of :func:`main` in M9 so that a checkpoint written at
+    iteration 300 is **the same kind of file** as the one written at the
+    end -- a complete, witness-checked ``.cxpolicy`` that can be pasted
+    straight into ``assembly.policy``. A weight dump would need a second
+    reader nobody has written, and would be a thing you cannot play.
+    """
 
     task = bundle["task"]
-    header = {
+    return {
         "schema": POLICY_SCHEMA,
         "label": str(options.label or task.get("label") or ""),
         "task": {"sha256": bundle["task_sha256"],
@@ -958,7 +1322,10 @@ def main(argv: Sequence[str]) -> int:
                 for key, value in sorted(vars(options).items())
                 if key not in ("bundle", "out", "quiet", "label")
             },
-            "iterations": int(options.iterations),
+            # The iterations this policy actually saw, which for a
+            # checkpoint is not `options.iterations`. A checkpoint claiming
+            # the run's total would be a file that lies about its own age.
+            "iterations": int(trained["iterations"]),
             "wall_time_s": float(trained["wall_time_s"]),
             "device": trained["backend"],
             "devices": trained["devices"],
@@ -972,6 +1339,22 @@ def main(argv: Sequence[str]) -> int:
                 "entries": [str(entry["label"])
                             for entry in task.get("randomisation") or ()],
             },
+            # The second stream, recorded beside the first because it is a
+            # *different* algorithm and a reader has to be able to tell which
+            # numbers came from where (M9, ADR-084).
+            "episode_variation": {
+                "mode": RESET_VARIATION_MODE,
+                "algorithm": RESET_VARIATION_ALGORITHM,
+                "bundle_algorithm": str(task.get("variation_algorithm") or ""),
+                "reset_variation": [
+                    str(entry["label"])
+                    for entry in task.get("reset_variation") or ()
+                ],
+                "disturbance": [
+                    str(entry["label"])
+                    for entry in task.get("disturbance") or ()
+                ],
+            },
             "cadex_importable": cadex_importable,
         },
         "evaluation": {
@@ -980,17 +1363,30 @@ def main(argv: Sequence[str]) -> int:
         },
     }
 
-    # The engine's witness check, run here, before a single byte is written.
-    #
-    # Everything this needs has existed since the moment training stopped,
-    # and the engine will apply exactly this test on another machine at the
-    # end of a trip that costs a scp and a rebuild. A run that fails it is
-    # already lost; the only question is whether it is lost now or after
-    # somebody has spent an afternoon believing they have a policy.
+
+def checked_policy(
+    header: dict[str, Any], trained: dict[str, Any], *, what: str
+) -> bytes:
+    """The container's bytes, or a refusal that names what failed.
+
+    The engine's witness check, run here, before a single byte is written.
+    Everything it needs has existed since the moment training stopped, and
+    the engine will apply exactly this test on another machine at the end of
+    a trip that costs a scp and a rebuild. A run that fails it is already
+    lost; the only question is whether it is lost now or after somebody has
+    spent an afternoon believing they have a policy.
+
+    Run on **checkpoints too**, and that is the point of it being a function.
+    The witness error is a relative one that grows with the activations a
+    policy learns, so a checkpoint that fails it is a run that is going to
+    fail it -- and the whole reason ADR-081 cost four hours is that nothing
+    checked until the end.
+    """
+
     worst, sample, action = witness_disagreement(header, trained["parameters"])
     if worst > POLICY_WITNESS_TOLERANCE:
         raise SystemExit(
-            f"This policy does not reproduce its own recorded actions: "
+            f"{what} does not reproduce its own recorded actions: "
             f"witness {sample}, action {action}, relative error {worst:g} "
             f"against a tolerance of {POLICY_WITNESS_TOLERANCE:g}. The "
             f"engine applies this same test and would refuse the file, so "
@@ -1003,6 +1399,211 @@ def main(argv: Sequence[str]) -> int:
             f"or a normaliser that disagrees with the weights it shipped "
             f"with."
         )
+    blob = encode_policy(header, trained["parameters"])
+    if len(blob) > MAXIMUM_POLICY_BYTES:
+        raise SystemExit(
+            f"{what} is {len(blob)} bytes; the engine accepts at most "
+            f"{MAXIMUM_POLICY_BYTES}. Train a smaller network."
+        )
+    return blob
+
+
+def write_atomically(path: Path, payload: bytes) -> None:
+    """Temp file then ``replace``, so no reader ever sees half a file.
+
+    ``progress.json`` is rewritten every iteration and read by a `watch`
+    loop on another machine and by a panel in the shell. A plain write is a
+    window, small but real, in which both of those read a truncated file and
+    report a run that has gone wrong.
+    """
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".partial")
+    temporary.write_bytes(payload)
+    temporary.replace(path)
+
+
+def checkpoint_path(out: Path, tag: str) -> Path:
+    """``walk.cxpolicy`` and ``000300`` -> ``walk.000300.cxpolicy``.
+
+    The suffix is kept so that every file this writes is a ``.cxpolicy`` a
+    person can hand to ``assembly.policy`` without renaming it, and the tag
+    is zero-padded so a directory listing sorts into training order.
+    """
+
+    return out.with_name(f"{out.stem}.{tag}{out.suffix}")
+
+
+def arguments(argv: Sequence[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="cadex_train.py",
+        description="Train a control policy from a cadex-training-task-v1 bundle.",
+    )
+    parser.add_argument("bundle", help="path to <root>/outputs/<name>-task.json")
+    parser.add_argument("--out", required=True, help="path to write the .cxpolicy")
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--iterations", type=int, default=200)
+    parser.add_argument("--envs", type=int, default=256)
+    parser.add_argument("--unroll", type=int, default=20)
+    parser.add_argument("--epochs", type=int, default=4)
+    parser.add_argument("--hidden", type=int, nargs="+", default=[64, 64])
+    parser.add_argument("--learning-rate", type=float, default=3.0e-4)
+    parser.add_argument("--discount", type=float, default=0.97)
+    parser.add_argument("--gae-lambda", type=float, default=0.95)
+    parser.add_argument("--clip", type=float, default=0.2)
+    parser.add_argument("--entropy", type=float, default=1.0e-3)
+    parser.add_argument("--value-weight", type=float, default=0.5)
+    parser.add_argument("--initial-std", type=float, default=0.3)
+    parser.add_argument("--label", default="")
+    parser.add_argument("--quiet", action="store_true")
+    parser.add_argument(
+        "--checkpoint-every", type=int, default=0, metavar="N",
+        help=(
+            "write a complete .cxpolicy every N iterations, plus the "
+            "best-so-far. 0 disables. Costs about one iteration each: a "
+            "rollout for the witness observations and 32 forward passes"
+        ),
+    )
+    parser.add_argument(
+        "--progress", default="", metavar="PATH",
+        help=(
+            "where to rewrite the progress file; defaults to progress.json "
+            "beside --out. This is the artifact `remote_train.sh watch` and "
+            "the shell's Training panel read"
+        ),
+    )
+    return parser.parse_args(list(argv))
+
+
+def main(argv: Sequence[str]) -> int:
+    options = arguments(argv[1:])
+
+    try:
+        import CadexDynamics  # noqa: F401
+    except Exception:
+        cadex_importable = False
+    else:
+        cadex_importable = True
+
+    import jax.numpy as jnp
+
+    bundle = load_bundle(options.bundle, globals_for(jnp))
+    target = Path(options.out)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    progress_path = (
+        Path(options.progress) if options.progress
+        else target.parent / "progress.json"
+    )
+    started_at = time.time()
+    written: list[dict[str, Any]] = []
+
+    def emit(tag: str, iteration: int, reward: float,
+             trained: dict[str, Any]) -> None:
+        """One mid-run checkpoint, as a policy the engine would accept.
+
+        Not a weight dump. The whole value of a checkpoint here is that you
+        can pull it off the box while the run is still going, paste its
+        digest into ``assembly.policy``, rebuild and *watch it* -- which is
+        only true if it is the same container the final policy is.
+        """
+
+        path = checkpoint_path(target, tag)
+        header = policy_header(bundle, options, trained,
+                               cadex_importable=cadex_importable)
+        blob = checked_policy(header, trained, what=f"The {tag} checkpoint")
+        write_atomically(path, blob)
+        written.append({
+            "tag": tag,
+            "iteration": int(iteration),
+            "path": path.name,
+            "bytes": len(blob),
+            "sha256": hashlib.sha256(blob).hexdigest(),
+            # The reward of the iteration this policy's *weights* come
+            # from, which for the best-so-far is not the last row of the
+            # curve. A checkpoint labelled with somebody else's number is
+            # the one thing a comparison table cannot survive.
+            "reward_per_step": float(reward),
+        })
+        if not options.quiet:
+            print(f"checkpoint {path.name}  ({written[-1]['sha256'][:12]})",
+                  file=sys.stderr)
+
+    def report(**fields: Any) -> None:
+        """``progress.json``, rewritten atomically.
+
+        The one artifact everything downstream reads: `remote_train.sh
+        watch` polls it over rsync, and the shell's Training panel polls the
+        copy that lands next to the project. Neither of them parses this
+        program's stderr, and that is deliberate -- ADR-080's finding was
+        that a receipt taken from a stream is a receipt something else can
+        write into.
+        """
+
+        curve = list(fields.pop("curve", ()) or ())
+        best = dict(fields.pop("best", ()) or {})
+        iteration = int(fields.get("iteration", -1))
+        total = int(fields.get("total", 0))
+        wall = float(fields.get("wall", 0.0))
+        done = iteration + 1
+        payload = {
+            "schema": PROGRESS_SCHEMA,
+            "state": str(fields.get("state", "training")),
+            "iteration": iteration,
+            "total": total,
+            "wall_time_s": wall,
+            # Straight-line from what has run so far. It is wrong early --
+            # the first iteration carries the JIT compile -- and it is what
+            # anybody would compute by hand from the numbers beside it.
+            "eta_s": (
+                (wall / done) * (total - done) if done > 0 and total > done
+                else 0.0
+            ),
+            "started_at": started_at,
+            "device": str(fields.get("device", "")),
+            "reward_per_step": (
+                float(curve[-1]["reward_per_step"]) if curve else None
+            ),
+            "loss": float(curve[-1]["loss"]) if curve else None,
+            # Additive under the same schema: `cadex_training.py` reads with
+            # `.get`, so a `progress.json` written before ADR-088 still
+            # renders -- it renders this row as "-".
+            "episode_steps": (
+                None if not curve or curve[-1].get("episode_steps") is None
+                else float(curve[-1]["episode_steps"])
+            ),
+            "best_reward_per_step": (
+                None if not best or best.get("iteration", -1) < 0
+                else float(best["reward_per_step"])
+            ),
+            "best_iteration": int(best.get("iteration", -1)) if best else -1,
+            "out": target.name,
+            "label": str(options.label or ""),
+            "checkpoints": list(written),
+            "error": str(fields.get("error", "")),
+        }
+        write_atomically(
+            progress_path,
+            json.dumps(payload, sort_keys=True, indent=2).encode("utf-8"),
+        )
+
+    report(state="starting", iteration=-1, total=int(options.iterations),
+           curve=[], best={}, wall=0.0, device="")
+    try:
+        trained = train(bundle, options, emit=emit, progress=report)
+    except BaseException as error:
+        # A run that died has to say so in the file, or a `watch` loop and a
+        # panel both sit on "training" for ever. The exception is re-raised
+        # unchanged: this adds a line to an artifact, it does not handle
+        # anything.
+        report(state="failed", iteration=-1, total=int(options.iterations),
+               curve=[], best={}, wall=time.time() - started_at, device="",
+               error=f"{type(error).__name__}: {error}")
+        raise
+
+    header = policy_header(bundle, options, trained,
+                           cadex_importable=cadex_importable)
+    blob = checked_policy(header, trained, what="This policy")
+    worst, _sample, _action = witness_disagreement(header, trained["parameters"])
     margin = POLICY_WITNESS_TOLERANCE / max(worst, 1.0e-30)
     if not options.quiet:
         print(f"witness agrees to {worst:.3e} ({margin:,.0f}x inside the "
@@ -1023,15 +1624,20 @@ def main(argv: Sequence[str]) -> int:
             file=sys.stderr,
         )
 
-    blob = encode_policy(header, trained["parameters"])
-    if len(blob) > MAXIMUM_POLICY_BYTES:
-        raise SystemExit(
-            f"the policy is {len(blob)} bytes; the engine accepts at most "
-            f"{MAXIMUM_POLICY_BYTES}. Train a smaller network."
-        )
-    target = Path(options.out)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(blob)
+    write_atomically(target, blob)
+    curve = trained["reward_curve"]
+    best_row = max(curve, key=lambda row: row["reward_per_step"]) if curve else None
+    report(
+        state="done",
+        iteration=len(curve) - 1,
+        total=int(options.iterations),
+        curve=curve,
+        best=({"iteration": best_row["iteration"],
+               "reward_per_step": best_row["reward_per_step"]}
+              if best_row else {}),
+        wall=float(trained["wall_time_s"]),
+        device=trained["backend"],
+    )
 
     print(json.dumps({
         "out": str(target),
@@ -1043,13 +1649,20 @@ def main(argv: Sequence[str]) -> int:
         "witness_samples": len(trained["witness_observations"]),
         "witness_error": worst,
         "witness_tolerance": POLICY_WITNESS_TOLERANCE,
-        "reward_per_step": (trained["reward_curve"][-1]["reward_per_step"]
-                            if trained["reward_curve"] else None),
+        "reward_per_step": (curve[-1]["reward_per_step"] if curve else None),
+        "episode_steps": (curve[-1].get("episode_steps") if curve else None),
+        "best_reward_per_step": (
+            best_row["reward_per_step"] if best_row else None
+        ),
+        "best_iteration": best_row["iteration"] if best_row else None,
         "wall_time_s": trained["wall_time_s"],
         "device": trained["backend"],
+        "progress": str(progress_path),
+        "checkpoints": [item["path"] for item in written],
         "cadex_importable": cadex_importable,
     }, sort_keys=True))
     return 0
+
 
 
 if __name__ == "__main__":

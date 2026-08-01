@@ -27,6 +27,7 @@ Three things are proved that no unit test could:
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -112,6 +113,81 @@ TWO_TASKS_SCRIPT = TASK_SCRIPT.replace(
                      episode_seconds=0.5, control_hz=20, label="hold")
 result = {"hold": hold, "plate\"""",
 ).replace('"model": model, "job": job}', '"model": model, "job": job}')
+
+
+#: M9's mechanism: a floating block on a grounded floor, with a flap it can
+#: drive. The block is ungrounded and no joint reaches it from the floor, so
+#: the engine gives it a free joint -- which is what a floating base is, and
+#: the only thing ``assembly.reset_variation`` accepts.
+#:
+#: The lift is 10-13 mm, and *why* is the thing worth reading. A tilt pivots
+#: about the base's own frame origin, and ``part.box``'s origin is a corner
+#: -- so the far corner of this brick is 134 mm from the pivot rather than
+#: the 67 mm a centred solid would give, and 4 degrees swings it 9.4 mm down
+#: instead of 4.7. Half the trigonometry a reader would do by hand is wrong
+#: for a reason that is invisible in the script, which is exactly why the
+#: engine measures it and refuses rather than documenting a formula.
+SHOVED_SCRIPT = """
+slab = part.box(400, 400, 20)
+brick = part.box(120, 60, 40)
+tab = part.box(50, 20, 6)
+ground = assembly.component(slab, grounded=True)
+block = assembly.component(brick, placement=[0, 0, 20])
+flap = assembly.component(tab, placement=[0, 0, 60])
+wrist = assembly.joint("revolute",
+                       assembly.connector(block, "origin",
+                                          offset={"position": [0, 0, 40],
+                                                  "axis": [1, 0, 0],
+                                                  "angle_degrees": 90}),
+                       assembly.connector(flap, "origin",
+                                          offset={"position": [0, 0, 0],
+                                                  "axis": [1, 0, 0],
+                                                  "angle_degrees": 90}))
+asm = assembly.assembly([ground, block, flap], [wrist])
+diag = assembly.solve(asm)
+motor = assembly.actuator(wrist, kind="motor", control_nmm="0",
+                          torque_limit_nmm=200)
+model = assembly.mjcf(asm, [
+    # The offsets put each collision box on its solid rather than on the
+    # component frame origin, which for a part.box is a corner. A box
+    # centred on the corner would be a mechanism nobody drew, and the
+    # clearance measurement would be about it.
+    assembly.body(ground, density_kg_m3=2700,
+                  collision=[assembly.collision(
+                      "box", size_mm=[400, 400, 20],
+                      offset={"position": [200, 200, 10]})]),
+    assembly.body(block, density_kg_m3=2700,
+                  collision=[assembly.collision(
+                      "box", size_mm=[120, 60, 40],
+                      offset={"position": [60, 30, 20]})]),
+    assembly.body(flap, density_kg_m3=2700),
+], actuators=[motor], observations=[
+    assembly.observation(block, "component_position", name="base"),
+    assembly.observation(block, "component_linear_velocity", name="drift"),
+    assembly.observation(wrist, "position", name="angle"),
+])
+start = assembly.reset_variation(block,
+                                 tilt_degrees=[0.0, 4.0],
+                                 height_mm=[10.0, 13.0],
+                                 angular_velocity_dps=[-20.0, 20.0],
+                                 label="start")
+shove = assembly.disturbance(block, newtons=[20.0, 40.0],
+                             direction="horizontal",
+                             at_seconds=[0.2, 0.5], duration_s=0.1,
+                             label="shove")
+wind = assembly.disturbance(block, newtons=[0.0, 2.0],
+                            direction="horizontal", sustained=True,
+                            label="wind")
+job = assembly.task(model, actions=[motor],
+                    reward=[assembly.reward("base_z", weight=1.0e-3,
+                                            label="height")],
+                    episode_seconds=1.0, control_hz=50,
+                    reset_variation=[start], disturbance=[shove, wind],
+                    label="shoved")
+result = {"slab": slab, "brick": brick, "tab": tab, "ground": ground,
+          "block": block, "flap": flap, "wrist": wrist, "asm": asm,
+          "diag": diag, "model": model, "job": job}
+"""
 
 
 def _written(source: str, root: Path) -> dict:
@@ -283,6 +359,128 @@ def test_cadexd_writes_a_task_a_stock_mujoco_can_train_against() -> None:
         ]
         assert seeded_there["total_reward"] == repr(seeded_here["total_reward"])
         assert seeded_there["total_reward"] != there["total_reward"]
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_a_varied_disturbed_episode_survives_the_round_trip_live() -> None:
+    """M9's exit criterion on the same terms M6's was proved on.
+
+    A script declares a floating base, a reset variation and two
+    disturbances; the engine writes one bundle; and a process with no Cadex
+    on its path reproduces the *draws* and the episode they produced. That
+    is the claim the two new surfaces make to a trainer -- that the file
+    says enough -- and the only way to test it is with a second
+    implementation that cannot cheat.
+
+    The unit-level agreement is ``test_dynamics_variation_model``'s. What
+    this adds is the whole path: a real solve, a real export, a real store,
+    and a subprocess whose ``PYTHONPATH`` is scrubbed.
+    """
+
+    root = Path(tempfile.mkdtemp(prefix="m9-live-"))
+    try:
+        written = _written(SHOVED_SCRIPT, root)
+        bundle_path = Path(written["display"]["job"]["artifact_path"])
+        bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+
+        # The two lists reached the file, resolved to addresses rather than
+        # names -- which is what lets a reader index arrays instead of
+        # introspecting a model.
+        (variation,) = bundle["reset_variation"]
+        assert variation["body"] == "block"
+        assert variation["qpos_adr"] >= 0 and variation["qvel_adr"] >= 0
+        assert variation["tilt_high_rad"] > 0.0
+        # Degrees in the script, radians in the bundle: converted once.
+        assert variation["tilt_high_rad"] == pytest.approx(math.radians(4.0))
+        assert variation["clearance_mm"] is not None
+
+        shove, wind = bundle["disturbance"]
+        assert [entry["label"] for entry in bundle["disturbance"]] == [
+            "shove", "wind"
+        ]
+        assert shove["sustained"] is False and wind["sustained"] is True
+        assert shove["applied_at"] == "centre_of_mass"
+        assert shove["frame"] == "world"
+        assert bundle["variation_algorithm"] == dyn.EPISODE_VARIATION_ALGORITHM
+
+        model_path = Path(written["display"]["model"]["artifact_path"])
+        model = dyn.load_model(model_path.read_bytes())
+
+        # The criterion: same seed, same draws, same episode, on two
+        # implementations that share only the file.
+        there = _stock(bundle_path, seed=9)
+        here = dyn.evaluate_episode(model, bundle, seed=9)
+
+        assert there["step_count"] == here["step_count"]
+        assert there["total_reward"] == repr(here["total_reward"])
+        assert there["reset_variation"] == [
+            {
+                "label": draw["label"],
+                "tilt_rad": repr(draw["tilt_rad"]),
+                "azimuth_rad": repr(draw["azimuth_rad"]),
+                "height_m": repr(draw["height_m"]),
+                "angular_velocity_rad_s": [
+                    repr(value) for value in draw["angular_velocity_rad_s"]
+                ],
+            }
+            for draw in here["reset_variation"]
+        ]
+        assert there["disturbance"] == [
+            {
+                "label": draw["label"],
+                "newtons": repr(draw["newtons"]),
+                "azimuth_rad": repr(draw["azimuth_rad"]),
+                "start_s": repr(draw["start_s"]),
+                "force_n": [repr(value) for value in draw["force_n"]],
+            }
+            for draw in here["disturbance"]
+        ]
+        for mine, yours in zip(here["steps"], there["steps"], strict=True):
+            assert yours["observation"] == {
+                name: repr(value) for name, value in mine["observation"].items()
+            }
+
+        # And it really was varied: the unseeded episode is a different one,
+        # so the agreement above is about the mechanism rather than about
+        # two runs of the nominal pose.
+        nominal = dyn.evaluate_episode(model, bundle)
+        assert nominal["total_reward"] != here["total_reward"]
+        assert nominal["reset_variation"] == []
+
+        # Two seeds are two episodes, which is the entire point: a posture
+        # found once is now asked a second question.
+        other = dyn.evaluate_episode(model, bundle, seed=10)
+        assert other["total_reward"] != here["total_reward"]
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_a_tilt_that_would_dig_into_the_floor_is_refused_live() -> None:
+    """The refusal that shaped the surface, in the engine that measures it.
+
+    The block rests on the floor, so a tilt with no lift swings a corner
+    through it -- and a script that reached a trainer with that in it would
+    spend its whole run learning that the floor hits back.
+    """
+
+    root = Path(tempfile.mkdtemp(prefix="m9-dig-"))
+    try:
+        source = SHOVED_SCRIPT.replace("height_mm=[10.0, 13.0]", "height_mm=[0.0, 0.0]")
+        client = None
+        try:
+            client = _spawn_cadexd()
+            opened = client.request("open_project", {"project_root": str(root)})
+            assert opened["ok"] is True, opened
+            written = client.request(
+                "write_script", {"source": source, "expected_revision": ""}
+            )
+        finally:
+            _stop(client)
+        assert written["ok"] is False, json.dumps(written)[:2000]
+        text = json.dumps(written)
+        assert "reset_variation_penetrates" in text
+        assert "height_mm" in text
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

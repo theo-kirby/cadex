@@ -1,6 +1,6 @@
 # Training a policy: the four ways
 
-Verified against source: 2026-07-31. Branch **`MJC` only** (ADR-072).
+Verified against source: 2026-08-01. Branch **`MJC` only** (ADR-072).
 Provenance: `[Cadex-new]`. See ADR-070 (training is offboard) and ADR-076
 (remote dispatch).
 
@@ -76,6 +76,17 @@ It prints its reward curve on **stderr** as it goes and exactly one line of
 **JSON** on stdout at the end. Keep that line — the `sha256` in it is what
 goes into the script (see [Bringing it home](#bringing-it-home)), and
 `device` in it is how you find out afterwards that it trained on CPU.
+
+Each stderr line carries three numbers, and the third is the one to watch:
+
+```
+iteration  419  reward/step +0.391  loss +0.0021  episode 137.5
+```
+
+`episode` is the mean episode length in control steps (ADR-088). **A reward
+that climbs while it falls is a policy failing sooner and being paid more
+for it** — the failure two runs on this branch had, with no number recording
+it. If it reads as `envs × unroll` exactly, no episode is ending at all.
 
 ## (b) CPU only
 
@@ -196,6 +207,50 @@ thinks to read `device` out of the artifact afterwards.
 configuration — use it once to accept the host key, since `check` and
 `train` run under `BatchMode` where any prompt reads as a connection
 failure. `training/remote_train.sh config` prints what it resolved.
+
+### Detached, which is what you want for a real run (ADR-085)
+
+A run is an hour or more, and `train` without `--detach` is one ssh held open
+for all of it — so a closed laptop, a sleeping wifi chip or a dropped VPN is
+a lost run. Detach instead:
+
+```bash
+training/remote_train.sh train <outputs>/stand-task.json ./runs/stand.cxpolicy \
+    --detach -- --seed 0 --iterations 2000 --envs 4096 --checkpoint-every 100
+#   ==> detached, run stand-task-20260801-162733 (pid 3293214)
+
+training/remote_train.sh watch stand-task-20260801-162733 ~/proj/mg-legs.cadex
+training/remote_train.sh pull  stand-task-20260801-162733
+training/remote_train.sh stop  stand-task-20260801-162733
+```
+
+The trainer is started under `setsid`, owned by nothing, and everything after
+that is polling files — `progress.json`, which the trainer rewrites
+atomically every iteration. Nothing parses its stderr.
+
+**`watch`** prints one line per change (state, iterations, reward, **mean
+episode length**, best-so-far and where it happened, elapsed, ETA,
+checkpoints), rsyncs new
+`.cxpolicy` files back as they land, and writes **`training-progress.json`**
+into the destination. Point that destination at your `.cadex` project
+directory and the shell's **Training panel** picks it up — no ssh in the
+shell, no protocol change, no engine change. It exits `0` when the run
+finishes and `1` when it reports `failed`, with the reason.
+
+**`stop`** sends `TERM` and then *verifies* the process went. Whatever the
+run had already written is still on the box; `pull` brings it home.
+
+Do not pipe any of these through `tail`: a pipeline reports the last
+command's status, which hides a failed dispatch, and it buffers the output
+until the process exits (ADR-080 §4).
+
+### Choosing among the checkpoints
+
+They are all real policies. `compare.py` in the project directory plays each
+one locally — stock MuJoCo, no GPU, seconds — and prints survival, episode
+length, final tilt, drift and peak/mean torque per motor as one table. That
+is the comparison; watching two *animate* at once is not available and should
+not be faked (ADR-062: exactly one simulation per script).
 
 ---
 

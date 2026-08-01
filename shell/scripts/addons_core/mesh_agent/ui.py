@@ -517,6 +517,147 @@ class CADEX_PARAMS_PT_actuators(Panel):
         note.label(text="each bar spans that actuator's own limits")
 
 
+class CADEX_PARAMS_PT_training(Panel):
+    """A training run that is happening on another machine, while it happens.
+
+    Before this, a run was a black box with one artifact at the end: you
+    dispatched it, waited, and found out. The mg-legs run that motivated M9
+    peaked at iteration 1200 of 2000 -- roughly thirty of its seventy-six
+    minutes made the policy worse, and there was no way to know that while
+    it was happening or to stop it.
+
+    What this reads is one local file, ``training-progress.json``, which
+    ``training/remote_train.sh watch`` mirrors off the box. **No ssh, no
+    protocol change, no engine change, and no mujoco** -- the shell may
+    never import that (``test_the_shell_never_learns_about_mujoco``) and
+    nothing here comes near it.
+
+    Beside Simulation and Policy Outputs and behind the same toggle, for the
+    reason those two give: no new editor and no new space type (ADR-036
+    stands), so the inherited Blender tree takes zero lines and
+    ``docs/BLENDER-TREE.md`` 2a stays eight files.
+    """
+
+    bl_space_type = 'CADEX_PARAMS'
+    bl_region_type = 'WINDOW'
+    bl_label = "Training"
+
+    @classmethod
+    def poll(cls, context):
+        from . import cadex_training
+        # One stat. A project with no run in flight sees the parameters
+        # editor exactly as it was, which is the same bargain the other two
+        # panels make.
+        return cadex_training.read_progress(context.scene) is not None
+
+    def draw(self, context):
+        from . import cadex_training
+        layout = self.layout
+        report = cadex_training.read_progress(context.scene)
+        if report is None:
+            return
+
+        state = str(report.get("state") or "")
+        total = int(report.get("total") or 0)
+        done = int(report.get("iteration") or -1) + 1
+
+        row = layout.row()
+        icon = {"training": 'PLAY', "starting": 'TIME',
+                "done": 'CHECKMARK', "failed": 'ERROR'}.get(state, 'INFO')
+        row.label(text=state.title() or "Unknown", icon=icon)
+        label = str(report.get("label") or "")
+        if label:
+            sub = row.row()
+            sub.enabled = False
+            sub.label(text=label)
+
+        if state == "failed":
+            box = layout.box()
+            box.alert = True
+            box.label(text=str(report.get("error") or "no reason recorded"),
+                      icon='ERROR')
+
+        # The bar is the honest one: iterations done over iterations asked
+        # for. It is not a claim about the reward, which may be going the
+        # wrong way -- that is what the two numbers below it are for.
+        layout.progress(
+            factor=(min(max(done / total, 0.0), 1.0) if total > 0 else 0.0),
+            text="{:d} / {:d} iterations".format(done, max(total, 0)),
+        )
+
+        column = layout.column(align=True)
+        column.enabled = False
+        reward = report.get("reward_per_step")
+        best = report.get("best_reward_per_step")
+        column.label(
+            text="reward/step  {:s}".format(
+                "{:+.6g}".format(float(reward)) if reward is not None else "-"
+            )
+        )
+        # Best-so-far and *where*, because the gap between it and the
+        # current iteration is the whole decision this panel exists to
+        # inform: a best that stopped moving a thousand iterations ago is a
+        # run to stop.
+        column.label(
+            text="best         {:s}  at iteration {:d}".format(
+                "{:+.6g}".format(float(best)) if best is not None else "-",
+                int(report.get("best_iteration", -1)),
+            )
+        )
+        # The row that would have caught ADR-088. Two runs reported a rising
+        # reward while the policy got worse at the task, and the shape of it
+        # is only visible here: an episode length that falls while the reward
+        # climbs is a policy failing sooner and being paid more for it.
+        # Read with `.get`, so a report written before ADR-088 draws a dash
+        # rather than raising in a panel.
+        steps = report.get("episode_steps")
+        column.label(
+            text="episode      {:s} steps".format(
+                "{:.1f}".format(float(steps)) if steps is not None else "-"
+            )
+        )
+        column.label(
+            text="elapsed      {:s}".format(
+                cadex_training.format_eta(report.get("wall_time_s"))
+            )
+        )
+        if state in cadex_training.LIVE_STATES:
+            column.label(
+                text="remaining    {:s}".format(
+                    cadex_training.format_eta(report.get("eta_s"))
+                )
+            )
+        column.label(text="device       {:s}".format(
+            str(report.get("device") or "-")))
+
+        checkpoints = list(report.get("checkpoints") or ())
+        if not checkpoints:
+            return
+        box = layout.box()
+        box.label(text="Checkpoints pulled ({:d})".format(len(checkpoints)),
+                  icon='FILE_BLANK')
+        inner = box.column(align=True)
+        inner.enabled = False
+        # Newest first, and capped: a 2000-iteration run at every hundred is
+        # twenty rows, but nothing stops somebody asking for every ten.
+        for entry in list(reversed(checkpoints))[:8]:
+            entry = dict(entry or {})
+            value = entry.get("reward_per_step")
+            inner.label(text="{:s}   {:s}".format(
+                str(entry.get("path") or "?"),
+                "{:+.6g}".format(float(value)) if value is not None else "-",
+            ))
+        if len(checkpoints) > 8:
+            inner.label(text="...and {:d} more".format(len(checkpoints) - 8))
+
+        # Where they are, said once, because a digest pasted from the wrong
+        # directory is the failure this whole path exists to avoid.
+        note = layout.row()
+        note.enabled = False
+        note.label(text="in the project folder, beside " +
+                        cadex_training.PROGRESS_NAME)
+
+
 class CADEX_PARAMS_PT_parameters(Panel):
     """The sole occupant of the parameters editor's main region."""
 
@@ -726,6 +867,7 @@ classes = (
     CADEX_PARAMS_PT_collision,
     CADEX_PARAMS_PT_simulation,
     CADEX_PARAMS_PT_actuators,
+    CADEX_PARAMS_PT_training,
     CADEX_PARAMS_PT_parameters,
     CADEX_CHAT_PT_transcript,
     CADEX_CHAT_PT_input,

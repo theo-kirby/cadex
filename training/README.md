@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-07-31. Branch **`MJC` only** (ADR-063,
+Verified against source: 2026-08-01. Branch **`MJC` only** (ADR-063,
 ADR-072). Provenance: `[Cadex-new]`. See `docs/MUJOCO.md` slice M7 and
 ADR-070.
 
@@ -135,6 +135,51 @@ on and publishes a receipt.
 | `--envs` | `256` | parallel MJX environments; also how many distinct randomisation draws exist |
 | `--unroll` | `20` | control steps collected per environment per iteration |
 | `--hidden` | `64 64` | the MLP the container records |
+| `--checkpoint-every` | `0` (off) | write a complete `.cxpolicy` every N iterations, plus `<out>.best.cxpolicy` |
+| `--progress` | beside `--out` | where to rewrite `progress.json` |
+
+## Checkpoints, and the file a run publishes while it runs (ADR-085)
+
+`--checkpoint-every 100` writes `walk.000100.cxpolicy`,
+`walk.000200.cxpolicy`, ... and keeps `walk.best.cxpolicy` tracking the best
+`reward_per_step` seen. **Each one is a complete, witness-checked policy**,
+not a weight dump: pull it off the box mid-run, paste its digest into
+`assembly.policy`, rebuild, and watch it. Cost is about one iteration each —
+a rollout for the witness observations plus 32 forward passes — so every
+hundredth of two thousand is 1 %.
+
+The witness is checked on checkpoints too. That error is *relative* and grows
+with the activations a policy learns (ADR-081), so a checkpoint that fails it
+is a run that is going to fail it, and finding out at iteration 100 beats
+finding out after four hours.
+
+`<out>`'s directory also gets **`progress.json`**, rewritten atomically every
+iteration:
+
+```json
+{"schema": "cadex-training-progress-v1", "state": "training",
+ "iteration": 419, "total": 2000, "reward_per_step": 0.391,
+ "episode_steps": 137.5,
+ "best_reward_per_step": 0.402, "best_iteration": 388,
+ "wall_time_s": 913.0, "eta_s": 3440.0, "device": "gpu",
+ "checkpoints": [...]}
+```
+
+`episode_steps` is the row to actually watch (ADR-088): mean episode length,
+steps in the batch over episodes that ended in it. **A reward that climbs
+while this falls is a policy failing sooner and being paid more for it** —
+which is what two runs did, unnoticed, before there was a number for it. It
+is additive under the same schema, so a `progress.json` from before ADR-088
+still reads; the panel draws it as a dash.
+
+This is the one artifact everything downstream reads —
+`remote_train.sh watch` over rsync, and the shell's Training panel locally.
+Nothing parses this program's stderr, deliberately: ADR-080 measured what
+happens when a receipt is taken from a stream something else can write into.
+
+Why it matters in minutes: `mg-legs` trained for 76 minutes and its reward
+**peaked at iteration 1200 of 2000**. Thirty of those minutes made the policy
+worse, and the run produced exactly one artifact.
 
 ## Domain randomisation, and the extension this trainer states
 
@@ -151,9 +196,67 @@ from whichever loop happened to run:
 Measured: 1000 seeds give 1000 distinct draw tuples, and seed 0 reproduces
 the bundle's own numbers exactly — so a single-environment run at
 `base_seed` is the episode the engine and the reference runner already agree
-on. What this does *not* do is resample per episode; that would need the
-batched model rebuilt inside the training loop, and the limitation is stated
-here rather than discovered.
+on. What this does *not* do is resample the *mechanism* per episode; that
+would need the batched model rebuilt inside the training loop, and the
+limitation is stated here rather than discovered.
+
+## Reset variation and disturbance, and a second algorithm (ADR-084)
+
+M9 added two things the bundle can declare that change **every episode**
+rather than every environment: where the episode starts
+(`assembly.reset_variation` — a rigid tilt of the floating base, a lift, a
+spin) and what happens to it while it runs (`assembly.disturbance` — a force
+at a body's centre of mass, in a window or sustained).
+
+This trainer implements both, and its algorithm is **deliberately not the
+bundle's**:
+
+> **`jax.random.split` of the rollout key, drawing `uniform(low, high)` in
+> bundle order per environment on every reset.**
+
+The bundle states a host-side `random.Random(seed)` stream. That cannot run
+here: a reset happens **on device, inside a jitted scan**, thousands of times
+an iteration. The two do not produce the same numbers and do not need to —
+nobody replays a training episode, and what has to be reproducible from the
+script is the *rollout*, which runs in the engine on the stdlib path. Both
+algorithms are recorded in the policy header under `training.randomisation`
+and `training.episode_variation`.
+
+What **must** be identical is the arithmetic: the same quaternion product,
+the same window test, the same centre-of-mass application point. Those are
+written out here rather than shared — this file cannot import the engine —
+and a test pins the lines against `CadexDynamics`.
+
+The scan carry grew from `(data, key)` to `(data, key, forces, starts,
+elapsed, steps)`, because a disturbance is a property of the *episode*: the
+draw has to survive every step between the reset that made it and the reset
+that replaces it, and its window is tested against an **episode-local** clock
+rather than `data.time`, which this trainer's reset does not rewind.
+
+## The episode is the bundle's, not the trainer's (ADR-088)
+
+`steps` is the last member of that carry and the newest, and it is what makes
+this an episode at all. An episode ends when the task terminates **or** when
+it reaches the bundle's `episode["max_steps"]` — the same number
+`CadexDynamics.evaluate_episode` bounds its own loop by. For two runs the
+horizon was read out of the bundle and never used, so an environment whose
+policy did not fall over never reset: past the last shove window it was never
+pushed again, never re-drawn, and stood still collecting the `alive` bonus.
+
+The two endings are **not** the same event and the code keeps them apart:
+
+* a **failure** ends the future, so the state after it is worth zero;
+* a **timeout** ends only our looking, so the state we landed in is worth
+  whatever the critic thinks.
+
+So `terminated` cuts the GAE **bootstrap** and `done` cuts the GAE **carry**,
+and the value bootstrapped is the critic's on `landed` — the post-step,
+*pre-reset* observation. Feeding a timeout into the bootstrap term would
+teach the critic that surviving to step 600 is worth exactly as much as
+falling over, which at `--discount 0.99` is a large bias traded for the one
+this removed. It still trains, still climbs, and is wrong in a way no
+run-level number reveals — which is why there is a test that reads the two
+lines out of the AST.
 
 ## Three evaluators of one whitelist
 

@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import ast
 import math
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, MutableMapping, Sequence
 
 #: One metre, in the unit FreeCAD speaks.
 MM_PER_METRE = 1000.0
@@ -4812,6 +4812,43 @@ MAXIMUM_REWARD_TERMS = 16
 MAXIMUM_TERMINATION_TERMS = 8
 MAXIMUM_RANDOMISATION_ENTRIES = 32
 
+#: Reset variations and disturbances get their own caps rather than sharing
+#: the randomisation budget, because they are separately exhaustible: the
+#: legs mechanism that motivated M9 was already 31 of the 32 randomisation
+#: entries deep, and a shared ceiling would have made "vary one more mass"
+#: and "add one more shove" compete for the same seat.
+#:
+#: One reset variation per floating base is the real bound -- two entries on
+#: one base compound into a tilt neither of them declared -- so four is the
+#: number of floating bases a mechanism could plausibly have and still be
+#: one mechanism. Eight disturbances is eight events in an episode, which at
+#: the horizons this surface encourages is one every fraction of a second.
+MAXIMUM_RESET_VARIATIONS = 4
+MAXIMUM_DISTURBANCES = 8
+
+#: Which way a disturbance may point. ``horizontal`` reads the drawn azimuth
+#: as an angle in the ground plane; ``vertical`` reads the same draw as a
+#: sign. One draw either way, which is what keeps the stated stream the same
+#: length whichever a script picks.
+DISTURBANCE_DIRECTIONS = ("horizontal", "vertical")
+
+#: How much deeper than the reset pose already sits a declared reset
+#: variation may drive a contact before the engine refuses it.
+#:
+#: The reset pose is the *solved* configuration, with the soles placed
+#: exactly on the floor, so a tilt swings the far side of a stance downward
+#: through it and MuJoCo answers that with an impulse nothing could stand up
+#: to. 0.1 mm is inside what the default contact softness absorbs without
+#: launching anything; past it, the first thing an episode teaches a policy
+#: is that the floor hits back.
+RESET_VARIATION_PENETRATION_LIMIT_M = 1.0e-4
+
+#: How many azimuths the clearance check above samples. The declared tilt is
+#: a magnitude whose direction is drawn over the full circle, so "does it
+#: clear" is a question about every direction; sixteen ``mj_forward`` calls
+#: is a fraction of a millisecond and finds the one that digs in.
+RESET_VARIATION_CLEARANCE_AZIMUTHS = 16
+
 #: Control steps in one episode. At the 50 Hz the surface encourages this is
 #: over an hour of simulated time, which is far past any episode a person
 #: designs; what it really bounds is a typo in ``episode_seconds``.
@@ -4957,6 +4994,33 @@ RANDOMISATION_TARGETS: dict[str, dict[str, Any]] = {
     "armature": {"on": "joint", "fields": ("dof_armature",), "positive": False},
     "friction_loss": {"on": "joint", "fields": ("dof_frictionloss",), "positive": False},
 }
+
+#: How the per-episode draws are made, stated in the bundle for the same
+#: reason the randomisation algorithm is: three evaluators reproduce it, and
+#: "whatever the RNG did" is not a thing two implementations can agree on.
+#:
+#: Note the deliberate wastefulness -- three draws per disturbance whether or
+#: not it is sustained, six per reset variation whether or not every range is
+#: a point. A stream whose *position* depends on a branch is a stream two
+#: implementations get wrong differently, and the cost of not branching is
+#: three floats nobody reads.
+#:
+#: This is a **different** algorithm from ``RANDOMISATION_ALGORITHM``, and
+#: the trainer deliberately does not reproduce it: MJX draws on device every
+#: time an environment resets, through a split ``jax.random`` key. The two do
+#: not produce the same numbers and do not need to -- nobody replays a
+#: training episode, and what has to be reproducible from the script is the
+#: *rollout*, which is the stdlib path below.
+EPISODE_VARIATION_ALGORITHM = (
+    "random.Random(seed) continuing in bundle order after the randomisation "
+    "draws: for each reset_variation entry uniform(tilt_low_rad, "
+    "tilt_high_rad), uniform(0, 2*pi) for the azimuth, uniform(height_low_m, "
+    "height_high_m) and three uniform(angular_velocity_low_rad_s, "
+    "angular_velocity_high_rad_s); then for each disturbance entry "
+    "uniform(newtons_low, newtons_high), uniform(0, 2*pi) read as an azimuth "
+    "when horizontal and as a sign when vertical, and uniform(at_low_s, "
+    "at_high_s) -- always three, the last ignored when sustained"
+)
 
 #: Everything a reward or termination expression may name beyond the
 #: observation channels themselves. ``_CONTROL_GLOBALS`` plus the three a
@@ -5707,6 +5771,361 @@ def _randomisation_records(
     return records
 
 
+def _reset_variation_records(
+    mujoco: Any,
+    reloaded: Any,
+    entries: Sequence[Mapping[str, Any]],
+    tree: Mapping[str, Any],
+    *,
+    context: str,
+) -> list[dict[str, Any]]:
+    """Every reset variation, resolved to compiled-model addresses and SI.
+
+    The same move :func:`_randomisation_records` makes and for the same
+    reason: what lands in the bundle is a ``qpos`` address, a ``qvel``
+    address and a body id, so the process applying a draw does no name
+    lookup and no MuJoCo introspection. Three evaluators agree because none
+    of them has to ask the model anything.
+
+    Units are converted **here**, once. Degrees, millimetres and
+    degrees-per-second are what a person writes; radians, metres and
+    radians-per-second are what MuJoCo integrates, and a conversion that
+    happened in three places would be three places to get it wrong.
+    """
+
+    free_bodies = [
+        str(body["name"])
+        for body in tree["bodies"]
+        if body["attachment"] == "free"
+    ]
+    records: list[dict[str, Any]] = []
+    claimed: set[str] = set()
+    for entry in entries:
+        component = str(entry.get("component") or "")
+        label = str(entry.get("label") or "reset_variation")
+        what = f"reset variation {label!r} in {context}"
+        if component not in free_bodies:
+            raise DynamicsError(
+                f"{what} varies the reset pose of {component!r}, which is not "
+                "a floating base in this assembly's dynamics model.",
+                reason="reset_variation_not_floating",
+                correction=(
+                    "A reset variation moves the body MuJoCo gave a free "
+                    "joint -- the one the mechanism floats on. Every other "
+                    "body's pose is a joint angle, and this surface never "
+                    "touches joint angles: the reset pose is the solved one, "
+                    "with the soles on the floor, and a few degrees at a "
+                    "knee is a foot through it."
+                    + (
+                        f" The floating bases here are {free_bodies}."
+                        if free_bodies
+                        else " This assembly has none: it is bolted to the "
+                        "world, so there is no base to vary."
+                    )
+                ),
+                observed={"component": component, "floating": free_bodies},
+            )
+        if component in claimed:
+            raise DynamicsError(
+                f"{what} is the second reset variation on {component!r}.",
+                reason="duplicate_reset_variation",
+                correction=(
+                    "One floating base takes one reset variation. Two "
+                    "compound into a tilt neither entry declares and a "
+                    "clearance neither was checked for -- widen the one "
+                    "entry's ranges instead."
+                ),
+                observed={"component": component},
+            )
+        claimed.add(component)
+
+        joint_name = f"{component}/free"
+        joint_id = int(
+            mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+        )
+        if joint_id < 0:
+            raise DynamicsError(
+                f"{what} names a body whose free joint {joint_name!r} the "
+                "exported model does not carry.",
+                reason="reset_variation_joint_missing",
+                observed={"joint": joint_name},
+            )
+        body_id = int(
+            mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_BODY, component)
+        )
+        records.append(
+            {
+                "label": label,
+                "body": component,
+                "body_id": body_id,
+                # A free joint's qpos is seven wide (position then a wxyz
+                # quaternion) and its qvel six (linear then angular), and the
+                # two addresses are not the same number.
+                "qpos_adr": int(reloaded.jnt_qposadr[joint_id]),
+                "qvel_adr": int(reloaded.jnt_dofadr[joint_id]),
+                "tilt_low_rad": math.radians(
+                    float(entry.get("tilt_degrees_low") or 0.0)
+                ),
+                "tilt_high_rad": math.radians(
+                    float(entry.get("tilt_degrees_high") or 0.0)
+                ),
+                "height_low_m": float(entry.get("height_mm_low") or 0.0) / 1000.0,
+                "height_high_m": float(entry.get("height_mm_high") or 0.0) / 1000.0,
+                "angular_velocity_low_rad_s": math.radians(
+                    float(entry.get("angular_velocity_dps_low") or 0.0)
+                ),
+                "angular_velocity_high_rad_s": math.radians(
+                    float(entry.get("angular_velocity_dps_high") or 0.0)
+                ),
+                # Measured below, once the schedule has named the keyframe.
+                "clearance_mm": None,
+            }
+        )
+    if len(records) > MAXIMUM_RESET_VARIATIONS:
+        raise DynamicsError(
+            f"{context} declares {len(records)} reset variations; the "
+            f"accepted maximum is {MAXIMUM_RESET_VARIATIONS}.",
+            reason="too_many_reset_variations",
+            observed={"entries": len(records),
+                      "maximum": MAXIMUM_RESET_VARIATIONS},
+        )
+    return records
+
+
+def _disturbance_records(
+    mujoco: Any,
+    reloaded: Any,
+    entries: Sequence[Mapping[str, Any]],
+    tree: Mapping[str, Any],
+    schedule: Mapping[str, Any],
+    *,
+    context: str,
+) -> list[dict[str, Any]]:
+    """Every disturbance, resolved to a body id and checked against the clock.
+
+    The two checks here are the ones that need the *rounded* schedule, which
+    is why they are not on the authoring surface: a push shorter than one
+    control interval can land entirely between two steps and never happen,
+    and a push whose window runs past the horizon is partly a push and
+    partly nothing. Both deliver less force than the script asked for
+    without saying so.
+    """
+
+    bodies = [str(body["name"]) for body in tree["bodies"]]
+    interval = float(schedule["control_interval_s"])
+    horizon = float(schedule["episode_seconds"])
+    records: list[dict[str, Any]] = []
+    for entry in entries:
+        component = str(entry.get("component") or "")
+        label = str(entry.get("label") or "disturbance")
+        what = f"disturbance {label!r} in {context}"
+        if component not in bodies:
+            raise DynamicsError(
+                f"{what} pushes {component!r}, which is not a body in this "
+                "assembly's dynamics model.",
+                reason="disturbance_component_missing",
+                correction=(
+                    "Pass the same assembly.component value the assembly was "
+                    "built from."
+                ),
+                observed={"component": component, "available": bodies},
+            )
+        direction = str(entry.get("direction") or "")
+        if direction not in DISTURBANCE_DIRECTIONS:
+            raise DynamicsError(
+                f"{what} points {direction!r}.",
+                reason="unknown_disturbance_direction",
+                correction=(
+                    f"The supported directions are "
+                    f"{', '.join(DISTURBANCE_DIRECTIONS)}."
+                ),
+                observed={"direction": direction},
+            )
+        low = float(entry.get("newtons_low") or 0.0)
+        high = float(entry.get("newtons_high") or 0.0)
+        if not (math.isfinite(low) and math.isfinite(high)) or low > high:
+            raise DynamicsError(
+                f"{what} has an empty magnitude range.",
+                reason="malformed_disturbance",
+                observed={"low": low, "high": high},
+            )
+        sustained = bool(entry.get("sustained"))
+        start_low = float(entry.get("at_seconds_low") or 0.0)
+        start_high = float(entry.get("at_seconds_high") or 0.0)
+        duration = float(entry.get("duration_s") or 0.0)
+        if not sustained:
+            if duration < interval:
+                raise DynamicsError(
+                    f"{what} lasts {duration:g} s, which is shorter than the "
+                    f"{interval:g} s between two control steps.",
+                    reason="disturbance_shorter_than_control_interval",
+                    correction=(
+                        "The force is set once per control step, so a window "
+                        "narrower than one can fall between two and never "
+                        f"happen at all. Give it at least {interval:g} s, or "
+                        "raise the task's control_hz."
+                    ),
+                    observed={"duration_s": duration,
+                              "control_interval_s": interval},
+                )
+            if start_high + duration > horizon:
+                raise DynamicsError(
+                    f"{what} can start as late as {start_high:g} s and lasts "
+                    f"{duration:g} s, which runs {start_high + duration:g} s "
+                    f"into a {horizon:g} s episode.",
+                    reason="disturbance_past_the_horizon",
+                    correction=(
+                        "A push whose window leaves the episode is partly a "
+                        "push and partly nothing, and which it is depends on "
+                        "the draw. Bring at_seconds down to at most "
+                        f"{horizon - duration:g} s, or lengthen the episode."
+                    ),
+                    observed={"at_seconds_high": start_high,
+                              "duration_s": duration,
+                              "episode_seconds": horizon},
+                )
+        records.append(
+            {
+                "label": label,
+                "body": component,
+                "body_id": int(
+                    mujoco.mj_name2id(
+                        reloaded, mujoco.mjtObj.mjOBJ_BODY, component
+                    )
+                ),
+                "direction": direction,
+                "newtons_low": low,
+                "newtons_high": high,
+                "sustained": sustained,
+                "at_low_s": 0.0 if sustained else start_low,
+                "at_high_s": 0.0 if sustained else start_high,
+                "duration_s": 0.0 if sustained else duration,
+                # Measured, not assumed: phase 0 put a 1 N force on a body
+                # whose centre of mass sits 100 mm from its frame origin and
+                # read zero angular acceleration, and put the same world-frame
+                # force on the body rotated 90 degrees and read the same
+                # world-frame linear acceleration. So the force acts at the
+                # centre of mass, in the world frame -- which is what makes a
+                # shove a shove rather than a torque nobody declared.
+                "applied_at": "centre_of_mass",
+                "frame": "world",
+            }
+        )
+    if len(records) > MAXIMUM_DISTURBANCES:
+        raise DynamicsError(
+            f"{context} declares {len(records)} disturbances; the accepted "
+            f"maximum is {MAXIMUM_DISTURBANCES}.",
+            reason="too_many_disturbances",
+            observed={"entries": len(records), "maximum": MAXIMUM_DISTURBANCES},
+        )
+    return records
+
+
+def _deepest_penetration_m(data: Any) -> float:
+    """The deepest contact overlap in a forwarded state, as a positive depth.
+
+    ``contact.dist`` is a signed gap: negative means the two geoms overlap.
+    Zero when nothing touches, which is the honest answer for a mechanism in
+    the air.
+    """
+
+    depth = 0.0
+    for index in range(int(data.ncon)):
+        depth = max(depth, -float(data.contact[index].dist))
+    return depth
+
+
+def _measure_reset_clearance(
+    mujoco: Any,
+    reloaded: Any,
+    records: Sequence[MutableMapping[str, Any]],
+    schedule: Mapping[str, Any],
+    *,
+    context: str,
+) -> None:
+    """Refuse a reset variation that drives the mechanism through the floor.
+
+    **This is the check the whole surface is shaped around.** The reset pose
+    is the configuration the solver found with the soles exactly on the
+    ground; tilt it and the far side of a stance swings down through the
+    floor, and MuJoCo answers a 3 mm overlap with an impulse that throws the
+    mechanism. That failure mode is what ruled out perturbing joint angles at
+    all, and the same arithmetic applies to the tilt that replaced them --
+    the difference being that a rigid tilt's worst case is *measurable*,
+    because it has two declared extremes and one drawn direction.
+
+    So it is measured rather than bounded: the widest declared tilt, the
+    smallest declared lift, at :data:`RESET_VARIATION_CLEARANCE_AZIMUTHS`
+    directions around the circle, each one forwarded and read. The baseline
+    is the reset pose's own overlap, because a solved pose sitting a
+    micrometre into the floor is normal and is not this check's business.
+
+    Each record keeps the measured margin, so a script that is close to the
+    limit can be read rather than guessed at.
+    """
+
+    if not records:
+        return
+    data = mujoco.MjData(reloaded)
+    key = mujoco.mj_name2id(
+        reloaded, mujoco.mjtObj.mjOBJ_KEY, str(schedule["reset_keyframe"])
+    )
+    if key < 0:
+        return
+    mujoco.mj_resetDataKeyframe(reloaded, data, key)
+    mujoco.mj_forward(reloaded, data)
+    baseline = _deepest_penetration_m(data)
+
+    worst = baseline
+    worst_azimuth = 0.0
+    count = int(RESET_VARIATION_CLEARANCE_AZIMUTHS)
+    for index in range(count):
+        azimuth = 2.0 * math.pi * index / count
+        mujoco.mj_resetDataKeyframe(reloaded, data, key)
+        for record in records:
+            _write_reset_variation(
+                data,
+                record,
+                tilt_rad=float(record["tilt_high_rad"]),
+                azimuth_rad=azimuth,
+                height_m=float(record["height_low_m"]),
+                angular_velocity_rad_s=(0.0, 0.0, 0.0),
+            )
+        mujoco.mj_forward(reloaded, data)
+        depth = _deepest_penetration_m(data)
+        if depth > worst:
+            worst, worst_azimuth = depth, azimuth
+
+    added = worst - baseline
+    for record in records:
+        record["clearance_mm"] = float(-added * 1000.0)
+    if added <= RESET_VARIATION_PENETRATION_LIMIT_M:
+        return
+    labels = [str(record["label"]) for record in records]
+    raise DynamicsError(
+        f"The reset variation in {context} drives the mechanism "
+        f"{added * 1000.0:.3g} mm further into the floor than its reset pose "
+        f"already sits, at an azimuth of {math.degrees(worst_azimuth):.0f} "
+        "degrees.",
+        reason="reset_variation_penetrates",
+        correction=(
+            "A tilt swings the far side of a stance downward, and the reset "
+            "pose has the soles exactly on the ground -- so the lift is what "
+            "pays for the tilt. Raise height_mm by at least "
+            f"{added * 1000.0:.3g} mm, or narrow tilt_degrees. MuJoCo "
+            "resolves an overlap this deep as an impulse, so the first thing "
+            "the episode would teach a policy is that the floor hits back."
+        ),
+        observed={
+            "entries": labels,
+            "extra_penetration_mm": added * 1000.0,
+            "reset_pose_penetration_mm": baseline * 1000.0,
+            "allowed_mm": RESET_VARIATION_PENETRATION_LIMIT_M * 1000.0,
+            "worst_azimuth_degrees": math.degrees(worst_azimuth),
+        },
+    )
+
+
 def task_records(
     built: Mapping[str, Any],
     reloaded: Any,
@@ -5922,6 +6341,28 @@ def task_records(
         joint_records,
         context=context,
     )
+    reset_variation = _reset_variation_records(
+        mujoco,
+        reloaded,
+        task.get("reset_variation") or (),
+        tree,
+        context=context,
+    )
+    # After the schedule, because both checks need the rounded numbers: the
+    # clearance measurement needs the keyframe the schedule names, and a
+    # disturbance is checked against the control interval the rounding
+    # actually produced rather than the one the script asked for.
+    _measure_reset_clearance(
+        mujoco, reloaded, reset_variation, schedule, context=context
+    )
+    disturbance = _disturbance_records(
+        mujoco,
+        reloaded,
+        task.get("disturbance") or (),
+        tree,
+        schedule,
+        context=context,
+    )
     return {
         "schema": TASK_SCHEMA,
         "label": str(task.get("label") or ""),
@@ -5931,6 +6372,12 @@ def task_records(
         "termination": termination_rows,
         "episode": schedule,
         "randomisation": randomisation,
+        "reset_variation": reset_variation,
+        "disturbance": disturbance,
+        # The two per-episode draw streams, both stated, because they are
+        # deliberately different algorithms and a reader has to be able to
+        # tell which numbers came from where (M9, ADR-084).
+        "variation_algorithm": EPISODE_VARIATION_ALGORITHM,
         # Shipped so the reference runner's own evaluator can be asserted
         # equal to this array rather than kept equal to it by attention.
         "functions": list(REWARD_FUNCTIONS),
@@ -5973,8 +6420,205 @@ def observation_values(
     return values
 
 
+def _write_reset_variation(
+    data: Any,
+    record: Mapping[str, Any],
+    *,
+    tilt_rad: float,
+    azimuth_rad: float,
+    height_m: float,
+    angular_velocity_rad_s: Sequence[float],
+) -> None:
+    """One drawn reset variation, written into ``qpos`` and ``qvel``.
+
+    The tilt is a quaternion **left**-multiplied onto the base's own: a left
+    multiply is a rotation in the world frame, and because the free joint's
+    position is left alone it happens about the base's frame origin. Every
+    joint angle below is untouched, so the whole mechanism swings as one
+    rigid thing and cannot fold into itself however far it leans.
+
+    The quaternion product is written out rather than taken from
+    ``mju_mulQuat`` because two of the three evaluators cannot call MuJoCo's
+    C helpers -- the trainer runs this inside a jitted ``jax`` function. Six
+    lines of arithmetic in three places beats one line in one place and two
+    approximations of it elsewhere, which is the same trade the reward
+    whitelist takes.
+
+    ``angular_velocity_rad_s`` lands in the free joint's angular dofs, which
+    phase 0 measured to be in the **base's own frame**: ``qvel[3:6] =
+    (1, 0, 0)`` on a body yawed 90 degrees produces a world-frame angular
+    velocity of ``(0, 1, 0)``.
+    """
+
+    address = int(record["qpos_adr"])
+    half = 0.5 * float(tilt_rad)
+    sine = math.sin(half)
+    tw = math.cos(half)
+    tx = sine * math.cos(float(azimuth_rad))
+    ty = sine * math.sin(float(azimuth_rad))
+    qw = float(data.qpos[address + 3])
+    qx = float(data.qpos[address + 4])
+    qy = float(data.qpos[address + 5])
+    qz = float(data.qpos[address + 6])
+    # Hamilton product (tw, tx, ty, 0) * (qw, qx, qy, qz), wxyz throughout,
+    # with the tilt axis horizontal so its z component is identically zero.
+    data.qpos[address + 3] = tw * qw - tx * qx - ty * qy
+    data.qpos[address + 4] = tw * qx + tx * qw - ty * qz
+    data.qpos[address + 5] = tw * qy + tx * qz + ty * qw
+    data.qpos[address + 6] = tw * qz - tx * qy + ty * qx
+    data.qpos[address + 2] = float(data.qpos[address + 2]) + float(height_m)
+
+    velocity = int(record["qvel_adr"])
+    for axis in range(3):
+        data.qvel[velocity + 3 + axis] = float(angular_velocity_rad_s[axis])
+
+
+def draw_episode_variation(
+    task: Mapping[str, Any], rng: Any
+) -> dict[str, list[dict[str, Any]]]:
+    """Every per-episode draw, in the order :data:`EPISODE_VARIATION_ALGORITHM`
+    states, as plain numbers.
+
+    Separate from applying them on purpose. The draw is the part two
+    implementations have to agree about number for number, so it is one
+    function with no model in it, and the reference runner reproduces this
+    much and nothing else.
+    """
+
+    variations: list[dict[str, Any]] = []
+    for entry in task.get("reset_variation") or ():
+        tilt = rng.uniform(
+            float(entry["tilt_low_rad"]), float(entry["tilt_high_rad"])
+        )
+        azimuth = rng.uniform(0.0, 2.0 * math.pi)
+        height = rng.uniform(
+            float(entry["height_low_m"]), float(entry["height_high_m"])
+        )
+        angular = [
+            rng.uniform(
+                float(entry["angular_velocity_low_rad_s"]),
+                float(entry["angular_velocity_high_rad_s"]),
+            )
+            for _ in range(3)
+        ]
+        variations.append(
+            {
+                "label": str(entry["label"]),
+                "tilt_rad": float(tilt),
+                "azimuth_rad": float(azimuth),
+                "height_m": float(height),
+                "angular_velocity_rad_s": [float(value) for value in angular],
+            }
+        )
+
+    pushes: list[dict[str, Any]] = []
+    for entry in task.get("disturbance") or ():
+        magnitude = rng.uniform(
+            float(entry["newtons_low"]), float(entry["newtons_high"])
+        )
+        # One draw, read two ways. A horizontal push takes it as an angle in
+        # the ground plane; a vertical one takes which half of the circle it
+        # landed in as the sign. Same stream either way, which is what makes
+        # the algorithm one sentence instead of two.
+        azimuth = rng.uniform(0.0, 2.0 * math.pi)
+        start = rng.uniform(float(entry["at_low_s"]), float(entry["at_high_s"]))
+        if str(entry["direction"]) == "vertical":
+            sign = 1.0 if azimuth < math.pi else -1.0
+            force = [0.0, 0.0, magnitude * sign]
+        else:
+            force = [
+                magnitude * math.cos(azimuth),
+                magnitude * math.sin(azimuth),
+                0.0,
+            ]
+        pushes.append(
+            {
+                "label": str(entry["label"]),
+                "newtons": float(magnitude),
+                "azimuth_rad": float(azimuth),
+                "start_s": float(start),
+                "force_n": [float(value) for value in force],
+            }
+        )
+    return {"reset_variation": variations, "disturbance": pushes}
+
+
+def apply_reset_variation(
+    mujoco: Any,
+    model: Any,
+    data: Any,
+    task: Mapping[str, Any],
+    drawn: Mapping[str, Any],
+) -> None:
+    """Move the reset pose to where this episode's draw put it, in place.
+
+    Called after ``mj_resetDataKeyframe`` and before the ``mj_forward`` that
+    makes the first observation, because the observation a policy acts on
+    has to be the observation of where it actually is.
+    """
+
+    entries = list(task.get("reset_variation") or ())
+    draws = list(drawn.get("reset_variation") or ())
+    # No draw is the unseeded episode: the nominal mechanism at the pose the
+    # solve found, which is what ``evaluate_episode`` runs at build time and
+    # what ``api.rollout`` gives without a seed. Exactly the shape
+    # randomisation already has.
+    if not entries or not draws:
+        return
+    for entry, draw in zip(entries, draws, strict=True):
+        _write_reset_variation(
+            data,
+            entry,
+            tilt_rad=float(draw["tilt_rad"]),
+            azimuth_rad=float(draw["azimuth_rad"]),
+            height_m=float(draw["height_m"]),
+            angular_velocity_rad_s=draw["angular_velocity_rad_s"],
+        )
+    mujoco.mj_forward(model, data)
+
+
+def apply_disturbance(
+    data: Any,
+    task: Mapping[str, Any],
+    drawn: Mapping[str, Any],
+    time_s: float,
+) -> None:
+    """This control step's applied forces, from the draw and the clock.
+
+    Written from zero every step rather than accumulated, so a window that
+    closed stops pushing. ``xfrc_applied`` is the only thing in this module
+    that writes that array, which is what makes clearing all of it safe.
+
+    The force goes in at the body's **centre of mass** in the **world
+    frame** -- phase 0's measurement, and the reason the surface can promise
+    that a shove is a shove: applied at the frame origin instead, the same
+    vector on a body whose mass is offset from its joint would carry a
+    torque the script never asked for.
+    """
+
+    entries = list(task.get("disturbance") or ())
+    draws = list(drawn.get("disturbance") or ())
+    if not entries or not draws:
+        return
+    data.xfrc_applied[:] = 0.0
+    for entry, draw in zip(entries, draws, strict=True):
+        if not bool(entry["sustained"]):
+            start = float(draw["start_s"])
+            if not start <= float(time_s) < start + float(entry["duration_s"]):
+                continue
+        body = int(entry["body_id"])
+        for axis in range(3):
+            data.xfrc_applied[body, axis] += float(draw["force_n"][axis])
+
+
 def apply_randomisation(
-    mujoco: Any, model: Any, data: Any, task: Mapping[str, Any], *, seed: int
+    mujoco: Any,
+    model: Any,
+    data: Any,
+    task: Mapping[str, Any],
+    *,
+    seed: int | None = None,
+    rng: Any = None,
 ) -> list[dict[str, Any]]:
     """Draw one factor per entry and multiply it into the model, in place.
 
@@ -5987,11 +6631,22 @@ def apply_randomisation(
     ``body_subtreemass`` is derived from ``body_mass`` there, so a mass draw
     that skipped it would change the mass and not what the solver does with
     it.
+
+    ``rng`` takes an already-running stream instead of a seed, which is what
+    an episode uses: the randomisation draws come first and the M9 per-
+    episode draws continue the same ``random.Random`` in bundle order, so
+    the two cannot be made from one seed independently.
     """
 
     import random
 
-    rng = random.Random(int(seed))
+    if (seed is None) == (rng is None):
+        raise DynamicsError(
+            "apply_randomisation takes exactly one of seed= or rng=.",
+            reason="malformed_randomisation_call",
+        )
+    if rng is None:
+        rng = random.Random(int(seed))
     drawn: list[dict[str, Any]] = []
     for entry in task.get("randomisation") or ():
         factor = rng.uniform(float(entry["low"]), float(entry["high"]))
@@ -6099,11 +6754,19 @@ def evaluate_episode(
     ]
 
     data = mujoco.MjData(model)
-    drawn = (
-        []
-        if seed is None
-        else apply_randomisation(mujoco, model, data, task, seed=int(seed))
-    )
+    # One stream, in bundle order: the randomisation draws first, then the
+    # per-episode ones. Two independent ``Random(seed)`` instances would give
+    # the reset variation the same numbers the randomisation already used,
+    # which is a correlation nobody declared.
+    rng = None
+    drawn: list[dict[str, Any]] = []
+    variation: dict[str, Any] = {"reset_variation": [], "disturbance": []}
+    if seed is not None:
+        import random
+
+        rng = random.Random(int(seed))
+        drawn = apply_randomisation(mujoco, model, data, task, rng=rng)
+        variation = draw_episode_variation(task, rng)
     key = mujoco.mj_name2id(
         model, mujoco.mjtObj.mjOBJ_KEY, str(episode["reset_keyframe"])
     )
@@ -6117,6 +6780,10 @@ def evaluate_episode(
         )
     mujoco.mj_resetDataKeyframe(model, data, key)
     mujoco.mj_forward(model, data)
+    # Before the reset-pose sample below, because the first frame a rollout
+    # draws and the first observation a policy acts on both have to be of
+    # where the mechanism actually starts.
+    apply_reset_variation(mujoco, model, data, task, variation)
 
     steps: list[dict[str, Any]] = []
     samples: list[Any] = []
@@ -6134,6 +6801,11 @@ def evaluate_episode(
     _sampled(0, max_steps < 1, None)
     for step in range(max_steps):
         time_s = step * control_interval
+        # Once per control step and held across the solver steps below,
+        # which is the same granularity the action has and the same one MJX
+        # can express inside a scan. A force that changed under a policy that
+        # could not see it change would be noise, not a disturbance.
+        apply_disturbance(data, task, variation, time_s)
         observation = observation_values(task, data.sensordata)
         if actions is None:
             commanded = [
@@ -6208,6 +6880,11 @@ def evaluate_episode(
         # apart: the first is a horizon, the second is a failure.
         "truncated": terminated_step is None,
         "randomisation": drawn,
+        # What this episode actually drew, so that a rollout that fell over
+        # can be read against the shove that pushed it rather than guessed
+        # at from the seed.
+        "reset_variation": variation["reset_variation"],
+        "disturbance": variation["disturbance"],
         "seed": None if seed is None else int(seed),
     }
 

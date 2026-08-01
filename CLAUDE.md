@@ -1,6 +1,6 @@
 # CLAUDE.md — Agent Entry Point
 
-Verified against source: 2026-07-31. This file replaces the retired
+Verified against source: 2026-08-01. This file replaces the retired
 `AGENTS.md` (see `docs/DECISIONS.md` ADR-005).
 
 Cadex is an AI-native CAD app. **This repository is the whole product**
@@ -62,7 +62,7 @@ Read `docs/VISION.md` before designing anything.
 | `docs/ARCHITECTURE.md` | What exists today: pipeline, file map, project store, substrate. |
 | `docs/XSCRIPT.md` | The scripting model — today (per-domain programs) vs target (one project script). |
 | `docs/ROADMAP.md` | Phases 0–14, status checkboxes, exit criteria. Living status lives here. |
-| `docs/MUJOCO.md` | **This branch's vertical**: dynamics and control, slices M0–M8 (all closed), the hazards, and the measured facts. §7 is the **end-to-end walkthrough** — how to take a drawing to a trained policy, in the order that costs least. ROADMAP Phase 14 is its status line. |
+| `docs/MUJOCO.md` | **This branch's vertical**: dynamics and control, slices M0–M9 (all closed), the hazards, and the measured facts. §7 is the **end-to-end walkthrough** — how to take a drawing to a trained policy, in the order that costs least. ROADMAP Phase 14 is its status line. |
 | `docs/DECISIONS.md` | ADR log. Append an entry for every removal or direction change. |
 | `docs/PROVENANCE.md` | Which code came from FreeCAD, from Blender, and from VibeCAD; licences, credit, and how two licences share one repo. |
 | `docs/FREECAD.md` | Inherited-tree ledger for the **engine**: kept / disabled / already-deleted. |
@@ -228,11 +228,14 @@ tests and logging the decision; don't commit secrets or machine paths.
 ## The dynamics vertical (ADR-060, ADR-063, ADR-067, ADR-072)
 
 What this version of the product carries that `main` does not:
-`docs/MUJOCO.md` and its slices M0–M8 (**all closed**, ADR-071);
-`CadexDynamics.py` and the `assembly.{body,dynamics,collision,actuator,
-joint_dynamics,mjcf,task,policy,rollout}` surface; the `test_dynamics_*`
-suites; `training/`; the mujoco lines in `pixi.toml`/`pixi.lock`; and
-`CARRIED_PYPI_PACKAGES` in
+`docs/MUJOCO.md` and its slices M0–M9 (**all closed**, ADR-071 for M0–M8,
+ADR-084/085/086 for M9, ADR-087 for M9b, ADR-088 for M9c);
+`CadexDynamics.py` and the
+`assembly.{body,dynamics,collision,actuator,joint_dynamics,mjcf,task,policy,
+rollout,reset_variation,disturbance}` surface; the `test_dynamics_*` suites;
+`training/`; `mesh_agent/cadex_collision.py` and
+`mesh_agent/cadex_training.py`; the mujoco lines in `pixi.toml`/`pixi.lock`;
+and `CARRIED_PYPI_PACKAGES` in
 `package/rattler-build/scripts/relocate_conda_environment.py`. A sync from
 `main` must never drop those.
 

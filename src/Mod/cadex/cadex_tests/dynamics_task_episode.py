@@ -126,6 +126,101 @@ def observation_values(task: dict, sensordata: Any) -> dict[str, float]:
     return values
 
 
+def draw_variation(task: dict, rng: Any) -> dict[str, list]:
+    """The bundle's ``variation_algorithm``, reproduced from its own text.
+
+    A second implementation of the per-episode draw, written here for the
+    reason every other second implementation in this file is written: the
+    bundle states an algorithm, and a stated algorithm nobody reproduces is
+    a comment. Number for number against ``CadexDynamics`` from one seed, or
+    the bundle does not say enough for a trainer to run the task.
+
+    Note what is *not* branched on: three draws per disturbance whether or
+    not it is sustained, six per reset variation whatever its ranges. A
+    stream whose position depends on a branch is a stream two
+    implementations get wrong differently.
+    """
+
+    variations = []
+    for entry in task.get("reset_variation") or []:
+        tilt = rng.uniform(float(entry["tilt_low_rad"]), float(entry["tilt_high_rad"]))
+        azimuth = rng.uniform(0.0, 2.0 * math.pi)
+        height = rng.uniform(float(entry["height_low_m"]),
+                             float(entry["height_high_m"]))
+        angular = [
+            rng.uniform(float(entry["angular_velocity_low_rad_s"]),
+                        float(entry["angular_velocity_high_rad_s"]))
+            for _ in range(3)
+        ]
+        variations.append({"label": str(entry["label"]), "tilt_rad": tilt,
+                           "azimuth_rad": azimuth, "height_m": height,
+                           "angular_velocity_rad_s": angular})
+    pushes = []
+    for entry in task.get("disturbance") or []:
+        magnitude = rng.uniform(float(entry["newtons_low"]),
+                                float(entry["newtons_high"]))
+        azimuth = rng.uniform(0.0, 2.0 * math.pi)
+        start = rng.uniform(float(entry["at_low_s"]), float(entry["at_high_s"]))
+        if str(entry["direction"]) == "vertical":
+            sign = 1.0 if azimuth < math.pi else -1.0
+            force = [0.0, 0.0, magnitude * sign]
+        else:
+            force = [magnitude * math.cos(azimuth), magnitude * math.sin(azimuth),
+                     0.0]
+        pushes.append({"label": str(entry["label"]), "newtons": magnitude,
+                       "azimuth_rad": azimuth, "start_s": start,
+                       "force_n": force})
+    return {"reset_variation": variations, "disturbance": pushes}
+
+
+def write_variation(data: Any, entry: dict, draw: dict) -> None:
+    """One drawn reset variation, into ``qpos`` and ``qvel``.
+
+    The tilt quaternion is left-multiplied onto the base's own, which is a
+    world-frame rotation about the base's frame origin because the position
+    is untouched -- so the whole mechanism swings rigidly and every joint
+    angle stays exactly where the solve left it. The Hamilton product is
+    written out because MuJoCo's helper is not available to all three
+    evaluators, and the horizontal tilt axis makes its z term zero.
+    """
+
+    address = int(entry["qpos_adr"])
+    half = 0.5 * float(draw["tilt_rad"])
+    sine = math.sin(half)
+    tw = math.cos(half)
+    tx = sine * math.cos(float(draw["azimuth_rad"]))
+    ty = sine * math.sin(float(draw["azimuth_rad"]))
+    qw = float(data.qpos[address + 3])
+    qx = float(data.qpos[address + 4])
+    qy = float(data.qpos[address + 5])
+    qz = float(data.qpos[address + 6])
+    data.qpos[address + 3] = tw * qw - tx * qx - ty * qy
+    data.qpos[address + 4] = tw * qx + tx * qw - ty * qz
+    data.qpos[address + 5] = tw * qy + tx * qz + ty * qw
+    data.qpos[address + 6] = tw * qz - tx * qy + ty * qx
+    data.qpos[address + 2] = float(data.qpos[address + 2]) + float(draw["height_m"])
+    velocity = int(entry["qvel_adr"])
+    for axis in range(3):
+        data.qvel[velocity + 3 + axis] = float(draw["angular_velocity_rad_s"][axis])
+
+
+def push(data: Any, task: dict, variation: dict, time_s: float) -> None:
+    """This control step's applied forces, from zero, at the centre of mass."""
+
+    entries = task.get("disturbance") or []
+    if not entries:
+        return
+    data.xfrc_applied[:] = 0.0
+    for entry, draw in zip(entries, variation["disturbance"]):
+        if not bool(entry["sustained"]):
+            start = float(draw["start_s"])
+            if not start <= time_s < start + float(entry["duration_s"]):
+                continue
+        body = int(entry["body_id"])
+        for axis in range(3):
+            data.xfrc_applied[body, axis] += float(draw["force_n"][axis])
+
+
 def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
     """One episode of one bundle, in an interpreter that has no Cadex."""
 
@@ -194,10 +289,14 @@ def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
     data = mujoco.MjData(model)
 
     drawn: list[dict[str, Any]] = []
+    variation: dict[str, list] = {"reset_variation": [], "disturbance": []}
     if seed is not None:
         # The stated algorithm, reproduced: random.Random(seed) drawing
         # uniform(low, high) in bundle order. "Whatever the RNG did" is not
-        # reproducible across two implementations; this is.
+        # reproducible across two implementations; this is. The per-episode
+        # draws continue the same stream, which is why they are not a second
+        # Random(seed) -- that would hand them the numbers the randomisation
+        # already used.
         rng = random.Random(int(seed))
         for entry in task.get("randomisation") or []:
             factor = rng.uniform(float(entry["low"]), float(entry["high"]))
@@ -206,6 +305,7 @@ def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
             drawn.append({"label": str(entry["label"]), "factor": repr(factor)})
         if drawn:
             mujoco.mj_setConst(model, data)
+        variation = draw_variation(task, rng)
 
     episode = task["episode"]
     key = mujoco.mj_name2id(
@@ -217,6 +317,10 @@ def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
         )
     mujoco.mj_resetDataKeyframe(model, data, key)
     mujoco.mj_forward(model, data)
+    if variation["reset_variation"]:
+        for entry, draw in zip(task["reset_variation"], variation["reset_variation"]):
+            write_variation(data, entry, draw)
+        mujoco.mj_forward(model, data)
 
     per_action = int(episode["solver_steps_per_action"])
     interval = float(episode["control_interval_s"])
@@ -226,6 +330,7 @@ def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
     termination_label = ""
     for step in range(int(episode["max_steps"])):
         time_s = step * interval
+        push(data, task, variation, time_s)
         applied: list[float] = []
         for action, code in zip(task["actions"], fallbacks):
             value = float(eval(code, GLOBALS, {"time": time_s}))
@@ -284,6 +389,31 @@ def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
         "termination": termination_label,
         "truncated": terminated_step is None,
         "randomisation": drawn,
+        # `repr` for the same reason every other float here is: a difference
+        # against the engine's own draw has to be a number difference and
+        # never a formatting one.
+        "reset_variation": [
+            {
+                "label": str(draw["label"]),
+                "tilt_rad": repr(draw["tilt_rad"]),
+                "azimuth_rad": repr(draw["azimuth_rad"]),
+                "height_m": repr(draw["height_m"]),
+                "angular_velocity_rad_s": [
+                    repr(value) for value in draw["angular_velocity_rad_s"]
+                ],
+            }
+            for draw in variation["reset_variation"]
+        ],
+        "disturbance": [
+            {
+                "label": str(draw["label"]),
+                "newtons": repr(draw["newtons"]),
+                "azimuth_rad": repr(draw["azimuth_rad"]),
+                "start_s": repr(draw["start_s"]),
+                "force_n": [repr(value) for value in draw["force_n"]],
+            }
+            for draw in variation["disturbance"]
+        ],
         "seed": None if seed is None else int(seed),
     }
 

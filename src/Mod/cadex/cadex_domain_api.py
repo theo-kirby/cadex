@@ -131,6 +131,10 @@ _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
         "reward": "reward",
         "termination": "termination",
         "randomise": "randomise",
+        # An episode's starting pose and the forces that arrive while it
+        # runs -- arguments to a task, like a randomisation range (M9).
+        "reset_variation": "reset_variation",
+        "disturbance": "disturbance",
         "exploded_view": "exploded_view",
     },
     "material": {

@@ -787,6 +787,12 @@ _RANDOMISATION_TARGETS: dict[str, str] = {
     "friction_loss": "joint",
 }
 
+#: Which way a disturbance may point, and what gets drawn to decide it.
+#: ``horizontal`` draws an azimuth over the full circle; ``vertical`` draws a
+#: sign. Both are one scalar, which is what keeps the draw order the same
+#: length whichever a script picks.
+_DISTURBANCE_DIRECTIONS = frozenset({"horizontal", "vertical"})
+
 #: An observation's name, which becomes a name a reward formula writes. The
 #: same shape as a Python identifier because that is what it turns into,
 #: and short enough that the suffixed forms stay readable.
@@ -836,6 +842,12 @@ class AssemblyDomainAPI:
         "reward",
         "termination",
         "randomise",
+        # Two more intermediates on the same terms as `randomise`, and the
+        # pair that stops an episode always starting in the same place: a
+        # variation on the reset pose, and a force applied while the episode
+        # runs (M9, ADR-084).
+        "reset_variation",
+        "disturbance",
         "exploded_view",
     )
 
@@ -2606,6 +2618,232 @@ class AssemblyDomainAPI:
             operation, "randomise", value, label=label, **properties
         )
 
+    def reset_variation(
+        self,
+        target: DomainValue,
+        *,
+        tilt_degrees: Sequence[float] | None = None,
+        height_mm: Sequence[float] | None = None,
+        angular_velocity_dps: Sequence[float] | None = None,
+        label: str = "",
+    ) -> DomainValue:
+        """Start each episode somewhere else, and already moving.
+
+        Without this every episode of a task begins at exactly the same
+        keyframe with every velocity zero, and a posture that survives once
+        survives forever. A policy trained that way has not learned to
+        balance -- it has learned one pose, and nothing in the task ever
+        asked it a second question. This is what asks.
+
+        ``target`` is the ``api.component`` carrying the mechanism's
+        **floating base**: the body the MJCF gives a free joint. A mechanism
+        bolted to the world has no base to vary and this refuses, naming the
+        bodies that do.
+
+        What varies, and deliberately what does not:
+
+        * ``tilt_degrees=[low, high]`` -- a lean, drawn as a magnitude with
+          its azimuth drawn uniformly over the full circle. The whole
+          mechanism rotates **rigidly** about the base's own frame origin:
+          every joint angle is left exactly as the solve left it.
+        * ``height_mm=[low, high]`` -- an upward offset, never downward. A
+          tilt swings the far side of a wide stance downward, and the reset
+          pose is the *solved* one with the soles exactly on the floor, so a
+          tilt with no lift drives a sole through it. The engine measures
+          the penetration the widest declared tilt would cause and refuses
+          a pairing that does not clear it.
+        * ``angular_velocity_dps=[low, high]`` -- each of the base's three
+          angular velocity components, drawn independently, in the **base's
+          own frame**, which is where MuJoCo keeps a free joint's angular
+          velocity.
+
+        **Joint angles are never perturbed, and that is the load-bearing
+        decision.** The reset pose is the configuration the solver found with
+        the soles on the ground; a few degrees at a knee moves a foot
+        millimetres through the floor and MuJoCo answers that with a contact
+        impulse nothing could stand up to. A rigid tilt plus a lift cannot
+        do that, because it cannot change the mechanism's shape at all.
+
+        A reset variation is an intermediate value: pass it to ``api.task``.
+        """
+
+        operation = "reset_variation"
+        value = _domain_value(
+            operation, "target", target, output_type="component_link"
+        )
+        properties: dict[str, Any] = {}
+        given = 0
+        for parameter, source, floor in (
+            ("tilt_degrees", tilt_degrees, 0.0),
+            ("height_mm", height_mm, 0.0),
+            ("angular_velocity_dps", angular_velocity_dps, None),
+        ):
+            if source is None:
+                low, high = 0.0, 0.0
+            else:
+                low, high = _vector(operation, parameter, source, size=2)
+                given += 1
+            if floor is not None and low < floor:
+                raise _error(
+                    operation,
+                    parameter,
+                    "is a magnitude and cannot be negative: a tilt's "
+                    "direction is drawn rather than declared, and a "
+                    "downward height offset is a sole through the floor",
+                    source,
+                )
+            if high < low:
+                raise _error(
+                    operation, parameter, "must be ordered [low, high]", source
+                )
+            properties[f"{parameter}_low"] = low
+            properties[f"{parameter}_high"] = high
+        if not given:
+            raise _error(
+                operation,
+                "tilt_degrees",
+                "varies nothing: give at least one of tilt_degrees, "
+                "height_mm or angular_velocity_dps. An entry that draws only "
+                "zeros costs an episode's arithmetic and changes no episode",
+            )
+        return self._value(
+            operation,
+            "reset_variation",
+            value,
+            label=_label(operation, label),
+            **properties,
+        )
+
+    def disturbance(
+        self,
+        target: DomainValue,
+        *,
+        newtons: Sequence[float],
+        direction: str = "horizontal",
+        at_seconds: Sequence[float] | None = None,
+        duration_s: float | None = None,
+        sustained: bool = False,
+        label: str = "",
+    ) -> DomainValue:
+        """Push the mechanism mid-episode and see whether it comes back.
+
+        One entry is **one event**: three shoves an episode is three
+        entries, which is the shape ``api.randomise`` already has and what
+        keeps the draw order statable in a sentence. The force is applied at
+        the target body's **centre of mass**, in the **world frame** -- both
+        measured rather than assumed, because a shove applied at a frame
+        origin instead would be a torque nobody declared.
+
+        ``newtons=[low, high]`` is the magnitude, drawn per episode.
+        ``direction`` is ``"horizontal"``, whose azimuth is drawn uniformly
+        over the full circle, or ``"vertical"``, whose sign is drawn.
+
+        ``at_seconds=[low, high]`` draws when the push starts and
+        ``duration_s`` says how long it lasts -- a fixed number, because a
+        drawn duration and a drawn magnitude are the same knob twice.
+        ``sustained=True`` is the other shape: the force acts for the whole
+        episode, which is what wind is, and it takes neither of those two.
+
+        Both are checked against the schedule the task fixes. A push shorter
+        than one control interval can fall between two steps and never
+        happen, and a push whose window runs past the horizon is partly a
+        push and partly nothing -- the engine refuses both with the
+        arithmetic in the message rather than quietly delivering less force
+        than the script asked for.
+
+        A disturbance is an intermediate value: pass it to ``api.task``.
+        """
+
+        operation = "disturbance"
+        value = _domain_value(
+            operation, "target", target, output_type="component_link"
+        )
+        clean_direction = str(direction or "").strip().lower()
+        if clean_direction not in _DISTURBANCE_DIRECTIONS:
+            raise _error(
+                operation,
+                "direction",
+                f"must be one of {sorted(_DISTURBANCE_DIRECTIONS)}",
+                direction,
+            )
+        low, high = _vector(operation, "newtons", newtons, size=2)
+        if low < 0.0:
+            raise _error(
+                operation,
+                "newtons",
+                "is a magnitude and cannot be negative: which way the push "
+                "goes is drawn, not signed",
+                newtons,
+            )
+        if high < low:
+            raise _error(
+                operation, "newtons", "must be ordered [low, high]", newtons
+            )
+        if not isinstance(sustained, bool):
+            raise _error(
+                operation, "sustained", "expected True or False", sustained
+            )
+        properties: dict[str, Any] = {
+            "direction": clean_direction,
+            "newtons_low": low,
+            "newtons_high": high,
+            "sustained": bool(sustained),
+        }
+        if sustained:
+            for parameter, source in (
+                ("at_seconds", at_seconds),
+                ("duration_s", duration_s),
+            ):
+                if source is not None:
+                    raise _error(
+                        operation,
+                        parameter,
+                        "is not accepted with sustained=True: a sustained "
+                        "disturbance acts for the whole episode, which is "
+                        "the one window that needs no start and no length",
+                        source,
+                    )
+            properties["at_seconds_low"] = 0.0
+            properties["at_seconds_high"] = 0.0
+            properties["duration_s"] = 0.0
+        else:
+            if at_seconds is None or duration_s is None:
+                raise _error(
+                    operation,
+                    "at_seconds",
+                    "a disturbance that is not sustained needs both "
+                    "at_seconds=[low, high] and duration_s=...: when it "
+                    "happens and how long it lasts",
+                )
+            start_low, start_high = _vector(
+                operation, "at_seconds", at_seconds, size=2
+            )
+            if start_low < 0.0:
+                raise _error(
+                    operation,
+                    "at_seconds",
+                    "cannot start before the episode does",
+                    at_seconds,
+                )
+            if start_high < start_low:
+                raise _error(
+                    operation, "at_seconds", "must be ordered [low, high]",
+                    at_seconds,
+                )
+            properties["at_seconds_low"] = start_low
+            properties["at_seconds_high"] = start_high
+            properties["duration_s"] = _number(
+                operation, "duration_s", duration_s,
+                minimum=0.0, strict_minimum=True,
+            )
+        return self._value(
+            operation,
+            "disturbance",
+            value,
+            label=_label(operation, label),
+            **properties,
+        )
+
     def mjcf(
         self,
         assembly: DomainValue,
@@ -2763,6 +3001,8 @@ class AssemblyDomainAPI:
         control_hz: int,
         termination: Sequence[DomainValue] = (),
         randomisation: Sequence[DomainValue] = (),
+        reset_variation: Sequence[DomainValue] = (),
+        disturbance: Sequence[DomainValue] = (),
         label: str = "",
     ) -> DomainValue:
         """Turn one exported model into a trainable task.
@@ -2804,6 +3044,17 @@ class AssemblyDomainAPI:
         actuator's formula becomes its deterministic fallback action, which
         is what lets the episode run -- and be compared against a stock
         MuJoCo -- before any policy exists.
+
+        ``randomisation``, ``reset_variation`` and ``disturbance`` are the
+        three ways an episode differs from the one before it, and they are
+        not interchangeable. A randomisation varies the *mechanism* -- a
+        mass, a damping -- and a trainer holds one draw per environment for
+        a whole run. A reset variation varies where the episode *starts*,
+        and a disturbance is a force that arrives while it is *running*;
+        both are drawn afresh every episode, because a posture that is never
+        disturbed is a posture that was never tested. A task with neither of
+        the last two asks a policy exactly one question and accepts one
+        answer, which is what makes bracing a winning strategy.
 
         Like ``api.mjcf`` and for the same reason, ``api.task`` is not under
         the "exactly one simulation" rule: a script may declare several,
@@ -2877,6 +3128,32 @@ class AssemblyDomainAPI:
                     "draw would silently replace the first",
                 )
             varied.add(key)
+        # The two M9 lists, checked against the same component list. Their
+        # sizing -- whether a tilt clears the floor, whether a shove is
+        # longer than a control interval and lands inside the horizon -- is
+        # the engine's, because every one of those questions needs the
+        # compiled model or the rounded schedule and this surface has
+        # neither.
+        variation_values = _values(
+            operation, "reset_variation", reset_variation,
+            output_type="reset_variation", minimum=0,
+        )
+        disturbance_values = _values(
+            operation, "disturbance", disturbance,
+            output_type="disturbance", minimum=0,
+        )
+        for parameter, entries in (
+            ("reset_variation", variation_values),
+            ("disturbance", disturbance_values),
+        ):
+            for index, entry in enumerate(entries):
+                if id(entry.arguments[0]) not in component_ids:
+                    raise _error(
+                        operation,
+                        f"{parameter}[{index}]",
+                        "names a component that is not listed in this "
+                        "assembly",
+                    )
         seconds = _number(
             operation, "episode_seconds", episode_seconds,
             minimum=0.0, maximum=3600.0, strict_minimum=True,
@@ -2898,6 +3175,8 @@ class AssemblyDomainAPI:
             reward=reward_values,
             termination=termination_values,
             randomisation=randomisation_values,
+            reset_variation=variation_values,
+            disturbance=disturbance_values,
             episode_seconds=seconds,
             control_hz=control_hz,
             label=label,

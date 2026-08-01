@@ -4,6 +4,10 @@
 #
 #   training/remote_train.sh check                       pre-flight the box
 #   training/remote_train.sh train <bundle.json> <out.cxpolicy> [-- trainer args]
+#   training/remote_train.sh train ... --detach          start it and come back
+#   training/remote_train.sh watch <run-id> [dest]       follow a detached run
+#   training/remote_train.sh pull  <run-id> [dest]       bring its files home
+#   training/remote_train.sh stop  <run-id>              end it early
 #   training/remote_train.sh shell                       interactive ssh, configured
 #   training/remote_train.sh config                      print the resolved settings
 #
@@ -149,7 +153,18 @@ require() {
 
 # Single-quote a string for a remote shell. The only quoting primitive this
 # file needs, and bash 3.2 has no `${x@Q}` to borrow one from.
-shquote() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
+#
+# The `sed` is not decoration. This was written as a `${1//.../...}`
+# substitution and that form is **wrong** in bash 3.2: measured, it turns
+# `a'b` into `'a\'\\'\'b'` rather than `'a'\''b'`. Nothing had ever
+# passed it a string containing a quote, so it worked for a year and then
+# broke the first command that did. Identical output for anything without
+# one, which is every existing caller.
+shquote() {
+    local body
+    body=$(printf %s "$1" | sed s/\'/\'\\\\\'\'/g)
+    printf \'%s\' "${body}"
+}
 
 # sha256 of a local file. macOS ships `shasum`, Linux ships `sha256sum`, and
 # a dispatch script that only runs on the machine it was written on is not
@@ -423,7 +438,7 @@ REMOTE
 cmd_train() {
     load_config
 
-    local allow_cpu=0 bundle="" out="" extra="" seen_dashdash=0
+    local allow_cpu=0 detach=0 bundle="" out="" extra="" seen_dashdash=0
     while [ "$#" -gt 0 ]; do
         if [ "${seen_dashdash}" -eq 1 ]; then
             extra="${extra} $(shquote "$1")"; shift; continue
@@ -431,6 +446,7 @@ cmd_train() {
         case "$1" in
             --)          seen_dashdash=1; shift ;;
             --allow-cpu) allow_cpu=1; shift ;;
+            --detach)    detach=1; shift ;;
             -*)          echo "FAIL: unknown option $1 (trainer flags go after \`--\`)."; exit 2 ;;
             *)
                 if   [ -z "${bundle}" ]; then bundle="$1"
@@ -441,7 +457,7 @@ cmd_train() {
         esac
     done
     if [ -z "${bundle}" ] || [ -z "${out}" ]; then
-        echo "usage: $(basename "$0") train <bundle.json> <out.cxpolicy> [--allow-cpu] [-- trainer args]"
+        echo "usage: $(basename "$0") train <bundle.json> <out.cxpolicy> [--allow-cpu] [--detach] [-- trainer args]"
         exit 2
     fi
 
@@ -487,6 +503,12 @@ PY
 
     on_box "mkdir -p $(shquote "${remote_dir}")"
     rsync -e "${rsync_ssh}" -a "${bundle}" "${model}" "${target}:${remote_dir}/"
+
+    if [ "${detach}" -eq 1 ]; then
+        detached_train "${run_id}" "${remote_dir}" "${bundle_name}" \
+                       "${out_name}" "${extra}"
+        return 0
+    fi
 
     # stdout is the trainer's single JSON line; stderr is its per-iteration
     # reward curve, which streams to this terminal while it trains.
@@ -550,6 +572,240 @@ PY
     echo "        assembly.policy(task, weights=\"${out_name}\", sha256=\"${actual}\", label=...)"
 }
 
+# ---------------------------------------------------------------------------
+# detach / watch / pull / stop -- a run you can leave, and see.
+# ---------------------------------------------------------------------------
+#
+# `train` without `--detach` is one ssh that lives as long as the run does.
+# A dropped connection, a closed laptop or a sleeping wifi chip is then a
+# lost run, and the mg-legs run that motivated M9 took 76 minutes -- long
+# enough for all three. So the process is started under `setsid nohup`,
+# owned by nothing, and everything after that is polling files.
+#
+# `progress.json` is the contract. Nothing here parses the trainer stderr:
+# ADR-080 measured what happens when a receipt is taken from a stream that
+# something else can write into, and the answer was a 3 h 49 m run whose
+# dispatch failed on two warp warnings. The trainer writes that file
+# atomically every iteration and this reads it, and neither of them cares
+# what else is on the terminal.
+
+# The local directory a run mirrors into. Defaults to ./<run-id> so two runs
+# cannot land on each other, and takes a project directory when you want the
+# shell to see it -- the panel polls <dir>/training-progress.json.
+run_destination() {
+    if [ -n "${2:-}" ]; then printf %s "$2"; else printf %s "./$1"; fi
+}
+
+detached_train() {
+    local run_id="$1" remote_dir="$2" bundle_name="$3" out_name="$4" extra="$5"
+
+    # Two things here are subtler than they look, and both were measured
+    # rather than reasoned about, because both fail *silently*:
+    #
+    #   * **The pid file has to be python own.** Writing `$!` after
+    #     backgrounding records the pid of the wrapping subshell, and
+    #     `setsid` forks again on top of that. Measured: `stop` reported
+    #     "stopped", killed the subshell, and left a 4000-iteration run on a
+    #     5090 training happily with nothing pointing at it. So the inner
+    #     shell writes its **own** pid and then `exec`s, which makes the
+    #     recorded number the trainer process itself by construction.
+    #   * **ssh has to be able to let go.** `cd X && cmd &` backgrounds the
+    #     whole AND-list, so the subshell keeps the ssh channel stdout and
+    #     stderr open and the ssh does not return -- which is exactly the
+    #     blocking `--detach` exists to remove. The `cd` is therefore its own
+    #     statement, and the backgrounded command has all three descriptors
+    #     redirected.
+    local inner
+    inner="echo \$\$ > $(shquote "${remote_dir}/train.pid"); exec"
+    inner="${inner} $(shquote "${remote_venv}/bin/python")"
+    inner="${inner} $(shquote "${remote_repo}/training/cadex_train.py")"
+    inner="${inner} $(shquote "${remote_dir}/${bundle_name}")"
+    inner="${inner} --out $(shquote "${remote_dir}/${out_name}")"
+    inner="${inner} ${extra}"
+
+    on_box "cd $(shquote "${remote_dir}") || exit 1
+            setsid sh -c $(shquote "${inner}") < /dev/null > train.log 2>&1 &"
+
+    # The pid lands as soon as the inner shell runs, which is a fork away
+    # rather than an interpreter start away -- but it is still a race, and a
+    # `stop` that found no pid file would be a run nobody can end.
+    local pid="" attempt=0
+    while [ "${attempt}" -lt 20 ]; do
+        pid="$(on_box "cat $(shquote "${remote_dir}/train.pid") 2>/dev/null" || true)"
+        if [ -n "${pid}" ]; then break; fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    if [ -z "${pid}" ]; then
+        echo "FAIL: the run started but never wrote ${remote_dir}/train.pid."
+        echo "      It may be running and unstoppable. On the box:"
+        echo "        tail ${remote_dir}/train.log"
+        exit 1
+    fi
+
+    echo "==> detached, run ${run_id} (pid ${pid})"
+    echo "==> watch it:   $(basename "$0") watch ${run_id}"
+    echo "==> stop it:    $(basename "$0") stop ${run_id}"
+    echo "==> bring home: $(basename "$0") pull ${run_id}"
+}
+
+# One poll: mirror progress.json and any new .cxpolicy back, print a line.
+# Split out because `watch` and `pull` differ only in whether they loop.
+sync_run() {
+    local remote_dir="$1" dest="$2"
+    mkdir -p "${dest}"
+    # `--ignore-missing-args` is not portable, so a run whose first
+    # progress.json has not landed yet is a non-fatal rsync rather than an
+    # error: the loop tries again in a moment.
+    rsync -e "${rsync_ssh}" -a \
+        "${target}:${remote_dir}/progress.json" \
+        "${dest}/training-progress.json" 2>/dev/null || return 1
+    # Every checkpoint the run has written, including the one it is named
+    # for. `-a` skips what has not changed, so this is one stat per file
+    # after the first pass.
+    rsync -e "${rsync_ssh}" -a --include="*.cxpolicy" --exclude="*" \
+        "${target}:${remote_dir}/" "${dest}/" 2>/dev/null || true
+    return 0
+}
+
+# Read one field out of the mirrored progress file. Absent is empty, never
+# an error: the file is written by another machine and a half-second of
+# "not there yet" is normal.
+progress_field() {
+    python3 -c 'import json,sys
+try:
+    print(json.load(open(sys.argv[1])).get(sys.argv[2], "") or "")
+except Exception:
+    print("")' "$1" "$2" 2>/dev/null || echo ""
+}
+
+cmd_watch() {
+    load_config
+    require CADEX_TRAIN_WORK "${remote_work}"
+    local run_id="${1:-}" dest
+    if [ -z "${run_id}" ]; then
+        echo "usage: $(basename "$0") watch <run-id> [destination]"
+        echo "       destination defaults to ./<run-id>; point it at a .cadex"
+        echo "       project directory and the shell Training panel picks it up."
+        exit 2
+    fi
+    dest="$(run_destination "${run_id}" "${2:-}")"
+    resolve_remote_paths
+    local remote_dir="${remote_work%/}/${run_id}"
+    local progress="${dest}/training-progress.json"
+
+    echo "==> ${target}:${remote_dir}"
+    echo "==> ${progress}"
+
+    local state="" last=""
+    while :; do
+        if sync_run "${remote_dir}" "${dest}"; then
+            state="$(progress_field "${progress}" state)"
+            local line
+            line="$(python3 -c 'import json,sys
+d = json.load(open(sys.argv[1]))
+eta = d.get("eta_s") or 0.0
+best = d.get("best_reward_per_step")
+steps = d.get("episode_steps")
+print("%-8s %5d/%-5d  reward/step %s  episode %s  best %s @%s  %4.0fs elapsed  %4.0fs left  %d checkpoints" % (
+    d.get("state",""), d.get("iteration",-1) + 1, d.get("total",0),
+    ("%+.6g" % d["reward_per_step"]) if d.get("reward_per_step") is not None else "-",
+    ("%.1f" % steps) if steps is not None else "-",
+    ("%+.6g" % best) if best is not None else "-",
+    d.get("best_iteration",-1), d.get("wall_time_s") or 0.0, eta,
+    len(d.get("checkpoints") or [])))' "${progress}" 2>/dev/null || echo "")"
+            if [ -n "${line}" ] && [ "${line}" != "${last}" ]; then
+                echo "    ${line}"
+                last="${line}"
+            fi
+        fi
+        case "${state}" in
+            done)
+                echo "==> finished. Files are in ${dest}"
+                ls -1 "${dest}" | sed "s/^/        /"
+                return 0 ;;
+            failed)
+                echo "FAIL: the run reports state 'failed'."
+                echo "      $(progress_field "${progress}" error)"
+                echo "      The box still has train.log:  $(basename "$0") pull ${run_id}"
+                return 1 ;;
+        esac
+        sleep "${CADEX_TRAIN_POLL_S:-10}"
+    done
+}
+
+cmd_pull() {
+    load_config
+    require CADEX_TRAIN_WORK "${remote_work}"
+    local run_id="${1:-}" dest
+    if [ -z "${run_id}" ]; then
+        echo "usage: $(basename "$0") pull <run-id> [destination]"
+        exit 2
+    fi
+    dest="$(run_destination "${run_id}" "${2:-}")"
+    resolve_remote_paths
+    local remote_dir="${remote_work%/}/${run_id}"
+    mkdir -p "${dest}"
+    sync_run "${remote_dir}" "${dest}" || echo "NOTE: no progress.json yet."
+    # The log too, which is the only place a traceback lives.
+    rsync -e "${rsync_ssh}" -a "${target}:${remote_dir}/train.log" \
+        "${dest}/train.log" 2>/dev/null || true
+
+    echo "==> ${dest}"
+    local file digest
+    for file in "${dest}"/*.cxpolicy; do
+        [ -f "${file}" ] || continue
+        digest="$(sha256_of "${file}")"
+        echo "        $(basename "${file}")  ${digest}"
+    done
+    echo "==> paste a digest into the script:"
+    echo "        assembly.policy(task, weights=\"<name>.cxpolicy\", sha256=\"<digest>\", label=...)"
+}
+
+cmd_stop() {
+    load_config
+    require CADEX_TRAIN_WORK "${remote_work}"
+    local run_id="${1:-}"
+    if [ -z "${run_id}" ]; then
+        echo "usage: $(basename "$0") stop <run-id>"
+        exit 2
+    fi
+    resolve_remote_paths
+    local remote_dir="${remote_work%/}/${run_id}"
+
+    # TERM rather than KILL: the trainer writes progress.json atomically
+    # every iteration and its checkpoints are already on disk, so there is
+    # nothing to flush -- but a run killed with -9 leaves a `.partial` beside
+    # a file somebody is about to read.
+    local report
+    report="$(on_box "if [ -f $(shquote "${remote_dir}/train.pid") ]; then \
+                          kill -TERM \$(cat $(shquote "${remote_dir}/train.pid")) \
+                              2>/dev/null && echo stopped || echo gone; \
+                      else echo nopid; fi")"
+    case "${report}" in
+        stopped)
+            # Verified rather than assumed. `kill` succeeding means a signal
+            # was delivered to *a* process, and the whole reason the pid file
+            # is written the way it is above is that this once reported
+            # success while the trainer carried on.
+            sleep 2
+            local alive
+            alive="$(on_box "kill -0 \$(cat $(shquote "${remote_dir}/train.pid")) \
+                                 2>/dev/null && echo yes || echo no")"
+            if [ "${alive}" = "yes" ]; then
+                echo "FAIL: signalled ${run_id}, and it is still running."
+                echo "      On the box:  kill -KILL \$(cat ${remote_dir}/train.pid)"
+                exit 1
+            fi
+            echo "==> stopped ${run_id}." ;;
+        gone)    echo "==> ${run_id} was not running (already finished, or stopped)." ;;
+        *)       echo "FAIL: ${remote_dir}/train.pid does not exist on the box."
+                 echo "      That run was not started with --detach."
+                 exit 1 ;;
+    esac
+    echo "==> whatever it wrote is still there:  $(basename "$0") pull ${run_id}"
+}
+
 cmd_shell() {
     load_config
     # No BatchMode: this is the command you run *to* accept a host key or
@@ -576,10 +832,16 @@ cmd_config() {
 case "${1:-}" in
     check)  shift; cmd_check "$@" ;;
     train)  shift; cmd_train "$@" ;;
+    watch)  shift; cmd_watch "$@" ;;
+    pull)   shift; cmd_pull "$@" ;;
+    stop)   shift; cmd_stop "$@" ;;
     shell)  shift; cmd_shell "$@" ;;
     config) shift; cmd_config "$@" ;;
     *)
-        echo "usage: $(basename "$0") {check|train|shell|config} [args...]"
-        echo "       train <bundle.json> <out.cxpolicy> [--allow-cpu] [-- trainer args]"
+        echo "usage: $(basename "$0") {check|train|watch|pull|stop|shell|config} [args...]"
+        echo "       train <bundle.json> <out.cxpolicy> [--allow-cpu] [--detach] [-- trainer args]"
+        echo "       watch <run-id> [destination]     poll progress, pull checkpoints"
+        echo "       pull  <run-id> [destination]     bring everything home once"
+        echo "       stop  <run-id>                   TERM a detached run"
         exit 2 ;;
 esac

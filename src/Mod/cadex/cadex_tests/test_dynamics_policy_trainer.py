@@ -27,6 +27,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -484,3 +485,597 @@ def test_a_second_run_at_the_same_seed_writes_the_same_policy(tmp_path) -> None:
             "evaluation": header["evaluation"],
         }, sort_keys=True).encode()).hexdigest())
     assert digests[0] == digests[1]
+
+
+# ---------------------------------------------------------------------------
+# M9: the third implementation of the reset variation and the disturbance.
+# ---------------------------------------------------------------------------
+
+
+def test_the_trainer_states_its_own_episode_draw_and_says_it_differs() -> None:
+    """Two algorithms, both written down, and the difference is deliberate.
+
+    The bundle's stream is a host-side ``random.Random``. A reset here
+    happens on device inside a jitted scan, thousands of times an iteration,
+    so it cannot be that stream and does not try to be. What has to match is
+    the *arithmetic* -- the quaternion product, the window test, the
+    centre-of-mass application point -- and this asserts the trainer says so
+    rather than leaving a reader to infer it from two blocks of code.
+    """
+
+    source = TRAINER.read_text(encoding="utf-8")
+    module = _trainer_module()
+    assert module.RESET_VARIATION_MODE == "per_episode"
+    assert "jax.random.split" in module.RESET_VARIATION_ALGORITHM
+    assert "bundle order" in module.RESET_VARIATION_ALGORITHM
+    assert "Deliberately NOT" in module.RESET_VARIATION_ALGORITHM
+    # ...and the header carries it, so a policy file says which stream fed it.
+    assert '"episode_variation"' in source
+    assert '"bundle_algorithm"' in source
+
+
+def test_the_trainers_reset_variation_is_the_engines_arithmetic() -> None:
+    """The Hamilton product, written out three times, compared by test.
+
+    ``CadexDynamics._write_reset_variation``,
+    ``dynamics_task_episode.write_variation`` and the trainer's
+    ``varied_reset`` are three implementations of six lines. This is the
+    fourth time this branch has paid hazard 1, and the mitigation is the one
+    that worked: write the second copy down and pin it.
+    """
+
+    source = TRAINER.read_text(encoding="utf-8")
+    for line in (
+        "tw * qw - tx * qx - ty * qy",
+        "tw * qx + tx * qw - ty * qz",
+        "tw * qy + tx * qz + ty * qw",
+        "tw * qz - tx * qy + ty * qx",
+    ):
+        assert line in source, line
+    # The three things phase 0 measured, each visible where it is relied on.
+    assert "qvel.at[:, dof + 3 : dof + 6].set(spin)" in source
+    assert "xfrc_applied=applied_forces" in source
+    assert "int(entry[\"body_id\"]), :3" in source
+
+
+def test_the_trainer_runs_a_varied_and_shoved_task(tmp_path) -> None:
+    """The paths a compile check cannot reach.
+
+    ``varied_reset``, ``drawn_pushes`` and ``applied_forces`` all run inside
+    ``jax.lax.scan`` under ``jit``, where a shape error is a trace-time
+    exception and a carry whose structure changes is a different one. The
+    only way to know they work is to run them, and the only way to run them
+    is a venv with the trainer's dependencies.
+
+    Three iterations and eight environments: this is about the *paths*, not
+    about convergence.
+    """
+
+    python = _venv_python()
+    if python is None:
+        pytest.skip(
+            "jax and mujoco.mjx are the offboard trainer's dependencies and "
+            "are deliberately absent from the engine environment (ADR-070)."
+        )
+
+    prepared = pf.shoved_bundle()
+    assert prepared["bundle"]["reset_variation"], "the fixture must vary"
+    assert prepared["bundle"]["disturbance"], "the fixture must shove"
+
+    root = tmp_path / "project"
+    (root / "outputs").mkdir(parents=True)
+    (root / "outputs" / "job-model.xml").write_bytes(prepared["model_xml"])
+    (root / "outputs" / "job-task.json").write_bytes(prepared["task_bytes"])
+    out = tmp_path / "shoved.cxpolicy"
+
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    result = subprocess.run(
+        [python, "-P", str(TRAINER), str(root / "outputs" / "job-task.json"),
+         "--out", str(out), "--seed", "0", "--iterations", "3",
+         "--envs", "8", "--unroll", "10", "--quiet"],
+        capture_output=True, text=True, env=environment, check=False,
+    )
+    assert result.returncode == 0, result.stderr[-4000:]
+    report = json.loads(result.stdout.strip().splitlines()[-1])
+    assert report["cadex_importable"] is False
+
+    # The policy the engine will accept, with both streams recorded in it.
+    evidence = dyn.verify_policy(
+        dyn.decode_policy(out.read_bytes()),
+        prepared["bundle"],
+        task_sha256=prepared["task_sha256"],
+    )
+    variation = evidence["training"]["episode_variation"]
+    assert variation["mode"] == "per_episode"
+    assert variation["reset_variation"] == ["start"]
+    assert variation["disturbance"] == ["shove", "wind"]
+    assert variation["bundle_algorithm"] == (
+        prepared["bundle"]["variation_algorithm"]
+    )
+
+
+def test_a_task_with_neither_still_trains(tmp_path) -> None:
+    """M9 is additive: every task written before it is unchanged.
+
+    Worth its own run rather than an argument, because the code paths are
+    guarded by Python-level conditions on the entry lists -- and a guard that
+    was wrong would make the *old* shape the broken one.
+    """
+
+    python = _venv_python()
+    if python is None:
+        pytest.skip("the offboard trainer's dependencies are not installed here")
+
+    prepared = pf.swing_up_bundle()
+    assert prepared["bundle"]["reset_variation"] == []
+    assert prepared["bundle"]["disturbance"] == []
+
+    root = tmp_path / "project"
+    (root / "outputs").mkdir(parents=True)
+    (root / "outputs" / "job-model.xml").write_bytes(prepared["model_xml"])
+    (root / "outputs" / "job-task.json").write_bytes(prepared["task_bytes"])
+    out = tmp_path / "plain.cxpolicy"
+
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    result = subprocess.run(
+        [python, "-P", str(TRAINER), str(root / "outputs" / "job-task.json"),
+         "--out", str(out), "--seed", "0", "--iterations", "2",
+         "--envs", "8", "--unroll", "10", "--quiet"],
+        capture_output=True, text=True, env=environment, check=False,
+    )
+    assert result.returncode == 0, result.stderr[-4000:]
+    evidence = dyn.verify_policy(
+        dyn.decode_policy(out.read_bytes()),
+        prepared["bundle"],
+        task_sha256=prepared["task_sha256"],
+    )
+    assert evidence["training"]["episode_variation"]["reset_variation"] == []
+
+
+def test_the_variation_actually_reaches_the_physics(tmp_path) -> None:
+    """The assertion that separates plumbed from live.
+
+    Two bundles differing in **nothing** but the two M9 lists, trained at the
+    same seed with the same everything. Without them every environment runs
+    the identical episode and the reward is a constant; with them it is not.
+
+    Measured on this fixture: the unvaried run sits in a band nine parts in
+    a hundred thousand wide around +0.2989 while the varied one keeps moving.
+    A feature that compiled, jitted, traced and did nothing would pass every
+    other test in this file.
+
+    That band used to be a *point* -- +0.298921 repeated to six figures --
+    and ADR-088 is why it no longer is. The unvaried run's reward stopped
+    moving because nothing ever ended its episode: one endless run of a block
+    sitting still. It now restarts every ``max_steps``, and since the
+    iteration window is 20 steps against a 50-step episode the restart falls
+    in a different place each iteration. That band is the reset: 9.4e-5 wide,
+    against the 9.0e-4 the variation moves the same curve.
+    """
+
+    python = _venv_python()
+    if python is None:
+        pytest.skip("the offboard trainer's dependencies are not installed here")
+
+    import copy
+
+    curves = {}
+    for name in ("varied", "plain"):
+        task = copy.deepcopy(pf.SHOVED_TASK)
+        if name == "plain":
+            task["reset_variation"] = []
+            task["disturbance"] = []
+        prepared = pf.shoved_bundle(task=task)
+        root = tmp_path / name
+        (root / "outputs").mkdir(parents=True)
+        (root / "outputs" / "job-model.xml").write_bytes(prepared["model_xml"])
+        (root / "outputs" / "job-task.json").write_bytes(prepared["task_bytes"])
+        out = root / "p.cxpolicy"
+        environment = dict(os.environ)
+        environment.pop("PYTHONPATH", None)
+        result = subprocess.run(
+            [python, "-P", str(TRAINER),
+             str(root / "outputs" / "job-task.json"), "--out", str(out),
+             "--seed", "0", "--iterations", "4", "--envs", "32",
+             "--unroll", "20", "--quiet"],
+            capture_output=True, text=True, env=environment, check=False,
+        )
+        assert result.returncode == 0, result.stderr[-4000:]
+        header = dyn.decode_policy(out.read_bytes())["header"]
+        curves[name] = [
+            round(float(row["reward_per_step"]), 6)
+            for row in header["training"]["reward_curve"]
+        ]
+
+    # The unvaried run is the same episode in every environment and repeats
+    # it, so its reward barely moves at all once the policy's own output
+    # settles: what is left is the episode boundary sliding through the
+    # iteration window.
+    plain = max(curves["plain"]) - min(curves["plain"])
+    varied = max(curves["varied"]) - min(curves["varied"])
+    assert plain < 1.0e-3, curves["plain"]
+    # The varied one is not, and is a different run from the first step.
+    # Measured at 9.6x on this fixture; the bound is 5 because what is being
+    # asserted is an order of magnitude, not a number.
+    assert varied > 5.0 * plain, (curves["varied"], curves["plain"])
+    assert curves["varied"] != curves["plain"]
+    assert curves["varied"][0] != curves["plain"][0]
+
+
+# ---------------------------------------------------------------------------
+# M9 slice 2: a run you can watch, interrupt and pull from (ADR-085).
+# ---------------------------------------------------------------------------
+
+
+def test_a_checkpoint_is_a_whole_policy_rather_than_a_weight_dump() -> None:
+    """The decision, asserted where it could quietly stop being true.
+
+    A checkpoint goes through the same ``policy_header`` and the same
+    ``checked_policy`` the final file does, so what lands mid-run is a
+    ``.cxpolicy`` that ``assembly.policy`` accepts -- pull it off the box,
+    paste its digest, rebuild, watch it. A weight dump would need a reader
+    nobody has written and would be a thing you cannot play.
+    """
+
+    source = TRAINER.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    names = {node.name for node in ast.walk(tree)
+             if isinstance(node, ast.FunctionDef)}
+    # The three that had to come out of `main` for a checkpoint to exist.
+    assert {"policy_header", "checked_policy", "write_atomically",
+            "checkpoint_path"} <= names
+    # And `main` uses them for both, rather than having a second path.
+    assert source.count("policy_header(bundle, options,") == 2
+    assert "checked_policy(header, trained, what=" in source
+
+
+def test_the_witness_is_checked_on_checkpoints_too() -> None:
+    """ADR-081's lesson, applied where it now costs nothing.
+
+    The witness error is a *relative* one that grows with the activations a
+    policy learns, so a checkpoint that fails it is a run that is going to
+    fail it. Four hours of GPU time died once because nothing checked until
+    the end; now the first checkpoint does.
+    """
+
+    module = _trainer_module()
+    source = TRAINER.read_text(encoding="utf-8")
+    assert "witness_disagreement(header, trained[\"parameters\"])" in source
+    # `checked_policy` raises rather than returning a flag, so there is no
+    # call site that can forget to look.
+    checked = next(node for node in ast.walk(ast.parse(source))
+                   if isinstance(node, ast.FunctionDef)
+                   and node.name == "checked_policy")
+    assert any(isinstance(node, ast.Raise) for node in ast.walk(checked))
+    assert module.POLICY_WITNESS_TOLERANCE == dyn.POLICY_WITNESS_TOLERANCE
+
+
+def test_the_progress_file_is_written_atomically_and_versioned() -> None:
+    """Two other machines read it while it is being written.
+
+    ``remote_train.sh watch`` polls it over rsync and the shell's Training
+    panel polls the copy that lands beside the project. A plain write is a
+    window -- small, real, and hit often when the writer runs every
+    iteration -- in which both of them read a truncated file and report a
+    run that has gone wrong.
+    """
+
+    module = _trainer_module()
+    source = TRAINER.read_text(encoding="utf-8")
+    assert module.PROGRESS_SCHEMA == "cadex-training-progress-v1"
+    written = next(node for node in ast.walk(ast.parse(source))
+                   if isinstance(node, ast.FunctionDef)
+                   and node.name == "write_atomically")
+    body = ast.dump(written)
+    assert "partial" in body and "replace" in body
+    # Every iteration, not every checkpoint: a run you can see the state of
+    # once every hundred iterations is a run you still cannot decide about.
+    assert "progress(\n" in source or "progress(" in source
+
+
+def test_checkpoint_names_sort_into_training_order() -> None:
+    """A directory listing is the comparison's index, so it has to sort."""
+
+    module = _trainer_module()
+    from pathlib import Path as _Path
+
+    out = _Path("/tmp/walk.cxpolicy")
+    assert module.checkpoint_path(out, "000100").name == "walk.000100.cxpolicy"
+    assert module.checkpoint_path(out, "best").name == "walk.best.cxpolicy"
+    names = sorted(
+        module.checkpoint_path(out, f"{n:06d}").name for n in (5, 100, 2000)
+    )
+    assert names == ["walk.000005.cxpolicy", "walk.000100.cxpolicy",
+                     "walk.002000.cxpolicy"]
+    # Still a .cxpolicy, so nothing has to be renamed before it is used.
+    assert all(name.endswith(".cxpolicy") for name in names)
+
+
+def test_the_dispatch_script_gained_four_subcommands() -> None:
+    """A dropped ssh stops being a lost run.
+
+    ``train`` without ``--detach`` is one ssh that lives as long as the run,
+    and the mg-legs run this slice was written for took 76 minutes -- long
+    enough for a closed laptop, a sleeping wifi chip or a dropped VPN.
+    """
+
+    script = (TRAINER.parent / "remote_train.sh").read_text(encoding="utf-8")
+    for name in ("cmd_watch", "cmd_pull", "cmd_stop", "detached_train"):
+        assert f"{name}()" in script, name
+    for line in ("watch)  shift; cmd_watch", "pull)   shift; cmd_pull",
+                 "stop)   shift; cmd_stop"):
+        assert line in script, line
+    assert "--detach)    detach=1" in script
+
+    # `watch` writes the file the shell panel reads, and does it by name so
+    # that the panel and the dispatch cannot disagree about it.
+    assert "training-progress.json" in script
+    # Nothing parses the trainer's stderr. ADR-080 measured what happens
+    # when a receipt is taken from a stream something else writes into.
+    assert "progress.json" in script
+
+
+def test_the_pid_file_holds_the_trainer_rather_than_its_wrapper() -> None:
+    """Measured the expensive way, on a live 5090.
+
+    ``echo $!`` after backgrounding records the wrapping subshell, and
+    ``setsid`` forks again on top of that -- so ``stop`` reported "stopped",
+    killed the subshell, and left a 4000-iteration run training with nothing
+    pointing at it. The inner shell writes its **own** pid and then
+    ``exec``s, which makes the recorded number the trainer by construction.
+    """
+
+    script = (TRAINER.parent / "remote_train.sh").read_text(encoding="utf-8")
+    assert "echo \\$\\$ > $(shquote \"${remote_dir}/train.pid\")" in script
+    assert "; exec" in script
+    # And `stop` verifies rather than trusting `kill` returning zero.
+    assert "kill -0" in script
+
+
+# ---------------------------------------------------------------------------
+# ADR-088: the episode the bundle declares is the episode the trainer runs.
+#
+# Two runs on two different tasks produced a rising reward curve and a policy
+# that got steadily worse at the task. The cause was one line: `horizon` was
+# read out of the episode block and never used again, so `done` was the
+# task's termination terms and nothing else and an environment the policy
+# kept upright never reset. The trainer was optimising a different problem
+# from the one the script declared, which on its own makes every reward
+# number it reported non-comparable with any evaluation.
+# ---------------------------------------------------------------------------
+
+
+def test_the_horizon_the_trainer_uses_is_the_bundles_own() -> None:
+    """One episode length, declared in one place, honoured in two.
+
+    ``CadexDynamics.evaluate_episode`` bounds its loop by
+    ``episode["max_steps"]``; so, now, does the trainer's scan. A constant
+    here -- or a horizon derived from ``--unroll``, which is a batching
+    choice and not a property of the task -- would be a second declaration of
+    the episode, and the two would be free to disagree without anything
+    saying so.
+    """
+
+    source = TRAINER.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    assignments = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "horizon"
+                for target in node.targets)
+    ]
+    assert len(assignments) == 1, "the horizon is assigned in exactly one place"
+    assert ast.unparse(assignments[0].value) == "int(episode['max_steps'])"
+
+    # ...and it is *used*, which is the whole of ADR-088. The bound is an
+    # integer compare on a step counter rather than a float compare on the
+    # episode-local clock: 600 additions of a 0.02 s interval do not land on
+    # 12.0.
+    assert "timeout = steps >= horizon" in source
+    assert "done = jnp.logical_or(terminated, timeout)" in source
+    assert "steps = jnp.where(done, 0, steps)" in source
+
+    # The same field, read by the engine's own episode loop. If either side
+    # ever moves to a different key, this is where the two stop matching.
+    engine = Path(dyn.__file__).read_text(encoding="utf-8")
+    assert 'max_steps = int(episode["max_steps"])' in engine
+
+
+def test_a_timeout_is_bootstrapped_and_a_failure_is_not() -> None:
+    """The one line where a plausible-looking edit is silently wrong.
+
+    A failure ends the future, so the state after it is worth zero. A timeout
+    ends only our looking at it, so the state we landed in is worth whatever
+    the critic thinks. Collapsing the two -- ``done`` on both terms, which is
+    what the obvious edit produces -- teaches the critic that surviving to
+    step 600 is worth exactly as much as falling over, and at
+    ``--discount 0.99`` over a 600-step episode that is a large bias traded
+    for the one this slice removed.
+
+    Written down as a test because it is invisible in any curve: the wrong
+    version still trains, still climbs and still produces a policy.
+    """
+
+    source = TRAINER.read_text(encoding="utf-8")
+    outer = next(node for node in ast.walk(ast.parse(source))
+                 if isinstance(node, ast.FunctionDef)
+                 and node.name == "advantages")
+    inner = next(node for node in ast.walk(outer)
+                 if isinstance(node, ast.FunctionDef) and node.name == "one")
+
+    unpack = inner.body[0]
+    assert isinstance(unpack, ast.Assign)
+    assert [element.id for element in unpack.targets[0].elts] == [
+        "reward", "value", "done", "terminal", "following"
+    ]
+
+    assigned = {
+        node.targets[0].id: node.value for node in inner.body
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
+    }
+
+    def mentions(node):
+        return {name.id for name in ast.walk(node) if isinstance(name, ast.Name)}
+
+    delta = mentions(assigned["delta"])
+    carry = mentions(assigned["carry"])
+    assert "terminal" in delta and "done" not in delta, (
+        "the bootstrap is cut on `terminal`: a timeout keeps its next-state "
+        "value, a failure does not"
+    )
+    assert "done" in carry and "terminal" not in carry, (
+        "the GAE carry is cut on `done`: the trajectory genuinely "
+        "discontinues either way"
+    )
+
+    # And the state it bootstraps from is the post-step, *pre-reset* one.
+    # `values[t + 1]` at a boundary is the value of an environment that has
+    # already been reset, which is a different state entirely.
+    assert 'landed_values = net(params["critic"],' in source
+    assert (
+        "advantages(rewards, values, dones, terminals, landed_values)"
+        in source
+    )
+    # The separately-computed trailing bootstrap is gone rather than left
+    # beside the new one.
+    assert "bootstrap = net(" not in source
+
+
+def _no_termination_bundle():
+    """A task nothing can fail, so only the horizon can end an episode.
+
+    Ten control steps at 50 Hz. Before ADR-088 no environment running this
+    bundle ever reset, at any length of run.
+    """
+
+    import copy
+
+    task = copy.deepcopy(pf.SWING_UP_TASK)
+    task["termination"] = []
+    task["episode_seconds"] = 0.2
+    task["label"] = "unfailable"
+    prepared = pf.swing_up_bundle(task=task)
+    assert prepared["bundle"]["termination"] == []
+    assert int(prepared["bundle"]["episode"]["max_steps"]) == 10
+    return prepared
+
+
+def _train(python, prepared, tmp_path, *, name, extra=()):
+    """One short run of the trainer, and its stdout receipt."""
+
+    root = tmp_path / name
+    (root / "outputs").mkdir(parents=True)
+    (root / "outputs" / "job-model.xml").write_bytes(prepared["model_xml"])
+    (root / "outputs" / "job-task.json").write_bytes(prepared["task_bytes"])
+    out = root / f"{name}.cxpolicy"
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    result = subprocess.run(
+        [python, "-P", str(TRAINER), str(root / "outputs" / "job-task.json"),
+         "--out", str(out), "--seed", "0", "--quiet", *extra],
+        capture_output=True, text=True, env=environment, check=False,
+    )
+    assert result.returncode == 0, result.stderr[-4000:]
+    return out, json.loads(result.stdout.strip().splitlines()[-1])
+
+
+def test_the_trainer_truncates_at_the_bundles_episode_length(tmp_path) -> None:
+    """The decisive one, and it fails hard on the code ADR-088 replaced.
+
+    The bundle declares a ten-step episode and can terminate for no other
+    reason, so the only thing that can end one is the horizon. Twenty control
+    steps of eight environments is exactly sixteen episodes; the mean episode
+    length is therefore exactly ten, and it is ten every iteration because
+    the counter is carried across them.
+
+    Without the truncation the same run reports 160 -- the whole batch over
+    zero endings -- which is not an episode length and is meant to read as
+    one.
+    """
+
+    python = _venv_python()
+    if python is None:
+        pytest.skip(
+            "jax and mujoco.mjx are the offboard trainer's dependencies and "
+            "are deliberately absent from the engine environment (ADR-070)."
+        )
+
+    prepared = _no_termination_bundle()
+    horizon = int(prepared["bundle"]["episode"]["max_steps"])
+    out, report = _train(
+        python, prepared, tmp_path, name="unfailable",
+        extra=("--iterations", "3", "--envs", "8", "--unroll", "20"),
+    )
+    header = dyn.decode_policy(out.read_bytes())["header"]
+    lengths = [float(row["episode_steps"])
+               for row in header["training"]["reward_curve"]]
+    assert lengths == [pytest.approx(float(horizon))] * 3, lengths
+    assert report["episode_steps"] == pytest.approx(float(horizon))
+
+
+def test_the_trainer_reports_episode_length(tmp_path) -> None:
+    """The observable that did not exist, on a task that also terminates.
+
+    There was no external record of episode length at all before ADR-088,
+    which is both why two runs went wrong unnoticed and why the fix could not
+    be checked from outside. It has to reach the curve rows -- the policy
+    file's own record of the run -- and ``progress.json``, which is what
+    ``remote_train.sh watch`` and the shell's Training panel poll.
+    """
+
+    python = _venv_python()
+    if python is None:
+        pytest.skip("the offboard trainer's dependencies are not installed here")
+
+    prepared = pf.shoved_bundle()
+    assert prepared["bundle"]["termination"], "this fixture can also fail"
+    envs, unroll = 8, 20
+    out, report = _train(
+        python, prepared, tmp_path, name="reported",
+        extra=("--iterations", "2", "--envs", str(envs),
+               "--unroll", str(unroll)),
+    )
+
+    header = dyn.decode_policy(out.read_bytes())["header"]
+    rows = header["training"]["reward_curve"]
+    assert rows and all("episode_steps" in row for row in rows)
+    for row in rows:
+        length = float(row["episode_steps"])
+        # Steps in the batch over episodes that ended in it, so the batch's
+        # own size is the ceiling -- that is the reading with nothing ending,
+        # and it is a number no episode length can be. The exact value is
+        # pinned by the truncation test above, on a bundle where every
+        # episode ends for the same reason.
+        assert math.isfinite(length) and 0.0 < length <= float(envs * unroll), row
+
+    progress = json.loads((out.parent / "progress.json").read_text("utf-8"))
+    assert progress["schema"] == "cadex-training-progress-v1"
+    assert math.isfinite(float(progress["episode_steps"]))
+    assert progress["episode_steps"] == pytest.approx(
+        rows[-1]["episode_steps"]
+    )
+    assert report["episode_steps"] == pytest.approx(rows[-1]["episode_steps"])
+
+
+def test_shquote_survives_a_string_containing_a_quote() -> None:
+    """The latent bug M9 walked into, pinned so it cannot come back.
+
+    ``${1//.../...}`` is wrong in bash 3.2 -- it turns ``a'b`` into
+    ``'a\\'\\\\'\\''b'`` rather than ``'a'\\''b'``. Nothing had ever passed
+    it a string containing a quote, so it worked until the first command
+    that did, and then produced an unterminated string whose error pointed
+    at the wrong line.
+    """
+
+    import subprocess as sp
+
+    script = (TRAINER.parent / "remote_train.sh").read_text(encoding="utf-8")
+    start = script.index("shquote() {")
+    end = script.index("\n}", start) + 2
+    harness = script[start:end] + '\nq="$(shquote "$1")"\neval "printf %s $q"\n'
+    for original in ("plain/path", "a'b", "echo $$ > '/x/p'; exec '/y/z'"):
+        done = sp.run(["bash", "-c", harness, "bash", original],
+                      capture_output=True, text=True, check=True)
+        assert done.stdout == original, (original, done.stdout)

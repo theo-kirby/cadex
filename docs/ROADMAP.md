@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-07-31
+Verified against source: 2026-08-01
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -646,7 +646,7 @@ Not a phase that "completes" — a standing mode of work.
       GitHub remotes first (`cadex-teardown` was local-only until then);
       history is recoverable, the disks are not carrying it.
 
-## Phase 14 — Dynamics and control `(ADR-060, ADR-072; closed 2026-07-31)`
+## Phase 14 — Dynamics and control `(ADR-060, ADR-072; 14a closed 2026-07-31, 14b closed 2026-08-01)`
 
 **This is the `MJC` vertical**, and it is absent from the dependency graph at
 the top of this file for a reason rather than an oversight: it depends on
@@ -661,10 +661,17 @@ capability opens — a mechanism designed in Cadex, exported, trained, and
 played back walking. The framework, the slices, the hazards and the measured
 facts are `docs/MUJOCO.md`; only status lives here.
 
-Slices are numbered **M0–M8** rather than sub-phases, to avoid colliding
-with the phase numbers above. Every slice is a resting place. **All nine are
-closed** (M8, ADR-071, 2026-07-31); the arc's exit criteria are recorded as
-met below.
+Slices are numbered **M0–M9** rather than sub-phases, to avoid colliding
+with the phase numbers above. Every slice is a resting place.
+
+**14a is M0–M8** — closed at M8 (ADR-071, 2026-07-31), and the arc's exit
+criteria are recorded as met below. **14b is M9**, and it exists because
+*reading* what 14a produced found the arc had shipped a policy that stands
+by bracing (ADR-083, hazard 15) and a task that could not have told the
+difference (hazard 16). 14b is not a defect fix and not scope creep: an arc
+that ends at "it moves" and never asks "could a machine do that" is an arc
+missing its last question, and the answer needed a new authoring surface, a
+new trainer capability and a re-rated mechanism.
 
 - [x] **M0 — Decide, depend, deliver** (ADR-060, ADR-061). Scope approved
       including the M5–M8 direction change; `mujoco-python` 3.10.0 exactly
@@ -833,6 +840,110 @@ the order they had to happen:
       Zero engine change and zero protocol change — every number it shows
       was already published. **This is what spent the `shell/` diff**, and
       only inside `mesh_agent/` and the gate suite.
+- [x] **The Policy Outputs panel** (ADR-083). Each actuator's command
+      against its own derived limit, at the current frame. It found hazard
+      15 in one glance — a policy that plays as a clean stand while holding
+      three motors above 95 % of stall on 100 % of frames — which is what
+      opened 14b.
+
+### 14b — M9: the episode stops starting in the same place `(closed 2026-08-01; follow-ons M9b ADR-087, M9c ADR-088)`
+
+- [x] **M9 — Reset variation, disturbance, checkpoints, and a re-rated
+      mechanism** (ADR-084, ADR-085, ADR-086). Three findings, one slice,
+      because they are the same finding: `mg-legs` braced rather than
+      balanced, and it did so because 216 N·mm of *stall* torque was
+      available, bracing was cheap under the reward, and **nothing ever
+      disturbed it**.
+      - **The mechanism (ADR-084).** `assembly.reset_variation` and
+        `assembly.disturbance`, two intermediates beside `assembly.randomise`
+        and passed to `assembly.task` the same way. A reset variation moves
+        the floating base **rigidly** — a drawn tilt, a lift, a spin — and
+        **never touches joint angles**, because the reset pose is the solved
+        one with the soles on the floor and a few degrees at a knee is a
+        contact impulse (hazard 17). The lift that pays for the tilt is
+        *measured*: the engine applies the widest declared tilt at the
+        smallest declared lift at sixteen azimuths and refuses the pairing
+        that does not clear, which immediately caught its author out by
+        5.13 mm against a 3 mm estimate. A disturbance is one event per
+        entry, applied at the body's centre of mass in the world frame —
+        both measured in phase 0, not assumed. Two seeding algorithms, both
+        stated in the bundle and deliberately different. **No protocol
+        change and no `shell/` diff**: `assembly.*` is the xscript surface,
+        not the op table.
+      - **Visibility (ADR-085).** `--checkpoint-every N` writes complete,
+        witness-checked `.cxpolicy` files mid-run plus `<out>.best`;
+        `progress.json` is rewritten atomically every iteration and is the
+        one artifact everything downstream reads; `remote_train.sh` gained
+        `train --detach`, `watch`, `pull` and `stop`. Two silent bugs
+        surfaced and were fixed: `train.pid` held the wrapping subshell
+        rather than the trainer (so `stop` reported success while a
+        4000-iteration run carried on), and `shquote` mis-escaped embedded
+        single quotes in bash 3.2.
+      - **The shell's Training panel.** State, iteration, elapsed, ETA,
+        reward, best-so-far and where it happened, and the checkpoints
+        pulled — polled from the local `training-progress.json` that `watch`
+        writes. **No ssh, no protocol change, no engine change, no mujoco**;
+        its module imports `json`, `os` and `bpy` and a gate check asserts
+        exactly that. Zero lines to the inherited Blender tree, so
+        `docs/BLENDER-TREE.md` §2a stays eight files.
+      - **The re-rating and the gate re-spec (ADR-086).** 216 → **86 N·mm**,
+        ~40 % of stall, an engineering judgment stated rather than buried.
+        `feasibility.py`'s arithmetic column stops gating and stays printed
+        (hazard 14), and what gates in its place took three attempts — two
+        of which ran, printed a table, and measured nothing (hazard 18).
+        What survived is statics: the righting moment the worst declared
+        shove needs, against what the footprint and the ankles can supply.
+        **62.8 N·mm needed, 117.4 available, 1.87× margin, the foot
+        binding.**
+- [x] **M9b — a shove that makes it stumble, and a reward that lets it
+      recover** (ADR-087). **No engine, trainer or shell change** — every
+      change is in the project script beside the repo, which is the finding
+      as much as the numbers are. The M9 run stood and never moved its feet,
+      and three measurements say why: the shove put the **capture point** at
+      19.5 mm inside a 45.5/24.5 mm polygon so nothing was asked of the
+      knees; the reward cost **−4.2/step** during a stumble against a +1
+      alive bonus, so falling immediately beat recovering; and `--discount
+      0.97` at 100 Hz is a 0.33 s horizon against a 1–2 s recovery. So the
+      shove is sized by capture point instead (`[0.4, 2.0]` N → ξ 22–111 mm,
+      a curriculum *inside* the distribution), `over_feet` becomes a
+      saturating `tanh` plus a small linear `drift` term, `stillness`,
+      `spin`, `posture` and `height` come down, `splay` prices the ADR-083
+      brace where it lived, and the discount goes to 0.99. **`feasibility.py`
+      check 3 is re-specified a third time** — not for being wrong, as the
+      first two were, but because the task changed from "reject in place" to
+      "catch it however you can"; it gates on capture point against
+      support + `195 mm × sin(swing)` and reads **1.57× / 1.38× / 1.09×**
+      forward / backward / lateral. `compare.py` splits survival by shove
+      azimuth, because without ankle roll or hip yaw lateral recovery is
+      capped by the **mechanism** and an aggregate count would hide it.
+- [x] **M9c — the trainer never ended an episode** (ADR-088). **Trainer
+      only**: no engine change, no protocol change, no new dependency,
+      nothing into `pixi.toml`, and one label row inside `mesh_agent/`.
+      M9b reproduced M9's reward-versus-survival anti-correlation on a task
+      sharing nothing with it, which made the instrument the suspect — and
+      reading it found `horizon = int(episode["max_steps"])` read and never
+      used again. `done` was the task's termination terms and nothing else,
+      so **an environment whose policy did not fall over never reset**: past
+      the last shove window it was never pushed again, never re-drawn, and
+      stood still collecting the `alive` bonus. The rollout now truncates at
+      the bundle's own horizon, a **timeout is bootstrapped and a failure is
+      not** (`terminated` cuts the bootstrap, `done` cuts the GAE carry —
+      collapsing the two trades one bias for another), and **mean episode
+      length is reported** in the stderr line, `progress.json`, the policy
+      header's curve rows and the shell's Training panel, which is the
+      metric that would have shown M9b's 170 → 30 live. **Every reward
+      figure recorded before this is non-comparable** — +0.391, +0.5118,
+      +0.2149 — because they were measured against an unbounded episode;
+      the survival numbers are unaffected. **The rerun was done and refuted
+      the hypothesis**: on the fixed trainer, same bundle and
+      hyperparameters, reward rose to +0.175 and trainer-measured episode
+      length to 149 while the engine measured 0/12 survival and episode
+      length collapsing 162 → 39. So the never-ending episode was a real
+      defect and not the cause of hazard 19 — but the fix is what makes the
+      remaining question answerable, because **the same quantity now moves
+      in opposite directions on the two sides of the seam**. `docs/MUJOCO.md`
+      §6 stays open with two candidates; sampled-versus-mean is the cheap
+      one and goes first, MJX-versus-MuJoCo the expensive one.
 
 **Standing constraints for this phase**, both from ADR-062 and both cheap to
 lose by accident:
