@@ -458,6 +458,58 @@ def test_the_model_is_told_these_numbers_are_measured():
           "and tells the model to transcribe rather than estimate")
 
 
+def test_the_graph_survives_a_blend_round_trip():
+    """The one risk ADR-066 flagged with a fallback, closed.
+
+    ``bNodeSocket`` carries an ``IDProperty *`` in DNA but does not expose it
+    to ``bpy_struct[]``, which is why ``terminal`` and ``soldered`` are
+    *registered* properties rather than ID properties. Whether registered
+    properties on a socket are written to the .blend was the open question:
+    if they were not, both would have had to move onto the node as a parallel
+    array. They are.
+
+    Runs last, and resets the scene after: ``open_mainfile`` replaces
+    everything, including the scene the other tests build on.
+    """
+    print("test_the_graph_survives_a_blend_round_trip")
+    import os
+    import tempfile
+
+    scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state())
+    node = next(n for n in tree.nodes if n.port == "sen")
+    node.location = (77.0, -33.0)
+
+    path = os.path.join(tempfile.mkdtemp(), "wiring.blend")
+    bpy.ops.wm.save_as_mainfile(filepath=path)
+    bpy.ops.wm.open_mainfile(filepath=path)
+
+    tree = bpy.context.scene.cadex_wiring
+    check(tree is not None and tree.bl_idname == "CadexWiringTree",
+          "the tree came back through the scene pointer")
+    if tree is None:
+        return
+    check(len(tree.nodes) == 2 and len(tree.links) == 1,
+          "with its nodes and links")
+    node = next((n for n in tree.nodes if n.port == "sen"), None)
+    check(node is not None, "and the port property survived")
+    if node is None:
+        return
+    check(abs(node.location.x - 77.0) < 1e-3 and abs(node.location.y + 33.0) < 1e-3,
+          "node position round-trips, so the user's layout is durable")
+    check(node.cadex_output == "sen_board", "the output binding survived")
+    terminals = [s.terminal for s in node.inputs]
+    check(terminals == list(SIGNALS),
+          "every socket kept its terminal identity: {!r}".format(terminals))
+    check(all(s.kind == "hole" for s in node.inputs), "and its kind")
+    soldered = {s.terminal for n in tree.nodes
+                for s in list(n.inputs) + list(n.outputs) if s.soldered}
+    check(soldered == {"sda"}, "and its solder flag")
+    check(len(wiring.stored_rows(tree)) == 1, "the row table survived")
+    check(tree.cadex_revision == "r1", "and the revision it mirrors")
+    reset_scene()
+
+
 def main():
     mesh_agent.register()
     try:
@@ -485,6 +537,8 @@ def main():
             test_a_fitted_terminal_is_not_a_pin,
             test_several_picks_batch_into_one_turn,
             test_the_model_is_told_these_numbers_are_measured,
+            # Last: open_mainfile replaces the whole session.
+            test_the_graph_survives_a_blend_round_trip,
         ):
             test()
     finally:

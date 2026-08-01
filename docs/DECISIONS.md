@@ -5179,27 +5179,38 @@ built.
 membership changes the conductor count, the lay radius and every other
 conductor's position, so it is a script edit.
 
-**Verification.** `shell/tests/python/bl_mesh_agent_wiring.py` — 74 checks,
-green against `/Applications/Cadex.app` with no engine and no rebuild:
-registration, the socket-identity trap, the sync, the suspend that stops the
-graph answering its own edit, layout preservation across a terminal being
-added, contract GC, the drawn-link payload, the redrawn-link name, disabled
-rows surviving a read, and the read-only refusal. `bl_mesh_agent.py` is green
-except `test_editor_menu_is_short`, which now asserts `CadexWiringTree` is on
-the menu and therefore **fails until the shell is rebuilt** — that is the
-test doing its job, not a regression.
+**Verification.** `shell/tests/python/bl_mesh_agent_wiring.py` — 84 checks,
+green: registration, the socket-identity trap, the sync, the suspend that
+stops the graph answering its own edit, layout preservation across a terminal
+being added, contract GC, the drawn-link payload, the redrawn-link name,
+disabled rows surviving a read, the read-only refusal, and a full `.blend`
+save/reopen. `bl_mesh_agent.py` is green including
+`test_editor_menu_is_short`, which now asserts `CadexWiringTree` **is** on the
+editor menu and that the four stock trees are **not** — a stronger claim than
+the test made before. `pixi run gate` reports `ok` with
+`engine_from_bundle: true`.
 
-**Not verified here, and it must be before this ships.** The C++ half needs
-`pixi run setup` (a 1.3 GB submodule) plus a build tree against **4.7 GB
-free**, measured. So: that `ED_spacetype_node()` links and the editor appears;
-that the filter leaves exactly one node row on the menu; **the link-drag
-gesture itself** (`node.link` does not exist in a bundle that never
-registered the space type, so the push has only ever been driven through
-`links.new` from Python); and that a registered property on a `NodeSocket`
-survives a save/load round trip — `bNodeSocket` has the DNA field for it, but
-no `.blend` was written to confirm. If that last one fails, `terminal` and
-`soldered` move onto the *node* (which does accept ID properties, verified)
-as a parallel array. After freeing disk: `pixi run app && pixi run gate`.
+The C++ half is built and confirmed: `ED_spacetype_node()` links, the editor
+appears as "Wiring", the filter leaves exactly one node row, `wiring_ui`'s
+`EDITOR_AVAILABLE` flips to True so the chrome registers rather than standing
+down, and `node.link` / `node.translate_attach` exist (they did not in a
+bundle that had never registered the space type). One compile error was found
+and fixed doing it: `bNodeTreeType::idname` is a `UString`, whose implicit
+conversion to `StringRef` is deliberately blocked, so the filter reads
+`type->idname.ref().startswith("Cadex")`.
+
+**The save/load question is settled, and the fallback is not needed.**
+Registered properties on a `NodeSocket` *are* written to the .blend: a
+round-trip through `save_as_mainfile`/`open_mainfile` in a fresh session
+returns every socket's `terminal`, `kind` and `soldered`, the nodes' `port`
+and `cadex_output`, the row table, the mirrored revision, the links, and node
+`location` — so the user's layout is durable and `terminal`/`soldered` stay
+on the socket rather than moving onto the node.
+
+**Still not verified: the drag itself.** `node.link` now exists, but the push
+has only ever been driven through `links.new` from Python; nobody has dragged
+a link with a mouse and watched the model rebuild. That needs an interactive
+session, not a test.
 
 ## ADR-067 — Defining a terminal by clicking the model (2026-08-01)
 

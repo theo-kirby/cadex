@@ -811,9 +811,11 @@ What makes them experimental, and what would settle it:
   editor — re-registered for exactly one Python tree type, so the editor menu
   gains "Wiring" and stays short. Selecting a hole rim in Edit Mode fits a
   terminal and hands the measurement to the assistant to transcribe.
-  **Verified as far as this machine allows:** the whole engine half and the
-  whole Python half run green here; the C++ half needs a shell build against
-  4.7 GB free and has not been run. Still not built: `part.bundle` as an
+  **Built and green end to end**, shell included: the editor menu test now
+  asserts "Wiring" is on it and the four stock node trees are not, the graph
+  survives a `.blend` round trip with its layout and socket identities
+  intact, and `pixi run gate` passes against the bundled engine. The one
+  thing no test covers is dragging a link with a mouse. Still not built: `part.bundle` as an
   editable graph concept (deferred by decision — changing a bundle's
   membership is a script edit); writing a terminal *into* the script from the
   pick, rather than into the chat turn (Phase 10b, still open — ADR-067
