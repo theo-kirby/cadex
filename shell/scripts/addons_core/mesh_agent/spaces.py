@@ -33,26 +33,16 @@ class CADEX_CHAT_HT_header(Header):
         if prefs is not None:
             layout.prop(prefs, "model", text="")
 
-        # Picking feeds pins to the next message. Two gestures, one queue:
-        # a face pin names a BREP face the engine can re-find, a point pin is
-        # a place and a direction, which is the only thing an imported mesh
-        # can offer and exactly what a part.cable port is. The count sits
-        # beside them rather than inside one button's label, because it
-        # counts both.
+        # The header carries *state*, not actions. Every button that does
+        # something sits in one row under the message box (ui.draw_chat_
+        # buttons) -- including the two pin gestures, which used to be here
+        # and were the last thing splitting the chat's controls across two
+        # places. What is left of them here is the count, which is status:
+        # it says what the next message will carry.
         from . import cadex_pick
-        layout.operator("mesh_agent.pick_pin", icon='EYEDROPPER',
-                        text="Pin Face")
-        layout.operator("mesh_agent.pick_point", icon='CURSOR',
-                        text="Pin Point")
         pending = cadex_pick.pending_pin_count()
         if pending:
             layout.label(text="{:d} pinned".format(pending))
-
-        # The script view's button is in the row under the message box, beside
-        # the parameters toggle (ui.draw_chat_buttons). It used to be a plain
-        # opener here as well, which meant two buttons for one view and only
-        # one of them able to close it -- and the spacer that pushed it to the
-        # right goes with it, having nothing left to push.
 
 
 class CADEX_PARAMS_HT_header(Header):

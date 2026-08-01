@@ -228,7 +228,22 @@ registered by the add-on.
 |---|---|---|
 | `RGN_TYPE_WINDOW` | the transcript | `CADEX_CHAT_PT_transcript` |
 | `RGN_TYPE_EXECUTE` | the message box and its button row | `CADEX_CHAT_PT_input` |
-| `RGN_TYPE_HEADER` | model selector, Pin Face, Pin Point, the pinned count, the script button | `CADEX_CHAT_HT_header` |
+| `RGN_TYPE_HEADER` | model selector, the pinned count | `CADEX_CHAT_HT_header` |
+
+The split between the two is **status in the header, actions in the row**
+(ADR-074). The button row is four aligned groups, and the grouping is the
+documentation:
+
+| Group | Buttons | What they act on |
+|---|---|---|
+| gather | attach image, paste image, Pin Face, Pin Point, Define Terminal | what the *next message* will carry |
+| model | Rebuild Model | the *model*: re-runs the script the engine holds, sends nothing |
+| views | Parameters, Script, Wiring | open/close, each depressed while its view is open |
+| turn | New Chat, Send/Stop | the *turn* |
+
+Nothing in the row is hidden when it does not apply — `Define Terminal` greys
+out instead, because a row that changes width as you enter and leave Edit
+Mode moves every other button under the pointer.
 
 `RGN_TYPE_EXECUTE` is the load-bearing part. `RGN_TYPE_IS_HEADER_ANY`
 (`DNA_screen_types.h`) covers `HEADER`, `TOOL_HEADER`, `FOOTER`,
@@ -310,6 +325,18 @@ tree lives at `scene.cadex_wiring`, which is a real user, so it saves in the
 .blend without a fake user and node positions round-trip. A board that is not
 a declared output still gets a node; a script that predates `nets(...)` draws
 read-only, with the banner naming the conversion.
+
+**What puts the nodes on the canvas is `CadexWiringTree.get_from_context`**
+(ADR-074), not the panels. Everything `node_draw_space` draws is inside
+`if (snode.treepath.last)`, only `ED_node_tree_start` pushes onto `treepath`,
+and `snode_set_context` calls it on every redraw *only* for a tree type
+supplying that callback. Without it the editor drew an empty grid while the
+sidebar — which reads `scene.cadex_wiring` directly — listed every board. The
+`NODETREE` button in the chat's row (`mesh_agent.toggle_wiring`) is the
+explicit open/close; it matches on `area.spaces.active.tree_type`, never on
+`area.type` alone, because `NODE_EDITOR` is shared with the compositor, and
+it sets `area.ui_type` *before* `space.node_tree` because
+`rna_SpaceNodeEditor_node_tree_poll` rejects the assignment otherwise.
 
 Run its suite with no engine and no rebuild:
 

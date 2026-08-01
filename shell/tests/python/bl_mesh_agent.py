@@ -934,6 +934,134 @@ def test_confirming_the_input_sends():
         window_manager.mesh_chat_input = ""
 
 
+class _RecordingLayout:
+    """Enough of ``UILayout`` to record what a draw asks for.
+
+    Groups nest, so a row remembers its parent's ``enabled``: that is what
+    makes "drawn but greyed out" distinguishable from "drawn and live".
+    """
+
+    def __init__(self, parent=None):
+        self.parent = parent
+        self.drawn = [] if parent is None else parent.drawn
+        self.separators = [0] if parent is None else parent.separators
+        self._enabled = True
+
+    @property
+    def enabled(self):
+        return self._enabled and (self.parent is None or self.parent.enabled)
+
+    @enabled.setter
+    def enabled(self, value):
+        self._enabled = bool(value)
+
+    def row(self, **_kwargs):
+        return _RecordingLayout(self)
+
+    column = row
+
+    def separator(self, **_kwargs):
+        self.separators[0] += 1
+
+    def operator(self, idname, **kwargs):
+        self.drawn.append({"idname": idname, "enabled": self.enabled, **kwargs})
+
+    def label(self, **kwargs):
+        self.drawn.append({"label": kwargs.get("text", "")})
+
+    def prop(self, _data, name, **_kwargs):
+        self.drawn.append({"prop": name})
+
+    def template_header(self):
+        pass
+
+
+class _FakeScreen:
+    areas = ()
+
+
+class _FakeContext:
+    """A context for a draw, in a build with no window at all."""
+
+    screen = _FakeScreen()
+    edit_object = None
+
+    def __init__(self):
+        self.scene = bpy.context.scene
+        self.window_manager = bpy.context.window_manager
+
+
+def test_every_chat_action_is_in_one_row_under_the_message_box():
+    """One place to look for a button, and a row that does not resize.
+
+    The controls used to be split across the header (the two pins) and this
+    row (everything else), which made "where is the button" depend on which
+    button. ADR-074 moved them together: the header carries status, the row
+    carries actions.
+
+    The width claim is the other half. ``Define Terminal`` used to be drawn
+    only when its ``poll`` passed, so entering Edit Mode grew the row and
+    moved every other button under the pointer. It is drawn disabled instead.
+    """
+    print("test_every_chat_action_is_in_one_row_under_the_message_box")
+    from mesh_agent import cadex_terminal_pick
+    from mesh_agent import spaces as mesh_spaces
+    from mesh_agent import ui as mesh_ui
+
+    context = _FakeContext()
+    layout = _RecordingLayout()
+    mesh_ui.draw_chat_buttons(layout, context)
+    drawn = [entry for entry in layout.drawn if "idname" in entry]
+    idnames = [entry["idname"] for entry in drawn]
+
+    for idname in (
+        "mesh_agent.attach_image",
+        "mesh_agent.paste_image",
+        "mesh_agent.pick_pin",
+        "mesh_agent.pick_point",
+        "mesh_agent.define_terminal",
+        "mesh_agent.rebuild_model",
+        "mesh_agent.toggle_params",
+        "mesh_agent.show_script",
+        "mesh_agent.toggle_wiring",
+        "mesh_agent.chat_new",
+        "mesh_agent.chat_send",
+    ):
+        check(idname in idnames, "{:s} is in the row".format(idname))
+
+    # Rebuild is the always-on one: its poll is "the assistant is idle", so
+    # nothing about the selection or a pending failure can grey it out.
+    rebuild = getattr(bpy.types, "MESH_AGENT_OT_rebuild_model", None)
+    check(rebuild is not None and rebuild.poll(bpy.context),
+          "Rebuild Model is clickable with nothing selected")
+
+    # Out of Edit Mode: drawn, and disabled rather than missing.
+    terminal = next(e for e in drawn
+                    if e["idname"] == "mesh_agent.define_terminal")
+    check(cadex_terminal_pick.MESH_AGENT_OT_define_terminal.poll(context)
+          is False, "the terminal gesture does not apply here")
+    check(terminal["enabled"] is False, "so its button is greyed out")
+
+    # ...and the row is the same width either way, which is the point.
+    was = cadex_terminal_pick.MESH_AGENT_OT_define_terminal.poll
+    try:
+        cadex_terminal_pick.MESH_AGENT_OT_define_terminal.poll = (
+            classmethod(lambda cls, ctx: True))
+        editing = _RecordingLayout()
+        mesh_ui.draw_chat_buttons(editing, context)
+    finally:
+        cadex_terminal_pick.MESH_AGENT_OT_define_terminal.poll = was
+    check([e["idname"] for e in editing.drawn if "idname" in e] == idnames,
+          "the same buttons draw in Edit Mode, in the same order")
+
+    # The header keeps status only: a model dropdown and a count, no actions.
+    header = _RecordingLayout()
+    mesh_spaces.CADEX_CHAT_HT_header.draw(
+        type("_H", (), {"layout": header})(), context)
+    check(not [e for e in header.drawn if "idname" in e],
+          "the chat header draws no operators any more")
+
+
 def test_message_box_widget_is_available():
     """The input is a text-box widget, not a text field; without it the chat
     would silently fall back to nothing at all."""
@@ -1103,6 +1231,7 @@ def main():
         test_panels_are_homed_on_the_cadex_editors()
         test_cadex_topbar_is_the_product_bar()
         test_confirming_the_input_sends()
+        test_every_chat_action_is_in_one_row_under_the_message_box()
         test_message_box_widget_is_available()
         test_mcp_shim_protocol()
         test_cadex_engine_discovery()
