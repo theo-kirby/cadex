@@ -5200,3 +5200,85 @@ survives a save/load round trip — `bNodeSocket` has the DNA field for it, but
 no `.blend` was written to confirm. If that last one fails, `terminal` and
 `soldered` move onto the *node* (which does accept ID properties, verified)
 as a parallel array. After freeing disk: `pixi run app && pixi run gate`.
+
+## ADR-067 — Defining a terminal by clicking the model (2026-08-01)
+
+**Decision.** One new add-on module, `mesh_agent/cadex_terminal_pick.py`, and
+one operator, `MESH_AGENT_OT_define_terminal`, on the Cadex Chat header
+beside the attachment buttons. Select a hole rim in Edit Mode, press it, and
+the selection is fitted and **handed to the AI as a measurement to
+transcribe**.
+
+**Why.** `part.terminals`' `holes=` selector works on a BREP board. The case
+it cannot reach is the one the model gets wrong most often — an imported STL,
+which has no faces to select, so its terminals must be *declared*: a row of
+origin/axis/pitch/depth numbers the model currently guesses from a bounding
+box and a screenshot. ROADMAP Phase 10b and ADR-062's deferred list both name
+"writing a terminal into a script from a viewport click" as unbuilt. This
+does not close that; it supplies the *measurement* to the thing that can
+write it.
+
+**The axis is the odd-one-out eigenvector, not the smallest.** This is the
+one real piece of mathematics here and the first implementation got it
+wrong. A plane fit takes the scatter matrix's least-variance direction — and
+two rims of radius 0.5 mm on a 1.6 mm board are a point cloud *taller than it
+is wide*, so least-variance returns a plane containing the axis and the whole
+fit comes back as a nonsense pad. The right rule uses the property that makes
+the points circular rather than the one that makes them flat: on a circle or
+a cylinder **two of the three eigenvalues are equal** (the in-plane pair) and
+the third is the axis, whichever end of the ordering it lands on. So the axis
+is the eigenvector whose eigenvalue is furthest from the median — correct for
+one flat ring, for a deep narrow bore and for a shallow wide one alike. The
+test that caught it is in the suite.
+
+Each loop is then fitted by **Kåsa's closed-form least-squares circle** —
+linear, deterministic, no iteration, no seed, nothing to argue about — and
+the RMS radial residual is reported as a quality number.
+
+**Three things it refuses to guess.**
+
+- **Fewer than four vertices.** Three points fit a circle exactly, so the
+  residual carries no information at all. Refused, naming the count.
+- **Hole or pad.** A square pad's four corners fit a circle with *zero*
+  residual, radius = half the diagonal. **Residual is a quality signal and
+  never a classifier.** The default reads two coaxial loops of matching
+  radius as a bore and one loop as a pad, an enum lets the user override it,
+  and the report carries `kind_guessed` so the model knows which it got.
+- **The axis sign.** An eigenvector's sign is arbitrary and `mesh.terminals`
+  needs the direction drilled *into* the body. Resolved from the viewport's
+  view direction — the wire enters from the side the user is looking from —
+  reported as `axis_resolved_from`, and flippable. This is the same instinct
+  ADR-062 encodes by making `exit=` required for a `holes=` selector: loud
+  beats clever.
+
+A fit worse than 15% of the radius is refused rather than silently accepted.
+
+**It goes to chat, in its own queue, with its own vocabulary.**
+`docs/XSCRIPT.md` is explicit that a *pin* (chat-scoped, ephemeral) is not a
+*terminal* (script-scoped, durable), so this is a separate list drained by a
+separate line in `agent.start_turn`, and a test asserts the two queues never
+mix and that the note says "terminal" and never "pinned". Several picks batch
+into one turn, so a 19-pin header costs one turn and not nineteen — also
+tested. `modes.CADEX_OVERLAY` gains one instruction telling the model these
+numbers were measured off the geometry and to transcribe rather than
+re-derive them.
+
+**Coordinates.** Points come back through `obj.matrix_world.inverted_safe()`
+into the object's own frame, exactly as `cadex_pick.point_pin` already does,
+and the view direction goes back the same way. **Known gap, stated rather
+than hidden:** `mesh.terminals` rows are written in the *asset's* frame,
+which may be one or more `mesh.transform` calls above the output's — the
+shell cannot invert a chain it cannot see. The note says which frame the
+numbers are in, and the assistant, which can read the script, resolves the
+rest. Closing it properly wants a per-output composed placement matrix in
+`inspect scope="wiring"`; that is not built.
+
+**Verification.** Ten tests in `bl_mesh_agent_wiring.py`, green on the
+shipped bundle: an exact two-loop bore (centre, depth and `hole_dia` exact,
+residual < 1e-6), the ADR-062 landing convention asserted in *both* axis
+directions, a single-loop pad, the square that fits a circle perfectly, the
+under-four refusal, 5 µm and 20 µm vertex noise producing usable residuals, a
+scribble refused, the two queues staying apart, nineteen picks batching, and
+the overlay carrying the instruction. **Not verified:** the gesture in a real
+viewport — `poll` needs `context.edit_object`, and the operator has only been
+driven through `measure_selection` headlessly.

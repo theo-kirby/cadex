@@ -524,6 +524,20 @@ def draw_chat_buttons(layout, context):
     attach.operator(MESH_AGENT_OT_paste_image.bl_idname, text="",
                     icon='PASTEDOWN')
 
+    # Measuring a terminal off the model (ADR-067). Beside the attachment
+    # buttons because it is the same kind of thing -- something the user
+    # gathers now and the assistant reads on the next turn -- and counted the
+    # same way, so several picks visibly batch into one turn. Only offered in
+    # Edit Mode on a cadex output, which is where the gesture exists.
+    from . import cadex_terminal_pick
+
+    if cadex_terminal_pick.MESH_AGENT_OT_define_terminal.poll(context):
+        queued = cadex_terminal_pick.pending_terminal_count()
+        attach.operator(
+            cadex_terminal_pick.MESH_AGENT_OT_define_terminal.bl_idname,
+            icon='SNAP_MIDPOINT',
+            text="{:d}".format(queued) if queued else "")
+
     if agent.busy:
         layout.operator(MESH_AGENT_OT_chat_cancel.bl_idname,
                         text="", icon='CANCEL')

@@ -801,20 +801,33 @@ What makes them experimental, and what would settle it:
   places four motors. `CadexTerminals.py` is the new pure-Python module; no
   shell code, no protocol change, and literal ports are unchanged, so a
   script that uses none rebuilds byte-identically. Still not built: writing a
-  terminal into a script from a viewport click (Phase 10b), and mesh hole
-  detection, which is deferred by decision rather than pending.
-- [x] **The harness is invisible** — **settled by ADR-065 (the engine) and
-  ADR-066 (the editor), both 2026-08-01.** `nets(...)` declares the
-  connections, `set_params(nets=)` edits them with no AI turn,
+  terminal into a script from a viewport click (Phase 10b, ADR-067), and
+  mesh hole detection, which is deferred by decision rather than pending.
+- [x] **The harness is invisible** — **settled by ADR-065 (the engine),
+  ADR-066 (the editor) and ADR-067 (the pick), all 2026-08-01.** `nets(...)`
+  declares the connections, `set_params(nets=)` edits them with no AI turn,
   `inspect scope="wiring"` publishes the terminals the run resolved, and the
   Wiring editor draws all of it as a node graph in Blender's stock node
   editor — re-registered for exactly one Python tree type, so the editor menu
-  gains "Wiring" and stays short. **Verified as far as this machine allows:**
-  the whole engine half and the whole Python half run green here; the C++
-  half needs a shell build against 4.7 GB free and has not been run. Still
-  not built: `part.bundle` as an editable graph concept (deferred by decision
-  — changing a bundle's membership is a script edit), and defining a terminal
-  by clicking the model, which is the next item.
+  gains "Wiring" and stays short. Selecting a hole rim in Edit Mode fits a
+  terminal and hands the measurement to the assistant to transcribe.
+  **Verified as far as this machine allows:** the whole engine half and the
+  whole Python half run green here; the C++ half needs a shell build against
+  4.7 GB free and has not been run. Still not built: `part.bundle` as an
+  editable graph concept (deferred by decision — changing a bundle's
+  membership is a script edit); writing a terminal *into* the script from the
+  pick, rather than into the chat turn (Phase 10b, still open — ADR-067
+  supplies the measurement, not the write); and a per-output composed
+  placement matrix in the wiring scope, without which a pick on a transformed
+  mesh asset is expressed in the output's frame rather than the asset's and
+  the assistant has to resolve the difference.
+- [x] **A wire ends in mid-air** — **settled by ADR-063 (2026-08-01), and the
+  joint stopped reading as a cone in ADR-064 (2026-08-01).** `part.solder`
+  builds the joint a terminal implies, with a concave meniscus that flattens
+  into a short collar around the wire. Still not built: colouring solder
+  differently from wire, which needs an appearance vocabulary the part domain
+  does not have, and rounding the underside cap to a dome (decided: it stays
+  a cone).
 - **A joint and its wire share a sliver above the board.** Zero *inside* it —
   the lead runs straight down the radius the joint's outline leaves empty —
   but the wire is a spline fitted through a searched route and starts to turn

@@ -27,6 +27,7 @@ from bpy.app.handlers import persistent
 from . import agent as agent_module
 from . import cadex_backend as cadex_backend_module
 from . import cadex_pick as cadex_pick_module
+from . import cadex_terminal_pick as cadex_terminal_pick_module
 from . import model as model_module
 from . import spaces
 from . import wiring as wiring_module
@@ -192,6 +193,7 @@ def register():
     model_module.register()
     cadex_backend_module.register()
     cadex_pick_module.register()
+    cadex_terminal_pick_module.register()
     wiring_module.register()
     ui.register()
     spaces.register()
@@ -222,6 +224,7 @@ def unregister():
     spaces.unregister()
     ui.unregister()
     wiring_module.unregister()
+    cadex_terminal_pick_module.unregister()
     cadex_pick_module.unregister()
     cadex_backend_module.unregister()
     model_module.unregister()

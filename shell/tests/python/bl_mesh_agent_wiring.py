@@ -37,6 +37,8 @@ import mesh_agent  # noqa: E402
 from mesh_agent import wiring  # noqa: E402
 from mesh_agent import wiring_ui  # noqa: E402
 from mesh_agent import cadex_hydrate  # noqa: E402
+from mesh_agent import cadex_pick  # noqa: E402
+from mesh_agent import cadex_terminal_pick as pick  # noqa: E402
 
 FAILURES = []
 
@@ -296,6 +298,166 @@ def test_the_wiring_ui_registers_or_stands_down():
           "the tree registered anyway")
 
 
+# ---------------------------------------------------------------------------
+# ADR-067 — defining a terminal by clicking
+
+
+def _ring(radius, z, count=32, centre=(0.0, 0.0), noise=0.0):
+    import math
+    points = []
+    for index in range(count):
+        angle = 2.0 * math.pi * index / count
+        jitter = noise * (1.0 if index % 2 else -1.0)
+        points.append((centre[0] + (radius + jitter) * math.cos(angle),
+                       centre[1] + (radius + jitter) * math.sin(angle),
+                       z))
+    return points
+
+
+def test_fit_terminal_finds_a_hole():
+    """Two coaxial loops of matching radius are one bore."""
+    print("test_fit_terminal_finds_a_hole")
+    points = _ring(0.5, 1.6, centre=(3.0, -2.0)) + _ring(0.5, 0.0, centre=(3.0, -2.0))
+    row, report = pick.measure_selection(points, view_direction=(0.0, 0.0, 1.0))
+    check(row is not None, "the fit succeeded: {!s}".format(report))
+    if row is None:
+        return
+    check(report["kind"] == "hole", "and it read as a hole")
+    check(report["loops"] == 2, "from two loops")
+    check(abs(row["origin"][0] - 3.0) < 1e-4 and abs(row["origin"][1] + 2.0) < 1e-4,
+          "centred exactly on the bore")
+    check(abs(row["depth"] - 1.6) < 1e-4, "with the loop separation as the depth")
+    check(abs(row["hole_dia"] - 1.0) < 1e-4, "and twice the radius as hole_dia")
+    check(report["residual_mm"] < 1e-6, "residual is zero on an exact circle")
+
+
+def test_the_fitted_axis_points_into_the_material():
+    """ADR-062's convention: origin + axis*depth lands on the far face.
+
+    The engine's own selector implementation took the *near* end first and
+    only a kernel test caught it, so this is asserted in both directions.
+    """
+    print("test_the_fitted_axis_points_into_the_material")
+    from mathutils import Vector
+
+    points = _ring(0.5, 1.6) + _ring(0.5, 0.0)
+    for view, expect_z in (((0.0, 0.0, -1.0), -1.0), ((0.0, 0.0, 1.0), 1.0)):
+        row, _report = pick.measure_selection(points, view_direction=view)
+        if row is None:
+            check(False, "fit succeeded for view {!r}".format(view))
+            continue
+        axis = Vector(row["axis"])
+        check(abs(axis.z - expect_z) < 1e-6,
+              "axis points away from a viewer at {!r}".format(view))
+        landing = Vector(row["origin"]) + axis * row["depth"]
+        check(abs(landing.z - (1.6 if expect_z > 0 else 0.0)) < 1e-4,
+              "and origin + axis*depth lands on the far face")
+
+
+def test_fit_terminal_finds_a_pad():
+    print("test_fit_terminal_finds_a_pad")
+    row, report = pick.measure_selection(_ring(1.2, 0.0),
+                                         view_direction=(0.0, 0.0, 1.0))
+    check(row is not None, "the fit succeeded: {!s}".format(report))
+    if row is None:
+        return
+    check(report["kind"] == "pad", "one loop reads as a pad")
+    check(row["depth"] == 0.0, "with no depth")
+    check("hole_dia" not in row, "and no bore diameter")
+
+
+def test_a_square_is_not_classified_by_its_residual():
+    """Four corners fit a circle with zero error: residual is not a classifier."""
+    print("test_a_square_is_not_classified_by_its_residual")
+    square = [(1.0, 1.0, 0.0), (-1.0, 1.0, 0.0), (-1.0, -1.0, 0.0), (1.0, -1.0, 0.0)]
+    row, report = pick.measure_selection(square, view_direction=(0.0, 0.0, 1.0))
+    check(row is not None, "the fit does not fail, which is the point")
+    if row is not None:
+        check(report["residual_mm"] < 1e-9,
+              "a square pad's corners fit a circle exactly")
+        check(report["kind_guessed"] is True,
+              "so the operator records that the kind was a guess, not a reading")
+    # And the user can override it, which is the actual remedy.
+    forced, _report = pick.measure_selection(square, kind='PAD',
+                                             view_direction=(0.0, 0.0, 1.0))
+    check(forced is not None and forced["depth"] == 0.0,
+          "kind='PAD' overrides the guess")
+
+
+def test_fewer_than_four_vertices_is_refused():
+    """Three points always fit exactly, so the residual means nothing."""
+    print("test_fewer_than_four_vertices_is_refused")
+    row, report = pick.measure_selection(
+        [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (-1.0, 0.0, 0.0)])
+    check(row is None, "three vertices are refused")
+    check("3" in str(report), "and the refusal names the count")
+
+
+def test_a_noisy_rim_still_fits_and_reports_its_quality():
+    print("test_a_noisy_rim_still_fits_and_reports_its_quality")
+    for noise, label in ((0.005, "5 um"), (0.02, "20 um")):
+        points = _ring(0.5, 1.6, noise=noise) + _ring(0.5, 0.0, noise=noise)
+        row, report = pick.measure_selection(points, view_direction=(0.0, 0.0, 1.0))
+        check(row is not None, "{:s} of vertex noise still fits".format(label))
+        if row is not None:
+            check(0.0 < report["residual_mm"] < 0.05,
+                  "{:s}: residual is a usable quality signal ({:.4f})".format(
+                      label, report["residual_mm"]))
+
+
+def test_a_scribble_is_refused_rather_than_averaged():
+    print("test_a_scribble_is_refused_rather_than_averaged")
+    points = [(0.0, 0.0, 0.0), (5.0, 0.1, 0.0), (1.0, 4.0, 0.0),
+              (4.5, 3.8, 0.0), (0.2, 2.0, 0.0), (2.5, 0.05, 0.0)]
+    row, report = pick.measure_selection(points, view_direction=(0.0, 0.0, 1.0))
+    check(row is None, "a selection that is not round is refused")
+    check("not a circle" in str(report), "and says so")
+
+
+def test_a_fitted_terminal_is_not_a_pin():
+    """docs/XSCRIPT.md's naming rule, enforced in code."""
+    print("test_a_fitted_terminal_is_not_a_pin")
+    pick.clear_terminals()
+    cadex_pick._pending_pins.clear()
+    row, report = pick.measure_selection(_ring(0.5, 1.6) + _ring(0.5, 0.0),
+                                         view_direction=(0.0, 0.0, 1.0))
+    pick.queue_terminal({"output": "esp_placed", "object": "esp",
+                         "row": row, "report": report})
+    check(pick.pending_terminal_count() == 1, "the terminal queued")
+    check(cadex_pick.pending_pin_count() == 0, "and the pin queue is untouched")
+    note = pick.consume_terminal_notes()
+    check("MEASURED a terminal" in note, "the note says terminal")
+    check("pinned" not in note, "and never says pinned")
+    check("Transcribe" in note, "and tells the model to copy, not re-derive")
+    check(pick.pending_terminal_count() == 0, "draining empties the queue")
+    check(cadex_pick.consume_pin_notes() == "", "the two queues drain apart")
+
+
+def test_several_picks_batch_into_one_turn():
+    print("test_several_picks_batch_into_one_turn")
+    pick.clear_terminals()
+    row, report = pick.measure_selection(_ring(0.5, 1.6) + _ring(0.5, 0.0),
+                                         view_direction=(0.0, 0.0, 1.0))
+    for index in range(19):
+        pick.queue_terminal({"output": "hdr", "object": "hdr",
+                             "row": dict(row, name="p{:d}".format(index)),
+                             "report": report})
+    note = pick.consume_terminal_notes()
+    check(note.count("MEASURED a terminal") == 19,
+          "a 19-pin header is 19 lines in one note")
+    check(pick.pending_terminal_count() == 0, "drained in one go")
+
+
+def test_the_model_is_told_these_numbers_are_measured():
+    print("test_the_model_is_told_these_numbers_are_measured")
+    from mesh_agent import modes
+
+    check("MEASURE a terminal" in modes.CADEX_OVERLAY,
+          "the overlay names the gesture")
+    check("do not re-derive them" in modes.CADEX_OVERLAY,
+          "and tells the model to transcribe rather than estimate")
+
+
 def main():
     mesh_agent.register()
     try:
@@ -313,6 +475,16 @@ def main():
             test_a_disabled_row_is_not_deleted_by_looking_at_it,
             test_a_legacy_harness_is_read_only,
             test_the_wiring_ui_registers_or_stands_down,
+            test_fit_terminal_finds_a_hole,
+            test_the_fitted_axis_points_into_the_material,
+            test_fit_terminal_finds_a_pad,
+            test_a_square_is_not_classified_by_its_residual,
+            test_fewer_than_four_vertices_is_refused,
+            test_a_noisy_rim_still_fits_and_reports_its_quality,
+            test_a_scribble_is_refused_rather_than_averaged,
+            test_a_fitted_terminal_is_not_a_pin,
+            test_several_picks_batch_into_one_turn,
+            test_the_model_is_told_these_numbers_are_measured,
         ):
             test()
     finally:
