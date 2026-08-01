@@ -724,7 +724,7 @@ offscreen rendering, so the agent verifies through `inspect` facts and
 script stdout and is told so in its prompt; the CLI does not ship inside the
 engine payload; Windows is not supported.
 
-## Off-phase — the harness ops, experimental (ADR-056, ADR-057, ADR-062, ADR-063, 2026-07-27 → 2026-08-01)
+## Off-phase — the harness ops, experimental (ADR-056, ADR-057, ADR-062, ADR-063, ADR-065, 2026-07-27 → 2026-08-01)
 
 Procedural wire routing landed on **no phase**. It is new scope, not a work
 item any phase declared, and it is recorded here as experimental rather than
@@ -774,6 +774,21 @@ spans would undercut the board, and the default sits exactly on that floor)
 and that **existing accepted projects must be re-accepted**, which is one
 click or one `pixi run rebuild`. Both affected projects were re-accepted here.
 
+**Then the harness became something you can see (ADR-065, 2026-08-01).**
+`nets(ports=..., wires=...)` and `wire(...)` in a new pure module
+`CadexNets.py`: connections declared as a table, on exactly the terms
+`params()` already had — a declaration in the script whose current values live
+in `script.json`. `set_params` grew one optional `nets` argument, and
+`inspect scope="wiring"` publishes the harness as a graph: every terminal the
+accepted run resolved, joined to its port and its output, plus the connection
+table over them. The terminals were previously resolved inside the isolated
+worker and **discarded**, which is why the shell saw `wiring-test.cadex`'s
+seven components, ten cables and twenty joints as exactly two outputs. Scripts
+predating `nets()` answer the scope read-only, reconstructed from the
+`cable`/`bundle`/`solder` calls they made. No re-accepting: the digest hashes
+outputs only, and the revision covers nets only when non-empty. The editor
+that consumes this is not built.
+
 What makes them experimental, and what would settle it:
 
 - [x] **Ports are literals** — **settled by ADR-062 (2026-08-01).**
@@ -788,6 +803,16 @@ What makes them experimental, and what would settle it:
   script that uses none rebuilds byte-identically. Still not built: writing a
   terminal into a script from a viewport click (Phase 10b), and mesh hole
   detection, which is deferred by decision rather than pending.
+- [x] **The harness is invisible** — **settled engine-side by ADR-065
+  (2026-08-01).** `nets(...)` declares the connections, `set_params(nets=)`
+  edits them with no AI turn, and `inspect scope="wiring"` publishes the
+  terminals the run resolved — which were previously resolved inside the
+  isolated worker and discarded, so the shell saw `wiring-test.cadex`'s seven
+  components, ten cables and twenty joints as exactly two outputs. Still not
+  built: the wiring editor itself, which is what turns this from a readable
+  payload into a window; and `part.bundle` as an editable graph concept,
+  which is deferred by decision — changing a bundle's membership is a script
+  edit.
 - **A joint and its wire share a sliver above the board.** Zero *inside* it —
   the lead runs straight down the radius the joint's outline leaves empty —
   but the wire is a spline fitted through a searched route and starts to turn

@@ -109,7 +109,16 @@ ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
     ),
     ("set_params", "values"): (
         "Object of declared parameter name to new numeric value. Values are "
-        "clamped to each parameter's declared min/max."
+        "clamped to each parameter's declared min/max. Send an empty object "
+        "to change only the connections."
+    ),
+    ("set_params", "nets"): (
+        "The COMPLETE connection table for a script that declares one with "
+        'nets(...) — a list of {"name", "a", "b", "gauge_mm", "solder", '
+        '"enabled"} rows, where `a` and `b` are "<port>.<terminal>" '
+        "addresses. Not a patch: rows you omit are dropped, so read the "
+        "current table with `inspect scope=wiring` first. Omit this argument "
+        "entirely to leave the connections alone."
     ),
     ("inspect", "scope"): (
         "What to read. `script` is the current source, parameters and "
@@ -117,8 +126,10 @@ ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
         "(volume, shape type, bounding box, face counts) and is the main way "
         "to check geometry; `document` lists the published objects; `object` "
         "details one of them by exact internal name; `assets` lists the "
-        "importable files; `history` is the accepted-revision trail; `api` is "
-        "the tool surface."
+        "importable files; `history` is the accepted-revision trail; `wiring` "
+        "is the harness as a graph — every resolved terminal and the "
+        "connection table over them, and the thing to read before sending "
+        "`set_params` a `nets` list; `api` is the tool surface."
     ),
     ("inspect", "target"): (
         "The exact name the scope keys on — an output name for `output`, an "
@@ -141,6 +152,7 @@ INSPECT_SCOPES = (
     "object",
     "assets",
     "history",
+    "wiring",
     "api",
 )
 
@@ -161,6 +173,20 @@ def _property_schema(op: str, name: str, python_type: type) -> dict[str, Any]:
             "type": "object",
             "properties": {"old": {"type": "string"}, "new": {"type": "string"}},
             "required": ["old", "new"],
+            "additionalProperties": False,
+        }
+    if op == "set_params" and name == "nets":
+        schema["items"] = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "a": {"type": "string"},
+                "b": {"type": "string"},
+                "gauge_mm": {"type": "number"},
+                "solder": {"type": "boolean"},
+                "enabled": {"type": "boolean"},
+            },
+            "required": ["name", "a", "b", "gauge_mm"],
             "additionalProperties": False,
         }
     return schema

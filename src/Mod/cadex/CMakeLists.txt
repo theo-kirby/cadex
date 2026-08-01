@@ -11,6 +11,7 @@ set(Cadex_Scripts
     CadexBundle.py
     CadexTerminals.py
     CadexSolder.py
+    CadexNets.py
     CadexProject.py
     CadexScriptStore.py
     CadexSubshapeQuery.py

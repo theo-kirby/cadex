@@ -4942,3 +4942,145 @@ the script or restore a backup — wrong advice when the *engine* moved.
 for this cannot run in the state it would fix. And opening a stale project
 repeatedly can GC the pinned accepted attempt (`ATTEMPT_KEEP = 3`), so
 re-accept rather than reopening. All three want fixing separately.
+
+## ADR-065 — Connections become a declared table: `nets(...)` (2026-08-01)
+
+**Decision.** Two new globals in the project script, `nets(ports=..., wires=...)`
+and `wire(a, b, gauge=..., solder=..., enabled=..., avoid=..., label=...)`,
+living in a new pure-Python module `src/Mod/cadex/CadexNets.py` staged into the
+sandbox by filename like `CadexRouting.py`, `CadexBundle.py`, `CadexTerminals.py`
+and `CadexSolder.py` before it. `script.json` gains `net_specs` (the declaration
+cache) and `net_values` (the stored rows) beside `param_specs`/`param_values`;
+`set_params` gains one optional `nets` argument; and `inspect` gains a `wiring`
+scope that publishes the harness as a graph.
+
+**Why.** ADR-056, ADR-057, ADR-062, ADR-063 and ADR-064 built a real harness
+pipeline — routed wires, multi-conductor lays, geometry-anchored terminals,
+soldered joints. **None of it was visible.** The user's own
+`~/arch/wiring-test.cadex` has seven components, ten cables and twenty joints,
+and the shell saw exactly two outputs for the whole harness:
+`part.compound(wires)` and `part.compound(joints)`. No structure on screen,
+nothing to click, and no way to change what connects to what without a chat
+turn.
+
+The cause is structural, not cosmetic. Terminals were resolved **inside the
+isolated worker and discarded** — `_TERMINAL_SETS` is a per-request memo, and
+its contents never entered a response. A terminal's name, point, axis, bore
+and depth existed for the length of one build and then did not. The shell could
+not have drawn a wiring diagram if it wanted to.
+
+And the connections themselves had no address. A harness written today is a
+comprehension over literal pairs:
+
+```python
+links = [(sen_t["s0"], esp_t["e0"], [sensor_board, esp32_board]), ...]
+wires = [part.cable(a, b, gauge_mm=WG, avoid=obs) for a, b, obs in links]
+```
+
+That builds correctly and can be edited by nothing but the AI, because nothing
+outside the script text names the row.
+
+**`nets()` is to a wire what `params()` is to a slider.** That is the whole
+design, and every other decision follows from it: a declaration in the script
+whose *current values live outside it*. The declaration is a default in exactly
+the sense `num()`'s default is one; the editor writes stored values, never the
+script text, and never with the AI in the loop.
+
+**The table carries exactly what the editor can edit.** Overridable: `a`, `b`,
+`gauge`, `solder`, `enabled`. Declaration-only: `avoid`, `label`, and every
+other argument the script computes — `clearance_mm`, `slack`, `cell_mm`,
+`style`, `twist_pitch_mm`, `pad_dia_mm`. Anything richer stays where it already
+lives. The alternative is a second place to look for one value, and then a rule
+about which place wins.
+
+**An endpoint is `"<port>.<terminal>"`.** Human-readable, JSON-safe, and
+validated at declaration against the actual `TerminalSet`s, so a typo is a
+refusal and not a silent miswire. Port names are lower_snake_case and carry no
+dot, so the split is on the *first* dot and terminal names may contain as many
+more as they like. Three alternatives were rejected: an **ordinal** is exactly
+the index reference ADR-029 deleted and `TerminalSet.__getitem__` refuses by
+hand; a **content hash of the component payload** changes whenever any upstream
+slider moves, so every stored row would dangle on the first drag; and the
+component's **`result` key** is not known when `part.terminals` is called, and a
+component need not be an output at all.
+
+**Stored rows are a full list, not a patch.** That is what lets the editor add
+and delete wires rather than only retune the rows the script happened to write.
+An empty list therefore means "no overrides", never "no wires" — deleting the
+last wire is expressed by disabling it.
+
+**Where the terminals come from — the one real design question.** The worker
+already resolves every terminal set and memoises it; publishing that registry
+in the worker result is the cheapest correct option. It costs nothing extra, it
+covers `holes=` selector layouts that host-side resolution cannot reach at all
+(a selector needs the built shape, and VISION's fourth principle keeps user code
+out of the live process), and it cannot drift from the geometry that was
+actually built. Re-deriving it host-side would work only for declared layouts
+and would be a second implementation of the same arithmetic. The `port → output`
+join comes free: the worker knows both the set's component payload and the
+declared outputs' payloads, so a `_canonical_json` lookup is the whole join, and
+a component that is neither a declared port nor a declared output still yields a
+node.
+
+The registry is **derived data on the same footing as the display artifacts**:
+computed after `compute_project_digest`, never fed into it, and a port the
+script declares but never wires is resolved for publication through a path that
+*reports* failure rather than raising it. Publishing an unused terminal set must
+not be able to turn a harmless unused selector into a build failure.
+
+**One op, not a new `set_nets`.** "Set the values of declared controls without
+the AI" is one concept, and a slider and a wire are both instances of it.
+`set_params` therefore grows one optional `nets` key, `OP_ARG_SPECS` and
+`docs/INTEGRATION.md`'s op table change together as the guardrail test requires,
+and the AI's tool surface stays at four tools rather than five. The one visible
+consequence: `values` loses its `minProperties: 1`, because a nets-only edit
+patches no parameter at all and sends `values: {}`.
+
+**The read path needed no protocol change.** `inspect` already takes
+`{"scope": str}`, so `wiring` is a dispatch beside the eight existing scopes and
+nothing in the request pin moved.
+
+**Strict on the request, lenient on the store.** ADR-039's asymmetry, and for
+nets its two halves land in different places. A `set_params(nets=...)` naming an
+endpoint the declared ports do not have is a caller error and stays loud with
+`UNKNOWN_PROJECT_NET_ENDPOINT`. A *stored* row that a rewritten script no longer
+supports is dropped, in `validate_project_result` and in
+`CadexNets.effective_rows` — raising there would wedge the editor forever the
+moment the AI renamed a port, in exactly the way a dropped parameter once wedged
+`set_params`.
+
+**This one is migration-free, and that was designed for.** The project digest
+hashes outputs only, so publishing terminals moves no digest. And
+`net_specs`/`net_values` enter `project_script_revision` **only when non-empty**,
+so every project written before nets keeps a byte-identical revision. Unlike
+ADR-064, nothing needs re-accepting. The conditional in a hash payload is doing
+real work rather than being a switch: a script that declares no nets has nothing
+to say there, and saying it anyway would move every stored revision in the world
+to record an empty table.
+
+**Migration for the two harnesses that already exist.** A script predating
+`nets()` answers the scope read-only — `"source": "derived"`, `"editable": false`
+— with connections reconstructed by scanning the accepted revision's
+`cable`/`bundle`/`solder` payloads for terminal endpoints. It is a complete
+picture of what the run built, so the editor draws `wcv8` and `wiring-test` on
+day one and refuses drags; the conversion to `nets()` is a chat turn. Rows from
+a `part.bundle` conductor are marked `"kind": "bundle"` and are never editable
+either way: changing a bundle's membership changes the conductor count, the lay
+radius and every other conductor's position, which is a script edit and not a
+table edit. A `(point, direction)` literal endpoint yields no row at all — it
+has no component behind it and so no node to draw from, and half a wire is worse
+than none.
+
+**Verification.** 532 engine tests and 76 CLI tests green, including a
+`FreeCADCmd` end-to-end that writes a two-plate `nets()` script, reads the
+published registry back out of the attempt's `result.json`, rewires one row onto
+a different terminal through `set_params(nets=...)`, disables another, adds a
+row the script never declared, and asserts the built outputs and the digest
+followed — with no chat turn anywhere. It also asserts a bad endpoint is refused
+and leaves the working revision exactly as it was.
+
+**Not done here.** The editor itself (ADR-066) and defining a terminal by
+clicking the model (ADR-067). `bundle` as an editable graph concept, a `ports(...)`
+table letting the UI author terminal *geometry*, colour, netlist import/export
+and electrical rules are all out of scope: this is a view of the script, not a
+schematic capture tool.

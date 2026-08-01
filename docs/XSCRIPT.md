@@ -278,6 +278,90 @@ layout has no measurements to fall back on**: a declared hole without
 all — needs `pad_dia_mm`. Everything is refused by naming the value it
 measured and the one it conflicts with.
 
+### Declaring a harness: `nets()` and `wire()` `[ADR-065]`
+
+Terminals name the ends of a wire; `nets()` names the wire. It is to a
+connection exactly what `params()` is to a slider — **a declaration in the
+script whose current values live outside it**:
+
+```python
+n = nets(
+    ports={"sen": sen_t, "esp": esp_t, "fc": fc_t},   # named TerminalSets
+    wires={                                           # named rows
+        "s0_e0": wire("sen.s0", "esp.e0", gauge=WG, solder=True,
+                      avoid=[sensor_board, esp32_board]),
+    },
+)
+
+for name, w in n.items():
+    if not w.enabled:
+        continue
+    result["wire_" + name] = part.cable(w.a, w.b, gauge_mm=w.gauge,
+                                        avoid=w.avoid)
+    if w.solder:
+        result["joint_" + name] = part.solder(w.a, gauge_mm=w.gauge)
+```
+
+`w.a` and `w.b` are real `Terminal` objects, so `part.cable`, `part.bundle`
+and `part.solder` are untouched and a script converted from a comprehension
+over literal pairs builds byte-identically. `n.enabled()` is the loop above
+without the `continue`.
+
+An endpoint is **`"<port>.<terminal>"`**, validated at declaration against the
+actual `TerminalSet`s — a typo is a refusal, not a silent miswire. Port names
+are lower_snake_case and carry no dot, so the split is on the first dot and a
+terminal name may contain more.
+
+**The table carries exactly what the wiring editor can edit.**
+
+| column | overridable | lives where |
+|---|---|---|
+| `a`, `b`, `gauge`, `solder`, `enabled` | **yes** | `net_values` in `script.json` |
+| `avoid`, `label` | no | the script |
+| every routing argument (`clearance_mm`, `slack`, `cell_mm`, `style`, `twist_pitch_mm`, `pad_dia_mm`, …) | no | the script |
+
+Refusals mirror `params()`: `nets()` at most once per script, at most
+`MAX_NETS` (256) rows, lower_snake_case names on both halves, an endpoint
+naming a port or terminal that does not exist, and both ends the same.
+
+`part.bundle` is deliberately **not** a table concept. Changing a bundle's
+membership changes the conductor count, the lay radius and every other
+conductor's position; that is a script edit. Bundles draw in the editor and
+stay read-only.
+
+### The wiring path `[ADR-065]`
+
+The peer of *The slider path* below, through the same op. `script.json`
+carries `net_specs` (the declaration the worker collected) beside
+`net_values` (the stored rows), exactly as it carries `param_specs` beside
+`param_values`, and `set_params` takes an optional `nets` argument alongside
+`values`. A nets-only edit sends `values: {}`.
+
+Two properties are worth stating because they are not the parameter path's:
+
+- **`nets` is a full row list, not a patch.** That is what lets the editor
+  add and delete wires. An empty list means "no overrides", never "no
+  wires" — deleting the last wire is expressed by disabling it.
+- **Strict on the request, lenient on the store.** A request naming an
+  endpoint the declared ports do not have is refused with
+  `UNKNOWN_PROJECT_NET_ENDPOINT`. A *stored* row a rewritten script no longer
+  supports is dropped rather than raised on, in `validate_project_result` —
+  ADR-039's rule, for ADR-039's reason: raising would wedge the editor
+  forever the moment the AI renamed a port.
+
+`net_specs`/`net_values` join `project_script_revision` **only when
+non-empty**, so every project written before ADR-065 keeps a byte-identical
+revision and nothing needs re-accepting.
+
+`inspect scope="wiring"` is the read side: every terminal the accepted run
+resolved — name, point, direction, kind, bore radius, depth — joined to its
+port and its output, plus the connection table over them. The terminals come
+from the worker's own resolution, published into the attempt's `result.json`,
+because a `holes=` selector needs the built shape and the live process never
+runs user code. A script written before `nets()` gets the same graph
+reconstructed from the `cable`/`bundle`/`solder` calls it made, marked
+`"source": "derived"` and `"editable": false`.
+
 ### Lifecycle tools
 
 The tool surface the AI sees is exactly four operations

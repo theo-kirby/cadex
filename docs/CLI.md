@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-07-31. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-08-01. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no Blender, no display, no `bpy`, no shell code.

@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-07-31
+Verified against source: 2026-08-01
 
 **This document is the contract between the two halves of the product.**
 They live in one repository (ADR-030) and in two processes, under two
@@ -114,11 +114,11 @@ lifetime signal.
 |---|---|---|
 | `open_project` | `project_root`, `budgets?`, `restore?` | manifest + full script.json state; **restore pass** re-runs THE script into the fresh ephemeral document and asserts digest equality when an accepted digest exists; a script that will not run at all is retried once from the accepted revision's pinned source (ADR-044) |
 | `describe_api` | — | `describe_project_api()` verbatim |
-| `write_script` / `edit_script` / `set_params` | today's tool args + optional `display {quality, deflection, edges}`; `write_script` also takes `replace?` (ADR-045) | **byte-identical** to the in-process tool payload (accept payload / `tool_failure` envelope, `STALE_PROGRAM_REVISION` guard included) + per-output `display {artifact_kind, artifact_path (abs), placement, tessellation\|null}` |
+| `write_script` / `edit_script` / `set_params` | today's tool args + optional `display {quality, deflection, edges}`; `write_script` also takes `replace?` (ADR-045); `set_params` also takes `nets?` — the **complete** replacement row list for the connections a script declares with `nets(...)`, each row `{name, a, b, gauge_mm, solder, enabled}` with `a`/`b` addressed `<port>.<terminal>` (ADR-065). A full list rather than a patch, so the wiring editor can add and drop rows; a nets-only edit sends `values: {}` | **byte-identical** to the in-process tool payload (accept payload / `tool_failure` envelope, `STALE_PROGRAM_REVISION` guard included) + per-output `display {artifact_kind, artifact_path (abs), placement, tessellation\|null}` |
 | `rebuild` | `display?` | explicit deterministic re-run of the stored script (same payload shape) |
 | `put_asset` | `source_path`, `name?` | copies one STL/OBJ/PLY into the project store's `assets/` under a validated name (overwrite = re-import), returns its `{name, bytes, sha256}` plus the full listing. A **modeling** op: it writes the store, and exclusion against an in-flight rebuild is what stops a half-copied asset being staged. A path, not bytes — the asset budget is 128 MB against an 8 MB frame cap |
 | `resolve_pin` | `output`, `selection` (fingerprint query or `{element_type, index}`) | `{ok, output, revision, subelements, details}` against the accepted revision's staged BREP (`CadexPinResolution.py`) |
-| `inspect` | today's `core.inspect` args | same contract; `document/object` serve the ephemeral doc, `script/api/image/assets/history` the store; `selection` rejected (shell-only) |
+| `inspect` | today's `core.inspect` args | same contract; `document/object` serve the ephemeral doc, `script/api/image/assets/history/wiring` the store; `selection` rejected (shell-only). `wiring` is the harness as a graph (ADR-065): the terminals the accepted run resolved, joined to the connection table, with `editable: false` and `source: "derived"` for a script written before `nets(...)` |
 | `preview_params` | `values`, `expected_revision` | solved component placements for a **pose-only** parameter change, from a resident read-only worker (ADR-055) — no BREP, no tessellation, no digest, no publication, **no store write**. A **read** op: it queues behind an in-flight modeling request rather than refusing one. Answers `previewable: false` with a `reason` whenever the change was not pose-only, the revision is stale, or the worker is unavailable; the debounced `set_params` behind it is the real answer either way |
 | `cancel` | `request_id?` | acks and cancels the in-flight modeling request (`RUN_CANCELLED` flows to that request) |
 | `shutdown` | — | graceful exit |
@@ -136,7 +136,7 @@ prose. Every response also carries `id` and `ok`.
 | Op | Response keys (success) |
 |---|---|
 | `open_project` | `schema`, `project_root`, `budgets`, `restore`, `script`, `manifest`? |
-| `describe_api` | `domain`, `domains`, `engine`, `instructions`, `program_schema`, `result_contract`, `revision_rule`, `source_globals`, `parameters`, `mutation_selection` |
+| `describe_api` | `domain`, `domains`, `engine`, `instructions`, `program_schema`, `result_contract`, `revision_rule`, `source_globals`, `parameters`, `connections`, `mutation_selection` |
 | `write_script` / `edit_script` / `set_params` / `rebuild` | `tool`, `revision`, `accepted_revision`, `digest`, `model_state`, `outputs`, `live_outputs`, `removed`, `display`?, `stdout`? |
 | `put_asset` | `name`, `bytes`, `sha256`, `assets` |
 | `resolve_pin` | `output`, `revision`, `subelements`, `details` |

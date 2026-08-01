@@ -831,6 +831,13 @@ def _sweep_conductor(
 _TERMINAL_SETS: dict[str, dict[str, dict[str, Any]]] = {}
 _TERMINAL_SET_LIMIT = 64
 
+#: The ``{component, layout}`` payload behind each key in ``_TERMINAL_SETS``,
+#: in first-resolution order. The memo alone is keyed by a hash and so cannot
+#: say *which board* it resolved; publishing the wiring needs that (ADR-065),
+#: and re-deriving it host-side would cover declared layouts only. Cleared
+#: with the memo, for the reason recorded there.
+_TERMINAL_SET_SOURCES: dict[str, dict[str, Any]] = {}
+
 #: What the model does about a terminal that would not resolve.
 _TERMINAL_CORRECTION = (
     "A terminal names geometry, so fix the naming rather than the number: "
@@ -941,9 +948,7 @@ def _resolve_terminal_set(
 
     import CadexTerminals
 
-    key = _memo_key(
-        {name: value for name, value in payload.items() if name != "terminal"}
-    )
+    key = terminal_set_key(payload)
     cached = _TERMINAL_SETS.get(key)
     if cached is not None:
         return cached
@@ -1011,7 +1016,57 @@ def _resolve_terminal_set(
     result = {str(entry["name"]): entry for entry in resolved}
     if len(_TERMINAL_SETS) < _TERMINAL_SET_LIMIT:
         _TERMINAL_SETS[key] = result
+        _TERMINAL_SET_SOURCES[key] = {
+            "component": component,
+            "layout": layout,
+        }
     return result
+
+
+def terminal_set_key(payload: Mapping[str, Any]) -> str:
+    """The memo identity of one terminal set: its payload minus the name.
+
+    Public because the project worker joins the published registry to the
+    ``nets(ports=...)`` declaration by this key (ADR-065), and two
+    constructions of one identity would drift.
+    """
+
+    return _memo_key(
+        {name: value for name, value in payload.items() if name != "terminal"}
+    )
+
+
+def resolve_terminal_set_for_publication(
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Resolve one terminal set for the wiring publication; never raises.
+
+    A port the script declares but never wires has not been resolved by the
+    run, and resolving it here is what puts an unconnected board on the
+    editor's canvas. It must not be able to *fail* the run: publishing an
+    id'd set the script never used would otherwise turn a harmless unused
+    selector into a build failure, which is a worse trade than an empty node.
+    """
+
+    try:
+        resolved = _resolve_terminal_set("terminals", "component", dict(payload))
+    except Exception as exc:  # deliberately broad: this is derived data
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "terminals": list(resolved.values())}
+
+
+def published_terminal_sets() -> list[dict[str, Any]]:
+    """Every terminal set this request resolved, in first-resolution order."""
+
+    return [
+        {
+            "key": key,
+            "component": source.get("component"),
+            "layout": source.get("layout"),
+            "terminals": list(_TERMINAL_SETS.get(key, {}).values()),
+        }
+        for key, source in _TERMINAL_SET_SOURCES.items()
+    ]
 
 
 def _resolve_port(operation: str, parameter: str, value: Any):
@@ -2546,6 +2601,7 @@ def reset_part_shape_memo() -> None:
     _SHAPE_MEMO.clear()
     _BUNDLE_ROUTES.clear()
     _TERMINAL_SETS.clear()
+    _TERMINAL_SET_SOURCES.clear()
 
 
 def _memo_key(payload: Mapping[str, Any]) -> str:

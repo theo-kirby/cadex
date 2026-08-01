@@ -121,8 +121,17 @@ def test_project_tool_specs_are_exact_and_guarded() -> None:
         "replacements"
     ]
     assert replacements["items"]["required"] == ["old", "new"]
-    values = specs["xscript.project.set_params"].parameters["properties"]["values"]
-    assert values["minProperties"] == 1
+    set_params = specs["xscript.project.set_params"].parameters["properties"]
+    assert set_params["values"]["additionalProperties"] == {
+        "type": ["number", "null"]
+    }
+    # `values` lost its minProperties with ADR-065: a nets-only edit patches
+    # no parameter at all, and one op serves both declared tables.
+    assert "minProperties" not in set_params["values"]
+    nets = set_params["nets"]
+    assert nets["type"] == "array" and nets["maxItems"] == 256
+    assert nets["items"]["required"] == ["name", "a", "b", "gauge_mm"]
+    assert nets["items"]["additionalProperties"] is False
 
 
 def test_describe_project_api_is_json_safe_and_complete() -> None:
@@ -154,9 +163,14 @@ def test_describe_project_api_is_json_safe_and_complete() -> None:
         "assembly",
         "params",
         "num",
+        "nets",
+        "wire",
     }
     assert "params" in payload["parameters"]
     assert "num" in payload["parameters"]
+    # The connection vocabulary is described beside the parameter one, so an
+    # agent that reads describe_api learns the harness table exists (ADR-065).
+    assert set(payload["connections"]) == {"nets", "wire", "values"}
     assert "result" in payload["result_contract"]
     assert set(payload["mutation_selection"]) == {
         "write_script",
@@ -210,6 +224,9 @@ def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None
         # staged for the same reason again (ADR-062).
         "CadexTerminals.py",
         "CadexSolder.py",
+        # The connection table nets()/wire() declare: pure Python, staged so
+        # the project worker can stage it into the exec namespace (ADR-065).
+        "CadexNets.py",
         "cadex_partdesign_api.py",
         "cadex_partdesign_worker.py",
         "cadex_mesh_api.py",
