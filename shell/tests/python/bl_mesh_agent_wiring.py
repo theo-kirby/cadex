@@ -458,6 +458,59 @@ def test_the_model_is_told_these_numbers_are_measured():
           "and tells the model to transcribe rather than estimate")
 
 
+def test_the_graph_fills_itself():
+    """Regression: the editor opened blank with no way to fill it (ADR-066).
+
+    `sync_from_engine` shipped with exactly one caller — the header's refresh
+    button — and the header only drew that button once a tree already
+    existed. So a freshly opened file showed "No project wiring", and there
+    was no control anywhere that would populate it. The graph is a projection
+    of the engine; something has to notice the engine moved.
+    """
+    print("test_the_graph_fills_itself")
+    from mesh_agent import cadex_backend
+
+    scene = bpy.context.scene
+    wiring._sync_armed.clear()
+
+    # No engine state cached: nothing to sync to, and nothing should be armed.
+    check(wiring.needs_sync(scene) is False,
+          "a project with no accepted revision asks for nothing")
+
+    state = cadex_backend._state_for(cadex_backend.project_root(scene))
+    state.revision = "rev-one"
+    check(wiring.needs_sync(scene) is True,
+          "an accepted revision with no tree asks for a sync")
+
+    tree = wiring.ensure_tree(scene)
+    wiring.apply_state(tree, _state(revision="rev-one"))
+    check(wiring.needs_sync(scene) is False,
+          "a tree already at that revision asks for nothing")
+
+    state.revision = "rev-two"
+    check(wiring.needs_sync(scene) is True, "a moved revision asks again")
+
+    # The failure path must not re-ask forever: one attempt per revision.
+    tree.cadex_attempted_revision = "rev-two"
+    check(wiring.needs_sync(scene) is False,
+          "a revision already attempted is not retried on every redraw")
+
+    state.revision = ""
+
+
+def test_the_sync_button_is_always_reachable():
+    """The control that fills the graph must not be hidden until it is full."""
+    print("test_the_sync_button_is_always_reachable")
+    import inspect as _inspect
+
+    source = _inspect.getsource(wiring_ui.CADEX_WIRING_HT_header.draw)
+    button = source.index("MESH_AGENT_OT_sync_wiring")
+    guard = source.index("if tree is None")
+    check(button < guard,
+          "the header draws the refresh button before it gives up on the tree")
+    check("arm_sync" in source, "and arms an automatic sync from the draw")
+
+
 def test_the_node_editor_tool_system_is_initialised():
     """Regression: opening the Wiring editor must not raise (ADR-066).
 
@@ -569,6 +622,8 @@ def main():
             test_a_fitted_terminal_is_not_a_pin,
             test_several_picks_batch_into_one_turn,
             test_the_model_is_told_these_numbers_are_measured,
+            test_the_graph_fills_itself,
+            test_the_sync_button_is_always_reachable,
             test_the_node_editor_tool_system_is_initialised,
             # Last: open_mainfile replaces the whole session.
             test_the_graph_survives_a_blend_round_trip,

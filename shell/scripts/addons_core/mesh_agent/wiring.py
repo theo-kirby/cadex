@@ -180,6 +180,10 @@ class CadexWiringTree(bpy.types.NodeTree):
     bl_icon = 'NODETREE'
 
     cadex_revision: bpy.props.StringProperty(default="")
+    #: The last revision a sync was *attempted* for, successful or not.
+    #: Without it, a project with no accepted revision re-asks the
+    #: engine on every single redraw.
+    cadex_attempted_revision: bpy.props.StringProperty(default="")
     cadex_root: bpy.props.StringProperty(default="")
     cadex_editable: bpy.props.BoolProperty(default=False)
     cadex_source: bpy.props.StringProperty(default="")
@@ -456,6 +460,10 @@ def sync_from_engine(scene, force=False):
 
     tree = ensure_tree(scene)
     root = cadex_backend.project_root(scene)
+    # Record the attempt before making it, so a revision that answers
+    # `ok: false` (no accepted revision yet, no terminals at all) is not
+    # retried on every redraw for the rest of the session.
+    tree.cadex_attempted_revision = _engine_revision(scene)
     state = cadex_backend.wiring_state(scene)
     if not isinstance(state, dict) or state.get("ok") is False:
         tree.cadex_error = str((state or {}).get("error") or
@@ -465,6 +473,80 @@ def sync_from_engine(scene, force=False):
         return True
     tree.cadex_error = ""
     return apply_state(tree, state, root=root)
+
+
+# --- staying in step with the engine ---------------------------------------
+#
+# The graph is a projection, so something has to notice when the thing it
+# projects has moved.  Shipping without this was the bug: `sync_from_engine`
+# had exactly one caller, the header's refresh button, and the header did not
+# draw that button until a tree existed -- so a fresh file opened to an empty
+# canvas with no way to fill it.
+#
+# A draw handler may not mutate data, so the header *arms* and a one-shot
+# timer syncs.  The arming is guarded twice: `_sync_armed` stops a redraw
+# storm queueing a hundred timers, and the attempted-revision stamp stops a
+# project with nothing to show from re-asking the engine forever.
+
+_sync_armed = set()
+
+
+def _engine_revision(scene):
+    """The accepted revision, from the local cache. Never opens a project."""
+
+    from . import cadex_backend
+
+    state = cadex_backend.cached_script_state(scene)
+    return str(getattr(state, "revision", "") or "")
+
+
+def needs_sync(scene):
+    tree = getattr(scene, "cadex_wiring", None)
+    revision = _engine_revision(scene)
+    if not revision:
+        return False
+    if tree is None:
+        return True
+    return (tree.cadex_revision != revision
+            and tree.cadex_attempted_revision != revision)
+
+
+def arm_sync(scene):
+    """Ask for a sync on the next timer tick. Safe to call from a draw."""
+
+    if not needs_sync(scene):
+        return
+    root = ""
+    try:
+        from . import cadex_backend
+
+        root = cadex_backend.project_root(scene)
+    except Exception:
+        pass
+    if root in _sync_armed:
+        return
+    _sync_armed.add(root)
+    try:
+        bpy.app.timers.register(_sync_timer, first_interval=0.0)
+    except Exception:
+        _sync_armed.discard(root)
+
+
+def _sync_timer():
+    _sync_armed.clear()
+    scene = getattr(bpy.context, "scene", None)
+    if scene is None:
+        return None
+    try:
+        sync_from_engine(scene)
+    except Exception as exc:  # a timer has no operator report to land in
+        try:
+            from . import model
+
+            model.record_error("Wiring sync failed: {}".format(exc))
+        except Exception:
+            pass
+    return None
 
 
 def _mark_dirty(tree):
@@ -575,6 +657,7 @@ def register():
 
 def unregister():
     _dirty.clear()
+    _sync_armed.clear()
     if hasattr(bpy.types.Scene, "cadex_wiring"):
         del bpy.types.Scene.cadex_wiring
     for cls in reversed(classes):

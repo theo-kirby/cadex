@@ -65,12 +65,18 @@ class CADEX_WIRING_HT_header(bpy.types.Header):
 
     def draw(self, context):
         layout = self.layout
+        layout.label(text="Wiring", icon='NODETREE')
+        # Always drawn, tree or no tree. It used to be inside the `is None`
+        # branch below, which meant a fresh file had no way to populate the
+        # graph at all -- the one control that fills it was hidden until it
+        # was already full.
+        layout.operator(MESH_AGENT_OT_sync_wiring.bl_idname, text="",
+                        icon='FILE_REFRESH')
+        wiring.arm_sync(context.scene)
         tree = _tree(context)
         if tree is None:
-            layout.label(text="Wiring")
+            layout.label(text="reading the model…")
             return
-        layout.label(text="Wiring", icon='NODETREE')
-        layout.operator(MESH_AGENT_OT_sync_wiring.bl_idname, text="", icon='FILE_REFRESH')
         row = layout.row(align=True)
         row.label(text="{:d} boards".format(len(tree.nodes)))
         row.label(text="{:d} wires".format(len(wiring.stored_rows(tree))))
@@ -94,10 +100,18 @@ class CADEX_WIRING_PT_connection(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
+        wiring.arm_sync(context.scene)
         tree = _tree(context)
         if tree is None:
-            layout.label(text="No project wiring.")
+            column = layout.column(align=True)
+            column.label(text="Reading the model…", icon='SORTTIME')
+            column.operator(MESH_AGENT_OT_sync_wiring.bl_idname,
+                            icon='FILE_REFRESH')
             return
+        if tree.cadex_error:
+            row = layout.row()
+            row.alert = True
+            row.label(text=tree.cadex_error[:60], icon='ERROR')
         layout.prop(tree, "new_gauge_mm")
         if not tree.cadex_editable:
             column = layout.column(align=True)
@@ -134,8 +148,14 @@ class CADEX_WIRING_PT_boards(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
+        wiring.arm_sync(context.scene)
         tree = _tree(context)
         if tree is None:
+            return
+        if not tree.nodes:
+            layout.label(text="No boards yet.")
+            layout.operator(MESH_AGENT_OT_sync_wiring.bl_idname,
+                            icon='FILE_REFRESH')
             return
         for node in tree.nodes:
             row = layout.row(align=True)
