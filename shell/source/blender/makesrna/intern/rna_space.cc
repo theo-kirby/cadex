@@ -3013,8 +3013,10 @@ static bool rna_SpaceNodeEditor_tree_type_poll(void *Cv, bke::bNodeTreeType *typ
    * thing being offered is "Wiring", not "Node Editor".
    *
    * The rule is the identifier prefix, so a second Cadex tree needs no edit
-   * here. */
-  if (!StringRef(type->idname).startswith("Cadex")) {
+   * here. `.ref()` rather than a StringRef constructor: UString deliberately
+   * offers no implicit conversion, to keep its comparison operators
+   * unambiguous. */
+  if (!type->idname.ref().startswith("Cadex")) {
     return false;
   }
   bContext *C = static_cast<bContext *>(Cv);
