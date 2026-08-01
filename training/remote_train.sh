@@ -180,6 +180,50 @@ sha256_of() {
     fi
 }
 
+# THE TRAINER THAT RUNS IS THE BOX-S, NOT THIS REPO-S.
+#
+# This script copies a bundle and a model and then runs
+# `${remote_repo}/training/cadex_train.py` -- the checkout on the box. Every
+# test that pins the trainer against the engine runs here, against the file
+# in this repo, and nothing connected the two. So a box whose checkout
+# predates a change to `EPISODE_VARIATION_ALGORITHM` reads the new fields as
+# absent, trains against a task nobody declared, and records the NEW
+# algorithm string in the policy header because it copies that string out of
+# the bundle it was handed. Nothing fails, and the run looks exactly like a
+# good one.
+#
+# Measured, on the run this check was written for: the box sat on a retired
+# branch three commits back and would have trained with no stumble, over the
+# whole circle instead of the declared arc, and with no exploration width in
+# the header -- so `compare.py --sample` would have refused the result and
+# `watch` would have had no sigma to print. It was caught by reading
+# `remote_train.sh` before dispatching, which is not a control.
+#
+# One hash, one round trip. `check` reports it and `train` refuses on it,
+# because a warning at dispatch time is a thing people click past.
+remote_trainer_sha() {
+    on_box "sha256sum $(shquote "${remote_repo}/training/cadex_train.py") \
+            2>/dev/null | cut -c1-64"
+}
+
+assert_trainer_matches() {
+    local mine theirs
+    mine="$(sha256_of "${here}/cadex_train.py")"
+    theirs="$(remote_trainer_sha)"
+    [ "${mine}" = "${theirs}" ] && return 0
+    echo "FAIL: the trainer on the box is not the one in this repo."
+    echo "      here  ${mine}"
+    echo "      box   ${theirs:--unreadable-}"
+    echo
+    echo "      ${target} runs its OWN checkout, so dispatching now would"
+    echo "      train against whatever that file says while recording this"
+    echo "      bundle-s algorithm string in the policy header. Nothing would"
+    echo "      fail and the run would look fine. On the box:"
+    echo "        cd ${remote_repo} && git fetch origin && git checkout <branch>"
+    echo "      then re-run: $(basename "$0") check"
+    exit 1
+}
+
 # The reachability check, and the reason every later path can be quoted: a
 # `~` in the config is expanded here, once, against the box's own $HOME.
 # After this the three remote paths are absolute.
@@ -224,7 +268,20 @@ cmd_check() {
 set -u
 echo "host $(hostname)"
 
-if [ -f "${REPO}/training/cadex_train.py" ]; then echo "repo ok"; else echo "repo missing"; fi
+if [ -f "${REPO}/training/cadex_train.py" ]; then
+    echo "repo ok"
+    # The file that will actually run, identified rather than assumed.
+    if command -v sha256sum >/dev/null 2>&1; then
+        echo "trainer $(sha256sum "${REPO}/training/cadex_train.py" | cut -c1-64)"
+    else
+        echo "trainer -no sha256sum on the box-"
+    fi
+    if command -v git >/dev/null 2>&1 && [ -d "${REPO}/.git" ]; then
+        echo "at $(cd "${REPO}" && git log --oneline -1 2>/dev/null | cut -c1-72)"
+    fi
+else
+    echo "repo missing"
+fi
 if [ -d "${WORK}" ]; then echo "work ok"; else echo "work missing"; fi
 
 if [ ! -d "${VENV}" ]; then
@@ -306,6 +363,26 @@ REMOTE
     printf '    %-14s %s\n' repo "${remote_repo}"
     printf '    %-14s %s\n' venv "${remote_venv}"
     printf '    %-14s %s\n' work "${remote_work}"
+
+    local mine theirs at
+    mine="$(sha256_of "${here}/cadex_train.py")"
+    theirs="$(grep '^trainer ' <<<"${report}" | head -1)"; theirs="${theirs#trainer }"
+    at="$(grep '^at ' <<<"${report}" | head -1)"; at="${at#at }"
+    [ -n "${at}" ] && printf '    %-14s %s\n' "box at" "${at}"
+    if [ "${theirs}" = "${mine}" ]; then
+        printf '    %-14s %s\n' trainer "${mine:0:12} -- matches this repo"
+    else
+        printf '    %-14s %s\n' trainer "${theirs:0:12} on the box"
+        printf '    %-14s %s\n' "" "${mine:0:12} here"
+        echo "FAIL: the box runs its OWN checkout of training/cadex_train.py, and"
+        echo "      it is not this one. A trainer that predates a surface addition"
+        echo "      reads the new bundle fields as absent, trains against a task"
+        echo "      nobody declared, and records the new algorithm string in the"
+        echo "      policy header anyway -- so nothing fails and the run looks"
+        echo "      fine. On the box:"
+        echo "        cd ${remote_repo} && git fetch origin && git checkout <branch>"
+        failures=$((failures + 1))
+    fi
 
     grep -q '^repo ok$' <<<"${report}" || {
         echo "FAIL: ${remote_repo}/training/cadex_train.py is not on the box."
@@ -490,6 +567,9 @@ PY
     )" || exit 1
 
     resolve_remote_paths
+    # Before anything is copied: the box has to be running the trainer these
+    # tests pinned, or the run is about a task nobody declared.
+    assert_trainer_matches
 
     local run_id bundle_name out_name remote_dir
     run_id="$(basename "${bundle}" .json)-$(date +%Y%m%d-%H%M%S)"
