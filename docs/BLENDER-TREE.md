@@ -1,6 +1,6 @@
 # BLENDER-TREE.md — Inherited Shell Substrate Inventory
 
-Verified against source: 2026-07-31
+Verified against source: 2026-08-01
 
 `shell/` is a Blender fork. This is its ledger — what we keep, what is
 slated for removal, what is already gone — the peer of `docs/FREECAD.md`
@@ -28,11 +28,11 @@ These files exist in no upstream Blender and cannot conflict with one.
 
 | Path | What | Lines |
 |---|---|---|
-| `shell/scripts/addons_core/mesh_agent/` | the add-on: chat, params, headers, the top bar, the cadexd protocol client, hydration, playback, picking, and — on `MJC` — the collision overlay | 8,486 (21 files) |
+| `shell/scripts/addons_core/mesh_agent/` | the add-on: chat, params, headers, the top bar, the cadexd protocol client, hydration, playback, picking, and — on `MJC` — the collision overlay and the policy-output readout | 8,684 (21 files) |
 | `shell/source/blender/editors/space_cadex_chat/` | the Cadex Chat editor: transcript, message box, header (ADR-035) | 202 |
 | `shell/source/blender/editors/space_cadex_params/` | the Cadex Parameters editor (ADR-035) | 170 |
 | `shell/scripts/startup/bl_app_templates_system/Mesh/` | the app template: `startup.blend` carries the layout, `__init__.py` enables the add-on, installs the Cadex top bar and suppresses the splash (ADR-037, ADR-041, ADR-042) | 111 + a 267 KB `.blend` |
-| `shell/tests/python/bl_mesh_agent{,_cadex}.py` | the agent suites; `bl_mesh_agent_cadex.py` prints the `CADEX-BLENDER-GATE` evidence line | 4,115 (2 files) |
+| `shell/tests/python/bl_mesh_agent{,_cadex}.py` | the agent suites; `bl_mesh_agent_cadex.py` prints the `CADEX-BLENDER-GATE` evidence line | 4,210 (2 files) |
 | `shell/release/darwin/Blender.app/Contents/Resources/cadex_icon.icns` | the Dock icon. Generated from `cadex-logo-white.png` by `package/app/make_app_icon.py` — regenerate rather than edit (ADR-059) | a 249 KB binary |
 
 The add-on was 5,714 lines across 20 files at import; ADR-030 took it to
@@ -44,10 +44,25 @@ now 111 because the layout is a file.
 
 On branch `MJC` only, ADR-078 added `cadex_collision.py` (546) and ~270
 lines across `cadex_backend.py`, `ui.py`, `tools.py` and `modes.py`, plus
-~410 lines of gate suite — the first and so far only `shell/` change this
-branch has made. **It is entirely inside code that is ours.** Nothing in
-§2 moved: the inherited-tree delta is unchanged, §2a is still eight files
-and must stay eight.
+~410 lines of gate suite; ADR-083 then added the Policy Outputs panel —
+~100 lines of `cadex_animate.py`, ~75 of `ui.py`, 27 of `__init__.py` and
+~95 of gate suite. `git diff --stat <merge-base> -- shell/` is **8 files,
++1,518/-4**, and every one of those files is under
+`shell/scripts/addons_core/mesh_agent/` or `shell/tests/python/`. **It is
+entirely inside code that is ours.** Nothing in §2 moved: the
+inherited-tree delta is unchanged, §2a is still eight files and must stay
+eight.
+
+ADR-083 is worth reading as the worked example of *why* that holds. The
+panel wanted a window; a window is a space type, and a space type is
+`DNA_space_enums.h` + `spacetypes.cc` + `rna_space.cc` + `BKE_context` +
+two CMake lists + a new C++ directory — the whole of §2b, for a readout.
+Drawn as a `Panel` in the editor that already exists it cost the inherited
+tree nothing. The one thing that could not be avoided that way,
+`match_region_with_redraws` having no `SPACE_CADEX_PARAMS` case, was paid
+with a `frame_change_post` handler in the add-on instead of a line in
+`screen_ops.cc`. **That trade — an add-on line for a §2b line — is the
+move to reach for.**
 Counted 2026-07-31 — treat these as of that date, not as a contract.
 
 ## 2. Modified upstream files — the whole delta

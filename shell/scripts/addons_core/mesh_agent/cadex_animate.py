@@ -58,6 +58,16 @@ ACTION_PREFIX = "CadexSim"
 #: no simulation sees the parameters editor exactly as it was.
 SCENE_FLAG = "cadex_simulation"
 
+#: On the scene while a *policy rollout* is baked: ``{channels, frames,
+#: values}``, where ``values`` is flat and row-major over frames. Only a
+#: rollout trace carries ``actuator_channels``, so a kinematics or dynamics
+#: simulation leaves this absent and the Actuators panel does not draw.
+#:
+#: Separate from ``SCENE_FLAG`` rather than folded into it because the two
+#: have different lifetimes in the only way that matters: every simulation
+#: sets the flag, and only one kind of simulation sets this.
+COMMANDS_FLAG = "cadex_actuator_commands"
+
 #: ``BEZT_IPO_LIN`` (DNA_curve_enums.h). Poses are already sampled at the
 #: solver's step; Bezier handles between them would invent motion.
 LINEAR = 1
@@ -161,6 +171,81 @@ def curves_for_component(frames, name, start_s, fps):
     return curves
 
 
+def commands_table(trace, start_s, fps):
+    """The policy's own outputs, indexed by Blender frame. None if absent.
+
+    Returns ``{"channels": [...], "frames": [f, ...], "values": [flat]}``
+    with ``values`` row-major over frames -- one row per frame that carries
+    a command, ``len(channels)`` floats wide. Flat because that is what an
+    IDProperty stores without turning 600 rows into 600 dictionaries.
+
+    ``frames`` is stored rather than derived even though the mapping is
+    exactly ``1 + k`` today: ``frame_interval_s`` is ``1 / frames_per_second``
+    by construction in the engine, so the arithmetic is currently an
+    identity, and a panel that silently depended on it would read the wrong
+    row the first time that stopped being true rather than draw nothing.
+
+    Frames before the first command -- the untimed ``input`` frame and the
+    reset pose behind it -- are simply not rows. A policy has decided
+    nothing yet there, and a row of zeros would claim it decided zero.
+    """
+
+    channels = trace.get("actuator_channels")
+    if not channels:
+        return None
+    width = len(channels)
+    frames = []
+    values = []
+    for frame in solver_frames(trace.get("frames") or []):
+        commands = frame.get("actuator_commands")
+        if not commands or len(commands) != width:
+            continue
+        frames.append(frame_of(frame["nominal_time_s"], start_s, fps))
+        values.extend(float(value) for value in commands)
+    if not frames:
+        return None
+    return {
+        "channels": [
+            {
+                "label": str(channel.get("joint") or channel.get("actuator")),
+                "unit": str(channel.get("unit") or ""),
+                "low": float(channel.get("low") or 0.0),
+                "high": float(channel.get("high") or 0.0),
+            }
+            for channel in channels
+        ],
+        "frames": frames,
+        "values": values,
+    }
+
+
+def commands_at(table, frame):
+    """The command row in effect at Blender frame ``frame``, or None.
+
+    The row *at or before* the frame, which is what a zero-order hold is: a
+    command is held until the next control step replaces it, so the value
+    between two frames is the earlier one rather than an interpolation of
+    the two. The viewport interpolates poses because a pose is a continuous
+    quantity sampled discretely; a command is not, and drawing it as though
+    it were would invent decisions the policy never made.
+    """
+
+    if not table:
+        return None
+    frames = table["frames"]
+    width = len(table["channels"])
+    values = table["values"]
+    index = -1
+    for position, at in enumerate(frames):
+        if float(at) > float(frame):
+            break
+        index = position
+    if index < 0:
+        return None
+    row = values[index * width:(index + 1) * width]
+    return [float(value) for value in row] if len(row) == width else None
+
+
 def frame_range(trace):
     """``(frame_start, frame_end)`` covering the whole run."""
 
@@ -238,10 +323,11 @@ def _clear(objects):
 
 
 def _forget(scene):
-    """Drop the panel's flag. A model without a simulation shows no panel."""
+    """Drop the panels' flags. A model without a simulation shows neither."""
 
-    if SCENE_FLAG in scene:
-        del scene[SCENE_FLAG]
+    for flag in (SCENE_FLAG, COMMANDS_FLAG):
+        if flag in scene:
+            del scene[flag]
 
 
 def _bake_object(obj, curves, sha):
@@ -352,6 +438,16 @@ def apply(payload):
         "seconds": float(parameters.get("end_time_s") or 0.0) - start_s,
     }
 
+    # Set or dropped on every bake, never left behind: a rollout replaced by
+    # an ordinary dynamics run must not keep showing the old policy's
+    # commands against the new run's timeline.
+    table = commands_table(trace, start_s, fps)
+    if table is None:
+        if COMMANDS_FLAG in scene:
+            del scene[COMMANDS_FLAG]
+    else:
+        scene[COMMANDS_FLAG] = table
+
     return {
         "baked": True,
         "sha": sha,
@@ -360,4 +456,5 @@ def apply(payload):
         "keyframes": keyframes,
         "fps": fps,
         "frame_end": scene.frame_end,
+        "actuators": 0 if table is None else len(table["channels"]),
     }

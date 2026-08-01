@@ -444,6 +444,79 @@ class CADEX_PARAMS_PT_simulation(Panel):
             elapsed, total, int(info.get("components") or 0)))
 
 
+class CADEX_PARAMS_PT_actuators(Panel):
+    """What the policy is telling the motors, at the current frame.
+
+    A rollout's poses already show what the mechanism *did*; this is the
+    only place the shell shows what the policy *decided*. Each row is one
+    actuator's command against the range the task bundle derived for it, so
+    a bar pinned at an end is the policy saturating that motor -- the thing
+    you would otherwise only find by reading the trace.
+
+    Read-only by construction: ``layout.progress`` draws a bar and takes no
+    input, which is right, because these numbers are a recording. Editing
+    one would be editing history.
+
+    Beside the sliders and behind the same toggle, for the reason
+    ``CADEX_PARAMS_PT_simulation`` gives: no new editor and no new space
+    type (ADR-036 stands). Its cost to the inherited tree is zero.
+    """
+
+    bl_space_type = 'CADEX_PARAMS'
+    bl_region_type = 'WINDOW'
+    bl_label = "Policy Outputs"
+
+    @classmethod
+    def poll(cls, context):
+        from . import cadex_animate
+        # Only a policy rollout leaves this behind; a kinematics or dynamics
+        # simulation has no policy and so has nothing to draw here.
+        return cadex_animate.COMMANDS_FLAG in context.scene
+
+    def draw(self, context):
+        from . import cadex_animate
+        scene = context.scene
+        layout = self.layout
+
+        table = scene.get(cadex_animate.COMMANDS_FLAG)
+        channels = list((table or {}).get("channels") or ())
+        row = cadex_animate.commands_at(table, scene.frame_current)
+        if not channels:
+            return
+        if row is None:
+            # Before the first control step: the reset pose, where no action
+            # has been taken. Said rather than drawn as zeros, which would
+            # be a command the policy never issued.
+            note = layout.row()
+            note.enabled = False
+            note.label(text="No command yet at this frame", icon='INFO')
+            return
+
+        column = layout.column(align=True)
+        for channel, value in zip(channels, row):
+            low = float(channel["low"])
+            high = float(channel["high"])
+            span = high - low
+            factor = 0.0 if span <= 0.0 else (float(value) - low) / span
+            split = column.split(factor=0.42, align=True)
+            label = split.row()
+            label.enabled = False
+            label.label(text=str(channel["label"]))
+            split.progress(
+                factor=min(max(factor, 0.0), 1.0),
+                text="{:+.1f} {:s}".format(float(value), str(channel["unit"])),
+            )
+
+        # Each bar is drawn against *its own* range, and the ranges need not
+        # agree: a motor's comes from its effort limit and a servo's from
+        # its joint limits, so they differ in span and in unit. One aggregate
+        # "full scale" number would be false the first time a mechanism
+        # mixed the two -- this says what is true of every row instead.
+        note = layout.row()
+        note.enabled = False
+        note.label(text="each bar spans that actuator's own limits")
+
+
 class CADEX_PARAMS_PT_parameters(Panel):
     """The sole occupant of the parameters editor's main region."""
 
@@ -652,6 +725,7 @@ classes = (
     MESH_AGENT_OT_toggle_collision,
     CADEX_PARAMS_PT_collision,
     CADEX_PARAMS_PT_simulation,
+    CADEX_PARAMS_PT_actuators,
     CADEX_PARAMS_PT_parameters,
     CADEX_CHAT_PT_transcript,
     CADEX_CHAT_PT_input,

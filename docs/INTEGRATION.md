@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-07-31
+Verified against source: 2026-08-01
 
 **This document is the contract between the two halves of the product.**
 They live in one repository (ADR-030) and in two processes, under two
@@ -179,7 +179,7 @@ kinds a shell may see today:
 |---|---|---|
 | **`brep`** | an exported BREP shape — the geometry outputs | Phase 2 |
 | **`mesh`** | a triangle mesh | Phase 4, ADR-016 |
-| **`assembly_simulation_json`** | a `cadex-assembly-simulation-trace-v1` time series. **Three different things produce it** — `assembly.simulation` (kinematics), `assembly.dynamics` (MuJoCo), and `assembly.rollout` (a trained policy) — and that is deliberate: a script has exactly one simulation whichever produced it | ADR-048, ADR-062, ADR-071 |
+| **`assembly_simulation_json`** | a `cadex-assembly-simulation-trace-v1` time series. **Three different things produce it** — `assembly.simulation` (kinematics), `assembly.dynamics` (MuJoCo), and `assembly.rollout` (a trained policy) — and that is deliberate: a script has exactly one simulation whichever produced it. A **rollout** additionally carries `actuator_channels` at the top level and `actuator_commands` on each `solver_output` frame; the other two producers carry neither, and a reader must treat both as optional (ADR-083) | ADR-048, ADR-062, ADR-071, ADR-083 |
 | **`assembly_mjcf_xml`** | a self-contained MJCF model file (`MJC` only) | ADR-066 |
 | **`assembly_training_task_json`** | a `cadex-training-task-v1` bundle (`MJC` only) | ADR-069 |
 | **`assembly_policy_receipt_json`** | the engine's receipt for a verified policy (`MJC` only) | ADR-070 |

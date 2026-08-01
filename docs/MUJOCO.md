@@ -1622,6 +1622,31 @@ Ranked by how quietly they fail.
     "the gate was wrong", it is **learning to click past a red gate** — so
     re-specifying one is a decision to record, not a fix to slip in.
 
+15. **A policy that stands can be standing on pinned motors, and the
+    trajectory will not say so.**
+    *Discovered by ADR-083, on the first trace the Policy Outputs panel
+    read.*
+    The `mg-legs` standing policy plays as a clean stand and is one: it
+    holds the full 6 s, the reward curve is healthy, the engine verified it.
+    It is also holding `hip_pitch_l`, `hip_pitch_r` and `knee_r` above 95 %
+    of the MG90S limit on **100 % of frames** — a mean of 212-214 N*mm
+    against a 216 N*mm bound — while both ankles sit under 72. It braces
+    rather than balances: the stance widens from +-30.00 mm to +-37.2/37.4
+    and the right foot pulls 13 mm back, and the splay is held by torque.
+    216 N*mm is a **stall** rating, which is a momentary number; no real
+    servo holds 98 % of it for six seconds.
+    Nothing in the poses shows this, which is the point. Effort was already
+    a reward term and it was not expensive enough to matter, and the
+    feasibility gate had passed because it asked about the *reset* pose and
+    the policy settled somewhere else.
+    **What to do:** read the commands, not only the trajectory — the panel
+    is one toggle away from the sliders, and this took one glance. Treat
+    "the reward went up" and "the mechanism is doing something a machine
+    could do" as two separate claims, and check the second one before
+    spending GPU time on a harder version of the first. A policy pinned at
+    its actuator limits has no authority left for a disturbance, so this
+    also predicts the outcome of the first push.
+
 ## 6. Open questions
 
 - ~~Does the script surface speak millimetres or metres?~~ — answered by M2:
@@ -1784,6 +1809,15 @@ model file.
    length says whether it terminated early, and pelvis height, tilt and drift
    over the episode say what "it stands" actually meant.
 
+10. **Open the Policy Outputs panel before you believe any of it**
+    (ADR-083). It sits behind the same toggle as the sliders and draws each
+    actuator's command against its own limit, at the current frame. The
+    trajectory says what the mechanism did; this says what the policy
+    decided, and the two can disagree in a way only this one shows —
+    hazard 15 is a policy that plays as a clean stand while holding three
+    motors at 98 % of stall for the whole episode. A bar pinned at an end is
+    the finding.
+
 ### What a good result looks like
 
 The mg-legs run (ADR-082), for calibration — 263 g of PLA and eight 13.4 g
@@ -1797,8 +1831,17 @@ MG90S, 2000 iterations at 4096 environments, 1 h 16 m on an RTX 5090:
 | tilt | settles ~5.5 degrees against a 45 degree termination |
 | drift | 6.97 mm horizontally over 6 s |
 | witness | 1.009e-07, 991x inside the engine's tolerance |
+| **actuator duty** | **3 of 8 motors above 95 % of stall on 100 % of frames** — see below |
 
 The comparison that makes it mean something is the gate's own drop test:
 **zero torque falls at 0.96 s.** A machine that stands for six seconds is
 balancing, not merely stable.
+
+**And the last row is why this table has one.** Every number above it says
+the run went well, and they are all true. The commands say the machine is
+bracing at the edge of its actuators (hazard 15), which no trajectory
+measurement would have surfaced and which the panel showed in one glance.
+Calibrate against the whole table, not the top of it: a good result is one
+where the reward is high *and* the mechanism is doing something a machine
+could actually do.
 

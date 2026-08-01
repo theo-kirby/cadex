@@ -7637,3 +7637,111 @@ No ADR is spent on the reward, which is ADR-079's unchanged apart from
 baselines re-measured on this machine. Walking is still out of scope, and
 section 2 is now the reason why: an ankle that can only transmit 117 N*mm has
 no push-off. Unwelding the toe is one word when that changes.
+
+## ADR-083 — A rollout trace now carries what the policy decided (2026-08-01)
+
+**Status:** accepted. **Branch:** `MJC` only. **Subject:** the rollout trace
+schema, and the Policy Outputs panel that reads it.
+
+**Decision.** A policy rollout records **the clamped command it wrote to
+`data.ctrl`** on every sampled frame, and the shell draws those commands as
+read-only bars in the parameters editor, indexed by the current frame.
+
+### 1. Why the poses were not enough
+
+`rollout_policy` computed the action vector, wrote it into the model, and
+threw it away. What reached the shell was `component_placements` and nothing
+else — so the viewport showed what the mechanism *did* and there was no way,
+short of reading the trace by hand, to see what the policy *decided*. Those
+are different questions, and only the second one is about the policy.
+
+### 2. What was added, and what it cost
+
+**Engine.** `evaluate_episode`'s `sample` callable gained a fourth argument:
+the applied action, `None` at the reset pose. It is the **clamped** list, not
+what the network returned — a policy saturates, and the number that moved the
+mechanism is the clamped one. A frame carrying the unclamped command would
+describe a motor the model does not have.
+
+`rollout_policy` returns `actuator_channels` (name, joint, kind, unit, and the
+range the bundle derived) and puts `actuator_commands` on each
+`solver_output` frame in that order. Measured on the `mg-legs` rollout: 27 121
+bytes on a 585 800-byte trace, **4.9 %**, against a 64 MB cap.
+
+**The schema stayed backward-compatible by construction.** `cadex_animate`
+reads frames with `.get()`, so every consumer that predates the key ignores
+it; a kinematics or dynamics trace carries neither key and the panel does not
+draw. Both are optional to a reader, and `docs/INTEGRATION.md` says so.
+
+**Shell — and this is the part worth recording.** The panel is a `Panel` with
+`bl_space_type = 'CADEX_PARAMS'`, beside the sliders, for the reason
+`CADEX_PARAMS_PT_simulation` already gives: **no new editor and no new space
+type**. A new Cadex window would have cost edits to `DNA_space_enums.h`,
+`spacetypes.cc`, `rna_space.cc`, `BKE_context.hh`, two CMake lists and a new
+C++ directory — the whole of `docs/BLENDER-TREE.md` §2b — for a readout. The
+inherited tree took **zero** lines. ADR-036 stands, and §2a is still eight
+files.
+
+One consequence had to be paid in the add-on instead.
+`match_region_with_redraws` (`screen_ops.cc`) has no case for
+`SPACE_CADEX_PARAMS`, so playback does not tag that editor and the bars would
+sit at whichever frame the panel last drew. A `frame_change_post` handler tags
+the area — **tag only, no property writes**, because a handler that assigned
+to the scene would re-enter the depsgraph on every frame of playback. That is
+the trade the empty-diff rule is for: a §2b line avoided, an add-on line
+spent.
+
+**Commands are held, not interpolated.** `commands_at` returns the row at or
+before the frame. The viewport interpolates poses because a pose is a
+continuous quantity sampled discretely; a command is a decision taken at a
+control step and held until the next one, and blending two of them would
+invent decisions the policy never made.
+
+### 3. What it found on the first real trace
+
+Pointed at the `mg-legs` standing policy (ADR-082) the panel immediately
+showed something the poses had hidden for a week. Over the full 6 s episode,
+against the MG90S limit of ±216 N·mm:
+
+| joint | mean \|τ\| | peak \|τ\| | frames above 95 % |
+|---|---|---|---|
+| `hip_pitch_l` | 212.1 | 213.2 | **100 %** |
+| `hip_pitch_r` | 213.8 | 214.5 | **100 %** |
+| `knee_r` | 213.9 | 214.7 | **100 %** |
+| `knee_l` | 200.5 | 207.0 | 2 % |
+| `ankle_r` | 71.2 | 126.8 | 0 % |
+| `hip_roll_r` | 84.5 | 108.5 | 0 % |
+| `hip_roll_l` | 72.0 | 94.4 | 0 % |
+| `ankle_l` | 41.7 | 68.0 | 0 % |
+
+The policy does not stand: it **braces**. The stance widens from ±30.00 mm to
+±37.22 / ±37.39 mm and the right foot pulls 13 mm back, and it holds that
+staggered splay by pinning three of eight motors at ~98 % of stall for the
+whole episode. 216 N·mm is a *stall* rating — a momentary one — so this is
+not an operating point real hardware would survive.
+
+Nothing about that is visible in the trajectory, which looks like a clean
+stand. It is exactly the class of result the panel exists to make visible,
+and it is recorded here rather than fixed here: whether the brace is
+necessary or an artifact of an effort term that was too cheap is the next
+question, not this ADR's.
+
+**It also sizes the next slice.** There is no torque headroom at the hips or
+the right knee, so the disturbance work has to expect this policy to fail its
+first push — and that failure will be a real measurement rather than a
+surprise.
+
+### 4. Verification
+
+`pixi run test-engine` — 1112 passed, 12 skipped (three new tests in
+`test_dynamics_rollout_model.py`). `pixi run gate` — `"ok": true`, with
+`test_the_policy_outputs_panel_reads_a_rollout` covering the lookup, the
+zero-order hold, the absent-on-a-non-rollout case, and the panel's poll.
+End-to-end against a copy of the real `mg-legs` project, whose 8 channels and
+150 commanded frames produced the table above.
+
+One measured wrinkle worth keeping: `hasattr(bpy.types.UILayout, "progress")`
+answers **False** for a method that exists and works — an RNA function is
+resolved through the instance, so it is absent from `dir()` on the type. The
+test asks `bpy.types.UILayout.bl_rna.functions` instead. The first version of
+that check failed the gate against a perfectly good panel.

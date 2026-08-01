@@ -6020,16 +6020,24 @@ def evaluate_episode(
     :func:`rollout_policy` is what does the dropping. ``sample`` is the other
     half of that swap and is the only thing M8 added to this loop.
 
-    ``sample`` is a callable ``(step, data, final) -> record | None`` invoked
-    once at the reset pose and once after every control step's integration,
-    with ``final`` true on the last invocation whether the episode was
-    terminated or truncated. Every non-``None`` return joins ``samples`` in
-    order. **The caller decides what a frame is**: this loop knows control
-    steps and nothing about frame rates, so a rollout that wants one frame
-    per five control steps returns ``None`` on the other four. One episode
-    loop stays one episode loop, which matters more here than anywhere --
-    M7 already carries three evaluators of the reward whitelist, and a
-    second loop would be a fourth place for the same drift.
+    ``sample`` is a callable ``(step, data, final, action) -> record | None``
+    invoked once at the reset pose and once after every control step's
+    integration, with ``final`` true on the last invocation whether the
+    episode was terminated or truncated. Every non-``None`` return joins
+    ``samples`` in order. **The caller decides what a frame is**: this loop
+    knows control steps and nothing about frame rates, so a rollout that
+    wants one frame per five control steps returns ``None`` on the other
+    four. One episode loop stays one episode loop, which matters more here
+    than anywhere -- M7 already carries three evaluators of the reward
+    whitelist, and a second loop would be a fourth place for the same drift.
+
+    ``action`` is **the clamped list this loop actually wrote to
+    ``data.ctrl``**, not what ``actions`` returned, and it is ``None`` at
+    the reset pose because no action has been taken there. The distinction
+    is the whole reason it is passed rather than recomputed by the caller:
+    a policy that saturates commands past its own advertised range, and the
+    number that moved the mechanism is the clamped one. A frame carrying
+    the unclamped command would describe a motor the model does not have.
 
     The bundle is the only input besides the model: no ``built``, no tree,
     no records. That is what makes the comparison against the reference
@@ -6113,17 +6121,17 @@ def evaluate_episode(
     steps: list[dict[str, Any]] = []
     samples: list[Any] = []
 
-    def _sampled(step: int, final: bool) -> None:
+    def _sampled(step: int, final: bool, action: list[float] | None) -> None:
         if sample is None:
             return
-        record = sample(step, data, final)
+        record = sample(step, data, final, action)
         if record is not None:
             samples.append(record)
 
     total = 0.0
     terminated_step: int | None = None
     termination_label = ""
-    _sampled(0, max_steps < 1)
+    _sampled(0, max_steps < 1, None)
     for step in range(max_steps):
         time_s = step * control_interval
         observation = observation_values(task, data.sensordata)
@@ -6180,7 +6188,7 @@ def evaluate_episode(
                 "termination": reason,
             }
         )
-        _sampled(step + 1, bool(reason) or step == max_steps - 1)
+        _sampled(step + 1, bool(reason) or step == max_steps - 1, applied)
         if reason:
             terminated_step = step
             termination_label = reason
@@ -7152,10 +7160,16 @@ def rollout_policy(
     ``simulate`` makes. ``test_dynamics_units`` greps this module's callers
     for a third.
 
-    Returns the frames, the sampling schedule, and a summary of the episode
-    the frames came from -- total reward, per-term totals, step count,
-    whether it terminated or ran its horizon, and the seed and draws behind
-    it.
+    Returns the frames, the sampling schedule, the actuator channels, and a
+    summary of the episode the frames came from -- total reward, per-term
+    totals, step count, whether it terminated or ran its horizon, and the
+    seed and draws behind it.
+
+    Each ``solver_output`` frame also carries ``actuator_commands``: the
+    clamped action that produced it, in ``actuator_channels`` order. It is
+    the one thing about a rollout that the poses do not already show -- what
+    the policy *decided*, as opposed to what the mechanism then did -- and
+    it costs one float per actuator per frame against a 64 MB trace cap.
     """
 
     mujoco = _mujoco_module()
@@ -7257,17 +7271,28 @@ def rollout_policy(
             )
         return poses
 
-    def _sample(step: int, data: Any, final: bool) -> dict[str, Any] | None:
+    def _sample(
+        step: int, data: Any, final: bool, action: list[float] | None
+    ) -> dict[str, Any] | None:
         # The last state is always recorded, however the episode ended: a
         # trace that stopped at the previous frame boundary would show a
         # mechanism that had not yet fallen over.
         if step % steps_per_frame and not final:
             return None
-        return {
+        record = {
             "frame_kind": "solver_output",
             "nominal_time_s": step * control_interval,
             "component_placements": _placements(data),
         }
+        # The command that produced this frame, in the unit
+        # ``actuator_channels`` advertises, in that list's order. Absent
+        # rather than zero-filled on the reset frame: no action has been
+        # taken there, and a row of zeros is a real command a policy can
+        # issue. The shell reads frames with ``.get()``, so every consumer
+        # that predates this key ignores it.
+        if action is not None:
+            record["actuator_commands"] = [float(value) for value in action]
+        return record
 
     episode = evaluate_episode(
         model, task, actions=_actions, sample=_sample, seed=seed
@@ -7306,6 +7331,23 @@ def rollout_policy(
         "frames_per_second": rate,
         "steps_per_frame": steps_per_frame,
         "frame_interval_s": steps_per_frame * control_interval,
+        # What ``actuator_commands`` means, declared once instead of per
+        # frame: the name, the mechanism it drives, and the range the bundle
+        # derived for it. The range is the load-bearing part -- a torque in
+        # newton-millimetres is a number, and a number against its own limit
+        # is a reading, which is what a policy output is worth looking at.
+        "actuator_channels": [
+            {
+                "actuator": str(action["actuator"]),
+                "joint": str(action["joint"]),
+                "motion_type": str(action["motion_type"]),
+                "kind": str(action["kind"]),
+                "unit": str(action["unit"]),
+                "low": float(action["low"]),
+                "high": float(action["high"]),
+            }
+            for action in task["actions"]
+        ],
         # Read off the reloaded model rather than off the bundle: these are
         # facts about the file that ran, and the file is the claim.
         "solver_step_s": float(model.opt.timestep),

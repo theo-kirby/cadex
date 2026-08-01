@@ -166,6 +166,30 @@ def _load_post_handler(_filepath):
     _report_file_change()
 
 
+@persistent
+def _frame_change_handler(*_args):
+    # The Policy Outputs bars are drawn from `scene.frame_current`, and
+    # `match_region_with_redraws` (screen_ops.cc) has no case for
+    # SPACE_CADEX_PARAMS: playback tags the 3D viewport and leaves the
+    # parameters editor showing whichever frame it last drew. Adding that
+    # case would be a `docs/BLENDER-TREE.md` §2b line against inherited
+    # Blender; tagging from the add-on is free and does the same job.
+    #
+    # Tag only -- no property writes. A frame-change handler that assigned
+    # to the scene would re-enter the depsgraph on every frame of playback.
+    try:
+        windows = bpy.context.window_manager.windows
+    except Exception:
+        return
+    for window in windows:
+        screen = getattr(window, "screen", None)
+        if screen is None:
+            continue
+        for area in screen.areas:
+            if area.type == 'CADEX_PARAMS':
+                area.tag_redraw()
+
+
 def _report_file_change():
     try:
         scene = bpy.context.scene
@@ -198,6 +222,7 @@ def register():
     bpy.app.handlers.save_pre.append(_save_pre_handler)
     bpy.app.handlers.save_post.append(_save_post_handler)
     bpy.app.handlers.load_post.append(_load_post_handler)
+    bpy.app.handlers.frame_change_post.append(_frame_change_handler)
 
 
 def unregister():
@@ -207,6 +232,8 @@ def unregister():
         bpy.app.handlers.save_post.remove(_save_post_handler)
     if _load_post_handler in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_load_post_handler)
+    if _frame_change_handler in bpy.app.handlers.frame_change_post:
+        bpy.app.handlers.frame_change_post.remove(_frame_change_handler)
     topbar_module.unregister()
     spaces.unregister()
     ui.unregister()

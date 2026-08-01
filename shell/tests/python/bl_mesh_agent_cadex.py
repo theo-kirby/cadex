@@ -2862,6 +2862,100 @@ def test_both_collision_readers_agree(root):
           "(got {})".format(positions.get("ground/collision0")))
 
 
+#: One rollout trace's worth of the two keys the Policy Outputs panel reads,
+#: with the rest of the schema left out: `commands_table` is pure, so a
+#: synthetic trace exercises it without a trained policy and four hours of
+#: GPU time. Two actuators with deliberately different units and spans --
+#: a motor bounded by its effort limit and a servo bounded by its joint --
+#: because an aggregate "full scale" would be wrong for exactly that pair.
+COMMANDS_TRACE = {
+    "actuator_channels": [
+        {"actuator": "knee/motor", "joint": "knee", "motion_type": "angular",
+         "kind": "motor", "unit": "nmm", "low": -216.0, "high": 216.0},
+        {"actuator": "ankle/servo", "joint": "ankle", "motion_type": "angular",
+         "kind": "position", "unit": "deg", "low": -40.0, "high": 40.0},
+    ],
+    "frames": [
+        {"frame_kind": "input", "nominal_time_s": None},
+        {"frame_kind": "solver_output", "nominal_time_s": 0.0},
+        {"frame_kind": "solver_output", "nominal_time_s": 0.04,
+         "actuator_commands": [108.0, -20.0]},
+        {"frame_kind": "solver_output", "nominal_time_s": 0.08,
+         "actuator_commands": [-216.0, 40.0]},
+    ],
+}
+
+
+def test_the_policy_outputs_panel_reads_a_rollout():
+    """The commands a rollout recorded, indexed by the frame they drove.
+
+    The panel is drawn from `scene.frame_current` at draw time rather than
+    from a property a handler writes, so what is worth testing is the
+    lookup: the right row for a frame, nothing before the first command,
+    and a held value between frames.
+    """
+
+    print("test_the_policy_outputs_panel_reads_a_rollout")
+    from mesh_agent import cadex_animate
+    from mesh_agent import ui as ui_module
+
+    table = cadex_animate.commands_table(COMMANDS_TRACE, 0.0, 25)
+    check(table is not None, "a rollout trace yields a command table")
+    if table is None:
+        return
+    check([channel["label"] for channel in table["channels"]]
+          == ["knee", "ankle"],
+          "channels are labelled by the joint they drive")
+    check(len(table["frames"]) == 2 and len(table["values"]) == 4,
+          "one row per commanded frame, flat and row-major (got {:d} rows, "
+          "{:d} values)".format(len(table["frames"]), len(table["values"])))
+
+    # frame_of(t, 0, 25) = 1 + 25t, so 0.04 s is frame 2 and 0.08 s frame 3.
+    check(cadex_animate.commands_at(table, 1) is None,
+          "the reset frame has no command, and is not zero-filled")
+    check(cadex_animate.commands_at(table, 2) == [108.0, -20.0],
+          "the first commanded frame reads back exactly")
+    check(cadex_animate.commands_at(table, 3) == [-216.0, 40.0],
+          "and so does the last")
+    # Zero-order hold: a command stands until the next control step, so a
+    # frame between two rows reads the earlier one rather than a blend.
+    check(cadex_animate.commands_at(table, 2.6) == [108.0, -20.0],
+          "a command is held between frames, not interpolated")
+    check(cadex_animate.commands_at(table, 99) == [-216.0, 40.0],
+          "and past the end it holds the last command")
+
+    # A trace with no policy in it -- kinematics, or a plain dynamics run --
+    # produces no table, which is what keeps the panel off those models.
+    check(cadex_animate.commands_table(
+              {"frames": COMMANDS_TRACE["frames"]}, 0.0, 25) is None,
+          "a trace with no actuator_channels yields no table")
+
+    panel = ui_module.CADEX_PARAMS_PT_actuators
+    scene = bpy.context.scene
+    had = cadex_animate.COMMANDS_FLAG in scene
+    check(not had and not panel.poll(bpy.context),
+          "the panel is absent on a model with no rollout")
+    scene[cadex_animate.COMMANDS_FLAG] = table
+    try:
+        check(panel.poll(bpy.context),
+              "and present once a rollout is baked")
+        # The bar itself. `progress` is what makes this a readout rather
+        # than an editable slider, and it is the one call in the panel that
+        # a Blender upgrade could take away.
+        #
+        # Asked of `bl_rna.functions` rather than with `hasattr`: an RNA
+        # function is resolved through the instance, so it is absent from
+        # `dir(bpy.types.UILayout)` and `hasattr` answers False for a method
+        # that exists and works. Measured -- this check failed that way
+        # first, and the panel was fine.
+        check("progress" in bpy.types.UILayout.bl_rna.functions,
+              "UILayout.progress exists (the panel draws no other widget)")
+    finally:
+        del scene[cadex_animate.COMMANDS_FLAG]
+    check(not panel.poll(bpy.context),
+          "and gone again when the rollout is dropped")
+
+
 def main():
     registered = False
     # Resolve the engine exactly as the add-on does -- explicit preference,
@@ -2960,6 +3054,7 @@ def main():
         test_an_assembly_shows_its_solved_placements(assembly_root)
         test_two_components_share_one_mesh(shared_root)
         test_a_simulation_plays(sim_root)
+        test_the_policy_outputs_panel_reads_a_rollout()
         test_a_pose_only_slider_previews_at_interactive_rate(preview_root)
         test_a_shape_slider_falls_back_to_set_params(fallback_root)
         test_the_collision_overlay_draws_adr074(collision_root)

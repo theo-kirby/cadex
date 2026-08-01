@@ -350,3 +350,92 @@ def test_the_episode_loop_gained_a_sampler_and_not_a_second_loop() -> None:
     # caller -- the worker's task loop, the reference runner, the trainer --
     # is untouched.
     assert direct["samples"] == []
+
+
+# ---------------------------------------------------------------------------
+# The commands the policy issued, which are the one thing the poses do not
+# already show.
+# ---------------------------------------------------------------------------
+
+
+def test_every_solved_frame_carries_the_command_that_produced_it() -> None:
+    """One command vector per actuator per frame, and none on the reset.
+
+    The poses say what the mechanism did; only this says what the policy
+    decided. The reset frame and the untimed ``input`` frame in front of it
+    carry no command because no action has been taken there -- and a row of
+    zeros would not do, because zero is a command a policy can issue.
+    """
+
+    prepared = _full()
+    run = _rollout(prepared)
+    channels = run["actuator_channels"]
+    assert [channel["actuator"] for channel in channels] == [
+        action["actuator"] for action in prepared["bundle"]["actions"]
+    ]
+
+    frames = run["frames"]
+    assert "actuator_commands" not in frames[0]
+    assert "actuator_commands" not in frames[1]
+    commanded = [frame for frame in frames if "actuator_commands" in frame]
+    assert len(commanded) == len(frames) - 2
+    assert all(
+        len(frame["actuator_commands"]) == len(channels) for frame in commanded
+    )
+
+
+def test_the_recorded_command_is_the_clamped_one() -> None:
+    """What reached ``data.ctrl``, not what the network said.
+
+    A policy saturates: it commands past its own advertised range and the
+    episode loop clamps before scaling. A frame carrying the unclamped
+    number would describe a motor the model does not have, so the value
+    recorded is the applied one -- which is exactly the ``action`` the
+    episode's own step record carries.
+    """
+
+    prepared = _full()
+    run = _rollout(prepared, frames_per_second=50)
+    channels = run["actuator_channels"]
+
+    for frame in run["frames"]:
+        for value, channel in zip(frame.get("actuator_commands") or (), channels):
+            assert channel["low"] <= value <= channel["high"]
+
+    # The same numbers the loop wrote, taken from the other side: at one
+    # frame per control step every step's applied action is a frame.
+    container = prepared["container"]
+
+    def actions(_step, observation):
+        return dyn.policy_forward(
+            container["header"], container["weights"], observation
+        )
+
+    control_hz = int(prepared["bundle"]["episode"]["control_hz"])
+    dense = _rollout(prepared, frames_per_second=control_hz)
+    direct = dyn.evaluate_episode(
+        prepared["reloaded"], prepared["bundle"], actions=actions
+    )
+    recorded = [
+        frame["actuator_commands"]
+        for frame in dense["frames"]
+        if "actuator_commands" in frame
+    ]
+    assert recorded == [step["action"] for step in direct["steps"]]
+
+
+def test_a_channel_states_the_range_its_command_is_read_against() -> None:
+    """A torque is a number; a torque against its limit is a reading.
+
+    The range is what makes the value worth drawing, and it comes from the
+    bundle -- a motor's effort limit, a servo's joint limits -- rather than
+    from anything the trace invents.
+    """
+
+    prepared = _full()
+    channels = _rollout(prepared)["actuator_channels"]
+    for channel, action in zip(channels, prepared["bundle"]["actions"]):
+        assert channel["low"] == action["low"]
+        assert channel["high"] == action["high"]
+        assert channel["unit"] == action["unit"]
+        assert channel["low"] < channel["high"]

@@ -4014,6 +4014,10 @@ def _execute_policy_rollout(
             "motion_outputs": [],
             "dynamics": evidence,
             "policy": policy_evidence,
+            # Only a rollout has these: a kinematics or dynamics trace has
+            # no policy and therefore no commands, and the shell draws the
+            # panel only when the key is present.
+            "actuator_channels": list(run["actuator_channels"]),
         },
         summary_extra={
             "motion_outputs": [],
