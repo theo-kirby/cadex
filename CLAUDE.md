@@ -1,6 +1,6 @@
 # CLAUDE.md — Agent Entry Point
 
-Verified against source: 2026-07-28. This file replaces the retired
+Verified against source: 2026-07-31. This file replaces the retired
 `AGENTS.md` (see `docs/DECISIONS.md` ADR-005).
 
 Cadex is an AI-native CAD app. **This repository is the whole product**
@@ -20,11 +20,17 @@ repository boundary:
   `mesh_agent` add-on. It is the product UI, it speaks the protocol in
   `docs/INTEGRATION.md`, and it ships the engine inside its own bundle.
 
+Plus a **second front end**, under `cli/` — a third client of the same
+protocol, with no Blender and no display (ADR-061). `./cadex -p "…"` runs one
+AI turn against a project; `./cadex params --set k=v` sweeps its parameters
+with no model in the loop at all. It is peer to the shell, not part of it,
+and shares no code with it.
+
 There is no Qt shell, no provider stack, and no API-key model loop — the AI
-runs as the Claude Code CLI inside the shell. `pixi run build-engine`
-produces `FreeCADCmd` and `CadexGeometryWorker` and no application; the
-application is what `pixi run build-shell` installs, with the engine inside
-it.
+runs as the Claude Code CLI, inside the shell or driven by `cli/`.
+`pixi run build-engine` produces `FreeCADCmd` and `CadexGeometryWorker` and
+no application; the application is what `pixi run build-shell` installs, with
+the engine inside it.
 
 **Where this is going (ADR-025, ADR-030).** The product becomes **one
 application we own** — a derivative of but not dependent on either FreeCAD
@@ -54,6 +60,7 @@ Read `docs/VISION.md` before designing anything.
 | `docs/BLENDER-TREE.md` | The same ledger for **`shell/`**, plus the eight-file diff against upstream Blender. |
 | `docs/INTEGRATION.md` | **The process contract**: the cadexd protocol (test-enforced on both requests and responses) and the engine payload. |
 | `docs/BLENDER.md` | The shell: `mesh_agent`'s file map, its tools, and how to run its suites. |
+| `docs/CLI.md` | The headless CLI: subcommands, exit codes, the `--json` envelope, and how it reaches the engine. |
 | `docs/IDEAS.md` | Parking lot for uncommitted ideas. |
 | `docs/cadex-release-packaging.md` | One bundle: what ships, how it is gated. |
 | `docs/history/` | Superseded VibeCAD-era docs. Historical context only — never cite as current. |
@@ -67,6 +74,11 @@ PR.
 ## Repo map
 
 ```
+cadex                     the CLI shim: ./cadex -p "..."  (docs/CLI.md)
+cli/cadex_cli/            the headless CLI -- a third protocol client, no
+                          Blender and no display (ADR-061). LGPL, so nothing
+                          may be copied here from shell/.
+cli/tests/                its suite; engine-needing tests skip without one
 src/Mod/cadex/            the engine (start here; file map in docs/ARCHITECTURE.md)
 src/Mod/cadex/cadex_tests/  pytest suite (headless; FreeCAD stubbed in conftest.py)
 src/Mod/{Part,PartDesign,Sketcher,Assembly}   the four capability workbenches
@@ -96,6 +108,21 @@ shell/build_darwin/       the shell build tree and the installed bundle
 git lfs install               # once per machine, BEFORE cloning
 pixi run setup                # first time: check out shell/lib/<platform>
 pixi run app                  # build engine + payload + shell, then launch
+
+# Engine only -- no shell, no git-lfs, no 1.3 GB of prebuilt libraries. This
+# is the whole setup on a headless box (ADR-060); the shell is macOS-only so
+# far, but the engine is not.
+pixi run setup-engine         # just src/3rdParty/{OndselSolver,GSL}
+pixi run build-engine
+
+# The headless CLI (docs/CLI.md, ADR-061). Needs a built engine and nothing
+# else -- no shell, no display. `params` spends no tokens.
+./cadex -p "a 40x25x15 mm bracket with a 6 mm bore" \
+        --project ./b --out ./b/out --json
+./cadex params --project ./b --set bore=8 --out ./b/v2
+./cadex -p "add a 2 mm fillet" --project ./b --resume
+pixi run python -m pytest cli/tests            # its suite
+
 pixi run install-app          # ...and copy it to /Applications so it opens like
                               # an app. Local install: the staged payload keeps
                               # resolving its libs out of this repo (ADR-058).
@@ -133,11 +160,17 @@ before the shell's suites see them, and `pixi run stage-engine` before the
 
 The philosophy is **remove more than we add** (`docs/VISION.md`). Zones:
 
-- **`src/Mod/cadex/**`, `shell/scripts/addons_core/mesh_agent/**` and
-  `docs/**` — subtractive changes encouraged.** These are ours. Dead code,
-  unreachable branches, stale docs: delete them. Every removal gets a
+- **`src/Mod/cadex/**`, `cli/**`, `shell/scripts/addons_core/mesh_agent/**`
+  and `docs/**` — subtractive changes encouraged.** These are ours. Dead
+  code, unreachable branches, stale docs: delete them. Every removal gets a
   `docs/DECISIONS.md` entry (one line in an existing ADR or a new one) and
   is verified by build + tests in the same PR.
+- **`cli/**` is LGPL and `shell/**` is GPL — the boundary is one-way and
+  hard.** `cli/` is engine-side (`docs/PROVENANCE.md` §1). Read the shell's
+  `cadexd_client.py`, `backend.py`, `mcp_shim.py` and `modes.py` as
+  reference; copying a line of them into `cli/` relicenses the engine side
+  and is not a judgement call (ADR-061). Derive from the LGPL engine-side
+  precedents in `cadex_tests/` instead.
 - **Inherited FreeCAD core (`src/App`, `src/Gui`, `src/Base`) —
   conservative.** Prefer not touching it; when you must, smallest possible
   diff, no drive-by cleanup, call it out in the PR. A change that *reduces*
@@ -172,7 +205,10 @@ tests and logging the decision; don't commit secrets or machine paths.
 1. **Trust the docs, then verify.** The docs above are dated; if code and
    doc disagree, the code wins — fix the doc in your PR.
 2. **Verify by running.** Python edits under `src/Mod/cadex/`: `pixi run
-   python -m pytest src/Mod/cadex/cadex_tests` minimum. C++/CMake edits:
+   python -m pytest src/Mod/cadex/cadex_tests` minimum. Edits under `cli/`:
+   `pixi run python -m pytest cli/tests` as well — and note that suite
+   *skips* the engine-needing half when nothing is built, so a green run on
+   a bare checkout proves less than it looks like. C++/CMake edits:
    `pixi run build-release`; ctest has ~160 pre-existing environmental
    failures, so diff against `build/ctest_baseline_failures.txt` rather than
    expecting 100%. Anything touching the protocol or the payload: run the

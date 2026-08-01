@@ -65,9 +65,9 @@ class CadexProjectScriptStore:
     Layout under one project root (schema ``cadex-project-script-v1``):
 
     - ``script.py`` — the single project script, the sole source of truth.
-    - ``script.json`` — parameter spec cache + values, working/accepted
-      revision, accepted contract (recorded output list), accepted digest,
-      and the latest candidate summary.
+    - ``script.json`` — parameter spec cache + values, connection spec cache
+      + stored rows, working/accepted revision, accepted contract (recorded
+      output list), accepted digest, and the latest candidate summary.
     - ``script_artifacts/<revision>/`` — per-revision staged artifacts,
       pruned to the accepted attempt plus :data:`ATTEMPT_KEEP` (ADR-045).
     - ``script_history/`` — the last :data:`HISTORY_LIMIT` accepted sources
@@ -92,6 +92,13 @@ class CadexProjectScriptStore:
             "schema": SCRIPT_STATE_SCHEMA,
             "param_specs": [],
             "param_values": {},
+            # The connection table's declaration cache and its stored
+            # overrides (ADR-065), beside the parameter pair and read the
+            # same way. ``read_state`` merges over these defaults and keeps
+            # only known keys, so a script.json written before ADR-065 loads
+            # unchanged with no nets and needs no migration.
+            "net_specs": {},
+            "net_values": [],
             "working_revision": "",
             "accepted_revision": "",
             "accepted_contract": None,

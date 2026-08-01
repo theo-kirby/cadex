@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-07-27
+Verified against source: 2026-08-01
 
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),
@@ -148,6 +148,9 @@ Ownership closure, lint, and orphan queries live in
 | `cadex_mesh_api.py` / `cadex_mesh_worker.py` | The Phase 4 mesh domain on `Mod/Mesh`+`Mod/MeshPart`: tessellate/import/transform/boolean/decimate, canonical vertex/facet ordering + vertex-set digest fingerprint (ADR-016). The api also owns `payload_tree_is_deterministic`, which `part.shape_from_mesh` applies at script-eval time (ADR-043); the worker's `canonical_mesh_from_payload` is the BREP-ingest entry point the part worker is *handed* rather than imports, because the part worker is in cadexd's closure and this one deliberately is not. `[Cadex-new]` |
 | `CadexRouting.py` | The wire router behind `part.cable` (ADR-056, **experimental**): lazy 26-connected A* on an integer lattice, clearance by lattice dilation, line-of-sight shortcut, sag, bounded by a probe budget. Kernel-neutral — no FreeCAD import, occupancy arrives as an `occupied(i, j, k)` callback — so the whole algorithm is unit-testable headless; staged into the worker bundle. The part worker backs that callback with obstacle surfaces rasterised from one tessellation, because `Shape.isInside` measured 3.3 ms a point. `[Cadex-new]` |
 | `CadexBundle.py` | The multi-conductor lay behind `part.bundle` (ADR-057, **experimental**): a rotation-minimising frame carried along the shared centreline by double reflection (Frenet flips at every inflection, and a routed path is full of them), twisted and flat conductor offsets from it, a numeric solve for the lay radius at which no two conductors interpenetrate, and the raised-cosine fan-out that lands each conductor on its own port without a corner. Kernel-neutral and FreeCAD-free like `CadexRouting.py`, unit-testable headless, staged into the worker bundle by filename. `[Cadex-new]` |
+| `CadexTerminals.py` | Named, geometry-anchored ports behind `part.terminals` / `mesh.terminals` (ADR-062, **experimental**): the declared and selector layouts, ordering along a *direction* rather than by kernel enumeration, the far-face landing rule for a through-hole, and the placement arithmetic that carries one asset-frame spec onto four placed components (points by the whole matrix, directions by its rotation part; non-uniform scale refused). Kernel-neutral and FreeCAD-free like the two above, unit-testable headless, staged into the worker bundle by filename. `[Cadex-new]` |
+| `CadexSolder.py` | The joint behind `part.solder` (ADR-063, ADR-064, **experimental**): from a terminal's `metrics` plus four numbers it derives the bore, pad, collar and fillet, refuses the eight ways they can fail to describe a joint, and returns a closed *outline* in the `(r, z)` half-plane — cap cone, bore wall, entry annulus, a concave meniscus arc solved to be tangent to the lead, the collar, and the lead's own radius back down — which the worker turns into one wire, one face and one `revolve`. No fuse and no cut, so no boolean at all. Also the contour-integral volume (`V = π ∮ r² dz`) the kernel probe asserts against, and the stated radial basis that fixes where the BREP seam lands. Kernel-neutral and FreeCAD-free, staged by filename. `[Cadex-new]` |
+| `CadexNets.py` | The connection table behind `nets(...)` / `wire(...)` (ADR-065, **experimental**): the declaration, its refusals, the `"<port>.<terminal>"` endpoint grammar, the canonical row shape shared by the declared table and the stored overrides, and the two rules the wiring editor rests on — a stored row list *replaces* the declaration rather than patching it, and a row whose port a rewritten script no longer declares is pruned rather than raised on (ADR-039). Kernel-neutral and FreeCAD-free like the four above, unit-testable headless, staged into the worker bundle by filename. `[Cadex-new]` |
 | `cadex_domain_api.py` / `cadex_domain_worker.py` | Shared domain API/worker plumbing (`_execute_source` is the composition substrate). `[VibeCAD-era]` |
 | `CadexGeometryWorker.cpp` | Isolated C++ BREP validation / distance worker. `[VibeCAD-era]` |
 
@@ -165,6 +168,16 @@ There is no shell under `src/`. `CadexGui`, `CadexSession`,
 `src/Mod/cadex/**` may import `PySide*`, `FreeCADGui`, `tool_impl` or
 `jsonschema`, and cadexd's transitive module closure must equal a declared
 list.
+
+### The CLI `[Cadex-new — ADR-061]`
+
+`cli/` is a second front end and a third client of the same protocol: no
+Blender, no display, no shell code (`docs/CLI.md`). It is on the engine's
+side of the licence line (LGPL) and lives outside `src/` because it is a
+*client*, not part of the engine — it spawns `cadexd` and imports nothing
+from it except `CadexdProtocol`, loaded by path out of whichever engine it
+resolved. Its whole model-facing tool surface is generated from
+`OP_ARG_SPECS`, so it cannot drift from the contract it drives.
 
 ### Contracts and surfaces `[Cadex-new]`
 
@@ -192,7 +205,9 @@ macOS). Layout:
   script.py                     THE project script (sole source of truth)
   script_history/               last 25 accepted sources + history.json (ADR-045)
   script.json                   schema cadex-project-script-v1: param specs
-                                cache + values, working/accepted revision,
+                                cache + values, net specs cache + stored
+                                connection rows (ADR-065),
+                                working/accepted revision,
                                 accepted contract, accepted_digest,
                                 accepted_attempt (staged-artifact locator;
                                 that attempt dir is pinned, Phase 5.2),

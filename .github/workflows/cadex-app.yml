@@ -11,10 +11,11 @@ name: Cadex
 # publication are all gone -- the shell job builds the engine it ships.
 #
 # What the `app` job proves, in order: the engine builds and its unit suite
-# passes; the payload stages and answers the protocol when discovered through
-# its own manifest; the shell builds against that payload; and the agent
-# suites pass headless, driven by the built binary, with **no MESH_*
-# environment variable set** -- the zero-configuration criterion.
+# passes; the CLI drives it (ADR-061); the payload stages and answers the
+# protocol when discovered through its own manifest; the shell builds against
+# that payload; and the agent suites pass headless, driven by the built
+# binary, with **no MESH_* environment variable set** -- the
+# zero-configuration criterion.
 #
 # Precisely: the suites run under the installed Blender binary and import the
 # add-on from the source tree (that is how they resolve it, and it is what
@@ -26,7 +27,9 @@ name: Cadex
 # The `engine` job keeps Linux honest. We do not build a Linux shell yet
 # (ROADMAP, "Later"), but the engine is meant to build there, and losing that
 # coverage along with the release job it used to feed would be an accident
-# rather than a decision.
+# rather than a decision. Since ADR-061 it also carries the CLI, which is the
+# only front end Linux has -- and it runs the CLI suite twice, once against
+# the build tree and once against the staged payload.
 
 on:
   schedule:
@@ -97,6 +100,12 @@ jobs:
 
       - name: Engine unit suite
         run: pixi run python -m pytest src/Mod/cadex/cadex_tests
+
+      # The third protocol client (ADR-061). It needs the engine that was
+      # just built and nothing else -- no shell, no display -- and half of it
+      # SKIPS without one, so it belongs after the build, not before.
+      - name: CLI suite
+        run: pixi run python -m pytest cli/tests
 
       - name: Stage the engine payload
         run: pixi run stage-engine
@@ -186,6 +195,9 @@ jobs:
       - name: Engine unit suite
         run: pixi run python -m pytest src/Mod/cadex/cadex_tests
 
+      - name: CLI suite
+        run: pixi run python -m pytest cli/tests
+
       - name: Stage the engine payload
         run: pixi run stage-engine
 
@@ -195,3 +207,12 @@ jobs:
           CADEX_ENGINE_ROOT="$(cd "${payload}" && pwd)" \
             pixi run python -m pytest -q \
             src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py
+
+      # ...and the CLI resolves that payload through its manifest, exactly as
+      # the shell does. Same argument as the step above: a source tree that
+      # passes proves nothing about a payload (ADR-023).
+      - name: Gate -- the CLI drives the packaged engine
+        run: |
+          payload="$(ls -d build/engine/cadex-engine-*/ | head -1)"
+          CADEX_ENGINE_ROOT="$(cd "${payload}" && pwd)" \
+            pixi run python -m pytest -q cli/tests

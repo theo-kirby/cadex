@@ -129,6 +129,56 @@ def _transform_matrix(properties: dict[str, Any]):
     )
 
 
+#: The leaves a placement chain may bottom out on. A layout names coordinates
+#: in one asset's own frame, and only these two have one: a boolean of two
+#: placed meshes has two frames and no leaf to compose from.
+_PLACEABLE_LEAVES = frozenset({"import_file", "from_shape"})
+
+
+def composed_placement(payload: dict[str, Any]) -> tuple[float, ...]:
+    """The matrix that carries one mesh value's leaf frame into the model.
+
+    ``mesh.terminals`` states its layout in the **asset's own** coordinates —
+    the numbers you read off the datasheet, once, for a component you then
+    place four times (ADR-062). This walks the value tree down to that asset
+    and composes every ``mesh.transform`` above it, so the same spec resolves
+    to four correctly placed sets of terminals rather than four copies of one.
+
+    Returned as a plain 16-tuple, row-major, rather than an ``App.Matrix``:
+    the consumer is ``CadexTerminals``, which touches no kernel type, and the
+    part worker reaches this through the callable ``configure_part_assets``
+    binds rather than by importing this module (see that function).
+    """
+
+    import CadexTerminals
+
+    operation = str(payload.get("operation") or "")
+    if operation in _PLACEABLE_LEAVES:
+        return CadexTerminals.identity_matrix()
+    if operation == "transform":
+        import FreeCAD as App
+
+        inner = composed_placement(_nested_payload(_argument(payload, 0, "mesh")))
+        # The same order ``build_mesh`` applies them in: this node's matrix
+        # multiplies whatever the tree below it already composed to.
+        composed = _transform_matrix(
+            dict(payload.get("properties") or {})
+        ).multiply(App.Matrix(*inner))
+        return tuple(
+            float(getattr(composed, f"A{row}{column}"))
+            for row in range(1, 5)
+            for column in range(1, 5)
+        )
+    raise MeshOperationError(
+        f"api.terminals: a terminal layout needs one placed asset to ride, and "
+        f"api.{operation} does not have one frame to state it in.",
+        correction=(
+            "State the terminals on the imported asset (optionally placed with "
+            "mesh.transform), not on a mesh built by combining two of them."
+        ),
+    )
+
+
 def build_mesh(payload: dict[str, Any], root: Path):
     """Execute one validated Mesh definition and wrap kernel errors usefully."""
 

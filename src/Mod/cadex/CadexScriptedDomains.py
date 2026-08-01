@@ -203,8 +203,10 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "revolve",
             "loft",
             "sweep",
+            "terminals",
             "cable",
             "bundle",
+            "solder",
             "ruled_surface",
             "filled_surface",
             "fuse",
@@ -247,6 +249,7 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "intersection",
             "decimate",
             "transform",
+            "terminals",
         ),
         production_ready=True,
     ),
@@ -318,8 +321,18 @@ def project_script_revision(
     source: str,
     param_specs: list[dict[str, Any]],
     param_values: Mapping[str, Any],
+    net_specs: Mapping[str, Any] | None = None,
+    net_values: Any = None,
 ) -> str:
-    """Content revision of the project script + its parameter state (D7)."""
+    """Content revision of the project script + its declared-table state (D7).
+
+    The connection table (ADR-065) enters the payload **only when it is
+    non-empty**, and that conditional is doing real work: every project
+    written before nets existed keeps a byte-identical revision, so nothing
+    needs re-accepting the way ADR-064 did. A script that declares no nets
+    has nothing to say here, and saying it anyway would move every stored
+    revision in the world to record an empty table.
+    """
 
     payload = {
         "schema": PROJECT_SCRIPT_SCHEMA,
@@ -328,6 +341,10 @@ def project_script_revision(
         "param_specs": list(param_specs),
         "param_values": dict(param_values),
     }
+    if net_specs:
+        payload["net_specs"] = dict(net_specs)
+    if net_values:
+        payload["net_values"] = [dict(row) for row in list(net_values)]
     encoded = json.dumps(
         payload,
         ensure_ascii=True,
@@ -631,18 +648,41 @@ def project_tool_specs() -> tuple[dict[str, Any], ...]:
             "set_params",
             description=(
                 "Patch the values of parameters the project script declares "
-                "with params/num, then re-execute the unchanged source and "
-                "publish the result. Values-only: the source, parameter "
+                "with params/num, and/or replace the connection rows it "
+                "declares with nets/wire, then re-execute the unchanged "
+                "source and publish the result. Values-only: the source, the "
                 "declarations, and output names are untouched."
             ),
             properties={
                 "values": _property_schema(
                     "RFC 7396 merge patch of declared parameter values; each "
                     "key must name a declared parameter and map to a finite "
-                    "number (null restores the declared default).",
+                    "number (null restores the declared default). Send an "
+                    "empty object to change only the connections.",
                     type="object",
-                    minProperties=1,
                     additionalProperties={"type": ["number", "null"]},
+                ),
+                "nets": _property_schema(
+                    "Complete replacement row list for the connections "
+                    "declared with nets(...) — not a patch, so it may add and "
+                    "drop rows. Each row is {name, a, b, gauge_mm, solder, "
+                    "enabled}; a and b are '<port>.<terminal>' addresses. "
+                    "Omit to leave the connections alone.",
+                    type="array",
+                    maxItems=256,
+                    items={
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "minLength": 1},
+                            "a": {"type": "string", "minLength": 3},
+                            "b": {"type": "string", "minLength": 3},
+                            "gauge_mm": {"type": "number", "exclusiveMinimum": 0},
+                            "solder": {"type": "boolean"},
+                            "enabled": {"type": "boolean"},
+                        },
+                        "required": ["name", "a", "b", "gauge_mm"],
+                        "additionalProperties": False,
+                    },
                 ),
                 "expected_revision": expected_revision,
             },

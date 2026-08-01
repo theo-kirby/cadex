@@ -1,6 +1,6 @@
 # BLENDER.md — The Shell
 
-Verified against source: 2026-07-27
+Verified against source: 2026-08-01
 
 **The shell is the product, and since ADR-030 it is in this repository**, at
 `shell/` — a Blender fork whose `mesh_agent` add-on is the interface. Nothing
@@ -92,6 +92,9 @@ that `docs/VISION.md` describes, and the protocol client that
 | `cadex_animate.py` | an accepted simulation trace → F-Curves on the component instances: time-keyed (not frame-index-keyed), wxyz quaternions walked into one hemisphere, bulk `foreach_set` onto slotted actions, cleared and re-baked per revision. A sibling of `cadex_hydrate.py`, so a bad trace never costs you the geometry. |
 | `cadex_hydrate.py` | `cadex-tessellation-v1` buffers → Model-collection mesh objects: `cadex_face` INT face attribute (1-based BREP ids), `cadex_edge` wire children, placements, contract-driven GC by `cadex_output` property. |
 | `cadex_pick.py` | Viewport pick → a pin queued onto the next chat message (like image attachments), in two flavours sharing one eyedropper modal and one queue. **Face pin** (`mesh_agent.pick_pin`): polygon → `cadex_face` → `resolve_pin` → `@face-N`, BREP outputs only. **Point pin** (`mesh_agent.pick_point`, ADR-056): the ray-cast hit and its normal, pushed back through the object's placement into the output's own space — no engine round-trip, and it works on mesh outputs, which have no faces to name. A point and a direction *is* a `part.cable` port. |
+| `wiring.py` | **ADR-066.** The Wiring graph's model: `CadexWiringTree`, `CadexBoardNode`, `CadexTerminalSocket`, `ensure_tree`, `sync_from_engine`, `rows_from_tree` and the 0.15 s debounced push. The graph is a *projection* of `inspect scope="wiring"` — nodes, sockets and links are rebuilt from the engine and never from the canvas, so a failed push resyncs rather than retries; the one thing it owns is `Node.location`. Two sockets per terminal (Blender refuses an input→input link), keyed by a registered `terminal` property (duplicate socket names dedup into `sda`/`sda_001`), with solder state carried as socket colour (a link holds no properties). |
+| `wiring_ui.py` | **ADR-066.** Its chrome — header, two sidebar panels, `NODE_MT_add`, the sync operator. The only module in the add-on allowed to fail registration: a `Panel` naming an unregistered space type raises and would abort the whole loop (the ADR-036 failure), so it guards each class and sets `EDITOR_AVAILABLE = False`. That is what lets everything else run on a bundle built before the C++ half. |
+| `cadex_terminal_pick.py` | **ADR-067.** Edit-Mode selection → a measured terminal, handed to the next chat turn. The bore axis is the scatter matrix's *odd-one-out* eigenvector (two of three eigenvalues are equal on a circle) and not its smallest, which is the plane-fit answer and is wrong for any bore deeper than its radius; each loop is then a closed-form least-squares circle. Refuses under four vertices, refuses a fit worse than 15% of the radius, and refuses to *guess* hole-vs-pad (a square's corners fit a circle exactly) or the axis sign (resolved from the view direction, and flippable). Its own queue and its own wording: a pin is not a terminal. |
 
 ### The script loop (source of truth)
 
@@ -225,7 +228,22 @@ registered by the add-on.
 |---|---|---|
 | `RGN_TYPE_WINDOW` | the transcript | `CADEX_CHAT_PT_transcript` |
 | `RGN_TYPE_EXECUTE` | the message box and its button row | `CADEX_CHAT_PT_input` |
-| `RGN_TYPE_HEADER` | model selector, Pin Face, Pin Point, the pinned count, the script button | `CADEX_CHAT_HT_header` |
+| `RGN_TYPE_HEADER` | model selector, the pinned count | `CADEX_CHAT_HT_header` |
+
+The split between the two is **status in the header, actions in the row**
+(ADR-074). The button row is four aligned groups, and the grouping is the
+documentation:
+
+| Group | Buttons | What they act on |
+|---|---|---|
+| gather | attach image, paste image, Pin Face, Pin Point, Define Terminal | what the *next message* will carry |
+| model | Rebuild Model | the *model*: re-runs the script the engine holds, sends nothing |
+| views | Parameters, Script, Wiring | open/close, each depressed while its view is open |
+| turn | New Chat, Send/Stop | the *turn* |
+
+Nothing in the row is hidden when it does not apply — `Define Terminal` greys
+out instead, because a row that changes width as you enter and leave Edit
+Mode moves every other button under the pointer.
 
 `RGN_TYPE_EXECUTE` is the load-bearing part. `RGN_TYPE_IS_HEADER_ANY`
 (`DNA_screen_types.h`) covers `HEADER`, `TOOL_HEADER`, `FOOTER`,
@@ -259,26 +277,79 @@ poll was "about *where* this draws" is simply gone.
 ### The editor menu is short
 
 The dropdown offers only what Cadex builds: 3D Viewport, Cadex Chat, Cadex
-Parameters, Properties, Outliner, Text Editor, Python Console, Info,
-Preferences, File Browser. The dope sheet, graph editor, NLA, image/UV editor,
-node editors, sequencer, spreadsheet, movie clip editor and asset browser are
-not offered, because each destroyed the layout if picked and none has a use in
-a CAD app.
+Parameters, **Wiring**, Properties, Outliner, Text Editor, Python Console,
+Info, Preferences, File Browser. The dope sheet, graph editor, NLA, image/UV
+editor, the four stock node editors, sequencer, spreadsheet, movie clip editor
+and asset browser are not offered, because each destroyed the layout if picked
+and none has a use in a CAD app.
 
 The mechanism is **not registering the space type**: `rna_Area_ui_type_itemf`
 (`makesrna/intern/rna_screen.cc`) skips any row whose `BKE_spacetype_from_id`
-returns null, so the nine `ED_spacetype_*()` calls simply left
+returns null, so eight `ED_spacetype_*()` calls simply left
 `ED_spacetypes_init()` (ADR-036). The enum rows themselves must stay —
 `ED_area_name()` and `ED_area_icon()` index `rna_enum_space_type_items` by
 `area->spacetype`. Their trees are still compiled: kept subsystems reference
 252 symbols across them, so compiling them out is Phase 13b work, not this.
 
+**The menu is still short, and now it has a node editor in it.** ADR-066
+registered `SPACE_NODE` again, and the rule above is what makes that a
+narrowing rather than a reversal: `rna_Area_ui_type_itemf` lists a space
+type's *subtypes* where it has them, so what the menu gained is one tree type
+called "Wiring" and not a row called "Node Editor" — an area showing our tree
+is titled and iconned from `tree_type->ui_name`. The four stock trees stay off
+it because `rna_SpaceNodeEditor_tree_type_poll` is filtered to `Cadex`-prefixed
+tree idnames, which is a *stronger* claim than not-registering could make and
+is exactly the shape the asset browser is hidden with. For this one editor,
+hiding moved from "do not register the space type" to "do not offer the
+subtype".
+
 Consequences worth knowing if you touch this: their `bl_ui` modules are out of
-`_modules` (as a group — they cross-import each other); the asset browser is a
-`SpaceFile` *subtype* and is filtered in `file_space_subtype_item_extend`
-instead; and three bundled add-ons (`cycles`, `pose_library`,
-`io_mesh_uv_layout`) are no longer enabled by default because each registers
-against an editor that no longer exists.
+`_modules` (as a group — they cross-import each other), and `bl_ui/space_node`
+stays out even now, because `mesh_agent/wiring_ui.py` supplies our header and
+the stock one is 1,277 lines of shader/geometry/compositor UI; the asset
+browser is a `SpaceFile` *subtype* and is filtered in
+`file_space_subtype_item_extend` instead; `NODE_PT_tools_active` had to be put
+*back* into `space_toolsystem_toolbar.py`'s `classes`, because registering a
+`ToolSelectPanelHelper` is the only thing that initialises its
+`_tool_group_active` and the first click into a live node editor reads it; and three bundled add-ons (`cycles`,
+`pose_library`, `io_mesh_uv_layout`) are no longer enabled by default because
+each registers against an editor that no longer exists.
+
+### The Wiring graph
+
+`inspect scope="wiring"` (ADR-065) hands the shell every terminal the accepted
+run resolved plus the connection table over them; `wiring.py` draws that as a
+node tree and turns a dragged link back into one `set_params(nets=[...])` —
+the same op, the same debounce and the same optimism a slider drag uses. The
+tree lives at `scene.cadex_wiring`, which is a real user, so it saves in the
+.blend without a fake user and node positions round-trip. A board that is not
+a declared output still gets a node; a script that predates `nets(...)` draws
+read-only, with the banner naming the conversion.
+
+**What puts the nodes on the canvas is `CadexWiringTree.get_from_context`**
+(ADR-074), not the panels. Everything `node_draw_space` draws is inside
+`if (snode.treepath.last)`, only `ED_node_tree_start` pushes onto `treepath`,
+and `snode_set_context` calls it on every redraw *only* for a tree type
+supplying that callback. Without it the editor drew an empty grid while the
+sidebar — which reads `scene.cadex_wiring` directly — listed every board. The
+`NODETREE` button in the chat's row (`mesh_agent.toggle_wiring`) is the
+explicit open/close; it matches on `area.spaces.active.tree_type`, never on
+`area.type` alone, because `NODE_EDITOR` is shared with the compositor, and
+it sets `area.ui_type` *before* `space.node_tree` because
+`rna_SpaceNodeEditor_node_tree_poll` rejects the assignment otherwise.
+
+Run its suite with no engine and no rebuild:
+
+```bash
+cd shell && env -u MESH_FREECADCMD -u MESH_CADEXD_MODULE -u MESH_CADEX_ENGINE \
+  /Applications/Cadex.app/Contents/MacOS/Cadex --background --factory-startup \
+  --python tests/python/bl_mesh_agent_wiring.py
+```
+
+**Edit Mode on a hydrated object is Edit Mode on a display mirror** — the next
+`hydrate_display` replaces `obj.data` wholesale. The terminal pick only reads,
+so nothing is lost, but a user who starts extruding there deserves to have
+been told.
 
 ### The startup file: `scripts/startup/bl_app_templates_system/Mesh/`
 

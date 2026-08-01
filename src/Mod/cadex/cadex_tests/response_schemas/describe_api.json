@@ -82,6 +82,11 @@
     "params": "str",
     "values": "str"
   },
+  "connections": {
+    "nets": "str",
+    "values": "str",
+    "wire": "str"
+  },
   "program_schema": "str",
   "result_contract": "str",
   "revision_rule": "str",

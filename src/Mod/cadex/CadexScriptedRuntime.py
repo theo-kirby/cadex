@@ -51,6 +51,17 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         # The multi-conductor lay (ADR-057). Staged the same way, for the same
         # reason: cadex_part_worker imports it inside the sandbox.
         "CadexBundle.py",
+        # Named, geometry-anchored ports (ADR-062). Imported by both the part
+        # api and the part worker inside the sandbox, so it stages like the
+        # two above it.
+        "CadexTerminals.py",
+        # The joint a terminal implies (ADR-063). Imported by the part worker
+        # inside the sandbox, like the three above it.
+        "CadexSolder.py",
+        # The connection table (ADR-065). Imported by the project worker
+        # inside the sandbox to stage nets()/wire(), and by the host to
+        # validate a stored row list — pure either side, like the four above.
+        "CadexNets.py",
         "cadex_partdesign_api.py",
         "cadex_partdesign_worker.py",
         "cadex_mesh_api.py",
@@ -506,6 +517,12 @@ def prepare_preview(service: Any, values: Mapping[str, Any]) -> dict[str, Any]:
             "source": source,
             "inputs": {},
             "param_values": baseline_values,
+            # The model as it currently stands includes its connections: a
+            # preview generation built from the *declared* table would answer
+            # about a harness the user is not looking at (ADR-065).
+            "net_values": [
+                dict(row) for row in list(state.get("net_values") or [])
+            ],
             "api_contracts": api_contracts,
             "document_name": str(captured["document_name"]),
             "document_uid": str(captured["document_uid"]),
@@ -854,6 +871,68 @@ def _project_param_values(
     return cleaned
 
 
+def _project_net_values(
+    state: Mapping[str, Any], rows: Any, tool_name: str
+) -> list[dict[str, Any]]:
+    """Validate one full connection-row list against the declared table.
+
+    A **full row list**, not a patch: that is what lets the editor add and
+    delete wires, and it is why this is not a line-for-line copy of
+    :func:`_project_param_values`. What it does copy is ADR-039's asymmetry,
+    and the halves land in different places for it. Here — the *request* —
+    an endpoint the declared ports do not have is a caller error and stays
+    loud, exactly as an undeclared parameter name does. The lenient half is
+    on the *stored* rows, in ``validate_project_result`` and in
+    ``CadexNets.effective_rows``: a row a rewritten script no longer supports
+    is dropped there, because raising on it would wedge the editor forever in
+    exactly the way a dropped parameter once wedged ``set_params``.
+    """
+
+    from CadexNets import NetError, canonical_rows, declared_ports
+
+    try:
+        clean = canonical_rows(rows, what="nets")
+    except NetError as exc:
+        _raise(
+            tool_name,
+            "INVALID_PROJECT_NET",
+            "precondition",
+            str(exc),
+            requested={"nets": rows},
+        )
+    ports = declared_ports(state.get("net_specs"))
+    if not ports:
+        # No declaration to check against yet: the script has never run with
+        # nets(...), so there is no port list. The worker refuses an
+        # unresolvable endpoint on the run itself.
+        return clean
+    for row in clean:
+        for side in ("a", "b"):
+            address = str(row[side])
+            port, _, terminal = address.partition(".")
+            if port not in ports:
+                _raise(
+                    tool_name,
+                    "UNKNOWN_PROJECT_NET_ENDPOINT",
+                    "precondition",
+                    f"Connection {row['name']!r} names port {port!r}, which "
+                    "the project script does not declare.",
+                    requested={"nets": rows},
+                    observed={"declared_ports": sorted(ports)},
+                )
+            if terminal not in list(ports[port]):
+                _raise(
+                    tool_name,
+                    "UNKNOWN_PROJECT_NET_ENDPOINT",
+                    "precondition",
+                    f"Connection {row['name']!r} names terminal {terminal!r} "
+                    f"on port {port!r}, which has {list(ports[port])}.",
+                    requested={"nets": rows},
+                    observed={"terminals": list(ports[port])},
+                )
+    return clean
+
+
 def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
     """Persist the working script state and stage one project candidate."""
 
@@ -888,6 +967,7 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         )
 
     param_values = dict(state.get("param_values") or {})
+    net_values = [dict(row) for row in list(state.get("net_values") or [])]
     if operation == "write_script":
         source = str(arguments.get("source") or "")
         if not source.strip():
@@ -926,12 +1006,38 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
                 "There is no project script yet; use write_script first.",
             )
         source = current_source
-        try:
-            param_values = _project_param_values(
-                state, arguments.get("values"), tool_name
-            )
-        except ValueError as exc:
-            _raise(tool_name, "INVALID_PROJECT_PARAMETER_VALUE", "precondition", str(exc))
+        # One op, because "set the values of declared controls without the AI"
+        # is one concept and a slider and a wire are both instances of it
+        # (ADR-065). A nets-only edit sends no parameter patch, and an empty
+        # `values` there means "leave the sliders alone" rather than the
+        # refusal it still is when `values` is the only thing asked for.
+        values_patch = arguments.get("values")
+        nets_patch = arguments.get("nets")
+        nets_only = nets_patch is not None and values_patch == {}
+        if not nets_only:
+            try:
+                param_values = _project_param_values(
+                    state, values_patch, tool_name
+                )
+            except ValueError as exc:
+                _raise(
+                    tool_name,
+                    "INVALID_PROJECT_PARAMETER_VALUE",
+                    "precondition",
+                    str(exc),
+                )
+        else:
+            declared = {
+                str(spec.get("name") or "")
+                for spec in list(state.get("param_specs") or [])
+            }
+            param_values = {
+                name: value
+                for name, value in param_values.items()
+                if name in declared
+            }
+        if nets_patch is not None:
+            net_values = _project_net_values(state, nets_patch, tool_name)
     else:
         _raise(tool_name, "UNKNOWN_DOMAIN_TOOL", "surface", "Unknown project tool.")
 
@@ -966,6 +1072,8 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         source=source,
         param_specs=list(state.get("param_specs") or []),
         param_values=param_values,
+        net_specs=state.get("net_specs"),
+        net_values=net_values,
     )
     attempt_id = f"{int(time.time() * 1000):013d}-{uuid.uuid4().hex[:12]}"
     staging = store.artifacts_dir(revision) / f"attempt-{attempt_id}"
@@ -979,6 +1087,7 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
             "source": source,
             "inputs": {},
             "param_values": param_values,
+            "net_values": net_values,
             "api_contracts": _project_api_contracts(),
             "document_name": str(captured["document_name"]),
             "document_uid": str(captured["document_uid"]),
@@ -1008,6 +1117,7 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         source=source,
         state_updates={
             "param_values": param_values,
+            "net_values": net_values,
             "working_revision": revision,
         },
     )
@@ -1021,12 +1131,17 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         "source_before": current_source,
         "working_revision_before": working_revision,
         "param_values_before": dict(state.get("param_values") or {}),
+        "net_values_before": [
+            dict(row) for row in list(state.get("net_values") or [])
+        ],
         "accepted_revision_before": str(state.get("accepted_revision") or ""),
         "accepted_contract_before": state.get("accepted_contract"),
         "accepted_digest_before": str(state.get("accepted_digest") or ""),
         "source": source,
         "param_values": param_values,
+        "net_values": net_values,
         "param_specs_before": list(state.get("param_specs") or []),
+        "net_specs_before": dict(state.get("net_specs") or {}),
         "project_root": project_root,
         "staging": str(staging),
         "bundle_dir": str(bundle_dir),
@@ -1067,6 +1182,9 @@ def record_project_candidate_failure(
         source=str(prepared.get("source_before") or ""),
         state_updates={
             "param_values": dict(prepared.get("param_values_before") or {}),
+            "net_values": [
+                dict(row) for row in list(prepared.get("net_values_before") or [])
+            ],
             "working_revision": str(prepared.get("working_revision_before") or ""),
             "latest_candidate": {
                 "status": "failed",
@@ -1219,16 +1337,31 @@ def validate_project_result(
         for name, value in dict(prepared["param_values"]).items()
         if name in declared_names
     }
+    # The same pruning, for the same reason, on the connection table: a
+    # stored row naming a port the rewritten script no longer declares is
+    # dropped here rather than left to wedge the editor (ADR-039, ADR-065).
+    # Digest-neutral for the identical reason -- the collector resolves the
+    # declared ports by name and never reads the rest.
+    from CadexNets import declared_ports, prune_rows
+
+    net_specs = dict(execution.get("net_specs") or {})
+    prepared["net_values"] = prune_rows(
+        list(prepared.get("net_values") or []), declared_ports(net_specs)
+    )
     final_revision = contracts.project_script_revision(
         source=str(prepared["source"]),
         param_specs=param_specs,
         param_values=dict(prepared["param_values"]),
+        net_specs=net_specs,
+        net_values=list(prepared["net_values"]),
     )
     store = CadexProjectScriptStore(str(prepared["project_root"]))
     store.write(
         state_updates={
             "param_specs": param_specs,
             "param_values": dict(prepared["param_values"]),
+            "net_specs": net_specs,
+            "net_values": list(prepared["net_values"]),
             "working_revision": final_revision,
             "latest_candidate": {
                 "status": "validated",
@@ -1246,6 +1379,7 @@ def validate_project_result(
         "contract": contract,
         "digest": digest,
         "param_specs": param_specs,
+        "net_specs": net_specs,
         "validations": dict(execution.get("validations") or {}),
         "component_sources": dict(execution.get("component_sources") or {}),
         "stdout": str(execution.get("stdout") or ""),
@@ -1621,8 +1755,36 @@ def describe_project_api() -> dict[str, Any]:
             "assembly",
             "params",
             "num",
+            "nets",
+            "wire",
         ],
         "domains": _capability_api_listing(),
+        "connections": {
+            "nets": (
+                "nets(ports={'esp': esp_t, ...}, wires={'sda': wire(...), "
+                "...}) declares the harness as a table; callable at most once "
+                "per script. ports maps a lower_snake_case name to the "
+                "TerminalSet part.terminals/mesh.terminals returned; wires "
+                "maps a lower_snake_case row name to one wire(...). Iterate "
+                "it with .items() and build each row with part.cable / "
+                "part.bundle / part.solder as usual — w.a and w.b are real "
+                "terminals, so the harness operations are unchanged."
+            ),
+            "wire": (
+                "wire(a, b, gauge=..., solder=False, enabled=True, avoid=(), "
+                "label='') declares one connection. Endpoints are "
+                "'<port>.<terminal>' strings validated against the declared "
+                "ports. a/b/gauge/solder/enabled are the editable columns; "
+                "avoid and label are declaration-only and stay in the script, "
+                "as does every other routing argument."
+            ),
+            "values": (
+                "Stored rows from xscript.project.set_params(nets=...) replace "
+                "the declared table wholesale — that is what lets the wiring "
+                "editor add and delete connections. A stored row naming a "
+                "port the script no longer declares is dropped, not refused."
+            ),
+        },
         "parameters": {
             "params": (
                 "params(name=num(...), ...) declares the script's slider "
@@ -1656,8 +1818,10 @@ def describe_project_api() -> dict[str, Any]:
                 "exactly once in the current source."
             ),
             "set_params": (
-                "Values-only RFC 7396 patch of declared parameters; the "
-                "source is untouched and re-executed with the new values."
+                "Values-only RFC 7396 patch of declared parameters, and/or a "
+                "full replacement row list for the connections declared with "
+                "nets(...); the source is untouched and re-executed with the "
+                "new values."
             ),
         },
         "revision_rule": (

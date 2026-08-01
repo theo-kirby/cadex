@@ -4206,13 +4206,28 @@ class SEQUENCER_PT_tools_active(ToolSelectPanelHelper, Panel):
     }
 
 
-# The image, node and sequencer tool panels are defined above but not
-# registered: Cadex does not build those space types, and registering a panel
-# against a space type that does not exist raises "Region not found in space
-# type" -- which aborts bl_ui's whole registration loop, taking the top bar
-# menus with it. See ADR-036.
+# The image and sequencer tool panels are defined above but not registered:
+# Cadex does not build those space types, and registering a panel against a
+# space type that does not exist raises "Region not found in space type" --
+# which aborts bl_ui's whole registration loop, taking the top bar menus with
+# it. See ADR-036.
+#
+# The node one IS registered, and has to be (ADR-066). Registering a
+# ToolSelectPanelHelper is what runs its `register()`, and that is the only
+# thing that initialises `_tool_group_active`. Leaving it out was harmless
+# while SPACE_NODE was unregistered because nothing ever looked the class up;
+# once the editor exists, `wm.tool_set_by_id` finds it by space type on the
+# first click and dies with `AttributeError: type object
+# 'NODE_PT_tools_active' has no attribute '_tool_group_active'`.
+#
+# It costs nothing else: `_defs_node_select` and `_defs_node_edit` are both
+# defined in this file, not in the `bl_ui.space_node` module Cadex still does
+# not load, so this pulls in no shader/geometry-node UI. The tools it offers
+# -- tweak, box/circle/lasso select, links cut, mute links -- are the gestures
+# a wiring graph wants anyway.
 classes = (
     VIEW3D_PT_tools_active,
+    NODE_PT_tools_active,
 )
 
 if __name__ == "__main__":  # only for live edit.

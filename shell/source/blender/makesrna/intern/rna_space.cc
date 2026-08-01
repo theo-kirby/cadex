@@ -3004,6 +3004,21 @@ static void rna_SpaceNodeEditor_tree_type_set(PointerRNA *ptr, int value)
 }
 static bool rna_SpaceNodeEditor_tree_type_poll(void *Cv, bke::bNodeTreeType *type)
 {
+  /* Cadex ships one node tree: the wiring graph (ADR-066). Both callers of
+   * this poll are node-editor-only -- the editor-type menu, through
+   * node_space_subtype_item_extend, and the editor's own tree_type dropdown --
+   * so filtering here hides the four stock trees from both without
+   * unregistering them, which materials still need. ADR-036's rule that an
+   * editor Cadex does not build is not offered therefore survives intact: the
+   * thing being offered is "Wiring", not "Node Editor".
+   *
+   * The rule is the identifier prefix, so a second Cadex tree needs no edit
+   * here. `.ref()` rather than a StringRef constructor: UString deliberately
+   * offers no implicit conversion, to keep its comparison operators
+   * unambiguous. */
+  if (!type->idname.ref().startswith("Cadex")) {
+    return false;
+  }
   bContext *C = static_cast<bContext *>(Cv);
   if (type->poll) {
     return type->poll(C, type);

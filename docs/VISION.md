@@ -1,6 +1,6 @@
 # VISION.md — What Cadex Is Becoming
 
-Verified against source: 2026-07-25
+Verified against source: 2026-07-31
 
 This document is the product vision. It is authoritative: when a change
 conflicts with this document, the change is wrong or the vision needs an
@@ -93,13 +93,32 @@ deliverable (Phase 11), not a shell convenience (ADR-025).
 - Supporting all FreeCAD workbenches, file formats, or addons.
 - Multi-engine scripting (build123d, OpenSCAD — retired in the teardown).
 - **Two of anything in the finished product**: one shell, one engine, one
-  script format, one document, one model loop, one installer. The Qt/Coin3D
-  shell was interim and was deleted in Phase 7 (ADR-021). One repository
-  since ADR-030. The Blender shell is the working substrate until the Rust
-  shell replaces it (ADR-025) — the Rust shell is not a second shell, it is
-  the first one we own, and `shell/` is deleted when it lands.
-- A second model loop. The AI runs as the Claude Code CLI inside the shell;
-  there is no API-key provider path (ADR-020).
+  script format, one document, one installer. The Qt/Coin3D shell was interim
+  and was deleted in Phase 7 (ADR-021). One repository since ADR-030. The
+  Blender shell is the working substrate until the Rust shell replaces it
+  (ADR-025) — the Rust shell is not a second shell, it is the first one we
+  own, and `shell/` is deleted when it lands.
+
+  **The headless CLI is the one exception, and it is deliberate** (ADR-061).
+  `cli/` is a second *front end*: no shell, no window, and no second engine,
+  script format or document — the same project script, driven from a
+  terminal. It earns the exception by doing something a window cannot,
+  which is to be scripted: one expensive turn authors a parametric model,
+  and a cheap loop then sweeps it under an external simulator with no model
+  in the loop at all. Interactive design and batch design are different
+  jobs, and one program that did both would serve neither.
+- **A second provider stack.** The AI is the Claude Code CLI — in the shell
+  and in `cli/` alike. There is no API-key path, no model picker, no
+  provider abstraction (ADR-020).
+
+  What this does *not* forbid, since ADR-061, is a second **turn
+  orchestration**: the shell and the CLI each spawn `claude -p` from their
+  own code, because one is a chat window and the other is a process with an
+  exit code. That is a real duplication and the ADR says so plainly. What
+  keeps it from becoming drift is that neither of them states the xscript
+  API — both ask the engine through `describe_api` — and that the CLI's tool
+  schemas are generated from `OP_ARG_SPECS` rather than written. A third
+  front end would need the same discipline or it should not be built.
 - **Dependence on FreeCAD or Blender.** OCCT stays as the geometry kernel.
   Vendored LGPL components (OCCT, planegcs, OndselSolver, `modelRefine`)
   keep their attribution obligation in the NOTICE file; "references to
@@ -110,9 +129,9 @@ deliverable (Phase 11), not a shell convenience (ADR-025).
 
 1. **Elegance and simplicity.** Prefer the design that removes a concept over
    the one that adds a switch.
-2. **Remove more than we add.** Subtractive change in `src/Mod/cadex/**` and
-   docs is encouraged, not merely permitted (policy in `CLAUDE.md`; every
-   removal logged in `docs/DECISIONS.md`).
+2. **Remove more than we add.** Subtractive change in `src/Mod/cadex/**`,
+   `cli/**` and docs is encouraged, not merely permitted (policy in
+   `CLAUDE.md`; every removal logged in `docs/DECISIONS.md`).
 3. **The script is the truth; everything else is a cache.** Any state that
    can't be rebuilt from the script is a bug.
 4. **Validated results only.** Geometry is produced in sandboxed headless

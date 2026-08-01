@@ -426,9 +426,10 @@ class CADEX_CHAT_PT_transcript(Panel):
         layout = self.layout
         agent = agent_module.get_agent()
 
-        # The model selector and Pin Face moved to the editor's header
-        # (spaces.py): they are chat-level controls, and the header is where
-        # an editor's chrome belongs now that this editor has one.
+        # The model selector is in the editor's header (spaces.py) -- it is a
+        # setting, and the header is where an editor's chrome belongs. Every
+        # *action*, the two pin gestures included, is in one row under the
+        # message box (draw_chat_buttons).
         from . import cadex_backend
         # One warning row, not a wall of text: the remedy lives in the
         # add-on preferences, which is where the fix is applied.
@@ -512,40 +513,95 @@ def draw_chat_input(layout, context):
 
 
 def draw_chat_buttons(layout, context):
-    """The row under the message box: attachments, send/stop, new chat, and
-    the two view toggles (parameters, script)."""
+    """Every control the chat has, in one row of four groups.
+
+    They used to be in two places -- the pins in the header, everything else
+    here -- which meant the answer to "where is the button" was "it depends".
+    Now the header carries status and this row carries actions, grouped by
+    what they act on rather than by what they look like:
+
+    ``[attach paste pin-face pin-point define-terminal]`` gather things the
+    *next message* will carry; ``[rebuild]`` acts on the *model*;
+    ``[params script wiring]`` open and close *views*, each depressed while
+    its view is open; ``[new-chat send]`` are the *turn*.
+
+    Nothing in here is hidden when it does not apply. A row that changes width
+    as you enter and leave Edit Mode moves every other button under the
+    pointer, so ``Define Terminal`` greys out instead (ADR-067's gesture only
+    exists on a mesh in Edit Mode). This panel has no ``poll`` for the same
+    reason, and a test pins that.
+    """
     from . import spaces
+    from . import cadex_pick
+    from . import cadex_terminal_pick
+    from . import wiring_ui
+
     agent = agent_module.get_agent()
 
-    attach = layout.row(align=True)
+    # --- what the next message will carry ---------------------------------
+    gather = layout.row(align=True)
     pending = agent.pending_attachment_count()
-    attach.operator(MESH_AGENT_OT_attach_image.bl_idname, icon='FILE_IMAGE',
+    gather.operator(MESH_AGENT_OT_attach_image.bl_idname, icon='FILE_IMAGE',
                     text="{:d}".format(pending) if pending else "")
-    attach.operator(MESH_AGENT_OT_paste_image.bl_idname, text="",
+    gather.operator(MESH_AGENT_OT_paste_image.bl_idname, text="",
                     icon='PASTEDOWN')
+    # Two pin gestures, one queue: a face pin names a BREP face the engine can
+    # re-find, a point pin is a place and a direction, which is the only thing
+    # an imported mesh can offer and exactly what a part.cable port is. By
+    # string idname, because `cadex_pick` builds its classes lazily at
+    # register time and there is no attribute here to reach for.
+    pinned = cadex_pick.pending_pin_count()
+    gather.operator("mesh_agent.pick_pin", icon='EYEDROPPER',
+                    text="{:d}".format(pinned) if pinned else "")
+    gather.operator("mesh_agent.pick_point", icon='CURSOR', text="")
+    # Measuring a terminal off the model (ADR-067): the same kind of thing --
+    # gathered now, read by the assistant on the next turn -- and counted the
+    # same way, so several picks visibly batch into one message.
+    terminal = gather.row(align=True)
+    terminal.enabled = bool(
+        cadex_terminal_pick.MESH_AGENT_OT_define_terminal.poll(context))
+    queued = cadex_terminal_pick.pending_terminal_count()
+    terminal.operator(
+        cadex_terminal_pick.MESH_AGENT_OT_define_terminal.bl_idname,
+        icon='SNAP_MIDPOINT',
+        text="{:d}".format(queued) if queued else "")
 
-    if agent.busy:
-        layout.operator(MESH_AGENT_OT_chat_cancel.bl_idname,
-                        text="", icon='CANCEL')
-    else:
-        layout.operator(MESH_AGENT_OT_chat_send.bl_idname,
-                        text="", icon='PLAY')
+    # --- act on the model --------------------------------------------------
+    # Always here, always clickable while the assistant is idle: re-runs the
+    # script the engine already holds and sends nothing, so it is the safe
+    # thing to press when it is unclear which side is wrong (ADR-039). Not
+    # "Rebuild From Saved Script", which pushes this file's buffer over the
+    # engine -- wrong semantics for a button that is always on.
+    layout.separator()
+    layout.operator(MESH_AGENT_OT_rebuild_model.bl_idname, text="",
+                    icon='FILE_REFRESH')
+
+    # --- open and close views ---------------------------------------------
+    # Depressed while open, so each button reads as the state as well as the
+    # switch.
+    views = layout.row(align=True)
+    views.operator(MESH_AGENT_OT_toggle_params.bl_idname, text="",
+                   icon='OPTIONS',
+                   depress=params_area(context.screen) is not None)
+    views.operator(spaces.MESH_AGENT_OT_show_script.bl_idname, text="",
+                   icon='TEXT',
+                   depress=spaces.script_area(context.screen) is not None)
+    views.operator(wiring_ui.MESH_AGENT_OT_toggle_wiring.bl_idname, text="",
+                   icon='NODETREE',
+                   depress=wiring_ui.wiring_area(context.screen) is not None)
+
+    # --- the turn ----------------------------------------------------------
     # Starting over is one button, not a trash can: what the user wants back
     # is an assistant with an empty head, and that is the session as much as
     # the transcript (Agent.new_conversation).
-    layout.operator(MESH_AGENT_OT_chat_new.bl_idname, text="", icon='FILE_NEW')
-
-    # Opens and closes the parameters editor. Depressed while it is open, so
-    # the one button reads as the state as well as the switch.
-    layout.operator(MESH_AGENT_OT_toggle_params.bl_idname, text="",
-                    icon='OPTIONS',
-                    depress=params_area(context.screen) is not None)
-    # And the same for the script view -- a Text Editor pointed at the mirror.
-    # It sits here rather than in the chat header (where a one-way opener used
-    # to live) so the two views are one pair of buttons with one meaning.
-    layout.operator(spaces.MESH_AGENT_OT_show_script.bl_idname, text="",
-                    icon='TEXT',
-                    depress=spaces.script_area(context.screen) is not None)
+    turn = layout.row(align=True)
+    turn.operator(MESH_AGENT_OT_chat_new.bl_idname, text="", icon='FILE_NEW')
+    if agent.busy:
+        turn.operator(MESH_AGENT_OT_chat_cancel.bl_idname,
+                      text="", icon='CANCEL')
+    else:
+        turn.operator(MESH_AGENT_OT_chat_send.bl_idname,
+                      text="", icon='PLAY')
 
 
 classes = (

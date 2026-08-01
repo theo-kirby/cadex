@@ -48,12 +48,18 @@ _REFERENCE_SHAPES: Mapping[tuple[str, str], Any] = MappingProxyType({})
 _ASSET_ROOT: Path | None = None
 #: ``(payload, root) -> Mesh`` in canonical order, injected per request.
 _MESH_INGEST: Any = None
+#: ``payload -> 4x4 row-major tuple``: where a mesh value's asset frame sits.
+_MESH_PLACEMENT: Any = None
 
 
-def configure_part_assets(root: Path | None, mesh_ingest: Any = None) -> None:
-    """Bind what ``shape_from_mesh`` needs, for one worker request.
+def configure_part_assets(
+    root: Path | None,
+    mesh_ingest: Any = None,
+    mesh_placement: Any = None,
+) -> None:
+    """Bind what ``shape_from_mesh`` and ``terminals`` need, for one request.
 
-    Two bindings, for two reasons.
+    Three bindings, for two reasons.
 
     The **root** because ``build_mesh(payload, root)`` resolves
     ``mesh.import_file`` names against ``<root>/assets`` while
@@ -69,13 +75,21 @@ def configure_part_assets(root: Path | None, mesh_ingest: Any = None) -> None:
     domain-worker stack into the service to serve a call the service never
     makes. The staged callers own that edge and hand the entry point in.
 
-    Both mirror the module's existing idiom for host-staged material,
+    The **mesh placement callable** for the same import-boundary reason as
+    the second, and it is a separate binding rather than a flag on the first
+    because it does different work: resolving a terminal on an imported
+    component needs where that component *is*, not its triangles (ADR-062).
+    Materializing the mesh to read a matrix off it would import and
+    canonicalize the whole asset to compose four numbers.
+
+    All three mirror the module's existing idiom for host-staged material,
     :func:`configure_part_references` (ADR-043).
     """
 
-    global _ASSET_ROOT, _MESH_INGEST
+    global _ASSET_ROOT, _MESH_INGEST, _MESH_PLACEMENT
     _ASSET_ROOT = None if root is None else Path(root)
     _MESH_INGEST = mesh_ingest
+    _MESH_PLACEMENT = mesh_placement
 
 
 def configure_part_references(root: Path, entries: list[dict[str, Any]]) -> None:
@@ -406,22 +420,26 @@ def _shape_list(
     return [_shape(operation, f"{parameter}[{index}]", item) for index, item in enumerate(value)]
 
 
-def _selected_subshapes(
+def _selected_subshape_details(
     operation: str,
     parameter: str,
     shape: Any,
     requested: Any,
     kind: str,
-) -> list[Any]:
-    """Resolve a geometric selector (or ``"all"``) to concrete subshapes.
+) -> tuple[list[Any], list[dict[str, Any]]]:
+    """Resolve a geometric selector (or ``"all"``) to subshapes *and* details.
 
     Phase 10b: the index form is gone. A failed selector reports the declared
     and actual counts plus the subshapes that *were* available, so the agent
     can re-query rather than guess an ordinal.
+
+    The details are what ``terminals`` needs alongside the kernel objects
+    (ADR-062) — a pad's normal is fingerprinted there already, and computing
+    it twice would be two different ``normalAt`` calls that could disagree.
     """
 
     try:
-        selected, _details = resolve_selected_subshapes(shape, kind, requested)
+        return resolve_selected_subshapes(shape, kind, requested)
     except SubshapeSelectionError as exc:
         raise PartOperationError(
             f"api.{operation}: {parameter}: {exc}",
@@ -437,6 +455,20 @@ def _selected_subshapes(
         ) from exc
     except ValueError as exc:
         raise _error(operation, parameter, str(exc)) from exc
+
+
+def _selected_subshapes(
+    operation: str,
+    parameter: str,
+    shape: Any,
+    requested: Any,
+    kind: str,
+) -> list[Any]:
+    """The kernel objects one selector names — the ops' entry point."""
+
+    selected, _details = _selected_subshape_details(
+        operation, parameter, shape, requested, kind
+    )
     return selected
 
 
@@ -717,6 +749,41 @@ _SWEEP_CORRECTION = (
 )
 
 
+def _tangent_constraints(start_tangent: Any, end_tangent: Any) -> dict[str, Any]:
+    """The end-tangent keywords for ``BSplineCurve.interpolate``, or none.
+
+    Both or neither: ``BSplineCurvePy::interpolate`` loads the pair together
+    (``if (t1 && t2)``), so one alone is silently ignored — which would be a
+    fix that looks applied and is not.  The vectors are copied before they are
+    normalised because ``Vector.normalize`` normalises **in place**, and the
+    directions handed here are the caller's ports, still owed to the router.
+
+    ``Scale=False`` and a **unit** magnitude, which is the part that had to be
+    measured.  OCC's own scaling (the default, ``Scale=True``) keeps the
+    direction and picks the speed itself, and on a five-waypoint route it
+    picks one that makes the whole fit wavy: the 40 mm probe run measured
+    45.5 mm of spline against 37.6 mm free, swinging 5.5 mm below a board it
+    started 0.4 mm under, and the true-Frenet pipe shell folded on it.
+    ``GeomAPI_Interpolate`` parameterises by chord length, so the natural
+    speed is ~1 whatever the model's size — a unit tangent asks for the
+    direction and leaves the shape alone (38.2 mm of spline, against 37.6 mm
+    free, and the same excursions).
+    """
+
+    import FreeCAD as App
+
+    if start_tangent is None or end_tangent is None:
+        return {}
+    pair = []
+    for vector in (start_tangent, end_tangent):
+        copy = App.Vector(vector)
+        if copy.Length <= 1.0e-12:
+            return {}
+        copy.normalize()
+        pair.append(copy)
+    return {"InitialTangent": pair[0], "FinalTangent": pair[1], "Scale": False}
+
+
 def _sweep_conductor(
     waypoints: list[Any],
     *,
@@ -727,6 +794,9 @@ def _sweep_conductor(
     bend_samples: int | None = None,
     bend_correction: str = _BEND_CORRECTION,
     sweep_correction: str = _SWEEP_CORRECTION,
+    start_tangent: Any = None,
+    end_tangent: Any = None,
+    frenet: bool = True,
     context: str = "",
 ):
     """Fit a spline through ``waypoints`` and sweep a round conductor along it.
@@ -734,11 +804,32 @@ def _sweep_conductor(
     Shared by ``part.cable`` and ``part.bundle`` (ADR-057).  ``centre`` is
     where the profile circle sits — the run's first point.
 
-    The sweep runs in OCC's **true** Frenet mode.  The section is a circle
-    centred on the spine, so in principle the mode cannot matter; in practice
-    corrected Frenet collapses helical spines, measured at up to 51% of the
-    volume missing on a six-way lay while still returning one closed, valid
-    solid.  True Frenet held every measured case to within 0.62%.
+    ``start_tangent`` and ``end_tangent`` are the directions the run must
+    leave and arrive on, and they are the difference between a wire that meets
+    its terminal square and one that clips through the joint on it (ADR-074).
+    Without them the interpolation is free at both ends: a global C2 fit picks
+    whatever tangent minimises its own energy, so the "straight stub" the
+    router puts in front of every port is straight only as a polyline, and the
+    spline through it bows from parameter zero.  The profile circle is
+    oriented off that same first tangent below, so the error shows up twice —
+    as a bowed lead *and* as a start face tilted against the terminal's axis.
+
+    ``frenet`` picks the sweep frame, and the two callers want opposite
+    answers — which ADR-057 half-found and ADR-074 finishes.  The section is a
+    circle centred on the spine, so in principle the mode cannot matter; in
+    practice each mode has a shape it cannot carry.  **Corrected** Frenet
+    collapses helical spines — up to 51% of the volume missing on a six-way
+    lay, and still one closed, valid solid — which is why a bundle's
+    conductors sweep in true Frenet.  **True** Frenet needs a curvature to
+    take its normal from, and a routed cable is mostly straight: measured
+    against ``pi r^2 L``, ordinary two-port runs came out at 0.78 and 0.58 of
+    the volume they should have, folding through themselves wherever the
+    normal swung.  Corrected held all three probe runs to within 0.06%, so
+    that is what a cable sweeps in.
+
+    A wrong frame is invisible in every cheap check — the solid is closed, it
+    is valid, it has one shell — so the assertion that catches it is volume
+    against the spine's own length, and both callers have one.
     """
 
     import FreeCAD as App
@@ -749,6 +840,7 @@ def _sweep_conductor(
         Points=[App.Vector(*point) for point in waypoints],
         PeriodicFlag=False,
         Tolerance=1.0e-7,
+        **_tangent_constraints(start_tangent, end_tangent),
     )
     path_edge = curve.toShape()
 
@@ -777,7 +869,7 @@ def _sweep_conductor(
     except Exception:
         tangent = App.Vector(*waypoints[1]) - App.Vector(*waypoints[0])
     profile = Part.Wire([Part.makeCircle(gauge / 2.0, centre, tangent)])
-    result = Part.Wire([path_edge]).makePipeShell([profile], True, True)
+    result = Part.Wire([path_edge]).makePipeShell([profile], True, bool(frenet))
     if result is None or result.isNull() or not result.Solids:
         raise PartOperationError(
             f"api.{operation}: the conductor could not be swept along the "
@@ -787,6 +879,315 @@ def _sweep_conductor(
             correction=sweep_correction,
         )
     return result
+
+
+#: Resolved terminal sets for ONE worker request, keyed on the terminal
+#: payload with the terminal *name* stripped. A four-way ribbon names the
+#: same board four times and must resolve — and, for a selector, *build* —
+#: it once. Bounded and request-scoped like ``_CABLE_MESH_BOXES`` above, and
+#: cleared in ``reset_part_shape_memo`` for the reason recorded there: a
+#: terminal that leaked across requests would place a wire on the previous
+#: request's geometry under a self-consistent digest.
+_TERMINAL_SETS: dict[str, dict[str, dict[str, Any]]] = {}
+_TERMINAL_SET_LIMIT = 64
+
+#: The ``{component, layout}`` payload behind each key in ``_TERMINAL_SETS``,
+#: in first-resolution order. The memo alone is keyed by a hash and so cannot
+#: say *which board* it resolved; publishing the wiring needs that (ADR-065),
+#: and re-deriving it host-side would cover declared layouts only. Cleared
+#: with the memo, for the reason recorded there.
+_TERMINAL_SET_SOURCES: dict[str, dict[str, Any]] = {}
+
+#: What the model does about a terminal that would not resolve.
+_TERMINAL_CORRECTION = (
+    "A terminal names geometry, so fix the naming rather than the number: "
+    "check the selector matches exactly as many faces as there are names, "
+    "that exit= points out of the component, and that a declared layout's "
+    "origin/along/axis are stated in that component's own coordinates."
+)
+
+
+def _terminal_candidates(
+    operation: str,
+    parameter: str,
+    kind: str,
+    faces: list[Any],
+    details: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """The handful of numbers ``CadexTerminals`` needs off each matched face.
+
+    Everything kernel-shaped stops here: an axis, a centre, a radius and the
+    face's axial parameter range for a hole; a centre of mass, a normal and
+    an area for a pad. The layout, the ordering and the landing point are
+    arithmetic on those, and live in the pure module.
+    """
+
+    candidates: list[dict[str, Any]] = []
+    for index, face in enumerate(faces):
+        detail = dict(details[index]) if index < len(details) else {}
+        ordinal = index + 1
+        if kind == "holes":
+            surface = getattr(face, "Surface", None)
+            axis = getattr(surface, "Axis", None)
+            center = getattr(surface, "Center", None)
+            radius = getattr(surface, "Radius", None)
+            if axis is None or center is None or radius is None:
+                raise PartOperationError(
+                    f"api.{operation}: {parameter}: holes= matched a "
+                    f"{detail.get('geometry_type') or 'non-cylindrical'} face, "
+                    "which has no barrel to thread a wire through",
+                    stage="part_terminals",
+                    operation=operation,
+                    parameter=parameter,
+                    observed={"matched": detail},
+                    correction=(
+                        "Add geometry_type='Cylinder' to the selector so it "
+                        "names the drilled faces and nothing else, or use "
+                        "pads= if the attachment is a flat contact."
+                    ),
+                )
+            low, high = (float(value) for value in face.ParameterRange[2:4])
+            axis_values = [float(axis.x), float(axis.y), float(axis.z)]
+            center_values = [float(center.x), float(center.y), float(center.z)]
+            candidates.append(
+                {
+                    "ordinal": ordinal,
+                    "axis": axis_values,
+                    "center": center_values,
+                    "radius": float(radius),
+                    "extent": [low, high],
+                    # The barrel's midpoint, which is on the axis whatever the
+                    # face's own centre of mass does on a partial cylinder.
+                    "sort_point": [
+                        center_values[a] + axis_values[a] * (low + high) / 2.0
+                        for a in range(3)
+                    ],
+                    "detail": detail,
+                }
+            )
+            continue
+        center = getattr(face, "CenterOfMass", None)
+        normal = detail.get("normal")
+        if normal is None:
+            try:
+                u_min, u_max, v_min, v_max = (
+                    float(value) for value in face.ParameterRange
+                )
+                sampled = face.normalAt((u_min + u_max) / 2.0, (v_min + v_max) / 2.0)
+                normal = [float(sampled.x), float(sampled.y), float(sampled.z)]
+            except Exception:
+                normal = None
+        if center is None or normal is None:
+            raise PartOperationError(
+                f"api.{operation}: {parameter}: pads= matched a face with no "
+                "usable centre and normal to attach to",
+                stage="part_terminals",
+                operation=operation,
+                parameter=parameter,
+                observed={"matched": detail},
+                correction=_TERMINAL_CORRECTION,
+            )
+        center_values = [float(center.x), float(center.y), float(center.z)]
+        candidates.append(
+            {
+                "ordinal": ordinal,
+                "center": center_values,
+                "normal": [float(item) for item in normal],
+                "area": float(getattr(face, "Area", 0.0) or 0.0),
+                "sort_point": center_values,
+                "detail": detail,
+            }
+        )
+    return candidates
+
+
+def _resolve_terminal_set(
+    operation: str, parameter: str, payload: dict[str, Any]
+) -> dict[str, dict[str, Any]]:
+    """One component's terminals, resolved once per request and memoised."""
+
+    import CadexTerminals
+
+    key = terminal_set_key(payload)
+    cached = _TERMINAL_SETS.get(key)
+    if cached is not None:
+        return cached
+
+    component = payload.get("component")
+    layout = payload.get("layout")
+    if not isinstance(component, dict) or not isinstance(layout, dict):
+        raise _error(
+            operation,
+            parameter,
+            "expected a terminal from part.terminals or mesh.terminals",
+        )
+    kind = str(layout.get("kind") or "")
+    try:
+        if component.get("domain") == "mesh":
+            if kind != "declared":
+                raise _error(
+                    operation,
+                    parameter,
+                    "a selector names BREP faces, and an imported mesh has "
+                    "none; state a declared layout with mesh.terminals",
+                )
+            if _MESH_PLACEMENT is None:
+                raise PartOperationError(
+                    f"api.{operation}: this worker request has no staged mesh "
+                    "kernel to place a mesh component's terminals with",
+                    stage="part_contract",
+                    operation=operation,
+                    parameter=parameter,
+                    correction=(
+                        f"Build {operation} from the project script surface; "
+                        "that is the surface that stages the project's mesh "
+                        "assets."
+                    ),
+                )
+            resolved = CadexTerminals.apply_placement(
+                CadexTerminals.resolve_terminals(layout),
+                _MESH_PLACEMENT(_serialized_mesh(operation, parameter, component)),
+            )
+        elif kind == "declared":
+            # A part value is built in final coordinates, so a declared layout
+            # on one is already where it says it is; there is no chain to walk.
+            resolved = CadexTerminals.resolve_terminals(layout)
+        else:
+            shape = _shape(operation, parameter, component)
+            faces, details = _selected_subshape_details(
+                operation, parameter, shape, layout.get("selector"), "face"
+            )
+            resolved = CadexTerminals.resolve_terminals(
+                layout,
+                candidates=_terminal_candidates(
+                    operation, parameter, kind, faces, details
+                ),
+            )
+    except CadexTerminals.TerminalError as exc:
+        raise PartOperationError(
+            f"api.{operation}: {parameter}: {exc}",
+            stage="part_terminals",
+            operation=operation,
+            parameter=parameter,
+            observed=exc.details,
+            correction=_TERMINAL_CORRECTION,
+        ) from exc
+
+    result = {str(entry["name"]): entry for entry in resolved}
+    if len(_TERMINAL_SETS) < _TERMINAL_SET_LIMIT:
+        _TERMINAL_SETS[key] = result
+        _TERMINAL_SET_SOURCES[key] = {
+            "component": component,
+            "layout": layout,
+        }
+    return result
+
+
+def terminal_set_key(payload: Mapping[str, Any]) -> str:
+    """The memo identity of one terminal set: its payload minus the name.
+
+    Public because the project worker joins the published registry to the
+    ``nets(ports=...)`` declaration by this key (ADR-065), and two
+    constructions of one identity would drift.
+    """
+
+    return _memo_key(
+        {name: value for name, value in payload.items() if name != "terminal"}
+    )
+
+
+def resolve_terminal_set_for_publication(
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Resolve one terminal set for the wiring publication; never raises.
+
+    A port the script declares but never wires has not been resolved by the
+    run, and resolving it here is what puts an unconnected board on the
+    editor's canvas. It must not be able to *fail* the run: publishing an
+    id'd set the script never used would otherwise turn a harmless unused
+    selector into a build failure, which is a worse trade than an empty node.
+    """
+
+    try:
+        resolved = _resolve_terminal_set("terminals", "component", dict(payload))
+    except Exception as exc:  # deliberately broad: this is derived data
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "terminals": list(resolved.values())}
+
+
+def published_terminal_sets() -> list[dict[str, Any]]:
+    """Every terminal set this request resolved, in first-resolution order."""
+
+    return [
+        {
+            "key": key,
+            "component": source.get("component"),
+            "layout": source.get("layout"),
+            "terminals": list(_TERMINAL_SETS.get(key, {}).values()),
+        }
+        for key, source in _TERMINAL_SET_SOURCES.items()
+    ]
+
+
+def _resolve_port(operation: str, parameter: str, value: Any):
+    """One end of a run, as ``(point, direction, standoff_floor, metrics)``.
+
+    A literal ``(point, direction)`` pair takes exactly the ADR-056 path and
+    floors its stand-off at zero, so every existing script routes and digests
+    identically. A terminal resolves against the geometry it names (ADR-062)
+    and reports how far the search anchor has to stand off before it is out
+    of the component at all — a board thickness, for a through-hole.
+
+    ``metrics`` (the axis, radius, depth and faces behind the terminal) is
+    carried and unused here. ``part.solder`` is its consumer; a joint cannot
+    be built from a point and a direction.
+    """
+
+    import FreeCAD as App
+
+    if isinstance(value, dict):
+        name = str(value.get("terminal") or "")
+        resolved = _resolve_terminal_set(operation, parameter, value)
+        entry = resolved.get(name)
+        if entry is None:
+            raise _error(
+                operation,
+                parameter,
+                f"names terminal {name!r}, which this component does not "
+                f"have; it has {sorted(resolved)}",
+            )
+        return (
+            App.Vector(*(float(item) for item in entry["point"])),
+            App.Vector(*(float(item) for item in entry["direction"])),
+            float(entry["standoff_floor"]),
+            dict(entry["metrics"]),
+        )
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        return (
+            _vector(operation, f"{parameter}[0]", value[0]),
+            _vector(operation, f"{parameter}[1]", value[1], nonzero=True),
+            0.0,
+            {},
+        )
+    raise _error(
+        operation,
+        parameter,
+        "expected a (point, direction) pair or one terminal from "
+        "part.terminals / mesh.terminals",
+    )
+
+
+def _end_standoff(base: float, floor: float, clearance: float) -> float:
+    """How far off one end the search may start.
+
+    ``base`` is what ADR-056 computed for both ends — clear of the surface by
+    the clearance plus half the wire. A terminal adds a floor: a wire landing
+    on the far face of a hole is *inside* the board for the whole depth of
+    it, so an anchor placed at ``base`` would start in solid material and the
+    search would have nowhere to go.
+    """
+
+    return max(base, float(floor) + clearance)
 
 
 def _build_cable(payload: dict[str, Any], properties: dict[str, Any]):
@@ -800,18 +1201,15 @@ def _build_cable(payload: dict[str, Any], properties: dict[str, Any]):
     """
 
     import CadexRouting
+    import CadexSolder
 
     operation = "cable"
-    start = _argument(payload, 0, "start")
-    end = _argument(payload, 1, "end")
-    if not isinstance(start, list) or len(start) != 2:
-        raise _error(operation, "start", "expected a (point, direction) pair")
-    if not isinstance(end, list) or len(end) != 2:
-        raise _error(operation, "end", "expected a (point, direction) pair")
-    start_point = _vector(operation, "start[0]", start[0])
-    start_dir = _vector(operation, "start[1]", start[1], nonzero=True)
-    end_point = _vector(operation, "end[0]", end[0])
-    end_dir = _vector(operation, "end[1]", end[1], nonzero=True)
+    start_point, start_dir, start_floor, start_metrics = _resolve_port(
+        operation, "start", _argument(payload, 0, "start")
+    )
+    end_point, end_dir, end_floor, end_metrics = _resolve_port(
+        operation, "end", _argument(payload, 1, "end")
+    )
 
     gauge = float(properties.get("gauge_mm", 0.0))
     clearance = float(properties.get("clearance_mm", 1.0))
@@ -819,12 +1217,28 @@ def _build_cable(payload: dict[str, Any], properties: dict[str, Any]):
     if gauge <= 0.0:
         raise _error(operation, "gauge_mm", "must be greater than zero")
     standoff = clearance + gauge / 2.0
+    # A joint on either end holds the lead straight for the meniscus and the
+    # collar together, and the anchor is where the route stops being straight
+    # — so a stand-off shorter than that run puts the wire's first bend inside
+    # the joint that is meant to grip it (ADR-074). The floor is applied here
+    # rather than inside `_end_standoff` because it is not the router's idea:
+    # `part.cable` never learns whether a joint exists, it just leaves enough
+    # straight lead that one *could* be there. Both floors are measured from
+    # the same place as `standoff_floor`, the far face, so they add.
+    start_standoff = max(
+        _end_standoff(standoff, start_floor, clearance),
+        start_floor + CadexSolder.lead_run_mm(start_metrics, gauge),
+    )
+    end_standoff = max(
+        _end_standoff(standoff, end_floor, clearance),
+        end_floor + CadexSolder.lead_run_mm(end_metrics, gauge),
+    )
     solids, boxes = _cable_obstacles(operation, properties.get("avoid", []))
 
     # Not Vector.normalize(), which normalizes in place: start_dir is handed
     # to the router afterwards and must still be the direction it was given.
-    anchor_start = start_point + start_dir * (standoff / start_dir.Length)
-    anchor_end = end_point + end_dir * (standoff / end_dir.Length)
+    anchor_start = start_point + start_dir * (start_standoff / start_dir.Length)
+    anchor_end = end_point + end_dir * (end_standoff / end_dir.Length)
     cell, low, high, counts, occupied = _route_corridor(
         operation=operation,
         anchor_start=anchor_start,
@@ -845,7 +1259,8 @@ def _build_cable(payload: dict[str, Any], properties: dict[str, Any]):
             occupied=occupied,
             cell_mm=cell,
             clearance_mm=clearance,
-            standoff_mm=standoff,
+            start_standoff_mm=start_standoff,
+            end_standoff_mm=end_standoff,
             slack=slack,
             bounds=(low, high),
             max_cells=_CABLE_MAX_CELLS,
@@ -883,6 +1298,14 @@ def _build_cable(payload: dict[str, Any], properties: dict[str, Any]):
         gauge=gauge,
         centre=start_point,
         min_bend_radius_mm=properties.get("min_bend_radius_mm"),
+        # Both ports point *out* of their component, and the run arrives at
+        # the far one against its direction — so the final tangent is its
+        # negative, not the direction itself.
+        start_tangent=start_dir,
+        end_tangent=end_dir * -1.0,
+        # A routed cable is mostly straight, and a straight stretch has no
+        # curvature for a true Frenet normal to follow. See _sweep_conductor.
+        frenet=False,
     )
 
 
@@ -913,7 +1336,12 @@ def _bundle_route_key(payload: dict[str, Any]) -> str:
 
 
 def _bundle_ports(operation: str, connections: Any) -> list[list[list[Any]]]:
-    """Validate the ``(start_port, end_port)`` pairs into vectors."""
+    """Resolve the ``(start_port, end_port)`` pairs into vectors and floors.
+
+    Each end becomes ``[point, direction, standoff_floor]``; literals and
+    terminals resolve through the same :func:`_resolve_port`, so one bundle
+    may mix them (ADR-062).
+    """
 
     if not isinstance(connections, list) or len(connections) < 2:
         raise _error(
@@ -928,28 +1356,26 @@ def _bundle_ports(operation: str, connections: Any) -> list[list[list[Any]]]:
             raise _error(operation, name, "expected a (start_port, end_port) pair")
         ends: list[list[Any]] = []
         for side, port in (("0", pair[0]), ("1", pair[1])):
-            if not isinstance(port, list) or len(port) != 2:
-                raise _error(
-                    operation, f"{name}[{side}]", "expected a (point, direction) pair"
-                )
-            ends.append(
-                [
-                    _vector(operation, f"{name}[{side}][0]", port[0]),
-                    _vector(operation, f"{name}[{side}][1]", port[1], nonzero=True),
-                ]
+            point, direction, floor, _metrics = _resolve_port(
+                operation, f"{name}[{side}]", port
             )
+            ends.append([point, direction, floor])
         result.append(ends)
     return result
 
 
 def _bundle_gather(operation: str, ports: list[list[Any]], side: str):
-    """Where the bundle leaves one end, and which way.
+    """Where the bundle leaves one end, which way, and how far off.
 
     The point is the centroid of that end's ports; the direction is the sum of
     their *unit* directions, so a port whose direction vector happens to be
     long does not steer the whole bundle.  Ports that disagree by more than
     about sixty degrees on average have no common way out, and that is refused
     here rather than left to produce a meaningless average.
+
+    The stand-off floor is the **maximum** across the end's ports, not their
+    mean: the bundle leaves as one run, and a run that clears three pads but
+    starts inside the fourth's board has not cleared anything (ADR-062).
     """
 
     import FreeCAD as App
@@ -976,7 +1402,11 @@ def _bundle_gather(operation: str, ports: list[list[Any]], side: str):
                 "route these wires as separate part.cable calls."
             ),
         )
-    return point, direction * (1.0 / direction.Length)
+    return (
+        point,
+        direction * (1.0 / direction.Length),
+        max(float(port[2]) for port in ports),
+    )
 
 
 def _build_bundle(payload: dict[str, Any], properties: dict[str, Any]):
@@ -1061,10 +1491,10 @@ def _build_bundle(payload: dict[str, Any], properties: dict[str, Any]):
     except CadexBundle.BundleError as exc:
         raise _refuse(exc) from exc
 
-    start_point, start_dir = _bundle_gather(
+    start_point, start_dir, start_floor = _bundle_gather(
         operation, [pair[0] for pair in connections], "start"
     )
-    end_point, end_dir = _bundle_gather(
+    end_point, end_dir, end_floor = _bundle_gather(
         operation, [pair[1] for pair in connections], "end"
     )
     reach = (end_point - start_point).Length
@@ -1088,6 +1518,8 @@ def _build_bundle(payload: dict[str, Any], properties: dict[str, Any]):
     # but never more than the run can spare, since two breakouts meeting in
     # the middle would leave nothing actually laid up as a bundle.
     standoff = clearance + diameter / 2.0
+    start_standoff = _end_standoff(standoff, start_floor, clearance)
+    end_standoff = _end_standoff(standoff, end_floor, clearance)
     breakout = properties.get("breakout_mm")
     if breakout is None:
         breakout = min(1.5 * diameter + clearance, reach / 3.0)
@@ -1098,8 +1530,8 @@ def _build_bundle(payload: dict[str, Any], properties: dict[str, Any]):
     shared = _BUNDLE_ROUTES.get(route_key)
     if shared is None:
         solids, boxes = _cable_obstacles(operation, properties.get("avoid", []))
-        anchor_start = start_point + start_dir * standoff
-        anchor_end = end_point + end_dir * standoff
+        anchor_start = start_point + start_dir * start_standoff
+        anchor_end = end_point + end_dir * end_standoff
         cell, low, high, _counts, occupied = _route_corridor(
             operation=operation,
             anchor_start=anchor_start,
@@ -1122,7 +1554,8 @@ def _build_bundle(payload: dict[str, Any], properties: dict[str, Any]):
                 # it has to hold the whole lay, not just the clearance -- the
                 # same figure the stand-off uses, for the same reason.
                 clearance_mm=standoff,
-                standoff_mm=standoff,
+                start_standoff_mm=start_standoff,
+                end_standoff_mm=end_standoff,
                 slack=slack,
                 bounds=(low, high),
                 max_cells=_CABLE_MAX_CELLS,
@@ -1196,6 +1629,16 @@ def _build_bundle(payload: dict[str, Any], properties: dict[str, Any]):
                 ),
             )
 
+        # No end-tangent constraint here, unlike the cable's spline, and the
+        # reason is measured rather than assumed (ADR-074). A conductor is
+        # swept along a *lay* resampled off this spine at 97 points, so the
+        # spine's end tangent reaches the wire only through that resample --
+        # and the pipe shell's true-Frenet frame is already a coin flip across
+        # neighbouring parameters: at fixed geometry the baseline sweep
+        # measures between 0.75x and 1.47x of `pi r^2 L` as twist_pitch_mm and
+        # slack move by a few percent. Constraining the spine re-rolls that
+        # dice for a tangent the resample mostly absorbs. The cable, whose
+        # spline *is* the wire, gets the constraint; this waits for the frame.
         spine = Part.BSplineCurve()
         spine.interpolate(
             Points=[App.Vector(*point) for point in span_points],
@@ -1260,6 +1703,9 @@ def _build_bundle(payload: dict[str, Any], properties: dict[str, Any]):
         gauge=gauge,
         centre=App.Vector(*waypath[0]),
         min_bend_radius_mm=declared,
+        # A lay *is* curvature, everywhere, and corrected Frenet collapses it
+        # (ADR-057). The opposite of the cable's answer, for the same reason.
+        frenet=True,
         # The check has to see the lay, not a fixed 97 samples spread over a
         # run that may hold fifty turns -- too coarse and it over-reports the
         # radius, which makes it pass conductors it should refuse.
@@ -1283,6 +1729,168 @@ def _build_bundle(payload: dict[str, Any], properties: dict[str, Any]):
             "rejected before the sweep."
         ),
     )
+
+
+#: What the model does about a joint whose numbers do not describe one.
+#: Keyed on ``CadexSolder.SolderError.reason``, the same contract
+#: ``_build_cable`` and ``_build_bundle`` have with their own pure modules.
+_SOLDER_CORRECTIONS = {
+    "metrics": (
+        "part.solder builds a joint from a terminal's measured geometry — its "
+        "axis, bore, depth and two faces. Name the attachment with "
+        "part.terminals or mesh.terminals; a literal (point, direction) port "
+        "carries none of that."
+    ),
+    "gauge": (
+        "gauge_mm is the diameter of the lead the joint forms around, and it "
+        "is the same number the part.cable or part.bundle landing here was "
+        "given. State it as a positive diameter in millimetres."
+    ),
+    "bore": (
+        "Either the hole is too narrow for the lead or its width was never "
+        "measured. Pass bore_dia_mm to state it, declare hole_dia on the "
+        "layout so every joint on that component takes it, or reduce gauge_mm "
+        "to a lead that fits."
+    ),
+    "pad": (
+        "The joint has to be wider than the lead it wets and wider than the "
+        "hole it rings. Pass pad_dia_mm to state the footprint, or name the "
+        "pad with a pads= selector so its area comes off the face."
+    ),
+    "fillet": (
+        "fillet_mm is how far the meniscus climbs the lead. It must be greater "
+        "than zero, and it cannot be shorter than the pad the meniscus sweeps "
+        "across — an arc that spreads further than it climbs undercuts the "
+        "board instead of sitting on it. Leave it out to take the quarter-round "
+        "default the pad and the gauge imply, which is exactly that floor."
+    ),
+}
+
+#: What the model does about an outline the kernel would not revolve. Nothing
+#: in the operation's own arguments causes this — ``CadexSolder`` proves the
+#: loop simple before it emits it — so the correction points at the report
+#: rather than at a number to change.
+_SOLDER_PROFILE_CORRECTION = (
+    "The joint's outline is derived, not stated, so no argument of part.solder "
+    "produces this on its own. Set refine=False to inspect the unrefined "
+    "result, and report the terminal's measured bore, depth and pad together "
+    "with gauge_mm."
+)
+
+
+def _solder_face(specs: Mapping[str, Any]):
+    """The joint's half-section, as one closed planar face (ADR-064).
+
+    ``CadexSolder`` works in the ``(r, z)`` half-plane and never builds a
+    3-D vector; this is where that half-plane acquires a position. Every point
+    is the same linear combination of two orthonormal vectors, so the wire is
+    planar by construction rather than by luck, and consecutive segments share
+    bit-identical endpoints, so ``Part.Wire`` orders the edges instead of
+    sewing them.
+
+    This is a *single* loop, so the distrust of ``Part.Face`` over an
+    outer-plus-holes wire list — recorded at the ``face`` operation, where
+    inner wires get subtracted as independently validated faces instead —
+    does not apply here.
+    """
+
+    import FreeCAD as App
+    import Part
+
+    origin = App.Vector(*(float(item) for item in specs["origin"]))
+    axis = App.Vector(*(float(item) for item in specs["direction"]))
+    radial = App.Vector(*(float(item) for item in specs["radial"]))
+
+    def point(pair):
+        return origin + radial * float(pair[0]) + axis * float(pair[1])
+
+    edges = []
+    for segment in specs["profile"]:
+        start, end = point(segment["start"]), point(segment["end"])
+        if segment["kind"] == "arc":
+            edges.append(Part.Arc(start, point(segment["through"]), end).toShape())
+        else:
+            edges.append(Part.makeLine(start, end))
+    wire = Part.Wire(edges)
+    if not wire.isClosed():
+        raise PartOperationError(
+            "api.solder: the joint's outline did not close",
+            stage="part_kernel",
+            operation="solder",
+            observed={"segments": len(edges)},
+            correction=_SOLDER_PROFILE_CORRECTION,
+        )
+    face = Part.Face(wire)
+    if face.isNull() or not face.isValid():
+        raise PartOperationError(
+            "api.solder: the joint's outline did not bound a valid face",
+            stage="part_kernel",
+            operation="solder",
+            observed={"segments": len(edges)},
+            correction=_SOLDER_PROFILE_CORRECTION,
+        )
+    return face, origin, axis
+
+
+def _build_solder(payload: dict[str, Any], properties: dict[str, Any]):
+    """The joint one terminal implies, as one solid of revolution (ADR-064).
+
+    The derivation and every refusal live in ``CadexSolder``, which knows no
+    kernel; what is here is a wire, a face, one ``revolve`` and the wrapping of
+    a refusal into the model-facing envelope. There is no fuse and no cut —
+    ADR-064 replaced the three fused primitives with a single closed outline,
+    which is what retires every boolean hazard ADR-063 documented. The terminal
+    resolves through the *unchanged* :func:`_resolve_port`, so N joints on one
+    board cost one terminal resolution and one board build — the ADR-062
+    ``_TERMINAL_SETS`` memo plus ``build_part_shape``'s content memo, shared
+    with the cables landing on the same component in the same request.
+    """
+
+    import CadexSolder
+
+    operation = "solder"
+    _point, _direction, _floor, metrics = _resolve_port(
+        operation, "terminal", _argument(payload, 0, "terminal")
+    )
+
+    try:
+        specs = CadexSolder.solder_specs(
+            metrics,
+            gauge_mm=properties.get("gauge_mm"),
+            pad_dia_mm=properties.get("pad_dia_mm"),
+            fillet_mm=properties.get("fillet_mm"),
+            bore_dia_mm=properties.get("bore_dia_mm"),
+        )
+    except CadexSolder.SolderError as exc:
+        raise PartOperationError(
+            f"api.{operation}: {exc}",
+            stage="part_solder",
+            operation=operation,
+            observed={"reason": exc.reason, **exc.observed},
+            correction=_SOLDER_CORRECTIONS.get(
+                exc.reason, _SOLDER_CORRECTIONS["metrics"]
+            ),
+        ) from exc
+
+    face, origin, axis = _solder_face(specs)
+    joint = face.revolve(origin, axis, 360.0)
+    # Asserted rather than assumed: `_build_part_shape_uncached` lets a single
+    # self-intersecting solid through — the gap `_sweep_conductor` and
+    # `_build_bundle` already close by hand — so a revolve that produced a
+    # shell, two solids or a self-intersection has to be caught here.
+    null = bool(joint.isNull())
+    solids = 0 if null else len(joint.Solids)
+    valid = False if null else bool(joint.isValid())
+    if null or not valid or solids != 1:
+        raise PartOperationError(
+            f"api.{operation}: revolving the joint's outline did not produce "
+            "one solid",
+            stage="part_kernel",
+            operation=operation,
+            observed={"solids": solids, "valid": valid, "null": null},
+            correction=_SOLDER_PROFILE_CORRECTION,
+        )
+    return _refine(joint, bool(properties.get("refine", True)), operation=operation)
 
 
 def _build(
@@ -1719,6 +2327,8 @@ def _build(
         return _build_cable(payload, properties)
     if operation == "bundle":
         return _build_bundle(payload, properties)
+    if operation == "solder":
+        return _build_solder(payload, properties)
     if operation == "ruled_surface":
         first = _shape(operation, "first", _argument(payload, 0, "first"))
         second = _shape(operation, "second", _argument(payload, 1, "second"))
@@ -2086,6 +2696,8 @@ def reset_part_shape_memo() -> None:
 
     _SHAPE_MEMO.clear()
     _BUNDLE_ROUTES.clear()
+    _TERMINAL_SETS.clear()
+    _TERMINAL_SET_SOURCES.clear()
 
 
 def _memo_key(payload: Mapping[str, Any]) -> str:

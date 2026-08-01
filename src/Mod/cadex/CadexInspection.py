@@ -253,6 +253,16 @@ def capture_inspection(service: Any, arguments: Mapping[str, Any]) -> dict[str, 
             "kind": "output",
             "project_root": str(service.project_scope_snapshot().get("root") or ""),
         }
+    if scope == "wiring":
+        # The harness as a graph (ADR-065): the terminals the accepted run
+        # resolved, joined to the connection table the script declares. Both
+        # halves are store-backed, so the read happens off the document
+        # thread like every other artifact-backed scope.
+        return {
+            **common,
+            "kind": "wiring",
+            "project_root": str(service.project_scope_snapshot().get("root") or ""),
+        }
     if scope == "history":
         # The undo trail (ADR-045): every accepted revision's source, newest
         # last. Store-backed, so the read happens off the document thread.
@@ -420,6 +430,224 @@ def _complete_history(captured: Mapping[str, Any]) -> Any:
             "Every accepted revision, oldest first. Inspect one with "
             "target=<ordinal|revision>; write it back with write_script to "
             "revert (replace=true if it drops outputs you have now)."
+        ),
+    }
+
+
+#: The harness operations whose arguments name terminals. A script written
+#: before ``nets(...)`` says what it connects only by calling these, which is
+#: what the derived (read-only) view reconstructs from.
+_HARNESS_OPERATIONS = ("cable", "bundle", "solder")
+
+
+def _terminal_identity(port: Any) -> str:
+    """The registry identity of one endpoint payload: its set, minus the name.
+
+    The same construction ``cadex_part_worker.terminal_set_key`` memoises by,
+    without its hash — matching canonical JSON is enough here and keeps the
+    host free of a worker import.
+    """
+
+    if not isinstance(port, Mapping) or "terminal" not in port:
+        return ""
+    return json.dumps(
+        {key: value for key, value in port.items() if key != "terminal"},
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+
+
+def _wiring_components(registry: list[Any]) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """The nodes of the graph, plus ``identity -> port label`` for the wires."""
+
+    components: list[dict[str, Any]] = []
+    label_by_identity: dict[str, str] = {}
+    for index, entry in enumerate(registry):
+        if not isinstance(entry, Mapping):
+            continue
+        # A legacy harness declares no ports, so the output name is the only
+        # human-readable handle the component has; the index is the last
+        # resort for a component that is not a declared output either.
+        label = (
+            str(entry.get("port") or "")
+            or str(entry.get("output") or "")
+            or f"component_{index}"
+        )
+        terminals = []
+        for terminal in list(entry.get("terminals") or []):
+            if not isinstance(terminal, Mapping):
+                continue
+            metrics = dict(terminal.get("metrics") or {})
+            terminals.append(
+                {
+                    "name": str(terminal.get("name") or ""),
+                    "point": list(terminal.get("point") or []),
+                    "direction": list(terminal.get("direction") or []),
+                    "kind": str(metrics.get("kind") or ""),
+                    "radius": metrics.get("radius"),
+                    "depth": metrics.get("depth"),
+                }
+            )
+        components.append(
+            {
+                "port": label,
+                "output": str(entry.get("output") or ""),
+                "domain": str(entry.get("domain") or ""),
+                "terminals": terminals,
+            }
+        )
+        identity = _terminal_identity(
+            {
+                "terminal": "",
+                "component": entry.get("component"),
+                "layout": entry.get("layout"),
+            }
+        )
+        if identity:
+            label_by_identity.setdefault(identity, label)
+    return components, label_by_identity
+
+
+def _address(port: Any, labels: Mapping[str, str]) -> str:
+    identity = _terminal_identity(port)
+    label = labels.get(identity, "")
+    if not label:
+        return ""
+    return f"{label}.{str(port.get('terminal') or '')}"
+
+
+def _derived_wires(
+    registry: list[Any], outputs: list[Any]
+) -> list[dict[str, Any]]:
+    """The harness of a script written before ``nets(...)``, read-only.
+
+    Reconstructed by scanning the accepted revision's ``cable``/``bundle``
+    payloads for terminal endpoints and its ``solder`` payloads for which of
+    those ends carry a joint. It is a complete picture of what the run built
+    and it is not editable — nothing outside the script names these rows, so
+    there is nothing an override could address. The editor draws them and
+    offers to convert; the conversion is a chat turn.
+    """
+
+    _components, labels = _wiring_components(registry)
+    soldered: set[str] = set()
+    rows: list[dict[str, Any]] = []
+    for item in outputs:
+        if not isinstance(item, Mapping):
+            continue
+        definition = item.get("definition")
+        if not isinstance(definition, Mapping):
+            continue
+        operation = str(definition.get("operation") or "")
+        if operation not in _HARNESS_OPERATIONS:
+            continue
+        arguments = list(definition.get("arguments") or [])
+        properties = dict(definition.get("properties") or {})
+        name = str(item.get("name") or "")
+        if operation == "solder":
+            if arguments:
+                soldered.add(_address(arguments[0], labels))
+            continue
+        if operation == "cable":
+            if len(arguments) < 2:
+                continue
+            ends = [arguments[0], arguments[1]]
+            kind = "cable"
+        else:
+            connections = arguments[0] if arguments else []
+            index = int(properties.get("conductor") or 0)
+            if not isinstance(connections, list) or index >= len(connections):
+                continue
+            pair = connections[index]
+            if not isinstance(pair, list) or len(pair) != 2:
+                continue
+            ends = [pair[0], pair[1]]
+            kind = "bundle"
+        addresses = [_address(end, labels) for end in ends]
+        if not all(addresses):
+            # A literal (point, direction) port has no component behind it and
+            # so no node to draw from; reporting half a wire would be worse
+            # than reporting none.
+            continue
+        rows.append(
+            {
+                "name": name,
+                "a": addresses[0],
+                "b": addresses[1],
+                "gauge_mm": float(properties.get("gauge_mm") or 0.0),
+                "enabled": True,
+                "kind": kind,
+            }
+        )
+    # Applied after the scan, not during it: a solder output may be declared
+    # anywhere in the result dict, including before the cable it lands on.
+    for row in rows:
+        row["solder"] = row["a"] in soldered or row["b"] in soldered
+    return rows
+
+
+def _complete_wiring(captured: Mapping[str, Any]) -> Any:
+    """The harness as a graph: what is connected, and where the ends are.
+
+    Terminals come from the accepted run's own resolution, published into its
+    worker report (ADR-065). They cannot be re-derived here: a ``holes=``
+    selector needs the built shape, and the live process never runs user code.
+
+    ``source`` says which of the two tables answered. ``nets`` is the declared
+    one and is editable through ``set_params(nets=...)``; ``derived`` is a
+    script that predates ``nets(...)``, reconstructed from what it built and
+    read-only because nothing outside it names a row.
+    """
+
+    root = str(captured.get("project_root") or "")
+    if not root:
+        return {
+            "ok": False,
+            "error": "The active document has no durable Cadex project root.",
+        }
+    from CadexNets import effective_rows
+    from CadexPinResolution import accepted_attempt_dir, load_worker_report
+    from CadexScriptStore import CadexProjectScriptStore
+
+    state = CadexProjectScriptStore(root).read_state()
+    revision = str(state.get("accepted_revision") or "")
+    if not revision:
+        return {
+            "ok": False,
+            "error": "The project has no accepted revision to inspect the wiring of.",
+        }
+    report = load_worker_report(accepted_attempt_dir(Path(root), state))
+    registry = [item for item in list(report.get("wiring") or [])]
+    components, _labels = _wiring_components(registry)
+    specs = dict(state.get("net_specs") or {})
+    if specs:
+        return {
+            "revision": revision,
+            "source": "nets",
+            "editable": True,
+            "components": components,
+            "wires": effective_rows(specs, state.get("net_values")),
+            "note": (
+                "Rows are edited with xscript.project.set_params(nets=[...]), "
+                "which replaces the whole list. Endpoints are "
+                "'<port>.<terminal>'; avoid, label and every routing argument "
+                "stay in the script."
+            ),
+        }
+    return {
+        "revision": revision,
+        "source": "derived",
+        "editable": False,
+        "components": components,
+        "wires": _derived_wires(registry, list(report.get("outputs") or [])),
+        "note": (
+            "This script predates nets(...), so its connections are "
+            "reconstructed from the cable/bundle/solder calls it made and "
+            "cannot be edited — nothing outside the script names these rows. "
+            "Declare the harness with nets(ports=..., wires=...) to make it "
+            "editable. Rows marked kind='bundle' stay read-only either way."
         ),
     }
 
@@ -703,6 +931,8 @@ def complete_inspection(captured: Mapping[str, Any]) -> dict[str, Any]:
             raw = _complete_output(captured)
         elif kind == "history":
             raw = _complete_history(captured)
+        elif kind == "wiring":
+            raw = _complete_wiring(captured)
         else:
             raise ValueError("Invalid captured core.inspect operation.")
         result = _bounded_page(raw, captured)
