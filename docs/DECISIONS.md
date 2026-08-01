@@ -7444,3 +7444,92 @@ mistake would hide any future failure just as well — dispatch through a pipe
 with `set -o pipefail`, or not through a pipe at all. It also cost the run's
 per-iteration curve: `tail` buffers, so 2000 iterations of `reward/step`
 streamed into a pipe nobody could read until the process exited.
+
+## ADR-081 — A tensor core rounded the witness, and four hours died of it (2026-08-01)
+
+**Status:** accepted. **Branch:** `MJC` only — `training/` exists nowhere
+else. **Subject:** `training/cadex_train.py`; the witness ADR-070 put in the
+container and `CadexDynamics.POLICY_WITNESS_TOLERANCE` checks.
+
+**Decision.** Record the witness under
+`jax.default_matmul_precision("highest")`, and **check it here, before the
+container is written**, with this file's own float64 forward pass.
+
+### 1. What happened
+
+ADR-079's biped trained for 3 h 49 m on sb9x and came home refused:
+
+> policy output 'balance' does not reproduce its own recorded actions:
+> witness 11, action 6, relative error 0.000143349 against a tolerance of
+> 0.0001.
+
+The tolerance is measured, not chosen — phase 0 put a float32 JAX network
+against a float64 numpy one over 64 observations and got 1.46e-5 worst, and
+1e-4 is seven times that. So the refusal read as the tolerance being too
+tight for a badly-conditioned observation vector (hazard 9), and the obvious
+fix was to re-measure and raise it.
+
+**That was wrong, and measuring it is what showed so.** Every faithful
+evaluation of the shipped weights agrees with every other one:
+
+| evaluation of the shipped weights | vs float64 |
+|---|---|
+| numpy float64 (what the engine does) | — |
+| numpy float32, CPU | 4.06e-08 |
+| JAX float32 on a 5090, eager, one row at a time | 5.14e-08 |
+| JAX float32 at `Precision.HIGHEST` | 5.14e-08 |
+| **`jax.vmap`, which is what the trainer runs** | **1.4336e-04** |
+| the witness the container actually shipped | 1.4335e-04 |
+
+`jax.vmap` reproduces the engine's complaint to three digits and the eager
+path is 2800x closer. The weights are fine, the architecture is fine, and
+the arithmetic that produced the recorded actions was not float32:
+**`vmap` turns each layer's matrix-vector product into a batched matmul, and
+XLA puts a batched float32 matmul on Ampere+ tensor cores at TF32** — a
+10-bit mantissa, eps ~4.9e-4. The witness was recording what a tensor core
+rounds the network to, and the engine was right to refuse it.
+
+### 2. Why no short run ever caught it
+
+TF32's error is a fixed *relative* one, so its absolute size grows with the
+activations a policy learns. The same task, same seed, same box:
+
+| iterations | witness error | margin under 1e-4 |
+|---|---|---|
+| 2 | 7.3e-06 | 14x — passes |
+| 2000 | 1.43e-04 | **refused** |
+
+A smoke run cannot prove a long run will pass, and this is the shape of
+problem that makes that true. What it *can* do is show a **thin margin**, so
+the trainer now prints the margin and warns below 100x. Fourteen was the
+warning nobody was shown.
+
+### 3. The fix, and the backstop
+
+`highest` on the witness only: measured 7.77e-08 on the same weights, a
+1287x margin where there had been a refusal. Training itself is left at the
+default precision deliberately — TF32 is why the GPU is fast, and nothing
+about a training step needs the last four mantissa bits.
+
+Then the check moves. `witness_disagreement` is a fourth evaluator, pure
+Python and pure float64, written down here for the reason the reward
+whitelist and `encode_policy` are: this file cannot import `CadexDynamics`
+(ADR-070), so the test that decides whether hours of GPU time produced a
+usable file is copied rather than imported. It runs in `main()` **before**
+`encode_policy`, and a run that fails it raises rather than writing a file
+somebody will scp home and paste a digest for. Verified end to end: the
+same bundle, same seed, 2 iterations, `witness_error` 7.3e-06 -> 5.57e-09.
+
+The engine is unchanged. `POLICY_WITNESS_TOLERANCE` stays 1.0e-4, which is
+the point — a measured constant that refused a policy correctly should not
+be widened because the refusal was inconvenient.
+
+### 4. What this says about gates in general
+
+The first explanation — hazard 9, badly-conditioned observations, raise the
+tolerance — was consistent with every number then in hand, and would have
+shipped a policy whose actions the engine genuinely could not reproduce. It
+died on one experiment that took a minute: run the *same weights* through a
+different code path. When a measured gate refuses something, the cheap move
+is not to re-measure the gate, it is to reproduce the number the gate is
+complaining about.

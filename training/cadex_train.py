@@ -73,6 +73,16 @@ MAXIMUM_POLICY_BYTES = 4 * 1024 * 1024
 #: ``MAXIMUM_POLICY_WITNESS_SAMPLES``.
 WITNESS_SAMPLES = 32
 
+#: Mirrors ``CadexDynamics.POLICY_WITNESS_TOLERANCE``.
+#:
+#: Checked *here*, against this file's own float64 forward pass, before the
+#: container is written. The engine applies the same number hours later and
+#: on another machine, and a run that fails it has to be thrown away -- so
+#: the cost of not checking is the whole run. Measured: a 2000-iteration
+#: legs run came home at 1.43e-4 and was refused after 3 h 49 m of GPU time
+#: that a millisecond of arithmetic here would have condemned at minute one.
+POLICY_WITNESS_TOLERANCE = 1.0e-4
+
 
 # ---------------------------------------------------------------------------
 # The expression evaluator, built from scratch and checked against the bundle.
@@ -763,9 +773,30 @@ def train(bundle: dict[str, Any], options: argparse.Namespace) -> dict[str, Any]
         raw = forward(jnp, stored_jax, normalised)
         return jnp.tanh(raw) * jnp.asarray(output_scale) + jnp.asarray(output_bias)
 
-    witness_actions = np.asarray(
-        jax.vmap(witness_action)(jnp.asarray(witness_obs))
-    )
+    # ``highest`` is load-bearing, and the default is not merely slower to
+    # be right about -- it is wrong for this purpose.
+    #
+    # ``jax.vmap`` turns each layer's matrix-vector product into a *batched*
+    # matmul, and XLA puts a batched float32 matmul on Ampere+ tensor cores
+    # at TF32: a 10-bit mantissa, eps ~4.9e-4. The engine evaluates the same
+    # weights in float64. Measured on the legs policy: the vmapped witness
+    # sits 1.43e-4 from float64 and the identical arithmetic run one row at
+    # a time sits 5.14e-8 -- 2800x closer, and the same weights either way.
+    # So the witness was not recording what the network computes, it was
+    # recording what a tensor core rounds it to, and the engine refused a
+    # sound policy for it.
+    #
+    # The error is a fixed *relative* one, so it grows with the activations
+    # a policy learns: the same run measured 7.3e-6 at iteration 2 and
+    # 1.43e-4 at iteration 2000. That is why it survived every short run and
+    # only appeared after four hours -- see ADR-081.
+    #
+    # This costs microseconds on 32 samples and nothing at all during
+    # training, which is left at the default precision deliberately.
+    with jax.default_matmul_precision("highest"):
+        witness_actions = np.asarray(
+            jax.vmap(witness_action)(jnp.asarray(witness_obs))
+        )
 
     return {
         "parameters": flat_parameters(np, stored),
@@ -796,6 +827,67 @@ def train(bundle: dict[str, Any], options: argparse.Namespace) -> dict[str, Any]
 # ---------------------------------------------------------------------------
 # The program.
 # ---------------------------------------------------------------------------
+
+
+def witness_disagreement(header: dict[str, Any],
+                         weights: Sequence[float]) -> tuple[float, int, int]:
+    """The engine's own witness check, in the engine's own arithmetic.
+
+    A fourth evaluator, and written down here for the reason the reward
+    whitelist and :func:`encode_policy` are: this file cannot import
+    ``CadexDynamics`` (ADR-070), so the check that decides whether hours of
+    GPU time produced a usable file is copied rather than imported, and a
+    test pins the two together.
+
+    Pure ``float`` and pure Python -- no ``numpy``, no ``jax`` -- because
+    the point is to reproduce ``CadexDynamics.policy_forward`` exactly,
+    including that it is float64 throughout and that its inner sum
+    accumulates in written order. Anything that reaches for a fast matmul
+    here would reintroduce the very TF32 rounding this exists to catch.
+
+    Returns ``(worst, sample, action)`` with the worst error relative to
+    each action's own advertised ``high - low``.
+    """
+
+    network = header["network"]
+    shapes = [(int(a), int(b)) for a, b in network["layers"]]
+    scale = [float(v) for v in network["output_scale"]]
+    bias_out = [float(v) for v in network["output_bias"]]
+    mean = [float(v) for v in header["normaliser"]["mean"]]
+    std = [float(v) for v in header["normaliser"]["std"]]
+    ranges = [max(float(a["high"]) - float(a["low"]), 1.0e-12)
+              for a in header["actions"]]
+    weights = [float(v) for v in weights]
+
+    worst, worst_sample, worst_action = 0.0, -1, -1
+    evaluation = header["evaluation"]
+    for sample, (observed, recorded) in enumerate(
+        zip(evaluation["observations"], evaluation["actions"])
+    ):
+        activations = [(float(v) - mean[i]) / std[i]
+                       for i, v in enumerate(observed)]
+        cursor, last = 0, len(shapes) - 1
+        for index, (inputs, outputs) in enumerate(shapes):
+            matrix = weights[cursor:cursor + inputs * outputs]
+            cursor += inputs * outputs
+            bias = weights[cursor:cursor + outputs]
+            cursor += outputs
+            result = [0.0] * outputs
+            for column in range(outputs):
+                total, offset = bias[column], column
+                for row in range(inputs):
+                    total += activations[row] * matrix[offset]
+                    offset += outputs
+                result[column] = total
+            if index < last:
+                result = [math.tanh(value) for value in result]
+            activations = result
+        for index, value in enumerate(activations):
+            produced = math.tanh(value) * scale[index] + bias_out[index]
+            error = abs(produced - float(recorded[index])) / ranges[index]
+            if error > worst:
+                worst, worst_sample, worst_action = error, sample, index
+    return worst, worst_sample, worst_action
 
 
 def arguments(argv: Sequence[str]) -> argparse.Namespace:
@@ -888,6 +980,49 @@ def main(argv: Sequence[str]) -> int:
         },
     }
 
+    # The engine's witness check, run here, before a single byte is written.
+    #
+    # Everything this needs has existed since the moment training stopped,
+    # and the engine will apply exactly this test on another machine at the
+    # end of a trip that costs a scp and a rebuild. A run that fails it is
+    # already lost; the only question is whether it is lost now or after
+    # somebody has spent an afternoon believing they have a policy.
+    worst, sample, action = witness_disagreement(header, trained["parameters"])
+    if worst > POLICY_WITNESS_TOLERANCE:
+        raise SystemExit(
+            f"This policy does not reproduce its own recorded actions: "
+            f"witness {sample}, action {action}, relative error {worst:g} "
+            f"against a tolerance of {POLICY_WITNESS_TOLERANCE:g}. The "
+            f"engine applies this same test and would refuse the file, so "
+            f"it is not written.\n"
+            f"  The witness is recorded under "
+            f"jax.default_matmul_precision('highest') precisely so that a "
+            f"tensor-core matmul cannot round it (see the comment beside "
+            f"it, and ADR-081). An error near 1e-4 that survives that is "
+            f"something else: a layer order, a bias layout, an activation, "
+            f"or a normaliser that disagrees with the weights it shipped "
+            f"with."
+        )
+    margin = POLICY_WITNESS_TOLERANCE / max(worst, 1.0e-30)
+    if not options.quiet:
+        print(f"witness agrees to {worst:.3e} ({margin:,.0f}x inside the "
+              f"engine's tolerance)", file=sys.stderr)
+    # A short run cannot prove a long one will pass, and saying so is the
+    # whole point of printing the margin rather than a verdict. The witness
+    # error is a *relative* one, so it grows with the activations a policy
+    # learns: the run this check was written for measured a 14x margin after
+    # 2 iterations and failed outright after 2000. A margin this thin means
+    # the same run at length will not survive, and the time to know that is
+    # now.
+    if margin < 100.0:
+        print(
+            f"WARNING: {margin:,.0f}x is a thin margin. This error scales "
+            f"with the size of the activations a policy learns, so a longer "
+            f"run on this task will very likely be refused even though this "
+            f"one passed. Do not start one on the strength of this result.",
+            file=sys.stderr,
+        )
+
     blob = encode_policy(header, trained["parameters"])
     if len(blob) > MAXIMUM_POLICY_BYTES:
         raise SystemExit(
@@ -906,6 +1041,8 @@ def main(argv: Sequence[str]) -> int:
         "task_sha256": bundle["task_sha256"],
         "model_sha256": bundle["model_sha256"],
         "witness_samples": len(trained["witness_observations"]),
+        "witness_error": worst,
+        "witness_tolerance": POLICY_WITNESS_TOLERANCE,
         "reward_per_step": (trained["reward_curve"][-1]["reward_per_step"]
                             if trained["reward_curve"] else None),
         "wall_time_s": trained["wall_time_s"],
