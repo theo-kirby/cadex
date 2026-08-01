@@ -198,6 +198,30 @@ class CadexWiringTree(bpy.types.NodeTree):
         default=0.8, min=0.01, max=20.0, unit='LENGTH',
     )
 
+    @classmethod
+    def get_from_context(cls, context):
+        """Which tree a Wiring editor shows: this scene's, always (ADR-074).
+
+        This is what puts nodes on the *canvas* rather than only in the
+        sidebar, and it is worth being precise about why. Everything
+        ``node_draw_space`` draws is inside ``if (snode.treepath.last)``, and
+        only ``ED_node_tree_start`` pushes onto ``treepath``. ``snode_set_
+        context`` calls it on every redraw — but *only* if the tree type
+        supplies this callback, and ours did not, so ``ntree`` stayed null and
+        the editor drew an empty grid while ``wiring_ui``'s panels, which read
+        ``scene.cadex_wiring`` directly, listed every board.
+
+        A callback rather than an operator because it repairs the editor
+        however it is opened: from the editor-type menu, from a restored
+        .blend, from a split, with nothing to keep in sync. The two ``None``s
+        are the ID owner and the "from" ID — a shader tree returns its
+        material there, and a harness belongs to the scene, which the caller
+        already has.
+        """
+
+        scene = getattr(context, "scene", None)
+        return getattr(scene, "cadex_wiring", None), None, None
+
     def update(self):
         """Blender's change hook: fires on every link, node and socket edit."""
 

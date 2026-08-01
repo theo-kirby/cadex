@@ -511,6 +511,80 @@ def test_the_sync_button_is_always_reachable():
     check("arm_sync" in source, "and arms an automatic sync from the draw")
 
 
+def test_the_canvas_is_pointed_at_the_tree_the_sidebar_reads():
+    """Regression: the sidebar was full and the canvas was blank (ADR-074).
+
+    ``node_draw_space`` wraps everything it draws in
+    ``if (snode.treepath.last)``, and only ``ED_node_tree_start`` pushes onto
+    ``treepath``. ``snode_set_context`` calls it on every redraw — but only
+    for a tree type that supplies ``get_from_context``, and ours did not. The
+    panels never noticed, because ``wiring_ui._tree`` reads
+    ``scene.cadex_wiring`` directly and uses the space only as a filter.
+    """
+    print("test_the_canvas_is_pointed_at_the_tree_the_sidebar_reads")
+    scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state())
+
+    getter = getattr(wiring.CadexWiringTree, "get_from_context", None)
+    check(callable(getter), "the tree type supplies get_from_context")
+    if not callable(getter):
+        return
+    check(isinstance(
+        wiring.CadexWiringTree.__dict__.get("get_from_context"), classmethod),
+        "as a classmethod, which is how Blender calls it")
+
+    result = wiring.CadexWiringTree.get_from_context(bpy.context)
+    check(isinstance(result, tuple) and len(result) == 3,
+          "returning (tree, owner id, from id)")
+    check(result[0] is tree, "and the tree is this scene's harness")
+
+    # The symptom itself, named: a populated tree beside a space showing
+    # nothing is the state that has to be treated as needing attachment.
+    class _Space:
+        tree_type = "CadexWiringTree"
+        node_tree = None
+
+    check(len(tree.nodes) > 0 and _Space.node_tree is None
+          and wiring.CadexWiringTree.get_from_context(bpy.context)[0] is tree,
+          "a space with no tree is answered with the one that has the nodes")
+
+    # It must survive a scene with no wiring at all rather than raise from a
+    # draw, which would take the whole editor down.
+    reset_scene()
+    check(wiring.CadexWiringTree.get_from_context(bpy.context)[0] is None,
+          "and a scene with no harness answers None rather than raising")
+
+
+def test_the_wiring_toggle_sets_the_type_before_the_tree():
+    """The order is the bug, so the order is what is asserted (ADR-074).
+
+    ``rna_SpaceNodeEditor_node_tree_poll`` rejects the assignment unless
+    ``snode->tree_idname`` already matches the tree's idname, and ``ui_type``
+    is what sets it — so ``node_tree =`` first is silently dropped. Read off
+    the operator's own source, the same way
+    ``test_the_sync_button_is_always_reachable`` reads the header's.
+    """
+    print("test_the_wiring_toggle_sets_the_type_before_the_tree")
+    import inspect as _inspect
+
+    check(hasattr(bpy.types, "MESH_AGENT_OT_toggle_wiring"),
+          "the toggle is registered whether or not the editor exists")
+    source = _inspect.getsource(wiring_ui.MESH_AGENT_OT_toggle_wiring.execute)
+    ui_type = source.index("ui_type")
+    node_tree = source.index("node_tree =")
+    check(ui_type < node_tree,
+          "ui_type is set before node_tree, or the poll rejects it")
+    check("temp_override" in source[:ui_type],
+          "and the area-type change carries a window, or it no-ops")
+
+    # NODE_EDITOR is shared, so the predicate must discriminate on the tree
+    # type -- a toggle keyed on the space type alone closes the compositor.
+    predicate = _inspect.getsource(wiring_ui.wiring_area)
+    check("tree_type" in predicate,
+          "and the open/close predicate matches on the tree type, not just "
+          "the space type")
+
+
 def test_the_node_editor_tool_system_is_initialised():
     """Regression: opening the Wiring editor must not raise (ADR-066).
 
@@ -624,6 +698,8 @@ def main():
             test_the_model_is_told_these_numbers_are_measured,
             test_the_graph_fills_itself,
             test_the_sync_button_is_always_reachable,
+            test_the_canvas_is_pointed_at_the_tree_the_sidebar_reads,
+            test_the_wiring_toggle_sets_the_type_before_the_tree,
             test_the_node_editor_tool_system_is_initialised,
             # Last: open_mainfile replaces the whole session.
             test_the_graph_survives_a_blend_round_trip,

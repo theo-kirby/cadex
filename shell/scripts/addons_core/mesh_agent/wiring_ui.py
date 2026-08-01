@@ -60,6 +60,97 @@ class MESH_AGENT_OT_sync_wiring(bpy.types.Operator):
         return {'CANCELLED'}
 
 
+#: The fraction of the viewport a freshly split Wiring editor takes. The same
+#: split the parameters editor uses (``ui.PARAMS_SPLIT``), vertically: a
+#: harness is wide.
+WIRING_SPLIT = 0.5
+
+
+def wiring_area(screen):
+    """The Wiring editor on this screen, or None.
+
+    ``NODE_EDITOR`` is a *shared* space type — the compositor and any other
+    node tree live in it too — so the type alone is not the predicate. A
+    toggle that matched on it would close somebody else's editor and report
+    that it had closed ours. The same discriminating-predicate idea as
+    ``spaces.script_area``, which will not claim a Text Editor showing some
+    other text.
+    """
+
+    for area in screen.areas:
+        if area.type != 'NODE_EDITOR':
+            continue
+        space = area.spaces.active
+        if space is not None and getattr(space, "tree_type", "") == \
+                wiring.CadexWiringTree.bl_idname:
+            return area
+    return None
+
+
+class MESH_AGENT_OT_toggle_wiring(bpy.types.Operator):
+    bl_idname = "mesh_agent.toggle_wiring"
+    bl_label = "Wiring"
+    bl_description = "Show or hide the harness as a node graph"
+
+    # No poll. A file whose engine has no harness yet is exactly when someone
+    # wants to look at the wiring editor and find out; `ensure_tree` makes the
+    # empty tree and the header says what it is waiting for.
+
+    def execute(self, context):
+        window = context.window
+        screen = window.screen
+
+        area = wiring_area(screen)
+        if area is not None:
+            try:
+                with context.temp_override(window=window, screen=screen,
+                                           area=area):
+                    bpy.ops.screen.area_close()
+            except RuntimeError:
+                # area_close's poll fails when no neighbour can absorb it.
+                self.report({'WARNING'}, "The wiring editor cannot be closed")
+                return {'CANCELLED'}
+            return {'FINISHED'}
+
+        tree = wiring.ensure_tree(context.scene)
+        viewports = [a for a in screen.areas if a.type == 'VIEW_3D']
+        if not viewports:
+            self.report({'WARNING'}, "No viewport to split")
+            return {'CANCELLED'}
+        viewport = max(viewports, key=lambda a: a.width * a.height)
+        before = {a.as_pointer() for a in screen.areas}
+        try:
+            with context.temp_override(window=window, screen=screen,
+                                       area=viewport):
+                bpy.ops.screen.area_split(direction='VERTICAL',
+                                          factor=WIRING_SPLIT)
+        except RuntimeError:
+            self.report({'WARNING'}, "No room for the wiring editor")
+            return {'CANCELLED'}
+        fresh = [a for a in screen.areas if a.as_pointer() not in before]
+        if not fresh:
+            self.report({'WARNING'}, "No room for the wiring editor")
+            return {'CANCELLED'}
+        area = fresh[0]
+        # This order is the fix, not a style choice. `ui_type` carries the
+        # tree idname into `snode->tree_idname`, and
+        # `rna_SpaceNodeEditor_node_tree_poll` rejects the assignment below
+        # unless the two already agree -- so a `node_tree =` first would be
+        # silently dropped. And an area-type change needs a window in the
+        # context or it no-ops just as quietly (`spaces.MESH_AGENT_OT_show_
+        # script` learned that one first).
+        with context.temp_override(window=window, screen=screen, area=area):
+            area.ui_type = wiring.CadexWiringTree.bl_idname
+        space = area.spaces.active
+        if space is not None:
+            space.node_tree = tree
+        # `get_from_context` would attach it on the next redraw anyway; this
+        # is the same answer one frame earlier, and it is what makes the
+        # operator testable without a draw.
+        wiring.arm_sync(context.scene)
+        return {'FINISHED'}
+
+
 class CADEX_WIRING_HT_header(bpy.types.Header):
     bl_space_type = 'NODE_EDITOR'
 
@@ -188,6 +279,11 @@ def register():
     global EDITOR_AVAILABLE
 
     bpy.utils.register_class(MESH_AGENT_OT_sync_wiring)
+    # Registered whether or not the space type exists: the button under the
+    # chat box draws unconditionally, and an operator missing from
+    # `bpy.types` is a red row in the UI rather than a disabled one. It
+    # reports "No viewport to split" on a bundle with no node editor.
+    bpy.utils.register_class(MESH_AGENT_OT_toggle_wiring)
     EDITOR_AVAILABLE = True
     for cls in _SPACE_BOUND:
         try:
@@ -204,7 +300,8 @@ def unregister():
             bpy.utils.unregister_class(cls)
         except (RuntimeError, ValueError):
             pass
-    try:
-        bpy.utils.unregister_class(MESH_AGENT_OT_sync_wiring)
-    except (RuntimeError, ValueError):
-        pass
+    for cls in (MESH_AGENT_OT_toggle_wiring, MESH_AGENT_OT_sync_wiring):
+        try:
+            bpy.utils.unregister_class(cls)
+        except (RuntimeError, ValueError):
+            pass
