@@ -1,0 +1,333 @@
+# SPDX-FileCopyrightText: 2026 Mesh Authors
+#
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+"""Headless tests for the Wiring graph (ADR-066).
+
+Run:
+    blender --background --factory-startup --python tests/python/bl_mesh_agent_wiring.py
+
+**Everything here runs without an engine and without a rebuilt shell.** The
+node tree, its sockets, its links, the sync, the layout-preserving reconcile,
+the contract GC and the push payload are all exercised against fabricated
+``inspect scope="wiring"`` payloads — which is the whole reason the model was
+kept separate from the chrome. What cannot be covered here is the C++ half
+(the editor appearing on the menu, and the link-drag gesture itself, since
+``node.link`` does not exist in a bundle that never registered the space
+type); those live in ``bl_mesh_agent.py::test_editor_menu_is_short`` and need
+a build.
+
+Two of these are regression tests for behaviour the Blender API forces on us
+rather than for bugs we wrote: duplicate socket names dedup into
+``sda``/``sda_001`` so a name is not an identity, and ``NodeTree.update()``
+fires on our own mutations so a sync that did not suspend it would answer its
+own edit forever.
+"""
+
+import os
+import sys
+
+import bpy
+
+_REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                      "..", ".."))
+sys.path.insert(0, os.path.join(_REPO, "scripts", "addons_core"))
+
+import mesh_agent  # noqa: E402
+from mesh_agent import wiring  # noqa: E402
+from mesh_agent import wiring_ui  # noqa: E402
+from mesh_agent import cadex_hydrate  # noqa: E402
+
+FAILURES = []
+
+
+def check(condition, label):
+    print("  {:s}: {:s}".format("ok" if condition else "FAIL", label))
+    if not condition:
+        FAILURES.append(label)
+
+
+def reset_scene():
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+
+
+SIGNALS = ("sda", "scl", "gnd")
+
+
+def _terminals(names=SIGNALS, kind="hole"):
+    return [
+        {
+            "name": name,
+            "point": [0.0, 2.54 * index, 0.0],
+            "direction": [0.0, 0.0, 1.0],
+            "kind": kind,
+            "radius": 0.5,
+            "depth": 1.6,
+        }
+        for index, name in enumerate(names)
+    ]
+
+
+def _state(ports=("sen", "esp"), wires=None, editable=True, revision="r1"):
+    return {
+        "revision": revision,
+        "source": "nets" if editable else "derived",
+        "editable": editable,
+        "components": [
+            {
+                "port": port,
+                "output": port + "_board",
+                "domain": "part",
+                "terminals": _terminals(),
+            }
+            for port in ports
+        ],
+        "wires": list(wires if wires is not None else [
+            {"name": "sda", "a": "sen.sda", "b": "esp.sda",
+             "gauge_mm": 0.8, "solder": True, "enabled": True},
+        ]),
+    }
+
+
+def _fresh_tree():
+    reset_scene()
+    scene = bpy.context.scene
+    tree = wiring.ensure_tree(scene)
+    return scene, tree
+
+
+# ---------------------------------------------------------------------------
+
+
+def test_the_wiring_tree_registers():
+    print("test_the_wiring_tree_registers")
+    scene, tree = _fresh_tree()
+    check(tree is not None, "ensure_tree returns a tree")
+    check(tree.bl_idname == "CadexWiringTree", "of the Cadex tree type")
+    check(scene.cadex_wiring == tree, "and the scene points at it")
+    # A real user, so it saves in the .blend without a fake user.
+    check(tree.users >= 1, "the scene pointer is a real user")
+    check(wiring.ensure_tree(scene) is tree, "ensure_tree is find-or-create")
+
+
+def test_a_board_node_names_a_script_output():
+    """The join between the graph and the viewport, asserted not assumed."""
+    print("test_a_board_node_names_a_script_output")
+    properties = wiring.CadexBoardNode.bl_rna.properties
+    check("cadex_output" in properties, "a board node carries cadex_output")
+    check(cadex_hydrate.OUTPUT_PROP == "cadex_output",
+          "and it is the same string cadex_hydrate keys objects by")
+
+
+def test_a_terminal_is_keyed_by_property_not_by_name():
+    """Blender dedups duplicate socket names; a name is not an identity."""
+    print("test_a_terminal_is_keyed_by_property_not_by_name")
+    _scene, tree = _fresh_tree()
+    node = tree.nodes.new(wiring.CadexBoardNode.bl_idname)
+    first = node.inputs.new(wiring.CadexTerminalSocket.bl_idname, "sda")
+    second = node.inputs.new(wiring.CadexTerminalSocket.bl_idname, "sda")
+    first.terminal, second.terminal = "sda", "sda_from_the_other_row"
+    check(first.identifier != second.identifier,
+          "two sockets named sda get different identifiers")
+    check(node.inputs["sda"] == first,
+          "and lookup by name silently returns the first")
+    found = {socket.terminal for socket in node.inputs}
+    check(found == {"sda", "sda_from_the_other_row"},
+          "so the sync keys on .terminal, which stays distinct")
+
+
+def test_a_sync_builds_the_graph_the_engine_describes():
+    print("test_a_sync_builds_the_graph_the_engine_describes")
+    _scene, tree = _fresh_tree()
+    check(wiring.apply_state(tree, _state()), "apply_state accepted the payload")
+    check(len(tree.nodes) == 2, "one node per component")
+    ports = sorted(node.port for node in tree.nodes)
+    check(ports == ["esp", "sen"], "named by their ports")
+    node = next(n for n in tree.nodes if n.port == "esp")
+    check(node.cadex_output == "esp_board", "and bound to their outputs")
+    check([s.terminal for s in node.inputs] == list(SIGNALS),
+          "terminals become inputs, in the engine's order")
+    check([s.terminal for s in node.outputs] == list(SIGNALS),
+          "and outputs too: a board is both source and sink")
+    check(len(tree.links) == 1, "one link per enabled row")
+    check(tree.cadex_revision == "r1", "the revision is recorded")
+    check(tree.cadex_editable is True, "and a nets() script is editable")
+
+
+def test_solder_rides_the_socket_because_a_link_cannot_hold_it():
+    print("test_solder_rides_the_socket_because_a_link_cannot_hold_it")
+    _scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state())
+    soldered = {s.terminal for n in tree.nodes
+                for s in list(n.inputs) + list(n.outputs) if s.soldered}
+    check(soldered == {"sda"}, "both ends of the soldered row are marked")
+    rows = wiring.rows_from_tree(tree)
+    check(rows and rows[0]["solder"] is True,
+          "and the flag survives the round trip back to a row")
+
+
+def test_the_graph_does_not_answer_its_own_edit():
+    """Without the suspend, every engine rebuild would start a push."""
+    print("test_the_graph_does_not_answer_its_own_edit")
+    _scene, tree = _fresh_tree()
+    wiring._dirty.clear()
+    wiring.apply_state(tree, _state())
+    check(not wiring._dirty,
+          "a sync that created nodes, sockets and links pushed nothing")
+    check(wiring._suspend[0] is False, "and the suspend was released after")
+
+
+def test_a_rebuild_keeps_the_layout():
+    print("test_a_rebuild_keeps_the_layout")
+    _scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state())
+    node = next(n for n in tree.nodes if n.port == "sen")
+    node.location = (123.0, -456.0)
+    node.width = 210.0
+
+    grown = _state(revision="r2")
+    grown["components"][0]["terminals"] = _terminals(SIGNALS + ("miso",))
+    wiring.apply_state(tree, grown)
+
+    node = next(n for n in tree.nodes if n.port == "sen")
+    check(abs(node.location.x - 123.0) < 1e-3 and abs(node.location.y + 456.0) < 1e-3,
+          "the node kept the position the user gave it")
+    check(abs(node.width - 210.0) < 1e-3, "and its width")
+    check([s.terminal for s in node.inputs] == list(SIGNALS) + ["miso"],
+          "the new terminal appeared, in the engine's order")
+    check(len(tree.links) == 1, "and the existing link survived")
+
+
+def test_a_dropped_component_takes_its_node():
+    """Contract-driven GC, the peer of hydrate_display's."""
+    print("test_a_dropped_component_takes_its_node")
+    _scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state())
+    wiring.apply_state(tree, _state(ports=("sen",), wires=[], revision="r2"))
+    check([n.port for n in tree.nodes] == ["sen"], "the dropped port's node went")
+    check(len(tree.links) == 0, "and took its link with it")
+
+
+def test_a_drawn_link_becomes_one_row():
+    print("test_a_drawn_link_becomes_one_row")
+    _scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state(wires=[]))
+    check(wiring.rows_from_tree(tree) == [], "an empty graph is an empty table")
+
+    sen = next(n for n in tree.nodes if n.port == "sen")
+    esp = next(n for n in tree.nodes if n.port == "esp")
+    tree.new_gauge_mm = 0.6
+    tree.links.new(sen.outputs[2], esp.inputs[2])
+
+    rows = wiring.rows_from_tree(tree)
+    check(len(rows) == 1, "one link, one row")
+    row = rows[0] if rows else {}
+    check({row.get("a"), row.get("b")} == {"sen.gnd", "esp.gnd"},
+          "addressed <port>.<terminal>")
+    check(abs(float(row.get("gauge_mm", 0)) - 0.6) < 1e-6,
+          "and taking the editor's new-wire gauge")
+    check(row.get("name") == wiring.row_name(row["a"], row["b"]),
+          "with a lower_snake_case name derived from the two ends")
+    check(row.get("enabled") is True, "enabled by default")
+
+
+def test_a_redrawn_link_keeps_the_row_it_had():
+    """Matched on the unordered pair: canvas direction is cosmetic."""
+    print("test_a_redrawn_link_keeps_the_row_it_had")
+    _scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state())
+    sen = next(n for n in tree.nodes if n.port == "sen")
+    esp = next(n for n in tree.nodes if n.port == "esp")
+    tree.links.clear()
+    # Redrawn the other way round.
+    tree.links.new(esp.outputs[0], sen.inputs[0])
+    rows = wiring.rows_from_tree(tree)
+    check(len(rows) == 1, "still one row")
+    check(rows[0]["name"] == "sda", "and it kept the engine's name")
+    check(abs(rows[0]["gauge_mm"] - 0.8) < 1e-6, "and its gauge")
+
+
+def test_a_disabled_row_is_not_deleted_by_looking_at_it():
+    """A disabled wire has no link to draw, so it must survive the read."""
+    print("test_a_disabled_row_is_not_deleted_by_looking_at_it")
+    _scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state(wires=[
+        {"name": "sda", "a": "sen.sda", "b": "esp.sda",
+         "gauge_mm": 0.8, "solder": False, "enabled": True},
+        {"name": "gnd", "a": "sen.gnd", "b": "esp.gnd",
+         "gauge_mm": 0.8, "solder": False, "enabled": False},
+    ]))
+    check(len(tree.links) == 1, "only the enabled row is drawn")
+    names = [row["name"] for row in wiring.rows_from_tree(tree)]
+    check(sorted(names) == ["gnd", "sda"], "but both rows come back")
+
+
+def test_a_legacy_harness_is_read_only():
+    print("test_a_legacy_harness_is_read_only")
+    scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state(editable=False))
+    check(tree.cadex_editable is False, "the payload says so and the tree obeys")
+    ok, report = wiring.push(scene)
+    check(ok is False, "a push is refused rather than attempted")
+    check("nets(" in str(report), "and the refusal names the way out")
+
+
+def test_the_wiring_ui_registers_or_stands_down():
+    """The ADR-036 failure — an aborted registration loop — caught."""
+    print("test_the_wiring_ui_registers_or_stands_down")
+    check(hasattr(bpy.types, "MESH_AGENT_OT_sync_wiring"),
+          "the sync operator registered either way")
+    node_editor = any(item.identifier == 'NODE_EDITOR' for item in
+                      bpy.types.Space.bl_rna.properties['type'].enum_items)
+    if wiring_ui.EDITOR_AVAILABLE:
+        check(hasattr(bpy.types, "CADEX_WIRING_HT_header"),
+              "the header registered on a build with the node editor")
+    else:
+        check(True, "no node editor in this build; the chrome stood down")
+    check(node_editor or not wiring_ui.EDITOR_AVAILABLE,
+          "EDITOR_AVAILABLE agrees with whether the space type exists")
+    # The point of the guard: everything else came up regardless. Note the
+    # test is on NodeTree.__subclasses__() and not on bpy.types — a
+    # Python-registered node tree does *not* appear there the way an operator
+    # or a panel does (measured; bpy.types carries SpaceCadexChat but never
+    # CadexWiringTree).
+    check("CadexWiringTree" in {getattr(t, "bl_idname", "")
+                                for t in bpy.types.NodeTree.__subclasses__()},
+          "the tree registered anyway")
+
+
+def main():
+    mesh_agent.register()
+    try:
+        for test in (
+            test_the_wiring_tree_registers,
+            test_a_board_node_names_a_script_output,
+            test_a_terminal_is_keyed_by_property_not_by_name,
+            test_a_sync_builds_the_graph_the_engine_describes,
+            test_solder_rides_the_socket_because_a_link_cannot_hold_it,
+            test_the_graph_does_not_answer_its_own_edit,
+            test_a_rebuild_keeps_the_layout,
+            test_a_dropped_component_takes_its_node,
+            test_a_drawn_link_becomes_one_row,
+            test_a_redrawn_link_keeps_the_row_it_had,
+            test_a_disabled_row_is_not_deleted_by_looking_at_it,
+            test_a_legacy_harness_is_read_only,
+            test_the_wiring_ui_registers_or_stands_down,
+        ):
+            test()
+    finally:
+        try:
+            mesh_agent.unregister()
+        except Exception:
+            pass
+    print("")
+    if FAILURES:
+        print("FAILED ({:d}):".format(len(FAILURES)))
+        for label in FAILURES:
+            print("  - " + label)
+        sys.exit(1)
+    print("all wiring tests passed")
+
+
+if __name__ == "__main__":
+    main()

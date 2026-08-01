@@ -29,6 +29,8 @@ from . import cadex_backend as cadex_backend_module
 from . import cadex_pick as cadex_pick_module
 from . import model as model_module
 from . import spaces
+from . import wiring as wiring_module
+from . import wiring_ui as wiring_ui_module
 from . import topbar as topbar_module
 from . import ui
 
@@ -190,11 +192,19 @@ def register():
     model_module.register()
     cadex_backend_module.register()
     cadex_pick_module.register()
+    wiring_module.register()
     ui.register()
     spaces.register()
     # Registers the menus; the app template is what puts them on the bar
     # (topbar.install), so a stock Blender session keeps its own top bar.
     topbar_module.register()
+    # Last, and the only one allowed to stand down: a Panel or Header
+    # naming an unregistered space type raises "Region not found in
+    # space type" and aborts the whole registration loop, which is how
+    # the top-bar menus once disappeared (ADR-036). On a bundle built
+    # before ADR-066 re-registered the node editor, this leaves
+    # EDITOR_AVAILABLE False and everything else working.
+    wiring_ui_module.register()
     bpy.app.handlers.save_pre.append(_save_pre_handler)
     bpy.app.handlers.save_post.append(_save_post_handler)
     bpy.app.handlers.load_post.append(_load_post_handler)
@@ -207,9 +217,11 @@ def unregister():
         bpy.app.handlers.save_post.remove(_save_post_handler)
     if _load_post_handler in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_load_post_handler)
+    wiring_ui_module.unregister()
     topbar_module.unregister()
     spaces.unregister()
     ui.unregister()
+    wiring_module.unregister()
     cadex_pick_module.unregister()
     cadex_backend_module.unregister()
     model_module.unregister()

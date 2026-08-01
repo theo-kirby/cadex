@@ -787,7 +787,7 @@ seven components, ten cables and twenty joints as exactly two outputs. Scripts
 predating `nets()` answer the scope read-only, reconstructed from the
 `cable`/`bundle`/`solder` calls they made. No re-accepting: the digest hashes
 outputs only, and the revision covers nets only when non-empty. The editor
-that consumes this is not built.
+that consumes this is ADR-066 and is not built.
 
 What makes them experimental, and what would settle it:
 
@@ -803,16 +803,18 @@ What makes them experimental, and what would settle it:
   script that uses none rebuilds byte-identically. Still not built: writing a
   terminal into a script from a viewport click (Phase 10b), and mesh hole
   detection, which is deferred by decision rather than pending.
-- [x] **The harness is invisible** — **settled engine-side by ADR-065
-  (2026-08-01).** `nets(...)` declares the connections, `set_params(nets=)`
-  edits them with no AI turn, and `inspect scope="wiring"` publishes the
-  terminals the run resolved — which were previously resolved inside the
-  isolated worker and discarded, so the shell saw `wiring-test.cadex`'s seven
-  components, ten cables and twenty joints as exactly two outputs. Still not
-  built: the wiring editor itself, which is what turns this from a readable
-  payload into a window; and `part.bundle` as an editable graph concept,
-  which is deferred by decision — changing a bundle's membership is a script
-  edit.
+- [x] **The harness is invisible** — **settled by ADR-065 (the engine) and
+  ADR-066 (the editor), both 2026-08-01.** `nets(...)` declares the
+  connections, `set_params(nets=)` edits them with no AI turn,
+  `inspect scope="wiring"` publishes the terminals the run resolved, and the
+  Wiring editor draws all of it as a node graph in Blender's stock node
+  editor — re-registered for exactly one Python tree type, so the editor menu
+  gains "Wiring" and stays short. **Verified as far as this machine allows:**
+  the whole engine half and the whole Python half run green here; the C++
+  half needs a shell build against 4.7 GB free and has not been run. Still
+  not built: `part.bundle` as an editable graph concept (deferred by decision
+  — changing a bundle's membership is a script edit), and defining a terminal
+  by clicking the model, which is the next item.
 - **A joint and its wire share a sliver above the board.** Zero *inside* it —
   the lead runs straight down the radius the joint's outline leaves empty —
   but the wire is a spline fitted through a searched route and starts to turn

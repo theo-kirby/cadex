@@ -1,6 +1,6 @@
 # BLENDER-TREE.md — Inherited Shell Substrate Inventory
 
-Verified against source: 2026-07-28
+Verified against source: 2026-08-01
 
 `shell/` is a Blender fork. This is its ledger — what we keep, what is
 slated for removal, what is already gone — the peer of `docs/FREECAD.md`
@@ -85,9 +85,10 @@ conflict here is a one-line re-add per row.
 | `makesdna/DNA_space_enums.h` | `SPACE_CADEX_CHAT = 25`, `SPACE_CADEX_PARAMS = 26`; `SPACE_TYPE_NUM` bumped | Append only — the header says so. Renumbering breaks every saved `.blend`. |
 | `makesdna/DNA_space_types.h` | two bare `SpaceLink`-header structs | Re-add. They have no fields and must not gain any: DNA is append-only forever. |
 | `editors/include/ED_space_api.hh` | two declarations | Re-add. |
-| `editors/space_api/spacetypes.cc` | two `ED_spacetype_cadex_*()` calls added; **nine removed** (ADR-036); six `ED_operatormacros_*` made conditional | The removals are the load-bearing half: this list *is* the editor menu. Take upstream's additions, then re-apply both edits. |
+| `editors/space_api/spacetypes.cc` | two `ED_spacetype_cadex_*()` calls added; **eight removed** (ADR-036; `space_node` came back in ADR-066); six `ED_operatormacros_*` made conditional | The removals are the load-bearing half: this list *is* the editor menu. Take upstream's additions, then re-apply both edits. |
 | `editors/CMakeLists.txt`, `editors/space_api/CMakeLists.txt` | two `add_subdirectory` / two `LIB` entries | Re-add. The hidden editors keep theirs — see ADR-036 on why compiling them out does not work. |
 | `makesrna/intern/rna_space.cc` | two `rna_enum_space_type_items` rows, two `rna_Space_refine()` cases, `rna_def_space_cadex_*()` + calls | Rows go under the `General` heading, after `SPACE_VIEW3D`. |
+| `makesrna/intern/rna_space.cc` | `rna_SpaceNodeEditor_tree_type_poll` filtered to `Cadex`-prefixed tree idnames (ADR-066) | The peer of the `space_file.cc` row below, and for the same reason: a node tree type is a *subtype* of `SPACE_NODE`, so not-registering cannot hide the stock four. Re-apply as the first statement of the poll; it keys on the identifier prefix, so a second Cadex tree needs no edit. |
 | `makesrna/intern/rna_screen.cc` | `rna_Area_ui_type_itemf`: skip unregistered space types, hold group headings back until something survives under them | The one behavioural edit in 2b. Re-apply inside the loop; the enum rows themselves must never be deleted (`ED_area_name` indexes them). |
 | `windowmanager/intern/wm_draw.cc`, `editors/interface/templates/interface_template_search_menu.cc`, `editors/animation/anim_filter.cc`, `blenkernel/intern/grease_pencil_convert_legacy.cc` | two cases each in exhaustive switches | `-Wswitch` fails the build if you forget. |
 | `editors/interface/resources.cc` | both types mapped to `btheme->space_properties` (two sites) | Re-add, else the `default:` branch hands them the viewport's grey. |

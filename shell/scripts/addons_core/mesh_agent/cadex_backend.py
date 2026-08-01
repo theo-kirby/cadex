@@ -856,6 +856,53 @@ def begin_set_params(scene, updates, cancelled=None):
                            cancelled=cancelled, on_accept=accepted)
 
 
+def wiring_state(scene):
+    """The harness as a graph: ``inspect scope="wiring"`` (ADR-065).
+
+    Through :func:`_inspect_full` rather than one ``inspect`` call, because
+    a seven-component harness exceeds both the 50-key page and the 1 KiB
+    stub — the same reason the parameter specs go through it, and the same
+    bug that made ``_bridge_params`` silently empty for every real model.
+    """
+
+    ok, report = ensure_open(scene)
+    if not ok:
+        return {"ok": False, "error": str(report)}
+    return _inspect_full(_client(project_root(scene)), "wiring", "")
+
+
+def begin_set_nets(scene, rows, cancelled=None):
+    """Start a connection-table edit. Returns a :class:`Lifecycle` or (ok, report).
+
+    The same op the sliders use, because "set the values of declared controls
+    without the AI" is one concept (ADR-065): ``set_params`` with an empty
+    ``values`` patch and the complete row list. A net change adds and removes
+    cables rather than moving poses, so there is nothing ``preview_params``
+    could answer and no draft-quality pass worth taking — it goes straight to
+    the accepting path, and schedules the same settle-time refine.
+    """
+
+    ok, report = ensure_open(scene)
+    if not ok:
+        return False, report
+    state = _state_for(project_root(scene))
+    if not state.script_present:
+        return True, "No project script yet; nothing to rewire."
+
+    def accepted():
+        _schedule_refine(scene)
+        try:
+            from . import wiring
+
+            wiring.on_push_finished(scene, True, "")
+        except Exception:
+            pass
+
+    return begin_lifecycle(
+        scene, "set_params", {"values": {}, "nets": list(rows)},
+        cancelled=cancelled, on_accept=accepted)
+
+
 def _slider_values(scene, state):
     """Current slider values for the engine's declared parameters."""
     from . import model

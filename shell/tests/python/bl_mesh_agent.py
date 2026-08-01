@@ -670,6 +670,12 @@ def test_new_conversation_starts_a_fresh_session():
 KEPT_EDITORS = (
     'VIEW_3D', 'CADEX_CHAT', 'CADEX_PARAMS', 'PROPERTIES', 'OUTLINER',
     'TEXT_EDITOR', 'CONSOLE', 'INFO', 'PREFERENCES', 'FILES',
+    # The node editor is registered again, for exactly one tree type: the
+    # wiring graph (ADR-066). The menu lists node *subtypes* rather than the
+    # space, so what it gained is "Wiring", not "Node Editor" -- which is why
+    # ADR-036's rule survives and why the four stock trees below are still
+    # asserted absent.
+    'CadexWiringTree',
 )
 
 # Identifiers as the editor-type menu spells them. The animation, image, node
@@ -688,9 +694,18 @@ HIDDEN_EDITORS = (
     'NLA_EDITOR',
     # space_image
     'IMAGE_EDITOR', 'UV',
-    # space_node
+    # space_node. These four changed meaning with ADR-066 and the change is
+    # the point of keeping them: the space type IS registered now, so they
+    # are no longer hidden by not-registering. They are hidden by
+    # rna_SpaceNodeEditor_tree_type_poll, which filters the tree types the
+    # menu is built from down to Cadex ones -- the same shape space_file.cc
+    # already used to hide the asset browser. These four are therefore the
+    # assertion that the filter is still there. Do not delete them as stale.
     'ShaderNodeTree', 'CompositorNodeTree', 'GeometryNodeTree',
     'TextureNodeTree',
+    # And the base row is never offered either: a space type with a subtype
+    # extender contributes its subtypes instead of itself.
+    'NODE_EDITOR',
     # space_sequencer, space_spreadsheet, space_clip
     'SEQUENCE_EDITOR', 'SPREADSHEET', 'CLIP_EDITOR',
     # the asset browser, a space_file subtype
@@ -723,6 +738,14 @@ def test_cadex_editors_are_registered():
     for name in ('SpaceCadexChat', 'SpaceCadexParams'):
         check(hasattr(bpy.types, name),
               "bpy.types.{:s} exists".format(name))
+    # The third editor is not a space type at all: it is one Python node tree
+    # hosted in the stock Node Editor, which is what made it cost no DNA, no
+    # RNA and no -Wswitch case (ADR-066). It is therefore checked through
+    # NodeTree.__subclasses__() and not through bpy.types, which carries a
+    # registered operator or space but never a registered node tree.
+    check('CadexWiringTree' in {getattr(t, 'bl_idname', '')
+                                for t in bpy.types.NodeTree.__subclasses__()},
+          "the wiring tree is a registered node tree type")
 
 
 def test_editor_menu_is_short():

@@ -5084,3 +5084,119 @@ clicking the model (ADR-067). `bundle` as an editable graph concept, a `ports(..
 table letting the UI author terminal *geometry*, colour, netlist import/export
 and electrical rules are all out of scope: this is a view of the script, not a
 schematic capture tool.
+
+## ADR-066 — The wiring graph gets the node editor back (2026-08-01)
+
+**Decision.** `SPACE_NODE` is registered again — for exactly one Python node
+tree type, `CadexWiringTree`. Two additive C++ hunks
+(`editors/space_api/spacetypes.cc`, `makesrna/intern/rna_space.cc`) and four
+new add-on modules under `shell/scripts/addons_core/mesh_agent/`:
+`wiring.py` (the tree, its sync and its push), `wiring_ui.py` (the chrome),
+`cadex_terminal_pick.py` (ADR-067) and the tests for them.
+
+**Why.** ADR-065 made the harness *readable*. This makes it a window.
+
+**This partially reverses ADR-036 for one editor, and the boundary is
+precise.** ADR-036's rule is that the editor-type menu lists only what Cadex
+ships. That rule is **not** relaxed. The menu gains exactly one row —
+"Wiring" — and the four stock trees stay off it. The mechanism is what makes
+the difference: `rna_Area_ui_type_itemf` lists a space type's *subtypes*
+where it has them, `node_space_subtype_item_extend` supplies the registered
+tree types, and `node_space_name_get` returns `tree_type->ui_name`. So an
+area showing our tree is titled "Wiring", with our icon, and the thing being
+un-hidden is a tree type rather than an editor.
+
+The filter therefore goes in `rna_SpaceNodeEditor_tree_type_poll` rather than
+in the extender: both of that poll's callers are node-editor-only (the
+editor-type menu, and the editor's own `tree_type` dropdown), so one guard
+hides the stock four from both. It keys on the `"Cadex"` identifier prefix,
+so a second Cadex tree needs no C++ edit. This is the same shape
+`file_space_subtype_item_extend` already uses to hide the asset browser —
+written by ADR-036 itself.
+
+**The `ED_operatormacros_node()` guard is left in place**, not removed. It
+already reads `if (BKE_spacetype_from_id(SPACE_NODE))` and now takes the true
+branch by itself, so deleting it would be a gratuitous extra line in a
+conservative zone for no behavioural difference. `ED_space_api.hh`,
+`editors/CMakeLists.txt` and `space_api/CMakeLists.txt` already carry the
+declaration and the library; nothing was added there.
+
+**Why a Python node tree and not a third `CADEX_*` space type.** ADR-035
+spent two editors' worth of DNA, RNA, `-Wswitch` cases and CMake rows. A node
+tree costs **none of that** — and the node editor already ships the canvas,
+the pan/zoom, the link drag, the selection and the box select. The delta
+against upstream Blender goes up by two files instead of by a space type.
+
+**`bl_ui/space_node.py` is deliberately **not** restored.** It is 1,277 lines
+of shader/geometry/compositor UI whose header draws a tree-type selector, an
+ID template and a "Use Nodes" toggle. ADR-035 already established that
+headers live in `mesh_agent`, not in the inherited `bl_ui`; `wiring_ui.py`
+supplies ours, and none of the stock node UI comes back.
+
+**Every terminal contributes two sockets, one in and one out.** Blender
+refuses an input→input link ("Same input/output direction of sockets") and a
+board is both source and sink, so one socket per terminal cannot express a
+harness at all. The cost is honest — a 12-terminal board draws 24 rows — and
+a link's on-canvas direction is cosmetic: a row is stored with the endpoints
+in the engine's own order, and `rows_from_tree` matches on the *unordered*
+pair, so redrawing a link the other way round keeps the row it had.
+
+**Terminals are keyed by a registered `StringProperty`, never by socket
+name.** Two sockets named `sda` get identifiers `sda` and `sda_001`, and
+`node.inputs["sda"]` silently returns whichever came first. And a
+`NodeSocket` refuses `socket["key"] = v` outright — `bNodeSocket` carries an
+`IDProperty *` in DNA but does not expose it to `bpy_struct[]` — so the key
+*has* to be a registered property. Both were measured against the shipped
+bundle and both are pinned by a test.
+
+**Solder state is the socket's colour, because a link cannot hold it.**
+Blender links carry no properties of their own, so there is nowhere on a link
+to hang "this end is soldered". The socket is the only honest place and it is
+also the right granularity: `part.solder` takes a terminal, never a wire
+(ADR-063).
+
+**The graph is a projection, so a failed push resyncs rather than retries.**
+`sync_from_engine` rebuilds nodes, sockets and links from
+`inspect scope="wiring"` and never from what is on screen — the one thing the
+graph owns and the engine does not is `Node.location`, which a rebuild must
+never touch and which round-trips through the .blend. A net edit is
+optimistic (the link is on screen the instant the mouse comes up, because a
+full re-execute is seconds and waiting would make dragging unusable); on
+failure the engine's table is put back and the error is reported through
+`model.record_error`, the channel ADR-039 added precisely because a debounce
+timer has no operator report to land in.
+
+**The chrome registers under a guard, and that is not defensive habit.** A
+`Panel` or `Header` naming an unregistered space type raises `RuntimeError:
+Region not found in space type`, and an exception inside `register()` aborts
+the whole loop — which is exactly how ADR-036 once made the top-bar menus
+disappear. `wiring_ui.register()` therefore sets `EDITOR_AVAILABLE = False`
+on the first failure and returns. The payoff is concrete: **the entire Python
+half runs and is tested on the shipped bundle today**, before the C++ half is
+built.
+
+**Bundles draw and stay read-only**, per ADR-065: changing a bundle's
+membership changes the conductor count, the lay radius and every other
+conductor's position, so it is a script edit.
+
+**Verification.** `shell/tests/python/bl_mesh_agent_wiring.py` — 74 checks,
+green against `/Applications/Cadex.app` with no engine and no rebuild:
+registration, the socket-identity trap, the sync, the suspend that stops the
+graph answering its own edit, layout preservation across a terminal being
+added, contract GC, the drawn-link payload, the redrawn-link name, disabled
+rows surviving a read, and the read-only refusal. `bl_mesh_agent.py` is green
+except `test_editor_menu_is_short`, which now asserts `CadexWiringTree` is on
+the menu and therefore **fails until the shell is rebuilt** — that is the
+test doing its job, not a regression.
+
+**Not verified here, and it must be before this ships.** The C++ half needs
+`pixi run setup` (a 1.3 GB submodule) plus a build tree against **4.7 GB
+free**, measured. So: that `ED_spacetype_node()` links and the editor appears;
+that the filter leaves exactly one node row on the menu; **the link-drag
+gesture itself** (`node.link` does not exist in a bundle that never
+registered the space type, so the push has only ever been driven through
+`links.new` from Python); and that a registered property on a `NodeSocket`
+survives a save/load round trip — `bNodeSocket` has the DNA field for it, but
+no `.blend` was written to confirm. If that last one fails, `terminal` and
+`soldered` move onto the *node* (which does accept ID properties, verified)
+as a parallel array. After freeing disk: `pixi run app && pixi run gate`.
