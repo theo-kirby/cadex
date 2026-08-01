@@ -458,6 +458,38 @@ def test_the_model_is_told_these_numbers_are_measured():
           "and tells the model to transcribe rather than estimate")
 
 
+def test_the_node_editor_tool_system_is_initialised():
+    """Regression: opening the Wiring editor must not raise (ADR-066).
+
+    `NODE_PT_tools_active` was defined in `bl_ui/space_toolsystem_toolbar.py`
+    but left out of its `classes` tuple by ADR-036 — harmless while SPACE_NODE
+    was unregistered, because nothing ever looked the class up. Once the
+    editor exists, `wm.tool_set_by_id` finds it by space type on the first
+    click into the editor and dies:
+
+        AttributeError: type object 'NODE_PT_tools_active'
+        has no attribute '_tool_group_active'
+
+    `_tool_group_active` is initialised by `ToolSelectPanelHelper.register()`,
+    which only runs when the class is registered. So the test is that it *is*.
+    """
+    print("test_the_node_editor_tool_system_is_initialised")
+    if not wiring_ui.EDITOR_AVAILABLE:
+        check(True, "no node editor in this build; nothing to initialise")
+        return
+    cls = getattr(bpy.types, "NODE_PT_tools_active", None)
+    check(cls is not None, "NODE_PT_tools_active is registered")
+    if cls is None:
+        return
+    check(hasattr(cls, "_tool_group_active"),
+          "and therefore carries _tool_group_active")
+    # The viewport's helper must keep working too — this file's `classes`
+    # tuple is shared.
+    viewport = getattr(bpy.types, "VIEW3D_PT_tools_active", None)
+    check(viewport is not None and hasattr(viewport, "_tool_group_active"),
+          "and the viewport's tool system is untouched")
+
+
 def test_the_graph_survives_a_blend_round_trip():
     """The one risk ADR-066 flagged with a fallback, closed.
 
@@ -537,6 +569,7 @@ def main():
             test_a_fitted_terminal_is_not_a_pin,
             test_several_picks_batch_into_one_turn,
             test_the_model_is_told_these_numbers_are_measured,
+            test_the_node_editor_tool_system_is_initialised,
             # Last: open_mainfile replaces the whole session.
             test_the_graph_survives_a_blend_round_trip,
         ):

@@ -293,7 +293,10 @@ Consequences worth knowing if you touch this: their `bl_ui` modules are out of
 stays out even now, because `mesh_agent/wiring_ui.py` supplies our header and
 the stock one is 1,277 lines of shader/geometry/compositor UI; the asset
 browser is a `SpaceFile` *subtype* and is filtered in
-`file_space_subtype_item_extend` instead; and three bundled add-ons (`cycles`,
+`file_space_subtype_item_extend` instead; `NODE_PT_tools_active` had to be put
+*back* into `space_toolsystem_toolbar.py`'s `classes`, because registering a
+`ToolSelectPanelHelper` is the only thing that initialises its
+`_tool_group_active` and the first click into a live node editor reads it; and three bundled add-ons (`cycles`,
 `pose_library`, `io_mesh_uv_layout`) are no longer enabled by default because
 each registers against an editor that no longer exists.
 
