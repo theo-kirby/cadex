@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-08-01
+Verified against source: 2026-08-02
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -1304,6 +1304,41 @@ wind  = assembly.disturbance(pelvis_c, newtons=[0.0, 0.08],
 sentence. Wind is a push whose window is the whole episode, which is why
 there is no second surface for it.
 
+**Two more knobs since ADR-104**, both additive and both defaulting to what
+the block above already did:
+
+```python
+start = assembly.reset_variation(pelvis_c, tilt_degrees=[0.0, 15.0],
+                                 height_mm=[15.0, 45.0],
+                                 angular_velocity_dps=[-90.0, 90.0],
+                                 linear_velocity_mm_s=[0.0, 250.0])
+shove = assembly.disturbance(pelvis_c, newtons=[0.15, 0.9],
+                             direction="horizontal",
+                             azimuth_degrees=[-60.0, 60.0],
+                             at_seconds=[0.3, 1.5], duration_s=0.12)
+```
+
+`azimuth_degrees=[lo, hi]` aims a horizontal push at an arc about **+X**;
+omitted is the full circle. Aim it where the mechanism has actuators — a
+machine with no ankle roll drawn over the whole circle spends two thirds of
+every batch on a question it cannot answer, which ADR-087 predicted and
+`capability.py` measured. It is **refused on a vertical push**, whose draw
+is a sign rather than an angle, and it adds no draw to the stream.
+
+`linear_velocity_mm_s=[lo, hi]` is a **stumble**: a speed with its azimuth
+drawn, written into the base's *world-frame* linear velocity — the other
+frame from the angular velocity beside it, which is MuJoCo's asymmetry. It
+gives every episode a recovery to do from step 1 instead of a second of
+standing still, and it is safe for the reason the rigid tilt is: it cannot
+change the mechanism's shape. This one **does** add two draws per reset
+variation, taken unconditionally, so a bundle written before ADR-104 replays
+a different sequence.
+
+The floor should be a **`plane`** (also ADR-104): a plane's surface is its
+own origin where a box's is its top face, so it needs none of the offset
+ADR-074 records — and ADR-103 measured the box floor as the one place MJX
+and stock MuJoCo disagree.
+
 **What phase 0 measured, before any surface was written:**
 
 | Question | Answer |
@@ -1609,6 +1644,17 @@ header's curve rows, the shell's Training panel.
 **Every reward figure this branch has recorded predates the fix and is not a
 baseline** (+0.391, +0.5118, +0.2149). Survival numbers are unaffected: they
 come from the engine's reference runner, which always honoured `max_steps`.
+
+**And the third reading, ADR-106: part of what looked like hazard 19 was a
+task out of range.** With the instrument fixed, `capability.py` swept a
+scale factor over m9c's declared shove band and the same policy that reads
+0/12 at the declared 0.40–2.00 N reads **11/12 at 0.06–0.30 N and 12/12
+unshoved**, on 2–5 N·mm of mean torque against a limit of 86. It stands, it
+absorbs a 45 mm drop and a 15° lean, and it dies because it is asked to
+reject pushes three to six times beyond its mechanism's reach. A single row
+of `compare.py` cannot distinguish "has not learned" from "was never asked
+something answerable"; a curve can, and that is what `capability.py` is for.
+Run it before concluding anything about a run that reads zero.
 
 What is **not** established is that this is the whole of hazard 19. The
 hypothesis — the batch fills with standing-still steps, the disturbed
@@ -2157,6 +2203,53 @@ Ranked by how quietly they fail.
     the newest bundle may be a different task entirely. And treat
     `<out>.best.cxpolicy` as a filename, not a verdict: early in a run it can
     be the untrained network scoring well by standing still.
+    **The inversion above is withdrawn (ADR-103 §9): it was the
+    instrument.** `evaluate_episode` applies domain randomisation by
+    multiplying **in place** into the model it is handed and never restores
+    it, and `compare.py` handed it one model for a whole table — so every
+    episode compounded the draws of every episode before it, and after 72
+    episodes link masses and inertias stood at **0.23× to 3.9×** their
+    exported values. The bottom of every table this project has printed was
+    a machine progressively less like the one designed, always drifting the
+    same way down the table, which reads exactly like a policy collapsing.
+    Given a fresh model per episode, m9c reads **65 → 174 → 201 steps** and
+    reward **−0.234 → +0.190**, both rising, both in the *same* direction as
+    the trainer's 58 → 149. **Survival is unaffected** — 0/12 is 0/12 on any
+    model, and every survival number here stands — and so is the reason for
+    it: peak torques of 76–84 N·mm of 86 are ADR-086's no-headroom finding,
+    not a training failure. Both engine call sites run one episode per model
+    and the shipped product is not exposed; a looping *evaluator* is.
+    **Two of the candidates are also measured (ADR-103), and one of them is
+    real.** The two engines implement the same physics — with collision
+    disabled, or with the floor written as a `plane`, they agree to float64
+    machine epsilon on the median step. What they disagree about is **box
+    against box**, which is the only contact a Cadex model has, because
+    `export_mjcf` writes a grounded body's collision shape as a box: the
+    median single-step disagreement is nine orders of magnitude worse than
+    with a plane, and the two engines disagree about *how many contact
+    points exist* on a fifth of all steps from an identical state. Not the
+    integrator (`implicitfast` and `Euler` agree to four digits), not the
+    solver iteration counts, not float32. Candidate (b) is measured too:
+    σ does not run away — 0.3000 → 0.2973 over 50 iterations, falling —
+    but sampled play is five times the torque of mean play and 45 steps
+    against 54, so it is a real level difference and not the inversion.
+    **This hazard is much smaller than it was, and its rule is unchanged.**
+    What is left of it is the plain observation that trainer reward and
+    survival are not the same quantity and that only one of them decides
+    anything. What is gone is the claim that the two sides of the seam
+    measure the same quantity in opposite directions. Trajectory
+    agreement between the two is not available on a contacting biped at all
+    and never was — a 1e-7 nudge inside *stock MuJoCo alone* separates just
+    as fast — so the two are comparable statistically and in no other way.
+    The instrument is `~/cdx-mjc/mjx_agreement.py`; the guarantee is
+    `test_dynamics_mjx_agreement.py`, and it fails if any of this stops
+    being true.
+    **A third number to watch, beside reward and episode length:** mean
+    exploration σ (`action_std`, ADR-103), on the stderr line, in
+    `progress.json` and in `remote_train.sh watch`. The loss subtracts
+    `--entropy` times an entropy linear in `log_std`, so nothing bounds it
+    upwards; a σ that has walked off `--initial-std` is a run whose rollouts
+    and whose installable mean policy are no longer the same policy.
 
 ## 6. Open questions
 
@@ -2274,6 +2367,33 @@ Ranked by how quietly they fail.
   rolls out the *stochastic* policy and `compare.py` plays the *mean*, so
   (b) requires noise to make a policy survive four times longer. Then (a),
   which is the expensive one.
+  **Both were measured (ADR-103), and the question is now much narrower.**
+  (a) is **answered and localised**: the two engines are the same physics —
+  float64 machine epsilon with collision disabled, and the same with the
+  floor written as a `plane` — and they differ only about **box against
+  box**, which is what `export_mjcf` writes for every grounded body. Nine
+  orders of magnitude on the median single step, and contact counts
+  disagreeing on a fifth of all steps from an identical state. It is not
+  the integrator (`implicitfast` and `Euler` agree to four digits), not the
+  solver iteration counts, and not float32. (b) is **measured and
+  partial**: σ falls rather than runs away — 0.3000 → 0.2973 over 50
+  iterations, because the surrogate dominates the entropy bonus at
+  `--entropy 1e-3` — but sampled play commands five times the torque of
+  mean play and 45 steps against 54, so the two sides of the seam were
+  never quite playing the same policy. (c) is untouched. **And the effect
+  all three were candidates for is itself withdrawn** (ADR-103 §9): the
+  engine side of every comparison was measured on a model that compounded
+  its own domain randomisation — 0.23× to 3.9× on link masses and inertias
+  after six rows of a table, because `apply_randomisation` multiplies in
+  place and `compare.py` reused one model. On a fresh model per episode the
+  two sides agree in direction and magnitude: 65 → 201 steps against the
+  trainer's 58 → 149. **So this question is effectively closed.** What
+  remains is not "why do they disagree" but two ordinary facts — that they
+  are different implementations (box against box, above), and that trainer
+  reward is not survival. Note also what can never be had: trajectory-level
+  agreement on a contacting biped, because a 1e-7 nudge inside *stock MuJoCo
+  alone* separates the trajectory as fast as MJX does. The two are
+  comparable statistically and in no other way.
 
 ## 7. From a drawing to a standing policy
 
@@ -2366,7 +2486,26 @@ model file.
    writes beside the project. The gap between the best iteration and the
    current one is the stopping decision.
 
-9. **Compare the checkpoints before choosing one.** `compare.py` plays every
+8b. **Before dispatching, check that the box's trainer is the one the tests
+   pinned.** `remote_train.sh` copies a bundle and a model and runs the
+   *box's own checkout* of `training/cadex_train.py` — so a trainer that
+   predates a surface addition silently ignores the new fields while
+   recording the new algorithm string in the policy header, and nothing
+   fails loudly. `ssh <box> "cd <repo> && git log --oneline -1"` is the
+   whole check and it is not optional after any change to
+   `EPISODE_VARIATION_ALGORITHM` (ADR-104).
+
+9. **Ask what the task is actually asking, not just how the run went.**
+   `capability.py` sweeps a scale factor over the task's declared shove
+   magnitudes and prints survival at each, split by azimuth, with the
+   termination mix and how far into its own disturbance schedule each death
+   got. A run that reads 0/12 at the declared band and 11/12 at a fifth of
+   it has not failed to learn — it was asked something out of range, which
+   is ADR-106 and is what three runs of mg-legs turned out to be. A curve
+   that is flat across the whole sweep is a curve that measured nothing, and
+   the file says so out loud.
+
+10. **Compare the checkpoints before choosing one.** `compare.py` plays every
    `.cxpolicy` in a directory locally against several seeds — stock MuJoCo,
    no GPU, seconds — and prints survival, episode length, final tilt, drift
    and **peak/mean torque per motor** as one table. That is what answers "at
@@ -2376,7 +2515,7 @@ model file.
    simulation per script and the shell has one timeline, so the numbers
    compare side by side and the animations do not.
 
-10. **Bring it home through `put_asset`.** The digest is required and never
+11. **Bring it home through `put_asset`.** The digest is required and never
    inferred: `assembly.policy` names a policy by file *and* SHA-256 because
    VISION principle 3 says any state that cannot be rebuilt from the script
    is a bug, and hours of stochastic GPU compute genuinely cannot be. On
@@ -2384,12 +2523,12 @@ model file.
    the observation channels in order, the action table, and re-evaluates the
    trainer's witness with its own float64 forward pass.
 
-11. **Report what the rollout does, rather than iterating on it.** ADR-088's
+12. **Report what the rollout does, rather than iterating on it.** ADR-088's
    stopping rule. The trace is the evidence: frame count against the episode
    length says whether it terminated early, and pelvis height, tilt and drift
    over the episode say what "it stands" actually meant.
 
-12. **Open the Policy Outputs panel before you believe any of it**
+13. **Open the Policy Outputs panel before you believe any of it**
     (ADR-096). It sits behind the same toggle as the sliders and draws each
     actuator's command against its own limit, at the current frame. The
     trajectory says what the mechanism did; this says what the policy
@@ -2471,6 +2610,14 @@ Two corollaries, both learned by nearly being caught:
   untrained network** — which scores well by standing still before the
   disturbance distribution has bitten. Check its peak torque: a policy
   commanding 1–2 N·mm of 86 is not balancing, it is doing nothing.
+* **Give every episode its own model** (ADR-103 §9). `evaluate_episode`
+  applies the task's domain randomisation by multiplying **in place** into
+  the model it is handed, and keeps no baseline — so an evaluator that loops
+  episodes over one loaded model compounds every draw it has ever made, and
+  its last row is a different machine from its first. `compare.py` reloads
+  per episode, at four milliseconds against a two-second episode. **Play the
+  same file twice and check the row is the same**; it is a two-second test
+  and it is the one that found this.
 
 **One of the three candidates has since been eliminated, and a fourth found
 (ADR-101).** The trainer read the bundle's episode length and never used it,

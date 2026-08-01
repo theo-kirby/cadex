@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-08-01
+Verified against source: 2026-08-02
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -943,6 +943,55 @@ the order they had to happen:
       in opposite directions on the two sides of the seam**. `docs/MUJOCO.md`
       §6 stays open with two candidates; sampled-versus-mean is the cheap
       one and goes first, MJX-versus-MuJoCo the expensive one.
+    - [x] **Both candidates measured (ADR-103).** MJX-versus-MuJoCo is
+      **answered and localised**: the two engines agree to float64 machine
+      epsilon with collision disabled and with a `plane` floor, and differ
+      only about **box against box** — which is what `export_mjcf` writes
+      for every grounded body, so it is the only contact any Cadex model
+      has. Nine orders of magnitude on the median single step, contact
+      counts disagreeing on a fifth of all steps from an identical state,
+      and not the integrator, the solver iterations or float32.
+      Sampled-versus-mean is **measured and partial**: σ falls rather than
+      running away (0.3000 → 0.2973 over 50 iterations) but sampled play is
+      five times the torque of mean play. `log_std` now reaches the policy
+      header (`exploration`) and mean σ the progress row, so both are
+      readable live. `test_dynamics_mjx_agreement.py` pins the result.
+    - [x] **ADR-101's inversion is withdrawn — it was the instrument
+      (ADR-103 §9).** `evaluate_episode` applies domain randomisation by
+      multiplying in place into the model it is handed and never restores
+      it, and `compare.py` reused one model for a whole table: after 72
+      episodes link masses and inertias stood at 0.23×–3.9× their exported
+      values, drifting the same way down every table. Given a fresh model
+      per episode, m9c reads 65 → 174 → **201** steps and reward −0.234 →
+      **+0.190**, both rising and both in the same direction as the
+      trainer's 58 → 149. **Survival numbers are unaffected** (0/12 is 0/12
+      on any model) and so is ADR-086's no-headroom finding — peak torques
+      of 76–84 N·mm of 86. Both engine call sites run one episode per model,
+      so the shipped product is not exposed; a looping evaluator is.
+      Hazard 19 keeps its rule and loses its central evidence.
+- [x] **The task was out of range, and the mechanism could not answer it**
+      (ADR-104, ADR-105, ADR-106). `~/cdx-mjc/capability.py` sweeps a scale
+      factor over a task's declared shove band, split by azimuth, with the
+      termination mix: m9c reads **0/12 at the declared 0.40–2.00 N and
+      11/12 at 0.06–0.30 N**, standing on 2–5 N·mm of mean torque against a
+      limit of 86. It was not failing to learn. Three consequences, all
+      landed: the surface gained `azimuth_degrees` on a disturbance and
+      `linear_velocity_mm_s` on a reset variation (**a stumble**), plus
+      `"plane"` as a collision primitive, in four implementations of one
+      draw stream (ADR-104); the machine gained **ankle roll** — two more
+      MG90S, 302.01 g, centre of mass 144.210 mm, 10 joints, 52 of 64
+      channels, and a plane floor MJX and MuJoCo agree about (ADR-105); and
+      the task's band moved to 0.15–0.90 N aimed ±60° with the second shove
+      over the whole circle, windows at 0.3–1.5 s and 1.8–3.6 s, and
+      `collapsed` at 0.5·Z0 on the direct evidence that 8 of 12 deaths were
+      upright and sinking (ADR-106). `feasibility.py` passes on the new
+      machine with lateral reach at 3.72× where it was the collapsed column.
+- [ ] **The GPU run and the policy it produces.** Blocked, not skipped: the
+      training box runs its **own** checkout of `training/cadex_train.py`
+      and it predates ADR-104, so a dispatch would silently ignore both new
+      draws while recording the new algorithm string in the policy header.
+      The CPU sanity run is green (50 iterations, σ 0.3006, witness
+      4.07e-08).
 
 **Standing constraints for this phase**, both from ADR-077 and both cheap to
 lose by accident:
@@ -989,7 +1038,7 @@ pytest src/Mod/cadex/cadex_tests/test_subshape_selectors.py    # selectors resol
 #   the real-kernel case also runs against a payload:
 #   CADEX_ENGINE_ROOT=<payload> pytest .../test_subshape_selectors.py
 
-# new in Phase 14 — the dynamics vertical (38 test_dynamics_*.py suites)
+# new in Phase 14 — the dynamics vertical (39 test_dynamics_*.py suites)
 pytest src/Mod/cadex/cadex_tests -k dynamics       # headless, no build, no GPU
 #   naming convention across the arc, four files a slice:
 #     *_api       the authoring surface and its refusals
