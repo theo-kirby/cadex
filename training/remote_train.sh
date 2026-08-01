@@ -503,13 +503,25 @@ PY
 
     echo "${result}"
 
-    local device claimed
-    device="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["device"])' <<<"${result}" 2>/dev/null)" || {
+    # THE RECEIPT IS THE LAST LINE, and it has to be taken as the last line
+    # rather than as the whole of stdout. This said "last stdout line" and
+    # passed `${result}` -- everything the trainer printed -- to `json.load`,
+    # which is the same thing only while nothing else prints to stdout.
+    # MuJoCo 3.10 does: an installation without the optional `warp` backend
+    # emits two `Failed to import warp: No module named 'warp'` lines there,
+    # so `json.load` saw those first and refused. Measured the expensive way
+    # -- a 3 h 49 m run trained, wrote its policy and reported it correctly,
+    # and the dispatch failed on the receipt and never ran the rsync below.
+    # The policy was recoverable from the box, which is the only reason this
+    # cost an hour rather than the run.
+    local receipt device claimed
+    receipt="$(printf '%s\n' "${result}" | tail -n 1)"
+    device="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["device"])' <<<"${receipt}" 2>/dev/null)" || {
         echo "FAIL: the trainer's last stdout line is not the JSON receipt it"
-        echo "      documents. It was: ${result}"
+        echo "      documents. It was: ${receipt}"
         exit 1
     }
-    claimed="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["sha256"])' <<<"${result}")"
+    claimed="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["sha256"])' <<<"${receipt}")"
 
     mkdir -p "$(dirname "${out}")"
     rsync -e "${rsync_ssh}" -a "${target}:${remote_dir}/${out_name}" "${out}"

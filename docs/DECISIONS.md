@@ -7380,3 +7380,67 @@ falls in 1.148 s, and there is no degenerate solution to find.
   modelling answers. `pixi run test-engine` is 1109 passed, 12 skipped,
   unchanged.
 - **Walking.** Standing first.
+
+## ADR-080 — The receipt is the last line, and a 3 h 49 m run proved it (2026-08-01)
+
+**Status:** accepted. **Branch:** `MJC` only — `training/` exists nowhere
+else. **Subject:** one line of `training/remote_train.sh`, found by the first
+long run dispatched through it (ADR-079's biped).
+
+**Decision.** Parse the trainer's JSON receipt from the **last line** of its
+stdout rather than from the whole of it.
+
+### 1. What happened
+
+`cmd_train` captured the trainer's stdout into `${result}` and passed all of
+it to `json.load`. Its own failure message already said "the trainer's last
+stdout line is not the JSON receipt" — the intent was the last line; the
+implementation was every line. The two are the same thing only while nothing
+else prints to stdout.
+
+MuJoCo 3.10 does. An installation without the optional `warp` backend emits
+
+```
+Failed to import warp: No module named 'warp'
+Failed to import mujoco_warp: No module named 'warp'
+```
+
+to **stdout**, ahead of the receipt. So `json.load` met those first and
+refused, and `cmd_train` exited before the `rsync` that fetches the policy.
+
+### 2. Why it cost what it did
+
+The run itself was **fine**: 2000 iterations, reward/step +0.601, no
+divergence, `device` reported `gpu`, and the policy written and hashed on the
+box — 3 h 49 m of GPU time that produced exactly what it was asked for. What
+failed was the last 200 ms of the dispatch, after the expensive part, and the
+failure mode is the one worth naming: **the run's own success was reported
+correctly and the machinery around it threw the report away.**
+
+The policy was recoverable — it is on the box, and its digest is in the
+receipt that *was* printed — so this cost an hour of retrieval rather than
+the run. That it was recoverable is luck about where the failure landed, not
+a property of the design.
+
+### 3. What this says about ADR-076's shape
+
+ADR-076 is right that this script should **fail loudly rather than repair**,
+and this is not a retreat from it: a receipt that cannot be parsed is still a
+hard failure. What changed is only *what is parsed*. The lesson is narrower
+and worth keeping — **a dispatch tool's parsing of its own tool's output is a
+contract, and a third party can widen it without telling anyone.** A MuJoCo
+point release added two stdout lines and broke a step that had worked.
+
+Fixed by taking `tail -n 1` of the captured stdout, verified against the
+exact bytes of the failing run.
+
+### 4. Also observed, and deliberately not fixed here
+
+Dispatching with `remote_train.sh train ... | tail -60` **hides the script's
+exit status**: a shell pipeline reports the last command's status, so a
+`cmd_train` that exited 1 was reported as 0. That is the caller's bug, not
+the script's, and the caller was this agent. Recorded because the same
+mistake would hide any future failure just as well — dispatch through a pipe
+with `set -o pipefail`, or not through a pipe at all. It also cost the run's
+per-iteration curve: `tail` buffers, so 2000 iterations of `reward/step`
+streamed into a pipe nobody could read until the process exited.
