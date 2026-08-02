@@ -1042,6 +1042,60 @@ the order they had to happen:
       draws while recording the new algorithm string in the policy header.
       The CPU sanity run is green (50 iterations, σ 0.3006, witness
       4.07e-08).
+- [x] **The reward learns where the feet are** (ADR-112). Five runs — m9c,
+      B2, B3, B4, B5 — produced a machine that stands, absorbs a shove with
+      its joints and never lands a recovery step. B3/B4/B5 each changed the
+      *disturbance*; B5 settled it. Measured across fifteen checkpoints at
+      twelve seeds, stepping **peaks at iteration 750 (7/12) exactly where
+      reward bottoms (+0.060)** and falls to 1/12 as reward climbs to +0.245
+      — correlation **−0.870** over the whole climbing phase — while foot
+      *lifts* rise monotonically to 23. The machine was never refusing to
+      move its feet; it was **stepping in place**, because a lift is free
+      and a displacement was charged −0.57/step forever. Survival never
+      exceeded 2/12 at any checkpoint. The reason was the objective, unchanged since M9b: `ft_l_*` and
+      `ft_r_*` were bought in M9b because *"where a foot is relative to the
+      centre of mass IS the state variable a stepping recovery is written
+      in"*, and **no reward term named them** — both spatial terms measured
+      the centre of mass against the fixed floor point the machine stood on
+      at t=0, so moving a foot changed the reward by nothing and a
+      *completed* step cost −0.57/step forever. Two changes, one engine and
+      one task. **The engine gains a ninth observation kind**,
+      `centre_of_mass_velocity` (`mjSENS_SUBTREELINVEL`) — one table row,
+      no protocol change, no trainer change — because the capture point
+      needs a whole-body CoM velocity and the pelvis *frame* velocity
+      already declared is out by 19%, which is 9–18 mm against a 24.5 mm
+      support margin. **The task re-references both spatial terms to the
+      foot centroid** and adds `capture`, `tanh(ξ/40)` at −0.8, which turns
+      a survival payoff arriving 1–2 s later into a cost of −0.61/step that
+      a step zeroes immediately. Verified before dispatch: 55 channels, both
+      new terms **0.000** at the reset keyframe (hazard 9), and the
+      expression's ξ agreeing with `subtree_com + subtree_linvel/ω₀` out of
+      MuJoCo to **0.000000 mm** at eight disturbed states — where the same
+      expression on the pelvis frame is out by 20–39 mm.
+- [x] **B6, the run — it steps and it lands** (ADR-112). 2500 iterations,
+      3.9 h, witness 2.82e-07, with a horizon that can see a recovery
+      (γ 0.99 → 0.995, λ 0.95 → 0.97, unroll 20 → 40: at 100 Hz the old pair
+      gave a GAE credit chain of 0.17 s for a recovery that takes 1–2 s).
+      **Checkpoint 2400 scores 6/12 on "stepped AND survived" — a number
+      that had been zero in every run this project has ever done**, across
+      five prior runs and every one of their checkpoints. Survived 6/12,
+      stepped 10/12, longest step 83.5 mm, and the steps land 0.08–0.11 s
+      after a push. On `capability.py` it beats the policy it replaces at
+      every level: 12/12 unshoved (`stand5` 11/12), 11/12 at ~0.40 N (11/12),
+      **10/12 at ~0.60 N (6/12)**, and 6/12 at the full declared 0.30–0.80 N
+      band where B5 managed 1/12. **Zero `collapsed` terminations at any
+      level** — the squat risk was checked at iteration 100 as ADR-112
+      required (mean `com_z` 149.2 mm against a 144.2 mm standing pose: it
+      stands *taller*) and never materialised, so `height` was not touched.
+      Installed into `~/cdx-mjc/mg-legs.cadex` together with the B6 script,
+      since the reward and the channel count both changed. Selection was **by
+      stepping-and-surviving, not by reward**, for the third measured time:
+      `stand8.best.cxpolicy` scores 1/12 where checkpoint 2400 scores 6/12.
+- [ ] **Still not a standing machine.** Half the episodes at the declared band
+      still end `tipped`, and backward remains the worst direction (3/6). The
+      next lever is the mechanism and the horizon rather than another reward
+      term; `SUBTREEANGMOM` is the obvious next observation kind, for a
+      centroidal-momentum term.
 
 **Standing constraints for this phase**, both from ADR-077 and both cheap to
 lose by accident:

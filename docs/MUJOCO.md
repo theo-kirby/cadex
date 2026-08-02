@@ -975,6 +975,15 @@ visible:
   channel never moves however far the arm swings. Correct, and useless
   there, which is exactly why `centre_of_mass` is a separate kind. The live
   test asserts it as a constant rather than working around it.
+* **The same trap, one derivative up** (ADR-112, added after B5):
+  `component_linear_velocity` reads the velocity of *one link's frame
+  origin*, which is not the velocity of the machine's centre of mass. On
+  `mg-legs` the pelvis frame differs from the true whole-body CoM velocity
+  by **19%** at recovery speeds — 9 mm of capture-point error at 400 mm/s,
+  against a 24.5 mm backward support margin. `centre_of_mass_velocity`
+  (`mjSENS_SUBTREELINVEL`) is the ninth kind and exists for that reason;
+  the two channels agree at rest and nowhere else, which is what the
+  measured test pins.
 * **A one-sided limit reports its declared pair intact** (`[None, 95.0]`),
   so the refusal says *which* endpoint is missing rather than merely that
   one is.
@@ -1092,6 +1101,14 @@ observation vector* still holds and no fourth implementation was needed —
 which was risk 2, and it did not fire. Nor did risk 1: MJX carries our
 equality constraints and our mesh geoms, so the batched-CPU-`rollout`
 fallback was never reached.
+
+**It survived the ninth kind too** (ADR-112). A kind stock MuJoCo computes is
+not automatically a kind MJX computes, and the failure is silent — an
+unimplemented sensor comes back as **zeros**, not as an error, so a reward
+term built on it trains as whatever is left when that channel is 0. Ask MJX
+directly before spending a run on a new kind: given the **same state**,
+`SUBTREELINVEL` agrees with stock MuJoCo to **7.3e-08 m/s**, the same
+float32 order as the 3.5e-7 above.
 
 **The design, and why each part is what it is:**
 
@@ -2724,3 +2741,41 @@ in §7's order: open the last policy that trained, push it from each side by a
 known number of newtons, and find out what it actually does. Nothing else in
 this document answers "does it recover" as directly, and a `capability.py`
 sweep costs minutes where this costs a click.
+
+### Measuring the capture point, and paying for it (ADR-112)
+
+The section above sizes a shove by ξ. B6 makes ξ a **reward term**, which is
+a different job with two requirements the sizing arithmetic does not have.
+
+**It has to be built from the right velocity.** ξ = p_com + ṗ_com/ω₀, and
+ṗ_com is the *whole body's* centre-of-mass velocity — `mjSENS_SUBTREELINVEL`
+off the root, declared as a `centre_of_mass_velocity` observation. The
+pelvis's `component_linear_velocity` is the channel a reader reaches for and
+it is wrong by 19% on this machine: 9 mm of error at 400 mm/s and 18 mm at
+850 mm/s, against a 24.5 mm margin. A term that decides *must I step?* built
+on a quantity carrying 40–75% of the margin as error is the ADR-107 mistake
+in a new place.
+
+**It has to be measured against the feet, not against the world.** Through
+M9c the two spatial terms compared the centre of mass to the fixed point
+`(X0, Y0)` where the machine stood at t=0. Under that objective moving a
+foot changes the reward by exactly nothing, and *standing successfully at a
+new place after a step* is charged −0.57 per step for the rest of the
+episode against the +1.00 `alive` pays. Five runs produced a machine that
+absorbs a shove with its joints and never lands a recovery step; the reward
+is why. Referencing both spatial terms to the foot centroid — and zeroing
+both at the standing pose, hazard 9 — is what converts a **delayed**
+survival payoff into an **immediate** one: ξ 40 mm behind the feet costs
+−0.61 per step right now, and putting a foot back under it zeroes that
+immediately.
+
+**Then check the arithmetic before spending the GPU on it.** The expression
+`com + cv/ω₀` should agree with `subtree_com + subtree_linvel/ω₀` computed
+directly out of MuJoCo, at disturbed states, to well under a millimetre.
+ADR-107 is the precedent: an azimuth convention that was wrong by 90° and
+cost a full run to find out.
+
+**The failure mode this shape has** is squatting — both terms are perfectly
+satisfied by a deep crouch. The only guard is the `height` term and the
+`collapsed` termination floor, so **check mean `com_z` and the
+`tipped`/`collapsed` split at the first checkpoint**, not at the end.

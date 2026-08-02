@@ -758,6 +758,7 @@ _OBSERVATION_KINDS: dict[str, str] = {
     "component_linear_velocity": "component_link",
     "component_angular_velocity": "component_link",
     "centre_of_mass": "component_link",
+    "centre_of_mass_velocity": "component_link",
 }
 
 #: What each observation kind's declared name expands to. A vector channel
@@ -773,6 +774,7 @@ _OBSERVATION_SUFFIXES: dict[str, tuple[str, ...]] = {
     "component_linear_velocity": ("_x", "_y", "_z"),
     "component_angular_velocity": ("_x", "_y", "_z"),
     "centre_of_mass": ("_x", "_y", "_z"),
+    "centre_of_mass_velocity": ("_x", "_y", "_z"),
 }
 
 
@@ -2430,9 +2432,11 @@ class AssemblyDomainAPI:
           ``component_linear_velocity`` / ``component_angular_velocity`` --
           where a part is and how it is moving, in the world frame.
           ``target`` is an ``api.component``.
-        * ``centre_of_mass`` -- the centre of mass of a component *and
-          everything hanging off it*, which is the quantity a balance
-          reward wants.
+        * ``centre_of_mass`` / ``centre_of_mass_velocity`` -- the centre of
+          mass of a component *and everything hanging off it*, and how fast
+          that point is moving. These are the quantities a balance reward
+          wants: a capture point is built from the pair, and neither is the
+          same as the corresponding frame channel on the same part.
         * ``actuator_force`` -- the effort a motor is actually producing, in
           N·mm or N. ``target`` is an ``api.actuator``.
 

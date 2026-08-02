@@ -271,6 +271,7 @@ def test_each_supported_sensor_kind_reads_the_quantity_it_names() -> None:
         ("component_linear_velocity", mujoco.mjtSensor.mjSENS_FRAMELINVEL, XBODY, fore, 3),
         ("component_angular_velocity", mujoco.mjtSensor.mjSENS_FRAMEANGVEL, XBODY, fore, 3),
         ("centre_of_mass", mujoco.mjtSensor.mjSENS_SUBTREECOM, BODY, upper, 3),
+        ("centre_of_mass_velocity", mujoco.mjtSensor.mjSENS_SUBTREELINVEL, BODY, upper, 3),
     ]
     model, _xml = _with_sensors(
         built,
@@ -284,6 +285,11 @@ def test_each_supported_sensor_kind_reads_the_quantity_it_names() -> None:
 
     fore_id = mujoco.mj_name2id(model, BODY, fore)
     upper_id = mujoco.mj_name2id(model, BODY, upper)
+    # ``subtree_linvel`` is filled by a velocity-stage pass rather than by
+    # ``mj_forward``'s position stage. MuJoCo runs it itself for the sensor;
+    # calling it here is what lets the *expectation* be read off the field
+    # rather than restated as a literal.
+    mujoco.mj_subtreeVel(model, data)
     expected = {
         "position": [data.qpos[1]],
         "velocity": [data.qvel[1]],
@@ -292,6 +298,7 @@ def test_each_supported_sensor_kind_reads_the_quantity_it_names() -> None:
         "component_linear_velocity": [0.0, 0.0, 0.0],
         "component_angular_velocity": [0.0, 0.0, 0.0],
         "centre_of_mass": data.subtree_com[upper_id].tolist(),
+        "centre_of_mass_velocity": data.subtree_linvel[upper_id].tolist(),
     }
     for index, (label, *_rest) in enumerate(entries):
         assert _channel(model, data, index) == pytest.approx(
@@ -306,6 +313,63 @@ def test_each_supported_sensor_kind_reads_the_quantity_it_names() -> None:
     assert dyn.length_mm(_channel(model, data, 2)[0]) == pytest.approx(
         286.60094673768177, abs=1.0e-9
     )
+
+
+def test_the_subtree_velocity_is_not_the_frame_velocity_of_the_same_part() -> None:
+    """Why ``centre_of_mass_velocity`` is its own kind (ADR-112).
+
+    The table above reads both velocity channels at the keyframe, where
+    everything is zero and any two velocity sensors agree. They agree there
+    and nowhere else, which is the trap: a balance reward that reached for
+    the frame channel because it was already declared would be given the
+    velocity of *one link's origin* where it asked for the velocity of the
+    whole machine's centre of mass.
+
+    On the mg-legs machine that difference measured 19% at recovery speeds
+    -- 9 mm of capture-point error at 400 mm/s, against a 24.5 mm support
+    margin. Here it is on the arm, where the number is bigger because the
+    forearm is most of the moving mass: the two channels are not within an
+    order of magnitude of each other.
+    """
+
+    built = _built()
+    model, _xml = _with_sensors(
+        built,
+        [
+            {
+                "type": mujoco.mjtSensor.mjSENS_FRAMELINVEL,
+                "objtype": XBODY,
+                "objname": "upper",
+            },
+            {
+                "type": mujoco.mjtSensor.mjSENS_SUBTREELINVEL,
+                "objtype": BODY,
+                "objname": "upper",
+            },
+        ],
+    )
+    data = _at_keyframe(model)
+    # At rest they agree, and that agreement is worth nothing.
+    assert _channel(model, data, 0) == _channel(model, data, 1) == [0.0, 0.0, 0.0]
+
+    for _ in range(200):
+        mujoco.mj_step(model, data)
+    mujoco.mj_forward(model, data)
+
+    frame = _channel(model, data, 0)
+    subtree = _channel(model, data, 1)
+    assert max(abs(value) for value in subtree) > 0.1, "the arm did not move"
+    # Read off the field MuJoCo filled, so the sensor is checked against the
+    # quantity rather than against a second copy of the sensor.
+    mujoco.mj_subtreeVel(model, data)
+    upper_id = mujoco.mj_name2id(model, BODY, "upper")
+    assert subtree == pytest.approx(
+        data.subtree_linvel[upper_id].tolist(), abs=1.0e-12
+    )
+
+    difference = max(abs(a - b) for a, b in zip(frame, subtree))
+    scale = max(abs(value) for value in subtree)
+    assert difference / scale > 0.5, (frame, subtree)
 
 
 # ---------------------------------------------------------------------------

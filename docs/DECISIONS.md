@@ -11216,3 +11216,312 @@ engine computes for an existing bundle — `stand5.cxpolicy` keeps loading.
 `linear_velocity_low/high_m_s`, so that row still draws a stumble of up to
 250 mm/s. Project-side, and the same family of instrument-honesty bug as
 ADR-107; worth a one-line fix next time that file is open.
+
+## ADR-112 — No reward term had ever named the feet (2026-08-02)
+
+**A numbering note first.** ADR-111 was committed (39c8d29c, "Say which policy
+a live session is playing") without its entry in this file. The number is
+spent; this is 112. The gap is recorded rather than reused, because renumbering
+a commit message that already shipped is worse than a hole in the log.
+
+**Decision.** Add one observation kind to the engine —
+`centre_of_mass_velocity`, `mjSENS_SUBTREELINVEL` — and rewrite the standing
+task's two spatial reward terms to measure the centre of mass **against where
+the feet are** rather than against a fixed point on the floor, adding a
+capture-point term measured the same way. Train it as B6 with a horizon that
+can see a recovery.
+
+### What five runs actually measured
+
+m9c, B2, B3, B4 and B5 produced a machine that stands and absorbs a shove with
+its joints, and never lands a recovery step. The owner's reading of it was
+exact: *"a lot of what it's doing is using its joints to try to correctly
+position its pelvis to be straight up. Instead what we really want is for it to
+learn how to use its legs to keep its pelvis in the air."*
+
+B3, B4 and B5 each changed the **disturbance** — the window, then the aim, then
+the band — on the hypothesis that the task never asked for a step. B5 proved
+that half right: aimed backward at `[210, 330]°` in the band `[0.30, 0.80] N`,
+checkpoint 750 puts a foot out in **7 of 12** episodes, 0.09–0.12 s after the
+push, and survives **1 of 12**. **It steps. It does not land.** And it then
+spends the next 1250 iterations *unlearning* the step while its reward climbs
+— the table below.
+
+**The reward had not changed since M9b/ADR-087, and it is the reason.** Read it
+against the channels: `ft_l_{x,y,z}` and `ft_r_{x,y,z}` were bought in M9b for
+one stated reason — *"where a foot is relative to the centre of mass IS the
+state variable a stepping recovery is written in"* — and **no reward term named
+them.** Both spatial terms compared the centre of mass to `(X0, Y0)`, the point
+on the floor where the machine happened to stand at t=0:
+
+```
+over_feet   -0.5 * tanh(|com - (X0, Y0)| / 40 mm)
+drift       -0.002 * |com - (X0, Y0)|
+```
+
+So moving a **foot** changed the reward by exactly nothing, and *standing
+successfully at a new place after a step* was penalised for the rest of the
+episode: at 60 mm out, −0.45 − 0.12 = **−0.57 per step** against the +1.00
+`alive` pays. A machine optimising that is not declining to step out of
+cowardice — it is correctly reading an objective that says *keep your centre of
+mass over this one spot on the floor*, and the only actuators that can do that
+without moving the feet are the joints. Which is what the owner was watching.
+
+### The engine change, and the 19% that forced it
+
+The capture point ξ = p_com + ṗ_com/ω₀ needs a centre-of-mass **velocity**, and
+the engine had no channel for one. The available substitute — the pelvis's
+`component_linear_velocity`, already declared — is a **frame** velocity: it
+reads one link's origin, not the whole subtree's momentum over its mass.
+Measured over 500 randomised states at realistic recovery speeds on this
+machine, the two differ by **19%**, which is a capture-point error of 9 mm at
+400 mm/s and 18 mm at 850 mm/s — against a **24.5 mm** backward support margin.
+Building the term that decides *must I step?* on a quantity carrying 40–75% of
+that margin as error is the ADR-107 mistake in a new place.
+
+MJX 3.10 implements `SUBTREELINVEL`; the engine simply had no row for it.
+`OBSERVATION_KINDS` is fully table-driven, so the kind is **one row**:
+
+| file | change |
+|---|---|
+| `CadexDynamics.py` | the row, beside `centre_of_mass` |
+| `cadex_assembly_api.py` | `_OBSERVATION_KINDS` + `_OBSERVATION_SUFFIXES` + the docstring |
+| `CadexScriptedRuntime.py`, `docs/XSCRIPT.md` | the kind list the AI reads |
+| `test_dynamics_task_measured.py` | the exhaustive kind↔sensor table, reading `data.subtree_linvel[id]` after `mj_subtreeVel` |
+
+No protocol change — observation kinds are not in `OP_ARG_SPECS`. No trainer
+change — `cadex_train.py` gathers `data.sensordata` by address, so a new sensor
+is free once MJX computes it.
+
+**The table test alone was not enough**, and this is worth stating. It reads
+every kind at the reset keyframe, where velocity is zero and *any two velocity
+sensors agree*. They agree there and nowhere else, so the table would have
+passed on a row that read the wrong quantity. A second test steps the fixture
+and asserts the two channels are **not within a factor of two** of each other.
+Measured on the B6 bundle at eight disturbed states: the expression built on
+`centre_of_mass_velocity` agrees with `subtree_com + subtree_linvel/ω₀`
+computed directly out of MuJoCo to **0.000000 mm**, and the same expression
+built on the pelvis frame is out by **20–39 mm**.
+
+**And MJX had to be asked separately, because that failure is silent.** The
+engine test runs in stock MuJoCo; training runs in MJX, which is a rewrite,
+and a sensor it does not implement can come back as **zeros** rather than as
+an error — which would collapse `capture` into a copy of `over_feet` and
+produce a run that looked like it trained on the new objective while training
+on the old one. Measured on the B6 model in the MJX venv: `mjx.put_model`
+raises nothing, MJX returns a non-zero `cv_*`, and given the **same state**
+it agrees with stock MuJoCo to **7.3e-08 m/s** over six randomised poses —
+float32 precision, the same order as the 3.5e-7 the M7 phase-0 table records
+for the other eight kinds. Driven open-loop the two trajectories diverge to
+7.3e-02 m/s by step 60, and that is the box-on-box contact drift hazard 19
+already names, not the sensor: at step 0 they agree to 3.6e-08.
+
+### The mechanism: a delayed payoff becomes an immediate one
+
+Measured off the B6 bundle's own MJCF at the reset keyframe:
+
+| quantity | value |
+|---|---|
+| mass / CoM height | 302.011 g / 144.210 mm |
+| CoM (x, y) | (0.002, 1.225) mm |
+| foot frame-origin centroid (x, y) | (0.000, 12.250) mm |
+| **standing CoM − centroid** | **(0.002, −11.025) mm** |
+| support polygon | +45.5 mm forward, −24.5 mm back, ±50 mm lateral |
+| ω₀ = √(g/h) | **8.2478 rad/s** |
+
+Note the offset: this machine stands with its centre of mass **11 mm behind**
+the midpoint of its two foot frames, so the reference carries that explicitly
+and both expressions read **exactly 0 at the standing pose** — hazard 9, which
+this project has already measured as the difference between training and
+training *worse than not training*.
+
+| term | weight | vs B5 |
+|---|---|---|
+| `over_feet` `tanh(OVER/40)` | −0.4 | **reference: world origin → the feet** |
+| `capture` `tanh(XI/40)` | **−0.8** | **new** |
+| `drift` | −0.003 | up: now the only anti-wander term |
+| `splay` | −0.001 | quartered |
+
+**Why this and not a bigger push.** Price the same backward shove both ways.
+Under B5, ξ 40 mm behind the feet costs nothing directly — no term can see it —
+and the payoff for stepping arrives 1–2 s later as survival. Under B6 it costs
+−0.8·tanh(1.0) = **−0.61 per step, right now**, and putting a foot back under it
+zeroes that **immediately**. And the completed step is no longer punished:
+standing over the feet at a new place costs −0.003·60 = −0.18/step where B5
+charged −0.57. This is what the 2026 DCM/RL work reports — ankle, hip and
+stepping strategies emerging in that order from one objective, because when ξ
+leaves the polygon there is no other way to reduce the cost. Their ablation is
+the relevant number: remove the balance-metric structure and the "stuck low"
+failure rate goes 0.067 → 1.0.
+
+**Why `splay` is quartered.** ADR-083 priced it against a braced wide stance,
+which scored well because widening the feet did not change a world-referenced
+`over_feet`. It *does* change a foot-referenced one, so the exploit is now
+priced by the term's own shape — and −0.004 was taxing the lateral half of the
+very step being asked for.
+
+### The horizon arithmetic
+
+At **100 Hz** control, γ = 0.99 is a **1.0 s** horizon. The literature standard
+is γ = 0.99 at 50 Hz — **2 s** — and a stumble-and-recover on this machine takes
+1–2 s. Worse, GAE at λ = 0.95 with `--unroll 20` gives a credit chain of
+1/(1−γλ) ≈ 17 steps = **0.17 s**: the advantage estimator could not connect a
+step to its own payoff at all, only the critic could.
+
+| flag | B5 | B6 | why |
+|---|---|---|---|
+| `--discount` | 0.99 | **0.995** | 2.0 s at 100 Hz |
+| `--gae-lambda` | 0.95 | **0.97** | credit chain 0.17 → 0.34 s |
+| `--unroll` | 20 | **40** | 0.2 → 0.4 s of experience per segment |
+| `--envs` | 4096 | **2048** | holds the batch at ~82k samples/iter |
+| `--epochs` | 4 | **5** | the standard for humanoid PPO |
+| `--initial-std` | 0.3 | **0.4** | a step is a large coordinated excursion |
+| `--entropy` | 1e-3 | **2e-3** | same reason, conservatively |
+| `--iterations` | 2000 | **2500** | ≈3.3 h |
+
+Two variables move at once and they point the same way. **If B6 fails, the
+ablation is a re-run with the new reward at B5's hyperparameters**, which
+isolates which one mattered.
+
+### Selection is not by reward, and that is measured
+
+B5 ran to 2000 iterations and was then measured properly — `steps.py`, twelve
+seeds, fifteen checkpoints — rather than on the two partial-run points this
+decision was first argued from. The full table is the strongest evidence in
+this entry, and it says something the two points did not:
+
+| iteration | reward/step | survived | **stepped** | lifts |
+|---|---|---|---|---|
+| 50 | −0.115 | 0/12 | 0/12 | 0 |
+| 150 | +0.117 | 1/12 | 0/12 | 1 |
+| 300 | +0.171 | 1/12 | 1/12 | 4 |
+| 450 | +0.146 | 1/12 | 5/12 | 11 |
+| 600 | +0.079 | 1/12 | 5/12 | 10 |
+| **750** | **+0.060** | 1/12 | **7/12** | 17 |
+| 900 | +0.153 | 1/12 | 4/12 | 19 |
+| 1050 | +0.197 | 2/12 | 3/12 | 15 |
+| 1200 | +0.205 | 1/12 | 3/12 | 19 |
+| 1350 | +0.202 | 1/12 | 1/12 | 23 |
+| 1500 | +0.212 | 1/12 | 3/12 | 23 |
+| 1650 | +0.223 | 1/12 | 3/12 | 21 |
+| 1800 | +0.236 | 1/12 | 1/12 | 19 |
+| 1950 | +0.227 | 1/12 | 3/12 | 17 |
+| **best @1896** | **+0.245** | 1/12 | **1/12** | 17 |
+
+**Stepping peaks exactly where reward bottoms.** Iteration 750 is the run's
+reward minimum after the first hundred iterations *and* its stepping maximum.
+Across the whole period where reward climbs — iteration 450 onward, +0.146 →
++0.227 — the correlation between reward and stepping is **−0.870**.
+`stand7.best.cxpolicy`, the reward-selected checkpoint, steps in **1 of 12**.
+
+**And the lifts column is the mechanism caught in the act.** Lifts rise
+monotonically with training — correlation with iteration **+0.847**, with
+reward **+0.678** — while steps fall. By iteration 1350 the machine lifts a
+foot 23 times and puts it back where it started 22 of them. It is not failing
+to move its feet. It is moving them constantly and **declining to displace
+them**, which is exactly what a world-referenced `over_feet` pays for: the
+lift is free, the displacement is charged −0.57/step for the rest of the
+episode. Five runs of "it won't step" were really "it steps in place".
+
+**Survival never exceeded 2/12 at any checkpoint.** B5 did not solve its own
+task; it optimised the reward it was given, and the reward was wrong.
+
+`capability.py` on checkpoint 750, twelve seeds, the baseline B6 is read
+against: stands 9/12 at 0.09–0.24 N, 8/12 at 0.15–0.40 N, 5/12 at
+0.22–0.60 N, **1/12 at the declared 0.30–0.80 N**. The cliff sits between a
+0.40 N and a 0.60 N top end — roughly where `stand5`'s was, so B5's aim and
+band bought stepping *behaviour* and no force tolerance. At the declared band
+the deaths are **collapsed 7, tipped 4**, and backward pushes kill it
+outright (0 of 6). Collapse already dominating is why B6's squat risk is
+flagged for the first checkpoint rather than the last.
+
+B6's criterion, in order:
+
+1. **episodes that both contain a step (>10 mm) and reach 600 of 600** — no
+   checkpoint of any run has ever been above zero on this;
+2. the force cliff from `capability.py`'s scaled sweep;
+3. survival alone.
+
+### Consequences
+
+- Nine observation kinds. `SUBTREEANGMOM` is the obvious next one and is
+  deliberately not this run.
+- **The risk this shape carries is squatting**: both new terms are perfectly
+  satisfied by a deep crouch, and B5 already showed deaths shifting from
+  `tipped` to `collapsed`. The only guard is `height` at −0.010/mm (−0.60/step
+  at a 60 mm crouch) and the 72.1 mm `collapsed` floor. **Check mean `com_z`
+  and the tipped/collapsed split at the first checkpoint**, not at the end. If
+  it squats, `height` is the weight to raise.
+- Installing a B6 policy means installing the **B6 script** — the reward and
+  the channels changed, so `install_checkpoint.py` alone is not enough.
+  `~/cdx-mjc/mg-legs.cadex` stays as it is until a policy earns the change.
+
+### Not in scope
+
+**Falling over and getting back up**, chosen against deliberately: it needs both
+terminations removed, a height-rise reward, a supine reset distribution, and —
+per the paper that does it — a three-stage curriculum with 10× torque
+exploration annealed over ~50,000 iterations. Our trainer has neither warm-start
+nor any per-iteration curriculum, so a staged run is not expressible today. That
+trainer work, and then a run measured in days, is the phase after stepping
+works. Also out: contact/touch sensing (`DEFERRED_OBSERVATION_KINDS` says why),
+an explicit feet-air-time reward (risks a hopping exploit, and the literature
+reports stepping emerging from capture-point shaping without one), and
+centroidal angular momentum.
+
+### B6 ran, and the reward was the thing (2026-08-03)
+
+2500 iterations, 3.9 h on an RTX 5090, witness error 2.82e-07. Fifteen
+checkpoints scored at twelve seeds on the criterion above — **stepped AND
+survived**, the conjunction no summary line in `steps.py` prints:
+
+| checkpoint | survived | stepped | **both** | lifts | longest |
+|---|---|---|---|---|---|
+| 400 | 2/12 | 1/12 | 1/12 | 8 | 26.4 mm |
+| 1200 | 2/12 | 8/12 | 2/12 | 43 | 52.9 mm |
+| 1600 | 5/12 | 11/12 | 4/12 | 56 | 43.7 mm |
+| 1800 | 6/12 | 9/12 | **6/12** | 59 | 93.0 mm |
+| 2200 | 6/12 | 9/12 | 5/12 | 40 | 58.0 mm |
+| **2400** | 6/12 | 10/12 | **6/12** | 54 | 83.5 mm |
+| final (2500) | 6/12 | 8/12 | 4/12 | 43 | 60.9 mm |
+| `best` (@598) | 2/12 | 2/12 | 1/12 | 12 | 27.9 mm |
+
+**The number that had never been above zero is 6 of 12.** Every B5 checkpoint,
+and every checkpoint of the four runs before it, scored 0 on this.
+
+**The lifts→steps ratio is the direct refutation of the B5 pathology.** B5
+late-run lifted a foot 23 times and displaced it once — it was stepping *in
+place*, because the lift was free and the displacement was charged −0.57/step
+forever. B6 converts roughly half of its lifts into real displacement, and the
+steps land 0.08–0.11 s after a push: recovery timing, not wandering.
+
+`capability.py`, the install gate:
+
+| top-end force | `stand5` | B5 @750 | **B6 @2400** |
+|---|---|---|---|
+| no shove | 11/12 | 11/12 | **12/12** |
+| ~0.40 N | 11/12 | 8/12 | **11/12** |
+| ~0.60 N | 6/12 (at 0.68) | 5/12 | **10/12** |
+| 0.30–0.80 N | — | 1/12 | **6/12** |
+
+**Not one `collapsed` termination at any level, on either finalist.** Every
+death is `tipped`. The squat this entry flagged as the shape's own risk did
+not happen, and the first-checkpoint check caught that early: at iteration 100
+mean `com_z` was 149.2 mm against a 144.2 mm standing pose — the machine
+stands *taller*, not lower. `height` was never touched.
+
+**Installed** into `~/cdx-mjc/mg-legs.cadex` as `stand8.cxpolicy`
+(`460296d1bcbb`), with the B6 script — the reward and the channel count both
+changed, so the policy and the script had to go in together. The pre-B6
+project is copied beside it as `mg-legs.cadex.pre-b6-backup`.
+
+**And the selection rule earned its third confirmation.** `stand8.best`, the
+reward-selected checkpoint, scores **1/12** where 2400 scores 6/12. Reward and
+the target behaviour have now been measured moving in opposite directions on
+B5 *and* on B6. On this project, `best.cxpolicy` is the wrong file.
+
+**What is still not solved.** 6/12 at the declared band is progress, not a
+standing machine: half the episodes still end tipped, and backward pushes
+remain the worst direction (3/6). The next lever is not another reward term —
+it is the horizon and the mechanism, and `SUBTREEANGMOM` is the obvious next
+observation kind for a centroidal-momentum term.

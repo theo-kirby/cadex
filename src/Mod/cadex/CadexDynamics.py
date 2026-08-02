@@ -4992,9 +4992,10 @@ OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
         "suffixes": ("_x", "_y", "_z"),
         "units": {None: ("deg/s", angle_degrees)},
     },
-    # ``subtreecom`` is a mass-weighted quantity over a subtree rather than
-    # a frame, so the body/xbody distinction does not arise for it and
-    # ``mjOBJ_BODY`` is the only object type it takes.
+    # The two subtree channels. ``subtreecom``/``subtreelinvel`` are
+    # mass-weighted quantities over a subtree rather than a frame, so the
+    # body/xbody distinction does not arise for them and ``mjOBJ_BODY`` is
+    # the only object type they take.
     "centre_of_mass": {
         "sensor": "mjSENS_SUBTREECOM",
         "target": "component",
@@ -5002,6 +5003,22 @@ OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
         "dim": 3,
         "suffixes": ("_x", "_y", "_z"),
         "units": {None: ("mm", length_mm)},
+    },
+    # The derivative of the row above, and *not* the same thing as a
+    # ``component_linear_velocity`` on the same part (ADR-112). A frame
+    # velocity reads one link; this is the whole subtree's momentum divided
+    # by its mass. Measured on the mg-legs machine over 500 randomised
+    # states at recovery speeds, the pelvis frame velocity differs from the
+    # true whole-body centre-of-mass velocity by 19% -- which is 9 mm of
+    # capture-point error at 400 mm/s against a 24.5 mm support margin. A
+    # balance reward that has to decide *must I step?* needs this one.
+    "centre_of_mass_velocity": {
+        "sensor": "mjSENS_SUBTREELINVEL",
+        "target": "component",
+        "objtype": "mjOBJ_BODY",
+        "dim": 3,
+        "suffixes": ("_x", "_y", "_z"),
+        "units": {None: ("mm/s", speed_mm_per_s)},
     },
 }
 
