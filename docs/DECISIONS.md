@@ -11033,11 +11033,51 @@ median), which is the check ADR-023 exists for: a source tree that passes
 proves nothing about a payload, and a new worker in the bundle is exactly the
 class of change that caught M0's dangling `bin/python`.
 
-**One defect found by measuring rather than by reading.** The first sweep
-showed a 5 s p90 at batch 32: a step spanning a termination waited out the
-whole worker deadline for frames the ended episode would never produce. An
-episode-boundary event, polled by the collector, turned that into 20 ms. It
-would have been invisible at the batch size the shell actually uses.
+**Two defects found by measuring rather than by reading**, and both are the
+same defect in two costumes: a `live_step` waiting out the full worker
+deadline for frames an ended episode will never produce.
+
+* The **latency sweep** showed a 5 s p90 at batch 32. An episode-boundary
+  event, polled by the collector rather than blocked on, turned that into
+  20 ms. Invisible at the batch size the shell actually uses.
+* Then the **shell probe** showed the pump frozen for exactly 5 s after the
+  first fall, which swallowed the next three pushes. The boundary event was
+  not enough: credit granted a moment before a new episode starts is dropped
+  by that episode, and the request that granted it was still waiting. An
+  episode **generation** counter, recorded before the credit is granted and
+  checked while waiting, closes the window the event does not.
+
+Neither would have been found by reading the code, and neither is visible
+from either side of the protocol — the engine answers, the shell asks, and
+the machine just stops moving. That is the argument for the probe in the
+verification list below being an end-to-end drive rather than a unit test.
+
+**Driven end to end, through the shell's own path**, against mg-legs and
+`stand5.cxpolicy`: the session opens with all 24 components mapped to
+objects, runs at real time (1.98 s simulated in 2.01 s of wall clock), pause
+stops the clock and resume starts it, and the policy commands all ten
+actuators. Pushed at 1.5 N from **-X**, from **+X** and from **-Y** it moves
+133–182 mm and stays up each time; at **8 N** — nine times the top of the
+declared band, and a question no recorded rollout of this project could ever
+have been asked — it goes over. Stopping puts the recorded pose back rather
+than leaving the mechanism displaced.
+
+**The shell side** is `mesh_agent/cadex_live.py`: a 30 Hz `bpy.app.timers`
+pump writing `obj.location` and `obj.rotation_quaternion` **directly** — not
+keyframes, because `cadex_animate` bakes F-Curves and a live session writing
+keys would fight them — with one request in flight on a worker thread and a
+small queue between them, exactly the shape `cadex_backend`'s drag pump
+already has. The timer draws the **newest** frame and drops the rest, which
+is what a real-time view of a real-time simulation means. It imports `bpy`,
+three standard-library modules and the client; a gate check bans `mujoco`,
+`CadexDynamics` and every transport.
+
+**The push has two spellings on purpose.** A modal drag in the viewport
+(following `cadex_pick`'s eyedropper, because the shell already has one way
+to point at the model) is how you find out what happens; eight compass
+buttons at an exactly known force are how you write it down, because a drag
+can never be repeated and an ADR needs a number. Both are aimed about
+**world +X** and say so, since ADR-107.
 
 **The latency lane needs a real project**, named by `CADEX_LIVE_PROJECT`, and
 skips without one. It cannot synthesise its input: a policy is an *asset* —

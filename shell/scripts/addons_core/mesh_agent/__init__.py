@@ -26,6 +26,7 @@ from bpy.app.handlers import persistent
 
 from . import agent as agent_module
 from . import cadex_backend as cadex_backend_module
+from . import cadex_live as cadex_live_module
 from . import cadex_pick as cadex_pick_module
 from . import cadex_terminal_pick as cadex_terminal_pick_module
 from . import cadex_training as cadex_training_module
@@ -240,6 +241,11 @@ def register():
     # before ADR-066 re-registered the node editor, this leaves
     # EDITOR_AVAILABLE False and everything else working.
     wiring_ui_module.register()
+    # ...and live mode, for the same reason and the same way:
+    # its panels name CADEX_LIVE, and an add-on loaded against
+    # a bundle built before ADR-108 would otherwise take the
+    # whole registration loop down with it.
+    cadex_live_module.register()
     bpy.app.handlers.save_pre.append(_save_pre_handler)
     bpy.app.handlers.save_post.append(_save_post_handler)
     bpy.app.handlers.load_post.append(_load_post_handler)
@@ -255,6 +261,7 @@ def unregister():
         bpy.app.handlers.load_post.remove(_load_post_handler)
     if _frame_change_handler in bpy.app.handlers.frame_change_post:
         bpy.app.handlers.frame_change_post.remove(_frame_change_handler)
+    cadex_live_module.unregister()
     wiring_ui_module.unregister()
     topbar_module.unregister()
     spaces.unregister()

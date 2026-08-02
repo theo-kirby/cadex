@@ -117,6 +117,10 @@ class _Session:
         # this episode will never spend reads it and gives up early.
         self._boundary = threading.Event()
         self._boundary.set()
+        #: Bumped once per episode. A ``step`` records it before granting
+        #: credit and stops waiting when it moves, which is what stops the
+        #: credit-drop below from stranding a request for a full deadline.
+        self._episode = 0
 
         self._push: dict[str, Any] | None = None
         self._step = 0
@@ -208,6 +212,7 @@ class _Session:
             self._wake.notify_all()
 
         frames: list[dict[str, Any]] = []
+        generation = self._episode
         if wanted:
             deadline = _now() + STEP_DEADLINE_SECONDS
             while len(frames) < wanted:
@@ -226,7 +231,16 @@ class _Session:
                     # are never coming turned a 21 ms batch into a 5 s one,
                     # which is the whole of why this is a poll rather than a
                     # single blocking get.
-                    if self._boundary.is_set():
+                    #
+                    # Both conditions are needed and the second was found by
+                    # measuring rather than by reading. `_boundary` covers
+                    # the hold; the *generation* covers the one-step window
+                    # where credit granted a moment ago has just been
+                    # dropped by the episode that replaced it. Without it a
+                    # push landing near a fall stalled the shell's pump for
+                    # a full 5 s deadline -- long enough to swallow the next
+                    # three pushes, and invisible from either side.
+                    if self._boundary.is_set() or self._episode != generation:
                         break
         # Whatever else arrived while we were assembling: a reset frame, or
         # the tail of a terminated episode. Dropping it would put a gap in
@@ -307,8 +321,10 @@ class _Session:
                     # Credit banked during a hold is dropped, not spent: the
                     # new episode starts at the shell's pace rather than
                     # sprinting through the queue that piled up while the
-                    # last one lay on the floor.
+                    # last one lay on the floor. Anybody waiting on that
+                    # credit is released by the generation bump beside it.
                     self._credit = 0
+                    self._episode += 1
                     seed = self._seed + self._reset_count
                     self._step = 0
                     self._time_s = 0.0

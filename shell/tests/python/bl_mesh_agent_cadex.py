@@ -2960,6 +2960,90 @@ def test_the_policy_outputs_panel_reads_a_rollout():
 
 
 
+def test_live_mode_is_wired_and_refuses_cleanly(live_root):
+    """Live mode reaches the engine, and says no politely when it must.
+
+    What it *cannot* test here is a live session: that plays a trained
+    policy, and a policy is an asset -- hours of stochastic GPU compute the
+    engine can verify but has never been able to produce (ADR-070,
+    ADR-084). A gate corpus cannot contain one. So what is checked is
+    everything either side of that: the panels exist on the Live editor, the
+    module reaches for nothing it must not, and a `live_open` against a
+    project with no rollout makes a real round trip to the engine and comes
+    back a **refusal rather than a failure** -- because a project nobody has
+    trained a policy for is a state, not an error (ADR-109).
+
+    That refusal is the load-bearing one. It is the path every user takes
+    the first time they open the editor.
+    """
+
+    print("test_live_mode_is_wired_and_refuses_cleanly")
+    from mesh_agent import cadex_live
+
+    check(cadex_live.EDITOR_AVAILABLE,
+          "live mode registered against the CADEX_LIVE editor")
+    for name in ("CADEX_LIVE_PT_session", "CADEX_LIVE_PT_push",
+                 "CADEX_LIVE_PT_actuators"):
+        cls = getattr(bpy.types, name, None)
+        check(cls is not None, "%s is registered" % name)
+        if cls is not None:
+            check(cls.bl_space_type == 'CADEX_LIVE',
+                  "%s draws in the Live editor" % name)
+
+    # The shell never learns about physics. The branch-wide form of this is
+    # `test_the_shell_never_learns_about_mujoco`; this one also bans the
+    # transports, because live mode is the first thing in the add-on with a
+    # thread of its own and a socket there would be a second protocol.
+    import ast as _ast
+
+    tree = _ast.parse(open(cadex_live.__file__, encoding="utf-8").read())
+    imported = set()
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.Import):
+            imported.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, _ast.ImportFrom) and node.module:
+            imported.add(node.module.split(".")[0])
+    for forbidden in ("mujoco", "CadexDynamics", "subprocess", "socket",
+                      "urllib", "http"):
+        check(forbidden not in imported, "live mode never imports %s" % forbidden)
+
+    scene = bpy.context.scene
+    scene[cadex_backend.ROOT_PROP] = live_root
+    try:
+        opened = cadex_backend.live_open(live_root, {"output": ""})
+        check(opened.get("ok") is True,
+              "live_open answers ok even with nothing to play")
+        check(opened.get("live") is False,
+              "...and live: false, because there is no rollout")
+        check(bool(opened.get("reason")),
+              "...with a reason a person can act on (%r)"
+              % (opened.get("reason"),))
+        # Every declared key is present on a refusal: the response spec is
+        # pinned per op, not per outcome, so a shell reading `components`
+        # off a refusal finds an empty list rather than a KeyError.
+        for key in ("components", "control_hz", "frames_per_second",
+                    "actuator_channels", "episode_seconds"):
+            check(key in opened, "a refusal still carries %r" % key)
+
+        stepped = cadex_backend.live_step(live_root, {"steps": 3})
+        check(stepped.get("ok") is True and stepped.get("live") is False,
+              "live_step with no session declines rather than failing")
+        check(stepped.get("frames") == [],
+              "...and hands back no frames")
+
+        closed = cadex_backend.live_close(live_root)
+        check(closed.get("ok") is True and closed.get("closed") is True,
+              "live_close is fine with nothing open")
+
+        ok, message = cadex_live.start(bpy.context)
+        check(ok is False, "the operator path refuses too")
+        check(cadex_live.session() is None,
+              "...and leaves no session behind (%r)" % (message,))
+        GATE["live"] = {"refused": str(message)[:80]}
+    finally:
+        scene.pop(cadex_backend.ROOT_PROP, None)
+
+
 def test_the_training_panel_tracks_a_run(training_root):
     """The shell's view of a run happening on another machine (M9, ADR-098).
 
@@ -3257,6 +3341,7 @@ def main():
     isolate_root = tempfile.mkdtemp(prefix="mesh-cadex-isolate-")
     readers_root = tempfile.mkdtemp(prefix="mesh-cadex-readers-")
     training_root = tempfile.mkdtemp(prefix="mesh-cadex-training-")
+    live_root = tempfile.mkdtemp(prefix="mesh-cadex-live-")
     try:
         test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
@@ -3307,6 +3392,7 @@ def main():
         test_the_collision_overlay_is_isolated(isolate_root)
         test_both_collision_readers_agree(readers_root)
         test_the_training_panel_tracks_a_run(training_root)
+        test_live_mode_is_wired_and_refuses_cleanly(live_root)
     finally:
         try:
             cadex_backend.close_all()
@@ -3326,7 +3412,7 @@ def main():
                      drop_root, rederive_root, mirror_root, defaults_root,
                      refused_root, rewrite_root, repair_root, stdout_root,
                      long_root, guard_root, history_root, prune_root,
-                     assembly_root, shared_root, sim_root,
+                     assembly_root, shared_root, sim_root, live_root,
                      drag_root, supersede_root, skip_root,
                      preview_root, fallback_root, collision_root,
                      shapes_root, isolate_root, readers_root):

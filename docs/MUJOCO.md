@@ -2689,3 +2689,38 @@ and the effective polygon is well under the geometric half-width — so
 **split survival by shove azimuth**, or an aggregate number will average a
 mechanism limit together with a learning result and report neither.
 
+
+…and the split is taken **in the machine's frame**, which is the thing that
+was wrong for four runs (ADR-107). `azimuth_degrees` is about **world +X**;
+the engine has no concept of which way a mechanism faces and never claims
+one. Work out which world axis your machine's forward is — from where its
+feet and toes sit — before declaring an arc, and make the instrument assert
+it rather than assume it. mg-legs faces **+Y**, so `[-60, 60]` about +X is a
+*lateral* band and the column headed `lat` held the *sagittal* pushes.
+
+## 8. Live mode: watching it, rather than reading about it
+
+**ADR-109.** Everything above produces a *recording*: six seconds, one drawn
+push, read back through summary statistics. That instrument is what ADR-107
+records failing twice in one day — a frame 90° out, and a foot that lifts
+5.9 mm reported as never leaving the ground. You cannot push a recording from
+the other side, cannot push it harder, and cannot push it twice.
+
+So: `live_open`, `live_step`, `live_close`, three read ops. A resident
+`--safe-mode` worker runs `evaluate_episode` — **the same one**, no fifth
+loop — with the accepted rollout's own MJCF, task and weights, all three
+re-checked by digest. The shell drives time (`live_step` grants N control
+steps and gets N frames), pushes it with the mouse, and draws the poses
+directly. Nothing is written: no trace, no store, no digest. A live session
+is a thing to watch; if it were reproducible it would be a rollout.
+
+It costs almost nothing, which is why it was worth building: **344 µs per
+control step** against a 10 ms interval — 29× real time — and a measured
+median `live_step` round trip of **1.72 ms** for the 3-step batch a 30 Hz
+pump sends, against a 33 ms bar.
+
+**Use it before you dispatch.** The cheapest thing in §7's order that is not
+in §7's order: open the last policy that trained, push it from each side by a
+known number of newtons, and find out what it actually does. Nothing else in
+this document answers "does it recover" as directly, and a `capability.py`
+sweep costs minutes where this costs a click.

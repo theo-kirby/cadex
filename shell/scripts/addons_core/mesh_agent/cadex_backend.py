@@ -2129,6 +2129,38 @@ def on_file_changed(scene=None):
                 os.path.basename(current), where))
 
 
+# -- live mode (ADR-109) -----------------------------------------------------
+
+# Three thin passes to the client, deliberately thin. Everything that makes
+# live mode a session -- the clock, the frame queue, the poses, the push --
+# is in `cadex_live`, and everything physical is on the far side of the
+# process boundary. What is left here is that live mode reaches the engine
+# through the same client, the same registry and the same per-project child
+# as every other op, rather than through a second route.
+
+
+def live_open(root, args):
+    """Start a live session on the accepted rollout. Never raises for the
+    ordinary refusals: a project with no rollout answers `live: false`."""
+    return _client(root).request("live_open", dict(args or {}))
+
+
+def live_step(root, args):
+    """Advance the running episode and take the frames it produced.
+
+    Called from `cadex_live`'s pump thread, one at a time. It queues behind
+    an in-flight modeling request rather than refusing one, which is what a
+    read op does and what keeps watching the mechanism compatible with
+    changing it.
+    """
+    return _client(root).request("live_step", dict(args or {}))
+
+
+def live_close(root):
+    """End the session. Idempotent, so every teardown path may call it."""
+    return _client(root).request("live_close", {})
+
+
 def register():
     pass
 
