@@ -99,6 +99,46 @@ def _pair(row):
 # the classes
 
 
+def _solder_toggled(socket, _context):
+    """A solder toggle is an edit, and nothing else in Blender says so.
+
+    ``NodeTree.update()`` fires on topology — a link, a node, a socket added
+    or removed — and never on a property written into an existing socket. So
+    without this the 150 ms debounce never ran, no ``set_params(nets=...)``
+    was ever sent, and the checkbox was picked up only incidentally, by the
+    next edit that *did* change the topology (ADR-113).
+
+    The mirror is the other half. A terminal is two sockets only because
+    Blender refuses an input→input link, and which of the pair the sidebar
+    draws is an accident of which end of the wire this board is; keeping them
+    equal is what lets :func:`_solder_for` read either one.
+    """
+
+    if _suspend[0]:
+        return
+    tree = socket.id_data
+    if getattr(tree, "bl_idname", "") != CadexWiringTree.bl_idname:
+        return
+    node = getattr(socket, "node", None)
+    terminal = str(getattr(socket, "terminal", "") or "")
+    value = bool(socket.soldered)
+    if node is not None and terminal:
+        _suspend[0] = True
+        try:
+            for other in list(node.inputs) + list(node.outputs):
+                if other == socket:
+                    continue
+                if str(getattr(other, "terminal", "") or "") != terminal:
+                    continue
+                if bool(other.soldered) != value:
+                    other.soldered = value
+        finally:
+            _suspend[0] = False
+    if not getattr(tree, "cadex_editable", False):
+        return
+    _mark_dirty(tree)
+
+
 class CadexTerminalSocket(bpy.types.NodeSocket):
     """One terminal, on one side of one board."""
 
@@ -116,6 +156,7 @@ class CadexTerminalSocket(bpy.types.NodeSocket):
         name="Soldered",
         description="Whether the connection landing here carries a joint",
         default=False,
+        update=_solder_toggled,
     )
 
     def draw(self, _context, layout, _node, text):
@@ -188,6 +229,11 @@ class CadexWiringTree(bpy.types.NodeTree):
     cadex_editable: bpy.props.BoolProperty(default=False)
     cadex_source: bpy.props.StringProperty(default="")
     cadex_pending: bpy.props.BoolProperty(default=False)
+    #: Set when the last sync could not draw every row the engine sent, so
+    #: the canvas is not a faithful projection and must not be pushed back:
+    #: a push replaces the declared table wholesale (ADR-065), and a table
+    #: built from a canvas missing links is a wire deletion (ADR-115).
+    cadex_stale: bpy.props.BoolProperty(default=False)
     cadex_error: bpy.props.StringProperty(default="")
     #: The row table, as JSON. Links hold no properties, so gauge, solder,
     #: enabled and the row *name* have to live beside the topology.
@@ -269,17 +315,22 @@ def rows_from_tree(tree):
             continue
         seen.add(key)
         previous = known.get(key, {})
-        rows.append(
-            {
-                "name": str(previous.get("name") or row_name(a, b)),
-                "a": a,
-                "b": b,
-                "gauge_mm": float(previous.get("gauge_mm")
-                                  or tree.new_gauge_mm),
-                "solder": bool(_solder_for(tree, a, b, previous)),
-                "enabled": True,
-            }
-        )
+        row = {
+            "name": str(previous.get("name") or row_name(a, b)),
+            "a": a,
+            "b": b,
+            "gauge_mm": float(previous.get("gauge_mm")
+                              or tree.new_gauge_mm),
+            "solder": bool(_solder_for(tree, a, b, previous)),
+            "enabled": True,
+        }
+        if not previous.get("editable", True):
+            # A cable or bundle the script built outside nets(...). It draws
+            # like any other link and `declared_rows` keeps it out of the
+            # table that gets pushed — the marker is what tells them apart.
+            row["editable"] = False
+            row["kind"] = str(previous.get("kind") or "")
+        rows.append(row)
     # A disabled row has no link on the canvas — there is nothing to draw for
     # a wire that is not built — so it would otherwise be deleted by the act
     # of looking at it.
@@ -287,6 +338,18 @@ def rows_from_tree(tree):
         if _pair(row) not in seen:
             rows.append(dict(row))
     return _uniquely_named(rows)
+
+
+def declared_rows(rows):
+    """The half of the table ``set_params(nets=...)`` is allowed to carry.
+
+    The call replaces the declared list wholesale, and a row the script wrote
+    by hand is not in that list — sending one back would either be refused
+    (``canonical_rows`` takes no ``editable`` key) or, worse, quietly promote
+    a bundle conductor into a declared wire.
+    """
+
+    return [dict(row) for row in rows if row.get("editable", True)]
 
 
 def _uniquely_named(rows):
@@ -304,12 +367,25 @@ def _uniquely_named(rows):
 
 
 def _solder_for(tree, a, b, previous):
-    """Solder follows the sockets, which is where the user toggles it."""
+    """Solder follows the sockets, which is where the user toggles it.
 
-    for address in (a, b):
-        socket = _socket_at(tree, address)
-        if socket is not None and socket.soldered:
-            return True
+    Authoritative, not monotone: if either end resolves to a socket, those
+    sockets *are* the answer, so unticking takes the joint away exactly as
+    ticking puts one there. It used to fall through to the stored row
+    whenever the sockets read False, which meant solder could only ever be
+    turned on (ADR-113). The stored value is the fallback for one case only —
+    a row with no sockets on the canvas at all, which is a disabled row, and
+    there is nothing to read from it.
+
+    A row carries one flag and a connection has two ends, so the rule is
+    *any*: tick either end and the row is soldered; it goes away when both
+    ends are clear. That is the same rule ``_derived_wires`` applies to a
+    script's own ``part.solder`` calls, so the two tables agree.
+    """
+
+    sockets = _sockets_at(tree, a) + _sockets_at(tree, b)
+    if sockets:
+        return any(bool(socket.soldered) for socket in sockets)
     return bool(previous.get("solder", False))
 
 
@@ -319,17 +395,6 @@ def _address(node, socket):
     if not port or not terminal:
         return ""
     return "{}.{}".format(port, terminal)
-
-
-def _socket_at(tree, address):
-    port, _, terminal = str(address).partition(".")
-    for node in tree.nodes:
-        if str(getattr(node, "port", "") or "") != port:
-            continue
-        for socket in list(node.inputs) + list(node.outputs):
-            if str(getattr(socket, "terminal", "") or "") == terminal:
-                return socket
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -409,7 +474,14 @@ def apply_state(tree, state, root=""):
         wanted_ports = []
         for index, component in enumerate(components):
             port = str(component.get("port") or "")
-            if not port:
+            if not port or port in wanted_ports:
+                # The engine names one node per terminal set and those names
+                # are distinct (ADR-115). A repeat would mean two sets sharing
+                # a node, and `_reconcile_sockets` would hand the node the
+                # *last* set's terminals — silently unaddressing the first
+                # set's, which is how three declared wires became no links at
+                # all. Cheap to assert here, and the failure it prevents is
+                # invisible.
                 continue
             wanted_ports.append(port)
             node = _find_node(tree, port)
@@ -431,12 +503,14 @@ def apply_state(tree, state, root=""):
             tree.nodes.remove(node)
 
         tree.links.clear()
+        undrawn = []
         for row in rows:
             if not row.get("enabled", True):
                 continue
             start = _socket_at_side(tree, str(row.get("a") or ""), outputs=True)
             end = _socket_at_side(tree, str(row.get("b") or ""), outputs=False)
             if start is None or end is None:
+                undrawn.append(str(row.get("name") or "?"))
                 continue
             tree.links.new(start, end)
             if row.get("solder"):
@@ -445,6 +519,20 @@ def apply_state(tree, state, root=""):
                         socket.soldered = True
         _store_rows(tree, rows)
         tree.cadex_revision = str(state.get("revision") or "")
+        # A row whose endpoint resolves to no socket is a hole in the
+        # projection, and the canvas is only safe to push while it is a whole
+        # one. Say so rather than drawing a subset that looks complete.
+        tree.cadex_stale = bool(undrawn)
+        if undrawn:
+            tree.cadex_error = (
+                "{:d} connection(s) have no terminal to attach to on the "
+                "canvas ({}); editing is held until the model and the "
+                "harness agree.".format(len(undrawn), ", ".join(undrawn[:4])))
+        # The sync *is* the settling: whatever a push was waiting for, what
+        # is on screen now came from the engine. Without this a push that
+        # never reported back left "applying…" in the header for the life of
+        # the file, because the flag saves into the .blend (ADR-115).
+        tree.cadex_pending = False
         return True
     finally:
         _suspend[0] = False
@@ -587,6 +675,15 @@ def _mark_dirty(tree):
 def _push_timer():
     """The debounce. Runs outside any operator, so it reports through model."""
 
+    if _suspend[0]:
+        # A sync is rebuilding the canvas right now: `apply_state` clears the
+        # links and re-draws them one at a time, so what is on screen is part
+        # of the engine's answer, and pushing it would delete the rows it has
+        # not drawn yet — a stored row list replaces the declared table
+        # wholesale (ADR-065), so a half-drawn canvas is a wire deletion.
+        # `NodeTree.update()` has always honoured this flag; the push did not
+        # (ADR-113). Stay dirty and come back.
+        return _DEBOUNCE_SECONDS
     _dirty.clear()
     scene = getattr(bpy.context, "scene", None)
     if scene is None:
@@ -621,11 +718,23 @@ def push(scene):
             "This script predates nets(...), so its wiring is read-only. "
             "Ask the assistant to declare it with nets(ports=..., wires=...).")
         return False, tree.cadex_error
+    if tree.cadex_stale:
+        # The canvas is missing links the engine sent, so the table it
+        # describes is smaller than the one that exists. Pushing it would
+        # delete the difference.
+        return False, (tree.cadex_error
+                       or "The canvas does not match the model yet.")
     rows = rows_from_tree(tree)
     if rows == stored_rows(tree):
         return True, "No change."
+    payload = declared_rows(rows)
+    if payload == declared_rows(stored_rows(tree)):
+        # Only an undeclared row moved — a bundle link dragged or cut. There
+        # is nothing to send, and the next sync puts it back where the script
+        # says it goes.
+        return True, "No change."
     tree.cadex_pending = True
-    started = cadex_backend.begin_set_nets(scene, rows)
+    started = cadex_backend.begin_set_nets(scene, payload)
     if isinstance(started, tuple):
         tree.cadex_pending = False
         ok, report = started

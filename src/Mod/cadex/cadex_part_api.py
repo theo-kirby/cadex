@@ -1431,6 +1431,12 @@ class PartDomainAPI:
         it goes.  ``gauge_mm`` is the outer diameter of the insulated
         conductor, and the result is one ``solid``.
 
+        **Two or more wires are a harness, and a harness is declared with**
+        ``nets(ports=..., wires=...)`` **and built from its rows** (ADR-065).
+        Calling this directly is right for a one-off; a set of bare calls is
+        read-only in the wiring editor, because nothing outside the script
+        text names a row for the user to edit.
+
         Each end is a **terminal** from ``part.terminals``/``mesh.terminals``,
         or a literal ``(point, direction)`` pair — interchangeably, at either
         end.  Prefer the terminal: it is named, and it is derived from the
@@ -1462,13 +1468,35 @@ class PartDomainAPI:
         direction before the search starts — a port is *on* a surface, so its
         own neighbourhood is inside something by construction.
 
+        **Name everything the run passes over, including the wires already
+        routed.**  An empty ``avoid`` is an empty lattice: the route is then a
+        straight line, and ``slack`` sags it through whatever happens to be
+        under it — most often the two boards the wire lands on.  Feeding each
+        finished cable into the next one's ``avoid`` is what stops a set of
+        wires between the same two components sharing one corridor.
+
         **A mesh obstacle is tested by its bounding box, not its triangles.**
         Accurate enough for the roughly box-shaped modules a harness connects,
         and wrong for anything concave or enclosing: pass such a body as the
         ``part`` solid it is.  A frame handed over as a mesh has a bounding
         box containing the whole model and would block every route.
 
+        That box is also why a component **cannot avoid itself as a mesh**: a
+        pad on its top face is inside its own bounding box, so the route has
+        nowhere to start and refuses with ``blocked`` — "no clear corridor
+        connects the two ports".  Convert it with ``part.shape_from_mesh``
+        (only the surface is rasterised, so its own pad stays reachable) when
+        the import is watertight enough to convert, and otherwise keep it out
+        of ``avoid`` and hold the wire off it with ``slack`` near 1.0.
+
         ``slack`` (at least 1.0) is how much longer than taut the wire hangs.
+        It is a *sag*, applied downward along the run, so on a short hop
+        between two boards the default 1.05 is already several millimetres of
+        drop: state ``1.01`` there rather than inheriting a droop the run has
+        no room for.  Not ``1.0``, when the route comes back straight — a
+        sweep along a perfectly collinear spine fails in the kernel
+        (``BRepOffsetAPI_MakePipeShell::MakeSolid``), and the hundredth of a
+        millimetre of sag is what keeps the spine a curve.
         ``min_bend_radius_mm`` rejects a route that kinks tighter than the
         conductor tolerates, rather than modelling an impossible wire.
         ``cell_mm`` overrides the search resolution, which otherwise follows
@@ -1589,7 +1617,14 @@ class PartDomainAPI:
         to the bundle as a whole: the route is searched at the bundle's outer
         diameter, so the corridor clears the whole lay rather than one wire.
         ``min_bend_radius_mm`` is checked against each conductor's own path,
-        where the lay's curvature and the route's add up.
+        where the lay's curvature and the route's add up.  Read ``part.cable``
+        on what belongs in ``avoid`` and on ``slack`` over a short hop: the
+        same rules apply here, per bundle rather than per conductor.
+
+        A bundle's *membership* is a script decision and never a table one, so
+        ``nets(...)`` does not own it — but the wires it lays are still rows
+        the editor draws, and a project with a bundle in it declares the rest
+        of its harness with ``nets`` exactly as it would otherwise.
 
         Like ``part.cable`` it refuses an obstacle built with ``mesh.decimate``,
         whose result is not reproducible (ADR-016).

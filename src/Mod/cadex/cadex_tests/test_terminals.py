@@ -568,9 +568,17 @@ def test_route_path_honours_two_different_per_end_standoffs() -> None:
     # The run still terminates exactly on its two ports...
     assert points[0] == (0.0, 0.0, 0.0)
     assert points[-1] == (40.0, 0.0, 0.0)
-    # ...and the two anchors are the two stated distances in, not one.
-    assert points[1][0] == pytest.approx(6.0)
-    assert points[-2][0] == pytest.approx(39.0)
+    # ...and the two anchors are the two stated distances in, not one. Each
+    # stub arrives as its own collinear knots (ADR-114), so the anchors are
+    # that many waypoints in from either end rather than one.
+    import CadexRouting
+
+    stub = CadexRouting._STUB_SEGMENTS
+    assert points[stub][0] == pytest.approx(6.0)
+    assert points[-(stub + 1)][0] == pytest.approx(39.0)
+    # The stand-offs differ, so the knots are spaced differently at each end.
+    assert points[1][0] == pytest.approx(6.0 / stub)
+    assert points[-2][0] == pytest.approx(40.0 - 1.0 / stub)
 
 
 def test_the_standoff_floor_lifts_the_anchor_clear_of_a_board() -> None:

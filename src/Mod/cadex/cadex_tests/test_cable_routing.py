@@ -190,8 +190,45 @@ def test_the_standoff_stub_is_exempt_from_the_ports_own_material() -> None:
 
     assert points[0] == (0.0, 0.0, 0.0)
     assert points[-1] == (40.0, 0.0, 0.0)
-    # The first interior waypoint is the standoff anchor, along +X.
-    assert points[1][0] == pytest.approx(2.0)
+    # The stand-off anchor, along +X -- reached through the stub's own knots,
+    # which is why it is not waypoint 1 (ADR-114).
+    assert points[CadexRouting._STUB_SEGMENTS][0] == pytest.approx(2.0)
+
+
+def test_each_standoff_stub_arrives_as_collinear_knots() -> None:
+    """What keeps a wire straight where its joint holds it (ADR-114).
+
+    These waypoints are interpolated, not connected: a spline through a
+    one-segment stub is tangent to it at the port and free to bow immediately
+    after, which put the wire through the side of its own solder. Knots along
+    the stub are what bound it.
+    """
+
+    points = _route(standoff_mm=2.0, slack=1.0)
+    knots = points[: CadexRouting._STUB_SEGMENTS + 1]
+
+    assert len(knots) == 4
+    # Evenly spaced along the port's own direction, anchor included.
+    for index, point in enumerate(knots):
+        assert point == pytest.approx(
+            (2.0 * index / CadexRouting._STUB_SEGMENTS, 0.0, 0.0), abs=1.0e-9
+        )
+    # And the same at the far end, arriving rather than leaving.
+    tail = points[-(CadexRouting._STUB_SEGMENTS + 1):]
+    for index, point in enumerate(reversed(tail)):
+        assert point == pytest.approx(
+            (40.0 - 2.0 * index / CadexRouting._STUB_SEGMENTS, 0.0, 0.0), abs=1.0e-9
+        )
+
+
+def test_a_port_with_no_standoff_still_yields_distinct_waypoints() -> None:
+    """The stub collapses rather than repeating a point three times."""
+
+    points = _route(standoff_mm=0.0, slack=1.0)
+
+    assert points[0] == (0.0, 0.0, 0.0)
+    for index in range(len(points) - 1):
+        assert math.dist(points[index], points[index + 1]) > 1.0e-6
 
 
 def test_path_length_grows_monotonically_with_slack() -> None:

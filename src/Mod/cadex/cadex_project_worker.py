@@ -378,6 +378,15 @@ def _wiring_registry(nets: Any, result: dict[str, Any]) -> list[dict[str, Any]]:
                 "output": output,
                 "domain": str((component or {}).get("domain") or ""),
                 "kind": str((entry.get("layout") or {}).get("kind") or ""),
+                # The join fields, and the reason the derived view can name a
+                # node at all: a cable's endpoint payload carries exactly
+                # ``component`` and ``layout``, and matching them is how
+                # ``CadexInspection`` turns an endpoint into "<port>.<terminal>"
+                # without importing this worker. Dropping them cost every
+                # derived wire (ADR-113). ``_wiring_components`` strips both
+                # again before answering, so no response grows.
+                "component": component,
+                "layout": entry.get("layout"),
                 "terminals": list(entry.get("terminals") or []),
             }
         )

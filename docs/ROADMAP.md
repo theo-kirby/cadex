@@ -1309,9 +1309,29 @@ What makes them experimental, and what would settle it:
   asserts "Wiring" is on it and the four stock node trees are not, the graph
   survives a `.blend` round trip with its layout and socket identities
   intact, and `pixi run gate` passes against the bundled engine. The one
-  thing no test covers is dragging a link with a mouse. Still not built: `part.bundle` as an
+  thing no test covers is dragging a link with a mouse — **done by hand on
+  `wiring-test-2` on 2026-08-02 and it works**: deleting the SIG link on the
+  canvas re-executed the project and re-accepted it with that wire and its
+  joints gone. Still no automated coverage of the gesture itself.
+  **The first real session found two of it broken anyway, both fixed by
+  ADR-113 (2026-08-02):** the published registry dropped the two fields the
+  endpoint join is made of, so a script predating `nets()` drew every board
+  and not one wire; and the solder checkbox notified nobody, because
+  `NodeTree.update()` fires on topology and never on a property written into
+  a socket, so it could neither be pushed nor turned off. The suite now
+  drives the real producer rather than a hand-built registry, which is what
+  the fixture hid. **The second session found the third, fixed by ADR-115
+  (2026-08-02):** a node is one *terminal set*, and a board with two headers
+  is two sets that shared the component's name, so the canvas gave one set's
+  sockets to the other and every declared wire lost an end — two boards, no
+  links, and `applying…` stuck in the header for the life of the `.blend`.
+  Node labels are now unique with declared port names reserved first; the
+  canvas refuses to be pushed while it is not a whole projection; and a
+  cable or bundle the script built outside the table is drawn read-only
+  rather than left off the picture. Still not built: `part.bundle` as an
   editable graph concept (deferred by decision — changing a bundle's
-  membership is a script edit); writing a terminal *into* the script from the
+  membership is a script edit; since ADR-115 its conductors at least *draw*,
+  marked read-only); writing a terminal *into* the script from the
   pick, rather than into the chat turn (Phase 10b, still open — ADR-067
   supplies the measurement, not the write); and a per-output composed
   placement matrix in the wiring scope, without which a pick on a transformed
@@ -1320,23 +1340,37 @@ What makes them experimental, and what would settle it:
 - [x] **A wire ends in mid-air** — **settled by ADR-063 (2026-08-01), and the
   joint stopped reading as a cone in ADR-064 (2026-08-01).** `part.solder`
   builds the joint a terminal implies, with a concave meniscus that flattens
-  into a short collar around the wire. Still not built: colouring solder
-  differently from wire, which needs an appearance vocabulary the part domain
-  does not have, and rounding the underside cap to a dome (decided: it stays
-  a cone).
-- **A joint and its wire share a sliver.** Since ADR-074 the wire leaves the
-  terminal on the axis and runs straight for the whole length the joint grips
-  — measured drift 0.031 mm at mid-barrel, against 0.093 mm before — so what
-  is left is 0.038 mm³ on the probe plate, 5% of what an unbored joint would
-  share. Structural, and now small: `part.solder` takes a terminal, not a
-  wire, and a joint must build whether or not a cable was routed to it.
+  into a short collar around the wire — and, since ADR-114 (2026-08-02), a
+  crown that rounds that collar over onto the wire rather than stopping dead
+  across it in a flat annulus. Still not built: colouring solder differently
+  from wire, which needs an appearance vocabulary the part domain does not
+  have, and rounding the underside cap to a dome (decided: it stays a cone —
+  ADR-114 rounded the *top*, which is the end a render shows).
+- [x] **A joint and its wire share a sliver** — **settled by ADR-114
+  (2026-08-02).** ADR-074 pointed the wire out along the axis and floored the
+  stand-off past the joint, which left 0.038 mm³ shared on the probe plate;
+  what it did not do is make the *interpolated* wire straight, because a
+  spline through a one-segment stub is tangent to it only at the port. Each
+  stub is now written as collinear knots: drift through the joint fell from
+  0.041 mm to 0.001 mm on the probe plate and from 0.20 mm to 0.013 mm on
+  `wiring-test-2`, and the shared sliver from 0.038 mm³ to 3.5e-6 — with five
+  of that project's seven joints no longer pierced by their own wire at all.
+  The joint is still built from the terminal and never from the wire, so this
+  stays a bound rather than an equality.
 - **Terminals cannot ride a non-uniform placement.** Refused rather than
   silently skewed (ADR-062). A pad has no radius and no depth, so a
   relaxation carrying only its point and normal is available and unbuilt; it
   is what keeps `wcv8`'s battery pair on literal ports.
 - **Mesh obstacles are bounding boxes.** Fine for boards and motors, wrong
   for anything concave; the workaround is to pass such a body as a part
-  solid.
+  solid. Two consequences measured on `wiring-test-2.cadex` (ADR-113):
+  **a component cannot avoid itself as a mesh** — its own pad is inside its
+  own box, so the wire is refused at its own port with `blocked` — and the
+  workaround needs an import that converts, which the ESP32's does not:
+  **`shape_from_mesh` has no output type for a multi-shell import** (42
+  shells there), so `solid=True` refuses and `solid=False` fails the
+  output-type check with a compound. That board cannot be an obstacle at all
+  today, and its wires clear it on stand-off alone.
 - **Cost is not yet interactive.** ~0.75 s per cable on the drone, and a
   slider drag pays full price because moving a port invalidates the memo.
   Bundles help rather than hurt: the drone's 22 conductors rebuild in 17.0 s

@@ -34,6 +34,7 @@ import tempfile
 
 import pytest
 
+import CadexRouting
 import CadexSolder
 from CadexSolder import SolderError, joint_volume, solder_specs
 from CadexTerminals import apply_placement, declared_layout, resolve_terminals
@@ -77,11 +78,14 @@ PAD = {
 }
 
 #: What the fixtures derive, written down once: a 0.4 mm lead in a 1.0 mm bore
-#: rings a 2.0 mm pad, so the collar stands a tenth of the lead's radius clear
-#: of it and the quarter-round meniscus spans the rest.
+#: rings a 2.0 mm pad, so the collar stands a quarter of the lead's radius
+#: clear of it and the quarter-round meniscus spans the rest.
 LEAD, BORE, PAD_R = 0.2, 0.5, 1.0
-COLLAR = 0.22
-SPAN = PAD_R - COLLAR  # 0.78: the default fillet, and its floor
+COLLAR = 0.25
+SPAN = PAD_R - COLLAR  # 0.75: the default fillet, and its floor
+#: The crown's radius is the collar's stand-off, so it needs no constant of
+#: its own -- but it is what the joint's top now rounds over on (ADR-114).
+CROWN = COLLAR - LEAD
 
 
 def _roles(specs):
@@ -163,13 +167,15 @@ def test_a_hole_joint_is_one_closed_loop_from_the_cap_to_the_collar() -> None:
         "entry_annulus",
         "meniscus",
         "collar",
-        "collar_rim",
+        "crown",
         "lead",
         "lead_end",
         "spine",
     ]
-    # One arc and nine lines: there is no fuse and no cut left to get wrong.
-    assert [segment["kind"] for segment in specs["profile"]].count("arc") == 1
+    # Two arcs and eight lines: there is no fuse and no cut left to get wrong.
+    # The second arc is the crown, which replaced the flat annulus the collar
+    # used to cross to the lead along (ADR-114).
+    assert [segment["kind"] for segment in specs["profile"]].count("arc") == 2
     # Consecutive segments share bit-identical endpoints, so Part.Wire orders
     # the edges rather than sewing them, and isClosed() is exact.
     for index, segment in enumerate(specs["profile"]):
@@ -356,9 +362,10 @@ def test_the_arc_climbs_without_dipping_below_the_face_or_passing_the_pad() -> N
 def test_the_collar_hugs_the_lead_and_is_half_the_fillet_tall() -> None:
     specs = solder_specs(HOLE, gauge_mm=0.4)
 
-    # A tenth of the lead's radius clear of it: subtle, and never a knife edge
-    # the way a cone tapering to exactly the lead radius is.
-    assert specs["collar_radius"] == pytest.approx(1.1 * specs["lead_radius"])
+    # A quarter of the lead's radius clear of it: subtle, never a knife edge
+    # the way a cone tapering to exactly the lead radius is, and wide enough
+    # that the crown rounding over it is solder rather than a bright ring.
+    assert specs["collar_radius"] == pytest.approx(1.25 * specs["lead_radius"])
     assert specs["collar_radius"] == pytest.approx(COLLAR)
     assert specs["collar_height"] == pytest.approx(0.5 * specs["fillet_height"])
     collar = _segment(specs, "collar")
@@ -371,6 +378,59 @@ def test_the_collar_hugs_the_lead_and_is_half_the_fillet_tall() -> None:
     assert tight["lead_radius"] < tight["collar_radius"] < tight["pad_radius"]
 
 
+def test_the_crown_rounds_the_collar_onto_the_lead_with_no_flat_ring() -> None:
+    """The joint closes onto the wire instead of stopping across it (ADR-114).
+
+    The collar used to cross to the lead along a flat annulus — a washer of
+    solder presenting a hard bright ring to every render, and a square edge
+    for a wire leaving at any angle to poke through. Nothing in the outline
+    may run horizontally between the collar and the lead any more.
+    """
+
+    for metrics, gauge in ((HOLE, 0.4), (PAD, 0.6)):
+        specs = solder_specs(metrics, gauge_mm=gauge)
+        crown = _segment(specs, "crown")
+        lead, collar = specs["lead_radius"], specs["collar_radius"]
+
+        assert crown["kind"] == "arc"
+        assert specs["crown_height"] == pytest.approx(collar - lead)
+        # It leaves the collar's wall where the collar ends...
+        collar_end = _segment(specs, "collar")["end"]
+        assert crown["start"] == pytest.approx(collar_end)
+        # ...and lands on the lead, a crown's height higher.
+        assert crown["end"] == pytest.approx([lead, collar_end[1] + (collar - lead)])
+        # Tangent to that wall where it leaves it: the centre is level with
+        # the start, which is what makes the surface flow rather than crease.
+        assert crown["centre"] == pytest.approx([lead, collar_end[1]])
+        assert crown["radius"] == pytest.approx(collar - lead)
+
+        # No horizontal run anywhere above the board: the ring is gone.
+        face_z = specs["depth"]
+        for segment in specs["profile"]:
+            if segment["kind"] != "line":
+                continue
+            start, end = segment["start"], segment["end"]
+            if min(start[1], end[1]) < face_z + 1.0e-12:
+                continue
+            assert start[1] != end[1], segment["role"]
+
+
+def test_the_crown_bulges_outward_over_the_whole_quarter() -> None:
+    """Convex, and outside the lead the whole way: it cannot pinch the wire."""
+
+    specs = solder_specs(HOLE, gauge_mm=0.4)
+    crown = _segment(specs, "crown")
+    lead = specs["lead_radius"]
+
+    for point in _points(crown, samples=32):
+        assert point[0] >= lead - 1.0e-12
+        assert point[1] >= crown["start"][1] - 1.0e-12
+    # The bulge is on the outside of the chord, which is what convex means
+    # here: the mid-arc point sits further from the axis than the chord does.
+    chord_r = 0.5 * (crown["start"][0] + crown["end"][0])
+    assert crown["through"][0] > chord_r
+
+
 def test_the_lead_run_is_the_meniscus_and_the_collar_together() -> None:
     """What ``part.cable`` has to leave straight for a joint to fit (ADR-074).
 
@@ -381,14 +441,17 @@ def test_the_lead_run_is_the_meniscus_and_the_collar_together() -> None:
     for metrics, gauge in ((HOLE, 0.4), (PAD, 0.6), (HOLE, 0.8)):
         specs = solder_specs(metrics, gauge_mm=gauge)
         assert CadexSolder.lead_run_mm(metrics, gauge) == pytest.approx(
-            specs["fillet_height"] + specs["collar_height"]
+            specs["fillet_height"]
+            + specs["collar_height"]
+            + specs["crown_height"]
         )
 
     # And it is the height the joint actually reaches above the entry face,
-    # which is the property the stand-off floor is really about.
+    # which is the property the stand-off floor is really about. The crown is
+    # part of that reach: it is the last thing holding the lead (ADR-114).
     specs = solder_specs(HOLE, gauge_mm=0.4)
-    collar_top = _segment(specs, "collar")["end"][1]
-    assert collar_top - specs["depth"] == pytest.approx(
+    crest = _segment(specs, "crown")["end"][1]
+    assert crest - specs["depth"] == pytest.approx(
         CadexSolder.lead_run_mm(HOLE, 0.4)
     )
 
@@ -438,7 +501,7 @@ def test_a_pad_joint_is_five_segments_with_no_cap_and_no_bore() -> None:
     specs = solder_specs(PAD, gauge_mm=0.4)
 
     assert specs["kind"] == "pad"
-    assert _roles(specs) == ["pad_face", "meniscus", "collar", "collar_rim", "lead"]
+    assert _roles(specs) == ["pad_face", "meniscus", "collar", "crown", "lead"]
     assert specs["bore_radius"] is None
     assert specs["depth"] == 0.0
     # No lead end to cover: the wire lands on the pad, it does not pass it.
@@ -572,7 +635,7 @@ def test_the_fillet_is_a_quarter_round_unless_it_is_stated() -> None:
     assert specs["fillet_height"] == pytest.approx(
         specs["pad_radius"] - specs["collar_radius"]
     )
-    assert specs["fillet_height"] == pytest.approx(0.78)
+    assert specs["fillet_height"] == pytest.approx(SPAN)
     # An override may only make the meniscus *taller*: below the default the
     # arc would undercut the board, which is its own refusal below.
     assert solder_specs(HOLE, gauge_mm=0.4, fillet_mm=1.25)[
@@ -635,33 +698,40 @@ def test_a_hole_joints_volume_is_the_contour_integral_of_its_own_outline() -> No
     specs = solder_specs(HOLE, gauge_mm=0.4)
 
     assert joint_volume(specs) == pytest.approx(_quadrature(specs), rel=1.0e-9)
-    assert joint_volume(specs) == pytest.approx(1.818264338933, rel=1.0e-9)
+    # Moved by ADR-114 from 1.818264338933: a wider collar and the crown that
+    # rounds it onto the lead. The quadrature above is what proves the new
+    # arc's closed-form moment, and it is the assertion that matters.
+    assert joint_volume(specs) == pytest.approx(1.847204008408, rel=1.0e-9)
 
 
 def test_a_pad_joints_volume_is_the_contour_integral_too() -> None:
     specs = solder_specs(PAD, gauge_mm=0.4)
 
     assert joint_volume(specs) == pytest.approx(_quadrature(specs), rel=1.0e-9)
-    # The three straight segments that carry volume, written out longhand: the
-    # collar's cylinder up, the lead's cylinder down, and the pad face and
-    # collar rim contributing nothing because dz is zero along them. What is
-    # left over is the arc's own term, and it is what the quadrature above
-    # pins independently.
+    # The two straight segments that carry volume, written out longhand: the
+    # collar's cylinder up, the lead's cylinder down from the crown's crest,
+    # and the pad face contributing nothing because dz is zero along it. What
+    # is left over is the two arcs' own terms, and the quadrature above is
+    # what pins them independently.
     straight = math.pi * (
-        0.5 * SPAN * COLLAR**2 - 1.5 * SPAN * LEAD**2
+        0.5 * SPAN * COLLAR**2 - (1.5 * SPAN + CROWN) * LEAD**2
     )
     arc_term = joint_volume(specs) - straight
     assert arc_term > 0.0
-    assert joint_volume(specs) == pytest.approx(0.35428216236, rel=1.0e-9)
+    assert joint_volume(specs) == pytest.approx(0.398929795103, rel=1.0e-9)
 
 
 def test_the_concave_sweep_holds_less_solder_than_the_cone_it_replaced() -> None:
     """One number that documents the whole change (ADR-064).
 
     The old straight cone from the pad rim to the lead held 0.1676 mm^3 on the
-    wcv8 ribbon joint; hollowing it into a concave sweep leaves 0.0744 — 44% of
-    it — while making the joint 1.43x taller.  A sign error in the arc term
+    wcv8 ribbon joint; hollowing it into a concave sweep leaves 0.0940 — 56% of
+    it — while making the joint 1.44x taller.  A sign error in either arc term
     would make it bigger, and this is what notices.
+
+    It was 0.0744, 44%, until ADR-114 widened the collar and rounded it over
+    onto the lead; the shape holds more solder near the wire on purpose, and
+    "less than the cone" is the property being defended, not the fraction.
     """
 
     specs = solder_specs(PAD, gauge_mm=0.4, pad_dia_mm=1.2)
@@ -671,11 +741,11 @@ def test_the_concave_sweep_holds_less_solder_than_the_cone_it_replaced() -> None
     )
 
     assert cone == pytest.approx(0.1676, abs=5.0e-5)
-    assert joint_volume(specs) == pytest.approx(0.0744, abs=5.0e-5)
-    assert joint_volume(specs) < 0.5 * cone
-    assert specs["fillet_height"] + specs["collar_height"] == pytest.approx(
-        1.425 * fillet
-    )
+    assert joint_volume(specs) == pytest.approx(0.0940, abs=5.0e-5)
+    assert joint_volume(specs) < 0.6 * cone
+    assert (
+        specs["fillet_height"] + specs["collar_height"] + specs["crown_height"]
+    ) == pytest.approx(1.4375 * fillet)
 
 
 def test_a_thin_annulus_is_permitted_and_is_a_real_joint() -> None:
@@ -797,7 +867,7 @@ def test_a_fillet_shorter_than_the_pad_it_spans_would_undercut_the_board() -> No
 
     assert excinfo.value.reason == "fillet"
     assert "undercut" in str(excinfo.value)
-    assert "0.78" in str(excinfo.value)
+    assert "0.75" in str(excinfo.value)
     assert excinfo.value.observed["minimum_fillet_mm"] == pytest.approx(SPAN)
     assert excinfo.value.observed["pad_dia_mm"] == pytest.approx(2.0)
     # The floor itself builds, by equality — which is exactly where the default
@@ -1174,6 +1244,7 @@ try:
     report["collar_radius"] = specs["collar_radius"]
     report["fillet_height"] = specs["fillet_height"]
     report["collar_height"] = specs["collar_height"]
+    report["crown_height"] = specs["crown_height"]
     report["cap_height"] = specs["cap_height"]
     report["arc_radius"] = specs["arc_radius"]
 
@@ -1234,6 +1305,7 @@ try:
     report["pad_ideal_volume"] = CadexSolder.joint_volume(pad_specs)
     report["pad_fillet_height"] = pad_specs["fillet_height"]
     report["pad_collar_height"] = pad_specs["collar_height"]
+    report["pad_crown_height"] = pad_specs["crown_height"]
 
     # The two places OCC could plausibly misbehave: the tangency case, where
     # the torus is tangent to the entry-face plane, and a near-spindle torus.
@@ -1304,11 +1376,16 @@ try:
     report["wire_drift"] = drift
     barrel_zone = Part.makeBox(60.0, 40.0, 1.6, App.Vector(-10.0, -10.0, 0.0))
     for name in ("vbat", "scl"):
-        shared = worker.build_part_shape(solder(terminal(name))).common((wire,))
+        joint_shape = worker.build_part_shape(solder(terminal(name)))
+        shared = joint_shape.common((wire,))
         report["overlap_" + name] = float(shared.Volume)
-        report["overlap_in_barrel_" + name] = float(
-            shared.common((barrel_zone,)).Volume
-        )
+        # Clip the JOINT and intersect that, rather than clipping the sliver:
+        # since the lead runs straight through a bore of its own radius the
+        # two meet tangentially, and a boolean against that near-empty result
+        # comes back as the whole clipping box (3840 mm^3 of "overlap" between
+        # shapes sharing 3e-6). Both operands here are well-formed solids.
+        in_barrel = joint_shape.common((barrel_zone,)).common((wire,))
+        report["overlap_in_barrel_" + name] = float(in_barrel.Volume)
     # What the wire would share with the joint if its outline did not leave the
     # lead's own radius empty: the whole length through barrel, arc and collar.
     report["unbored_overlap"] = (
@@ -1407,7 +1484,11 @@ def test_a_joint_on_a_real_drilled_plate_is_one_closed_solid() -> None:
     # same side.
     assert joint["optimal"][2] == pytest.approx(-report["cap_height"], abs=1.0e-6)
     assert joint["optimal"][5] == pytest.approx(
-        1.6 + report["fillet_height"] + report["collar_height"], abs=1.0e-6
+        1.6
+        + report["fillet_height"]
+        + report["collar_height"]
+        + report["crown_height"],
+        abs=1.0e-6,
     )
     # The exact box is asked for rather than BoundBox, and that is not
     # fussiness: OCC boxes a revolved arc by its whole toroidal surface rather
@@ -1464,7 +1545,11 @@ def test_a_pad_joint_is_one_revolve_with_nothing_below_the_face() -> None:
     # No barrel and no cap: nothing below the face it sits on.
     assert pad_joint["optimal"][2] == pytest.approx(1.6, abs=1.0e-6)
     assert pad_joint["optimal"][5] == pytest.approx(
-        1.6 + report["pad_fillet_height"] + report["pad_collar_height"], abs=1.0e-6
+        1.6
+        + report["pad_fillet_height"]
+        + report["pad_collar_height"]
+        + report["pad_crown_height"],
+        abs=1.0e-6,
     )
 
 
@@ -1561,11 +1646,18 @@ def test_the_router_leaves_the_lead_the_joint_needs_before_it_turns() -> None:
 
     assert "crashed" not in report, report.get("crashed")
     waypoints = report["wire_waypoints"]
+    anchor = CadexRouting._STUB_SEGMENTS
     # From the far face, up the bore, and clear of the joint before the first
-    # searched cell.
+    # searched cell -- through the stub's own knots, which is what keeps the
+    # interpolated wire on the axis rather than merely tangent to it at the
+    # port (ADR-114).
     assert waypoints[0] == pytest.approx([5.0, 10.0, 0.0])
-    assert waypoints[1][0] == pytest.approx(5.0)
-    assert waypoints[1][2] == pytest.approx(1.6 + report["lead_run"])
+    for index in range(anchor + 1):
+        assert waypoints[index][0] == pytest.approx(5.0)
+        assert waypoints[index][1] == pytest.approx(10.0)
+        assert waypoints[index][2] == pytest.approx(
+            (1.6 + report["lead_run"]) * index / anchor
+        )
     # Which is more than the clearance alone would have given: without the
     # floor the anchor sat 0.5 mm above the face, inside the collar.
     assert report["lead_run"] > 0.5
@@ -1580,26 +1672,28 @@ def test_the_lead_bore_leaves_the_wire_a_radius_of_its_own() -> None:
 
     Measured, not assumed.  A joint is built from the terminal's *straight*
     bore while the wire is a spline fitted through a searched route, so the
-    two agree exactly only where the route is straight — and since ADR-074
-    that is the whole run the joint holds.  What is left is a sliver, and it
-    is measured against the counterfactual rather than against zero: without
-    the empty radius in the joint's own outline, the wire's whole length
-    through the barrel, the meniscus and the collar would be shared.
+    two agree exactly only where the route is straight — and since ADR-114
+    that is the whole run the joint holds, knot by knot, rather than merely
+    tangentially at the port.  It is measured against the counterfactual
+    rather than against zero: without the empty radius in the joint's own
+    outline, the wire's whole length through the barrel, the meniscus and the
+    collar would be shared.
 
-    ``part.solder`` takes a terminal, not a wire, and must build whether or
-    not a cable was ever routed to it — which is why this is a bound and not
-    an equality.
+    ADR-074 left a sliver of 0.038 mm^3 here — the wire bowing out of one side
+    of its own solder — and the stub knots took it to 3.5e-6, four orders of
+    magnitude down and nothing a render can show.  It stays a bound rather
+    than an equality because ``part.solder`` takes a terminal, not a wire, and
+    must build whether or not a cable was ever routed to it.
     """
 
     report = _kernel_report()
 
     assert "crashed" not in report, report.get("crashed")
     for name in ("vbat", "scl"):
-        # A few percent of what an unbored joint would share, and a small part
-        # of the joint itself.
-        assert report["overlap_in_barrel_" + name] < 0.05 * report["unbored_overlap"]
-        assert report["overlap_" + name] < 0.1 * report["unbored_overlap"]
-        assert report["overlap_" + name] < 0.1 * report["joint"]["volume"]
+        # Nothing inside the board at all, and a rounding of the joint above it.
+        assert report["overlap_in_barrel_" + name] == pytest.approx(0.0, abs=1.0e-9)
+        assert report["overlap_" + name] < 1.0e-4 * report["unbored_overlap"]
+        assert report["overlap_" + name] < 1.0e-4 * report["joint"]["volume"]
 
 
 @pytest.mark.skipif(

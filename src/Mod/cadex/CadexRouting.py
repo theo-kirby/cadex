@@ -456,6 +456,41 @@ def _deduped(points: Iterable[Sequence[float]]) -> list[tuple[float, float, floa
     return result
 
 
+#: How many segments the straight stub in front of each port is written as.
+#:
+#: One — the stub the router actually plans — is what shipped, and it is not
+#: enough. The spline fitted through these waypoints is *tangent* to the stub
+#: at the port (ADR-074), but a C2 interpolation is free to bow the moment it
+#: leaves, and it does: measured on `wiring-test-2`, the wire's centreline
+#: strayed 0.20 mm off the terminal's axis inside the 1.24 mm run a joint
+#: holds it straight for, against a collar clearing the lead by 0.025 mm. The
+#: wire came out of one side of its own solder (ADR-114).
+#:
+#: Knots along the stub are the cheap fix: an interpolating spline through
+#: collinear points stays between them. Three segments put two knots inside
+#: every stub, and a stub of no length collapses back to one point in
+#: `_deduped`, so a literal port with no stand-off is unchanged.
+_STUB_SEGMENTS = 3
+
+
+def _stub_knots(
+    port: tuple[float, float, float], anchor: tuple[float, float, float]
+) -> list[tuple[float, float, float]]:
+    """The straight run from a port out to its stand-off anchor, as knots.
+
+    The anchor is *not* included: it is the routed path's own first point,
+    and repeating it would only be deduplicated away again.
+    """
+
+    return [
+        tuple(
+            port[k] + (anchor[k] - port[k]) * (index / _STUB_SEGMENTS)
+            for k in range(3)
+        )
+        for index in range(_STUB_SEGMENTS)
+    ]
+
+
 def _at_least_three(
     points: list[tuple[float, float, float]]
 ) -> list[tuple[float, float, float]]:
@@ -515,9 +550,11 @@ def route_path(
 
     Returns the waypoints from ``start_point`` to ``end_point`` inclusive,
     with no two consecutive points coincident and at least three points, so
-    the result feeds a spline interpolator directly.  Raises
-    :class:`RoutingError` with a named ``reason`` rather than searching
-    without limit.
+    the result feeds a spline interpolator directly.  **Each stand-off stub
+    arrives as several collinear knots rather than one segment** — see
+    ``_STUB_SEGMENTS``: the interpolator is what makes a wire out of these,
+    and it will bow inside a one-segment stub.  Raises :class:`RoutingError`
+    with a named ``reason`` rather than searching without limit.
     """
 
     if not math.isfinite(cell_mm) or cell_mm <= 0.0:
@@ -576,4 +613,10 @@ def route_path(
         [anchor_start] + [lattice.center(cell) for cell in cells] + [anchor_end]
     )
     routed = _sag(lattice, _shortcut(lattice, lattice_points), slack=float(slack))
-    return _at_least_three(_deduped([port_start] + routed + [port_end]))
+    return _at_least_three(
+        _deduped(
+            _stub_knots(port_start, anchor_start)
+            + routed
+            + list(reversed(_stub_knots(port_end, anchor_end)))
+        )
+    )

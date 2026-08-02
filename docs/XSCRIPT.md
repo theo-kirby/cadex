@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-08-01
+Verified against source: 2026-08-02
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -118,9 +118,12 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   per wire. The route is recomputed every rebuild, so a cable follows the
   components it connects instead of going stale; waypoints must never be
   baked back into the script. Part obstacles are tessellated and rasterised
-  into the search lattice; mesh obstacles are their bounding box, so a
-  concave body belongs in `avoid` as the part solid it is, and the two
-  components a cable lands on do not belong in its `avoid` at all.
+  into the search lattice — their **surface**, so a port on the outside of
+  one stays reachable; mesh obstacles are their bounding box, so a concave
+  body belongs in `avoid` as the part solid it is, and a component **cannot
+  avoid itself as a mesh** — its own pad is inside its own box and the route
+  refuses with `blocked`. See *Routing a run* below for what does belong in
+  `avoid`.
 - `part.bundle()` routes several wires along **one** path (ADR-057,
   **experimental**): given one `(start_port, end_port)` pair per conductor,
   it searches a single route at the bundle's outer diameter, lays the
@@ -439,9 +442,25 @@ does.
 
 The meniscus is **concave**: it sweeps up off the pad, flattens as it reaches
 the lead, and then runs parallel to the wire for a short collar standing a
-tenth of the lead's radius clear of it. That is what stops a joint reading as
-a cone on a render. The whole joint is one solid of revolution — one closed
-outline, one `revolve`, no booleans (ADR-064).
+quarter of the lead's radius clear of it. That is what stops a joint reading
+as a cone on a render. The whole joint is one solid of revolution — one
+closed outline, one `revolve`, no booleans (ADR-064).
+
+The collar does not stop dead across the wire. It **rounds over onto it**
+(ADR-114): a quarter circle of the collar's own stand-off, tangent to the
+collar's wall where it leaves and meeting the lead square at the top, so the
+joint closes onto the wire instead of presenting a flat annulus. There is no
+knob for it — the radius *is* the stand-off, so a joint on a tight pad gets a
+proportionally smaller crown rather than a refusal.
+
+**The wire runs straight for as long as the joint holds it.** `lead_run_mm`
+is the meniscus, the collar and the crown together, and `part.cable` floors
+its stand-off with that number without ever learning whether a joint exists
+(ADR-074). What ADR-114 added is that the *interpolated* wire is straight
+there too: the router writes each stand-off stub as several collinear knots,
+because a spline is only tangent to a one-segment stub at the port and bows
+immediately after — measured at 0.20 mm off-axis inside a 1.24 mm grip, which
+is how a wire comes out of the side of its own solder.
 
 It is the one operation that takes a terminal and **never** a literal port: a
 joint is built from the bore's radius and depth and the two faces it runs
@@ -466,6 +485,13 @@ measured and the one it conflicts with.
 Terminals name the ends of a wire; `nets()` names the wire. It is to a
 connection exactly what `params()` is to a slider — **a declaration in the
 script whose current values live outside it**:
+
+**Any harness of two or more wires is written this way.** A set of bare
+`part.cable` calls builds the same geometry and is *read-only* in the wiring
+editor: nothing outside the script text names a row, so changing what
+connects to what, a gauge, or whether an end is soldered costs a chat turn —
+and converting the script later costs another one. A single one-off wire is
+the only case where calling `part.cable` directly is the right shape.
 
 ```python
 n = nets(
@@ -511,6 +537,43 @@ naming a port or terminal that does not exist, and both ends the same.
 membership changes the conductor count, the lay radius and every other
 conductor's position; that is a script edit. Bundles draw in the editor and
 stay read-only.
+
+#### Routing a run: `avoid` and `slack` `[ADR-056, ADR-113]`
+
+The two arguments a harness is most often written without, and the two that
+decide whether it looks right.
+
+**`avoid` names everything the run passes over — including the wires already
+routed.** An empty `avoid` is an empty lattice: the search returns the
+straight line, the sag clearance guard has nothing to test against, and the
+wire drops through whatever is beneath it. Wires between the same two
+components are three independent searches down one corridor unless each
+finished cable is fed into the next one's `avoid`:
+
+```python
+routed = []
+for name, w in n.items():
+    cable = part.cable(w.a, w.b, gauge_mm=w.gauge,
+                       avoid=list(w.avoid) + routed,   # dodge the last one
+                       clearance_mm=0.6, slack=1.0)
+    routed.append(cable)
+```
+
+**A component cannot avoid itself as a mesh.** A mesh obstacle is its
+bounding box and a pad is on the component's surface, so the port starts
+*inside* its own obstacle and the route refuses — `blocked`, "no clear
+corridor connects the two ports". A part obstacle is rasterised by its
+tessellated surface instead, so `part.shape_from_mesh(board)` is avoidable by
+its own wires; it needs an import clean enough to sew into one shape, and a
+compound of shells is refused. When the import will not convert, keep the
+board out of `avoid` and hold the wire off it with `slack`.
+
+**`slack` is a sag, not a catenary, and it is applied downward along the
+run.** The default 1.05 on a 20 mm hop between two boards is ≈3 mm of drop —
+about a board thickness, and enough to put the wire through the board it
+lands on. State `slack=1.01` on a short run: not `1.0`, because a route that
+comes back straight then has a collinear spine and the sweep fails in the
+kernel (`BRepOffsetAPI_MakePipeShell::MakeSolid`).
 
 ### The wiring path `[ADR-065]`
 

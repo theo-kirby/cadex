@@ -75,9 +75,13 @@ _CAP_FRACTION = 0.5
 #: of solder that runs parallel to the wire before the joint ends.
 _COLLAR_FRACTION = 0.5
 
-#: How far the collar stands off the lead, as a fraction of the lead's radius:
-#: a subtle sleeve, roughly 1.1x the wire.
-_COLLAR_LEAD_FRACTION = 0.10
+#: How far the collar stands off the lead, as a fraction of the lead's radius.
+#: It used to be 0.10 — a sleeve 1.1x the wire — which is also the radius the
+#: crown rounds over on, and a 0.025 mm round-over on a 0.5 mm lead reads as a
+#: sharp ring rather than as solder (ADR-114). A quarter of the lead is still
+#: a sleeve and not a blob, and it is bounded below by the annulus fraction on
+#: a tight pad exactly as before.
+_COLLAR_LEAD_FRACTION = 0.25
 
 #: ...and as a fraction of the annulus between lead and pad, which is what
 #: bounds it on a tight pad.  Taking the smaller of the two guarantees
@@ -356,6 +360,42 @@ def _meniscus_arc(
     }
 
 
+def _crown_arc(*, collar: float, lead: float, z_top: float) -> dict[str, Any]:
+    """The round-over that closes the joint onto the lead (ADR-114).
+
+    The collar used to stop dead at ``z_top`` and cross to the lead along a
+    flat annulus — a washer of solder, ``collar - lead`` wide, presenting a
+    hard ring to every render and a square edge for a wire leaving at any
+    angle to poke through. This turns that crossing into a quarter circle
+    centred on ``(lead, z_top)``: tangent to the collar's own wall where it
+    leaves, meeting the lead square at the top.
+
+    It carries no new knob. The radius *is* the collar's stand-off, so a
+    joint on a tight pad — where the annulus fraction bounds that stand-off —
+    gets a proportionally smaller crown rather than a refusal, and the whole
+    shape still scales with the lead.
+    """
+
+    radius = collar - lead
+
+    def at(theta: float) -> list[float]:
+        return _pair(lead + radius * math.cos(theta), z_top + radius * math.sin(theta))
+
+    return {
+        "role": "crown",
+        "kind": "arc",
+        # Written down rather than evaluated, for the reason the meniscus arc
+        # states: these are shared vertices with the segments either side.
+        "start": _pair(collar, z_top),
+        "through": at(0.25 * math.pi),
+        "end": _pair(lead, z_top + radius),
+        "centre": _pair(lead, z_top),
+        "radius": _zeroed(radius),
+        "start_angle": 0.0,
+        "end_angle": _zeroed(0.5 * math.pi),
+    }
+
+
 def _line(role: str, start: Sequence[float], end: Sequence[float]) -> dict[str, Any]:
     return {"role": role, "kind": "line", "start": list(start), "end": list(end)}
 
@@ -480,6 +520,10 @@ def solder_specs(
     # which is what makes the contour integral in joint_volume positive.
     top = depth + fillet + collar_height
     arc = _meniscus_arc(collar=collar, pad=pad, fillet=fillet, z_face=depth)
+    crown = _crown_arc(collar=collar, lead=lead, z_top=top)
+    # Where the joint actually ends on the lead, now that it rounds over onto
+    # it rather than stopping square across it.
+    crest = top + (collar - lead)
     profile: list[dict[str, Any]]
     if kind == "hole":
         profile = [
@@ -489,8 +533,8 @@ def solder_specs(
             _line("entry_annulus", _pair(bore, depth), _pair(pad, depth)),
             arc,
             _line("collar", _pair(collar, depth + fillet), _pair(collar, top)),
-            _line("collar_rim", _pair(collar, top), _pair(lead, top)),
-            _line("lead", _pair(lead, top), _pair(lead, 0.0)),
+            crown,
+            _line("lead", _pair(lead, crest), _pair(lead, 0.0)),
             _line("lead_end", _pair(lead, 0.0), _pair(0.0, 0.0)),
             _line("spine", _pair(0.0, 0.0), _pair(0.0, -cap)),
         ]
@@ -499,8 +543,8 @@ def solder_specs(
             _line("pad_face", _pair(lead, 0.0), _pair(pad, 0.0)),
             arc,
             _line("collar", _pair(collar, fillet), _pair(collar, top)),
-            _line("collar_rim", _pair(collar, top), _pair(lead, top)),
-            _line("lead", _pair(lead, top), _pair(lead, 0.0)),
+            crown,
+            _line("lead", _pair(lead, crest), _pair(lead, 0.0)),
         ]
 
     return {
@@ -517,6 +561,7 @@ def solder_specs(
         "collar_radius": collar,
         "fillet_height": fillet,
         "collar_height": collar_height,
+        "crown_height": _zeroed(collar - lead),
         "cap_height": cap,
         "arc_radius": arc["radius"],
         "depth": depth,
@@ -526,10 +571,11 @@ def solder_specs(
 def lead_run_mm(metrics: Mapping[str, Any], gauge_mm: float) -> float:
     """How much straight lead a joint on this terminal would need (ADR-074).
 
-    The meniscus climbs the lead for ``fillet_height`` and the collar hugs it
-    for ``collar_height`` more, so a joint holds the lead straight for their
-    sum above the entry face.  A wire that starts turning inside that run
-    leaves the collar's top ring meeting it at an angle, and clips through it.
+    The meniscus climbs the lead for ``fillet_height``, the collar hugs it for
+    ``collar_height`` more and the crown rounds onto it over ``crown_height``,
+    so a joint holds the lead straight for their sum above the entry face.  A
+    wire that starts turning inside that run meets the joint at an angle and
+    clips through one side of it.
 
     This is what lets ``part.cable`` leave room for a joint **without learning
     whether one exists**: the router floors its stand-off with this number, so
@@ -547,7 +593,11 @@ def lead_run_mm(metrics: Mapping[str, Any], gauge_mm: float) -> float:
         specs = solder_specs(metrics, gauge_mm=gauge_mm)
     except SolderError:
         return 0.0
-    return float(specs["fillet_height"]) + float(specs["collar_height"])
+    return (
+        float(specs["fillet_height"])
+        + float(specs["collar_height"])
+        + float(specs["crown_height"])
+    )
 
 
 def _line_moment(start: Sequence[float], end: Sequence[float]) -> float:

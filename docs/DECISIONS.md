@@ -11525,3 +11525,343 @@ standing machine: half the episodes still end tipped, and backward pushes
 remain the worst direction (3/6). The next lever is not another reward term —
 it is the horizon and the mechanism, and `SUBTREEANGMOM` is the obvious next
 observation kind for a centroidal-momentum term.
+## ADR-113 — The wiring graph had no edges: a fixture that disagreed with its producer (2026-08-02)
+
+**A numbering note first.** This entry and the two after it were written as
+ADR-103, ADR-104 and ADR-105 in a working tree based on ADR-102, while the
+standing-policy work was spending 103..112 on a different branch. Neither side
+could see the other's log. Nothing had shipped from this side — no commit
+message quoted the old numbers — so unlike ADR-112's gap these three were
+renumbered rather than recorded, and the references to them across the engine,
+the shell and the docs moved with them.
+
+**Decision.** `cadex_project_worker._wiring_registry` publishes `component`
+and `layout` with every entry, and the shell's solder checkbox is wired to
+the same debounce a link drag uses and made authoritative in both
+directions. Both are bug fixes; neither moves a digest and nothing needs
+re-accepting. The lesson worth keeping is the third one: a test fixture that
+hand-builds what a producer emits proves the fixture, and here it hid a
+feature shipping with its main path returning an empty list.
+
+### 1. What was broken
+
+`~/arch/wiring-test-2.cadex` — the first real session with the ADR-067
+terminal pick — drew two boards on the Wiring canvas and **not one wire**,
+though the script builds three cables and all six picked terminals resolve
+correctly.
+
+`published_terminal_sets()` hands `_wiring_registry` a `key`, a `component`,
+a `layout` and the resolved terminals. The registry forwarded four fields
+and dropped `component` and `layout`. Those two *are* the join:
+`CadexInspection._terminal_identity` addresses an endpoint by canonical JSON
+over exactly them (deliberately, so the host needs no worker import), so
+every registry entry hashed to `{"component":null,"layout":null}`, every
+endpoint missed, and `_derived_wires` refused all three cables under its
+"no half wires" rule. Nodes come from a different field and were fine, which
+is why it read as "the canvas draws nodes but no edges".
+
+Measured on that project's own accepted attempt, before and after:
+
+```
+inspect scope="wiring", source="derived"     before: 2 components, 0 wires
+                                              after: 2 components, 3 wires
+```
+
+### 2. Why no test caught it
+
+`test_wiring_scope.py` builds its registry with a local `_registry_entry`
+helper — which supplied `component` and `layout`, because that is what the
+consumer needs. The fixture and the producer disagreed, and the suite was
+green either way. The fix is not a better fixture: the suite now drives the
+real producer, building a harness through `part.terminals`/`part.cable`,
+resolving it through `cadex_part_worker._resolve_terminal_set` exactly as a
+route does, publishing it through `_wiring_registry`, and asserting the scope
+answers with an addressed row. It fails before this change and passes after.
+
+### 3. Solder was drawn, unreachable, inert and one-way
+
+Four separate things, and only the last two are ours to fix here:
+
+- the Solder box lives behind `tree.cadex_editable`, which a derived script
+  is not — correct, and the remedy is to convert the script (§4);
+- nothing was linked, because of §1;
+- `CadexTerminalSocket.soldered` had no `update=`, and `NodeTree.update()`
+  fires on **topology** only. Writing a property into an existing socket
+  notified nobody, so the 150 ms debounce never armed and no
+  `set_params(nets=...)` was ever sent. The value was picked up incidentally,
+  by the next edit that did change the topology;
+- `_solder_for` fell back to the stored row whenever the sockets read False,
+  so solder could be turned on and never off.
+
+A fourth thing was found by inspection while testing the third, and it
+deletes data rather than merely failing to save it: **the debounced push did
+not honour the suspend flag.** `apply_state` clears the links and re-draws
+them one at a time under `_suspend`; `NodeTree.update()` has always checked
+that flag and `_push_timer` did not, so a push firing inside that window
+pushes the rows drawn *so far* — and a stored row list replaces the declared
+table wholesale (ADR-065), so a half-drawn canvas is a wire deletion. The
+window is small and no instance is confirmed in the wild; the guard is
+cheap, and the failure it prevents is silent and durable. The timer now
+re-arms instead of pushing while a sync is in flight.
+
+The toggle now marks the tree dirty through the same path a link drag takes,
+mirrors onto the terminal's twin socket (a terminal is two sockets only
+because Blender refuses an input→input link, and which one the sidebar draws
+is an accident of which end of the wire the board is), and `_solder_for`
+reads the sockets as the answer — any end ticked means the row is soldered,
+both clear means it is not, which is the rule `_derived_wires` already
+applies to a script's own `part.solder` calls. Three tests in
+`bl_mesh_agent_wiring.py` pin all three properties.
+
+### 4. What the same session says about authoring
+
+The script that produced the report was a bare `part.cable` harness with no
+`avoid` and the default `slack`. Nothing told the model otherwise:
+`describe_project_api` described `nets()` accurately without ever saying to
+use it, and `part.cable`'s docstring never mentioned it. Both now do, in
+those words: a harness of two or more wires is declared with `nets(...)`, and
+a harness of bare calls is read-only in the editor.
+
+Converting that project is what measured the routing half. Baseline against
+the converted script, on the same picked terminals (surface points inside a
+board's own height band, and pairwise wire overlap):
+
+```
+                        baseline (no avoid, slack 1.05)   converted
+wire z minimum                     -2.15 mm                 +1.24 mm
+wire_gnd into range_finder      160 pts, 0.75 mm deep        0 pts
+wire_gnd into esp32             341 pts, 0.99 mm deep      520 pts, 0.69 mm
+wire-wire overlap            0.10 / 0.34 / 0.66 mm^3       0.0 / 0.0 / 0.0
+```
+
+Three changes did that, and each is now written down in `part.cable`'s
+docstring and `docs/XSCRIPT.md`: feed every finished cable into the next
+one's `avoid` (three searches between the same two boards otherwise share one
+corridor); state `slack` near 1.0 on a short hop (1.05 is ≈3 mm of drop on a
+21 mm run — a board thickness); and name what the run passes over.
+
+### 5. Two limits this found, and did not fix
+
+- **A component cannot avoid itself as a mesh.** A mesh obstacle is its
+  bounding box and a pad is on the component's surface, so the port starts
+  inside its own obstacle: `avoid=[esp32, range_finder]` — the obvious
+  reading of "name what the run passes over" — refuses every wire with
+  `blocked`, "no clear corridor connects the two ports", after 25 probes. A
+  *part* obstacle is rasterised by its tessellated surface only, so
+  `part.shape_from_mesh(board)` is avoidable by its own wires, and that is
+  what clears the range finder above.
+- **`shape_from_mesh` cannot express a multi-shell import.** The ESP32 STL
+  sews into 42 shells, so `solid=True` refuses ("cannot form one solid") and
+  `solid=False` fails the output-type check with a compound. So that board
+  cannot become an obstacle at all today, and its wires clear it on stand-off
+  alone — which is the residual 520 points, 0.69 mm, where the GND run clips
+  a 3.2 mm component beside its own pad. Recorded in `docs/ROADMAP.md`;
+  fixing it is an output type, and it is not scheduled by this entry.
+
+### 6. Consequences
+
+- **The edit path was exercised by hand, on a real project, and works.**
+  While this entry was being written the owner deleted the SIG link on the
+  `wiring-test-2` canvas; the debounced `set_params(nets=...)` landed, the
+  project re-executed and re-accepted, and the model came back with two
+  wires and their joints and without the third. That is ADR-065 and ADR-066
+  end to end through a mouse — the one gesture no test covers — and it is
+  the first time it has been done outside a fixture.
+- Migration-free. `wiring` is built *after* `compute_project_digest` and
+  never feeds it, so no digest moves and nothing is re-accepted — but the
+  scope reads the stored `result.json` of the accepted attempt, so a project
+  built before this fix shows its wires **after one rebuild**.
+- No response grows: `_wiring_components` strips both fields again before
+  answering, so the extra payload lands only on disk, beside the same
+  component trees the cable definitions already carry.
+- `~/arch/wiring-test-2.cadex` is converted to `nets()` with solder on all
+  three rows, and rebuilds twice to the accepted digest. Its `wire_gauge`
+  slider is now 0.3–0.7 mm rather than 0.3–2.0: the ESP32 VCC pin is a
+  measured 0.73 mm hole, and a lead thicker than that neither threads it nor
+  leaves an annulus for a joint — the old range promised a rebuild that
+  `part.solder` refuses.
+
+## ADR-114 — The wire runs straight where its joint holds it, and the joint closes onto it (2026-08-02)
+
+**Decision.** Two shape changes, both from watching a real harness render.
+`CadexRouting` writes each stand-off stub as collinear knots instead of one
+segment, so the interpolated wire is straight for the whole run a joint grips
+rather than merely tangent to the axis at the port. `CadexSolder` replaces the
+flat annulus at the top of the collar with a **crown** — a quarter circle that
+rounds the collar over onto the lead — and widens the collar from 1.1x the
+lead to 1.25x so that round-over is solder rather than a bright ring.
+
+**Digests move.** Every cable's spine and every joint's outline change, so
+existing accepted projects must be re-accepted — one rebuild, the way ADR-064
+was. Nothing else changes: no new argument, no payload change, no protocol
+change. `part.solder` still takes a terminal and never a wire.
+
+### 1. The wire came out of the side of its own solder
+
+ADR-074 established that a joint holds its lead straight for
+`lead_run_mm`, and made `part.cable` floor its stand-off with that number so
+the *searched route* does not turn inside the joint. That is true of the
+waypoints and false of the wire: the spline is fitted **through** them, a
+tangent constraint fixes only the direction at the port, and a C2 fit is free
+to bow from the next parameter on. Measured on `wiring-test-2` (0.5 mm leads),
+sampling each wire's surface inside the grip:
+
+```
+                       collar clears the lead by 0.025 mm
+esp32 gnd      at the pad 0.25-0.25   at the grip's end 0.23-0.27
+range_finder vcc          0.25-0.25                     0.06-0.45
+```
+
+The second row is a centreline 0.20 mm off-axis, eight times the clearance it
+had: the wire leaves the pad centred and exits through the side of the
+meniscus. **Five of that project's seven joints were pierced by their own
+wire.** On the probe plate the same measurement reads 0.041 mm of drift at
+mid-joint and 0.038 mm³ shared between joint and wire.
+
+Knots are the whole fix — an interpolating spline through collinear points
+stays between them. `_STUB_SEGMENTS = 3` puts two knots inside every stub;
+a stub of no length collapses in `_deduped`, so a literal port with no
+stand-off is untouched. After:
+
+```
+probe plate    drift through the joint   0.041 mm -> 0.001 mm
+               joint ∩ wire              0.038 mm³ -> 0.0000035 mm³
+wiring-test-2  worst drift in the grip   0.20 mm  -> 0.013 mm
+               joints pierced by a wire  5 of 7   -> 0 of 7
+```
+
+That last measurement also exposed a probe of our own that was lying: with the
+lead straight in a bore of its own radius the two meet tangentially, OCC
+answers the intersection with an empty compound, and `common` between *that*
+and a clipping box returns the whole box — 3840 mm³ of "overlap" between
+shapes sharing 3e-6. The probe now clips the joint, which is a solid, and
+intersects that.
+
+### 2. The joint stopped dead across the wire
+
+The collar ended in a flat annulus `collar - lead` wide: a washer of solder
+presenting a hard ring to every render, and a square edge for any wire leaving
+at an angle to poke through. It is now a quarter circle centred on
+`(lead, top)` — tangent to the collar's wall where it leaves it, meeting the
+lead square at the crest.
+
+It carries no new knob: the radius *is* the collar's stand-off, so a joint on
+a pad too tight for a quarter of the lead gets a proportionally smaller crown
+rather than a refusal, exactly as the collar already did. But at the old 1.1x
+that radius was 0.025 mm on a 0.5 mm lead — a round-over no render can show —
+so the stand-off went to 0.25 of the lead's radius. Consequences, all pinned:
+
+- `lead_run_mm` grows by the crown, because the crown is the last thing
+  holding the lead — so the router leaves slightly more straight wire;
+- the joint holds more solder near the wire on purpose. On the wcv8 ribbon
+  joint it goes from 0.0744 mm³ to 0.0940, from 44% of the cone ADR-064
+  replaced to 56%. "Less than the cone" is the property being defended, not
+  the fraction;
+- the outline is now two arcs and eight lines. `joint_volume`'s contour
+  integral already handled an arbitrary arc, and the kernel builds by `kind`,
+  so neither needed a change — the revolve still yields one closed valid solid
+  whose `Volume` matches the closed form to 1e-9.
+
+### 3. What was not done
+
+The ask behind this was "the solder should follow the path of the wire". It
+does now in the sense that matters — they are coaxial for the whole length
+the joint grips, and the wire bends only after the joint has ended — but the
+joint is still a solid of revolution about a straight axis, and a *swept*
+collar following the route's own spine would need `part.solder` to be handed
+the cable. That is a contract change (ADR-063's "a joint is built from a
+terminal, and must build whether or not a cable was routed"), and it is not
+worth making for a difference this now measures at 0.013 mm.
+
+## ADR-115 — Two headers on one board took each other's sockets (2026-08-02)
+
+**Status:** accepted. **Applies to:** `CadexInspection._wiring_components`,
+`_undeclared_wires`; `mesh_agent/wiring.py`'s `apply_state`,
+`rows_from_tree`, `declared_rows`, `push`.
+
+The second real session with the wiring editor drew two boards, no
+connections, and a header stuck on *applying…*. The project was correct:
+`net_specs` held three wires, `effective_rows` returned all three, and the
+viewport built and placed every cable. Only the canvas was wrong, and the
+saved `.blend` said exactly how:
+
+```
+node "esp32"  ->  sockets h1, h2, h3      (should be sig, vcc, gnd, gpio4)
+links: 0          cadex_pending: true
+```
+
+### 1. A label is an identity, so it has to be unique
+
+The script picked terminals twice off the same import: a front header
+declared as the `esp32` port, and a back header used by a hand-written
+bundle. Two `terminals(...)` calls, one component — and `_wiring_components`
+named a node `port or output or component_<i>`, so **both** answered to
+`esp32`. The shell finds a node by that name, so the second set reconciled
+onto the first set's node and replaced its sockets. `sig`, `vcc`, `gnd` and
+`gpio4` stopped existing, all three declared rows failed
+`_socket_at_side`, and `apply_state` drew nothing.
+
+Labels are now assigned in two passes: every declared port name is reserved
+first — those are what the addresses in `net_specs` are written against and
+nothing may move them — then each remaining set takes its output name, its
+component's own label, or its index, suffixed `#2`, `#3` until free. The
+inline-label fallback is what gives a pad that is never published under a
+result key something better than `component_4`.
+
+The shell now also refuses to reconcile two components onto one node instead
+of trusting the engine. It is two lines, and the failure it prevents is
+invisible.
+
+### 2. A canvas that failed to draw is not a connection table
+
+This was one debounce away from being much worse than a blank editor. A push
+sends `rows_from_tree`, a full replacement list (ADR-065); with no links
+drawn that list is empty, so any topology event would have pushed the
+harness away. It survived only because `effective_rows` reads an empty
+override list as *no overrides* rather than *no wires* — luck, not design,
+and a partial draw would not have been lucky.
+
+`apply_state` now records the rows it could not draw, sets `cadex_stale`, and
+says which; `push` refuses while that flag is up. This is the same rule as
+ADR-113's suspend guard, generalised: **the canvas may only be pushed while
+it is a whole projection**. Half-drawn and failed-to-draw are the same
+hazard.
+
+### 3. `applying…` outlived the push
+
+`cadex_pending` is a tree property, so it saves into the `.blend`. A push
+whose reply never arrived left the header claiming to be applying for the
+life of the file, with no control that clears it — the refresh button synced
+and left the flag exactly as it found it. A completed sync now clears it: the
+engine's answer is on screen, which is the end of applying by definition.
+
+### 4. Wires the table does not declare are drawn, read-only
+
+The other half of the report — "I only see two of the three boards" — is not
+a bug but it reads as one. A bundle cannot be declared: a net row is one
+conductor between two terminals, so a twisted run is always written by hand
+(ADR-065). Those connections were simply absent, and the boards they land on
+drew as nodes with nothing attached.
+
+The `nets` branch now appends the derived rows whose endpoint pair no
+declared row already covers, marked `editable: false` and carrying their
+`kind`. The shell draws them like any other link, keeps the marker through
+`rows_from_tree`, and `declared_rows` strips them from the pushed table —
+mandatory, not tidy: `canonical_rows` refuses an unrecognised key, and
+promoting a bundle conductor into a declared wire would be worse if it
+didn't. Cutting one sends nothing and the next sync puts it back.
+
+### 5. The test that would have caught it
+
+`test_wiring_scope.py` now drives one board with two headers through the real
+producer, and asserts the second set gets its own node *and* that the
+declared wire still addresses the first. The shell suite pins the merge
+refusal, the stale hold, the pending clear and the push filter. ADR-113's
+lesson was that a fixture can disagree with its producer; this one is that a
+fixture can also be too simple to contain the shape that breaks — every
+wiring fixture until now had exactly one terminal set per component.
+
+Migration-free: `wiring` is built after `compute_project_digest` and never
+feeds it, so no project is re-accepted. A project has to **rebuild** for the
+canvas to change, because the scope reads the accepted attempt's
+`result.json`.

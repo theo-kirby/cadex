@@ -2138,6 +2138,12 @@ def describe_project_api() -> dict[str, Any]:
         "domains": _capability_api_listing(),
         "connections": {
             "nets": (
+                "USE THIS for any harness of two or more wires. A harness "
+                "built from bare part.cable/part.bundle calls is READ-ONLY in "
+                "the wiring editor — nothing outside the script text names a "
+                "row, so the user cannot rewire, change a gauge or toggle a "
+                "joint without spending a chat turn, and converting it later "
+                "costs another one. "
                 "nets(ports={'esp': esp_t, ...}, wires={'sda': wire(...), "
                 "...}) declares the harness as a table; callable at most once "
                 "per script. ports maps a lower_snake_case name to the "

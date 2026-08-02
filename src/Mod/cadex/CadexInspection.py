@@ -459,22 +459,69 @@ def _terminal_identity(port: Any) -> str:
     )
 
 
+def _label_atom(value: Any) -> str:
+    """One candidate label, made safe to be the left half of an address."""
+
+    # Addresses are split on the first ``.``, so a label may not carry one.
+    return str(value or "").strip().replace(".", "_")
+
+
+def _component_labels(registry: list[Any]) -> list[str]:
+    """One label per registry entry, distinct across the whole graph.
+
+    The label *is* the node's identity on the canvas and the left half of
+    every ``<port>.<terminal>`` address, so two entries may not share one.
+    Two terminal sets on the same component do share an output name — a board
+    with a front header and a back header is one import and two
+    ``terminals(...)`` calls — and while both answered to it the canvas gave
+    the second set's sockets to the first set's node, leaving every declared
+    wire with an endpoint that no longer existed (ADR-115).
+
+    A declared port keeps its own name whatever order it arrives in, which is
+    why the reservation pass runs first: the addresses in ``net_specs`` are
+    written against those names and nothing here may move them.
+    """
+
+    entries = [entry if isinstance(entry, Mapping) else {} for entry in registry]
+    used = {str(entry.get("port") or "") for entry in entries}
+    used.discard("")
+    labels: list[str] = []
+    for index, entry in enumerate(entries):
+        port = str(entry.get("port") or "")
+        if port:
+            labels.append(port)
+            continue
+        # A legacy harness declares no ports, so the output name is the best
+        # human-readable handle the component has; then its own label, which
+        # is what an inline component — a transformed pad, never published
+        # under a result key — has instead; then the index.
+        component = entry.get("component")
+        properties = component.get("properties") if isinstance(component, Mapping) else None
+        base = (
+            _label_atom(entry.get("output"))
+            or _label_atom((properties or {}).get("label") if isinstance(properties, Mapping) else "")
+            or f"component_{index}"
+        )
+        label = base
+        suffix = 2
+        while label in used:
+            label = f"{base}#{suffix}"
+            suffix += 1
+        used.add(label)
+        labels.append(label)
+    return labels
+
+
 def _wiring_components(registry: list[Any]) -> tuple[list[dict[str, Any]], dict[str, str]]:
     """The nodes of the graph, plus ``identity -> port label`` for the wires."""
 
     components: list[dict[str, Any]] = []
     label_by_identity: dict[str, str] = {}
+    labels = _component_labels(registry)
     for index, entry in enumerate(registry):
         if not isinstance(entry, Mapping):
             continue
-        # A legacy harness declares no ports, so the output name is the only
-        # human-readable handle the component has; the index is the last
-        # resort for a component that is not a declared output either.
-        label = (
-            str(entry.get("port") or "")
-            or str(entry.get("output") or "")
-            or f"component_{index}"
-        )
+        label = labels[index]
         terminals = []
         for terminal in list(entry.get("terminals") or []):
             if not isinstance(terminal, Mapping):
@@ -588,6 +635,34 @@ def _derived_wires(
     return rows
 
 
+def _undeclared_wires(
+    registry: list[Any], outputs: list[Any], declared: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """What a ``nets(...)`` script builds *outside* its table, read-only.
+
+    Declaring a harness does not stop a script also calling ``part.cable`` or
+    ``part.bundle`` directly, and a bundle cannot be declared at all — a net
+    row is one conductor between two terminals, so a twisted run is always
+    written by hand (ADR-065). Those connections were simply absent from the
+    canvas: the boards they land on drew as nodes with nothing attached,
+    which reads as a broken editor rather than as an undeclared wire.
+
+    They are marked ``editable: false`` and the shell keeps them out of the
+    table it pushes back, because ``set_params(nets=...)`` replaces the
+    declared list wholesale and these rows are not in it.
+    """
+
+    pairs = {
+        frozenset((str(row.get("a") or ""), str(row.get("b") or "")))
+        for row in declared
+    }
+    return [
+        {**row, "editable": False}
+        for row in _derived_wires(registry, outputs)
+        if frozenset((row["a"], row["b"])) not in pairs
+    ]
+
+
 def _complete_wiring(captured: Mapping[str, Any]) -> Any:
     """The harness as a graph: what is connected, and where the ends are.
 
@@ -623,17 +698,22 @@ def _complete_wiring(captured: Mapping[str, Any]) -> Any:
     components, _labels = _wiring_components(registry)
     specs = dict(state.get("net_specs") or {})
     if specs:
+        declared = effective_rows(specs, state.get("net_values"))
         return {
             "revision": revision,
             "source": "nets",
             "editable": True,
             "components": components,
-            "wires": effective_rows(specs, state.get("net_values")),
+            "wires": declared + _undeclared_wires(
+                registry, list(report.get("outputs") or []), declared
+            ),
             "note": (
                 "Rows are edited with xscript.project.set_params(nets=[...]), "
                 "which replaces the whole list. Endpoints are "
                 "'<port>.<terminal>'; avoid, label and every routing argument "
-                "stay in the script."
+                "stay in the script. A row carrying editable=false is a "
+                "cable or bundle the script built outside the table — drawn "
+                "so the picture is complete, and changed only in the script."
             ),
         }
     return {

@@ -29,12 +29,18 @@ from types import SimpleNamespace
 
 import pytest
 
+import cadex_part_worker
+import cadex_project_worker
 from CadexInspection import (
     MAX_INSPECT_RESULT_BYTES,
     capture_inspection,
     complete_inspection,
 )
+from CadexNets import NetsCollector, wire
 from CadexScriptStore import CadexProjectScriptStore
+from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
+from cadex_domain_api import create_domain_api
+from cadex_domain_worker import _payload
 
 
 REVISION = "a" * 64
@@ -373,6 +379,276 @@ def test_a_literal_port_yields_no_half_wire(tmp_path) -> None:
 
     names = {row["name"] for row in _wiring(_legacy_project(tmp_path))["value"]["wires"]}
     assert "loose" not in names
+
+
+# --------------------------------------------------------------------------
+# the producer, not a fixture
+# --------------------------------------------------------------------------
+#
+# Everything above hand-builds its registry, and that is exactly how this
+# scope shipped drawing every node and not one wire (ADR-113): the real
+# producer, ``cadex_project_worker._wiring_registry``, dropped the
+# ``component`` and ``layout`` fields the fixtures supplied, so every
+# endpoint hashed to the same empty identity and ``_derived_wires`` refused
+# all of them.  A fixture that can disagree with its producer proves the
+# fixture.  These two drive the producer.
+
+
+PRODUCER_HEADER = {
+    "origin": (0.0, 0.0, 1.6),
+    "along": (0.0, 1.0, 0.0),
+    "axis": (0.0, 0.0, 1.0),
+    "pitch": 2.54,
+    "count": 3,
+    "depth": 1.6,
+    "hole_dia": 1.0,
+}
+
+
+def _built_harness():
+    """One real run's worth of harness, built through the shipping APIs.
+
+    The part API declares the boards, their terminal sets and the wire
+    between them; the part worker resolves those sets exactly as
+    ``_resolve_port`` does on the way into a route, which is what fills the
+    registry the project worker then publishes.  A declared layout on a
+    ``part`` component needs no kernel, so this runs headless with the rest
+    of the suite.
+    """
+
+    pack = XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
+    part = create_domain_api(pack.domain, pack.api_exports, pack.output_types)
+    sensor = part.box(40.0, 20.0, 1.6, label="sensor")
+    esp = part.box(30.0, 18.0, 1.6, label="esp")
+    return (
+        part,
+        sensor,
+        esp,
+        part.terminals(sensor, header=PRODUCER_HEADER, names=SIGNALS),
+        part.terminals(esp, header=PRODUCER_HEADER, names=SIGNALS),
+    )
+
+
+def _resolve_endpoints(result):
+    """Resolve every terminal endpoint the result's harness operations name."""
+
+    cadex_part_worker.reset_part_shape_memo()
+    for value in result.values():
+        definition = _payload(value)
+        if str(definition.get("operation") or "") not in _HARNESS_OPS:
+            continue
+        for argument in list(definition.get("arguments") or []):
+            if isinstance(argument, dict) and "terminal" in argument:
+                cadex_part_worker._resolve_terminal_set(
+                    str(definition["operation"]), "start", argument
+                )
+
+
+_HARNESS_OPS = ("cable", "solder")
+
+
+def _produced_project(tmp_path, nets, result):
+    """A store whose accepted attempt carries the report the worker would write."""
+
+    _resolve_endpoints(result)
+    report = {
+        "ok": True,
+        "digest": DIGEST,
+        "outputs": [
+            {
+                "name": name,
+                "type": "solid",
+                "domain": "part",
+                "definition": _payload(value),
+            }
+            for name, value in result.items()
+        ],
+        "wiring": cadex_project_worker._wiring_registry(nets, result),
+    }
+    # Through JSON, because the registry and the outputs meet only after a
+    # round trip through ``result.json`` — and they are matched on canonical
+    # JSON, so the round trip is part of what is being asserted.
+    return _store(tmp_path, report=json.loads(json.dumps(report)), state={})
+
+
+def test_the_published_registry_addresses_a_real_cable(tmp_path) -> None:
+    """The join the derived view lives on, end to end from the producer."""
+
+    part, sensor, esp, sen_t, esp_t = _built_harness()
+    result = {
+        "sensor_board": sensor,
+        "esp32_board": esp,
+        "wire_gnd": part.cable(sen_t["gnd"], esp_t["gnd"], gauge_mm=0.8),
+        "joint_gnd": part.solder(sen_t["gnd"], gauge_mm=0.8, pad_dia_mm=1.2),
+    }
+    # No ports declared: this is the pre-nets() script the derived path is for.
+    root = _produced_project(tmp_path, NetsCollector(), result)
+
+    value = _wiring(root)["value"]
+    assert value["source"] == "derived"
+    assert [component["output"] for component in value["components"]] == [
+        "sensor_board",
+        "esp32_board",
+    ]
+    assert value["wires"] == [
+        {
+            "name": "wire_gnd",
+            "a": "sensor_board.gnd",
+            "b": "esp32_board.gnd",
+            "gauge_mm": 0.8,
+            "enabled": True,
+            "kind": "cable",
+            "solder": True,
+        }
+    ]
+
+
+def test_the_published_registry_carries_a_declared_port_to_the_canvas(
+    tmp_path,
+) -> None:
+    """The same join, from the other table: a node is named by its port."""
+
+    part, sensor, esp, sen_t, esp_t = _built_harness()
+    nets = NetsCollector()
+    table = nets(
+        ports={"sen": sen_t, "esp": esp_t},
+        wires={"gnd": wire("sen.gnd", "esp.gnd", gauge=0.8, solder=True)},
+    )
+    row = table["gnd"]
+    result = {
+        "sensor_board": sensor,
+        "esp32_board": esp,
+        "wire_gnd": part.cable(row.a, row.b, gauge_mm=row.gauge),
+    }
+    root = _produced_project(tmp_path, nets, result)
+    CadexProjectScriptStore(root).write(state_updates={"net_specs": nets.specs})
+
+    value = _wiring(root)["value"]
+    assert value["source"] == "nets" and value["editable"] is True
+    assert [component["port"] for component in value["components"]] == ["sen", "esp"]
+    assert [component["output"] for component in value["components"]] == [
+        "sensor_board",
+        "esp32_board",
+    ]
+    assert [row["a"] for row in value["wires"]] == ["sen.gnd"]
+
+
+# --------------------------------------------------------------------------
+# two terminal sets on one board, and wires the table does not declare
+# --------------------------------------------------------------------------
+#
+# A board with a front header and a back header is one component and two
+# ``terminals(...)`` calls, and both sets answered to the component's output
+# name. The canvas keys a node by that name, so the second set's sockets
+# replaced the first set's and every declared wire lost an end: three wires,
+# no links, and a header still reading "3 wires" (ADR-115).
+
+
+BACK_HEADER = {**PRODUCER_HEADER, "origin": (0.0, 12.0, 1.6)}
+BACK_SIGNALS = ["h1", "h2", "h3"]
+
+
+def _two_header_project(tmp_path):
+    """One board wired from its front row and cabled from its back row.
+
+    The declared port is named after the output on purpose: that is the
+    collision, and it is what a script written by the assistant looks like.
+    """
+
+    part, sensor, esp, sen_t, esp_t = _built_harness()
+    back = part.terminals(sensor, header=BACK_HEADER, names=BACK_SIGNALS)
+    nets = NetsCollector()
+    table = nets(
+        ports={"sensor_board": sen_t, "esp": esp_t},
+        wires={"gnd": wire("sensor_board.gnd", "esp.gnd", gauge=0.8, solder=True)},
+    )
+    row = table["gnd"]
+    result = {
+        "sensor_board": sensor,
+        "esp32_board": esp,
+        "wire_gnd": part.cable(row.a, row.b, gauge_mm=row.gauge),
+        # Built by hand, outside the table — which is the only way to build a
+        # bundle, and a perfectly ordinary way to build a cable.
+        "wire_back": part.cable(back["h1"], esp_t["scl"], gauge_mm=0.5),
+    }
+    root = _produced_project(tmp_path, nets, result)
+    CadexProjectScriptStore(root).write(state_updates={"net_specs": nets.specs})
+    return root
+
+
+def _components(root):
+    """The node list, walked the way the shell's ``_inspect_full`` walks it.
+
+    Three components of resolved terminals are past the per-value preview
+    stub, so the list arrives as a path to follow — which is the shipping
+    path for any harness worth drawing.
+    """
+
+    return _wiring(root, path="/components", limit=50)["value"]
+
+
+def test_a_second_terminal_set_gets_its_own_node(tmp_path) -> None:
+    components = _components(_two_header_project(tmp_path))
+
+    assert [component["port"] for component in components] == [
+        "sensor_board",
+        "esp",
+        "sensor_board#2",
+    ]
+    # Both sets are on the same board, and both keep their own terminals:
+    # the declared port's are what its addresses are written against.
+    assert [term["name"] for term in components[0]["terminals"]] == SIGNALS
+    assert [term["name"] for term in components[2]["terminals"]] == BACK_SIGNALS
+    assert components[2]["output"] == "sensor_board"
+
+
+def test_the_declared_wire_still_addresses_the_declared_set(tmp_path) -> None:
+    """The point of reserving port names before naming anything else."""
+
+    wires = _wiring(_two_header_project(tmp_path))["value"]["wires"]
+
+    assert wires[0]["a"] == "sensor_board.gnd" and wires[0]["b"] == "esp.gnd"
+    assert "editable" not in wires[0]
+
+
+def test_a_wire_built_outside_the_table_is_drawn_read_only(tmp_path) -> None:
+    """The boards it lands on drew as nodes with nothing attached before."""
+
+    wires = _wiring(_two_header_project(tmp_path))["value"]["wires"]
+    extra = [row for row in wires if row.get("editable") is False]
+
+    assert [row["name"] for row in extra] == ["wire_back"]
+    assert extra[0]["a"] == "sensor_board#2.h1" and extra[0]["b"] == "esp.scl"
+    assert extra[0]["kind"] == "cable"
+
+
+def test_the_declared_wires_own_cable_is_not_drawn_twice(tmp_path) -> None:
+    """It is the same connection seen from the other table."""
+
+    wires = _wiring(_two_header_project(tmp_path))["value"]["wires"]
+
+    pairs = [frozenset((row["a"], row["b"])) for row in wires]
+    assert len(pairs) == len(set(pairs))
+    assert [row["name"] for row in wires] == ["gnd", "wire_back"]
+
+
+def test_an_inline_component_is_named_by_its_label(tmp_path) -> None:
+    """A pad that is never published under a result key still needs a node."""
+
+    registry = [
+        {**_registry_entry("", "", {**SENSOR, "properties": {"label": "fpga pad"}})},
+        {**_registry_entry("", "", {**ESP, "properties": {}})},
+    ]
+    root = _store(
+        tmp_path,
+        report={"ok": True, "digest": DIGEST, "outputs": [], "wiring": registry},
+        state={},
+    )
+
+    assert [c["port"] for c in _wiring(root)["value"]["components"]] == [
+        "fpga pad",
+        "component_1",
+    ]
 
 
 # --------------------------------------------------------------------------
