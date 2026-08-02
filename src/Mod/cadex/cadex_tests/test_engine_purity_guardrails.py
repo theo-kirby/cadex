@@ -79,6 +79,12 @@ DECLARED_ENGINE_MODULES = frozenset(
         # cadex_preview_worker, staged by filename like every other domain
         # worker and therefore outside this closure by design (ADR-055).
         "CadexWarmWorker",
+        # ...and live mode's host side (ADR-109), the same split for the
+        # same reason. This one is the sharper case: its worker imports
+        # CadexDynamics and through it mujoco, so "staged by filename, never
+        # imported" is not a tidiness argument here — it is what keeps a
+        # 53 MB physics dependency out of a service that never simulates.
+        "CadexLiveSession",
         "CadexScriptedProcess",
         "CadexScriptedPublication",
         "CadexScriptedDomainPublication",
@@ -257,6 +263,25 @@ def test_mujoco_never_enters_the_engine_closure() -> None:
         "CadexDynamics reached the engine closure. It is staged by filename "
         "into the worker bundle (ADR-077); cadexd must never import it."
     )
+    # The live worker is the other module that reaches physics, and it is
+    # the one most likely to be imported by accident: its *host* side,
+    # CadexLiveSession, is in the closure and sits one obvious refactor away
+    # from `import cadex_live_worker` to share a constant (ADR-109).
+    assert "cadex_live_worker" not in closure, (
+        "cadex_live_worker reached the engine closure. It imports "
+        "CadexDynamics and through it mujoco; CadexLiveSession names it as "
+        "a string and spawns it, and must never import it."
+    )
+    assert "CadexLiveSession" in closure, (
+        "CadexLiveSession left the engine closure; cadexd needs its host "
+        "side. If it is genuinely gone, DECLARED_ENGINE_MODULES is where "
+        "that gets recorded."
+    )
+    for name in ("mujoco", "CadexDynamics"):
+        assert name not in _import_roots(MODULE_DIR / "CadexLiveSession.py"), (
+            f"CadexLiveSession imports {name}. Everything physical is on the "
+            "far side of a process boundary; that is the whole architecture."
+        )
     leaked = sorted(
         module for module, roots in closure.items() if "mujoco" in roots
     )

@@ -1,0 +1,21 @@
+{
+  "ok": "bool",
+  "live": "bool",
+  "components": [
+    "str"
+  ],
+  "control_hz": "int",
+  "frames_per_second": "int",
+  "actuator_channels": [
+    {
+      "actuator": "str",
+      "joint": "str",
+      "motion_type": "str",
+      "kind": "str",
+      "unit": "str",
+      "low": "float",
+      "high": "float"
+    }
+  ],
+  "episode_seconds": "float"
+}

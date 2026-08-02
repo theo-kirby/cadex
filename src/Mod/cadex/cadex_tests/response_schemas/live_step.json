@@ -1,0 +1,29 @@
+{
+  "ok": "bool",
+  "live": "bool",
+  "frames": [
+    {
+      "frame_index": "int",
+      "frame_kind": "str",
+      "nominal_time_s": "float",
+      "component_placements": {
+        "component_name": {
+          "position_mm": [
+            "float"
+          ],
+          "rotation_xyzw": [
+            "float"
+          ]
+        }
+      },
+      "actuator_commands": [
+        "float"
+      ]
+    }
+  ],
+  "step": "int",
+  "time_s": "float",
+  "terminated": "bool",
+  "termination": "str",
+  "reset_count": "int"
+}

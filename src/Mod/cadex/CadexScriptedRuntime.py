@@ -80,6 +80,12 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         # sandbox as everything else here, out of the same content-addressed
         # directory, and must never be importable by the service.
         "cadex_preview_worker.py",
+        # The resident live worker's entry (ADR-109). Here for the preview
+        # worker's reason and one of its own: it is the only other module
+        # besides CadexDynamics that touches physics, and being staged by
+        # filename is what puts it outside cadexd's import closure by
+        # construction rather than by discipline.
+        "cadex_live_worker.py",
     ),
 }
 
@@ -570,6 +576,136 @@ def prepare_preview(service: Any, values: Mapping[str, Any]) -> dict[str, Any]:
             "max_seconds": float(captured["timeout_seconds"]),
         },
     }
+
+
+class LiveBundleUnavailable(RuntimeError):
+    """There is nothing to play live. Always a refusal, never a crash."""
+
+
+#: The one trace a script may publish (ADR-062), by artifact suffix.
+_TRACE_SUFFIX = "-simulation-trace.json"
+
+#: What a live session plays, and the schema it is read out of. Pinned here
+#: rather than matched loosely because a trace of another schema is a trace
+#: whose ``policy`` block means something else.
+_TRACE_SCHEMA = "cadex-assembly-simulation-trace-v1"
+
+
+def prepare_live(project_root: str | Path, output: str) -> dict[str, Any]:
+    """Everything one live session needs, read off the accepted attempt.
+
+    A live session plays **the bundle the accepted rollout played** -- the
+    same MJCF, the same task, the same weights -- and the point of resolving
+    it from the pinned attempt directory rather than from the document is
+    that all three are already there, already checked, and already agree
+    with each other by digest. Nothing here rebuilds anything.
+
+    The three digests are re-checked rather than trusted, exactly as
+    ``_execute_rollout`` re-checks the model's. M8 phase 0 measured the same
+    policy against a reloaded model and against the one still in memory and
+    got trajectories 5.8e-3 apart by the end of an episode: the file is what
+    the digest attests to, so the file is what runs.
+
+    Raises :class:`LiveBundleUnavailable` with a sentence a person can act
+    on. Every way this can fail is a project that has not published a
+    rollout yet, which is a state rather than an error.
+    """
+
+    from CadexScriptStore import CadexProjectScriptStore
+
+    root = Path(project_root)
+    store = CadexProjectScriptStore(root)
+    attempt = store.read_state().get("accepted_attempt")
+    staging = str(attempt.get("staging") or "") if isinstance(attempt, dict) else ""
+    if not staging:
+        raise LiveBundleUnavailable(
+            "This project has no accepted revision yet, so there is nothing "
+            "to play. Build the script first."
+        )
+    attempt_root = (root / staging).resolve()
+    outputs = attempt_root / "outputs"
+    traces = sorted(outputs.glob(f"*{_TRACE_SUFFIX}")) if outputs.is_dir() else []
+    if not traces:
+        raise LiveBundleUnavailable(
+            "The accepted revision published no simulation, so there is no "
+            "mechanism to play. A live session needs an assembly.rollout."
+        )
+    trace = json.loads(traces[0].read_text(encoding="utf-8"))
+    if str(trace.get("schema") or "") != _TRACE_SCHEMA:
+        raise LiveBundleUnavailable(
+            f"The accepted revision's trace is a {trace.get('schema')!r}, "
+            f"and a live session reads {_TRACE_SCHEMA!r}."
+        )
+    name = str(trace.get("simulation_output") or "")
+    if output and output != name:
+        raise LiveBundleUnavailable(
+            f"This project's simulation output is {name!r}, not {output!r}. "
+            "A script publishes exactly one simulation (ADR-062)."
+        )
+    policy = trace.get("policy")
+    if not isinstance(policy, dict):
+        raise LiveBundleUnavailable(
+            f"Simulation {name!r} is a solved motion rather than a policy "
+            "rollout, and a live session needs a policy to answer the push."
+        )
+
+    model_file = _live_artifact(
+        attempt_root, str(policy.get("model_path") or ""),
+        str(policy.get("model_sha256") or ""), "the MuJoCo model")
+    task_file = _live_artifact(
+        outputs, f"{policy.get('task_output')}-task.json",
+        str(policy.get("task_sha256") or ""), "the task bundle")
+    weights_file = _live_artifact(
+        root / "assets", str(policy.get("weights") or ""),
+        str(policy.get("policy_sha256") or ""), "the policy weights")
+
+    return {
+        "project_root": str(root),
+        "simulation_output": name,
+        "policy_output": str(policy.get("policy_output") or ""),
+        "task_output": str(policy.get("task_output") or ""),
+        "components": [str(item) for item in trace.get("component_outputs") or ()],
+        "model_file": str(model_file),
+        "task_file": str(task_file),
+        "weights_file": str(weights_file),
+        "bundle_dir": str(
+            shared_worker_bundle(Path(__file__).resolve().parent, "project")[0]
+        ),
+        "freecadcmd_executable": str(_freecadcmd(_freecad_home())),
+    }
+
+
+def _freecad_home() -> str:
+    try:
+        import FreeCAD as App
+
+        return str(App.getHomePath())
+    except Exception as exc:  # pragma: no cover - only outside FreeCADCmd
+        raise LiveBundleUnavailable(
+            f"FreeCAD is unavailable, so no worker can be started: {exc}"
+        ) from exc
+
+
+def _live_artifact(base: Path, relative: str, digest: str, what: str) -> Path:
+    """One staged artifact, resolved under ``base`` and checked by digest."""
+
+    if not relative or relative in {"None-task.json"}:
+        raise LiveBundleUnavailable(f"The accepted revision names no path for {what}.")
+    path = (base / relative).resolve()
+    if base.resolve() not in path.parents or not path.is_file():
+        raise LiveBundleUnavailable(
+            f"{what.capitalize()} the accepted revision names is not a file "
+            f"under {base}."
+        )
+    observed = hashlib.sha256(path.read_bytes()).hexdigest()
+    if digest and observed != digest:
+        raise LiveBundleUnavailable(
+            f"{what.capitalize()} on disk does not match the digest the "
+            f"accepted revision recorded ({observed[:12]} against "
+            f"{digest[:12]}), so a live session would not be playing the "
+            f"mechanism that was verified."
+        )
+    return path
 
 
 def worker_environment(staging: str | Path) -> dict[str, str]:

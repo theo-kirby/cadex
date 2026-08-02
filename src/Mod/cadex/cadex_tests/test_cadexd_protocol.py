@@ -52,6 +52,9 @@ def test_op_list_is_pinned() -> None:
         "resolve_pin",
         "inspect",
         "preview_params",
+        "live_open",
+        "live_step",
+        "live_close",
         "cancel",
         "shutdown",
     }
@@ -61,6 +64,13 @@ def test_op_list_is_pinned() -> None:
     # settles it (ADR-055).
     assert "preview_params" in protocol.READ_OPS
     assert "preview_params" not in protocol.MODELING_OPS
+    # The same for the three live ops, and a sharper reason (ADR-109): a
+    # live session writes nothing at all, and a running simulation that
+    # blocked the AI from editing the script would make watching the
+    # mechanism and changing it mutually exclusive.
+    for op in ("live_open", "live_step", "live_close"):
+        assert op in protocol.READ_OPS
+        assert op not in protocol.MODELING_OPS
     assert protocol.MODELING_OPS == {
         "open_project",
         "write_script",

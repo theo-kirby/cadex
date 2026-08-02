@@ -171,6 +171,43 @@ def _declined_preview(revision: str, reason: str) -> dict[str, Any]:
     }
 
 
+def _declined_live_open(reason: str) -> dict[str, Any]:
+    """A successful ``live_open`` that declines to start a session.
+
+    Every required key is present and empty, exactly as
+    :func:`_declined_preview` fills ``placements``: the response contract is
+    pinned by op and not by outcome, so a refusal the shell can read is a
+    refusal that carries the whole shape.
+    """
+
+    return {
+        "ok": True,
+        "live": False,
+        "components": [],
+        "control_hz": 0,
+        "frames_per_second": 0,
+        "actuator_channels": [],
+        "episode_seconds": 0.0,
+        "reason": reason,
+    }
+
+
+def _declined_live_step(reason: str) -> dict[str, Any]:
+    """A successful ``live_step`` with no session behind it."""
+
+    return {
+        "ok": True,
+        "live": False,
+        "frames": [],
+        "step": 0,
+        "time_s": 0.0,
+        "terminated": False,
+        "termination": "",
+        "reset_count": 0,
+        "reason": reason,
+    }
+
+
 class CadexdServer:
     """Serial dispatcher over one project's engine state.
 
@@ -199,6 +236,10 @@ class CadexdServer:
         # Spawned lazily on the first preview, so a session that never drags
         # a slider never pays for it (ADR-055).
         self._preview_worker: Any = None
+        # ...and the same for live mode (ADR-109), which is the more
+        # expensive of the two to hold: it is a *running* episode, not an
+        # idle oracle.
+        self._live_session: Any = None
         self.shutdown_requested = False
 
     # -- reader-thread side ---------------------------------------------
@@ -324,7 +365,7 @@ class CadexdServer:
         root = root.resolve()
         budgets = _resolve_budgets(args.get("budgets"))
         # A different project is a different everything.
-        self._invalidate_preview_worker()
+        self._invalidate_resident_workers()
         if self._document is not None:
             try:
                 App.closeDocument(self._document.Name)
@@ -448,19 +489,28 @@ class CadexdServer:
             self._service, "xscript.project.describe_api", {}
         )
 
-    def _invalidate_preview_worker(self) -> None:
-        """Kill the resident preview worker's bound generation.
+    def _invalidate_resident_workers(self) -> None:
+        """Kill both resident workers: the preview one and the live one.
 
-        Free, because that worker is stateless by contract: the cost of being
+        Free, because both are stateless by contract: the cost of being
         wrong is one respawn. Called by everything that can change the source,
         the parameters, the assets or the project — deliberately *not* from
         ``open_project``'s restore path, which re-runs the stored script
         through the same lifecycle without changing anything (ADR-055).
+
+        The live session (ADR-109) is invalidated on the same list and for a
+        sharper reason than the preview worker is. A preview answering from a
+        stale generation shows the wrong poses for a moment; a live session
+        answering from one keeps playing a *mechanism that no longer exists*,
+        indefinitely, while the viewport says otherwise.
         """
 
         worker, self._preview_worker = self._preview_worker, None
         if worker is not None:
             worker.invalidate()
+        session, self._live_session = self._live_session, None
+        if session is not None:
+            session.invalidate()
 
     def _lifecycle_response(
         self, request_id: str, tool_name: str, args: dict[str, Any]
@@ -472,7 +522,7 @@ class CadexdServer:
         # source or the parameters, and a preview answered from the old
         # generation while it does would be answering about a model that no
         # longer exists.
-        self._invalidate_preview_worker()
+        self._invalidate_resident_workers()
         sink: dict[str, Any] = {}
         payload = self._run_lifecycle(
             self._service,
@@ -592,7 +642,7 @@ class CadexdServer:
             return not_open
         # An asset is part of the preview generation: mesh.import_file
         # resolves against the staged copy, so a new one is a new model.
-        self._invalidate_preview_worker()
+        self._invalidate_resident_workers()
         from CadexScriptedRuntime import list_project_assets, store_project_asset
         from CadexTools import tool_failure
 
@@ -666,12 +716,82 @@ class CadexdServer:
             "placements": dict(answer.get("placements") or {}),
         }
 
+    def _op_live_open(
+        self, _request_id: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Start a live session on the accepted revision's rollout (ADR-109).
+
+        A **read** op: it writes nothing, publishes nothing, and moves no
+        revision or digest, so it queues behind an in-flight rebuild rather
+        than refusing one. That matters more here than for a preview — a
+        running simulation that blocked the AI from editing the script would
+        make watching the machine and changing it mutually exclusive, and
+        watching it *while* it changes is the point.
+
+        Every way this can fail answers ``live: false`` with a reason, the
+        same shape ``preview_params`` refuses in. A project with no accepted
+        rollout is a **state**, not an error: the panel says "build a rollout
+        first" rather than showing the user a failure envelope.
+        """
+
+        not_open = self._require_open()
+        if not_open is not None:
+            return not_open
+        from CadexScriptedRuntime import LiveBundleUnavailable, prepare_live
+
+        try:
+            prepared = prepare_live(self._project_root, str(args["output"]))
+        except (LiveBundleUnavailable, OSError, ValueError, KeyError) as exc:
+            return _declined_live_open(str(exc))
+
+        from CadexLiveSession import CadexLiveSession, LiveSessionFailure
+
+        session = self._live_session
+        if session is None:
+            session = self._live_session = CadexLiveSession(self._project_root)
+        seed = args.get("seed")
+        try:
+            opened = session.open(prepared, None if seed is None else int(seed))
+        except LiveSessionFailure as exc:
+            return _declined_live_open(str(exc))
+        return {"ok": True, "live": True, **opened}
+
+    def _op_live_step(
+        self, _request_id: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Advance the running episode and hand back the frames it made."""
+
+        not_open = self._require_open()
+        if not_open is not None:
+            return not_open
+        session = self._live_session
+        if session is None or not session.is_open:
+            return _declined_live_step("no live session is open")
+        from CadexLiveSession import LiveSessionFailure
+
+        try:
+            answer = session.step(int(args["steps"]), args.get("push"))
+        except LiveSessionFailure as exc:
+            self._live_session = None
+            return _declined_live_step(str(exc))
+        return {"ok": True, "live": True, **answer}
+
+    def _op_live_close(
+        self, _request_id: str, _args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """End the session. Idempotent: closing a closed session is fine."""
+
+        session, self._live_session = self._live_session, None
+        if session is not None:
+            session.close()
+        return {"ok": True, "live": False, "closed": True}
+
     def _op_shutdown(self, _request_id: str, _args: dict[str, Any]) -> dict[str, Any]:
         self.shutdown_requested = True
         return {"ok": True, "shutting_down": True}
 
     def close(self) -> None:
-        self._invalidate_preview_worker()
+        self._invalidate_resident_workers()
         if self._document is not None:
             try:
                 import FreeCAD as App

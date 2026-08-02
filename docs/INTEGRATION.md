@@ -120,6 +120,9 @@ lifetime signal.
 | `resolve_pin` | `output`, `selection` (fingerprint query or `{element_type, index}`) | `{ok, output, revision, subelements, details}` against the accepted revision's staged BREP (`CadexPinResolution.py`) |
 | `inspect` | today's `core.inspect` args | same contract; `document/object` serve the ephemeral doc, `script/api/image/assets/history/wiring` the store; `selection` rejected (shell-only). `wiring` is the harness as a graph (ADR-065): the terminals the accepted run resolved, joined to the connection table, with `editable: false` and `source: "derived"` for a script written before `nets(...)` |
 | `preview_params` | `values`, `expected_revision` | solved component placements for a **pose-only** parameter change, from a resident read-only worker (ADR-055) — no BREP, no tessellation, no digest, no publication, **no store write**. A **read** op: it queues behind an in-flight modeling request rather than refusing one. Answers `previewable: false` with a `reason` whenever the change was not pose-only, the revision is stale, or the worker is unavailable; the debounced `set_params` behind it is the real answer either way |
+| `live_open` | `output`, `seed?` | starts a **live session** on the accepted revision's rollout (ADR-109): a resident `--safe-mode` worker running `CadexDynamics.evaluate_episode` with the same MJCF, task and weights that rollout played, all three re-checked by digest. Answers `live: false` with a `reason` when the project has no accepted rollout, which is a **state** and not an error. A **read** op — it writes nothing at all, so it queues behind a rebuild rather than blocking one, and watching the machine stays compatible with changing it |
+| `live_step` | `steps`, `push?` | advances the episode by `steps` control steps and returns **one frame per step**, in the `component_placements` + `actuator_commands` shape `cadex-assembly-simulation-trace-v1` already carries — no fourth dialect. **The shell owns the clock**: the worker's episode blocks for this credit rather than sleeping against one of its own, so pause is the absence of a request. `push` is the user's shove — `{newtons, azimuth_rad, duration_s, body}`, applied at that component's centre of mass in the world frame, `azimuth_rad` 0 at **world +X** (ADR-107) — added on top of whatever the task's own disturbance schedule is doing. A terminated episode holds ~1 s so the fall is visible, then resets at a fresh seed and counts `reset_count` |
+| `live_close` | — | ends the session and kills the worker. Idempotent |
 | `cancel` | `request_id?` | acks and cancels the in-flight modeling request (`RUN_CANCELLED` flows to that request) |
 | `shutdown` | — | graceful exit |
 
@@ -142,6 +145,9 @@ prose. Every response also carries `id` and `ok`.
 | `resolve_pin` | `output`, `revision`, `subelements`, `details` |
 | `inspect` | `scope`, `target`, `path`, `value`, `page`, `document`, `surface`, `result_json_bytes` |
 | `preview_params` | `placements`, `revision`, `previewable`, `reason`? |
+| `live_open` | `live`, `components`, `control_hz`, `frames_per_second`, `actuator_channels`, `episode_seconds`, `reason`? |
+| `live_step` | `live`, `frames`, `step`, `time_s`, `terminated`, `termination`, `reset_count`, `reason`? |
+| `live_close` | `live`, `closed` |
 | `cancel` | `cancelled` |
 | `shutdown` | `shutting_down` |
 

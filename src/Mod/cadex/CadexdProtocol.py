@@ -52,7 +52,23 @@ MODELING_OPS = frozenset(
 #: :data:`MODELING_OPS`: it writes nothing, and queueing behind an in-flight
 #: modeling op is exactly the wanted behaviour when a drag's preview collides
 #: with the settle-time ``set_params`` behind it (ADR-055).
-READ_OPS = frozenset({"describe_api", "resolve_pin", "inspect", "preview_params"})
+#:
+#: The three live ops are here for the same reason and a sharper one
+#: (ADR-109): a live session writes nothing at all -- no store, no
+#: publication, no trace -- and a running simulation that *blocked* the AI
+#: from editing the script would make watching the machine and changing it
+#: mutually exclusive, which is the opposite of the point.
+READ_OPS = frozenset(
+    {
+        "describe_api",
+        "resolve_pin",
+        "inspect",
+        "preview_params",
+        "live_open",
+        "live_step",
+        "live_close",
+    }
+)
 #: Control ops; handled out of band by the reader.
 CONTROL_OPS = frozenset({"cancel", "shutdown"})
 
@@ -99,6 +115,16 @@ OP_ARG_SPECS: dict[str, tuple[dict[str, type], dict[str, type]]] = {
     # poses. Same guard as set_params, because a preview of a revision the
     # caller is not looking at is worse than no preview (ADR-055).
     "preview_params": ({"values": dict, "expected_revision": str}, {}),
+    # Live mode (ADR-109). `output` names the accepted revision's rollout;
+    # `seed` is the first episode's, and every auto-reset after it counts up
+    # from there so a session can be described by one number.
+    "live_open": ({"output": str}, {"seed": int}),
+    # `steps` is control steps to advance, and the reply carries one frame
+    # per step: the shell owns the clock, so this is the whole of how time
+    # passes. `push` is the user's shove -- newtons at an azimuth about
+    # world +X (ADR-107), for a duration, at one component's centre of mass.
+    "live_step": ({"steps": int}, {"push": dict}),
+    "live_close": ({}, {}),
     "cancel": ({}, {"request_id": str}),
     "shutdown": ({}, {}),
 }
@@ -260,6 +286,20 @@ OP_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset({"placements", "revision", "previewable"}),
         frozenset({"reason"}),
     ),
+    # `live` rides on every live reply, successful or refused, and is the
+    # one place a refusal says why: a project with no accepted rollout is a
+    # state rather than an error, exactly as `previewable: false` is.
+    "live_open": (
+        frozenset({"live", "components", "control_hz", "frames_per_second",
+                   "actuator_channels", "episode_seconds"}),
+        frozenset({"reason"}),
+    ),
+    "live_step": (
+        frozenset({"live", "frames", "step", "time_s", "terminated",
+                   "termination", "reset_count"}),
+        frozenset({"reason"}),
+    ),
+    "live_close": (frozenset({"live", "closed"}), frozenset()),
     "cancel": (frozenset({"cancelled"}), frozenset()),
     "shutdown": (frozenset({"shutting_down"}), frozenset()),
 }

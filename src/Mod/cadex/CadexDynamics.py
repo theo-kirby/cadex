@@ -6824,6 +6824,7 @@ def evaluate_episode(
     *,
     actions: Any = None,
     sample: Any = None,
+    forces: Any = None,
     seed: int | None = None,
 ) -> dict[str, Any]:
     """One full episode, from the bundle, in the engine.
@@ -6874,6 +6875,23 @@ def evaluate_episode(
     it is scaled into ``data.ctrl``: the bound is what the bundle promised a
     policy, and a runner that quietly exceeded it would be running a
     different mechanism from the one it described.
+
+    ``forces`` is a callable ``(step, data, time_s)`` invoked immediately
+    after :func:`apply_disturbance`, and it exists for exactly one caller:
+    **live mode** (ADR-109), where a person pushes the mechanism with the
+    mouse while the policy is driving it. A shove written into
+    ``xfrc_applied`` from outside this loop cannot work, because
+    ``apply_disturbance`` rewrites that array from zero every control step
+    -- deliberately, so a window that closed stops pushing -- and would
+    erase it on the next step. A hook placed *after* that write is the one
+    position where an outside force can be additive to the task's own.
+
+    It defaults to ``None`` and changes nothing for any existing caller. It
+    is **not** a digest input and does not belong in
+    ``EPISODE_VARIATION_ALGORITHM``: nothing about it is drawn, it consumes
+    no number from the stream, and a bundle knows nothing of it. A live
+    session is a *thing to watch*, not a thing to reproduce -- which is why
+    live mode also never writes a trace.
     """
 
     mujoco = _mujoco_module()
@@ -6965,6 +6983,15 @@ def evaluate_episode(
         # can express inside a scan. A force that changed under a policy that
         # could not see it change would be noise, not a disturbance.
         apply_disturbance(data, task, variation, time_s)
+        if forces is not None:
+            if not task.get("disturbance"):
+                # ``apply_disturbance`` returns before it clears the array
+                # when the task declares no push, so on those tasks the hook
+                # owns ``xfrc_applied`` outright and this is the clear it
+                # would otherwise never get. Without it a live push would
+                # accumulate step on step into a force nobody applied.
+                data.xfrc_applied[:] = 0.0
+            forces(step, data, time_s)
         observation = observation_values(task, data.sensordata)
         if actions is None:
             commanded = [

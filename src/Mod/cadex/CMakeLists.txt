@@ -24,6 +24,7 @@ set(Cadex_Scripts
     CadexScriptedRuntime.py
     CadexScriptedDomainPublication.py
     CadexWarmWorker.py
+    CadexLiveSession.py
     cadex_assembly_api.py
     cadex_assembly_worker.py
     cadex_domain_api.py
@@ -35,6 +36,7 @@ set(Cadex_Scripts
     cadex_partdesign_api.py
     cadex_partdesign_worker.py
     cadex_project_api.py
+    cadex_live_worker.py
     cadex_preview_worker.py
     cadex_project_worker.py
     cadex_rebuild.py

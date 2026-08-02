@@ -10838,3 +10838,134 @@ measures the transient.
 building: a six-second recorded episode with one push, read through summary
 statistics, is a poor instrument for *"does it recover"*. You cannot push it
 from the other side, cannot push it harder, and cannot push it twice.
+
+## ADR-109 — Live mode: a machine you can push (2026-08-02)
+
+**The complaint under ADR-107 was the instrument, and this is the answer.**
+A six-second recorded episode with one drawn push is a poor instrument for
+*"does it recover"*. You cannot shove it from the other side, cannot shove it
+harder, and cannot shove it twice — and reading such a recording through
+summary statistics is how the frame got read 90° wrong and how a foot that
+lifts 5.9 mm was reported as never leaving the ground. Live mode makes the
+machine a thing in the room.
+
+**Measured before it was planned**, on this Mac, mg-legs, `stand5.cxpolicy`:
+344 µs per control step (10 joints, 5 solver steps) against a 10 ms control
+interval — **29× real time**. Model compile 79 ms, `decode_policy` 1 ms. So
+live mode was never a physics problem; it is plumbing and UI.
+
+**Architecture, and there was only one shape available.** The binding
+constraint is `test_engine_purity_guardrails`: `cadexd` may not import
+`CadexDynamics`, and nothing under `mesh_agent/` may import `mujoco`. ADR-055's
+resident preview worker is the one existing pattern that threads it, and this
+reuses it almost line for line:
+
+```
+shell (mesh_agent/cadex_live.py)   no mujoco, speaks ops only
+   │  live_open / live_step / live_close   (NDJSON, cadexd protocol)
+cadexd + CadexLiveSession.py       spawns + shuttles JSON, imports no physics
+   │  NDJSON on a private fd
+cadex_live_worker.py               FreeCADCmd --safe-mode sandbox
+   └─ CadexDynamics.evaluate_episode   ← the ONE episode loop, unchanged
+```
+
+`cadex_live_worker.py` is staged into the worker bundle **by filename**, so it
+is outside cadexd's import closure by construction rather than by discipline —
+exactly as `cadex_preview_worker` is. `CadexLiveSession` joins
+`DECLARED_ENGINE_MODULES`; the closure grew by that one name and a test says
+so, names the worker as the thing that must *not* be in it, and asserts the
+host side imports neither `mujoco` nor `CadexDynamics`.
+
+**No fifth episode loop.** This project carries four implementations of one
+RNG contract and M9's hazard 19 is what happened when two of them disagreed
+unnoticed. Live mode therefore runs `evaluate_episode` itself, on a thread,
+through the seams it already had — `actions` and `sample` — plus **one new
+one**:
+
+* **`evaluate_episode(..., forces=None)`**, a callable `(step, data, time_s)`
+  invoked immediately after `apply_disturbance`. Needed because that function
+  rewrites `data.xfrc_applied` from zero every control step — deliberately, so
+  a window that closed stops pushing — and would erase a shove written from
+  outside on the next step. Additive, defaults `None`, and **not a digest
+  input**: it draws nothing, consumes nothing from the stream, and is not
+  named in `EPISODE_VARIATION_ALGORITHM`. A test asserts a no-op hook replays
+  an episode bit for bit, because a bundle written before live mode existed
+  must still be the same bundle — including the one live mode exists to play.
+  One wrinkle is load-bearing and is tested: `apply_disturbance` returns
+  *before* its own clear when a task declares no push, so the loop performs
+  the clear itself when a hook is present. Without it a live push would
+  accumulate 4, 8, 12… N and still look like a push from outside.
+
+**The shell owns the clock**, and this is the decision the rest follows from.
+`actions` blocks for **credit**, granted one unit per control step by a
+`live_step`; it does not sleep against a clock of its own. Three consequences,
+all wanted: pause is the absence of a request and needs no state in the
+physics; the 29× headroom is thrown away by the one component that has a real
+clock, the shell's 30 Hz timer; and a `live_step` round trip measures
+*plumbing* rather than a `time.sleep`, which is what makes the latency lane
+measure something.
+
+**Three read ops** (`live_open`, `live_step`, `live_close`), in `READ_OPS` for
+`preview_params`'s reason and a sharper one: a live session writes nothing at
+all, and a running simulation that blocked the AI from editing the script
+would make watching the machine and changing it mutually exclusive. Frames
+reuse the trace frame object **verbatim** — `component_placements` plus
+`actuator_commands`, the shape `cadex-assembly-simulation-trace-v1` already
+carries — so there is no fourth dialect and the shell reads them with the code
+it has. `docs/INTEGRATION.md`'s op table moved in the same commit, which a
+test enforces.
+
+A refusal is `ok: true, live: false, reason: …` with every declared key
+present and empty. A project with no accepted rollout is a **state**, not an
+error: the panel says "build a rollout first" rather than showing a failure
+envelope.
+
+**What it plays** is the accepted attempt's bundle — the same MJCF, task and
+weights that rollout played, all three re-checked by digest, because M8 phase 0
+measured a reloaded model and an in-memory one 5.8e-3 apart by the end of an
+episode. Nothing is rebuilt and nothing is written: no trace, no artifact, no
+store. A live session is a thing to watch; if it were reproducible it would be
+a rollout, and a rollout already exists.
+
+**Auto-reset**: a terminated episode holds 1 s of wall time so the fall is
+visible, then restarts at `seed + reset_count`. Credit granted during the hold
+is dropped rather than banked, so the next episode starts at the shell's pace
+instead of sprinting through the queue that piled up while the machine lay on
+the floor.
+
+**Measured, over raw NDJSON, on the mg-legs project:**
+
+| batch (control steps) | 1 | **3** | 8 | 32 |
+|---|---|---|---|---|
+| median round trip | 0.54 ms | **1.72 ms** | 4.63 ms | 19.1 ms |
+| p90 | 0.78 ms | 1.79 ms | 4.89 ms | 20.0 ms |
+
+Bar: **median ≤ 33 ms** for a 3-step batch — what a 30 Hz pump asks of a
+100 Hz task, and the same "10 fps is the floor below which *live* stops being
+an honest word" argument the preview lane already makes. It lands 19× under
+it. The **sweep** is the honest part: near-linear at ~0.6 ms a control step
+against 344 µs of physics, so the curve moves with the batch size and the
+measurement is measuring something (M9 hazard 18). The fallback, had it
+missed, was more steps per batch absorbed by the shell's queue — stated so the
+design does not depend on the number.
+
+`live_open` is 0.14 s, which is the process spawn and the model compile, once
+per session.
+
+**Identical numbers from the staged payload** (`CADEX_ENGINE_ROOT=…`, 1.72 ms
+median), which is the check ADR-023 exists for: a source tree that passes
+proves nothing about a payload, and a new worker in the bundle is exactly the
+class of change that caught M0's dangling `bin/python`.
+
+**One defect found by measuring rather than by reading.** The first sweep
+showed a 5 s p90 at batch 32: a step spanning a termination waited out the
+whole worker deadline for frames the ended episode would never produce. An
+episode-boundary event, polled by the collector, turned that into 20 ms. It
+would have been invisible at the batch size the shell actually uses.
+
+**The latency lane needs a real project**, named by `CADEX_LIVE_PROJECT`, and
+skips without one. It cannot synthesise its input: a policy is an *asset* —
+hours of stochastic GPU compute — and the engine has been able to verify one
+and never to produce one since M8 (ADR-070, ADR-084). That is the same reason
+`feasibility.py` and `compare.py` live beside the project rather than in
+`cadex_tests` (ADR-075 §6).

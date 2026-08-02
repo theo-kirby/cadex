@@ -1,0 +1,5 @@
+{
+  "ok": "bool",
+  "live": "bool",
+  "closed": "bool"
+}
