@@ -110,6 +110,26 @@ const EnumPropertyItem rna_enum_space_type_items[] = {
      ICON_OPTIONS,
      "Cadex Parameters",
      "Adjust the parameters the model declares"},
+    {SPACE_CADEX_ENV,
+     "CADEX_ENV",
+     ICON_WORLD,
+     "Cadex Environment",
+     "Set up the world the mechanism is simulated in"},
+    {SPACE_CADEX_POLICY,
+     "CADEX_POLICY",
+     ICON_ANIM,
+     "Cadex Policy",
+     "Play a trained control policy and read what it commanded"},
+    {SPACE_CADEX_TRAINING,
+     "CADEX_TRAINING",
+     ICON_MOD_WAVE,
+     "Cadex Training",
+     "Dispatch and follow a training run"},
+    {SPACE_CADEX_LIVE,
+     "CADEX_LIVE",
+     ICON_PLAY,
+     "Cadex Live",
+     "Run the mechanism live and push it while the policy answers"},
     {SPACE_IMAGE,
      "IMAGE_EDITOR",
      ICON_IMAGE,
@@ -833,6 +853,14 @@ static StructRNA *rna_Space_refine(PointerRNA *ptr)
       return RNA_SpaceCadexChat;
     case SPACE_CADEX_PARAMS:
       return RNA_SpaceCadexParams;
+    case SPACE_CADEX_ENV:
+      return RNA_SpaceCadexEnv;
+    case SPACE_CADEX_POLICY:
+      return RNA_SpaceCadexPolicy;
+    case SPACE_CADEX_TRAINING:
+      return RNA_SpaceCadexTraining;
+    case SPACE_CADEX_LIVE:
+      return RNA_SpaceCadexLive;
 
       /* Currently no type info. */
     case SPACE_SCRIPT:
@@ -9656,6 +9684,50 @@ static void rna_def_space_cadex_params(BlenderRNA *brna)
   rna_def_space_generic_show_region_toggles(srna, (1 << RGN_TYPE_HEADER));
 }
 
+static void rna_def_space_cadex_env(BlenderRNA *brna)
+{
+  StructRNA *srna;
+
+  srna = RNA_def_struct(brna, "SpaceCadexEnv", "Space");
+  RNA_def_struct_sdna(srna, "SpaceCadexEnv");
+  RNA_def_struct_ui_text(srna, "Space Cadex Environment", "Cadex Environment space data");
+
+  rna_def_space_generic_show_region_toggles(srna, (1 << RGN_TYPE_HEADER));
+}
+
+static void rna_def_space_cadex_policy(BlenderRNA *brna)
+{
+  StructRNA *srna;
+
+  srna = RNA_def_struct(brna, "SpaceCadexPolicy", "Space");
+  RNA_def_struct_sdna(srna, "SpaceCadexPolicy");
+  RNA_def_struct_ui_text(srna, "Space Cadex Policy", "Cadex Policy space data");
+
+  rna_def_space_generic_show_region_toggles(srna, (1 << RGN_TYPE_HEADER));
+}
+
+static void rna_def_space_cadex_training(BlenderRNA *brna)
+{
+  StructRNA *srna;
+
+  srna = RNA_def_struct(brna, "SpaceCadexTraining", "Space");
+  RNA_def_struct_sdna(srna, "SpaceCadexTraining");
+  RNA_def_struct_ui_text(srna, "Space Cadex Training", "Cadex Training space data");
+
+  rna_def_space_generic_show_region_toggles(srna, (1 << RGN_TYPE_HEADER));
+}
+
+static void rna_def_space_cadex_live(BlenderRNA *brna)
+{
+  StructRNA *srna;
+
+  srna = RNA_def_struct(brna, "SpaceCadexLive", "Space");
+  RNA_def_struct_sdna(srna, "SpaceCadexLive");
+  RNA_def_struct_ui_text(srna, "Space Cadex Live", "Cadex Live space data");
+
+  rna_def_space_generic_show_region_toggles(srna, (1 << RGN_TYPE_HEADER));
+}
+
 void RNA_def_space(BlenderRNA *brna)
 {
   rna_def_space(brna);
@@ -9687,6 +9759,10 @@ void RNA_def_space(BlenderRNA *brna)
   rna_def_space_project(brna);
   rna_def_space_cadex_chat(brna);
   rna_def_space_cadex_params(brna);
+  rna_def_space_cadex_env(brna);
+  rna_def_space_cadex_policy(brna);
+  rna_def_space_cadex_training(brna);
+  rna_def_space_cadex_live(brna);
 }
 
 }  // namespace blender

@@ -94,6 +94,10 @@ void ED_spacetypes_init()
   ED_spacetype_project();
   ED_spacetype_cadex_chat();
   ED_spacetype_cadex_params();
+  ED_spacetype_cadex_env();
+  ED_spacetype_cadex_policy();
+  ED_spacetype_cadex_training();
+  ED_spacetype_cadex_live();
   ED_spacetype_statusbar();
   ED_spacetype_topbar();
 

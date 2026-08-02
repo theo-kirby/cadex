@@ -268,6 +268,18 @@ static eSpace_Type rna_Space_refine_reverse(StructRNA *srna)
   if (srna == RNA_SpaceCadexParams) {
     return SPACE_CADEX_PARAMS;
   }
+  if (srna == RNA_SpaceCadexEnv) {
+    return SPACE_CADEX_ENV;
+  }
+  if (srna == RNA_SpaceCadexPolicy) {
+    return SPACE_CADEX_POLICY;
+  }
+  if (srna == RNA_SpaceCadexTraining) {
+    return SPACE_CADEX_TRAINING;
+  }
+  if (srna == RNA_SpaceCadexLive) {
+    return SPACE_CADEX_LIVE;
+  }
   return SPACE_EMPTY;
 }
 

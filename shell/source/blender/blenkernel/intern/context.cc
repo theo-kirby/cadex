@@ -1190,6 +1190,42 @@ SpaceCadexParams *CTX_wm_space_cadex_params(const bContext *C)
   return nullptr;
 }
 
+SpaceCadexEnv *CTX_wm_space_cadex_env(const bContext *C)
+{
+  ScrArea *area = CTX_wm_area(C);
+  if (area && area->spacetype == SPACE_CADEX_ENV) {
+    return static_cast<SpaceCadexEnv *>(area->spacedata.first);
+  }
+  return nullptr;
+}
+
+SpaceCadexPolicy *CTX_wm_space_cadex_policy(const bContext *C)
+{
+  ScrArea *area = CTX_wm_area(C);
+  if (area && area->spacetype == SPACE_CADEX_POLICY) {
+    return static_cast<SpaceCadexPolicy *>(area->spacedata.first);
+  }
+  return nullptr;
+}
+
+SpaceCadexTraining *CTX_wm_space_cadex_training(const bContext *C)
+{
+  ScrArea *area = CTX_wm_area(C);
+  if (area && area->spacetype == SPACE_CADEX_TRAINING) {
+    return static_cast<SpaceCadexTraining *>(area->spacedata.first);
+  }
+  return nullptr;
+}
+
+SpaceCadexLive *CTX_wm_space_cadex_live(const bContext *C)
+{
+  ScrArea *area = CTX_wm_area(C);
+  if (area && area->spacetype == SPACE_CADEX_LIVE) {
+    return static_cast<SpaceCadexLive *>(area->spacedata.first);
+  }
+  return nullptr;
+}
+
 void CTX_wm_manager_set(bContext *C, wmWindowManager *wm)
 {
   C->wm.manager = wm;

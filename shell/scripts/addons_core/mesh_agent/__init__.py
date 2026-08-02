@@ -170,14 +170,21 @@ def _load_post_handler(_filepath):
     _report_file_change()
 
 
+#: Cadex editors whose contents depend on `scene.frame_current`. Parameters
+#: is deliberately absent: a slider does not move with the timeline.
+_FRAME_DRIVEN_EDITORS = frozenset({'CADEX_POLICY', 'CADEX_LIVE'})
+
+
 @persistent
 def _frame_change_handler(*_args):
     # The Policy Outputs bars are drawn from `scene.frame_current`, and
-    # `match_region_with_redraws` (screen_ops.cc) has no case for
-    # SPACE_CADEX_PARAMS: playback tags the 3D viewport and leaves the
-    # parameters editor showing whichever frame it last drew. Adding that
-    # case would be a `docs/BLENDER-TREE.md` §2b line against inherited
-    # Blender; tagging from the add-on is free and does the same job.
+    # `match_region_with_redraws` (screen_ops.cc) has no case for any Cadex
+    # space type: playback tags the 3D viewport and leaves these editors
+    # showing whichever frame they last drew. Adding those cases would be
+    # `docs/BLENDER-TREE.md` §2b lines against inherited Blender; tagging
+    # from the add-on is free and does the same job. That trade survived
+    # ADR-108 unchanged -- four more editors is four more strings here, and
+    # still zero lines in screen_ops.cc.
     #
     # Tag only -- no property writes. A frame-change handler that assigned
     # to the scene would re-enter the depsgraph on every frame of playback.
@@ -190,7 +197,7 @@ def _frame_change_handler(*_args):
         if screen is None:
             continue
         for area in screen.areas:
-            if area.type == 'CADEX_PARAMS':
+            if area.type in _FRAME_DRIVEN_EDITORS:
                 area.tag_redraw()
 
 

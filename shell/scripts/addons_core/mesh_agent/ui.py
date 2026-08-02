@@ -337,11 +337,14 @@ class MESH_AGENT_OT_toggle_collision(Operator):
         return {'FINISHED'}
 
 
-class CADEX_PARAMS_PT_collision(Panel):
+class CADEX_ENV_PT_collision(Panel):
     """What the solver touches, for a model that has collision geometry.
 
     Polls on the scene flag exactly as the Simulation panel does, so a model
-    without dynamics sees the parameters editor as it was.
+    without dynamics sees an empty Environment editor rather than a wrong
+    one. Since ADR-108 this is the sole occupant of its own editor, which is
+    what lets it sit open beside the viewport while the sliders sit
+    elsewhere.
 
     The initial-contact line is the one row that would have caught the
     shipped hopper: it says what is *already touching before anything
@@ -349,7 +352,7 @@ class CADEX_PARAMS_PT_collision(Panel):
     shape placed where its author meant from one placed 20 mm out (ADR-087).
     """
 
-    bl_space_type = 'CADEX_PARAMS'
+    bl_space_type = 'CADEX_ENV'
     bl_region_type = 'WINDOW'
     bl_label = "Collision"
 
@@ -395,21 +398,25 @@ class CADEX_PARAMS_PT_collision(Panel):
                          icon='GHOST_DISABLED')
 
 
-class CADEX_PARAMS_PT_simulation(Panel):
+class CADEX_POLICY_PT_simulation(Panel):
     """Playback for a model that has a simulation, and nothing otherwise.
 
     Watching the mechanism move is the point of building one, and a baked
     simulation is otherwise reachable only from an editor this product does
-    not show. It lives beside the sliders because that is where you already
-    are when you want to see the effect of one: no new editor and no new
-    space type (ADR-036 stands).
+    not show. It used to live beside the sliders, because that was where you
+    already were when you wanted to see the effect of one, and because a
+    readout is not worth a space type (ADR-036). ADR-108 reversed that: five
+    panel groups in one editor cannot be *arranged*, and arranging them is
+    most of what a person does with a workspace. It shares the Policy editor
+    with Policy Outputs, which is the pairing that reads: what the policy
+    did, and what it commanded.
 
     Playing from here redraws the 3D viewport correctly --
     ``match_region_with_redraws`` tags every ``SPACE_VIEW3D`` region
     whichever region started playback.
     """
 
-    bl_space_type = 'CADEX_PARAMS'
+    bl_space_type = 'CADEX_POLICY'
     bl_region_type = 'WINDOW'
     bl_label = "Simulation"
 
@@ -444,7 +451,60 @@ class CADEX_PARAMS_PT_simulation(Panel):
             elapsed, total, int(info.get("components") or 0)))
 
 
-class CADEX_PARAMS_PT_actuators(Panel):
+def draw_actuator_bars(layout, channels, values):
+    """One row per actuator: its command against its own declared range.
+
+    Shared by the Policy editor, which reads a recorded trace, and the Live
+    editor, which reads a session running right now (ADR-108, ADR-109). The
+    numbers arrive by different routes and mean exactly the same thing, so
+    one loop draws both -- two copies would be two places for the
+    "each bar spans its own limits" rule below to drift apart.
+
+    Read-only by construction: ``layout.progress`` draws a bar and takes no
+    input. For a recording that is right because editing one would be
+    editing history; for a live session it is right because the policy is
+    what decides these, not the person watching.
+
+    ``values`` of ``None`` means *no command at this frame* -- the reset
+    pose, before any action has been taken.
+    """
+
+    if not channels:
+        return
+    if values is None:
+        # Said rather than drawn as zeros, which would be a command the
+        # policy never issued.
+        note = layout.row()
+        note.enabled = False
+        note.label(text="No command yet at this frame", icon='INFO')
+        return
+
+    column = layout.column(align=True)
+    for channel, value in zip(channels, values):
+        low = float(channel["low"])
+        high = float(channel["high"])
+        span = high - low
+        factor = 0.0 if span <= 0.0 else (float(value) - low) / span
+        split = column.split(factor=0.42, align=True)
+        label = split.row()
+        label.enabled = False
+        label.label(text=str(channel["label"]))
+        split.progress(
+            factor=min(max(factor, 0.0), 1.0),
+            text="{:+.1f} {:s}".format(float(value), str(channel["unit"])),
+        )
+
+    # Each bar is drawn against *its own* range, and the ranges need not
+    # agree: a motor's comes from its effort limit and a servo's from its
+    # joint limits, so they differ in span and in unit. One aggregate "full
+    # scale" number would be false the first time a mechanism mixed the two
+    # -- this says what is true of every row instead.
+    note = layout.row()
+    note.enabled = False
+    note.label(text="each bar spans that actuator's own limits")
+
+
+class CADEX_POLICY_PT_actuators(Panel):
     """What the policy is telling the motors, at the current frame.
 
     A rollout's poses already show what the mechanism *did*; this is the
@@ -457,12 +517,15 @@ class CADEX_PARAMS_PT_actuators(Panel):
     input, which is right, because these numbers are a recording. Editing
     one would be editing history.
 
-    Beside the sliders and behind the same toggle, for the reason
-    ``CADEX_PARAMS_PT_simulation`` gives: no new editor and no new space
-    type (ADR-036 stands). Its cost to the inherited tree is zero.
+    In the **Policy** editor beside ``CADEX_POLICY_PT_simulation`` since
+    ADR-108: a recording and its commands are one thing to look at. The
+    drawing itself is ``draw_actuator_bars``, shared with the Live editor --
+    the bars mean the same thing whether the numbers came off a trace or off
+    a session running right now, and two copies of that loop would be two
+    places for the "each bar spans its own limits" rule to drift.
     """
 
-    bl_space_type = 'CADEX_PARAMS'
+    bl_space_type = 'CADEX_POLICY'
     bl_region_type = 'WINDOW'
     bl_label = "Policy Outputs"
 
@@ -476,48 +539,15 @@ class CADEX_PARAMS_PT_actuators(Panel):
     def draw(self, context):
         from . import cadex_animate
         scene = context.scene
-        layout = self.layout
-
         table = scene.get(cadex_animate.COMMANDS_FLAG)
-        channels = list((table or {}).get("channels") or ())
-        row = cadex_animate.commands_at(table, scene.frame_current)
-        if not channels:
-            return
-        if row is None:
-            # Before the first control step: the reset pose, where no action
-            # has been taken. Said rather than drawn as zeros, which would
-            # be a command the policy never issued.
-            note = layout.row()
-            note.enabled = False
-            note.label(text="No command yet at this frame", icon='INFO')
-            return
-
-        column = layout.column(align=True)
-        for channel, value in zip(channels, row):
-            low = float(channel["low"])
-            high = float(channel["high"])
-            span = high - low
-            factor = 0.0 if span <= 0.0 else (float(value) - low) / span
-            split = column.split(factor=0.42, align=True)
-            label = split.row()
-            label.enabled = False
-            label.label(text=str(channel["label"]))
-            split.progress(
-                factor=min(max(factor, 0.0), 1.0),
-                text="{:+.1f} {:s}".format(float(value), str(channel["unit"])),
-            )
-
-        # Each bar is drawn against *its own* range, and the ranges need not
-        # agree: a motor's comes from its effort limit and a servo's from
-        # its joint limits, so they differ in span and in unit. One aggregate
-        # "full scale" number would be false the first time a mechanism
-        # mixed the two -- this says what is true of every row instead.
-        note = layout.row()
-        note.enabled = False
-        note.label(text="each bar spans that actuator's own limits")
+        draw_actuator_bars(
+            self.layout,
+            list((table or {}).get("channels") or ()),
+            cadex_animate.commands_at(table, scene.frame_current),
+        )
 
 
-class CADEX_PARAMS_PT_training(Panel):
+class CADEX_TRAINING_PT_training(Panel):
     """A training run that is happening on another machine, while it happens.
 
     Before this, a run was a black box with one artifact at the end: you
@@ -532,13 +562,14 @@ class CADEX_PARAMS_PT_training(Panel):
     never import that (``test_the_shell_never_learns_about_mujoco``) and
     nothing here comes near it.
 
-    Beside Simulation and Policy Outputs and behind the same toggle, for the
-    reason those two give: no new editor and no new space type (ADR-036
-    stands), so the inherited Blender tree takes zero lines and
-    ``docs/BLENDER-TREE.md`` 2a stays eight files.
+    Its own editor since ADR-108, and of the four it is the one that most
+    wants to be left open in a corner: a run takes an hour and what you do
+    with this panel is glance at it. ``docs/BLENDER-TREE.md`` 2a is still
+    eight files -- the editors are 2b, which is where additive rows against
+    inherited Blender belong.
     """
 
-    bl_space_type = 'CADEX_PARAMS'
+    bl_space_type = 'CADEX_TRAINING'
     bl_region_type = 'WINDOW'
     bl_label = "Training"
 
@@ -659,7 +690,11 @@ class CADEX_PARAMS_PT_training(Panel):
 
 
 class CADEX_PARAMS_PT_parameters(Panel):
-    """The sole occupant of the parameters editor's main region."""
+    """The sole occupant of the parameters editor, and now literally so.
+
+    It carried four other panel groups until ADR-108 gave each of them an
+    editor of its own.
+    """
 
     bl_space_type = 'CADEX_PARAMS'
     bl_region_type = 'WINDOW'
@@ -921,10 +956,12 @@ classes = (
     MESH_AGENT_OT_apply_slider_defaults,
     MESH_AGENT_OT_toggle_params,
     MESH_AGENT_OT_toggle_collision,
-    CADEX_PARAMS_PT_collision,
-    CADEX_PARAMS_PT_simulation,
-    CADEX_PARAMS_PT_actuators,
-    CADEX_PARAMS_PT_training,
+    # Panel order IS registration order -- nothing here sets `bl_order` --
+    # so these stay grouped by the editor they now live in (ADR-108).
+    CADEX_ENV_PT_collision,
+    CADEX_POLICY_PT_simulation,
+    CADEX_POLICY_PT_actuators,
+    CADEX_TRAINING_PT_training,
     CADEX_PARAMS_PT_parameters,
     CADEX_CHAT_PT_transcript,
     CADEX_CHAT_PT_input,

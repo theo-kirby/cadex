@@ -256,23 +256,49 @@ one-row limit that once forced the message box into a screen area of its own
 user-resizable.
 
 **Cadex Parameters**, two regions: `RGN_TYPE_WINDOW` for the sliders
-(`CADEX_PARAMS_PT_parameters`) and a header. Four more panels share that
-window and each is behind its own `poll` — Collision
-(ADR-091), Simulation, Policy Outputs (ADR-096) and Training (ADR-098) — for
-the same reason every time: **no new editor and no new space type**, so each
-costs the inherited Blender tree zero lines and `docs/BLENDER-TREE.md` §2a
-stays eight files. A new Cadex window would cost edits to
-`DNA_space_enums.h`, `spacetypes.cc`, `rna_space.cc`, `BKE_context.hh` and
-two CMake lists apiece. `mesh_agent.toggle_params` — the
+(`CADEX_PARAMS_PT_parameters`) and a header — and since **ADR-108** that is
+all it holds.
+
+Until then, four more panels shared that window, each behind its own `poll`:
+Collision (ADR-091), Simulation, Policy Outputs (ADR-096) and Training
+(ADR-098). The reason given every time was **no new editor and no new space
+type**, so each cost the inherited Blender tree zero lines. That reasoning was
+right while the ask was a readout and it is **reversed** now that the ask is
+four independently arrangeable workspaces: five panel groups in one editor
+cannot be *arranged*, and arranging them is most of what a person does with a
+workspace. The four are now four editors:
+
+| Editor | Space type | Panels |
+|---|---|---|
+| Cadex Parameters | `CADEX_PARAMS` | `CADEX_PARAMS_PT_parameters` |
+| Cadex Environment | `CADEX_ENV` | `CADEX_ENV_PT_collision` |
+| Cadex Policy | `CADEX_POLICY` | `CADEX_POLICY_PT_simulation`, `..._PT_actuators` |
+| Cadex Training | `CADEX_TRAINING` | `CADEX_TRAINING_PT_training` |
+| Cadex Live | `CADEX_LIVE` | the live-session panels (ADR-109) |
+
+Live is an editor of its own rather than a group inside Policy because it is a
+**session** — stateful, running, and mutually exclusive with baked playback —
+where Policy is a **recording**. One editor holding both would make the play
+button ambiguous.
+
+Each of the four costs the sixteen touch points listed as a checklist in
+`docs/BLENDER-TREE.md` §2b. Reach for them deliberately; the §2b lines are a
+future merge conflict against upstream Blender, which is why they are all
+*additive rows* the compiler finds rather than rewritten logic.
+`mesh_agent.toggle_params` — the
 `OPTIONS` button at the end of the chat button row, depressed while the editor
 is open — closes it, or splits the viewport and sets `area.type`. That is the
 whole operator now: no pointer bookkeeping and no retry timer, because there
 is no space-data swap to wait on.
 
-Neither space type has DNA fields of its own. Transcript scroll is region
+**No Cadex space type has DNA fields of its own** — all six are bare
+`SpaceLink` headers, and a gate check asserts it. Transcript scroll is region
 state, parameter values live in `scene.mesh_params`, the model selector is an
 add-on preference, and the draft message is a `WindowManager` property. DNA is
-append-only forever, so keep it that way.
+append-only forever, so keep it that way: that is also why `SPACE_CADEX_ENV`
+… `SPACE_CADEX_LIVE` were **appended** at 27–30 rather than slotted in.
+A space type is stored by number in every saved `.blend`, so renumbering them
+silently reinterprets somebody's workspace.
 
 **What this replaced.** Until 2026-07-26 the three columns were three
 *Properties* editors pinned to the Tool tab, drawing `bl_space_type='VIEW_3D'`

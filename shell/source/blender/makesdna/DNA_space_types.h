@@ -1361,4 +1361,80 @@ struct SpaceCadexParams {
 
 /** \} */
 
+/* -------------------------------------------------------------------- */
+/** \name Cadex Environment
+ * \{ */
+
+/** Stateless, like every Cadex editor (ADR-108): the state lives in `Scene`
+ * and the window manager, so this is a bare `SpaceLink` header. A field
+ * added here would have to be versioned into every existing `.blend`. */
+struct SpaceCadexEnv {
+  SpaceLink *next = nullptr, *prev = nullptr;
+  /** Storage of regions for inactive spaces. */
+  ListBaseT<ARegion> regionbase = {nullptr, nullptr};
+  char spacetype = 0;
+  char link_flag = 0;
+  char _pad0[6] = {};
+  /* End 'SpaceLink' header. */
+};
+
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Cadex Policy
+ * \{ */
+
+/** Stateless, like every Cadex editor (ADR-108): the state lives in `Scene`
+ * and the window manager, so this is a bare `SpaceLink` header. A field
+ * added here would have to be versioned into every existing `.blend`. */
+struct SpaceCadexPolicy {
+  SpaceLink *next = nullptr, *prev = nullptr;
+  /** Storage of regions for inactive spaces. */
+  ListBaseT<ARegion> regionbase = {nullptr, nullptr};
+  char spacetype = 0;
+  char link_flag = 0;
+  char _pad0[6] = {};
+  /* End 'SpaceLink' header. */
+};
+
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Cadex Training
+ * \{ */
+
+/** Stateless, like every Cadex editor (ADR-108): the state lives in `Scene`
+ * and the window manager, so this is a bare `SpaceLink` header. A field
+ * added here would have to be versioned into every existing `.blend`. */
+struct SpaceCadexTraining {
+  SpaceLink *next = nullptr, *prev = nullptr;
+  /** Storage of regions for inactive spaces. */
+  ListBaseT<ARegion> regionbase = {nullptr, nullptr};
+  char spacetype = 0;
+  char link_flag = 0;
+  char _pad0[6] = {};
+  /* End 'SpaceLink' header. */
+};
+
+/** \} */
+
+/* -------------------------------------------------------------------- */
+/** \name Cadex Live
+ * \{ */
+
+/** Stateless, like every Cadex editor (ADR-108): the state lives in `Scene`
+ * and the window manager, so this is a bare `SpaceLink` header. A field
+ * added here would have to be versioned into every existing `.blend`. */
+struct SpaceCadexLive {
+  SpaceLink *next = nullptr, *prev = nullptr;
+  /** Storage of regions for inactive spaces. */
+  ListBaseT<ARegion> regionbase = {nullptr, nullptr};
+  char spacetype = 0;
+  char link_flag = 0;
+  char _pad0[6] = {};
+  /* End 'SpaceLink' header. */
+};
+
+/** \} */
+
 }  // namespace blender

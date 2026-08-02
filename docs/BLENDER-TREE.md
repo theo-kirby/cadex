@@ -31,6 +31,7 @@ These files exist in no upstream Blender and cannot conflict with one.
 | `shell/scripts/addons_core/mesh_agent/` | the add-on: chat, params, headers, the top bar, the cadexd protocol client, hydration, playback, picking, the collision overlay and the policy-output readout | 8,684 (21 files) |
 | `shell/source/blender/editors/space_cadex_chat/` | the Cadex Chat editor: transcript, message box, header (ADR-035) | 202 |
 | `shell/source/blender/editors/space_cadex_params/` | the Cadex Parameters editor (ADR-035) | 170 |
+| `shell/source/blender/editors/space_cadex_{env,policy,training,live}/` | the four editors ADR-108 split out of Parameters: Environment, Policy, Training and Live. Structurally `space_cadex_params.cc` with the names changed, which is the point — see the checklist in §2b | ~200 each |
 | `shell/scripts/startup/bl_app_templates_system/Mesh/` | the app template: `startup.blend` carries the layout, `__init__.py` enables the add-on, installs the Cadex top bar and suppresses the splash (ADR-037, ADR-041, ADR-042) | 111 + a 267 KB `.blend` |
 | `shell/tests/python/bl_mesh_agent{,_cadex}.py` | the agent suites; `bl_mesh_agent_cadex.py` prints the `CADEX-BLENDER-GATE` evidence line | 4,210 (2 files) |
 | `shell/release/darwin/Blender.app/Contents/Resources/cadex_icon.icns` | the Dock icon. Generated from `cadex-logo-white.png` by `package/app/make_app_icon.py` — regenerate rather than edit (ADR-059) | a 249 KB binary |
@@ -51,19 +52,33 @@ lines across `cadex_backend.py`, `ui.py`, `tools.py` and `modes.py`, plus
 `shell/scripts/addons_core/mesh_agent/` or `shell/tests/python/`. **It is
 entirely inside code that is ours.** Nothing in §2 moved: the
 inherited-tree delta is unchanged, §2a is still eight files and must stay
-eight.
+eight. Counted 2026-07-31 — treat these as of that date, not as a contract.
 
-ADR-096 is worth reading as the worked example of *why* that holds. The
-panel wanted a window; a window is a space type, and a space type is
-`DNA_space_enums.h` + `spacetypes.cc` + `rna_space.cc` + `BKE_context` +
-two CMake lists + a new C++ directory — the whole of §2b, for a readout.
-Drawn as a `Panel` in the editor that already exists it cost the inherited
-tree nothing. The one thing that could not be avoided that way,
-`match_region_with_redraws` having no `SPACE_CADEX_PARAMS` case, was paid
-with a `frame_change_post` handler in the add-on instead of a line in
-`screen_ops.cc`. **That trade — an add-on line for a §2b line — is the
-move to reach for.**
-Counted 2026-07-31 — treat these as of that date, not as a contract.
+**ADR-108 is the first time since the merge that §2 moved**, and it moved
+where §2b says it may: four new editor directories of ours, and one additive
+row per editor in each of the eleven inherited files §2b already lists. §2a
+is untouched and still eight files.
+
+ADR-096 was the worked example of *why* that holds. The panel wanted a
+window; a window is a space type, and a space type is `DNA_space_enums.h` +
+`spacetypes.cc` + `rna_space.cc` + `BKE_context` + two CMake lists + a new
+C++ directory — the whole of §2b, for a readout. Drawn as a `Panel` in the
+editor that already existed it cost the inherited tree nothing. The one
+thing that could not be avoided that way, `match_region_with_redraws`
+having no `SPACE_CADEX_PARAMS` case, was paid with a `frame_change_post`
+handler in the add-on instead of a line in `screen_ops.cc`. **That trade —
+an add-on line for a §2b line — is still the move to reach for**, and
+ADR-108 kept it: four more editors is four more strings in that handler and
+still zero lines in `screen_ops.cc`.
+
+**What ADR-108 changed is the conclusion, not the arithmetic.** "Reach for
+the add-on line" is right when the ask is a *readout*. It is wrong when the
+ask is four **independently arrangeable workspaces**: five panel groups in
+one editor cannot be docked, split or closed apart from one another, and
+that is most of what a person does with a workspace. So Environment,
+Policy, Training and Live became space types 27–30, and the §2b price was
+paid four times deliberately. The checklist at the end of §2b is the
+deliverable that makes the next one mechanical.
 
 ## 2. Modified upstream files — the whole delta
 
@@ -95,7 +110,7 @@ rejected: a data default in a DNA header conflicts as a data blob, whereas
 argument-parsing code conflicts as logic. The same escape hatch
 (`--app-template default`) exists either way.
 
-### 2b. The Cadex editors — ADR-035 and ADR-036
+### 2b. The Cadex editors — ADR-035, ADR-036 and ADR-108
 
 Adding a space type to Blender means touching every exhaustive `switch` over
 `eSpace_Type`. These are mechanical, `-Wswitch` finds the ones that matter,
@@ -104,19 +119,19 @@ conflict here is a one-line re-add per row.
 
 | File | Change | On conflict |
 |---|---|---|
-| `makesdna/DNA_space_enums.h` | `SPACE_CADEX_CHAT = 25`, `SPACE_CADEX_PARAMS = 26`; `SPACE_TYPE_NUM` bumped | Append only — the header says so. Renumbering breaks every saved `.blend`. |
-| `makesdna/DNA_space_types.h` | two bare `SpaceLink`-header structs | Re-add. They have no fields and must not gain any: DNA is append-only forever. |
-| `editors/include/ED_space_api.hh` | two declarations | Re-add. |
-| `editors/space_api/spacetypes.cc` | two `ED_spacetype_cadex_*()` calls added; **eight removed** (ADR-036; `space_node` came back in ADR-066); six `ED_operatormacros_*` made conditional | The removals are the load-bearing half: this list *is* the editor menu. Take upstream's additions, then re-apply both edits. |
-| `editors/CMakeLists.txt`, `editors/space_api/CMakeLists.txt` | two `add_subdirectory` / two `LIB` entries | Re-add. The hidden editors keep theirs — see ADR-036 on why compiling them out does not work. |
-| `makesrna/intern/rna_space.cc` | two `rna_enum_space_type_items` rows, two `rna_Space_refine()` cases, `rna_def_space_cadex_*()` + calls | Rows go under the `General` heading, after `SPACE_VIEW3D`. |
+| `makesdna/DNA_space_enums.h` | `SPACE_CADEX_CHAT = 25` … `SPACE_CADEX_LIVE = 30`; `SPACE_TYPE_NUM` bumped | Append only — the header says so. Renumbering breaks every saved `.blend`. |
+| `makesdna/DNA_space_types.h` | six bare `SpaceLink`-header structs | Re-add. They have no fields and must not gain any: DNA is append-only forever, and a gate check asserts each carries no property `Space` does not. |
+| `editors/include/ED_space_api.hh` | six declarations | Re-add. |
+| `editors/space_api/spacetypes.cc` | six `ED_spacetype_cadex_*()` calls added; **eight removed** (ADR-036; `space_node` came back in ADR-066); six `ED_operatormacros_*` made conditional | The removals are the load-bearing half: this list *is* the editor menu. Take upstream's additions, then re-apply both edits. |
+| `editors/CMakeLists.txt`, `editors/space_api/CMakeLists.txt` | six `add_subdirectory` / six `LIB` entries | Re-add. The hidden editors keep theirs — see ADR-036 on why compiling them out does not work. |
+| `makesrna/intern/rna_space.cc` | six `rna_enum_space_type_items` rows, six `rna_Space_refine()` cases, `rna_def_space_cadex_*()` + calls | Rows go under the `General` heading, after `SPACE_VIEW3D`. |
 | `makesrna/intern/rna_space.cc` | `rna_SpaceNodeEditor_tree_type_poll` filtered to `Cadex`-prefixed tree idnames (ADR-066) | The peer of the `space_file.cc` row below, and for the same reason: a node tree type is a *subtype* of `SPACE_NODE`, so not-registering cannot hide the stock four. Re-apply as the first statement of the poll; it keys on the identifier prefix, so a second Cadex tree needs no edit. |
 | `makesrna/intern/rna_screen.cc` | `rna_Area_ui_type_itemf`: skip unregistered space types, hold group headings back until something survives under them | The one behavioural edit in 2b. Re-apply inside the loop; the enum rows themselves must never be deleted (`ED_area_name` indexes them). |
-| `windowmanager/intern/wm_draw.cc`, `editors/interface/templates/interface_template_search_menu.cc`, `editors/animation/anim_filter.cc`, `blenkernel/intern/grease_pencil_convert_legacy.cc` | two cases each in exhaustive switches | `-Wswitch` fails the build if you forget. |
-| `editors/interface/resources.cc` | both types mapped to `btheme->space_properties` (two sites) | Re-add, else the `default:` branch hands them the viewport's grey. |
-| `blenkernel/BKE_context.hh`, `blenkernel/intern/context.cc` | `CTX_wm_space_cadex_chat()` / `_params()` + forward decls | Re-add. |
-| `python/intern/bpy_rna_callback.cc` | `RNA_SpaceCadexChat` / `Params` → space id | Needed for `draw_handler_add`. |
-| `blenkernel/intern/screen.cc` | both types added to the header/footer alignment lists | Keeps their headers pinned to the top like the other panel-column editors. |
+| `windowmanager/intern/wm_draw.cc`, `editors/interface/templates/interface_template_search_menu.cc`, `editors/animation/anim_filter.cc`, `blenkernel/intern/grease_pencil_convert_legacy.cc` | six cases each in exhaustive switches | `-Wswitch` fails the build if you forget. |
+| `editors/interface/resources.cc` | all six mapped to `btheme->space_properties` (two sites) | Re-add, else the `default:` branch hands them the viewport's grey. |
+| `blenkernel/BKE_context.hh`, `blenkernel/intern/context.cc` | six `CTX_wm_space_cadex_*()` + forward decls | Re-add. |
+| `python/intern/bpy_rna_callback.cc` | six RNA types → space id | Needed for `draw_handler_add`. |
+| `blenkernel/intern/screen.cc` | all six added to the header/footer alignment lists | Keeps their headers pinned to the top like the other panel-column editors. |
 | `editors/screen/area.cc`, `editors/screen/screen_edit.cc`, `blenloader/intern/versioning_280.cc` | null-guard three `SpaceType::create` paths, falling back to the viewport | **Required by ADR-036.** Inherited call sites still ask for `SPACE_IMAGE` (render result) and `SPACE_GRAPH` (drivers editor); without these it is a null deref. |
 | `editors/space_file/space_file.cc` | `file_space_subtype_item_extend` drops the asset-browser item | The asset browser is a `SpaceFile` subtype, not a space type, so not-registering cannot hide it. |
 | `scripts/startup/bl_ui/space_toolsystem_toolbar.py` | `classes` trimmed to the viewport's tool panel (ADR-036); `NODE_PT_tools_active` **added back** (ADR-066) | Registering a `ToolSelectPanelHelper` is what runs its `register()`, which is the only thing that sets `_tool_group_active`. Leaving it out was invisible while `SPACE_NODE` was unregistered; with the editor live, the first click into it raises `AttributeError` from `wm.tool_set_by_id`. Its `_defs_node_*` live in this same file, so it pulls in no `bl_ui.space_node`. |
@@ -125,6 +140,74 @@ conflict here is a one-line re-add per row.
 | `scripts/startup/bl_ui/__init__.py` | nine `space_*` modules leave `_modules` | They cross-import each other; remove as a group or not at all. |
 | `scripts/startup/bl_ui/space_toolsystem_toolbar.py` | image/node/sequencer tool panels no longer registered | Registering against a missing space type raises and **aborts bl_ui's whole registration loop**. |
 | `scripts/presets/keyconfig/keymap_data/blender_default.py` | four node keymap items pass `None` instead of macro sub-operator properties | Raises in `_init_properties_from_data` otherwise. The rest of the dead keymaps stay — see §4. |
+
+
+#### Adding the next Cadex editor — the checklist
+
+ADR-108 added four at once, which is what turned this from a design into a
+recipe. Enumerated by grepping `SPACE_CADEX_PARAMS` across `shell/source`;
+every item is an **insertion beside the row that editor already occupies**,
+which is the kind of conflict the compiler finds rather than the kind that
+silently changes behaviour. Sixteen touch points, of which two are ours:
+
+**New, ours** — nothing inherited, no conflict ever:
+
+1. `editors/space_cadex_<name>/space_cadex_<name>.cc` (~170 lines; copy
+   `space_cadex_params.cc` and rename)
+2. `editors/space_cadex_<name>/CMakeLists.txt` (33 lines; likewise)
+
+**Inherited, additive** — each is one row, and the numbered order is the
+order to do them in, because the later ones will not compile without the
+earlier ones:
+
+3. `makesdna/DNA_space_enums.h` — the enum row. **Append only**, and bump
+   `SPACE_TYPE_NUM`. A space type is stored by number in every saved
+   `.blend`.
+4. `makesdna/DNA_space_types.h` — a bare `SpaceLink`-header struct. **No
+   fields**: state belongs in `Scene` or the `WindowManager`, or it has to
+   be versioned into every existing file.
+5. `editors/include/ED_space_api.hh` — the declaration
+6. `editors/space_api/spacetypes.cc` — the `ED_spacetype_cadex_*()` call
+7. `editors/CMakeLists.txt` — `add_subdirectory`
+8. `editors/space_api/CMakeLists.txt` — the `LIB` entry
+9. `makesrna/intern/rna_space.cc` — a `rna_enum_space_type_items` row
+   (under `General`, after the existing Cadex rows: **this is the Editor
+   Type menu**), a `rna_Space_refine()` case, a `rna_def_space_cadex_*()`
+   and its call
+10. `blenkernel/BKE_context.hh` + `blenkernel/intern/context.cc` —
+    `CTX_wm_space_cadex_*()`
+11. `blenkernel/intern/screen.cc` — the two header/footer alignment lists,
+    or the header floats to the bottom with the viewport's
+12. `editors/interface/resources.cc` — two sites mapping it to
+    `btheme->space_properties`, or the `default:` branch hands it the
+    viewport's grey, which reads as a bug behind panels
+13. `python/intern/bpy_rna_callback.cc` — RNA type → space id, needed for
+    `draw_handler_add`
+14. `windowmanager/intern/wm_draw.cc` — one `SPACE_NAME` case
+15. `editors/interface/templates/interface_template_search_menu.cc` — one
+    `SPACE_MENU_NOP` case
+16. `editors/animation/anim_filter.cc` and
+    `blenkernel/intern/grease_pencil_convert_legacy.cc` — one case each
+
+Items 14–16 are exhaustive switches: **`-Wswitch` fails the build if you
+forget one**, so they cost a compile rather than a bug.
+
+**Add-on side** (`shell/scripts/addons_core/mesh_agent/`, ours, no conflict):
+a `*_HT_header` in `spaces.py` — without one the header region draws nothing
+at all, not even the editor-type dropdown, which is how a user changes an
+area back; the panels' `bl_space_type` in `ui.py`, renamed to match, keeping
+the `classes` tuple order because **panel order is registration order** and
+nothing sets `bl_order`; and the area-type sets in `__init__.py`
+(`_FRAME_DRIVEN_EDITORS`) and `agent.py` if its contents change with the
+frame or with a turn.
+
+**The registration hazard, which has bitten once already.** A `Panel` or
+`Header` naming an **unregistered** space type raises *"Region not found in
+space type"* and aborts the whole registration loop — that is how the top-bar
+menus once vanished (ADR-036). `wiring_ui.register()` catches per class for
+this reason and is deliberately last in `__init__.py`. Follow that pattern
+for anything space-bound, and remember that the add-on can be loaded against
+a bundle older than it.
 
 ### 2c. The message box — ADR-034
 

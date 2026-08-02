@@ -136,6 +136,10 @@ const uchar *get_color_ptr(bTheme *btheme, int spacetype, int colorid)
          * viewport's grey, which reads as a bug behind panels. */
         case SPACE_CADEX_CHAT:
         case SPACE_CADEX_PARAMS:
+        case SPACE_CADEX_ENV:
+        case SPACE_CADEX_POLICY:
+        case SPACE_CADEX_TRAINING:
+        case SPACE_CADEX_LIVE:
           ts = &btheme->space_properties;
           break;
         case SPACE_VIEW3D:
@@ -240,7 +244,11 @@ const uchar *get_color_ptr(bTheme *btheme, int spacetype, int colorid)
                    SPACE_USERPREF,
                    SPACE_PROJECT,
                    SPACE_CADEX_CHAT,
-                   SPACE_CADEX_PARAMS))
+                   SPACE_CADEX_PARAMS,
+                   SPACE_CADEX_ENV,
+                   SPACE_CADEX_POLICY,
+                   SPACE_CADEX_TRAINING,
+                   SPACE_CADEX_LIVE))
           {
             cp = btheme->tui.panel_text;
           }

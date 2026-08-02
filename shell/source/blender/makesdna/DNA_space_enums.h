@@ -1182,9 +1182,16 @@ enum eSpace_Type : char {
   SPACE_SPREADSHEET = 23,
   SPACE_PROJECT = 24,
   SPACE_CADEX_CHAT = 25,
-  SPACE_CADEX_PARAMS = 26
+  SPACE_CADEX_PARAMS = 26,
+  /* The four editors ADR-108 split out of SPACE_CADEX_PARAMS. APPEND
+   * ONLY: a space type is stored by number in every saved .blend, so
+   * renumbering these silently reinterprets somebody's workspace. */
+  SPACE_CADEX_ENV = 27,
+  SPACE_CADEX_POLICY = 28,
+  SPACE_CADEX_TRAINING = 29,
+  SPACE_CADEX_LIVE = 30
 
-#define SPACE_TYPE_NUM (SPACE_CADEX_PARAMS + 1)
+#define SPACE_TYPE_NUM (SPACE_CADEX_LIVE + 1)
 };
 
 /* use for function args */

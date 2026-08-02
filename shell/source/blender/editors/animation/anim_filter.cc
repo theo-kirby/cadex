@@ -401,6 +401,10 @@ bool ANIM_animdata_context_getdata(bAnimContext *ac)
       case SPACE_PROJECT:
       case SPACE_CADEX_CHAT:
       case SPACE_CADEX_PARAMS:
+      case SPACE_CADEX_ENV:
+      case SPACE_CADEX_POLICY:
+      case SPACE_CADEX_TRAINING:
+      case SPACE_CADEX_LIVE:
         break;
     }
   }

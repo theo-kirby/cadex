@@ -10839,6 +10839,82 @@ building: a six-second recorded episode with one push, read through summary
 statistics, is a poor instrument for *"does it recover"*. You cannot push it
 from the other side, cannot push it harder, and cannot push it twice.
 
+## ADR-108 — Four Cadex editors, and a recipe for the next one (2026-08-02)
+
+**This reverses a decision that was written down, and says so.**
+`docs/BLENDER.md` said of exactly these panels *"no new editor and no new
+space type"*, and `docs/BLENDER-TREE.md` called the add-on-line-for-§2b-line
+trade *"the move to reach for"*. Both passages are rewritten here rather than
+quietly contradicted.
+
+**The reasoning was right and the ask changed.** ADR-036, ADR-091, ADR-096 and
+ADR-098 each added a panel group to `SPACE_CADEX_PARAMS` because a *readout*
+is not worth a space type: a space type costs sixteen touch points across
+inherited Blender, and every line of that is a future merge conflict. When the
+ask is one more readout, that argument holds. When the ask is **four
+independently arrangeable workspaces**, it does not: five panel groups stacked
+in one editor cannot be docked, split, resized or closed apart from one
+another, and doing exactly that is most of what a person does with a
+workspace.
+
+| Editor | Space type | Panels |
+|---|---|---|
+| Cadex Parameters | `CADEX_PARAMS` (26) | `CADEX_PARAMS_PT_parameters` |
+| Cadex Environment | `CADEX_ENV` (27) | `CADEX_ENV_PT_collision` |
+| Cadex Policy | `CADEX_POLICY` (28) | `..._PT_simulation`, `..._PT_actuators` |
+| Cadex Training | `CADEX_TRAINING` (29) | `CADEX_TRAINING_PT_training` |
+| Cadex Live | `CADEX_LIVE` (30) | the live-session panels (ADR-109) |
+
+**Live is its own editor rather than a group inside Policy** because it is a
+*session* — stateful, running, and mutually exclusive with baked playback —
+where Policy is a *recording*. One editor holding both would make the play
+button ambiguous, which is a worse cost than a sixth space type.
+
+**The deliverable is the checklist, not the four editors.** The sixteen touch
+points are enumerated in `docs/BLENDER-TREE.md` §2b, in the order they must be
+done, so the next one is mechanical. Two are ours (a ~170-line `.cc` copied
+from `space_cadex_params.cc` and a 33-line `CMakeLists.txt`); the other
+fourteen are **one additive row each** in inherited files that already carry a
+Cadex row. That distinction is the whole argument for doing it this way:
+§2a-style insertions conflict as something the compiler finds, not as
+rewritten logic. Three of them are exhaustive switches, so `-Wswitch` fails
+the build rather than letting a miss become a bug — which is what happened
+here, once, and it was a missing forward declaration in `BKE_context.hh` that
+the compiler caught in eleven seconds.
+
+**Two rules held, and both are load-bearing.** The enum rows are **appended**
+at 27–30: a space type is stored by number in every saved `.blend`, so
+renumbering silently reinterprets somebody's workspace. And every one of the
+six Cadex structs is a **bare `SpaceLink` header with no fields** — all state
+lives in `Scene` or the `WindowManager` — because DNA is append-only forever
+and a field here would have to be versioned into every existing file. A gate
+check now asserts that emptiness rather than leaving it to discipline.
+
+**§2a is untouched and still eight files.** The ADR-091 rule that every line
+of our `shell/` diff sits under `mesh_agent/` or `tests/python/` is the one
+thing this *does* spend, deliberately and for the first time since the merge;
+§2b is where such lines belong and the ledger records the new count. The
+add-on-line-for-a-`screen_ops.cc`-line trade survives untouched: four more
+editors is four more strings in `_FRAME_DRIVEN_EDITORS` and still zero lines
+in `screen_ops.cc`.
+
+**The actuator bars became `ui.draw_actuator_bars`**, shared by Policy and
+Live. The numbers arrive by different routes — a recorded trace and a running
+session — and mean exactly the same thing, so one loop draws both; two copies
+would be two places for the "each bar spans its own limits" rule to drift.
+
+**Verified by running.** `pixi run build-shell` (the real test of the
+exhaustive-switch rows), `pixi run gate` green, and a probe against the built
+bundle: each of the four opens from the Editor Type menu with its own space
+data, one header and one main region; an area splits four ways with all four
+open at once; and the arrangement survives save and reopen, which is what a
+space type buys over a panel and the thing wrong enum numbering would silently
+break.
+
+*Pre-existing and not touched here: `test_cadex_overlay_carries_no_api_names`
+fails on this branch over `assembly.mjcf` in `CADEX_OVERLAY`, with or without
+this change.*
+
 ## ADR-109 — Live mode: a machine you can push (2026-08-02)
 
 **The complaint under ADR-107 was the instrument, and this is the answer.**

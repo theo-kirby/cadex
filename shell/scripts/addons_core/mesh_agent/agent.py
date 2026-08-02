@@ -96,6 +96,8 @@ def _tag_redraw():
             # TEXT_EDITOR because one of them may be showing the script mirror,
             # which a turn (or a rebuild) rewrites under it.
             if area.type in {'VIEW_3D', 'CADEX_CHAT', 'CADEX_PARAMS',
+                             'CADEX_ENV', 'CADEX_POLICY',
+                             'CADEX_TRAINING', 'CADEX_LIVE',
                              'TEXT_EDITOR'}:
                 area.tag_redraw()
 

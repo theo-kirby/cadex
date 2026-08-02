@@ -2933,7 +2933,7 @@ def test_the_policy_outputs_panel_reads_a_rollout():
               {"frames": COMMANDS_TRACE["frames"]}, 0.0, 25) is None,
           "a trace with no actuator_channels yields no table")
 
-    panel = ui_module.CADEX_PARAMS_PT_actuators
+    panel = ui_module.CADEX_POLICY_PT_actuators
     scene = bpy.context.scene
     had = cadex_animate.COMMANDS_FLAG in scene
     check(not had and not panel.poll(bpy.context),
@@ -2984,7 +2984,7 @@ def test_the_training_panel_tracks_a_run(training_root):
 
     scene = bpy.context.scene
     scene[cadex_backend.ROOT_PROP] = training_root
-    panel = ui_module.CADEX_PARAMS_PT_training
+    panel = ui_module.CADEX_TRAINING_PT_training
     path = os.path.join(training_root, cadex_training.PROGRESS_NAME)
     try:
         check(cadex_training.progress_path(scene) == path,

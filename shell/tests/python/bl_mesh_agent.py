@@ -668,7 +668,13 @@ def test_new_conversation_starts_a_fresh_session():
 
 
 KEPT_EDITORS = (
-    'VIEW_3D', 'CADEX_CHAT', 'CADEX_PARAMS', 'PROPERTIES', 'OUTLINER',
+    'VIEW_3D', 'CADEX_CHAT', 'CADEX_PARAMS',
+    # The four ADR-108 split out of CADEX_PARAMS. Six Cadex editors is more
+    # than ADR-036 wanted to exist, and the reason is stated there: five
+    # panel groups in one editor cannot be arranged, and arranging them is
+    # most of what a person does with a workspace.
+    'CADEX_ENV', 'CADEX_POLICY', 'CADEX_TRAINING', 'CADEX_LIVE',
+    'PROPERTIES', 'OUTLINER',
     'TEXT_EDITOR', 'CONSOLE', 'INFO', 'PREFERENCES', 'FILES',
     # The node editor is registered again, for exactly one tree type: the
     # wiring graph (ADR-066). The menu lists node *subtypes* rather than the
@@ -729,15 +735,33 @@ def _ui_type_accepted(area, identifier):
 
 
 def test_cadex_editors_are_registered():
-    """Chat and Parameters are editor types, not Properties areas told apart
-    by where they sit."""
+    """The six Cadex editors are editor types, not Properties areas told
+    apart by where they sit.
+
+    Two of them since ADR-036; the other four since ADR-108, which split
+    Environment, Policy, Training and Live out of Parameters so each can be
+    docked, split and closed on its own.
+    """
     print("test_cadex_editors_are_registered")
     space_types = bpy.types.Space.bl_rna.properties['type'].enum_items.keys()
-    for name in ('CADEX_CHAT', 'CADEX_PARAMS'):
+    for name in ('CADEX_CHAT', 'CADEX_PARAMS', 'CADEX_ENV', 'CADEX_POLICY',
+                 'CADEX_TRAINING', 'CADEX_LIVE'):
         check(name in space_types, "{:s} is a space type".format(name))
-    for name in ('SpaceCadexChat', 'SpaceCadexParams'):
+    for name in ('SpaceCadexChat', 'SpaceCadexParams', 'SpaceCadexEnv',
+                 'SpaceCadexPolicy', 'SpaceCadexTraining', 'SpaceCadexLive'):
         check(hasattr(bpy.types, name),
               "bpy.types.{:s} exists".format(name))
+        # Every Cadex space is a bare SpaceLink header: no space data of its
+        # own, so nothing here has to be versioned into an existing .blend.
+        # The check is that the RNA struct carries no property but the ones
+        # `Space` itself defines plus the header toggle.
+        cls = getattr(bpy.types, name, None)
+        if cls is not None:
+            own = set(cls.bl_rna.properties.keys()) - set(
+                bpy.types.Space.bl_rna.properties.keys())
+            check(own <= {'show_region_header'},
+                  "{:s} stores no state of its own, holds {!r}".format(
+                      name, sorted(own)))
     # The third editor is not a space type at all: it is one Python node tree
     # hosted in the stock Node Editor, which is what made it cost no DNA, no
     # RNA and no -Wswitch case (ADR-066). It is therefore checked through
@@ -779,17 +803,36 @@ def test_editor_menu_is_short():
 
 
 def test_panels_are_homed_on_the_cadex_editors():
-    """Each panel names the editor it belongs to, and no poll asks where it
-    is being drawn -- that was the whole job of the geometry classifier."""
+    """Each panel names the editor it belongs to, and no poll asks *where*
+    it is being drawn -- that was the whole job of the geometry classifier.
+
+    The third column is whether the panel polls at all. `False` is the
+    strong claim: a panel that is always shown in its editor has nothing to
+    decide, which is what having a space type buys. `True` is allowed only
+    for the four ADR-108 moved out of Parameters, and only because they poll
+    on **content** -- a scene flag saying the model has collision geometry,
+    a simulation, policy commands or a training report. That distinction is
+    the point of the test, and
+    `test_the_simulation_panel_polls_on_content_not_geometry` is where one
+    of them is checked in full.
+    """
     print("test_panels_are_homed_on_the_cadex_editors")
     from mesh_agent import ui as mesh_ui
 
     expected = {
-        'CADEX_CHAT_PT_transcript': ('CADEX_CHAT', 'WINDOW'),
-        'CADEX_CHAT_PT_input': ('CADEX_CHAT', 'EXECUTE'),
-        'CADEX_PARAMS_PT_parameters': ('CADEX_PARAMS', 'WINDOW'),
+        'CADEX_CHAT_PT_transcript': ('CADEX_CHAT', 'WINDOW', False),
+        'CADEX_CHAT_PT_input': ('CADEX_CHAT', 'EXECUTE', False),
+        'CADEX_PARAMS_PT_parameters': ('CADEX_PARAMS', 'WINDOW', False),
+        # ADR-108: one panel group per editor, so each can be arranged
+        # separately. Renamed with them -- a class called
+        # CADEX_PARAMS_PT_collision drawing in CADEX_ENV would be a name
+        # that lies about where it appears.
+        'CADEX_ENV_PT_collision': ('CADEX_ENV', 'WINDOW', True),
+        'CADEX_POLICY_PT_simulation': ('CADEX_POLICY', 'WINDOW', True),
+        'CADEX_POLICY_PT_actuators': ('CADEX_POLICY', 'WINDOW', True),
+        'CADEX_TRAINING_PT_training': ('CADEX_TRAINING', 'WINDOW', True),
     }
-    for name, (space, region) in expected.items():
+    for name, (space, region, polls) in expected.items():
         cls = getattr(bpy.types, name, None)
         if cls is None:
             check(False, "{:s} is registered".format(name))
@@ -798,8 +841,21 @@ def test_panels_are_homed_on_the_cadex_editors():
               "{:s} draws in {:s}".format(name, space))
         check(cls.bl_region_type == region,
               "{:s} draws in the {:s} region".format(name, region))
-        check("poll" not in cls.__dict__,
-              "{:s} has no poll".format(name))
+        check(("poll" in cls.__dict__) == polls,
+              "{:s} {:s}".format(
+                  name,
+                  "polls on content" if polls else "has no poll"))
+        if not polls:
+            continue
+        # ...and what it polls on is content. `area`, `region` and
+        # `space_data` are how a poll asks where it is; none may appear.
+        import inspect
+        body = inspect.getsource(cls.__dict__["poll"].__func__)
+        geometry = [word for word in ('.area', '.region', '.space_data')
+                    if word in body]
+        check(not geometry,
+              "{:s}'s poll reads no geometry (found {!r})".format(
+                  name, geometry))
 
     check(not hasattr(mesh_ui, "_area_roles"),
           "the geometry classifier is gone")
@@ -1195,12 +1251,12 @@ def test_the_simulation_panel_polls_on_content_not_geometry():
     print("test_the_simulation_panel_polls_on_content_not_geometry")
     from mesh_agent import cadex_animate
 
-    cls = getattr(bpy.types, "CADEX_PARAMS_PT_simulation", None)
-    check(cls is not None, "CADEX_PARAMS_PT_simulation is registered")
+    cls = getattr(bpy.types, "CADEX_POLICY_PT_simulation", None)
+    check(cls is not None, "CADEX_POLICY_PT_simulation is registered")
     if cls is None:
         return
-    check(cls.bl_space_type == 'CADEX_PARAMS',
-          "it lives in the parameters editor, not a new space type")
+    check(cls.bl_space_type == 'CADEX_POLICY',
+          "it lives in the policy editor (ADR-108)")
     check(cls.bl_region_type == 'WINDOW', "in the main region")
     check("poll" in cls.__dict__, "and it does poll")
 

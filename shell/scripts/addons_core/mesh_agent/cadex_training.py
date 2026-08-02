@@ -132,7 +132,7 @@ def _redraw():
     manager = getattr(bpy.context, "window_manager", None)
     for window in getattr(manager, "windows", ()) or ():
         for area in window.screen.areas:
-            if area.type == 'CADEX_PARAMS':
+            if area.type == 'CADEX_TRAINING':
                 area.tag_redraw()
 
 

@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-"""Headers for the two Cadex editors, and the Text Editor's script view.
+"""Headers for the six Cadex editors, and the Text Editor's script view.
 
 These live in the add-on rather than in `shell/scripts/startup/bl_ui/`
 deliberately: `bl_ui` is inherited Blender and conservative, `mesh_agent` is
@@ -51,6 +51,41 @@ class CADEX_PARAMS_HT_header(Header):
     def draw(self, context):
         layout = self.layout
         layout.template_header()
+
+
+# The four editors ADR-108 split out of the parameters one. Each needs a
+# header class of its own or its header region draws nothing at all -- not
+# even the editor-type dropdown, which is how a user changes an area back.
+# `template_header()` and no more: the header carries state, and none of
+# these four has any that is not already in its panels.
+
+
+class CADEX_ENV_HT_header(Header):
+    bl_space_type = 'CADEX_ENV'
+
+    def draw(self, context):
+        self.layout.template_header()
+
+
+class CADEX_POLICY_HT_header(Header):
+    bl_space_type = 'CADEX_POLICY'
+
+    def draw(self, context):
+        self.layout.template_header()
+
+
+class CADEX_TRAINING_HT_header(Header):
+    bl_space_type = 'CADEX_TRAINING'
+
+    def draw(self, context):
+        self.layout.template_header()
+
+
+class CADEX_LIVE_HT_header(Header):
+    bl_space_type = 'CADEX_LIVE'
+
+    def draw(self, context):
+        self.layout.template_header()
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +272,10 @@ classes = (
     MESH_AGENT_OT_revert_script,
     CADEX_CHAT_HT_header,
     CADEX_PARAMS_HT_header,
+    CADEX_ENV_HT_header,
+    CADEX_POLICY_HT_header,
+    CADEX_TRAINING_HT_header,
+    CADEX_LIVE_HT_header,
     CADEX_PT_script,
 )
 
