@@ -986,6 +986,36 @@ the order they had to happen:
       `collapsed` at 0.5·Z0 on the direct evidence that 8 of 12 deaths were
       upright and sinking (ADR-106). `feasibility.py` passes on the new
       machine with lateral reach at 3.72× where it was the collapsed column.
+- [x] **The frame was read 90° wrong** (ADR-107). `azimuth_degrees` is about
+      **world +X** and the engine has no concept of which way a mechanism
+      faces; mg-legs faces **+Y**, so `compare.py`'s `fwd`/`back` columns
+      held the *lateral* pushes and `lat` the *sagittal* ones. That inverts
+      ADR-105's motivation (lateral is the **strong** axis: 7/7 against 3/5
+      at ×0.50 on iteration 250) and makes ADR-106's `[-60, 60]` a lateral
+      band rather than the sagittal one it was written to be. Words only —
+      re-aiming the band is a digest change and would make
+      `stand5.cxpolicy` unloadable. The instrument now **measures** its own
+      forward axis off the model's toes and refuses a table whose frame the
+      model disagrees with. The foot-lift claim was the same class of error
+      and is corrected: the left foot lifts **5.91 mm at 2.090 s**.
+- [x] **Four Cadex editors** (ADR-108). Environment, Policy, Training and
+      Live become space types 27–30. Reverses `docs/BLENDER.md`'s "no new
+      editor and no new space type" for these panels — right for a readout,
+      wrong for four independently arrangeable workspaces — and ships the
+      sixteen-touch-point recipe as a checklist in `docs/BLENDER-TREE.md`
+      §2b so the next one is mechanical. §2a is untouched and still eight
+      files.
+- [x] **Live mode** (ADR-109): a running mechanism you can push, in the
+      viewport, with the policy answering. Three read ops
+      (`live_open`/`live_step`/`live_close`), a resident `--safe-mode`
+      worker running **the same** `evaluate_episode`, and one new seam —
+      `forces=(step, data, time_s)`, additive and not a digest input, needed
+      because `apply_disturbance` rewrites `xfrc_applied` from zero every
+      step. The shell owns the clock. Measured: **344 µs a control step**
+      (29× real time) and a **1.72 ms** median `live_step` round trip
+      against a 33 ms bar, identical from the staged payload. Driven end to
+      end on mg-legs it runs at real time, takes 1.5 N from three sides, and
+      goes over at 8 N.
 - [ ] **The GPU run and the policy it produces.** Blocked, not skipped: the
       training box runs its **own** checkout of `training/cadex_train.py`
       and it predates ADR-104, so a dispatch would silently ignore both new
