@@ -116,8 +116,22 @@ class CadexLiveSession:
 
     # -- the two public operations ---------------------------------------
 
-    def open(self, prepared: Mapping[str, Any], seed: int | None) -> dict[str, Any]:
-        """Start a session on the accepted rollout's bundle."""
+    def open(
+        self,
+        prepared: Mapping[str, Any],
+        seed: int | None,
+        variation: bool = True,
+    ) -> dict[str, Any]:
+        """Start a session on the accepted rollout's bundle.
+
+        ``variation`` false is the **calm session** (ADR-110): the worker
+        plays every episode unseeded, which is the state
+        ``evaluate_episode`` has always had for a caller that passes no seed
+        -- the nominal mechanism, at the pose the solve found, with nothing
+        pushing it. The seed is still carried and still counts up per reset,
+        because turning variation back on mid-session must not renumber the
+        episodes; it is simply not used while this is false.
+        """
 
         self.close()
         self._spawn(prepared)
@@ -133,7 +147,11 @@ class CadexLiveSession:
                     "task_file": "task.json",
                     "weights_file": "weights.cxpolicy",
                     "components": list(prepared["components"]),
-                    "seed": 0 if seed is None else int(seed),
+                    # No longer coerced to 0 when absent: that coercion is
+                    # what made the calm episode unreachable from live mode
+                    # for as long as live mode existed.
+                    "seed": seed if seed is None else int(seed),
+                    "variation": bool(variation),
                 },
             }
         )

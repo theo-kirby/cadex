@@ -325,6 +325,13 @@ _NO_CONVERSION_MODULES = (
     "cadex_assembly_api.py",
     "cadex_assembly_worker.py",
     "CadexScriptedDomainPublication.py",
+    # The live worker is the same boundary in a hurry: it reads MuJoCo state
+    # in metres and emits millimetres to the shell, thirty times a second,
+    # under a person watching. ADR-110 added a second such field --
+    # ``applied_forces.at_mm`` beside ``position_mm`` -- and reused
+    # ``vector_mm`` for it rather than spelling the factor a second time.
+    # This is what keeps the third one from being written inline.
+    "cadex_live_worker.py",
 )
 
 #: **Hazard 1's fifth payment** (docs/MUJOCO.md M7, ADR-084). The offboard

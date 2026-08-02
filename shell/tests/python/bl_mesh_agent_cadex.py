@@ -2975,6 +2975,13 @@ def test_live_mode_is_wired_and_refuses_cleanly(live_root):
 
     That refusal is the load-bearing one. It is the path every user takes
     the first time they open the editor.
+
+    The force overlay (ADR-110) is the same shape of problem one step
+    further: drawing needs a GPU context and this process has none, so what
+    is checked is everything either side of the draw — that the handlers
+    register and, more importantly, *unregister*; that no shader is fetched
+    until a callback runs, which is the rule that keeps this suite green;
+    and the arrow's geometry, which is pure arithmetic.
     """
 
     print("test_live_mode_is_wired_and_refuses_cleanly")
@@ -3007,7 +3014,62 @@ def test_live_mode_is_wired_and_refuses_cleanly(live_root):
                       "urllib", "http"):
         check(forbidden not in imported, "live mode never imports %s" % forbidden)
 
+    # The force overlay (ADR-110): the add-on's first draw handlers, and the
+    # rule that keeps this suite green. `gpu.shader.from_builtin` raises
+    # "requires the gpu module to be initialized" under --background, so the
+    # shader is fetched inside the draw callback and never at module scope --
+    # asserted on the fetched object rather than on the import, because it is
+    # the fetch that raises.
+    check(cadex_live._shader is None,
+          "no GPU shader is fetched at import or registration")
+    module_level = set()
+    for node in tree.body:
+        if isinstance(node, _ast.Import):
+            module_level.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, _ast.ImportFrom) and node.module:
+            module_level.add(node.module.split(".")[0])
+    for lazy in ("gpu", "gpu_extras", "blf", "bpy_extras"):
+        check(lazy not in module_level,
+              "%s is imported inside a callback, not at module scope" % lazy)
+
+    check(cadex_live._draw_3d_handle is None
+          and cadex_live._draw_2d_handle is None,
+          "no draw handler is registered before a session")
+    cadex_live._add_draw_handlers()
+    check(cadex_live._draw_3d_handle is not None
+          and cadex_live._draw_2d_handle is not None,
+          "starting a session registers both draw handlers")
+    handles = (cadex_live._draw_3d_handle, cadex_live._draw_2d_handle)
+    cadex_live._add_draw_handlers()
+    check((cadex_live._draw_3d_handle, cadex_live._draw_2d_handle) == handles,
+          "...and adding twice leaks no second pair")
+    cadex_live._remove_draw_handlers()
+    check(cadex_live._draw_3d_handle is None
+          and cadex_live._draw_2d_handle is None,
+          "stopping removes them -- a leaked handler draws forever")
+    cadex_live._remove_draw_handlers()
+    check(True, "...and removing twice is safe, because unregister does too")
+
+    # The arrow's geometry is pure arithmetic and is the whole of what the
+    # POST_VIEW callback draws, so it is testable with no GPU at all.
+    segments, tip, magnitude = cadex_live._arrow(
+        (0.0, 0.0, 300.0), (1.0, 0.0, 0.0), 150.0)
+    check(abs(magnitude - 1.0) < 1e-9, "a 1 N force measures 1 N")
+    check(tip is not None and abs(tip[0] - 150.0) < 1e-9
+          and abs(tip[2] - 300.0) < 1e-9,
+          "at 150 mm/N it reaches 150 mm along +X from the centre of mass")
+    check(len(segments) == 10,
+          "one shaft and four head segments (got %d points)" % len(segments))
+    check(cadex_live._arrow((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 150.0)[1] is None,
+          "and no force draws no arrow")
+
     scene = bpy.context.scene
+    check(scene.cadex_live_variation is False,
+          "the panel opens calm: task forces and reset variation off")
+    check(abs(scene.cadex_live_force_scale
+              - cadex_live.DEFAULT_FORCE_SCALE_MM_N) < 1e-6,
+          "the arrow scale defaults to %.0f mm/N"
+          % cadex_live.DEFAULT_FORCE_SCALE_MM_N)
     scene[cadex_backend.ROOT_PROP] = live_root
     try:
         opened = cadex_backend.live_open(live_root, {"output": ""})

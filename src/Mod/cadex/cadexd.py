@@ -732,6 +732,12 @@ class CadexdServer:
         same shape ``preview_params`` refuses in. A project with no accepted
         rollout is a **state**, not an error: the panel says "build a rollout
         first" rather than showing the user a failure envelope.
+
+        ``variation`` defaults **true** — play the task as the bundle
+        declares it. False is the calm session (ADR-110): one fixed machine
+        at the solved pose, with the only force acting the one the user is
+        applying. It is not a new engine state, only the unseeded episode
+        ``evaluate_episode`` has always had, finally reachable from here.
         """
 
         not_open = self._require_open()
@@ -751,7 +757,11 @@ class CadexdServer:
             session = self._live_session = CadexLiveSession(self._project_root)
         seed = args.get("seed")
         try:
-            opened = session.open(prepared, None if seed is None else int(seed))
+            opened = session.open(
+                prepared,
+                None if seed is None else int(seed),
+                bool(args.get("variation", True)),
+            )
         except LiveSessionFailure as exc:
             return _declined_live_open(str(exc))
         return {"ok": True, "live": True, **opened}

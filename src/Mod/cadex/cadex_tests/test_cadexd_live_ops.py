@@ -55,10 +55,16 @@ def test_live_ops_validate_their_arguments() -> None:
         _request("live_open", {}),  # output is required
         _request("live_open", {"output": 1}),
         _request("live_open", {"output": "play", "seed": "6"}),
+        # A calm session is asked for with a boolean, not with the string
+        # "false" -- which is truthy, and would arm the whole declared
+        # episode on a caller that thought it had turned it off (ADR-110).
+        _request("live_open", {"output": "play", "variation": "false"}),
+        _request("live_open", {"output": "play", "variation": 0}),
         _request("live_step", {}),  # steps is required
         _request("live_step", {"steps": "3"}),
         _request("live_step", {"steps": 3, "push": 4.0}),
         _request("live_open", {"output": "play", "steps": 3}),  # not its arg
+        _request("live_step", {"steps": 3, "variation": False}),  # nor this
     ):
         with pytest.raises(protocol.ProtocolError):
             protocol.validate_request(frame)
@@ -66,6 +72,8 @@ def test_live_ops_validate_their_arguments() -> None:
     for frame in (
         _request("live_open", {"output": "play"}),
         _request("live_open", {"output": "play", "seed": 6}),
+        _request("live_open", {"output": "play", "variation": False}),
+        _request("live_open", {"output": "play", "seed": 6, "variation": True}),
         _request("live_step", {"steps": 3}),
         _request("live_step", {"steps": 3, "push": {"newtons": 1.0}}),
         _request("live_close", {}),
@@ -181,6 +189,46 @@ def test_the_session_bounds_a_step_before_it_reaches_the_worker() -> None:
     for steps in (0, -1, MAX_STEPS_PER_REQUEST + 1):
         with pytest.raises(LiveSessionFailure):
             session.step(steps, None)
+
+
+def test_the_open_frame_carries_variation_and_an_uncoerced_seed() -> None:
+    """The one line that made the calm episode unreachable (ADR-110).
+
+    ``open`` used to write ``0 if seed is None else int(seed)``, so live mode
+    could never ask ``evaluate_episode`` for its unseeded episode -- the one
+    state in which nothing is drawn and the only force acting on the machine
+    is the one the user is applying. Asserted on the frame rather than on the
+    behaviour because the behaviour is two process boundaries away, and this
+    is the boundary where it was lost.
+    """
+
+    from CadexLiveSession import CadexLiveSession
+
+    session = CadexLiveSession("/nowhere")
+    sent: list[dict] = []
+
+    def _exchange(frame):
+        sent.append(frame)
+        return {"ok": True, "components": [], "control_hz": 0,
+                "frames_per_second": 0, "actuator_channels": [],
+                "episode_seconds": 0.0}
+
+    session._spawn = lambda _prepared: None
+    session._exchange = _exchange
+    prepared = {"components": ["arm"]}
+
+    session.open(prepared, None, False)
+    assert sent[-1]["request"]["seed"] is None
+    assert sent[-1]["request"]["variation"] is False
+
+    session.open(prepared, 6, True)
+    assert sent[-1]["request"]["seed"] == 6
+    assert sent[-1]["request"]["variation"] is True
+
+    # The op plays the task as the bundle declares it unless asked not to,
+    # which is why the *panel* is where the off default lives.
+    session.open(prepared, 6)
+    assert sent[-1]["request"]["variation"] is True
 
 
 def test_the_session_names_its_worker_and_never_imports_it() -> None:

@@ -1016,6 +1016,26 @@ the order they had to happen:
       against a 33 ms bar, identical from the staged payload. Driven end to
       end on mg-legs it runs at real time, takes 1.5 N from three sides, and
       goes over at 8 N.
+- [x] **A live session you can analyse** (ADR-110). The instrument was still
+      unreadable: every session opened with the whole declared episode
+      running, so a hand push landed on top of four other forces. Three
+      changes. **Calm mode** is one `variation` boolean on `live_open` and
+      nothing else — it reaches `evaluate_episode`'s existing *unseeded*
+      episode, which live mode could never ask for because the seed was
+      coerced to `0`; the op defaults it on, the panel's checkbox defaults
+      off. **The force arrow** is drawn from the `xfrc_applied` a frame
+      carries back, at `xipos`, so it is measured rather than intended — and
+      it is a **sum**, so a user's shove and the task's wind on one body are
+      one arrow. First draw handlers in the add-on, with the lazy-shader rule
+      that keeps the headless gate green. **Hold to push** needed no engine
+      change: re-sending a 0.15 s push every tick is a continuous force.
+      Fixed on the way: ADR-109's `forces` guard read one half of its
+      condition and let a push accumulate 4, 8, 12… N on an unseeded episode
+      of a task that declares disturbances. Measured through the shell
+      against the bundle: a calm episode runs 600 steps with **zero**
+      applied forces and stands; a 0.75 N push reports **0.7500 N at
+      90.00°** at the pelvis centre of mass; a held push is constant across
+      26 ticks and stops **0.142 s** after release.
 - [ ] **The GPU run and the policy it produces.** Blocked, not skipped: the
       training box runs its **own** checkout of `training/cadex_train.py`
       and it predates ADR-104, so a dispatch would silently ignore both new

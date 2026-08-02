@@ -20,6 +20,10 @@ What this suite pins:
   every step, because ``apply_disturbance`` returns before its own clear in
   that case and a live push would otherwise accumulate step on step into a
   force nobody applied;
+* and the same on a task that **does** declare one, played **unseeded** --
+  nothing is drawn, so that function again writes nothing and clears nothing.
+  That is live mode's calm session (ADR-110), and the guard shipped reading
+  only the task half of the condition;
 * it composes with a declared disturbance rather than replacing it;
 * and ``forces=None`` is bit-for-bit the episode that ran before it existed.
 
@@ -222,6 +226,52 @@ def test_a_push_does_not_accumulate_on_a_task_with_no_disturbance() -> None:
     dyn.evaluate_episode(model, task, forces=forces, seed=1)
     assert observed, "the hook never ran"
     assert observed == [0.0] * len(observed)
+
+
+def test_a_push_does_not_accumulate_on_an_unseeded_episode() -> None:
+    """The same rule, on the other half of the same condition (ADR-110).
+
+    ``apply_disturbance`` returns early on ``not entries or not draws``, and
+    the loop's guard originally read only the *entries* half. So on a task
+    that **does** declare a disturbance, played **unseeded** -- nothing is
+    drawn, so nothing is written and nothing is cleared -- a hook adding 4 N
+    a step was applying 4, 8, 12... newtons.
+
+    That combination is not a corner: it is live mode's calm session, which
+    is exactly ``seed=None`` on a task whose bundle declares shoves. Found by
+    asking for one.
+    """
+
+    make_model, task = _bundle(
+        disturbance=[
+            {
+                "label": "shove",
+                "component": "arm",
+                "direction": "horizontal",
+                "newtons_low": 1.0,
+                "newtons_high": 3.0,
+                "sustained": False,
+                "at_seconds_low": 0.05,
+                "at_seconds_high": 0.15,
+                "duration_s": 0.05,
+            }
+        ]
+    )
+    assert task["disturbance"], "this fixture must declare a push"
+    model = make_model()
+    body = _arm_body(model)
+    observed: list[float] = []
+
+    def forces(_step, data, _time_s):
+        observed.append(float(data.xfrc_applied[body, 0]))
+        data.xfrc_applied[body, 0] += PUSH_N
+
+    dyn.evaluate_episode(model, task, forces=forces, seed=None)
+    assert observed, "the hook never ran"
+    assert observed == [0.0] * len(observed), (
+        "an unseeded episode draws no disturbance, so apply_disturbance "
+        "writes nothing and clears nothing; the loop owes the clear."
+    )
 
 
 def test_a_push_is_added_on_top_of_the_tasks_own_disturbance() -> None:

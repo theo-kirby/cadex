@@ -11085,3 +11085,134 @@ hours of stochastic GPU compute — and the engine has been able to verify one
 and never to produce one since M8 (ADR-070, ADR-084). That is the same reason
 `feasibility.py` and `compare.py` live beside the project rather than in
 `cadex_tests` (ADR-075 §6).
+
+## ADR-110 — A live session you can analyse (2026-08-02)
+
+**The complaint.** ADR-109 shipped a machine you can push, and the first
+thing watching it revealed is that you cannot tell what you are watching:
+
+> "I hit play and then it's getting all these forces acting on it already.
+> It's super unstable already because it's got things pushing on it. When I
+> click and drag, it's hard to tell if that's really affecting it."
+
+That is accurate, and it is the **task's** fault rather than the policy's.
+Every live session opened with the whole declared episode running: a
+0.15–0.90 N shove in 0.3–1.5 s, a second in 1.8–3.6 s, a 0.07 N wind for all
+six seconds, a 15° lean, a 15–45 mm drop and a 0–250 mm/s stumble at reset,
+and a fresh mass draw per episode. The machine survives 3/12 of that. So the
+baseline was a machine already falling over, and a hand push landed on top of
+four other forces and was invisible. Three changes, and they are one thing:
+**a session where the only force acting is the one you are applying, applied
+for as long as you hold it, drawn where it acts.**
+
+**Calm mode is not a new engine state.** `evaluate_episode` guards
+randomisation, reset variation and the drawn shoves behind one condition —
+`if seed is not None` — and `apply_reset_variation`'s own docstring already
+named what the other branch is: *"the unseeded episode: the nominal mechanism
+at the pose the solve found."* That is exactly what was asked for. Live mode
+had simply never been able to reach it, because `CadexLiveSession.open`
+coerced a missing seed to `0`. So the whole of it is a `variation` boolean on
+`live_open`, a seed that is no longer coerced, and `seed = None` in the
+worker's episode loop. **The op defaults it true** — its job is to play the
+task as the bundle declares it — and the **panel** defaults its checkbox off,
+with the shell always sending the field. One default, in one place, and the
+one a user sees is the one they can see.
+
+Separate switches for randomisation and reset variation were considered and
+declined: one switch maps onto a state the engine already has, and for
+analysing a push a single fixed machine is the better instrument.
+
+**A defect ADR-109 shipped, found by asking for this.** The `forces` seam
+clears `xfrc_applied` itself when the task declares no disturbance, because
+`apply_disturbance` returns *before* its own clear in that case. The guard
+read one half of the condition:
+
+```python
+if not task.get("disturbance"):          # shipped
+if not (task.get("disturbance") and variation.get("disturbance")):   # correct
+```
+
+`apply_disturbance` returns early on `not entries or not draws`. So on an
+**unseeded episode of a task that does declare disturbances** — precisely
+calm mode — the task half is truthy, no clear happens, and a live push
+accumulates 4, 8, 12… N: growing linearly, and looking exactly like a push
+from outside. Measured before it was fixed; the new
+`test_a_push_does_not_accumulate_on_an_unseeded_episode` fails against the
+old code with `[0.0, 4.0, 8.0, 12.0, 16.0, 20.0…]`, which is why it exists.
+Calm mode could not have shipped over it, and no existing configuration
+reached it — which is the whole reason it survived review twice.
+
+**The arrow is drawn from what the engine measured.** A frame now carries
+`applied_forces: {component: {newtons: [x,y,z], at_mm: [x,y,z]}}`, read off
+`data.xfrc_applied` inside the `sample` hook — where it is still live, having
+been written before `mj_step` and cleared only by the *next* step's
+`apply_disturbance` — and reported at `data.xipos`, the centre of mass, which
+is where that force acts. Both are facts rather than intentions. A shell
+drawing its own armed push would keep drawing after the window lapsed, after
+a clamp and after a refusal; ADR-103 and ADR-107 are both what reading an
+instrument that reports intention costs, applied here before it bit rather
+than after.
+
+**It is the total force on that body**, because `xfrc_applied` is a sum: in a
+session playing the declared episode, a user's shove and the task's wind on
+one body are one arrow. That is the right thing to draw, and the panel says
+so. In a calm session the arrow is purely the user's, which is the point of
+the switch beside it. Frames are a JSON list and `validate_response` does not
+descend lists, so this needed no `OP_RESPONSE_SPECS` change — but the golden
+fixture and `docs/INTEGRATION.md`'s prose both describe the frame and both
+moved in the same commit.
+
+**The add-on's first draw handlers**, and one rule that keeps the headless
+gate green: `gpu.shader.from_builtin` raises *"requires the gpu module to be
+initialized"* under `--background`, so the shader is fetched **inside** the
+callback and never at module scope. A `POST_VIEW` handler draws one arrow per
+entry — shaft plus four head segments, at `scene.cadex_live_force_scale` mm
+per newton, default 150, so 0.75 N is ~112 mm against a 300 mm machine — and
+a `POST_PIXEL` one puts the magnitude at the tip. Hydrated objects are placed
+in raw millimetres 1:1, so `at_mm` off the wire is already a world
+coordinate. The last non-empty forces are held ~0.6 s and faded over the
+tail, because a 0.12 s impulse at 30 Hz is four frames and a blink; and the
+pump scans **every** drained frame for forces, not just the newest one it
+draws poses from, or a short impulse inside a 32-frame batch is missed
+entirely. Handles are module-level and removed in `stop()` **and**
+`unregister()` — a leaked handler draws forever and raises on the next
+reload.
+
+**Hold to push**, and it needed no engine change at all: `_arm_push` replaces
+the pending push and resets its window, so a shell re-sending a 0.15 s push
+every 33 ms tick is a continuous force. `HELD_PUSH_SECONDS` is longer than
+one tick plus a round trip so the force cannot lapse between updates, short
+enough that release stops it within a frame or two — **measured at 0.142 s**.
+The eight compass buttons stay one-shot impulses beside it: a drag can never
+be repeated exactly and an ADR needs a number, which is why both gestures
+exist and is unchanged.
+
+**Measured, headless, through the shell's own path against the engine in the
+built bundle** (`mg-legs`, `stand5.cxpolicy`):
+
+- a calm session runs its full 600 steps with **zero** `applied_forces` in
+  any frame, and stands — pelvis at 303.2 mm;
+- an armed 0.75 N push at 90° comes back as **0.7500 N at 90.00°**,
+  horizontal, at the pelvis centre of mass (305.4 mm) and not its frame
+  origin (251.2 mm), with nothing else in the machine being pushed;
+- a held push is present across 26 consecutive ticks at a **constant**
+  magnitude — it does not accumulate — and the last frame carrying it is
+  0.142 s after release, after which the overlay has nothing to draw;
+- with the switch on, the task's own shoves reach the overlay with no push
+  from anyone: 107 sightings, all on the pelvis.
+
+**And one thing worth writing down that the instrument was built to find.**
+This policy tips under a *sustained* 0.30 N in about 0.6 s, while surviving
+0.75 N as a 0.12 s impulse. It was trained against impulses and never against
+a hold, so a held push is a question it has never been asked — which is what
+"we can pull it and drag it" was asking for in the first place.
+
+Not in scope, deliberately: re-aiming the task's shove arc, retraining,
+contact and ground-reaction visualisation, and any change to a number the
+engine computes for an existing bundle — `stand5.cxpolicy` keeps loading.
+
+**Noticed, not fixed here.** `~/cdx-mjc/capability.py`'s `scaled_task` zeroes
+`tilt`/`height`/`angular` for its "no reset variation" control row but not
+`linear_velocity_low/high_m_s`, so that row still draws a stumble of up to
+250 mm/s. Project-side, and the same family of instrument-honesty bug as
+ADR-107; worth a one-line fix next time that file is open.

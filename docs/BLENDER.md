@@ -1,6 +1,6 @@
 # BLENDER.md — The Shell
 
-Verified against source: 2026-08-01
+Verified against source: 2026-08-02
 
 **The shell is the product, and since ADR-030 it is in this repository**, at
 `shell/` — a Blender fork whose `mesh_agent` add-on is the interface. Nothing
@@ -280,6 +280,27 @@ Live is an editor of its own rather than a group inside Policy because it is a
 **session** — stateful, running, and mutually exclusive with baked playback —
 where Policy is a **recording**. One editor holding both would make the play
 button ambiguous.
+
+**Live mode also owns the add-on's only draw handlers** (ADR-110): a
+`POST_VIEW` one drawing the force arrows and a `POST_PIXEL` one labelling
+them, both in `cadex_live.py`, added in `start()` and removed in `stop()` and
+in `unregister()`. Two rules, both test-pinned in the gate:
+
+- **Fetch the shader inside the callback, never at module scope.**
+  `gpu.shader.from_builtin` raises *"requires the gpu module to be
+  initialized"* under `--background`, so a module-scope shader breaks every
+  headless run. `gpu`, `gpu_extras`, `blf` and `bpy_extras` are all imported
+  lazily for the same reason, and the gate asserts no shader has been fetched
+  after the add-on registers.
+- **Every handler that is added is removed twice over.** A leaked handler
+  draws against a session that is gone and raises on the next add-on reload,
+  so `unregister()` removes them again unconditionally rather than trusting
+  that `stop()` ran.
+
+What the arrows draw is the `applied_forces` a `live_step` frame carries —
+what the engine *measured* in `xfrc_applied`, at the body's centre of mass.
+The shell never draws the push it asked for: that would keep drawing after
+the window lapsed, after a clamp and after a refusal.
 
 Each of the four costs the sixteen touch points listed as a checklist in
 `docs/BLENDER-TREE.md` §2b. Reach for them deliberately; the §2b lines are a

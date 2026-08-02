@@ -37,6 +37,17 @@ control step by a ``step`` frame. Three consequences, all of them wanted:
   clock -- the shell's 30 Hz timer -- instead of by a sleep in here
   guessing at one.
 
+**Calm mode** (ADR-110) is not a fourth thing this file knows how to do. It
+is ``seed=None``, which is the branch ``evaluate_episode`` already guards
+randomisation, reset variation and the drawn shoves behind -- the nominal
+mechanism at the pose the solve found. Live mode simply never asked for it,
+because the host coerced a missing seed to ``0``.
+
+**Frames report the force that made them.** ``xfrc_applied`` is still live
+when ``sample`` runs, so a frame can carry what was actually pushing each
+body rather than what somebody meant to push it with; see
+:meth:`_Session._applied_forces`.
+
 **Auto-reset.** A terminated episode holds for
 :data:`TERMINATION_HOLD_SECONDS` of wall time so the fall is visible, then
 starts again at a fresh seed and reports ``reset_count``. Credit granted
@@ -139,6 +150,13 @@ class _Session:
         )
         self._components = [str(name) for name in request["components"]]
         self._seed = int(request.get("seed") or 0)
+        # Whether anything is drawn at all, which is not what the word means
+        # thirty lines into ``evaluate_episode``: there, ``variation`` is the
+        # *drawn* dict. Here it is the question that produces one. False is
+        # the calm session (ADR-110) -- the unseeded episode, which is the
+        # nominal mechanism at the solved pose with nothing pushing it, so
+        # that the only force acting is the one the user is applying.
+        self._variation = bool(request.get("variation", True))
 
         episode = self._task["episode"]
         self._control_hz = int(episode["control_hz"])
@@ -325,7 +343,15 @@ class _Session:
                     # credit is released by the generation bump beside it.
                     self._credit = 0
                     self._episode += 1
-                    seed = self._seed + self._reset_count
+                    # ``None`` is not "seed zero": it is the branch every
+                    # per-episode draw is guarded behind, so a calm session
+                    # is the same machine every episode and the push you
+                    # applied is the only thing that moved it.
+                    seed = (
+                        (self._seed + self._reset_count)
+                        if self._variation
+                        else None
+                    )
                     self._step = 0
                     self._time_s = 0.0
                     self._terminated = False
@@ -396,6 +422,41 @@ class _Session:
         for axis in range(3):
             data.xfrc_applied[body, axis] += float(force[axis])
 
+    def _applied_forces(self, data: Any) -> dict[str, Any]:
+        """What is actually pushing each body, right now (ADR-110).
+
+        Measured, not intended. ``data.xfrc_applied`` is still live when this
+        runs -- it is written before ``mj_step`` and cleared only by the
+        *next* step's ``apply_disturbance`` -- so this is the force that
+        produced the frame being emitted. A shell drawing its own armed push
+        instead would keep drawing it after the window lapsed, after a clamp
+        and after a refusal, which is ADR-103's and ADR-107's lesson applied
+        before it bites rather than after.
+
+        It is the **total** on that body, because ``xfrc_applied`` is a sum:
+        in a session playing the declared episode, a user's shove and the
+        task's wind on the same body are one arrow. That is the right thing
+        to draw and the panel says so; in a calm session the arrow is purely
+        the user's, which is the whole point of the switch beside it.
+
+        Reported at ``data.xipos``, the body's centre of mass in world
+        coordinates -- where ``xfrc_applied`` acts, and not ``xpos``, which
+        is the frame origin. ``vector_mm`` is reused rather than spelled
+        again: ``test_dynamics_units`` greps this module for a third
+        conversion.
+        """
+
+        forces: dict[str, Any] = {}
+        for name, body in self._body_ids.items():
+            vector = [float(value) for value in data.xfrc_applied[body][:3]]
+            if not any(vector):
+                continue
+            forces[name] = {
+                "newtons": vector,
+                "at_mm": self._dyn.vector_mm(data.xipos[body]),
+            }
+        return forces
+
     def _sample(
         self, step: int, data: Any, final: bool, action: Any
     ) -> None:
@@ -419,6 +480,9 @@ class _Session:
         }
         if action is not None:
             record["actuator_commands"] = [float(value) for value in action]
+        applied = self._applied_forces(data)
+        if applied:
+            record["applied_forces"] = applied
         with self._lock:
             self._step = int(step)
             self._time_s = step * self._control_interval

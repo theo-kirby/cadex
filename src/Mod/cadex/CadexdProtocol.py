@@ -118,7 +118,15 @@ OP_ARG_SPECS: dict[str, tuple[dict[str, type], dict[str, type]]] = {
     # Live mode (ADR-109). `output` names the accepted revision's rollout;
     # `seed` is the first episode's, and every auto-reset after it counts up
     # from there so a session can be described by one number.
-    "live_open": ({"output": str}, {"seed": int}),
+    #
+    # `variation` asks whether the episode is played as the bundle declares
+    # it -- randomisation, reset variation and the task's own shoves -- or
+    # calm: one fixed machine at the solved pose with nothing pushing it
+    # (ADR-110). It defaults **true** here because the op's job is to play
+    # the task, and a calm session is a simplification the caller asks for;
+    # the panel defaults its checkbox off and always sends the field, so
+    # there is one default in one place.
+    "live_open": ({"output": str}, {"seed": int, "variation": bool}),
     # `steps` is control steps to advance, and the reply carries one frame
     # per step: the shell owns the clock, so this is the whole of how time
     # passes. `push` is the user's shove -- newtons at an azimuth about

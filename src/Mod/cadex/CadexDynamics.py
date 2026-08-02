@@ -6984,12 +6984,21 @@ def evaluate_episode(
         # could not see it change would be noise, not a disturbance.
         apply_disturbance(data, task, variation, time_s)
         if forces is not None:
-            if not task.get("disturbance"):
+            if not (task.get("disturbance") and variation.get("disturbance")):
                 # ``apply_disturbance`` returns before it clears the array
-                # when the task declares no push, so on those tasks the hook
+                # whenever it has nothing to write, so on those steps the hook
                 # owns ``xfrc_applied`` outright and this is the clear it
                 # would otherwise never get. Without it a live push would
                 # accumulate step on step into a force nobody applied.
+                #
+                # **Both halves of that condition, not just the task's.** The
+                # function returns early on ``not entries or not draws``, so a
+                # task that *does* declare a disturbance still clears nothing
+                # on an **unseeded** episode -- which is precisely live mode's
+                # calm session (ADR-110). Mirroring the real condition here is
+                # what stops a held 0.75 N push becoming 1.50, 2.25, 3.00 N,
+                # growing linearly and looking exactly like a push the user
+                # never applied.
                 data.xfrc_applied[:] = 0.0
             forces(step, data, time_s)
         observation = observation_values(task, data.sensordata)

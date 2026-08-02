@@ -18,7 +18,17 @@
       },
       "actuator_commands": [
         "float"
-      ]
+      ],
+      "applied_forces": {
+        "component_name": {
+          "newtons": [
+            "float"
+          ],
+          "at_mm": [
+            "float"
+          ]
+        }
+      }
     }
   ],
   "step": "int",
