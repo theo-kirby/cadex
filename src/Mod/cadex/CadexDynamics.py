@@ -6022,9 +6022,11 @@ def _disturbance_records(
                 reason="malformed_disturbance",
                 observed={"low": low, "high": high},
             )
-        # The arc a horizontal push is drawn from, 0 degrees at +X. Absent
-        # is the full circle, which is both what every bundle written before
-        # this carried and what an undeclared arc means.
+        # The arc a horizontal push is drawn from, 0 degrees at WORLD +X --
+        # the engine has no notion of a mechanism's forward, so this angle is
+        # never relative to the machine. Absent is the full circle, which is
+        # both what every bundle written before this carried and what an
+        # undeclared arc means.
         arc_low = float(entry.get("azimuth_degrees_low") or 0.0)
         arc_high = float(entry.get("azimuth_degrees_high", 360.0))
         if not (math.isfinite(arc_low) and math.isfinite(arc_high)) or (
@@ -6035,8 +6037,9 @@ def _disturbance_records(
                 f"{arc_high:g} degree arc.",
                 reason="malformed_disturbance_azimuth",
                 correction=(
-                    "An arc is [low, high] in degrees about +X, at most one "
-                    "full circle wide. Omit it for the whole circle."
+                    "An arc is [low, high] in degrees about world +X, "
+                    "anticlockwise seen from above, at most one full circle "
+                    "wide. Omit it for the whole circle."
                 ),
                 observed={"azimuth_degrees_low": arc_low,
                           "azimuth_degrees_high": arc_high},

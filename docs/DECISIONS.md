@@ -10579,6 +10579,16 @@ the same thing at every scale: `lat` was the worst column. There is no ankle
 roll and no hip yaw on this machine, so lateral recovery was hip roll and a
 weight shift, and no number of iterations was going to change that.
 
+> **Correction (ADR-107, 2026-08-02).** That reading is **inverted for this
+> machine.** `compare.py`'s buckets were cut about world +X on the belief
+> that +X was the machine's forward; mg-legs faces **+Y**, so the column
+> labelled `lat` held the *sagittal* pushes and `fwd`/`back` held the lateral
+> ones. Lateral is this machine's **strong** axis, not its weak one. The
+> mechanism change below is not thereby wrong — ankle roll and a longer
+> pitch axis are load-bearing either way, and `feasibility.py`'s margins were
+> measured in the mechanism's own frame — but the sentence that motivated it
+> named the wrong column, and the corrected split is in ADR-107.
+
 **The chain.** `calf → [ankle pitch, X] → ankle_bracket → [ankle roll, Y] →
 foot`. One new link per side following the `make_hip` pattern — that link
 already holds one servo between plates and wraps the perpendicular one — and
@@ -10713,6 +10723,14 @@ a support polygon of 45.5 mm forward, 24.5 mm back and ±50 mm lateral:
 * `azimuth_degrees=[-60, 60]` on the first shove, **full circle on the
   second** — sagittal-biased where the machine has authority, and still
   asking the lateral question, of a machine that can now answer it.
+  > **Correction (ADR-107).** `azimuth_degrees` is measured about **world
+  > +X** and mg-legs faces **+Y**, so `[-60, 60]` is a **lateral** band, not
+  > the sagittal one this bullet claims. The first shove has been aiming
+  > across the machine, and the sagittal question was asked only by the
+  > second shove's full circle. The band is deliberately **not** re-aimed
+  > here: `azimuth_degrees` is a digest input, and changing it would make
+  > `stand5.cxpolicy` unloadable against its own task. Re-aiming is the next
+  > training run's decision.
 * `at_seconds=[0.3, 1.5]` and `[1.8, 3.6]`, earlier and denser: more
   recovery events per episode and less idle batch.
 * `linear_velocity_mm_s=[0, 250]` on the reset variation — ξ ≈ 32 mm, an
@@ -10747,3 +10765,76 @@ draws. Dispatching would have trained against the full circle with no
 stumble while recording this bundle's algorithm string in the policy header,
 and nothing would have failed loudly. Updating a checkout on a machine
 outside this repo is a decision rather than a step, so B5 and B6 stop here.
+
+## ADR-107 — The frame was read 90 degrees wrong (2026-08-02)
+
+**`azimuth_degrees` is measured about world +X. The engine does not know
+which way a mechanism faces, and mg-legs faces +Y.** Everything below follows
+from those two sentences, and one of them was written down wrong.
+
+**What was wrong, and only what was wrong.** `compare.py`'s `azimuth_bucket`
+quartered the circle about +X, with a docstring saying *"Quadrants about +X,
+which is the machine's forward"*. For mg-legs that is false and the model
+says so: the hips sit at `x = ±30`, the toe geoms at `y = +37.25`, and the
+support polygon's 45.5 mm forward / 24.5 mm back run along **Y**. Forward is
+**+Y**. The episode confirms it a third way — seed 6's push at 351°, which is
+very nearly +X, shoved the pelvis sideways onto the right leg, exactly as
+watched.
+
+**The engine is not at fault.** `cos(az)` on world X and `sin(az)` on world Y
+is right in all four evaluators, and the drawn angle is a world angle
+everywhere it is used. Exactly one line claimed otherwise — the gloss `-- the
+mechanism's forward --` in `cadex_assembly_api.py` — and it was the only
+place in the engine that ever asserted a machine has a facing. It is gone,
+and the four surfaces that describe the parameter (that docstring, the
+`CadexScriptedRuntime` prompt text, the `malformed_disturbance_azimuth`
+correction string the model reads back, and `docs/MUJOCO.md`) now all say
+**world** +X and tell the reader to work the facing out before declaring an
+arc. `EPISODE_VARIATION_ALGORITHM` was already axis-neutral and is untouched,
+which it had to be: it is a digest input.
+
+**What it inverted.** Two readings, both load-bearing, both backwards:
+
+* **ADR-105's motivation.** *"`lat` was the worst column"* — but the column
+  headed `lat` held the **sagittal** pushes. Re-measured on iteration 250 in
+  the machine's own frame, at ×0.50: **lateral 7/7, sagittal 3/5**. Lateral
+  is this machine's strong axis. The ankle rolls B2 added *are* converting;
+  the sentence that argued for them named the wrong column. The mechanism
+  change is not thereby wrong — `feasibility.py` measured its margins in the
+  mechanism's own frame throughout — but it was argued for from a rotated
+  table.
+* **ADR-106's band.** `azimuth_degrees=[-60, 60]` was called
+  "sagittal-biased". About world +X, on a machine facing +Y, it is a
+  **lateral** band. The first shove has been pushing across the machine since
+  B3, and the sagittal question was asked only by the second shove's full
+  circle, by accident rather than design.
+
+**Nothing the engine computes changed, deliberately.** Re-aiming the band
+would change the task bundle and `stand5.cxpolicy` — the only trained policy
+this project has that stands — would stop loading against its own task. The
+sagittal band is `[30, 150]` and it is the next training run's decision, made
+with the frame known instead of assumed.
+
+**The instrument now asserts its own frame.** `compare.py` declares
+`FORWARD_DEGREES = 90.0` and `check_forward_degrees` measures it off the
+model's toe bodies — a toe is a child of a foot and `body_pos` is the offset
+from the parent, so a toe's position *is* the foot-to-toe vector — refusing
+to print a table whose frame the model disagrees with by more than 5°. That
+is ADR-103's lesson applied to the one file ADR-103 was about: **an
+instrument that assumes what it is supposed to measure can rotate silently.**
+`capability.py` takes its column headers from `compare.AZIMUTHS` rather than
+typing them again, and prints the measured facing above the table.
+
+**A second instrument error, found the same day and the same shape.** The
+rollout comment said the foot *never leaves the ground*, from a maximum taken
+over the whole episode — which the 42 mm reset drop dominates, so no later
+peak can beat where the episode began. Measured after the drop is absorbed
+(t ≥ 1 s), against the height the foot settles to: the **left foot lifts 5.91
+mm at 2.090 s** and the right 4.13 mm, right after the 0.75 N shove at
+1.85 s. A maximum over an interval containing a much larger transient
+measures the transient.
+
+**What both have in common** is the reason live mode (ADR-109) is worth
+building: a six-second recorded episode with one push, read through summary
+statistics, is a poor instrument for *"does it recover"*. You cannot push it
+from the other side, cannot push it harder, and cannot push it twice.

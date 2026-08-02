@@ -1318,12 +1318,17 @@ shove = assembly.disturbance(pelvis_c, newtons=[0.15, 0.9],
                              at_seconds=[0.3, 1.5], duration_s=0.12)
 ```
 
-`azimuth_degrees=[lo, hi]` aims a horizontal push at an arc about **+X**;
-omitted is the full circle. Aim it where the mechanism has actuators — a
-machine with no ankle roll drawn over the whole circle spends two thirds of
-every batch on a question it cannot answer, which ADR-087 predicted and
-`capability.py` measured. It is **refused on a vertical push**, whose draw
-is a sign rather than an angle, and it adds no draw to the stream.
+`azimuth_degrees=[lo, hi]` aims a horizontal push at an arc about **world
++X**, anticlockwise seen from above; omitted is the full circle. The engine
+has **no concept of which way a mechanism faces** — work out which world
+axis your machine's forward is, from where its feet and toes sit, before
+declaring an arc. For mg-legs forward is **+Y**, so the `[-60, 60]` above is
+a *lateral* band, not the sagittal one it was written to be (ADR-107). Then
+aim it where the mechanism has actuators — a machine with no ankle roll
+drawn over the whole circle spends most of every batch on a question it
+cannot answer, which ADR-087 predicted and `capability.py` measured. It is
+**refused on a vertical push**, whose draw is a sign rather than an angle,
+and it adds no draw to the stream.
 
 `linear_velocity_mm_s=[lo, hi]` is a **stumble**: a speed with its azimuth
 drawn, written into the base's *world-frame* linear velocity — the other

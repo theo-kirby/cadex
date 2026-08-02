@@ -2808,16 +2808,22 @@ class AssemblyDomainAPI:
         over the full circle, or ``"vertical"``, whose sign is drawn.
 
         ``azimuth_degrees=[low, high]`` narrows a horizontal push to an arc,
-        where **0 degrees is +X** -- the mechanism's forward -- and the angle
-        runs anticlockwise seen from above. Omitted means the full circle,
-        exactly as before. It exists because a mechanism is not symmetric
-        and its task should not have to be: a biped with hip pitch but no
-        ankle roll can answer a shove from the front and cannot answer one
-        from the side, and drawing uniformly over the whole circle spends
-        two-thirds of every batch in the direction the machine has no
-        actuator for. Declaring the arc is how a task asks the question the
-        mechanism can be trained to answer, and widening it later is how the
-        question gets harder.
+        where **0 degrees is world +X** and the angle runs anticlockwise seen
+        from above. It is a *world* frame and nothing else: the engine has no
+        concept of which way a mechanism faces, so which world azimuth is
+        your machine's forward is something you work out from its geometry
+        before you declare an arc. Omitted means the full circle, exactly as
+        before.
+
+        It exists because a mechanism is not symmetric and its task should
+        not have to be: a biped with hip pitch but no ankle roll can answer a
+        shove in the plane its actuators work in and cannot answer one across
+        it, and drawing uniformly over the whole circle spends most of every
+        batch in the direction the machine has no actuator for. Declaring the
+        arc is how a task asks the question the mechanism can be trained to
+        answer -- so aim it at the machine's *actuated* plane, whichever world
+        axis that turns out to be -- and widening it later is how the question
+        gets harder.
 
         It is **refused on a vertical disturbance**, not ignored. A vertical
         push reads the same uniform draw as a *sign*, so an arc there would
