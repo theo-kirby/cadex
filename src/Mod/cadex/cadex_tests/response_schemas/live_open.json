@@ -17,5 +17,11 @@
       "high": "float"
     }
   ],
-  "episode_seconds": "float"
+  "episode_seconds": "float",
+  "policy": {
+    "label": "str",
+    "weights": "str",
+    "sha256": "str",
+    "trained_label": "str"
+  }
 }

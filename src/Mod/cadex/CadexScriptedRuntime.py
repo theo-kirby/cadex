@@ -664,6 +664,24 @@ def prepare_live(project_root: str | Path, output: str) -> dict[str, Any]:
         "simulation_output": name,
         "policy_output": str(policy.get("policy_output") or ""),
         "task_output": str(policy.get("task_output") or ""),
+        # Which policy this is, for the shell to say out loud (ADR-111).
+        # `weights` and `sha256` come off the trace's own policy block, so
+        # they name the file whose digest was just re-checked above and
+        # cannot drift from it. The other two come from the **receipt**, for
+        # a reason worth stating: the trace's `label` is the TASK's label
+        # ("stand"), not the policy's, and reading it as the policy's put the
+        # wrong word in the panel the first time this was wired. The policy's
+        # own name is `policy_output` ("balance"), and `trained_label` --
+        # what the trainer's `--label` called the run -- exists only in the
+        # receipt, which is the one field that tells two checkpoints of one
+        # filename apart.
+        "policy_identity": {
+            "label": str(policy.get("policy_output") or ""),
+            "weights": str(policy.get("weights") or ""),
+            "sha256": str(policy.get("policy_sha256") or ""),
+            "trained_label": _live_trained_label(
+                outputs, str(policy.get("policy_output") or "")),
+        },
         "components": [str(item) for item in trace.get("component_outputs") or ()],
         "model_file": str(model_file),
         "task_file": str(task_file),
@@ -673,6 +691,28 @@ def prepare_live(project_root: str | Path, output: str) -> dict[str, Any]:
         ),
         "freecadcmd_executable": str(_freecadcmd(_freecad_home())),
     }
+
+
+def _live_trained_label(outputs: Any, policy_output: str) -> str:
+    """The trainer's own name for the run that produced these weights.
+
+    Off the policy receipt the accepted run published beside the trace. Best
+    effort and never fatal: a live session that can play is not worth
+    refusing over a display string, and a project built before receipts
+    carried the field simply has none. The panel shows the filename and the
+    digest either way, and those are the identifying pair.
+    """
+
+    if not policy_output:
+        return ""
+    receipt = Path(outputs) / f"{policy_output}-policy.json"
+    try:
+        return str(
+            json.loads(receipt.read_text(encoding="utf-8")).get(
+                "trained_label") or ""
+        )
+    except (OSError, ValueError, TypeError):
+        return ""
 
 
 def _freecad_home() -> str:

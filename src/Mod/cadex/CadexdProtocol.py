@@ -297,9 +297,16 @@ OP_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     # `live` rides on every live reply, successful or refused, and is the
     # one place a refusal says why: a project with no accepted rollout is a
     # state rather than an error, exactly as `previewable: false` is.
+    # `policy` is WHICH policy is about to play -- its script label, the
+    # asset filename and the digest the engine just re-checked (ADR-111).
+    # Without it a live session is anonymous: the shell can say a machine is
+    # standing and cannot say what is driving it, and two policies that
+    # differ by an hour of GPU look identical in the viewport. That was a
+    # real question asked of a real session, and the answer took reading the
+    # project's script.
     "live_open": (
         frozenset({"live", "components", "control_hz", "frames_per_second",
-                   "actuator_channels", "episode_seconds"}),
+                   "actuator_channels", "episode_seconds", "policy"}),
         frozenset({"reason"}),
     ),
     "live_step": (
@@ -317,6 +324,17 @@ assert set(OP_RESPONSE_SPECS) == set(OP_ARG_SPECS)
 #: Nested response shapes the Blender shell reads by name. Keyed by a dotted
 #: path; ``*`` matches one level of mapping keys (an output name).
 NESTED_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    # Which policy a live session is playing (ADR-111). `label` is the
+    # script's own name for it, `weights` the asset filename, `sha256` the
+    # digest the engine re-checked before handing it to the worker, and
+    # `trained_label` what the trainer called the run that produced it --
+    # which is the one field that distinguishes two checkpoints of the same
+    # file name. Every key is present and empty on a refusal, as everywhere
+    # else in this table.
+    "policy": (
+        frozenset({"label", "weights", "sha256", "trained_label"}),
+        frozenset(),
+    ),
     # `source_output` rides only on component entries: the declared output
     # whose geometry this one places (ADR-049). Optional because every other
     # output kind has no source to name.

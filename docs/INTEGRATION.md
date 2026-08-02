@@ -145,7 +145,7 @@ prose. Every response also carries `id` and `ok`.
 | `resolve_pin` | `output`, `revision`, `subelements`, `details` |
 | `inspect` | `scope`, `target`, `path`, `value`, `page`, `document`, `surface`, `result_json_bytes` |
 | `preview_params` | `placements`, `revision`, `previewable`, `reason`? |
-| `live_open` | `live`, `components`, `control_hz`, `frames_per_second`, `actuator_channels`, `episode_seconds`, `reason`? |
+| `live_open` | `live`, `components`, `control_hz`, `frames_per_second`, `actuator_channels`, `episode_seconds`, `policy`, `reason`? |
 | `live_step` | `live`, `frames`, `step`, `time_s`, `terminated`, `termination`, `reset_count`, `reason`? |
 | `live_close` | `live`, `closed` |
 | `cancel` | `cancelled` |

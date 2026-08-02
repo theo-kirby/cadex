@@ -188,6 +188,8 @@ def _declined_live_open(reason: str) -> dict[str, Any]:
         "frames_per_second": 0,
         "actuator_channels": [],
         "episode_seconds": 0.0,
+        "policy": {"label": "", "weights": "", "sha256": "",
+                   "trained_label": ""},
         "reason": reason,
     }
 
@@ -764,7 +766,21 @@ class CadexdServer:
             )
         except LiveSessionFailure as exc:
             return _declined_live_open(str(exc))
-        return {"ok": True, "live": True, **opened}
+        # From the host rather than from the worker: the worker plays three
+        # staged files and has no idea what the project calls them, and this
+        # is the side that resolved and digest-checked them.
+        identity = dict(prepared.get("policy_identity") or {})
+        return {
+            "ok": True,
+            "live": True,
+            **opened,
+            "policy": {
+                "label": str(identity.get("label") or ""),
+                "weights": str(identity.get("weights") or ""),
+                "sha256": str(identity.get("sha256") or ""),
+                "trained_label": str(identity.get("trained_label") or ""),
+            },
+        }
 
     def _op_live_step(
         self, _request_id: str, args: dict[str, Any]

@@ -3084,8 +3084,14 @@ def test_live_mode_is_wired_and_refuses_cleanly(live_root):
         # pinned per op, not per outcome, so a shell reading `components`
         # off a refusal finds an empty list rather than a KeyError.
         for key in ("components", "control_hz", "frames_per_second",
-                    "actuator_channels", "episode_seconds"):
+                    "actuator_channels", "episode_seconds", "policy"):
             check(key in opened, "a refusal still carries %r" % key)
+        # WHICH policy is playing (ADR-111). Empty on a refusal, and every
+        # field present: the panel reads these unconditionally, and a
+        # KeyError in a draw callback takes the whole editor down.
+        for key in ("label", "weights", "sha256", "trained_label"):
+            check(key in (opened.get("policy") or {}),
+                  "...and its policy block carries %r" % key)
 
         stepped = cadex_backend.live_step(live_root, {"steps": 3})
         check(stepped.get("ok") is True and stepped.get("live") is False,

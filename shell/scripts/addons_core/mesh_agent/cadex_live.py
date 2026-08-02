@@ -146,6 +146,11 @@ class _Session:
         self.components = [str(name) for name in opened.get("components") or ()]
         self.channels = list(opened.get("actuator_channels") or ())
         self.episode_seconds = float(opened.get("episode_seconds") or 0.0)
+        # WHICH policy is driving this (ADR-111). Off the engine, never
+        # inferred here: a live session that cannot name what it is playing
+        # is a session two people can watch and disagree about, which is
+        # exactly what happened.
+        self.policy = dict(opened.get("policy") or {})
         self.objects = objects
 
         self.paused = False
@@ -1003,6 +1008,23 @@ class CADEX_LIVE_PT_session(Panel):
             alert.alert = True
             alert.label(text=live.error, icon='ERROR')
 
+        # What is playing, before anything about how it is doing. The digest
+        # is truncated to twelve characters: enough to tell two checkpoints
+        # apart at a glance, short enough to fit a panel. `trained_label` is
+        # the one field that separates two runs that wrote the same filename.
+        weights = str(live.policy.get("weights") or "")
+        if weights:
+            playing = layout.box().column(align=True)
+            playing.label(text=weights, icon='FILE_CACHE')
+            detail = playing.column(align=True)
+            detail.enabled = False
+            trained = str(live.policy.get("trained_label") or "")
+            label = str(live.policy.get("label") or "")
+            if trained and trained != label:
+                detail.label(text="run: " + trained)
+            detail.label(text="sha256 "
+                              + str(live.policy.get("sha256") or "?")[:12])
+
         box = layout.box().column(align=True)
         box.enabled = False
         box.label(text="{:.2f} s of {:.2f} s".format(
@@ -1012,7 +1034,11 @@ class CADEX_LIVE_PT_session(Panel):
             text=("terminated: " + (live.termination or "yes"))
             if live.terminated else ("paused" if live.paused else "standing"),
             icon='ERROR' if live.terminated else 'CHECKMARK')
-        box.label(text="{:d} reset{:s} so far".format(
+        # Spelled out because "resets" was read as training iterations by the
+        # first person to watch one: this is how many times THIS session's
+        # episode has ended and started again, and it has nothing to do with
+        # how long the policy was trained for.
+        box.label(text="{:d} episode{:s} played this session".format(
             live.reset_count, "" if live.reset_count == 1 else "s"))
         # Two lines rather than one, because they are two different claims: a
         # held push is happening now and its number changes every mouse move;
