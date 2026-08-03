@@ -168,6 +168,27 @@ def torque_nmm(value_nm: float) -> float:
     return float(value_nm) * MM_PER_METRE
 
 
+def angular_momentum_nmms(value_kg_m2_s: float) -> float:
+    """kg·m²/s to N·mm·s -- angular momentum leaving MuJoCo (ADR-116).
+
+    The two are the same dimension written differently: N·m·s is
+    kg·m/s²·m·s, which is kg·m²/s, so this is the same thousand
+    :func:`torque_nmm` multiplies by. It is a function of its own rather
+    than a second call to that one because the quantity is not a torque and
+    a reader who finds ``torque_nmm`` on an angular-momentum row has to stop
+    and check whether somebody confused the two.
+
+    **Why this unit and not the obvious ones.** SI puts this machine's
+    centroidal angular momentum at about 6e-3, which is a number a reward
+    weight has to carry four zeros to price; g·mm²/s puts it at 6e6, which
+    is the same problem upside down. N·mm·s puts a recovery in single
+    digits, and it is the unit ``actuator_force`` already speaks -- so the
+    two rotational channels a balance reward reads are in one system.
+    """
+
+    return float(value_kg_m2_s) * MM_PER_METRE
+
+
 def angle_radians(value_degrees: float) -> float:
     """Degrees to radians, at the one boundary that is allowed to do it.
 
@@ -4992,10 +5013,10 @@ OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
         "suffixes": ("_x", "_y", "_z"),
         "units": {None: ("deg/s", angle_degrees)},
     },
-    # The two subtree channels. ``subtreecom``/``subtreelinvel`` are
-    # mass-weighted quantities over a subtree rather than a frame, so the
-    # body/xbody distinction does not arise for them and ``mjOBJ_BODY`` is
-    # the only object type they take.
+    # The three subtree channels. ``subtreecom``/``subtreelinvel``/
+    # ``subtreeangmom`` are mass-weighted quantities over a subtree rather
+    # than a frame, so the body/xbody distinction does not arise for them
+    # and ``mjOBJ_BODY`` is the only object type they take.
     "centre_of_mass": {
         "sensor": "mjSENS_SUBTREECOM",
         "target": "component",
@@ -5019,6 +5040,28 @@ OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
         "dim": 3,
         "suffixes": ("_x", "_y", "_z"),
         "units": {None: ("mm/s", speed_mm_per_s)},
+    },
+    # The rotational half of the pair above, and the row ADR-116 adds. The
+    # whole subtree's angular momentum **about its own centre of mass** --
+    # every link's spin and every link's mass swinging about that point,
+    # summed. It is not ``component_angular_velocity`` on the same part,
+    # which reads how fast one link's frame is turning, and it is not
+    # derivable from the tilt channels: a machine can be perfectly upright
+    # and about to go over, which is what centroidal angular momentum says
+    # and orientation cannot.
+    #
+    # Why it exists: every B6 death was ``tipped`` and not one was
+    # ``collapsed`` (ADR-112's run), so the failure this project keeps
+    # measuring is rotational -- and the reward had no channel for
+    # rotational momentum at all. This is ADR-112's finding one derivative
+    # up, in the rotational half.
+    "centroidal_angular_momentum": {
+        "sensor": "mjSENS_SUBTREEANGMOM",
+        "target": "component",
+        "objtype": "mjOBJ_BODY",
+        "dim": 3,
+        "suffixes": ("_x", "_y", "_z"),
+        "units": {None: ("nmms", angular_momentum_nmms)},
     },
 }
 

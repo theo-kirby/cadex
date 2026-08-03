@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-08-02
+Verified against source: 2026-08-03
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -210,9 +210,10 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   Cadex code is on the path between the mechanism and the array a trainer
   reads. The kinds are `position`/`velocity` on a joint,
   `component_position`/`component_orientation`/`component_linear_velocity`/
-  `component_angular_velocity`/`centre_of_mass`/`centre_of_mass_velocity`
+  `component_angular_velocity`/`centre_of_mass`/`centre_of_mass_velocity`/
+  `centroidal_angular_momentum`
   on a component, and `actuator_force` on an actuator. Values reach a trainer in this API's own
-  units — degrees, millimetres, N·mm — as a per-channel `scale` in the
+  units — degrees, millimetres, N·mm, N·mm·s — as a per-channel `scale` in the
   bundle, so the trainer *multiplies* rather than converting. A vector
   channel expands to suffixed scalar names — `name="hand"` on a
   `component_position` is `hand_x`, `hand_y`, `hand_z` — and those are the

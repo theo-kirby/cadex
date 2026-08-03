@@ -759,6 +759,7 @@ _OBSERVATION_KINDS: dict[str, str] = {
     "component_angular_velocity": "component_link",
     "centre_of_mass": "component_link",
     "centre_of_mass_velocity": "component_link",
+    "centroidal_angular_momentum": "component_link",
 }
 
 #: What each observation kind's declared name expands to. A vector channel
@@ -775,6 +776,7 @@ _OBSERVATION_SUFFIXES: dict[str, tuple[str, ...]] = {
     "component_angular_velocity": ("_x", "_y", "_z"),
     "centre_of_mass": ("_x", "_y", "_z"),
     "centre_of_mass_velocity": ("_x", "_y", "_z"),
+    "centroidal_angular_momentum": ("_x", "_y", "_z"),
 }
 
 
@@ -2437,6 +2439,14 @@ class AssemblyDomainAPI:
           that point is moving. These are the quantities a balance reward
           wants: a capture point is built from the pair, and neither is the
           same as the corresponding frame channel on the same part.
+        * ``centroidal_angular_momentum`` -- that same subtree's angular
+          momentum about that same centre of mass, in N·mm·s. The
+          rotational half of the pair above and the quantity a *tipping*
+          failure is written in: a machine can be upright, still, and
+          already going over, which is something this channel says and an
+          orientation cannot. Not the same as a
+          ``component_angular_velocity`` on the same part, which reads how
+          fast one link's frame is turning.
         * ``actuator_force`` -- the effort a motor is actually producing, in
           N·mm or N. ``target`` is an ``api.actuator``.
 

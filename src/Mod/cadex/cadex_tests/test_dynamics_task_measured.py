@@ -272,6 +272,8 @@ def test_each_supported_sensor_kind_reads_the_quantity_it_names() -> None:
         ("component_angular_velocity", mujoco.mjtSensor.mjSENS_FRAMEANGVEL, XBODY, fore, 3),
         ("centre_of_mass", mujoco.mjtSensor.mjSENS_SUBTREECOM, BODY, upper, 3),
         ("centre_of_mass_velocity", mujoco.mjtSensor.mjSENS_SUBTREELINVEL, BODY, upper, 3),
+        ("centroidal_angular_momentum",
+         mujoco.mjtSensor.mjSENS_SUBTREEANGMOM, BODY, upper, 3),
     ]
     model, _xml = _with_sensors(
         built,
@@ -285,10 +287,10 @@ def test_each_supported_sensor_kind_reads_the_quantity_it_names() -> None:
 
     fore_id = mujoco.mj_name2id(model, BODY, fore)
     upper_id = mujoco.mj_name2id(model, BODY, upper)
-    # ``subtree_linvel`` is filled by a velocity-stage pass rather than by
-    # ``mj_forward``'s position stage. MuJoCo runs it itself for the sensor;
-    # calling it here is what lets the *expectation* be read off the field
-    # rather than restated as a literal.
+    # ``subtree_linvel`` and ``subtree_angmom`` are filled by a
+    # velocity-stage pass rather than by ``mj_forward``'s position stage.
+    # MuJoCo runs it itself for the sensor; calling it here is what lets the
+    # *expectation* be read off the field rather than restated as a literal.
     mujoco.mj_subtreeVel(model, data)
     expected = {
         "position": [data.qpos[1]],
@@ -299,6 +301,7 @@ def test_each_supported_sensor_kind_reads_the_quantity_it_names() -> None:
         "component_angular_velocity": [0.0, 0.0, 0.0],
         "centre_of_mass": data.subtree_com[upper_id].tolist(),
         "centre_of_mass_velocity": data.subtree_linvel[upper_id].tolist(),
+        "centroidal_angular_momentum": data.subtree_angmom[upper_id].tolist(),
     }
     for index, (label, *_rest) in enumerate(entries):
         assert _channel(model, data, index) == pytest.approx(
@@ -370,6 +373,91 @@ def test_the_subtree_velocity_is_not_the_frame_velocity_of_the_same_part() -> No
     difference = max(abs(a - b) for a, b in zip(frame, subtree))
     scale = max(abs(value) for value in subtree)
     assert difference / scale > 0.5, (frame, subtree)
+
+
+def test_the_centroidal_angular_momentum_is_not_the_frame_angular_velocity() -> None:
+    """Why ``centroidal_angular_momentum`` is its own kind (ADR-116).
+
+    ADR-112's trap, in the rotational half. The table above reads both
+    rotational channels at the reset keyframe where everything is zero and
+    any two of them agree, so a row that read the wrong quantity would pass
+    it. And the wrong quantity is the *available* one: a reward author
+    wanting to price a machine's tipping already has
+    ``component_angular_velocity`` declared on the root, and reaching for it
+    is free.
+
+    It is not the same thing, and this fixture states the difference in its
+    strongest form rather than as a tolerance. Kick the **elbow** alone and
+    step nothing: the upper arm's frame is turning at exactly 0 rad/s while
+    the subtree it roots carries 18.9 N·mm·s. A term written on the frame
+    channel reads *nothing at all* in a state where the machine is already
+    going over -- which is the mg-legs failure mode, where every B6 death
+    was ``tipped`` and the pelvis can be still while the legs carry the
+    momentum.
+
+    The second assertion is the one that closes the escape route: the two
+    are not proportional either, so the ratio is not a constant a reward
+    weight could absorb. Measured here it moves by a factor of six over the
+    first fifty steps of one swing.
+    """
+
+    built = _built()
+    model, _xml = _with_sensors(
+        built,
+        [
+            {
+                "type": mujoco.mjtSensor.mjSENS_FRAMEANGVEL,
+                "objtype": XBODY,
+                "objname": "upper",
+            },
+            {
+                "type": mujoco.mjtSensor.mjSENS_SUBTREEANGMOM,
+                "objtype": BODY,
+                "objname": "upper",
+            },
+        ],
+    )
+    upper_id = mujoco.mj_name2id(model, BODY, "upper")
+
+    def kicked(steps):
+        """The keyframe with 6 rad/s on the elbow and nothing on the shoulder."""
+
+        data = _at_keyframe(model)
+        data.qvel[:] = [0.0, 6.0]
+        mujoco.mj_forward(model, data)
+        for _ in range(steps):
+            mujoco.mj_step(model, data)
+        mujoco.mj_forward(model, data)
+        return data
+
+    data = kicked(0)
+    frame = _channel(model, data, 0)
+    subtree = _channel(model, data, 1)
+    # Exactly zero, not nearly: the upper arm has not been given a velocity
+    # and one link's frame velocity knows nothing about its children.
+    assert frame == [0.0, 0.0, 0.0]
+    # Read off the field MuJoCo filled, so the sensor is checked against the
+    # quantity rather than against a second copy of the sensor.
+    mujoco.mj_subtreeVel(model, data)
+    assert subtree == pytest.approx(
+        data.subtree_angmom[upper_id].tolist(), abs=1.0e-12
+    )
+    assert max(abs(value) for value in subtree) > 1.0e-3, subtree
+    # And in the unit the surface speaks, which is where the choice of
+    # N·mm·s is worth having: 18.9, not 0.0189 and not 18894453.
+    assert dyn.angular_momentum_nmms(subtree[1]) == pytest.approx(18.89, abs=0.05)
+
+    # Not proportional either. Both are along the hinge axis on this planar
+    # fixture, so what has to be refuted is a fixed factor -- and it is not
+    # fixed: 0.427 one step in, 0.071 fifty steps in.
+    ratios = []
+    for steps in (1, 5, 20, 50):
+        data = kicked(steps)
+        frame = _channel(model, data, 0)
+        subtree = _channel(model, data, 1)
+        assert abs(frame[1]) > 1.0e-6, (steps, frame)
+        ratios.append(subtree[1] / frame[1])
+    assert max(ratios) / min(ratios) > 2.0, ratios
 
 
 # ---------------------------------------------------------------------------

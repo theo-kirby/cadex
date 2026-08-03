@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-08-02
+Verified against source: 2026-08-03
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -984,6 +984,16 @@ visible:
   (`mjSENS_SUBTREELINVEL`) is the ninth kind and exists for that reason;
   the two channels agree at rest and nowhere else, which is what the
   measured test pins.
+* **And the rotational half of the same trap** (ADR-116, added after B6):
+  `component_angular_velocity` reads how fast *one link's frame* is
+  turning, which is not the machine's angular momentum about its own centre
+  of mass. `centroidal_angular_momentum` (`mjSENS_SUBTREEANGMOM`) is the
+  tenth kind, in **N·mm·s**. It is what a *tipping* failure is written in —
+  every B6 death was `tipped` and not one was `collapsed` — and the
+  strongest statement of the difference is the one the measured test makes:
+  kick a child link alone and the parent's frame reads **exactly zero**
+  while the subtree carries real momentum. A machine can be upright, still,
+  and already going over.
 * **A one-sided limit reports its declared pair intact** (`[None, 95.0]`),
   so the refusal says *which* endpoint is missing rather than merely that
   one is.
@@ -1060,7 +1070,7 @@ none of it):
 | MJX vs CPU MuJoCo, four-bar with `equality/connect`, 5 steps | **3.8e-8** |
 | ...two-link arm, position actuators + joint limits | **4.8e-10** |
 | ...mesh geom onto a slab, 400 steps, `ncon > 0` | **3.4e-4 m** (0.34 mm) |
-| MJX sensordata, all eight observation kinds, worst channel | **3.5e-7** |
+| MJX sensordata, the eight observation kinds M7 had, worst channel | **3.5e-7** |
 | `vmap` over 8 environments vs the unbatched run | **exactly 0.0** |
 | A reward expression under `jnp`, vs the engine's float64 evaluator | **9.5e-8** |
 | `np.savez` byte-determinism | **deterministic** |
@@ -1095,8 +1105,8 @@ none of it):
   blocker: MJX is float32 with its own contact path, training happens there
   and evaluation happens on CPU.
 
-**ADR-083's central claim survived the trainer.** MJX evaluates all eight
-observation kinds and vectorises them exactly, so *MuJoCo computes the
+**ADR-083's central claim survived the trainer.** MJX evaluates every
+observation kind and vectorises them exactly, so *MuJoCo computes the
 observation vector* still holds and no fourth implementation was needed —
 which was risk 2, and it did not fire. Nor did risk 1: MJX carries our
 equality constraints and our mesh geoms, so the batched-CPU-`rollout`
@@ -1109,6 +1119,17 @@ term built on it trains as whatever is left when that channel is 0. Ask MJX
 directly before spending a run on a new kind: given the **same state**,
 `SUBTREELINVEL` agrees with stock MuJoCo to **7.3e-08 m/s**, the same
 float32 order as the 3.5e-7 above.
+
+**And the tenth** (ADR-116): `SUBTREEANGMOM` agrees to **6.5e-07 relative**
+in float32 and **1.3e-15** with x64 on, over six randomised poses, and
+returns a non-zero value where stock MuJoCo does. That check now lives in
+the suite rather than in a one-off script —
+`test_dynamics_mjx_agreement.py` asks it of the exported fixture, and
+`test_dynamics_policy_measured.py`'s coverage test compares its row list
+against `OBSERVATION_KINDS` as a set. The latter is a repair: it was written
+against a literal count of eight, ADR-112 added a ninth kind without adding
+a row, and an MJX-gated test that `pixi run test-engine` skips is exactly
+the kind that goes stale unwatched.
 
 **The design, and why each part is what it is:**
 

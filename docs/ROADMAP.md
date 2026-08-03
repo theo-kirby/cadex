@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-08-02
+Verified against source: 2026-08-03
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -1091,11 +1091,30 @@ the order they had to happen:
       since the reward and the channel count both changed. Selection was **by
       stepping-and-surviving, not by reward**, for the third measured time:
       `stand8.best.cxpolicy` scores 1/12 where checkpoint 2400 scores 6/12.
+- [x] **A tenth observation kind: the machine's own angular momentum**
+      (ADR-116). `centroidal_angular_momentum` (`mjSENS_SUBTREEANGMOM`), in
+      **N·mm·s** — one table row, a new unit converter, no protocol change
+      and no trainer change. **Every B6 death is `tipped` and not one is
+      `collapsed`**, so the failure this project keeps measuring is
+      rotational; and the reward had no channel for rotational momentum at
+      all. `tilt` prices the pelvis's *orientation* and `spin` its *frame*
+      angular rate, and neither is the whole machine's angular momentum
+      about its own centre of mass: it can be upright, still, and already
+      going over. Measured on the arm fixture, kicking the child link alone:
+      the parent's frame angular velocity is **exactly 0.0** where the
+      subtree carries **18.89 N·mm·s**, and the ratio between the two moves
+      by a factor of six over one swing — so it is not a constant a weight
+      could absorb. MJX asked separately, because an unimplemented sensor
+      returns **zeros rather than an error**: non-zero, and agreeing with
+      stock MuJoCo to **6.5e-07 relative in float32** over six randomised
+      poses. The MJX coverage test that should have caught ADR-112's ninth
+      kind was counting to eight; it now compares against
+      `OBSERVATION_KINDS` as a set.
 - [ ] **Still not a standing machine.** Half the episodes at the declared band
-      still end `tipped`, and backward remains the worst direction (3/6). The
-      next lever is the mechanism and the horizon rather than another reward
-      term; `SUBTREEANGMOM` is the obvious next observation kind, for a
-      centroidal-momentum term.
+      still end `tipped`, and backward remains the worst direction (3/6). B7
+      is the run that spends the tenth kind: a shove band past what ankles
+      can answer, `capture` split across two scales, and new `arrest` and
+      `swirl` terms.
 
 **Standing constraints for this phase**, both from ADR-077 and both cheap to
 lose by accident:

@@ -184,15 +184,22 @@ def test_mjx_carries_position_actuators_and_joint_limits() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 2. Does MJX produce sensordata for our eight observation kinds?
+# 2. Does MJX produce sensordata for every observation kind we offer?
 #
 # ADR-083's central decision was that *MuJoCo computes the observation
 # vector*, so that nothing on the path needs shipping. If MJX evaluated no
-# sensors, the trainer would need a fourth implementation of the eight
-# channels -- the exact thing M6 exists to avoid. It evaluates all eight.
+# sensors, the trainer would need a fourth implementation of every channel
+# -- the exact thing M6 exists to avoid. It evaluates all of them.
+#
+# The list below is checked against `OBSERVATION_KINDS` rather than counted,
+# and that is a repair rather than a flourish: it was written as eight rows
+# and ADR-112 added a ninth kind without adding a row, so a test named
+# "every observation kind the task surface offers" quietly stopped covering
+# them all. It is MJX-gated, so `pixi run test-engine` could not have said
+# so. ADR-116 adds a tenth and makes the omission impossible instead.
 # ---------------------------------------------------------------------------
 
-_ALL_EIGHT = [
+_EVERY_KIND = [
     {"kind": "position", "joint": "elbow", "motion_type": "angular", "name": "a"},
     {"kind": "velocity", "joint": "elbow", "motion_type": "angular", "name": "b"},
     {"kind": "actuator_force", "joint": "elbow", "motion_type": "angular",
@@ -202,10 +209,12 @@ _ALL_EIGHT = [
     {"kind": "component_linear_velocity", "component": "fore", "name": "f"},
     {"kind": "component_angular_velocity", "component": "fore", "name": "g"},
     {"kind": "centre_of_mass", "component": "upper", "name": "h"},
+    {"kind": "centre_of_mass_velocity", "component": "upper", "name": "i"},
+    {"kind": "centroidal_angular_momentum", "component": "upper", "name": "j"},
 ]
 
 
-def _arm_with_all_eight():
+def _arm_with_every_kind():
     components, joints, _ = fx.two_link_arm(limits=True)
     built = dyn.build_model(
         components, joints,
@@ -213,26 +222,32 @@ def _arm_with_all_eight():
                     "control_nmm": "0", "torque_limit_nmm": 800.0}],
     )
     records = dyn.observation_records(
-        list(_ALL_EIGHT), built["tree"], built["joint_records"], built["actuators"]
+        list(_EVERY_KIND), built["tree"], built["joint_records"], built["actuators"]
     )
     return _exported(built, records), records
 
 
 def test_mjx_evaluates_every_observation_kind_the_task_surface_offers() -> None:
-    """All eight kinds, per channel, against stock CPU MuJoCo.
+    """Every kind, per channel, against stock CPU MuJoCo.
 
     Asserted **per channel** rather than on the whole array: an all-zero
     sensordata would pass a norm comparison against a mechanism at rest, and
     the failure this guards against is precisely one kind silently reading
-    zero under MJX. Measured worst disagreement across the eight: 3.5e-7.
+    zero under MJX. Measured worst disagreement across the eight kinds this
+    started with: 3.5e-7.
+
+    The set comparison is the guard on the guard. A kind added to
+    `OBSERVATION_KINDS` with no row here fails this immediately, rather than
+    leaving a test whose *name* claims coverage it lost -- which is what
+    happened between ADR-112 and ADR-116.
     """
 
     mjx = _mjx()
     import jax
     import jax.numpy as jnp
 
-    model, records = _arm_with_all_eight()
-    assert len({str(record["kind"]) for record in records}) == 8
+    model, records = _arm_with_every_kind()
+    assert {str(record["kind"]) for record in records} == set(dyn.OBSERVATION_KINDS)
 
     key = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, "solved")
     data = mujoco.MjData(model)
@@ -288,7 +303,7 @@ def test_mjx_sensordata_vectorises_and_the_first_environment_matches_one() -> No
     import jax
     import jax.numpy as jnp
 
-    model, _records = _arm_with_all_eight()
+    model, _records = _arm_with_every_kind()
     key = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, "solved")
     handle = mjx.put_model(model)
 

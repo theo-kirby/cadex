@@ -72,6 +72,15 @@ PLANE_WORST = 1.0e-11            # measured 1.332e-15
 BOX_MEDIAN = 1.0e-9              # measured 4.620e-12
 BOX_WORST = 1.0e-2               # measured 1.217e-04
 
+#: What a sensor channel is allowed to differ by between the two engines at
+#: the *same* state, relative to the channel's own magnitude. Measured on
+#: ``mjSENS_SUBTREEANGMOM`` over six randomised poses: 1.3e-15 with x64 on,
+#: which is what this file runs, and 6.5e-07 with it off, which is what a
+#: training run gets. Asserted at 1e-12 -- three orders above the x64
+#: measurement and six below the float32 one, so it is a claim about the two
+#: engines computing the same formula rather than about rounding.
+SENSOR_RELATIVE = 1.0e-12
+
 #: How much worse the box floor is than the plane one, as a ratio of median
 #: single-step disagreement. Measured: 4.620e-12 / 3.331e-16, about 14000x.
 #: Asserted at 100x, which is far enough below the measurement to be a claim
@@ -333,3 +342,88 @@ def test_the_exported_box_floor_is_what_costs_the_agreement() -> None:
         "note": "MJX now matches MuJoCo on box-against-box -- see this "
                 "test's docstring, this is good news",
     }
+
+
+# ---------------------------------------------------------------------------
+# Does MJX compute the sensors the engine declares? The silent failure.
+# ---------------------------------------------------------------------------
+
+
+def _sensor_named(model, name: str) -> tuple[int, int]:
+    """One channel's ``(adr, dim)``, by the name it was added under."""
+
+    import mujoco
+
+    index = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, name)
+    assert index >= 0, name
+    return int(model.sensor_adr[index]), int(model.sensor_dim[index])
+
+
+def test_mjx_computes_the_centroidal_angular_momentum_sensor() -> None:
+    """ADR-116's channel, asked of MJX separately -- because it fails silently.
+
+    The engine's own kind↔sensor table runs in **stock MuJoCo**. Training
+    runs in **MJX**, which is a rewrite, and a sensor MJX did not implement
+    would come back as **zeros rather than as an error**. That failure has a
+    specific shape here: ``swirl`` would be identically 0 for the whole run,
+    the trainer would report a reward curve, checkpoints would install, and
+    the run would look exactly like a run that trained on the new term while
+    having trained without it. ADR-112 named this for
+    ``centre_of_mass_velocity`` and it is the same trap one row down.
+
+    So two claims, and the first is the one that matters:
+
+    * MJX returns something **non-zero** at a state where the quantity is
+      non-zero -- which is what a missing implementation could not do;
+    * given the **same state**, it agrees with stock MuJoCo. Measured over
+      six randomised poses: 1.3e-15 relative with x64 on, 6.5e-07 with it
+      off, which is float32 precision and the same order the M7 phase-0
+      table records for the other nine kinds.
+
+    Same state, not same trajectory. Driven open-loop the two diverge for
+    the box-on-box reason the rest of this file measures, and that is about
+    contact rather than about this sensor.
+    """
+
+    _mjx_or_skip()          # ...and the x64 config it sets on the way past
+    import mujoco
+    import mujoco.mjx as mjx
+    import numpy as np
+
+    prepared = pf.shoved_bundle()
+    tree = ET.fromstring(prepared["model_xml"].decode("utf-8"))
+    sensors = tree.find("sensor")
+    assert sensors is not None, "the shoved fixture declares no sensors"
+    # ``block`` is the fixture's free root, so its subtree is the whole
+    # mechanism -- the same relationship the pelvis has on mg-legs.
+    ET.SubElement(sensors, "subtreeangmom", {"name": "cam", "body": "block"})
+
+    model = mujoco.MjModel.from_xml_string(ET.tostring(tree, encoding="unicode"))
+    data = mujoco.MjData(model)
+    adr, dim = _sensor_named(model, "cam")
+    assert dim == 3
+
+    put = mjx.put_model(model)
+    rng = np.random.default_rng(0)
+    worst = 0.0
+    for _ in range(6):
+        mujoco.mj_resetDataKeyframe(model, data, 0)
+        data.qpos[:] += rng.normal(0.0, 0.01, size=model.nq)
+        data.qvel[:] = rng.normal(0.0, 1.5, size=model.nv)
+        mujoco.mj_forward(model, data)
+        ours = np.asarray(data.sensordata[adr : adr + dim]).copy()
+
+        state = mjx.forward(put, mjx.put_data(model, data))
+        theirs = np.asarray(state.sensordata[adr : adr + dim])
+
+        scale = float(np.max(np.abs(ours)))
+        assert scale > 1.0e-6, ("the fixture is not turning", ours)
+        # The claim a missing implementation fails: MJX produced a number.
+        assert float(np.max(np.abs(theirs))) > 0.5 * scale, {
+            "mujoco": ours.tolist(), "mjx": theirs.tolist(),
+            "note": "MJX returned ~zero for subtreeangmom -- the sensor is "
+                    "not implemented there and `swirl` would train on 0",
+        }
+        worst = max(worst, float(np.max(np.abs(ours - theirs))) / scale)
+
+    assert worst < SENSOR_RELATIVE, worst

@@ -11865,3 +11865,115 @@ Migration-free: `wiring` is built after `compute_project_digest` and never
 feeds it, so no project is re-accepted. A project has to **rebuild** for the
 canvas to change, because the scope reads the accepted attempt's
 `result.json`.
+
+## ADR-116 — A tenth observation kind, because tipping is rotational (2026-08-03)
+
+**Decision.** Add one observation kind to the engine —
+`centroidal_angular_momentum`, `mjSENS_SUBTREEANGMOM`, in **N·mm·s** — so a
+balance reward can price the whole machine's angular momentum about its own
+centre of mass. This is ADR-112's finding one derivative up, in the
+rotational half, and `docs/MUJOCO.md`'s "same trap, one derivative up" note
+already anticipated it.
+
+### What B6 measured, and the channel it did not have
+
+B6 (ADR-112) is the first run that both steps and lands: 6 of 12 episodes at
+the declared 0.30–0.80 N band contain a step over 10 mm *and* reach 600 of
+600 steps, on a number every earlier checkpoint scored zero on. Its deaths
+are the finding here. **Every one of them is `tipped`. Not one is
+`collapsed`** — at any force level on `capability.py`'s sweep.
+
+Tipping is rotational, and the reward has no channel for rotational
+momentum. What it has is:
+
+* `tilt` at −4.0 on `pel_qx² + pel_qy²` — the pelvis's **orientation**;
+* `spin` at −0.0005 on `|pw_x| + |pw_y| + |pw_z|` — the pelvis frame's
+  **angular rate**.
+
+Neither is the whole machine's angular momentum about its own centre of
+mass, and the difference is not a scale factor. A machine can be **upright,
+still, and already going over**: the pelvis holds its attitude while the
+legs carry the momentum that will take it over, and both terms above read
+approximately nothing while it happens. That is the state a stepping
+recovery has to be triggered from, and no term in six runs could see it.
+
+**Verified feasible before planning.** `mjSENS_SUBTREEANGMOM` exists in
+MuJoCo 3.10 and appears in MJX's `_src/sensor.py`, so MJX computes it —
+checked before the row was written rather than after a run.
+
+### The change set
+
+`OBSERVATION_KINDS` is table-driven and the export path resolves
+`mjtSensor`/`mjtObj` by name off the row, so the kind is one row plus the
+places that keep a second copy of the kind list:
+
+| file | change |
+|---|---|
+| `CadexDynamics.py` | the row beside `centre_of_mass_velocity`, **plus a new unit converter** |
+| `cadex_assembly_api.py` | `_OBSERVATION_KINDS`, `_OBSERVATION_SUFFIXES`, the `observation()` docstring |
+| `CadexScriptedRuntime.py`, `docs/XSCRIPT.md` | the kind list the AI reads |
+| `test_dynamics_task_measured.py` | a row in the exhaustive kind↔sensor table, reading `data.subtree_angmom[id]` after `mj_subtreeVel` |
+
+No protocol change — observation kinds are not in `OP_ARG_SPECS`. No trainer
+change — `cadex_train.py` gathers `data.sensordata` by address, so a new
+sensor is free once MJX computes it.
+
+**The unit, which `centre_of_mass_velocity` did not need.** SI angular
+momentum is kg·m²/s and at this machine's scale that is about 6e−3; g·mm²/s
+makes the same quantity 6e6. Both put a reward weight four zeros away from
+the number it is pricing. **N·mm·s** — the same thousand `torque_nmm`
+multiplies by, since N·m·s *is* kg·m²/s — puts a recovery at single digits
+and matches `actuator_force` already being N·mm, so the two rotational
+quantities a reward reads are in one system. `angular_momentum_nmms` is its
+own function rather than a second call to `torque_nmm`: a reader who finds
+a torque converter on an angular-momentum row has to stop and check whether
+somebody confused the two.
+
+### Two tests beyond the table, both of which ADR-112 had to learn
+
+**1. The table test alone is not enough.** It reads every kind at the reset
+keyframe, where all velocities are zero and any two velocity-like sensors
+agree. A row that read the wrong quantity would pass it.
+
+The stepped-fixture test states the difference in its strongest available
+form rather than as a tolerance. Kick the **elbow** alone on the two-link
+arm and step nothing: the upper arm's frame angular velocity is **exactly
+0.0 rad/s** while the subtree it roots carries **18.89 N·mm·s**. A term
+written on the frame channel reads *nothing at all* in a state where the
+machine is already turning. And the escape route is closed too — the two
+are not proportional either, so the ratio is not a constant a reward weight
+could absorb: measured 0.427 one step in and 0.071 fifty steps in, a factor
+of six over one swing.
+
+**2. MJX has to be asked separately, because that failure is silent.** A
+sensor MJX does not implement comes back as **zeros rather than an error**,
+which here would mean `swirl` identically 0 for the whole run — a reward
+curve, installable checkpoints, and a run that looked like it trained on
+the new term while training without it. Measured on the exported fixture
+over six randomised poses, given the **same state**: MJX returns a non-zero
+value, and it agrees with stock MuJoCo to **6.5e-07 relative in float32**
+(what a training run gets) and **1.3e-15 with x64 on** (what
+`test_dynamics_mjx_agreement.py` runs). Float32 precision, the same order
+as the 3.5e-7 the M7 phase-0 table records for the other kinds.
+
+### A repair the tenth kind forced
+
+`test_mjx_evaluates_every_observation_kind_the_task_surface_offers` was
+written as a literal list of eight rows with `assert len(...) == 8`.
+**ADR-112 added a ninth kind and did not add a row**, so a test whose name
+promises coverage of every kind had quietly stopped covering them all — and
+because it is MJX-gated, `pixi run test-engine` skips it and could not have
+said so. It now carries rows for all ten and asserts the set equals
+`OBSERVATION_KINDS` rather than counting, so the omission is not available
+again.
+
+Worth naming as a class: a gated test is a test nobody runs by default, and
+a *count* in one is a claim that ages without complaining. The set
+comparison costs the same and cannot.
+
+### Verification
+
+`pixi run python -m pytest src/Mod/cadex/cadex_tests` — **1443 passed, 22
+skipped**. The MJX-gated suites from `~/cdx-mjc/.venv`:
+`test_dynamics_mjx_agreement.py` 6 passed, `test_dynamics_policy_measured.py`
+18 passed. `pixi run build-engine` clean.
