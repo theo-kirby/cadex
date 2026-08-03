@@ -399,17 +399,30 @@ Two ways to state a set:
 
 | form | where | resolves to |
 |---|---|---|
-| `holes=` selector | `part.terminals` | the axis point on the face **opposite** `exit`, leaving along `exit`; stand-off floors at the bore depth |
+| `holes=` selector | `part.terminals` | the axis point on the **near** face — the one `exit` points out of — leaving along `exit`; stand-off floor `0` |
 | `pads=` selector | `part.terminals` | the face's `CenterOfMass`, leaving along its normal (agreeing with `exit` if given) |
-| `header=` / `terminals=` declared | both | `origin + along*pitch*k + axis*depth`, leaving along `-axis`; `depth=0` is a pad |
+| `header=` / `terminals=` declared | both | `origin + along*pitch*k`, leaving along `-axis`; stand-off floor `0`; **`hole_dia` present ⇒ holes, absent ⇒ pads** |
 
 `holes=` **requires** `exit`: a cylindrical face states an axis but not which
-end is outward. A hole lands on the *far* face on purpose — the wire comes in
-from the `exit` side, threads the barrel and stops flush on the other one, so
-two holes wired together meet in true centres rather than each stopping a
-board thickness short. A declared row says the same thing the other way
-round: `axis` is the drilling direction, the terminal is
-`origin + axis*depth`, and the wire leaves along `-axis`.
+end is outward. **A terminal lands in the plane you selected** (ADR-117): the
+wire arrives from the `exit` side and stops flush in that rim, its end cap
+lying *in* the rim's plane with its axis perpendicular to it. The bore behind
+it is left empty by design. A declared row says the same thing the other way
+round: `axis` is the drilling direction, the terminal is `origin` itself, and
+the wire leaves along `-axis`.
+
+ADR-062 landed on the *far* face instead, so that two holes wired to each
+other met in the middle rather than each stopping a board thickness short of
+it. ADR-117 reversed that: with the landing at the mouth there is no middle
+left to meet in, because `part.solder` is what closes the gap and it is at the
+mouth on both ends. The gesture a user actually has is "the rim on top of the
+hole", and the answer they want is "the wire ends there".
+
+`depth` is optional on a declared row and purely descriptive — the bore is
+still that deep and the canvas still reports it, but nothing geometric reads
+it. It used to be the classifier (`depth=0` meant a pad, and `hole_dia` with
+no `depth` was refused); it cannot be one now that it sizes nothing, so
+**`hole_dia` is what makes a row a row of holes.**
 
 `order_by` is a **direction**, and it is what matches `names` to matched
 faces: they are projected onto it and taken in ascending order. It is never
@@ -464,22 +477,29 @@ immediately after — measured at 0.20 mm off-axis inside a 1.24 mm grip, which
 is how a wire comes out of the side of its own solder.
 
 It is the one operation that takes a terminal and **never** a literal port: a
-joint is built from the bore's radius and depth and the two faces it runs
-between, and a literal `(point, direction)` pair carries none of them. This
-is the first thing a terminal *unlocks* rather than merely improves.
+joint is built from the bore's radius and the face it lands on, and a literal
+`(point, direction)` pair carries neither. This is the first thing a terminal
+*unlocks* rather than merely improves.
+
+**A hole and a pad build the same joint** (ADR-117) — a meniscus sitting on
+the face the lead lands on, a short collar hugging the lead, and a round-over
+onto it. A through-hole used to get four extra segments: a cap cone under the
+lead's flush end, a barrel of plating and an entry annulus. That described a
+lead ending at the *bottom* of the bore, and nothing lands there any more.
+**`bore_dia_mm` went with the barrel** — it only ever sized the plating — and
+passing it is a `TypeError`.
 
 `gauge_mm` is required — the same number the `cable`/`bundle` landing there
-was given. `bore_dia_mm` defaults to the hole's measured diameter,
-`pad_dia_mm` to twice that (or, for a `pads=` selector, to the matched face's
-equivalent-area diameter), and `fillet_mm` to the width of pad the meniscus
-sweeps across — which makes the arc an exact quarter round, tangent to the
-board where it lands and to the lead where it arrives. That default is also
-the **floor**: a shorter fillet spreads further than it climbs, so it would
-undercut the board, and it is refused with the floor named. **A declared
-layout has no measurements to fall back on**: a declared hole without
-`hole_dia` needs `bore_dia_mm`, and a declared pad — which carries no area at
-all — needs `pad_dia_mm`. Everything is refused by naming the value it
-measured and the one it conflicts with.
+was given. `pad_dia_mm` defaults to twice the hole's measured diameter (or,
+for a `pads=` selector, to the matched face's equivalent-area diameter), and
+`fillet_mm` to the width of pad the meniscus sweeps across — which makes the
+arc an exact quarter round, tangent to the board where it lands and to the
+lead where it arrives. That default is also the **floor**: a shorter fillet
+spreads further than it climbs, so it would undercut the board, and it is
+refused with the floor named. **A declared pad has no measurements to fall
+back on** — it carries no area at all — so there `pad_dia_mm` is required.
+Everything is refused by naming the value it measured and the one it
+conflicts with.
 
 ### Declaring a harness: `nets()` and `wire()` `[ADR-065]`
 

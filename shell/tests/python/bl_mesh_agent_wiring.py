@@ -487,74 +487,143 @@ def _ring(radius, z, count=32, centre=(0.0, 0.0), noise=0.0):
     return points
 
 
-def test_fit_terminal_finds_a_hole():
-    """Two coaxial loops of matching radius are one bore."""
-    print("test_fit_terminal_finds_a_hole")
-    points = _ring(0.5, 1.6, centre=(3.0, -2.0)) + _ring(0.5, 0.0, centre=(3.0, -2.0))
+def _rectangle(width, height, z, count=6, centre=(0.0, 0.0), angle=0.0):
+    """A rectangle's outline, ``count`` points per side, optionally rotated."""
+
+    import math
+    cos, sin = math.cos(angle), math.sin(angle)
+    half_w, half_h = width / 2.0, height / 2.0
+    corners = [(-half_w, -half_h), (half_w, -half_h),
+               (half_w, half_h), (-half_w, half_h)]
+    points = []
+    for index in range(4):
+        (x1, y1), (x2, y2) = corners[index], corners[(index + 1) % 4]
+        for step in range(count):
+            x = x1 + (x2 - x1) * step / count
+            y = y1 + (y2 - y1) * step / count
+            points.append((centre[0] + x * cos - y * sin,
+                           centre[1] + x * sin + y * cos, z))
+    return points
+
+
+def test_fit_terminal_finds_a_bore_from_one_ring():
+    """ADR-117: one ring is a bore's mouth and the wire ends flush in it."""
+    print("test_fit_terminal_finds_a_bore_from_one_ring")
+    points = _ring(0.5, 1.6, centre=(3.0, -2.0))
     row, report = pick.measure_selection(points, view_direction=(0.0, 0.0, 1.0))
     check(row is not None, "the fit succeeded: {!s}".format(report))
     if row is None:
         return
-    check(report["kind"] == "hole", "and it read as a hole")
-    check(report["loops"] == 2, "from two loops")
+    check(report["kind"] == "hole", "and one ring on its own reads as a hole")
+    check(report["fit_model"] == "circle", "because the circle model won")
     check(abs(row["origin"][0] - 3.0) < 1e-4 and abs(row["origin"][1] + 2.0) < 1e-4,
           "centred exactly on the bore")
-    check(abs(row["depth"] - 1.6) < 1e-4, "with the loop separation as the depth")
-    check(abs(row["hole_dia"] - 1.0) < 1e-4, "and twice the radius as hole_dia")
+    check(abs(row["origin"][2] - 1.6) < 1e-4,
+          "and the landing is IN the selected ring's own plane")
+    check("depth" not in row, "no depth: the bore behind the mouth is left empty")
+    check(abs(row["hole_dia"] - 1.0) < 1e-4, "twice the radius as hole_dia")
     check(report["residual_mm"] < 1e-6, "residual is zero on an exact circle")
+    check(report["far_loop_ignored"] is False, "and there was no second loop")
 
 
-def test_the_fitted_axis_points_into_the_material():
-    """ADR-062's convention: origin + axis*depth lands on the far face.
+def test_selecting_both_rims_takes_the_near_one_and_says_so():
+    """The far loop is dropped rather than paired for a depth (ADR-117).
 
-    The engine's own selector implementation took the *near* end first and
-    only a kernel test caught it, so this is asserted in both directions.
+    Which rim is near follows the axis, and the axis follows the viewport, so
+    this is asserted from both sides — the engine's own selector took the
+    wrong end first and only a kernel test caught it.
     """
-    print("test_the_fitted_axis_points_into_the_material")
+    print("test_selecting_both_rims_takes_the_near_one_and_says_so")
     from mathutils import Vector
 
     points = _ring(0.5, 1.6) + _ring(0.5, 0.0)
-    for view, expect_z in (((0.0, 0.0, -1.0), -1.0), ((0.0, 0.0, 1.0), 1.0)):
-        row, _report = pick.measure_selection(points, view_direction=view)
+    for view, expect_z, landing_z in (((0.0, 0.0, -1.0), -1.0, 1.6),
+                                      ((0.0, 0.0, 1.0), 1.0, 0.0)):
+        row, report = pick.measure_selection(points, view_direction=view)
         if row is None:
-            check(False, "fit succeeded for view {!r}".format(view))
+            check(False, "fit succeeded for view {!r}: {!s}".format(view, report))
             continue
         axis = Vector(row["axis"])
         check(abs(axis.z - expect_z) < 1e-6,
               "axis points away from a viewer at {!r}".format(view))
-        landing = Vector(row["origin"]) + axis * row["depth"]
-        check(abs(landing.z - (1.6 if expect_z > 0 else 0.0)) < 1e-4,
-              "and origin + axis*depth lands on the far face")
+        check(report["far_loop_ignored"] is True, "the far rim was dropped")
+        check(abs(row["origin"][2] - landing_z) < 1e-4,
+              "and the landing is the rim the wire arrives at")
+        check("depth" not in row, "with no depth measured across the two")
 
 
-def test_fit_terminal_finds_a_pad():
-    print("test_fit_terminal_finds_a_pad")
-    row, report = pick.measure_selection(_ring(1.2, 0.0),
-                                         view_direction=(0.0, 0.0, 1.0))
+def test_fit_terminal_finds_a_pad_from_a_rectangle():
+    """The pad half of ADR-117: a rectangle, fitted as a rectangle."""
+    print("test_fit_terminal_finds_a_pad_from_a_rectangle")
+    row, report = pick.measure_selection(
+        _rectangle(2.0, 1.0, 0.0, centre=(4.0, 5.0)),
+        view_direction=(0.0, 0.0, 1.0))
     check(row is not None, "the fit succeeded: {!s}".format(report))
     if row is None:
         return
-    check(report["kind"] == "pad", "one loop reads as a pad")
-    check(row["depth"] == 0.0, "with no depth")
-    check("hole_dia" not in row, "and no bore diameter")
+    check(report["kind"] == "pad", "a rectangle outline reads as a pad")
+    check(report["fit_model"] == "rectangle", "because the rectangle model won")
+    check(abs(row["origin"][0] - 4.0) < 1e-4 and abs(row["origin"][1] - 5.0) < 1e-4,
+          "the wire ends at the rectangle's centre")
+    check("hole_dia" not in row, "and there is no bore diameter")
+    check("depth" not in row, "nor a depth")
+    check(abs(report["width_mm"] - 2.0) < 1e-4
+          and abs(report["height_mm"] - 1.0) < 1e-4,
+          "width and height are in the REPORT, so pad_dia_mm can be chosen")
+    check("width_mm" not in row and "height_mm" not in row,
+          "and never in the row: a layout row has no rectangle field (ADR-065)")
 
 
-def test_a_square_is_not_classified_by_its_residual():
-    """Four corners fit a circle with zero error: residual is not a classifier."""
-    print("test_a_square_is_not_classified_by_its_residual")
+def test_a_rotated_rectangle_fits_as_well_as_an_axis_aligned_one():
+    """Rotating calipers, not an axis-aligned box: the pad may sit at any angle."""
+    print("test_a_rotated_rectangle_fits_as_well_as_an_axis_aligned_one")
+    import math
+    row, report = pick.measure_selection(
+        _rectangle(3.0, 1.2, 0.0, centre=(-2.0, 1.0), angle=math.radians(31.0)),
+        view_direction=(0.0, 0.0, 1.0))
+    check(row is not None, "the fit succeeded: {!s}".format(report))
+    if row is None:
+        return
+    check(report["kind"] == "pad", "still a pad at 31 degrees")
+    check(report["residual_mm"] < 1e-6,
+          "and an exact fit, which an axis-aligned box could not manage")
+    sides = sorted((report["width_mm"], report["height_mm"]))
+    check(abs(sides[0] - 1.2) < 1e-4 and abs(sides[1] - 3.0) < 1e-4,
+          "with the true side lengths recovered")
+    check(abs(row["origin"][0] + 2.0) < 1e-4 and abs(row["origin"][1] - 1.0) < 1e-4,
+          "centred on the pad")
+
+
+def test_four_corners_are_ambiguous_and_are_refused_not_guessed():
+    """ADR-117: a rectangle's four corners are concyclic, so nothing can tell.
+
+    ADR-067's rule is that a residual is a quality signal and never a
+    classifier, which is why "the circle fits well" cannot decide this. Both
+    models fit *exactly*, the margin between them is zero, and the honest
+    answer is to say so and let the operator's enum settle it.
+    """
+    print("test_four_corners_are_ambiguous_and_are_refused_not_guessed")
     square = [(1.0, 1.0, 0.0), (-1.0, 1.0, 0.0), (-1.0, -1.0, 0.0), (1.0, -1.0, 0.0)]
     row, report = pick.measure_selection(square, view_direction=(0.0, 0.0, 1.0))
-    check(row is not None, "the fit does not fail, which is the point")
-    if row is not None:
-        check(report["residual_mm"] < 1e-9,
-              "a square pad's corners fit a circle exactly")
-        check(report["kind_guessed"] is True,
-              "so the operator records that the kind was a guess, not a reading")
-    # And the user can override it, which is the actual remedy.
-    forced, _report = pick.measure_selection(square, kind='PAD',
-                                             view_direction=(0.0, 0.0, 1.0))
-    check(forced is not None and forced["depth"] == 0.0,
-          "kind='PAD' overrides the guess")
+    check(row is None, "AUTO refuses rather than guessing")
+    check("equally well" in str(report), "and says the two models tie")
+    check("Choose Hole or Pad" in str(report), "naming the way out")
+    check("2.828" in str(report) and "2.000" in str(report),
+          "with both fits quoted: the circle's diameter and the rectangle")
+
+    # The operator's enum is the override, and it is what makes the refusal
+    # workable rather than a dead end.
+    forced, forced_report = pick.measure_selection(square, kind='PAD',
+                                                  view_direction=(0.0, 0.0, 1.0))
+    check(forced is not None and "hole_dia" not in forced,
+          "kind='PAD' takes the rectangle")
+    check(forced_report is not None and abs(forced_report["width_mm"] - 2.0) < 1e-4,
+          "measuring the square it really is")
+    bored, bored_report = pick.measure_selection(square, kind='HOLE',
+                                                 view_direction=(0.0, 0.0, 1.0))
+    check(bored is not None and "hole_dia" in bored, "kind='HOLE' takes the circle")
+    check(bored_report is not None and bored_report["kind_guessed"] is False,
+          "and neither is recorded as a guess")
 
 
 def test_fewer_than_four_vertices_is_refused():
@@ -573,18 +642,43 @@ def test_a_noisy_rim_still_fits_and_reports_its_quality():
         row, report = pick.measure_selection(points, view_direction=(0.0, 0.0, 1.0))
         check(row is not None, "{:s} of vertex noise still fits".format(label))
         if row is not None:
+            check(report["kind"] == "hole",
+                  "{:s}: noise does not turn a rim into a pad".format(label))
             check(0.0 < report["residual_mm"] < 0.05,
                   "{:s}: residual is a usable quality signal ({:.4f})".format(
                       label, report["residual_mm"]))
+            check(report["model_margin"] > pick.AMBIGUOUS_MARGIN,
+                  "{:s}: and the circle still beats the rectangle clearly "
+                  "({:.4f})".format(label, report["model_margin"]))
 
 
 def test_a_scribble_is_refused_rather_than_averaged():
+    """The quality gate survives the second model (ADR-117).
+
+    Two models is not two chances to accept: whichever wins still has to fit.
+    The bar moved with the second model, though, and the fixture had to move
+    with it — the old scribble was six points scattered round the *edge* of a
+    blob, which is not a circle but is very nearly a rectangle's outline, and
+    accepting it as a pad is the right answer. What is neither shape is a
+    selection with points in the **middle**, which is what a lasso over a
+    face actually gives you.
+    """
     print("test_a_scribble_is_refused_rather_than_averaged")
     points = [(0.0, 0.0, 0.0), (5.0, 0.1, 0.0), (1.0, 4.0, 0.0),
-              (4.5, 3.8, 0.0), (0.2, 2.0, 0.0), (2.5, 0.05, 0.0)]
+              (4.5, 3.8, 0.0), (0.2, 2.0, 0.0), (2.5, 0.05, 0.0),
+              (2.5, 2.0, 0.0), (3.1, 1.6, 0.0)]
     row, report = pick.measure_selection(points, view_direction=(0.0, 0.0, 1.0))
-    check(row is None, "a selection that is not round is refused")
-    check("not a circle" in str(report), "and says so")
+    check(row is None, "a selection that is neither shape is refused")
+    check("is not a" in str(report) or "equally well" in str(report),
+          "and says which fit it could not make: {!s}".format(report))
+    # Forcing a kind does not force it through: the gate is about quality, and
+    # the enum only settles which model is being judged.
+    for kind in ('HOLE', 'PAD'):
+        forced, forced_report = pick.measure_selection(
+            points, kind=kind, view_direction=(0.0, 0.0, 1.0))
+        check(forced is None,
+              "kind={!r} does not override the quality gate: {!s}".format(
+                  kind, forced_report))
 
 
 def test_a_fitted_terminal_is_not_a_pin():
@@ -599,7 +693,7 @@ def test_a_fitted_terminal_is_not_a_pin():
     check(pick.pending_terminal_count() == 1, "the terminal queued")
     check(cadex_pick.pending_pin_count() == 0, "and the pin queue is untouched")
     note = pick.consume_terminal_notes()
-    check("MEASURED a terminal" in note, "the note says terminal")
+    check("MEASURED a hole terminal" in note, "the note says terminal, and which kind")
     check("pinned" not in note, "and never says pinned")
     check("Transcribe" in note, "and tells the model to copy, not re-derive")
     check(pick.pending_terminal_count() == 0, "draining empties the queue")
@@ -616,7 +710,7 @@ def test_several_picks_batch_into_one_turn():
                              "row": dict(row, name="p{:d}".format(index)),
                              "report": report})
     note = pick.consume_terminal_notes()
-    check(note.count("MEASURED a terminal") == 19,
+    check(note.count("MEASURED a hole terminal") == 19,
           "a 19-pin header is 19 lines in one note")
     check(pick.pending_terminal_count() == 0, "drained in one go")
 
@@ -867,10 +961,11 @@ def main():
             test_a_hand_built_wire_draws_but_is_never_pushed,
             test_a_legacy_harness_is_read_only,
             test_the_wiring_ui_registers_or_stands_down,
-            test_fit_terminal_finds_a_hole,
-            test_the_fitted_axis_points_into_the_material,
-            test_fit_terminal_finds_a_pad,
-            test_a_square_is_not_classified_by_its_residual,
+            test_fit_terminal_finds_a_bore_from_one_ring,
+            test_selecting_both_rims_takes_the_near_one_and_says_so,
+            test_fit_terminal_finds_a_pad_from_a_rectangle,
+            test_a_rotated_rectangle_fits_as_well_as_an_axis_aligned_one,
+            test_four_corners_are_ambiguous_and_are_refused_not_guessed,
             test_fewer_than_four_vertices_is_refused,
             test_a_noisy_rim_still_fits_and_reports_its_quality,
             test_a_scribble_is_refused_rather_than_averaged,

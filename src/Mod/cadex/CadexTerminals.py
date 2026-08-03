@@ -204,7 +204,16 @@ def _names(value: Any) -> tuple[str, ...]:
 
 
 def _layout_entry(value: Any, *, index: int) -> dict[str, Any]:
-    """One declared row of terminals, validated into canonical JSON."""
+    """One declared row of terminals, validated into canonical JSON.
+
+    **``hole_dia`` is what says a row is holes; without it the row is pads**
+    (ADR-117).  ``depth`` used to be the classifier, and a ``hole_dia`` with
+    no ``depth`` was refused — which was sound while the landing was a depth
+    down the barrel.  It no longer is: the terminal lands in the mouth, so
+    ``depth`` does nothing geometric and cannot classify anything.  It stays
+    as an optional descriptive field, because the bore is still that deep and
+    the canvas still reports it.
+    """
 
     if not isinstance(value, Mapping) or not value:
         raise TerminalError(
@@ -249,11 +258,6 @@ def _layout_entry(value: Any, *, index: int) -> dict[str, Any]:
             raise TerminalError(
                 f"terminals[{index}].hole_dia must be greater than zero; "
                 f"received {hole_dia!r}"
-            )
-        if depth <= 0.0:
-            raise TerminalError(
-                f"terminals[{index}] declares hole_dia with no depth; a hole a "
-                "wire threads has a depth, and a surface pad has neither"
             )
     if count > 1:
         if "along" not in value or "pitch" not in value:
@@ -423,20 +427,23 @@ def _order_key(point: Sequence[float], frame, ordinal: int):
 
 
 def _hole_terminal(candidate: Mapping[str, Any], *, name: str, exit_dir) -> dict[str, Any]:
-    """One through-hole: the wire threads the barrel and lands on the far face.
+    """One through-hole: the wire lands flush in the mouth the user pointed at.
 
-    ``exit`` is the direction the wire *leaves* along, so the wire approaches
-    from that side, goes down the barrel, and stops flush on the **opposite**
-    one — the end with the smaller projection onto ``exit``.  Not the near
-    one: two holes wired to each other would then each stop a board thickness
-    short of the centre they are supposed to meet in.  This is the same
-    relation a declared row states directly, where ``axis`` is the drilling
-    direction, the landing point is ``origin + axis * depth``, and the wire
-    leaves along ``-axis``.
+    ``exit`` is the direction the wire *leaves* along, so the wire arrives from
+    that side and stops in the **near** rim's plane — the end with the larger
+    projection onto ``exit``.  ADR-117 reversed this.  ADR-062 landed on the
+    far face so that two holes wired to each other met in the middle rather
+    than each stopping a board thickness short of it; with the landing at the
+    mouth there is no middle left to meet in, because the joint is what closes
+    the gap and it is at the mouth on both ends.  The gesture the user has is
+    "the rim on top of the hole", and the answer they want is "the wire ends
+    there".  The bore interior is left empty by design.
 
-    The stub back through the barrel is collision-exempt in the router, and
-    it now spans the whole hole, which is why nothing in the search had to
-    change.
+    ``depth`` is still measured and still reported — the bore is that deep and
+    the canvas says so — but nothing geometric reads it any more: the
+    stand-off floor is zero, and the joint's outline is the same one a pad
+    gets.  This is the same relation a declared row states directly, where the
+    landing point is ``origin`` and the wire leaves along ``-axis``.
     """
 
     axis = _triple(candidate["axis"], what="hole axis")
@@ -459,24 +466,26 @@ def _hole_terminal(candidate: Mapping[str, Any], *, name: str, exit_dir) -> dict
     first = _added(center, _scaled(axis, low_parameter))
     second = _added(center, _scaled(axis, high_parameter))
     if _dot(first, exit_dir) > _dot(second, exit_dir):
-        entry, landing = first, second
+        landing = first
     else:
-        entry, landing = second, first
+        landing = second
     depth = abs(high_parameter - low_parameter) * _length(axis)
     outward = unit_axis if _dot(unit_axis, exit_dir) > 0.0 else _scaled(unit_axis, -1.0)
     return {
         "name": name,
         "point": _point_list(landing),
         "direction": _point_list(exit_dir),
-        # The search anchor has to clear the far face, and the far face is a
-        # whole board away from where the wire enters.
-        "standoff_floor": depth,
+        # The landing is on the surface the wire arrives at, so its own
+        # neighbourhood is the only thing between it and open air — the same
+        # position a pad is in, and the same floor.
+        "standoff_floor": 0.0,
         "metrics": {
             "kind": "hole",
             "axis": _point_list(outward),
             "radius": float(candidate["radius"]),
+            # Measured and reported, read by nothing geometric (ADR-117).
             "depth": depth,
-            "entry_point": _point_list(entry),
+            "entry_point": _point_list(landing),
             "exit_point": _point_list(landing),
         },
     }
@@ -534,23 +543,28 @@ def _declared_terminals(layout: Mapping[str, Any]) -> list[dict[str, Any]]:
         hole_dia = entry.get("hole_dia")
         for index in range(int(entry["count"])):
             station = _added(origin, _scaled(along, pitch * index))
-            landing = _added(station, _scaled(axis, depth))
             result.append(
                 {
                     "name": names[len(result)],
-                    "point": _point_list(landing),
+                    # The row's ``origin`` *is* the landing (ADR-117): it is
+                    # the mouth, on the surface the wire arrives at, and the
+                    # bore behind it is left empty.
+                    "point": _point_list(station),
                     # The row is drilled *into* the body along ``axis``, so the
                     # wire leaves back along it — the same relation the
-                    # selector form's far-face landing has to ``exit``.
+                    # selector form's near-face landing has to ``exit``.
                     "direction": _point_list(_scaled(axis, -1.0)),
-                    "standoff_floor": depth,
+                    "standoff_floor": 0.0,
                     "metrics": {
-                        "kind": "hole" if depth > 0.0 else "pad",
+                        # ``hole_dia`` is what says this is a hole. ``depth``
+                        # used to classify, and cannot any more: it no longer
+                        # does anything geometric (ADR-117).
+                        "kind": "pad" if hole_dia is None else "hole",
                         "axis": _point_list(_scaled(axis, -1.0)),
                         "radius": None if hole_dia is None else float(hole_dia) / 2.0,
                         "depth": depth,
                         "entry_point": _point_list(station),
-                        "exit_point": _point_list(landing),
+                        "exit_point": _point_list(station),
                     },
                 }
             )

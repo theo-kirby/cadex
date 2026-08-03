@@ -11977,3 +11977,136 @@ comparison costs the same and cannot.
 skipped**. The MJX-gated suites from `~/cdx-mjc/.venv`:
 `test_dynamics_mjx_agreement.py` 6 passed, `test_dynamics_policy_measured.py`
 18 passed. `pixi run build-engine` clean.
+
+## ADR-117 — A terminal lands in the plane you selected (2026-08-03)
+
+**Decision.** Reverse ADR-062's far-face rule. A terminal's point is on the
+**near** face — the surface the wire arrives at — its direction is that
+surface's outward normal, and its `standoff_floor` is `0`. The bore behind it
+is left empty by design. `part.solder` builds **one outline for both kinds**,
+anchored at that landing plane, and `bore_dia_mm` is removed. On the shell
+side the pick fits **two models** — a circle and a minimum-area enclosing
+rectangle — one ring is enough for a bore, and an ambiguous selection is
+refused rather than guessed at.
+
+### Answering ADR-062's argument, which was a good one
+
+ADR-062 landed a hole terminal on the **far** face on purpose, and said so:
+the wire "comes in from the `exit` side, threads the barrel and stops flush on
+the other one, so two holes wired together meet in true centres rather than
+each stopping a board thickness short." That is correct reasoning about a
+world where the wire is the only thing there. It stopped being that world with
+ADR-063: **the solder is what closes the gap now, and it is at the mouth on
+both ends.** With the joint at the mouth there is no middle left to meet in.
+
+The other half of the answer is about the gesture rather than the geometry.
+The gesture a user has is "the rim on top of the hole" — they alt-click a loop
+they can see — and the answer they want is "the wire ends there". A landing a
+board thickness behind the thing they pointed at is not wrong so much as
+unaddressable: nothing they can select names it.
+
+So: the swept conductor's end cap lies *in* the selected plane and its axis is
+perpendicular to it, because `_sweep_conductor` builds the profile circle
+normal to the path tangent at the start point and ADR-114's collinear stub
+knots hold it straight through the joint. Measured on the drilled plate, both
+end caps sit at z = 1.6 to 1e-6 mm with their normals parallel to the bore
+axis to 1e-9, and the cap area is π(0.3)² to a part in a thousand.
+
+### What that deletes, and what it costs
+
+`depth` no longer does anything geometric. It is still measured and still
+reported — the bore is that deep and the canvas says so — but it cannot be the
+classifier it was, so **`hole_dia` present ⇒ holes, absent ⇒ pads**, and the
+"`hole_dia` with no `depth` is refused" rule is gone. `standoff_floor` is zero
+on every terminal, which makes `_end_standoff` a single term; the parameter
+stays because `standoff_floor` is what a terminal *states*, and a future form
+that landed inside material would state a non-zero one.
+
+`CadexSolder`'s through-hole branch — cap cone, cap rim, bore wall, entry
+annulus, lead end, spine — described a lead ending at the bottom of the
+barrel. Nothing lands there, so it goes: **a bore joint and a pad joint are
+byte-identical profiles**, and the suite asserts that rather than restating
+the shape twice. Ten segments become five, nine kernel faces become five, and
+the outline no longer touches the axis at all, which retires the degenerate
+pole edge with it. The joint's volume on the probe fixture falls from 1.847 to
+0.399 mm³, all of it barrel.
+
+`bore_dia_mm` only ever sized the plating, so it is **removed** rather than
+left as a no-op. It is removed outright rather than accepted-and-refused:
+`test_describe_project_api_is_json_safe_and_complete` pins every operation's
+surface as explicit, and a `**kwargs` carrying a named refusal would read to
+the model as "this takes anything". Python names the argument at call time,
+and the docstring — which *is* the description the model is shown — carries
+the reason and the replacement. What the bore radius still does is set the
+pad's default width and the floor a stated `pad_dia_mm` must clear.
+
+**One measured regression, and it is expected.** The sliver the wire shares
+with its own joint goes from 3.5e-6 mm³ back up to 1.34e-4. The stub is the
+straight run ADR-114's collinear knots pin, and it used to be 2.61 mm — the
+1.6 mm barrel plus the joint's 1.01 mm reach — because the wire started a
+board *below* the face. It starts at the rim now, so the same three knots pin
+only 1.01 mm and the route's curvature reaches a little further in. The
+centreline still holds its axis to 7.7e-4 mm through the collar and the
+sliver is 0.03% of the joint: 280x below the ADR-074 number this line of work
+was about, and still nothing a render can show.
+
+### The pick: two models, and a refusal where there is nothing to say
+
+ADR-067 fitted a circle, required **two coaxial loops of matching radius** to
+call something a bore, and called everything else a pad. Both halves were
+wrong for the gesture people have. One ring is the ordinary selection and it
+is enough; and a *pad* is usually square, where a circle fit is meaningless —
+four corners fit a circle exactly, radius = half the diagonal.
+
+So `fit_rectangle` joins `fit_circle`: the minimum-area enclosing rectangle by
+rotating calipers over the convex hull. Exhaustive rather than approximate
+(the minimum-area rectangle always has a side flush with a hull edge), with no
+iteration and no seed — the same property Kåsa's solve was chosen for.
+
+**`AUTO` compares two models and never a residual threshold.** ADR-067's rule
+stands: a residual is a quality signal, never a classifier, so "the circle
+fits well ⇒ bore" is not available. Each residual is normalised by its own
+scale (the radius, the half-diagonal) and the better one wins — and when the
+margin is inside noise the pick is **refused with both fits named**. A
+rectangle's four corners are concyclic, so both models score exactly zero;
+nothing can tell them apart, and saying so is the honest answer. The
+operator's `kind` enum is the override, and the quality gate still applies to
+whichever model won, so forcing a kind does not force a scribble through.
+
+The margin is 0.02, calibrated on the two cases that matter: a ring fitted to
+its own minimum-area rectangle sits about 0.078 off once normalised, against
+~0 for the circle, so a real rim clears it three-and-a-half times over even on
+a coarse STL; four corners score a dead tie.
+
+A pad row carries `origin` and `axis` and nothing else. Its `width_mm` and
+`height_mm` go in the **report**, so the assistant can choose `pad_dia_mm` —
+not in the row, because a declared row has no rectangle field and inventing
+one would put pad geometry into the layout, which ADR-065 put out of scope.
+Selecting both rims of a through-hole still works: the far loop is dropped and
+the report says it was.
+
+ADR-067's other rule is unchanged and reused: **the pick measures, the
+assistant authors.** Nothing here writes script from the shell.
+
+### ⚠ Migration: every project with a bore terminal must be re-accepted
+
+Every bore terminal's point moves and every joint's outline changes, so
+**every digest moves**. ADR-074 recorded what that does in the UI: the
+mismatch is caught by the restore pass at *open*, `ensure_open` returns
+`CADEXD_RESTORE_FAILED`, and **Rebuild Model sits behind that same call** — so
+there is no route out inside the shell. The recovery is `open_project
+restore=false` followed by `write_script`. A project that refuses to open
+after this change is that trap and not a new bug.
+
+### Verification
+
+`pixi run python -m pytest src/Mod/cadex/cadex_tests` — **1445 passed, 22
+skipped**, the kernel-backed `FreeCADCmd` probes included. The tests that
+pinned the old rule were changed rather than deleted, which is what proves the
+change landed: the far-face landing, the depth-floored stand-off, the
+ten-segment outline, the cap and spine, and `bore_dia_mm`'s override. New:
+that a bore and a pad produce the same profile and the same volume; that
+`hole_dia` classifies a declared row and `depth` no longer can; that a hole of
+no stated depth builds; that the swept end caps lie in the rim's plane with
+axis-parallel normals; and that neither joint nor wire puts material at or
+below that plane.

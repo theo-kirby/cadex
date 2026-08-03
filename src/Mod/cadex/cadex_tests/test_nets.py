@@ -618,10 +618,11 @@ def test_a_declared_harness_builds_and_rewires_without_the_ai(tmp_path) -> None:
     assert wiring["esp"]["output"] == "esp"
     assert wiring["sen"]["names"] == ["sda", "scl", "gnd"]
     assert all(radius == pytest.approx(0.5) for radius in wiring["sen"]["radii"])
-    # The header is drilled 1.6 mm down from z=1.6, so every landing point is
-    # on the far face, in the plate's own coordinates.
+    # The header is drilled down from z=1.6 and the landing *is* its origin
+    # since ADR-117, so every point is in the top face, in the plate's own
+    # coordinates — not a board thickness below it.
     assert all(
-        point[2] == pytest.approx(0.0, abs=1.0e-9)
+        point[2] == pytest.approx(1.6, abs=1.0e-9)
         for point in wiring["sen"]["points"]
     )
     assert [round(point[1], 4) for point in wiring["sen"]["points"]] == [

@@ -1181,10 +1181,11 @@ def _end_standoff(base: float, floor: float, clearance: float) -> float:
     """How far off one end the search may start.
 
     ``base`` is what ADR-056 computed for both ends — clear of the surface by
-    the clearance plus half the wire. A terminal adds a floor: a wire landing
-    on the far face of a hole is *inside* the board for the whole depth of
-    it, so an anchor placed at ``base`` would start in solid material and the
-    search would have nowhere to go.
+    the clearance plus half the wire. A terminal may add a floor on top of
+    that; since ADR-117 every terminal lands on the surface the wire arrives
+    at, so that floor is zero and this is the one term left. It stays because
+    ``standoff_floor`` is still what a terminal states, and a future terminal
+    form that lands inside material would state a non-zero one.
     """
 
     return max(base, float(floor) + clearance)
@@ -1224,7 +1225,8 @@ def _build_cable(payload: dict[str, Any], properties: dict[str, Any]):
     # rather than inside `_end_standoff` because it is not the router's idea:
     # `part.cable` never learns whether a joint exists, it just leaves enough
     # straight lead that one *could* be there. Both floors are measured from
-    # the same place as `standoff_floor`, the far face, so they add.
+    # the same place as `standoff_floor` — the terminal's landing — so they
+    # add.
     start_standoff = max(
         _end_standoff(standoff, start_floor, clearance),
         start_floor + CadexSolder.lead_run_mm(start_metrics, gauge),
@@ -1737,9 +1739,9 @@ def _build_bundle(payload: dict[str, Any], properties: dict[str, Any]):
 _SOLDER_CORRECTIONS = {
     "metrics": (
         "part.solder builds a joint from a terminal's measured geometry — its "
-        "axis, bore, depth and two faces. Name the attachment with "
-        "part.terminals or mesh.terminals; a literal (point, direction) port "
-        "carries none of that."
+        "axis, its bore and the face the lead lands on. Name the attachment "
+        "with part.terminals or mesh.terminals; a literal (point, direction) "
+        "port carries none of that."
     ),
     "gauge": (
         "gauge_mm is the diameter of the lead the joint forms around, and it "
@@ -1748,9 +1750,8 @@ _SOLDER_CORRECTIONS = {
     ),
     "bore": (
         "Either the hole is too narrow for the lead or its width was never "
-        "measured. Pass bore_dia_mm to state it, declare hole_dia on the "
-        "layout so every joint on that component takes it, or reduce gauge_mm "
-        "to a lead that fits."
+        "measured. Declare hole_dia on the layout so every joint on that "
+        "component takes it, or reduce gauge_mm to a lead that fits."
     ),
     "pad": (
         "The joint has to be wider than the lead it wets and wider than the "
@@ -1859,7 +1860,6 @@ def _build_solder(payload: dict[str, Any], properties: dict[str, Any]):
             gauge_mm=properties.get("gauge_mm"),
             pad_dia_mm=properties.get("pad_dia_mm"),
             fillet_mm=properties.get("fillet_mm"),
-            bore_dia_mm=properties.get("bore_dia_mm"),
         )
     except CadexSolder.SolderError as exc:
         raise PartOperationError(

@@ -1308,14 +1308,19 @@ What makes them experimental, and what would settle it:
   `part.terminals` / `mesh.terminals` name a component's attachment points
   from its geometry: a `holes=`/`pads=` selector on a BREP board, a declared
   layout on an imported STL, ordered by a *direction* rather than by kernel
-  enumeration. A hole terminal lands on its far face and carries the bore's
-  depth as a stand-off floor, which is what made `route_path` take one
-  stand-off per end. Terminals ride their component's placement, so one spec
-  places four motors. `CadexTerminals.py` is the new pure-Python module; no
-  shell code, no protocol change, and literal ports are unchanged, so a
-  script that uses none rebuilds byte-identically. Still not built: writing a
-  terminal into a script from a viewport click (Phase 10b, ADR-067), and
-  mesh hole detection, which is deferred by decision rather than pending.
+  enumeration. Terminals ride their component's placement, so one spec places
+  four motors. `CadexTerminals.py` is the new pure-Python module; no shell
+  code, no protocol change, and literal ports are unchanged, so a script that
+  uses none rebuilds byte-identically. **A hole terminal landed on its *far*
+  face until ADR-117 (2026-08-03) reversed it**: it lands in the near rim's
+  plane now, with a zero stand-off floor and the bore left empty, because the
+  solder is what closes the gap and it is at the mouth on both ends — and
+  because "the rim on top of the hole" is the only end of it a user can point
+  at. `depth` therefore sizes nothing and `hole_dia` is what classifies a
+  declared row. Every project carrying a bore terminal must be re-accepted.
+  Still not built: writing a terminal into a script from a viewport click
+  (Phase 10b, ADR-067), and mesh hole detection, which is deferred by
+  decision rather than pending.
 - [x] **The harness is invisible** — **settled by ADR-065 (the engine),
   ADR-066 (the editor) and ADR-067 (the pick), all 2026-08-01.** `nets(...)`
   declares the connections, `set_params(nets=)` edits them with no AI turn,
@@ -1323,7 +1328,13 @@ What makes them experimental, and what would settle it:
   Wiring editor draws all of it as a node graph in Blender's stock node
   editor — re-registered for exactly one Python tree type, so the editor menu
   gains "Wiring" and stays short. Selecting a hole rim in Edit Mode fits a
-  terminal and hands the measurement to the assistant to transcribe.
+  terminal and hands the measurement to the assistant to transcribe. **Since
+  ADR-117 (2026-08-03) the pick fits two models** — a circle and a
+  minimum-area enclosing rectangle by rotating calipers — because a pad is
+  usually square and a circle fit is meaningless on one. One ring is enough
+  for a bore, `AUTO` takes whichever model wins on its own normalised
+  residual, and a tie (four corners are concyclic, so both score zero) is
+  refused with both fits named rather than guessed at.
   **Built and green end to end**, shell included: the editor menu test now
   asserts "Wiring" is on it and the four stock node trees are not, the graph
   survives a `.blend` round trip with its layout and socket identities
@@ -1361,10 +1372,14 @@ What makes them experimental, and what would settle it:
   builds the joint a terminal implies, with a concave meniscus that flattens
   into a short collar around the wire — and, since ADR-114 (2026-08-02), a
   crown that rounds that collar over onto the wire rather than stopping dead
-  across it in a flat annulus. Still not built: colouring solder differently
-  from wire, which needs an appearance vocabulary the part domain does not
-  have, and rounding the underside cap to a dome (decided: it stays a cone —
-  ADR-114 rounded the *top*, which is the end a render shows).
+  across it in a flat annulus. **ADR-117 (2026-08-03) made it one outline for
+  both kinds**: the cap cone, barrel and entry annulus described a lead
+  ending at the bottom of the bore and nothing lands there any more, so a
+  bore joint and a pad joint are byte-identical profiles and `bore_dia_mm` is
+  removed. Still not built: colouring solder differently from wire, which
+  needs an appearance vocabulary the part domain does not have. The
+  underside-cap question is closed rather than deferred — there is no
+  underside cap.
 - [x] **A joint and its wire share a sliver** — **settled by ADR-114
   (2026-08-02).** ADR-074 pointed the wire out along the axis and floored the
   stand-off past the joint, which left 0.038 mm³ shared on the probe plate;

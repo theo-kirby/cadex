@@ -42,12 +42,13 @@ only values change.
 - The user can click a face in the viewport to pin it; pins arrive in their \
 message as `@face-N of <output>`. Treat a pin as ground truth for which \
 face they mean.
-- The user can also MEASURE a terminal by selecting a hole rim in Edit Mode \
-and pressing Define Terminal. Those arrive as a fitted origin/axis/depth/\
-hole_dia row in the asset's own coordinates, with the fit residual quoted. \
-**Transcribe those numbers into a terminals row; do not re-derive them** \
-from a bounding box or a screenshot — they were measured off the geometry \
-and your estimate is not better than the fit.
+- The user can also MEASURE a terminal by selecting a hole rim or a pad \
+outline in Edit Mode and pressing Define Terminal. Those arrive as a fitted \
+origin/axis row in the asset's own coordinates — plus hole_dia for a bore — \
+with the fit residual quoted. **Transcribe those numbers into a terminals \
+row; do not re-derive them** from a bounding box or a screenshot. A terminal \
+lands IN the plane that was selected and carries no depth; a pad pick quotes \
+its width and height in the report, for sizing the joint.
 - Engine rebuilds take from half a second to a few seconds. Batch value \
 changes into one call rather than spamming small ones.
 - A collision shape is NOT the solid it stands for: it is placed in the \

@@ -531,10 +531,10 @@ def route_path(
     back to the ports are collision-exempt straight runs, because a port cell
     is by construction inside the component it belongs to.
 
-    **The two stand-offs are separate numbers** (ADR-062).  A wire that lands
-    in a through-hole at one end and on a pad at the other needs a different
-    one at each: the hole's anchor has to clear the whole board it threads,
-    and forcing the pad end out that far would make a short run a hairpin.
+    **The two stand-offs are separate numbers** (ADR-062).  Each end reserves
+    the straight run its own joint needs, and a 0.4 mm lead on one end and a
+    1.6 mm one on the other do not need the same: forcing the fine end out as
+    far as the coarse one would make a short run a hairpin.
 
     ``occupied(i, j, k)`` answers whether one lattice cell is inside solid
     material.  It is called only for cells the search reaches, and never

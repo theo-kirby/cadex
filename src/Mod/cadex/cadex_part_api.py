@@ -1315,13 +1315,14 @@ class PartDomainAPI:
         selectors over this shape's faces, the same vocabulary ``fillet`` and
         ``subshape`` take, so the terminals move when the geometry does.
 
-        - ``holes=`` names drilled barrels.  A hole's attachment is an axis
-          and a depth, not a surface point, and the terminal lands on the
-          **far** face: the wire threads the barrel and ends flush on the
-          other side, so two holes wired together meet in true centres.
-          ``exit=`` is **required** — a cylindrical face states an axis but
-          not which end of it is outward, and inferring that from the solid's
-          shape is wrong on any board that is not roughly symmetric.
+        - ``holes=`` names drilled barrels.  The terminal lands in the
+          **near** face — the rim the wire arrives at, with its axis
+          perpendicular to that rim's plane — and the bore behind it is left
+          empty (ADR-117).  ``part.solder`` is what closes the gap, and it
+          sits on the same rim.  ``exit=`` is **required** — a cylindrical
+          face states an axis but not which end of it is outward, and
+          inferring that from the solid's shape is wrong on any board that is
+          not roughly symmetric.
         - ``pads=`` names flat contacts.  The terminal is the face's centre
           of mass, leaving along its normal (flipped to agree with ``exit=``
           when you give one, so a face's orientation in the shell is not
@@ -1346,11 +1347,16 @@ class PartDomainAPI:
                         axis=(-1, 0, 0), pitch=2.54, count=4,
                         hole_dia=1.0, depth=1.6)
 
-        ``origin`` is the first terminal's entry point, ``along`` and
-        ``pitch`` step the row, and ``axis`` is the direction the holes are
-        drilled *into* the body — so the wire leaves back along ``-axis``,
-        and a ``depth`` of zero is a pad rather than a hole.  ``names`` runs
-        over the rows in declaration order.
+        ``origin`` is the first terminal's landing point — the mouth of the
+        hole, on the surface the wire arrives at — ``along`` and ``pitch``
+        step the row, and ``axis`` is the direction the holes are drilled
+        *into* the body, so the wire leaves back along ``-axis``.  ``names``
+        runs over the rows in declaration order.
+
+        **``hole_dia`` is what makes a row a row of holes** (ADR-117); a row
+        without one is pads.  ``depth`` is optional and descriptive: since
+        the terminal lands in the mouth it sizes nothing, and it is reported
+        rather than built from.
 
         On a *part* value the declared form is a fallback and the selector
         form is the recommended one: a part value is built in final
@@ -1451,9 +1457,10 @@ class PartDomainAPI:
                        ((12, 9, 6.2), (0, 0, 1)),
                        gauge_mm=0.8, avoid=[frame, flight_controller])
 
-        A terminal on a through-hole lands on the hole's **far** face and
-        carries the bore's depth, so the search anchor clears the board the
-        wire has just threaded rather than starting inside it.
+        A terminal on a through-hole lands **in the mouth** of the hole — in
+        the plane of the rim, with its axis perpendicular to it — and not at
+        the bottom of the barrel (ADR-117). The bore behind it is left empty;
+        ``part.solder`` is what closes the gap, and it sits on the same rim.
 
         The route is searched afresh on every rebuild, so a cable follows the
         things it connects: change a parameter that moves a component and the
@@ -1710,7 +1717,6 @@ class PartDomainAPI:
         gauge_mm: float,
         pad_dia_mm: float | None = None,
         fillet_mm: float | None = None,
-        bore_dia_mm: float | None = None,
         refine: bool = True,
         label: str = "",
     ) -> DomainValue:
@@ -1733,11 +1739,15 @@ class PartDomainAPI:
         literal ``(point, direction)`` pair carries none of that.  This is the
         first operation a terminal *unlocks* rather than merely improves.
 
-        On a **through-hole** the result is the barrel of the plating filled
-        around the lead, a meniscus fillet where the lead leaves the board, and
-        a cap over the lead's end on the far face.  On a **pad** it is the
-        meniscus alone.  Everything is sized from the terminal, so the joint
-        moves when the terminal does — which is the whole point of both.
+        **A hole and a pad build the same joint** (ADR-117): a meniscus fillet
+        sitting on the face the lead lands on, a short collar hugging the lead
+        and a round-over onto it.  A hole terminal lands in the mouth of its
+        bore rather than at the bottom of it, so there is no barrel to fill and
+        no far face to cap — the bore interior is left empty by design.  What
+        the hole still contributes is its own radius: the joint defaults to
+        twice that diameter across, and refuses to be narrower than the rim it
+        rings.  Everything is sized from the terminal, so the joint moves when
+        the terminal does — which is the whole point of both.
 
         The meniscus is **concave**: it sweeps up off the pad, flattens as it
         reaches the lead, and then runs parallel to the wire for a short collar
@@ -1750,10 +1760,8 @@ class PartDomainAPI:
         ``pad_dia_mm`` is how far the joint spreads across the face.  It
         defaults to twice the bore diameter on a hole, and to the
         equivalent-area diameter of the matched face on a ``pads=`` terminal.
-        A *declared* pad carries no area, so there it is required.
-
-        ``bore_dia_mm`` defaults to the hole's measured diameter; a declared
-        hole that stated no ``hole_dia`` has none, so there it is required.
+        A *declared* pad carries no area, so there it is required.  It sizes a
+        bore joint exactly as it sizes a pad joint.
 
         ``fillet_mm`` is how far the meniscus climbs the lead, and defaults to
         the width of pad the meniscus sweeps across — which makes the arc an
@@ -1763,9 +1771,14 @@ class PartDomainAPI:
         underneath.  The collar's height and the cap's both derive from it; a
         joint has enough numbers.
 
+        **``bore_dia_mm`` was removed in ADR-117** and passing it is a
+        ``TypeError``.  It only ever sized the barrel of plating, and there is
+        no barrel: state how far the joint spreads with ``pad_dia_mm``, and how
+        wide the hole itself is with ``hole_dia`` on the layout.
+
         Every refusal names the value it measured and the one it conflicts
         with: a lead that does not fit its bore, a pad narrower than the hole
-        it rings, a hole whose width was never stated.
+        it rings, a hole whose width was never measured.
         """
 
         operation = "solder"
@@ -1781,7 +1794,6 @@ class PartDomainAPI:
         for name, value in (
             ("pad_dia_mm", pad_dia_mm),
             ("fillet_mm", fillet_mm),
-            ("bore_dia_mm", bore_dia_mm),
         ):
             if value is not None:
                 properties[name] = _number(

@@ -54,8 +54,8 @@ def _board():
 
 
 #: A 1 mm bore through a 1.6 mm board at (5, 10), with the wire leaving
-#: upward: it threads down the barrel and ends flush on the bottom face, so
-#: the entry face is the top and the exit face is the bottom.  Exactly what
+#: upward: since ADR-117 it lands flush in the *top* rim and the barrel below
+#: is left empty, so both face points are that one landing.  Exactly what
 #: ``CadexTerminals._hole_terminal`` resolves for ``exit=(0, 0, 1)``.
 HOLE = {
     "kind": "hole",
@@ -63,7 +63,7 @@ HOLE = {
     "radius": 0.5,
     "depth": 1.6,
     "entry_point": [5.0, 10.0, 1.6],
-    "exit_point": [5.0, 10.0, 0.0],
+    "exit_point": [5.0, 10.0, 1.6],
 }
 
 #: A pad of area pi, so its equivalent-area radius is exactly 1.
@@ -153,26 +153,41 @@ def _circumcentre(first, second, third):
 
 
 # --------------------------------------------------------------------------
-# the through-hole outline
+# one outline, for a bore and a pad alike
 
 
-def test_a_hole_joint_is_one_closed_loop_from_the_cap_to_the_collar() -> None:
+def test_a_bore_and_a_pad_produce_the_same_outline() -> None:
+    """The whole of ADR-117's second half, in one assertion.
+
+    A through-hole used to get four extra segments — a cap cone under the
+    lead's flush end, the barrel of plating, and an entry annulus at the top
+    of it — describing a lead that ended at the *bottom* of the bore.  Nothing
+    lands there any more, so the joint is the pad's meniscus in both cases and
+    the profile is not merely equivalent but identical: this fixture's bore
+    rings a 2.0 mm pad and the pad fixture's area is the disc of that same
+    radius.
+    """
+
+    bore = solder_specs(HOLE, gauge_mm=0.4)
+    pad = solder_specs(PAD, gauge_mm=0.4)
+
+    assert bore["kind"] == "hole"
+    assert pad["kind"] == "pad"
+    assert bore["profile"] == pad["profile"]
+    assert bore["origin"] == pad["origin"]
+    # What the two still disagree about is only what they *measured*, never
+    # what they built: the bore knows its own radius and its own depth.
+    assert bore["bore_radius"] == pytest.approx(BORE)
+    assert pad["bore_radius"] is None
+    assert bore["depth"] == pytest.approx(1.6)
+    assert pad["depth"] == 0.0
+
+
+def test_the_joint_is_one_closed_loop_of_five_segments() -> None:
     specs = solder_specs(HOLE, gauge_mm=0.4)
 
-    assert specs["kind"] == "hole"
-    assert _roles(specs) == [
-        "cap",
-        "cap_rim",
-        "bore",
-        "entry_annulus",
-        "meniscus",
-        "collar",
-        "crown",
-        "lead",
-        "lead_end",
-        "spine",
-    ]
-    # Two arcs and eight lines: there is no fuse and no cut left to get wrong.
+    assert _roles(specs) == ["pad_face", "meniscus", "collar", "crown", "lead"]
+    # Two arcs and three lines: there is no fuse and no cut left to get wrong.
     # The second arc is the crown, which replaced the flat annulus the collar
     # used to cross to the lead along (ADR-114).
     assert [segment["kind"] for segment in specs["profile"]].count("arc") == 2
@@ -183,30 +198,27 @@ def test_a_hole_joint_is_one_closed_loop_from_the_cap_to_the_collar() -> None:
         assert segment["end"] == following["start"], segment["role"]
 
 
-def test_the_outline_stands_on_the_far_face_and_reaches_the_entry_face() -> None:
+def test_the_outline_stands_on_the_landing_plane_and_never_dips_below_it() -> None:
     """The assertion that catches an axis-sign flip.
 
     ``axis`` points *out of* the board on the side the lead leaves, and the
-    outline's ``z`` is measured from the far face towards it.  Swap the two
-    faces, or negate the axis, and the barrel is built through open air below
+    outline's ``z`` is measured from the terminal's landing towards it.  Negate
+    the axis and the whole joint is built through open air on the wrong side of
     the board while everything else still looks plausible.
+
+    Since ADR-117 the joint is entirely at ``z >= 0``: the bore behind the
+    landing is left empty by design, so nothing hangs below the face at all.
     """
 
     specs = solder_specs(HOLE, gauge_mm=0.4)
 
-    assert specs["origin"] == HOLE["exit_point"]
+    assert specs["origin"] == HOLE["entry_point"]
     assert specs["direction"] == HOLE["axis"]
-    # The bore wall runs the plating's whole depth, from the far face up.
-    assert _segment(specs, "bore")["start"] == [BORE, 0.0]
-    assert _segment(specs, "bore")["end"] == [BORE, 1.6]
-    # ...and z = depth arrives exactly at the entry face, not short of it.
-    assert [
-        specs["origin"][k] + specs["direction"][k] * specs["depth"] for k in range(3)
-    ] == pytest.approx(HOLE["entry_point"])
-    # The cap hangs below the far face and nothing else does.
-    assert min(point[1] for point in _polyline(specs)) == pytest.approx(
-        -specs["cap_height"]
-    )
+    # It never touches the axis and it never goes below the face.
+    assert min(point[0] for point in _polyline(specs)) == pytest.approx(LEAD)
+    assert min(point[1] for point in _polyline(specs)) == pytest.approx(0.0)
+    # The meniscus starts exactly in the landing plane, not a rounding above it.
+    assert _segment(specs, "meniscus")["start"] == [PAD_R, 0.0]
 
 
 def test_the_radial_basis_is_a_stated_function_of_the_axis() -> None:
@@ -272,9 +284,9 @@ def test_the_meniscus_is_an_arc_tangent_to_the_board_and_to_the_lead() -> None:
             (ahead[1] - behind[1]) / length,
         )
 
-    assert arc["start"] == pytest.approx([PAD_R, 1.6])
+    assert arc["start"] == pytest.approx([PAD_R, 0.0])
     assert abs(tangent(arc["start"])[1]) == pytest.approx(0.0, abs=1.0e-6)
-    assert arc["end"] == pytest.approx([COLLAR, 1.6 + SPAN])
+    assert arc["end"] == pytest.approx([COLLAR, SPAN])
     assert abs(tangent(arc["end"])[0]) == pytest.approx(0.0, abs=1.0e-6)
     # Tangency to the lead survives a taller fillet; tangency to the board is
     # the quarter-round default's own property and does not.
@@ -298,7 +310,7 @@ def test_the_default_fillet_is_an_exact_quarter_circle() -> None:
     assert specs["arc_radius"] == pytest.approx(SPAN)
     assert arc["start_angle"] - arc["end_angle"] == pytest.approx(math.pi / 2.0)
     fitted = _circumcentre(arc["start"], arc["through"], arc["end"])
-    assert fitted == pytest.approx((COLLAR + SPAN, 1.6 + SPAN))
+    assert fitted == pytest.approx((COLLAR + SPAN, SPAN))
 
 
 @pytest.mark.parametrize("gauge", (0.1, 0.25, 0.4, 0.6, 0.9))
@@ -312,11 +324,13 @@ def test_the_default_fillet_never_trips_the_undercut_floor(
     The default is computed by the same expression as the floor, so it passes
     by equality — but "the same expression" is exactly the kind of claim that
     stops being true after an edit, so it is swept rather than reasoned about.
+    The bore is varied on the *terminal* now that ``bore_dia_mm`` is gone
+    (ADR-117), which is the only place it was ever measured from.
     """
 
     try:
         specs = solder_specs(
-            HOLE, gauge_mm=gauge, pad_dia_mm=pad_dia, bore_dia_mm=bore_dia
+            {**HOLE, "radius": bore_dia / 2.0}, gauge_mm=gauge, pad_dia_mm=pad_dia
         )
     except SolderError as exc:
         # Whatever refused, it was not the fillet: the default cannot undercut.
@@ -337,7 +351,9 @@ def test_the_arc_climbs_without_dipping_below_the_face_or_passing_the_pad() -> N
         solder_specs(PAD, gauge_mm=0.4, pad_dia_mm=5.0),
     ):
         arc = _segment(specs, "meniscus")
-        face_z = specs["depth"]
+        # The joint stands on the landing plane, which is z = 0 for either kind
+        # since ADR-117.
+        face_z = 0.0
         samples = _points(arc, 200)
         for radius, height in samples:
             assert height >= face_z - 1.0e-12
@@ -369,8 +385,8 @@ def test_the_collar_hugs_the_lead_and_is_half_the_fillet_tall() -> None:
     assert specs["collar_radius"] == pytest.approx(COLLAR)
     assert specs["collar_height"] == pytest.approx(0.5 * specs["fillet_height"])
     collar = _segment(specs, "collar")
-    assert collar["start"] == pytest.approx([COLLAR, 1.6 + SPAN])
-    assert collar["end"] == pytest.approx([COLLAR, 1.6 + SPAN + 0.5 * SPAN])
+    assert collar["start"] == pytest.approx([COLLAR, SPAN])
+    assert collar["end"] == pytest.approx([COLLAR, SPAN + 0.5 * SPAN])
     # On a pad too tight for a tenth of the lead, a quarter of the annulus is
     # taken instead, so the collar is always strictly between lead and pad.
     tight = solder_specs(PAD, gauge_mm=0.6, pad_dia_mm=0.7)
@@ -405,7 +421,7 @@ def test_the_crown_rounds_the_collar_onto_the_lead_with_no_flat_ring() -> None:
         assert crown["radius"] == pytest.approx(collar - lead)
 
         # No horizontal run anywhere above the board: the ring is gone.
-        face_z = specs["depth"]
+        face_z = 0.0
         for segment in specs["profile"]:
             if segment["kind"] != "line":
                 continue
@@ -451,9 +467,7 @@ def test_the_lead_run_is_the_meniscus_and_the_collar_together() -> None:
     # part of that reach: it is the last thing holding the lead (ADR-114).
     specs = solder_specs(HOLE, gauge_mm=0.4)
     crest = _segment(specs, "crown")["end"][1]
-    assert crest - specs["depth"] == pytest.approx(
-        CadexSolder.lead_run_mm(HOLE, 0.4)
-    )
+    assert crest == pytest.approx(CadexSolder.lead_run_mm(HOLE, 0.4))
 
 
 @pytest.mark.parametrize(
@@ -478,11 +492,12 @@ def test_a_terminal_that_cannot_be_soldered_reserves_no_lead(metrics, gauge) -> 
         solder_specs(metrics, gauge_mm=gauge)
 
 
-def test_the_collar_and_the_cap_derive_and_are_not_knobs() -> None:
+def test_the_collar_derives_and_is_not_a_knob() -> None:
     """ADR-063's "a joint has enough numbers", pinned against drift.
 
     Nothing about the new shape reaches the payload, ``OP_ARG_SPECS`` or
-    ``docs/INTEGRATION.md``: the four knobs are the four knobs.
+    ``docs/INTEGRATION.md``, and there are **three** knobs now rather than
+    four: ADR-117 removed ``bore_dia_mm``, which only ever sized the plating.
     """
 
     signature = inspect.signature(solder_specs)
@@ -490,40 +505,26 @@ def test_the_collar_and_the_cap_derive_and_are_not_knobs() -> None:
         name
         for name, parameter in signature.parameters.items()
         if parameter.kind is inspect.Parameter.KEYWORD_ONLY
-    ] == ["gauge_mm", "pad_dia_mm", "fillet_mm", "bore_dia_mm"]
+    ] == ["gauge_mm", "pad_dia_mm", "fillet_mm"]
 
 
-# --------------------------------------------------------------------------
-# the pad outline
+def test_nothing_in_the_outline_reaches_the_axis() -> None:
+    """The hole's spine and cap went with the barrel (ADR-117).
 
+    A segment on the axis sweeps into a degenerate pole edge, and the only
+    reason the outline ever carried one was to close a cap under the lead's
+    flush end on the far face.  There is no far face in the joint any more, so
+    neither kind touches ``r = 0``.
+    """
 
-def test_a_pad_joint_is_five_segments_with_no_cap_and_no_bore() -> None:
-    specs = solder_specs(PAD, gauge_mm=0.4)
-
-    assert specs["kind"] == "pad"
-    assert _roles(specs) == ["pad_face", "meniscus", "collar", "crown", "lead"]
-    assert specs["bore_radius"] is None
-    assert specs["depth"] == 0.0
-    # No lead end to cover: the wire lands on the pad, it does not pass it.
-    assert specs["cap_height"] == 0.0
-    assert specs["origin"] == PAD["entry_point"]
-    # It never touches the axis, so it carries none of the hole's pole edge.
-    assert min(point[0] for point in _polyline(specs)) == pytest.approx(LEAD)
-    assert min(point[1] for point in _polyline(specs)) == pytest.approx(0.0)
-
-
-def test_only_a_hole_reaches_the_axis_and_only_along_its_spine() -> None:
-    specs = solder_specs(HOLE, gauge_mm=0.4)
-
-    on_axis = [
-        segment
-        for segment in specs["profile"]
-        if segment["start"][0] == 0.0 and segment["end"][0] == 0.0
-    ]
-    assert [segment["role"] for segment in on_axis] == ["spine"]
-    assert abs(on_axis[0]["end"][1] - on_axis[0]["start"][1]) == pytest.approx(
-        specs["cap_height"]
-    )
+    for metrics in (HOLE, PAD):
+        specs = solder_specs(metrics, gauge_mm=0.4)
+        assert not [
+            segment
+            for segment in specs["profile"]
+            if segment["start"][0] == 0.0 or segment["end"][0] == 0.0
+        ]
+        assert min(point[0] for point in _polyline(specs)) == pytest.approx(LEAD)
 
 
 # --------------------------------------------------------------------------
@@ -592,17 +593,23 @@ def _crosses(a1, a2, b1, b2) -> bool:
 # every derivation, and every override winning
 
 
-def test_the_bore_comes_off_the_terminal_and_bore_dia_mm_overrides_it() -> None:
+def test_the_bore_comes_off_the_terminal_and_only_off_the_terminal() -> None:
+    """``bore_dia_mm`` is gone, so there is one source for this number.
+
+    It only ever sized the barrel of plating, and ADR-117 deleted the barrel.
+    What the bore still sizes is the pad's default width and the floor a
+    stated ``pad_dia_mm`` has to clear — both of which are about the rim, and
+    the rim is measured, never stated.
+    """
+
     assert solder_specs(HOLE, gauge_mm=0.4)["bore_radius"] == pytest.approx(0.5)
-    assert solder_specs(HOLE, gauge_mm=0.4, bore_dia_mm=1.4)[
+    assert solder_specs({**HOLE, "radius": 0.7}, gauge_mm=0.4)[
         "bore_radius"
     ] == pytest.approx(0.7)
-    # A declared hole that never stated hole_dia has no measurement to take,
-    # so the override is the only way it builds at all.
-    declared = {**HOLE, "radius": None}
-    assert solder_specs(declared, gauge_mm=0.4, bore_dia_mm=1.0)[
-        "bore_radius"
-    ] == pytest.approx(0.5)
+    # ...and it is what the default pad is twice the diameter of.
+    assert solder_specs({**HOLE, "radius": 0.7}, gauge_mm=0.4)[
+        "pad_radius"
+    ] == pytest.approx(1.4)
 
 
 def test_a_holes_pad_is_twice_the_bore_diameter_unless_it_is_stated() -> None:
@@ -641,9 +648,8 @@ def test_the_fillet_is_a_quarter_round_unless_it_is_stated() -> None:
     assert solder_specs(HOLE, gauge_mm=0.4, fillet_mm=1.25)[
         "fillet_height"
     ] == pytest.approx(1.25)
-    # The cap and the collar follow the fillet and are not knobs of their own.
+    # The collar follows the fillet and is not a knob of its own.
     stated = solder_specs(HOLE, gauge_mm=0.4, fillet_mm=1.25)
-    assert stated["cap_height"] == pytest.approx(0.625)
     assert stated["collar_height"] == pytest.approx(0.625)
 
 
@@ -698,10 +704,14 @@ def test_a_hole_joints_volume_is_the_contour_integral_of_its_own_outline() -> No
     specs = solder_specs(HOLE, gauge_mm=0.4)
 
     assert joint_volume(specs) == pytest.approx(_quadrature(specs), rel=1.0e-9)
-    # Moved by ADR-114 from 1.818264338933: a wider collar and the crown that
-    # rounds it onto the lead. The quadrature above is what proves the new
-    # arc's closed-form moment, and it is the assertion that matters.
-    assert joint_volume(specs) == pytest.approx(1.847204008408, rel=1.0e-9)
+    # Moved by ADR-117 from 1.847204008408, which was mostly barrel: this is
+    # now exactly the pad joint's volume below, because it is the same solid.
+    # The quadrature above is what proves the arcs' closed-form moments, and
+    # it is the assertion that matters.
+    assert joint_volume(specs) == pytest.approx(0.398929795103, rel=1.0e-9)
+    assert joint_volume(specs) == pytest.approx(
+        joint_volume(solder_specs(PAD, gauge_mm=0.4)), rel=1.0e-12
+    )
 
 
 def test_a_pad_joints_volume_is_the_contour_integral_too() -> None:
@@ -787,13 +797,20 @@ def test_a_lead_that_does_not_fit_its_bore_is_refused_by_both_numbers() -> None:
         solder_specs(HOLE, gauge_mm=1.0)
 
 
-def test_a_declared_hole_with_no_hole_dia_names_the_argument_that_fixes_it() -> None:
+def test_a_hole_with_no_measured_width_names_the_argument_that_fixes_it() -> None:
+    """Unreachable through the api since ADR-117, and still named if it arrives.
+
+    ``hole_dia`` is what makes a declared row a row of holes now, so a hole
+    terminal carries a radius by construction — but ``solder_specs`` takes a
+    metrics mapping, and a hand-built one can still be missing it.
+    """
+
     with pytest.raises(SolderError) as excinfo:
         solder_specs({**HOLE, "radius": None}, gauge_mm=0.4)
 
     assert excinfo.value.reason == "bore"
-    assert "bore_dia_mm" in str(excinfo.value)
     assert "hole_dia" in str(excinfo.value)
+    assert "pad_dia_mm" in str(excinfo.value)
 
 
 def test_a_declared_pad_with_no_area_names_the_argument_that_fixes_it() -> None:
@@ -891,11 +908,14 @@ def test_a_joint_needs_a_gauge_and_a_kind_it_understands() -> None:
         solder_specs({**HOLE, "kind": "via"}, gauge_mm=0.4)
     assert kind.value.observed == {"kind": "via"}
 
-    with pytest.raises(SolderError, match="no depth"):
-        solder_specs({**HOLE, "depth": 0.0}, gauge_mm=0.4)
-
     with pytest.raises(SolderError, match="no direction"):
         solder_specs({**HOLE, "axis": [0.0, 0.0, 0.0]}, gauge_mm=0.4)
+
+    # A hole of no stated depth used to be refused — "no barrel between its
+    # two faces to fill". There is no barrel in the joint any more, so a bore
+    # whose length was never measured builds exactly the same solid (ADR-117).
+    shallow = solder_specs({**HOLE, "depth": 0.0}, gauge_mm=0.4)
+    assert shallow["profile"] == solder_specs(HOLE, gauge_mm=0.4)["profile"]
 
 
 # --------------------------------------------------------------------------
@@ -932,7 +952,9 @@ def test_a_placed_terminals_metrics_size_the_joint() -> None:
     assert specs["bore_radius"] == pytest.approx(1.0)
     assert specs["depth"] == pytest.approx(3.2)
     assert specs["lead_radius"] == pytest.approx(0.2)
-    assert specs["origin"] == pytest.approx([10.0, 20.0, 0.0])
+    # The landing is the row's own origin (ADR-117), doubled with everything
+    # else — not a depth below it.
+    assert specs["origin"] == pytest.approx([10.0, 20.0, 3.2])
 
 
 def test_a_declared_terminal_and_a_selected_one_solder_the_same_way() -> None:
@@ -1041,8 +1063,46 @@ def test_solder_validates_its_numbers_before_any_geometry() -> None:
         part_api.solder(fc["sda"], gauge_mm=0.4, pad_dia_mm=0.0)
     with pytest.raises(ValueError, match="fillet_mm"):
         part_api.solder(fc["sda"], gauge_mm=0.4, fillet_mm=-1.0)
-    with pytest.raises(ValueError, match="bore_dia_mm"):
-        part_api.solder(fc["sda"], gauge_mm=0.4, bore_dia_mm=-2.0)
+
+
+def test_bore_dia_mm_is_gone_and_the_docstring_says_what_replaced_it() -> None:
+    """A removed argument is a refusal, not a silent no-op (ADR-117).
+
+    It is removed outright rather than accepted-and-refused, because the
+    described API is what the model reads and
+    ``test_describe_project_api_is_json_safe_and_complete`` pins every
+    operation's surface as explicit — a ``**kwargs`` carrying the refusal
+    would read as "this takes anything".  So Python names the argument at call
+    time, and the docstring, which *is* the description the model is shown,
+    carries the reason and the replacement.
+    """
+
+    part_api = _part()
+    fc = part_api.terminals(
+        _board(),
+        header={
+            "origin": (5.0, 10.0, 1.6),
+            "axis": (0.0, 0.0, -1.0),
+            "depth": 1.6,
+            "hole_dia": 1.0,
+        },
+        names=["sda"],
+    )
+
+    with pytest.raises(TypeError, match="bore_dia_mm"):
+        part_api.solder(fc["sda"], gauge_mm=0.4, bore_dia_mm=1.4)
+
+    signature = inspect.signature(part_api.solder)
+    assert "bore_dia_mm" not in signature.parameters
+    assert not [
+        parameter
+        for parameter in signature.parameters.values()
+        if parameter.kind is inspect.Parameter.VAR_KEYWORD
+    ]
+
+    text = part_api.solder.__doc__ or ""
+    assert "bore_dia_mm" in text and "ADR-117" in text
+    assert "pad_dia_mm" in text and "hole_dia" in text
 
 
 def test_an_unset_override_is_absent_from_the_payload() -> None:
@@ -1221,14 +1281,17 @@ def arc_of(specs):
     raise AssertionError("no arc")
 
 
-# pi (r(z)^2 - w^2): what a slab at height z should cut, from the module. The
-# meniscus inverts exactly -- r(z) = rc - sqrt(R^2 - (z - zc)^2) -- so this is
-# the arc's own radius at that height and not a resampling of it.
+# pi (r(z)^2 - w^2): what a slab at world height z should cut, from the
+# module. The meniscus inverts exactly -- r(z) = rc - sqrt(R^2 - (z - zc)^2) --
+# so this is the arc's own radius at that height and not a resampling of it.
+# The outline's z runs from the terminal's landing plane (ADR-117), so a world
+# height has to come back through the origin first.
 def ring_area(specs, z):
     arc = arc_of(specs)
     centre_r, centre_z = arc["centre"]
     radius = arc["radius"]
     lead = specs["lead_radius"]
+    z = z - specs["origin"][2]
     outer = centre_r - math.sqrt(max(radius * radius - (z - centre_z) ** 2, 0.0))
     return math.pi * (outer * outer - lead * lead)
 
@@ -1245,7 +1308,6 @@ try:
     report["fillet_height"] = specs["fillet_height"]
     report["collar_height"] = specs["collar_height"]
     report["crown_height"] = specs["crown_height"]
-    report["cap_height"] = specs["cap_height"]
     report["arc_radius"] = specs["arc_radius"]
 
     joint = worker.build_part_shape(solder(terminal("sda")))
@@ -1357,7 +1419,7 @@ try:
     planar = [
         face for face in wire.Faces
         if isinstance(face.Surface, Part.Plane)
-        and (face.CenterOfMass - App.Vector(5.0, 10.0, 0.0)).Length < 1.0
+        and (face.CenterOfMass - App.Vector(5.0, 10.0, 1.6)).Length < 1.0
     ]
     report["wire_start_faces"] = len(planar)
     if planar:
@@ -1366,7 +1428,9 @@ try:
     # ...and how far the wire's centreline has wandered off the terminal's
     # axis by the time it leaves the barrel and the collar behind.
     drift = {}
-    for height in (0.4, 1.2, 1.6, 2.0, 2.6):
+    # The wire starts at the rim (z = 1.6) now, so the heights that matter are
+    # the run the joint grips: from the landing up past the crown's crest.
+    for height in (1.7, 1.9, 2.1, 2.4, 2.6):
         sections = wire.slice(App.Vector(0.0, 0.0, 1.0), height)
         faces = [Part.Face(section) for section in sections]
         nearest = min(faces, key=lambda f: abs(f.CenterOfMass.x - 5.0))
@@ -1374,24 +1438,22 @@ try:
             abs(float(nearest.CenterOfMass.x) - 5.0), float(nearest.Area)
         ]
     report["wire_drift"] = drift
-    barrel_zone = Part.makeBox(60.0, 40.0, 1.6, App.Vector(-10.0, -10.0, 0.0))
+    # Everything at or below the plate's top face -- which is where the bore
+    # is, and where ADR-117 says there is now nothing at all.
+    below_face = Part.makeBox(60.0, 40.0, 11.6, App.Vector(-10.0, -10.0, -10.0))
     for name in ("vbat", "scl"):
         joint_shape = worker.build_part_shape(solder(terminal(name)))
         shared = joint_shape.common((wire,))
         report["overlap_" + name] = float(shared.Volume)
-        # Clip the JOINT and intersect that, rather than clipping the sliver:
-        # since the lead runs straight through a bore of its own radius the
-        # two meet tangentially, and a boolean against that near-empty result
-        # comes back as the whole clipping box (3840 mm^3 of "overlap" between
-        # shapes sharing 3e-6). Both operands here are well-formed solids.
-        in_barrel = joint_shape.common((barrel_zone,)).common((wire,))
-        report["overlap_in_barrel_" + name] = float(in_barrel.Volume)
+        report["joint_below_face_" + name] = float(
+            joint_shape.common((below_face,)).Volume
+        )
+        report["wire_below_face_" + name] = float(
+            joint_shape.common((below_face,)).common((wire,)).Volume
+        )
     # What the wire would share with the joint if its outline did not leave the
-    # lead's own radius empty: the whole length through barrel, arc and collar.
-    report["unbored_overlap"] = (
-        math.pi * 0.3 * 0.3
-        * (1.6 + report["fillet_height"] + report["collar_height"])
-    )
+    # lead's own radius empty: the whole run the joint holds it straight for.
+    report["unbored_overlap"] = math.pi * 0.3 * 0.3 * report["lead_run"]
 
     # Eight joints and a cable on one board: one terminal resolution, one
     # board build, whatever names it and however many times.
@@ -1464,8 +1526,10 @@ def test_a_joint_on_a_real_drilled_plate_is_one_closed_solid() -> None:
     assert joint["solids"] == 1
     assert joint["valid"] is True
     assert joint["closed"] is True
-    # Ten segments, one of which lies on the axis and sweeps into nothing.
-    assert joint["faces"] == 9
+    # Five segments, none of them on the axis (ADR-117), so five faces — the
+    # same count a pad joint has, because it is the same outline.
+    assert joint["faces"] == 5
+    assert joint["faces"] == report["pad_joint"]["faces"]
 
     # The assertion that catches an outline which lost a segment or wound the
     # wrong way. It is exact now rather than merely close: there is no boolean
@@ -1478,11 +1542,11 @@ def test_a_joint_on_a_real_drilled_plate_is_one_closed_solid() -> None:
     assert pad == pytest.approx(1.0)
     assert joint["optimal"][0] == pytest.approx(25.0 - pad, abs=1.0e-6)
     assert joint["optimal"][3] == pytest.approx(25.0 + pad, abs=1.0e-6)
-    # It sits on the two right faces: the cap hangs below the far face at
-    # z = 0 and the meniscus climbs above the entry face at z = 1.6, with the
-    # collar carrying it half as far again. An axis flip would put both on the
-    # same side.
-    assert joint["optimal"][2] == pytest.approx(-report["cap_height"], abs=1.0e-6)
+    # It sits *on* the rim and never below it: the joint starts exactly at the
+    # plate's top face at z = 1.6 and the meniscus climbs from there, with the
+    # collar carrying it half as far again. An axis flip would put it under
+    # the board, which is where the cap used to hang before ADR-117.
+    assert joint["optimal"][2] == pytest.approx(1.6, abs=1.0e-6)
     assert joint["optimal"][5] == pytest.approx(
         1.6
         + report["fillet_height"]
@@ -1495,9 +1559,10 @@ def test_a_joint_on_a_real_drilled_plate_is_one_closed_solid() -> None:
     # than the trimmed patch, and on some joints that over-states the z-extent
     # by more than a tenth of a millimetre. It is a bound, so it never
     # under-states -- but an assertion on it to 1e-6 would fail for that
-    # reason and look like a geometry bug.
-    assert joint["bounds"][5] >= joint["optimal"][5] - 1.0e-9
-    assert joint["bounds"][2] <= joint["optimal"][2] + 1.0e-9
+    # reason and look like a geometry bug. The slack the other way is
+    # optimalBoundingBox's own tolerance, which lands about 1e-7 wide here.
+    assert joint["bounds"][5] >= joint["optimal"][5] - 1.0e-6
+    assert joint["bounds"][2] <= joint["optimal"][2] + 1.0e-6
 
 
 @pytest.mark.skipif(
@@ -1637,9 +1702,10 @@ def test_the_router_leaves_the_lead_the_joint_needs_before_it_turns() -> None:
 
     ``part.cable`` never learns whether a joint exists — it floors its
     stand-off with :func:`CadexSolder.lead_run_mm` so that one *could* be
-    there.  On this plate that is the 1.6 mm barrel plus the meniscus and the
-    collar, and the anchor is exactly that far along the axis: the first
-    waypoint the search is free to move.
+    there.  Since ADR-117 that is the meniscus, the collar and the crown and
+    nothing else: the wire starts at the rim rather than a board below it, so
+    the barrel no longer contributes.  The anchor is exactly that far along
+    the axis from the landing — the first waypoint the search is free to move.
     """
 
     report = _kernel_report()
@@ -1651,12 +1717,12 @@ def test_the_router_leaves_the_lead_the_joint_needs_before_it_turns() -> None:
     # searched cell -- through the stub's own knots, which is what keeps the
     # interpolated wire on the axis rather than merely tangent to it at the
     # port (ADR-114).
-    assert waypoints[0] == pytest.approx([5.0, 10.0, 0.0])
+    assert waypoints[0] == pytest.approx([5.0, 10.0, 1.6])
     for index in range(anchor + 1):
         assert waypoints[index][0] == pytest.approx(5.0)
         assert waypoints[index][1] == pytest.approx(10.0)
         assert waypoints[index][2] == pytest.approx(
-            (1.6 + report["lead_run"]) * index / anchor
+            1.6 + report["lead_run"] * index / anchor
         )
     # Which is more than the clearance alone would have given: without the
     # floor the anchor sat 0.5 mm above the face, inside the collar.
@@ -1671,29 +1737,44 @@ def test_the_lead_bore_leaves_the_wire_a_radius_of_its_own() -> None:
     """What the joint and its wire share, and where.
 
     Measured, not assumed.  A joint is built from the terminal's *straight*
-    bore while the wire is a spline fitted through a searched route, so the
+    axis while the wire is a spline fitted through a searched route, so the
     two agree exactly only where the route is straight — and since ADR-114
     that is the whole run the joint holds, knot by knot, rather than merely
     tangentially at the port.  It is measured against the counterfactual
     rather than against zero: without the empty radius in the joint's own
-    outline, the wire's whole length through the barrel, the meniscus and the
-    collar would be shared.
+    outline, the wire's whole length through the meniscus and the collar would
+    be shared.
 
     ADR-074 left a sliver of 0.038 mm^3 here — the wire bowing out of one side
     of its own solder — and the stub knots took it to 3.5e-6, four orders of
     magnitude down and nothing a render can show.  It stays a bound rather
     than an equality because ``part.solder`` takes a terminal, not a wire, and
     must build whether or not a cable was ever routed to it.
+
+    **ADR-117 moved it back up to 1.34e-4 mm^3, and that is expected.**  The
+    stub is the straight run the collinear knots pin, and it used to be
+    2.61 mm — the 1.6 mm barrel plus the joint's own 1.01 mm reach — because
+    the wire started a board *below* the face.  It starts at the rim now, so
+    the same three knots pin only 1.01 mm and the route's curvature reaches a
+    little further into the joint.  Measured, the centreline still holds its
+    axis to 7.7e-4 mm through the collar, and the sliver is 0.03% of the
+    joint: 280x below the ADR-074 number this whole line of work was about,
+    and still nothing a render can show.
+
+    The bore itself is the ADR-117 assertion: **neither the joint nor the wire
+    puts any material at or below the rim's plane**, because the barrel is
+    left empty by design and the landing is the plane it starts from.
     """
 
     report = _kernel_report()
 
     assert "crashed" not in report, report.get("crashed")
     for name in ("vbat", "scl"):
-        # Nothing inside the board at all, and a rounding of the joint above it.
-        assert report["overlap_in_barrel_" + name] == pytest.approx(0.0, abs=1.0e-9)
-        assert report["overlap_" + name] < 1.0e-4 * report["unbored_overlap"]
-        assert report["overlap_" + name] < 1.0e-4 * report["joint"]["volume"]
+        assert report["joint_below_face_" + name] == pytest.approx(0.0, abs=1.0e-9)
+        assert report["wire_below_face_" + name] == pytest.approx(0.0, abs=1.0e-9)
+        assert report["overlap_" + name] < 5.0e-4
+        assert report["overlap_" + name] < 2.0e-3 * report["unbored_overlap"]
+        assert report["overlap_" + name] < 2.0e-3 * report["joint"]["volume"]
 
 
 @pytest.mark.skipif(

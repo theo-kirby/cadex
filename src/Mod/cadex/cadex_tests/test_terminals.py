@@ -117,9 +117,11 @@ def test_a_declared_header_expands_to_a_row_at_the_stated_pitch() -> None:
     terminals = resolve_terminals(layout)
 
     assert [entry["name"] for entry in terminals] == SIGNALS
-    # Four stations 2.54 mm apart along +Y, each landing 1.6 mm down the bore.
+    # Four stations 2.54 mm apart along +Y, each landing in its own mouth:
+    # ``origin`` *is* the landing, and the 1.6 mm bore behind it is left
+    # empty (ADR-117).
     assert [entry["point"] for entry in terminals] == [
-        [0.0, 2.54 * index, -1.6] for index in range(4)
+        [0.0, 2.54 * index, 0.0] for index in range(4)
     ]
     # Drilled along -Z, so the wire leaves along +Z.
     assert all(entry["direction"] == [0.0, 0.0, 1.0] for entry in terminals)
@@ -139,10 +141,19 @@ def test_several_declared_rows_take_their_names_in_declaration_order() -> None:
     )
 
     assert [entry["name"] for entry in terminals] == ["a", "b", "c"]
-    assert terminals[2]["point"] == [10.0, 0.0, -1.6]
+    assert terminals[2]["point"] == [10.0, 0.0, 0.0]
 
 
-def test_a_declared_hole_floors_its_standoff_at_its_depth_and_a_pad_at_zero() -> None:
+def test_a_hole_and_a_pad_both_floor_their_standoff_at_zero() -> None:
+    """ADR-117: every terminal lands on the surface the wire arrives at.
+
+    A hole used to floor at its own depth, because the landing was a whole
+    board *below* the face and an anchor at the base stand-off would have
+    started inside solid material.  With the landing in the mouth there is
+    nothing between it and open air, which is exactly the position a pad has
+    always been in.
+    """
+
     hole = resolve_terminals(declared_layout(None, header=HEADER, names=SIGNALS))
     pad = resolve_terminals(
         declared_layout(
@@ -152,15 +163,46 @@ def test_a_declared_hole_floors_its_standoff_at_its_depth_and_a_pad_at_zero() ->
         )
     )
 
-    assert all(entry["standoff_floor"] == pytest.approx(1.6) for entry in hole)
+    assert all(entry["standoff_floor"] == 0.0 for entry in hole)
     assert hole[0]["metrics"]["kind"] == "hole"
     assert hole[0]["metrics"]["radius"] == pytest.approx(0.5)
-    # A wire landing on the far face is inside the board for the whole depth
-    # of it, so the search anchor has to start beyond that; a pad is on the
-    # surface and needs nothing.
+    # ...and the depth is still measured and still reported, it just is not
+    # read by anything geometric any more.
+    assert hole[0]["metrics"]["depth"] == pytest.approx(1.6)
     assert pad[0]["standoff_floor"] == 0.0
     assert pad[0]["metrics"]["kind"] == "pad"
     assert pad[0]["point"] == [1.0, 2.0, 3.0]
+
+
+def test_hole_dia_is_what_says_a_declared_row_is_holes() -> None:
+    """ADR-117 moved the classifier off ``depth``, which no longer does anything.
+
+    ``hole_dia`` with no ``depth`` used to be refused — "a hole a wire
+    threads has a depth".  The wire no longer threads it, so the row is a
+    perfectly good hole with an unstated bore length, and ``depth`` on its
+    own can no longer make a row of pads into a row of holes.
+    """
+
+    bored = resolve_terminals(
+        declared_layout(
+            None,
+            header={"origin": (0, 0, 0), "axis": (0, 0, 1), "hole_dia": 1.0},
+            names=["a"],
+        )
+    )
+    assert bored[0]["metrics"]["kind"] == "hole"
+    assert bored[0]["metrics"]["radius"] == pytest.approx(0.5)
+    assert bored[0]["metrics"]["depth"] == 0.0
+
+    flat = resolve_terminals(
+        declared_layout(
+            None,
+            header={"origin": (0, 0, 0), "axis": (0, 0, 1), "depth": 1.6},
+            names=["a"],
+        )
+    )
+    assert flat[0]["metrics"]["kind"] == "pad"
+    assert flat[0]["metrics"]["radius"] is None
 
 
 def test_a_declared_layout_needs_exactly_one_name_per_terminal() -> None:
@@ -183,10 +225,10 @@ def test_a_declared_layout_refuses_what_it_cannot_place() -> None:
         )
     with pytest.raises(TerminalError, match="depth"):
         declared_layout(None, header={**HEADER, "count": 1, "depth": -1.0}, names=["a"])
-    with pytest.raises(TerminalError, match="hole_dia with no depth"):
+    with pytest.raises(TerminalError, match="hole_dia"):
         declared_layout(
             None,
-            header={"origin": (0, 0, 0), "axis": (0, 0, 1), "hole_dia": 1.0},
+            header={"origin": (0, 0, 0), "axis": (0, 0, 1), "hole_dia": 0.0},
             names=["a"],
         )
     with pytest.raises(TerminalError, match="no direction"):
@@ -269,7 +311,7 @@ def test_a_tie_along_the_primary_axis_breaks_on_a_fixed_secondary() -> None:
     assert [entry["point"] for entry in first] == [entry["point"] for entry in second]
 
 
-def test_a_hole_terminal_lands_on_the_far_face_and_floors_at_its_depth() -> None:
+def test_a_hole_terminal_lands_in_the_near_rim_and_floors_at_zero() -> None:
     upward = resolve_terminals(
         selector_layout(
             "holes", {"expected_count": 1}, exit=(0.0, 0.0, 1.0), names=["signal"]
@@ -283,16 +325,22 @@ def test_a_hole_terminal_lands_on_the_far_face_and_floors_at_its_depth() -> None
         candidates=[_hole((3.0, 4.0, 0.0), axis=(0.0, 0.0, 1.0), extent=(0.0, 1.6))],
     )
 
-    # exit=+Z means the wire leaves upward, so it comes down from above,
-    # threads the barrel and ends flush on the *bottom* — the opposite side.
-    # Two holes wired to each other therefore meet in true centres rather
-    # than each stopping a board thickness short.
-    assert upward[0]["point"] == [3.0, 4.0, 0.0]
-    assert downward[0]["point"] == [3.0, 4.0, 1.6]
+    # exit=+Z means the wire leaves upward, so it arrives from above and stops
+    # in the rim it meets first — the *top* one, at z = 1.6 (ADR-117). ADR-062
+    # landed on the far face so two holes wired together met in the middle;
+    # the joint is what closes that gap now, and it is at the mouth on both
+    # ends, so there is no middle left to meet in.
+    assert upward[0]["point"] == [3.0, 4.0, 1.6]
+    assert downward[0]["point"] == [3.0, 4.0, 0.0]
     assert upward[0]["direction"] == [0.0, 0.0, 1.0]
     assert downward[0]["direction"] == [0.0, 0.0, -1.0]
-    assert upward[0]["standoff_floor"] == pytest.approx(1.6)
+    assert upward[0]["standoff_floor"] == 0.0
+    # The landing is the one point the joint and the wire share, so both face
+    # points report it.
     assert upward[0]["metrics"]["entry_point"] == [3.0, 4.0, 1.6]
+    assert upward[0]["metrics"]["exit_point"] == [3.0, 4.0, 1.6]
+    # The bore is still 1.6 mm deep and still says so.
+    assert upward[0]["metrics"]["depth"] == pytest.approx(1.6)
     assert upward[0]["metrics"]["radius"] == pytest.approx(0.5)
 
 
@@ -477,7 +525,7 @@ def test_one_spec_placed_twice_lands_in_two_places() -> None:
     second = apply_placement(terminals, _translation(-10.0, 5.0, 2.0))
 
     assert [entry["point"][0] for entry in first] == [10.0] * 4
-    assert second[0]["point"] == pytest.approx([-10.0, 5.0, 0.4])
+    assert second[0]["point"] == pytest.approx([-10.0, 5.0, 2.0])
     # A translation does not turn anything.
     assert all(entry["direction"] == [0.0, 0.0, 1.0] for entry in first + second)
 
@@ -495,10 +543,10 @@ def test_a_rotated_component_turns_its_terminals_points_and_directions() -> None
     terminals = resolve_terminals(declared_layout(None, header=header, names=["a", "b"]))
     placed = apply_placement(terminals, _rotation_z(90.0))
 
-    # (2, 0, 0) about +Z by 90 degrees is (0, 2, 0); the second station is
-    # 2.54 mm further along +Y, which rotates onto -X.
-    assert placed[0]["point"] == pytest.approx([0.0, 2.0, 0.0], abs=1.0e-9)
-    assert placed[1]["point"] == pytest.approx([-2.54, 2.0, 0.0], abs=1.0e-9)
+    # The stations are the landings (ADR-117), so they are (0, 0, 0) and
+    # (0, 2.54, 0); about +Z by 90 degrees the second rotates onto -X.
+    assert placed[0]["point"] == pytest.approx([0.0, 0.0, 0.0], abs=1.0e-9)
+    assert placed[1]["point"] == pytest.approx([-2.54, 0.0, 0.0], abs=1.0e-9)
     # The row is drilled along +X, so the wire left along -X; rotated, -Y.
     assert placed[0]["direction"] == pytest.approx([0.0, -1.0, 0.0], abs=1.0e-9)
 
@@ -516,18 +564,20 @@ def test_a_placed_terminal_is_the_placed_geometry_it_names() -> None:
     )
     placed = apply_placement(terminals, composed)
 
-    assert placed[0]["point"] == pytest.approx([5.0, 1.0, -1.0], abs=1.0e-9)
+    assert placed[0]["point"] == pytest.approx([5.0, 1.0, 0.0], abs=1.0e-9)
     assert placed[0]["direction"] == pytest.approx([0.0, 0.0, 1.0], abs=1.0e-9)
 
 
-def test_a_uniform_scale_carries_the_depth_the_radius_and_the_floor() -> None:
+def test_a_uniform_scale_carries_the_depth_and_the_radius() -> None:
     terminals = resolve_terminals(declared_layout(None, header=HEADER, names=SIGNALS))
     placed = apply_placement(terminals, _scale(2.0, 2.0, 2.0))
 
-    assert placed[0]["standoff_floor"] == pytest.approx(3.2)
+    # The floor is zero on every terminal since ADR-117, and a scale of a
+    # zero is a zero — but the two lengths a terminal still carries scale.
+    assert placed[0]["standoff_floor"] == 0.0
     assert placed[0]["metrics"]["depth"] == pytest.approx(3.2)
     assert placed[0]["metrics"]["radius"] == pytest.approx(1.0)
-    assert placed[1]["point"] == pytest.approx([0.0, 5.08, -3.2])
+    assert placed[1]["point"] == pytest.approx([0.0, 5.08, 0.0])
 
 
 def test_a_non_uniform_scale_on_a_terminal_bearing_tree_is_refused() -> None:
@@ -581,14 +631,15 @@ def test_route_path_honours_two_different_per_end_standoffs() -> None:
     assert points[-2][0] == pytest.approx(40.0 - 1.0 / stub)
 
 
-def test_the_standoff_floor_lifts_the_anchor_clear_of_a_board() -> None:
+def test_the_standoff_floor_lifts_the_anchor_clear_of_material() -> None:
     from cadex_part_worker import _end_standoff
 
-    # A pad keeps exactly what ADR-056 computed, so nothing that routed
-    # before routes differently.
+    # Every terminal floors at zero since ADR-117, so every terminal keeps
+    # exactly what ADR-056 computed and nothing that routed before routes
+    # differently.
     assert _end_standoff(1.4, 0.0, 1.0) == 1.4
-    # A hole through a 1.6 mm board needs the anchor past the far face, or
-    # the search starts inside the board it just threaded.
+    # The term itself stays: ``standoff_floor`` is what a terminal states, and
+    # a form that landed inside material would state a non-zero one.
     assert _end_standoff(1.4, 1.6, 1.0) == pytest.approx(2.6)
 
 
@@ -809,7 +860,7 @@ def test_the_terminals_docstring_says_where_the_coordinates_are() -> None:
     part_text = _part().terminals.__doc__ or ""
     mesh_text = _mesh().terminals.__doc__ or ""
 
-    assert "far" in part_text and "exit" in part_text
+    assert "near" in part_text and "exit" in part_text
     assert "recommended" in part_text
     assert "asset's own" in mesh_text
 
@@ -887,6 +938,22 @@ try:
     )
     report["wire_valid"] = bool(wire.isValid())
     report["wire_solids"] = len(wire.Solids)
+    # The end caps are what prove the ADR-117 landing: a flush cap means the
+    # sweep's profile circle sits *in* the rim's plane, and a parallel normal
+    # means its axis is perpendicular to that plane rather than merely near it.
+    caps = []
+    for face in wire.Faces:
+        surface = face.Surface
+        if type(surface).__name__ != "Plane":
+            continue
+        com = face.CenterOfMass
+        axis = surface.Axis
+        caps.append({
+            "centroid": [float(com.x), float(com.y), float(com.z)],
+            "normal": [float(axis.x), float(axis.y), float(axis.z)],
+            "area": float(face.Area),
+        })
+    report["wire_caps"] = sorted(caps, key=lambda cap: cap["centroid"][0])
     box = wire.BoundBox
     report["wire_bounds"] = [
         float(box.XMin), float(box.YMin), float(box.ZMin),
@@ -984,12 +1051,13 @@ def test_terminals_resolve_against_a_real_drilled_plate() -> None:
     assert "crashed" not in report, report.get("crashed")
     assert report["names"] == ["gnd", "scl", "sda", "vbat"]
     # Four 1 mm bores through a 1.6 mm plate at x = 5, 15, 25, 35.  The wire
-    # leaves along +Z, so it threads down the barrel and lands flush on the
-    # bottom face, floored at the plate's own thickness.
+    # leaves along +Z, so it arrives from above and stops flush in the *top*
+    # rim, at the plate's own thickness, with nothing left to stand off
+    # (ADR-117).
     assert [round(point[0], 6) for point in report["points"]] == [5.0, 15.0, 25.0, 35.0]
-    assert all(point[2] == pytest.approx(0.0, abs=1.0e-9) for point in report["points"])
+    assert all(point[2] == pytest.approx(1.6, abs=1.0e-9) for point in report["points"])
     assert all(point[1] == pytest.approx(10.0) for point in report["points"])
-    assert all(floor == pytest.approx(1.6) for floor in report["floors"])
+    assert all(floor == 0.0 for floor in report["floors"])
     assert all(radius == pytest.approx(0.5) for radius in report["radii"])
     assert all(
         direction == pytest.approx([0.0, 0.0, 1.0]) for direction in report["directions"]
@@ -999,16 +1067,30 @@ def test_terminals_resolve_against_a_real_drilled_plate() -> None:
     assert report["memo_entries"] == 1
     assert report["shape_entries_added"] == 0
 
-    # A wire between two hole terminals is one solid that spans the two bores
-    # and reaches the bottom face they both land on, a whole plate below the
-    # face a literal port would have been measured on.
+    # A wire between two hole terminals is one solid that spans the two bores.
+    # It still dips well below the plate in the middle, because this cable
+    # names nothing in ``avoid`` and ``slack`` sags an empty lattice through
+    # whatever happens to be under it — the hazard ``part.cable``'s docstring
+    # names, unchanged by ADR-117 and not what this case is measuring.
     assert report["wire_valid"] is True
     assert report["wire_solids"] == 1
     assert report["wire_bounds"][0] == pytest.approx(5.0, abs=1.5)
     assert report["wire_bounds"][3] == pytest.approx(35.0, abs=1.5)
-    assert report["wire_bounds"][2] < 0.35
     assert report["wire_bounds"][5] > 1.6
     assert report["mixed_valid"] is True
+
+    # The end caps are the assertion this whole change is for: each lies *in*
+    # the rim's plane (z = 1.6, the fitted plane of the ring that was picked)
+    # and each faces along the bore's axis rather than merely near it.
+    caps = report["wire_caps"]
+    assert len(caps) == 2
+    assert [round(cap["centroid"][0], 6) for cap in caps] == [5.0, 35.0]
+    for cap in caps:
+        assert cap["centroid"][2] == pytest.approx(1.6, abs=1.0e-6)
+        assert cap["centroid"][1] == pytest.approx(10.0, abs=1.0e-6)
+        # 0.6 mm of gauge swept normal to the path tangent at the landing.
+        assert cap["area"] == pytest.approx(math.pi * 0.09, rel=1.0e-3)
+        assert abs(cap["normal"][2]) == pytest.approx(1.0, abs=1.0e-9)
 
     assert "miso" in report["unknown_name"]
     assert "vbat" in report["unknown_name"]
@@ -1031,19 +1113,19 @@ def test_a_mesh_components_terminals_ride_its_placement() -> None:
     report = _kernel_report()
 
     assert "crashed" not in report, report.get("crashed")
-    # (0, 0, 4.2) drilled 0.8 mm along +Z lands at (0, 0, 5.0) in the asset's
-    # own frame; rotated 90 degrees about +Z and moved to x = 10, the row
-    # runs back along -X from there.
-    assert report["motor_points"][0] == pytest.approx([10.0, 0.0, 5.0], abs=1.0e-9)
-    assert report["motor_points"][1] == pytest.approx([8.8, 0.0, 5.0], abs=1.0e-9)
-    assert report["motor_points"][2] == pytest.approx([7.6, 0.0, 5.0], abs=1.0e-9)
+    # (0, 0, 4.2) *is* the landing (ADR-117), not the top of a 0.8 mm bore;
+    # rotated 90 degrees about +Z and moved to x = 10, the row runs back
+    # along -X from there.
+    assert report["motor_points"][0] == pytest.approx([10.0, 0.0, 4.2], abs=1.0e-9)
+    assert report["motor_points"][1] == pytest.approx([8.8, 0.0, 4.2], abs=1.0e-9)
+    assert report["motor_points"][2] == pytest.approx([7.6, 0.0, 4.2], abs=1.0e-9)
     # Drilled along +Z, so the wire leaves along -Z; a rotation about Z does
     # not touch that.
     assert all(
         direction == pytest.approx([0.0, 0.0, -1.0], abs=1.0e-9)
         for direction in report["motor_directions"]
     )
-    assert report["motor_floor"] == pytest.approx(0.8)
+    assert report["motor_floor"] == 0.0
 
     # ...and a wire runs from that mesh terminal to a hole in the board.
     assert report["across_valid"] is True

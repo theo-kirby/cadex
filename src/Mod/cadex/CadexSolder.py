@@ -25,19 +25,27 @@ nothing else.  The derivation rules and the refusals are what wants asserting
 headless, and they are all here.
 
 **The shape.**  Let ``a`` be the terminal's axis (unit, pointing out of the
-board on the side the lead leaves), ``E`` the face the lead leaves from, and
-``X`` the far face the lead ends flush on — a board's depth back along ``-a``,
-and equal to ``E`` for a surface pad.  Work in ``(r, z)`` with ``z`` measured
-from ``X`` along ``a``, so the entry face is ``z = depth`` and a pad has
-``depth = 0``.
+board on the side the lead leaves) and ``L`` the face the lead lands on.  Work
+in ``(r, z)`` with ``z`` measured from ``L`` along ``a``, so the joint sits
+entirely at ``z >= 0``.
 
-The **whole joint** is one solid of revolution.  A through-hole's outline runs
-the cap cone under the lead's flush end, out to the pad rim, back in to the
-bore, up the plating, out across the entry face, then up the **meniscus** — a
-concave arc, tangent to the lead where it arrives — into a short straight
-**collar** hugging the lead, and back down the lead's own radius to close.  A
-pad is the same loop without the cap and the barrel, and it never touches the
-axis.
+The **whole joint** is one solid of revolution, and **there is one outline,
+not two** (ADR-117).  It runs out across the annulus from the lead to the pad
+rim, up the **meniscus** — a concave arc, tangent to the lead where it arrives
+— into a short straight **collar** hugging the lead, over the **crown**'s
+round-over, and back down the lead's own radius to close.  It never touches
+the axis.
+
+A through-hole used to get a longer outline: a cap cone under the lead's
+flush end on the far face, a barrel of plating, and an entry annulus at the
+top of it.  That described a lead that ended at the *bottom* of the bore, and
+since ADR-117 nothing lands there — a hole terminal lands in the mouth, the
+bore interior is left empty by design, and a bore joint is therefore
+geometrically a pad joint that happens to know its own bore radius.  That
+radius still does two things: it is where the pad's default width comes from
+(twice the bore *diameter*, the annular ring a plated through-hole footprint
+carries), and it is the floor a stated ``pad_dia_mm`` has to clear, because a
+joint narrower than the hole it rings closes nothing.
 
 **The meniscus is a concave arc, not a straight cone** (ADR-064, reversing
 ADR-063).  A cone reads as a cone on a render; solder sweeps up from the pad
@@ -66,10 +74,6 @@ __all__ = [
     "lead_run_mm",
     "solder_specs",
 ]
-
-#: The cap's height, as a fraction of the meniscus'.  Derived rather than
-#: exposed: a joint has enough knobs.
-_CAP_FRACTION = 0.5
 
 #: The collar's height, as a fraction of the meniscus'.  The straight sleeve
 #: of solder that runs parallel to the wire before the joint ends.
@@ -212,29 +216,31 @@ def _radial(axis: Sequence[float]) -> tuple[float, float, float]:
 # the joint
 
 
-def _bore_radius(
-    metrics: Mapping[str, Any], bore_dia_mm: Any, *, lead: float
-) -> float:
-    """How wide the plating is, and whether a lead fits down it.
+def _bore_radius(metrics: Mapping[str, Any], *, lead: float) -> float:
+    """How wide the hole is, and whether the lead fits it.
 
-    An explicit ``bore_dia_mm`` always wins.  Otherwise the terminal's own
-    measurement is used — which a *declared* row only carries if it stated
-    ``hole_dia``, so the one case with no number at all is named rather than
-    guessed at.
+    The terminal's own measurement, and only that.  ``bore_dia_mm`` used to
+    override it and was removed with ADR-117: it only ever sized the plating,
+    and there is no plating in the outline any more.  What the bore still
+    sizes is the pad's default width and the floor a stated ``pad_dia_mm``
+    has to clear.
+
+    A hole with no measured radius cannot reach here — since ADR-117 it is
+    ``hole_dia`` that makes a declared row a hole, so a hole row carries one
+    by construction.
     """
 
-    if bore_dia_mm is not None:
-        bore = _positive(bore_dia_mm, what="bore_dia_mm", reason="bore") / 2.0
-    elif metrics.get("radius") is not None:
-        bore = _positive(metrics.get("radius"), what="the terminal's bore radius", reason="bore")
-    else:
+    if metrics.get("radius") is None:
         raise SolderError(
-            "this terminal names a hole whose bore was never measured — a "
-            "declared layout that stated a depth but no hole_dia — so there is "
-            "no barrel to fill with solder. Pass bore_dia_mm, or declare "
-            "hole_dia on the layout so every joint on that component takes it",
+            "this terminal reports a hole whose width was never measured, so "
+            "there is no rim for the joint to ring. Declare hole_dia on the "
+            "layout — since ADR-117 that is what makes a row a row of holes at "
+            "all — or state the joint's own footprint with pad_dia_mm",
             reason="bore",
         )
+    bore = _positive(
+        metrics.get("radius"), what="the terminal's bore radius", reason="bore"
+    )
     if bore <= lead:
         raise SolderError(
             f"the bore measures {bore * 2.0:.4g} mm across and the lead "
@@ -406,15 +412,18 @@ def solder_specs(
     gauge_mm: float,
     pad_dia_mm: Any = None,
     fillet_mm: Any = None,
-    bore_dia_mm: Any = None,
 ) -> dict[str, Any]:
     """One joint, as the closed outline it is revolved from.
 
     ``metrics`` is what a resolved terminal carries (ADR-062): the kind, the
-    outward axis, the bore radius and depth, and the two face points.  The
-    four numbers are the lead's gauge and three overrides that default off the
+    outward axis, the bore radius and depth, and the landing point.  The three
+    numbers are the lead's gauge and two overrides that default off the
     geometry.  Everything returned is in millimetres, in the placed frame the
     terminal already resolved into.
+
+    **A hole and a pad produce the same outline** (ADR-117).  The kind is
+    still carried through, and still decides where the pad's default width
+    comes from, but nothing in the profile branches on it.
 
     The result carries ``"profile"`` — a closed loop of segments in the
     ``(r, z)`` half-plane, each ``{"role", "kind", "start", "end"}`` and the
@@ -443,23 +452,13 @@ def solder_specs(
         _triple(metrics.get("axis"), what="the terminal's axis"),
         what="the terminal's axis",
     )
-    entry = _triple(metrics.get("entry_point"), what="the terminal's entry_point")
-    exit_point = _triple(metrics.get("exit_point"), what="the terminal's exit_point")
+    landing = _triple(metrics.get("entry_point"), what="the terminal's entry_point")
     lead = _positive(gauge_mm, what="gauge_mm", reason="gauge") / 2.0
 
+    # Reported, never built from: the bore behind the landing is left empty
+    # (ADR-117), so a hole of no depth is no longer a refusal.
     depth = _finite(metrics.get("depth") or 0.0, what="the terminal's depth")
-    bore: float | None = None
-    if kind == "hole":
-        if depth <= 0.0:
-            raise SolderError(
-                "this terminal names a hole of no depth, so there is no barrel "
-                f"between its two faces to fill; received depth {depth:g} mm",
-                reason="metrics",
-                observed={"depth_mm": depth},
-            )
-        bore = _bore_radius(metrics, bore_dia_mm, lead=lead)
-    else:
-        depth = 0.0
+    bore: float | None = _bore_radius(metrics, lead=lead) if kind == "hole" else None
     pad = _pad_radius(metrics, pad_dia_mm, kind=kind, lead=lead, bore=bore)
 
     collar = _collar_radius(lead=lead, pad=pad)
@@ -513,46 +512,31 @@ def solder_specs(
             },
         )
     collar_height = _COLLAR_FRACTION * fillet
-    cap = _CAP_FRACTION * fillet if kind == "hole" else 0.0
 
-    # z runs from the far face X, so the entry face is at z = depth and a pad
-    # sits at z = 0.  The outline is traversed counter-clockwise in (r, z),
-    # which is what makes the contour integral in joint_volume positive.
-    top = depth + fillet + collar_height
-    arc = _meniscus_arc(collar=collar, pad=pad, fillet=fillet, z_face=depth)
+    # z runs from the face the lead lands on, so the joint sits at z >= 0 for
+    # a hole and a pad alike.  The outline is traversed counter-clockwise in
+    # (r, z), which is what makes the contour integral in joint_volume
+    # positive.
+    top = fillet + collar_height
+    arc = _meniscus_arc(collar=collar, pad=pad, fillet=fillet, z_face=0.0)
     crown = _crown_arc(collar=collar, lead=lead, z_top=top)
     # Where the joint actually ends on the lead, now that it rounds over onto
     # it rather than stopping square across it.
     crest = top + (collar - lead)
-    profile: list[dict[str, Any]]
-    if kind == "hole":
-        profile = [
-            _line("cap", _pair(0.0, -cap), _pair(pad, 0.0)),
-            _line("cap_rim", _pair(pad, 0.0), _pair(bore, 0.0)),
-            _line("bore", _pair(bore, 0.0), _pair(bore, depth)),
-            _line("entry_annulus", _pair(bore, depth), _pair(pad, depth)),
-            arc,
-            _line("collar", _pair(collar, depth + fillet), _pair(collar, top)),
-            crown,
-            _line("lead", _pair(lead, crest), _pair(lead, 0.0)),
-            _line("lead_end", _pair(lead, 0.0), _pair(0.0, 0.0)),
-            _line("spine", _pair(0.0, 0.0), _pair(0.0, -cap)),
-        ]
-    else:
-        profile = [
-            _line("pad_face", _pair(lead, 0.0), _pair(pad, 0.0)),
-            arc,
-            _line("collar", _pair(collar, fillet), _pair(collar, top)),
-            crown,
-            _line("lead", _pair(lead, crest), _pair(lead, 0.0)),
-        ]
+    profile = [
+        _line("pad_face", _pair(lead, 0.0), _pair(pad, 0.0)),
+        arc,
+        _line("collar", _pair(collar, fillet), _pair(collar, top)),
+        crown,
+        _line("lead", _pair(lead, crest), _pair(lead, 0.0)),
+    ]
 
     return {
         "kind": kind,
         "profile": profile,
-        # Where the half-plane sits: the origin is (r, z) = (0, 0), the far
-        # face for a hole and the pad's own face for a pad.
-        "origin": _point_list(exit_point if kind == "hole" else entry),
+        # Where the half-plane sits: (r, z) = (0, 0) is the terminal's landing
+        # point, which is the face the lead arrives at for either kind.
+        "origin": _point_list(landing),
         "direction": _point_list(axis),
         "radial": _point_list(_radial(axis)),
         "lead_radius": lead,
@@ -562,8 +546,9 @@ def solder_specs(
         "fillet_height": fillet,
         "collar_height": collar_height,
         "crown_height": _zeroed(collar - lead),
-        "cap_height": cap,
         "arc_radius": arc["radius"],
+        # The bore's own depth, carried through for the report. Nothing in the
+        # outline above reads it (ADR-117).
         "depth": depth,
     }
 
@@ -643,10 +628,9 @@ def joint_volume(specs: Mapping[str, Any]) -> float:
     asserted against the kernel's own ``Volume`` and, headless, against a fine
     polygonisation of the same loop.
 
-    The lead's bore is the loop's inner boundary rather than a subtraction, so
-    "less the lead" needs no separate term, and the plug of solder under the
-    lead's flush end is included — which is correct, because the lead ends at
-    the far face and there is nothing there to cut around.
+    The lead's own radius is the loop's inner boundary rather than a
+    subtraction, so "less the lead" needs no separate term; the outline never
+    touches the axis, so this is the volume of solder and nothing else.
     """
 
     total = 0.0
