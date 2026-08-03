@@ -317,6 +317,10 @@ class Agent:
         # rather than one turn each (ADR-067).
         from . import cadex_terminal_pick
         note += cadex_terminal_pick.consume_terminal_notes()
+        # ...and a wire path the user dragged (ADR-118): the same idiom
+        # again, and the third queue drained here.
+        from . import cadex_wire_path
+        note += cadex_wire_path.consume_wire_path_notes()
         self.backend.start_turn(prompt + note, self.events)
         self._ensure_timer()
         _tag_redraw()

@@ -12110,3 +12110,136 @@ that a bore and a pad produce the same profile and the same volume; that
 no stated depth builds; that the swept end caps lie in the rim's plane with
 axis-parallel normals; and that neither joint nor wire puts material at or
 below that plane.
+
+## ADR-118 — A waypoint you placed is not a waypoint that was computed (2026-08-03)
+
+**Decision.** `part.cable` takes an optional `waypoints=` — interior points in
+the same coordinates the ports resolve in. When it is given the search does
+not run. The route each wire followed is published per row on
+`inspect scope="wiring"`, and the shell opens it as a real Blender curve you
+drag and then Confirm.
+
+### Answering ADR-056, which said the opposite
+
+ADR-056 is explicit: "waypoints must never be baked back into the script"
+(`DECISIONS.md:3805,3874`, `XSCRIPT.md:119`). The reversal is narrow and the
+distinction is the whole argument.
+
+**What ADR-056 objected to was a *cache*** — pasting back the route the search
+had just produced, to save re-running it. That is wrong for exactly the reason
+given: it is a copy of a derived value, it goes stale the moment a parameter
+moves, and it does so silently, because the number still looks like a route.
+
+**A hand-placed waypoint is not a cache.** Nothing would ever have computed
+it. It is authored intent that the search cannot be asked for — the same
+standing `avoid` has, which is also a fact about the run that only a person
+knows. When a route comes back legal but ugly the levers were `avoid`, `slack`
+and `clearance_mm`: steering a search by adjusting its cost function, to say
+"not there", when what the user means is "go *there*".
+
+**Staleness is real, and gets said out loud rather than designed away.** Only
+the interior is authored: both ends still ride their terminals, so a slider
+that moves a board still moves both ends of the wire and the joint still
+grips a straight lead. The middle does not follow, and a parameter that moves
+a component past a placed waypoint will drag the wire through it. That
+sentence is in the api docstring, and the note the shell queues instructs the
+assistant to say it to the user in the turn that writes the argument.
+
+**It is checked, not trusted.** The authored polyline is rasterised against
+the *same* `avoid` occupancy the search would have used and refused with
+`stage="part_routing"`, `reason="waypoints_blocked"` and the index of the
+first blocked segment — a wire through a board is never what was meant, and
+loud beats clever. Occupancy and not the clearance-dilated free space: going
+*through* a board is the error, and refusing a path that passes 0.9 mm from
+one when `clearance_mm` is 1.0 would be refusing what was deliberately asked
+for. `min_bend_radius_mm` matters **more** here, not less — a search will not
+produce a hairpin and a hand is one drag from it — so the existing check
+stays. `slack` and `cell_mm` are search parameters and are ignored, documented
+rather than refused, because neither can be told apart from its own default.
+
+`CadexNets.OVERRIDE_FIELDS` is **not** extended. A path is script state, not
+editor state, which is exactly the boundary ADR-065 drew, and this does not
+move it.
+
+### The split, and why the shell does no arithmetic
+
+`route_path` is now `route_interior` plus `assemble_spine`. The interior is
+what lies strictly between the two stand-off anchors; the anchors and the
+collinear stub knots in front of them are regenerated from the terminals every
+rebuild. An authored path replaces the interior and nothing else, and goes
+through the same `_stub_knots`/`_deduped`/`_at_least_three` composition — those
+three are properties of *what a spline can be fitted through*, not of how the
+middle was arrived at.
+
+Each wire row therefore publishes **two** lists: `path`, the whole centreline
+the sweep followed, and `waypoints`, the interior alone. Publishing the split
+rather than the spine plus an index is what keeps the shell from having to know
+how many knots a stub is written as — a number that has already changed once,
+in ADR-114. A bundle conductor publishes a `path` and an **empty**
+`waypoints`, which is how the editor gets ADR-115 §4's read-only treatment
+structurally rather than by knowing what a bundle is.
+
+The route is attached to the output item that built it rather than to a
+sibling table keyed by content hash, which is what `_BUNDLE_ROUTES`' shape
+would have suggested. The reader is `CadexInspection`, across a process
+boundary and a JSON file, and a hash join would put the memo-key construction
+in two modules that must never disagree. Computed after
+`compute_project_digest` and never fed into it, on the same footing as the
+display artifacts and the wiring registry.
+
+### One float, and a bounded number that moved with it
+
+Splitting `route_path` in two changed one waypoint by **6e-16 mm** and that
+was not acceptable. `_sag` weights each point by `sin(pi * s / total)`, and at
+the far end that is `sin(pi)` — which is 1.22e-16 in binary floating point,
+not zero — so the old spine's end anchor was minutely perturbed and the
+rebuilt one was pristine. A spine that moves in the sixteenth digit still
+moves the exported BREP, and so the project digest, and so forces a re-accept
+for nothing. `route_interior` therefore returns the *routed* endpoints rather
+than the two anchors it computed, and every spine the function has ever
+produced stays bit-identical.
+
+Finding it was worth more than the fix. The wire's shared sliver with its own
+joint (ADR-074, ADR-114) moved **5x** on that 6e-16 change — 1.34e-4 to
+6.6e-4 mm³ — while the measured centreline drift through the collar did not
+move in ten significant figures. That number is boolean fuzz between two
+exactly tangent cylinders, not a measure of wire drift at the 1e-4 level, and
+`test_the_lead_bore_leaves_the_wire_a_radius_of_its_own` now says so and bounds
+it where it can actually distinguish something.
+
+### The gesture, and the Blender fact that shaped it
+
+**A `NodeLink` carries no selection state.** Its whole RNA is the four
+endpoints plus `is_hidden`/`is_muted`/`is_valid`, so "the selected wire" does
+not exist on the wiring canvas, and the nearest thing — two selected board
+nodes — is ambiguous the moment two signals run between the same pair, which
+is the normal case. So the wire is picked as the **object**, in the 3D view.
+That is the better answer anyway: the path is dragged in 3D, so it is picked
+in 3D, and one hydrated cable output is one wire unambiguously.
+
+The control points are a real `POLY` curve in a sibling collection, built the
+way `cadex_collision.py` builds its overlay — which is the whole reason there
+is no gizmo code: G/R/S, snapping, axis constraints, proportional edit and the
+N-panel's numeric fields all work on curve control points for free.
+
+**Three states, three buttons.** Cancel is an operator rather than "delete the
+object yourself", because a state you reach by knowing which object to delete
+is not a state the UI has. Confirm queues its note in the ADR-067 idiom and
+**starts the turn itself** with a fixed prompt — one click, no typing.
+
+ADR-067's rule is otherwise unchanged and reused for the third time: the
+gesture measures, the assistant authors. Nothing here writes script.
+
+### Verification
+
+`pixi run python -m pytest src/Mod/cadex/cadex_tests` — **1459 passed, 22
+skipped**. New, kernel-backed: an authored path is swept with
+`CadexRouting.route_interior` monkeypatched to *raise*, which is the only way
+to assert the search was skipped rather than merely bypassed; the same path
+through a wall in `avoid` is refused by name with segment index 1, and builds
+as a wire when `avoid` is empty; a dragged hairpin is refused; a bundle
+publishes a shared spine and no interior; and one request's routes never reach
+another's. Headless: the interior/spine round trip, coincident dragged handles,
+and the argument's validation point by point. The published route round-trips
+through `inspect scope="wiring"` on both the declared and the reconstructed
+branch. Shell wiring suite green, `pixi run gate` ok.

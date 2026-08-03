@@ -717,3 +717,132 @@ def test_a_large_harness_stays_inside_the_inspection_budget(tmp_path) -> None:
     walked = _wiring(_store(tmp_path / "again", report=report, state={}),
                      path="/components/3/terminals")
     assert walked["page"]["total"] == 20
+
+
+# --------------------------------------------------------------------------
+# the route each wire followed (ADR-118)
+
+
+ROUTE = {
+    "path": [
+        [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 2.0],
+        [12.0, 4.0, 9.0], [30.0, 4.0, 9.0],
+        [40.0, 0.0, 2.0], [40.0, 0.0, 1.0], [40.0, 0.0, 0.0],
+    ],
+    "waypoints": [[12.0, 4.0, 9.0], [30.0, 4.0, 9.0]],
+}
+
+
+def _routed_project(tmp_path, *, declared: bool):
+    """The same two wires, once declared by ``nets(...)`` and once not.
+
+    The join differs between the two branches — a declared row knows its
+    endpoints and a reconstructed one knows its output — so the round trip is
+    asserted through both rather than through whichever one is easier.
+    """
+
+    outputs = [
+        dict(
+            _output(
+                "wire_sda",
+                "cable",
+                [_port_payload(SENSOR, "sda"), _port_payload(ESP, "sda")],
+                gauge_mm=0.8,
+            ),
+            route=ROUTE,
+        ),
+        # A bundle conductor publishes its shared spine and no interior.
+        dict(
+            _output(
+                "ribbon_0",
+                "bundle",
+                [[[_port_payload(SENSOR, "scl"), _port_payload(ESP, "scl")],
+                  [_port_payload(SENSOR, "gnd"), _port_payload(ESP, "gnd")]]],
+                gauge_mm=0.5,
+                conductor=0,
+            ),
+            route={"path": ROUTE["path"], "waypoints": []},
+        ),
+    ]
+    report = {
+        "ok": True,
+        "digest": DIGEST,
+        "outputs": outputs,
+        "wiring": [
+            _registry_entry("sen" if declared else "", "sensor_board", SENSOR),
+            _registry_entry("esp" if declared else "", "esp32_board", ESP),
+        ],
+    }
+    state = {}
+    if declared:
+        state = {
+            "net_specs": {
+                "ports": [
+                    {"name": "sen", "terminals": SIGNALS},
+                    {"name": "esp", "terminals": SIGNALS},
+                ],
+                "wires": [
+                    {
+                        "name": "sda",
+                        "a": "sen.sda",
+                        "b": "esp.sda",
+                        "gauge_mm": 0.8,
+                        "solder": False,
+                        "enabled": True,
+                    }
+                ],
+            },
+            "net_values": [],
+        }
+    return _store(tmp_path, report=report, state=state)
+
+
+def test_a_declared_row_carries_the_route_its_cable_followed(tmp_path) -> None:
+    value = _wiring(_routed_project(tmp_path, declared=True))["value"]
+
+    assert value["source"] == "nets"
+    row = next(row for row in value["wires"] if row["name"] == "sda")
+    # The whole centreline the sweep was built from...
+    assert row["path"] == ROUTE["path"]
+    # ...and the interior of it a user may drag, which is exactly what would
+    # go back into waypoints= to reproduce the run.
+    assert row["waypoints"] == ROUTE["waypoints"]
+    # It is read-only here: a path is script state and set_params(nets=)
+    # carries editor state, which is the boundary ADR-065 drew.
+    assert "path" in value["note"] and "read-only" in value["note"]
+
+
+def test_a_reconstructed_row_carries_it_too(tmp_path) -> None:
+    value = _wiring(_routed_project(tmp_path, declared=False))["value"]
+
+    assert value["source"] == "derived"
+    row = next(row for row in value["wires"] if row["kind"] == "cable")
+    assert row["path"] == ROUTE["path"]
+    assert row["waypoints"] == ROUTE["waypoints"]
+
+
+def test_a_bundle_conductor_publishes_a_path_and_no_editable_interior(
+    tmp_path,
+) -> None:
+    """ADR-115 §4's read-only treatment, made structural rather than advisory.
+
+    A bundle's route belongs to the bundle, so authoring one conductor's path
+    would silently be authoring all of them. An empty ``waypoints`` is what
+    tells the editor that without it having to know what a bundle is.
+    """
+
+    value = _wiring(_routed_project(tmp_path, declared=False))["value"]
+
+    row = next(row for row in value["wires"] if row["kind"] == "bundle")
+    assert row["path"] == ROUTE["path"]
+    assert row["waypoints"] == []
+
+
+def test_a_wire_whose_run_published_no_route_simply_has_none(tmp_path) -> None:
+    """The key is absent, not empty: a project accepted before ADR-118 has no
+    published route at all, and the canvas must draw it rather than refuse."""
+
+    value = _wiring(_legacy_project(tmp_path))["value"]
+
+    assert value["wires"]
+    assert all("path" not in row for row in value["wires"])

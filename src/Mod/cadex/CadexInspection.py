@@ -618,16 +618,25 @@ def _derived_wires(
             # so no node to draw from; reporting half a wire would be worse
             # than reporting none.
             continue
-        rows.append(
-            {
-                "name": name,
-                "a": addresses[0],
-                "b": addresses[1],
-                "gauge_mm": float(properties.get("gauge_mm") or 0.0),
-                "enabled": True,
-                "kind": kind,
-            }
-        )
+        row = {
+            "name": name,
+            "a": addresses[0],
+            "b": addresses[1],
+            "gauge_mm": float(properties.get("gauge_mm") or 0.0),
+            "enabled": True,
+            "kind": kind,
+        }
+        # The centreline the run actually swept, and the interior of it that a
+        # user may author (ADR-118). ``waypoints`` is empty on a bundle
+        # conductor, which is what makes the editor treat a bundle's path as
+        # read-only without having to know what a bundle is.
+        route = item.get("route")
+        if isinstance(route, Mapping):
+            row["path"] = [list(point) for point in (route.get("path") or [])]
+            row["waypoints"] = [
+                list(point) for point in (route.get("waypoints") or [])
+            ]
+        rows.append(row)
     # Applied after the scan, not during it: a solder output may be declared
     # anywhere in the result dict, including before the cable it lands on.
     for row in rows:
@@ -699,21 +708,39 @@ def _complete_wiring(captured: Mapping[str, Any]) -> Any:
     specs = dict(state.get("net_specs") or {})
     if specs:
         declared = effective_rows(specs, state.get("net_values"))
+        outputs = list(report.get("outputs") or [])
+        # The scan is what knows the routes, and the declared table is what
+        # knows the rows, so they are joined on the endpoint pair — the same
+        # unordered key the shell reconciles a redrawn link on (ADR-118).
+        scanned = _derived_wires(registry, outputs)
+        routes = {
+            frozenset((row["a"], row["b"])): row
+            for row in scanned
+            if "path" in row
+        }
+        for row in declared:
+            found = routes.get(frozenset((row.get("a"), row.get("b"))))
+            if found is not None:
+                row["path"] = found["path"]
+                row["waypoints"] = found["waypoints"]
         return {
             "revision": revision,
             "source": "nets",
             "editable": True,
             "components": components,
-            "wires": declared + _undeclared_wires(
-                registry, list(report.get("outputs") or []), declared
-            ),
+            "wires": declared + _undeclared_wires(registry, outputs, declared),
             "note": (
                 "Rows are edited with xscript.project.set_params(nets=[...]), "
                 "which replaces the whole list. Endpoints are "
                 "'<port>.<terminal>'; avoid, label and every routing argument "
                 "stay in the script. A row carrying editable=false is a "
                 "cable or bundle the script built outside the table — drawn "
-                "so the picture is complete, and changed only in the script."
+                "so the picture is complete, and changed only in the script. "
+                "'path' is the centreline the run swept and 'waypoints' its "
+                "interior; both are read-only here, because a path is script "
+                "state and set_params(nets=) carries editor state. A row with "
+                "an empty 'waypoints' is a bundle conductor, whose route "
+                "belongs to the bundle."
             ),
         }
     return {

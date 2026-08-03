@@ -318,6 +318,40 @@ def _stamp_source_output(
         item["source_output"] = str(source)
 
 
+def _attach_routes(outputs: list[dict[str, Any]]) -> None:
+    """Hang each wire's own centreline on the output that built it (ADR-118).
+
+    Called **after** ``compute_project_digest`` and never before it. The
+    digest reads a fixed set of keys off each output item, so a sibling key is
+    neutral by construction — but "neutral by construction" is what the
+    display artifacts and the wiring registry both claimed, and both are still
+    computed after the digest rather than trusted to be harmless. This joins
+    the same way.
+
+    Attached to the output rather than published as a sibling table keyed by
+    content hash, which is what the shape of ``_BUNDLE_ROUTES`` would have
+    suggested: the reader is ``CadexInspection``, on the far side of a process
+    boundary and a JSON file, and a hash join would mean the memo-key
+    construction living in two modules that must never disagree. The output
+    item is the thing the route belongs to, and it is already carried across.
+    """
+
+    from cadex_part_worker import _memo_key, published_routes
+
+    routes = published_routes()
+    if not routes:
+        return
+    for item in outputs:
+        definition = item.get("definition")
+        if not isinstance(definition, dict):
+            continue
+        if str(definition.get("operation") or "") not in ("cable", "bundle"):
+            continue
+        route = routes.get(_memo_key(definition))
+        if route is not None:
+            item["route"] = route
+
+
 def _wiring_registry(nets: Any, result: dict[str, Any]) -> list[dict[str, Any]]:
     """Every resolved terminal set, joined to its port and its output (ADR-065).
 
@@ -617,6 +651,7 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
         # data and must never feed the content digest (Phase 5.1). The wiring
         # registry is derived data on exactly the same footing (ADR-065).
         digest = compute_project_digest(root, outputs)
+        _attach_routes(outputs)
         display_request = validate_display_request(request.get("display"))
         if display_request is not None:
             generate_display_artifacts(root, outputs, display_request)

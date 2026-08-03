@@ -390,3 +390,409 @@ def test_cable_refuses_two_ports_at_the_same_place() -> None:
             ((1.0, 2.0, 3.0), (-1.0, 0.0, 0.0)),
             gauge_mm=0.8,
         )
+
+
+# --------------------------------------------------------------------------
+# an authored path: waypoints= (ADR-118)
+
+
+def test_the_searched_route_splits_into_anchors_and_an_interior() -> None:
+    """The split ADR-118 needs, asserted against the spine it composes back to.
+
+    ``route_interior`` and ``assemble_spine`` are ``route_path`` cut in half,
+    and the half that matters is the interior: it is the only part of a route
+    a user may author, because the stubs and the anchors are regenerated from
+    the terminals on every rebuild.
+    """
+
+    common = dict(
+        occupied=_solid_box(*BLOCK),
+        cell_mm=CELL_MM,
+        clearance_mm=0.0,
+        start_standoff_mm=3.0,
+        end_standoff_mm=3.0,
+        slack=1.0,
+        bounds=CORRIDOR,
+        max_cells=200000,
+    )
+    start, end = (0.0, 0.0, 0.0), (40.0, 0.0, 0.0)
+    interior, anchor_start, anchor_end = CadexRouting.route_interior(
+        start, (1.0, 0.0, 0.0), end, (-1.0, 0.0, 0.0), **common
+    )
+    spine = route_path(start, (1.0, 0.0, 0.0), end, (-1.0, 0.0, 0.0), **common)
+
+    # The anchors are the stated stand-off in from each port...
+    assert anchor_start[0] == pytest.approx(3.0)
+    assert anchor_end[0] == pytest.approx(37.0)
+    # ...the interior is what the search found between them, and it detoured.
+    assert interior
+    assert all(abs(point[1]) > 1.0e-9 or abs(point[2]) > 1.0e-9 for point in interior)
+    # ...and the two compose back into exactly the spine route_path returns.
+    assert CadexRouting.assemble_spine(
+        start, anchor_start, interior, anchor_end, end
+    ) == spine
+
+
+def test_assemble_spine_gives_an_authored_path_the_same_stubs_a_searched_one_has() -> None:
+    """Why an authored path goes through the same three helpers (ADR-118).
+
+    The stub knots, the coincident-point dedup and the at-least-three floor
+    are properties of what a spline can be fitted through, not of how the
+    middle was arrived at. Handing authored points to the sweep raw would
+    lose all three.
+    """
+
+    authored = CadexRouting.assemble_spine(
+        (0.0, 0.0, 0.0), (3.0, 0.0, 0.0),
+        [(20.0, 9.0, 0.0)],
+        (37.0, 0.0, 0.0), (40.0, 0.0, 0.0),
+    )
+
+    stub = CadexRouting._STUB_SEGMENTS
+    assert authored[0] == (0.0, 0.0, 0.0)
+    assert authored[-1] == (40.0, 0.0, 0.0)
+    # Each stub arrives as its own collinear knots, and the anchor closes it.
+    assert authored[:stub + 1] == [
+        (3.0 * index / stub, 0.0, 0.0) for index in range(stub + 1)
+    ]
+    assert authored[stub + 1] == (20.0, 9.0, 0.0)
+    assert authored[-(stub + 1)] == (37.0, 0.0, 0.0)
+    # The ends still ride their ports: only the interior is authored.
+    assert authored.count((20.0, 9.0, 0.0)) == 1
+
+
+def test_an_authored_path_of_coincident_points_still_feeds_the_interpolator() -> None:
+    """A user can drag two handles onto each other; a spline cannot take that."""
+
+    spine = CadexRouting.assemble_spine(
+        (0.0, 0.0, 0.0), (0.0, 0.0, 0.0),
+        [(5.0, 0.0, 0.0), (5.0, 0.0, 0.0), (5.0, 0.0, 0.0)],
+        (10.0, 0.0, 0.0), (10.0, 0.0, 0.0),
+    )
+
+    assert len(spine) >= 3
+    assert all(
+        polyline_length([spine[index], spine[index + 1]]) > 0.0
+        for index in range(len(spine) - 1)
+    )
+
+
+def test_cable_carries_authored_waypoints_into_its_payload() -> None:
+    value = _part().cable(
+        ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0)),
+        ((40.0, 0.0, 0.0), (-1.0, 0.0, 0.0)),
+        gauge_mm=0.8,
+        waypoints=[(10.0, 5.0, 0.0), (30.0, 5.0, 0.0)],
+    )
+
+    properties = value.to_payload()["properties"]
+    assert properties["waypoints"] == [[10.0, 5.0, 0.0], [30.0, 5.0, 0.0]]
+    # Absent when unset, like every other optional route argument: what it
+    # falls back to is a search, and the search runs in the worker.
+    assert "waypoints" not in _part().cable(
+        ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0)),
+        ((40.0, 0.0, 0.0), (-1.0, 0.0, 0.0)),
+        gauge_mm=0.8,
+    ).to_payload()["properties"]
+
+
+def test_cable_validates_an_authored_path_point_by_point() -> None:
+    part_api = _part()
+    start = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0))
+    end = ((40.0, 0.0, 0.0), (-1.0, 0.0, 0.0))
+
+    with pytest.raises(ValueError, match="waypoints"):
+        part_api.cable(start, end, gauge_mm=0.8, waypoints=[])
+    with pytest.raises(ValueError, match=r"waypoints\[1\]"):
+        part_api.cable(
+            start, end, gauge_mm=0.8, waypoints=[(1.0, 2.0, 3.0), (4.0, 5.0)]
+        )
+    with pytest.raises(ValueError, match=r"waypoints\[0\]\[2\]"):
+        part_api.cable(
+            start, end, gauge_mm=0.8, waypoints=[(1.0, 2.0, float("nan"))]
+        )
+    with pytest.raises(ValueError, match="waypoints"):
+        part_api.cable(start, end, gauge_mm=0.8, waypoints=(0.0, 0.0, 0.0))
+    from cadex_part_api import MAX_WAYPOINTS
+
+    with pytest.raises(ValueError, match=str(MAX_WAYPOINTS)):
+        part_api.cable(
+            start, end, gauge_mm=0.8,
+            waypoints=[(float(index), 0.0, 0.0) for index in range(MAX_WAYPOINTS + 1)],
+        )
+
+
+def test_the_cable_docstring_says_what_an_authored_path_does_not_do() -> None:
+    """The staleness ADR-056 objected to is real here and is said out loud.
+
+    ADR-118 reverses "waypoints must never be in the script" for *authored*
+    points and not for cached ones, and the difference is only defensible if
+    the docstring the model reads carries it.
+    """
+
+    text = _part().cable.__doc__ or ""
+
+    assert "waypoints" in text
+    assert "the search does not run at all" in text
+    assert "Only the interior is authored" in text
+    assert "ignored" in text and "slack" in text
+
+
+# --------------------------------------------------------------------------
+# ...and the whole authored path, against a real kernel
+# --------------------------------------------------------------------------
+
+
+#: Run inside ``FreeCADCmd``: sweep an authored path, and prove the three
+#: things that cannot be checked headless — that the search really is skipped,
+#: that the path is still collision-checked against ``avoid``, and that the
+#: route the run followed is published for the canvas to draw.
+_AUTHORED_PROBE = r"""
+import json, sys
+sys.path.insert(0, %(root)r)
+import CadexRouting
+import cadex_part_worker as worker
+
+# A block the straight line between the ports runs into, and which a search
+# can get round -- so "it went over the top" is a statement about the authored
+# path and not about the only way through.
+WALL = {
+    "domain": "part", "operation": "box", "output_type": "solid",
+    "arguments": [4.0, 12.0, 12.0],
+    "properties": {"origin": [18.0, -6.0, -6.0]},
+}
+
+START = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]
+END = [[40.0, 0.0, 0.0], [-1.0, 0.0, 0.0]]
+
+
+def cable(**properties):
+    base = {"gauge_mm": 0.8, "clearance_mm": 0.5, "slack": 1.02, "avoid": []}
+    base.update(properties)
+    return {
+        "domain": "part", "operation": "cable", "output_type": "solid",
+        "arguments": [START, END], "properties": base,
+    }
+
+
+def refusal(payload):
+    try:
+        worker.build_part_shape(payload)
+    except Exception as exc:
+        return {"message": "%%s" %% (exc,), "details": getattr(exc, "details", {})}
+    return None
+
+
+report = {}
+try:
+    # Over the wall rather than round it, stated by hand.
+    OVER = [[10.0, 0.0, 14.0], [20.0, 0.0, 14.0], [30.0, 0.0, 14.0]]
+
+    worker.reset_part_shape_memo()
+    searched = worker.build_part_shape(cable(avoid=[WALL], cell_mm=1.0))
+    report["searched"] = {
+        "valid": bool(searched.isValid()), "solids": len(searched.Solids),
+    }
+    routes = worker.published_routes()
+    report["searched_routes"] = len(routes)
+    entry = list(routes.values())[0]
+    report["searched_path_len"] = len(entry["path"])
+    report["searched_waypoints"] = entry["waypoints"]
+    report["searched_path_ends"] = [entry["path"][0], entry["path"][-1]]
+
+    # The search is SKIPPED, not merely bypassed: route_interior raises if it
+    # is reached at all, which is the only way to assert a negative here.
+    worker.reset_part_shape_memo()
+    real = CadexRouting.route_interior
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("the search ran for an authored path")
+
+    CadexRouting.route_interior = forbidden
+    try:
+        authored = worker.build_part_shape(
+            cable(avoid=[WALL], waypoints=OVER, cell_mm=1.0)
+        )
+    finally:
+        CadexRouting.route_interior = real
+    report["authored"] = {
+        "valid": bool(authored.isValid()), "solids": len(authored.Solids),
+    }
+    box = authored.BoundBox
+    report["authored_bounds"] = [
+        float(box.XMin), float(box.YMin), float(box.ZMin),
+        float(box.XMax), float(box.YMax), float(box.ZMax),
+    ]
+    published = list(worker.published_routes().values())[0]
+    report["authored_waypoints"] = published["waypoints"]
+    report["authored_path"] = published["path"]
+
+    # Straight through the wall, on the second segment of three.
+    worker.reset_part_shape_memo()
+    report["blocked"] = refusal(
+        cable(avoid=[WALL],
+              waypoints=[[10.0, 0.0, 0.0], [30.0, 0.0, 0.0]],
+              cell_mm=1.0)
+    )
+    # ...and the same path with nothing to avoid is a wire, so the refusal is
+    # about the obstacle and not about the shape of the path.
+    worker.reset_part_shape_memo()
+    clear = worker.build_part_shape(
+        cable(waypoints=[[10.0, 0.0, 0.0], [30.0, 0.0, 0.0]], cell_mm=1.0)
+    )
+    report["unblocked"] = {"valid": bool(clear.isValid()), "solids": len(clear.Solids)}
+
+    # A dragged hairpin: min_bend_radius_mm still applies, and matters more.
+    worker.reset_part_shape_memo()
+    report["hairpin"] = refusal(
+        cable(waypoints=[[20.0, 0.0, 0.0], [20.0, 0.0, 1.0], [20.0, 0.0, -1.0]],
+              min_bend_radius_mm=5.0, cell_mm=1.0)
+    )
+
+    # A bundle publishes its shared spine and no editable interior at all.
+    worker.reset_part_shape_memo()
+    pair = [[START, END], [[[0.0, 3.0, 0.0], [1.0, 0.0, 0.0]],
+                           [[40.0, 3.0, 0.0], [-1.0, 0.0, 0.0]]]]
+    worker.build_part_shape({
+        "domain": "part", "operation": "bundle", "output_type": "solid",
+        "arguments": [pair],
+        "properties": {"gauge_mm": 0.8, "conductor": 0, "style": "flat",
+                       "clearance_mm": 0.5, "slack": 1.02, "avoid": [],
+                       "cell_mm": 1.0},
+    })
+    bundled = list(worker.published_routes().values())[0]
+    report["bundle_waypoints"] = bundled["waypoints"]
+    report["bundle_path_len"] = len(bundled["path"])
+
+    # One request's routes never reach another's.
+    worker.reset_part_shape_memo()
+    report["routes_after_reset"] = len(worker.published_routes())
+except Exception as exc:
+    import traceback
+    report["crashed"] = traceback.format_exc()
+open(%(out)r, "w").write(json.dumps(report))
+"""
+
+
+def _authored_report():
+    import json
+    import pathlib
+    import subprocess
+    import tempfile
+
+    from test_cadexd_lifecycle import CADEX_ROOT, FREECADCMD
+
+    scratch = pathlib.Path(tempfile.mkdtemp(prefix="cadex-authored-probe-"))
+    out = scratch / "report.json"
+    probe = scratch / "probe.py"
+    probe.write_text(_AUTHORED_PROBE % {"root": str(CADEX_ROOT), "out": str(out)})
+    finished = subprocess.run(
+        [str(FREECADCMD), "-c", f"exec(open({str(probe)!r}).read())"],
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert out.is_file(), finished.stdout[-4000:] + finished.stderr[-4000:]
+    return json.loads(out.read_text())
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle", fromlist=["FREECADCMD"]).FREECADCMD is None,
+    reason="No FreeCADCmd binary available to sweep an authored path.",
+)
+def test_an_authored_path_is_swept_without_a_search() -> None:
+    report = _authored_report()
+
+    assert "crashed" not in report, report.get("crashed")
+    # It built, and `route_interior` raising proves the search never ran: the
+    # only assertion that can say "skipped" rather than "bypassed".
+    assert report["authored"] == {"valid": True, "solids": 1}
+    # It went over the wall because it was told to, not because a search
+    # preferred that side: 14 mm up, where the wall is 40 mm tall.
+    assert report["authored_bounds"][5] > 13.0
+    assert report["authored_waypoints"] == [
+        [10.0, 0.0, 14.0], [20.0, 0.0, 14.0], [30.0, 0.0, 14.0]
+    ]
+    # The spine still terminates on the two ports, so both ends ride their
+    # terminals and only the interior was authored.
+    assert report["authored_path"][0] == [0.0, 0.0, 0.0]
+    assert report["authored_path"][-1] == [40.0, 0.0, 0.0]
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle", fromlist=["FREECADCMD"]).FREECADCMD is None,
+    reason="No FreeCADCmd binary available to sweep an authored path.",
+)
+def test_an_authored_path_through_an_obstacle_is_refused_by_name() -> None:
+    """A wire through a board is never what was meant, and loud beats clever."""
+
+    report = _authored_report()
+
+    assert "crashed" not in report, report.get("crashed")
+    blocked = report["blocked"]
+    assert blocked is not None, "an authored path through a wall was accepted"
+    observed = blocked["details"]["observed"]
+    assert observed["reason"] == "waypoints_blocked"
+    assert blocked["details"]["stage"] == "part_routing"
+    # The wall spans x = 18..22, which the run from the first waypoint at
+    # x = 10 to the second at x = 30 crosses: segment 1, counting the run out
+    # of the start port's anchor as segment 0.
+    assert observed["segment"] == 1
+    assert observed["waypoints"] == [[10.0, 0.0, 0.0], [30.0, 0.0, 0.0]]
+    assert "waypoint" in blocked["details"]["correction"]
+
+    # The same path with an empty avoid is a wire: the refusal is about the
+    # obstacle, not about the shape of the path.
+    assert report["unblocked"] == {"valid": True, "solids": 1}
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle", fromlist=["FREECADCMD"]).FREECADCMD is None,
+    reason="No FreeCADCmd binary available to sweep an authored path.",
+)
+def test_a_dragged_hairpin_is_refused_rather_than_folded() -> None:
+    """``min_bend_radius_mm`` matters *more* under ADR-118, not less.
+
+    A search will not produce a hairpin; a hand is one drag away from it, and
+    a sweep through one folds silently (ADR-074).
+    """
+
+    report = _authored_report()
+
+    assert "crashed" not in report, report.get("crashed")
+    hairpin = report["hairpin"]
+    assert hairpin is not None, "a folded-back authored path was swept"
+    assert hairpin["details"]["stage"] in ("part_routing", "part_kernel")
+    assert "bend" in hairpin["message"].lower() or "radius" in hairpin["message"].lower()
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle", fromlist=["FREECADCMD"]).FREECADCMD is None,
+    reason="No FreeCADCmd binary available to publish a route.",
+)
+def test_the_route_a_run_followed_is_published_for_the_canvas() -> None:
+    report = _authored_report()
+
+    assert "crashed" not in report, report.get("crashed")
+    # A searched cable publishes its whole centreline and the interior of it
+    # that a user may author.
+    assert report["searched"] == {"valid": True, "solids": 1}
+    assert report["searched_routes"] == 1
+    assert report["searched_path_len"] >= 3
+    assert report["searched_path_ends"] == [[0.0, 0.0, 0.0], [40.0, 0.0, 0.0]]
+    # It had to go round the wall, so the interior is not empty and is off the
+    # straight line between the ports.
+    assert report["searched_waypoints"]
+    assert any(
+        abs(point[1]) > 1.0 or abs(point[2]) > 1.0
+        for point in report["searched_waypoints"]
+    )
+
+    # A bundle publishes its shared spine and *no* editable interior: its
+    # route belongs to the bundle, so authoring one conductor's path would
+    # silently be authoring all of them.
+    assert report["bundle_waypoints"] == []
+    assert report["bundle_path_len"] >= 3
+
+    # And one request's routes never reach another's.
+    assert report["routes_after_reset"] == 0

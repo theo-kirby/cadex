@@ -855,8 +855,8 @@ def draw_chat_buttons(layout, context):
     Now the header carries status and this row carries actions, grouped by
     what they act on rather than by what they look like:
 
-    ``[attach paste pin-face pin-point define-terminal]`` gather things the
-    *next message* will carry; ``[rebuild]`` acts on the *model*;
+    ``[attach paste pin-face pin-point define-terminal edit-path confirm-path
+    cancel-path]`` gather things the *next message* will carry; ``[rebuild]`` acts on the *model*;
     ``[params script wiring]`` open and close *views*, each depressed while
     its view is open; ``[new-chat send]`` are the *turn*.
 
@@ -869,6 +869,7 @@ def draw_chat_buttons(layout, context):
     from . import spaces
     from . import cadex_pick
     from . import cadex_terminal_pick
+    from . import cadex_wire_path
     from . import wiring_ui
 
     agent = agent_module.get_agent()
@@ -900,6 +901,20 @@ def draw_chat_buttons(layout, context):
         cadex_terminal_pick.MESH_AGENT_OT_define_terminal.bl_idname,
         icon='SNAP_MIDPOINT',
         text="{:d}".format(queued) if queued else "")
+    # Dragging a routed wire onto the path you wanted (ADR-118). Three states
+    # and therefore three buttons: open the curve, send it, throw it away.
+    # Cancel is an operator rather than "delete the object yourself", because
+    # a state you reach by knowing which object to delete is not a state the
+    # UI has. All three are drawn always and greyed when they do not apply,
+    # for the reason this row exists.
+    for operator, icon in (
+        (cadex_wire_path.MESH_AGENT_OT_edit_wire_path, 'PARTICLE_PATH'),
+        (cadex_wire_path.MESH_AGENT_OT_confirm_wire_path, 'CHECKMARK'),
+        (cadex_wire_path.MESH_AGENT_OT_cancel_wire_path, 'X'),
+    ):
+        entry = gather.row(align=True)
+        entry.enabled = bool(operator.poll(context))
+        entry.operator(operator.bl_idname, icon=icon, text="")
 
     # --- act on the model --------------------------------------------------
     # Always here, always clickable while the assistant is idle: re-runs the

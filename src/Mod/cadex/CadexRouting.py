@@ -36,7 +36,9 @@ from typing import Callable, Iterable, Sequence
 
 __all__ = [
     "RoutingError",
+    "assemble_spine",
     "route_path",
+    "route_interior",
     "polyline_length",
 ]
 
@@ -508,7 +510,40 @@ def _at_least_three(
     return points
 
 
-def route_path(
+def assemble_spine(
+    port_start: Sequence[float],
+    anchor_start: Sequence[float],
+    interior: Iterable[Sequence[float]],
+    anchor_end: Sequence[float],
+    port_end: Sequence[float],
+) -> list[tuple[float, float, float]]:
+    """The three helpers a spline interpolator's input contract is made of.
+
+    A route is a straight stub out of each port and something in between, and
+    the something is either searched (:func:`route_path`) or **authored**
+    (ADR-118).  Both go through here rather than one of them handing points to
+    the sweep raw, which is the whole reason this is a function: the stub
+    knots (``_STUB_SEGMENTS``, ADR-114), the coincident-point dedup and the
+    at-least-three floor are properties of *what a spline can be fitted
+    through*, not of how the middle was arrived at.
+
+    ``interior`` is what lies strictly between the two anchors; the anchors
+    themselves are added here, because they are where each stub ends and the
+    straight run the joint needs stops.
+    """
+
+    return _at_least_three(
+        _deduped(
+            _stub_knots(_point(port_start), _point(anchor_start))
+            + [_point(anchor_start)]
+            + [_point(item) for item in interior]
+            + [_point(anchor_end)]
+            + list(reversed(_stub_knots(_point(port_end), _point(anchor_end))))
+        )
+    )
+
+
+def route_interior(
     start_point: Sequence[float],
     start_dir: Sequence[float],
     end_point: Sequence[float],
@@ -548,13 +583,15 @@ def route_path(
     straight out of ``(i, j, k)`` will describe its obstacles in the wrong
     place, and the search will happily route through them.
 
-    Returns the waypoints from ``start_point`` to ``end_point`` inclusive,
-    with no two consecutive points coincident and at least three points, so
-    the result feeds a spline interpolator directly.  **Each stand-off stub
-    arrives as several collinear knots rather than one segment** — see
-    ``_STUB_SEGMENTS``: the interpolator is what makes a wire out of these,
-    and it will bow inside a one-segment stub.  Raises :class:`RoutingError`
-    with a named ``reason`` rather than searching without limit.
+    Returns ``(interior, anchor_start, anchor_end)`` — the waypoints strictly
+    **between** the two stand-off anchors, and the anchors themselves.  That
+    split is what ADR-118 needs: the anchors and the collinear stub knots in
+    front of them are regenerated from the terminals on every rebuild, so the
+    interior is the only part of a route a user may author, and it is exactly
+    what would go into ``waypoints=`` to reproduce this run.
+    :func:`assemble_spine` turns the three back into the polyline a spline
+    interpolator takes.  Raises :class:`RoutingError` with a named ``reason``
+    rather than searching without limit.
     """
 
     if not math.isfinite(cell_mm) or cell_mm <= 0.0:
@@ -613,10 +650,58 @@ def route_path(
         [anchor_start] + [lattice.center(cell) for cell in cells] + [anchor_end]
     )
     routed = _sag(lattice, _shortcut(lattice, lattice_points), slack=float(slack))
-    return _at_least_three(
-        _deduped(
-            _stub_knots(port_start, anchor_start)
-            + routed
-            + list(reversed(_stub_knots(port_end, anchor_end)))
-        )
+    if len(routed) < 2:
+        return [], anchor_start, anchor_end
+    # `routed[0]`/`routed[-1]` rather than the two anchors computed above, and
+    # the difference is 6e-16. `_sag` weights each point by
+    # ``sin(pi * s / total)``, and at the far end that is ``sin(pi)`` — which
+    # is 1.22e-16 in binary floating point, not zero, so the sag nudges the
+    # end anchor by about ``6e-16 mm``. Returning the *routed* endpoints keeps
+    # every spine this function has ever produced bit-identical, and a spine
+    # that moves in the sixteenth digit still moves the exported BREP, and so
+    # the project digest, and so forces a re-accept for no reason at all.
+    # What lies between the two is the searched middle, and it is the same
+    # thing an authored ``waypoints=`` states directly (ADR-118).
+    return list(routed[1:-1]), routed[0], routed[-1]
+
+
+def route_path(
+    start_point: Sequence[float],
+    start_dir: Sequence[float],
+    end_point: Sequence[float],
+    end_dir: Sequence[float],
+    *,
+    occupied: Callable[[int, int, int], bool],
+    cell_mm: float,
+    clearance_mm: float,
+    start_standoff_mm: float,
+    end_standoff_mm: float,
+    slack: float,
+    bounds: Sequence[Sequence[float]],
+    max_cells: int,
+) -> list[tuple[float, float, float]]:
+    """:func:`route_interior`, assembled into a spine. See both docstrings.
+
+    The composition ``part.cable`` and ``part.bundle`` have always performed,
+    and the one an authored path (ADR-118) replaces only the middle of. A
+    caller that wants to *publish* the route wants the middle on its own and
+    calls the two halves itself; one that only wants a wire calls this.
+    """
+
+    interior, anchor_start, anchor_end = route_interior(
+        start_point,
+        start_dir,
+        end_point,
+        end_dir,
+        occupied=occupied,
+        cell_mm=cell_mm,
+        clearance_mm=clearance_mm,
+        start_standoff_mm=start_standoff_mm,
+        end_standoff_mm=end_standoff_mm,
+        slack=slack,
+        bounds=bounds,
+        max_cells=max_cells,
+    )
+    return assemble_spine(
+        start_point, anchor_start, interior, anchor_end, end_point
     )

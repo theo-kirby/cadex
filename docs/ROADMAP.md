@@ -1358,7 +1358,14 @@ What makes them experimental, and what would settle it:
   Node labels are now unique with declared port names reserved first; the
   canvas refuses to be pushed while it is not a whole projection; and a
   cable or bundle the script built outside the table is drawn read-only
-  rather than left off the picture. Still not built: `part.bundle` as an
+  rather than left off the picture. **A routed wire can be corrected since
+  ADR-118 (2026-08-03)**: `part.cable(waypoints=…)` states a path the search
+  cannot be asked for and skips the search entirely, each wire row publishes
+  the route its run followed, and the shell opens it as a real Blender curve
+  to drag and Confirm. Only the interior is authored, so both ends still ride
+  their terminals; the middle does not follow a parameter, and the note the
+  gesture queues instructs the assistant to say so. Still not built:
+  `part.bundle` as an
   editable graph concept (deferred by decision — changing a bundle's
   membership is a script edit; since ADR-115 its conductors at least *draw*,
   marked read-only); writing a terminal *into* the script from the

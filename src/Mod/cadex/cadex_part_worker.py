@@ -681,12 +681,19 @@ def _route_corridor(
     cell_mm: float,
     solids: list[Any],
     boxes: list[Any],
+    contain: list[Any] | None = None,
 ):
     """The lattice one route is searched on: resolution, corridor, occupancy.
 
     Shared by ``part.cable`` and ``part.bundle`` (ADR-057).  A bundle passes
     its *outer* diameter as ``gauge``, so the corridor and the clearance
     dilation account for the whole lay rather than one conductor.
+
+    ``contain`` is extra points the corridor must hold: an authored path
+    (ADR-118) may leave by any distance it likes, and a corridor sized from
+    the two anchors alone would put most of it out of bounds — where the
+    occupancy test cannot answer, so a wire dragged straight through a board
+    would pass unchecked.
 
     Returns ``(cell, low, high, counts, occupied)`` — everything
     ``CadexRouting.route_path`` needs but the two ports themselves.
@@ -701,12 +708,12 @@ def _route_corridor(
     # The corridor: the two anchors, opened out far enough that a detour has
     # somewhere to go, and no further -- this box is what bounds the search.
     margin = clearance + gauge + max(4.0 * cell, span / 3.0)
-    low = [
-        min(anchor_start[axis], anchor_end[axis]) - margin for axis in range(3)
-    ]
-    high = [
-        max(anchor_start[axis], anchor_end[axis]) + margin for axis in range(3)
-    ]
+    corners = [
+        [anchor_start[axis] for axis in range(3)],
+        [anchor_end[axis] for axis in range(3)],
+    ] + [[float(point[axis]) for axis in range(3)] for point in (contain or [])]
+    low = [min(corner[axis] for corner in corners) - margin for axis in range(3)]
+    high = [max(corner[axis] for corner in corners) + margin for axis in range(3)]
 
     counts = tuple(
         max(1, int(math.ceil((high[axis] - low[axis]) / cell))) for axis in range(3)
@@ -1191,6 +1198,82 @@ def _end_standoff(base: float, floor: float, clearance: float) -> float:
     return max(base, float(floor) + clearance)
 
 
+#: Every route this request built, keyed by the operation's content identity.
+#: Same shape and lifetime as ``_BUNDLE_ROUTES``: cleared with ``_SHAPE_MEMO``
+#: per request, because a route that leaked into another request would let the
+#: canvas draw one project's wire on another's geometry.
+_PUBLISHED_ROUTES: dict[str, dict[str, list[list[float]]]] = {}
+_PUBLISHED_ROUTE_LIMIT = 512
+
+
+def _publish_route(payload: dict[str, Any], spine: Any, interior: Any) -> None:
+    """Record what a wire actually followed, for ``inspect scope="wiring"``.
+
+    Derived data, on exactly the footing the wiring registry is: computed
+    after the geometry, never fed into the digest, and dropped with the shape
+    memo at the end of the request.
+
+    Two lists rather than one. ``path`` is the whole centreline the sweep was
+    built from and is what a reader wants in order to *see* the route;
+    ``waypoints`` is the interior alone, which is the part a user may author
+    and exactly what would go back into ``waypoints=``. Publishing the split
+    rather than an index into the path is what keeps the shell from having to
+    know how many knots a stub is written as (ADR-118).
+    """
+
+    if len(_PUBLISHED_ROUTES) >= _PUBLISHED_ROUTE_LIMIT:
+        return
+    _PUBLISHED_ROUTES[_memo_key(payload)] = {
+        "path": [[float(value) for value in point] for point in spine],
+        "waypoints": [[float(value) for value in point] for point in interior],
+    }
+
+
+def published_routes() -> dict[str, dict[str, list[list[float]]]]:
+    """The routes this request built, keyed by operation content identity."""
+
+    return {key: dict(value) for key, value in _PUBLISHED_ROUTES.items()}
+
+
+def _blocked_authored_segment(points, *, cell, low, counts, occupied):
+    """The index of the first segment of an authored path inside material.
+
+    Sampled at half a cell — the step ``CadexRouting`` uses for its own
+    line-of-sight and sag checks, and fine enough that a segment cannot pass
+    through a cell without landing in it. The occupancy is the *same*
+    callback the search would have used, so "blocked" means the same thing
+    whether a route was searched or authored.
+
+    A sample outside the corridor is treated as clear rather than blocked: the
+    corridor is built to contain the whole authored path, so the only points
+    that can fall outside it are within a rounding of its wall, and there is
+    nothing out there to collide with anyway.
+    """
+
+    import math as _math
+
+    step = max(cell * 0.5, 1.0e-9)
+    for index in range(len(points) - 1):
+        start, end = points[index], points[index + 1]
+        span = (end - start).Length
+        divisions = max(1, int(_math.ceil(span / step)))
+        for sample in range(divisions + 1):
+            fraction = sample / divisions
+            x = start.x + (end.x - start.x) * fraction
+            y = start.y + (end.y - start.y) * fraction
+            z = start.z + (end.z - start.z) * fraction
+            cells = (
+                int(_math.floor((x - low[0]) / cell)),
+                int(_math.floor((y - low[1]) / cell)),
+                int(_math.floor((z - low[2]) / cell)),
+            )
+            if any(cells[axis] < 0 or cells[axis] >= counts[axis] for axis in range(3)):
+                continue
+            if occupied(*cells):
+                return index
+    return None
+
+
 def _build_cable(payload: dict[str, Any], properties: dict[str, Any]):
     """Search a route between two ports and sweep the conductor along it.
 
@@ -1203,6 +1286,7 @@ def _build_cable(payload: dict[str, Any], properties: dict[str, Any]):
 
     import CadexRouting
     import CadexSolder
+    import FreeCAD as App
 
     operation = "cable"
     start_point, start_dir, start_floor, start_metrics = _resolve_port(
@@ -1236,6 +1320,7 @@ def _build_cable(payload: dict[str, Any], properties: dict[str, Any]):
         end_floor + CadexSolder.lead_run_mm(end_metrics, gauge),
     )
     solids, boxes = _cable_obstacles(operation, properties.get("avoid", []))
+    authored = [list(point) for point in (properties.get("waypoints") or [])]
 
     # Not Vector.normalize(), which normalizes in place: start_dir is handed
     # to the router afterwards and must still be the direction it was given.
@@ -1250,10 +1335,60 @@ def _build_cable(payload: dict[str, Any], properties: dict[str, Any]):
         cell_mm=float(properties.get("cell_mm", 0.0)),
         solids=solids,
         boxes=boxes,
+        contain=authored,
     )
 
+    if authored:
+        # The search is skipped entirely (ADR-118) -- no `route_interior`, no
+        # lattice A*. What is *not* skipped is the collision test: a wire
+        # through a board is never what was meant, and loud beats clever.
+        blocked = _blocked_authored_segment(
+            [anchor_start] + [App.Vector(*point) for point in authored] + [anchor_end],
+            cell=cell,
+            low=low,
+            counts=counts,
+            occupied=occupied,
+        )
+        if blocked is not None:
+            raise PartOperationError(
+                f"api.{operation}: the authored path runs through something in "
+                f"avoid= on segment {blocked}",
+                stage="part_routing",
+                operation=operation,
+                observed={
+                    "reason": "waypoints_blocked",
+                    "segment": blocked,
+                    "waypoints": authored,
+                },
+                correction=(
+                    "Move the waypoint at either end of that segment clear of "
+                    "the obstacle, drop clearance_mm, or remove waypoints= "
+                    "entirely to let the search find a way round by itself. "
+                    "Segment 0 is the run from the start port's stand-off to "
+                    "the first waypoint."
+                ),
+            )
+        spine = CadexRouting.assemble_spine(
+            (start_point.x, start_point.y, start_point.z),
+            (anchor_start.x, anchor_start.y, anchor_start.z),
+            authored,
+            (anchor_end.x, anchor_end.y, anchor_end.z),
+            (end_point.x, end_point.y, end_point.z),
+        )
+        _publish_route(payload, spine, authored)
+        return _sweep_conductor(
+            spine,
+            operation=operation,
+            gauge=gauge,
+            centre=start_point,
+            min_bend_radius_mm=properties.get("min_bend_radius_mm"),
+            start_tangent=start_dir,
+            end_tangent=end_dir * -1.0,
+            frenet=False,
+        )
+
     try:
-        waypoints = CadexRouting.route_path(
+        interior, routed_start, routed_end = CadexRouting.route_interior(
             (start_point.x, start_point.y, start_point.z),
             (start_dir.x, start_dir.y, start_dir.z),
             (end_point.x, end_point.y, end_point.z),
@@ -1294,8 +1429,16 @@ def _build_cable(payload: dict[str, Any], properties: dict[str, Any]):
             correction=corrections.get(exc.reason, corrections["bounds"]),
         ) from exc
 
+    spine = CadexRouting.assemble_spine(
+        (start_point.x, start_point.y, start_point.z),
+        routed_start,
+        interior,
+        routed_end,
+        (end_point.x, end_point.y, end_point.z),
+    )
+    _publish_route(payload, spine, interior)
     return _sweep_conductor(
-        waypoints,
+        spine,
         operation=operation,
         gauge=gauge,
         centre=start_point,
@@ -1659,6 +1802,14 @@ def _build_bundle(payload: dict[str, Any], properties: dict[str, Any]):
         )
         if len(_BUNDLE_ROUTES) < _BUNDLE_ROUTE_LIMIT:
             _BUNDLE_ROUTES[route_key] = shared
+
+    # Every conductor publishes the *shared* spine, and publishes no editable
+    # interior at all (ADR-118). A bundle's route belongs to the bundle, so
+    # authoring one conductor's path would silently be authoring all of them —
+    # which is the same reason a bundle's membership is a script decision and
+    # not a table one (ADR-065), and why the canvas draws its conductors
+    # read-only (ADR-115).
+    _publish_route(payload, shared, [])
 
     try:
         lay = CadexBundle.conductor_paths(
@@ -2696,6 +2847,7 @@ def reset_part_shape_memo() -> None:
 
     _SHAPE_MEMO.clear()
     _BUNDLE_ROUTES.clear()
+    _PUBLISHED_ROUTES.clear()
     _TERMINAL_SETS.clear()
     _TERMINAL_SET_SOURCES.clear()
 

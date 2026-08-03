@@ -245,6 +245,58 @@ def _terminal_layout(operation: str, builder: Any, **arguments: Any) -> dict[str
         raise TerminalError(f"api.{operation}: {exc}", details=exc.details) from exc
 
 
+#: How many interior points a hand-authored path may state (ADR-118). A route
+#: someone dragged has a handful of corners in it; a hundred is a subdivided
+#: curve or a tessellation that arrived by mistake, and the honest answer is
+#: that this argument is not the way to state that shape.
+MAX_WAYPOINTS = 64
+
+
+def _waypoints(operation: str, parameter: str, values: Any) -> list[list[float]]:
+    """The interior of an authored path: points, in the ports' own frame.
+
+    Refused rather than coerced, and each refusal names the index — these
+    arrive transcribed from a viewport gesture, so the failure mode is one bad
+    row in a list of good ones.
+    """
+
+    if isinstance(values, DomainValue) or not isinstance(values, (list, tuple)):
+        raise _error(
+            operation,
+            parameter,
+            "expected a list of interior [x, y, z] points the wire should "
+            "pass through",
+            values,
+        )
+    if not values:
+        raise _error(
+            operation,
+            parameter,
+            "is empty; leave it out entirely to search the route instead of "
+            "authoring it",
+        )
+    if len(values) > MAX_WAYPOINTS:
+        raise _error(
+            operation,
+            parameter,
+            f"states {len(values)} points and a hand-authored path is capped "
+            f"at {MAX_WAYPOINTS}",
+        )
+    result: list[list[float]] = []
+    for index, value in enumerate(values):
+        if not isinstance(value, (list, tuple)) or len(value) != 3:
+            raise _error(
+                operation, f"{parameter}[{index}]", "expected [x, y, z]", value
+            )
+        result.append(
+            [
+                _number(operation, f"{parameter}[{index}][{axis}]", value[axis])
+                for axis in range(3)
+            ]
+        )
+    return result
+
+
 def _obstacles(operation: str, parameter: str, values: Any) -> list[DomainValue]:
     """Part solids and Mesh values, mixed, that a route must go around.
 
@@ -1429,6 +1481,7 @@ class PartDomainAPI:
         slack: float = 1.05,
         min_bend_radius_mm: float | None = None,
         cell_mm: float | None = None,
+        waypoints: Sequence[Sequence[float]] | None = None,
         label: str = "",
     ) -> DomainValue:
         """Route a wire between two connection points and sweep it as a solid.
@@ -1464,9 +1517,39 @@ class PartDomainAPI:
 
         The route is searched afresh on every rebuild, so a cable follows the
         things it connects: change a parameter that moves a component and the
-        wire re-routes and stays attached.  Never paste computed waypoints
-        back into the script to save the search — they are wrong the moment a
-        parameter moves, and silently so.
+        wire re-routes and stays attached.  **Never paste a computed route
+        back into the script to save the search** — a cache of what the search
+        would produce anyway is wrong the moment a parameter moves, and
+        silently so.
+
+        ``waypoints`` is the other thing, and it is not that (ADR-118).  It is
+        a list of interior points, in the same coordinates the ports resolve
+        in, stating a path the search cannot be asked for::
+
+            part.cable(esp["sda"], board["sda"], gauge_mm=0.4,
+                       avoid=[frame], waypoints=[(12, 4, 20), (30, 4, 20)])
+
+        When it is given **the search does not run at all**: the spine is the
+        stub out of each port, these points, and the stub back into the other.
+        That is authored intent, exactly as ``avoid`` is — the difference from
+        a cached route is that nothing would ever have computed these.
+
+        **Only the interior is authored.**  Both ends still ride their
+        terminals, so a slider that moves a board still moves both ends of the
+        wire and a joint still grips a straight lead.  What does *not* move is
+        the middle: a hand-placed waypoint stays where it was put, so a
+        parameter that moves a component past it will drag the wire through
+        whatever is there.  That is real, and it is why this is a deliberate
+        gesture rather than a default.
+
+        The path is still checked.  It is rasterised against the same ``avoid``
+        occupancy the search would have used and refused with
+        ``reason="waypoints_blocked"`` and the index of the first blocked
+        segment; ``min_bend_radius_mm`` still applies, and matters *more* here,
+        because a dragged hairpin is easy to make and folds the sweep.
+        ``slack`` and ``cell_mm`` are search parameters and are **ignored**
+        when ``waypoints`` is given — neither can be told apart from its own
+        default, so they are documented rather than refused.
 
         ``avoid`` is what the wire must go around, and it takes ``part``
         values and ``mesh`` values mixed, because a real harness runs between
@@ -1534,6 +1617,8 @@ class PartDomainAPI:
             properties["cell_mm"] = _number(
                 operation, "cell_mm", cell_mm, minimum=0.0, strict=True
             )
+        if waypoints is not None:
+            properties["waypoints"] = _waypoints(operation, "waypoints", waypoints)
         return self._value(
             operation,
             "solid",

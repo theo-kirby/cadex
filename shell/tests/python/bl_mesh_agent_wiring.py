@@ -39,6 +39,7 @@ from mesh_agent import wiring_ui  # noqa: E402
 from mesh_agent import cadex_hydrate  # noqa: E402
 from mesh_agent import cadex_pick  # noqa: E402
 from mesh_agent import cadex_terminal_pick as pick  # noqa: E402
+from mesh_agent import cadex_wire_path as wire_path  # noqa: E402
 
 FAILURES = []
 
@@ -936,6 +937,154 @@ def test_the_graph_survives_a_blend_round_trip():
     reset_scene()
 
 
+
+# ---------------------------------------------------------------------------
+# ADR-118 — dragging a routed wire onto the path you wanted
+
+
+PATH = [[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 2.0],
+        [12.0, 4.0, 9.0], [30.0, 4.0, 9.0],
+        [40.0, 0.0, 2.0], [40.0, 0.0, 1.0], [40.0, 0.0, 0.0]]
+WAYPOINTS = [[12.0, 4.0, 9.0], [30.0, 4.0, 9.0]]
+
+
+def _routed_tree(waypoints=None, kind=None, output="wire_sda"):
+    """A canvas holding one routed wire, and its cable active in the viewport.
+
+    The wire is identified by the **object**, not by a link: a Blender
+    ``NodeLink`` carries no selection state at all (its RNA is the four
+    endpoints plus is_hidden/is_muted/is_valid), so "the selected wire" does
+    not exist on the canvas — and two selected board nodes would be ambiguous
+    the moment two signals run between the same pair, which is normal.
+    """
+    scene, tree = _fresh_tree()
+    row = {"name": "sda", "a": "sen.sda", "b": "esp.sda",
+           "gauge_mm": 0.8, "solder": False, "enabled": True,
+           "path": PATH,
+           "waypoints": WAYPOINTS if waypoints is None else waypoints}
+    if kind is not None:
+        row["kind"] = kind
+        row["editable"] = False
+    wiring.apply_state(tree, _state(wires=[row]))
+
+    cable = bpy.data.objects.new(output, bpy.data.meshes.new(output))
+    cable[cadex_hydrate.OUTPUT_PROP] = output
+    scene.collection.objects.link(cable)
+    bpy.context.view_layer.objects.active = cable
+    return scene, tree
+
+
+def test_the_editable_part_of_a_route_is_the_interior_the_engine_published():
+    """No stub arithmetic in the shell (ADR-118).
+
+    The engine publishes `path` and `waypoints` separately precisely so that
+    nothing here has to know how many collinear knots a stand-off stub is
+    written as — which is a number that has already changed once (ADR-114).
+    """
+    print("test_the_editable_part_of_a_route_is_the_interior_the_engine_published")
+    check(wire_path._interior({"path": PATH, "waypoints": WAYPOINTS}) == WAYPOINTS,
+          "the published interior is what you get to drag")
+    # A straight run has no interior and still needs something to grab.
+    single = wire_path._interior({"path": PATH, "waypoints": []})
+    check(len(single) == 1, "a straight run yields one handle")
+    check(abs(single[0][0] - 20.0) < 1e-9,
+          "at the midpoint of its own centreline")
+    check(wire_path._interior({}) == [], "and a row with no route yields none")
+
+
+def test_editing_a_wire_path_builds_a_curve_you_can_drag():
+    print("test_editing_a_wire_path_builds_a_curve_you_can_drag")
+    scene, _tree = _routed_tree()
+    wire_path.clear(scene)
+    result = bpy.ops.mesh_agent.edit_wire_path()
+    check(result == {'FINISHED'}, "the operator ran: {!r}".format(result))
+    obj = wire_path.path_object(scene)
+    check(obj is not None, "a curve object exists")
+    if obj is None:
+        return
+    check(obj.type == 'CURVE', "and it is a real Blender curve, not a gizmo")
+    check(obj.hide_select is False, "selectable, because it exists to be grabbed")
+    check(obj.hide_render is True and obj.display_type == 'WIRE',
+          "but drawn as an overlay and never rendered")
+    points = [tuple(round(v, 5) for v in p.co[:3])
+              for spline in obj.data.splines for p in spline.points]
+    check(points == [tuple(p) for p in WAYPOINTS],
+          "seeded with the interior alone: {!r}".format(points))
+    check(str(obj.get(wire_path.ROW_PROP)) == "sda", "and it knows its row")
+    # It lives in its own collection, so the hydrate GC never sees it.
+    check(wire_path.COLLECTION_NAME in bpy.data.collections,
+          "in a sibling collection of Model")
+    wire_path.clear(scene)
+    reset_scene()
+
+
+def test_confirming_a_dragged_path_queues_it_and_deletes_the_curve():
+    print("test_confirming_a_dragged_path_queues_it_and_deletes_the_curve")
+    scene, _tree = _routed_tree()
+    wire_path.clear_paths()
+    bpy.ops.mesh_agent.edit_wire_path()
+    obj = wire_path.path_object(scene)
+    if obj is None:
+        check(False, "the curve was built")
+        return
+    # Drag one control point clear of whatever was in the way.
+    obj.data.splines[0].points[0].co = (12.0, 4.0, 25.0, 1.0)
+    bpy.ops.mesh_agent.confirm_wire_path()
+
+    check(wire_path.pending_path_count() == 1, "the path queued for the turn")
+    note = wire_path.consume_wire_path_notes()
+    check("DRAGGED a path" in note, "the note says the path was dragged")
+    check("'sda'" in note, "and names the row it belongs to")
+    check("sen.sda" in note and "esp.sda" in note, "and both endpoints")
+    check("[12.0, 4.0, 25.0]" in note, "carrying the moved point")
+    check("waypoints=" in note, "and names the argument to add")
+    check("does not move when a parameter moves" in note,
+          "and says the staleness out loud, which is the ADR-056 reversal")
+    check(wire_path.path_object(scene) is None,
+          "the curve is gone once it has been sent")
+    reset_scene()
+
+
+def test_cancelling_leaves_the_script_and_the_wire_alone():
+    """The third state, and the reason it is an operator (ADR-118)."""
+    print("test_cancelling_leaves_the_script_and_the_wire_alone")
+    scene, _tree = _routed_tree()
+    wire_path.clear_paths()
+    bpy.ops.mesh_agent.edit_wire_path()
+    check(wire_path.path_object(scene) is not None, "a curve is open")
+    bpy.ops.mesh_agent.cancel_wire_path()
+    check(wire_path.path_object(scene) is None, "and cancel removes it")
+    check(wire_path.pending_path_count() == 0,
+          "queueing nothing, so the next turn carries no path")
+    check(wire_path.consume_wire_path_notes() == "", "and no note")
+    reset_scene()
+
+
+def test_a_bundle_conductors_path_is_read_only():
+    """ADR-115 §4: a bundle's route belongs to the bundle."""
+    print("test_a_bundle_conductors_path_is_read_only")
+    scene, _tree = _routed_tree(waypoints=[], kind="bundle")
+    wire_path.clear(scene)
+    # bpy.ops raises when an operator reports an ERROR, so the refusal is the
+    # exception -- and its message is the part worth pinning.
+    refused = ""
+    try:
+        bpy.ops.mesh_agent.edit_wire_path()
+    except RuntimeError as exc:
+        refused = str(exc)
+    check("bundle" in refused,
+          "editing one conductor is refused: {!r}".format(refused))
+    check("script" in refused, "and says where a bundle's route is changed")
+    check(wire_path.path_object(scene) is None, "and no curve is built")
+    reset_scene()
+
+
+def test_the_three_wire_path_operators_are_registered():
+    print("test_the_three_wire_path_operators_are_registered")
+    for name in ("edit_wire_path", "confirm_wire_path", "cancel_wire_path"):
+        check(hasattr(bpy.ops.mesh_agent, name),
+              "mesh_agent.{:s} is registered".format(name))
+
 def main():
     mesh_agent.register()
     try:
@@ -969,6 +1118,12 @@ def main():
             test_fewer_than_four_vertices_is_refused,
             test_a_noisy_rim_still_fits_and_reports_its_quality,
             test_a_scribble_is_refused_rather_than_averaged,
+            test_the_editable_part_of_a_route_is_the_interior_the_engine_published,
+            test_editing_a_wire_path_builds_a_curve_you_can_drag,
+            test_confirming_a_dragged_path_queues_it_and_deletes_the_curve,
+            test_cancelling_leaves_the_script_and_the_wire_alone,
+            test_a_bundle_conductors_path_is_read_only,
+            test_the_three_wire_path_operators_are_registered,
             test_a_fitted_terminal_is_not_a_pin,
             test_several_picks_batch_into_one_turn,
             test_the_model_is_told_these_numbers_are_measured,

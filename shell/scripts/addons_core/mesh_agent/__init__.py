@@ -29,6 +29,7 @@ from . import cadex_backend as cadex_backend_module
 from . import cadex_live as cadex_live_module
 from . import cadex_pick as cadex_pick_module
 from . import cadex_terminal_pick as cadex_terminal_pick_module
+from . import cadex_wire_path as cadex_wire_path_module
 from . import cadex_training as cadex_training_module
 from . import model as model_module
 from . import spaces
@@ -227,6 +228,7 @@ def register():
     cadex_backend_module.register()
     cadex_pick_module.register()
     cadex_terminal_pick_module.register()
+    cadex_wire_path_module.register()
     cadex_training_module.register()
     wiring_module.register()
     ui.register()
@@ -268,6 +270,7 @@ def unregister():
     ui.unregister()
     wiring_module.unregister()
     cadex_training_module.unregister()
+    cadex_wire_path_module.unregister()
     cadex_terminal_pick_module.unregister()
     cadex_pick_module.unregister()
     cadex_backend_module.unregister()

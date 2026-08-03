@@ -116,8 +116,13 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   it searches a path clearing the `avoid` obstacles — `part` values and
   `mesh` values mixed — and sweeps a round conductor along it, one `solid`
   per wire. The route is recomputed every rebuild, so a cable follows the
-  components it connects instead of going stale; waypoints must never be
-  baked back into the script. Part obstacles are tessellated and rasterised
+  components it connects instead of going stale; a *computed* route must
+  never be pasted back into the script to save the search. A **hand-placed**
+  path is the other thing and is stated with `waypoints=` (ADR-118): the
+  search is skipped, only the interior is authored so both ends still ride
+  their terminals, and the middle does not move when a parameter does — which
+  is real, and is why it is a deliberate gesture rather than a default. Part
+  obstacles are tessellated and rasterised
   into the search lattice — their **surface**, so a port on the outside of
   one stays reachable; mesh obstacles are their bounding box, so a concave
   body belongs in `avoid` as the part solid it is, and a component **cannot
