@@ -316,6 +316,7 @@ class Agent:
         # its own wording, drained here so several picks cost one turn
         # rather than one turn each (ADR-067).
         from . import cadex_terminal_pick
+        note += cadex_terminal_pick.consume_board_notes()
         note += cadex_terminal_pick.consume_terminal_notes()
         # ...and a wire path the user dragged (ADR-118): the same idiom
         # again, and the third queue drained here.

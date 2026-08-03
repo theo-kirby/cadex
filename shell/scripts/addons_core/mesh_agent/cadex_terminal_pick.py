@@ -36,6 +36,15 @@ it into a ``part.cable``. That is authoring, and authoring is the
 assistant's job. What changes is that it stops guessing and starts
 transcribing.
 
+**And a board says which object it is** (ADR-119). Naming one used to cost a
+chat turn of description — there was no gesture that said "this object is the
+range finder", so the assistant inferred it from output names and
+screenshots. **Define Board** is that gesture, and it does two things: it
+queues a note asking for the output to be declared as a port in
+``nets(ports=...)``, and it *stamps the object with the name*, so every later
+terminal pick on it says which board it is on. Click board, click terminals,
+one turn declares the whole port.
+
 **A terminal is not a pin.** ``docs/XSCRIPT.md`` is explicit that a pin is
 chat-scoped and ephemeral while a terminal is script-scoped and durable, so
 this queues into its own list with its own wording rather than riding
@@ -74,6 +83,14 @@ from . import cadex_hydrate
 #: Measured terminals waiting to be handed to the next chat turn. Separate
 #: from ``cadex_pick._pending_pins`` on purpose: see the module docstring.
 _pending_terminals = []
+
+#: Boards designated since the last turn (ADR-119). Its own queue for the same
+#: reason a terminal has one: it is a different thing to say.
+_pending_boards = []
+
+#: The board name stamped on a designated object, so every later terminal pick
+#: on it says which port it belongs to.
+BOARD_PROP = "cadex_board"
 
 #: Below four points a circle fit is not a fit, it is an interpolation.
 MIN_VERTICES = 4
@@ -444,6 +461,61 @@ def measure_selection(points, view_direction=None, kind='AUTO'):
 # the queue
 
 
+def queue_board(entry):
+    _pending_boards.append(entry)
+
+
+def pending_board_count():
+    return len(_pending_boards)
+
+
+def clear_boards():
+    _pending_boards.clear()
+
+
+def consume_board_notes():
+    """Prompt suffix naming the boards designated since the last turn (drains).
+
+    **The identity is the engine's output key, never the Blender object's
+    name** (ADR-119). Everything else in the add-on routes object identity
+    through the engine deliberately — ``tools.py``'s ``scene_summary`` reports
+    engine truth precisely so the model reasons about the model and not about
+    the mirror — and this gesture is the one that starts from a click on the
+    mirror, so it is the one that has to convert.
+
+    It states two engine limits rather than promising around them, both from
+    ADR-113 §5, because "this is the range finder" invites exactly the two
+    follow-ups they refuse.
+    """
+
+    if not _pending_boards:
+        return ""
+    lines = []
+    for entry in _pending_boards:
+        lines.append(
+            "[The user DESIGNATED output {output!r} as a board named "
+            "{name!r}. Declare it as a port in nets(ports=...) under that "
+            "name, keyed on that OUTPUT — not on any Blender object name. "
+            "Its bounding box is {bbox} mm and its placement is {placement}. "
+            "Two things this does NOT do, so do not offer them: designating a "
+            "board does not make it avoidable by its own wires — a component "
+            "cannot avoid itself as a mesh, because its own pad is inside its "
+            "own bounding box and every wire off it refuses with 'blocked'; "
+            "part.shape_from_mesh is the workaround that exists, and it "
+            "cannot express a multi-shell import. And a port with no terminals "
+            "yet draws no node in the wiring editor: a node is one terminal "
+            "set, and a terminal set needs a non-empty names list. This "
+            "designates a board; it does not conjure a node.]".format(
+                output=entry.get("output", ""),
+                name=entry.get("name", ""),
+                bbox=json.dumps(entry.get("bbox_mm") or []),
+                placement=json.dumps(entry.get("placement") or []),
+            )
+        )
+    _pending_boards.clear()
+    return "\n\n" + "\n".join(lines)
+
+
 def queue_terminal(entry):
     _pending_terminals.append(entry)
 
@@ -472,8 +544,8 @@ def consume_terminal_notes():
         report = entry.get("report") or {}
         margin = report.get("model_margin")
         lines.append(
-            "[The user MEASURED a {kind} terminal on output {output!r} (a "
-            "{model} fit over {vertices} selected vertices, residual "
+            "[The user MEASURED a {kind} terminal on output {output!r}{board} "
+            "(a {model} fit over {vertices} selected vertices, residual "
             "{residual:.4f} mm = {ratio:.2%} of its own scale; it beat the "
             "other model by {margin} of normalised residual; axis sign "
             "resolved from {axis_from}). The terminal lands IN this plane and "
@@ -486,6 +558,8 @@ def consume_terminal_notes():
                 kind=report.get("kind", "pad"),
                 model=report.get("fit_model", "circle"),
                 output=entry.get("output", ""),
+                board=(", which is the board {!r}".format(entry["board"])
+                       if entry.get("board") else ""),
                 vertices=report.get("vertices", 0),
                 residual=float(report.get("residual_mm") or 0.0),
                 ratio=float(report.get("residual_ratio") or 0.0),
@@ -578,12 +652,18 @@ class MESH_AGENT_OT_define_terminal(bpy.types.Operator):
             return {'CANCELLED'}
         if self.name:
             row["name"] = self.name
-        queue_terminal({
+        entry = {
             "output": str(obj.get(cadex_hydrate.OUTPUT_PROP, "") or ""),
             "object": obj.name,
             "row": row,
             "report": report,
-        })
+        }
+        # Stamped by Define Board (ADR-119), if it was pressed on this object:
+        # click board -> click terminals -> one turn declares the whole port.
+        board = str(obj.get(BOARD_PROP) or "")
+        if board:
+            entry["board"] = board
+        queue_terminal(entry)
         if report["kind"] == "hole":
             size = "diameter {:.3f} mm".format(report["radius_mm"] * 2.0)
         else:
@@ -598,7 +678,97 @@ class MESH_AGENT_OT_define_terminal(bpy.types.Operator):
         return {'FINISHED'}
 
 
-classes = (MESH_AGENT_OT_define_terminal,)
+class MESH_AGENT_OT_define_board(bpy.types.Operator):
+    """Name the clicked object as a board, and say so on the next turn."""
+
+    bl_idname = "mesh_agent.define_board"
+    bl_label = "Define Board"
+    bl_description = ("Name the active object as a board and queue it as a "
+                      "wiring port for the next message")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    name: bpy.props.StringProperty(
+        name="Board",
+        description="What this board is called, e.g. range_finder",
+        default="",
+    )
+
+    @classmethod
+    def poll(cls, context):
+        if getattr(context, "mode", 'OBJECT') != 'OBJECT':
+            return False
+        obj = getattr(context, "active_object", None)
+        return obj is not None and cadex_hydrate.OUTPUT_PROP in obj
+
+    def invoke(self, context, _event):
+        obj = getattr(context, "active_object", None)
+        if not self.name and obj is not None:
+            self.name = _board_name(str(obj.get(cadex_hydrate.OUTPUT_PROP) or ""))
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        obj = getattr(context, "active_object", None)
+        if obj is None or cadex_hydrate.OUTPUT_PROP not in obj:
+            self.report({'ERROR'},
+                        "Click a part of the model first — Define Board names "
+                        "an object the engine built.")
+            return {'CANCELLED'}
+        output = str(obj.get(cadex_hydrate.OUTPUT_PROP) or "")
+        name = _board_name(self.name or output)
+        if not name:
+            self.report({'ERROR'}, "A board needs a name, e.g. range_finder.")
+            return {'CANCELLED'}
+
+        low, high = _bounds(obj)
+        queue_board({
+            "output": output,
+            "name": name,
+            "object": obj.name,
+            "bbox_mm": [
+                [round(value, 4) for value in low],
+                [round(value, 4) for value in high],
+            ],
+            "placement": [round(float(value), 6)
+                          for row in obj.matrix_world for value in row],
+        })
+        # The second effect, and the one that makes the gesture compose: every
+        # later terminal pick on this object carries the board it belongs to,
+        # so click board -> click terminals -> one turn declares the whole port.
+        obj[BOARD_PROP] = name
+        self.report(
+            {'INFO'},
+            "Board {:s} ({:s}). Pick its terminals in Edit Mode; they will say "
+            "which board they are on.".format(name, output))
+        return {'FINISHED'}
+
+
+def _board_name(text):
+    """A port name ``nets(...)`` will accept: lower_snake_case, no dot."""
+
+    cleaned = []
+    for character in str(text or "").strip().lower():
+        cleaned.append(character if (character.isalnum() or character == "_") else "_")
+    name = "".join(cleaned).strip("_")
+    while "__" in name:
+        name = name.replace("__", "_")
+    if name and name[0].isdigit():
+        name = "b_" + name
+    return name[:64]
+
+
+def _bounds(obj):
+    """The object's world-space bounding box, as (low, high)."""
+
+    corners = [obj.matrix_world @ Vector(corner) for corner in obj.bound_box]
+    if not corners:
+        origin = obj.matrix_world.translation
+        return list(origin), list(origin)
+    low = [min(corner[axis] for corner in corners) for axis in range(3)]
+    high = [max(corner[axis] for corner in corners) for axis in range(3)]
+    return low, high
+
+
+classes = (MESH_AGENT_OT_define_terminal, MESH_AGENT_OT_define_board)
 
 
 def register():
@@ -608,6 +778,7 @@ def register():
 
 def unregister():
     _pending_terminals.clear()
+    _pending_boards.clear()
     for cls in reversed(classes):
         try:
             bpy.utils.unregister_class(cls)

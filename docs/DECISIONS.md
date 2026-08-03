@@ -12243,3 +12243,71 @@ another's. Headless: the interior/spine round trip, coincident dragged handles,
 and the argument's validation point by point. The published route round-trips
 through `inspect scope="wiring"` on both the declared and the reconstructed
 branch. Shell wiring suite green, `pixi run gate` ok.
+
+## ADR-119 — "Define this as a board" (2026-08-03)
+
+**Decision.** One button, `mesh_agent.define_board`, in the same queue idiom
+as the terminal pick: click an object the engine built, name it, and the next
+turn is told to declare that output as a port in `nets(ports=...)`. It also
+**stamps the object with the name**, so every subsequent terminal pick on it
+says which board it is on.
+
+### What it replaces
+
+Naming a board cost a chat turn of description. There was no gesture that said
+"this object is the range finder", so the assistant inferred it from output
+names and screenshots — which is exactly the class of guess ADR-067 replaced
+with a measurement for terminals, one level up.
+
+**The second effect is what makes the gesture compose**, and it is the reason
+the stamp is on the object rather than only in the note. Click board, click
+terminals, send one turn: the terminals arrive already knowing which port they
+belong to, so the assistant writes the whole `nets(ports=...)` entry rather
+than asking which board the four holes were on.
+
+### The identity is the engine's output key
+
+This is the one gesture in the add-on that **starts from a click on the
+mirror**. Everything else routes object identity through the engine
+deliberately — `tools.py`'s `scene_summary` reports engine truth precisely so
+the model reasons about the model and not about the tessellated copy — so this
+is the one that has to convert, and the note carries
+`obj[cadex_hydrate.OUTPUT_PROP]` and never `obj.name`. A `.001` suffix is
+exactly how those two drift apart, and the suite renames the object to prove
+the note does not follow.
+
+The name itself is cleaned into something `nets(...)` will accept —
+lower_snake_case, no dot, no leading digit — rather than handed over raw and
+refused two layers down.
+
+### Two engine limits the note refuses to promise around
+
+Both from ADR-113 §5, and both are what "this is the range finder" invites as
+a follow-up:
+
+- **A component cannot avoid itself as a mesh.** Its pad is on its own
+  surface, which is inside its own bounding box, so `avoid=[itself]` refuses
+  every wire off it with `blocked`. Designating a board therefore cannot make
+  an imported STL avoidable by its own wires. The workaround that exists is
+  `part.shape_from_mesh`, which is rasterised by its tessellated surface.
+- **`shape_from_mesh` cannot express a multi-shell import** — the ESP32 STL
+  sews into 42 shells — so that workaround is not always available.
+
+And one about the editor: a node draws per **terminal set**, not per component
+(ADR-115), and a `TerminalSet` requires a non-empty `names`. **A board with no
+terminals yet has no node.** The button designates; it does not conjure a
+node, and the note says so rather than leaving the user to wonder why the
+canvas did not change.
+
+ADR-067's rule, for the fourth time: the gesture measures, the assistant
+authors. Nothing here writes script.
+
+### Verification
+
+Shell wiring suite green. New: the note carries the output key and not the
+Blender name (asserted with the object renamed out from under it); it states
+both engine limits and the no-node fact; a designated board names every
+terminal later picked on it; the name cleaner; and an object the engine did
+not build is not a board. `bl_mesh_agent.py`'s exact-idname row assertion
+carries `mesh_agent.define_board`, and the row is still the same width with
+every poll forced true. `pixi run gate` ok.

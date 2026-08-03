@@ -855,8 +855,8 @@ def draw_chat_buttons(layout, context):
     Now the header carries status and this row carries actions, grouped by
     what they act on rather than by what they look like:
 
-    ``[attach paste pin-face pin-point define-terminal edit-path confirm-path
-    cancel-path]`` gather things the *next message* will carry; ``[rebuild]`` acts on the *model*;
+    ``[attach paste pin-face pin-point define-board define-terminal edit-path
+    confirm-path cancel-path]`` gather things the *next message* will carry; ``[rebuild]`` acts on the *model*;
     ``[params script wiring]`` open and close *views*, each depressed while
     its view is open; ``[new-chat send]`` are the *turn*.
 
@@ -893,6 +893,17 @@ def draw_chat_buttons(layout, context):
     # Measuring a terminal off the model (ADR-067): the same kind of thing --
     # gathered now, read by the assistant on the next turn -- and counted the
     # same way, so several picks visibly batch into one message.
+    # Naming the object a terminal is on (ADR-119). Before this the only way
+    # to say "that one is the range finder" was to describe it in prose, and
+    # the assistant inferred it from output names and screenshots.
+    board = gather.row(align=True)
+    board.enabled = bool(
+        cadex_terminal_pick.MESH_AGENT_OT_define_board.poll(context))
+    boards = cadex_terminal_pick.pending_board_count()
+    board.operator(
+        cadex_terminal_pick.MESH_AGENT_OT_define_board.bl_idname,
+        icon='MOD_BOOLEAN',
+        text="{:d}".format(boards) if boards else "")
     terminal = gather.row(align=True)
     terminal.enabled = bool(
         cadex_terminal_pick.MESH_AGENT_OT_define_terminal.poll(context))

@@ -1075,6 +1075,7 @@ def test_every_chat_action_is_in_one_row_under_the_message_box():
         "mesh_agent.paste_image",
         "mesh_agent.pick_pin",
         "mesh_agent.pick_point",
+        "mesh_agent.define_board",
         "mesh_agent.define_terminal",
         # The wire-path round trip's three states (ADR-118): open, send,
         # abandon. All three are in the row, always drawn, greyed when they

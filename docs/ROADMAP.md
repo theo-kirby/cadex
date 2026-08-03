@@ -1364,7 +1364,12 @@ What makes them experimental, and what would settle it:
   the route its run followed, and the shell opens it as a real Blender curve
   to drag and Confirm. Only the interior is authored, so both ends still ride
   their terminals; the middle does not follow a parameter, and the note the
-  gesture queues instructs the assistant to say so. Still not built:
+  gesture queues instructs the assistant to say so. **And naming a board is a
+  click since ADR-119 (2026-08-03)** rather than a chat turn of description:
+  Define Board queues the *engine's output key* as a port for
+  `nets(ports=…)` — it is the one gesture that starts from a click on the
+  mirror, so it is the one that converts — and stamps the object, so every
+  later terminal pick on it says which board it is on. Still not built:
   `part.bundle` as an
   editable graph concept (deferred by decision — changing a bundle's
   membership is a script edit; since ADR-115 its conductors at least *draw*,

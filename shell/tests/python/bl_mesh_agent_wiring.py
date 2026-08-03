@@ -1085,6 +1085,113 @@ def test_the_three_wire_path_operators_are_registered():
         check(hasattr(bpy.ops.mesh_agent, name),
               "mesh_agent.{:s} is registered".format(name))
 
+
+# ---------------------------------------------------------------------------
+# ADR-119 — "define this as a board"
+
+
+def _hydrated(output="range_finder_board"):
+    scene, _tree = _fresh_tree()
+    obj = bpy.data.objects.new(output, bpy.data.meshes.new(output))
+    obj[cadex_hydrate.OUTPUT_PROP] = output
+    scene.collection.objects.link(obj)
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    return scene, obj
+
+
+def test_define_board_queues_the_engines_output_key_and_not_a_blender_name():
+    """The identity is the engine's, which is the whole risk of this gesture.
+
+    Everything else in the add-on routes object identity through the engine
+    deliberately; this one starts from a click on the mirror, so it is the one
+    that has to convert.
+    """
+    print("test_define_board_queues_the_engines_output_key_and_not_a_blender_name")
+    pick.clear_boards()
+    _scene, obj = _hydrated()
+    # A Blender name that is NOT the output key: `.001` suffixes are exactly
+    # how these drift apart.
+    obj.name = "range_finder_board.001"
+
+    bpy.ops.mesh_agent.define_board(name="range finder")
+    check(pick.pending_board_count() == 1, "the board queued")
+    note = pick.consume_board_notes()
+    check("'range_finder_board'" in note, "the note carries the output key")
+    check("range_finder_board.001" not in note,
+          "and never the Blender object's name")
+    check("'range_finder'" in note, "with the name, cleaned to a port name")
+    check("nets(ports=" in note, "and asks for it to be declared as a port")
+    check(pick.pending_board_count() == 0, "draining empties the queue")
+    reset_scene()
+
+
+def test_a_board_note_promises_around_neither_engine_limit():
+    """ADR-113 §5, twice — because "this is the range finder" invites both."""
+    print("test_a_board_note_promises_around_neither_engine_limit")
+    pick.clear_boards()
+    _scene, _obj = _hydrated()
+    bpy.ops.mesh_agent.define_board(name="esp")
+    note = pick.consume_board_notes()
+
+    check("cannot avoid itself as a mesh" in note,
+          "designating a board does not make it avoidable by its own wires")
+    check("shape_from_mesh" in note and "multi-shell" in note,
+          "and the workaround that exists does not always exist")
+    check("does not conjure a node" in note,
+          "a board with no terminals yet has no node: a node is a terminal set")
+    reset_scene()
+
+
+def test_a_designated_board_names_every_terminal_picked_on_it():
+    """The second effect, and what makes the gesture compose (ADR-119).
+
+    Click board, click terminals, one turn declares the whole port.
+    """
+    print("test_a_designated_board_names_every_terminal_picked_on_it")
+    pick.clear_boards()
+    pick.clear_terminals()
+    _scene, obj = _hydrated()
+    bpy.ops.mesh_agent.define_board(name="sen")
+    check(str(obj.get(pick.BOARD_PROP)) == "sen",
+          "the object is stamped with the board name")
+
+    row, report = pick.measure_selection(_ring(0.5, 1.6),
+                                         view_direction=(0.0, 0.0, 1.0))
+    pick.queue_terminal({
+        "output": str(obj.get(cadex_hydrate.OUTPUT_PROP) or ""),
+        "object": obj.name, "row": row, "report": report,
+        "board": str(obj.get(pick.BOARD_PROP) or ""),
+    })
+    note = pick.consume_terminal_notes()
+    check("the board 'sen'" in note,
+          "so the terminal note says which port it belongs to: {!r}".format(
+              note[:160]))
+    reset_scene()
+
+
+def test_a_board_name_is_cleaned_into_something_nets_will_take():
+    print("test_a_board_name_is_cleaned_into_something_nets_will_take")
+    check(pick._board_name("Range Finder") == "range_finder", "spaces and case")
+    check(pick._board_name("esp32-cam!") == "esp32_cam", "punctuation")
+    check(pick._board_name("  __a__b__  ") == "a_b", "runs and edges")
+    check(pick._board_name("32u4").startswith("b_"),
+          "a leading digit, which a port name may not have")
+    check(pick._board_name("") == "", "and nothing is nothing")
+
+
+def test_define_board_needs_an_object_the_engine_built():
+    print("test_define_board_needs_an_object_the_engine_built")
+    reset_scene()
+    scene = bpy.context.scene
+    stray = bpy.data.objects.new("just_a_cube", bpy.data.meshes.new("just_a_cube"))
+    scene.collection.objects.link(stray)
+    bpy.context.view_layer.objects.active = stray
+
+    check(pick.MESH_AGENT_OT_define_board.poll(bpy.context) is False,
+          "an object the engine did not build is not a board")
+    reset_scene()
+
 def main():
     mesh_agent.register()
     try:
@@ -1124,6 +1231,11 @@ def main():
             test_cancelling_leaves_the_script_and_the_wire_alone,
             test_a_bundle_conductors_path_is_read_only,
             test_the_three_wire_path_operators_are_registered,
+            test_define_board_queues_the_engines_output_key_and_not_a_blender_name,
+            test_a_board_note_promises_around_neither_engine_limit,
+            test_a_designated_board_names_every_terminal_picked_on_it,
+            test_a_board_name_is_cleaned_into_something_nets_will_take,
+            test_define_board_needs_an_object_the_engine_built,
             test_a_fitted_terminal_is_not_a_pin,
             test_several_picks_batch_into_one_turn,
             test_the_model_is_told_these_numbers_are_measured,
