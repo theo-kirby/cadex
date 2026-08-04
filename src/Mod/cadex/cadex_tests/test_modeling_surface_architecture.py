@@ -132,6 +132,13 @@ def test_project_tool_specs_are_exact_and_guarded() -> None:
     assert nets["type"] == "array" and nets["maxItems"] == 256
     assert nets["items"]["required"] == ["name", "a", "b", "gauge_mm"]
     assert nets["items"]["additionalProperties"] is False
+    boards = set_params["boards"]
+    assert boards["type"] == "array"
+    assert boards["items"]["required"] == ["board", "name", "origin", "axis"]
+    assert boards["items"]["additionalProperties"] is False
+    # The one key a *request* may carry that a stored row may not: a
+    # measurement taken in the viewport, converted by the worker (ADR-120).
+    assert boards["items"]["properties"]["frame"]["enum"] == ["world", "board"]
 
 
 def test_describe_project_api_is_json_safe_and_complete() -> None:
@@ -165,12 +172,18 @@ def test_describe_project_api_is_json_safe_and_complete() -> None:
         "num",
         "nets",
         "wire",
+        "boards",
+        "board",
+        "term",
     }
     assert "params" in payload["parameters"]
     assert "num" in payload["parameters"]
     # The connection vocabulary is described beside the parameter one, so an
     # agent that reads describe_api learns the harness table exists (ADR-065).
     assert set(payload["connections"]) == {"nets", "wire", "values"}
+    # ...and the board vocabulary beside it, for the same reason one table
+    # over: where a wire attaches, rather than what it attaches to (ADR-120).
+    assert set(payload["boards"]) == {"boards", "board", "term", "values"}
     assert "result" in payload["result_contract"]
     assert set(payload["mutation_selection"]) == {
         "write_script",
@@ -227,6 +240,9 @@ def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None
         # The connection table nets()/wire() declare: pure Python, staged so
         # the project worker can stage it into the exec namespace (ADR-065).
         "CadexNets.py",
+        # The board table boards()/board()/term() declare: pure Python,
+        # staged for exactly that reason one table over (ADR-120).
+        "CadexBoards.py",
         "cadex_partdesign_api.py",
         "cadex_partdesign_worker.py",
         "cadex_mesh_api.py",

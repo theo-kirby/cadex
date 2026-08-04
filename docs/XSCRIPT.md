@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-08-03
+Verified against source: 2026-08-04
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -506,6 +506,76 @@ back on** — it carries no area at all — so there `pad_dia_mm` is required.
 Everything is refused by naming the value it measured and the one it
 conflicts with.
 
+### Declaring the boards: `boards()`, `board()` and `term()` `[ADR-120]`
+
+`nets()` names the wires; `boards()` names the two things a wire is drawn
+*between*. It is the third declared table, on the terms the other two already
+have — a declaration in the script whose current values live outside it:
+
+```python
+b = boards({
+    "fc": board(fc_board, terminals=[
+        term("batt_pos", origin=(12.73, 0.9, 1.05), axis=(-1, 0, 0)),
+        term("esp_vcc", origin=(-12.57, 8.43, 1.6), axis=(0.495, 0, -0.87),
+             hole_dia=0.8),
+    ]),
+    "esp": board(esp32, units="m", terminals=[
+        term("vcc", origin=(0.00936, 0.00099, 0.00151), axis=(0, -1, 0),
+             hole_dia=0.00075),
+    ]),
+})
+
+harness = nets(ports=b, wires={"vcc": wire("fc.batt_pos", "esp.vcc", gauge=0.8)})
+```
+
+`boards(...)` returns a **mapping of `TerminalSet`**, so `nets(ports=b)` takes
+it as it stands and `b["fc"]["batt_pos"]` is the same `Terminal` every harness
+operation already took. Nothing downstream learns that a board is now
+declared.
+
+**Declare boards this way whenever the wiring editor is going to be used.** A
+`TerminalSet` assigned to a variable and never consumed by a `part.cable` and
+never named in `nets(ports=...)` is an inert handle: it reaches the canvas as
+*nothing at all*. A board declared here is a node whether or not anything is
+wired to it — which is what makes it possible to wire onto it in the editor.
+
+`term(name, origin=..., axis=..., hole_dia=None, depth=None)` is one row.
+`origin` is where the wire lands and `axis` is the direction it is drilled
+*into* the body, so the wire leaves back along `-axis` — the same relation
+`part.terminals`' declared row states. **`hole_dia` present means a hole,
+absent means a pad** (ADR-117); `depth` is optional and descriptive.
+
+`board(component, ...)` takes four forms and only the first is a table:
+
+| form | rows | editable |
+|---|---|---|
+| `terminals=[term(...), …]` | as written | **yes** |
+| `header=dict(origin=…, along=…, pitch=…, count=…)` + `names=` | expanded to explicit rows at declaration | **yes** |
+| `holes=`/`pads=` + `names=` (an ADR-029 selector) | derived from the shape on every run | no |
+| nothing | — | refused: give it terminals |
+
+**Rows are millimetres in the board's own frame, always.** `units="m"` states
+what *this declaration's* numbers are in and changes nothing else: the script
+keeps the numbers the asset is modelled in, the stored table keeps one unit,
+and one project can no longer carry two.
+
+| column | overridable | lives where |
+|---|---|---|
+| `origin`, `axis`, `hole_dia`, `depth` | **yes** | `board_values` in `script.json` |
+| `units`, the selector, the component | no | the script |
+
+Stored rows **replace** the declared table wholesale, the `nets()` property
+and for the same reason: it is what lets the editor add and delete terminals.
+A stored row naming a board a rewritten script no longer declares is pruned,
+not raised on. A selector board's rows are never overridden — they come back
+from the geometry every run.
+
+**A terminal measured in the viewport is written straight into this table**
+(ADR-121), which is why Define Terminal no longer costs a chat turn. The row
+arrives in world coordinates marked `frame: "world"` and the engine carries it
+into the board's own frame through the inverse of the placement chain it
+resolved; a non-uniform scale on that chain refuses that one row by name.
+
 ### Declaring a harness: `nets()` and `wire()` `[ADR-065]`
 
 Terminals name the ends of a wire; `nets()` names the wire. It is to a
@@ -541,6 +611,33 @@ for name, w in n.items():
 and `part.solder` are untouched and a script converted from a comprehension
 over literal pairs builds byte-identically. `n.enabled()` is the loop above
 without the `continue`.
+
+**`w.a_address` and `w.b_address`** are the same two ends as the
+`"<board>.<terminal>"` strings the row carries (ADR-122). They exist because a
+script cannot otherwise **size** a joint: a declared pad has no area, so
+`part.solder` requires `pad_dia_mm` there, and the right diameter is a
+property of the board — an RF header at 2.54 mm pitch and a camera's 0.5 mm
+pads want very different numbers. A `Terminal` knows its own name but not
+which port addressed it, so this is what a per-board table keys on. Key the
+result on the **address**, and one terminal gets one joint however many wires
+land on it:
+
+```python
+JOINT_MM = {"fc": 0.8, "esp": 1.0, "rf": 2.0, "cam": 0.6}
+
+for w in n.enabled():
+    result["wire_" + w.name] = part.cable(w.a, w.b, gauge_mm=w.gauge,
+                                          avoid=w.avoid)
+    if not w.solder:
+        continue
+    for end, address in ((w.a, w.a_address), (w.b, w.b_address)):
+        result["joint_" + address.replace(".", "_")] = part.solder(
+            end, gauge_mm=w.gauge,
+            pad_dia_mm=JOINT_MM[address.split(".")[0]])
+```
+
+Both follow the *stored* row rather than the declaration, so a wire rewired in
+the editor takes its joints with it.
 
 An endpoint is **`"<port>.<terminal>"`**, validated at declaration against the
 actual `TerminalSet`s — a typo is a refusal, not a silent miswire. Port names

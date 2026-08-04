@@ -29,12 +29,26 @@ is what says a row is holes and a depth would size nothing. Selecting both
 rims of a through-hole still works — the far one is dropped, and the report
 says so.
 
-**The result is handed to the AI, not written to the script.** A terminal's
-home is a ``mesh.terminals(...)`` call that usually does not exist yet, and
-creating it means choosing the component argument, naming the set and wiring
-it into a ``part.cable``. That is authoring, and authoring is the
-assistant's job. What changes is that it stops guessing and starts
-transcribing.
+**The result is written into the table, not handed to the AI** (ADR-121).
+That reverses ADR-067 for this one gesture, and the boundary it draws is the
+point: a *measurement* is data, and a canonical row is where data goes —
+``set_params(boards=[...])`` takes it, the model never sees it, and the
+socket appears with no chat turn. A *name* and a hand-dragged route are
+authored intent and still queue a note, which is why Define Board (ADR-119)
+and Confirm Wire Path (ADR-118) are unchanged.
+
+The fallback is honest rather than vestigial: a project whose script has no
+``boards(...)`` call has no table to write into, and *creating* one means
+choosing the component argument and naming the board — authoring, and the
+assistant's job. There the pick still queues the note it always did, and
+what changed is that the note has somewhere to land afterwards.
+
+**The row goes out in world coordinates.** The fit is in the object's own
+frame, the table is in the board's, and the shell cannot know the difference
+— a hydrated object's transform is a display placement, not the asset's
+declaration chain. So the row is marked ``frame: "world"`` and the engine
+inverts the chain it actually resolved. That inversion is exactly what a
+person used to do on paper.
 
 **And a board says which object it is** (ADR-119). Naming one used to cost a
 chat turn of description — there was no gesture that said "this object is the
@@ -458,6 +472,114 @@ def measure_selection(points, view_direction=None, kind='AUTO'):
 
 
 # ---------------------------------------------------------------------------
+# writing the row (ADR-121)
+
+
+def world_row(matrix_world, row, board, name):
+    """One fitted row, carried into world coordinates and named (ADR-121).
+
+    The fit is in the object's own frame; the engine wants the *board's*, and
+    the shell has no way to know what that is — a hydrated object's transform
+    is the display placement, not the asset's declaration chain. So the row
+    goes out in the one frame a viewport click actually has, marked
+    ``frame: "world"``, and the engine converts it through the inverse of the
+    placement chain it resolved. That inversion is what a person used to do
+    on paper before pasting the literals into the script.
+    """
+
+    linear = matrix_world.to_3x3()
+    origin = matrix_world @ Vector(row["origin"])
+    axis = linear @ Vector(row["axis"])
+    if axis.length > 1.0e-12:
+        axis = axis / axis.length
+    # A length measured in the object's frame is that frame's scale away from
+    # a world millimetre; the engine divides the same scale back out.
+    scale = sum(linear.col[index].length for index in range(3)) / 3.0
+    written = {
+        "board": str(board),
+        "name": str(name),
+        "origin": [round(float(value), 5) for value in origin],
+        "axis": [round(float(value), 6) for value in axis],
+        "frame": "world",
+    }
+    if row.get("hole_dia") is not None:
+        written["hole_dia"] = round(float(row["hole_dia"]) * scale, 5)
+    return written
+
+
+def board_of(state, output):
+    """The declared board one engine output is, or ``""``.
+
+    Engine truth, and deliberately keyed on the *output* rather than on the
+    Blender object's name — the identity rule ADR-119 set for Define Board,
+    which this gesture now depends on rather than merely echoes. Returns ""
+    for a component that is no board, or whose board is a selector: those
+    rows are the geometry's and there is nothing to write.
+    """
+
+    for component in list((state or {}).get("components") or []):
+        if not isinstance(component, dict):
+            continue
+        if str(component.get("output") or "") != str(output or ""):
+            continue
+        if not component.get("editable"):
+            continue
+        return str(component.get("board") or "")
+    return ""
+
+
+def terminal_rows(state):
+    """The complete terminal table, read back off ``scope="wiring"``.
+
+    ``set_params(boards=...)`` replaces the table wholesale, so a pick sends
+    every row that exists plus its own — the same shape ``wiring.push``
+    sends, from the same source, so the two gestures cannot disagree about
+    what the table currently is.
+    """
+
+    rows = []
+    for component in list((state or {}).get("components") or []):
+        if not isinstance(component, dict) or not component.get("editable"):
+            continue
+        board = str(component.get("board") or "")
+        if not board:
+            continue
+        for terminal in list(component.get("terminals") or []):
+            if not isinstance(terminal, dict) or "origin" not in terminal:
+                continue
+            rows.append({
+                "board": board,
+                "name": str(terminal.get("name") or ""),
+                "origin": [float(value) for value in terminal.get("origin") or []],
+                "axis": [float(value) for value in terminal.get("axis") or []],
+                "hole_dia": terminal.get("hole_dia"),
+                "depth": terminal.get("depth"),
+            })
+    return rows
+
+
+def rows_with(state, written):
+    """The table plus one measured row, replacing any row of the same name."""
+
+    key = (str(written.get("board") or ""), str(written.get("name") or ""))
+    rows = [row for row in terminal_rows(state)
+            if (str(row.get("board") or ""), str(row.get("name") or "")) != key]
+    rows.append(dict(written))
+    return rows
+
+
+def free_name(state, board, prefix="t"):
+    """A terminal name not already on that board, for a pick given no name."""
+
+    taken = {str(row.get("name") or "") for row in terminal_rows(state)
+             if str(row.get("board") or "") == str(board)}
+    index = 1
+    while "{:s}{:d}".format(prefix, index) in taken:
+        index += 1
+    return "{:s}{:d}".format(prefix, index)
+
+
+# ---------------------------------------------------------------------------
 # the queue
 
 
@@ -593,8 +715,8 @@ class MESH_AGENT_OT_define_terminal(bpy.types.Operator):
 
     bl_idname = "mesh_agent.define_terminal"
     bl_label = "Define Terminal"
-    bl_description = ("Fit a circle to the selected vertices and queue the "
-                      "measured terminal for the next message")
+    bl_description = ("Fit a circle to the selected vertices and write the "
+                      "measured terminal into the board's table")
     bl_options = {'REGISTER'}
 
     name: bpy.props.StringProperty(
@@ -652,8 +774,30 @@ class MESH_AGENT_OT_define_terminal(bpy.types.Operator):
             return {'CANCELLED'}
         if self.name:
             row["name"] = self.name
+        output = str(obj.get(cadex_hydrate.OUTPUT_PROP, "") or "")
+        if report["kind"] == "hole":
+            size = "diameter {:.3f} mm".format(report["radius_mm"] * 2.0)
+        else:
+            size = "{:.3f} x {:.3f} mm".format(
+                report["width_mm"], report["height_mm"])
+
+        # The row goes straight into the table when there is a table to put it
+        # in (ADR-121). A measurement is data, and transcribing data through a
+        # language model is the step this gesture exists to remove; the note
+        # below is what remains for a project that has not declared boards(...)
+        # yet, where there is genuinely authoring to be done.
+        written = self._write_row(context, obj, row, output)
+        if written is not None:
+            self.report(
+                {'INFO'},
+                "Measured a {:s} ({:s} fit): {:s}, residual {:.4f} mm. Wrote "
+                "{:s}.{:s}.".format(
+                    report["kind"], report["fit_model"], size,
+                    report["residual_mm"], written[0], written[1]))
+            return {'FINISHED'}
+
         entry = {
-            "output": str(obj.get(cadex_hydrate.OUTPUT_PROP, "") or ""),
+            "output": output,
             "object": obj.name,
             "row": row,
             "report": report,
@@ -664,11 +808,6 @@ class MESH_AGENT_OT_define_terminal(bpy.types.Operator):
         if board:
             entry["board"] = board
         queue_terminal(entry)
-        if report["kind"] == "hole":
-            size = "diameter {:.3f} mm".format(report["radius_mm"] * 2.0)
-        else:
-            size = "{:.3f} x {:.3f} mm".format(
-                report["width_mm"], report["height_mm"])
         self.report(
             {'INFO'},
             "Measured a {:s} ({:s} fit): {:s}, residual {:.4f} mm. Queued for "
@@ -676,6 +815,41 @@ class MESH_AGENT_OT_define_terminal(bpy.types.Operator):
                 report["kind"], report["fit_model"], size,
                 report["residual_mm"]))
         return {'FINISHED'}
+
+    def _write_row(self, context, obj, row, output):
+        """Push the measured row into ``board_values``; ``None`` to fall back.
+
+        Returns ``(board, name)`` when the row was sent. Falls back — rather
+        than failing — whenever there is no declared board to write onto: no
+        engine, no ``boards(...)`` in the script, or a component whose
+        terminals come from a selector and are the geometry's to state.
+        """
+
+        try:
+            from . import cadex_backend
+
+            state = cadex_backend.wiring_state(context.scene)
+        except Exception:
+            return None
+        if not isinstance(state, dict) or state.get("ok") is False:
+            return None
+        value = state.get("value") if isinstance(state.get("value"), dict) else state
+        board = board_of(value, output)
+        if not board:
+            return None
+        name = str(row.get("name") or "") or free_name(value, board)
+        written = world_row(obj.matrix_world, row, board, name)
+        # Through ``begin_set_boards``, which since ADR-122 fills the wiring
+        # slot and returns a report rather than a ``Lifecycle`` nobody polls.
+        # A pick had the identical defect the canvas did: the request was
+        # started and then dropped, so the *second* terminal measured on a
+        # board was refused with STALE_PROGRAM_REVISION in silence.
+        ok, report = cadex_backend.begin_set_boards(
+            context.scene, rows_with(value, written))
+        if not ok:
+            self.report({'ERROR'}, str(report))
+            return None
+        return board, name
 
 
 class MESH_AGENT_OT_define_board(bpy.types.Operator):

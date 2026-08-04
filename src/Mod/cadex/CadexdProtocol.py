@@ -96,9 +96,17 @@ OP_ARG_SPECS: dict[str, tuple[dict[str, type], dict[str, type]]] = {
     # values of declared controls without the AI" is one concept and a slider
     # and a wire are both instances of it. A nets-only edit sends `values`
     # empty.
+    #
+    # `boards` is the board table's stored terminal rows (ADR-120), on the
+    # same terms: a full row list, added here rather than as a third op for
+    # the reason `nets` was added here rather than as a second. A row may
+    # carry `frame: "world"` -- a measurement taken in the viewport, which
+    # this service cannot convert because it has no geometry and never runs
+    # user code; the worker converts it and the canonical board-frame row is
+    # written back.
     "set_params": (
         {"values": dict, "expected_revision": str},
-        {"display": dict, "nets": list},
+        {"display": dict, "nets": list, "boards": list},
     ),
     "rebuild": ({}, {"display": dict}),
     # A path, not bytes: the asset budget is 128 MB and the frame cap is 8 MB.
@@ -247,6 +255,9 @@ OP_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
                 # and for the same reason: a table the script declares and
                 # something outside it sets.
                 "connections",
+                # ...and the board vocabulary (ADR-120), the third such table:
+                # where a wire attaches, rather than what it attaches to.
+                "boards",
                 "mutation_selection",
             }
         ),

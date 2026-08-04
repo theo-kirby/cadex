@@ -12311,3 +12311,294 @@ terminal later picked on it; the name cleaner; and an object the engine did
 not build is not a board. `bl_mesh_agent.py`'s exact-idname row assertion
 carries `mesh_agent.define_board`, and the row is still the same width with
 every poll forced true. `pixi run gate` ok.
+
+## ADR-120 — Boards and terminals become a declared table (2026-08-04)
+
+**Decision.** A third declared table, beside `params()` and `nets()`:
+`boards({name: board(component, terminals=[term(...)])})` in the script,
+`board_specs`/`board_values` in `script.json`, and `set_params(boards=[...])`
+as the way to write one. `boards(...)` returns a mapping of `TerminalSet`, so
+`nets(ports=b)` takes it unchanged and `b["fc"]["sda"]` is the same
+`Terminal` `part.cable` always took.
+
+### What was actually broken
+
+The wiring editor was empty for `cdx-chassis-v06`, a script that declares six
+terminal sets. Not a bug in the window: **a `TerminalSet` is an inert Python
+handle**, and it reaches the canvas only when the worker resolves it — which
+it did for exactly two reasons, a `part.cable`/`bundle`/`solder` that consumed
+it, or a name in `nets(ports=...)`. V06 does neither. Six handles were
+assigned and never read, so `result.json` carried `"wiring": []` and
+`inspect scope="wiring"` correctly answered "nothing".
+
+The deeper cause is that of the three things the editor needs, only one was a
+table. Wires lived in `net_values` under six canonical columns and were
+editable. A board existed only as a key of `nets(ports=...)`, cached but never
+writable. A terminal was free-form Python — and V06 shows what that produces:
+four declaration styles in one file, **two unit systems** (mm and metres),
+meaning carried in trailing `# comments` that had to stay index-aligned with a
+separate `names=[...]` list, hand-transcribed literals like `12.7279` obtained
+by inverting a placement chain on paper, and a `part.terminals` call on an
+unpublished stand-in box to dodge a non-uniform scale.
+
+### Why a third table rather than more `nets(...)`
+
+**A port is a *reference* to a component; a terminal is a *measurement on*
+one.** Only the second is something the editor can author. `nets(ports=...)`
+could have grown a shape that carried terminals, and the result would have
+been one table with two kinds of row in it and one of them not editable. The
+address grammar is what keeps them joined instead: a board name and a port
+name are one namespace by construction, because a declared board reaches the
+registry as its own port, and `<board>.<terminal>` is `<port>.<terminal>`.
+
+### The rules
+
+- **The canonical row is millimetres, in the board's own frame**, axis
+  normalised: `{board, name, origin, axis, hole_dia, depth}`. `units="m"` is a
+  declaration-time convenience and nothing more — rows are converted before
+  they are canonical and converted back on the way to the geometry, so a
+  script keeps the numbers its asset is modelled in and the store keeps one
+  unit. That is what removes V06's mixed units for good.
+- **`hole_dia` present means a hole, absent means a pad.** ADR-117, unchanged.
+- **Stored overrides replace the declared table wholesale**, the ADR-065
+  property, and for the same reason: it is what lets the editor add and delete
+  terminals. A row naming a board the script no longer declares is pruned
+  (ADR-039's lenient half); a *request* naming one is refused
+  (`UNKNOWN_PROJECT_BOARD`), which is its loud half.
+- **A header is expanded to explicit rows at declaration.** The store never
+  holds a pitch and a count: a table whose row count depends on another column
+  is not a table the editor can edit.
+- **A selector board stays declared by selector and is read-only.** Its rows
+  come back from the shape on every run, so an override there is not an edit,
+  it is a stale copy of something the geometry owns.
+- **A declared board draws whether or not anything is wired to it.**
+  `_wiring_registry` resolves every board through the existing never-raising
+  `resolve_terminal_set_for_publication`. This is the line that lights up V06.
+
+### The `frame: "world"` round trip
+
+The shell measures in world coordinates, because that is the only frame a
+viewport click has. `cadexd` cannot convert one — it holds no geometry and
+never runs user code — so a row may arrive carrying `frame: "world"`, is
+staged as-is, and the **worker** converts it through the inverse of the
+composed placement chain `_resolve_terminal_set` already walks.
+`validate_project_result` writes the converted canonical row back into
+`board_values`, exactly as it already prunes and writes back `net_values`, so
+a measurement is converted **exactly once** and every later run reads a
+board-frame row. A non-uniform scale on that chain refuses **that one row** by
+name rather than skewing its axis — the refusal at `CadexTerminals.py` that
+V06 worked around by declaring a stand-in box, now reported to the editor.
+
+### Cost
+
+`set_params` gains one optional arg, `boards`. No new op: "set the values of
+declared controls without the AI" is one concept, and a slider, a wire and a
+terminal are all instances of it. `script.json` gains two keys that
+`read_state` merges over the defaults, so **no project needs migrating** —
+and `project_script_revision` admits them only when non-empty, so a
+board-free project keeps a byte-identical digest, the same guard `net_specs`
+carries. A project that *does* declare boards moves its digest and must be
+re-accepted, which is why V06 was migrated on a copy.
+
+### Verification
+
+`test_boards.py`: declaration, immutability, unit conversion both ways, the
+override round trip, pruning after a rename, the two failure codes, the
+world-frame conversion and its exactly-once write-back, and a byte-identical
+revision for a board-free script. Against a real kernel: two boards wired to
+nothing draw as two nodes; a terminal is moved and one added with no model
+turn; an undeclared board is refused and the store rolls back; a world-frame
+row converts and comes back canonical. `test_wiring_scope.py`: the new
+component and socket fields, a selector board's read-only rows, stored rows
+answering instead of declared ones, and a board name reserved the way a port
+name is. 1509 engine tests green, `cli/tests` green, `pixi run gate` ok.
+
+## ADR-121 — The pick gesture writes the row (2026-08-04)
+
+**Decision.** Define Terminal writes a canonical row straight into
+`board_values` through `set_params(boards=[...])` when the script declares
+`boards(...)`. It queues a note for the assistant only when there is no table
+to write into. Define Board (ADR-119) and Confirm Wire Path (ADR-118) keep
+queueing notes, unchanged.
+
+### The boundary, stated once
+
+**A measurement is data; a name and a route are authored intent.**
+
+ADR-067 said "the gesture measures, the assistant authors", and that was right
+while a terminal's only home was a `mesh.terminals(...)` call that had to be
+written into a script — choosing the component argument, naming the set,
+wiring it into a `part.cable`. ADR-120 gives a terminal a home that is a *row*
+in a table, and transcribing a row through a language model is a step with
+nothing in it: the model cannot improve `[12.7279, 0.9, 1.05]`, and every turn
+spent on one is a turn that could get it wrong.
+
+So the rule sharpens rather than reverses. Where the destination is a table,
+the gesture writes it. Where the destination is *code* — a board's name, a
+hand-dragged route, a `nets(...)` entry that does not exist yet — the gesture
+still queues a note, because deciding what to write is the thing the model is
+for.
+
+### What the shell sends
+
+The fit is in the object's own frame; the table is in the board's; the shell
+cannot know the difference, because a hydrated object's transform is a display
+placement and not the asset's declaration chain. So the row goes out in world
+coordinates marked `frame: "world"` and the **engine** inverts the chain it
+actually resolved (ADR-120). The shell never learns what a board's frame is,
+which is the only version of this that stays correct when a component is
+re-placed.
+
+The board is found by the engine's **output key**, ADR-119's identity rule,
+against `inspect scope="wiring"` — so a component that is no declared board,
+or whose terminals come from a selector, falls back to the note rather than
+being written onto.
+
+### Two bugs found on the way, fixed here
+
+- **`wiring.push`'s no-op guards could never fire.** They compared
+  `rows_from_tree(tree)` against `stored_rows(tree)`, but an engine row
+  carries the route its run swept (ADR-118) and the canvas rebuilds only the
+  six override columns, so both comparisons always differed. Cutting a link
+  and redrawing it in the same place cost a full re-execute — ~18 s on the
+  drone. The comparison is now on the override columns alone.
+- **`on_push_finished` dropped every route.** It stored what the canvas says,
+  flat, which wiped `path` off the stored table — which is what made Edit Wire
+  Path report "no published route to edit" for a wire whose route the engine
+  had published and a sync would have restored. `_store_rows` now preserves
+  the keys the canvas cannot describe, matched on the same unordered endpoint
+  pair everything else here reconciles on.
+
+And one silence: `apply_state`'s duplicate-port skip (the ADR-115 guard) drops
+a repeated label with no message, which reads as a broken editor rather than
+as a component that could not be drawn. It now sets `cadex_error` with the
+count.
+
+### Verification
+
+Shell wiring suite: the pick builds a world-frame row through a rotated
+placement and replaces a row of the same name; the whole table is read back
+off the engine's answer, not off the canvas; a project with no declared board
+falls back to the note; the no-op guard fires for an untouched canvas *and*
+for a link cut and redrawn; a finished push keeps the route it was never told
+about; the duplicate-port skip reports. `pixi run gate` ok.
+
+## ADR-122 — The wiring editor applies once, on a button (2026-08-04)
+
+**Decision.** The wiring canvas no longer pushes itself. Every edit marks it
+dirty; **Apply** sends the whole table in one `set_params`; **Revert** throws
+the canvas away and re-reads the engine. The push is driven to completion by a
+single-slot pump modelled on the slider drag's, solder is on by default,
+`WireValue` gains the two endpoint addresses, and a terminal's two socket rows
+say which is which.
+
+### The bug: the push started a lifecycle and nobody polled it
+
+`wiring.push` → `cadex_backend.begin_set_tables` → `begin_lifecycle` returned a
+`Lifecycle`, and `push` handed it to a debounce timer that dropped it on the
+floor. Everything downstream of `Lifecycle.poll()` therefore never happened:
+
+- `_revision_from_payload` never ran, so the shell's cached
+  `expected_revision` still named the revision from *before* the first apply.
+  The engine had moved on, so **every push after the first was refused with
+  `STALE_PROGRAM_REVISION`** — and the refusal was dropped too, because
+  nobody read the payload. Silent, and deterministic, every time.
+- `hydrate()` never ran, so the wire that *did* land was not repainted until
+  something else rebuilt.
+- `on_accept` never ran, so `on_push_finished` was never called: `cadex_pending`
+  stuck at "applying…" (ADR-115 patched that symptom by clearing the flag on
+  sync) and the settle-time refine never fired.
+
+Twenty wires dragged produced one cable, and the next refresh wiped the other
+nineteen off the canvas, because the engine had only ever been told about one.
+Three motor wires produced two. It looked like flaky auto-apply. It was not.
+
+It survived because the ADR-066 hand test drew **one** link, and one edit per
+revision is exactly the case that works. The terminal pick added in ADR-121 had
+the identical defect: the second terminal measured on a board was refused in
+silence.
+
+The debounce made it worse rather than visible. `_mark_dirty` was a
+*leading-edge* throttle, so a burst of drags fired one push 0.15 s after the
+first and every later drag started another that piled up on the client lock —
+the "it took a really long time" — and was then stale-refused.
+
+### One explicit apply, and a pump that finishes it
+
+The slider drag has had a proper dispatcher since Phase 6: one request in
+flight per project root, the next one queued, polled on a 0.02 s timer,
+`project_root` re-checked before hydrating so a Save-As mid-flight cannot
+repaint the new file. The wiring push was simply never given one, so it gets
+that one — `_wiring_slot` / `_wiring_pump` / `wiring_apply_now`, beside
+`_drags` and `_refines`.
+
+It differs from the drag slot in one way, and the canvas dictates it: a push
+carries the **whole** table, so a second push arriving mid-flight *replaces*
+the queued payload rather than starting a second request. There is nothing to
+coalesce; the newest table supersedes. `begin_set_tables` stops returning a
+raw `Lifecycle` and returns a report, and `Lifecycle.on_accept` goes away for
+this path — one completion path, not two that agree only today.
+
+**Apply rather than auto-push** is the other half, and it is not a
+consolation. A net edit costs a full re-execute — seconds on a small harness,
+~18 s on the drone (ADR-063) — so "one gesture, one rebuild" was never the
+right unit. Draw ten wires, press Apply once, get one rebuild. `_dirty`,
+`_mark_dirty`, `_push_timer` and `_DEBOUNCE_SECONDS` are deleted; `push` keeps
+every guard it had, because those were never about *when* it happened.
+
+**On failure the canvas is kept.** `push` used to resync from the engine after
+a refusal, which is the only honest thing while the canvas holds one edit and
+plainly wrong when it holds twenty: losing them all to one refusal is worse
+than an inconsistent canvas. The error goes on the header, the rows stay
+drawn, and Revert is the deliberate way to discard them.
+
+### Two columns, said out loud
+
+`tree.links.new` raises `Error: Same input/output direction of sockets` for
+output→output **and** for input→input — measured, and now pinned by a test. An
+undirected edge therefore needs one socket of each direction, so **one row per
+terminal and drag-to-connect cannot both hold** inside the stock node editor.
+That is not a thing to design around; it is a thing to stop being a puzzle. So
+an output draws as `sda ▸` and an input as `▸ sda`, the solder checkbox moves
+onto the socket row where the terminal is (`part.solder` takes a terminal and
+never a wire — ADR-063), and the sidebar lists a board as the single list of
+terminals it actually is.
+
+### Solder on by default, and actually built
+
+A fresh socket now reads soldered — the state of a terminal nothing has landed
+on yet — so a drawn wire carries a joint without anyone ticking anything,
+which is what a wire onto a pad or a bore nearly always is. That makes the
+other direction load-bearing: `apply_state` only ever *set* True, which was
+invisible while a fresh socket defaulted to False and would silently re-solder
+an unticked row now. It sets both, per **address** and with the same *any*
+rule `_solder_for` reads back out, so a terminal several wires land on keeps
+one flag between them rather than whichever row was drawn last.
+
+The engine gains one small thing, because a script cannot otherwise **size** a
+joint: `CadexNets.WireValue` grows `a_address`/`b_address`, the two
+`"<board>.<terminal>"` strings the effective row already carries. A Terminal
+knows its own name and not which port addressed it, and a declared pad carries
+no area — so `part.solder` requires `pad_dia_mm` there, and the right diameter
+is the board's. Additive: no stored row changes shape, and a script that does
+not read them hashes exactly as before.
+
+### Verification
+
+Engine suite 1509 passed; `test_nets` pins both addresses, including that they
+follow the *stored* row through a rewire rather than the declaration.
+
+Shell wiring suite: an edit marks and sends nothing, and neither `_push_timer`
+nor `_mark_dirty` is left to fire; Apply sends once and the pump completes it,
+clearing "applying…" itself; **a second Apply carries the revision the first
+one returned** — the actual bug, asserted on the recorded `expected_revision`;
+a refused apply keeps the canvas and Revert discards it; a mid-flight push
+replaces the queued one and the newest table is what lands; a new terminal is
+soldered and an unsoldered stored row stays unsoldered through a sync and a
+.blend round trip; Blender's same-direction refusal is asserted from the API.
+
+`bl_mesh_agent_cadex.py` gains the end-to-end regression against the bundled
+engine: a two-board `boards(...)` script, one wire applied, a second applied
+with no intervening rebuild, and **both** cables asserted present in the
+accepted revision. It fails on the second apply without the pump.
+`pixi run gate` ok.

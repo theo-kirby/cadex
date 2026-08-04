@@ -982,7 +982,7 @@ def wiring_state(scene):
 
 
 def begin_set_nets(scene, rows, cancelled=None):
-    """Start a connection-table edit. Returns a :class:`Lifecycle` or (ok, report).
+    """Start a connection-table edit. Returns ``(ok, report)``.
 
     The same op the sliders use, because "set the values of declared controls
     without the AI" is one concept (ADR-065): ``set_params`` with an empty
@@ -992,25 +992,219 @@ def begin_set_nets(scene, rows, cancelled=None):
     the accepting path, and schedules the same settle-time refine.
     """
 
+    return begin_set_tables(scene, nets=rows, cancelled=cancelled)
+
+
+def begin_set_tables(scene, nets=None, boards=None, cancelled=None):
+    """Start one ``set_params`` carrying whichever declared tables changed.
+
+    One op and one re-execute, because a rename that moves a terminal *and*
+    the wires addressing it is one edit (ADR-120). ``values`` is empty: a
+    table edit leaves the sliders alone, and the engine reads that as "leave
+    them" rather than as the refusal it still is when ``values`` is the only
+    thing asked for.
+
+    **Returns a report, never a Lifecycle** (ADR-122). It used to return the
+    raw object, and its one caller threw it away — so nothing ever called
+    ``poll()``, so ``_revision_from_payload`` never ran, so the shell's
+    cached ``expected_revision`` still named the revision before the first
+    apply and **every push after the first was refused with
+    ``STALE_PROGRAM_REVISION``** with nobody reading the refusal. The request
+    now goes into a slot the pump below drives to completion, exactly as a
+    slider drag has been driven since Phase 6.
+    """
+
     ok, report = ensure_open(scene)
     if not ok:
         return False, report
-    state = _state_for(project_root(scene))
+    root = project_root(scene)
+    state = _state_for(root)
     if not state.script_present:
-        return True, "No project script yet; nothing to rewire."
+        return True, "No project script yet; nothing to edit."
+    args = {"values": {}}
+    if nets is not None:
+        args["nets"] = list(nets)
+    if boards is not None:
+        args["boards"] = list(boards)
+    if len(args) == 1:
+        return True, "No change."
+    return _queue_wiring(scene, root, args)
 
-    def accepted():
+
+# -- the wiring pump: one table push in flight, the newest one queued --------
+#
+# The exact shape of ``_drags``/``_drag_pump`` above and for the same reasons:
+# at most one request in flight per project root, the next one queued, polled
+# on a timer, and ``project_root`` re-checked before hydrating so a Save-As
+# mid-flight cannot repaint the new file.
+#
+# It differs from the drag slot in one way, and it is the canvas that dictates
+# it: a push carries the **whole** table, so a second push arriving while one
+# is in flight *replaces* the queued payload rather than starting a second
+# request. There is nothing to coalesce -- the newest table supersedes.
+
+_wirings = {}
+
+
+def _wiring_slot(root):
+    slot = _wirings.get(root)
+    if slot is None:
+        slot = {"lifecycle": None, "queued": None, "requests": 0,
+                "outcome": None}
+        _wirings[root] = slot
+    return slot
+
+
+def _queue_wiring(scene, root, args):
+    """Fill the slot and start pumping. Returns ``(True, "applying")``."""
+
+    import bpy
+
+    slot = _wiring_slot(root)
+    if slot.get("lifecycle") is not None:
+        slot["queued"] = dict(args)
+        return True, "applying"
+    started = _start_wiring(scene, root, slot, args)
+    if isinstance(started, tuple):
+        return started
+    if not bpy.app.background:
+        bpy.app.timers.register(lambda: _wiring_pump(root), first_interval=0.02)
+    return True, "applying"
+
+
+def _start_wiring(scene, root, slot, args):
+    """Begin one table push. A ``(ok, report)`` tuple means it never started."""
+
+    slot["queued"] = None
+    started = begin_lifecycle(scene, "set_params", dict(args))
+    if not isinstance(started, Lifecycle):
+        return started
+    slot["lifecycle"] = started
+    slot["requests"] = int(slot.get("requests") or 0) + 1
+    return None
+
+
+def _wiring_pump(root):
+    """Main thread. Poll the in-flight push; start the queued one after it.
+
+    The one completion path (ADR-122). ``Lifecycle.on_accept`` used to carry
+    half of this and was never reached, which is why ``cadex_pending`` stuck
+    at "applying…" and the settle-time refine never fired.
+    """
+
+    import bpy
+    from . import agent as agent_module
+    from . import model
+
+    slot = _wirings.get(root)
+    if slot is None:
+        return None
+    lifecycle = slot.get("lifecycle")
+    if lifecycle is None:
+        return None
+
+    scene = bpy.context.scene
+    if project_root(scene) != root:
+        slot["lifecycle"] = None
+        slot["queued"] = None
+        return None
+
+    outcome = lifecycle.poll()
+    if outcome is None:
+        return 0.02
+
+    ok, report = outcome
+    slot["lifecycle"] = None
+    slot["outcome"] = (ok, report)
+    try:
+        from . import wiring
+
+        wiring.on_push_finished(scene, ok, report)
+    except Exception:
+        traceback.print_exc()
+    if ok:
         _schedule_refine(scene)
-        try:
-            from . import wiring
+    elif report:
+        # A timer has no operator to report through; ADR-039's panel is where
+        # a failure that happened outside a click belongs.
+        model.record_error(report)
+        print("mesh wiring push failed:\n" + report)
+    agent_module._tag_redraw()
 
-            wiring.on_push_finished(scene, True, "")
-        except Exception:
-            pass
+    queued = slot.get("queued")
+    if queued is not None:
+        started = _start_wiring(scene, root, slot, queued)
+        if isinstance(started, tuple):
+            return None
+        return 0.02
+    return None
 
-    return begin_lifecycle(
-        scene, "set_params", {"values": {}, "nets": list(rows)},
-        cancelled=cancelled, on_accept=accepted)
+
+def wiring_apply_now(root=None):
+    """Drive the wiring pump to completion synchronously. Test-facing.
+
+    The peer of :func:`drag_now`'s and :func:`refine_now`'s blocking forms:
+    ``bpy.app.timers`` do not fire under ``--background``, so the gate suites
+    drain the slot themselves. Returns ``(ok, report)`` of the last push, or
+    ``(True, "")`` when there was nothing in flight.
+    """
+
+    import bpy
+
+    root = root or project_root(bpy.context.scene)
+    slot = _wirings.get(root)
+    if slot is None:
+        return True, ""
+    # Ticks of the pump, not a ``Lifecycle.wait()`` followed by one: the pump
+    # owns the single completion path, and polling a lifecycle twice would
+    # hydrate the same payload twice.
+    while slot.get("lifecycle") is not None:
+        if _wiring_pump(root) is not None:
+            time.sleep(0.01)
+    return slot.get("outcome") or (True, "")
+
+
+def wiring_stats(root=None, reset=False):
+    """``{requests, queued, in_flight}`` for the gate. Test-facing."""
+
+    import bpy
+    root = root or project_root(bpy.context.scene)
+    slot = _wiring_slot(root)
+    stats = {
+        "requests": int(slot.get("requests") or 0),
+        "queued": slot.get("queued") is not None,
+        "in_flight": slot.get("lifecycle") is not None,
+    }
+    if reset:
+        slot["requests"] = 0
+    return stats
+
+
+def pump_wiring_once(root=None):
+    """Run one wiring-pump tick by hand. Test-facing, like ``pump_drag_once``."""
+
+    import bpy
+    return _wiring_pump(root or project_root(bpy.context.scene))
+
+
+def begin_set_boards(scene, rows, cancelled=None):
+    """Start a terminal-table edit. Returns ``(ok, report)``.
+
+    The third table through the one op (ADR-120), and the reason a measured
+    terminal no longer costs a chat turn: a pick writes a canonical row
+    straight into ``board_values`` instead of queueing a note for the
+    assistant to transcribe. Like a net change it adds and removes geometry
+    rather than moving poses, so there is nothing ``preview_params`` could
+    answer — it goes to the accepting path and schedules the same
+    settle-time refine.
+
+    A row may carry ``frame: "world"``. That is the pick's own measurement,
+    in the only frame a viewport click has; the engine converts it through
+    the inverse of that component's placement chain and writes the canonical
+    board-frame row back, so the shell never has to know a board's frame.
+    """
+
+    return begin_set_tables(scene, boards=rows, cancelled=cancelled)
 
 
 def _slider_values(scene, state):
@@ -1858,6 +2052,7 @@ def close_all():
     cadexd_client.close_all()
     _states.clear()
     _refines.clear()
+    _wirings.clear()
 
 
 def open_roots():

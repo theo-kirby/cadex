@@ -62,6 +62,11 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         # inside the sandbox to stage nets()/wire(), and by the host to
         # validate a stored row list — pure either side, like the four above.
         "CadexNets.py",
+        # The board table (ADR-120), staged for exactly CadexNets' reasons:
+        # the project worker imports it inside the sandbox to stage
+        # boards()/board()/term(), and the host imports it to validate a
+        # stored row list. Pure on both sides.
+        "CadexBoards.py",
         "cadex_partdesign_api.py",
         "cadex_partdesign_worker.py",
         "cadex_mesh_api.py",
@@ -567,6 +572,12 @@ def prepare_preview(service: Any, values: Mapping[str, Any]) -> dict[str, Any]:
             # about a harness the user is not looking at (ADR-065).
             "net_values": [
                 dict(row) for row in list(state.get("net_values") or [])
+            ],
+            # ...and its boards, for the same reason: a preview generation
+            # built from the *declared* terminals would answer about a board
+            # the user is not looking at (ADR-120).
+            "board_values": [
+                dict(row) for row in list(state.get("board_values") or [])
             ],
             "api_contracts": api_contracts,
             "document_name": str(captured["document_name"]),
@@ -1148,6 +1159,70 @@ def _project_net_values(
     return clean
 
 
+def _project_terminal_values(
+    state: Mapping[str, Any], rows: Any, tool_name: str
+) -> list[dict[str, Any]]:
+    """Validate one full terminal-row list against the declared boards.
+
+    The sibling of :func:`_project_net_values`, one table over, with the same
+    ADR-039 asymmetry landing in the same two places: here — the *request* —
+    a board the script does not declare is a caller error and stays loud; the
+    lenient half is on the *stored* rows, in ``validate_project_result`` and
+    ``CadexBoards.effective_terminals``, where a row a rewritten script no
+    longer supports is dropped rather than raised on.
+
+    A ``frame="world"`` row passes through **unconverted**: this process has
+    no geometry and never runs user code, so it cannot resolve a component's
+    placement. The worker converts it and the converted row is written back
+    (ADR-120). What is checked here is that the row is well-formed and names
+    a board that exists.
+    """
+
+    from CadexBoards import BoardError, canonical_terminal_rows, declared_boards
+
+    try:
+        clean = canonical_terminal_rows(rows, what="boards", allow_world=True)
+    except BoardError as exc:
+        _raise(
+            tool_name,
+            "INVALID_PROJECT_TERMINAL",
+            "precondition",
+            str(exc),
+            requested={"boards": rows},
+        )
+    boards = declared_boards(state.get("board_specs"))
+    if not boards:
+        # No declaration to check against yet: the script has never run with
+        # boards(...), so there is no board list. The worker refuses an
+        # unresolvable row on the run itself.
+        return clean
+    for row in clean:
+        name = str(row["board"])
+        entry = boards.get(name)
+        if entry is None:
+            _raise(
+                tool_name,
+                "UNKNOWN_PROJECT_BOARD",
+                "precondition",
+                f"Terminal {row['name']!r} names board {name!r}, which the "
+                "project script does not declare.",
+                requested={"boards": rows},
+                observed={"declared_boards": sorted(boards)},
+            )
+        if entry.get("selector"):
+            _raise(
+                tool_name,
+                "UNKNOWN_PROJECT_BOARD",
+                "precondition",
+                f"Board {name!r} states its terminals with a selector, so they "
+                "are derived from the shape on every run and cannot be edited "
+                "here; change the selector in the script instead.",
+                requested={"boards": rows},
+                observed={"declared_boards": sorted(boards)},
+            )
+    return clean
+
+
 def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
     """Persist the working script state and stage one project candidate."""
 
@@ -1183,6 +1258,7 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
 
     param_values = dict(state.get("param_values") or {})
     net_values = [dict(row) for row in list(state.get("net_values") or [])]
+    board_values = [dict(row) for row in list(state.get("board_values") or [])]
     if operation == "write_script":
         source = str(arguments.get("source") or "")
         if not source.strip():
@@ -1222,14 +1298,18 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
             )
         source = current_source
         # One op, because "set the values of declared controls without the AI"
-        # is one concept and a slider and a wire are both instances of it
-        # (ADR-065). A nets-only edit sends no parameter patch, and an empty
-        # `values` there means "leave the sliders alone" rather than the
-        # refusal it still is when `values` is the only thing asked for.
+        # is one concept and a slider, a wire and a terminal are all instances
+        # of it (ADR-065, ADR-120). A table-only edit sends no parameter patch,
+        # and an empty `values` there means "leave the sliders alone" rather
+        # than the refusal it still is when `values` is the only thing asked
+        # for.
         values_patch = arguments.get("values")
         nets_patch = arguments.get("nets")
-        nets_only = nets_patch is not None and values_patch == {}
-        if not nets_only:
+        boards_patch = arguments.get("boards")
+        tables_only = (
+            nets_patch is not None or boards_patch is not None
+        ) and values_patch == {}
+        if not tables_only:
             try:
                 param_values = _project_param_values(
                     state, values_patch, tool_name
@@ -1253,6 +1333,8 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
             }
         if nets_patch is not None:
             net_values = _project_net_values(state, nets_patch, tool_name)
+        if boards_patch is not None:
+            board_values = _project_terminal_values(state, boards_patch, tool_name)
     else:
         _raise(tool_name, "UNKNOWN_DOMAIN_TOOL", "surface", "Unknown project tool.")
 
@@ -1289,6 +1371,8 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         param_values=param_values,
         net_specs=state.get("net_specs"),
         net_values=net_values,
+        board_specs=state.get("board_specs"),
+        board_values=board_values,
     )
     attempt_id = f"{int(time.time() * 1000):013d}-{uuid.uuid4().hex[:12]}"
     staging = store.artifacts_dir(revision) / f"attempt-{attempt_id}"
@@ -1303,6 +1387,7 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
             "inputs": {},
             "param_values": param_values,
             "net_values": net_values,
+            "board_values": board_values,
             "api_contracts": _project_api_contracts(),
             "document_name": str(captured["document_name"]),
             "document_uid": str(captured["document_uid"]),
@@ -1333,6 +1418,7 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         state_updates={
             "param_values": param_values,
             "net_values": net_values,
+            "board_values": board_values,
             "working_revision": revision,
         },
     )
@@ -1349,14 +1435,19 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         "net_values_before": [
             dict(row) for row in list(state.get("net_values") or [])
         ],
+        "board_values_before": [
+            dict(row) for row in list(state.get("board_values") or [])
+        ],
         "accepted_revision_before": str(state.get("accepted_revision") or ""),
         "accepted_contract_before": state.get("accepted_contract"),
         "accepted_digest_before": str(state.get("accepted_digest") or ""),
         "source": source,
         "param_values": param_values,
         "net_values": net_values,
+        "board_values": board_values,
         "param_specs_before": list(state.get("param_specs") or []),
         "net_specs_before": dict(state.get("net_specs") or {}),
+        "board_specs_before": dict(state.get("board_specs") or {}),
         "project_root": project_root,
         "staging": str(staging),
         "bundle_dir": str(bundle_dir),
@@ -1399,6 +1490,9 @@ def record_project_candidate_failure(
             "param_values": dict(prepared.get("param_values_before") or {}),
             "net_values": [
                 dict(row) for row in list(prepared.get("net_values_before") or [])
+            ],
+            "board_values": [
+                dict(row) for row in list(prepared.get("board_values_before") or [])
             ],
             "working_revision": str(prepared.get("working_revision_before") or ""),
             "latest_candidate": {
@@ -1563,12 +1657,36 @@ def validate_project_result(
     prepared["net_values"] = prune_rows(
         list(prepared.get("net_values") or []), declared_ports(net_specs)
     )
+    # The board table, pruned the same way -- and with one thing the other two
+    # tables do not have: a row measured in the viewport arrived carrying
+    # ``frame="world"``, because the shell has no way to know a board's own
+    # frame and ``cadexd`` has no geometry to convert it with. The worker did
+    # the conversion against the placement chain it actually resolved, and the
+    # canonical board-frame row it produced is written back here, replacing the
+    # world one. That is what makes the conversion happen exactly once: every
+    # later run reads a row that is already in the board's frame (ADR-120).
+    from CadexBoards import prune_terminal_rows
+
+    board_specs = dict(execution.get("board_specs") or {})
+    converted = {
+        (str(row.get("board") or ""), str(row.get("name") or "")): dict(row)
+        for row in list(execution.get("board_rows_converted") or [])
+    }
+    board_values = []
+    for row in list(prepared.get("board_values") or []):
+        key = (str(row.get("board") or ""), str(row.get("name") or ""))
+        board_values.append(converted.get(key) or {
+            field: value for field, value in dict(row).items() if field != "frame"
+        })
+    prepared["board_values"] = prune_terminal_rows(board_values, board_specs)
     final_revision = contracts.project_script_revision(
         source=str(prepared["source"]),
         param_specs=param_specs,
         param_values=dict(prepared["param_values"]),
         net_specs=net_specs,
         net_values=list(prepared["net_values"]),
+        board_specs=board_specs,
+        board_values=list(prepared["board_values"]),
     )
     store = CadexProjectScriptStore(str(prepared["project_root"]))
     store.write(
@@ -1577,6 +1695,8 @@ def validate_project_result(
             "param_values": dict(prepared["param_values"]),
             "net_specs": net_specs,
             "net_values": list(prepared["net_values"]),
+            "board_specs": board_specs,
+            "board_values": list(prepared["board_values"]),
             "working_revision": final_revision,
             "latest_candidate": {
                 "status": "validated",
@@ -1595,6 +1715,7 @@ def validate_project_result(
         "digest": digest,
         "param_specs": param_specs,
         "net_specs": net_specs,
+        "board_specs": board_specs,
         "validations": dict(execution.get("validations") or {}),
         "component_sources": dict(execution.get("component_sources") or {}),
         "stdout": str(execution.get("stdout") or ""),
@@ -2135,6 +2256,9 @@ def describe_project_api() -> dict[str, Any]:
             "num",
             "nets",
             "wire",
+            "boards",
+            "board",
+            "term",
         ],
         "domains": _capability_api_listing(),
         "connections": {
@@ -2167,6 +2291,44 @@ def describe_project_api() -> dict[str, Any]:
                 "the declared table wholesale — that is what lets the wiring "
                 "editor add and delete connections. A stored row naming a "
                 "port the script no longer declares is dropped, not refused."
+            ),
+        },
+        "boards": {
+            "boards": (
+                "USE THIS to state where a wire attaches. boards({'fc': "
+                "board(...), ...}) declares the project's boards and their "
+                "terminals as a table; callable at most once per script, and "
+                "the result is a mapping of TerminalSet, so it goes straight "
+                "into nets(ports=b) and b['fc']['sda'] is an ordinary "
+                "terminal. A board declared here draws as a node in the "
+                "wiring editor whether or not anything is wired to it — a "
+                "terminal set that is merely assigned to a variable reaches "
+                "the canvas as nothing at all."
+            ),
+            "board": (
+                "board(component, terminals=[term(...)], units='mm') is the "
+                "editable form. header=/holes=/pads= with names= are the "
+                "part.terminals forms, kept: a header is expanded to explicit "
+                "rows at declaration, and a selector board's rows are derived "
+                "from the shape on every run and are read-only in the editor. "
+                "units='m' states what THIS declaration's numbers are in; the "
+                "stored row is millimetres either way."
+            ),
+            "term": (
+                "term(name, origin=..., axis=..., hole_dia=None, depth=None) "
+                "declares one terminal in the board's own frame. origin is "
+                "where the wire lands and axis is the direction it is drilled "
+                "into the body, so the wire leaves back along -axis. hole_dia "
+                "present means a hole, absent means a pad; depth is optional "
+                "and descriptive."
+            ),
+            "values": (
+                "Stored rows from xscript.project.set_params(boards=...) "
+                "replace the declared table wholesale, exactly as the "
+                "connection rows do — that is what lets the editor add and "
+                "delete terminals, and what lets a viewport pick write a row "
+                "with no chat turn. A stored row naming a board the script no "
+                "longer declares is dropped, not refused."
             ),
         },
         "parameters": {
@@ -2204,8 +2366,8 @@ def describe_project_api() -> dict[str, Any]:
             "set_params": (
                 "Values-only RFC 7396 patch of declared parameters, and/or a "
                 "full replacement row list for the connections declared with "
-                "nets(...); the source is untouched and re-executed with the "
-                "new values."
+                "nets(...) or the terminals declared with boards(...); the "
+                "source is untouched and re-executed with the new values."
             ),
         },
         "revision_rule": (

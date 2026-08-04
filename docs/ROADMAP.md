@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-08-03
+Verified against source: 2026-08-04
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -1318,8 +1318,10 @@ What makes them experimental, and what would settle it:
   because "the rim on top of the hole" is the only end of it a user can point
   at. `depth` therefore sizes nothing and `hole_dia` is what classifies a
   declared row. Every project carrying a bore terminal must be re-accepted.
-  Still not built: writing a terminal into a script from a viewport click
-  (Phase 10b, ADR-067), and mesh hole detection, which is deferred by
+  **A pick writes the terminal itself since ADR-120/121 (2026-08-04)**, into
+  the `boards(...)` table rather than into the script text — which is what
+  Phase 10b was asking for and is a better answer than it: a row is data and
+  needs no author. Still not built: mesh hole detection, which is deferred by
   decision rather than pending.
 - [x] **The harness is invisible** — **settled by ADR-065 (the engine),
   ADR-066 (the editor) and ADR-067 (the pick), all 2026-08-01.** `nets(...)`
@@ -1369,16 +1371,38 @@ What makes them experimental, and what would settle it:
   Define Board queues the *engine's output key* as a port for
   `nets(ports=…)` — it is the one gesture that starts from a click on the
   mirror, so it is the one that converts — and stamps the object, so every
-  later terminal pick on it says which board it is on. Still not built:
+  later terminal pick on it says which board it is on. **And the boards themselves became a
+  table on 2026-08-04 (ADR-120), which is what made the pick a write
+  (ADR-121).** `boards({...})`/`board(...)`/`term(...)` in a new pure module
+  `CadexBoards.py`: the terminals of each board declared as rows,
+  `board_specs`/`board_values` in `script.json`, `set_params(boards=)` to
+  edit them, and one optional protocol arg. A declared board now draws
+  whether or not anything is wired to it — before, a `TerminalSet` that
+  nothing consumed reached the canvas as *nothing at all*, which is why
+  `cdx-chassis-v06` showed an empty editor while declaring six of them. The
+  rows are millimetres in the board's own frame whatever the script's
+  `units=` says, so one project can no longer carry two unit systems. A
+  terminal measured in the viewport is written straight into that table: it
+  goes out in world coordinates and the *engine* inverts the placement chain
+  it resolved, which is the paper arithmetic V06's magic literals came from.
+  A board-free project keeps a byte-identical revision; V06 itself was
+  migrated on a copy and re-accepted. **And it became editable more than once
+  in ADR-122 (2026-08-04).** The push started a `Lifecycle` and nobody polled
+  it, so the revision guard never advanced and every apply after the first was
+  refused `STALE_PROGRAM_REVISION` in silence — twenty wires dragged built one
+  cable, and the next refresh wiped the other nineteen off the canvas. It has
+  the single-slot pump the slider drag has had since Phase 6; the 150 ms
+  leading-edge debounce, which turned a drag burst into a pile-up on the
+  client lock, is replaced by an explicit **Apply** and **Revert**, so ten
+  wires cost one re-execute and a refusal no longer throws the canvas away.
+  Solder is on by default and `WireValue` carries both endpoint addresses, so
+  a script can finally size the joints it builds — `part.solder` needs
+  `pad_dia_mm` on a declared pad, and that number is the board's. Still not
+  built:
   `part.bundle` as an
   editable graph concept (deferred by decision — changing a bundle's
   membership is a script edit; since ADR-115 its conductors at least *draw*,
-  marked read-only); writing a terminal *into* the script from the
-  pick, rather than into the chat turn (Phase 10b, still open — ADR-067
-  supplies the measurement, not the write); and a per-output composed
-  placement matrix in the wiring scope, without which a pick on a transformed
-  mesh asset is expressed in the output's frame rather than the asset's and
-  the assistant has to resolve the difference.
+  marked read-only).
 - [x] **A wire ends in mid-air** — **settled by ADR-063 (2026-08-01), and the
   joint stopped reading as a cone in ADR-064 (2026-08-01).** `part.solder`
   builds the joint a terminal implies, with a concave meniscus that flattens

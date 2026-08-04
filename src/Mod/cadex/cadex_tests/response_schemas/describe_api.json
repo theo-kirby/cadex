@@ -92,5 +92,11 @@
   "revision_rule": "str",
   "source_globals": [
     "str"
-  ]
+  ],
+  "boards": {
+    "boards": "str",
+    "board": "str",
+    "term": "str",
+    "values": "str"
+  }
 }

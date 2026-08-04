@@ -652,6 +652,159 @@ def test_an_inline_component_is_named_by_its_label(tmp_path) -> None:
 
 
 # --------------------------------------------------------------------------
+# a script that declares boards(...) (ADR-120)
+# --------------------------------------------------------------------------
+
+
+BOARD_SPECS = {
+    "boards": [
+        {
+            "name": "fc",
+            "units": "mm",
+            "selector": False,
+            "terminals": [
+                {
+                    "name": name,
+                    "origin": [0.0, 2.54 * index, 1.6],
+                    "axis": [0.0, 0.0, -1.0],
+                    "hole_dia": 1.0,
+                    "depth": 1.6,
+                }
+                for index, name in enumerate(SIGNALS)
+            ],
+        },
+        {
+            "name": "esp",
+            "units": "m",
+            "selector": True,
+            "terminals": [],
+        },
+    ]
+}
+
+
+def _board_project(tmp_path, *, board_values=()):
+    """Two boards, neither of them wired to anything at all.
+
+    Which is the case that motivated ADR-120: before it, a declared terminal
+    set that nothing consumed reached the canvas as nothing at all.
+    """
+
+    report = {
+        "ok": True,
+        "digest": DIGEST,
+        "outputs": [],
+        "wiring": [
+            {**_registry_entry("fc", "fc_board", SENSOR), "board": "fc"},
+            {**_registry_entry("esp", "esp32_board", ESP), "board": "esp"},
+        ],
+    }
+    state = {
+        "board_specs": BOARD_SPECS,
+        "board_values": [dict(row) for row in board_values],
+    }
+    return _store(tmp_path, report=report, state=state)
+
+
+def test_a_declared_board_is_a_node_even_with_nothing_wired_to_it(tmp_path) -> None:
+    value = _wiring(_board_project(tmp_path))["value"]
+
+    components = {item["board"]: item for item in value["components"]}
+    assert sorted(components) == ["esp", "fc"]
+    assert value["wires"] == []
+    assert [item["name"] for item in components["fc"]["terminals"]] == SIGNALS
+
+
+def test_a_declared_boards_sockets_carry_their_row(tmp_path) -> None:
+    """The row is what ``set_params(boards=...)`` writes back, so the canvas
+    is shown the same numbers it will send."""
+
+    value = _wiring(_board_project(tmp_path))["value"]
+    components = {item["board"]: item for item in value["components"]}
+
+    socket = components["fc"]["terminals"][1]
+    assert socket["origin"] == pytest.approx([0.0, 2.54, 1.6])
+    assert socket["axis"] == [0.0, 0.0, -1.0]
+    assert socket["hole_dia"] == pytest.approx(1.0)
+    # The resolved world point stays beside it: the row is the board's own
+    # frame and the canvas needs both.
+    assert socket["point"] == [0.0, 2.54, -1.6]
+
+
+def test_a_selector_board_draws_and_is_not_editable(tmp_path) -> None:
+    value = _wiring(_board_project(tmp_path))["value"]
+    components = {item["board"]: item for item in value["components"]}
+
+    assert components["fc"]["editable"] is True
+    assert components["esp"]["editable"] is False
+    # Its sockets carry the resolved geometry and no row: there is nothing an
+    # override could address that the shape would not overwrite.
+    assert "origin" not in components["esp"]["terminals"][0]
+
+
+def test_stored_terminal_rows_are_what_the_scope_reports(tmp_path) -> None:
+    """The editor reads back what it wrote, not what the script declared."""
+
+    root = _board_project(
+        tmp_path,
+        board_values=[
+            {
+                "board": "fc",
+                "name": "sda",
+                "origin": [4.0, 5.0, 6.0],
+                "axis": [1.0, 0.0, 0.0],
+                "hole_dia": None,
+                "depth": None,
+            }
+        ],
+    )
+    components = {
+        item["board"]: item for item in _wiring(root)["value"]["components"]
+    }
+
+    socket = components["fc"]["terminals"][0]
+    assert socket["origin"] == pytest.approx([4.0, 5.0, 6.0])
+    assert socket["hole_dia"] is None
+    # A row the stored table dropped keeps its resolved socket and loses its
+    # row fields: the run built it, the table no longer names it.
+    assert "origin" not in components["fc"]["terminals"][1]
+
+
+def test_a_row_naming_a_dropped_board_is_pruned_from_the_view(tmp_path) -> None:
+    """The same pruning the runtime applies, so the two never disagree."""
+
+    root = _board_project(
+        tmp_path,
+        board_values=[
+            {"board": "gone", "name": "sda", "origin": [1.0, 1.0, 1.0],
+             "axis": [0.0, 0.0, 1.0]},
+        ],
+    )
+    components = {
+        item["board"]: item for item in _wiring(root)["value"]["components"]
+    }
+    assert all("origin" not in socket for socket in components["fc"]["terminals"])
+
+
+def test_a_board_name_is_reserved_the_way_a_port_name_is(tmp_path) -> None:
+    """One namespace: a board is the left half of an address too (ADR-115)."""
+
+    report = {
+        "ok": True,
+        "digest": DIGEST,
+        "outputs": [],
+        "wiring": [
+            {**_registry_entry("", "fc", SENSOR), "board": "fc"},
+            # A second set on a component whose output name would collide with
+            # the board's name; it must not take it.
+            {**_registry_entry("", "fc", ESP), "board": ""},
+        ],
+    }
+    value = _wiring(_store(tmp_path, report=report, state={}))["value"]
+    assert [item["port"] for item in value["components"]] == ["fc", "fc#2"]
+
+
+# --------------------------------------------------------------------------
 # boundaries
 # --------------------------------------------------------------------------
 

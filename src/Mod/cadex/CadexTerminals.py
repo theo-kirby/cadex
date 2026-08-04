@@ -53,6 +53,7 @@ __all__ = [
     "apply_placement",
     "declared_layout",
     "identity_matrix",
+    "invert_placement",
     "resolve_terminals",
     "selector_layout",
 ]
@@ -699,6 +700,49 @@ def _uniform_scale(matrix: Sequence[float]) -> float:
                     details={"stage": "terminal_placement", "shear": skew},
                 )
     return sum(lengths) / 3.0
+
+
+def invert_placement(matrix: Sequence[float]) -> tuple[float, ...]:
+    """The inverse of a rigid, uniformly-scaled placement, row-major.
+
+    The other direction of :func:`apply_placement`, and it exists for one
+    caller: a terminal *measured in the viewport* arrives in world
+    coordinates and has to be written down in the component's own frame
+    (ADR-120).  Doing that by hand — inverting the placement chain on paper
+    and pasting the literals into the script — is exactly what produced the
+    magic numbers this replaces.
+
+    Refuses a non-uniform or sheared placement through the same
+    :func:`_uniform_scale` check ``apply_placement`` goes through, and for
+    the same reason: such a frame does not carry a direction, so an inverted
+    axis would point somewhere the hole does not.  Refusing one row loudly is
+    better than skewing it quietly.
+    """
+
+    values = list(matrix)
+    if len(values) != 16:
+        raise TerminalError("a placement is a 4x4 matrix of 16 numbers, row-major")
+    scale = _uniform_scale(values)
+    # Columns of the linear part are the placed frame's axes, each of length
+    # ``scale``; the inverse rotation is their transpose over that length,
+    # applied once more to remove the scale itself.
+    rotation = [
+        [values[row * 4 + column] / scale for column in range(3)] for row in range(3)
+    ]
+    inverse_linear = [
+        [rotation[column][row] / scale for column in range(3)] for row in range(3)
+    ]
+    translation = [values[3], values[7], values[11]]
+    inverse_translation = [
+        -sum(inverse_linear[row][column] * translation[column] for column in range(3))
+        for row in range(3)
+    ]
+    result: list[float] = []
+    for row in range(3):
+        result.extend(inverse_linear[row])
+        result.append(inverse_translation[row])
+    result.extend((0.0, 0.0, 0.0, 1.0))
+    return tuple(result)
 
 
 def _transform_point(matrix: Sequence[float], point: Sequence[float]) -> list[float]:

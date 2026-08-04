@@ -99,6 +99,14 @@ class CadexProjectScriptStore:
             # unchanged with no nets and needs no migration.
             "net_specs": {},
             "net_values": [],
+            # The board table's declaration cache and its stored terminal
+            # rows (ADR-120), beside the connection pair for the same reason
+            # that pair sits beside the parameter one: a board and a wire are
+            # both things the script declares and the editor currently sets.
+            # Loaded through the same merge, so a script.json written before
+            # ADR-120 needs no migration either.
+            "board_specs": {},
+            "board_values": [],
             "working_revision": "",
             "accepted_revision": "",
             "accepted_contract": None,

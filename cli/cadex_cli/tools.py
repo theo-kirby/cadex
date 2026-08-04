@@ -76,8 +76,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "and safer than rewriting a long script for a small change."
     ),
     "set_params": (
-        "Set declared parameter values and re-run the unchanged script. Use "
-        "this when only numbers change; it never touches the source."
+        "Set declared parameter values, connection rows or terminal rows and "
+        "re-run the unchanged script. Use this when only numbers change; it "
+        "never touches the source."
     ),
     "rebuild": (
         "Re-run the accepted script into a fresh document and report the "
@@ -120,6 +121,15 @@ ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
         "current table with `inspect scope=wiring` first. Omit this argument "
         "entirely to leave the connections alone."
     ),
+    ("set_params", "boards"): (
+        "The COMPLETE terminal table for a script that declares one with "
+        'boards(...) — a list of {"board", "name", "origin", "axis", '
+        '"hole_dia", "depth"} rows, in millimetres in that board\'s own '
+        "frame. `hole_dia` present means a hole, absent means a pad. Not a "
+        "patch: rows you omit are dropped, so read the current table with "
+        "`inspect scope=wiring` first. Omit this argument entirely to leave "
+        "the terminals alone."
+    ),
     ("inspect", "scope"): (
         "What to read. `script` is the current source, parameters and "
         "revisions; `output` is the accepted revision's per-output facts "
@@ -129,7 +139,7 @@ ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
         "importable files; `history` is the accepted-revision trail; `wiring` "
         "is the harness as a graph — every resolved terminal and the "
         "connection table over them, and the thing to read before sending "
-        "`set_params` a `nets` list; `api` is the tool surface."
+        "`set_params` a `nets` or `boards` list; `api` is the tool surface."
     ),
     ("inspect", "target"): (
         "The exact name the scope keys on — an output name for `output`, an "
@@ -173,6 +183,21 @@ def _property_schema(op: str, name: str, python_type: type) -> dict[str, Any]:
             "type": "object",
             "properties": {"old": {"type": "string"}, "new": {"type": "string"}},
             "required": ["old", "new"],
+            "additionalProperties": False,
+        }
+    if op == "set_params" and name == "boards":
+        schema["items"] = {
+            "type": "object",
+            "properties": {
+                "board": {"type": "string"},
+                "name": {"type": "string"},
+                "origin": {"type": "array", "items": {"type": "number"}},
+                "axis": {"type": "array", "items": {"type": "number"}},
+                "hole_dia": {"type": ["number", "null"]},
+                "depth": {"type": ["number", "null"]},
+                "frame": {"type": "string", "enum": ["world", "board"]},
+            },
+            "required": ["board", "name", "origin", "axis"],
             "additionalProperties": False,
         }
     if op == "set_params" and name == "nets":

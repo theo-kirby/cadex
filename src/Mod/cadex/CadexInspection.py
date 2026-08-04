@@ -483,11 +483,18 @@ def _component_labels(registry: list[Any]) -> list[str]:
     """
 
     entries = [entry if isinstance(entry, Mapping) else {} for entry in registry]
+    # Board names are reserved in the same first pass, and for the same
+    # reason: ``board_values`` rows are written against them, so nothing here
+    # may move one (ADR-120). The two namespaces are one by construction — a
+    # declared board reaches the registry as its own ``port`` too.
     used = {str(entry.get("port") or "") for entry in entries}
+    used |= {str(entry.get("board") or "") for entry in entries}
     used.discard("")
     labels: list[str] = []
     for index, entry in enumerate(entries):
-        port = str(entry.get("port") or "")
+        # A declared name, whichever table declared it: the rows of both are
+        # written against these names and nothing here may move one.
+        port = str(entry.get("port") or "") or str(entry.get("board") or "")
         if port:
             labels.append(port)
             continue
@@ -512,9 +519,28 @@ def _component_labels(registry: list[Any]) -> list[str]:
     return labels
 
 
-def _wiring_components(registry: list[Any]) -> tuple[list[dict[str, Any]], dict[str, str]]:
-    """The nodes of the graph, plus ``identity -> port label`` for the wires."""
+def _wiring_components(
+    registry: list[Any],
+    board_rows: Mapping[Any, Any] | None = None,
+    editable_boards: Any = (),
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """The nodes of the graph, plus ``identity -> port label`` for the wires.
 
+    ``board_rows`` is the effective terminal table keyed ``(board, name)``
+    (ADR-120). Where it has a row, the socket carries the row's own fields —
+    which is what makes the canvas able to *write* one back rather than only
+    draw it. The resolved point and direction stay beside them: they are
+    world coordinates and the row is the board's own frame, and the canvas
+    needs both.
+
+    ``editable_boards`` is the set of declared boards whose rows are a table
+    rather than a selector's derived output. It is a property of the *board*,
+    not of its rows, so a board whose terminals were all deleted from the
+    canvas is still editable and can have one added back.
+    """
+
+    rows = dict(board_rows or {})
+    editable = {str(name) for name in editable_boards or ()}
     components: list[dict[str, Any]] = []
     label_by_identity: dict[str, str] = {}
     labels = _component_labels(registry)
@@ -522,24 +548,37 @@ def _wiring_components(registry: list[Any]) -> tuple[list[dict[str, Any]], dict[
         if not isinstance(entry, Mapping):
             continue
         label = labels[index]
+        board = str(entry.get("board") or "")
         terminals = []
         for terminal in list(entry.get("terminals") or []):
             if not isinstance(terminal, Mapping):
                 continue
             metrics = dict(terminal.get("metrics") or {})
-            terminals.append(
-                {
-                    "name": str(terminal.get("name") or ""),
-                    "point": list(terminal.get("point") or []),
-                    "direction": list(terminal.get("direction") or []),
-                    "kind": str(metrics.get("kind") or ""),
-                    "radius": metrics.get("radius"),
-                    "depth": metrics.get("depth"),
-                }
-            )
+            name = str(terminal.get("name") or "")
+            socket = {
+                "name": name,
+                "point": list(terminal.get("point") or []),
+                "direction": list(terminal.get("direction") or []),
+                "kind": str(metrics.get("kind") or ""),
+                "radius": metrics.get("radius"),
+                "depth": metrics.get("depth"),
+            }
+            row = rows.get((board, name)) if board else None
+            if isinstance(row, Mapping):
+                socket["origin"] = [float(value) for value in row.get("origin") or []]
+                socket["axis"] = [float(value) for value in row.get("axis") or []]
+                socket["hole_dia"] = row.get("hole_dia")
+                socket["depth"] = row.get("depth")
+            terminals.append(socket)
         components.append(
             {
                 "port": label,
+                # The declared board this node is, and whether its rows are a
+                # table the editor may write. A selector board is a node like
+                # any other and its terminals are read-only, because they are
+                # derived from the shape on every run.
+                "board": board,
+                "editable": board in editable,
                 "output": str(entry.get("output") or ""),
                 "domain": str(entry.get("domain") or ""),
                 "terminals": terminals,
@@ -691,6 +730,7 @@ def _complete_wiring(captured: Mapping[str, Any]) -> Any:
             "ok": False,
             "error": "The active document has no durable Cadex project root.",
         }
+    from CadexBoards import declared_boards, effective_terminals
     from CadexNets import effective_rows
     from CadexPinResolution import accepted_attempt_dir, load_worker_report
     from CadexScriptStore import CadexProjectScriptStore
@@ -704,7 +744,21 @@ def _complete_wiring(captured: Mapping[str, Any]) -> Any:
         }
     report = load_worker_report(accepted_attempt_dir(Path(root), state))
     registry = [item for item in list(report.get("wiring") or [])]
-    components, _labels = _wiring_components(registry)
+    # The terminal table as the run built it: the declared rows, replaced
+    # wholesale by the stored overrides where there are any, pruned the same
+    # way the runtime prunes them (ADR-120). Joined onto the resolved sockets
+    # so a canvas that draws a terminal can also write the row behind it.
+    board_specs = dict(state.get("board_specs") or {})
+    board_rows = {
+        (str(row.get("board") or ""), str(row.get("name") or "")): row
+        for row in effective_terminals(board_specs, state.get("board_values"))
+    }
+    editable_boards = {
+        name
+        for name, entry in declared_boards(board_specs).items()
+        if not entry.get("selector")
+    }
+    components, _labels = _wiring_components(registry, board_rows, editable_boards)
     specs = dict(state.get("net_specs") or {})
     if specs:
         declared = effective_rows(specs, state.get("net_values"))
@@ -740,7 +794,12 @@ def _complete_wiring(captured: Mapping[str, Any]) -> Any:
                 "interior; both are read-only here, because a path is script "
                 "state and set_params(nets=) carries editor state. A row with "
                 "an empty 'waypoints' is a bundle conductor, whose route "
-                "belongs to the bundle."
+                "belongs to the bundle. A component carrying editable=true is "
+                "a board declared with boards(...): its terminals carry their "
+                "row fields (origin, axis, hole_dia, depth, in millimetres in "
+                "that board's own frame) and are edited with "
+                "set_params(boards=[...]), which replaces the whole list the "
+                "same way."
             ),
         }
     return {

@@ -335,7 +335,22 @@ def effective_rows(
 
 @dataclass(frozen=True)
 class WireValue:
-    """One effective connection, with its two ends already resolved."""
+    """One effective connection, with its two ends already resolved.
+
+    ``a``/``b`` are Terminals, which is what ``part.cable`` and
+    ``part.solder`` take.  ``a_address``/``b_address`` are the same two ends
+    as the ``"<board>.<terminal>"`` strings the stored row already carried,
+    and they exist because a script cannot otherwise **size** a joint: a
+    declared pad carries no area, so ``part.solder`` requires ``pad_dia_mm``
+    there, and the right diameter is a property of the board — an RF bore at
+    2.54 mm pitch and a camera's 0.5 mm pads want very different numbers. A
+    Terminal knows its own name but not which port addressed it, so without
+    these the loop that builds one joint per soldered end has nothing to key
+    a per-board table on (ADR-122).
+
+    Additive: no stored row changes shape, and a script that does not read
+    them hashes exactly as it did.
+    """
 
     name: str
     a: Any
@@ -345,6 +360,9 @@ class WireValue:
     enabled: bool
     avoid: tuple[Any, ...] = ()
     label: str = ""
+    #: ``"<port>.<terminal>"`` for each end, verbatim from the effective row.
+    a_address: str = ""
+    b_address: str = ""
 
     def __repr__(self) -> str:  # pragma: no cover - diagnostics only
         return f"WireValue({self.name!r}, gauge={self.gauge!r})"
@@ -449,6 +467,8 @@ class NetsCollector:
                     enabled=bool(row["enabled"]),
                     avoid=tuple(spec.get("avoid") or ()),
                     label=str(spec.get("label") or ""),
+                    a_address=str(row["a"]),
+                    b_address=str(row["b"]),
                 )
             )
         return NetValues(clean_ports, wire_values)

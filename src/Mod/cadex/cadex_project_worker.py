@@ -352,7 +352,9 @@ def _attach_routes(outputs: list[dict[str, Any]]) -> None:
             item["route"] = route
 
 
-def _wiring_registry(nets: Any, result: dict[str, Any]) -> list[dict[str, Any]]:
+def _wiring_registry(
+    nets: Any, result: dict[str, Any], boards: Any = None
+) -> list[dict[str, Any]]:
     """Every resolved terminal set, joined to its port and its output (ADR-065).
 
     The run has already resolved each set once and memoised it; publishing
@@ -360,11 +362,14 @@ def _wiring_registry(nets: Any, result: dict[str, Any]) -> list[dict[str, Any]]:
     drift from the geometry that was actually built. Re-deriving it host-side
     would reach declared layouts only — a ``holes=`` selector needs the shape.
 
-    Both joins come free. ``port`` is the ``nets(ports=...)`` name, matched on
-    the same memo key the worker resolves by; ``output`` is the ``result``
-    key whose payload *is* the set's component. A component that is neither a
-    declared port nor a declared output still yields a node, unnamed — that
-    is the legacy harness, and it is exactly what the read-only view draws.
+    Three joins come free. ``port`` is the ``nets(ports=...)`` name — or the
+    ``boards(...)`` name, which is the same namespace by construction (ADR-120)
+    — matched on the same memo key the worker resolves by; ``board`` is that
+    name again when the set came from a declared board, which is what tells
+    the editor the node's rows are editable; ``output`` is the ``result`` key
+    whose payload *is* the set's component. A component that is none of the
+    three still yields a node, unnamed — that is the legacy harness, and it is
+    exactly what the read-only view draws.
 
     Derived data, computed after the digest and never fed into it: a port the
     script declares but never wires is resolved here and its failure reported,
@@ -378,8 +383,25 @@ def _wiring_registry(nets: Any, result: dict[str, Any]) -> list[dict[str, Any]]:
         terminal_set_key,
     )
 
+    # Every board the script declares, then every port nets() names. Both
+    # are resolved here whether or not anything is wired to them: a
+    # ``TerminalSet`` is an inert handle, and before ADR-120 one that was
+    # never consumed by a cable and never named in ``nets(ports=...)``
+    # reached the canvas as nothing at all -- which is how a script declaring
+    # six terminal sets drew an empty wiring editor. A declared board is a
+    # node, full stop.
+    declared: list[tuple[str, Any, bool]] = [
+        (name, terminal_set, True)
+        for name, terminal_set in list(getattr(boards, "sets", []) or [])
+    ]
+    declared.extend(
+        (name, terminal_set, False)
+        for name, terminal_set in list(getattr(nets, "ports", []) or [])
+    )
+
     port_by_key: dict[str, str] = {}
-    for port_name, terminal_set in list(getattr(nets, "ports", []) or []):
+    board_by_key: dict[str, str] = {}
+    for port_name, terminal_set, is_board in declared:
         payload = _json_value(
             {
                 "component": terminal_set.component,
@@ -390,7 +412,10 @@ def _wiring_registry(nets: Any, result: dict[str, Any]) -> list[dict[str, Any]]:
         # resolved by the run, and an unwired board is precisely the node the
         # editor needs in order to rewire onto it.
         resolve_terminal_set_for_publication(payload)
-        port_by_key.setdefault(terminal_set_key(payload), port_name)
+        key = terminal_set_key(payload)
+        port_by_key.setdefault(key, port_name)
+        if is_board:
+            board_by_key.setdefault(key, port_name)
 
     output_by_payload: dict[str, str] = {}
     for name, value in result.items():
@@ -409,6 +434,7 @@ def _wiring_registry(nets: Any, result: dict[str, Any]) -> list[dict[str, Any]]:
         registry.append(
             {
                 "port": port_by_key.get(str(entry.get("key") or ""), ""),
+                "board": board_by_key.get(str(entry.get("key") or ""), ""),
                 "output": output,
                 "domain": str((component or {}).get("domain") or ""),
                 "kind": str((entry.get("layout") or {}).get("kind") or ""),
@@ -427,7 +453,9 @@ def _wiring_registry(nets: Any, result: dict[str, Any]) -> list[dict[str, Any]]:
     return registry
 
 
-def _validate_request(request: dict[str, Any]) -> tuple[str, dict, dict, dict, list]:
+def _validate_request(
+    request: dict[str, Any],
+) -> tuple[str, dict, dict, dict, list, list]:
     """Structural checks shared by an accepting run and a preview."""
 
     if request.get("schema") != SCHEMA:
@@ -442,6 +470,9 @@ def _validate_request(request: dict[str, Any]) -> tuple[str, dict, dict, dict, l
     # full row list rather than a patch when present -- that is what lets the
     # editor add and delete wires.
     net_values = request.get("net_values") or []
+    # The same, one table over: absent on a request written before ADR-120,
+    # and a full row list rather than a patch when present.
+    board_values = request.get("board_values") or []
     if not isinstance(inputs, dict):
         raise TypeError("inputs must be an object.")
     if not isinstance(api_contracts, dict) or set(api_contracts) != set(
@@ -454,7 +485,27 @@ def _validate_request(request: dict[str, Any]) -> tuple[str, dict, dict, dict, l
         raise TypeError("param_values must be an object.")
     if not isinstance(net_values, list):
         raise TypeError("net_values must be an array of connection rows.")
-    return source, inputs, api_contracts, param_values, net_values
+    if not isinstance(board_values, list):
+        raise TypeError("board_values must be an array of terminal rows.")
+    return source, inputs, api_contracts, param_values, net_values, board_values
+
+
+def _component_placement(component: Any) -> tuple[float, ...]:
+    """The composed 4x4 one component's terminals ride, for a world-frame row.
+
+    The one thing ``CadexBoards`` cannot answer on its own, and the reason
+    the conversion happens *here* rather than in ``cadexd``: a mesh component
+    rides its import placement, and resolving that needs the staged asset.
+    A part value is built in final coordinates, so its chain is the identity
+    — the same distinction ``_resolve_terminal_set`` already makes.
+    """
+
+    from CadexTerminals import identity_matrix
+    from cadex_part_worker import mesh_component_placement
+
+    if isinstance(component, Mapping) and component.get("domain") == "mesh":
+        return mesh_component_placement(component)
+    return identity_matrix()
 
 
 def _staged_globals(
@@ -462,23 +513,36 @@ def _staged_globals(
     param_values: dict[str, Any],
     inline_sources: dict[str, dict[str, Any]],
     net_values: Any = None,
-) -> tuple[dict[str, Any], ParamsCollector, Any]:
+    board_values: Any = None,
+) -> tuple[dict[str, Any], ParamsCollector, Any, Any]:
     """One API object per capability domain, plus the declared-table vocabulary.
 
-    ``params``/``num`` declare the sliders and ``nets``/``wire`` declare the
-    connections (ADR-065); both are tables the script states and something
-    outside it currently sets.
+    ``params``/``num`` declare the sliders, ``nets``/``wire`` the connections
+    (ADR-065) and ``boards``/``board``/``term`` the boards and their terminals
+    (ADR-120); all three are tables the script states and something outside it
+    currently sets.
     """
 
+    from CadexBoards import BoardsCollector, board, term
     from CadexNets import NetsCollector, wire
+    from cadex_domain_api import _json_value
 
     collector = ParamsCollector(param_values)
     nets = NetsCollector(net_values)
+    boards = BoardsCollector(
+        board_values,
+        # The component reaches the collector as the DomainValue the script
+        # holds; the placement lookup wants the payload the worker resolves by.
+        lambda component: _component_placement(_json_value(component)),
+    )
     globals_by_name: dict[str, Any] = {
         "params": collector,
         "num": num,
         "nets": nets,
         "wire": wire,
+        "boards": boards,
+        "board": board,
+        "term": term,
     }
     for domain in EVALUATION_ORDER:
         contract = api_contracts[domain]
@@ -492,13 +556,20 @@ def _staged_globals(
             globals_by_name[domain] = create_domain_api(
                 domain, exports, output_types
             )
-    return globals_by_name, collector, nets
+    return globals_by_name, collector, nets, boards
 
 
 def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
     import FreeCAD as App
 
-    source, inputs, api_contracts, param_values, net_values = _validate_request(request)
+    (
+        source,
+        inputs,
+        api_contracts,
+        param_values,
+        net_values,
+        board_values,
+    ) = _validate_request(request)
 
     output_directory = root / "outputs"
     output_directory.mkdir(parents=True, exist_ok=False)
@@ -516,8 +587,8 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
     configure_part_assets(root, canonical_mesh_from_payload, composed_placement)
 
     inline_sources: dict[str, dict[str, Any]] = {}
-    globals_by_name, collector, nets = _staged_globals(
-        api_contracts, param_values, inline_sources, net_values
+    globals_by_name, collector, nets, boards = _staged_globals(
+        api_contracts, param_values, inline_sources, net_values, board_values
     )
 
     document = App.newDocument(
@@ -664,7 +735,13 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
             "budget": budget,
             "param_specs": collector.specs,
             "net_specs": nets.specs,
-            "wiring": _wiring_registry(nets, result),
+            "board_specs": boards.specs,
+            # Rows this run carried out of world coordinates (ADR-120).
+            # ``validate_project_result`` writes them back into
+            # ``board_values``, so a viewport measurement is converted exactly
+            # once and every later run reads a board-frame row.
+            "board_rows_converted": list(boards.converted),
+            "wiring": _wiring_registry(nets, result, boards),
             "digest": digest,
             "validations": validations,
             "component_sources": component_sources,
@@ -795,7 +872,14 @@ def _run_preview(request: dict[str, Any], root: Path) -> dict[str, Any]:
 
     import FreeCAD as App
 
-    source, inputs, api_contracts, param_values, net_values = _validate_request(request)
+    (
+        source,
+        inputs,
+        api_contracts,
+        param_values,
+        net_values,
+        board_values,
+    ) = _validate_request(request)
     baseline = request.get("baseline")
     if baseline is not None and not isinstance(baseline, dict):
         raise TypeError("baseline must be an object when present.")
@@ -806,8 +890,8 @@ def _run_preview(request: dict[str, Any], root: Path) -> dict[str, Any]:
     configure_part_assets(root, canonical_mesh_from_payload, composed_placement)
 
     inline_sources: dict[str, dict[str, Any]] = {}
-    globals_by_name, _collector, _nets = _staged_globals(
-        api_contracts, param_values, inline_sources, net_values
+    globals_by_name, _collector, _nets, _boards = _staged_globals(
+        api_contracts, param_values, inline_sources, net_values, board_values
     )
 
     document = App.newDocument(

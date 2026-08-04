@@ -34,6 +34,7 @@ _REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_REPO, "scripts", "addons_core"))
 
 import mesh_agent  # noqa: E402
+from mesh_agent import cadex_backend  # noqa: E402
 from mesh_agent import wiring  # noqa: E402
 from mesh_agent import wiring_ui  # noqa: E402
 from mesh_agent import cadex_hydrate  # noqa: E402
@@ -57,9 +58,13 @@ def reset_scene():
 SIGNALS = ("sda", "scl", "gnd")
 
 
-def _terminals(names=SIGNALS, kind="hole"):
-    return [
-        {
+def _terminals(names=SIGNALS, kind="hole", rows=False):
+    """The engine's resolved sockets; ``rows`` adds the board table's own
+    columns, which is what a board declared with boards(...) carries."""
+
+    terminals = []
+    for index, name in enumerate(names):
+        terminal = {
             "name": name,
             "point": [0.0, 2.54 * index, 0.0],
             "direction": [0.0, 0.0, 1.0],
@@ -67,11 +72,19 @@ def _terminals(names=SIGNALS, kind="hole"):
             "radius": 0.5,
             "depth": 1.6,
         }
-        for index, name in enumerate(names)
-    ]
+        if rows:
+            terminal.update({
+                "origin": [0.0, 2.54 * index, 1.6],
+                "axis": [0.0, 0.0, -1.0],
+                "hole_dia": 1.0 if kind == "hole" else None,
+                "depth": 1.6,
+            })
+        terminals.append(terminal)
+    return terminals
 
 
-def _state(ports=("sen", "esp"), wires=None, editable=True, revision="r1"):
+def _state(ports=("sen", "esp"), wires=None, editable=True, revision="r1",
+           boards=False):
     return {
         "revision": revision,
         "source": "nets" if editable else "derived",
@@ -79,9 +92,11 @@ def _state(ports=("sen", "esp"), wires=None, editable=True, revision="r1"):
         "components": [
             {
                 "port": port,
+                "board": port if boards else "",
+                "editable": bool(boards),
                 "output": port + "_board",
                 "domain": "part",
-                "terminals": _terminals(),
+                "terminals": _terminals(rows=boards),
             }
             for port in ports
         ],
@@ -97,6 +112,15 @@ def _fresh_tree():
     scene = bpy.context.scene
     tree = wiring.ensure_tree(scene)
     return scene, tree
+
+
+def _sockets(tree, address):
+    """Both sockets of one ``<port>.<terminal>`` address."""
+
+    port, _, terminal = address.partition(".")
+    return [socket for node in tree.nodes if node.port == port
+            for socket in list(node.inputs) + list(node.outputs)
+            if socket.terminal == terminal]
 
 
 # ---------------------------------------------------------------------------
@@ -161,20 +185,77 @@ def test_solder_rides_the_socket_because_a_link_cannot_hold_it():
     print("test_solder_rides_the_socket_because_a_link_cannot_hold_it")
     _scene, tree = _fresh_tree()
     wiring.apply_state(tree, _state())
-    soldered = {s.terminal for n in tree.nodes
-                for s in list(n.inputs) + list(n.outputs) if s.soldered}
-    check(soldered == {"sda"}, "both ends of the soldered row are marked")
+    marked = {s.terminal for n in tree.nodes
+              for s in list(n.inputs) + list(n.outputs) if s.soldered}
+    check("sda" in marked, "both ends of the soldered row are marked")
     rows = wiring.rows_from_tree(tree)
     check(rows and rows[0]["solder"] is True,
           "and the flag survives the round trip back to a row")
+
+
+def test_a_new_terminal_is_soldered_and_a_stored_no_stays_no():
+    """Solder on by default, and never at the cost of a stored answer (ADR-122).
+
+    A wire onto a pad or a bore nearly always carries a joint, so a terminal
+    nothing has landed on yet reads soldered and a freshly drawn wire is
+    soldered without anyone ticking anything. What that breaks if it is done
+    carelessly is the other direction: ``apply_state`` only ever *set* True,
+    which was invisible while a fresh socket defaulted to False and would
+    silently re-solder an unticked row now that one does not.
+    """
+    print("test_a_new_terminal_is_soldered_and_a_stored_no_stays_no")
+    _scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state(wires=[]))
+    sen = next(n for n in tree.nodes if n.port == "sen")
+    check(all(s.soldered for s in list(sen.inputs) + list(sen.outputs)),
+          "a terminal nothing has landed on yet is soldered")
+
+    esp = next(n for n in tree.nodes if n.port == "esp")
+    tree.links.new(sen.outputs[0], esp.inputs[0])
+    row = next((r for r in wiring.rows_from_tree(tree)
+                if {r["a"], r["b"]} == {"sen.sda", "esp.sda"}), {})
+    check(row.get("solder") is True, "so a wire drawn onto it is soldered")
+
+    # ...and the engine's own "no" survives the round trip.
+    wiring.apply_state(tree, _state(revision="r2", wires=[
+        {"name": "sda", "a": "sen.sda", "b": "esp.sda",
+         "gauge_mm": 0.8, "solder": False, "enabled": True},
+    ]))
+    check(not any(s.soldered for s in _sockets(tree, "sen.sda")),
+          "an unsoldered stored row lands unsoldered on both its sockets")
+    check(not any(s.soldered for s in _sockets(tree, "esp.sda")),
+          "at the far end too")
+    back = wiring.rows_from_tree(tree)
+    check(back and back[0]["solder"] is False, "and reads back unsoldered")
+
+
+def test_a_terminal_several_wires_land_on_holds_one_flag():
+    """A row carries one flag; a terminal may carry several rows (ADR-122).
+
+    ``_solder_for`` reads the sockets with an *any* rule, so the sync has to
+    write them with the same one — row by row, the last row to touch a shared
+    terminal would decide for all of them.
+    """
+    print("test_a_terminal_several_wires_land_on_holds_one_flag")
+    _scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state(ports=("sen", "esp", "fc"), wires=[
+        {"name": "a", "a": "sen.gnd", "b": "esp.gnd",
+         "gauge_mm": 0.8, "solder": True, "enabled": True},
+        {"name": "b", "a": "sen.gnd", "b": "fc.gnd",
+         "gauge_mm": 0.8, "solder": False, "enabled": True},
+    ]))
+    check(all(s.soldered for s in _sockets(tree, "sen.gnd")),
+          "the shared terminal keeps the joint one of its wires asked for")
+    check(not any(s.soldered for s in _sockets(tree, "fc.gnd")),
+          "and the end that asked for none does not get one")
 
 
 def test_a_solder_toggle_is_an_edit_the_tree_notices():
     """Without the update callback the checkbox was a dead control (ADR-113).
 
     ``NodeTree.update()`` fires on topology only, so a property written into
-    an existing socket reached the engine nowhere: the debounce never armed
-    and the value was picked up incidentally, by the next link edit.
+    an existing socket reached the engine nowhere: nothing marked the canvas
+    dirty and the value was picked up incidentally, by the next link edit.
     """
     print("test_a_solder_toggle_is_an_edit_the_tree_notices")
     _scene, tree = _fresh_tree()
@@ -182,30 +263,32 @@ def test_a_solder_toggle_is_an_edit_the_tree_notices():
         {"name": "sda", "a": "sen.sda", "b": "esp.sda",
          "gauge_mm": 0.8, "solder": False, "enabled": True},
     ]))
-    wiring._dirty.clear()
+    tree.cadex_dirty = False
     sen = next(n for n in tree.nodes if n.port == "sen")
     socket = next(s for s in sen.outputs if s.terminal == "sda")
     socket.soldered = True
-    check(bool(wiring._dirty), "the toggle armed the same debounce a link does")
+    check(tree.cadex_dirty, "the toggle marks the canvas the same way a link does")
     check(wiring._suspend[0] is False, "and released the suspend it mirrored under")
-    wiring._dirty.clear()
+    tree.cadex_dirty = False
 
 
 def test_both_sockets_of_one_terminal_hold_one_state():
     """A terminal is two sockets only because Blender refuses input→input."""
     print("test_both_sockets_of_one_terminal_hold_one_state")
     _scene, tree = _fresh_tree()
+    # Every terminal starts soldered since ADR-122, so the state worth
+    # carrying across the pair is the *cleared* one.
     wiring.apply_state(tree, _state(wires=[]))
     sen = next(n for n in tree.nodes if n.port == "sen")
-    next(s for s in sen.outputs if s.terminal == "sda").soldered = True
-    check(next(s for s in sen.inputs if s.terminal == "sda").soldered is True,
-          "ticking the drawn socket carries its twin with it")
-    check({s.terminal for s in list(sen.inputs) + list(sen.outputs)
-           if s.soldered} == {"sda"}, "and touches no other terminal")
     next(s for s in sen.outputs if s.terminal == "sda").soldered = False
-    check(not any(s.soldered for s in list(sen.inputs) + list(sen.outputs)),
-          "and unticking carries it back")
-    wiring._dirty.clear()
+    check(next(s for s in sen.inputs if s.terminal == "sda").soldered is False,
+          "unticking the drawn socket carries its twin with it")
+    check({s.terminal for s in list(sen.inputs) + list(sen.outputs)
+           if not s.soldered} == {"sda"}, "and touches no other terminal")
+    next(s for s in sen.outputs if s.terminal == "sda").soldered = True
+    check(all(s.soldered for s in list(sen.inputs) + list(sen.outputs)),
+          "and ticking carries it back")
+    tree.cadex_dirty = False
 
 
 def test_solder_can_be_turned_off_again():
@@ -228,42 +311,43 @@ def test_solder_can_be_turned_off_again():
     next(s for s in esp.inputs if s.terminal == "sda").soldered = True
     check(wiring.rows_from_tree(tree)[0]["solder"] is True,
           "and either end alone puts it back")
-    wiring._dirty.clear()
+    tree.cadex_dirty = False
 
 
-def test_a_push_never_lands_mid_rebuild():
-    """A half-drawn canvas is not a connection table (ADR-113).
+def test_an_edit_marks_the_canvas_and_sends_nothing():
+    """The debounce is gone; Apply is the only thing that sends (ADR-122).
 
-    `apply_state` clears the links and re-draws them one at a time under the
-    suspend flag. `NodeTree.update()` has always honoured that flag; the
-    debounced push did not, and a push that fires in that window pushes the
-    rows drawn so far — which deletes the rest from the model, because a
-    stored row list replaces the declared table wholesale.
+    It was a *leading-edge* throttle, so a burst of twenty drags fired one
+    push 0.15 s after the first and left nineteen to pile up behind it on the
+    client lock — each one then refused as stale, in silence. Twenty drags now
+    cost nothing at all until the button is pressed.
     """
-    print("test_a_push_never_lands_mid_rebuild")
+    print("test_an_edit_marks_the_canvas_and_sends_nothing")
     _scene, tree = _fresh_tree()
-    wiring.apply_state(tree, _state())
-    wiring._dirty.clear()
-    wiring._dirty.add(tree.cadex_root or "")
-    wiring._suspend[0] = True
-    try:
-        again = wiring._push_timer()
-    finally:
-        wiring._suspend[0] = False
-    check(again == wiring._DEBOUNCE_SECONDS,
-          "the timer re-arms itself instead of pushing")
-    check(bool(wiring._dirty), "and the edit is still owed a push")
-    wiring._dirty.clear()
+    wiring.apply_state(tree, _state(wires=[]))
+    check(tree.cadex_dirty is False, "the engine's own answer is not an edit")
+
+    sen = next(n for n in tree.nodes if n.port == "sen")
+    esp = next(n for n in tree.nodes if n.port == "esp")
+    for index in range(3):
+        tree.links.new(sen.outputs[index], esp.inputs[index])
+    check(tree.cadex_dirty is True, "three drags mark the canvas")
+    check(len(wiring.rows_from_tree(tree)) == 3,
+          "and all three are on the canvas, waiting to go together")
+    check(not hasattr(wiring, "_push_timer"),
+          "and there is no debounce timer left to fire behind them")
+    check(not hasattr(wiring, "_mark_dirty"),
+          "nor the throttle that armed it")
 
 
 def test_the_graph_does_not_answer_its_own_edit():
-    """Without the suspend, every engine rebuild would start a push."""
+    """Without the suspend, every engine rebuild would mark the canvas dirty."""
     print("test_the_graph_does_not_answer_its_own_edit")
     _scene, tree = _fresh_tree()
-    wiring._dirty.clear()
+    tree.cadex_dirty = True
     wiring.apply_state(tree, _state())
-    check(not wiring._dirty,
-          "a sync that created nodes, sockets and links pushed nothing")
+    check(tree.cadex_dirty is False,
+          "a sync that created nodes, sockets and links owes nothing back")
     check(wiring._suspend[0] is False, "and the suspend was released after")
 
 
@@ -470,6 +554,372 @@ def test_the_wiring_ui_registers_or_stands_down():
     check("CadexWiringTree" in {getattr(t, "bl_idname", "")
                                 for t in bpy.types.NodeTree.__subclasses__()},
           "the tree registered anyway")
+
+
+# ---------------------------------------------------------------------------
+# ADR-122 — Apply, Revert, and the pump that drives a push to completion
+
+
+class _FakeEngine:
+    """One cadexd project's revision guard, without a cadexd.
+
+    Everything ADR-122 is about lives between ``wiring.push`` and
+    ``Lifecycle.poll``, and none of it needs geometry: the bug was that
+    nothing polled, so the guard never moved, so the *second* request carried
+    the *first* one's ``expected_revision`` and was refused. That is exactly
+    what this models — a revision that advances on every accepted request and
+    a refusal for any request that arrives naming the wrong one — so the
+    regression is asserted on the recorded ``expected_revision`` rather than
+    on a symptom downstream of it.
+    """
+
+    def __init__(self, state):
+        from mesh_agent import cadex_backend
+
+        self.backend = cadex_backend
+        self.state = dict(state)
+        self.sent = []
+        self.refuse = ""
+        self.serial = 1
+        self.root = ""
+        self._saved = {}
+
+    # -- installation -----------------------------------------------------
+
+    def install(self, scene):
+        backend = self.backend
+        self.root = backend.project_root(scene)
+        backend._wirings.pop(self.root, None)
+        cached = backend._state_for(self.root)
+        cached.revision = str(self.state.get("revision") or "")
+        cached.script_present = True
+        self._saved = {
+            "ensure_open": backend.ensure_open,
+            "begin_lifecycle": backend.begin_lifecycle,
+            "wiring_state": backend.wiring_state,
+            "schedule_refine": backend._schedule_refine,
+        }
+        backend.ensure_open = lambda _scene, **_kw: (True, "")
+        backend.begin_lifecycle = self._begin_lifecycle
+        backend.wiring_state = lambda _scene: dict(self.state)
+        backend._schedule_refine = lambda _scene: None
+        return self
+
+    def remove(self):
+        backend = self.backend
+        for name, value in (("ensure_open", self._saved.get("ensure_open")),
+                            ("begin_lifecycle",
+                             self._saved.get("begin_lifecycle")),
+                            ("wiring_state", self._saved.get("wiring_state")),
+                            ("_schedule_refine",
+                             self._saved.get("schedule_refine"))):
+            if value is not None:
+                setattr(backend, name, value)
+        backend._wirings.pop(self.root, None)
+
+    # -- the engine half --------------------------------------------------
+
+    def _begin_lifecycle(self, scene, op, args, **_kwargs):
+        """Snapshot the guard exactly where the real ``Lifecycle`` does."""
+
+        request = dict(args)
+        request["expected_revision"] = \
+            self.backend._state_for(self.root).revision
+        return _FakeLifecycle(self, request)
+
+    def answer(self, request):
+        """One request, judged. Returns ``(ok, report)`` as ``poll`` would."""
+
+        self.sent.append(dict(request))
+        if request.get("expected_revision") != self.state.get("revision"):
+            return False, ("cadexd set_params failed [STALE_PROGRAM_REVISION] "
+                           "the program has moved since this was prepared")
+        if self.refuse:
+            return False, self.refuse
+        if "nets" in request:
+            self.state["wires"] = [dict(row) for row in request["nets"]]
+        self.serial += 1
+        self.state["revision"] = "r{:d}".format(self.serial)
+        # What ``_revision_from_payload`` does on the way back.
+        self.backend._state_for(self.root).revision = self.state["revision"]
+        return True, "Accepted revision " + self.state["revision"]
+
+
+class _FakeLifecycle(cadex_backend.Lifecycle):
+    """A ``Lifecycle`` that answers on its second poll. Never calls super().
+
+    A real subclass because ``_start_wiring`` tests ``isinstance(started,
+    Lifecycle)`` to tell "in flight" from "never started", and that check is
+    the one that has to keep working.
+    """
+
+    def __init__(self, engine, request):  # noqa: D107 - deliberately not super
+        self._engine = engine
+        self._request = dict(request)
+        self._pending = 1
+
+    @property
+    def request(self):
+        return dict(self._request)
+
+    def poll(self):
+        if self._pending > 0:
+            self._pending -= 1
+            return None
+        return self._engine.answer(self._request)
+
+
+def _applied(scene, engine):
+    """Press Apply and drain the pump, as a timer would. ``(ok, report)``."""
+
+    ok, report = wiring.push(scene)
+    if not ok:
+        return ok, report
+    return cadex_backend.wiring_apply_now(engine.root)
+
+
+def test_apply_sends_once_and_the_pump_drives_it_to_completion():
+    """The reported bug's first half: nothing polled, so nothing finished.
+
+    ``begin_set_tables`` returned a raw ``Lifecycle`` and ``push`` handed it
+    to a timer that dropped it, so ``hydrate``, the revision update and
+    ``on_push_finished`` never ran — which is why "applying…" stuck and why
+    the wire that *did* land was not repainted until something else rebuilt.
+    """
+    print("test_apply_sends_once_and_the_pump_drives_it_to_completion")
+    scene, tree = _fresh_tree()
+    engine = _FakeEngine(_state(wires=[])).install(scene)
+    try:
+        wiring.apply_state(tree, dict(engine.state), root=engine.root)
+        sen = next(n for n in tree.nodes if n.port == "sen")
+        esp = next(n for n in tree.nodes if n.port == "esp")
+        for index in range(3):
+            tree.links.new(sen.outputs[index], esp.inputs[index])
+
+        ok, _report = wiring.push(scene)
+        check(ok, "Apply was accepted for sending")
+        check(tree.cadex_pending is True, "and the header says applying…")
+        check(cadex_backend.wiring_stats(engine.root)["requests"] == 1,
+              "three drags became exactly one request")
+
+        while cadex_backend.wiring_stats(engine.root)["in_flight"]:
+            cadex_backend.pump_wiring_once(engine.root)
+        check(len(engine.sent) == 1, "which reached the engine once")
+        check(len(engine.sent[0].get("nets") or []) == 3,
+              "carrying all three wires together")
+        check(tree.cadex_pending is False,
+              "the pump cleared applying… itself, without waiting for a sync")
+        check(tree.cadex_dirty is False, "and the canvas owes nothing")
+        check(len(tree.links) == 3, "the wires are still drawn")
+        check(not tree.cadex_error, "with no error: {!r}".format(tree.cadex_error))
+    finally:
+        engine.remove()
+
+
+def test_a_second_apply_carries_the_revision_the_first_one_returned():
+    """THE bug (ADR-122): twenty wires applied, one landed, nineteen vanished.
+
+    Nothing polled the lifecycle, so ``_revision_from_payload`` never ran and
+    the shell's cached ``expected_revision`` still named the revision from
+    before the first apply. Every push after the first was therefore refused
+    with ``STALE_PROGRAM_REVISION`` — and the refusal was dropped on the floor
+    too, because nobody read the payload. Asserted on the guard itself, which
+    is the thing that was wrong.
+    """
+    print("test_a_second_apply_carries_the_revision_the_first_one_returned")
+    scene, tree = _fresh_tree()
+    engine = _FakeEngine(_state(wires=[])).install(scene)
+    try:
+        wiring.apply_state(tree, dict(engine.state), root=engine.root)
+        sen = next(n for n in tree.nodes if n.port == "sen")
+        esp = next(n for n in tree.nodes if n.port == "esp")
+
+        tree.links.new(sen.outputs[0], esp.inputs[0])
+        ok, report = _applied(scene, engine)
+        check(ok, "the first apply landed: {!s}".format(report))
+        first = engine.sent[0]["expected_revision"]
+
+        tree.links.new(sen.outputs[1], esp.inputs[1])
+        ok, report = _applied(scene, engine)
+        check(ok, "and so did the second: {!s}".format(report))
+        check(len(engine.sent) == 2, "two applies, two requests")
+        second = engine.sent[1]["expected_revision"]
+        check(first == "r1" and second == "r2",
+              "the second carried the revision the first returned "
+              "({!r} after {!r})".format(second, first))
+        check(len(engine.state["wires"]) == 2,
+              "so both wires exist in the accepted table")
+        check(len(tree.links) == 2, "and both are still on the canvas")
+    finally:
+        engine.remove()
+
+
+def test_a_refused_apply_keeps_the_canvas_and_revert_discards_it():
+    """Losing twenty drags to a refusal is worse than an odd canvas (ADR-122)."""
+    print("test_a_refused_apply_keeps_the_canvas_and_revert_discards_it")
+    scene, tree = _fresh_tree()
+    engine = _FakeEngine(_state(wires=[])).install(scene)
+    try:
+        wiring.apply_state(tree, dict(engine.state), root=engine.root)
+        sen = next(n for n in tree.nodes if n.port == "sen")
+        esp = next(n for n in tree.nodes if n.port == "esp")
+        for index in range(3):
+            tree.links.new(sen.outputs[index], esp.inputs[index])
+
+        engine.refuse = "cadexd set_params failed: no route for wire sda"
+        ok, report = _applied(scene, engine)
+        check(ok is False, "the refusal reached the caller: {!s}".format(report))
+        check(len(tree.links) == 3,
+              "and all three drags are still on the canvas")
+        check("no route" in tree.cadex_error,
+              "with the engine's reason on the header: {!r}".format(
+                  tree.cadex_error))
+        check(tree.cadex_pending is False, "and applying… is over")
+
+        # Revert is the deliberate way to throw them away.
+        engine.refuse = ""
+        check(wiring.sync_from_engine(scene, force=True), "Revert re-read")
+        check(len(tree.links) == 0, "and the canvas is the engine's again")
+        check(tree.cadex_dirty is False, "owing nothing")
+    finally:
+        engine.remove()
+
+
+def test_a_push_arriving_mid_flight_replaces_the_queued_one():
+    """The canvas is the whole table, so the newest push supersedes (ADR-122).
+
+    Unlike a slider drag, there is nothing to coalesce: each push carries
+    every row, so a second one while the first is in flight replaces what is
+    queued rather than starting a second request on the client lock — which
+    is what "it took a really long time" was.
+    """
+    print("test_a_push_arriving_mid_flight_replaces_the_queued_one")
+    scene, _tree = _fresh_tree()
+    engine = _FakeEngine(_state(wires=[])).install(scene)
+    try:
+        rows = [{"name": "a", "a": "sen.sda", "b": "esp.sda",
+                 "gauge_mm": 0.8, "solder": True, "enabled": True}]
+        ok, _report = cadex_backend.begin_set_tables(scene, nets=rows)
+        check(ok, "the first push went in flight")
+        check(cadex_backend.wiring_stats(engine.root)["in_flight"],
+              "and holds the slot")
+
+        for gauge in (1.0, 1.2):
+            cadex_backend.begin_set_tables(
+                scene, nets=[dict(rows[0], gauge_mm=gauge)])
+        check(cadex_backend.wiring_stats(engine.root)["queued"],
+              "two more pushes queued as one")
+        check(cadex_backend.wiring_stats(engine.root)["requests"] == 1,
+              "and started no second request")
+
+        while cadex_backend.wiring_stats(engine.root)["in_flight"]:
+            cadex_backend.pump_wiring_once(engine.root)
+        check(len(engine.sent) == 2,
+              "the queued one ran after it, so two requests in total")
+        check(abs(engine.sent[1]["nets"][0]["gauge_mm"] - 1.2) < 1e-6,
+              "and it is the NEWEST table, not the older queued one")
+        check(engine.sent[1]["expected_revision"] == "r2",
+              "carrying the revision the first request returned")
+        check(engine.state["wires"][0]["gauge_mm"] == 1.2,
+              "which is what the engine ended up holding")
+    finally:
+        engine.remove()
+
+
+def test_the_apply_and_revert_operators_are_registered():
+    print("test_the_apply_and_revert_operators_are_registered")
+    check(hasattr(bpy.types, "MESH_AGENT_OT_apply_wiring"),
+          "Apply is registered whether or not the editor exists")
+    check(wiring_ui.MESH_AGENT_OT_sync_wiring.bl_idname
+          == "mesh_agent.sync_wiring",
+          "Revert kept the idname the button row asserts on")
+    check(wiring_ui.MESH_AGENT_OT_sync_wiring.bl_label == "Revert",
+          "and is labelled Revert")
+
+    import inspect as _inspect
+    source = _inspect.getsource(wiring_ui.CADEX_WIRING_HT_header.draw)
+    check("_draw_apply_revert" in source, "the header draws the pair")
+    pair = _inspect.getsource(wiring_ui._draw_apply_revert)
+    check("cadex_dirty" in pair, "and alerts Apply while the canvas is dirty")
+
+
+def test_apply_is_not_clickable_while_one_is_in_flight():
+    print("test_apply_is_not_clickable_while_one_is_in_flight")
+    scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state())
+    check(wiring_ui.MESH_AGENT_OT_apply_wiring.poll(bpy.context) is True,
+          "Apply is clickable on a settled canvas")
+    tree.cadex_pending = True
+    check(wiring_ui.MESH_AGENT_OT_apply_wiring.poll(bpy.context) is False,
+          "and not while a push is in flight")
+    tree.cadex_pending = False
+
+
+def test_a_terminal_says_which_column_it_is_in():
+    """Two rows called sda are two ends of one terminal, not two (ADR-122).
+
+    ``tree.links.new`` raises "Same input/output direction of sockets" for
+    output→output *and* for input→input, so an undirected edge needs one of
+    each — one row per terminal is not reachable inside the stock node editor.
+    Asserted here rather than left as a puzzle, because it is the reason the
+    canvas looks the way it does.
+    """
+    print("test_a_terminal_says_which_column_it_is_in")
+    _scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state(wires=[]))
+    sen = next(n for n in tree.nodes if n.port == "sen")
+    esp = next(n for n in tree.nodes if n.port == "esp")
+
+    refused = ""
+    try:
+        tree.links.new(sen.outputs[0], esp.outputs[0])
+    except Exception as exc:
+        refused = str(exc)
+    check("direction" in refused,
+          "Blender refuses output->output even from the API: {!r}".format(
+              refused))
+
+    drawn = []
+
+    class _Row:
+        def __init__(self, sink):
+            self._sink = sink
+
+        def row(self, **_kwargs):
+            return self
+
+        def label(self, text="", **_kwargs):
+            self._sink.append(text)
+
+        def prop(self, _data, name, **_kwargs):
+            self._sink.append("<" + name + ">")
+
+    sen.outputs[0].draw(bpy.context, _Row(drawn), sen, "sda")
+    sen.inputs[0].draw(bpy.context, _Row(drawn), sen, "sda")
+    check(drawn[:1] == ["sda ▸"], "an output draws as 'sda ▸': {!r}".format(drawn))
+    check("▸ sda" in drawn, "and an input as '▸ sda'")
+    check(drawn.count("<soldered>") == 2,
+          "with the solder checkbox on the socket row, where the terminal is")
+
+
+def test_the_sidebar_lists_a_board_as_one_list_of_terminals():
+    print("test_the_sidebar_lists_a_board_as_one_list_of_terminals")
+    _scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state(boards=True))
+    sen = next(n for n in tree.nodes if n.port == "sen")
+    for node in tree.nodes:
+        node.select = False
+    check(wiring_ui._selected_board(tree) is None,
+          "nothing is selected, so no board is listed")
+    sen.select = True
+    # `==`, not `is`: iterating a Blender collection hands back a fresh Python
+    # wrapper each time, so identity is not a usable comparison here.
+    check(wiring_ui._selected_board(tree) == sen, "selecting one finds it")
+    listed = [str(socket.terminal) for socket in wiring_ui._terminals_of(sen)]
+    check(listed == list(SIGNALS),
+          "and the board reads as one row per terminal: {!r}".format(listed))
+    check(hasattr(bpy.types, "MESH_AGENT_OT_select_terminal"),
+          "with an operator to make one of them active")
 
 
 # ---------------------------------------------------------------------------
@@ -906,6 +1356,10 @@ def test_the_graph_survives_a_blend_round_trip():
     wiring.apply_state(tree, _state())
     node = next(n for n in tree.nodes if n.port == "sen")
     node.location = (77.0, -33.0)
+    # Since ADR-122 a terminal is soldered by default, so the state that
+    # proves the flag round-trips at all is the *cleared* one.
+    for socket in _sockets(tree, "sen.gnd"):
+        socket.soldered = False
 
     path = os.path.join(tempfile.mkdtemp(), "wiring.blend")
     bpy.ops.wm.save_as_mainfile(filepath=path)
@@ -929,9 +1383,9 @@ def test_the_graph_survives_a_blend_round_trip():
     check(terminals == list(SIGNALS),
           "every socket kept its terminal identity: {!r}".format(terminals))
     check(all(s.kind == "hole" for s in node.inputs), "and its kind")
-    soldered = {s.terminal for n in tree.nodes
-                for s in list(n.inputs) + list(n.outputs) if s.soldered}
-    check(soldered == {"sda"}, "and its solder flag")
+    check(all(s.soldered for s in _sockets(tree, "sen.sda"))
+          and not any(s.soldered for s in _sockets(tree, "sen.gnd")),
+          "and its solder flag, in both states")
     check(len(wiring.stored_rows(tree)) == 1, "the row table survived")
     check(tree.cadex_revision == "r1", "and the revision it mirrors")
     reset_scene()
@@ -1192,6 +1646,225 @@ def test_define_board_needs_an_object_the_engine_built():
           "an object the engine did not build is not a board")
     reset_scene()
 
+# ---------------------------------------------------------------------------
+# the board table (ADR-120) and the pick that writes it (ADR-121)
+
+
+def test_a_declared_boards_sockets_carry_their_row():
+    print("test_a_declared_boards_sockets_carry_their_row")
+    _scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state(boards=True))
+    node = next(n for n in tree.nodes if n.port == "sen")
+    check(node.board == "sen", "the node knows which board it is")
+    check(node.board_editable is True, "and that its table is writable")
+    socket = node.inputs[1]
+    check(socket.has_row is True, "the socket carries a row")
+    check(abs(socket.origin[1] - 2.54) < 1e-6, "with the row's own origin")
+    check(abs(socket.axis[2] + 1.0) < 1e-6, "and its axis")
+    check(abs(socket.hole_dia - 1.0) < 1e-6, "and its bore")
+
+
+def test_a_selector_board_draws_but_holds_no_row():
+    print("test_a_selector_board_draws_but_holds_no_row")
+    _scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state())
+    node = next(n for n in tree.nodes if n.port == "sen")
+    check(node.board == "", "no declared board")
+    check(node.board_editable is False, "so nothing here is writable")
+    check(node.inputs[0].has_row is False, "and the socket holds no row")
+    check(wiring.board_rows_from_tree(tree) == [],
+          "so the canvas describes no terminal table at all")
+
+
+def test_the_terminal_table_is_one_row_per_terminal():
+    """A terminal is two sockets; the table it describes is not two rows."""
+    print("test_the_terminal_table_is_one_row_per_terminal")
+    _scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state(ports=("sen",), wires=[], boards=True))
+    rows = wiring.board_rows_from_tree(tree)
+    check(len(rows) == 3, "three terminals, three rows")
+    check([row["name"] for row in rows] == list(SIGNALS), "in declared order")
+    check(rows[0]["board"] == "sen", "each naming its board")
+    check(rows[0]["hole_dia"] == 1.0, "a hole keeps its bore")
+
+
+def test_editing_a_row_field_mirrors_and_marks_the_tree():
+    """A property write fires no NodeTree.update(), so the socket must."""
+    print("test_editing_a_row_field_mirrors_and_marks_the_tree")
+    _scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state(boards=True))
+    tree.cadex_dirty = False
+    node = next(n for n in tree.nodes if n.port == "sen")
+    node.inputs[0].origin = (9.0, 9.0, 9.0)
+    check(abs(node.outputs[0].origin[0] - 9.0) < 1e-6,
+          "the terminal's other socket followed")
+    check(tree.cadex_dirty, "and the edit marked the canvas dirty")
+    rows = wiring.board_rows_from_tree(tree)
+    check(rows[0]["origin"] == [9.0, 9.0, 9.0], "the table carries the new row")
+    tree.cadex_dirty = False
+
+
+def test_renaming_a_terminal_carries_its_wires():
+    print("test_renaming_a_terminal_carries_its_wires")
+    _scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state(boards=True))
+    node = next(n for n in tree.nodes if n.port == "sen")
+    ok, _report = wiring.rename_terminal(tree, node, "sda", "i2c_sda")
+    check(ok, "the rename was accepted")
+    check([row["name"] for row in wiring.board_rows_from_tree(tree)][0]
+          == "i2c_sda", "the row moved")
+    rows = {row["name"]: row for row in wiring.rows_from_tree(tree)}
+    check("sda" in rows and rows["sda"]["a"] == "sen.i2c_sda",
+          "and the wire that addressed it followed, keeping its own row")
+    check(abs(rows["sda"]["gauge_mm"] - 0.8) < 1e-6, "gauge and all")
+    tree.cadex_dirty = False
+
+
+def test_a_rename_refuses_a_collision_and_a_read_only_board():
+    print("test_a_rename_refuses_a_collision_and_a_read_only_board")
+    _scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state(boards=True))
+    node = next(n for n in tree.nodes if n.port == "sen")
+    ok, report = wiring.rename_terminal(tree, node, "sda", "gnd")
+    check(not ok and "already has" in report, "a duplicate name is refused")
+    wiring.apply_state(tree, _state(revision="r2"))
+    plain = next(n for n in tree.nodes if n.port == "sen")
+    ok, report = wiring.rename_terminal(tree, plain, "sda", "x")
+    check(not ok and "stated by the script" in report,
+          "and a selector board is not the editor's to rename")
+    tree.cadex_dirty = False
+
+
+def test_deleting_a_terminal_takes_its_wire():
+    print("test_deleting_a_terminal_takes_its_wire")
+    _scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state(boards=True))
+    node = next(n for n in tree.nodes if n.port == "sen")
+    ok, _report = wiring.delete_terminal(tree, node, "sda")
+    check(ok, "the delete was accepted")
+    names = [row["name"] for row in wiring.board_rows_from_tree(tree)
+             if row["board"] == "sen"]
+    check(names == ["scl", "gnd"], "the row is gone from that board's table")
+    check(len(tree.links) == 0, "and the link that landed on it went with it")
+    tree.cadex_dirty = False
+
+
+def test_the_no_op_guard_actually_fires():
+    """The guard could never fire: engine rows carry a route and the canvas
+    does not, so every comparison differed and a redrawn link cost a full
+    re-execute (ADR-120)."""
+
+    print("test_the_no_op_guard_actually_fires")
+    scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state(wires=[
+        {"name": "sda", "a": "sen.sda", "b": "esp.sda", "gauge_mm": 0.8,
+         "solder": True, "enabled": True,
+         "path": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+         "waypoints": [[1.0, 0.0, 0.0]]},
+    ]))
+    ok, report = wiring.push(scene)
+    check(ok and report == "No change.",
+          "an untouched canvas sends nothing at all")
+
+    sen = next(n for n in tree.nodes if n.port == "sen")
+    esp = next(n for n in tree.nodes if n.port == "esp")
+    tree.links.clear()
+    tree.links.new(sen.outputs[0], esp.inputs[0])
+    ok, report = wiring.push(scene)
+    check(ok and report == "No change.",
+          "and a link cut and redrawn in the same place still sends nothing")
+    tree.cadex_dirty = False
+
+
+def test_a_finished_push_keeps_the_route_it_was_not_told_about():
+    """``_store_rows`` used to flatten the table to the canvas's six columns,
+    which is what made Edit Wire Path report no published route."""
+
+    print("test_a_finished_push_keeps_the_route_it_was_not_told_about")
+    scene, tree = _fresh_tree()
+    wiring.apply_state(tree, _state(wires=[
+        {"name": "sda", "a": "sen.sda", "b": "esp.sda", "gauge_mm": 0.8,
+         "solder": True, "enabled": True,
+         "path": [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+         "waypoints": [[1.0, 0.0, 0.0]]},
+    ]))
+    wiring.on_push_finished(scene, True, "")
+    stored = {row["name"]: row for row in wiring.stored_rows(tree)}
+    check("path" in stored.get("sda", {}), "the route survived the push")
+    check(stored["sda"]["waypoints"] == [[1.0, 0.0, 0.0]],
+          "and so did its editable interior")
+    check(abs(stored["sda"]["gauge_mm"] - 0.8) < 1e-6,
+          "with the canvas's own columns still authoritative")
+
+
+def test_a_duplicate_port_is_reported_rather_than_dropped_in_silence():
+    print("test_a_duplicate_port_is_reported_rather_than_dropped_in_silence")
+    _scene, tree = _fresh_tree()
+    state = _state(wires=[])
+    state["components"].append(dict(state["components"][0]))
+    wiring.apply_state(tree, state)
+    check(len(tree.nodes) == 2, "the repeat is still not drawn")
+    check("share a name" in tree.cadex_error,
+          "but the canvas says so instead of looking broken")
+
+
+def test_the_pick_writes_a_world_frame_row():
+    """The measurement is data, and data goes in the table (ADR-121)."""
+    print("test_the_pick_writes_a_world_frame_row")
+    from mathutils import Matrix
+
+    row, _report = pick.measure_selection(_ring(0.5, 1.6),
+                                          view_direction=(0.0, 0.0, 1.0))
+    placement = (Matrix.Translation((10.0, 0.0, 0.0))
+                 @ Matrix.Rotation(1.5707963268, 4, 'Z'))
+    written = pick.world_row(placement, row, "fc", "batt_pos")
+    check(written["board"] == "fc" and written["name"] == "batt_pos",
+          "the row is addressed <board>.<terminal>")
+    check(written["frame"] == "world",
+          "and marked world, because a click has no other frame")
+    check(abs(written["origin"][0] - 10.0) < 1e-3,
+          "the origin went through the placement")
+    check(abs(written["hole_dia"] - 1.0) < 1e-3, "and the bore came with it")
+
+
+def test_the_pick_sends_the_whole_table_and_replaces_by_name():
+    print("test_the_pick_sends_the_whole_table_and_replaces_by_name")
+    state = _state(ports=("fc",), wires=[], boards=True)
+    rows = pick.terminal_rows(state)
+    check([row["name"] for row in rows] == list(SIGNALS),
+          "every existing row is read back off the engine's answer")
+    written = {"board": "fc", "name": "scl", "origin": [1.0, 2.0, 3.0],
+               "axis": [0.0, 0.0, -1.0], "frame": "world"}
+    replaced = pick.rows_with(state, written)
+    check(len(replaced) == 3, "re-measuring a terminal replaces its row")
+    check(replaced[-1]["origin"] == [1.0, 2.0, 3.0], "with the new numbers")
+    check(pick.free_name(state, "fc") == "t1",
+          "and an unnamed pick gets a free name on that board")
+
+
+def test_the_pick_falls_back_to_a_note_without_a_board():
+    """A project with no boards(...) has no table to write into, and making
+    one is authoring — which is the assistant's job (ADR-121)."""
+
+    print("test_the_pick_falls_back_to_a_note_without_a_board")
+    check(pick.board_of(_state(boards=True), "sen_board") == "sen",
+          "a declared board is found by its output key")
+    check(pick.board_of(_state(), "sen_board") == "",
+          "a component that is no declared board is not one")
+    selector = _state(ports=("sen",), boards=True)
+    selector["components"][0]["editable"] = False
+    check(pick.board_of(selector, "sen_board") == "",
+          "and a selector board is not the editor's to write")
+
+
+def test_the_two_terminal_operators_are_registered():
+    print("test_the_two_terminal_operators_are_registered")
+    check(hasattr(bpy.types, "MESH_AGENT_OT_rename_terminal"),
+          "rename is registered whether or not the editor exists")
+    check(hasattr(bpy.types, "MESH_AGENT_OT_delete_terminal"),
+          "and so is delete")
+
+
 def main():
     mesh_agent.register()
     try:
@@ -1202,9 +1875,19 @@ def main():
             test_a_sync_builds_the_graph_the_engine_describes,
             test_solder_rides_the_socket_because_a_link_cannot_hold_it,
             test_a_solder_toggle_is_an_edit_the_tree_notices,
+            test_a_new_terminal_is_soldered_and_a_stored_no_stays_no,
+            test_a_terminal_several_wires_land_on_holds_one_flag,
             test_both_sockets_of_one_terminal_hold_one_state,
             test_solder_can_be_turned_off_again,
-            test_a_push_never_lands_mid_rebuild,
+            test_an_edit_marks_the_canvas_and_sends_nothing,
+            test_apply_sends_once_and_the_pump_drives_it_to_completion,
+            test_a_second_apply_carries_the_revision_the_first_one_returned,
+            test_a_refused_apply_keeps_the_canvas_and_revert_discards_it,
+            test_a_push_arriving_mid_flight_replaces_the_queued_one,
+            test_the_apply_and_revert_operators_are_registered,
+            test_apply_is_not_clickable_while_one_is_in_flight,
+            test_a_terminal_says_which_column_it_is_in,
+            test_the_sidebar_lists_a_board_as_one_list_of_terminals,
             test_the_graph_does_not_answer_its_own_edit,
             test_a_rebuild_keeps_the_layout,
             test_a_dropped_component_takes_its_node,
@@ -1217,6 +1900,20 @@ def main():
             test_a_hand_built_wire_draws_but_is_never_pushed,
             test_a_legacy_harness_is_read_only,
             test_the_wiring_ui_registers_or_stands_down,
+            test_a_declared_boards_sockets_carry_their_row,
+            test_a_selector_board_draws_but_holds_no_row,
+            test_the_terminal_table_is_one_row_per_terminal,
+            test_editing_a_row_field_mirrors_and_marks_the_tree,
+            test_renaming_a_terminal_carries_its_wires,
+            test_a_rename_refuses_a_collision_and_a_read_only_board,
+            test_deleting_a_terminal_takes_its_wire,
+            test_the_no_op_guard_actually_fires,
+            test_a_finished_push_keeps_the_route_it_was_not_told_about,
+            test_a_duplicate_port_is_reported_rather_than_dropped_in_silence,
+            test_the_pick_writes_a_world_frame_row,
+            test_the_pick_sends_the_whole_table_and_replaces_by_name,
+            test_the_pick_falls_back_to_a_note_without_a_board,
+            test_the_two_terminal_operators_are_registered,
             test_fit_terminal_finds_a_bore_from_one_ring,
             test_selecting_both_rims_takes_the_near_one_and_says_so,
             test_fit_terminal_finds_a_pad_from_a_rectangle,

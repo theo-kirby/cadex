@@ -91,6 +91,14 @@ def test_a_declared_table_resolves_to_real_terminals() -> None:
     # Declaration-only, and carried straight through to part.cable.
     assert row.avoid == ("board",)
     assert table["gnd"].solder is False and table["gnd"].avoid == ()
+    # The two ends as addresses as well as as Terminals (ADR-122). A Terminal
+    # knows its own name and not which port addressed it, so a script sizing
+    # one joint per soldered END -- ``part.solder`` needs ``pad_dia_mm`` on a
+    # declared pad, and the right number is the board's -- has nothing else to
+    # key a per-board table on.
+    assert row.a_address == "sen.sda" and row.b_address == "esp.sda"
+    assert row.a_address.split(".")[0] == "sen"
+    assert table["gnd"].a_address == "sen.gnd"
 
 
 def test_the_spec_cache_is_json_and_stable() -> None:
@@ -271,6 +279,11 @@ def test_stored_rows_replace_the_declared_table_wholesale() -> None:
     assert table["sda"].b.name == "scl"
     assert table["sda"].gauge == pytest.approx(1.2)
     assert table["sda"].solder is False
+    # The addresses follow the *stored* row, not the declaration: a rewire
+    # moved this wire's far end, and the joint the script sizes has to move
+    # with it.
+    assert table["sda"].a_address == "sen.sda"
+    assert table["sda"].b_address == "esp.scl"
     # The declaration-only column survives a rewire: it is matched by row
     # name, and the row is still the one the script declared.
     assert table["sda"].avoid == ("board",)

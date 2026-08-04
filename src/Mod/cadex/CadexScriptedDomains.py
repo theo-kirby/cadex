@@ -350,15 +350,18 @@ def project_script_revision(
     param_values: Mapping[str, Any],
     net_specs: Mapping[str, Any] | None = None,
     net_values: Any = None,
+    board_specs: Mapping[str, Any] | None = None,
+    board_values: Any = None,
 ) -> str:
     """Content revision of the project script + its declared-table state (D7).
 
-    The connection table (ADR-065) enters the payload **only when it is
-    non-empty**, and that conditional is doing real work: every project
-    written before nets existed keeps a byte-identical revision, so nothing
-    needs re-accepting the way ADR-064 did. A script that declares no nets
-    has nothing to say here, and saying it anyway would move every stored
-    revision in the world to record an empty table.
+    The connection table (ADR-065) and the board table (ADR-120) enter the
+    payload **only when they are non-empty**, and that conditional is doing
+    real work: every project written before they existed keeps a
+    byte-identical revision, so nothing needs re-accepting the way ADR-064
+    did. A script that declares no nets and no boards has nothing to say
+    here, and saying it anyway would move every stored revision in the world
+    to record two empty tables.
     """
 
     payload = {
@@ -372,6 +375,10 @@ def project_script_revision(
         payload["net_specs"] = dict(net_specs)
     if net_values:
         payload["net_values"] = [dict(row) for row in list(net_values)]
+    if board_specs:
+        payload["board_specs"] = dict(board_specs)
+    if board_values:
+        payload["board_values"] = [dict(row) for row in list(board_values)]
     encoded = json.dumps(
         payload,
         ensure_ascii=True,
@@ -676,9 +683,10 @@ def project_tool_specs() -> tuple[dict[str, Any], ...]:
             description=(
                 "Patch the values of parameters the project script declares "
                 "with params/num, and/or replace the connection rows it "
-                "declares with nets/wire, then re-execute the unchanged "
-                "source and publish the result. Values-only: the source, the "
-                "declarations, and output names are untouched."
+                "declares with nets/wire, and/or the terminal rows it "
+                "declares with boards/board/term, then re-execute the "
+                "unchanged source and publish the result. Values-only: the "
+                "source, the declarations, and output names are untouched."
             ),
             properties={
                 "values": _property_schema(
@@ -708,6 +716,40 @@ def project_tool_specs() -> tuple[dict[str, Any], ...]:
                             "enabled": {"type": "boolean"},
                         },
                         "required": ["name", "a", "b", "gauge_mm"],
+                        "additionalProperties": False,
+                    },
+                ),
+                "boards": _property_schema(
+                    "Complete replacement row list for the terminals declared "
+                    "with boards(...) — not a patch, so it may add and drop "
+                    "terminals. Each row is {board, name, origin, axis, "
+                    "hole_dia, depth}, in millimetres in that board's own "
+                    "frame; hole_dia present means a hole, absent means a pad. "
+                    "Omit to leave the terminals alone.",
+                    type="array",
+                    maxItems=4096,
+                    items={
+                        "type": "object",
+                        "properties": {
+                            "board": {"type": "string", "minLength": 1},
+                            "name": {"type": "string", "minLength": 1},
+                            "origin": {
+                                "type": "array",
+                                "items": {"type": "number"},
+                                "minItems": 3,
+                                "maxItems": 3,
+                            },
+                            "axis": {
+                                "type": "array",
+                                "items": {"type": "number"},
+                                "minItems": 3,
+                                "maxItems": 3,
+                            },
+                            "hole_dia": {"type": ["number", "null"]},
+                            "depth": {"type": ["number", "null"]},
+                            "frame": {"type": "string", "enum": ["world", "board"]},
+                        },
+                        "required": ["board", "name", "origin", "axis"],
                         "additionalProperties": False,
                     },
                 ),

@@ -1090,6 +1090,32 @@ def _resolve_terminal_set(
     return result
 
 
+def mesh_component_placement(component: Mapping[str, Any]) -> tuple[float, ...]:
+    """The composed placement chain one mesh component's terminals ride.
+
+    The same call ``_resolve_terminal_set`` makes before it places a declared
+    layout, exposed because a terminal *measured in the viewport* has to go
+    the other way: it arrives in world coordinates and is written down in the
+    component's own frame, through the inverse of exactly this matrix
+    (ADR-120). Two constructions of one chain would drift, so there is one.
+    """
+
+    if _MESH_PLACEMENT is None:
+        raise PartOperationError(
+            "api.terminals: this worker request has no staged mesh kernel to "
+            "resolve a mesh component's placement with",
+            stage="part_contract",
+            operation="terminals",
+            parameter="component",
+        )
+    return tuple(
+        float(value)
+        for value in _MESH_PLACEMENT(
+            _serialized_mesh("terminals", "component", dict(component))
+        )
+    )
+
+
 def terminal_set_key(payload: Mapping[str, Any]) -> str:
     """The memo identity of one terminal set: its payload minus the name.
 

@@ -2960,6 +2960,131 @@ def test_the_policy_outputs_panel_reads_a_rollout():
 
 
 
+#: Two boards with terminals and no wires: the smallest harness the wiring
+#: editor can actually be edited on. Deliberately a `boards(...)` script, so
+#: the ports come back marked editable and `set_params(nets=...)` is allowed.
+WIRING_SCRIPT = """
+T, PITCH = 1.6, 2.54
+DOWN = (0.0, 0.0, -1.0)
+left = part.box(20.0, 20.0, T, label="left")
+right = part.box(20.0, 20.0, T, origin=(20.0, 0.0, 0.0), label="right")
+
+b = boards({
+    "left": board(left, terminals=[
+        term("sda", origin=(10.0, 5.0, T), axis=DOWN, hole_dia=1.0, depth=T),
+        term("gnd", origin=(10.0, 5.0 + PITCH, T), axis=DOWN, hole_dia=1.0,
+             depth=T),
+    ]),
+    "right": board(right, terminals=[
+        term("sda", origin=(30.0, 5.0, T), axis=DOWN, hole_dia=1.0, depth=T),
+        term("gnd", origin=(30.0, 5.0 + PITCH, T), axis=DOWN, hole_dia=1.0,
+             depth=T),
+    ]),
+})
+
+n = nets(ports=b, wires={})
+
+result = {"left": left, "right": right}
+for name, w in n.items():
+    if not w.enabled:
+        continue
+    result["wire_" + name] = part.cable(w.a, w.b, gauge_mm=w.gauge,
+                                        avoid=[left, right], cell_mm=1.0)
+"""
+
+
+def test_two_applies_in_a_row_both_land(root):
+    """THE ADR-122 regression, against the bundled engine.
+
+    ``wiring.push`` started a ``Lifecycle`` and handed it to a timer that
+    threw it away, so ``_revision_from_payload`` never ran and the shell's
+    cached ``expected_revision`` still named the revision from *before* the
+    first apply. The engine had moved on, so the second apply — and every
+    apply after it — came back ``STALE_PROGRAM_REVISION``, with the refusal
+    dropped on the floor too because nobody read the payload. Twenty wires
+    dragged, one cable built, nineteen wiped off the canvas by the next
+    refresh.
+
+    So: draw a wire, Apply; draw a second, Apply again with no intervening
+    rebuild; and assert **both** cables exist in the accepted revision. This
+    fails on the second apply without the pump.
+    """
+    print("test_two_applies_in_a_row_both_land")
+    from mesh_agent import wiring
+
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, report = run_tool("write_script", {"content": WIRING_SCRIPT})
+    check(ok, "the two-board harness was accepted: {:s}".format(
+        first_line_of(report)))
+
+    tree = wiring.ensure_tree(scene)
+    check(wiring.sync_from_engine(scene, force=True),
+          "the canvas filled from the engine")
+    check(len(tree.nodes) == 2, "two boards on the canvas")
+    check(tree.cadex_editable, "and a boards(...) harness is editable")
+    left = next((n for n in tree.nodes if n.port == "left"), None)
+    right = next((n for n in tree.nodes if n.port == "right"), None)
+    if left is None or right is None:
+        check(False, "both ports drew a node")
+        return
+
+    def apply_and_wait(label):
+        ok, report = wiring.push(scene)
+        if not ok:
+            check(False, "{:s}: {:s}".format(label, first_line_of(report)))
+            return False
+        # No timers under --background, so the gate drives the pump, exactly
+        # as it drives the drag pump.
+        ok, report = cadex_backend.wiring_apply_now()
+        check(ok, "{:s} landed: {:s}".format(label, first_line_of(report)))
+        return ok
+
+    def cables():
+        # Keyed on the engine's own output property, not on the object name:
+        # a hydrated BREP brings an " ... Edges" companion object along with
+        # it, and that is a display detail, not a second cable.
+        return sorted(
+            str(obj[cadex_hydrate.OUTPUT_PROP]) for obj in bpy.data.objects
+            if str(obj.get(cadex_hydrate.OUTPUT_PROP, "")).startswith("wire_")
+            and str(obj.get(cadex_hydrate.KIND_PROP, "")) == "brep")
+
+    def _terminal(node, name, outputs):
+        return next(s for s in (node.outputs if outputs else node.inputs)
+                    if s.terminal == name)
+
+    before = cadex_backend._state_for(root).revision
+    tree.links.new(_terminal(left, "sda", True), _terminal(right, "sda", False))
+    if not apply_and_wait("the first apply"):
+        return
+    first = cadex_backend._state_for(root).revision
+    check(first and first != before,
+          "the first apply moved the revision guard: {!r} -> {!r}".format(
+              before, first))
+    check(len(cables()) == 1, "and built one cable: {!r}".format(cables()))
+
+    # The second apply, with no rebuild, no sync and no chat turn in between:
+    # exactly what dragging a second wire and pressing Apply again does.
+    tree.links.new(_terminal(left, "gnd", True), _terminal(right, "gnd", False))
+    if not apply_and_wait("the second apply"):
+        return
+    second = cadex_backend._state_for(root).revision
+    check(second and second != first,
+          "the second apply moved it again: {!r} -> {!r}".format(first, second))
+    check(not model_module.last_error(),
+          "with nothing refused in silence ({:s})".format(
+              first_line_of(model_module.last_error())))
+
+    built = cables()
+    check(len(built) == 2,
+          "BOTH cables exist in the accepted revision: {!r}".format(built))
+    check(len(tree.links) == 2,
+          "and both links survived the sync that follows an apply")
+    check(len(wiring.stored_rows(tree)) == 2,
+          "with two rows in the table the canvas mirrors")
+    GATE["wiring_applies"] = cadex_backend.wiring_stats()["requests"]
+
+
 def test_live_mode_is_wired_and_refuses_cleanly(live_root):
     """Live mode reaches the engine, and says no politely when it must.
 
@@ -3410,6 +3535,7 @@ def main():
     readers_root = tempfile.mkdtemp(prefix="mesh-cadex-readers-")
     training_root = tempfile.mkdtemp(prefix="mesh-cadex-training-")
     live_root = tempfile.mkdtemp(prefix="mesh-cadex-live-")
+    wiring_root = tempfile.mkdtemp(prefix="mesh-cadex-wiring-")
     try:
         test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
@@ -3460,6 +3586,7 @@ def main():
         test_the_collision_overlay_is_isolated(isolate_root)
         test_both_collision_readers_agree(readers_root)
         test_the_training_panel_tracks_a_run(training_root)
+        test_two_applies_in_a_row_both_land(wiring_root)
         test_live_mode_is_wired_and_refuses_cleanly(live_root)
     finally:
         try:
@@ -3483,7 +3610,7 @@ def main():
                      assembly_root, shared_root, sim_root, live_root,
                      drag_root, supersede_root, skip_root,
                      preview_root, fallback_root, collision_root,
-                     shapes_root, isolate_root, readers_root):
+                     shapes_root, isolate_root, readers_root, wiring_root):
             shutil.rmtree(root, ignore_errors=True)
 
     GATE["ok"] = not FAILURES

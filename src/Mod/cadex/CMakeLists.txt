@@ -13,6 +13,7 @@ set(Cadex_Scripts
     CadexTerminals.py
     CadexSolder.py
     CadexNets.py
+    CadexBoards.py
     CadexProject.py
     CadexScriptStore.py
     CadexSubshapeQuery.py

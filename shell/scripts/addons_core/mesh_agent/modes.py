@@ -42,13 +42,24 @@ only values change.
 - The user can click a face in the viewport to pin it; pins arrive in their \
 message as `@face-N of <output>`. Treat a pin as ground truth for which \
 face they mean.
+- Declare the boards a wire attaches to with `boards({"fc": board(comp, \
+terminals=[term("sda", origin=..., axis=...)])})`, and hand the result \
+straight to `nets(ports=b, wires=...)`. A board declared this way draws as a \
+node in the wiring editor whether or not anything is wired to it, and its \
+terminals become a table the user can edit without you: a terminal set that \
+is only assigned to a variable reaches the canvas as nothing at all. Rows \
+are millimetres in the board's own frame; `units="m"` states that THIS \
+declaration's numbers are metres and changes nothing else.
 - The user can also MEASURE a terminal by selecting a hole rim or a pad \
-outline in Edit Mode and pressing Define Terminal. Those arrive as a fitted \
+outline in Edit Mode and pressing Define Terminal. **When the script \
+declares boards(...), that measurement is written straight into the table \
+and you will not see it** — the socket simply appears. You see one only \
+when there is no board to write onto, and then it arrives as a fitted \
 origin/axis row in the asset's own coordinates — plus hole_dia for a bore — \
-with the fit residual quoted. **Transcribe those numbers into a terminals \
-row; do not re-derive them** from a bounding box or a screenshot. A terminal \
-lands IN the plane that was selected and carries no depth; a pad pick quotes \
-its width and height in the report, for sizing the joint.
+with the fit residual quoted. **Transcribe those numbers into a boards(...) \
+declaration; do not re-derive them** from a bounding box or a screenshot. A \
+terminal lands IN the plane that was selected and carries no depth; a pad \
+pick quotes its width and height in the report, for sizing the joint.
 - Engine rebuilds take from half a second to a few seconds. Batch value \
 changes into one call rather than spamming small ones.
 - A collision shape is NOT the solid it stands for: it is placed in the \
