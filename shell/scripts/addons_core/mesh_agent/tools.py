@@ -290,6 +290,33 @@ TOOL_DEFS = [
         },
     },
     {
+        "name": "render_views",
+        "description": (
+            "Render the MODEL from four fitted cameras -- front, right, top "
+            "and a three-quarter perspective -- composited into one image, so "
+            "you can judge the shape you just built. Unlike "
+            "viewport_screenshot this ignores the user's camera, hides the "
+            "collision cage and any overlay, and frames the Model collection "
+            "itself, so it answers 'what did I build' rather than 'what is the "
+            "user looking at'. Use it after any change to a silhouette, and "
+            "before telling the user a shape is right. Because it hides the "
+            "collision cage, checking collision shapes still goes through "
+            "collision_view plus viewport_screenshot. Unavailable when "
+            "Blender runs headless."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "max_size": {
+                    "type": "integer",
+                    "description": ("Longest edge of the composited image in "
+                                    "pixels (default 1024; each of the four "
+                                    "views gets half of it)."),
+                },
+            },
+        },
+    },
+    {
         "name": "collision_view",
         "description": (
             "Show or hide the collision shapes the physics solver actually uses, "
@@ -707,6 +734,27 @@ def _tool_viewport_screenshot(tool_input):
     return [{"type": "image", "data": image_b64, "mimeType": "image/png"}], False
 
 
+def _tool_render_views(tool_input):
+    """Four fitted views of the model, in one image (ADR-124).
+
+    Classified exactly as ``collision_view`` was: read-only, so it is in
+    neither ``MUTATING_TOOLS`` (looking at the model must not enter the undo
+    stack) nor ``_ENGINE_TOOLS`` (it reads hydrated geometry that is already
+    in the scene, and never speaks to cadexd).
+    """
+
+    from . import capture
+    max_size = int(tool_input.get("max_size") or 1024)
+    image_b64, error = capture.render_views(max_size=max_size)
+    if image_b64 is None:
+        return _text(error), True
+    return [
+        {"type": "image", "data": image_b64, "mimeType": "image/png"},
+        {"type": "text", "text": "Four views of the model -- " +
+                                 capture.quadrant_legend() + "."},
+    ], False
+
+
 def _resolve_objects(names):
     import bpy
     found, missing = [], []
@@ -899,6 +947,7 @@ _HANDLERS = {
     "get_attached_image": _tool_get_attached_image,
     "scene_summary": _tool_scene_summary,
     "viewport_screenshot": _tool_viewport_screenshot,
+    "render_views": _tool_render_views,
     "export_stl": _tool_export_stl,
     "import_geometry": _tool_import_geometry,
     "focus_view": _tool_focus_view,

@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-08-04
+Verified against source: 2026-08-05
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -9,7 +9,8 @@ in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
 Phases 0–7 built the engine/shell split on two forks. Phases 8–13 reduce
 both forks toward one application we own, keeping OCCT (ADR-025). **Phase 14
 is the dynamics and control vertical** — closed, and the reason this branch
-exists (ADR-086).
+exists (ADR-086). **Phase 15 is the organic-modelling vertical**, opened by
+the measurement ADR-123 asked for (`docs/ORGANIC.md`).
 
 **Phase 13a came early (ADR-030).** Merging the repositories never depended
 on owning the engine or the shell — it was a repo-layout and
@@ -1133,6 +1134,58 @@ lose by accident:
   the compiler's inertia handling — is set explicitly and re-asserted on the
   *compiled* model, which is where a release changing a default would land.
   Moving one is a measurement, not an edit.
+
+## Phase 15 — Organic modelling and the CAD/mesh interface `(open; O0 closed 2026-08-05, ADR-124)`
+
+**Goal:** make the shapes a person asks for — a body, a limb, a skin over a
+mechanism — buildable by the agent, and shapeable by the user without a chat
+turn. The measurement it is sized from, the slices, the hazards and the
+benchmark log are `docs/ORGANIC.md`; only status lives here.
+
+**Depends on nothing after Phase 9**, and nothing depends on it. It does not
+need Phase 11 or 12, and it does not block them: O0 and O3's shell halves
+keep their pure arithmetic `bpy`-free precisely so Phase 12 re-binds them
+rather than re-designing them. O1–O3's engine work is behind the unchanged
+cadexd protocol.
+
+**Why now.** ADR-123 closed by asking for the robot wolf to be re-run
+against the repaired API surface. It was (`~/arch/woof.cadex`, read-only)
+and the result sizes this phase: the agent builds **entirely in `part`** —
+sixteen lofted solids, no mesh op — so the gap is not "CAD is the wrong
+paradigm for organic shapes". It is four specific things, one per slice.
+
+This phase **answers `docs/VISION.md`'s open question** about interactive
+mesh editing: it arrives as engine ops on a declared table, with the shell
+supplying only the gesture (O3).
+
+- [x] **O0 — The agent can see what it built** (ADR-124, 2026-08-05).
+      `render_views`: four cameras fitted to the Model collection — front,
+      right, top, three-quarter — composited 2×2 into one image, with the
+      user's session isolated out of it. No engine change; no authoring.
+      Verified by driving the built application, because the gate runs
+      `--background` and `draw_view3d` needs a real VIEW_3D — the ADR says
+      so rather than implying coverage the gate does not have.
+- [ ] **O1 — Blends that survive, and the ops that make muscle.** Two
+      commits: `part.fillet` bisects a failing edge set and reports what it
+      found (`on_failure` = refuse / skip / reduce); then
+      `part.fuse(blend=...)` — which can name the seam edges because it made
+      them — plus a variable-radius fillet, `part.sweep` guides, and
+      `part.ellipse(x_direction=...)`. Exit: the wolf's weld lands, with the
+      probe cost measured and recorded.
+- [ ] **O2 — Mounts.** `mounts()` / `mount()` on `CadexBoards`'s row
+      machinery, `part.mate(...)`, and a static interference check that
+      refuses with millimetres. Exit: a mechanism mates into a skin with no
+      copied numbers, and a stored row naming a dropped mount is pruned, not
+      refused (the ADR-120 drift rule).
+- [ ] **O3 — The section cage.** `CadexCage.py` and `part.loft_cage`, an
+      edge-only ring overlay in a sibling collection, and Apply through
+      `wiring.py`'s single-slot pump. Exit: drag a ring, press Apply, and
+      the accepted revision moves — **without a new space type**
+      (`docs/BLENDER-TREE.md` §2b budget is not this slice's to spend).
+- [ ] **O2b — Swept-volume clearance.** Parked by decision, not dropped: it
+      roughly doubles O2.
+- [ ] **O4 — subD.** Parked, unscheduled. It reuses O3's table, overlay and
+      apply path, which is the argument for doing sections first.
 
 ## Verification
 

@@ -2707,6 +2707,78 @@ def test_the_collision_overlay_draws_adr074(root):
     GATE["collision_overlay"] = {"shapes": len(objects)}
 
 
+RENDER_VIEWS_SCRIPT = """
+body = part.box(80, 40, 20, origin=[-40, -20, 0])
+fin = part.cylinder(6, 30, origin=[0, 0, 20])
+result = {"body": body, "fin": fin}
+"""
+
+
+def test_render_views_frames_the_engines_geometry(root):
+    """The cameras are fitted to what the ENGINE built (ADR-124).
+
+    Honest about what this cannot cover: ``draw_view3d`` needs a real VIEW_3D
+    and the gate runs ``--background``, so no pixel here is ever rendered and
+    nothing asserts the image looks like the model. What it does cover is the
+    input to the cameras -- the world bounding box of hydrated engine
+    geometry, measured against dimensions the script declares in millimetres
+    -- and that the refusal on the path the gate can reach is a sentence
+    rather than a traceback.
+    """
+
+    print("test_render_views_frames_the_engines_geometry")
+    from mesh_agent import capture
+
+    reset_scene(root)
+    ok, report = run_tool("write_script", {"content": RENDER_VIEWS_SCRIPT})
+    check(ok, "the two-solid script accepted ({:s})".format(
+        (report or "").splitlines()[0] if report else ""))
+    if not ok:
+        return
+
+    bbox = capture.model_bbox()
+    check(bbox is not None, "the Model collection has a measurable bbox")
+    if bbox is None:
+        return
+    (low_x, low_y, low_z), (high_x, high_y, high_z) = bbox
+    check(abs((high_x - low_x) - 80.0) < 0.5,
+          "it is 80 mm across x (got {:.2f})".format(high_x - low_x))
+    check(abs((high_y - low_y) - 40.0) < 0.5,
+          "40 mm across y (got {:.2f})".format(high_y - low_y))
+    check(abs((high_z - low_z) - 50.0) < 0.5,
+          "and 50 mm tall -- the box plus the cylinder standing on it "
+          "(got {:.2f})".format(high_z - low_z))
+
+    views = capture.view_matrices(bbox)
+    corners = [(x, y, z) for x in (low_x, high_x) for y in (low_y, high_y)
+               for z in (low_z, high_z)]
+    contained = all(
+        all((lambda p: p is not None and abs(p[0]) <= 1.0 and abs(p[1]) <= 1.0)(
+            capture.project(view["view"], view["window"], corner))
+            for corner in corners)
+        for view in views)
+    check(contained, "all four fitted cameras contain the built model")
+
+    image_b64, error = capture.render_views()
+    check(image_b64 is None, "no image in background mode, as expected")
+    message = str(error or "")
+    check(message.endswith(".") and "scene_summary" in message,
+          "and the refusal is a sentence pointing somewhere useful "
+          "(got {!r})".format(message[:80]))
+    ok, text = run_tool("render_views", {})
+    check(not ok and text.strip().endswith("."),
+          "the tool reports it as an error, in a sentence")
+
+    GATE["render_views"] = {
+        "bbox_mm": [round(value, 2) for value in
+                    (low_x, low_y, low_z, high_x, high_y, high_z)],
+        "views": [view["name"] for view in views],
+        # No composite is produced in background mode; when a viewport
+        # exists this is the size of the image the tool returns.
+        "composite_px": None if image_b64 is None else [1024, 1024],
+    }
+
+
 def test_the_collision_overlay_measures_every_primitive(root):
     """Extents per type, against the record's own independently-computed size.
 
@@ -3595,6 +3667,7 @@ def main():
     preview_root = tempfile.mkdtemp(prefix="mesh-cadex-preview-")
     fallback_root = tempfile.mkdtemp(prefix="mesh-cadex-fallback-")
     supersede_root = tempfile.mkdtemp(prefix="mesh-cadex-supersede-")
+    views_root = tempfile.mkdtemp(prefix="mesh-cadex-views-")
     collision_root = tempfile.mkdtemp(prefix="mesh-cadex-collision-")
     shapes_root = tempfile.mkdtemp(prefix="mesh-cadex-shapes-")
     isolate_root = tempfile.mkdtemp(prefix="mesh-cadex-isolate-")
@@ -3647,6 +3720,7 @@ def main():
         test_the_policy_outputs_panel_reads_a_rollout()
         test_a_pose_only_slider_previews_at_interactive_rate(preview_root)
         test_a_shape_slider_falls_back_to_set_params(fallback_root)
+        test_render_views_frames_the_engines_geometry(views_root)
         test_the_collision_overlay_draws_adr074(collision_root)
         test_the_collision_overlay_measures_every_primitive(shapes_root)
         test_the_collision_overlay_is_isolated(isolate_root)
@@ -3675,7 +3749,7 @@ def main():
                      long_root, guard_root, history_root, prune_root,
                      assembly_root, shared_root, sim_root, live_root,
                      drag_root, supersede_root, skip_root,
-                     preview_root, fallback_root, collision_root,
+                     preview_root, fallback_root, views_root, collision_root,
                      shapes_root, isolate_root, readers_root, wiring_root):
             shutil.rmtree(root, ignore_errors=True)
 

@@ -2,11 +2,230 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-"""Viewport capture for the agent: offscreen render, downscaled, base64 PNG."""
+"""Viewport capture for the agent: offscreen render, downscaled, base64 PNG.
+
+Two questions, two functions. ``screenshot_png_base64`` answers *what does
+the user see* -- their viewport, their camera, their overlays. ``render_views``
+answers *what did I build*: four fitted cameras around the Model collection,
+composited into one image, with the user's session deliberately excluded
+(ADR-124).
+
+The camera arithmetic is in ``view_matrices``, which imports no ``bpy`` and
+returns plain tuples -- the same split ``cadex_collision`` keeps between its
+``extents_mm`` table and its overlay. That is the half the headless suite can
+test, and the half Phase 12 re-binds rather than re-designs.
+"""
 
 import base64
+import math
 import os
 import tempfile
+
+# The four views, in the order they are composited (reading order in a 2x2
+# grid). ``direction`` points from the model to the camera; ``up`` is the
+# world axis that ends up pointing up in the image.
+VIEWS = (
+    {"name": "front", "quadrant": "top-left",
+     "direction": (0.0, -1.0, 0.0), "up": (0.0, 0.0, 1.0), "ortho": True},
+    {"name": "right", "quadrant": "top-right",
+     "direction": (1.0, 0.0, 0.0), "up": (0.0, 0.0, 1.0), "ortho": True},
+    {"name": "top", "quadrant": "bottom-left",
+     "direction": (0.0, 0.0, 1.0), "up": (0.0, 1.0, 0.0), "ortho": True},
+    {"name": "three-quarter", "quadrant": "bottom-right",
+     "azimuth": 45.0, "elevation": 25.0, "up": (0.0, 0.0, 1.0), "ortho": False},
+)
+
+# Vertical field of view of the perspective view, in degrees.
+HERO_FOV = 40.0
+
+# How much empty space to leave around the model, as a scale on the fit.
+MARGIN = 1.08
+
+
+# -- the pure half: no bpy, plain tuples ------------------------------------
+
+def _sub(a, b):
+    return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
+
+
+def _dot(a, b):
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+
+def _cross(a, b):
+    return (a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0])
+
+
+def _normalized(v):
+    length = math.sqrt(_dot(v, v))
+    if length < 1e-12:
+        return (0.0, 0.0, 1.0)
+    return (v[0] / length, v[1] / length, v[2] / length)
+
+
+def _direction(view):
+    """Unit vector from the model towards the camera."""
+
+    if "direction" in view:
+        return _normalized(view["direction"])
+    # Azimuth is measured from the front (-Y) towards +X, elevation up from
+    # the ground plane -- the way a turntable is described, not the way a
+    # spherical coordinate is.
+    azimuth = math.radians(float(view.get("azimuth") or 0.0))
+    elevation = math.radians(float(view.get("elevation") or 0.0))
+    return _normalized((
+        math.sin(azimuth) * math.cos(elevation),
+        -math.cos(azimuth) * math.cos(elevation),
+        math.sin(elevation),
+    ))
+
+
+def _corners(bbox):
+    (x0, y0, z0), (x1, y1, z1) = bbox
+    return tuple((x, y, z) for x in (x0, x1) for y in (y0, y1) for z in (z0, z1))
+
+
+def _basis(direction, up):
+    """Right-handed camera basis: +x right, +y up, +z towards the viewer."""
+
+    z_axis = _normalized(direction)
+    if abs(_dot(z_axis, _normalized(up))) > 0.999:
+        up = (0.0, 1.0, 0.0) if abs(z_axis[2]) > 0.5 else (0.0, 0.0, 1.0)
+    x_axis = _normalized(_cross(up, z_axis))
+    y_axis = _cross(z_axis, x_axis)
+    return x_axis, y_axis, z_axis
+
+
+def _look_at(eye, basis):
+    x_axis, y_axis, z_axis = basis
+    return (
+        (x_axis[0], x_axis[1], x_axis[2], -_dot(x_axis, eye)),
+        (y_axis[0], y_axis[1], y_axis[2], -_dot(y_axis, eye)),
+        (z_axis[0], z_axis[1], z_axis[2], -_dot(z_axis, eye)),
+        (0.0, 0.0, 0.0, 1.0),
+    )
+
+
+def _ortho_window(half_width, half_height, near, far):
+    return (
+        (1.0 / half_width, 0.0, 0.0, 0.0),
+        (0.0, 1.0 / half_height, 0.0, 0.0),
+        (0.0, 0.0, -2.0 / (far - near), -(far + near) / (far - near)),
+        (0.0, 0.0, 0.0, 1.0),
+    )
+
+
+def _perspective_window(fov_y, aspect, near, far):
+    focal = 1.0 / math.tan(math.radians(fov_y) / 2.0)
+    return (
+        (focal / aspect, 0.0, 0.0, 0.0),
+        (0.0, focal, 0.0, 0.0),
+        (0.0, 0.0, (far + near) / (near - far), 2.0 * far * near / (near - far)),
+        (0.0, 0.0, -1.0, 0.0),
+    )
+
+
+def transform(matrix, point):
+    """Apply a 4x4 row-major matrix to a 3-point; returns (x, y, z, w)."""
+
+    x, y, z = point[0], point[1], point[2]
+    return tuple(row[0] * x + row[1] * y + row[2] * z + row[3] for row in matrix)
+
+
+def project(view_matrix, window_matrix, point):
+    """World point to normalised device coordinates, or None if behind."""
+
+    camera = transform(view_matrix, point)
+    clip = transform(window_matrix, camera)
+    if abs(clip[3]) < 1e-12:
+        return None
+    return (clip[0] / clip[3], clip[1] / clip[3], clip[2] / clip[3])
+
+
+def view_matrices(bbox, aspect=1.0, margin=MARGIN):
+    """Fit the four cameras to a world bounding box.
+
+    ``bbox`` is ((min_x, min_y, min_z), (max_x, max_y, max_z)); ``aspect`` is
+    the width/height of ONE tile, not of the composite. Returns a tuple of
+    dicts carrying the view name, its quadrant, and its ``view``/``window``
+    matrices as row-major tuples ready for ``GPUOffScreen.draw_view3d``.
+
+    No bpy: this is arithmetic on the bounding box, and it is what the
+    headless suite checks.
+    """
+
+    (x0, y0, z0), (x1, y1, z1) = bbox
+    centre = ((x0 + x1) / 2.0, (y0 + y1) / 2.0, (z0 + z1) / 2.0)
+    corners = _corners(bbox)
+    radius = max(math.sqrt(_dot(_sub(c, centre), _sub(c, centre))) for c in corners)
+    if radius < 1e-9:
+        # A point, an empty collection, or a single vertex: frame a unit box
+        # so the render is a picture of nothing rather than a division by zero.
+        radius = 0.5
+    aspect = float(aspect) if aspect and aspect > 0 else 1.0
+
+    built = []
+    for view in VIEWS:
+        direction = _direction(view)
+        basis = _basis(direction, view["up"])
+        if view["ortho"]:
+            distance = radius * 3.0
+            eye = tuple(centre[i] + direction[i] * distance for i in range(3))
+            view_matrix = _look_at(eye, basis)
+            local = [transform(view_matrix, corner) for corner in corners]
+            # The floor is what keeps a flat model -- a plate seen edge-on,
+            # or the degenerate box above -- from dividing by zero here.
+            floor = radius * 1e-3
+            half_width = max(max(abs(p[0]) for p in local) * margin, floor)
+            half_height = max(max(abs(p[1]) for p in local) * margin, floor)
+            if half_width / half_height < aspect:
+                half_width = half_height * aspect
+            else:
+                half_height = half_width / aspect
+            window = _ortho_window(max(half_width, 1e-6), max(half_height, 1e-6),
+                                   distance - radius * 2.0, distance + radius * 2.0)
+        else:
+            half_v = math.radians(HERO_FOV) / 2.0
+            half_h = math.atan(math.tan(half_v) * aspect)
+            distance = radius * margin / math.sin(min(half_v, half_h))
+            eye = tuple(centre[i] + direction[i] * distance for i in range(3))
+            view_matrix = _look_at(eye, basis)
+            window = _perspective_window(
+                HERO_FOV, aspect,
+                max(distance - radius * 2.0, distance * 0.01),
+                distance + radius * 2.0)
+        built.append({
+            "name": view["name"],
+            "quadrant": view["quadrant"],
+            "ortho": view["ortho"],
+            "direction": direction,
+            "eye": eye,
+            "distance": distance,
+            "view": view_matrix,
+            "window": window,
+        })
+    return tuple(built)
+
+
+def quadrant_legend(views=None):
+    """One sentence naming what is in each quadrant.
+
+    Returned as text rather than drawn into the image: labelling the pixels
+    would need ``blf`` and a font, and buys nothing a caption cannot say.
+    """
+
+    views = views if views is not None else view_matrices(((0, 0, 0), (1, 1, 1)))
+    described = {
+        "front": "front (camera on -Y, looking along +Y)",
+        "right": "right (camera on +X, looking along -X)",
+        "top": "top (camera on +Z, looking down)",
+        "three-quarter": "three-quarter perspective (azimuth 45 deg, elevation 25 deg)",
+    }
+    return "; ".join(
+        "{:s}: {:s}".format(view["quadrant"], described.get(view["name"], view["name"]))
+        for view in views)
 
 
 def _find_view3d():
@@ -95,6 +314,212 @@ def screenshot_png_base64(max_size=768):
     try:
         image.pixels.foreach_set(pixels)
         path = os.path.join(tempfile.gettempdir(), "mesh_agent_capture.png")
+        image.filepath_raw = path
+        image.file_format = 'PNG'
+        image.save()
+        with open(path, "rb") as file:
+            data = file.read()
+        os.remove(path)
+    finally:
+        bpy.data.images.remove(image)
+
+    return base64.b64encode(data).decode("ascii"), None
+
+
+# -- render_views: four fitted cameras, one image (ADR-124) -----------------
+
+def model_bbox():
+    """World-space bounding box of the Model collection, or None if empty."""
+
+    from . import model
+    import bpy
+    from mathutils import Vector
+
+    collection = bpy.data.collections.get(model.COLLECTION_NAME)
+    if collection is None:
+        return None
+    low = [float("inf")] * 3
+    high = [float("-inf")] * 3
+    seen = False
+    for obj in collection.all_objects:
+        if obj.type not in {'MESH', 'CURVE', 'SURFACE', 'FONT', 'META'}:
+            continue
+        # Hidden objects are skipped, and the reason is ADR-049: hydration
+        # hides a source solid and instances components off it, so measuring
+        # the source too would fit the cameras to geometry nobody can see.
+        if not obj.visible_get():
+            continue
+        matrix = obj.matrix_world
+        for corner in obj.bound_box:
+            point = matrix @ Vector(corner)
+            for axis in range(3):
+                low[axis] = min(low[axis], point[axis])
+                high[axis] = max(high[axis], point[axis])
+            seen = True
+    if not seen:
+        return None
+    return (tuple(low), tuple(high))
+
+
+def _isolate_model(view_layer):
+    """Hide every root collection except Model; returns an undo callable.
+
+    The Collision cage and the section-cage overlay are siblings of Model at
+    the scene root exactly so they can be swept as a unit (cadex_collision's
+    docstring says why they must not be children). That makes isolating the
+    model one loop over the root layer collections.
+    """
+
+    from . import model
+
+    import bpy
+
+    changed = []
+    for layer in view_layer.layer_collection.children:
+        if layer.collection.name == model.COLLECTION_NAME:
+            continue
+        if not layer.hide_viewport:
+            layer.hide_viewport = True
+            changed.append(layer)
+
+    # Measured, not assumed: without this the cage is still in shot.
+    # ``hide_viewport`` on a layer collection is a runtime flag that the
+    # view layer syncs lazily, and ``draw_view3d`` runs before the event
+    # loop would have got round to it, so the first render came back with
+    # a collection we had just hidden still in it.
+    if changed:
+        view_layer.update()
+        bpy.context.evaluated_depsgraph_get()
+
+    def restore():
+        for layer in changed:
+            layer.hide_viewport = False
+        if changed:
+            view_layer.update()
+
+    return restore
+
+
+def _present_model(space):
+    """Solid studio shading with no overlays; returns an undo callable."""
+
+    shading, overlay = space.shading, space.overlay
+    saved = {
+        "type": shading.type,
+        "light": shading.light,
+        "studio_light": shading.studio_light,
+        "color_type": shading.color_type,
+        "show_overlays": overlay.show_overlays,
+        "background_type": getattr(shading, "background_type", None),
+    }
+    shading.type = 'SOLID'
+    shading.light = 'STUDIO'
+    shading.color_type = 'MATERIAL'
+    overlay.show_overlays = False
+
+    def restore():
+        shading.type = saved["type"]
+        shading.light = saved["light"]
+        try:
+            shading.studio_light = saved["studio_light"]
+        except (TypeError, ValueError):
+            pass
+        shading.color_type = saved["color_type"]
+        overlay.show_overlays = saved["show_overlays"]
+
+    return restore
+
+
+def _tile_pixels(space, region, width, height, view_matrix, window_matrix):
+    import bpy
+    import gpu
+    from mathutils import Matrix
+
+    offscreen = gpu.types.GPUOffScreen(width, height)
+    try:
+        offscreen.draw_view3d(
+            bpy.context.scene,
+            bpy.context.view_layer,
+            space,
+            region,
+            Matrix(view_matrix),
+            Matrix(window_matrix),
+            do_color_management=True,
+        )
+        with offscreen.bind():
+            framebuffer = gpu.state.active_framebuffer_get()
+            pixel_buffer = framebuffer.read_color(0, 0, width, height, 4, 0, 'FLOAT')
+        pixel_buffer.dimensions = width * height * 4
+        return list(pixel_buffer)
+    finally:
+        offscreen.free()
+
+
+def composite_2x2(tiles, tile_width, tile_height):
+    """Four flat RGBA row-major (bottom-up) tile buffers into one buffer.
+
+    Plain pixel arithmetic, in the order VIEWS declares: top-left, top-right,
+    bottom-left, bottom-right. Rows are copied by slice assignment, so the
+    per-pixel work stays in C.
+    """
+
+    width, height = tile_width * 2, tile_height * 2
+    out = [0.0] * (width * height * 4)
+    stride = width * 4
+    tile_stride = tile_width * 4
+    placement = ((0, 1), (1, 1), (0, 0), (1, 0))  # (column, row-from-bottom)
+    for tile, (column, row) in zip(tiles, placement):
+        if tile is None:
+            continue
+        for y in range(tile_height):
+            src = y * tile_stride
+            dst = (row * tile_height + y) * stride + column * tile_stride
+            out[dst:dst + tile_stride] = tile[src:src + tile_stride]
+    return out, width, height
+
+
+def render_views(max_size=1024):
+    """Four fitted views of the model, composited 2x2. (base64_png, None).
+
+    Not a screenshot: the cameras are computed from the Model collection's
+    bounding box and the user's overlays and sibling collections are hidden
+    for the duration. What comes back is a picture of the model, at a known
+    orientation, whatever the user's viewport happens to be showing.
+    """
+
+    import bpy
+
+    if bpy.app.background:
+        return None, ("Multi-view rendering is unavailable in background mode; "
+                      "use scene_summary instead.")
+
+    window, area, space, region = _find_view3d()
+    if space is None:
+        return None, "No 3D viewport found; use scene_summary instead."
+
+    bbox = model_bbox()
+    if bbox is None:
+        return None, ("The Model collection is empty, so there is nothing to "
+                      "render; check scene_summary for what the engine built.")
+
+    tile = max(8, int(max_size) // 2)
+    views = view_matrices(bbox, aspect=1.0)
+
+    undo_isolation = _isolate_model(bpy.context.view_layer)
+    undo_presentation = _present_model(space)
+    try:
+        tiles = [_tile_pixels(space, region, tile, tile, view["view"], view["window"])
+                 for view in views]
+    finally:
+        undo_presentation()
+        undo_isolation()
+
+    pixels, width, height = composite_2x2(tiles, tile, tile)
+
+    image = bpy.data.images.new("mesh_agent_views", width, height, alpha=True)
+    try:
+        image.pixels.foreach_set(pixels)
+        path = os.path.join(tempfile.gettempdir(), "mesh_agent_views.png")
         image.filepath_raw = path
         image.file_format = 'PNG'
         image.save()

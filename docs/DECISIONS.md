@@ -12722,3 +12722,99 @@ writing any new modelling code. That measurement is what sizes the
 mesh-domain work — how much organic capability is genuinely absent versus
 merely was unreachable — and `part` already carries `loft`, `sweep`,
 `bspline`, `filled_surface`, `fillet` and `thicken`.
+
+---
+
+## ADR-124 — The agent could not see what it built (2026-08-05)
+
+**Decision.** A new read-only shell tool, `render_views`, renders **the
+model** from four fitted cameras — front, right, top and a three-quarter
+perspective — and composites them into one image. It does not replace
+`viewport_screenshot`, which answers a different question. This is slice O0
+of Phase 15; the arc is `docs/ORGANIC.md`.
+
+**Rationale.** ADR-123 closed by asking for the robot wolf to be re-run
+against the repaired API surface. It was, and the project is
+`~/arch/woof.cadex`. Measured from its store rather than from the
+conversation: 154 lines, 8 parameters, **16 solids, every one a
+`part.loft`**, fused once at the end — a surfacing workflow, no mesh op
+anywhere, and eleven accepted revisions in seventeen minutes. The silhouette
+improved. It is still not good, and `docs/ORGANIC.md` §1 records the three
+refused weld attempts that are why.
+
+This ADR is about a different line in that record: **the agent iterated on a
+silhouette without being able to see one.** `viewport_screenshot` renders
+whatever the user's viewport happens to be showing — their camera, their
+zoom, their overlays, the collision cage if it is on — at 768 px. For "is
+this shape right" that is the wrong picture, and it is one picture.
+
+**Nothing new was needed to fix it.** `capture.py:56` already rendered
+through `gpu.types.GPUOffScreen.draw_view3d(...)` with an **explicitly
+supplied** `view_matrix` / `window_matrix`; it just happened to read them off
+`space.region_3d`. Computing them instead is the whole feature.
+
+**The split, and why it is where it is.** `view_matrices(bbox, aspect)` fits
+the four cameras and returns plain tuples, importing no `bpy` — the same
+split `cadex_collision.py` keeps between its `extents_mm` table and its
+overlay, for the same two reasons: it is the half a headless suite can test,
+and it is the half Phase 12 re-binds rather than re-designs. Aim, fit,
+orientation and the 2×2 composite arithmetic are all on that side.
+
+**Classification.** Read-only, so `render_views` is in neither
+`MUTATING_TOOLS` (undoing a modelling mistake must not first undo looking at
+it) nor `_ENGINE_TOOLS` (it reads geometry already hydrated in the scene and
+never speaks to cadexd). Exactly what `collision_view` got in ADR-091.
+
+**What was measured, by driving the built application.** The gate cannot see
+this feature: `draw_view3d` needs a real VIEW_3D and `package/app/build_app.sh
+gate` runs `--background`, where the tool returns its refusal sentence. So it
+was verified by launching the bundle with a probe script against a model in
+the Model collection:
+
+- a real 1024×1024 PNG, 73–86 KB, four visibly distinct quadrants whose
+  contents match the geometry that was built;
+- **isolation is provable**: with a sibling `Collision` collection holding a
+  30 mm cage overlapping the model, the render is **byte-identical** to the
+  render taken after deleting that collection;
+- the user's session comes back untouched — shading type, `show_overlays`
+  and every collection's visibility restored, verified against deliberately
+  un-product-like values (`WIREFRAME`, overlays on).
+
+**One thing had to be fixed that reasoning would not have found.**
+`LayerCollection.hide_viewport` is a runtime flag the view layer syncs
+lazily, and `draw_view3d` runs long before the event loop would have got
+round to it — so the first render came back with the collection we had just
+hidden still in shot. `view_layer.update()` plus
+`evaluated_depsgraph_get()` after the toggle is what makes the isolation
+real, and the comment at that line says so, because the code reads as though
+it could not fail.
+
+**Consequences.**
+
+- `modes.CADEX_OVERLAY` gains one bullet: judge a shape with `render_views`;
+  `viewport_screenshot` answers what the *user* is looking at. The overlay
+  is 3,447 chars against ADR-123's 3,500 budget, which is tight on purpose.
+- The collision workflow is unchanged and still goes through
+  `collision_view` + `viewport_screenshot` — `render_views` hides the cage
+  by construction, and its own description says so.
+- `bl_mesh_agent.py` gains `test_render_views_cameras_frame_the_model`: aim,
+  axis-truth, snug ortho fit with margin, distinctness, a non-square tile, a
+  degenerate bounding box, the composite's quadrant placement (Blender image
+  rows run bottom-up, so front/right are the *second* row of the buffer),
+  the background refusal, and the tool's classification.
+- The gate gains `test_render_views_frames_the_engines_geometry`, which
+  measures the world bounding box of **engine-built** geometry against the
+  millimetres the script declared (80 × 40 × 50 for a box plus a cylinder
+  standing on it), checks all four fitted cameras contain it, and records
+  `GATE["render_views"]`. It asserts the background refusal is a sentence.
+  **It does not assert the image**, and says so where it is written rather
+  than implying coverage the suite does not have.
+- `docs/ORGANIC.md` is new: the wolf measurement, slices O0–O3, the hazards
+  and a benchmark log. `docs/ROADMAP.md` gains Phase 15.
+
+**Verification.** `package/app/build_app.sh gate tests/python/bl_mesh_agent.py`
+all green. `pixi run gate` `ok: true`, `engine_from_bundle: true`,
+`GATE["render_views"] = {"bbox_mm": [-40, -20, 0, 40, 20, 50], "views":
+["front", "right", "top", "three-quarter"], "composite_px": null}` — null
+because the gate is headless, which is the honest value. No engine change,
+so the engine suite is untouched.

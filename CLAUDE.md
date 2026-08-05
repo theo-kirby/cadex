@@ -67,6 +67,7 @@ Read `docs/VISION.md` before designing anything.
 | `docs/XSCRIPT.md` | The scripting model — today (per-domain programs) vs target (one project script). |
 | `docs/ROADMAP.md` | Phases 0–14, status checkboxes, exit criteria. Living status lives here. |
 | `docs/MUJOCO.md` | **This branch's vertical**: dynamics and control, slices M0–M9 (all closed), the hazards, and the measured facts. §7 is the **end-to-end walkthrough** — how to take a drawing to a trained policy, in the order that costs least. ROADMAP Phase 14 is its status line. |
+| `docs/ORGANIC.md` | **Phase 15's vertical**: organic modelling and the CAD/mesh interface, slices O0–O3. §1 is the measurement it is sized from — a robot wolf built entirely in `part`, and the three ways it failed to weld its own seams. §4 is the benchmark log. |
 | `docs/DECISIONS.md` | ADR log. Append an entry for every removal or direction change. |
 | `docs/PROVENANCE.md` | Which code came from FreeCAD, from Blender, and from VibeCAD; licences, credit, and how two licences share one repo. |
 | `docs/FREECAD.md` | Inherited-tree ledger for the **engine**: kept / disabled / already-deleted. |

@@ -1305,6 +1305,105 @@ def test_the_simulation_panel_polls_on_content_not_geometry():
     del scene[cadex_animate.SCENE_FLAG]
 
 
+def test_render_views_cameras_frame_the_model():
+    """The four cameras are computed, not read off the user's viewport.
+
+    ``view_matrices`` is the half of render_views that imports no bpy
+    (ADR-124), which is why it can be checked here: aim, fit and orientation
+    are arithmetic on a bounding box. What cannot be checked headless is the
+    image -- ``draw_view3d`` needs a real VIEW_3D -- so the last check here is
+    that the background refusal is still a sentence, and the composite's real
+    dimensions are recorded by the gate instead.
+    """
+    print("test_render_views_cameras_frame_the_model")
+    from mesh_agent import capture
+
+    bbox = ((-30.0, -10.0, 0.0), (10.0, 50.0, 24.0))
+    centre = (-10.0, 20.0, 12.0)
+    views = capture.view_matrices(bbox, aspect=1.0)
+    check(len(views) == 4, "four views")
+    check([view["name"] for view in views] ==
+          ["front", "right", "top", "three-quarter"],
+          "front, right, top, three-quarter")
+    check(sorted(view["quadrant"] for view in views) ==
+          ["bottom-left", "bottom-right", "top-left", "top-right"],
+          "one per quadrant of the 2x2 composite")
+
+    for view in views:
+        aimed = capture.transform(view["view"], centre)
+        check(abs(aimed[0]) < 1e-6 and abs(aimed[1]) < 1e-6,
+              "{:s} looks at the bbox centre".format(view["name"]))
+        check(aimed[2] < 0.0,
+              "{:s} has the model in front of the camera".format(view["name"]))
+
+    axis_true = {"front": (0.0, -1.0, 0.0), "right": (1.0, 0.0, 0.0),
+                 "top": (0.0, 0.0, 1.0)}
+    for view in views:
+        expected = axis_true.get(view["name"])
+        if expected is None:
+            continue
+        check(max(abs(a - b) for a, b in zip(view["direction"], expected)) < 1e-9,
+              "{:s} is axis-true {!s}".format(view["name"], expected))
+    directions = {tuple(round(axis, 6) for axis in view["direction"])
+                  for view in views}
+    check(len(directions) == 4, "the four directions are distinct")
+    hero = [view for view in views if view["name"] == "three-quarter"][0]
+    check(hero["direction"][0] > 0.1 and hero["direction"][1] < -0.1
+          and hero["direction"][2] > 0.1,
+          "the three-quarter view is up, right and in front")
+
+    corners = [(x, y, z) for x in (bbox[0][0], bbox[1][0])
+               for y in (bbox[0][1], bbox[1][1])
+               for z in (bbox[0][2], bbox[1][2])]
+    for view in views:
+        projected = [capture.project(view["view"], view["window"], corner)
+                     for corner in corners]
+        inside = all(p is not None and abs(p[0]) <= 1.0 and abs(p[1]) <= 1.0
+                     and -1.0 <= p[2] <= 1.0 for p in projected)
+        check(inside, "{:s} contains the whole bbox".format(view["name"]))
+        if view["ortho"]:
+            widest = max(max(abs(p[0]), abs(p[1])) for p in projected)
+            check(0.85 < widest <= 1.0,
+                  "{:s} fits it snugly, with a margin".format(view["name"]))
+
+    wide = capture.view_matrices(bbox, aspect=2.0)
+    front_wide = [v for v in wide if v["name"] == "front"][0]
+    projected = [capture.project(front_wide["view"], front_wide["window"], c)
+                 for c in corners]
+    check(all(abs(p[0]) <= 1.0 and abs(p[1]) <= 1.0 for p in projected),
+          "a non-square tile still contains the bbox")
+
+    flat = capture.view_matrices(((0.0, 0.0, 0.0), (0.0, 0.0, 0.0)))
+    check(len(flat) == 4, "a degenerate bbox frames a unit box instead of "
+                          "dividing by zero")
+
+    red, green, blue, white = ([1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 1.0],
+                               [0.0, 0.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0])
+    pixels, width, height = capture.composite_2x2(
+        [red, green, blue, white], 1, 1)
+    check((width, height) == (2, 2), "the composite is 2x2 tiles")
+    # Blender image rows run bottom-up, so the first row of the buffer is the
+    # BOTTOM of the picture: top-left/top-right land in the second row.
+    check(pixels[0:4] == blue and pixels[4:8] == white,
+          "top and three-quarter are the bottom row")
+    check(pixels[8:12] == red and pixels[12:16] == green,
+          "front and right are the top row")
+
+    ok, message = capture.render_views()
+    check(ok is None and "background" in str(message),
+          "render_views refuses in background mode, in a sentence")
+
+    from mesh_agent import tools
+    names = [entry["name"] for entry in tools.TOOL_DEFS]
+    check("render_views" in names, "render_views is a tool")
+    check("viewport_screenshot" in names,
+          "and viewport_screenshot is still one -- a different question")
+    check("render_views" not in tools.MUTATING_TOOLS,
+          "looking at the model does not enter the undo stack")
+    check("render_views" not in tools._ENGINE_TOOLS,
+          "and it never reaches the engine")
+
+
 def main():
     print("=== bl_mesh_agent tests ===")
     mesh_agent.register()
@@ -1331,6 +1430,7 @@ def main():
         test_playback_frame_range_covers_the_run()
         test_playback_skips_the_input_frame()
         test_the_simulation_panel_polls_on_content_not_geometry()
+        test_render_views_cameras_frame_the_model()
         if os.environ.get("MESH_AGENT_LIVE"):
             test_live_claude_turn()
         else:
