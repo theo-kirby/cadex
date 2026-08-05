@@ -12902,7 +12902,9 @@ seam set; every attempt 0.4–0.5 s):
 
 So the cap that binds on a real body is **wall-clock, not calls**: 48 calls
 of half a second is half a minute and nobody waits for that answer.
-`_BLEND_PROBE_SECONDS` is 10 s, `_BLEND_PROBE_CALLS` is 48 as a backstop,
+`_BLEND_PROBE_SECONDS` is 10 s (**raised to 15 s by ADR-128** — it was the
+binding cap on every row above, so every one of those refusals was a timeout
+rather than an answer), `_BLEND_PROBE_CALLS` is 48 as a backstop,
 and a capped probe reports `probe_capped`, `probe_cap` (`"seconds"` /
 `"calls"`) and how many edges went unprobed. Stating it is the point: the
 alternative is a refusal that looks exhaustive and is not.
@@ -12913,7 +12915,12 @@ alternative is a refusal that looks exhaustive and is not.
   `(sections, solid, frenet, transition)` and exposes neither `SetLaw` nor
   the guide-curve `SetMode`. Reaching them means a new binding in
   `src/Mod/Part` — inherited FreeCAD, and a decision about the fork's delta
-  rather than a fix to slip in. The **scaling law** is the half the wolf
+  rather than a fix to slip in. **This is half wrong, and ADR-128 corrects
+  it**: `Part.BRepOffsetAPI.MakePipeShell` is already a full class binding
+  with `setAuxiliarySpine` on it, so guides needed no C++ at all. `SetLaw`
+  really was missing. The lesson is the cheap one — grep the *other*
+  bindings before pricing a fork delta. The **scaling law** is the half the
+  wolf
   actually paid for (its tail is five hand-placed tilted circles and a
   loft), and it needs no binding: a lawed sweep is that loft, computed —
   stations taken along the path's *arc length*, each rotated onto the
@@ -13176,3 +13183,87 @@ sends the table once.
 1588 passed, 22 skipped. `pixi run gate` `ok: true`,
 `engine_from_bundle: true`, `GATE["cage"] = {"rings": 3, "positions": [0.0,
 120.0, 340.0]}`, slider latency 0.55 s median within the 0.65 s bar.
+
+## ADR-128 — Three parked decisions, taken (2026-08-05)
+
+**Decision.** `part.sweep` takes a `guide` curve; `scale_law` is now a real
+kernel law rather than a loft that approximates one; `on_failure="reduce"`
+keeps the requested radius on the edges that accept it and lowers only the
+ones that refuse; and the blend probe's wall-clock cap goes from 10 s to
+15 s. Two of those needed code inside inherited `src/Mod/Part`, which is
+where `docs/FREECAD.md` **§2a** comes from — the engine's ledger of what we
+have added to the FreeCAD tree, previously empty.
+
+**Rationale.** ADR-125 shipped all three of these as *deliberately not
+here*, each with the same reason: reaching the kernel would mean a new
+binding in inherited FreeCAD, "a decision about the fork's delta rather
+than a fix to slip in". That is the correct way to park something. The
+owner then took the decision — the inherited trees are going to be edited
+over the life of this product, and rationing single-method additions buys
+nothing — so this ADR is what the parked items cost once someone said yes.
+
+**One of them was not a fork delta at all.** ADR-125 read
+`TopoShapeWirePy::makePipeShell`, saw `(sections, solid, frenet,
+transition)`, and priced C++. It was reading the wrong file:
+`Part.BRepOffsetAPI.MakePipeShell` is the *same OCCT class*, bound whole,
+`setAuxiliarySpine` already on it. Guide curves needed nothing but Python.
+The cheap lesson is in `docs/FREECAD.md` §2a: grep the class bindings before
+pricing a binding.
+
+**What the guide modes actually do, which is not what they are called.**
+OCCT spells the auxiliary-spine contact modes `NoContact`, `Contact` and
+`ContactOnBorder`. Everyone reads `Contact` as "the section grows to meet
+the guide". It does not — it *translates* the section, at its own size. It
+is `ContactOnBorder` that scales. Measured on a straight spine, an r10
+circle swept 100 mm past a guide flaring from 10 mm out to 40 mm out:
+
+| mode | volume | |
+|---|---|---|
+| no guide | 31415.93 mm³ | π·10²·100, a cylinder |
+| `Contact` | 30638.22 mm³ | the section moved, not resized |
+| `ContactOnBorder` | 219911.57 mm³ | a truncated cone r10→r40; closed form 219911.50 |
+
+So the argument is `guide_mode` with our own vocabulary — `"orient"`,
+`"touch"`, `"follow"` — and `"follow"` is the default, because it is the one
+a person means by "guide". Mirroring OCCT's names here would have shipped a
+default that silently did nothing.
+
+**The law is now exact, and the loft that stood in for it is deleted.**
+`setLaw` is ~50 lines in `BRepOffsetAPI_MakePipeShellPyImp.cpp`: it takes
+`[[position, factor], …]`, builds a `Law_Interpol` over [0, 1], and hands it
+to `SetLaw`. The parameter range was the one thing that had to be measured
+rather than assumed, and it is [0, 1]: an r10 circle swept 100 mm under
+`[[0, 1], [1, 0.5]]` returns **18325.952 mm³** against a closed-form
+**18325.957**. ADR-125's `_swept_law` — a loft through six stations per law
+span, each rotated onto the path's tangent — was an approximation of exactly
+that number, could not take a guide, and is gone, together with
+`_path_stations`, `_law_factor` and `_SWEEP_STATIONS`. `test_part_organic.py`
+lost its interpolation unit tests and gained the closed-form ones, which is
+the better trade: the arithmetic was never the risk.
+
+**Per-edge radii, and why one call.** `makeFillet` grew a third form,
+`makeFillet([r, …], edges)`, each entry a radius or a `(start, end)` pair.
+It has to be one call: `BRepFilletAPI_MakeFillet` resolves its edges in the
+shape it was constructed with, so a second call cannot address the first
+one's result, where the fillet has renumbered and possibly consumed them.
+ADR-125 named that constraint correctly and accepted a uniform reduce
+because of it. With the form in place, `reduce` keeps the requested radius
+on every edge that took it and lowers only the refusers — one tight crotch
+no longer flattens every haunch — and reports `edges_at_requested` /
+`edges_reduced` so a model that cannot see the shape can still tell what it
+got. The new binding checks `IsDone`, which the two inherited forms do not.
+`chamfer` has no per-edge form in the kernel binding, so it reduces
+uniformly and says so rather than reporting a split it did not apply.
+
+**The probe cap.** 10 s was a first guess, and every row of ADR-125's cost
+table hit it — which means every refusal measured there was a timeout rather
+than an answer. 15 s buys about a third more attempts on a body the size of
+the wolf. It is still a guess; what makes it safe is that a capped probe
+reports `probe_capped` and `probe_cap`, so the refusal never claims to be
+exhaustive.
+
+**Cost against upstream.** Two files in `src/Mod/Part/App`, one new method
+each, both additive: a new `.pyi` entry plus its `PyImp` body, and a new
+parse form ahead of two existing ones. Both conflict as insertions a
+compiler finds, not as rewritten logic — the distinction `CLAUDE.md` asks
+for. Ledger: `docs/FREECAD.md` §2a.

@@ -405,19 +405,30 @@ smuggling provenance in would make every selector's meaning depend on
 history. How many intersection curves a boolean produced is knowable only
 to the boolean, which is why the argument lives on `fuse`.
 
-### Tapering a sweep, and aiming an ellipse `[ADR-125]`
+### Tapering a sweep, guiding it, and aiming an ellipse `[ADR-125, ADR-128]`
 
 ```python
 tail = part.sweep(profile, spine, solid=True,
                   scale_law=[[0, 1.0], [0.6, 0.55], [1.0, 0.08]])
+haunch = part.sweep(profile, spine, solid=True, guide=silhouette)
 ring = part.ellipse(20, 8, normal=[1, 0, 0], x_direction=[0, 0, 1])
 ```
 
 `scale_law` is `[position, factor]` control points, position running 0…1
-along the path's **arc length**; it must start at 0 and end at 1, because a
-law that covers part of the path leaves the rest to a guess. A lawed sweep
-is built as a loft through computed stations, each rotated onto the path's
-tangent — the kernel's pipe-shell binding takes sections and no law.
+along the path; it must start at 0 and end at 1, because a law that covers
+part of the path leaves the rest to a guess.
+
+`guide` is a second wire the section obeys, and `guide_mode` says how —
+`"follow"` (default) **scales** the section at every station so its boundary
+rides the guide, `"touch"` **moves** it to touch the guide at its own size,
+and `"orient"` steers its orientation only. One guide, not a list: the
+kernel takes exactly one auxiliary spine. Watch the naming — OCCT calls
+these `NoContact` / `Contact` / `ContactOnBorder`, and it is `ContactOnBorder`
+that scales; the obvious reading of "contact" is the wrong one (ADR-128).
+
+Both go through `BRepOffsetAPI_MakePipeShell`, so both are exact rather than
+lofted through stations: a 10 mm circle swept 100 mm under `[[0, 1], [1, 0.5]]`
+comes back at 18325.952 mm³ against a closed-form 18325.957.
 
 `ellipse`'s `x_direction` aims the *major* axis, the way `plane`'s aims its
 own. Without it the major axis lands wherever rotating +Z onto `normal`

@@ -100,6 +100,24 @@ class BRepOffsetAPI_MakePipeShell(PyObjectBase):
         """
         ...
 
+    def setLaw(
+        self,
+        Profile: TopoShape,
+        Law: list,
+        *,
+        WithContact: bool = False,
+        WithCorrection: bool = False,
+    ) -> None:
+        """
+        setLaw(shape Profile, law, bool WithContact=False, bool WithCorrection=False)
+        Adds the section Profile to this framework, scaled along the spine by a law.
+
+        law is a sequence of at least two [position, factor] pairs with position
+        running 0 to 1 along the spine; the factor between them is interpolated.
+        [[0, 1], [1, 0.4]] tapers the section to 40% of its size at the far end.
+        """
+        ...
+
     def remove(self, Profile: TopoShape, /) -> None:
         """
         remove(shape Profile)

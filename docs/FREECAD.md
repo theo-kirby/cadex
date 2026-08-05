@@ -1,6 +1,6 @@
 # FREECAD.md — Inherited Substrate Inventory
 
-Verified against source: 2026-08-01
+Verified against source: 2026-08-05
 
 Cadex's **engine** is a FreeCAD fork. This is the ledger of what we keep,
 what is slated for removal, and what is already gone. Its peer for the shell
@@ -64,6 +64,25 @@ the product installs contains them:
   build hard-fails if it cannot import it.
 - `src/Tools`, `tests/` — upstream tooling and native test trees (audited,
   not blanket-kept, during Phase 1).
+
+## 2a. Our delta against upstream — additions inside the inherited tree
+
+The peer of `docs/BLENDER-TREE.md` §2, and it stayed empty far longer:
+until 2026-08-05 every Cadex engine feature lived under `src/Mod/cadex/`
+and reached OCCT through bindings FreeCAD already had. Two do not, and both
+exist because a Python-side workaround would have been an *approximation of
+the kernel* rather than a call into it. Every line here is a future merge
+conflict against upstream FreeCAD, so the list stays short and stays
+itemised.
+
+| File | What we added | Why it could not be Python | ADR |
+|---|---|---|---|
+| `src/Mod/Part/App/BRepOffsetAPI_MakePipeShell.pyi` + `…PyImp.cpp` | `setLaw(Profile, Law, WithContact=, WithCorrection=)`, taking `[[position, factor], …]` and building a `Law_Interpol` | `BRepOffsetAPI_MakePipeShell` was bound whole *except* `SetLaw`. Without it a scaling law has to be faked as a loft through computed stations, which is an approximation: the kernel law lands on the closed-form volume to six figures, the loft does not. | ADR-128 |
+| `src/Mod/Part/App/TopoShapePyImp.cpp` | a third `makeFillet` form, `makeFillet([r, …], edges)` — one radius, or one `(start, end)` pair, per edge | `BRepFilletAPI_MakeFillet` resolves its edges in the shape it was constructed with, so a second call cannot address the first call's result. One radius per call means one radius per body. | ADR-128 |
+
+Note what is *not* here: guide curves on a sweep. ADR-125 priced them as a
+fork delta and was wrong — `Part.BRepOffsetAPI.MakePipeShell` already had
+`setAuxiliarySpine`. Grep the class bindings before pricing C++.
 
 ## 3. Disabled, awaiting removal
 

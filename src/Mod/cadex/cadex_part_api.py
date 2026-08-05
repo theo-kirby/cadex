@@ -25,6 +25,12 @@ _TOPOLOGY_TYPES = frozenset({"edge", "wire", "face", "shell", "solid", "compound
 _PUBLISHABLE_TYPES = frozenset({"wire", "face", "shell", "solid", "compound"})
 _JOIN_TYPES = frozenset({"arc", "tangent", "intersection"})
 _TRANSITION_TYPES = frozenset({"transformed", "right_corner", "round_corner"})
+#: What a swept section does about its guide curve (ADR-128). The names are
+#: ours and the meanings are measured: OCCT spells these ``BRepFill_NoContact``,
+#: ``BRepFill_Contact`` and ``BRepFill_ContactOnBorder``, and "contact" there
+#: **translates** the section to touch the guide rather than scaling it — the
+#: reading everyone has, and the wrong one.
+_GUIDE_MODES = frozenset({"orient", "touch", "follow"})
 #: How the conductors of a ``part.bundle`` are laid about their shared route.
 _LAY_STYLES = frozenset({"twisted", "flat"})
 _SUBSHAPE_TYPES = frozenset({"edge", "wire", "face", "shell", "solid"})
@@ -1439,6 +1445,8 @@ class PartDomainAPI:
         frenet: bool = False,
         transition: str = "transformed",
         scale_law: Sequence[Sequence[float]] | None = None,
+        guide: DomainValue | None = None,
+        guide_mode: str = "follow",
         output_type: str | None = None,
         label: str = "",
     ) -> DomainValue:
@@ -1449,9 +1457,21 @@ class PartDomainAPI:
         the path and factor scaling the profile about the path at that
         position. ``[[0, 1], [1, 0.1]]`` is a limb or a tail — the shape the
         wolf built by hand-placing five tilted circles and lofting them
-        (``docs/ORGANIC.md`` §1). A lawed sweep IS that loft, computed: the
-        stations are built from the path's own frame and lofted, because the
-        kernel's pipe-shell takes one section shape and no law.
+        (``docs/ORGANIC.md`` §1).
+
+        ``guide`` is a second wire the section obeys, and ``guide_mode``
+        says how:
+
+        - ``"follow"`` (the default) — the section is **scaled** at every
+          station so its boundary rides the guide. This is the one you want:
+          draw the silhouette you can see and the sweep takes that shape.
+        - ``"touch"`` — the section is **moved** to touch the guide, keeping
+          its size.
+        - ``"orient"`` — the guide steers the section's orientation and
+          nothing else.
+
+        **One guide, not a list** — the kernel's pipe-shell takes exactly
+        one auxiliary spine.
         """
 
         operation = "sweep"
@@ -1489,13 +1509,27 @@ class PartDomainAPI:
                     len(clean_profile),
                 )
             extra["scale_law"] = _scale_law(operation, scale_law)
+        positional: list[Any] = [
+            clean_profile,
+            _shape(operation, "path", path, allowed={"wire"}),
+        ]
+        if guide is not None:
+            clean_mode = str(guide_mode or "").strip().lower()
+            if clean_mode not in _GUIDE_MODES:
+                raise _error(
+                    operation,
+                    "guide_mode",
+                    f"must be one of {sorted(_GUIDE_MODES)}",
+                    guide_mode,
+                )
+            positional.append(_shape(operation, "guide", guide, allowed={"wire"}))
+            extra["guide_mode"] = clean_mode
         inferred = "solid" if bool(solid) else "shell"
         clean_type = _inferred_result_type(operation, output_type, inferred, exact=True)
         return self._value(
             operation,
             clean_type,
-            clean_profile,
-            _shape(operation, "path", path, allowed={"wire"}),
+            *positional,
             solid=bool(solid),
             frenet=bool(frenet),
             transition=clean_transition,

@@ -55,6 +55,16 @@ class _FakeShape:
         self.calls: list[tuple[float, int]] = []
 
     def makeFillet(self, radius, edges, *rest):  # noqa: N802
+        if isinstance(radius, (list, tuple)):
+            # ADR-128's per-edge form: one radius each, or a [start, end]
+            # pair each. An edge fails on its OWN radius, which is the whole
+            # point of the form.
+            self.calls.append((tuple(radius), len(edges)))
+            for edge, spec in zip(edges, radius):
+                first = spec[0] if isinstance(spec, (list, tuple)) else spec
+                if first > self.ceiling and edge in self.impossible:
+                    raise RuntimeError("StdFail_NotDone BRep_API: command not done")
+            return _Built(edges, tuple(radius))
         self.calls.append((radius, len(edges)))
         if radius > self.ceiling and self.impossible.intersection(edges):
             raise RuntimeError("StdFail_NotDone BRep_API: command not done")
@@ -174,9 +184,46 @@ def test_skip_blends_the_rest_and_reduce_lowers_the_radius() -> None:
 
     reduced = _blend(_FakeShape(impossible, ceiling=0.2), edges, 4.0,
                      on_failure="reduce")
-    # Every edge is blended, at a radius the whole selection accepts.
+    # Every edge is blended, and only the one that refused came down
+    # (ADR-128). Lowering all sixteen to what the worst edge accepts is a
+    # visible loss on an organic body: one tight crotch should not flatten
+    # every haunch.
     assert len(reduced.edges) == 16
-    assert 0.0 < reduced.radius <= 0.2
+    assert isinstance(reduced.radius, tuple)
+    assert reduced.radius.count(4.0) == 15
+    lowered = [value for value in reduced.radius if value != 4.0]
+    assert len(lowered) == 1 and 0.0 < lowered[0] <= 0.2
+
+
+def test_reduce_reports_which_edges_it_had_to_lower() -> None:
+    """A model cannot see the shape; the split has to be in the result."""
+
+    edges = _edges(16)
+    shape = _FakeShape({edges[3]}, ceiling=0.2)
+    diagnostics: dict = {}
+    _blend(shape, edges, 4.0, on_failure="reduce", diagnostics=diagnostics)
+    report = diagnostics["fillet_partial"][-1]
+    assert report["applied"] == "reduce"
+    assert report["edges_at_requested"] == 15
+    assert report["edges_reduced"] == 1
+
+
+def test_a_chamfer_reduces_uniformly_because_it_has_no_per_edge_form() -> None:
+    """``makeChamfer`` takes one distance per call, and we say so.
+
+    The alternative is a chamfer that silently reports a per-edge split it
+    never applied.
+    """
+
+    edges = _edges(16)
+    shape = _FakeShape({edges[3]}, ceiling=0.2)
+    diagnostics: dict = {}
+    result = worker._blend(shape, "chamfer", edges, _details(edges), 4.0,
+                           on_failure="reduce", diagnostics=diagnostics)
+    assert not isinstance(result.radius, tuple)
+    report = diagnostics["chamfer_partial"][-1]
+    assert report["edges_at_requested"] == 0
+    assert report["edges_reduced"] == 16
 
 
 def test_reduce_falls_back_to_skipping_when_no_radius_works() -> None:
@@ -285,6 +332,30 @@ rounded = part.fillet(welded, 40.0, on_failure="reduce", label="rounded")
 result = {"welded": welded, "rounded": rounded}
 """
 
+#: A body with a *mixed* answer, which is what the per-edge form is for: the
+#: slab's twelve edges take 12 mm comfortably (its thinnest dimension is 40)
+#: and the 5 mm post's two circles cannot take it at any price.
+_MIXED_BODY = """
+slab = part.box(200, 60, 40, origin=[0, 0, 0])
+post = part.cylinder(5, 30, origin=[100, 30, 40])
+welded = part.fuse([slab, post], label="welded")
+"""
+
+MIXED_REFUSED_SOURCE = _MIXED_BODY + """
+rounded = part.fillet(welded, 12.0, label="rounded")
+result = {"welded": welded, "rounded": rounded}
+"""
+
+MIXED_REDUCED_SOURCE = _MIXED_BODY + """
+rounded = part.fillet(welded, 12.0, on_failure="reduce", label="rounded")
+result = {"welded": welded, "rounded": rounded}
+"""
+
+MIXED_UNIFORM_SOURCE = _MIXED_BODY + """
+rounded = part.fillet(welded, {radius}, label="rounded")
+result = {{"welded": welded, "rounded": rounded}}
+"""
+
 
 def _face_count(client, output: str) -> int:
     """Count a shape's faces through the expected_count=0 failure envelope."""
@@ -348,5 +419,59 @@ def test_a_real_blend_survives_a_radius_the_body_cannot_take() -> None:
         reduced = _write(client, REDUCED_SOURCE, "cadexd-blend-red-")
         assert reduced["ok"] is True, reduced
         assert _face_count(client, "rounded") == blended
+    finally:
+        _stop(client)
+
+
+def _solid_volume(client, output: str) -> float:
+    probe = client.request(
+        "resolve_pin",
+        {"output": output, "selection": {"element_type": "solid", "expected_count": 0}},
+    )
+    solids = ((probe.get("observed") or {}).get("available")) or []
+    assert len(solids) == 1, solids
+    return float(solids[0]["volume_mm3"])
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle", fromlist=["FREECADCMD"]).FREECADCMD is None,
+    reason="No FreeCADCmd binary available for a real blend.",
+)
+def test_reduce_keeps_the_radius_on_the_edges_that_can_take_it() -> None:
+    """ADR-128, against the kernel rather than against a fake.
+
+    The per-edge form is a Cadex addition to ``TopoShapePy::makeFillet``, so
+    the assertion that matters is geometric: a mixed reduce must remove
+    **more** material than lowering the whole body to what its worst edge
+    accepts. Same edges, same call count, more of the shape people asked for.
+    """
+
+    from test_cadexd_lifecycle import _spawn_cadexd, _stop
+
+    client = None
+    try:
+        client = _spawn_cadexd()
+
+        refused = _write(client, MIXED_REFUSED_SOURCE, "cadexd-mixed-no-")
+        assert refused["ok"] is False, refused
+        observed = (refused.get("observed") or {}).get("details", {}).get("observed")
+        assert observed["edges_blended"] == 14, observed
+        assert observed["edges_refused"] == 1, observed
+        workable = float(observed["largest_workable_radius_mm"])
+        assert 0.0 < workable < 12.0, observed
+
+        mixed = _write(client, MIXED_REDUCED_SOURCE, "cadexd-mixed-red-")
+        assert mixed["ok"] is True, mixed
+        mixed_volume = _solid_volume(client, "rounded")
+
+        uniform = _write(
+            client,
+            MIXED_UNIFORM_SOURCE.format(radius=workable),
+            "cadexd-mixed-uni-",
+        )
+        assert uniform["ok"] is True, uniform
+        uniform_volume = _solid_volume(client, "rounded")
+
+        assert mixed_volume < uniform_volume, (mixed_volume, uniform_volume)
     finally:
         _stop(client)

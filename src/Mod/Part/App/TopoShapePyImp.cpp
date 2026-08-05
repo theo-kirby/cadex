@@ -1251,6 +1251,76 @@ PyObject* TopoShapePy::scaled(PyObject* args) const
 
 PyObject* TopoShapePy::makeFillet(PyObject* args) const
 {
+    // use one radius per edge: makeFillet([r, ...], edges), each entry either
+    // a radius or a (start, end) pair. Cadex addition (ADR-128) -- a blend
+    // that had to lower the radius on some edges and not others cannot say so
+    // in two calls, because the second would have to find its edges in the
+    // first one's result, where the operation has renumbered and possibly
+    // consumed them. One BRepFilletAPI_MakeFillet holds them all.
+    {
+        PyObject* radii;
+        PyObject* edges;
+        if (PyArg_ParseTuple(args, "OO", &radii, &edges) && PySequence_Check(radii)
+            && !PyNumber_Check(radii)) {
+            try {
+                Py::Sequence radiusList(radii);
+                Py::Sequence edgeList(edges);
+                if (radiusList.size() != edgeList.size()) {
+                    PyErr_SetString(PyExc_ValueError, "One radius per edge is needed");
+                    return nullptr;
+                }
+                const TopoDS_Shape& shape = this->getTopoShapePtr()->getShape();
+                BRepFilletAPI_MakeFillet mkFillet(shape);
+                int added = 0;
+                for (Py::Sequence::size_type i = 0; i < edgeList.size(); i++) {
+                    if (!PyObject_TypeCheck(edgeList[i].ptr(), &(Part::TopoShapePy::Type))) {
+                        continue;
+                    }
+                    const TopoDS_Shape& edge
+                        = static_cast<TopoShapePy*>(edgeList[i].ptr())->getTopoShapePtr()->getShape();
+                    if (edge.ShapeType() != TopAbs_EDGE) {
+                        continue;
+                    }
+                    Py::Object spec(radiusList[i]);
+                    if (PySequence_Check(spec.ptr()) && !PyNumber_Check(spec.ptr())) {
+                        Py::Sequence pair(spec);
+                        if (pair.size() != 2) {
+                            PyErr_SetString(PyExc_ValueError, "A radius pair is (start, end)");
+                            return nullptr;
+                        }
+                        mkFillet.Add(
+                            static_cast<double>(Py::Float(pair[0])),
+                            static_cast<double>(Py::Float(pair[1])),
+                            TopoDS::Edge(edge)
+                        );
+                    }
+                    else {
+                        mkFillet.Add(static_cast<double>(Py::Float(spec)), TopoDS::Edge(edge));
+                    }
+                    added++;
+                }
+                if (added == 0) {
+                    PyErr_SetString(PyExc_ValueError, "No edges to blend");
+                    return nullptr;
+                }
+                mkFillet.Build();
+                if (!mkFillet.IsDone()) {
+                    PyErr_SetString(PartExceptionOCCError, "Fillet not done");
+                    return nullptr;
+                }
+                return new TopoShapePy(new TopoShape(mkFillet.Shape()));
+            }
+            catch (const Py::Exception&) {
+                return nullptr;
+            }
+            catch (Standard_Failure& e) {
+                PyErr_SetString(PartExceptionOCCError, e.GetMessageString());
+                return nullptr;
+            }
+        }
+        PyErr_Clear();
+    }
+
     // use two radii for all edges
     double radius1, radius2;
     PyObject* obj;

@@ -28,7 +28,10 @@
 #include <gp_Ax2.hxx>
 #include <gp_Dir.hxx>
 #include <gp_Pnt.hxx>
+#include <gp_Pnt2d.hxx>
+#include <Law_Interpol.hxx>
 #include <Standard_Version.hxx>
+#include <TColgp_Array1OfPnt2d.hxx>
 #include <TopoDS.hxx>
 #include <TopTools_ListOfShape.hxx>
 
@@ -267,6 +270,69 @@ PyObject* BRepOffsetAPI_MakePipeShellPy::add(PyObject* args, PyObject* kwds)
         "add(Profile, Location, WithContact=False, WithCorrection=False)"
     );
     return nullptr;
+}
+
+PyObject* BRepOffsetAPI_MakePipeShellPy::setLaw(PyObject* args, PyObject* kwds)
+{
+    PyObject *profile, *law, *withContact = Py_False, *withCorrection = Py_False;
+    static const std::array<const char*, 5>
+        keywords {"Profile", "Law", "WithContact", "WithCorrection", nullptr};
+    if (!Base::Wrapped_ParseTupleAndKeywords(
+            args,
+            kwds,
+            "O!O|O!O!",
+            keywords,
+            &Part::TopoShapePy::Type,
+            &profile,
+            &law,
+            &PyBool_Type,
+            &withContact,
+            &PyBool_Type,
+            &withCorrection
+        )) {
+        return nullptr;
+    }
+
+    try {
+        Py::Sequence points(law);
+        auto count = static_cast<Standard_Integer>(points.size());
+        if (count < 2) {
+            PyErr_SetString(PyExc_ValueError, "Law needs at least two [position, factor] pairs");
+            return nullptr;
+        }
+
+        TColgp_Array1OfPnt2d table(1, count);
+        for (Standard_Integer index = 1; index <= count; index++) {
+            Py::Sequence pair(points[index - 1]);
+            if (pair.size() != 2) {
+                PyErr_SetString(PyExc_ValueError, "Law takes [position, factor] pairs");
+                return nullptr;
+            }
+            table.SetValue(
+                index,
+                gp_Pnt2d(
+                    static_cast<double>(Py::Float(pair[0])),
+                    static_cast<double>(Py::Float(pair[1]))
+                )
+            );
+        }
+
+        Handle(Law_Interpol) evolution = new Law_Interpol();
+        evolution->Set(table, Standard_False);
+
+        const TopoDS_Shape& s
+            = static_cast<Part::TopoShapePy*>(profile)->getTopoShapePtr()->getShape();
+        this->getBRepOffsetAPI_MakePipeShellPtr()
+            ->SetLaw(s, evolution, Base::asBoolean(withContact), Base::asBoolean(withCorrection));
+        Py_Return;
+    }
+    catch (const Py::Exception&) {
+        return nullptr;
+    }
+    catch (Standard_Failure& e) {
+        PyErr_SetString(PartExceptionOCCError, e.GetMessageString());
+        return nullptr;
+    }
 }
 
 PyObject* BRepOffsetAPI_MakePipeShellPy::remove(PyObject* args)

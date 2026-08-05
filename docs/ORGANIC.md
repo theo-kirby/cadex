@@ -181,12 +181,45 @@ worked), `skip`, or `reduce`.
 are **not** here: `TopoShapeWirePy::makePipeShell` exposes neither `SetLaw`
 nor the guide-curve `SetMode`, so reaching them means a new binding in
 inherited `src/Mod/Part` — a decision about the fork's delta, not a fix. The
-scaling law is the half the wolf paid for and it needs no binding. What was
+scaling law is the half the wolf paid for and it needs no binding.
+*(**O1b, ADR-128** took that decision and two others; the guide half turned
+out to need no binding either. See below.)* What was
 found is in ADR-125 and worth repeating here: a partial fillet of a fused
 body returns a **compound that passes `IsDone` and fails
 `BRepCheck_Analyzer`**, so the probe has to check validity, not just catch
 exceptions. Before that, `skip` and `reduce` both "succeeded" and were then
 refused by the output validator with the blend context gone.
+
+### O1b — The three things O1 parked — **closed (ADR-128)**
+
+Not a planned slice: it is O1's *deliberately not here* list, taken once the
+owner decided the inherited trees are going to be edited over this product's
+life and rationing single-method additions buys nothing.
+
+- **`sweep(guide=…, guide_mode=…)`.** Needed no C++ at all.
+  `Part.BRepOffsetAPI.MakePipeShell` is the same OCCT class bound whole,
+  with `setAuxiliarySpine` on it; O1 priced the fork delta off the wrong
+  file. `guide_mode` is `"follow"` (scale the section onto the guide —
+  the default, and what "guide" means to a person), `"touch"` (move it) or
+  `"orient"` (steer it). The names are ours because OCCT's mislead:
+  `BRepFill_Contact` *translates*, and it is `ContactOnBorder` that scales.
+- **A real scaling law.** `setLaw` is new in
+  `BRepOffsetAPI_MakePipeShellPyImp.cpp`, and with it a lawed sweep lands on
+  the closed-form volume to six figures where the station-loft only
+  approximated it. The loft is deleted.
+- **Per-edge `reduce`.** `makeFillet([r, …], edges)` is new in
+  `TopoShapePyImp.cpp`. `on_failure="reduce"` now keeps the requested radius
+  on every edge that accepts it, so one impossible edge stops flattening the
+  whole body.
+
+Plus the blend probe cap, 10 s → 15 s: it was the *binding* cap on every row
+of O1's cost table, so every refusal measured there was a timeout rather
+than an answer.
+
+The two C++ additions are the first entries in `docs/FREECAD.md` **§2a** —
+the engine's ledger of our delta against upstream FreeCAD, which until now
+was empty because everything reached OCCT through bindings FreeCAD already
+had.
 
 ### O2 — Mounts: the interface, declared once and verified — **closed (ADR-126)**
 

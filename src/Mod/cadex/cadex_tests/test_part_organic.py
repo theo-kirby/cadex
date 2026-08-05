@@ -12,6 +12,10 @@ Each one is here because the robot wolf paid for its absence
   a loft, because nothing tapered a section along a curve.
 - ``fillet(radius_end=...)`` — the two-radius overload was already in the
   binding, unreachable from the script.
+
+ADR-128 added ``sweep(guide=...)`` and moved the law onto the kernel, so the
+law cases below are measurements against closed-form volumes rather than
+assertions about an interpolation helper we no longer own.
 """
 
 from __future__ import annotations
@@ -28,19 +32,16 @@ from cadex_part_api import _in_plane_direction, _scale_law
 # -- the law, without a kernel ----------------------------------------------
 
 
-def test_a_law_interpolates_between_its_control_points() -> None:
-    law = [[0.0, 1.0], [0.5, 0.5], [1.0, 0.1]]
-    assert worker._law_factor(law, 0.0) == 1.0
-    assert worker._law_factor(law, 0.25) == pytest.approx(0.75)
-    assert worker._law_factor(law, 0.5) == pytest.approx(0.5)
-    assert worker._law_factor(law, 0.75) == pytest.approx(0.3)
-    assert worker._law_factor(law, 1.0) == pytest.approx(0.1)
+def test_a_guide_mode_says_what_it_does_to_the_section() -> None:
+    """The names are ours because OCCT's mislead (ADR-128).
 
+    ``BRepFill_Contact`` translates the section to touch the guide; it is
+    ``BRepFill_ContactOnBorder`` that scales it to ride the guide. Anyone
+    reading the OCCT constants gets that backwards, which is why "follow" —
+    the one a person means — maps to 2 and not to 1.
+    """
 
-def test_a_law_outside_its_range_holds_its_ends() -> None:
-    law = [[0.0, 2.0], [1.0, 0.5]]
-    assert worker._law_factor(law, -1.0) == 2.0
-    assert worker._law_factor(law, 5.0) == 0.5
+    assert worker._GUIDE_MODES == {"orient": 0, "touch": 1, "follow": 2}
 
 
 def test_a_law_must_span_the_path_and_increase() -> None:
@@ -85,6 +86,24 @@ def test_the_api_refuses_a_law_on_ordered_sections() -> None:
     assert "scale_law" in str(caught.value)
 
 
+def test_the_api_refuses_a_guide_mode_it_does_not_have() -> None:
+    import CadexScriptedDomains as domains
+    from cadex_domain_api import create_domain_api
+
+    pack = domains.get_xscript_pack("PartWorkbench")
+    api = create_domain_api(pack.domain, pack.api_exports, pack.output_types)
+    spine = api.wire([api.line([0, 0, 0], [0, 0, 100])])
+    guide = api.wire([api.line([10, 0, 0], [20, 0, 100])])
+    profile = api.wire([api.circle(5.0)], closed=True)
+    with pytest.raises(ValueError) as caught:
+        api.sweep(profile, spine, solid=True, guide=guide, guide_mode="contact")
+    assert "guide_mode" in str(caught.value)
+    # ...and a guide with no mode named takes the one that scales.
+    swept = api.sweep(profile, spine, solid=True, guide=guide)
+    assert swept.properties["guide_mode"] == "follow"
+    assert len(swept.arguments) == 3
+
+
 # -- against a live kernel --------------------------------------------------
 
 SEAM_SOURCE = """
@@ -110,6 +129,23 @@ tail = part.sweep(profile, spine, solid=True,
 stub = part.sweep(profile, spine, solid=True,
                   scale_law=[[0, 1.0], [1.0, 1.0]], label="stub")
 result = {"tail": tail, "stub": stub}
+"""
+
+#: A straight spine and a straight guide, so every number below has a closed
+#: form and a wrong answer cannot hide behind "well, it's a spline".
+GUIDE_SOURCE = """
+spine = part.wire([part.line([0, 0, 0], [0, 0, 100])])
+profile = part.wire([part.circle(10, center=[0, 0, 0], normal=[0, 0, 1])], closed=True)
+guide = part.wire([part.line([10, 0, 0], [40, 0, 100])])
+
+flat = part.sweep(profile, spine, solid=True, label="flat")
+halved = part.sweep(profile, spine, solid=True,
+                    scale_law=[[0, 1.0], [1, 0.5]], label="halved")
+followed = part.sweep(profile, spine, solid=True, guide=guide, label="followed")
+oriented = part.sweep(profile, spine, solid=True, guide=guide,
+                      guide_mode="orient", label="oriented")
+result = {"flat": flat, "halved": halved,
+          "followed": followed, "oriented": oriented}
 """
 
 AIM_SOURCE = """
@@ -208,6 +244,47 @@ def test_a_swept_law_tapers_and_a_flat_law_does_not() -> None:
         # produce a solid, and only the comparison catches that.
         assert 0.2 < tapered_volume / even_volume < 0.6, (
             tapered_volume, even_volume)
+    finally:
+        _stop(client)
+
+
+@pytest.mark.skipif(not _live(), reason="No FreeCADCmd binary available.")
+def test_a_law_and_a_guide_land_where_the_arithmetic_says() -> None:
+    """The two ways to vary a section, measured against closed forms.
+
+    Both go through ``BRepOffsetAPI_MakePipeShell`` (ADR-128) and both have
+    an exact answer here, which is the point of a straight spine: the law
+    used to be a loft through six stations per span, and a loft through
+    stations is an *approximation* of these numbers. Now they are the
+    numbers.
+    """
+
+    from test_cadexd_lifecycle import _spawn_cadexd, _stop
+
+    client = None
+    try:
+        client = _spawn_cadexd()
+        written = _client_write(client, GUIDE_SOURCE, "cadexd-guide-")
+        assert written["ok"] is True, written
+
+        volume = {}
+        for name in ("flat", "halved", "followed", "oriented"):
+            solids = _available(client, name, "solid")
+            assert len(solids) == 1, (name, solids)
+            volume[name] = float(solids[0]["volume_mm3"])
+
+        # r10 swept 100 mm: a cylinder.
+        assert volume["flat"] == pytest.approx(math.pi * 100 * 100, rel=1e-6)
+        # ...under a law falling 1.0 -> 0.5, a truncated cone r10 -> r5.
+        assert volume["halved"] == pytest.approx(
+            math.pi * (10**3 - 5**3) / (3 * 0.05), rel=1e-5)
+        # ...and following a guide that runs 10 mm out to 40 mm out, a
+        # truncated cone r10 -> r40. The guide is the silhouette.
+        assert volume["followed"] == pytest.approx(
+            math.pi * (40**3 - 10**3) / (3 * 0.3), rel=1e-5)
+        # "orient" steers the section and does not resize it, which is the
+        # distinction the mode names exist to make.
+        assert volume["oriented"] == pytest.approx(volume["flat"], rel=1e-4)
     finally:
         _stop(client)
 

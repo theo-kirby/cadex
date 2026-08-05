@@ -491,7 +491,13 @@ _BLEND_PROBE_CALLS = 48
 #: a real body: the robot wolf's 91-edge seam set costs 0.4-0.5 s per attempt,
 #: so 48 calls of it is half a minute and nobody would wait for the answer.
 #: "How many kernel calls" is not what a person watching a rebuild counts.
-_BLEND_PROBE_SECONDS = 10.0
+#:
+#: Raised from 10 s to 15 s on 2026-08-05 (ADR-128). 10 s was the first guess
+#: and it was the *binding* cap on the wolf -- which means every refusal there
+#: was a timeout rather than an answer. 15 s buys roughly a third more
+#: attempts on a body that size, which is the difference between reporting a
+#: workable radius and reporting that we ran out of time.
+_BLEND_PROBE_SECONDS = 15.0
 
 #: How far down a reduced radius may go, as a fraction of what was asked.
 #: Below this the answer is "not at this radius" rather than a blend nobody
@@ -583,6 +589,49 @@ class _BlendProbe:
         self.result = built
         return True
 
+    def attempt_each(self, radii: list[tuple[Any, float]]) -> bool:
+        """Try one blend with a radius **per edge** (ADR-128).
+
+        ``TopoShapePy::makeFillet`` grew a ``([r, ...], edges)`` form for
+        this, because two calls cannot do it: the second would have to find
+        its edges in the first one's result, where the fillet has renumbered
+        and possibly consumed them. Chamfer has no such form and says so by
+        returning False rather than by pretending.
+        """
+
+        if not radii or self.operation == "chamfer":
+            return False
+        self.calls += 1
+        began = self._clock()
+        try:
+            edges = [edge for edge, _radius in radii]
+            if self.radius_end is None:
+                spec: list[Any] = [radius for _edge, radius in radii]
+            else:
+                # Each edge keeps the taper it was asked for, in proportion
+                # to how far its own radius had to come down.
+                spec = [
+                    [
+                        radius,
+                        self.radius_end
+                        * (radius / self.requested if self.requested else 1.0),
+                    ]
+                    for _edge, radius in radii
+                ]
+            built = self.shape.makeFillet(spec, edges)
+        except Exception:
+            self.spent += self._clock() - began
+            return False
+        try:
+            usable = built is not None and not built.isNull() and built.isValid()
+        except Exception:
+            usable = False
+        self.spent += self._clock() - began
+        if not usable:
+            return False
+        self.result = built
+        return True
+
 
 def _blend_partition(
     probe: _BlendProbe, edges: list[Any], distance: float
@@ -638,27 +687,6 @@ def _blend_largest_radius(
         else:
             high = middle
     return best
-
-
-#: Stations a lawed sweep builds between consecutive control points. Enough
-#: that a taper reads as smooth; few enough that a 64-point law stays inside
-#: the operation budget.
-_SWEEP_STATIONS = 6
-
-
-def _law_factor(law: list[list[float]], position: float) -> float:
-    """Linear interpolation between the law's control points."""
-
-    if position <= law[0][0]:
-        return float(law[0][1])
-    for (left, low), (right, high) in zip(law, law[1:]):
-        if position <= right:
-            span = right - left
-            if span <= 0.0:
-                return float(high)
-            share = (position - left) / span
-            return float(low) + (float(high) - float(low)) * share
-    return float(law[-1][1])
 
 
 def _lofted_cage(
@@ -784,97 +812,62 @@ def _mated(operation: str, payload: dict[str, Any], properties: dict[str, Any]) 
     return shape
 
 
-def _path_stations(
-    operation: str, path: Any, positions: list[float]
-) -> list[tuple[Any, Any]]:
-    """(point, tangent) at fractions of a wire's ARC LENGTH.
-
-    By length rather than by parameter, and across the wire's ordered edges
-    rather than one curve, because a spine is usually several edges and a
-    curve's parameter is not proportional to distance along it — stations
-    picked by parameter bunch up where the curve is slow, and the taper
-    bunches with them.
-    """
-
-    edges = list(getattr(path, "OrderedEdges", None) or getattr(path, "Edges", []) or [])
-    lengths = [float(edge.Length) for edge in edges]
-    total = sum(lengths)
-    if not edges or total <= 1.0e-12:
-        raise _error(operation, "path", "has no length to sweep along")
-
-    stations: list[tuple[Any, Any]] = []
-    for position in positions:
-        target = max(0.0, min(1.0, float(position))) * total
-        walked = 0.0
-        chosen, local = edges[-1], lengths[-1]
-        for edge, length in zip(edges, lengths):
-            if target <= walked + length or edge is edges[-1]:
-                chosen, local = edge, target - walked
-                break
-            walked += length
-        local = max(0.0, min(float(chosen.Length), local))
-        try:
-            parameter = chosen.getParameterByLength(local)
-        except Exception:
-            first, last = float(chosen.FirstParameter), float(chosen.LastParameter)
-            share = local / float(chosen.Length) if chosen.Length else 0.0
-            parameter = first + (last - first) * share
-        try:
-            tangent = chosen.tangentAt(parameter)
-        except Exception:
-            tangent = None
-        stations.append((chosen.valueAt(parameter), tangent))
-    return stations
+#: What a guide curve does to the section, and the OCCT constant it is.
+#: Measured, because the names mislead: ``BRepFill_Contact`` **translates**
+#: the section to touch the guide (a straight r10 sweep past a flaring guide
+#: kept its 31416 mm3), and it is ``BRepFill_ContactOnBorder`` that scales it
+#: to ride the guide (the same sweep, 219912 mm3 against an analytic
+#: 219911.5). So "follow" is the border mode, and it is the default.
+_GUIDE_MODES = {"orient": 0, "touch": 1, "follow": 2}
 
 
-def _swept_law(
-    operation: str, profile: Any, path: Any, law: list[list[float]], solid: bool
+def _pipe_shell(
+    operation: str,
+    profiles: list[Any],
+    path: Any,
+    *,
+    solid: bool,
+    frenet: bool,
+    transition: int,
+    guide: Any | None,
+    guide_mode: str,
+    law: list[list[float]] | None,
 ) -> Any:
-    """Sweep a profile along a path while a law scales it.
+    """A sweep that a guide curve or a scaling law steers (ADR-128).
 
-    Built as a loft through computed stations rather than through
-    ``BRepOffsetAPI_MakePipeShell``, and the reason is the binding:
     ``TopoShapeWirePy::makePipeShell`` takes ``(sections, solid, frenet,
-    transition)`` and exposes neither ``SetLaw`` nor the guide-curve mode.
-    Reaching those means a new binding in ``src/Mod/Part``, which is a
-    decision about the fork's delta rather than a fix (ADR-125). The loft is
-    what the model was doing by hand anyway — the wolf's tail is five tilted
-    circles — and it produces the same class of NURBS solid.
+    transition)`` and nothing else, which is what ADR-125 priced a fork delta
+    against. It was looking at the wrong binding:
+    ``Part.BRepOffsetAPI.MakePipeShell`` is the same OCCT class bound whole,
+    with ``setAuxiliarySpine`` already on it. Only ``setLaw`` was missing, and
+    that one really is ours (``BRepOffsetAPI_MakePipeShellPyImp.cpp``).
+
+    The law replaced a loft through computed stations, and the measurement is
+    why: a circle of r10 swept 100 mm under ``[[0, 1], [1, 0.5]]`` comes back
+    at 18325.952 mm3 against an analytic 18325.957. The loft was an
+    approximation of this, and it could not take a guide.
     """
 
-    import FreeCAD as App
     import Part
-    from FreeCAD import Vector
 
-    positions: list[float] = []
-    for (left, _low), (right, _high) in zip(law, law[1:]):
-        for step in range(_SWEEP_STATIONS):
-            positions.append(left + (right - left) * step / _SWEEP_STATIONS)
-    positions.append(1.0)
-
-    origin = profile.CenterOfMass
-    stations = _path_stations(operation, path, positions)
-
-    sections = []
-    previous_tangent = None
-    for position, (point, tangent) in zip(positions, stations):
-        if tangent is None or tangent.Length <= 1.0e-12:
-            tangent = previous_tangent or Vector(0.0, 0.0, 1.0)
-        previous_tangent = tangent
-        factor = _law_factor(law, position)
-        section = profile.copy()
-        if abs(factor - 1.0) > 1.0e-12:
-            section.scale(factor, origin)
-        # The profile is authored in its own plane; each station rotates it
-        # onto the path's tangent there and drops it on the path.
-        rotation = App.Rotation(App.Vector(0.0, 0.0, 1.0), tangent)
-        if abs(float(rotation.Angle)) > 1.0e-12:
-            section.rotate(origin, rotation.Axis,
-                           math.degrees(float(rotation.Angle)))
-        section.translate(point.sub(origin))
-        sections.append(_wire_from_shape(operation, "profile", section))
-
-    return Part.makeLoft(sections, bool(solid), False, False)
+    maker = Part.BRepOffsetAPI.MakePipeShell(path)
+    maker.setFrenetMode(bool(frenet))
+    maker.setTransitionMode(int(transition))
+    if guide is not None:
+        maker.setAuxiliarySpine(guide, True, _GUIDE_MODES[guide_mode])
+    if law:
+        # One section, scaled along the spine. Several sections and a law is
+        # refused upstream: the law would have nothing to say about which.
+        maker.setLaw(profiles[0], law)
+    else:
+        for profile in profiles:
+            maker.add(profile)
+    if not maker.isReady():
+        raise _error(operation, "profile", "the kernel has nothing to sweep")
+    maker.build()
+    if solid:
+        maker.makeSolid()
+    return maker.shape()
 
 
 def _edge_midpoint(edge: Any) -> Any:
@@ -1010,17 +1003,33 @@ def _blend(
         report["refused_edges_omitted"] = len(refused_names) - _BLEND_REPORTED_EDGES
 
     if on_failure == "reduce" and workable is not None:
-        # Uniform, not per-edge, and the reason is the binding: makeFillet
-        # applies one radius spec per call, and a second call would have to
-        # find its edges in the FIRST call's result, where they have been
-        # renumbered and possibly consumed. What the model gets instead is a
-        # radius the whole body accepts, and the number is in the result.
+        # Per-edge first (ADR-128): the edges that took the radius asked for
+        # keep it, and only the ones that refused come down. Lowering the
+        # whole body to what its worst edge accepts is a visible loss on an
+        # organic model -- one tight crotch should not flatten every haunch.
+        # It needs one kernel call, because a second could not find its edges
+        # in the first one's result.
+        keep = {id(edge) for edge in accepted}
+        mixed = [
+            (edge, distance if id(edge) in keep else workable) for edge in selected
+        ]
+        if len(keep) not in (0, len(selected)) and probe.attempt_each(mixed):
+            _record_blend(diagnostics, operation, {
+                **report, "applied": "reduce",
+                "applied_radius_mm": round(float(workable), 4),
+                "edges_at_requested": len(keep),
+                "edges_reduced": len(selected) - len(keep)})
+            return probe.result
+        # ...and uniformly when that call fails or when there is nothing to
+        # split: a radius the whole body accepts, with the number reported.
         probe.attempt(selected, workable)
         result = probe.result
         if result is not None:
             _record_blend(diagnostics, operation, {
                 **report, "applied": "reduce",
-                "applied_radius_mm": round(float(workable), 4)})
+                "applied_radius_mm": round(float(workable), 4),
+                "edges_at_requested": 0,
+                "edges_reduced": len(selected)})
             return result
 
     if on_failure in {"skip", "reduce"} and accepted:
@@ -3158,16 +3167,31 @@ def _build(
             _shape(operation, "path", _argument(payload, 1, "path")),
         )
         law = properties.get("scale_law")
-        if law:
-            return _swept_law(
-                operation, profiles[0], path, law, bool(properties.get("solid"))
-            )
         transitions = {"transformed": 0, "right_corner": 1, "round_corner": 2}
+        transition = transitions[str(properties.get("transition") or "transformed")]
+        guide_value = _argument(payload, 2, "guide")
+        guide = None
+        if guide_value is not None:
+            guide = _wire_from_shape(
+                operation, "guide", _shape(operation, "guide", guide_value)
+            )
+        if guide is not None or law:
+            return _pipe_shell(
+                operation,
+                profiles,
+                path,
+                solid=bool(properties.get("solid")),
+                frenet=bool(properties.get("frenet")),
+                transition=transition,
+                guide=guide,
+                guide_mode=str(properties.get("guide_mode") or "follow"),
+                law=law,
+            )
         return path.makePipeShell(
             profiles,
             bool(properties.get("solid")),
             bool(properties.get("frenet")),
-            transitions[str(properties.get("transition") or "transformed")],
+            transition,
         )
     if operation == "cable":
         return _build_cable(payload, properties)

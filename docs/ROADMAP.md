@@ -1175,7 +1175,16 @@ supplying only the gesture (O3).
       is measured, capped by wall-clock, and reported when the cap binds.
       **Sweep guide curves are not in it**: they need a new binding in
       inherited `src/Mod/Part`, which is a decision about the fork's delta
-      rather than a fix.
+      rather than a fix. *(Taken in O1b.)*
+- [x] **O1b — the three things O1 parked** (ADR-128, 2026-08-05).
+      `part.sweep(guide=..., guide_mode=...)`, which needed no C++ once the
+      right binding was found; a real kernel `scale_law` via a new `setLaw`
+      on `BRepOffsetAPI_MakePipeShell`, exact to six figures against the
+      closed form where the station-loft it replaces was an approximation;
+      and a per-edge `makeFillet` form so `on_failure="reduce"` keeps the
+      requested radius wherever the kernel accepts it. Blend probe cap
+      10 s → 15 s. The two C++ additions open `docs/FREECAD.md` §2a, the
+      engine's ledger of our delta against upstream FreeCAD.
 - [x] **O2 — Mounts** (ADR-126, 2026-08-05). `mounts()` / `mount_set()` /
       `mount()` on `CadexBoards`'s row machinery, `part.mate(...)` taking the
       two handles, and a static interference check that refuses with cubic
