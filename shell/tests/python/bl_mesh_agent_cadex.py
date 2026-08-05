@@ -2380,6 +2380,35 @@ def test_describe_cad_api(root):
     check(len(text) < 8000,
           "the overview is prompt-sized: {:d} chars".format(len(text)))
 
+    # EVERY domain, not just the small one. Before ADR-123 this test asked
+    # for `mesh` alone -- the one domain that fit under the size cap -- so
+    # `part` and `assembly` came back severed mid-structure, unparseable,
+    # with half their functions gone, and the gate stayed green.
+    sizes = {}
+    for name in sorted(domains):
+        ok, text = run_tool("describe_cad_api", {"domain": name})
+        check(ok, "describe_cad_api {:s} succeeds".format(name))
+        try:
+            block = json.loads(text)
+        except ValueError as exc:
+            block = None
+            check(False, "{:s} is parseable JSON ({!s})".format(name, exc))
+        check(len(text) < tools._API_DOMAIN_CHARS,
+              "{:s} is served whole, under the cap: {:d} of {:d} chars".format(
+                  name, len(text), tools._API_DOMAIN_CHARS))
+        check("[... truncated" not in text,
+              "{:s} carries no truncation marker".format(name))
+        sizes[name] = len(text)
+        if not isinstance(block, dict):
+            continue
+        exports = {item["name"]: item for item in block.get("exports") or []}
+        listed = set(domains.get(name, {}).get("functions") or [])
+        check(set(exports) == listed,
+              "{:s} serves every function the overview names ({:d} of "
+              "{:d})".format(name, len(exports), len(listed)))
+        check(all(item.get("signature") for item in exports.values()),
+              "{:s}'s exports all carry a signature".format(name))
+
     ok, text = run_tool("describe_cad_api", {"domain": "mesh"})
     check(ok, "describe_cad_api for one domain succeeds")
     block = json.loads(text)
@@ -2387,6 +2416,41 @@ def test_describe_cad_api(root):
     check("from_shape" in exports, "the mesh domain's exports are served")
     check("signature" in exports.get("from_shape", {}),
           "exports carry full signatures")
+
+    # The two big domains: the operations the wolf could not reach.
+    ok, text = run_tool("describe_cad_api", {"domain": "part"})
+    part_exports = {item["name"]: item
+                    for item in json.loads(text).get("exports") or []}
+    for name in ("fillet", "cut", "thicken"):
+        check(bool(part_exports.get(name, {}).get("signature")),
+              "part.{:s} arrives with its signature".format(name))
+    ok, text = run_tool("describe_cad_api", {"domain": "assembly"})
+    asm_exports = {item["name"]: item
+                   for item in json.loads(text).get("exports") or []}
+    for name in ("body", "rollout"):
+        check(bool(asm_exports.get(name, {}).get("signature")),
+              "assembly.{:s} arrives with its signature".format(name))
+
+    # ...and the long descriptions, for the functions the model names.
+    ok, text = run_tool("describe_cad_api",
+                        {"domain": "part", "functions": ["fillet"]})
+    check(ok, "describe_cad_api with functions=[...] succeeds")
+    picked = json.loads(text)
+    check(isinstance(picked, list) and len(picked) == 1,
+          "one entry back for one name")
+    entry = picked[0] if picked else {}
+    check(entry.get("name") == "fillet", "and it is the one asked for")
+    summary = part_exports.get("fillet", {}).get("summary") or ""
+    check(len(entry.get("description") or "") > len(summary),
+          "the full description is longer than the compact summary "
+          "({:d} vs {:d} chars)".format(len(entry.get("description") or ""),
+                                        len(summary)))
+
+    ok, text = run_tool("describe_cad_api",
+                        {"domain": "part", "functions": ["fillet", "nope"]})
+    check(not ok, "an unknown function name is refused")
+    check("'nope'" in text and "fillet" in text,
+          "the refusal names the miss and the domain's real exports")
 
     ok, text = run_tool("describe_cad_api", {"domain": "nope"})
     check(not ok, "an unknown domain is refused")
@@ -2396,6 +2460,8 @@ def test_describe_cad_api(root):
     GATE["describe_api"] = {
         "overview_chars": len(json.dumps(overview)),
         "domains": sorted(domains),
+        "domain_chars": sizes,
+        "domain_cap": tools._API_DOMAIN_CHARS,
     }
 
 

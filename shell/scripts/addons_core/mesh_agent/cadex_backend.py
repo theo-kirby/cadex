@@ -2035,6 +2035,70 @@ def api_domain(payload, domain):
     return True, block
 
 
+def _first_sentence(text):
+    """The first sentence of a docstring, whitespace-normalised."""
+    text = " ".join(str(text or "").split())
+    end = text.find(". ")
+    return text if end < 0 else text[:end + 1]
+
+
+def compact_domain(block):
+    """One domain's block with every signature but only summary prose.
+
+    A domain's full block is dominated by its docstrings -- `part` is 34 KB
+    and `assembly` 54 KB, mostly semantics -- so serving it whole is what
+    made the two largest domains unreadable (ADR-123). The compact form
+    keeps the contract (which global, which output types, the domain notes)
+    and every export's name and signature, and cuts each description to its
+    first sentence. The long form is still reachable per function, which is
+    the only granularity at which it fits.
+    """
+    compact = {
+        "api_global": block.get("api_global"),
+        "accepted_output_types": list(block.get("accepted_output_types") or []),
+        "exports": [
+            {
+                "name": item.get("name"),
+                "signature": item.get("signature"),
+                "summary": _first_sentence(item.get("description")),
+            }
+            for item in list(block.get("exports") or [])
+            if isinstance(item, dict)
+        ],
+    }
+    notes = block.get("notes")
+    if notes:
+        compact["notes"] = notes
+    compact["how_to_read_this"] = (
+        "Signatures are complete; each summary is the first sentence of a "
+        "longer description. Call describe_cad_api again with this domain "
+        "and functions=[...] for the full description of the ones you are "
+        "about to use.")
+    return compact
+
+
+def api_functions(block, names):
+    """Full, untouched entries for named exports of one domain block.
+
+    (True, [entry, ...]) or (False, message) naming the miss, in the style
+    api_domain uses for an unknown domain.
+    """
+    exports = {}
+    for item in list(block.get("exports") or []):
+        if isinstance(item, dict) and item.get("name"):
+            exports[str(item["name"])] = item
+    picked = []
+    for name in names:
+        entry = exports.get(str(name))
+        if entry is None:
+            return False, (
+                "Unknown function {!r} in {!s}. That domain exports: "
+                "{:s}.".format(name, block.get("api_global"),
+                               ", ".join(sorted(exports))))
+        picked.append(entry)
+    return True, picked
+
+
 def resolve_pin(scene, output, selection):
     """Resolve one pick/selection against the accepted BREP. Returns the
     engine's response payload verbatim (ok/failure envelope)."""

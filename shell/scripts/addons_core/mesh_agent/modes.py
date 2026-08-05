@@ -28,10 +28,12 @@ general instructions where they conflict.
 - The model script is an **xscript project script** run by the engine. \
 `bpy` does not exist in it and imports are forbidden. Blender only \
 displays what the engine returns, as exact tessellated BREP.
-- **Call describe_cad_api before writing your first script in a session**, \
-and again with a domain name whenever you need a function's exact \
-signature. It is served live by the engine, so it is the truth about the \
-version you are talking to. Do not write an xscript API from memory.
+- **Call describe_cad_api for the domain you are about to use, not once per \
+session**: with no arguments for the overview, with a domain name for every \
+signature in it, and with a domain plus functions=[...] for the full \
+description of the ones you will call. It is served live by the engine, so \
+it is the truth about the version you are talking to. Do not write an \
+xscript API from memory.
 - All lengths are MILLIMETERS.
 - Declare user-tunable dimensions as parameters at the top; each becomes a \
 live slider beside the chat. Use them throughout so the model stays \

@@ -12602,3 +12602,121 @@ engine: a two-board `boards(...)` script, one wire applied, a second applied
 with no intervening rebuild, and **both** cables asserted present in the
 accepted revision. It fails on the second apply without the pump.
 `pixi run gate` ok.
+
+---
+
+## ADR-123 — The model could not read the API it was told not to guess (2026-08-05)
+
+**Decision.** `describe_cad_api` serves a whole domain in one parseable
+reply. `domain` alone now returns a **compact** block — every export's name
+and signature, each description cut to its first sentence — and `domain`
+plus `functions=[...]` returns the **full**, untouched entries for the
+functions the model named. The domain cap goes from 16 KB to 32 KB and the
+default path never truncates. In the same PR the base system prompt stops
+describing a runtime that was deleted a hundred ADRs ago.
+
+**Rationale.** Asked to design a robot wolf, the agent produced boxes: no
+blends, no organic shapes. The cause was not a missing capability.
+
+`_API_DOMAIN_CHARS` was 16384 and the executor serialised the engine's full
+domain block. Measured against `CadexScriptedRuntime.describe_project_api`:
+
+| Domain | Full | At the 16 KB cap | Compact (this ADR) |
+|---|---|---|---|
+| `part` | 34,792 B | truncated — 26 of 54 functions lost | 15,694 B |
+| `assembly` | 54,386 B | truncated — 11 of 23 functions lost | 8,571 B |
+| `partdesign` | 5,657 B | fine | 5,581 B |
+| `sketcher` | 4,825 B | fine | 4,094 B |
+| `mesh` | 4,182 B | fine | 2,135 B |
+
+The cut landed mid-structure, so what came back for the two largest domains
+was **not JSON** — a severed blob with a truncation notice stapled to it.
+The overview does list every function *name*, so the model learned that
+`part.fillet` exists and then could not retrieve its signature, or any other
+signature in `part` or `assembly` — having been told, by the tool's own
+description, never to guess an API from memory. Unreachable in `part`:
+`fuse`, `cut`, `common`, `fillet`, `chamfer`, `thicken`, `offset`, `mirror`,
+`transform`, `filled_surface`, `shape_from_mesh`. In `assembly`: the entire
+dynamics and control surface — `body`, `collision`, `actuator`,
+`joint_dynamics`, `rollout`, `reward`, `observation`, `termination`,
+`reset_variation`, `randomise`, `disturbance`.
+
+The gate never caught it because `test_describe_cad_api` asked for
+`domain="mesh"` — the one domain small enough to survive.
+
+**What a domain block is mostly made of** is prose, not signatures: the
+descriptions are the engine's semantics, and on the dynamics surface they
+average ~2 KB each. That is why neither form alone works. The compact block
+is what "which functions exist, called how" costs; the long descriptions are
+reachable per function, the only granularity at which they fit. A domain's
+`notes` — 10 KB of them on `assembly` — stay in the compact block, because
+they belong to no function and would otherwise be reachable through nothing.
+Measured on the bundle, with `notes` and the compact block's own reading
+note: `assembly` 19,085, `part` 15,927, `partdesign` 5,814, `sketcher`
+4,327, `mesh` 2,579 — every one under the 32 KB cap, which is where the cap
+comes from. 16 KB would have left compact `part` 690 bytes of headroom, and
+one new `part` op re-breaks it.
+
+**The prompt half is the same defect.** `agent.py`'s `SYSTEM_PROMPT` was the
+pre-ADR-030 local-`bpy`-mode prompt: it told the model the script runs "with
+`bpy` available", that units are **meters**, and handed it a worked example
+of `from mesh_model import params, Float, Int, Bool, Color` — an API deleted
+in ADR-030. `modes.CADEX_OVERLAY` contradicts each claim; the `write_script`
+tool description repeated them and was corrected nowhere. So the prompt is
+rewritten to behaviour only — the role, the script as source of truth, act
+through the tools, verify what you built — and `params()` / `num()` is left
+to the engine's contract, which `describe_cad_api` serves. The overlay's
+MILLIMETRES then stands unopposed.
+
+**Client-side only.** The engine payload is unchanged: the full ~110 KB
+`describe_api` reply already arrives at the client and always did. No
+protocol change, no `OP_ARG_SPECS` change, no `docs/INTEGRATION.md` edit.
+`cli/` was never affected — it applies no size cap and builds its prompt by
+pasting the engine's own contract prose (`cli/cadex_cli/agent.py`), which is
+the precedent the prompt rewrite follows.
+
+**Consequences.**
+
+- `cadex_backend.compact_domain()` and `api_functions()` join `api_overview`
+  and `api_domain`: shaping the engine's payload for a model's context
+  window all lives in one place, and none of it is a copy of the engine's
+  truth.
+- Truncation survives only on the `functions=[...]` path, where the model
+  chose the names and a cut result is answered by asking for fewer.
+- `test_describe_cad_api` now walks **every** domain the overview lists,
+  parses each reply, asserts it is under the cap and carries every function
+  the overview named, and records the per-domain sizes in
+  `GATE["describe_api"]`. That assertion is the one whose absence let this
+  ship.
+- `bl_mesh_agent.py`'s guardrail is renamed
+  `test_prompt_carries_no_api_names` and now runs over
+  `modes.system_prompt()` — base **and** overlay — and every `TOOL_DEFS`
+  description, not the overlay alone. `bl_mesh_agent.py:511` existed to kill
+  exactly this drift class and only ever checked the overlay; the drift was
+  in the base prompt the overlay is appended to. It also asserts the deleted
+  vocabulary (`mesh_model`, `Float(`, `Int(`, `Bool(`, `Color(`) appears in
+  none of them.
+- Two checks in that guardrail were **failing before this PR** and are
+  resolved by moving them rather than by rewriting prose three ADRs bought:
+  `CADEX_OVERLAY` is 3,179 chars against a 2,500 budget, and it names
+  `assembly.mjcf` because ADR-091's collision check is keyed to that one
+  call. The size budget becomes 3,500 and `assembly.mjcf` becomes a
+  one-member allowlist, so any *other* API name still fails. A guard that
+  has been red long enough for nobody to notice is not a guard.
+- `docs/BLENDER.md`'s "the system prompt carries **no** API names, and a
+  test asserts it" becomes true of the whole prompt rather than aspirational.
+- `mock_backend.default_script()` — the canned `MESH_AGENT_MOCK=1` demo —
+  wrote a `bpy` script the engine would reject. It is a minimal real xscript
+  now. Same defect, low stakes, same PR.
+
+**Verification.** `pixi run gate` ok, `engine_from_bundle: true`, with
+`GATE["describe_api"]` showing five domains under a 32,768-char cap;
+`package/app/build_app.sh gate tests/python/bl_mesh_agent.py` green,
+including the two checks that were red before it. Engine suite untouched and
+re-run.
+
+**Not in this PR.** Re-run the robot wolf against the fixed surface before
+writing any new modelling code. That measurement is what sizes the
+mesh-domain work — how much organic capability is genuinely absent versus
+merely was unreachable — and `part` already carries `loft`, `sweep`,
+`bspline`, `filled_surface`, `fillet` and `thicken`.

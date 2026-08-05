@@ -19,8 +19,14 @@ import traceback
 MAX_RESULT_CHARS = 4096
 
 # describe_cad_api serves reference material the model asked for by name;
-# truncating a domain's signatures at 4 KB would defeat its purpose.
-_API_DOMAIN_CHARS = 16384
+# truncating a domain's signatures at 4 KB would defeat its purpose. At 16 KB
+# it truncated them anyway -- mid-structure, so `part` and `assembly` came
+# back as unparseable blobs and half of each domain was unreachable
+# (ADR-123). The default path is compact now and must never truncate: the
+# largest compact domain is ~16 KB, so this leaves it 2x headroom, and the
+# cap survives only as a backstop on the functions=[...] path, where the
+# model chose the names and can ask for fewer.
+_API_DOMAIN_CHARS = 32768
 
 # get_script serves the exact text the next edit_script has to match. A
 # truncated script is worse than no script: the model cannot see that the
@@ -210,12 +216,15 @@ TOOL_DEFS = [
         "description": (
             "Cadex mode only. Return the cadex engine's authoring contract "
             "for xscript project scripts: how a script must be shaped, and "
-            "which functions each modelling domain offers. Call it with no "
-            "arguments first for the overview and the function names, then "
-            "with a domain name for that domain's full signatures, defaults "
-            "and descriptions. This is served live by the engine, so it is "
-            "always the truth about the version you are talking to — never "
-            "guess an API from memory."
+            "which functions each modelling domain offers. Three steps, "
+            "each one narrower: no arguments returns the contract plus every "
+            "domain's function names; `domain` returns every signature in "
+            "that domain with a one-line summary each; `domain` plus "
+            "`functions` returns the full description of just those "
+            "functions, which is where the semantics are. Call it for the "
+            "domain you are about to use, not once per session. This is "
+            "served live by the engine, so it is always the truth about the "
+            "version you are talking to — never guess an API from memory."
         ),
         "input_schema": {
             "type": "object",
@@ -225,6 +234,12 @@ TOOL_DEFS = [
                     "description": "One domain (e.g. part, mesh, assembly, "
                                    "partdesign, sketcher). Omit for the "
                                    "overview.",
+                },
+                "functions": {
+                    "type": "array",
+                    "description": "Names from that domain to describe in "
+                                   "full. Needs `domain`.",
+                    "items": {"type": "string"},
                 },
             },
         },
@@ -619,14 +634,31 @@ def _tool_describe_cad_api(tool_input):
         return _text("The engine could not describe its API:\n"
                      + str(payload.get("error") or payload)), True
     domain = str(tool_input.get("domain") or "").strip()
+    wanted = tool_input.get("functions") or []
+    if isinstance(wanted, str):
+        wanted = [wanted]
     if not domain:
+        if wanted:
+            return _text("describe_cad_api needs a `domain` alongside "
+                         "`functions`."), True
         return _text(json.dumps(cadex_backend.api_overview(payload),
                                 indent=1, sort_keys=True)), False
     found, block = cadex_backend.api_domain(payload, domain)
     if not found:
         return _text(block), True
-    return _text(_truncate(json.dumps(block, indent=1, sort_keys=True),
-                           _API_DOMAIN_CHARS)), False
+    if wanted:
+        # The long descriptions, for the handful of functions the model
+        # named. Only this path may truncate: it chose the names, so a cut
+        # result is answered by asking for fewer.
+        picked, value = cadex_backend.api_functions(block, wanted)
+        if not picked:
+            return _text(value), True
+        return _text(_truncate(json.dumps(value, indent=1, sort_keys=True),
+                               _API_DOMAIN_CHARS)), False
+    # Every signature in the domain, summaries only. Never truncated: a
+    # severed JSON blob is what ADR-123 was about.
+    return _text(json.dumps(cadex_backend.compact_domain(block),
+                            indent=1, sort_keys=True)), False
 
 
 def _tool_get_attached_image(tool_input, agent):
