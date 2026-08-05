@@ -661,6 +661,85 @@ def _law_factor(law: list[list[float]], position: float) -> float:
     return float(law[-1][1])
 
 
+#: Below this a common volume is two faces touching, which is what a mate is
+#: supposed to produce. Above it the parts are inside one another.
+_MATE_INTERFERENCE_MM3 = 1.0e-6
+
+
+def _mated(operation: str, payload: dict[str, Any], properties: dict[str, Any]) -> Any:
+    """Place a shape so its mount lands on another's, and prove it fits.
+
+    The placement itself is sixteen numbers from ``CadexMounts.mate_matrix``
+    — no kernel involved, and unit-tested headless. What the kernel is for is
+    the second half: booleaning the placed shape against the component it was
+    mated to, and refusing a non-zero common volume **in cubic millimetres**.
+    That check is the reason a declared interface is worth more than two
+    copied numbers; without it "they line up" is a claim nobody verified.
+    """
+
+    import FreeCAD as App
+    from CadexMounts import MountError, mate_matrix
+
+    shape = _shape(operation, "shape", _argument(payload, 0, "shape")).copy()
+    source = _argument(payload, 1, "source")
+    target = _argument(payload, 2, "target")
+    for name, row in (("source", source), ("target", target)):
+        if not isinstance(row, dict):
+            raise _error(operation, name, "must be a mount")
+    try:
+        values = mate_matrix(
+            source,
+            target,
+            flip=bool(properties.get("flip")),
+            offset=float(properties.get("offset") or 0.0),
+        )
+    except MountError as exc:
+        raise PartOperationError(
+            f"api.{operation}: {exc}",
+            stage="part_argument",
+            operation=operation,
+            parameter="source",
+            correction=(
+                "Give each mount an axis and a roll across it; a mount whose "
+                "roll lies along its axis fixes no rotation about it."
+            ),
+        ) from exc
+    shape.transformShape(App.Matrix(*values), False, False)
+
+    if not properties.get("check_interference", True):
+        return shape
+    other = target.get("shape")
+    if not isinstance(other, dict):
+        return shape
+    against = build_part_shape(other)
+    common = shape.common(against)
+    volume = abs(float(getattr(common, "Volume", 0.0) or 0.0))
+    if volume > _MATE_INTERFERENCE_MM3:
+        component = str(target.get("component") or "the target")
+        raise PartOperationError(
+            f"api.{operation}: the placed shape and {component} overlap by "
+            f"{volume:.3f} mm3 after mating {source.get('name')!r} onto "
+            f"{target.get('name')!r}.",
+            stage="part_result_validation",
+            operation=operation,
+            parameter="target",
+            observed={
+                "interference_mm3": round(volume, 6),
+                "source_mount": source.get("name"),
+                "target_mount": target.get("name"),
+                "target_component": target.get("component"),
+                "offset_mm": float(properties.get("offset") or 0.0),
+                "clearance_mm": target.get("clearance"),
+            },
+            correction=(
+                "Move the mount rows apart, or pass offset= to seat the part "
+                "further out along the target's axis. Two parts that overlap "
+                "are colliding, not mated."
+            ),
+        )
+    return shape
+
+
 def _path_stations(
     operation: str, path: Any, positions: list[float]
 ) -> list[tuple[Any, Any]]:
@@ -3343,6 +3422,8 @@ def _build(
             0,
             joins[str(properties.get("join") or "arc")],
         )
+    if operation == "mate":
+        return _mated(operation, payload, properties)
     if operation == "transform":
         shape = _shape(operation, "shape", _argument(payload, 0, "shape")).copy()
         pivot = _vector(operation, "pivot", properties.get("pivot", [0.0, 0.0, 0.0]))

@@ -67,6 +67,11 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         # boards()/board()/term(), and the host imports it to validate a
         # stored row list. Pure on both sides.
         "CadexBoards.py",
+        # The mount table (ADR-126). Staged for CadexBoards' reasons exactly:
+        # the project worker imports it inside the sandbox to stage
+        # mounts()/mount_set()/mount(), the part api and worker import it for
+        # part.mate, and the host imports it to validate a stored row list.
+        "CadexMounts.py",
         "cadex_partdesign_api.py",
         "cadex_partdesign_worker.py",
         "cadex_mesh_api.py",
@@ -1223,6 +1228,53 @@ def _project_terminal_values(
     return clean
 
 
+def _project_mount_values(
+    state: Mapping[str, Any], rows: Any, tool_name: str
+) -> list[dict[str, Any]]:
+    """Validate one full mount-row list against the declared components.
+
+    :func:`_project_terminal_values`, one table over, with the same ADR-039
+    asymmetry in the same two places: a *request* naming a component the
+    script does not declare is a caller error and stays loud; a *stored* row
+    that a rewritten script no longer supports is dropped, in
+    ``CadexMounts.effective_mounts``.
+
+    A ``frame="world"`` row passes through unconverted, for the reason a
+    board's does: this process has no geometry and never runs user code.
+    """
+
+    from CadexMounts import MountError, canonical_mount_rows, declared_groups
+
+    try:
+        clean = canonical_mount_rows(rows, what="mounts", allow_world=True)
+    except MountError as exc:
+        _raise(
+            tool_name,
+            "INVALID_PROJECT_MOUNT",
+            "precondition",
+            str(exc),
+            requested={"mounts": rows},
+        )
+    groups = declared_groups(state.get("mount_specs"))
+    if not groups:
+        # No declaration to check against yet: the script has never run with
+        # mounts(...). The worker refuses an unresolvable row on the run.
+        return clean
+    for row in clean:
+        name = str(row["component"])
+        if name not in groups:
+            _raise(
+                tool_name,
+                "UNKNOWN_PROJECT_MOUNT_COMPONENT",
+                "precondition",
+                f"Mount {row['name']!r} names component {name!r}, which the "
+                "project script does not declare mounts for.",
+                requested={"mounts": rows},
+                observed={"declared_components": sorted(groups)},
+            )
+    return clean
+
+
 def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
     """Persist the working script state and stage one project candidate."""
 
@@ -1259,6 +1311,7 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
     param_values = dict(state.get("param_values") or {})
     net_values = [dict(row) for row in list(state.get("net_values") or [])]
     board_values = [dict(row) for row in list(state.get("board_values") or [])]
+    mount_values = [dict(row) for row in list(state.get("mount_values") or [])]
     if operation == "write_script":
         source = str(arguments.get("source") or "")
         if not source.strip():
@@ -1306,8 +1359,11 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         values_patch = arguments.get("values")
         nets_patch = arguments.get("nets")
         boards_patch = arguments.get("boards")
+        mounts_patch = arguments.get("mounts")
         tables_only = (
-            nets_patch is not None or boards_patch is not None
+            nets_patch is not None
+            or boards_patch is not None
+            or mounts_patch is not None
         ) and values_patch == {}
         if not tables_only:
             try:
@@ -1335,6 +1391,8 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
             net_values = _project_net_values(state, nets_patch, tool_name)
         if boards_patch is not None:
             board_values = _project_terminal_values(state, boards_patch, tool_name)
+        if mounts_patch is not None:
+            mount_values = _project_mount_values(state, mounts_patch, tool_name)
     else:
         _raise(tool_name, "UNKNOWN_DOMAIN_TOOL", "surface", "Unknown project tool.")
 
@@ -1373,6 +1431,8 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         net_values=net_values,
         board_specs=state.get("board_specs"),
         board_values=board_values,
+        mount_specs=state.get("mount_specs"),
+        mount_values=mount_values,
     )
     attempt_id = f"{int(time.time() * 1000):013d}-{uuid.uuid4().hex[:12]}"
     staging = store.artifacts_dir(revision) / f"attempt-{attempt_id}"
@@ -1388,6 +1448,7 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
             "param_values": param_values,
             "net_values": net_values,
             "board_values": board_values,
+            "mount_values": mount_values,
             "api_contracts": _project_api_contracts(),
             "document_name": str(captured["document_name"]),
             "document_uid": str(captured["document_uid"]),
@@ -1438,6 +1499,9 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         "board_values_before": [
             dict(row) for row in list(state.get("board_values") or [])
         ],
+        "mount_values_before": [
+            dict(row) for row in list(state.get("mount_values") or [])
+        ],
         "accepted_revision_before": str(state.get("accepted_revision") or ""),
         "accepted_contract_before": state.get("accepted_contract"),
         "accepted_digest_before": str(state.get("accepted_digest") or ""),
@@ -1445,9 +1509,11 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         "param_values": param_values,
         "net_values": net_values,
         "board_values": board_values,
+        "mount_values": mount_values,
         "param_specs_before": list(state.get("param_specs") or []),
         "net_specs_before": dict(state.get("net_specs") or {}),
         "board_specs_before": dict(state.get("board_specs") or {}),
+        "mount_specs_before": dict(state.get("mount_specs") or {}),
         "project_root": project_root,
         "staging": str(staging),
         "bundle_dir": str(bundle_dir),
@@ -1493,6 +1559,9 @@ def record_project_candidate_failure(
             ],
             "board_values": [
                 dict(row) for row in list(prepared.get("board_values_before") or [])
+            ],
+            "mount_values": [
+                dict(row) for row in list(prepared.get("mount_values_before") or [])
             ],
             "working_revision": str(prepared.get("working_revision_before") or ""),
             "latest_candidate": {
@@ -1679,6 +1748,24 @@ def validate_project_result(
             field: value for field, value in dict(row).items() if field != "frame"
         })
     prepared["board_values"] = prune_terminal_rows(board_values, board_specs)
+    # ...and the mount table, on identical terms (ADR-126): pruned against
+    # what the script still declares, and with every ``frame="world"`` row
+    # replaced by the component-frame row the worker converted, so a mount
+    # measured in the viewport is carried across exactly once.
+    from CadexMounts import prune_mount_rows
+
+    mount_specs = dict(execution.get("mount_specs") or {})
+    converted_mounts = {
+        (str(row.get("component") or ""), str(row.get("name") or "")): dict(row)
+        for row in list(execution.get("mount_rows_converted") or [])
+    }
+    mount_values = []
+    for row in list(prepared.get("mount_values") or []):
+        key = (str(row.get("component") or ""), str(row.get("name") or ""))
+        mount_values.append(converted_mounts.get(key) or {
+            field: value for field, value in dict(row).items() if field != "frame"
+        })
+    prepared["mount_values"] = prune_mount_rows(mount_values, mount_specs)
     final_revision = contracts.project_script_revision(
         source=str(prepared["source"]),
         param_specs=param_specs,
@@ -1687,6 +1774,8 @@ def validate_project_result(
         net_values=list(prepared["net_values"]),
         board_specs=board_specs,
         board_values=list(prepared["board_values"]),
+        mount_specs=mount_specs,
+        mount_values=list(prepared["mount_values"]),
     )
     store = CadexProjectScriptStore(str(prepared["project_root"]))
     store.write(
@@ -1697,6 +1786,8 @@ def validate_project_result(
             "net_values": list(prepared["net_values"]),
             "board_specs": board_specs,
             "board_values": list(prepared["board_values"]),
+            "mount_specs": mount_specs,
+            "mount_values": list(prepared["mount_values"]),
             "working_revision": final_revision,
             "latest_candidate": {
                 "status": "validated",
@@ -1716,6 +1807,7 @@ def validate_project_result(
         "param_specs": param_specs,
         "net_specs": net_specs,
         "board_specs": board_specs,
+        "mount_specs": mount_specs,
         "validations": dict(execution.get("validations") or {}),
         "component_sources": dict(execution.get("component_sources") or {}),
         "stdout": str(execution.get("stdout") or ""),
@@ -2259,6 +2351,9 @@ def describe_project_api() -> dict[str, Any]:
             "boards",
             "board",
             "term",
+            "mounts",
+            "mount_set",
+            "mount",
         ],
         "domains": _capability_api_listing(),
         "connections": {
@@ -2329,6 +2424,45 @@ def describe_project_api() -> dict[str, Any]:
                 "delete terminals, and what lets a viewport pick write a row "
                 "with no chat turn. A stored row naming a board the script no "
                 "longer declares is dropped, not refused."
+            ),
+        },
+        "mounts": {
+            "mounts": (
+                "USE THIS to state where one component bolts to another. "
+                "mounts({'skin': mount_set(shell, [mount(...)]), ...}) "
+                "declares the project's mounts as a table; callable at most "
+                "once per script. A mount is a terminal row plus a ROLL, so "
+                "the frame is fully determined rather than only aimed, plus "
+                "the fastener and the clearance the mating half needs."
+            ),
+            "mount_set": (
+                "mount_set(component, [mount(...)], units='mm') declares one "
+                "component's mounts. units='m' states what THIS declaration's "
+                "numbers are in; the stored row is millimetres either way."
+            ),
+            "mount": (
+                "mount(name, origin=..., axis=..., roll=..., fastener=None, "
+                "clearance=None) declares one mount in the component's own "
+                "frame. origin is where the two parts meet, axis is the "
+                "direction the other part approaches along — so two mating "
+                "mounts face each other — and roll is the mount's own 'up', "
+                "which is what makes the frame a frame. A roll along the axis "
+                "is refused: it fixes no rotation about it."
+            ),
+            "mate": (
+                "part.mate(shape, m['leg']['root'], m['skin']['hip_l'], "
+                "flip=False, offset=0.0) places shape so its mount lands on "
+                "the other's, face to face and rolls aligned. It booleans the "
+                "two afterwards and REFUSES a non-zero common volume, naming "
+                "the cubic millimetres: two parts that overlap are colliding, "
+                "not mated. Pass check_interference=False only when the "
+                "overlap is the point."
+            ),
+            "values": (
+                "Stored rows from xscript.project.set_params(mounts=...) "
+                "replace the declared table wholesale, exactly as the board "
+                "rows do. A stored row naming a component the script no "
+                "longer declares mounts for is dropped, not refused."
             ),
         },
         "parameters": {

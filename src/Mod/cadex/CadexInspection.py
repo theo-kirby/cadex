@@ -314,8 +314,25 @@ def _complete_script(captured: Mapping[str, Any]) -> Any:
             "contract": state.get("accepted_contract"),
             "digest": str(state.get("accepted_digest") or ""),
         },
+        # The mount table, beside the parameters and for the same reason
+        # (ADR-126): it is script state something outside the script sets, so
+        # the party doing the setting has to be able to read it first.
+        # ``rows`` is the table as a run would build it — declared, replaced
+        # wholesale by the stored overrides where there are any — which is
+        # exactly what ``set_params(mounts=[...])`` takes back.
+        "mounts": _script_mounts(state),
         "latest_candidate": state.get("latest_candidate"),
         "updated_at": str(state.get("updated_at") or ""),
+    }
+
+
+def _script_mounts(state: Mapping[str, Any]) -> dict[str, Any]:
+    from CadexMounts import declared_groups, effective_mounts
+
+    specs = dict(state.get("mount_specs") or {})
+    return {
+        "components": sorted(declared_groups(specs)),
+        "rows": effective_mounts(specs, state.get("mount_values")),
     }
 
 

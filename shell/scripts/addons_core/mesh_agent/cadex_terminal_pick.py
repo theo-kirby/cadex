@@ -942,7 +942,179 @@ def _bounds(obj):
     return low, high
 
 
-classes = (MESH_AGENT_OT_define_terminal, MESH_AGENT_OT_define_board)
+def mount_roll(axis):
+    """A default roll for a picked mount: world up, carried across the axis.
+
+    A pick gives an origin and an axis; the third degree of freedom is not in
+    the selection at all. Rather than invent one silently, this takes the
+    world's own up — the axis every model in this application is built
+    against (+Z is up, and the prompt says so) — and projects it across the
+    mount axis. On a mount that faces straight up or down that projection
+    vanishes, and +X stands in. Either way the row is written down where the
+    user can see it and change it, which is the point of the table.
+    """
+
+    axis = Vector(axis)
+    if axis.length <= 1.0e-12:
+        return [0.0, 0.0, 1.0]
+    axis = axis.normalized()
+    for candidate in (Vector((0.0, 0.0, 1.0)), Vector((1.0, 0.0, 0.0))):
+        across = candidate - axis * candidate.dot(axis)
+        if across.length > 1.0e-6:
+            across.normalize()
+            return [round(float(value), 6) for value in across]
+    return [0.0, 0.0, 1.0]
+
+
+def mount_world_row(matrix_world, row, component, name, roll=None):
+    """One fitted row as a MOUNT row, in world coordinates (ADR-126).
+
+    :func:`world_row`'s sibling, and the difference is the whole point of the
+    table it writes to: a mount carries a roll, so the frame is determined
+    rather than only aimed. ``hole_dia``/``depth`` are dropped — a mount is
+    not a place a wire lands — and the engine converts the world frame back
+    into the component's own, roll included.
+    """
+
+    linear = matrix_world.to_3x3()
+    origin = matrix_world @ Vector(row["origin"])
+    axis = linear @ Vector(row["axis"])
+    if axis.length > 1.0e-12:
+        axis = axis / axis.length
+    world_roll = Vector(mount_roll(axis) if roll is None else roll)
+    across = world_roll - axis * world_roll.dot(axis)
+    if across.length <= 1.0e-6:
+        across = Vector(mount_roll(axis))
+    across.normalize()
+    return {
+        "component": str(component),
+        "name": str(name),
+        "origin": [round(float(value), 5) for value in origin],
+        "axis": [round(float(value), 6) for value in axis],
+        "roll": [round(float(value), 6) for value in across],
+        "frame": "world",
+    }
+
+
+def mount_rows_with(rows, written):
+    """The table plus one measured row, replacing any row of the same name."""
+
+    key = (str(written.get("component") or ""), str(written.get("name") or ""))
+    kept = [
+        row for row in (rows or [])
+        if (str(row.get("component") or ""), str(row.get("name") or "")) != key
+    ]
+    kept.append(dict(written))
+    return kept
+
+
+def free_mount_name(rows, component, prefix="m"):
+    """A mount name not already on that component."""
+
+    taken = {
+        str(row.get("name") or "") for row in (rows or [])
+        if str(row.get("component") or "") == str(component)
+    }
+    index = 1
+    while "{:s}{:d}".format(prefix, index) in taken:
+        index += 1
+    return "{:s}{:d}".format(prefix, index)
+
+
+class MESH_AGENT_OT_define_mount(bpy.types.Operator):
+    """Fit a mount to the selected rim and write it into the mount table."""
+
+    bl_idname = "mesh_agent.define_mount"
+    bl_label = "Define Mount"
+    bl_description = ("Fit a frame to the selected vertices and write the "
+                      "measured mount into the component's table")
+    bl_options = {'REGISTER'}
+
+    name: bpy.props.StringProperty(
+        name="Mount",
+        description="What this mount is called, e.g. hip_l",
+        default="",
+    )
+    component: bpy.props.StringProperty(
+        name="Component",
+        description="Which mounts(...) component this row belongs to; the "
+                    "engine output's name by default",
+        default="",
+    )
+    flip_axis: bpy.props.BoolProperty(
+        name="Flip Axis",
+        description="The mating direction points away from the viewer; turn "
+                    "this on when it should not",
+        default=False,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.edit_object
+        return obj is not None and cadex_hydrate.OUTPUT_PROP in obj
+
+    def execute(self, context):
+        from . import cadex_backend
+
+        obj = context.edit_object
+        if obj is None:
+            self.report({'ERROR'}, "Define Mount works in Edit Mode.")
+            return {'CANCELLED'}
+        mesh = bmesh.from_edit_mesh(obj.data)
+        points = [vertex.co.copy() for vertex in mesh.verts if vertex.select]
+        if not points:
+            self.report({'ERROR'}, "Select the rim of the mating face first.")
+            return {'CANCELLED'}
+
+        direction = _view_direction(context)
+        if direction is not None:
+            direction = obj.matrix_world.inverted_safe().to_3x3() @ direction
+            if self.flip_axis:
+                direction = -direction
+        row, report = measure_selection(points, view_direction=direction)
+        if row is None:
+            self.report({'ERROR'}, str(report))
+            return {'CANCELLED'}
+
+        output = str(obj.get(cadex_hydrate.OUTPUT_PROP, "") or "")
+        components, rows = cadex_backend.script_mounts(context.scene)
+        if components is None:
+            self.report({'ERROR'},
+                        "The engine has no mount table to write to yet.")
+            return {'CANCELLED'}
+        component = _board_name(self.component or output)
+        if component not in components:
+            # Refused rather than invented: mounts(...) is the script's, and
+            # a row naming a component it does not declare would be rejected
+            # by the engine anyway -- with the pick's measurement lost.
+            self.report(
+                {'ERROR'},
+                "The script declares mounts for {:s}; ask for {:s} to be one "
+                "of them first.".format(
+                    ", ".join(components) or "nothing", component or output))
+            return {'CANCELLED'}
+
+        name = _board_name(self.name) or free_mount_name(rows, component)
+        written = mount_world_row(obj.matrix_world, row, component, name)
+        ok, pushed = cadex_backend.begin_set_mounts(
+            context.scene, mount_rows_with(rows, written))
+        if not ok:
+            self.report({'ERROR'}, str(pushed))
+            return {'CANCELLED'}
+        self.report(
+            {'INFO'},
+            "Wrote mount {:s}.{:s} — residual {:.4f} mm, roll {:s}. Change "
+            "the roll in the table if the part should sit turned.".format(
+                component, name, report["residual_mm"],
+                ", ".join("{:.2f}".format(value) for value in written["roll"])))
+        return {'FINISHED'}
+
+
+classes = (
+    MESH_AGENT_OT_define_terminal,
+    MESH_AGENT_OT_define_board,
+    MESH_AGENT_OT_define_mount,
+)
 
 
 def register():

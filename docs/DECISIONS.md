@@ -12947,3 +12947,115 @@ alternative is a refusal that looks exhaustive and is not.
 
 **Verification.** `pixi run python -m pytest src/Mod/cadex/cadex_tests` —
 1532 passed, 22 skipped.
+
+---
+
+## ADR-126 — Mounts: the interface between a skin and a mechanism (2026-08-05)
+
+**Decision.** Slice O2 of Phase 15. A **mount** is a named,
+geometry-anchored, rebuild-derived frame on a component, declared as a table
+the script states and the editor sets:
+
+```python
+m = mounts({
+    "skin": mount_set(shell, [
+        mount("hip_l", origin=(-40, 30, 120), axis=(0, 1, 0), roll=(0, 0, 1),
+              fastener="m3", clearance=2.0),
+    ]),
+    "leg": mount_set(leg, [mount("root", origin=(0, 0, 0),
+                                 axis=(0, -1, 0), roll=(0, 0, 1))]),
+})
+
+result["leg"] = part.mate(leg, m["leg"]["root"], m["skin"]["hip_l"])
+```
+
+`part.mate` places one shape so its mount frame coincides with another's,
+then **booleans the two and refuses a non-zero common volume, naming the
+cubic millimetres**.
+
+**Rationale.** `docs/ORGANIC.md` §1's third gap: nothing lines the aesthetic
+and mechanical halves up, so "put the mechanism inside it and have
+everything line up" is done by copying numbers between two parts of one
+script and hoping. The measured instance of what that costs is not in this
+phase at all — it is ADR-087's floor, whose collision box stood 20 mm proud
+of the solid it was drawn on **through a whole training run**, because two
+frames were related by arithmetic nobody checked.
+
+**Extend, do not parallel-build.** `CadexTerminals` already defines a named,
+geometry-anchored, rebuild-derived attachment point and `CadexBoards`
+(ADR-120) already makes a table of them that the script declares, the store
+overrides, the shell edits and drift-prunes. `CadexMounts` is that shape
+again, deliberately: canonical rows in millimetres in the component's own
+frame, `units=` as declaration-time convenience only, stored overrides as a
+**full row list** rather than a patch, drift **dropped** rather than
+refused, and a `frame="world"` row converted by the worker because cadexd
+has no geometry. It imports `CadexBoards`' row validators by name rather
+than restating them: two copies of "what is a valid row" is how two tables
+drift into disagreeing about the same measurement.
+
+**What a mount has that a terminal does not.**
+
+- A **roll**. An axis fixes two rotations of three, and a bracket that can
+  spin about its own bolt is not located — "it looked right in the viewport"
+  is how that degree of freedom gets decided today. A roll *along* the axis
+  is refused, because it fixes nothing; a roll merely near-perpendicular is
+  projected, so a caller may hand over "up" without doing the arithmetic.
+- **`fastener`** and **`clearance`**, which are what the mating half needs
+  and what nothing in a script says out loud.
+
+**`part.mate` takes handles, not name strings.** The plan for this slice
+wrote `part.mate(shape, "a", other, "b")`. It takes `m["leg"]["root"]`
+instead, which is `part.cable(esp["sda"], fc["sda"])`'s idiom (ADR-062) and
+means one name-resolution path in the codebase rather than two — the
+subscript already raises with the available names, and the handle carries
+its component's payload, so `mate` never has to look a table up.
+
+**The mate is a rigid motion and the test says so in numbers.** Two mounts
+mate *face to face*: each axis points the way the other part approaches
+from, so the placement opposes them and aligns the rolls. Reversing z alone
+would mirror the frame — silently turning a left bracket into a right one —
+so y is reversed with it, and a test asserts the placement's determinant is
++1 and that distances survive it.
+
+**The interference check is the point of declaring an interface at all.**
+Without it "they line up" is a claim nobody verified. Measured on a 4 mm peg
+seated 5 mm into a skin: `part.mate(..., offset=-5.0)` refuses with
+251.327 mm³, which is π·4²·5 to three decimals, and the envelope carries the
+source mount, the target mount, the offset and the declared clearance.
+`check_interference=False` exists for the case where the overlap is the
+point.
+
+**Deferred by decision: swept-volume clearance (O2b).** Sweeping the
+mechanism through its joint ranges and booleaning against the skin is the
+differentiating check, and `assembly` already has the joint limits to drive
+it. It roughly doubles this slice. Parked in `docs/ORGANIC.md`, not dropped.
+
+**The pick writes a defaulted roll, and says so.** *Define Mount* reuses
+`cadex_terminal_pick`'s fit wholesale, but a rim selection contains an
+origin and an axis and **no roll**. Rather than invent one silently or
+invent a second-pick gesture with no precedent in this UI, the operator
+projects world +Z across the mount axis (+X where that vanishes), writes the
+row, and reports the roll it wrote. The row is in a table the user can edit,
+which is the argument for having a table. It refuses outright when the
+script declares no mounts for that component, rather than sending a row the
+engine would reject with the measurement lost.
+
+**Consequences.**
+
+- `mount_specs`/`mount_values` join the store beside the board pair, loaded
+  through the same merge, so a `script.json` written before this needs no
+  migration. They enter `project_script_revision` **only when non-empty**,
+  so every existing project keeps a byte-identical revision.
+- `set_params` takes `mounts?`: the fourth table through one op, for the
+  reason `boards` was the third. `docs/INTEGRATION.md`'s request table moves
+  with it, in the same commit, as `CadexdProtocol` requires.
+- `inspect scope="script"` gains a `mounts` block — `{components, rows}` —
+  beside `params`, and for the same reason: a table something outside the
+  script sets is a table that party has to be able to read. It is pinned in
+  `OP_RESPONSE_SPECS` and in the `open_project` goldens.
+- `CadexMounts.py` is staged into the worker bundle by filename, like
+  `CadexBoards.py`, and is in `DECLARED_ENGINE_MODULES`.
+- `test_mounts.py` is new: 33 tests, of which 32 need no FreeCAD.
+
+**Verification.** `pixi run python -m pytest src/Mod/cadex/cadex_tests` —
+1565 passed, 22 skipped.

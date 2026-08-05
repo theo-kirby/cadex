@@ -995,7 +995,7 @@ def begin_set_nets(scene, rows, cancelled=None):
     return begin_set_tables(scene, nets=rows, cancelled=cancelled)
 
 
-def begin_set_tables(scene, nets=None, boards=None, cancelled=None):
+def begin_set_tables(scene, nets=None, boards=None, mounts=None, cancelled=None):
     """Start one ``set_params`` carrying whichever declared tables changed.
 
     One op and one re-execute, because a rename that moves a terminal *and*
@@ -1026,6 +1026,8 @@ def begin_set_tables(scene, nets=None, boards=None, cancelled=None):
         args["nets"] = list(nets)
     if boards is not None:
         args["boards"] = list(boards)
+    if mounts is not None:
+        args["mounts"] = list(mounts)
     if len(args) == 1:
         return True, "No change."
     return _queue_wiring(scene, root, args)
@@ -1205,6 +1207,43 @@ def begin_set_boards(scene, rows, cancelled=None):
     """
 
     return begin_set_tables(scene, boards=rows, cancelled=cancelled)
+
+
+def begin_set_mounts(scene, rows, cancelled=None):
+    """Start a mount-table edit. Returns ``(ok, report)``.
+
+    The fourth table through the one op (ADR-126), on ``begin_set_boards``'s
+    terms exactly: a full row list, a ``frame: "world"`` row converted by the
+    engine because a viewport click has no other frame to measure in, and the
+    single-slot pump driving it to completion so the second mount defined on
+    one component is not refused in silence (ADR-122).
+    """
+
+    return begin_set_tables(scene, mounts=rows, cancelled=cancelled)
+
+
+def script_mounts(scene):
+    """The mount table as the engine holds it: ``(components, rows)``.
+
+    Read through ``inspect scope="script"``, which is where the mount table
+    lives beside the parameters — a pick has to know the whole table because
+    ``set_params(mounts=...)`` replaces it wholesale.
+    """
+
+    ok, report = ensure_open(scene)
+    if not ok:
+        return None, None
+    payload = _inspect_full(_client(project_root(scene)), "script", "")
+    if not isinstance(payload, dict) or payload.get("ok") is False:
+        return None, None
+    value = payload.get("value") if isinstance(payload.get("value"), dict) else payload
+    block = value.get("mounts") if isinstance(value, dict) else None
+    if not isinstance(block, dict):
+        return None, None
+    return (
+        [str(name) for name in list(block.get("components") or [])],
+        [dict(row) for row in list(block.get("rows") or []) if isinstance(row, dict)],
+    )
 
 
 def _slider_values(scene, state):

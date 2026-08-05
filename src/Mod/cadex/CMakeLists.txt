@@ -14,6 +14,7 @@ set(Cadex_Scripts
     CadexSolder.py
     CadexNets.py
     CadexBoards.py
+    CadexMounts.py
     CadexProject.py
     CadexScriptStore.py
     CadexSubshapeQuery.py

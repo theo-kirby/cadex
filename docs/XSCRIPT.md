@@ -424,6 +424,44 @@ own. Without it the major axis lands wherever rotating +Z onto `normal`
 happens to send +X, and a section table has to follow every ellipse with
 rotations to undo that.
 
+### Mounts: where one component bolts to another `[ADR-126]`
+
+A **mount** is a terminal row plus the two things a terminal has no use for:
+a **roll**, so the frame is fully determined rather than only aimed, and the
+`fastener`/`clearance` the mating half reads.
+
+```python
+m = mounts({
+    "skin": mount_set(shell, [
+        mount("hip_l", origin=(-40, 30, 120), axis=(0, 1, 0), roll=(0, 0, 1),
+              fastener="m3", clearance=2.0),
+    ]),
+    "leg": mount_set(leg, [
+        mount("root", origin=(0, 0, 0), axis=(0, -1, 0), roll=(0, 0, 1)),
+    ]),
+})
+
+result["leg"] = part.mate(leg, m["leg"]["root"], m["skin"]["hip_l"])
+```
+
+Each mount's `axis` points the way the other part approaches from, so mating
+**opposes** the two axes and aligns the rolls; `flip=True` turns the part
+half a turn about the mating axis and `offset=` moves it along the target's
+axis afterwards. A roll *along* the axis is refused — it fixes no rotation
+about it — while one merely near-perpendicular is projected.
+
+`part.mate` then booleans the placed shape against the component it mated to
+and **refuses a non-zero common volume, naming the cubic millimetres**. Two
+parts that overlap are colliding, not mated; pass
+`check_interference=False` only when the overlap is the point.
+
+The table is `boards(...)`'s in every other respect: millimetres in the
+component's own frame, `units="m"` a declaration-time convenience,
+`set_params(mounts=[...])` replacing the whole list, a row naming a
+component the script no longer declares **dropped** rather than refused, and
+a row measured in the viewport carried into the component's frame by the
+worker — roll included.
+
 ### Terminals: ports that name geometry `[ADR-062]`
 
 `part.cable` and `part.bundle` (ADR-056, ADR-057) route a wire between two

@@ -14,6 +14,7 @@ import math
 from typing import Any, Iterable, Sequence
 
 from CadexSubshapeQuery import SELECTOR_KEYS
+from CadexMounts import Mount, MountSet
 from CadexTerminals import Terminal, TerminalError, TerminalSet, declared_layout, selector_layout
 from cadex_domain_api import DomainValue
 from cadex_mesh_api import payload_tree_is_deterministic
@@ -217,6 +218,58 @@ def _solder_terminal(operation: str, parameter: str, value: Any) -> dict[str, An
         "so there is nothing to build a joint from",
         value,
     )
+
+
+def _mount(operation: str, parameter: str, value: Any) -> dict[str, Any]:
+    """One mount handle, to plain JSON with its component's payload nested.
+
+    The same conversion ``_port`` performs on a terminal, for the same
+    reason: a mount never needs to be a domain value, an output type, or a
+    row in the tree — it is a frame plus the shape it is measured on.
+    """
+
+    if isinstance(value, MountSet):
+        raise _error(
+            operation,
+            parameter,
+            "expected one mount, not the whole set; subscript it by name, "
+            f"e.g. component[{value.names[0]!r}]" if value.names
+            else "expected one mount, not the whole set",
+        )
+    if not isinstance(value, Mount):
+        raise _error(
+            operation,
+            parameter,
+            "expected a mount from mounts(...), subscripted by name, e.g. "
+            "m['skin']['hip_l']",
+            value,
+        )
+    row = dict(value.row)
+    component = value.component
+    payload = None
+    if isinstance(component, DomainValue):
+        payload = component.to_payload()
+    elif isinstance(component, Mapping):
+        payload = dict(component)
+    if payload is None:
+        raise _error(
+            operation,
+            parameter,
+            f"mount {row.get('name')!r} is declared on a value that is not a "
+            "part or mesh shape, so nothing can be placed against it",
+        )
+    return {
+        "name": str(row.get("name") or ""),
+        "component": str(row.get("component") or ""),
+        "origin": [float(item) for item in row["origin"]],
+        "axis": [float(item) for item in row["axis"]],
+        "roll": [float(item) for item in row["roll"]],
+        "clearance": (
+            None if row.get("clearance") is None else float(row["clearance"])
+        ),
+        "fastener": row.get("fastener"),
+        "shape": payload,
+    }
 
 
 def _port_separation(operation: str, parameter: str, start: Any, end: Any) -> None:
@@ -2606,6 +2659,51 @@ class PartDomainAPI:
             rotation_degrees=_number(operation, "rotation_degrees", rotation_degrees),
             scale=clean_scale,
             pivot=_vector(operation, "pivot", pivot),
+            label=label,
+        )
+
+    def mate(
+        self,
+        shape: DomainValue,
+        source: Any,
+        target: Any,
+        *,
+        flip: bool = False,
+        offset: float = 0.0,
+        check_interference: bool = True,
+        label: str = "",
+    ) -> DomainValue:
+        """Place ``shape`` so its mount lands on another component's (ADR-126).
+
+        ``source`` and ``target`` are mounts, subscripted by name out of a
+        ``mounts(...)`` table — ``m["leg"]["root"]`` — which is the idiom
+        ``part.cable(esp["sda"], fc["sda"])` already uses.
+
+        The convention is face to face: each mount's axis points the way the
+        other part approaches from, so mating opposes them and aligns the
+        rolls. ``flip`` turns the part half a turn about the mating axis;
+        ``offset`` moves it along the target's axis afterwards, positive
+        being a gap.
+
+        ``check_interference`` booleans the placed shape against the target's
+        component and refuses a non-zero common volume, **naming the cubic
+        millimetres**. Two parts that overlap are not mated, they are
+        colliding, and the number is the difference between reading a refusal
+        and reading a picture.
+        """
+
+        operation = "mate"
+        clean_shape = _shape(operation, "shape", shape,
+                             allowed={"solid", "shell", "compound"})
+        return self._value(
+            operation,
+            clean_shape.output_type,
+            clean_shape,
+            _mount(operation, "source", source),
+            _mount(operation, "target", target),
+            flip=bool(flip),
+            offset=_number(operation, "offset", offset),
+            check_interference=bool(check_interference),
             label=label,
         )
 

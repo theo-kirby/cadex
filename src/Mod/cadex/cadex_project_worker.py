@@ -473,6 +473,8 @@ def _validate_request(
     # The same, one table over: absent on a request written before ADR-120,
     # and a full row list rather than a patch when present.
     board_values = request.get("board_values") or []
+    # ...and one table further: the mount rows (ADR-126), on the same terms.
+    mount_values = request.get("mount_values") or []
     if not isinstance(inputs, dict):
         raise TypeError("inputs must be an object.")
     if not isinstance(api_contracts, dict) or set(api_contracts) != set(
@@ -487,7 +489,17 @@ def _validate_request(
         raise TypeError("net_values must be an array of connection rows.")
     if not isinstance(board_values, list):
         raise TypeError("board_values must be an array of terminal rows.")
-    return source, inputs, api_contracts, param_values, net_values, board_values
+    if not isinstance(mount_values, list):
+        raise TypeError("mount_values must be an array of mount rows.")
+    return (
+        source,
+        inputs,
+        api_contracts,
+        param_values,
+        net_values,
+        board_values,
+        mount_values,
+    )
 
 
 def _component_placement(component: Any) -> tuple[float, ...]:
@@ -508,22 +520,38 @@ def _component_placement(component: Any) -> tuple[float, ...]:
     return identity_matrix()
 
 
+def _mount_row_from_world(component: Any) -> tuple[float, ...]:
+    """The composed 4x4 one component's mounts ride (ADR-126).
+
+    ``_component_placement`` with the same one-line reason it exists:
+    ``CadexMounts`` cannot resolve a mesh component's import placement, and
+    only the worker has the staged asset to resolve it from.
+    """
+
+    from cadex_domain_api import _json_value
+
+    return _component_placement(_json_value(component))
+
+
 def _staged_globals(
     api_contracts: dict[str, Any],
     param_values: dict[str, Any],
     inline_sources: dict[str, dict[str, Any]],
     net_values: Any = None,
     board_values: Any = None,
-) -> tuple[dict[str, Any], ParamsCollector, Any, Any]:
+    mount_values: Any = None,
+) -> tuple[dict[str, Any], ParamsCollector, Any, Any, Any]:
     """One API object per capability domain, plus the declared-table vocabulary.
 
     ``params``/``num`` declare the sliders, ``nets``/``wire`` the connections
-    (ADR-065) and ``boards``/``board``/``term`` the boards and their terminals
-    (ADR-120); all three are tables the script states and something outside it
-    currently sets.
+    (ADR-065), ``boards``/``board``/``term`` the boards and their terminals
+    (ADR-120) and ``mounts``/``mount_set``/``mount`` the places one component
+    bolts to another (ADR-126); all four are tables the script states and
+    something outside it currently sets.
     """
 
     from CadexBoards import BoardsCollector, board, term
+    from CadexMounts import MountsCollector, mount, mount_set
     from CadexNets import NetsCollector, wire
     from cadex_domain_api import _json_value
 
@@ -535,6 +563,7 @@ def _staged_globals(
         # holds; the placement lookup wants the payload the worker resolves by.
         lambda component: _component_placement(_json_value(component)),
     )
+    mounts = MountsCollector(mount_values, _mount_row_from_world)
     globals_by_name: dict[str, Any] = {
         "params": collector,
         "num": num,
@@ -543,6 +572,9 @@ def _staged_globals(
         "boards": boards,
         "board": board,
         "term": term,
+        "mounts": mounts,
+        "mount_set": mount_set,
+        "mount": mount,
     }
     for domain in EVALUATION_ORDER:
         contract = api_contracts[domain]
@@ -556,7 +588,7 @@ def _staged_globals(
             globals_by_name[domain] = create_domain_api(
                 domain, exports, output_types
             )
-    return globals_by_name, collector, nets, boards
+    return globals_by_name, collector, nets, boards, mounts
 
 
 def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
@@ -569,6 +601,7 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
         param_values,
         net_values,
         board_values,
+        mount_values,
     ) = _validate_request(request)
 
     output_directory = root / "outputs"
@@ -587,8 +620,9 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
     configure_part_assets(root, canonical_mesh_from_payload, composed_placement)
 
     inline_sources: dict[str, dict[str, Any]] = {}
-    globals_by_name, collector, nets, boards = _staged_globals(
-        api_contracts, param_values, inline_sources, net_values, board_values
+    globals_by_name, collector, nets, boards, mounts = _staged_globals(
+        api_contracts, param_values, inline_sources, net_values, board_values,
+        mount_values
     )
 
     document = App.newDocument(
@@ -736,11 +770,13 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
             "param_specs": collector.specs,
             "net_specs": nets.specs,
             "board_specs": boards.specs,
+            "mount_specs": mounts.specs,
             # Rows this run carried out of world coordinates (ADR-120).
             # ``validate_project_result`` writes them back into
             # ``board_values``, so a viewport measurement is converted exactly
             # once and every later run reads a board-frame row.
             "board_rows_converted": list(boards.converted),
+            "mount_rows_converted": list(mounts.converted),
             "wiring": _wiring_registry(nets, result, boards),
             "digest": digest,
             "validations": validations,
@@ -879,6 +915,7 @@ def _run_preview(request: dict[str, Any], root: Path) -> dict[str, Any]:
         param_values,
         net_values,
         board_values,
+        mount_values,
     ) = _validate_request(request)
     baseline = request.get("baseline")
     if baseline is not None and not isinstance(baseline, dict):
@@ -890,8 +927,9 @@ def _run_preview(request: dict[str, Any], root: Path) -> dict[str, Any]:
     configure_part_assets(root, canonical_mesh_from_payload, composed_placement)
 
     inline_sources: dict[str, dict[str, Any]] = {}
-    globals_by_name, _collector, _nets, _boards = _staged_globals(
-        api_contracts, param_values, inline_sources, net_values, board_values
+    globals_by_name, _collector, _nets, _boards, _mounts = _staged_globals(
+        api_contracts, param_values, inline_sources, net_values, board_values,
+        mount_values
     )
 
     document = App.newDocument(

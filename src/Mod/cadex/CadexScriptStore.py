@@ -107,6 +107,12 @@ class CadexProjectScriptStore:
             # ADR-120 needs no migration either.
             "board_specs": {},
             "board_values": [],
+            # The mount table's declaration cache and its stored rows
+            # (ADR-126) — the fourth such pair, for the same reason and
+            # loaded through the same merge, so a script.json written before
+            # it needs no migration either.
+            "mount_specs": {},
+            "mount_values": [],
             "working_revision": "",
             "accepted_revision": "",
             "accepted_contract": None,

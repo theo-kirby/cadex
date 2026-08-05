@@ -352,16 +352,18 @@ def project_script_revision(
     net_values: Any = None,
     board_specs: Mapping[str, Any] | None = None,
     board_values: Any = None,
+    mount_specs: Mapping[str, Any] | None = None,
+    mount_values: Any = None,
 ) -> str:
     """Content revision of the project script + its declared-table state (D7).
 
-    The connection table (ADR-065) and the board table (ADR-120) enter the
-    payload **only when they are non-empty**, and that conditional is doing
-    real work: every project written before they existed keeps a
-    byte-identical revision, so nothing needs re-accepting the way ADR-064
-    did. A script that declares no nets and no boards has nothing to say
-    here, and saying it anyway would move every stored revision in the world
-    to record two empty tables.
+    The connection table (ADR-065), the board table (ADR-120) and the mount
+    table (ADR-126) enter the payload **only when they are non-empty**, and
+    that conditional is doing real work: every project written before they
+    existed keeps a byte-identical revision, so nothing needs re-accepting
+    the way ADR-064 did. A script that declares no nets, no boards and no
+    mounts has nothing to say here, and saying it anyway would move every
+    stored revision in the world to record three empty tables.
     """
 
     payload = {
@@ -379,6 +381,10 @@ def project_script_revision(
         payload["board_specs"] = dict(board_specs)
     if board_values:
         payload["board_values"] = [dict(row) for row in list(board_values)]
+    if mount_specs:
+        payload["mount_specs"] = dict(mount_specs)
+    if mount_values:
+        payload["mount_values"] = [dict(row) for row in list(mount_values)]
     encoded = json.dumps(
         payload,
         ensure_ascii=True,

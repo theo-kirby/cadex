@@ -175,6 +175,9 @@ def test_describe_project_api_is_json_safe_and_complete() -> None:
         "boards",
         "board",
         "term",
+        "mounts",
+        "mount_set",
+        "mount",
     }
     assert "params" in payload["parameters"]
     assert "num" in payload["parameters"]
@@ -184,6 +187,11 @@ def test_describe_project_api_is_json_safe_and_complete() -> None:
     # ...and the board vocabulary beside it, for the same reason one table
     # over: where a wire attaches, rather than what it attaches to (ADR-120).
     assert set(payload["boards"]) == {"boards", "board", "term", "values"}
+    # ...and the mount vocabulary, the fourth such table (ADR-126): where one
+    # component bolts to another, and the op that puts it there.
+    assert set(payload["mounts"]) == {
+        "mounts", "mount_set", "mount", "mate", "values"
+    }
     assert "result" in payload["result_contract"]
     assert set(payload["mutation_selection"]) == {
         "write_script",
@@ -243,6 +251,7 @@ def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None
         # The board table boards()/board()/term() declare: pure Python,
         # staged for exactly that reason one table over (ADR-120).
         "CadexBoards.py",
+        "CadexMounts.py",
         "cadex_partdesign_api.py",
         "cadex_partdesign_worker.py",
         "cadex_mesh_api.py",

@@ -912,6 +912,16 @@ def draw_chat_buttons(layout, context):
         cadex_terminal_pick.MESH_AGENT_OT_define_terminal.bl_idname,
         icon='SNAP_MIDPOINT',
         text="{:d}".format(queued) if queued else "")
+    # Measuring where one component BOLTS to another (ADR-126). The same
+    # gesture one table over, and it never queues: a mount row goes straight
+    # into the table or is refused, because there is nothing an assistant
+    # could usefully transcribe about a frame.
+    mount = gather.row(align=True)
+    mount.enabled = bool(
+        cadex_terminal_pick.MESH_AGENT_OT_define_mount.poll(context))
+    mount.operator(
+        cadex_terminal_pick.MESH_AGENT_OT_define_mount.bl_idname,
+        icon='CON_TRACKTO', text="")
     # Dragging a routed wire onto the path you wanted (ADR-118). Three states
     # and therefore three buttons: open the curve, send it, throw it away.
     # Cancel is an operator rather than "delete the object yourself", because

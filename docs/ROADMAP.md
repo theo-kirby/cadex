@@ -1176,11 +1176,15 @@ supplying only the gesture (O3).
       **Sweep guide curves are not in it**: they need a new binding in
       inherited `src/Mod/Part`, which is a decision about the fork's delta
       rather than a fix.
-- [ ] **O2 — Mounts.** `mounts()` / `mount()` on `CadexBoards`'s row
-      machinery, `part.mate(...)`, and a static interference check that
-      refuses with millimetres. Exit: a mechanism mates into a skin with no
-      copied numbers, and a stored row naming a dropped mount is pruned, not
-      refused (the ADR-120 drift rule).
+- [x] **O2 — Mounts** (ADR-126, 2026-08-05). `mounts()` / `mount_set()` /
+      `mount()` on `CadexBoards`'s row machinery, `part.mate(...)` taking the
+      two handles, and a static interference check that refuses with cubic
+      millimetres — 251.327 mm3 for a 4 mm peg seated 5 mm in, which is
+      pi*4^2*5. A stored row naming a dropped component is pruned, not
+      refused. *Define Mount* writes the row with a **defaulted roll** (world
+      up, projected across the axis) and reports it: a rim selection has no
+      roll in it, and inventing a second-pick gesture before the default is
+      known to be wrong is not warranted.
 - [ ] **O3 — The section cage.** `CadexCage.py` and `part.loft_cage`, an
       edge-only ring overlay in a sibling collection, and Apply through
       `wiring.py`'s single-slot pump. Exit: drag a ring, press Apply, and

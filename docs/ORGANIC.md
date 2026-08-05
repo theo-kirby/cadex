@@ -187,7 +187,7 @@ body returns a **compound that passes `IsDone` and fails
 exceptions. Before that, `skip` and `reduce` both "succeeded" and were then
 refused by the output validator with the blend context gone.
 
-### O2 — Mounts: the interface, declared once and verified `(open)`
+### O2 — Mounts: the interface, declared once and verified — **closed (ADR-126)**
 
 `CadexTerminals.py` already defines a named, geometry-anchored,
 rebuild-derived attachment point, and `CadexBoards.py` (ADR-120) already
@@ -207,6 +207,15 @@ fastener metadata. **Extend, do not parallel-build.**
   two and refuse a non-zero common volume, naming the millimetres.
 - **Shell:** *Define Mount*, reusing `cadex_terminal_pick.py` wholesale.
   Written into the table, not handed to the AI (ADR-121's rule).
+
+**Landed with the roll defaulted rather than picked.** A rim selection gives
+an origin and an axis; the third degree of freedom is not in it. Rather than
+ask for a second pick — a gesture with no precedent in this UI and no
+obvious affordance — the operator projects world **up** across the mount
+axis, writes the row, and *says in its report what roll it wrote*. The row
+is in a table the user can edit, which is the whole argument for the table.
+A second-pick roll stays available if the default turns out to be wrong in
+practice; it is not something to build before that is known.
 
 ### O3 — The section cage: shaping without a chat turn `(open)`
 

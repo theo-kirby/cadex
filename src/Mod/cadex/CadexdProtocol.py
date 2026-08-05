@@ -104,9 +104,13 @@ OP_ARG_SPECS: dict[str, tuple[dict[str, type], dict[str, type]]] = {
     # this service cannot convert because it has no geometry and never runs
     # user code; the worker converts it and the canonical board-frame row is
     # written back.
+    #
+    # `mounts` is the mount table's stored rows (ADR-126), on exactly the
+    # terms `boards` is: a full row list, a `frame: "world"` row converted by
+    # the worker rather than here, and one op rather than a fourth.
     "set_params": (
         {"values": dict, "expected_revision": str},
-        {"display": dict, "nets": list, "boards": list},
+        {"display": dict, "nets": list, "boards": list, "mounts": list},
     ),
     "rebuild": ({}, {"display": dict}),
     # A path, not bytes: the asset budget is 128 MB and the frame cap is 8 MB.
@@ -258,6 +262,9 @@ OP_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
                 # ...and the board vocabulary (ADR-120), the third such table:
                 # where a wire attaches, rather than what it attaches to.
                 "boards",
+                # ...and the mount vocabulary (ADR-126), the fourth: where one
+                # component bolts to another, frame and fastener included.
+                "mounts",
                 "mutation_selection",
             }
         ),
@@ -390,6 +397,10 @@ NESTED_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
                 "accepted",
                 "latest_candidate",
                 "updated_at",
+                # The mount table (ADR-126), beside `params` and for the same
+                # reason: it is script state something outside the script
+                # sets, so the party setting it has to read it first.
+                "mounts",
             }
         ),
         frozenset(),
