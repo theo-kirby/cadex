@@ -119,12 +119,30 @@ _ASSET_SUFFIXES = frozenset({".stl", ".obj", ".ply"})
 #: project store holds" stay two questions with two answers.
 _POLICY_ASSET_SUFFIXES = frozenset({".cxpolicy"})
 
+#: What a policy **travels with** (ADR-135): the task bundle it was trained on
+#: and the MJCF that bundle references, which are what
+#: ``assembly.policy(..., trained_task=)`` binds it to and compares against.
+#:
+#: A third constant rather than two more members above, for the reason there is
+#: a second one: "what ``mesh.import_file`` reads", "what a trained policy
+#: arrives in" and "what a policy's provenance travels as" are three questions
+#: with three answers, and a single widened set would make all three unreadable.
+#:
+#: These two are the only *generic* suffixes the store holds, and that is
+#: deliberately not a problem: neither is interpreted on arrival. A ``.json``
+#: is read only when a script names it as ``trained_task``, and a ``.xml`` only
+#: when its digest matches the one that bundle records. An asset nothing names
+#: is bytes in a directory.
+_PROVENANCE_ASSET_SUFFIXES = frozenset({".json", ".xml"})
+
 #: Everything the store accepts, stages and lists. ``put_asset`` and
 #: ``import_geometry`` perform no suffix check of their own -- they pass the
 #: path through and let the engine refuse -- so widening this is the whole of
 #: what it takes for a policy to reach the store through the tool that
 #: already exists.
-_STORED_ASSET_SUFFIXES = _ASSET_SUFFIXES | _POLICY_ASSET_SUFFIXES
+_STORED_ASSET_SUFFIXES = (
+    _ASSET_SUFFIXES | _POLICY_ASSET_SUFFIXES | _PROVENANCE_ASSET_SUFFIXES
+)
 
 _MAX_ASSET_FILES = 64
 _MAX_ASSET_BYTES = 128 * 1024 * 1024
@@ -394,8 +412,9 @@ def store_project_asset(
         raise ValueError(
             f"{source.name!r} is not one of the formats this project store "
             f"holds {sorted(_STORED_ASSET_SUFFIXES)}: the mesh formats "
-            "mesh.import_file reads, or the .cxpolicy a trained control "
-            "policy arrives in."
+            "mesh.import_file reads, the .cxpolicy a trained control policy "
+            "arrives in, or the .json task bundle and .xml model a policy "
+            "travels with for assembly.policy(..., trained_task=)."
         )
     target_name = _asset_filename(
         "put_asset",
