@@ -13852,3 +13852,80 @@ one that quietly accepted a different task. The rest pin the provenance
 exclusions, the float canonicalisation, the bounded diff, the absolute floor's
 scope, and the three new refusal stages (`policy_trained_task`,
 `policy_task_equivalence`, `policy_model_equivalence`).
+
+## ADR-135 — the project store holds what a policy travels with (2026-08-05)
+
+**Decision.** `_PROVENANCE_ASSET_SUFFIXES = {".json", ".xml"}` joins the union
+`put_asset` accepts. A `.json` task bundle and a `.xml` MJCF are what
+`assembly.policy(..., trained_task=)` binds a policy to and compares against,
+and until now the store would not hold either.
+
+### What it cost, and how it was found
+
+**ADR-134 shipped unusable, and all 52 of its unit tests passed.** The first
+end-to-end replay refused at the very first step:
+
+```
+ASSET_REJECTED at precondition
+'clamp25-task.json' is not one of the formats this project store holds
+['.cxpolicy', '.obj', '.ply', '.stl']
+```
+
+Every ADR-134 test exercised `task_semantic_digest`, `task_differences`,
+`model_differences` and the API's argument validation. Not one of them went
+through `store_project_asset`, so nothing noticed that the two files the whole
+feature depends on could not reach the directory the worker reads them from.
+It is the lesson `method.md` already states about training and it transfers
+exactly: **validate at length, not at three iterations.** A surface whose unit
+tests all pass and whose first real use fails at step one was tested at three
+iterations.
+
+### A third constant, not two more members
+
+`_ASSET_SUFFIXES` **must stay exactly three**: the shell mirrors it by name at
+`cadex_backend.py:53`, and every line of the `shell/` diff is a future merge
+conflict against upstream Blender (ADR-091). `_POLICY_ASSET_SUFFIXES` already
+exists as a separate constant for that reason (ADR-084), and this is the same
+move a second time. Three questions — what `mesh.import_file` reads, what a
+trained policy arrives in, what a policy's provenance travels as — with three
+answers.
+
+### The generic suffixes are not a hazard, and why
+
+`.json` and `.xml` are the only *generic* extensions the store holds, and
+nothing is interpreted on arrival. A `.json` is read only when a script names
+it as `trained_task`; a `.xml` only when its digest matches the one that bundle
+records. An asset nothing names is bytes in a directory. The staging budget is
+unchanged at 64 files / 128 MB, and a replay set is four files and 380 kB.
+
+### Measured after
+
+Both `mg-legs` arms replay from source on Linux against bundles built
+elsewhere:
+
+| arm | trained on | script built | same task (semantic) | verdict |
+|---|---|---|---|---|
+| `b8` | `5572adf265aa…` *(macOS, pre-snap)* | `6dc1c580f4bc…` | `6bb66e9bcafa…` | **accepted** |
+| `clamp25` | `3d627ef4b9a5…` *(hand-edited, ADR-131's predecessor)* | `3dbc680589b1…` | `17f1f46fbfcf…` | **accepted** |
+
+`clamp25` is the one worth reading twice: that policy could not be replayed by
+any script before this, and the fix required neither retraining nor reverting
+ADR-131's honest `source` string.
+
+And the refusals still refuse. Five mutations of the *script* — not of the
+travelling bundle, which would fail `verify_policy` check 1 first and prove
+nothing — each refused, each naming the field:
+
+| mutation | stage | what the refusal said |
+|---|---|---|
+| reward weight 0.2 → 0.9 | `policy_task_equivalence` | `reward[0].weight: 0.9 here, 0.2 there` |
+| episode 6.0 s → 9.0 s | `policy_task_equivalence` | `episode.episode_seconds: 9.0 here, 6.0 there` |
+| tip threshold 0.15 → 0.25 | `policy_task_equivalence` | `termination[0].above: 0.25 here, 0.15 there` |
+| command range ±25° → ±30° | `policy_task_equivalence` | `actions[0].high: 30.0 here, 25.0 there` |
+| bracket plate 2.5 → 2.9 mm | `policy_model_equivalence` | `body_ipos: 0.0363 relative drift (0.000727 absolute)` |
+
+The last is the one that justifies ADR-134's model comparison existing. A
+0.4 mm plate changes masses and inertias and changes **no field of the task
+bundle at all** — same joints, same limits, same action table, same
+observations. A bundle-only equivalence check would have accepted a policy
+against a different machine, and said nothing.

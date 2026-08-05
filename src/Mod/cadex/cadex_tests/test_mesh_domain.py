@@ -451,9 +451,10 @@ def test_store_project_asset_rejects_bad_sources_and_names(tmp_path: Path) -> No
         runtime.store_project_asset(project_root, "")
     with pytest.raises(ValueError, match="Could not read"):
         runtime.store_project_asset(project_root, str(tmp_path / "missing.stl"))
-    # The store holds two kinds of file since ADR-084 -- the three mesh
-    # formats and a trained policy's .cxpolicy -- so the refusal names the
-    # set rather than "mesh formats". A .txt is still not one of them.
+    # The store holds three kinds of file: the three mesh formats, a trained
+    # policy's .cxpolicy (ADR-084), and the .json bundle plus .xml model a
+    # policy travels with (ADR-135). So the refusal names the set rather than
+    # "mesh formats". A .txt is still not one of them.
     with pytest.raises(ValueError, match="formats this project store holds"):
         runtime.store_project_asset(project_root, str(notes))
     for name in ("nested/scan.stl", "../scan.stl", "scan", "x" * 121 + ".stl"):
@@ -463,6 +464,44 @@ def test_store_project_asset_rejects_bad_sources_and_names(tmp_path: Path) -> No
     with pytest.raises(ValueError, match="format"):
         runtime.store_project_asset(project_root, str(source), "scan.ply")
     assert not (project_root / "assets").exists()
+
+
+def test_the_store_holds_what_a_policy_travels_with(tmp_path: Path) -> None:
+    """ADR-135. The two files ``trained_task=`` needs, and nothing else new.
+
+    Found the only way it could be: the first end-to-end replay refused at
+    ``put_asset`` with ``ASSET_REJECTED``, having shipped a bundle and a model
+    the store would not hold. ADR-134's whole surface was unusable and every
+    one of its 52 unit tests passed, because none of them went through the
+    store.
+    """
+
+    import CadexScriptedRuntime as runtime
+    from CadexScriptedRuntime import (
+        _ASSET_SUFFIXES,
+        _POLICY_ASSET_SUFFIXES,
+        _PROVENANCE_ASSET_SUFFIXES,
+        _STORED_ASSET_SUFFIXES,
+    )
+
+    assert _PROVENANCE_ASSET_SUFFIXES == frozenset({".json", ".xml"})
+    # The mesh set stays exactly three: the shell mirrors it by name.
+    assert _ASSET_SUFFIXES == frozenset({".stl", ".obj", ".ply"})
+    assert _STORED_ASSET_SUFFIXES == (
+        _ASSET_SUFFIXES | _POLICY_ASSET_SUFFIXES | _PROVENANCE_ASSET_SUFFIXES
+    )
+
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    for name, payload in (
+        ("clamp25-task.json", b'{"schema": "cadex-training-task-v1"}'),
+        ("clamp25-model.xml", b"<mujoco/>"),
+    ):
+        source = tmp_path / name
+        source.write_bytes(payload)
+        stored = runtime.store_project_asset(project_root, str(source))
+        assert (project_root / "assets" / name).read_bytes() == payload
+        assert str(stored.get("name") or name).endswith(Path(name).suffix)
 
 
 def test_store_project_asset_counts_the_incoming_file_against_the_budget(
