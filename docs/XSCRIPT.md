@@ -435,6 +435,27 @@ own. Without it the major axis lands wherever rotating +Z onto `normal`
 happens to send +X, and a section table has to follow every ellipse with
 rotations to undo that.
 
+### A loft that leaves its own sections `[ADR-129]`
+
+```python
+body = part.loft(sections, solid=True, max_degree=3)
+body = part.loft(sections, solid=True, on_bulge="allow")   # I meant it
+```
+
+`loft` and `loft_cage` interpolate a spline through the sections you give
+them, and on an unevenly spaced table that spline can swing far outside
+those sections and still be a perfectly valid solid. Both now measure it and
+**refuse** when the surface escapes by more than a quarter of the sections'
+own span, reporting the millimetres, the axis and the share. The correction
+names the fixes in order: lower `max_degree` (the default 5 is what
+oscillates; 3 interpolates the same table without it), add a section in the
+longest gap, or `ruled=True`. `on_bulge="allow"` keeps the shape.
+
+This is not hypothetical — it is the robot wolf's whole visible defect. One
+of its thirteen lofts enclosed **4.5×** the volume of a straight loft
+through the identical sections, and shipped as a smooth plate through eleven
+accepted revisions (`docs/ORGANIC.md` §4).
+
 ### The section cage: a shape as a table of rings `[ADR-127]`
 
 ```python

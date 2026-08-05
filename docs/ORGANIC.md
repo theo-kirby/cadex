@@ -288,7 +288,7 @@ Sweep the mechanism through its joint ranges and boolean against the skin.
 It is the differentiating check and `assembly` already has the joint limits
 to drive it, but it roughly doubles O2. Parked here rather than dropped.
 
-### O4 — subD `(parked, unscheduled)`
+### O4 — subD `(parked, unscheduled — and now with evidence)`
 
 Catmull-Clark on a quad cage with per-patch NURBS fitting
 (`GeomAPI_PointsToBSplineSurface`) is the real industry answer. It reuses
@@ -296,6 +296,24 @@ O3's table, its overlay and its apply path — which is the argument for doing
 sections first. **It stays unscheduled until the section cage has been used
 in anger and §4 says what it still cannot do.** It is a real project, not a
 stretch goal.
+
+**The cage has now been used in anger** — the whole wolf, eleven of thirteen
+solids (§4, 2026-08-05) — and what it still cannot do is *not* subD:
+
+1. **A curved spine.** `section_cage` is straight by construction. The neck
+   and the tail are the two bodies that stayed hand-written lofts, and both
+   follow a curve. This is the one thing the wolf actually asks for, and it
+   is small: rings along a path rather than along an axis, with ADR-128's
+   `sweep(guide=…)` as the other half of the answer.
+2. **Closing an end.** A cage lofts flat caps, so the wolf's chest and rump
+   end in plates. Visible in the head-on render, and a smaller version of the
+   defect this whole phase started from.
+
+Neither needs subdivision surfaces. **So O4 stays parked, and what it was
+parked *ahead of* is now known**: a curved cage and closable ends, both of
+which reuse the same table, overlay and apply path that O4 would. Schedule
+those first and the argument for subD gets made on better evidence — or
+stops being needed.
 
 ---
 
@@ -338,7 +356,42 @@ accepted one.
 | O1 | 2026-08-05 | **The weld lands.** `fuse(blend=8.0, blend_on_failure="skip")` builds the wolf with 25 of its 48 seams rounded, in 25.04 s against a 13.61 s baseline. `blend=15.0, "reduce"` rounds every seam at a reduced radius. The refusal path quotes a workable radius instead of `StdFail_NotDone`. Turns: **one** — the change is one keyword on the `fuse` the script already had. |
 
 | O2 | 2026-08-05 | No wolf change — it has no mechanism to mount yet. What O2 adds is the check: a mate that overlaps refuses with the cubic millimetres, so the skin/mechanism interface stops being two copied numbers. |
+| O1b | 2026-08-05 | No wolf change from the ops themselves — but raising the blend probe cap to 15 s means its refusals stop being timeouts. |
+| O3b | 2026-08-05 | **The wolf is rebuilt on cages, and the plate is gone.** Eleven of thirteen solids are `part.loft_cage` over a declared table — torso, four legs, four paws, two ears — each with its own exponent per ring. The neck and tail are not, because a cage is straight and both follow a curve. Model half-width **±150.2 mm → ±73.0 mm** against a 70 mm chest half-width; Z max 426.6 → 388.9. The fix was not the cage: it was ADR-129's loft guard finding that one loft in thirteen enclosed 4.5× the volume of a straight loft through its own sections. |
 | O3 | 2026-08-05 | **The torso ports in one edit.** Its six `sec(...)` literals become a six-`ring(...)` `section_cage`, `part.loft` becomes `part.loft_cage`, and the script accepts and builds — with an exponent per ring, which the sections never had. Rendered, the front view shows a squared-off, fuller torso section instead of an ellipse. The legs, neck, ears and tail are **not** ported: that is a modelling turn rather than a code change, and it is the first thing to do with this phase. |
+
+### The disc was never the leg roots (2026-08-05, ADR-129)
+
+The read below — "it comes from the leg-root sections" — is **wrong**, and
+the correction is the most useful thing this benchmark has produced. It was
+a reading of a picture. Publishing all thirteen solids separately and asking
+the engine for each one's volume, beside a *ruled* loft through the same
+sections, names the culprit in one table:
+
+| solid | spline loft | ruled, same sections | ratio |
+|---|---|---|---|
+| neck + head | 4 011 977 mm³ | 884 054 mm³ | **4.54** |
+| torso | 5 990 519 | 5 842 206 | 1.03 |
+| hind leg | 578 972 | 544 515 | 1.06 |
+| front leg | 420 163 | 429 819 | 0.98 |
+| tail | 234 417 | 227 581 | 1.03 |
+| paw | 26 064 | 23 714 | 1.10 |
+| ear | 12 674 | 13 379 | 0.95 |
+
+One loft in thirteen, and its rows are fine — the straight loft through them
+is the shape the author meant. `max_degree=5`, our own default, oscillates
+across the table's 72 mm first gap and its crowded muzzle. The leg roots
+were never the problem, and porting them would not have moved the picture at
+all.
+
+**The lesson for the benchmark itself**: a render tells you *that* something
+is wrong and roughly where. It does not tell you *which operation* did it,
+and the guess made from it survived being written down. Measuring each solid
+against a straight loft through its own sections took one probe.
+
+`part.loft` and `part.loft_cage` now refuse that silently-wrong shape
+(ADR-129), which is what closes the loop: O0 made the defect visible, and
+this makes it *unbuildable* rather than merely visible.
 
 ### What porting the torso showed (2026-08-05)
 

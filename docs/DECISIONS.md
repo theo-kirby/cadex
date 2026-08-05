@@ -13267,3 +13267,92 @@ each, both additive: a new `.pyi` entry plus its `PyImp` body, and a new
 parse form ahead of two existing ones. Both conflict as insertions a
 compiler finds, not as rewritten logic — the distinction `CLAUDE.md` asks
 for. Ledger: `docs/FREECAD.md` §2a.
+
+## ADR-129 — A loft that is not the shape its own table describes (2026-08-05)
+
+**Decision.** `part.loft` and `part.loft_cage` measure how far the surface
+they built escapes the sections they built it from, and refuse when it is
+more than a quarter of the sections' own span. `on_bulge="allow"` keeps the
+shape. Separately, a refinement that produces an invalid shape now says so
+instead of letting the caller report it as a failed boolean.
+
+**Rationale — the wolf's dominant defect was never a bad row.**
+`docs/ORGANIC.md` §4 recorded, from O0's first render, that the robot wolf
+was "dominated by a smooth disc roughly twice the body's height", and
+attributed it to the leg-root sections. That was a reading of a picture. The
+measurement says otherwise. Publishing all thirteen of the wolf's solids
+separately and asking the engine for each one's area and volume:
+
+| solid | spline loft | ruled loft, same sections | ratio |
+|---|---|---|---|
+| neck + head | 4 011 977 mm³ | 884 054 mm³ | **4.54** |
+| torso | 5 990 519 | 5 842 206 | 1.03 |
+| hind leg | 578 972 | 544 515 | 1.06 |
+| front leg | 420 163 | 429 819 | 0.98 |
+| tail | 234 417 | 227 581 | 1.03 |
+| paw | 26 064 | 23 714 | 1.10 |
+| ear | 12 674 | 13 379 | 0.95 |
+
+**One** loft in thirteen. Its eight sections are fine — a straight loft
+through them is the shape the author meant — and the interpolating one
+encloses four and a half times the volume. The rows never needed fixing.
+
+**What it actually is.** The sections' spacing runs 72, 30, 45, 49, 45, 12,
+6 mm and their half-width falls 51 → 2. A degree-5 B-spline interpolating
+that oscillates in the first, longest span. Same table, degree 3:
+1 140 713 mm³ (1.29× the straight loft). Same table with one section added
+in the 72 mm gap: 783 658 mm³. `max_degree=5` is our own default, chosen in
+the API and never questioned.
+
+**The default stays 5, and the guard is why.** Lowering it would move every
+existing project's geometry silently — the exact failure mode under
+discussion. A refusal that names `max_degree=3` moves nothing until someone
+reads it.
+
+**The measure had to be measured too.** The first implementation compared
+`Shape.BoundBox` of the result against the sections'. `BoundBox` bounds a
+B-spline by its **poles**, which on a degree-5 loft sit far outside the
+surface: the wolf's *torso* — 2.5% over its own straight loft — appeared to
+escape its sections by 127 mm and was refused, while the neck-and-head plate
+was measured no more sharply. `Shape.optimalBoundingBox(False)` bounds the
+surface, and with it exactly one of the wolf's thirteen lofts trips, at 99 mm
+outside a 102 mm section span. A guard calibrated on the wrong box would have
+been worse than none: it refuses the models that are fine and lets the
+plate through.
+
+**What it costs.** Measured on a three-ring cage loft: the loft itself
+25.0 ms, the four pole boxes 0.13 ms, the four optimal boxes **17.9 ms**.
+So the guard adds roughly 70% to a loft — real, and paid on every one. It is
+worth it at this price and it would not be at ten times it; if a model ever
+lofts hundreds of sections in one rebuild, screen with the pole box first
+(it contains the surface, so "inside" is conclusive) and only pay for the
+optimal box when the cheap one says there may be trouble. The gate's slider
+latency is unmoved: 0.544 s median against a 0.65 s bar.
+
+**Threshold.** A quarter of the sections' extent along the offending axis,
+with a floor of 1% of the section box's diagonal for tables that are nearly
+flat in one direction. A loft *should* bulge slightly between its sections —
+that is what makes it smooth. The wolf's is at 97%.
+
+**And a second, smaller lie.** Rebuilding the wolf with every straight-spined
+body on a cage, `api.fuse` began reporting "OpenCascade produced an invalid
+shape" for exactly one of two mirrored hind legs. The union was valid;
+`removeSplitter` — refinement, which is cosmetic and on by default — was
+not, and its result reached the operation's own validator with no indication
+of which stage produced it. `_refine` now checks `isValid()` and refuses
+with the stage named and `refine=False` as the correction. One keyword
+instead of rebuilding a leg.
+
+**The benchmark, rebuilt** (`docs/ORGANIC.md` §4). Eleven of the wolf's
+thirteen solids are now `part.loft_cage` over a declared table — torso, four
+legs, four paws, two ears, each its own cage with its own exponent per ring.
+The neck and the tail are **not**, and that is the finding worth more than
+the picture: a cage is straight by construction, and both of those follow a
+curved spine. Model bounding box before and after: Y ±150.2 mm → **±73.0 mm**
+(against a 70 mm chest half-width), Z max 426.6 → **388.9**. The plate is
+gone from the render.
+
+**Verification.** `test_part_lofting.py` is new: the measure against a fake
+kernel including the pole-box fallback, and the wolf's own eight-section
+table against a live engine, asserting 4× on the default degree and under
+1.5× at degree 3.

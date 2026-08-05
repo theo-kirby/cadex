@@ -689,6 +689,132 @@ def _blend_largest_radius(
     return best
 
 
+#: How far a loft may swing outside the sections it interpolates, as a share
+#: of the sections' own extent along that axis. A loft that passes through
+#: its sections still bulges a little between them -- that is what makes it
+#: smooth. A quarter of the section span is not "a little"; it is a shape
+#: nobody wrote (ADR-129).
+_LOFT_BULGE_FRACTION = 0.25
+
+#: ...and a floor for tables whose sections are nearly coplanar in one axis,
+#: where a share of almost nothing would refuse almost everything. A share of
+#: the section box's diagonal.
+_LOFT_BULGE_FLOOR = 0.01
+
+_AXIS_NAMES = ("x", "y", "z")
+
+
+def _tight_box(shape: Any) -> Any:
+    """A box around the shape, not around its control points.
+
+    ``Shape.BoundBox`` bounds a B-spline by its **poles**, which on a
+    degree-5 loft sit far outside the surface they define. Measured on the
+    wolf: the torso's box overshot its own sections by 127 mm in Z while the
+    surface enclosed 2.5% more volume than a straight loft through the same
+    rings — so a bulge check built on ``BoundBox`` refuses the shapes that
+    are fine and proves nothing about the ones that are not.
+    """
+
+    try:
+        return shape.optimalBoundingBox(False)
+    except Exception:
+        return shape.BoundBox
+
+
+def _bounds(shapes: list[Any]) -> tuple[list[float], list[float]]:
+    """One axis-aligned box around every shape given."""
+
+    lows = [math.inf] * 3
+    highs = [-math.inf] * 3
+    for shape in shapes:
+        box = _tight_box(shape)
+        pairs = ((box.XMin, box.XMax), (box.YMin, box.YMax), (box.ZMin, box.ZMax))
+        for index, (low, high) in enumerate(pairs):
+            lows[index] = min(lows[index], float(low))
+            highs[index] = max(highs[index], float(high))
+    return lows, highs
+
+
+def _loft_bulge(result: Any, sections: list[Any]) -> dict[str, Any]:
+    """How far the lofted surface escaped the sections it was built from.
+
+    Measured on the robot wolf, where it is the whole visible defect: the
+    neck-and-head loft came back with **4.5x the volume** of a ruled loft
+    through the identical eight sections, as a smooth plate three times the
+    section width. Nothing said so. The shape published, the tessellation
+    streamed, and eleven accepted revisions later a person said "looks
+    better but not good" (``docs/ORGANIC.md`` §4).
+    """
+
+    lows, highs = _bounds(sections)
+    extents = [high - low for low, high in zip(lows, highs)]
+    diagonal = math.sqrt(sum(extent * extent for extent in extents))
+    result_lows, result_highs = _bounds([result])
+
+    report: dict[str, Any] = {"bulge_mm": 0.0, "bulge_axis": None}
+    worst = 0.0
+    for index in range(3):
+        escape = max(
+            lows[index] - result_lows[index],
+            result_highs[index] - highs[index],
+            0.0,
+        )
+        allowed = max(
+            _LOFT_BULGE_FRACTION * extents[index], _LOFT_BULGE_FLOOR * diagonal
+        )
+        if allowed <= 0.0 or escape / allowed <= worst:
+            continue
+        worst = escape / allowed
+        report = {
+            "bulge_mm": round(escape, 3),
+            "bulge_axis": _AXIS_NAMES[index],
+            "allowed_mm": round(allowed, 3),
+            "section_span_mm": round(extents[index], 3),
+            "bulge_share": round(escape / extents[index], 4) if extents[index] else None,
+        }
+    report["excessive"] = worst > 1.0
+    return report
+
+
+def _check_loft_bulge(
+    operation: str,
+    result: Any,
+    sections: list[Any],
+    properties: Mapping[str, Any],
+    *,
+    parameter: str = "sections",
+) -> None:
+    """Refuse a loft that is not the shape its own table describes."""
+
+    if bool(properties.get("ruled")):
+        # A ruled loft is straight between sections and cannot escape them.
+        return
+    if str(properties.get("on_bulge") or "refuse") != "refuse":
+        return
+    report = _loft_bulge(result, sections)
+    if not report["excessive"]:
+        return
+    report["max_degree"] = int(properties.get("max_degree", 5))
+    raise PartOperationError(
+        f"api.{operation}: the lofted surface swings {report['bulge_mm']} mm "
+        f"outside the sections it interpolates along {report['bulge_axis']} — "
+        f"{report['bulge_share']:.0%} of their own "
+        f"{report['section_span_mm']} mm span.",
+        stage="part_result_validation",
+        operation=operation,
+        parameter=parameter,
+        observed=report,
+        correction=(
+            "A loft is meant to pass through its sections, not swing wide "
+            "between them. Lower max_degree — 3 interpolates the same table "
+            "without oscillating, and the default 5 is what overshoots on "
+            "unevenly spaced sections; or add a section in the longest gap; "
+            "or pass ruled=True for a straight loft. on_bulge='allow' keeps "
+            "this shape if it is the one you meant."
+        ),
+    )
+
+
 def _lofted_cage(
     operation: str, payload: dict[str, Any], properties: dict[str, Any]
 ) -> Any:
@@ -725,12 +851,14 @@ def _lofted_cage(
         curve.interpolate([Vector(*point) for point in points], PeriodicFlag=True)
         sections.append(Part.Wire([curve.toShape()]))
 
-    return Part.makeLoft(
+    built = Part.makeLoft(
         sections,
         bool(properties.get("solid", True)),
         bool(properties.get("ruled")),
         bool(properties.get("closed")),
     )
+    _check_loft_bulge(operation, built, sections, properties, parameter="cage")
+    return built
 
 
 #: Below this a common volume is two faces touching, which is what a mate is
@@ -1129,6 +1257,26 @@ def _refine(shape: Any, enabled: bool, *, operation: str) -> Any:
             correction=(
                 "Set refine=False to inspect the unrefined boolean result, or repair "
                 "the upstream overlap/tolerance that caused refinement to collapse it."
+            ),
+        )
+    # An *invalid* refinement used to reach the caller's own validator, which
+    # then reported "OpenCascade produced an invalid shape" about a boolean
+    # that was fine. Measured on the wolf, where exactly one of two mirrored
+    # hind legs did this: the union was valid and `removeSplitter` was not
+    # (ADR-129). Naming the stage is the difference between a one-keyword fix
+    # and a rebuild of the leg.
+    if not refined.isValid():
+        raise PartOperationError(
+            f"api.{operation}: the boolean succeeded and refining its result "
+            f"produced an invalid shape",
+            stage="part_result_validation",
+            operation=operation,
+            correction=(
+                "Set refine=False: refinement only merges the redundant faces "
+                "a boolean leaves behind, so the unrefined result is the same "
+                "solid with more edges in it. If you need the merge, move the "
+                "inputs apart by a fraction of a millimetre — a surface that "
+                "is tangent to another is what refinement cannot resolve."
             ),
         )
     return refined
@@ -3140,13 +3288,15 @@ def _build(
                 _shape_list(operation, "sections", _argument(payload, 0, "sections"), minimum=2)
             )
         ]
-        return Part.makeLoft(
+        built = Part.makeLoft(
             sections,
             solid=bool(properties.get("solid")),
             ruled=bool(properties.get("ruled")),
             closed=bool(properties.get("closed")),
             max_degree=int(properties.get("max_degree", 5)),
         )
+        _check_loft_bulge(operation, built, sections, properties)
+        return built
     if operation == "sweep":
         raw_profile = _argument(payload, 0, "profile")
         if isinstance(raw_profile, list):

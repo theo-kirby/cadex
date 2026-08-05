@@ -25,6 +25,10 @@ _TOPOLOGY_TYPES = frozenset({"edge", "wire", "face", "shell", "solid", "compound
 _PUBLISHABLE_TYPES = frozenset({"wire", "face", "shell", "solid", "compound"})
 _JOIN_TYPES = frozenset({"arc", "tangent", "intersection"})
 _TRANSITION_TYPES = frozenset({"transformed", "right_corner", "round_corner"})
+#: What a loft does when its surface escapes the sections it interpolates
+#: (ADR-129). There is no "reduce" here: the fix is a different table or a
+#: lower degree, and choosing one for the model would be inventing a shape.
+_LOFT_BULGE_MODES = frozenset({"refuse", "allow"})
 #: What a swept section does about its guide curve (ADR-128). The names are
 #: ours and the meanings are measured: OCCT spells these ``BRepFill_NoContact``,
 #: ``BRepFill_Contact`` and ``BRepFill_ContactOnBorder``, and "contact" there
@@ -642,6 +646,20 @@ def _blend_failure_mode(operation: str, value: Any) -> str:
             operation,
             "on_failure",
             f"must be one of {sorted(_BLEND_FAILURE_MODES)}",
+            value,
+        )
+    return clean
+
+
+def _bulge_mode(operation: str, value: Any) -> str:
+    """Validate ``on_bulge`` for the lofting ops (ADR-129)."""
+
+    clean = str(value or "").strip().lower()
+    if clean not in _LOFT_BULGE_MODES:
+        raise _error(
+            operation,
+            "on_bulge",
+            f"must be one of {sorted(_LOFT_BULGE_MODES)}",
             value,
         )
     return clean
@@ -1417,10 +1435,18 @@ class PartDomainAPI:
         ruled: bool = False,
         closed: bool = False,
         max_degree: int = 5,
+        on_bulge: str = "refuse",
         output_type: str | None = None,
         label: str = "",
     ) -> DomainValue:
-        """Loft through at least two wire sections; optionally create a solid."""
+        """Loft through at least two wire sections; optionally create a solid.
+
+        ``on_bulge`` guards the one way a loft lies to you: the surface is
+        interpolated, so on an unevenly spaced table it can swing far outside
+        the sections it was built from and still be a valid solid. The
+        default refuses that with the millimetres; ``"allow"`` keeps the
+        shape (ADR-129).
+        """
 
         operation = "loft"
         inferred = "solid" if bool(solid) else "shell"
@@ -1433,6 +1459,7 @@ class PartDomainAPI:
             ruled=bool(ruled),
             closed=bool(closed),
             max_degree=_integer(operation, "max_degree", max_degree, minimum=1, maximum=25),
+            on_bulge=_bulge_mode(operation, on_bulge),
             label=label,
         )
 
@@ -2704,6 +2731,7 @@ class PartDomainAPI:
         solid: bool = True,
         closed: bool = False,
         ruled: bool = False,
+        on_bulge: str = "refuse",
         label: str = "",
     ) -> DomainValue:
         """Loft the sections of one declared cage (ADR-127).
@@ -2716,7 +2744,10 @@ class PartDomainAPI:
 
         The same loft the script could write by hand, over a table it can
         also drag. ``ruled`` lofts straight between sections instead of
-        fairing a spline through them.
+        fairing a spline through them, and ``on_bulge`` is ``part.loft``'s
+        guard against a spline that swings outside the rings it was given
+        (ADR-129) — a cage is a table of the shape, so a loft that ignores it
+        is exactly the failure the table exists to prevent.
         """
 
         operation = "loft_cage"
@@ -2740,6 +2771,7 @@ class PartDomainAPI:
             solid=bool(solid),
             closed=bool(closed),
             ruled=bool(ruled),
+            on_bulge=_bulge_mode(operation, on_bulge),
             label=label,
         )
 

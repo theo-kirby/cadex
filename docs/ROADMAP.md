@@ -1202,10 +1202,22 @@ supplying only the gesture (O3).
       is what answers `docs/VISION.md`'s open question about interactive mesh
       editing: as engine ops, on a declared table, with the shell supplying
       only the gesture.
+- [x] **O3b — A loft that is not the shape its own table describes**
+      (ADR-129, 2026-08-05). `part.loft` and `part.loft_cage` measure how far
+      the surface escapes the sections it was built from and refuse past a
+      quarter of their span; `on_bulge="allow"` keeps it. A refinement that
+      produces an invalid shape now names itself instead of being reported as
+      a failed boolean. Found by rebuilding the wolf: **one of its thirteen
+      lofts enclosed 4.5× the volume of a straight loft through the identical
+      sections**, which is the plate O0's first render showed and §4
+      mis-attributed to the leg roots. The wolf is now eleven-thirteenths
+      cages and its half-width falls from ±150.2 mm to ±73.0 mm.
 - [ ] **O2b — Swept-volume clearance.** Parked by decision, not dropped: it
       roughly doubles O2.
-- [ ] **O4 — subD.** Parked, unscheduled. It reuses O3's table, overlay and
-      apply path, which is the argument for doing sections first.
+- [ ] **O4 — subD.** Parked, unscheduled — and the cage has now been used in
+      anger, so what it still cannot do is known: a **curved spine** (the
+      wolf's neck and tail are the two bodies that stayed hand-written) and
+      **closing an end**. Neither is subdivision. Those come first.
 
 ## Verification
 
