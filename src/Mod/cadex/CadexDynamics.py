@@ -40,6 +40,8 @@ Conventions, chosen once and not renegotiated anywhere downstream:
 from __future__ import annotations
 
 import ast
+import hashlib
+import json
 import math
 from typing import Any, Mapping, MutableMapping, Sequence
 
@@ -5026,6 +5028,370 @@ MAXIMUM_TASK_BYTES = 1024 * 1024
 
 #: The schema the bundle declares, and the version a reader checks first.
 TASK_SCHEMA = "cadex-training-task-v1"
+
+
+# ---------------------------------------------------------------------------
+# Task identity: what decides behaviour, and what merely records where a
+# number came from (ADR-134).
+# ---------------------------------------------------------------------------
+
+#: The fields that decide what a policy is optimising. Written out rather than
+#: derived as "everything except the exclusions below", so a schema that grows
+#: a field is a **decision** to include it rather than a silent widening of
+#: what "the same task" means -- the same discipline ``_MJCF_MODEL_FIELDS``
+#: keeps for the model.
+#:
+#: ``mujoco_version`` is in here, and it is the one that looks like metadata
+#: and is not: MuJoCo disclaims cross-version numerical reproducibility
+#: outright (hazard 3), so two bundles that differ only there describe two
+#: different dynamics.
+TASK_SEMANTIC_FIELDS = (
+    "schema",
+    "mujoco_version",
+    "variation_algorithm",
+    "functions",
+    "episode",
+    "observations",
+    "actions",
+    "reward",
+    "termination",
+    "reset_variation",
+    "disturbance",
+    "randomisation",
+)
+
+#: The bundle-level fields deliberately left out, and why each one is out.
+#:
+#: ``label`` is the script's name for the task. Experiment 004's clamped arm
+#: was produced by hand and labelled ``stand12``; the script that now produces
+#: the same arm from source labels it ``stand``. Nothing about the mechanism,
+#: the reward or the action space differs.
+#:
+#: ``model`` is a path, a byte count and a digest -- a statement about where a
+#: file landed. The **model itself** is not excluded from the comparison: it is
+#: compared as a model, by :func:`model_differences`, because two bundles
+#: agreeing on every number while pointing at different mechanisms is exactly
+#: the hole a digest-free comparison would open.
+TASK_PROVENANCE_FIELDS = ("label", "model")
+
+#: Per-action fields left out, for the reason ``_POLICY_ACTION_FIELDS`` already
+#: leaves them out of ``verify_policy``: they describe how the bundle *derived*
+#: a bound and what to write without a policy, neither of which a trained
+#: network has an opinion about.
+#:
+#: ADR-131 is why this is not hypothetical. Before it, a ±25° command range on
+#: a ±45° joint could only be had by editing the derived bundle, which reported
+#: ``source`` as ``angle_limits_degrees`` -- the joint's limits, which are not
+#: where ±25 came from. ADR-131 made the range sayable in the script and
+#: reports ``command_limits_degrees`` honestly. Every action **number** is
+#: identical between the two; only the provenance string differs, and it moved
+#: the whole-file hash.
+ACTION_PROVENANCE_FIELDS = ("source", "fallback")
+
+
+def _canonical_number(value: float) -> str:
+    """One number, as the shortest text that round-trips it.
+
+    ``repr`` of a Python float is the shortest decimal that reads back to the
+    same double, and it is the same string on every platform for the same
+    double -- which is the property a digest needs and ``%.17g`` does not have
+    (it is exact but not unique).
+
+    Two normalisations, both of which have bitten something in this
+    repository:
+
+    * **integers and floats agree.** ``30`` and ``30.0`` are different JSON
+      tokens for one action bound, and which one a writer emits is not a fact
+      about the task.
+    * **negative zero is zero.** ``-0.0 == 0.0`` is true, so a comparison
+      would not see it, and ``repr`` would still put a minus sign in the
+      digest. That is the same trap ADR-133 turned off at the MJCF writer.
+    """
+
+    number = float(value)
+    if not math.isfinite(number):
+        raise DynamicsError(
+            f"A task bundle carries {number!r} where a number belongs.",
+            reason="task_not_finite",
+            correction=(
+                "Every number in a bundle is a bound, a weight, a rate or an "
+                "address. None of them has a meaningful infinity or NaN, and "
+                "a digest over one would not be stable."
+            ),
+            observed={"value": repr(number)},
+        )
+    if number == 0.0:
+        return "0.0"
+    return repr(number)
+
+
+def _canonical_text(value: Any) -> str:
+    """One JSON-shaped value as canonical text, for hashing and comparing.
+
+    Mappings are emitted in sorted key order and numbers through
+    :func:`_canonical_number`, so the text depends on the *content* and not on
+    the writer's key order or float formatting. Strings stay quoted and
+    numbers stay bare, which is what keeps the string ``"30.0"`` and the
+    number ``30.0`` from digesting alike.
+    """
+
+    if value is None:
+        return "null"
+    # Before the number branch: ``isinstance(True, int)`` is true.
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return _canonical_number(value)
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=True, sort_keys=True)
+    if isinstance(value, Mapping):
+        return "{" + ",".join(
+            f"{json.dumps(str(key), ensure_ascii=True)}:{_canonical_text(item)}"
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        ) + "}"
+    if isinstance(value, (list, tuple)):
+        return "[" + ",".join(_canonical_text(item) for item in value) + "]"
+    raise DynamicsError(
+        f"A task bundle carries a {type(value).__name__} where JSON belongs.",
+        reason="task_not_json",
+        correction="A bundle is JSON: objects, arrays, strings, numbers, "
+                   "booleans and null.",
+        observed={"type": type(value).__name__},
+    )
+
+
+def task_semantic_view(task: Mapping[str, Any]) -> dict[str, Any]:
+    """The part of a bundle that decides what a policy learned.
+
+    :data:`TASK_SEMANTIC_FIELDS`, with :data:`ACTION_PROVENANCE_FIELDS`
+    dropped from every action row. A field the bundle does not carry is
+    absent rather than defaulted -- a bundle with no ``disturbance`` and a
+    bundle with an empty one are the same task, and both are distinguishable
+    from one that declares a shove.
+    """
+
+    view: dict[str, Any] = {}
+    for field in TASK_SEMANTIC_FIELDS:
+        if field not in task:
+            continue
+        if field != "actions":
+            view[field] = task[field]
+            continue
+        rows = task[field]
+        view[field] = [
+            {
+                key: item
+                for key, item in dict(row).items()
+                if key not in ACTION_PROVENANCE_FIELDS
+            }
+            if isinstance(row, Mapping)
+            else row
+            for row in (rows if isinstance(rows, (list, tuple)) else [])
+        ]
+    return view
+
+
+def task_semantic_digest(task: Mapping[str, Any]) -> str:
+    """A digest over what the task *is*, not over how its file was written.
+
+    The whole-file hash a ``.cxpolicy`` records stays exactly as it is -- this
+    is not a replacement for it and ``verify_policy`` is unchanged. It is the
+    primitive that lets a *second* bundle be shown equivalent to the one a
+    policy was trained on, which is what ADR-134 needs and what makes a
+    policy replayable from a script that produces the same task by a different
+    route.
+
+    Stable across key order, across ``30`` versus ``30.0``, across a renamed
+    task and across a corrected ``source`` string. Not stable across a changed
+    reward weight, episode length, termination threshold, action range,
+    observation channel or MuJoCo version -- which is the list ADR-134's
+    refusal tests walk one at a time.
+    """
+
+    text = _canonical_text(task_semantic_view(task))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _differences(left: Any, right: Any, path: str,
+                 found: list[str], limit: int) -> None:
+    """Walk two canonical values together, naming the paths that differ.
+
+    Depth-first and **bounded**. The bound is not politeness: a bundle carries
+    39 observation rows and 31 randomisation entries, and a mechanism that
+    changed would report every one of them, which buries the first and most
+    diagnostic line under three hundred others.
+    """
+
+    if len(found) >= limit:
+        return
+    if isinstance(left, Mapping) and isinstance(right, Mapping):
+        for key in sorted(set(left) | set(right), key=str):
+            here = f"{path}.{key}" if path else str(key)
+            if key not in left:
+                found.append(f"{here}: absent here, {_canonical_text(right[key])} there")
+            elif key not in right:
+                found.append(f"{here}: {_canonical_text(left[key])} here, absent there")
+            else:
+                _differences(left[key], right[key], here, found, limit)
+            if len(found) >= limit:
+                return
+        return
+    if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
+        if len(left) != len(right):
+            found.append(
+                f"{path}: {len(left)} entries here, {len(right)} there"
+            )
+            return
+        for index, (here_item, there_item) in enumerate(zip(left, right)):
+            _differences(here_item, there_item, f"{path}[{index}]", found, limit)
+            if len(found) >= limit:
+                return
+        return
+    here_text = _canonical_text(left)
+    there_text = _canonical_text(right)
+    if here_text != there_text:
+        found.append(f"{path}: {here_text} here, {there_text} there")
+
+
+#: How many differing fields a refusal names before it stops counting.
+MAXIMUM_REPORTED_DIFFERENCES = 12
+
+#: The one model field ADR-133's snap can move, and the most it can move it by.
+#:
+#: :func:`model_differences` needs an absolute escape hatch for exactly this
+#: field and for no other, and the reason is a property of ``_field_drift``:
+#: it divides by the field's own largest magnitude, so a model whose *only*
+#: inertial offset is symmetry noise has a ``body_ipos`` whose whole scale is
+#: 5e-11, and ``5.10087e-11`` against ``0`` reads as **1.0 relative drift** --
+#: total disagreement about two numbers that are both zero. Measured; it is
+#: what the first version of this comparison did.
+#:
+#: The floor is deliberately not applied to every field. 1e-9 is negligible
+#: against a mass in kg and against a coordinate in metres, and it is *looser*
+#: than the relative bound for an inertia tensor -- a sub-kilogram limb's
+#: moments are around 1e-5 kg·m², so a 1e-9 absolute floor would admit 1e-4
+#: relative where the field bound admits 1e-5. A blanket floor would weaken
+#: the check it is here to make possible.
+#: Stated literally rather than as ``INERTIAL_ZERO_TOLERANCE_MM /
+#: MM_PER_METRE``, which evaluates to 9.999999999999999e-10: a bound should
+#: not carry a division's rounding wobble. It **is** that quantity, and
+#: ``test_the_floor_is_the_snap_in_metres`` is what keeps the two from
+#: drifting apart.
+MODEL_ABSOLUTE_FLOOR_M = 1.0e-9
+MODEL_ABSOLUTE_FLOOR_FIELDS = frozenset({"body_ipos"})
+
+
+def _field_absolute_drift(first: Any, second: Any) -> float:
+    """The worst absolute difference between two model fields, in their unit."""
+
+    left = _flattened(first)
+    right = _flattened(second)
+    if len(left) != len(right):
+        return float("inf")
+    if not left:
+        return 0.0
+    return max(abs(a - b) for a, b in zip(left, right))
+
+
+def task_differences(
+    left: Mapping[str, Any], right: Mapping[str, Any]
+) -> list[str]:
+    """Every semantic field on which two bundles disagree, by path.
+
+    Empty exactly when :func:`task_semantic_digest` agrees, which
+    ``test_a_digest_match_and_an_empty_diff_are_the_same_claim`` asserts
+    rather than assumes -- two functions that could disagree about
+    equivalence would make one of them a lie.
+    """
+
+    found: list[str] = []
+    _differences(
+        task_semantic_view(left), task_semantic_view(right), "",
+        found, MAXIMUM_REPORTED_DIFFERENCES,
+    )
+    return found
+
+
+def model_differences(
+    left_xml: bytes, right_xml: bytes, *, context: str = "these models"
+) -> list[str]:
+    """Whether two MJCF files describe the same mechanism, by compiling both.
+
+    **This is the half that keeps ADR-134 honest.** A bundle comparison that
+    dropped ``model.sha256`` and stopped there would accept a policy against a
+    mechanism with the same joint names and limits and completely different
+    masses -- the action table would match, every number in the bundle would
+    match, and the robot would be a different robot.
+
+    So the models are compared as models: compiled, then diffed on
+    :data:`_MJCF_COUNT_FIELDS` exactly and on :data:`_MJCF_MODEL_FIELDS` plus
+    :data:`_MJCF_OPTION_FIELDS` at :data:`MJCF_FIELD_TOLERANCE` -- the same
+    lists and the same bound ``export_mjcf`` already holds its own round trip
+    to, because "the same model" should not mean two different things in one
+    module.
+
+    The tolerance is what admits ADR-133. A pre-snap file says
+    ``5.10087e-11`` where a post-snap one says ``0``; that is 2.1e-15 m on a
+    body 0.3 m tall, which is fifteen orders of magnitude inside 1e-5 relative.
+    A real geometry change is not.
+    """
+
+    mujoco = _mujoco_module()
+    found: list[str] = []
+    try:
+        left = mujoco.MjModel.from_xml_string(left_xml.decode("utf-8"))
+        right = mujoco.MjModel.from_xml_string(right_xml.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise DynamicsError(
+            f"One of {context} is not a loadable MJCF: {exc}",
+            reason="model_not_loadable",
+            correction=(
+                "Both files must be MJCF this MuJoCo can compile. A truncated "
+                "or hand-edited model is refused here rather than compared."
+            ),
+        ) from exc
+
+    for field in _MJCF_COUNT_FIELDS:
+        here, there = int(getattr(left, field)), int(getattr(right, field))
+        if here != there:
+            found.append(f"{field}: {here} here, {there} there")
+    # A field comparison over models of different shapes is meaningless, and
+    # would report every array as differing in length. Same order
+    # ``_verify_exported_counts`` uses, and for the same reason.
+    if found:
+        return found[:MAXIMUM_REPORTED_DIFFERENCES]
+
+    for field in _MJCF_MODEL_FIELDS:
+        here, there = getattr(left, field), getattr(right, field)
+        drift = _field_drift(here, there)
+        if drift > MJCF_FIELD_TOLERANCE:
+            absolute = _field_absolute_drift(here, there)
+            if (
+                field in MODEL_ABSOLUTE_FLOOR_FIELDS
+                and absolute <= MODEL_ABSOLUTE_FLOOR_M
+            ):
+                # ADR-133's snap, and nothing else, lands here: two
+                # coordinates a nanometre apart that are both zero.
+                continue
+            found.append(
+                f"{field}: {drift:.6g} relative drift, over "
+                f"{MJCF_FIELD_TOLERANCE:g}"
+                + (f" ({absolute:.6g} absolute, over "
+                   f"{MODEL_ABSOLUTE_FLOOR_M:g})"
+                   if field in MODEL_ABSOLUTE_FLOOR_FIELDS else "")
+            )
+        if len(found) >= MAXIMUM_REPORTED_DIFFERENCES:
+            return found
+    for name in _MJCF_OPTION_FIELDS:
+        here = _flattened(getattr(left.opt, name))
+        there = _flattened(getattr(right.opt, name))
+        # Solver settings are written or lost, never rounded -- so equality,
+        # exactly as ``_verify_exported_fields`` treats them.
+        if here != there:
+            found.append(f"opt.{name}: {here} here, {there} there")
+        if len(found) >= MAXIMUM_REPORTED_DIFFERENCES:
+            return found
+    return found
 
 #: What the observation vector may contain, script word by script word.
 #:
