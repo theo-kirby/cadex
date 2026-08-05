@@ -12680,3 +12680,106 @@ not-a-position-servo refusal, and the half-stated/zero-width/inverted
 refusals. `test_the_actuator_surface_did_not_change` is renamed
 `test_the_actuator_surface_is_exactly_this` and updated — it is a guard on the
 surface, and this is a deliberate change to it.
+## ADR-124 — `--init-from`: a warm start, and deliberately not a resume (2026-08-05)
+
+**Decision.** `cadex_train.py --init-from <policy.cxpolicy>` starts the actor
+from an existing policy's weights instead of a fresh network, restores the
+observation normaliser beside them, and leaves **the critic and the optimiser
+fresh**. It is refused unless the policy matches the bundle's task and model
+digests, its observation channels in order, its action table on
+`_POLICY_ACTION_FIELDS`, and the network shape `--hidden` asks for.
+
+### What it costs not to have it
+
+Every run started from zero. Experiment 003's three seeds all peaked at
+iteration **1700–1750 of 1800** — the last two checkpoints written — so the
+obvious next question was where improvement actually stops, and answering it
+meant re-running from zero at a greater length: **~6.9 h to reach 700 new
+iterations, with 5 h of it recomputing a curve already on disk.** One such arm
+was dispatched and cancelled thirty minutes in once that was written down.
+
+Measured here on a ten-joint biped, three iterations each, same bundle and
+same seed:
+
+| | cold | `--init-from` iteration 1750 |
+|---|---|---|
+| iteration 0, reward/step | +3.27 | **+4.32** |
+| iteration 0, episode steps | 88.2 | **598.0** |
+| iteration 2, reward/step | +3.11 *(falling)* | **+4.68** *(rising)* |
+| iteration 2, episode steps | 48.6 | **542.5** |
+
+The episode length is the one to read: the warm-started policy is standing,
+and the cold one is falling over.
+
+### A warm start, not a resume, and the container decides that
+
+Only the actor is in a `.cxpolicy` — `snapshot()` records the network the
+engine can play, and the critic is training scaffolding. So a resume is not
+available without changing the format, and this does not pretend otherwise.
+
+**Leaving the optimiser fresh is free rather than a compromise**, which is
+the detail that makes this small: Adam is hand-rolled and its moments are
+`zeros_like(params)`, so they are correctly-shaped zeros whether the actor is
+swapped in before or after they are taken.
+
+**What a fresh critic costs is worth stating**: a trained actor with a random
+critic produces large early advantages, which interacts with `--clip`. The
+measurements above are with `--clip` at its default and the first iterations
+improve rather than diverge, but a warm start into an unusually large `--clip`
+is the case to watch.
+
+### The normaliser travels with the weights
+
+Without it the transfer is mostly wasted. The actor was trained to read
+*normalised* observations; a fresh normaliser feeds it raw ones, so a policy
+that stood up perfectly well starts by seeing every channel shifted and scaled
+wrongly and spends its early iterations unlearning that. `header["normaliser"]`
+carries `mean` and `std`; the trainer's state is `mean` and `variance =
+std**2`. `seen` is not recorded and restarts at `1.0e-4`, so the restored
+statistics are re-estimated quickly rather than frozen — the conservative
+direction, since a stale mean that cannot move would be worse than one that
+can.
+
+### Provenance is a digest, never a path
+
+`policy_header` folds every option into `hyperparameters`, so left alone this
+flag would stamp one machine's filesystem layout into every policy a run
+writes. That is not provenance: it does not identify the bytes and does not
+survive being copied. `init_from` is excluded from `hyperparameters` — as
+`bundle` and `out` already are — and recorded under `training.init_from` as
+the source policy's **sha256**, its label, the iterations it had seen, and the
+`trainer_sha256` that produced it. A warm start across an update-rule change
+is a thing somebody will want to know about later, and that is the only place
+it can be said.
+
+### A fourth implementation of the container, and the test that pins it
+
+The trainer may not import `CadexDynamics` — `test_dynamics_policy_trainer`
+asserts it appears only as a deferred, caught import, and that is what keeps
+the trainer a thing you copy to a box. So the format is now written twice and
+read twice. `test_the_trainers_decoder_agrees_with_the_engines` is the
+mitigation, beside the two encoder-agreement tests it mirrors, and
+`test_the_trainers_action_fields_agree_with_the_engines` pins the fourth copy
+of `_POLICY_ACTION_FIELDS`.
+
+### It changes `cadex_train.py`'s sha256
+
+Unavoidably, and that invalidates every recorded trainer pin plus
+`remote_train.sh`'s own check. Stated here rather than discovered later. The
+flag is a **no-op when unused**, verified more strongly than the existing
+regression asks: two runs of the modified trainer and one run of the
+unmodified trainer at the same seed produce the **same** digest over
+`observations`, `network`, `normaliser` and `evaluation`. Comparisons that
+must cross this boundary should pay for a bridge run — one seed of an existing
+arm retrained under the new trainer and scored against where the old one
+landed — rather than treating the boundary as uncrossable.
+
+### Verification
+
+`pixi run test-engine`: 1511 passed, 22 skipped. Four new tests — decoder
+agreement, decoder refusals, the action-field table, and the
+flatten/unflatten round trip that pins the weight layout `(inputs, outputs)`
+row-major then bias. End to end on an RTX 5090 as tabled above, with the
+witness agreeing to 1.6e-07 (627x inside tolerance) on the warm-started
+policy, and both refusal paths exercised against a mismatched bundle and a
+mismatched `--hidden`.
