@@ -64,6 +64,17 @@ TASK_SCHEMA = "cadex-training-task-v1"
 POLICY_SCHEMA = "cadex-policy-v1"
 POLICY_MAGIC = b"CXPOLICY1\n"
 
+#: Which fields of an action row have to agree for a policy to belong to a
+#: bundle. The engine's ``CadexDynamics._POLICY_ACTION_FIELDS``, copied here
+#: because this file may not import it, and pinned equal by
+#: ``test_the_trainers_action_fields_agree_with_the_engines``.
+#:
+#: Note what is *absent*: ``source``. Two bundles that derive the same
+#: numbers by different routes -- a joint's limits, or a declared command
+#: range that happens to coincide with them -- describe the same action space
+#: and verify the same policy. That is deliberate (ADR-131).
+_POLICY_ACTION_FIELDS = ("actuator", "index", "unit", "low", "high", "scale")
+
 #: The schema of ``progress.json`` -- the one artifact a run publishes while
 #: it is still running, and the only thing ``remote_train.sh watch`` and the
 #: shell's Training panel read. Versioned like every other file this tree
@@ -188,6 +199,149 @@ def encode_policy(header: dict[str, Any], weights: Sequence[float]) -> bytes:
             struct.pack(f"<{len(values)}f", *values),
         )
     )
+
+
+def decode_policy(blob: bytes, *, context: str = "this policy") -> dict[str, Any]:
+    """The inverse of :func:`encode_policy`: header, and the flat float32 blob.
+
+    **A third implementation of the same eight lines**, and worth being
+    uncomfortable about. ``CadexDynamics.decode_policy`` is the engine's, and
+    this file may not import it -- ``test_dynamics_policy_trainer`` asserts
+    that ``CadexDynamics`` appears only as a deferred, caught import, and
+    that is the discipline that keeps the trainer a thing you copy to a box.
+    So the container is written twice and now read twice, and the only
+    honest mitigation is the agreement test beside the two encoder-agreement
+    tests: ``test_the_trainers_decoder_agrees_with_the_engines``.
+
+    ``struct`` is imported here rather than at module scope for the same
+    reason :func:`encode_policy` does it: the guardrail allows it deferred
+    and refuses it at column zero.
+    """
+
+    import struct
+
+    if not blob.startswith(POLICY_MAGIC):
+        raise SystemExit(
+            f"{context} is not a .cxpolicy container: it does not begin with "
+            f"{POLICY_MAGIC!r}."
+        )
+    start = len(POLICY_MAGIC)
+    if len(blob) < start + 8:
+        raise SystemExit(f"{context} is truncated: no header length.")
+    length = int.from_bytes(blob[start:start + 8], "little")
+    head = start + 8
+    if len(blob) < head + length:
+        raise SystemExit(
+            f"{context} is truncated: header claims {length} bytes and "
+            f"{len(blob) - head} remain."
+        )
+    try:
+        header = json.loads(blob[head:head + length].decode("ascii"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise SystemExit(f"{context} has an unreadable header: {exc}") from exc
+    if not isinstance(header, dict):
+        raise SystemExit(f"{context} has a header that is not an object.")
+    rest = blob[head + length:]
+    if len(rest) % 4:
+        raise SystemExit(
+            f"{context} has a weight blob of {len(rest)} bytes, which is not "
+            "a whole number of float32."
+        )
+    count = len(rest) // 4
+    weights = list(struct.unpack(f"<{count}f", rest))
+    return {"header": header, "weights": weights}
+
+
+def unflatten_parameters(np: Any, weights: Sequence[float], shapes):
+    """The blob back into layers, in the layout :func:`flat_parameters` wrote.
+
+    Per layer, in order: the weight matrix ``(inputs, outputs)`` row-major,
+    then the bias. The same unpack loop exists in ``rollout``'s replay and in
+    the engine; this is the one the trainer warm-starts from.
+    """
+
+    expected = sum(inputs * outputs + outputs for inputs, outputs in shapes)
+    if len(weights) != expected:
+        raise SystemExit(
+            f"the policy's weight blob holds {len(weights)} floats and this "
+            f"network needs {expected}."
+        )
+    flat = np.asarray(weights, dtype=np.float32)
+    parameters = []
+    offset = 0
+    for inputs, outputs in shapes:
+        size = inputs * outputs
+        weight = flat[offset:offset + size].reshape((inputs, outputs))
+        offset += size
+        bias = flat[offset:offset + outputs]
+        offset += outputs
+        parameters.append((weight, bias))
+    return parameters
+
+
+def check_policy_fits(
+    header: dict[str, Any],
+    bundle: dict[str, Any],
+    options: argparse.Namespace,
+) -> None:
+    """``--init-from``'s half of ``CadexDynamics.verify_policy``.
+
+    A warm start is only meaningful when the network being warmed is the same
+    network, against the same task, reading the same channels in the same
+    order. These are the engine's own six checks, minus the witness -- the
+    trainer is about to *train* these weights, so replaying them bit-for-bit
+    proves nothing it needs.
+
+    Every one of these is a silent-wrong if it is skipped. A policy from a
+    task with two reward terms swapped has the right shape and the wrong
+    gradient; one whose observation order differs by two channels trains
+    perfectly well towards nonsense.
+    """
+
+    def refuse(what: str, expected: Any, found: Any) -> None:
+        raise SystemExit(
+            f"--init-from: {what} does not match this bundle.\n"
+            f"  bundle: {expected}\n"
+            f"  policy: {found}\n"
+            "A warm start has to be the same network on the same task; "
+            "otherwise the weights mean something else."
+        )
+
+    task = header.get("task") or {}
+    if task.get("sha256") != bundle["task_sha256"]:
+        refuse("the task digest", bundle["task_sha256"], task.get("sha256"))
+    model = header.get("model") or {}
+    if model.get("sha256") != bundle["model_sha256"]:
+        refuse("the model digest", bundle["model_sha256"], model.get("sha256"))
+    wanted_channels = channels(bundle["task"])
+    if list(header.get("observations") or []) != wanted_channels:
+        refuse(
+            "the observation channels, in order",
+            wanted_channels,
+            header.get("observations"),
+        )
+    wanted_actions = list(bundle["task"]["actions"])
+    found_actions = list(header.get("actions") or [])
+    if len(found_actions) != len(wanted_actions):
+        refuse("the action count", len(wanted_actions), len(found_actions))
+    for index, (want, got) in enumerate(zip(wanted_actions, found_actions)):
+        for field in _POLICY_ACTION_FIELDS:
+            if want.get(field) != got.get(field):
+                refuse(
+                    f"action {index}'s {field}", want.get(field), got.get(field)
+                )
+    network = header.get("network") or {}
+    wanted_layers = [
+        list(shape)
+        for shape in layer_shapes(
+            len(wanted_channels), len(wanted_actions), options.hidden
+        )
+    ]
+    found_layers = [list(shape) for shape in (network.get("layers") or [])]
+    if found_layers != wanted_layers:
+        refuse(
+            "the network shape (check --hidden)", wanted_layers, found_layers
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -774,6 +928,67 @@ def train(
     variance = jnp.ones((len(names),), dtype=jnp.float32)
     seen = jnp.float32(1.0e-4)
 
+    init_from_provenance: dict[str, Any] | None = None
+    if getattr(options, "init_from", ""):
+        # Applied here, after the fresh network and the zeroed Adam moments
+        # exist, and that ordering is the whole trick. Every moment is
+        # `zeros_like(params)`, so swapping the actor in *before* they are
+        # taken would be identical -- and swapping it in after would leave
+        # them the right shape anyway. "Leave the optimiser fresh" is
+        # therefore free rather than a compromise, which is what makes this
+        # a warm start and not a resume: a resume would need the moments,
+        # and the container does not carry them.
+        source = Path(options.init_from).expanduser()
+        try:
+            blob = source.read_bytes()
+        except OSError as exc:
+            raise SystemExit(f"--init-from: cannot read {source}: {exc}") from exc
+        decoded = decode_policy(blob, context=str(source))
+        check_policy_fits(decoded["header"], bundle, options)
+        restored = unflatten_parameters(np, decoded["weights"], shapes)
+        params["actor"] = [
+            (jnp.asarray(weight), jnp.asarray(bias))
+            for weight, bias in restored
+        ]
+        moment1, moment2 = zeros_like(params), zeros_like(params)
+
+        # Without this the transfer is mostly wasted. The actor was trained
+        # to read *normalised* observations, and a fresh normaliser feeds it
+        # raw ones -- so a policy that stood up perfectly well starts by
+        # seeing every channel shifted and scaled wrongly, and spends its
+        # early iterations unlearning that before it can improve on
+        # anything.
+        #
+        # `seen` is not in the container and restarts at its usual 1.0e-4, so
+        # the restored statistics are re-estimated quickly rather than held.
+        # That is the conservative direction: a stale mean that cannot move
+        # would be worse than one that can.
+        stats = decoded["header"].get("normaliser") or {}
+        if stats.get("mean") is not None and stats.get("std") is not None:
+            mean = jnp.asarray(stats["mean"], dtype=jnp.float32)
+            variance = jnp.asarray(
+                np.square(np.asarray(stats["std"], dtype=np.float32)),
+                dtype=jnp.float32,
+            )
+
+        source_training = decoded["header"].get("training") or {}
+        init_from_provenance = {
+            "sha256": hashlib.sha256(blob).hexdigest(),
+            "label": str(decoded["header"].get("label") or ""),
+            "iterations": source_training.get("iterations"),
+            # Which trainer produced the weights being warmed. A warm start
+            # across an update-rule change is a thing somebody will want to
+            # know about later, and this is the only place it can be said.
+            "trainer_sha256": source_training.get("trainer_sha256"),
+        }
+        if not options.quiet:
+            print(
+                f"init-from  {source.name}  "
+                f"iterations={source_training.get('iterations')}  "
+                f"sha256={init_from_provenance['sha256'][:16]}…",
+                flush=True,
+            )
+
     scale_out = jnp.asarray(output_scale, dtype=jnp.float32)
     bias_out = jnp.asarray(output_bias, dtype=jnp.float32)
 
@@ -1131,6 +1346,13 @@ def train(
             "reward_curve": list(curve),
             "iterations": len(curve),
             "wall_time_s": float(wall),
+            # What this run started from, as a digest rather than a path.
+            # `policy_header` folds every option into `hyperparameters`, so
+            # left alone `--init-from` would stamp one machine's filesystem
+            # layout into every policy the run writes -- which is not
+            # provenance, because it does not identify the bytes and does not
+            # survive being copied to another box. The digest does both.
+            "init_from": init_from_provenance,
             "backend": jax.default_backend(),
             "devices": [str(device) for device in jax.devices()],
             "versions": {
@@ -1378,11 +1600,17 @@ def policy_header(
                 Path(__file__).resolve().read_bytes()
             ).hexdigest(),
             "seed": int(options.seed),
+            # ``init_from`` is excluded for the same reason ``bundle`` and
+            # ``out`` are: it is a path on one machine, not a hyperparameter.
+            # What it started from is recorded as a digest under
+            # ``init_from`` below, which identifies the bytes and survives
+            # being copied somewhere else.
             "hyperparameters": {
                 key: value
                 for key, value in sorted(vars(options).items())
-                if key not in ("bundle", "out", "quiet", "label")
+                if key not in ("bundle", "out", "quiet", "label", "init_from")
             },
+            "init_from": trained.get("init_from"),
             # The iterations this policy actually saw, which for a
             # checkpoint is not `options.iterations`. A checkpoint claiming
             # the run's total would be a file that lies about its own age.
@@ -1515,6 +1743,19 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--entropy", type=float, default=1.0e-3)
     parser.add_argument("--value-weight", type=float, default=0.5)
     parser.add_argument("--initial-std", type=float, default=0.3)
+    parser.add_argument(
+        "--init-from",
+        default="",
+        metavar="POLICY",
+        help=(
+            "warm-start the actor from an existing .cxpolicy instead of a "
+            "fresh network. The policy must match this bundle's task and "
+            "model digests, its observation channels in order, its action "
+            "table and the network shape --hidden asks for. Only the actor "
+            "and the observation normaliser are carried: the critic and the "
+            "optimiser start fresh, because the container holds neither."
+        ),
+    )
     parser.add_argument("--label", default="")
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument(

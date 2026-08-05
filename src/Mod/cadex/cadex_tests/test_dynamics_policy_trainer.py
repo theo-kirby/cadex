@@ -305,6 +305,96 @@ def test_the_trainers_encoder_and_the_engines_produce_the_same_bytes() -> None:
     assert decoded["weights"] == container["weights"]
 
 
+def test_the_trainers_decoder_agrees_with_the_engines() -> None:
+    """The read half, pinned the way the write half already is.
+
+    ``--init-from`` needs the trainer to *read* a container, and the trainer
+    may not import ``CadexDynamics``. So the format is now implemented four
+    times -- encoded twice, decoded twice -- and this is what stops the
+    fourth from drifting. A decoder that disagreed would warm-start from
+    weights nobody wrote.
+    """
+
+    module = _trainer_module()
+    prepared = pf.swing_up_bundle()
+    container = pf.policy_container(prepared, normalise=True)
+    blob = dyn.encode_policy(container["header"], container["weights"])
+
+    theirs = module.decode_policy(blob)
+    ours = dyn.decode_policy(blob)
+    assert theirs["header"] == ours["header"] == container["header"]
+    assert theirs["weights"] == ours["weights"] == container["weights"]
+
+
+def test_the_trainers_decoder_refuses_what_is_not_a_container() -> None:
+    """Each refusal names what it looked at, because "invalid" is not a
+    diagnosis somebody can act on."""
+
+    module = _trainer_module()
+    prepared = pf.swing_up_bundle()
+    container = pf.policy_container(prepared, normalise=True)
+    blob = dyn.encode_policy(container["header"], container["weights"])
+
+    with pytest.raises(SystemExit, match="does not begin with"):
+        module.decode_policy(b"not a policy at all")
+    with pytest.raises(SystemExit, match="no header length"):
+        module.decode_policy(module.POLICY_MAGIC + b"\x00\x00")
+    with pytest.raises(SystemExit, match="truncated"):
+        module.decode_policy(blob[:len(blob) // 2])
+    # One byte short of a whole float32 is a real corruption and a silent
+    # one: the header still parses.
+    with pytest.raises(SystemExit, match="whole number of float32"):
+        module.decode_policy(blob + b"\x00")
+
+
+def test_the_trainers_action_fields_agree_with_the_engines() -> None:
+    """The fourth copy of a table, checked rather than remembered.
+
+    ``source`` is deliberately absent from both: two bundles deriving the
+    same numbers by different routes describe the same action space (ADR-131).
+    """
+
+    module = _trainer_module()
+    assert module._POLICY_ACTION_FIELDS == dyn._POLICY_ACTION_FIELDS
+    assert "source" not in module._POLICY_ACTION_FIELDS
+
+
+def test_unflattening_the_weights_inverts_flattening_them() -> None:
+    """The layout, round-tripped rather than described.
+
+    Per layer in order: the weight matrix ``(inputs, outputs)`` row-major,
+    then the bias. Getting this transposed produces a network of exactly the
+    right size that computes something else, and nothing downstream would
+    refuse it.
+    """
+
+    numpy = pytest.importorskip("numpy")
+    module = _trainer_module()
+    shapes = module.layer_shapes(5, 2, [4, 3])
+    assert shapes == [(5, 4), (4, 3), (3, 2)]
+
+    generator = numpy.random.default_rng(0)
+    original = [
+        (
+            generator.standard_normal((inputs, outputs)).astype(numpy.float32),
+            generator.standard_normal((outputs,)).astype(numpy.float32),
+        )
+        for inputs, outputs in shapes
+    ]
+    flat = module.flat_parameters(numpy, original)
+    restored = module.unflatten_parameters(numpy, flat, shapes)
+
+    assert len(restored) == len(original)
+    for (want_w, want_b), (got_w, got_b) in zip(original, restored):
+        assert got_w.shape == want_w.shape
+        assert got_b.shape == want_b.shape
+        assert numpy.array_equal(got_w, want_w)
+        assert numpy.array_equal(got_b, want_b)
+
+    with pytest.raises(SystemExit, match="needs"):
+        module.unflatten_parameters(numpy, flat[:-1], shapes)
+
+
 def test_the_two_encoders_agree_on_the_constants_that_define_the_format() -> None:
     module = _trainer_module()
     assert module.POLICY_SCHEMA == dyn.POLICY_SCHEMA
