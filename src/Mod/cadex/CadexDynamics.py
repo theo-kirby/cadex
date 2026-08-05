@@ -2783,6 +2783,14 @@ def actuator_records(
         stiffness = _declared("stiffness_nmm_per_deg", "stiffness_n_per_mm")
         damping = _declared("damping_nmms_per_deg", "damping_ns_per_mm")
         effort = _declared("torque_limit_nmm", "force_limit_n")
+        raw_command_limits = entry.get(
+            "command_limits_degrees" if angular else "command_limits_mm"
+        )
+        command_limits = (
+            None
+            if raw_command_limits is None
+            else [float(value) for value in raw_command_limits]
+        )
         control = entry.get(
             {
                 ("motor", True): "control_nmm",
@@ -2844,6 +2852,10 @@ def actuator_records(
                     "stiffness": stiffness,
                     "damping": damping,
                     "effort_limit": effort,
+                    # In the surface unit the script wrote, like every other
+                    # entry here. ``_action_bound`` narrows against it and the
+                    # bundle quotes a number the author would recognise.
+                    "command_limits": command_limits,
                 },
             }
         )
@@ -5596,6 +5608,48 @@ def _action_bound(
             )
         declared_pair = [float(value) for value in joint_limits["declared"]]
         low, high = declared_pair[0], declared_pair[1]
+        # A command range narrows what the policy may ASK for. It is not the
+        # joint's travel and it must never become the joint's travel: the
+        # mechanism keeps every degree it has, and only the action table
+        # moves. Refused when it is not strictly inside the joint, because a
+        # "narrowing" that widens is the author saying one thing and meaning
+        # another -- and because the original rationale, that a setpoint
+        # outside the joint's travel is a command the joint cannot obey,
+        # holds exactly as hard for a declared range as for a derived one.
+        commanded = record["declared"].get("command_limits")
+        if commanded is not None:
+            wanted_low, wanted_high = float(commanded[0]), float(commanded[1])
+            if wanted_low < low or wanted_high > high:
+                raise DynamicsError(
+                    f"{what} declares a command range of "
+                    f"[{wanted_low:g}, {wanted_high:g}] {unit}, which reaches "
+                    f"outside the joint's own travel of "
+                    f"[{low:g}, {high:g}] {unit}.",
+                    reason="command_range_exceeds_joint",
+                    correction=(
+                        "A command range narrows what a policy may ask for; "
+                        "it cannot buy travel the joint does not have. Widen "
+                        f"the joint's {declared} in FreeCAD if the mechanism "
+                        "really moves that far, or bring the command range "
+                        "inside it."
+                    ),
+                    observed={
+                        "actuator": str(record["mujoco_actuator"]),
+                        "commanded": [wanted_low, wanted_high],
+                        "joint": [low, high],
+                        "unit": unit,
+                    },
+                )
+            low, high = wanted_low, wanted_high
+            # The bundle must not claim this range came from the joint's
+            # limits when it did not. A reader comparing two runs needs to
+            # see that the action space was narrowed on purpose, and
+            # ``source`` is the only field that can say so.
+            declared = (
+                "command_limits_degrees"
+                if motion == "angular"
+                else "command_limits_mm"
+            )
 
     if not (math.isfinite(low) and math.isfinite(high)) or low >= high:
         raise DynamicsError(
