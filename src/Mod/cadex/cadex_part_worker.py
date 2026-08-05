@@ -472,6 +472,341 @@ def _selected_subshapes(
     return selected
 
 
+# -- blending: what to do when the kernel refuses some of the edges --------
+#
+# ``TopoShapePy::makeFillet`` builds a ``BRepFilletAPI_MakeFillet`` and calls
+# ``.Shape()`` without checking ``IsDone``, so one impossible edge in three
+# hundred throws away the other 299 and the model is told
+# ``15StdFail_NotDone`` and nothing else (ADR-125). None of what follows is a
+# C++ change: it is this module calling the existing binding more than once.
+
+#: Kernel calls one blend may spend looking for a workable radius and the
+#: failing edges. A bisection needs O(k log n) of them for k bad edges out of
+#: n -- but on a fused organic body one call is most of a second, so the cap
+#: is what stops a refusal costing half a minute. When it binds the result
+#: says so rather than quietly reporting less.
+_BLEND_PROBE_CALLS = 48
+
+#: ...and the same cap in wall-clock, which is the one that actually binds on
+#: a real body: the robot wolf's 91-edge seam set costs 0.4-0.5 s per attempt,
+#: so 48 calls of it is half a minute and nobody would wait for the answer.
+#: "How many kernel calls" is not what a person watching a rebuild counts.
+_BLEND_PROBE_SECONDS = 10.0
+
+#: How far down a reduced radius may go, as a fraction of what was asked.
+#: Below this the answer is "not at this radius" rather than a blend nobody
+#: would recognise as the one they asked for.
+_BLEND_RADIUS_FLOOR = 0.05
+
+#: Failing edges named in a refusal. The rest are counted, not listed: a
+#: refusal a model cannot read is as useless as one that says nothing.
+_BLEND_REPORTED_EDGES = 12
+
+
+class _BlendProbe:
+    """One shape, one operation, a counted budget of kernel attempts.
+
+    Every attempt is made against the **original** shape with a subset of its
+    own edges, which is not a stylistic choice: ``BRepFilletAPI_MakeFillet``
+    looks its edges up in the shape it was constructed with, so an edge taken
+    from a previous result cannot be passed to the next call.
+    """
+
+    def __init__(
+        self,
+        shape: Any,
+        operation: str,
+        *,
+        radius_end: float | None = None,
+        requested: float = 0.0,
+        cap: int = _BLEND_PROBE_CALLS,
+        seconds: float = _BLEND_PROBE_SECONDS,
+    ) -> None:
+        import time
+
+        self.shape = shape
+        self.operation = operation
+        self.radius_end = radius_end
+        #: The radius originally asked for, so a reduced attempt can scale
+        #: ``radius_end`` in proportion and keep the taper.
+        self.requested = float(requested)
+        self.cap = int(cap)
+        self.seconds = float(seconds)
+        self.calls = 0
+        self.spent = 0.0
+        self._clock = time.monotonic
+        self.result: Any = None
+
+    @property
+    def exhausted(self) -> bool:
+        return self.calls >= self.cap or self.spent >= self.seconds
+
+    def attempt(self, edges: list[Any], distance: float) -> bool:
+        """Try one blend. Records the shape on success; never raises.
+
+        A result that is null **or invalid** counts as a failure, and that is
+        not defensive coding: partially filleting a fused body is exactly how
+        OCCT produces a compound that passes ``IsDone`` and fails
+        ``BRepCheck_Analyzer``. Measured on the wolf, where every partial
+        blend came back invalid — a search that called those successes would
+        have handed the model a shape the output validator then refused,
+        with the blend context gone (ADR-125).
+        """
+
+        if not edges:
+            return False
+        self.calls += 1
+        began = self._clock()
+        try:
+            if self.operation == "chamfer":
+                built = self.shape.makeChamfer(distance, edges)
+            elif self.radius_end is None:
+                built = self.shape.makeFillet(distance, edges)
+            else:
+                # The two-radius overload evolves the radius along each edge;
+                # the end radius scales with the start so a reduced probe
+                # keeps the taper the model asked for.
+                scale = distance / self.requested if self.requested else 1.0
+                built = self.shape.makeFillet(
+                    distance, self.radius_end * scale, edges
+                )
+        except Exception:
+            self.spent += self._clock() - began
+            return False
+        try:
+            usable = built is not None and not built.isNull() and built.isValid()
+        except Exception:
+            usable = False
+        self.spent += self._clock() - began
+        if not usable:
+            return False
+        self.result = built
+        return True
+
+
+def _blend_partition(
+    probe: _BlendProbe, edges: list[Any], distance: float
+) -> tuple[list[Any], list[Any], list[Any]]:
+    """Split a failing edge set into (accepted, rejected, unprobed).
+
+    Greedy accumulation with bisection. An edge is rejected only when it
+    fails *in the presence of the set already accepted*, which is the honest
+    reading: fillets interact, and two edges that each work alone can be
+    impossible together. What comes back is a working subset and the edges
+    that stopped it growing, not a proof about any edge in isolation.
+    """
+
+    accepted: list[Any] = []
+    rejected: list[Any] = []
+    queue: list[list[Any]] = []
+    middle = max(1, len(edges) // 2)
+    queue.append(edges[:middle])
+    if edges[middle:]:
+        queue.append(edges[middle:])
+
+    while queue:
+        if probe.exhausted:
+            return accepted, rejected, [edge for chunk in queue for edge in chunk]
+        chunk = queue.pop(0)
+        if probe.attempt(accepted + chunk, distance):
+            accepted.extend(chunk)
+            continue
+        if len(chunk) == 1:
+            rejected.extend(chunk)
+            continue
+        half = len(chunk) // 2
+        queue.insert(0, chunk[half:])
+        queue.insert(0, chunk[:half])
+    return accepted, rejected, []
+
+
+def _blend_largest_radius(
+    probe: _BlendProbe, edges: list[Any], distance: float, *, steps: int = 5
+) -> float | None:
+    """The largest radius at or below ``distance`` the whole set accepts."""
+
+    floor = distance * _BLEND_RADIUS_FLOOR
+    if probe.exhausted or not probe.attempt(edges, floor):
+        return None
+    best, low, high = floor, floor, distance
+    for _ in range(steps):
+        if probe.exhausted:
+            break
+        middle = (low + high) / 2.0
+        if probe.attempt(edges, middle):
+            best = low = middle
+        else:
+            high = middle
+    return best
+
+
+def _blend_edge_names(edges: list[Any], details: list[Mapping[str, Any]],
+                      selected: list[Any]) -> list[str]:
+    """Fingerprint keys for the given edges, in selection order."""
+
+    from CadexSubshapeQuery import fingerprint_key
+
+    names = []
+    for edge in edges:
+        for index, candidate in enumerate(selected):
+            if candidate is edge:
+                if index < len(details):
+                    names.append(fingerprint_key(details[index]))
+                break
+    return names
+
+
+def _blend(
+    shape: Any,
+    operation: str,
+    selected: list[Any],
+    details: list[Mapping[str, Any]],
+    distance: float,
+    *,
+    radius_end: float | None = None,
+    on_failure: str = "refuse",
+    diagnostics: dict[str, Any] | None = None,
+) -> Any:
+    """Blend the selected edges, and survive the ones the kernel refuses.
+
+    The fast path is unchanged and costs exactly one kernel call: the whole
+    set at the radius asked for. Everything below it only runs when that
+    call has already failed, which is when the old code raised
+    ``StdFail_NotDone`` and told the model nothing it could act on.
+    """
+
+    probe = _BlendProbe(shape, operation, radius_end=radius_end, requested=distance)
+    if probe.attempt(selected, distance):
+        return probe.result
+
+    # The radius search runs FIRST, and the order is a measurement rather
+    # than a preference: on the wolf the partition ate the whole budget and
+    # the refusal came back with no workable radius at all -- which is the
+    # one number a model can act on without re-selecting anything.
+    workable = _blend_largest_radius(probe, selected, distance)
+    accepted, rejected, unprobed = _blend_partition(probe, selected, distance)
+    refused_names = _blend_edge_names(rejected, details, selected)
+    report: dict[str, Any] = {
+        "requested_radius_mm" if operation == "fillet" else "requested_distance_mm":
+            float(distance),
+        "edges_selected": len(selected),
+        "edges_blended": len(accepted),
+        "edges_refused": len(rejected),
+        "edges_unprobed": len(unprobed),
+        "refused_edges": refused_names[:_BLEND_REPORTED_EDGES],
+        "largest_workable_radius_mm": (
+            None if workable is None else round(float(workable), 4)
+        ),
+        "probe_calls": probe.calls,
+        "probe_seconds": round(probe.spent, 3),
+        "probe_capped": bool(unprobed) or probe.exhausted,
+        "probe_cap": (
+            "seconds" if probe.spent >= probe.seconds
+            else ("calls" if probe.calls >= probe.cap else None)
+        ),
+    }
+    if len(refused_names) > _BLEND_REPORTED_EDGES:
+        report["refused_edges_omitted"] = len(refused_names) - _BLEND_REPORTED_EDGES
+
+    if on_failure == "reduce" and workable is not None:
+        # Uniform, not per-edge, and the reason is the binding: makeFillet
+        # applies one radius spec per call, and a second call would have to
+        # find its edges in the FIRST call's result, where they have been
+        # renumbered and possibly consumed. What the model gets instead is a
+        # radius the whole body accepts, and the number is in the result.
+        probe.attempt(selected, workable)
+        result = probe.result
+        if result is not None:
+            _record_blend(diagnostics, operation, {
+                **report, "applied": "reduce",
+                "applied_radius_mm": round(float(workable), 4)})
+            return result
+
+    if on_failure in {"skip", "reduce"} and accepted:
+        probe.attempt(accepted, distance)
+        result = probe.result
+        if result is not None:
+            _record_blend(diagnostics, operation, {
+                **report, "applied": "skip",
+                "applied_radius_mm": float(distance)})
+            return result
+
+    if on_failure == "skip":
+        detail = "no edge in the selection could be blended at that radius"
+    elif on_failure == "reduce":
+        detail = (
+            "no radius down to "
+            f"{distance * _BLEND_RADIUS_FLOOR:.4g} mm blends this selection"
+        )
+    else:
+        detail = (
+            f"{len(rejected)} of {len(selected)} edge(s) refused the requested "
+            f"{'radius' if operation == 'fillet' else 'distance'}"
+        )
+        if unprobed:
+            bound = (
+                f"{_BLEND_PROBE_SECONDS:g} s"
+                if probe.spent >= probe.seconds
+                else f"{_BLEND_PROBE_CALLS}-call"
+            )
+            detail += (
+                f"; {len(unprobed)} more went unprobed at the {bound} probe cap"
+            )
+    raise PartOperationError(
+        f"api.{operation}: {detail}.",
+        stage="part_kernel",
+        operation=operation,
+        parameter="edges",
+        observed=report,
+        correction=_blend_correction(operation, report, on_failure),
+    )
+
+
+def _blend_correction(
+    operation: str, report: Mapping[str, Any], on_failure: str
+) -> str:
+    """What to do about it, in the caller's own vocabulary."""
+
+    workable = report.get("largest_workable_radius_mm")
+    parts = []
+    if int(report.get("edges_blended") or 0) and on_failure == "refuse":
+        parts.append(
+            f"pass on_failure='skip' to blend the {report['edges_blended']} edge(s) "
+            "that do work and leave the listed ones sharp"
+        )
+    if workable:
+        parts.append(
+            f"use radius={workable} (the largest this selection accepts) or "
+            "on_failure='reduce' to have it applied for you"
+        )
+    parts.append(
+        "or narrow the selector so it no longer names the edges in "
+        "observed.refused_edges"
+    )
+    return (
+        f"api.{operation} refused rather than silently doing less work. "
+        + "; ".join(parts)
+        + "."
+    )
+
+
+def _record_blend(
+    diagnostics: dict[str, Any] | None, operation: str, report: Mapping[str, Any]
+) -> None:
+    """Report partial work where a caller is collecting diagnostics.
+
+    Best-effort by construction: only the operation that produces a declared
+    output is given a diagnostics dict, so a blend nested inside a later
+    boolean records nothing. That is why the refusal is the default and
+    carries the whole report — a model reaches ``skip`` or ``reduce`` having
+    already been told exactly what it is accepting, in the call before.
+    """
+
+    if diagnostics is None:
+        return
+    diagnostics.setdefault(f"{operation}_partial", []).append(dict(report))
+
+
 def _refine(shape: Any, enabled: bool, *, operation: str) -> Any:
     if not enabled:
         return shape
@@ -2708,7 +3043,7 @@ def _build(
         return shape
     if operation in {"fillet", "chamfer"}:
         shape = _shape(operation, "shape", _argument(payload, 0, "shape"))
-        selected = _selected_subshapes(
+        selected, details = _selected_subshape_details(
             operation,
             "edges",
             shape,
@@ -2716,8 +3051,17 @@ def _build(
             "edge",
         )
         distance = float(_argument(payload, 1, "radius" if operation == "fillet" else "distance"))
-        method = shape.makeFillet if operation == "fillet" else shape.makeChamfer
-        return method(distance, selected)
+        radius_end = properties.get("radius_end")
+        return _blend(
+            shape,
+            operation,
+            selected,
+            details,
+            distance,
+            radius_end=None if radius_end is None else float(radius_end),
+            on_failure=str(properties.get("on_failure") or "refuse"),
+            diagnostics=diagnostics,
+        )
     if operation == "offset":
         shape = _shape(operation, "shape", _argument(payload, 0, "shape"))
         joins = {"arc": 0, "tangent": 1, "intersection": 2}

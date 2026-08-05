@@ -30,6 +30,11 @@ _SUBSHAPE_TYPES = frozenset({"edge", "wire", "face", "shell", "solid"})
 _OBSTACLE_TYPES = frozenset({"solid", "shell", "compound"})
 _HELIX_REPRESENTATIONS = frozenset({"standard", "segmented"})
 _PROJECTION_MODES = frozenset({"parallel", "perspective"})
+#: What ``fillet``/``chamfer`` do when the kernel refuses part of a selection
+#: (ADR-125). ``refuse`` is the default and reports which edges failed, how
+#: many worked and the largest radius that would have; the other two are how
+#: a model opts into partial work *after* being told what it is accepting.
+_BLEND_FAILURE_MODES = frozenset({"refuse", "skip", "reduce"})
 
 
 def _error(operation: str, parameter: str, message: str, value: Any = None) -> ValueError:
@@ -499,6 +504,20 @@ def _selector(
         operation, f"{parameter}.expected_count", count, minimum=1
     )
     return result
+
+
+def _blend_failure_mode(operation: str, value: Any) -> str:
+    """Validate ``on_failure`` for the blending ops (ADR-125)."""
+
+    clean = str(value or "").strip().lower()
+    if clean not in _BLEND_FAILURE_MODES:
+        raise _error(
+            operation,
+            "on_failure",
+            f"must be one of {sorted(_BLEND_FAILURE_MODES)}",
+            value,
+        )
+    return clean
 
 
 def _weights(
@@ -2132,12 +2151,22 @@ class PartDomainAPI:
         radius: float,
         *,
         edges: str | Mapping[str, Any] = "all",
+        on_failure: str = "refuse",
         label: str = "",
     ) -> DomainValue:
         """Round the edges a selector names, or every edge with edges='all'.
 
         ``edges`` is ``'all'`` or a geometric selector, e.g.
         ``{"geometry_type": "Circle", "radius": 3.0, "expected_count": 8}``.
+
+        ``on_failure`` says what to do when the kernel accepts some of the
+        selection and not the rest — which is the normal case on a fused
+        organic body, where one impossible edge used to throw away every
+        other one. ``'refuse'`` (default) fails and reports which edges were
+        refused, how many did blend, and the largest radius the whole
+        selection accepts. ``'skip'`` blends the ones that work and leaves
+        the rest sharp. ``'reduce'`` applies the largest radius that works
+        everywhere, and the applied radius is reported.
         """
 
         operation = "fillet"
@@ -2148,6 +2177,7 @@ class PartDomainAPI:
             clean_shape,
             _number(operation, "radius", radius, minimum=0.0, strict=True),
             edges=_selector(operation, "edges", edges, allow_all=True),
+            on_failure=_blend_failure_mode(operation, on_failure),
             label=label,
         )
 
@@ -2293,12 +2323,17 @@ class PartDomainAPI:
         distance: float,
         *,
         edges: str | Mapping[str, Any] = "all",
+        on_failure: str = "refuse",
         label: str = "",
     ) -> DomainValue:
         """Chamfer the edges a selector names, or every edge with edges='all'.
 
         ``edges`` is ``'all'`` or a geometric selector, e.g.
         ``{"direction": [0, 0, 1], "expected_count": 4}``.
+
+        ``on_failure`` behaves exactly as it does on ``fillet``: 'refuse'
+        (default), 'skip' the edges the kernel will not take, or 'reduce' to
+        the largest distance the whole selection accepts.
         """
 
         operation = "chamfer"
@@ -2309,6 +2344,7 @@ class PartDomainAPI:
             clean_shape,
             _number(operation, "distance", distance, minimum=0.0, strict=True),
             edges=_selector(operation, "edges", edges, allow_all=True),
+            on_failure=_blend_failure_mode(operation, on_failure),
             label=label,
         )
 
