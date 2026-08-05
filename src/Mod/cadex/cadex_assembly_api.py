@@ -321,6 +321,72 @@ def _values(
     return result
 
 
+#: Component pairs one simulation may hold apart. Every pair costs a
+#: distance query per frame, and a trace is thousands of frames.
+_MAX_CLEARANCE_PAIRS = 32
+
+
+def _clearance_pairs(
+    operation: str, value: Any, model: DomainValue
+) -> list[list[DomainValue]]:
+    """Validate the component pairs a swept clearance holds apart (ADR-130)."""
+
+    if value is None:
+        return []
+    if not isinstance(value, (list, tuple)):
+        raise _error(
+            operation, "clearance", "expected an array of component pairs", value
+        )
+    if len(value) > _MAX_CLEARANCE_PAIRS:
+        raise _error(
+            operation,
+            "clearance",
+            f"expected at most {_MAX_CLEARANCE_PAIRS} pairs",
+            len(value),
+        )
+    members = {id(item) for item in model.properties.get("components", ())}
+    pairs: list[list[DomainValue]] = []
+    seen: set[frozenset[int]] = set()
+    for index, item in enumerate(value):
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            raise _error(
+                operation,
+                f"clearance[{index}]",
+                "expected exactly two components",
+                item,
+            )
+        first, second = (
+            _domain_value(
+                operation,
+                f"clearance[{index}][{position}]",
+                entry,
+                output_type="component_link",
+            )
+            for position, entry in enumerate(item)
+        )
+        if first is second:
+            raise _error(
+                operation,
+                f"clearance[{index}]",
+                "names one component twice; a part cannot clear itself",
+            )
+        for position, entry in enumerate((first, second)):
+            if id(entry) not in members:
+                raise _error(
+                    operation,
+                    f"clearance[{index}][{position}]",
+                    "is not a component of this assembly",
+                )
+        key = frozenset((id(first), id(second)))
+        if key in seen:
+            raise _error(
+                operation, "clearance", "names the same pair more than once"
+            )
+        seen.add(key)
+        pairs.append([first, second])
+    return pairs
+
+
 def _selection(operation: str, value: Any) -> dict[str, str]:
     if isinstance(value, str):
         clean = value.strip()
@@ -1271,6 +1337,8 @@ class AssemblyDomainAPI:
         time_step_s: float = 0.01,
         error_tolerance: float = 1.0e-6,
         frames_per_second: int = 30,
+        clearance: Sequence[Sequence[DomainValue]] | None = None,
+        clearance_mm: float = 0.0,
         label: str = "",
     ) -> DomainValue:
         """Run native Assembly kinematics in the worker and retain its trace.
@@ -1280,6 +1348,24 @@ class AssemblyDomainAPI:
         rejects simulations exceeding 100000 component-pose samples.
         ``time_step_s`` controls trace density; ``frames_per_second`` is retained
         only as the live playback rate and does not add solver samples.
+
+        **``clearance`` is the swept-volume check** (ADR-130, slice O2b).
+        It is a list of component pairs that must stay ``clearance_mm``
+        apart **at every frame of the trace**, which is what "put the
+        mechanism inside the skin and have everything line up" actually
+        needs: a static mate proves the parts fit in one pose, and a
+        mechanism has more than one. The pairs are named rather than
+        inferred, because two parts joined at a joint are supposed to touch
+        and only the author knows which pairs are a design promise::
+
+            sim = assembly.simulation(asm, [swing],
+                                      clearance=[(skin, thigh), (skin, shin)],
+                                      clearance_mm=2.0)
+
+        The refusal names the pair, the frame, its time, and the millimetres
+        actually measured. Sampled rather than continuous: the trace is the
+        sweep, so ``time_step_s`` is the resolution, and the result records
+        how many poses were checked.
         """
 
         operation = "simulation"
@@ -1358,11 +1444,30 @@ class AssemblyDomainAPI:
                 "would exceed 10000 native frames or 100000 component-pose samples; "
                 "increase time_step_s or shorten the time range",
             )
+        pairs = _clearance_pairs(operation, clearance, model)
+        gap = _number(operation, "clearance_mm", clearance_mm, minimum=0.0)
+        if pairs and gap <= 0.0:
+            raise _error(
+                operation,
+                "clearance_mm",
+                "must be positive when clearance pairs are named; a check for "
+                "'more than zero apart' passes on parts that are touching",
+                clearance_mm,
+            )
+        if gap > 0.0 and not pairs:
+            raise _error(
+                operation,
+                "clearance",
+                "name the component pairs the gap applies to; two parts joined "
+                "at a joint are supposed to touch, so there is no safe default",
+            )
         return self._value(
             operation,
             "simulation",
             model,
             motions=motion_values,
+            clearance=pairs,
+            clearance_mm=gap,
             start_time_s=start,
             end_time_s=end,
             time_step_s=step,

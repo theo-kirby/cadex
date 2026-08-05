@@ -524,6 +524,31 @@ component the script no longer declares **dropped** rather than refused, and
 a row measured in the viewport carried into the component's frame by the
 worker — roll included.
 
+### Clearance over the whole travel `[ADR-130]`
+
+```python
+sim = assembly.simulation(asm, [swing],
+                          clearance=[(skin, thigh), (skin, shin)],
+                          clearance_mm=2.0)
+```
+
+`part.mate`'s interference check proves the parts fit **in the pose they
+were mated in**. A mechanism has more than one. `clearance` names the
+component pairs that must stay `clearance_mm` apart at *every frame of the
+trace*, and the refusal quotes the pair, the frame, its time and the
+millimetres actually measured — the closest approach over the whole travel,
+not the first breach.
+
+The pairs are named and there is no default: two parts joined at a joint are
+supposed to touch, and guessing which touching was intended is the invention
+a declared interface exists to prevent. A gap of zero is refused for the
+same reason — "more than zero apart" passes on parts that are touching.
+
+The sweep's resolution is `time_step_s`, because the trace **is** the sweep.
+Poses whose bounding boxes are already further apart than the gap cost
+nothing; the distance queries that do run are capped, and a check that
+spends its cap refuses rather than reporting a pass.
+
 ### Terminals: ports that name geometry `[ADR-062]`
 
 `part.cable` and `part.bundle` (ADR-056, ADR-057) route a wire between two

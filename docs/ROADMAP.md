@@ -1212,8 +1212,14 @@ supplying only the gesture (O3).
       sections**, which is the plate O0's first render showed and §4
       mis-attributed to the leg roots. The wolf is now eleven-thirteenths
       cages and its half-width falls from ±150.2 mm to ±73.0 mm.
-- [ ] **O2b — Swept-volume clearance.** Parked by decision, not dropped: it
-      roughly doubles O2.
+- [x] **O2b — Swept-volume clearance** (ADR-130, 2026-08-05).
+      `assembly.simulation(clearance=[(a, b), …], clearance_mm=…)` refuses
+      when a named pair comes closer than that at any frame of the trace,
+      quoting the pair, the frame, its time and the millimetres. It did not
+      double O2: a trace already is the sweep, so this is a distance query in
+      a loop that existed, with a box rejection making most poses free and a
+      capped check refusing rather than reporting a pass. Pairs are named
+      because two parts on a joint are supposed to touch.
 - [ ] **O4 — subD.** Parked, unscheduled — and the cage has now been used in
       anger, so what it still cannot do is known: a **curved spine** (the
       wolf's neck and tail are the two bodies that stayed hand-written) and

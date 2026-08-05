@@ -13356,3 +13356,55 @@ gone from the render.
 kernel including the pole-box fallback, and the wolf's own eight-section
 table against a live engine, asserting 4× on the default degree and under
 1.5× at degree 3.
+
+## ADR-130 — Clearance held over the whole travel (2026-08-05)
+
+**Decision.** `assembly.simulation` takes `clearance=[(a, b), …]` and
+`clearance_mm`, and refuses when any named pair comes closer than that at
+any frame of the trace, naming the pair, the frame, its time and the
+millimetres measured. This is slice **O2b**, parked by decision in ADR-126
+and now taken.
+
+**Rationale.** ADR-126's mate check booleans two parts after placing one on
+the other's mount and refuses a non-zero common volume. That proves they fit
+**in the pose they were mated in**. A mechanism has more than one pose, and
+"put the mechanism inside the skin and have everything line up" is a promise
+about all of them. The static check passes a linkage that fits at rest and
+scrapes the housing at 40° of travel.
+
+**It needed no new geometry op, and that is the whole shape of the slice.**
+A simulation trace *is* the sweep: `_execute_native_simulation` already
+drives the mechanism frame by frame, and inside that loop every component's
+`Shape` is the placed geometry of that pose. Nobody was looking at it as
+geometry. The check is a distance query in a loop that already existed.
+
+**The pairs are named, not inferred.** Two parts joined at a joint are
+supposed to touch, so "every pair" refuses every assembly, and "every pair
+except the jointed ones" is a guess about which touching was intended — the
+kind of invention a declared interface exists to prevent. So a gap with no
+pairs is refused, and pairs with no gap are refused too: "more than zero
+apart" passes on two parts that are already touching, which is a check that
+reads as passing and tests nothing.
+
+**What makes it affordable.** A trace is thousands of poses and
+`distToShape` on two real solids is not cheap. Every pose starts with an
+axis-aligned box comparison — three subtractions — and a mechanism spends
+most of its travel nowhere near the thing it must not touch, so most poses
+cost nothing. The distance queries that do run are capped at 4000, and a
+check that spends the cap **refuses** rather than reporting a pass: a
+clearance nobody measured is not a clearance that holds. The correction says
+what to do (a coarser `time_step_s`, a shorter range, fewer pairs) and why a
+pair that exhausts the budget is a pair that stays close throughout.
+
+**The worst approach, not the first.** A breaching frame does not stop the
+sweep. The result carries the closest approach per pair over the whole
+travel, because "you are 0.4 mm from the housing at t = 0.35 s" is a number
+a designer can act on and "it failed somewhere" is not.
+
+**Verification.** `test_swept_clearance.py`: the box rejection and every
+pair-validation refusal without a kernel, then a live mechanism — a 30 mm
+arm swinging a full turn past a post — that (a) builds happily with no
+promise, sweeping straight through the post, because kinematics does not
+care, (b) is refused at 0.0 mm when the promise is made, and (c) with the
+post moved 6 mm outside the arm's tip, passes a 2 mm promise and is refused
+by an 8 mm one quoting the measured six.

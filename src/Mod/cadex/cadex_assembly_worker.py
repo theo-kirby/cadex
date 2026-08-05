@@ -2869,6 +2869,71 @@ def _retain_artifact(
     }
 
 
+#: Distance queries one clearance check may spend before it says so. A
+#: trace is thousands of frames and ``distToShape`` on two real solids is
+#: not cheap; the bounding-box rejection below means most frames cost
+#: nothing, and this is the backstop for the ones that do not.
+_CLEARANCE_QUERY_CAP = 4000
+
+
+def _boxes_clear(first: Any, second: Any, gap: float) -> bool:
+    """True when two boxes are already further apart than ``gap``.
+
+    The whole reason a swept check is affordable: a mechanism spends most of
+    its travel nowhere near the thing it must not touch, and rejecting those
+    frames costs three comparisons instead of a distance query.
+    """
+
+    return (
+        first.XMin - second.XMax > gap
+        or second.XMin - first.XMax > gap
+        or first.YMin - second.YMax > gap
+        or second.YMin - first.YMax > gap
+        or first.ZMin - second.ZMax > gap
+        or second.ZMin - first.ZMax > gap
+    )
+
+
+def _clearance_at_frame(
+    components: Mapping[str, Any],
+    pairs: list[tuple[str, str]],
+    gap: float,
+    budget: dict[str, int],
+) -> list[dict[str, Any]]:
+    """The pairs closer than ``gap`` in the pose the components are in now.
+
+    Called inside the frame loop, while ``updateForFrame`` has the placements
+    live, because that is the only moment the trace exists as geometry rather
+    than as numbers. A pose that fails is reported and the sweep goes on: the
+    caller wants the *worst* approach over the whole travel, not the first.
+    """
+
+    breaches: list[dict[str, Any]] = []
+    for first_name, second_name in pairs:
+        first = components[first_name].Shape
+        second = components[second_name].Shape
+        if _boxes_clear(first.BoundBox, second.BoundBox, gap):
+            continue
+        if budget["spent"] >= budget["cap"]:
+            budget["capped"] = True
+            break
+        budget["spent"] += 1
+        try:
+            distance = float(first.distToShape(second)[0])
+        except Exception:
+            # A distance query that will not run is not a clearance verdict,
+            # and reporting it as one would be worse than saying nothing.
+            continue
+        if distance < gap:
+            breaches.append(
+                {
+                    "components": [first_name, second_name],
+                    "distance_mm": round(distance, 4),
+                }
+            )
+    return breaches
+
+
 def _execute_native_simulation(
     *,
     document: Any,
@@ -2878,6 +2943,7 @@ def _execute_native_simulation(
     simulation_value: DomainValue,
     motion_outputs: Mapping[int, str],
     joint_outputs: Mapping[int, str],
+    component_outputs: Mapping[int, str],
     joint_objects: Mapping[str, Any],
     joint_data: Mapping[str, Mapping[str, Any]],
     components: Mapping[str, Any],
@@ -2999,6 +3065,16 @@ def _execute_native_simulation(
         start_time = float(properties["start_time_s"])
         end_time = float(properties["end_time_s"])
         time_step = float(properties["time_step_s"])
+        clearance_pairs = [
+            (
+                component_outputs[id(pair[0])],
+                component_outputs[id(pair[1])],
+            )
+            for pair in list(properties.get("clearance") or [])
+        ]
+        clearance_gap = float(properties.get("clearance_mm") or 0.0)
+        clearance_budget = {"spent": 0, "cap": _CLEARANCE_QUERY_CAP, "capped": False}
+        worst: dict[tuple[str, str], dict[str, Any]] = {}
         for frame_index in range(frame_count):
             update_result = assembly.updateForFrame(frame_index)
             # The generated Python binding currently reports successful native
@@ -3016,22 +3092,94 @@ def _execute_native_simulation(
                         "native_code": update_code,
                     },
                 )
+            frame_time = (
+                None
+                if frame_index == 0
+                else min(end_time, start_time + (frame_index - 1) * time_step)
+            )
             frames.append(
                 {
                     "frame_index": frame_index,
                     "frame_kind": "input" if frame_index == 0 else "solver_output",
-                    "nominal_time_s": None
-                    if frame_index == 0
-                    else min(end_time, start_time + (frame_index - 1) * time_step),
+                    "nominal_time_s": frame_time,
                     "component_placements": {
                         name: _compact_placement(component.Placement)
                         for name, component in components.items()
                     },
                 }
             )
+            if clearance_pairs:
+                for breach in _clearance_at_frame(
+                    components, clearance_pairs, clearance_gap, clearance_budget
+                ):
+                    key = (breach["components"][0], breach["components"][1])
+                    if (
+                        key not in worst
+                        or breach["distance_mm"] < worst[key]["distance_mm"]
+                    ):
+                        worst[key] = {
+                            **breach,
+                            "frame_index": frame_index,
+                            "nominal_time_s": frame_time,
+                        }
     finally:
         for name, placement in saved_placements.items():
             components[name].Placement = placement
+
+    clearance_summary: dict[str, Any] | None = None
+    if clearance_pairs:
+        clearance_summary = {
+            "minimum_mm": clearance_gap,
+            "pairs": [list(pair) for pair in clearance_pairs],
+            "frames_checked": len(frames),
+            "distance_queries": clearance_budget["spent"],
+            "query_cap_reached": bool(clearance_budget["capped"]),
+        }
+        if worst:
+            closest = min(worst.values(), key=lambda item: item["distance_mm"])
+            raise AssemblyCandidateError(
+                f"Simulation {simulation_output!r} brings "
+                f"{closest['components'][0]!r} and {closest['components'][1]!r} "
+                f"within {closest['distance_mm']} mm at frame "
+                f"{closest['frame_index']}, closer than the "
+                f"{clearance_gap} mm the script asked them to keep.",
+                details={
+                    "stage": "simulation_clearance",
+                    "simulation_output": simulation_output,
+                    **clearance_summary,
+                    "closest_approach": closest,
+                    "breaches": sorted(
+                        worst.values(), key=lambda item: item["distance_mm"]
+                    ),
+                    "correction": (
+                        "The parts fit in the pose you mated them in and do not "
+                        "fit over the travel. Move the pair apart, shorten the "
+                        "motion's range, or lower clearance_mm if the measured "
+                        "gap is the one you meant."
+                    ),
+                },
+            )
+        if clearance_budget["capped"]:
+            # Said rather than swallowed: a check that ran out of budget is
+            # not a check that passed, and a caller acting on silence here
+            # would be acting on nothing.
+            raise AssemblyCandidateError(
+                f"Simulation {simulation_output!r} spent its "
+                f"{_CLEARANCE_QUERY_CAP} distance queries before the trace "
+                "ended, so the clearance it did not measure is unknown.",
+                details={
+                    "stage": "simulation_clearance",
+                    "simulation_output": simulation_output,
+                    **clearance_summary,
+                    "correction": (
+                        "Increase time_step_s so the sweep has fewer poses, "
+                        "shorten the time range, or name fewer pairs. Every "
+                        "pose whose bounding boxes are already further apart "
+                        "than clearance_mm is free, so a pair that spends the "
+                        "budget is one that stays close throughout."
+                    ),
+                },
+            )
 
     observations = _motion_observations(frames, motion_records, joint_data)
     for observation in observations:
@@ -3077,6 +3225,7 @@ def _execute_native_simulation(
             "motion_outputs": [record["motion_output"] for record in motion_records],
             "native_code": 0,
             "motion_observations": observations,
+            **({"clearance": clearance_summary} if clearance_summary else {}),
         },
         artifact_root=artifact_root,
         outputs_by_name=outputs_by_name,
@@ -5376,6 +5525,7 @@ def validate_and_solve_assembly(
                 simulation_value=simulation_value,
                 motion_outputs=motion_outputs,
                 joint_outputs=joint_outputs,
+                component_outputs=component_outputs,
                 joint_objects=joint_objects,
                 joint_data=joint_data,
                 components=components,

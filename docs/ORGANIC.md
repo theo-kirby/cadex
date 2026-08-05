@@ -282,11 +282,30 @@ become its exponent. Both stay editable as numbers. Inventing a value from a
 gesture the user may have made by accident is the quiet reinterpretation a
 declared table exists to prevent.
 
-### O2b — Swept-volume clearance `(parked, by decision)`
+### O2b — Swept-volume clearance — **closed (ADR-130)**
 
-Sweep the mechanism through its joint ranges and boolean against the skin.
-It is the differentiating check and `assembly` already has the joint limits
-to drive it, but it roughly doubles O2. Parked here rather than dropped.
+Sweep the mechanism through its joint ranges and check it against the skin.
+Parked in ADR-126 as roughly doubling O2; it did not, because the sweep was
+already there.
+
+`assembly.simulation(…, clearance=[(skin, thigh), …], clearance_mm=2.0)`
+refuses when a named pair comes closer than that **at any frame of the
+trace**, naming the pair, the frame, its time and the millimetres. A
+simulation already drives the mechanism pose by pose and every component's
+`Shape` inside that loop is the placed geometry of that pose — nobody was
+looking at the trace as geometry. No new kernel op; a distance query in a
+loop that existed.
+
+Three decisions worth keeping:
+
+- **Named pairs, no default.** Two parts joined at a joint are supposed to
+  touch. "Every pair" refuses every assembly and "every pair but the jointed
+  ones" is a guess about which touching was intended.
+- **A gap of zero is refused.** "More than zero apart" passes on parts that
+  are touching: a check that reads as passing and tests nothing.
+- **A capped check refuses.** Box rejection makes most poses free; the
+  distance queries that do run are capped, and spending the cap is reported
+  as *unknown*, not as clear.
 
 ### O4 — subD `(parked, unscheduled — and now with evidence)`
 
