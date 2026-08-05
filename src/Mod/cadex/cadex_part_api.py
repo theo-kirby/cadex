@@ -506,6 +506,73 @@ def _selector(
     return result
 
 
+def _in_plane_direction(
+    operation: str, parameter: str, value: Any, normal: list[float]
+) -> list[float]:
+    """A direction that spans a plane with ``normal`` — parallel is refused.
+
+    The same check ``plane`` makes of its own ``x_direction``, factored out
+    now that ``ellipse`` takes one too.
+    """
+
+    clean = _vector(operation, parameter, value, nonzero=True)
+    cross = [
+        normal[1] * clean[2] - normal[2] * clean[1],
+        normal[2] * clean[0] - normal[0] * clean[2],
+        normal[0] * clean[1] - normal[1] * clean[0],
+    ]
+    if math.sqrt(sum(item * item for item in cross)) <= 1.0e-12:
+        raise _error(operation, parameter, "must not be parallel to normal", value)
+    return clean
+
+
+def _scale_law(operation: str, value: Any) -> list[list[float]]:
+    """Validate a sweep's ``[[position, factor], ...]`` taper.
+
+    Positions run 0…1 along the path, strictly increasing, and must span
+    both ends: a law that starts at 0.3 leaves the first third undefined,
+    and guessing what it meant is how a silhouette changes without anyone
+    editing it.
+    """
+
+    if not isinstance(value, (list, tuple)) or len(value) < 2:
+        raise _error(
+            operation, "scale_law", "expected at least two [position, factor] pairs", value
+        )
+    if len(value) > 64:
+        raise _error(operation, "scale_law", "expected at most 64 control points", len(value))
+    law: list[list[float]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            raise _error(
+                operation, f"scale_law[{index}]", "expected [position, factor]", item
+            )
+        position = _number(operation, f"scale_law[{index}][0]", item[0], minimum=0.0)
+        factor = _number(
+            operation, f"scale_law[{index}][1]", item[1], minimum=0.0, strict=True
+        )
+        if position > 1.0:
+            raise _error(
+                operation, f"scale_law[{index}][0]", "must be between 0 and 1", item[0]
+            )
+        if law and position <= law[-1][0]:
+            raise _error(
+                operation,
+                f"scale_law[{index}][0]",
+                "positions must strictly increase along the path",
+                item[0],
+            )
+        law.append([position, factor])
+    if law[0][0] > 0.0 or law[-1][0] < 1.0:
+        raise _error(
+            operation,
+            "scale_law",
+            "must span the whole path: the first position is 0 and the last is 1",
+            [law[0][0], law[-1][0]],
+        )
+    return law
+
+
 def _blend_failure_mode(operation: str, value: Any) -> str:
     """Validate ``on_failure`` for the blending ops (ADR-125)."""
 
@@ -929,22 +996,32 @@ class PartDomainAPI:
         *,
         center: Sequence[float] = (0.0, 0.0, 0.0),
         normal: Sequence[float] = (0.0, 0.0, 1.0),
+        x_direction: Sequence[float] | None = None,
     ) -> DomainValue:
-        """Create a closed elliptical edge with major_radius >= minor_radius."""
+        """Create a closed elliptical edge with major_radius >= minor_radius.
+
+        ``x_direction`` aims the MAJOR axis, the way ``plane`` aims its own.
+        Without it the major axis lands wherever rotating +Z onto ``normal``
+        happens to send +X, which is why a section table that wants its wide
+        axis vertical has to follow every ellipse with rotations
+        (``docs/ORGANIC.md`` §1 measured thirty of them in one script).
+        """
 
         operation = "ellipse"
         major = _number(operation, "major_radius", major_radius, minimum=0.0, strict=True)
         minor = _number(operation, "minor_radius", minor_radius, minimum=0.0, strict=True)
         if major < minor:
             raise _error(operation, "major_radius", "must be at least minor_radius", major_radius)
-        return self._value(
-            operation,
-            "edge",
-            major,
-            minor,
-            center=_vector(operation, "center", center),
-            normal=_vector(operation, "normal", normal, nonzero=True),
-        )
+        clean_normal = _vector(operation, "normal", normal, nonzero=True)
+        properties: dict[str, Any] = {
+            "center": _vector(operation, "center", center),
+            "normal": clean_normal,
+        }
+        if x_direction is not None:
+            properties["x_direction"] = _in_plane_direction(
+                operation, "x_direction", x_direction, clean_normal
+            )
+        return self._value(operation, "edge", major, minor, **properties)
 
     def bezier(
         self,
@@ -1307,10 +1384,21 @@ class PartDomainAPI:
         solid: bool = False,
         frenet: bool = False,
         transition: str = "transformed",
+        scale_law: Sequence[Sequence[float]] | None = None,
         output_type: str | None = None,
         label: str = "",
     ) -> DomainValue:
-        """Sweep one or more ordered wire profiles along one wire path."""
+        """Sweep one or more ordered wire profiles along one wire path.
+
+        ``scale_law`` tapers the section as it travels: a list of
+        ``[position, factor]`` control points, position running 0…1 along
+        the path and factor scaling the profile about the path at that
+        position. ``[[0, 1], [1, 0.1]]`` is a limb or a tail — the shape the
+        wolf built by hand-placing five tilted circles and lofting them
+        (``docs/ORGANIC.md`` §1). A lawed sweep IS that loft, computed: the
+        stations are built from the path's own frame and lofted, because the
+        kernel's pipe-shell takes one section shape and no law.
+        """
 
         operation = "sweep"
         if isinstance(profile, DomainValue):
@@ -1336,6 +1424,17 @@ class PartDomainAPI:
             raise _error(
                 operation, "transition", f"must be one of {sorted(_TRANSITION_TYPES)}", transition
             )
+        extra: dict[str, Any] = {}
+        if scale_law is not None:
+            if isinstance(clean_profile, list) and len(clean_profile) != 1:
+                raise _error(
+                    operation,
+                    "scale_law",
+                    "applies to a single profile; pass one profile, or place "
+                    "the ordered sections yourself and leave the law out",
+                    len(clean_profile),
+                )
+            extra["scale_law"] = _scale_law(operation, scale_law)
         inferred = "solid" if bool(solid) else "shell"
         clean_type = _inferred_result_type(operation, output_type, inferred, exact=True)
         return self._value(
@@ -1347,6 +1446,7 @@ class PartDomainAPI:
             frenet=bool(frenet),
             transition=clean_transition,
             label=label,
+            **extra,
         )
 
     def terminals(
@@ -1960,10 +2060,20 @@ class PartDomainAPI:
         *,
         tolerance: float = 0.0,
         refine: bool = True,
+        blend: float | None = None,
+        blend_on_failure: str = "refuse",
         output_type: str | None = None,
         label: str = "",
     ) -> DomainValue:
-        """Boolean-union shapes in one OCC operation with optional fuzzy tolerance."""
+        """Boolean-union shapes in one OCC operation with optional fuzzy tolerance.
+
+        ``blend`` rounds the SEAMS the union just made — the edges that lie
+        on two or more of the inputs — and nothing else. That is the one
+        selection a script cannot write for itself: how many intersection
+        curves a boolean produced is knowable only to the boolean
+        (``docs/ORGANIC.md`` §1). ``blend_on_failure`` is ``fillet``'s
+        ``on_failure``, applied to that seam set.
+        """
 
         operation = "fuse"
         clean_shapes = _shapes(operation, "shapes", shapes, minimum=2)
@@ -1976,6 +2086,10 @@ class PartDomainAPI:
                     "is required when input topology types differ or are non-publishable edges",
                 )
             inferred = "compound"
+        extra: dict[str, Any] = {}
+        if blend is not None:
+            extra["blend"] = _number(operation, "blend", blend, minimum=0.0, strict=True)
+            extra["blend_on_failure"] = _blend_failure_mode(operation, blend_on_failure)
         return self._value(
             operation,
             _inferred_result_type(operation, output_type, inferred),
@@ -1983,6 +2097,7 @@ class PartDomainAPI:
             tolerance=_number(operation, "tolerance", tolerance, minimum=0.0),
             refine=bool(refine),
             label=label,
+            **extra,
         )
 
     def cut(
@@ -2151,6 +2266,7 @@ class PartDomainAPI:
         radius: float,
         *,
         edges: str | Mapping[str, Any] = "all",
+        radius_end: float | None = None,
         on_failure: str = "refuse",
         label: str = "",
     ) -> DomainValue:
@@ -2158,6 +2274,11 @@ class PartDomainAPI:
 
         ``edges`` is ``'all'`` or a geometric selector, e.g.
         ``{"geometry_type": "Circle", "radius": 3.0, "expected_count": 8}``.
+
+        ``radius_end`` makes the blend VARIABLE: the radius evolves from
+        ``radius`` at the start of each edge to ``radius_end`` at its end.
+        That is the difference between a machined transition and a muscular
+        one, and it costs one argument.
 
         ``on_failure`` says what to do when the kernel accepts some of the
         selection and not the rest — which is the normal case on a fused
@@ -2171,6 +2292,11 @@ class PartDomainAPI:
 
         operation = "fillet"
         clean_shape = _shape(operation, "shape", shape, allowed={"solid", "shell"})
+        extra: dict[str, Any] = {}
+        if radius_end is not None:
+            extra["radius_end"] = _number(
+                operation, "radius_end", radius_end, minimum=0.0, strict=True
+            )
         return self._value(
             operation,
             clean_shape.output_type,
@@ -2179,6 +2305,7 @@ class PartDomainAPI:
             edges=_selector(operation, "edges", edges, allow_all=True),
             on_failure=_blend_failure_mode(operation, on_failure),
             label=label,
+            **extra,
         )
 
     def sew(

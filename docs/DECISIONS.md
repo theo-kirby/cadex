@@ -12818,3 +12818,132 @@ all green. `pixi run gate` `ok: true`, `engine_from_bundle: true`,
 ["front", "right", "top", "three-quarter"], "composite_px": null}` — null
 because the gate is headless, which is the honest value. No engine change,
 so the engine suite is untouched.
+
+---
+
+## ADR-125 — Blends that survive, and the ops that make muscle (2026-08-05)
+
+**Decision.** Slice O1 of Phase 15, in two commits.
+
+1. `part.fillet` / `part.chamfer` no longer lose a whole selection to one
+   impossible edge. On failure the edge set is bisected and a new
+   `on_failure` argument says what to do: `refuse` (default), `skip` or
+   `reduce`.
+2. `part.fuse(..., blend=radius, blend_on_failure=...)` rounds the seams the
+   union just made; `part.fillet(..., radius_end=...)` exposes the
+   two-radius overload; `part.sweep(..., scale_law=[[t, factor], ...])`
+   tapers a section along a path; `part.ellipse(..., x_direction=...)` aims
+   the major axis.
+
+No C++ change in either commit. Everything here is `cadex_part_worker.py` /
+`cadex_part_api.py` calling the existing bindings.
+
+**Rationale — what the wolf actually did.** `docs/ORGANIC.md` §1 is the
+measurement, taken from `~/arch/woof.cadex`'s store rather than from the
+conversation. The agent tried to weld its sixteen lofted solids **three
+times**: a morphological closing (`api.offset: OpenCascade produced an
+invalid shape`), a fillet of the B-spline intersection curves (refused
+before reaching OCCT, by the selector contract's `expected_count`
+requirement), and finally not welding at all — the accepted script drops
+`weld_radius` for a dimensionless `muscle_blend` that flares each limb root
+so the joins are grazing rather than sharp.
+
+The second failure is the one that decides this ADR's shape. The refusal was
+*correct in general* — cardinality is what makes a wrong selector fail
+instead of silently doing less work — and *unsatisfiable in particular*:
+**how many intersection curves a sixteen-way boolean produced is not
+knowable to the party writing the script.** It is knowable only to the
+operation that made them. So the seam set moves to `fuse`, which has the
+inputs in its hands, and `SELECTOR_KEYS` stays closed and purely geometric.
+A `"seam"` key was considered and rejected: "which operation created this
+edge" is provenance, and admitting it would make every selector's meaning
+depend on history.
+
+A seam edge is defined without consulting any history: an edge of the
+union's boundary that lies on **two or more** of the inputs. Measured on a
+post welded into a bar, that is exactly one edge — the entry circle — found
+in 5 ms; on the wolf it is 48 edges against the 91 that `edges="all"` names.
+
+**What `IsDone` costs, and where it is checked.**
+`TopoShapePy::makeFillet` builds a `BRepFilletAPI_MakeFillet` and calls
+`.Shape()` without checking `IsDone`, which is where `15StdFail_NotDone`
+comes from. The fix is a Python bisection over the existing binding: try the
+whole set (unchanged fast path, exactly one kernel call when it works), then
+on failure accumulate greedily with bisection — O(k log n) calls for k bad
+edges. An edge is reported refused only when it fails *in the presence of
+the set already accepted*, and the report says so: fillets interact, and two
+edges that each work alone can be impossible together.
+
+**Two things the measurement changed, that reasoning had not.**
+
+- **The probe validates with `isValid()`, not just "no exception".**
+  Partially filleting a fused body is exactly how OCCT returns a compound
+  that passes `IsDone` and fails `BRepCheck_Analyzer`. On the wolf **every**
+  partial blend came back invalid; a search that counted those as successes
+  handed the model a shape the output validator then refused as
+  `api.fillet: OpenCascade produced an invalid shape`, with the blend
+  context gone. With validity in the probe, `skip` and `reduce` build.
+- **The radius search runs before the edge partition.** In the first
+  measured run the partition spent the whole budget and the refusal came
+  back with `largest_workable_radius_mm: null` — the single most actionable
+  number, missing, because the cheaper search ran second.
+
+**The cost, measured on the wolf** (91 edges via `edges="all"`, 48 via the
+seam set; every attempt 0.4–0.5 s):
+
+| | wall clock | probe |
+|---|---|---|
+| baseline build, no blend | 13.61 s | — |
+| `fillet(8.0)` refusing | 23.01 s | 10.3 s, 44 calls, capped |
+| `fillet(8.0, on_failure='skip')` | 25.02 s | 31 of 91 edges blended |
+| `fuse(blend=8.0)` refusing | 23.48 s | 10.2 s, 26 calls, capped |
+| `fuse(blend=8.0, 'skip')` | 25.04 s | 25 of 48 seams blended |
+| `fuse(blend=15.0, 'reduce')` | 24.93 s | every seam, at a reduced radius |
+
+So the cap that binds on a real body is **wall-clock, not calls**: 48 calls
+of half a second is half a minute and nobody waits for that answer.
+`_BLEND_PROBE_SECONDS` is 10 s, `_BLEND_PROBE_CALLS` is 48 as a backstop,
+and a capped probe reports `probe_capped`, `probe_cap` (`"seconds"` /
+`"calls"`) and how many edges went unprobed. Stating it is the point: the
+alternative is a refusal that looks exhaustive and is not.
+
+**What is deliberately NOT here.**
+
+- **Guide curves on `sweep`.** `TopoShapeWirePy::makePipeShell` takes
+  `(sections, solid, frenet, transition)` and exposes neither `SetLaw` nor
+  the guide-curve `SetMode`. Reaching them means a new binding in
+  `src/Mod/Part` — inherited FreeCAD, and a decision about the fork's delta
+  rather than a fix to slip in. The **scaling law** is the half the wolf
+  actually paid for (its tail is five hand-placed tilted circles and a
+  loft), and it needs no binding: a lawed sweep is that loft, computed —
+  stations taken along the path's *arc length*, each rotated onto the
+  tangent there. Guides stay in `docs/ORGANIC.md` as unfinished business.
+- **Per-edge reduced radii.** `reduce` lowers the radius uniformly, because
+  `makeFillet` applies one radius spec per call and a second call would have
+  to find its edges in the first call's result, where the boolean has
+  renumbered and possibly consumed them. The applied radius is reported.
+- **A diagnostics channel for `skip`.** Partial work is written into
+  `operation_diagnostics` where a caller is collecting it, which is only the
+  operation producing a declared output. That is best-effort by
+  construction, and it is why `refuse` is the default: the refusal carries
+  the whole report, so `skip` is chosen one call later by a model that has
+  already been told exactly what it is accepting.
+
+**Consequences.**
+
+- `docs/XSCRIPT.md` gains two sections — blending and partial failure, and
+  tapering/aiming — and says why the seam is `fuse`'s argument rather than a
+  selector key.
+- `test_part_blending.py` (14) and `test_part_organic.py` (9) are new. The
+  search, the caps and the report are checked against a fake kernel that
+  refuses on demand and need no FreeCAD; the geometry is checked against a
+  live engine and skips without one. On a post welded into a bar: every edge
+  takes 3 mm, no edge takes 40 mm, 4.375 mm is what the refusal quotes, and
+  `blend=2.0` adds exactly one toroid to the union's eight faces while
+  leaving all seven of its planes sharp.
+- `part.fuse`'s existing behaviour is untouched when `blend` is absent, and
+  `fillet`'s when `on_failure` is left at its default. Every digest in the
+  suite is unmoved.
+
+**Verification.** `pixi run python -m pytest src/Mod/cadex/cadex_tests` —
+1532 passed, 22 skipped.

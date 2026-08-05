@@ -1,7 +1,8 @@
 # ORGANIC.md — Organic Modelling, and the CAD/Mesh Interface
 
 Verified against source: 2026-08-05
-Status: **O0 closed (ADR-124).** O1, O2, O3 open. O2b and O4 parked.
+Status: **O0 closed (ADR-124), O1 closed (ADR-125).** O2, O3 open. O2b and
+O4 parked.
 
 This is Phase 15's arc doc, and it stands to Phase 15 as `docs/MUJOCO.md`
 stands to Phase 14: the measurement the phase is sized from, the slices, the
@@ -138,7 +139,7 @@ that the composite is real (1024×1024, four distinct quadrants, verified by
 driving the built application), and that **the gate cannot see it** —
 `draw_view3d` needs a real VIEW_3D and the gate runs `--background`.
 
-### O1 — Blends that survive, and the ops that make muscle `(open)`
+### O1 — Blends that survive, and the ops that make muscle — **closed (ADR-125)**
 
 Two commits, one PR. This is the slice §1's three failures demand.
 
@@ -174,6 +175,17 @@ worked), `skip`, or `reduce`.
   and `zsec` burn an if/else plus up to two `part.transform` calls **per
   section**, thirty-odd times, purely to orient a major axis in plane.
   `part.plane` already takes `x_direction`.
+
+**Landed with one thing cut, and one thing found.** Guide curves on `sweep`
+are **not** here: `TopoShapeWirePy::makePipeShell` exposes neither `SetLaw`
+nor the guide-curve `SetMode`, so reaching them means a new binding in
+inherited `src/Mod/Part` — a decision about the fork's delta, not a fix. The
+scaling law is the half the wolf paid for and it needs no binding. What was
+found is in ADR-125 and worth repeating here: a partial fillet of a fused
+body returns a **compound that passes `IsDone` and fails
+`BRepCheck_Analyzer`**, so the probe has to check validity, not just catch
+exceptions. Before that, `skip` and `reduce` both "succeeded" and were then
+refused by the output validator with the blend context gone.
 
 ### O2 — Mounts: the interface, declared once and verified `(open)`
 
@@ -272,3 +284,38 @@ accepted one.
 |---|---|---|
 | baseline | 2026-08-05 | 154 lines, 8 params, 16 lofted solids, one `part.fuse`, hard creases at every join. Three weld attempts refused (§1). 11 accepted revisions in 17 minutes. |
 | O0 | 2026-08-05 | No model change — O0 authors nothing. The agent can now see the silhouette it is iterating on: four fitted views, 1024×1024, one call. |
+| O1 | 2026-08-05 | **The weld lands.** `fuse(blend=8.0, blend_on_failure="skip")` builds the wolf with 25 of its 48 seams rounded, in 25.04 s against a 13.61 s baseline. `blend=15.0, "reduce"` rounds every seam at a reduced radius. The refusal path quotes a workable radius instead of `StdFail_NotDone`. Turns: **one** — the change is one keyword on the `fuse` the script already had. |
+
+### What the first render actually showed (2026-08-05)
+
+Rendering the accepted wolf through O0's `render_views`, and the blended one
+beside it, moved the benchmark's own conclusion. **The seams were not the
+wolf's biggest problem.** In the front view the model is dominated by a
+smooth disc roughly twice the body's height, centred on the shoulders, with
+the head and ears poking through the middle of it — a pancake, not a
+silhouette. It comes from the leg-root sections, whose X half-width is
+computed as
+
+```python
+rx_top = min(r * (1.50 + 0.60 * b), 0.5 * L - abs(x) - 0.015 * L + 0.1 * T)
+```
+
+so at default parameters the "muscle root" flares to something like half the
+body length and lofts into a plate. The seam blend is visible and correct
+where the legs meet the body — and it is rounding the edges of a disc that
+should not be there.
+
+Three things follow, and they are the argument for the rest of the phase.
+
+1. **O0 was worth doing first, and by a wider margin than it was sold on.**
+   This defect survived eleven accepted revisions and a user's report of
+   "looks better but not good", because nobody in the loop could see the
+   model from the front. One tool call now shows it.
+2. **The remaining gap is a bad row in a section table**, not a missing
+   kernel operation — which is exactly O3's case. A table the user can grab
+   and drag fixes this in a gesture; the current spelling needs a chat turn
+   to change one arithmetic expression buried in a helper.
+3. **The benchmark is not "does the blend land" any more.** It is *does the
+   silhouette read as an animal*, and O1 does not answer that. Recorded here
+   rather than in the ADR because it is a fact about the wolf, not about the
+   decision.

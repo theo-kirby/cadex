@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-08-04
+Verified against source: 2026-08-05
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -370,6 +370,59 @@ click and an argument written into the script name geometry identically
 (`CadexSubshapeQuery.py`). When a selector fails, the envelope carries
 `expected_count`, `actual_count` and the full `available` list, so the next
 attempt is a re-query rather than a guess.
+
+### Blending: partial failure, and the seam `[ADR-125]`
+
+A blend on a real body is a set of edges the kernel accepts and a few it
+does not. `fillet` and `chamfer` therefore take `on_failure`:
+
+```python
+rounded = part.fillet(body, 8.0)                       # refuse (default)
+rounded = part.fillet(body, 8.0, on_failure="skip")    # blend what works
+rounded = part.fillet(body, 8.0, on_failure="reduce")  # the largest radius that does
+tapered = part.fillet(body, 1.0, radius_end=6.0)       # variable along each edge
+```
+
+`'refuse'` names the failing edges by fingerprint, says how many *did*
+blend, and quotes the largest radius the whole selection accepts — so
+reaching for `skip` or `reduce` is an informed choice made one call later,
+not partial work nobody asked for. The search bisects (O(k log n) kernel
+calls) under a probe cap; when the cap binds, the result says so and which
+cap it was.
+
+**The seam is `fuse`'s to name, not a selector's:**
+
+```python
+wolf = part.fuse([body, head, legs, tail], blend=6.0,
+                 blend_on_failure="skip", label="wolf")
+```
+
+`blend` rounds the edges that lie on two or more of the inputs — the curves
+the union itself created — and nothing else. It is not a selector key and
+deliberately never will be: `SELECTOR_KEYS` is closed and purely
+*geometric*, while "which operation made this edge" is provenance, and
+smuggling provenance in would make every selector's meaning depend on
+history. How many intersection curves a boolean produced is knowable only
+to the boolean, which is why the argument lives on `fuse`.
+
+### Tapering a sweep, and aiming an ellipse `[ADR-125]`
+
+```python
+tail = part.sweep(profile, spine, solid=True,
+                  scale_law=[[0, 1.0], [0.6, 0.55], [1.0, 0.08]])
+ring = part.ellipse(20, 8, normal=[1, 0, 0], x_direction=[0, 0, 1])
+```
+
+`scale_law` is `[position, factor]` control points, position running 0…1
+along the path's **arc length**; it must start at 0 and end at 1, because a
+law that covers part of the path leaves the rest to a guess. A lawed sweep
+is built as a loft through computed stations, each rotated onto the path's
+tangent — the kernel's pipe-shell binding takes sections and no law.
+
+`ellipse`'s `x_direction` aims the *major* axis, the way `plane`'s aims its
+own. Without it the major axis lands wherever rotating +Z onto `normal`
+happens to send +X, and a section table has to follow every ellipse with
+rotations to undo that.
 
 ### Terminals: ports that name geometry `[ADR-062]`
 

@@ -640,6 +640,183 @@ def _blend_largest_radius(
     return best
 
 
+#: Stations a lawed sweep builds between consecutive control points. Enough
+#: that a taper reads as smooth; few enough that a 64-point law stays inside
+#: the operation budget.
+_SWEEP_STATIONS = 6
+
+
+def _law_factor(law: list[list[float]], position: float) -> float:
+    """Linear interpolation between the law's control points."""
+
+    if position <= law[0][0]:
+        return float(law[0][1])
+    for (left, low), (right, high) in zip(law, law[1:]):
+        if position <= right:
+            span = right - left
+            if span <= 0.0:
+                return float(high)
+            share = (position - left) / span
+            return float(low) + (float(high) - float(low)) * share
+    return float(law[-1][1])
+
+
+def _path_stations(
+    operation: str, path: Any, positions: list[float]
+) -> list[tuple[Any, Any]]:
+    """(point, tangent) at fractions of a wire's ARC LENGTH.
+
+    By length rather than by parameter, and across the wire's ordered edges
+    rather than one curve, because a spine is usually several edges and a
+    curve's parameter is not proportional to distance along it — stations
+    picked by parameter bunch up where the curve is slow, and the taper
+    bunches with them.
+    """
+
+    edges = list(getattr(path, "OrderedEdges", None) or getattr(path, "Edges", []) or [])
+    lengths = [float(edge.Length) for edge in edges]
+    total = sum(lengths)
+    if not edges or total <= 1.0e-12:
+        raise _error(operation, "path", "has no length to sweep along")
+
+    stations: list[tuple[Any, Any]] = []
+    for position in positions:
+        target = max(0.0, min(1.0, float(position))) * total
+        walked = 0.0
+        chosen, local = edges[-1], lengths[-1]
+        for edge, length in zip(edges, lengths):
+            if target <= walked + length or edge is edges[-1]:
+                chosen, local = edge, target - walked
+                break
+            walked += length
+        local = max(0.0, min(float(chosen.Length), local))
+        try:
+            parameter = chosen.getParameterByLength(local)
+        except Exception:
+            first, last = float(chosen.FirstParameter), float(chosen.LastParameter)
+            share = local / float(chosen.Length) if chosen.Length else 0.0
+            parameter = first + (last - first) * share
+        try:
+            tangent = chosen.tangentAt(parameter)
+        except Exception:
+            tangent = None
+        stations.append((chosen.valueAt(parameter), tangent))
+    return stations
+
+
+def _swept_law(
+    operation: str, profile: Any, path: Any, law: list[list[float]], solid: bool
+) -> Any:
+    """Sweep a profile along a path while a law scales it.
+
+    Built as a loft through computed stations rather than through
+    ``BRepOffsetAPI_MakePipeShell``, and the reason is the binding:
+    ``TopoShapeWirePy::makePipeShell`` takes ``(sections, solid, frenet,
+    transition)`` and exposes neither ``SetLaw`` nor the guide-curve mode.
+    Reaching those means a new binding in ``src/Mod/Part``, which is a
+    decision about the fork's delta rather than a fix (ADR-125). The loft is
+    what the model was doing by hand anyway — the wolf's tail is five tilted
+    circles — and it produces the same class of NURBS solid.
+    """
+
+    import FreeCAD as App
+    import Part
+    from FreeCAD import Vector
+
+    positions: list[float] = []
+    for (left, _low), (right, _high) in zip(law, law[1:]):
+        for step in range(_SWEEP_STATIONS):
+            positions.append(left + (right - left) * step / _SWEEP_STATIONS)
+    positions.append(1.0)
+
+    origin = profile.CenterOfMass
+    stations = _path_stations(operation, path, positions)
+
+    sections = []
+    previous_tangent = None
+    for position, (point, tangent) in zip(positions, stations):
+        if tangent is None or tangent.Length <= 1.0e-12:
+            tangent = previous_tangent or Vector(0.0, 0.0, 1.0)
+        previous_tangent = tangent
+        factor = _law_factor(law, position)
+        section = profile.copy()
+        if abs(factor - 1.0) > 1.0e-12:
+            section.scale(factor, origin)
+        # The profile is authored in its own plane; each station rotates it
+        # onto the path's tangent there and drops it on the path.
+        rotation = App.Rotation(App.Vector(0.0, 0.0, 1.0), tangent)
+        if abs(float(rotation.Angle)) > 1.0e-12:
+            section.rotate(origin, rotation.Axis,
+                           math.degrees(float(rotation.Angle)))
+        section.translate(point.sub(origin))
+        sections.append(_wire_from_shape(operation, "profile", section))
+
+    return Part.makeLoft(sections, bool(solid), False, False)
+
+
+def _edge_midpoint(edge: Any) -> Any:
+    """A point that is actually ON the edge.
+
+    Not ``CenterOfMass``: for a circle that is the centre, which is the one
+    place on the plane the curve never passes through.
+    """
+
+    first = float(edge.FirstParameter)
+    last = float(edge.LastParameter)
+    return edge.valueAt((first + last) / 2.0)
+
+
+def _box_contains(box: Any, point: Any, margin: float) -> bool:
+    return (
+        box.XMin - margin <= point.x <= box.XMax + margin
+        and box.YMin - margin <= point.y <= box.YMax + margin
+        and box.ZMin - margin <= point.z <= box.ZMax + margin
+    )
+
+
+def _seam_edges(
+    result: Any, inputs: list[Any], *, tolerance: float = 1.0e-5
+) -> tuple[list[Any], list[dict[str, Any]]]:
+    """The edges a boolean made: those lying on two or more of its inputs.
+
+    Every edge of a union's boundary lies on at least one input. An edge
+    that lies on *two* was created where they intersect, and that is the
+    seam — the thing a person means by "weld this join". No provenance is
+    consulted and none is needed, which is why this stays out of
+    ``CadexSubshapeQuery``'s selector vocabulary: that vocabulary is closed
+    and purely geometric, and "which operation created this edge" is
+    history. The seam set is computed by the operation that has the inputs
+    in its hands, and by nothing else.
+    """
+
+    import Part
+    from CadexSubshapeQuery import subshape_geometry
+
+    boxes = [shape.BoundBox for shape in inputs]
+    edges: list[Any] = []
+    details: list[dict[str, Any]] = []
+    for index, edge in enumerate(list(getattr(result, "Edges", []) or []), start=1):
+        point = _edge_midpoint(edge)
+        vertex = None
+        hits = 0
+        for shape, box in zip(inputs, boxes):
+            # The bounding box is a cheap rejection: on a fused body most
+            # edges are nowhere near most inputs, and distToShape is not
+            # cheap enough to run n_edges x n_inputs times.
+            if not _box_contains(box, point, 1.0e-3):
+                continue
+            if vertex is None:
+                vertex = Part.Vertex(point)
+            if float(vertex.distToShape(shape)[0]) <= tolerance:
+                hits += 1
+                if hits >= 2:
+                    break
+        if hits >= 2:
+            edges.append(edge)
+            details.append(subshape_geometry(result, "edge", index, edge))
+    return edges, details
+
+
 def _blend_edge_names(edges: list[Any], details: list[Mapping[str, Any]],
                       selected: list[Any]) -> list[str]:
     """Fingerprint keys for the given edges, in selection order."""
@@ -665,6 +842,7 @@ def _blend(
     *,
     radius_end: float | None = None,
     on_failure: str = "refuse",
+    parameter: str = "edges",
     diagnostics: dict[str, Any] | None = None,
 ) -> Any:
     """Blend the selected edges, and survive the ones the kernel refuses.
@@ -687,7 +865,7 @@ def _blend(
     accepted, rejected, unprobed = _blend_partition(probe, selected, distance)
     refused_names = _blend_edge_names(rejected, details, selected)
     report: dict[str, Any] = {
-        "requested_radius_mm" if operation == "fillet" else "requested_distance_mm":
+        "requested_distance_mm" if operation == "chamfer" else "requested_radius_mm":
             float(distance),
         "edges_selected": len(selected),
         "edges_blended": len(accepted),
@@ -741,7 +919,7 @@ def _blend(
     else:
         detail = (
             f"{len(rejected)} of {len(selected)} edge(s) refused the requested "
-            f"{'radius' if operation == 'fillet' else 'distance'}"
+            f"{'distance' if operation == 'chamfer' else 'radius'}"
         )
         if unprobed:
             bound = (
@@ -756,7 +934,7 @@ def _blend(
         f"api.{operation}: {detail}.",
         stage="part_kernel",
         operation=operation,
-        parameter="edges",
+        parameter=parameter,
         observed=report,
         correction=_blend_correction(operation, report, on_failure),
     )
@@ -2616,6 +2794,34 @@ def _build(
         rotation = App.Rotation(App.Vector(0.0, 0.0, 1.0), normal)
         if abs(float(rotation.Angle)) > 1.0e-12:
             result.rotate(center, rotation.Axis, math.degrees(float(rotation.Angle)))
+        aim = properties.get("x_direction")
+        if aim is not None:
+            # Where +X — the major axis — landed after that rotation, versus
+            # where the caller wants it. Spinning about the normal is the
+            # only degree of freedom left, and it is exactly the one a
+            # section table cares about.
+            target = _vector(operation, "x_direction", aim, nonzero=True)
+            axis = [float(value) for value in normal]
+            length = math.sqrt(sum(value * value for value in axis))
+            axis = [value / length for value in axis]
+            along = sum(t * a for t, a in zip(target, axis))
+            wanted = [t - along * a for t, a in zip(target, axis)]
+            span = math.sqrt(sum(value * value for value in wanted))
+            if span > 1.0e-12:
+                wanted = [value / span for value in wanted]
+                placed = rotation.multVec(App.Vector(1.0, 0.0, 0.0))
+                current = [float(placed.x), float(placed.y), float(placed.z)]
+                cross = [
+                    current[1] * wanted[2] - current[2] * wanted[1],
+                    current[2] * wanted[0] - current[0] * wanted[2],
+                    current[0] * wanted[1] - current[1] * wanted[0],
+                ]
+                angle = math.degrees(math.atan2(
+                    sum(c * a for c, a in zip(cross, axis)),
+                    sum(c * w for c, w in zip(current, wanted)),
+                ))
+                if abs(angle) > 1.0e-9:
+                    result.rotate(center, App.Vector(*axis), angle)
         return result
     if operation == "bezier":
         poles = _argument(payload, 0, "poles")
@@ -2828,6 +3034,11 @@ def _build(
             "path",
             _shape(operation, "path", _argument(payload, 1, "path")),
         )
+        law = properties.get("scale_law")
+        if law:
+            return _swept_law(
+                operation, profiles[0], path, law, bool(properties.get("solid"))
+            )
         transitions = {"transformed": 0, "right_corner": 1, "round_corner": 2}
         return path.makePipeShell(
             profiles,
@@ -2858,14 +3069,43 @@ def _build(
         return Part.makeFilledFace(edges)
     if operation == "fuse":
         shapes = _shape_list(operation, "shapes", _argument(payload, 0, "shapes"), minimum=2)
-        result = shapes[0].fuse(
-            tuple(shapes[1:]),
-            float(properties.get("tolerance", 0.0)),
-        )
-        return _refine(
-            result,
+        result = _refine(
+            shapes[0].fuse(
+                tuple(shapes[1:]),
+                float(properties.get("tolerance", 0.0)),
+            ),
             bool(properties.get("refine", True)),
             operation=operation,
+        )
+        blend = properties.get("blend")
+        if blend is None:
+            return result
+        # After refinement, deliberately: removeSplitter merges coplanar
+        # faces, and a seam it has just dissolved is not a seam any more.
+        seams, details = _seam_edges(result, shapes)
+        if not seams:
+            raise PartOperationError(
+                f"api.{operation}: blend found no seam to round — the inputs "
+                "do not intersect, so the union has no shared edges.",
+                stage="part_topology_selection",
+                operation=operation,
+                parameter="blend",
+                observed={"input_count": len(shapes),
+                          "result_edges": len(list(getattr(result, "Edges", []) or []))},
+                correction=(
+                    "Overlap the shapes before fusing them, or drop blend= and "
+                    "round chosen edges with api.fillet afterwards."
+                ),
+            )
+        return _blend(
+            result,
+            operation,
+            seams,
+            details,
+            float(blend),
+            on_failure=str(properties.get("blend_on_failure") or "refuse"),
+            parameter="blend",
+            diagnostics=diagnostics,
         )
     if operation == "cut":
         base = _shape(operation, "base", _argument(payload, 0, "base"))

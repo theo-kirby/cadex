@@ -1165,13 +1165,17 @@ supplying only the gesture (O3).
       Verified by driving the built application, because the gate runs
       `--background` and `draw_view3d` needs a real VIEW_3D — the ADR says
       so rather than implying coverage the gate does not have.
-- [ ] **O1 — Blends that survive, and the ops that make muscle.** Two
-      commits: `part.fillet` bisects a failing edge set and reports what it
-      found (`on_failure` = refuse / skip / reduce); then
-      `part.fuse(blend=...)` — which can name the seam edges because it made
-      them — plus a variable-radius fillet, `part.sweep` guides, and
-      `part.ellipse(x_direction=...)`. Exit: the wolf's weld lands, with the
-      probe cost measured and recorded.
+- [x] **O1 — Blends that survive, and the ops that make muscle** (ADR-125,
+      2026-08-05). `part.fillet` bisects a failing edge set and reports what
+      it found (`on_failure` = refuse / skip / reduce); `part.fuse(blend=...)`
+      names the seam edges because it made them; plus a variable-radius
+      fillet, `part.sweep(scale_law=...)` and
+      `part.ellipse(x_direction=...)`. The wolf's weld lands — 25 of 48
+      seams at 8 mm, 25.04 s against a 13.61 s baseline — and the probe cost
+      is measured, capped by wall-clock, and reported when the cap binds.
+      **Sweep guide curves are not in it**: they need a new binding in
+      inherited `src/Mod/Part`, which is a decision about the fork's delta
+      rather than a fix.
 - [ ] **O2 — Mounts.** `mounts()` / `mount()` on `CadexBoards`'s row
       machinery, `part.mate(...)`, and a static interference check that
       refuses with millimetres. Exit: a mechanism mates into a skin with no
