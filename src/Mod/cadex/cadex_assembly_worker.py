@@ -3846,6 +3846,155 @@ def _execute_task_bundle(
     return summary
 
 
+def _policy_task_equivalence(
+    CadexDynamics: Any,
+    *,
+    script_task: Mapping[str, Any],
+    script_digest: str,
+    trained_task: Mapping[str, Any],
+    trained_digest: str,
+    trained_name: str,
+    artifact_root: Path,
+    assets: Path,
+    output_name: str,
+) -> dict[str, Any]:
+    """Prove the script's bundle is the same task as the one that was trained on.
+
+    Two comparisons, and the second is the one that stops this being a
+    loophole (ADR-134):
+
+    1. **The bundle, field by field**, over what decides behaviour --
+       ``task_differences``. Excluded: the task's ``label``, each action's
+       ``source`` and ``fallback``, and the ``model`` block's path and digest.
+    2. **The models, as models** -- ``model_differences``, which compiles both
+       and diffs them on the same field list and the same tolerance
+       ``export_mjcf`` holds its own round trip to. Without this, two bundles
+       could agree on every number while naming different mechanisms: same
+       joint names, same limits, different masses, and the action table would
+       match perfectly.
+
+    The trained model is resolved out of ``assets`` **by the digest the
+    trained bundle itself records**, not by name. The bundle's own
+    ``model.path`` is a path inside the attempt directory that produced it and
+    means nothing here, and asking a script to restate the name would be one
+    more string to get wrong. A digest cannot be got wrong quietly.
+
+    Every refusal names what differed. A comparison that answered "not
+    equivalent" without saying where would leave the author guessing between
+    a reward weight and a foot radius.
+    """
+
+    differences = CadexDynamics.task_differences(script_task, trained_task)
+    if differences:
+        raise AssemblyCandidateError(
+            f"Policy output {output_name!r} was trained on {trained_name!r}, "
+            f"and the task this script builds is not the same task: "
+            f"{differences[0]}.",
+            details={
+                "stage": "policy_task_equivalence",
+                "output": output_name,
+                "trained_task": trained_name,
+                "trained_task_sha256": trained_digest,
+                "script_task_sha256": script_digest,
+                "differences": differences,
+                "correction": (
+                    "trained_task lets a policy be replayed from a script that "
+                    "produces the same task by a different route -- a renamed "
+                    "task, a corrected provenance string, a snapped inertial "
+                    "coordinate. It does not let a policy be replayed against "
+                    "a task that behaves differently. The fields listed in "
+                    "'differences' are the ones to reconcile, or retrain."
+                ),
+            },
+        )
+
+    trained_model_sha = str(
+        (trained_task.get("model") or {}).get("sha256") or ""
+    )
+    script_model_path = str((script_task.get("model") or {}).get("path") or "")
+    script_model_file = (artifact_root / script_model_path).resolve()
+    if not script_model_file.is_file():
+        raise AssemblyCandidateError(
+            f"The task this script built names a model at "
+            f"{script_model_path!r} that is not readable.",
+            details={
+                "stage": "policy_task_equivalence",
+                "output": output_name,
+                "model_path": script_model_path,
+            },
+        )
+    trained_model_file = next(
+        (
+            candidate
+            for candidate in sorted(assets.glob("*"))
+            if candidate.is_file()
+            and hashlib.sha256(candidate.read_bytes()).hexdigest()
+            == trained_model_sha
+        ),
+        None,
+    )
+    if trained_model_file is None:
+        raise AssemblyCandidateError(
+            f"Policy output {output_name!r} declares trained_task "
+            f"{trained_name!r}, whose model digests to "
+            f"{trained_model_sha[:16]}…, and no asset in this project has "
+            "those bytes.",
+            details={
+                "stage": "policy_task_equivalence",
+                "output": output_name,
+                "trained_task": trained_name,
+                "trained_model_sha256": trained_model_sha,
+                "correction": (
+                    "The bundle a policy trained on references a model, and "
+                    "proving this script builds the same mechanism means "
+                    "comparing against that model rather than against its "
+                    "hash. Store the training MJCF as a project asset with "
+                    "put_asset, beside the bundle and the weights. It is "
+                    "found by digest, so its filename does not matter."
+                ),
+            },
+        )
+
+    script_xml = script_model_file.read_bytes()
+    trained_xml = trained_model_file.read_bytes()
+    model_diff = CadexDynamics.model_differences(
+        script_xml, trained_xml,
+        context=f"policy output {output_name!r}'s two models",
+    )
+    if model_diff:
+        raise AssemblyCandidateError(
+            f"Policy output {output_name!r} was trained against a different "
+            f"mechanism: {model_diff[0]}.",
+            details={
+                "stage": "policy_model_equivalence",
+                "output": output_name,
+                "trained_task": trained_name,
+                "trained_model": trained_model_file.name,
+                "differences": model_diff,
+                "tolerance": CadexDynamics.MJCF_FIELD_TOLERANCE,
+                "correction": (
+                    "The two bundles describe the same task, and the two "
+                    "models do not describe the same machine. A policy is for "
+                    "one mechanism: retrain against this one, or point the "
+                    "script at the mechanism that produced this policy."
+                ),
+            },
+        )
+
+    return {
+        "trained_task": trained_name,
+        "trained_task_sha256": trained_digest,
+        "script_task_sha256": script_digest,
+        "trained_model": trained_model_file.name,
+        "trained_model_sha256": trained_model_sha,
+        "script_model_sha256": hashlib.sha256(script_xml).hexdigest(),
+        # The one number that says "the same task" out loud, and the reason
+        # the two whole-file digests above being different is not alarming.
+        "task_semantic_sha256": CadexDynamics.task_semantic_digest(trained_task),
+        "model_field_tolerance": CadexDynamics.MJCF_FIELD_TOLERANCE,
+    }
+
+
 def _execute_policy(
     *,
     assembly_output: str,
@@ -3952,16 +4101,102 @@ def _execute_policy(
             },
         )
 
+    # -- ADR-134: the bundle the policy was trained on, if it travelled ------
+    #
+    # Two bundles are in play from here on and confusing them is the whole
+    # hazard, so they are named apart throughout: ``task``/``task_digest`` is
+    # what THIS SCRIPT just built, and ``trained``/``trained_digest`` is what
+    # the POLICY was trained on. ``verify_policy`` is pointed at the second
+    # when there is one -- unweakened, whole-file, exactly as before -- and
+    # the first then has to be proved equivalent to it.
+    trained_name = str(properties.get("trained_task") or "")
+    trained = task
+    trained_digest = task_digest
+    equivalence: dict[str, Any] | None = None
+    if trained_name:
+        trained_path = (assets / trained_name).resolve()
+        if trained_path.parent != assets or not trained_path.is_file():
+            raise AssemblyCandidateError(
+                f"Policy output {output_name!r} names no staged asset "
+                f"{trained_name!r} as its trained_task.",
+                details={
+                    "stage": "policy_trained_task",
+                    "output": output_name,
+                    "trained_task": trained_name,
+                    "correction": (
+                        "trained_task names the task bundle the policy was "
+                        "trained on. Store it in the project assets directory "
+                        "with put_asset, beside the .cxpolicy itself -- a "
+                        "policy and the bundle it trained on travel together."
+                    ),
+                },
+            )
+        trained_bytes = trained_path.read_bytes()
+        if len(trained_bytes) > CadexDynamics.MAXIMUM_TASK_BYTES:
+            raise AssemblyCandidateError(
+                f"The trained_task {trained_name!r} is {len(trained_bytes)} "
+                f"bytes; the accepted maximum is "
+                f"{CadexDynamics.MAXIMUM_TASK_BYTES}.",
+                details={
+                    "stage": "policy_trained_task",
+                    "output": output_name,
+                    "trained_task": trained_name,
+                },
+            )
+        trained_digest = hashlib.sha256(trained_bytes).hexdigest()
+        try:
+            trained = json.loads(trained_bytes.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError) as error:
+            raise AssemblyCandidateError(
+                f"The trained_task {trained_name!r} is not readable JSON: "
+                f"{error}",
+                details={
+                    "stage": "policy_trained_task",
+                    "output": output_name,
+                    "trained_task": trained_name,
+                },
+            ) from error
+        if not isinstance(trained, dict) or str(
+            trained.get("schema") or ""
+        ) != CadexDynamics.TASK_SCHEMA:
+            raise AssemblyCandidateError(
+                f"The trained_task {trained_name!r} declares schema "
+                f"{(trained or {}).get('schema')!r}; a task bundle is "
+                f"{CadexDynamics.TASK_SCHEMA!r}.",
+                details={
+                    "stage": "policy_trained_task",
+                    "output": output_name,
+                    "trained_task": trained_name,
+                    "correction": (
+                        "trained_task is the task bundle -- what api.task "
+                        "publishes as <output>-task.json -- not the policy, "
+                        "not the model and not a receipt."
+                    ),
+                },
+            )
+
     try:
         container = CadexDynamics.decode_policy(
             blob, context=f"policy output {output_name!r}"
         )
         evidence = CadexDynamics.verify_policy(
             container,
-            task,
-            task_sha256=task_digest,
+            trained,
+            task_sha256=trained_digest,
             context=f"policy output {output_name!r}",
         )
+        if trained_name:
+            equivalence = _policy_task_equivalence(
+                CadexDynamics,
+                script_task=task,
+                script_digest=task_digest,
+                trained_task=trained,
+                trained_digest=trained_digest,
+                trained_name=trained_name,
+                artifact_root=artifact_root,
+                assets=assets,
+                output_name=output_name,
+            )
     except CadexDynamics.DynamicsError as error:
         raise _dynamics_failure(output_name, error, operation="policy") from error
 
@@ -3986,6 +4221,14 @@ def _execute_policy(
         "task_path": task_path.as_posix(),
         **folded,
         "policy_schema": str(evidence["schema"]),
+        # ADR-134. Present only when the policy travelled with its own bundle,
+        # and its absence is itself the record: a receipt without it says the
+        # policy was checked whole-file against the bundle this script built,
+        # which is the older and stricter claim. ``folded["task_sha256"]`` is
+        # then the TRAINED bundle's digest -- `verify_policy` was pointed at
+        # that one -- so ``script_task_sha256`` in here is what says which
+        # bundle the script produced and how it was reconciled.
+        **({"equivalence": equivalence} if equivalence else {}),
     }
     payload = json.dumps(receipt, indent=2, sort_keys=True).encode("utf-8")
     retained = _retain_artifact(

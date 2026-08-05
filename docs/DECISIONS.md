@@ -13718,3 +13718,137 @@ suite **1622 passed / 5 failed / 22 skipped** against a pre-change baseline of
 Two of those five are the `RLIMIT_AS` collision defect; the other three arrived
 in `test_part_blending.py` and `test_part_organic.py` with the merge that
 renumbered ADR-131 and ADR-132, and neither set is touched here.
+
+## ADR-134 — a policy may carry the bundle it trained on (2026-08-05)
+
+**Decision.** `assembly.policy(..., trained_task="<bundle>.json")` names, as a
+project asset, the task bundle a policy was **actually trained on**. Given it,
+`verify_policy` is pointed at *that* bundle — the same whole-file digest check
+as ever, unweakened — and the bundle this script just built must then be proved
+**equivalent** to it: every field that decides behaviour, plus the two models
+compared as models. `CadexDynamics.task_semantic_digest` is the reusable
+primitive underneath; `task_differences` and `model_differences` are what a
+refusal is written from. Omit the keyword and nothing changes.
+
+Nothing in `training/cadex_train.py` moves. It writes `task.sha256` as a
+whole-file hash and keeps doing so, which matters because that digest is
+pinned in every run record and moving it costs a bridge run.
+
+### What it costs not to have it
+
+Two of this engine's own corrections orphan trained policies, and neither is a
+mechanism change.
+
+**ADR-133** snaps inertial coordinates below a nanometre. That changes every
+model digest, so every bundle embedding one, so every policy trained before it:
+
+```
+policy output 'balance' was trained on a task bundle whose digest is
+'5572adf265aa51cb…', and the task it is declared against digests to
+'0b4d160cd436fd16…'
+```
+
+**ADR-131** made a ±25° command range on a ±45° joint sayable in a script and
+reports its provenance honestly as `command_limits_degrees`. The arm it
+replaces was produced by editing the derived bundle by hand, which reported
+`angle_limits_degrees` — the joint's limits, which are not where ±25 came from.
+All ten actuators, `low`, `high`, `unit` and `scale` are identical between the
+two bundles; `label` and `actions[].source` are not, and they move the
+whole-file hash.
+
+Before this, the remedies were **retrain** — four to five GPU-hours a seed —
+or **revert the correction**, which buys one replay and reintroduces a bundle
+that misreports where its numbers came from. Neither is a good trade for a
+provenance string.
+
+### It is stronger than relaxing check 1, not weaker
+
+The obvious alternative is to make `verify_policy`'s task check semantic. That
+would weaken every policy in the system to buy compatibility for a few.
+
+This does the opposite: the policy is still bound to **one exact bundle** by
+whole-file digest, and what is new is a *proof that a second bundle is the same
+task*. `test_verify_policy_was_not_weakened` asserts the first check is still
+a string comparison against a whole-file hash and that `task_semantic_digest`
+appears nowhere inside it.
+
+### What "the same task" means, field by field
+
+`TASK_SEMANTIC_FIELDS` is written out rather than derived as "everything except
+the exclusions", so a schema that grows a field is a decision rather than a
+silent widening — the same discipline `_MJCF_MODEL_FIELDS` keeps. Excluded, and
+each for a stated reason:
+
+| excluded | why |
+|---|---|
+| `label` | the script's name for the task. `stand12` by hand, `stand` from source |
+| `model` | a path, a byte count and a digest. The model itself is **not** excluded — see below |
+| `actions[].source` | how the bundle *derived* a bound. ADR-131 |
+| `actions[].fallback` | what to write with no policy, which a trained policy never reads |
+
+`mujoco_version` is *in*, and it is the one that looks like metadata and is
+not: MuJoCo disclaims cross-version numerical reproducibility outright, so two
+bundles differing only there describe two different dynamics.
+
+Numbers are canonicalised through `repr(float(x))` — the shortest decimal that
+round-trips a double, and the same string on every platform for the same
+double. Two normalisations, both of which have bitten something here: `30` and
+`30.0` agree, and `-0.0` is `0.0`. Strings stay quoted and numbers stay bare,
+so the string `"30.0"` and the number `30.0` do not digest alike.
+
+### The half that keeps it honest: the models are compared as models
+
+**A bundle comparison that dropped `model.sha256` and stopped there would be a
+hole, not a feature.** Two bundles can agree on every number while naming
+different mechanisms — same joint names, same limits, different masses — and
+the action table would match perfectly. So `model_differences` compiles both
+MJCF files and diffs them on `_MJCF_COUNT_FIELDS` exactly and on
+`_MJCF_MODEL_FIELDS` plus `_MJCF_OPTION_FIELDS` at `MJCF_FIELD_TOLERANCE`: the
+same lists and the same bound `export_mjcf` already holds its own round trip
+to, because "the same model" should not mean two things in one module.
+
+The trained model is found in `assets/` **by the digest the trained bundle
+itself records**, not by name. The bundle's own `model.path` points inside the
+attempt directory that produced it and means nothing in a new project, and
+asking a script to restate the filename would be one more string to get wrong.
+
+**One field needs an absolute floor, and only one.** `_field_drift` divides by
+the field's own largest magnitude. A model whose *only* inertial offset is
+symmetry noise therefore has a `body_ipos` whose entire scale is 5e-11, and
+`5.10087e-11` against `0` reads as **1.0 relative drift** — total disagreement
+about two numbers that are both zero. Measured: it is what the first version of
+this comparison did, and it failed its own test. So `body_ipos` also passes if
+the worst *absolute* difference is under a nanometre, which is the most
+ADR-133's snap can move it and the only field that snap touches.
+
+The floor is deliberately not blanket. 1e-9 is negligible against a mass in kg,
+and it is **looser** than the relative bound for an inertia tensor: a
+sub-kilogram limb's moments are around 1e-5 kg·m², so a 1e-9 absolute floor
+would admit 1e-4 relative where the field bound admits 1e-5. A blanket floor
+would weaken the check it exists to make possible.
+
+### Measured, on the files this was written for
+
+`tasks/stand-b8/stand-task.json` — the macOS-authored bundle
+`stand10.001700.cxpolicy` was trained on — against a freshly built post-snap
+bundle on Linux:
+
+| | whole-file sha256 | semantic sha256 | `task_differences` |
+|---|---|---|---|
+| trained on (macOS, pre-snap) | `5572adf265aa…` | `6bb66e9bcafaf856` | — |
+| script-built (Linux, post-snap) | `6dc1c580f4bc…` | `6bb66e9bcafaf856` | *empty* |
+
+And the three MJCF variants, pairwise through `model_differences`: macOS
+pre-snap (`80eaa18f`, 14 179 B), Linux pre-snap (`0fe04cfc`, 14 179 B) and
+post-snap (`203f746e`, 14 169 B) are **all mutually equivalent**. Two
+whole-file digests disagree; three models are one machine.
+
+### The suite
+
+`test_dynamics_task_identity.py`, 52 tests. Nineteen of them are one
+behaviour-deciding field each, changed one at a time and required to move the
+digest *and* be named in the diff — a comparison that missed a field would be
+one that quietly accepted a different task. The rest pin the provenance
+exclusions, the float canonicalisation, the bounded diff, the absolute floor's
+scope, and the three new refusal stages (`policy_trained_task`,
+`policy_task_equivalence`, `policy_model_equivalence`).

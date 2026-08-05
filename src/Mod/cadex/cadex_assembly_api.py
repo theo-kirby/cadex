@@ -3542,6 +3542,7 @@ class AssemblyDomainAPI:
         *,
         weights: str,
         sha256: str,
+        trained_task: str = "",
         label: str = "",
     ) -> DomainValue:
         """Declare a trained control policy for one task, by name and digest.
@@ -3573,6 +3574,29 @@ class AssemblyDomainAPI:
         pass, and refuses past a measured tolerance. A policy whose weights
         survived the trip but whose architecture the engine reads differently
         is a refusal rather than a bad gait.
+
+        ``trained_task`` names the bundle the policy was **actually trained
+        on**, as a ``.json`` file in the same ``assets`` directory, and it is
+        how a policy outlives the exact bytes of the script that produced its
+        task (ADR-134). Given it, the engine checks the policy against *that*
+        bundle -- the same whole-file digest check as ever, unweakened -- and
+        then proves the bundle this script just built **equivalent** to it:
+        every field that decides behaviour, plus the two models compared as
+        models rather than as hashes. A difference is a refusal that names the
+        field.
+
+        It exists because two things that are not mechanism changes move a
+        whole-file hash. ADR-133's inertial snap changes every model digest, so
+        every policy trained before it would otherwise be orphaned; and
+        ADR-131's honest ``source`` string changes the bundle of an arm whose
+        every action number is identical. Neither is a different robot, and
+        ``verify_policy`` refuses both. Without ``trained_task`` the only
+        remedies were retraining or reverting a correctness fix.
+
+        **It is strictly stronger than relaxing the digest check would be.**
+        The policy is still bound to one exact bundle; what is new is a proof
+        that a second bundle is the same task. Omit it and nothing changes: the
+        script-built bundle is checked whole-file, as before.
 
         Like ``api.mjcf`` and ``api.task``, this is *not* under the "exactly
         one simulation" rule: nothing bakes a policy, so several against one
@@ -3614,12 +3638,43 @@ class AssemblyDomainAPI:
                 "put_asset reports it when the file is stored",
                 sha256,
             )
+        # The same confinement ``weights`` gets, and for the same reason: the
+        # name came out of a script and names a file the worker will open.
+        clean_trained = str(trained_task or "").strip()
+        if clean_trained:
+            if len(clean_trained) > 120:
+                raise _error(
+                    operation, "trained_task",
+                    "must name a task bundle in the project assets directory, "
+                    "1-120 characters", trained_task,
+                )
+            if any(separator in clean_trained for separator in ("/", "\\")) or (
+                ".." in clean_trained
+            ):
+                raise _error(
+                    operation, "trained_task",
+                    "must name a file directly inside the project assets "
+                    "directory", trained_task,
+                )
+            if not clean_trained.lower().endswith(".json"):
+                raise _error(
+                    operation, "trained_task",
+                    "must be the .json task bundle the policy was trained on, "
+                    "which is what api.task publishes", trained_task,
+                )
+            if clean_trained == clean_weights:
+                raise _error(
+                    operation, "trained_task",
+                    "must not be the weights file; it is the task bundle "
+                    "beside them", trained_task,
+                )
         return self._value(
             operation,
             "policy",
             value,
             weights=clean_weights,
             sha256=clean_digest,
+            trained_task=clean_trained,
             label=label,
         )
 

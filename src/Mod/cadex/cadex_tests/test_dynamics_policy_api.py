@@ -103,9 +103,15 @@ def test_policy_is_registered_everywhere_a_publishable_output_must_be() -> None:
 def test_the_surface_takes_a_task_and_two_required_keywords() -> None:
     signature = inspect.signature(AssemblyDomainAPI.policy)
     assert list(signature.parameters) == ["self", "task", "weights", "sha256",
-                                           "label"]
+                                           "trained_task", "label"]
     for name in ("weights", "sha256"):
         assert signature.parameters[name].default is inspect.Parameter.empty
+        assert signature.parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
+    # ``trained_task`` is optional, and must stay optional: omitting it is the
+    # older and stricter claim -- the script-built bundle checked whole-file --
+    # and every script written before ADR-134 makes it.
+    for name in ("trained_task", "label"):
+        assert signature.parameters[name].default == ""
         assert signature.parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
 
 
@@ -143,6 +149,49 @@ def test_two_policies_may_share_one_task() -> None:
     second = api.policy(scene["task"], weights="b.cxpolicy", sha256="1" * 64)
     assert first is not second
     assert first.arguments == second.arguments == (scene["task"],)
+
+
+def test_a_policy_may_carry_the_bundle_it_trained_on() -> None:
+    """ADR-134's keyword, on the value. Optional, and absent means absent.
+
+    An empty ``trained_task`` is not "the script-built bundle" written a second
+    way -- it is the older claim, and the worker branches on the empty string.
+    """
+
+    api = _api()
+    scene = _scene(api)
+    plain = api.policy(scene["task"], weights="walk.cxpolicy", sha256=DIGEST)
+    assert plain.properties["trained_task"] == ""
+
+    carried = api.policy(scene["task"], weights="walk.cxpolicy", sha256=DIGEST,
+                         trained_task="  stand-b8-task.json  ")
+    # Stripped, and *not* lowercased: a store is case-sensitive, exactly as
+    # ``weights`` is and unlike ``sha256``.
+    assert carried.properties["trained_task"] == "stand-b8-task.json"
+    upper = api.policy(scene["task"], weights="walk.cxpolicy", sha256=DIGEST,
+                       trained_task="Stand-B8-Task.JSON")
+    assert upper.properties["trained_task"] == "Stand-B8-Task.JSON"
+
+
+@pytest.mark.parametrize(
+    "trained_task",
+    ["nested/task.json", "..\\task.json", "../task.json",
+     "x" * 121 + ".json", "task.cxpolicy", "task", "task.json.stl",
+     "walk.cxpolicy"],
+)
+def test_a_trained_task_that_is_not_a_json_asset_is_refused(trained_task) -> None:
+    """Same confinement ``weights`` gets: the name came out of a script.
+
+    ``walk.cxpolicy`` is in the list for a second reason -- it is *this* call's
+    own weights file, and naming the policy as its own training bundle is a
+    confusion the refusal should catch by name rather than by suffix.
+    """
+
+    api = _api()
+    scene = _scene(api)
+    with pytest.raises(ValueError, match="trained_task"):
+        api.policy(scene["task"], weights="walk.cxpolicy", sha256=DIGEST,
+                   trained_task=trained_task)
 
 
 # ---------------------------------------------------------------------------
