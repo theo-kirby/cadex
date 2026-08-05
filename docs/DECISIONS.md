@@ -13614,3 +13614,107 @@ row-major then bias. End to end on an RTX 5090 as tabled above, with the
 witness agreeing to 1.6e-07 (627x inside tolerance) on the warm-started
 policy, and both refusal paths exercised against a mismatched bundle and a
 mismatched `--hidden`.
+
+## ADR-133 — an inertial coordinate below a nanometre is zero (2026-08-05)
+
+**Decision.** `CadexDynamics.body_inertial` snaps every component of the
+centre of mass it returns to exactly `0.0` when its magnitude is below
+`INERTIAL_ZERO_TOLERANCE_MM`, which is **one nanometre**. The rule is
+**absolute**, applies to coordinates and to nothing else, and drops the sign
+with the magnitude so a symmetry zero is never written as `-0`.
+
+### What it cost not to have it
+
+A trained policy could not be replayed on the machine that did not author its
+mechanism, and the whole difference was one float.
+
+`mg-legs` is a symmetric biped, so its pelvis centre of mass is zero in x by
+construction. OCCT does not read it as zero, and does not read it as the same
+non-zero on two platforms:
+
+| | pelvis `<inertial pos>` x | MJCF sha256 | task bundle sha256 |
+|---|---|---|---|
+| macOS 26, arm64 | `5.10066e-11` | `80eaa18f6025…` | `5572adf265aa…` |
+| Ubuntu 24.04, x86-64 | `5.10087e-11` | `0fe04cfce228…` | `0b4d160cd436…` |
+
+**That line was the only difference between the two 14 179-byte files**, and
+the only difference between the two bundles was the model digest the bundle
+embeds. But `verify_policy` check 1 is a whole-file hash of the bundle, so:
+
+```
+policy output 'balance' was trained on a task bundle whose digest is
+'5572adf265aa51cb…', and the task it is declared against digests to
+'0b4d160cd436fd16…'
+```
+
+The refusal is correct in principle — a policy is only meaningful for the task
+it was trained on — and wrong in this instance. 2.1e-15 m on a coordinate that
+is zero by symmetry is not a different robot.
+
+### Why absolute, and why a physical number
+
+The two readings differ in their **fifth significant figure**. No relative
+tolerance calls them equal, so the obvious fix does not work, and the reason
+is cancellation: a symmetric body's x-centroid is a difference of near-equal
+sums, so a last-bit disagreement in OCCT's own per-solid readings arrives
+amplified by eleven orders of magnitude. `math.fsum` is correctly-rounded, so
+identical inputs give identical output and the residual can only have come
+from the inputs — which also rules out fixing it with a summation order or a
+compensated sum. A tolerance is the only thing that can work.
+
+A nanometre is chosen from the machine shop rather than from the arithmetic:
+four orders below the tightest tolerance anything here is modelled to, three
+below the chord tolerance a collision mesh is tessellated at. Nothing that
+survives this snap was ever a feature.
+
+### Measured, on both boxes, after
+
+Same policy-free `mg-legs` script — byte-identical input, sha256
+`c37cabeb6425b08e…` — built through `cadexd` on each machine against
+byte-identical engine sources:
+
+| | script build digest | MJCF | task bundle |
+|---|---|---|---|
+| macOS 26, arm64 | `560a33a4bfce810e…` | `203f746e9bb8a857…`, 14 169 B | `6dc1c580f4bcd01a…`, 30 213 B |
+| Ubuntu 24.04, x86-64 | `560a33a4bfce810e…` | `203f746e9bb8a857…`, 14 169 B | `6dc1c580f4bcd01a…`, 30 213 B |
+
+`cmp` reports both pairs identical. The file is ten bytes shorter than before,
+which is `5.10087e-11` becoming `0`.
+
+### What this deliberately does not do
+
+**It does not snap mass, and it does not snap the inertia tensor.** A product
+of inertia that is zero by symmetry has the same cancellation problem in
+principle, and a nanometre is not a tolerance for kg·m² — the analogous bound
+would have to be relative to the body's own moments, which is a different
+decision with a different justification. For this mechanism it does not arise:
+both platforms print identical `quat` and `diaginertia`. The boundary is named
+so that a mechanism which does hit it is recognised rather than rediscovered.
+
+**It moves every model digest**, and that is the point rather than a side
+effect. Any fix that makes two platforms agree must change at least one of
+them, and the alternative — declaring digests platform-specific forever — is
+what makes a cross-machine pipeline impossible. ADR-134 is the compatibility
+path for policies already trained against a pre-snap bundle.
+
+### Where it is applied, and why there
+
+Inside `body_inertial`, after the weighted sum and **before** the parallel-axis
+loop. Two publications read that one number — the MJCF's `<inertial pos>` and
+the `dynamics` summary's `center_of_mass_mm` — so snapping at the two
+publication sites would be two chances to disagree. Taking the tensor about
+the snapped point rather than about a point a nanometre from it costs `m·d²`:
+for the pelvis that is 9e-23 kg·m² against moments of 1e-5, asserted in
+`test_the_snap_costs_nothing_measurable_in_the_tensor` rather than argued.
+
+### The suite
+
+`test_dynamics_inertial_snap.py`, ten tests, of which seven fail without the
+change. They carry the two measured platform readings as constants, assert the
+snap is invisible to a relative tolerance, assert a 1 µm coordinate survives
+bit for bit, and follow the chain out to the exported MJCF text. Full engine
+suite **1622 passed / 5 failed / 22 skipped** against a pre-change baseline of
+**1612 / 5 / 22** on the same commit: +10 new tests, the same five failures.
+Two of those five are the `RLIMIT_AS` collision defect; the other three arrived
+in `test_part_blending.py` and `test_part_organic.py` with the merge that
+renumbered ADR-131 and ADR-132, and neither set is touched here.

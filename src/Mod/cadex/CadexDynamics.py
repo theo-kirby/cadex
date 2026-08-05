@@ -62,6 +62,27 @@ MAXIMUM_DENSITY_KG_M3 = 30000.0
 #: rotation.
 _TINY = 1.0e-12
 
+#: Below this an inertial coordinate is symmetry noise rather than geometry,
+#: and :func:`snap_inertial_point_mm` makes it exactly zero. **One nanometre**,
+#: stated in the unit ``body_inertial`` works in (ADR-133).
+#:
+#: The number is chosen physically rather than numerically. A nanometre is four
+#: orders of magnitude below the tightest manufacturing tolerance anything in
+#: this repository is modelled to, and about three below the chord tolerance a
+#: collision mesh is tessellated at -- so no coordinate that survives this
+#: snap was ever a feature. It is deliberately *not* a float-comparison
+#: epsilon: those are set by the arithmetic and this one is set by the machine
+#: shop.
+#:
+#: **Absolute, not relative, and that is the whole point.** A coordinate that
+#: is zero by symmetry is the difference of near-equal sums, so cancellation
+#: amplifies a last-bit disagreement in the inputs into a leading-digit
+#: disagreement in the answer: a pelvis whose centre of mass is zero in x by
+#: symmetry reads 5.10066e-11 m on macOS and 5.10087e-11 m on Linux, which
+#: differ in the **fifth significant figure**. No relative tolerance sees
+#: those as equal; every absolute one below a nanometre sees both as zero.
+INERTIAL_ZERO_TOLERANCE_MM = 1.0e-6
+
 #: How far a claimed rigid placement may drift from orthonormal before it is
 #: refused. FreeCAD placements are built from unit quaternions, so real ones
 #: land many orders of magnitude inside this; a mirrored or scaled
@@ -124,6 +145,41 @@ def vector_m(value_mm: Sequence[float]) -> list[float]:
 
 def vector_mm(value_m: Sequence[float]) -> list[float]:
     return [length_mm(item) for item in value_m]
+
+
+def snap_inertial_point_mm(point_mm: Sequence[float]) -> list[float]:
+    """One inertial coordinate triple, with symmetry noise made exactly zero.
+
+    Every component of ``point_mm`` whose magnitude is below
+    :data:`INERTIAL_ZERO_TOLERANCE_MM` becomes ``0.0``; everything else is
+    returned unchanged, to the bit. So this is not a rounding pass and it does
+    not quantise geometry -- it is a **snap to zero**, and a coordinate a
+    nanometre from the origin is the only kind it can move.
+
+    ADR-133 is the reasoning. The short version: the MJCF a script publishes
+    carries a digest, the task bundle embeds that digest, and a trained policy
+    is refused unless the bundle it is declared against digests to what it was
+    trained on. So a coordinate that disagrees between two platforms in its
+    *fifth* significant figure -- which a symmetry zero does, because
+    cancellation amplifies OCCT's last bit -- makes a policy trained on one
+    machine unreplayable on the other. That was measured: `mg-legs`' MJCF
+    differed between macOS and Linux on exactly one line, the pelvis
+    ``<inertial pos>``, by 2.1e-15 m on a coordinate that is zero by symmetry,
+    and nothing else in the 14 179-byte file.
+
+    **The sign is dropped with the magnitude, deliberately.** ``-4e-11`` and
+    ``+4e-11`` both become ``0.0`` rather than ``-0.0`` and ``0.0``: MuJoCo's
+    ``to_xml`` prints negative zero as ``-0``, so preserving the sign would
+    leave the two platforms one character apart and defeat the entire purpose.
+    """
+
+    snapped: list[float] = []
+    for value in point_mm:
+        number = float(value)
+        snapped.append(
+            0.0 if abs(number) < INERTIAL_ZERO_TOLERANCE_MM else number
+        )
+    return snapped
 
 
 def mass_kg(density_kg_m3: float, volume_mm3: float) -> float:
@@ -752,11 +808,32 @@ def body_inertial(
         entries.append((volume, centre, tensor))
 
     total_volume = math.fsum(volume for volume, _centre, _tensor in entries)
-    centre_of_mass = [
-        math.fsum(volume * centre[axis] for volume, centre, _tensor in entries)
-        / total_volume
-        for axis in range(3)
-    ]
+    # Snapped, so a coordinate that is zero by symmetry is zero rather than
+    # nearly zero (ADR-133). This is the *only* place it needs doing: the
+    # MJCF's ``<inertial pos>`` and the ``dynamics`` summary's
+    # ``center_of_mass_mm`` both read this one number, so snapping the two
+    # publications separately would be two chances to disagree.
+    #
+    # It goes after the sum rather than before it. ``math.fsum`` is
+    # correctly-rounded, so identical inputs give identical output on every
+    # platform and the residual can only have come from OCCT's own per-solid
+    # readings -- which means no summation order and no compensation fixes it,
+    # and a tolerance is the only thing that can.
+    #
+    # It goes *before* the parallel-axis loop below, so the tensor is taken
+    # about the point that gets published as the centre of mass rather than
+    # about a point a nanometre away from it. The difference either way is
+    # ``m·d²`` at ``d < 1 nm`` -- for the pelvis that is 9e-23 against moments
+    # of 1e-5 kg·m² -- so this is consistency rather than accuracy.
+    centre_of_mass = snap_inertial_point_mm(
+        [
+            math.fsum(
+                volume * centre[axis] for volume, centre, _tensor in entries
+            )
+            / total_volume
+            for axis in range(3)
+        ]
+    )
     combined = [0.0] * 9
     for volume, centre, tensor in entries:
         offset = [centre[axis] - centre_of_mass[axis] for axis in range(3)]
@@ -3189,6 +3266,11 @@ def build_model(
         inertial = inertials[name]
         native.explicitinertial = True
         native.mass = float(inertial["mass_kg"])
+        # ``center_of_mass_mm`` arrives already snapped, so a symmetry zero is
+        # a zero here rather than 5e-11 (ADR-133, ``snap_inertial_point_mm``).
+        # The snap is upstream in ``body_inertial`` on purpose -- this is one
+        # of two publications that read the number, and the other is the
+        # ``dynamics`` summary.
         native.ipos = vector_m(inertial["center_of_mass_mm"])
         native.fullinertia = full_inertia_six(inertial["inertia_kg_m2"])
         _add_collision_geoms(mujoco, spec, native, name, geoms[name])
