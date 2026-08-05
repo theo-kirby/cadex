@@ -23,9 +23,10 @@ MAX_RESULT_CHARS = 4096
 # it truncated them anyway -- mid-structure, so `part` and `assembly` came
 # back as unparseable blobs and half of each domain was unreachable
 # (ADR-123). The default path is compact now and must never truncate: the
-# largest compact domain is ~16 KB, so this leaves it 2x headroom, and the
-# cap survives only as a backstop on the functions=[...] path, where the
-# model chose the names and can ask for fewer.
+# largest domain it serves is `assembly` at ~19 KB (~16 KB of it signatures,
+# the rest its notes), so this leaves room for the surface to grow. The cap
+# survives only as a backstop on the functions=[...] path, where the model
+# chose the names and can ask for fewer.
 _API_DOMAIN_CHARS = 32768
 
 # get_script serves the exact text the next edit_script has to match. A
@@ -61,16 +62,18 @@ TOOL_DEFS = [
     {
         "name": "write_script",
         "description": (
-            "Replace the ENTIRE model script and rebuild the scene from it. "
+            "Replace the ENTIRE model script and rebuild the model from it. "
             "This is not 'add a part': whatever the script you pass does not "
             "build no longer exists. To add to a model that already has "
-            "parts, call get_script and use edit_script. The script is the "
-            "single source of truth for the model: it runs top-to-bottom "
-            "with `bpy` available after the Model collection is cleared, so "
-            "it must be deterministic and self-contained. Declare "
-            "user-tunable parameters at the top with mesh_model.params(). The "
-            "result reports the rebuilt objects, the parameters, and script "
-            "stdout — or the traceback if the script failed (fix and rewrite)."
+            "parts, call get_script and use edit_script. The script is an "
+            "xscript project script run by the cadex engine, and the single "
+            "source of truth for the model: `bpy` does not exist in it, "
+            "imports are forbidden, and it must be deterministic and "
+            "self-contained. Declare user-tunable parameters at the top with "
+            "params() / num(); call describe_cad_api for the exact contract "
+            "and the domain functions to build with. The result reports the "
+            "accepted revision and its outputs — or the engine's structured "
+            "refusal, which says what it objected to (fix and rewrite)."
         ),
         "input_schema": {
             "type": "object",

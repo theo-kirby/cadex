@@ -21,20 +21,18 @@ from .mcp_shim import bridge_request
 
 def default_script():
     """Canned demo: write a parametric cube model script. Used when
-    MESH_AGENT_MOCK=1."""
+    MESH_AGENT_MOCK=1.
+
+    A real xscript project script, because the engine is what runs it: the
+    bpy version this replaced was a script the engine would refuse (ADR-123).
+    """
     return [[
         ("text", "Building a demo cube.\n"),
         ("tool", "write_script",
-         {"content": "from mesh_model import params, Float\n"
-                     "\n"
-                     "p = params(\n"
-                     "    size=Float(1.0, min=0.2, max=4.0, name='Size',\n"
-                     "               description='Cube edge length'),\n"
-                     ")\n"
-                     "\n"
-                     "import bpy\n"
-                     "bpy.ops.mesh.primitive_cube_add(size=p.size)\n"
-                     "bpy.context.active_object.name = 'MeshAgentCube'\n"}),
+         {"content": "p = params(size=num(20.0, unit='mm', min=5.0,\n"
+                     "                    max=80.0, label='Size'))\n"
+                     "cube = part.box(p.size, p.size, p.size)\n"
+                     "result = {'cube': cube}\n"}),
         ("tool", "scene_summary", {}),
         ("text", "Done - added MeshAgentCube with a Size slider."),
         ("result", False, "Done - added MeshAgentCube with a Size slider."),

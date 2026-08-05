@@ -508,27 +508,53 @@ def test_cadex_budgets_reach_open_project():
 
 # -- the cadex overlay must not restate the engine's API --------------------
 
-def test_cadex_overlay_carries_no_api_names():
-    """The system prompt describes behavior; the engine describes its API.
+#: Names the prompt and the tool descriptions may say, each because a
+#: workflow instruction is keyed to that one call rather than because
+#: anyone is restating the API. A closed set: anything else fails.
+_ALLOWED_API_NAMES = {
+    "assembly.mjcf",     # ADR-091: check the collision shapes after this call
+    "mesh.import_file",  # ADR-086 §4: import_geometry's wording, parked
+}
+
+#: The local-bpy-mode vocabulary ADR-030 deleted. It survived in the base
+#: prompt for a hundred ADRs because this test only ever read the overlay.
+_DELETED_VOCABULARY = ("mesh_model", "Float(", "Int(", "Bool(", "Color(",
+                       "bpy.")
+
+
+def test_prompt_carries_no_api_names():
+    """The prompt describes behavior; the engine describes its API.
 
     A hand-written API listing in the prompt is a copy of the engine's
     truth that nothing keeps in sync — the drift class describe_cad_api
-    exists to kill. This guardrail is the thing that keeps it dead.
+    exists to kill. This guardrail is the thing that keeps it dead, and
+    until ADR-123 it read the overlay alone: the drift was in the base
+    prompt the overlay is appended to, and in the tool descriptions.
     """
-    print("test_cadex_overlay_carries_no_api_names")
+    print("test_prompt_carries_no_api_names")
     import re
     from mesh_agent import modes, tools
 
+    pattern = re.compile(
+        r"\b(?:part|mesh|assembly|partdesign|sketcher)\.[A-Za-z_]+")
+    texts = {"the system prompt": modes.system_prompt()}
+    for tool in tools.TOOL_DEFS:
+        texts["{:s}'s description".format(tool["name"])] = tool["description"]
+
+    for label, text in sorted(texts.items()):
+        leaked = sorted(set(pattern.findall(text)) - _ALLOWED_API_NAMES)
+        check(not leaked,
+              "no xscript API names in {:s} (found: {!r})".format(
+                  label, leaked))
+        said = [word for word in _DELETED_VOCABULARY if word in text]
+        check(not said,
+              "no deleted runtime vocabulary in {:s} (found: {!r})".format(
+                  label, said))
+
     overlay = modes.CADEX_OVERLAY
-    leaked = re.findall(
-        r"\b(?:part|mesh|assembly|partdesign|sketcher)\.[A-Za-z_]+",
-        overlay)
-    check(not leaked,
-          "no xscript API names in CADEX_OVERLAY (found: {!r})".format(
-              sorted(set(leaked))))
     check("params(" not in overlay and "result =" not in overlay,
           "no script skeleton in CADEX_OVERLAY either")
-    check(len(overlay) < 2500,
+    check(len(overlay) < 3500,
           "CADEX_OVERLAY stays small ({:d} chars)".format(len(overlay)))
     check("describe_cad_api" in overlay,
           "the overlay points at describe_cad_api instead")
@@ -1299,7 +1325,7 @@ def main():
         test_mcp_shim_protocol()
         test_cadex_engine_discovery()
         test_cadex_budgets_reach_open_project()
-        test_cadex_overlay_carries_no_api_names()
+        test_prompt_carries_no_api_names()
         test_playback_keys_on_time_not_frame_index()
         test_playback_reorders_the_quaternion_and_keeps_it_continuous()
         test_playback_frame_range_covers_the_run()

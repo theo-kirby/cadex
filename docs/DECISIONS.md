@@ -12710,10 +12710,12 @@ the precedent the prompt rewrite follows.
   now. Same defect, low stakes, same PR.
 
 **Verification.** `pixi run gate` ok, `engine_from_bundle: true`, with
-`GATE["describe_api"]` showing five domains under a 32,768-char cap;
-`package/app/build_app.sh gate tests/python/bl_mesh_agent.py` green,
-including the two checks that were red before it. Engine suite untouched and
-re-run.
+`GATE["describe_api"]` recording every domain served whole against the
+32,768-char cap — `assembly` 19,085, `part` 15,927, `partdesign` 5,814,
+`sketcher` 4,327, `mesh` 2,579. `package/app/build_app.sh gate
+tests/python/bl_mesh_agent.py` all green, including the two checks that were
+red before it; the wiring suite too, since it pins overlay substrings.
+Engine suite untouched and re-run: 1509 passed, 22 skipped.
 
 **Not in this PR.** Re-run the robot wolf against the fixed surface before
 writing any new modelling code. That measurement is what sizes the
