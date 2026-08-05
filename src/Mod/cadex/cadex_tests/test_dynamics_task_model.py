@@ -418,6 +418,108 @@ def test_a_position_action_range_is_the_joints_own_declared_limits() -> None:
     assert action["scale"] == pytest.approx(dyn.angle_radians(1.0))
 
 
+def test_a_command_range_narrows_the_action_without_narrowing_the_joint() -> None:
+    """The whole point of ``command_limits_degrees``, in one assertion pair.
+
+    A joint may legitimately travel further than any controller should
+    *command* it to. Before this existed, saying so meant editing the derived
+    task bundle by hand -- which produced a winning policy whose defining
+    artifact was downstream of the script that was supposed to be the source
+    of truth.
+
+    The two endpoints are deliberately different here. A symmetric cap is the
+    common case and would pass even if the implementation collapsed both
+    bounds to a single magnitude, which is what a hand-rolled version of this
+    did; an asymmetric one does not.
+    """
+
+    narrowed = {**SERVO, "command_limits_degrees": [-30.0, 45.0]}
+    built = _built(actuators=(narrowed,))
+    observations = dyn.observation_records(
+        [{"kind": "position", "joint": "shoulder", "motion_type": "angular",
+          "name": "angle"}],
+        built["tree"], built["joint_records"], built["actuators"],
+    )
+    exported = dyn.export_mjcf(built, observations=observations)
+    reloaded = mujoco.MjModel.from_xml_string(exported["xml"].decode("utf-8"))
+    bundle = dyn.task_records(
+        built,
+        reloaded,
+        {
+            **TASK,
+            "actions": [{"joint": "shoulder", "motion_type": "angular",
+                         "actuator_kind": "position"}],
+            "reward": [{"label": "hold", "expression": "-abs(angle)",
+                        "weight": 1.0}],
+            "termination": [],
+        },
+        observations=observations,
+    )
+    action = bundle["actions"][0]
+    assert action["unit"] == "deg"
+    assert (action["low"], action["high"]) == (-30.0, 45.0)
+    # ...and it says where the range came from, rather than claiming the
+    # joint's limits produced a number they did not.
+    assert action["source"] == "command_limits_degrees"
+    assert action["scale"] == pytest.approx(dyn.angle_radians(1.0))
+
+    # The mechanism keeps every degree it really has. This is the assertion
+    # that separates "narrow the policy's action space" from "build a
+    # different machine": gravity, disturbances and the solver still put the
+    # joint anywhere in its travel, and only the commanded setpoint is
+    # bounded.
+    # Tolerance in degrees, not relative: MuJoCo keeps a joint range in
+    # float32, so a 95 deg limit reloads as 94.99984 whatever anyone does.
+    # 1e-3 deg is far tighter than the 65 deg this test would catch if the
+    # command range leaked into the joint, and loose enough not to be a
+    # float32 detector.
+    shoulder = reloaded.joint("shoulder")
+    assert [math.degrees(value) for value in shoulder.range] == pytest.approx(
+        fx.ARM_LIMITS_DEGREES["shoulder"], abs=1e-3
+    )
+
+
+def test_a_command_range_outside_the_joints_travel_is_refused() -> None:
+    """It narrows; it cannot buy travel the joint does not have.
+
+    The original rationale for deriving a position action range from the
+    joint -- *a setpoint outside the joint's travel is a command the joint
+    cannot obey* -- is exactly as true of a declared range as of a derived
+    one, so the ceiling stays.
+    """
+
+    too_wide = {**SERVO, "command_limits_degrees": [-120.0, 95.0]}
+    with pytest.raises(dyn.DynamicsError) as caught:
+        built = _built(actuators=(too_wide,))
+        observations = dyn.observation_records(
+            [{"kind": "position", "joint": "shoulder", "motion_type": "angular",
+              "name": "angle"}],
+            built["tree"], built["joint_records"], built["actuators"],
+        )
+        exported = dyn.export_mjcf(built, observations=observations)
+        reloaded = mujoco.MjModel.from_xml_string(
+            exported["xml"].decode("utf-8")
+        )
+        dyn.task_records(
+            built,
+            reloaded,
+            {
+                **TASK,
+                "actions": [{"joint": "shoulder", "motion_type": "angular",
+                             "actuator_kind": "position"}],
+                "reward": [{"label": "hold", "expression": "-abs(angle)",
+                            "weight": 1.0}],
+                "termination": [],
+            },
+            observations=observations,
+        )
+    assert caught.value.reason == "command_range_exceeds_joint"
+    # The numbers are in the refusal, both of them, because "out of range"
+    # without them is advice nobody can act on.
+    assert caught.value.observed["commanded"] == [-120.0, 95.0]
+    assert caught.value.observed["joint"] == fx.ARM_LIMITS_DEGREES["shoulder"]
+
+
 def test_a_velocity_actuator_has_no_derivable_action_range() -> None:
     """Nothing in a FreeCAD assembly states a speed limit, so this refuses.
 

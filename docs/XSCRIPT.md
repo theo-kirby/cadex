@@ -261,7 +261,23 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   states position limits and never a speed — and a one-sided limit is
   likewise refused, because its missing endpoint is filled in with a margin
   worth a hundred turns to keep the solver treating the joint as free, which
-  is a convenience rather than a bound anybody designed. Each actuator keeps
+  is a convenience rather than a bound anybody designed.
+  **A position servo may narrow what a policy is allowed to command**, with
+  `command_limits_degrees=[-25, 25]` (`command_limits_mm` when it slides).
+  A joint may legitimately travel further than any controller should *ask*
+  it to, and before this the only way to say so was to edit the derived task
+  bundle by hand — which puts the artifact that defines a trained policy
+  downstream of the script that is supposed to be the source of truth. Both
+  endpoints are required, the range is refused if it reaches outside the
+  joint's own travel, and each endpoint is clamped independently so an
+  asymmetric joint can have an asymmetric command range. It changes the
+  action table and nothing else: the exported joint range is untouched, so
+  gravity, disturbances and the solver still put the joint anywhere it
+  really goes, and the bundle reports `"source": "command_limits_degrees"`
+  rather than claiming the joint's limits produced a number they did not.
+  Note that a policy records its action bounds, so one trained under a
+  narrowed range will not verify against an unclamped bundle — correct, and
+  worth knowing before it surprises you. Each actuator keeps
   the control formula it already required; that becomes its deterministic
   action when no policy is driving, which is what lets the engine run and
   verify one episode from the bundle before publishing it.
