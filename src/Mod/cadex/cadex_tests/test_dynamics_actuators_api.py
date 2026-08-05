@@ -166,6 +166,100 @@ def test_the_wrong_unit_of_a_pair_is_refused_and_names_the_right_one() -> None:
     assert "torque_limit_nmm" in str(excinfo.value)
 
 
+def test_a_command_range_is_accepted_in_both_spellings() -> None:
+    """``[min, max]`` and ``{"minimum": …}``, like every other limit here."""
+
+    api = _api()
+    _base, _part, hinge, _asm = _hinged(api)
+    for spelling in ([-25.0, 25.0], {"minimum": -25.0, "maximum": 25.0}):
+        value = api.actuator(
+            hinge,
+            control_deg="30",
+            stiffness_nmm_per_deg=4000.0,
+            command_limits_degrees=spelling,
+        )
+        # A DomainValue freezes sequences on the way in, so this comes back
+        # as a tuple whichever spelling produced it.
+        assert value.properties["command_limits_degrees"] == (-25.0, 25.0)
+        assert value.properties["command_limits_mm"] is None
+
+
+def test_an_actuator_without_a_command_range_declares_none() -> None:
+    """The default changes nothing for anyone who does not ask."""
+
+    api = _api()
+    _base, _part, hinge, _asm = _hinged(api)
+    value = api.actuator(
+        hinge, control_deg="30", stiffness_nmm_per_deg=4000.0
+    )
+    assert value.properties["command_limits_degrees"] is None
+    assert value.properties["command_limits_mm"] is None
+
+
+def test_a_command_range_in_the_wrong_unit_is_refused() -> None:
+    api = _api()
+    _base, _part, hinge, _asm = _hinged(api)
+    with pytest.raises(ValueError) as excinfo:
+        api.actuator(
+            hinge,
+            control_deg="30",
+            stiffness_nmm_per_deg=4000.0,
+            command_limits_mm=[-25.0, 25.0],
+        )
+    assert "command_limits_degrees" in str(excinfo.value)
+
+
+def test_a_command_range_on_a_motor_is_refused() -> None:
+    """Only a position servo derives its range from travel, so only it has
+    travel to narrow. A motor is bounded by its effort limit."""
+
+    api = _api()
+    _base, _part, hinge, _asm = _hinged(api)
+    with pytest.raises(ValueError) as excinfo:
+        api.actuator(
+            hinge,
+            kind="motor",
+            control_nmm="100",
+            torque_limit_nmm=8000.0,
+            command_limits_degrees=[-25.0, 25.0],
+        )
+    assert "position" in str(excinfo.value)
+
+
+def test_a_half_stated_or_empty_command_range_is_refused() -> None:
+    """One endpoint would have to mean "and the joint's own for the other",
+    which is a second, quieter spelling of something already sayable."""
+
+    api = _api()
+    _base, _part, hinge, _asm = _hinged(api)
+    for bad in ([None, 25.0], [-25.0, None]):
+        with pytest.raises(ValueError) as excinfo:
+            api.actuator(
+                hinge,
+                control_deg="30",
+                stiffness_nmm_per_deg=4000.0,
+                command_limits_degrees=bad,
+            )
+        assert "both endpoints" in str(excinfo.value)
+    with pytest.raises(ValueError) as excinfo:
+        api.actuator(
+            hinge,
+            control_deg="30",
+            stiffness_nmm_per_deg=4000.0,
+            command_limits_degrees=[25.0, 25.0],
+        )
+    assert "zero width" in str(excinfo.value)
+    # Inverted is caught by the shared limit parser, before width.
+    with pytest.raises(ValueError) as excinfo:
+        api.actuator(
+            hinge,
+            control_deg="30",
+            stiffness_nmm_per_deg=4000.0,
+            command_limits_degrees=[25.0, -25.0],
+        )
+    assert "minimum must not exceed maximum" in str(excinfo.value)
+
+
 def test_a_control_in_the_wrong_unit_is_refused_before_it_can_run() -> None:
     """The 57x error, refused at the parameter name rather than at 30 radians."""
 
@@ -439,6 +533,9 @@ def test_the_gains_arrive_in_si_exactly_once() -> None:
         "stiffness": 4000.0,
         "damping": 120.0,
         "effort_limit": 8000.0,
+        # Absent unless the script narrows the action range, and carried in
+        # the surface unit like everything else here.
+        "command_limits": None,
     }
     assert record["mujoco_joint"] == "hinge"
     assert record["mujoco_actuator"] == "hinge/position"

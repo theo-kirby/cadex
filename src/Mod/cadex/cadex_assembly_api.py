@@ -586,6 +586,68 @@ def _unit_pair(
     )
 
 
+def _command_limits(
+    operation: str,
+    coordinate: str,
+    angular: tuple[str, Any],
+    linear: tuple[str, Any],
+) -> tuple[str, list[float]] | None:
+    """A command range from a suffixed pair, with the other one refused.
+
+    :func:`_unit_pair` for two endpoints instead of one. The unit
+    discrimination is that function's, verbatim and for its reason -- a
+    ``command_limits_mm`` on a hinge is a refusal rather than a factor of
+    five million -- and the parsing is :func:`_limits`', so ``[-25, 25]`` and
+    ``{"minimum": -25, "maximum": 25}`` both work and read the same way as
+    every other limit on this surface.
+
+    **Both endpoints are required here**, which is where it parts company
+    with :func:`_limits`. A one-sided *joint* limit means "free in that
+    direction" and the engine fills it with a hundred turns' margin; a
+    one-sided *command* limit would have to mean "and the joint's own
+    endpoint for the other side", which is a second, quieter way of saying
+    something the author can already say explicitly. Refusing it keeps one
+    meaning per spelling.
+    """
+
+    wanted, unwanted = (
+        (angular, linear) if coordinate == "angular" else (linear, angular)
+    )
+    unwanted_name, unwanted_value = unwanted
+    wanted_name, wanted_value = wanted
+    if unwanted_value is not None:
+        raise _error(
+            operation,
+            unwanted_name,
+            f"is the {'linear' if coordinate == 'angular' else 'angular'} form "
+            f"and this joint's coordinate is {coordinate}; use {wanted_name!r}",
+            unwanted_value,
+        )
+    if wanted_value is None:
+        return None
+    parsed = _limits(operation, wanted_name, wanted_value)
+    assert parsed is not None
+    if parsed[0] is None or parsed[1] is None:
+        raise _error(
+            operation,
+            wanted_name,
+            "needs both endpoints: a command range is what a policy may ask "
+            "for, and half of one is not a range. State the joint's own "
+            "endpoint explicitly if that is what you mean",
+            wanted_value,
+        )
+    low, high = float(parsed[0]), float(parsed[1])
+    if not low < high:
+        raise _error(
+            operation,
+            wanted_name,
+            "minimum must be below maximum: a command range of zero width "
+            "leaves a policy no action to take",
+            wanted_value,
+        )
+    return wanted_name, [low, high]
+
+
 def _checked_formula(
     operation: str,
     parameter: str,
@@ -1853,6 +1915,8 @@ class AssemblyDomainAPI:
         damping_ns_per_mm: float | None = None,
         torque_limit_nmm: float | None = None,
         force_limit_n: float | None = None,
+        command_limits_degrees: Any = None,
+        command_limits_mm: Any = None,
         label: str = "",
     ) -> DomainValue:
         """Put a motor on one joint, and tell it what to hold.
@@ -1891,6 +1955,29 @@ class AssemblyDomainAPI:
         mechanism that saturates against it holds short of its setpoint --
         the run's evidence reports the peak effort each actuator reached, so
         "the arm sagged" comes with the number that explains it.
+
+        **``command_limits_degrees`` narrows what a policy may ask for,
+        without narrowing the joint.** A position actuator's action range is
+        its joint's own travel, because a setpoint outside that travel is a
+        command the joint cannot obey. That is right as a *ceiling* and wrong
+        as the only choice: a joint may legitimately move further than any
+        controller should command it to. Give
+        ``command_limits_degrees=[-25, 25]`` on a joint that turns +/-45 and
+        a trained policy's action space is the narrower range, while the
+        mechanism keeps every degree of travel it really has --
+        disturbances, gravity and the solver still put the joint wherever
+        physics puts it.
+
+        Optional, and it changes nothing for anyone who does not pass it.
+        Both endpoints are required, it must lie **within** the joint's
+        declared limits, and it applies only to a ``position`` actuator --
+        a motor is bounded by its effort limit and a velocity actuator has no
+        derivable range at all. ``command_limits_mm`` is the sliding twin,
+        and passing the wrong one for the coordinate is a refusal like every
+        other unit here.
+
+        It does **not** touch the exported joint range. Two runs that differ
+        only in this differ only in the action table.
 
         The gear ratio is fixed at one and cannot be set: MuJoCo's ``gear``
         rescales the setpoint as well as the effort, so a surface with both
@@ -2006,6 +2093,22 @@ class AssemblyDomainAPI:
                 "joint with api.joint_dynamics instead",
                 damping[1],
             )
+        command_limits = _command_limits(
+            operation,
+            coordinate,
+            ("command_limits_degrees", command_limits_degrees),
+            ("command_limits_mm", command_limits_mm),
+        )
+        if clean_kind != "position" and command_limits is not None:
+            raise _error(
+                operation,
+                command_limits[0],
+                f"does not apply to a {clean_kind} actuator: only a position "
+                "servo's action range is derived from a joint's travel, so "
+                "only a position servo has travel to narrow. A motor is "
+                "bounded by its effort limit",
+                command_limits[1],
+            )
         properties: dict[str, Any] = {
             "kind": clean_kind,
             "motion_type": coordinate,
@@ -2016,9 +2119,11 @@ class AssemblyDomainAPI:
             "damping_ns_per_mm": None,
             "torque_limit_nmm": None,
             "force_limit_n": None,
+            "command_limits_degrees": None,
+            "command_limits_mm": None,
         }
         properties[wanted] = control
-        for entry in (stiffness, damping, effort):
+        for entry in (stiffness, damping, effort, command_limits):
             if entry is not None:
                 properties[entry[0]] = entry[1]
         return self._value(operation, "actuator", value, label=label, **properties)

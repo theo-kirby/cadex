@@ -495,13 +495,18 @@ def test_a_task_must_be_given_an_exported_model_and_not_a_simulation() -> None:
         )
 
 
-def test_the_actuator_surface_did_not_change() -> None:
-    """Zero diff on an existing surface, asserted rather than assumed.
+def test_the_actuator_surface_is_exactly_this() -> None:
+    """The surface, asserted rather than assumed.
 
     A policy-driven actuator's control formula becomes its deterministic
     fallback action, which is exactly what an episode needs to run without a
-    policy -- so ``api.actuator`` keeps requiring one and M6 adds nothing to
-    it.
+    policy -- so ``api.actuator`` keeps requiring one, and M6 added nothing
+    to it.
+
+    ``command_limits_degrees`` / ``command_limits_mm`` are the one later
+    addition. They narrow what a *policy* may command without narrowing the
+    joint, and they are deliberately not a fifth control: the fallback
+    formula is still required and still means the same thing.
     """
 
     parameters = inspect.signature(AssemblyDomainAPI.actuator).parameters
@@ -511,7 +516,8 @@ def test_the_actuator_surface_did_not_change() -> None:
         "control_nmm", "control_n",
         "stiffness_nmm_per_deg", "stiffness_n_per_mm",
         "damping_nmms_per_deg", "damping_ns_per_mm",
-        "torque_limit_nmm", "force_limit_n", "label",
+        "torque_limit_nmm", "force_limit_n",
+        "command_limits_degrees", "command_limits_mm", "label",
     }
     api = _api()
     _assembly_value, _components, joints = _assembly(api)

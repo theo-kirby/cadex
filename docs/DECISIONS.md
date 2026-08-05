@@ -12602,3 +12602,81 @@ engine: a two-board `boards(...)` script, one wire applied, a second applied
 with no intervening rebuild, and **both** cables asserted present in the
 accepted revision. It fails on the second apply without the pump.
 `pixi run gate` ok.
+
+## ADR-123 — A policy's command range, separate from the joint's travel (2026-08-05)
+
+**Decision.** `assembly.actuator(..., command_limits_degrees=[-25, 25])`, and
+its sliding twin `command_limits_mm`. Optional; **position actuators only**;
+both endpoints required; **refused if it reaches outside the joint's own
+declared travel**. It narrows the exported action range and **nothing else** —
+the MJCF joint range is untouched.
+
+### What it replaces
+
+A position servo's action range was its joint's limits, full stop
+(`_ACTION_SOURCES`, `_action_bound`). The rationale is sound and survives
+unchanged as a *ceiling*: **a setpoint outside a joint's travel is a command
+the joint cannot obey.** What it did not allow for is the other direction. A
+joint may legitimately move further than any controller should *ask* it to.
+
+The two are different statements about different things — one is what the
+mechanism can do, the other is what the policy is allowed to request — and
+until now the surface had one spelling for both.
+
+### The evidence that this is worth a surface
+
+A downstream RL project (`cdx-rl`) needed exactly this, could not say it, and
+**edited the derived task bundle by hand** instead — capping the action table
+with a script while copying the MJCF through unchanged. It worked, because the
+MJCF sets `ctrllimited="false"` on every actuator so nothing re-clamps
+downstream. The cost was that **the artifact defining its best policy was
+downstream of the script that is supposed to be the source of truth**, which
+is VISION principle 3 inverted.
+
+The measurement that made it worth doing: capping a ten-joint biped's command
+range at ±25° cut the fraction of time its worst servo sat above 90 % of its
+torque rating from **51.8 % to 13.5 %**, while costing nothing measurable in
+task performance (15/24 against a control's 18/24, McNemar p = 0.375). That is
+the difference between a policy describing a machine somebody can build and one
+describing a machine that cooks its servos — and it was unreachable from a
+script.
+
+### Each endpoint clamps independently
+
+The hand-rolled version took `abs()` of both bounds and wrote a symmetric
+±cap. That is a no-op on a symmetric joint and wrong on an asymmetric one, so
+the surface does not copy it: `[-30, 45]` on a ±95° joint means `[-30, 45]`.
+The test uses deliberately unequal endpoints, because a symmetric fixture
+passes even when the implementation collapses both bounds to one magnitude.
+
+### `source` says where the range came from
+
+The bundle's `actions[].source` becomes `command_limits_degrees` rather than
+`angle_limits_degrees` when a range is declared. A bundle that reported the
+joint's limits as the origin of a number the joint did not produce would be
+the same class of quiet misattribution this file exists to refuse — and
+`source` is the only field that can carry the distinction to a reader
+comparing two runs.
+
+It is deliberately **not** in `_POLICY_ACTION_FIELDS`, so it does not affect
+`verify_policy`: two bundles differing only in `source` verify the same
+policy.
+
+### It does not touch the model
+
+Asserted rather than assumed. The regression reloads the exported MJCF and
+checks the joint keeps its full travel, in degrees with an absolute tolerance
+— MuJoCo stores a joint range in float32, so a 95° limit reloads as 94.99984
+and a relative tolerance here would be a float32 detector rather than a leak
+detector. Measured end to end on the biped above: narrowing all ten actuators
+produced a **byte-identical MJCF**, digest and all.
+
+### Verification
+
+`pixi run test-engine`. Seven new tests: the narrowed action range with
+asymmetric endpoints, the untouched joint range, the out-of-travel refusal
+with both numbers in it, both accepted spellings, the wrong-unit refusal, the
+not-a-position-servo refusal, and the half-stated/zero-width/inverted
+refusals. `test_the_actuator_surface_did_not_change` is renamed
+`test_the_actuator_surface_is_exactly_this` and updated — it is a guard on the
+surface, and this is a deliberate change to it.
