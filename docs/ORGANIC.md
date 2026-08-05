@@ -305,7 +305,24 @@ accepted one.
 | O1 | 2026-08-05 | **The weld lands.** `fuse(blend=8.0, blend_on_failure="skip")` builds the wolf with 25 of its 48 seams rounded, in 25.04 s against a 13.61 s baseline. `blend=15.0, "reduce"` rounds every seam at a reduced radius. The refusal path quotes a workable radius instead of `StdFail_NotDone`. Turns: **one** — the change is one keyword on the `fuse` the script already had. |
 
 | O2 | 2026-08-05 | No wolf change — it has no mechanism to mount yet. What O2 adds is the check: a mate that overlaps refuses with the cubic millimetres, so the skin/mechanism interface stops being two copied numbers. |
-| O3 | 2026-08-05 | The wolf's rings become draggable in principle: `cage(...)` + `part.loft_cage` express its torso, neck, legs and tail directly, and a dragged ring lands in the accepted revision (gate). **Not yet re-authored** — porting the wolf onto the cage is a modelling turn, not a code change, and it is the first thing to do with this phase. |
+| O3 | 2026-08-05 | **The torso ports in one edit.** Its six `sec(...)` literals become a six-`ring(...)` `section_cage`, `part.loft` becomes `part.loft_cage`, and the script accepts and builds — with an exponent per ring, which the sections never had. Rendered, the front view shows a squared-off, fuller torso section instead of an ellipse. The legs, neck, ears and tail are **not** ported: that is a modelling turn rather than a code change, and it is the first thing to do with this phase. |
+
+### What porting the torso showed (2026-08-05)
+
+Done as a check on O3 rather than as a rebuild of the wolf: replace the
+torso's six hand-written sections with a `cage(...)` of six rings, leave
+everything else alone.
+
+- It is a **smaller** edit than the original, not a larger one: six
+  `ring(...)` rows and one `part.loft_cage` replace six `sec(...)` calls and
+  a `part.loft`, and the `sec` helper stops being needed by that body at all.
+- The **exponent is visible immediately.** At 2.8–3.4 the torso's section
+  reads as a rounded rectangle rather than an ellipse — a fuller back and
+  flatter flanks — which is exactly the "muscled rather than tubular" the
+  parameter exists for, and it cost one number per row.
+- **The disc is still there**, because the leg roots were not ported. That
+  is the honest state of the benchmark: O3 gives the wolf's worst row a
+  handle, and nobody has yet grabbed it.
 
 ### What the first render actually showed (2026-08-05)
 
