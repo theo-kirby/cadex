@@ -321,6 +321,10 @@ def _complete_script(captured: Mapping[str, Any]) -> Any:
         # wholesale by the stored overrides where there are any — which is
         # exactly what ``set_params(mounts=[...])`` takes back.
         "mounts": _script_mounts(state),
+        # ...and the section cage (ADR-127): the overlay draws these rings
+        # and Apply writes them back, so the shell has to be able to read
+        # the table it is about to replace.
+        "cages": _script_cages(state),
         "latest_candidate": state.get("latest_candidate"),
         "updated_at": str(state.get("updated_at") or ""),
     }
@@ -333,6 +337,25 @@ def _script_mounts(state: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "components": sorted(declared_groups(specs)),
         "rows": effective_mounts(specs, state.get("mount_values")),
+    }
+
+
+def _script_cages(state: Mapping[str, Any]) -> dict[str, Any]:
+    from CadexCage import declared_cages, effective_rings
+
+    specs = dict(state.get("cage_specs") or {})
+    declared = declared_cages(specs)
+    return {
+        "cages": [
+            {
+                "name": name,
+                "axis": list(entry.get("axis") or [1.0, 0.0, 0.0]),
+                "origin": list(entry.get("origin") or [0.0, 0.0, 0.0]),
+                "up": list(entry.get("up") or [0.0, 0.0, 1.0]),
+            }
+            for name, entry in declared.items()
+        ],
+        "rows": effective_rings(specs, state.get("cage_values")),
     }
 
 

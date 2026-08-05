@@ -14,6 +14,7 @@ import math
 from typing import Any, Iterable, Sequence
 
 from CadexSubshapeQuery import SELECTOR_KEYS
+from CadexCage import CageSet
 from CadexMounts import Mount, MountSet
 from CadexTerminals import Terminal, TerminalError, TerminalSet, declared_layout, selector_layout
 from cadex_domain_api import DomainValue
@@ -2662,6 +2663,52 @@ class PartDomainAPI:
             label=label,
         )
 
+    def loft_cage(
+        self,
+        cage: Any,
+        *,
+        solid: bool = True,
+        closed: bool = False,
+        ruled: bool = False,
+        label: str = "",
+    ) -> DomainValue:
+        """Loft the sections of one declared cage (ADR-127).
+
+        ``cage`` is one entry of a ``cage(...)`` table — ``c["torso"]`` — and
+        each of its rings is a superellipse: ``exponent`` 2.0 is an ellipse,
+        larger fills the corners out towards a rounded rectangle, which is
+        the difference between a limb that reads as tubular and one that
+        reads as muscled.
+
+        The same loft the script could write by hand, over a table it can
+        also drag. ``ruled`` lofts straight between sections instead of
+        fairing a spline through them.
+        """
+
+        operation = "loft_cage"
+        if not isinstance(cage, CageSet):
+            raise _error(
+                operation,
+                "cage",
+                "expected one cage from cage(...), subscripted by name, e.g. "
+                "c['torso']",
+                cage,
+            )
+        if len(cage) < 2:
+            raise _error(
+                operation, "cage", "needs at least two rings to loft between",
+                len(cage),
+            )
+        return self._value(
+            operation,
+            "solid" if bool(solid) else "shell",
+            cage.to_payload(),
+            solid=bool(solid),
+            closed=bool(closed),
+            ruled=bool(ruled),
+            label=label,
+        )
+
     def mate(
         self,
         shape: DomainValue,
@@ -2838,6 +2885,8 @@ class PartDomainAPI:
             "offset2d",
             "thicken",
             "transform",
+            "loft_cage",
+            "mate",
             "mirror",
             "project",
             "refine",

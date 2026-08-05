@@ -1135,7 +1135,7 @@ lose by accident:
   *compiled* model, which is where a release changing a default would land.
   Moving one is a measurement, not an edit.
 
-## Phase 15 — Organic modelling and the CAD/mesh interface `(open; O0 closed 2026-08-05, ADR-124)`
+## Phase 15 — Organic modelling and the CAD/mesh interface `(O0–O3 closed 2026-08-05, ADR-124…127; O2b and O4 parked)`
 
 **Goal:** make the shapes a person asks for — a body, a limb, a skin over a
 mechanism — buildable by the agent, and shapeable by the user without a chat
@@ -1185,11 +1185,14 @@ supplying only the gesture (O3).
       up, projected across the axis) and reports it: a rim selection has no
       roll in it, and inventing a second-pick gesture before the default is
       known to be wrong is not warranted.
-- [ ] **O3 — The section cage.** `CadexCage.py` and `part.loft_cage`, an
-      edge-only ring overlay in a sibling collection, and Apply through
-      `wiring.py`'s single-slot pump. Exit: drag a ring, press Apply, and
-      the accepted revision moves — **without a new space type**
-      (`docs/BLENDER-TREE.md` §2b budget is not this slice's to spend).
+- [x] **O3 — The section cage** (ADR-127, 2026-08-05). `CadexCage.py` and
+      `part.loft_cage`, an edge-only ring overlay in a sibling collection,
+      and Apply through `wiring.py`'s single-slot pump. Drag a ring, press
+      Apply, and the accepted revision moves — proved in the gate, twice in a
+      row with no rebuild between — and **no new space type** was spent. It
+      is what answers `docs/VISION.md`'s open question about interactive mesh
+      editing: as engine ops, on a declared table, with the shell supplying
+      only the gesture.
 - [ ] **O2b — Swept-volume clearance.** Parked by decision, not dropped: it
       roughly doubles O2.
 - [ ] **O4 — subD.** Parked, unscheduled. It reuses O3's table, overlay and

@@ -23,6 +23,10 @@
    ],
    "digest": "str"
   },
+  "cages": {
+   "cages": [],
+   "rows": []
+  },
   "latest_candidate": {
    "attempt_id": "str",
    "digest": "str",

@@ -113,6 +113,11 @@ class CadexProjectScriptStore:
             # it needs no migration either.
             "mount_specs": {},
             "mount_values": [],
+            # The section cage's declaration cache and its stored ring rows
+            # (ADR-127) — the fifth such pair, same merge, same absence of a
+            # migration for a script.json written before it.
+            "cage_specs": {},
+            "cage_values": [],
             "working_revision": "",
             "accepted_revision": "",
             "accepted_contract": None,

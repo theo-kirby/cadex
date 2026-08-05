@@ -15,6 +15,10 @@
    "contract": "null",
    "digest": "str"
   },
+  "cages": {
+   "cages": [],
+   "rows": []
+  },
   "latest_candidate": "null",
   "mounts": {
    "components": [],

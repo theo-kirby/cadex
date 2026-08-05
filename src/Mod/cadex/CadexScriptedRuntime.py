@@ -72,6 +72,11 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         # mounts()/mount_set()/mount(), the part api and worker import it for
         # part.mate, and the host imports it to validate a stored row list.
         "CadexMounts.py",
+        # The section cage (ADR-127). Staged for CadexMounts' reasons: the
+        # project worker imports it to stage cage()/section_cage()/ring(),
+        # the part api and worker import it for part.loft_cage, and the host
+        # imports it to validate a stored row list.
+        "CadexCage.py",
         "cadex_partdesign_api.py",
         "cadex_partdesign_worker.py",
         "cadex_mesh_api.py",
@@ -1275,6 +1280,41 @@ def _project_mount_values(
     return clean
 
 
+def _project_cage_values(
+    state: Mapping[str, Any], rows: Any, tool_name: str
+) -> list[dict[str, Any]]:
+    """Validate one full ring-row list against the declared cages (ADR-127)."""
+
+    from CadexCage import CageError, canonical_ring_rows, declared_cages
+
+    try:
+        clean = canonical_ring_rows(rows, what="cages")
+    except CageError as exc:
+        _raise(
+            tool_name,
+            "INVALID_PROJECT_CAGE",
+            "precondition",
+            str(exc),
+            requested={"cages": rows},
+        )
+    cages = declared_cages(state.get("cage_specs"))
+    if not cages:
+        return clean
+    for row in clean:
+        name = str(row["cage"])
+        if name not in cages:
+            _raise(
+                tool_name,
+                "UNKNOWN_PROJECT_CAGE",
+                "precondition",
+                f"A ring names cage {name!r}, which the project script does "
+                "not declare.",
+                requested={"cages": rows},
+                observed={"declared_cages": sorted(cages)},
+            )
+    return clean
+
+
 def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
     """Persist the working script state and stage one project candidate."""
 
@@ -1312,6 +1352,7 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
     net_values = [dict(row) for row in list(state.get("net_values") or [])]
     board_values = [dict(row) for row in list(state.get("board_values") or [])]
     mount_values = [dict(row) for row in list(state.get("mount_values") or [])]
+    cage_values = [dict(row) for row in list(state.get("cage_values") or [])]
     if operation == "write_script":
         source = str(arguments.get("source") or "")
         if not source.strip():
@@ -1360,10 +1401,12 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         nets_patch = arguments.get("nets")
         boards_patch = arguments.get("boards")
         mounts_patch = arguments.get("mounts")
+        cages_patch = arguments.get("cages")
         tables_only = (
             nets_patch is not None
             or boards_patch is not None
             or mounts_patch is not None
+            or cages_patch is not None
         ) and values_patch == {}
         if not tables_only:
             try:
@@ -1393,6 +1436,8 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
             board_values = _project_terminal_values(state, boards_patch, tool_name)
         if mounts_patch is not None:
             mount_values = _project_mount_values(state, mounts_patch, tool_name)
+        if cages_patch is not None:
+            cage_values = _project_cage_values(state, cages_patch, tool_name)
     else:
         _raise(tool_name, "UNKNOWN_DOMAIN_TOOL", "surface", "Unknown project tool.")
 
@@ -1433,6 +1478,8 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         board_values=board_values,
         mount_specs=state.get("mount_specs"),
         mount_values=mount_values,
+        cage_specs=state.get("cage_specs"),
+        cage_values=cage_values,
     )
     attempt_id = f"{int(time.time() * 1000):013d}-{uuid.uuid4().hex[:12]}"
     staging = store.artifacts_dir(revision) / f"attempt-{attempt_id}"
@@ -1449,6 +1496,7 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
             "net_values": net_values,
             "board_values": board_values,
             "mount_values": mount_values,
+            "cage_values": cage_values,
             "api_contracts": _project_api_contracts(),
             "document_name": str(captured["document_name"]),
             "document_uid": str(captured["document_uid"]),
@@ -1502,6 +1550,9 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         "mount_values_before": [
             dict(row) for row in list(state.get("mount_values") or [])
         ],
+        "cage_values_before": [
+            dict(row) for row in list(state.get("cage_values") or [])
+        ],
         "accepted_revision_before": str(state.get("accepted_revision") or ""),
         "accepted_contract_before": state.get("accepted_contract"),
         "accepted_digest_before": str(state.get("accepted_digest") or ""),
@@ -1510,10 +1561,12 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         "net_values": net_values,
         "board_values": board_values,
         "mount_values": mount_values,
+        "cage_values": cage_values,
         "param_specs_before": list(state.get("param_specs") or []),
         "net_specs_before": dict(state.get("net_specs") or {}),
         "board_specs_before": dict(state.get("board_specs") or {}),
         "mount_specs_before": dict(state.get("mount_specs") or {}),
+        "cage_specs_before": dict(state.get("cage_specs") or {}),
         "project_root": project_root,
         "staging": str(staging),
         "bundle_dir": str(bundle_dir),
@@ -1562,6 +1615,9 @@ def record_project_candidate_failure(
             ],
             "mount_values": [
                 dict(row) for row in list(prepared.get("mount_values_before") or [])
+            ],
+            "cage_values": [
+                dict(row) for row in list(prepared.get("cage_values_before") or [])
             ],
             "working_revision": str(prepared.get("working_revision_before") or ""),
             "latest_candidate": {
@@ -1766,6 +1822,15 @@ def validate_project_result(
             field: value for field, value in dict(row).items() if field != "frame"
         })
     prepared["mount_values"] = prune_mount_rows(mount_values, mount_specs)
+    # ...and the cage, pruned the same way. A ring row carries no world frame
+    # to convert: the overlay drags a ring along a spine the script declared,
+    # so what comes back is already in the cage's own terms (ADR-127).
+    from CadexCage import prune_ring_rows
+
+    cage_specs = dict(execution.get("cage_specs") or {})
+    prepared["cage_values"] = prune_ring_rows(
+        list(prepared.get("cage_values") or []), cage_specs
+    )
     final_revision = contracts.project_script_revision(
         source=str(prepared["source"]),
         param_specs=param_specs,
@@ -1776,6 +1841,8 @@ def validate_project_result(
         board_values=list(prepared["board_values"]),
         mount_specs=mount_specs,
         mount_values=list(prepared["mount_values"]),
+        cage_specs=cage_specs,
+        cage_values=list(prepared["cage_values"]),
     )
     store = CadexProjectScriptStore(str(prepared["project_root"]))
     store.write(
@@ -1788,6 +1855,8 @@ def validate_project_result(
             "board_values": list(prepared["board_values"]),
             "mount_specs": mount_specs,
             "mount_values": list(prepared["mount_values"]),
+            "cage_specs": cage_specs,
+            "cage_values": list(prepared["cage_values"]),
             "working_revision": final_revision,
             "latest_candidate": {
                 "status": "validated",
@@ -1808,6 +1877,7 @@ def validate_project_result(
         "net_specs": net_specs,
         "board_specs": board_specs,
         "mount_specs": mount_specs,
+        "cage_specs": cage_specs,
         "validations": dict(execution.get("validations") or {}),
         "component_sources": dict(execution.get("component_sources") or {}),
         "stdout": str(execution.get("stdout") or ""),
@@ -2354,6 +2424,9 @@ def describe_project_api() -> dict[str, Any]:
             "mounts",
             "mount_set",
             "mount",
+            "cage",
+            "section_cage",
+            "ring",
         ],
         "domains": _capability_api_listing(),
         "connections": {
@@ -2463,6 +2536,39 @@ def describe_project_api() -> dict[str, Any]:
                 "replace the declared table wholesale, exactly as the board "
                 "rows do. A stored row naming a component the script no "
                 "longer declares mounts for is dropped, not refused."
+            ),
+        },
+        "cages": {
+            "cage": (
+                "USE THIS for an organic body -- a torso, a limb, a head. "
+                "cage({'torso': section_cage([ring(...), ...])}) declares the "
+                "shape as a table of cross-sections; callable at most once "
+                "per script. part.loft_cage(c['torso']) lofts it. The user "
+                "can grab a ring in the viewport and drag it, so a silhouette "
+                "stops costing a chat turn -- which is the whole reason to "
+                "spell a section table this way rather than as literals."
+            ),
+            "section_cage": (
+                "section_cage(rings, axis=(1,0,0), origin=(0,0,0), "
+                "up=(0,0,1), units='mm') declares one cage: the rings are "
+                "perpendicular to axis and stationed at their position along "
+                "it from origin, and up fixes which way a ring's height "
+                "points. A CURVED spine is part.sweep(scale_law=...) instead."
+            ),
+            "ring": (
+                "ring(position, half_width, half_height, roll=0.0, "
+                "exponent=2.0) is one section. The EXPONENT is the "
+                "superellipse power: 2.0 is an ellipse, 4.0 already reads as "
+                "a muscle, 8.0 as a rounded box. It is the cheapest way to "
+                "make a limb look like a limb rather than a tube, and it "
+                "costs a parameter rather than an operation."
+            ),
+            "values": (
+                "Stored rows from xscript.project.set_params(cages=...) "
+                "replace a cage's rings wholesale, exactly as the other "
+                "tables do. A ring has no name -- its identity is its place "
+                "in its cage's order -- and rows naming a cage the script no "
+                "longer declares are dropped, not refused."
             ),
         },
         "parameters": {

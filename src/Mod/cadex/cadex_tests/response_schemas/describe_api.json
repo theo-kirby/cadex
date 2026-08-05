@@ -5,6 +5,12 @@
   "term": "str",
   "values": "str"
  },
+ "cages": {
+  "cage": "str",
+  "ring": "str",
+  "section_cage": "str",
+  "values": "str"
+ },
  "connections": {
   "nets": "str",
   "values": "str",

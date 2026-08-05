@@ -108,9 +108,15 @@ OP_ARG_SPECS: dict[str, tuple[dict[str, type], dict[str, type]]] = {
     # `mounts` is the mount table's stored rows (ADR-126), on exactly the
     # terms `boards` is: a full row list, a `frame: "world"` row converted by
     # the worker rather than here, and one op rather than a fourth.
+    #
+    # `cages` is the section cage's ring rows (ADR-127), the fifth table
+    # through the same op and the first whose rows carry no name: a ring's
+    # identity is its place in its cage's order, and the stored list is
+    # complete, so there is nothing a name would be for.
     "set_params": (
         {"values": dict, "expected_revision": str},
-        {"display": dict, "nets": list, "boards": list, "mounts": list},
+        {"display": dict, "nets": list, "boards": list, "mounts": list,
+         "cages": list},
     ),
     "rebuild": ({}, {"display": dict}),
     # A path, not bytes: the asset budget is 128 MB and the frame cap is 8 MB.
@@ -265,6 +271,10 @@ OP_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
                 # ...and the mount vocabulary (ADR-126), the fourth: where one
                 # component bolts to another, frame and fastener included.
                 "mounts",
+                # ...and the section cage (ADR-127), the fifth: a shape as a
+                # table of rings, which is what the model was already writing
+                # by hand.
+                "cages",
                 "mutation_selection",
             }
         ),
@@ -401,6 +411,9 @@ NESTED_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
                 # reason: it is script state something outside the script
                 # sets, so the party setting it has to read it first.
                 "mounts",
+                # ...and the section cage (ADR-127), which the overlay draws
+                # and the Apply button writes back.
+                "cages",
             }
         ),
         frozenset(),

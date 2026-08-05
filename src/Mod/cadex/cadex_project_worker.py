@@ -475,6 +475,8 @@ def _validate_request(
     board_values = request.get("board_values") or []
     # ...and one table further: the mount rows (ADR-126), on the same terms.
     mount_values = request.get("mount_values") or []
+    # ...and the section cage's rings (ADR-127), the fourth such table.
+    cage_values = request.get("cage_values") or []
     if not isinstance(inputs, dict):
         raise TypeError("inputs must be an object.")
     if not isinstance(api_contracts, dict) or set(api_contracts) != set(
@@ -491,6 +493,8 @@ def _validate_request(
         raise TypeError("board_values must be an array of terminal rows.")
     if not isinstance(mount_values, list):
         raise TypeError("mount_values must be an array of mount rows.")
+    if not isinstance(cage_values, list):
+        raise TypeError("cage_values must be an array of ring rows.")
     return (
         source,
         inputs,
@@ -499,6 +503,7 @@ def _validate_request(
         net_values,
         board_values,
         mount_values,
+        cage_values,
     )
 
 
@@ -540,7 +545,8 @@ def _staged_globals(
     net_values: Any = None,
     board_values: Any = None,
     mount_values: Any = None,
-) -> tuple[dict[str, Any], ParamsCollector, Any, Any, Any]:
+    cage_values: Any = None,
+) -> tuple[dict[str, Any], ParamsCollector, Any, Any, Any, Any]:
     """One API object per capability domain, plus the declared-table vocabulary.
 
     ``params``/``num`` declare the sliders, ``nets``/``wire`` the connections
@@ -551,6 +557,7 @@ def _staged_globals(
     """
 
     from CadexBoards import BoardsCollector, board, term
+    from CadexCage import CagesCollector, ring, section_cage
     from CadexMounts import MountsCollector, mount, mount_set
     from CadexNets import NetsCollector, wire
     from cadex_domain_api import _json_value
@@ -564,6 +571,7 @@ def _staged_globals(
         lambda component: _component_placement(_json_value(component)),
     )
     mounts = MountsCollector(mount_values, _mount_row_from_world)
+    cages = CagesCollector(cage_values)
     globals_by_name: dict[str, Any] = {
         "params": collector,
         "num": num,
@@ -575,6 +583,9 @@ def _staged_globals(
         "mounts": mounts,
         "mount_set": mount_set,
         "mount": mount,
+        "cage": cages,
+        "section_cage": section_cage,
+        "ring": ring,
     }
     for domain in EVALUATION_ORDER:
         contract = api_contracts[domain]
@@ -588,7 +599,7 @@ def _staged_globals(
             globals_by_name[domain] = create_domain_api(
                 domain, exports, output_types
             )
-    return globals_by_name, collector, nets, boards, mounts
+    return globals_by_name, collector, nets, boards, mounts, cages
 
 
 def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
@@ -602,6 +613,7 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
         net_values,
         board_values,
         mount_values,
+        cage_values,
     ) = _validate_request(request)
 
     output_directory = root / "outputs"
@@ -620,9 +632,9 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
     configure_part_assets(root, canonical_mesh_from_payload, composed_placement)
 
     inline_sources: dict[str, dict[str, Any]] = {}
-    globals_by_name, collector, nets, boards, mounts = _staged_globals(
+    globals_by_name, collector, nets, boards, mounts, cages = _staged_globals(
         api_contracts, param_values, inline_sources, net_values, board_values,
-        mount_values
+        mount_values, cage_values
     )
 
     document = App.newDocument(
@@ -771,6 +783,7 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
             "net_specs": nets.specs,
             "board_specs": boards.specs,
             "mount_specs": mounts.specs,
+            "cage_specs": cages.specs,
             # Rows this run carried out of world coordinates (ADR-120).
             # ``validate_project_result`` writes them back into
             # ``board_values``, so a viewport measurement is converted exactly
@@ -916,6 +929,7 @@ def _run_preview(request: dict[str, Any], root: Path) -> dict[str, Any]:
         net_values,
         board_values,
         mount_values,
+        cage_values,
     ) = _validate_request(request)
     baseline = request.get("baseline")
     if baseline is not None and not isinstance(baseline, dict):
@@ -927,9 +941,9 @@ def _run_preview(request: dict[str, Any], root: Path) -> dict[str, Any]:
     configure_part_assets(root, canonical_mesh_from_payload, composed_placement)
 
     inline_sources: dict[str, dict[str, Any]] = {}
-    globals_by_name, _collector, _nets, _boards, _mounts = _staged_globals(
+    globals_by_name, _collector, _nets, _boards, _mounts, _cages = _staged_globals(
         api_contracts, param_values, inline_sources, net_values, board_values,
-        mount_values
+        mount_values, cage_values
     )
 
     document = App.newDocument(

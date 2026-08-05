@@ -225,6 +225,8 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "offset2d",
             "thicken",
             "transform",
+            "loft_cage",
+            "mate",
             "mirror",
             "project",
             "refine",
@@ -354,16 +356,19 @@ def project_script_revision(
     board_values: Any = None,
     mount_specs: Mapping[str, Any] | None = None,
     mount_values: Any = None,
+    cage_specs: Mapping[str, Any] | None = None,
+    cage_values: Any = None,
 ) -> str:
     """Content revision of the project script + its declared-table state (D7).
 
-    The connection table (ADR-065), the board table (ADR-120) and the mount
-    table (ADR-126) enter the payload **only when they are non-empty**, and
+    The connection table (ADR-065), the board table (ADR-120), the mount
+    table (ADR-126) and the section cage (ADR-127) enter the payload **only
+    when they are non-empty**, and
     that conditional is doing real work: every project written before they
     existed keeps a byte-identical revision, so nothing needs re-accepting
     the way ADR-064 did. A script that declares no nets, no boards and no
     mounts has nothing to say here, and saying it anyway would move every
-    stored revision in the world to record three empty tables.
+    stored revision in the world to record four empty tables.
     """
 
     payload = {
@@ -385,6 +390,10 @@ def project_script_revision(
         payload["mount_specs"] = dict(mount_specs)
     if mount_values:
         payload["mount_values"] = [dict(row) for row in list(mount_values)]
+    if cage_specs:
+        payload["cage_specs"] = dict(cage_specs)
+    if cage_values:
+        payload["cage_values"] = [dict(row) for row in list(cage_values)]
     encoded = json.dumps(
         payload,
         ensure_ascii=True,

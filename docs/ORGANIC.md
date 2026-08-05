@@ -1,8 +1,9 @@
 # ORGANIC.md — Organic Modelling, and the CAD/Mesh Interface
 
 Verified against source: 2026-08-05
-Status: **O0 closed (ADR-124), O1 closed (ADR-125).** O2, O3 open. O2b and
-O4 parked.
+Status: **O0 closed (ADR-124), O1 closed (ADR-125), O2 closed (ADR-126),
+O3 closed (ADR-127).** The phase's four slices are done; O2b and O4 are
+parked by decision.
 
 This is Phase 15's arc doc, and it stands to Phase 15 as `docs/MUJOCO.md`
 stands to Phase 14: the measurement the phase is sized from, the slices, the
@@ -217,7 +218,7 @@ is in a table the user can edit, which is the whole argument for the table.
 A second-pick roll stays available if the default turns out to be wrong in
 practice; it is not something to build before that is known.
 
-### O3 — The section cage: shaping without a chat turn `(open)`
+### O3 — The section cage: shaping without a chat turn — **closed (ADR-127)**
 
 The wolf's script *is already a section table* — it is just spelled in Python
 literals. Making it declared and editable is a small semantic step with a
@@ -239,6 +240,14 @@ large interaction payoff, and it needs **no new kernel math**.
   press **Apply**, which goes through `wiring.py`'s single-slot pump
   (ADR-122). Panel in the existing parameters editor. **Adding a space type
   would spend `docs/BLENDER-TREE.md` §2b budget; this slice must not.**
+
+**Landed with two gestures deliberately ignored.** Dragging a ring *across*
+the spine is dropped rather than honoured — a cage is a straight spine by
+construction and bending it silently would produce a shape the script cannot
+express — and rotating a ring does not become its roll, nor does anything
+become its exponent. Both stay editable as numbers. Inventing a value from a
+gesture the user may have made by accident is the quiet reinterpretation a
+declared table exists to prevent.
 
 ### O2b — Swept-volume clearance `(parked, by decision)`
 
@@ -294,6 +303,9 @@ accepted one.
 | baseline | 2026-08-05 | 154 lines, 8 params, 16 lofted solids, one `part.fuse`, hard creases at every join. Three weld attempts refused (§1). 11 accepted revisions in 17 minutes. |
 | O0 | 2026-08-05 | No model change — O0 authors nothing. The agent can now see the silhouette it is iterating on: four fitted views, 1024×1024, one call. |
 | O1 | 2026-08-05 | **The weld lands.** `fuse(blend=8.0, blend_on_failure="skip")` builds the wolf with 25 of its 48 seams rounded, in 25.04 s against a 13.61 s baseline. `blend=15.0, "reduce"` rounds every seam at a reduced radius. The refusal path quotes a workable radius instead of `StdFail_NotDone`. Turns: **one** — the change is one keyword on the `fuse` the script already had. |
+
+| O2 | 2026-08-05 | No wolf change — it has no mechanism to mount yet. What O2 adds is the check: a mate that overlaps refuses with the cubic millimetres, so the skin/mechanism interface stops being two copied numbers. |
+| O3 | 2026-08-05 | The wolf's rings become draggable in principle: `cage(...)` + `part.loft_cage` express its torso, neck, legs and tail directly, and a dragged ring lands in the accepted revision (gate). **Not yet re-authored** — porting the wolf onto the cage is a modelling turn, not a code change, and it is the first thing to do with this phase. |
 
 ### What the first render actually showed (2026-08-05)
 

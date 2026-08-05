@@ -3223,6 +3223,124 @@ def test_two_applies_in_a_row_both_land(root):
     GATE["wiring_applies"] = cadex_backend.wiring_stats()["requests"]
 
 
+CAGE_SCRIPT = """
+c = cage({
+    "torso": section_cage([
+        ring(0, 30, 38, exponent=2.4),
+        ring(120, 46, 52, exponent=3.0),
+        ring(300, 34, 40, exponent=2.2),
+    ], axis=(1, 0, 0)),
+})
+
+result = {"torso": part.loft_cage(c["torso"], solid=True)}
+"""
+
+
+def test_a_dragged_ring_lands_in_the_accepted_revision(root):
+    """O3's whole point, end to end against the bundled engine (ADR-127).
+
+    Draw the cage, grab a ring, scale and move it, press Apply — and assert
+    the accepted revision moved and the engine now holds the dragged row.
+    Modelled directly on ``test_two_applies_in_a_row_both_land``, and it
+    applies twice for that test's reason: a cage drag is a stream of
+    transform events, so if the pump ever loses a request this is where it
+    shows.
+    """
+    print("test_a_dragged_ring_lands_in_the_accepted_revision")
+    from mesh_agent import cadex_cage
+
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, report = run_tool("write_script", {"content": CAGE_SCRIPT})
+    check(ok, "the cage script was accepted: {:s}".format(first_line_of(report)))
+    if not ok:
+        return
+
+    cages, rows = cadex_backend.script_cages(scene)
+    check(cages is not None and len(cages) == 1,
+          "the engine serves one declared cage")
+    check(rows is not None and len(rows) == 3,
+          "with its three rings: {!r}".format(rows))
+    if not cages or not rows:
+        return
+    check(cages[0]["axis"] == [1.0, 0.0, 0.0], "and the cage's own axis")
+
+    report = cadex_cage.show(scene)
+    drawn = cadex_cage.ring_objects(scene)
+    check(report.get("shown") and len(drawn) == 3,
+          "three rings drawn as an overlay ({!r})".format(report))
+    if len(drawn) != 3:
+        return
+    # A sibling of Model, never a child, and never tagged cadex_output --
+    # either would put the overlay in front of the hydrate GC.
+    check(cadex_cage.COLLECTION_NAME in
+          {child.name for child in scene.collection.children},
+          "the overlay collection is a sibling of Model at the scene root")
+    check(all(cadex_hydrate.OUTPUT_PROP not in obj for obj in drawn),
+          "and no ring is tagged as an engine output")
+    middle = drawn[1]
+    check(abs(middle.matrix_world.translation.x - 120.0) < 1e-6,
+          "the middle ring sits at its position on the spine (got {:.3f})"
+          .format(middle.matrix_world.translation.x))
+
+    def apply_and_wait(label):
+        ok, report = cadex_cage.apply(scene)
+        if not ok:
+            check(False, "{:s}: {:s}".format(label, first_line_of(report)))
+            return False
+        # No timers under --background: the gate drives the pump, exactly as
+        # it does for the wiring canvas.
+        ok, report = cadex_backend.wiring_apply_now()
+        check(ok, "{:s} landed: {:s}".format(label, first_line_of(report)))
+        return ok
+
+    before = cadex_backend._state_for(root).revision
+
+    # Grab the waist and pull it in: the gesture the wolf's bad ring needed.
+    middle.scale = (0.5, 1.0, 1.0)
+    bpy.context.view_layer.update()
+    if not apply_and_wait("the first apply"):
+        return
+    first = cadex_backend._state_for(root).revision
+    check(first and first != before,
+          "the first apply moved the revision guard: {!r} -> {!r}".format(
+              before, first))
+    _cages, applied = cadex_backend.script_cages(scene)
+    waist = [row for row in (applied or []) if abs(row["position"] - 120.0) < 1e-6]
+    check(len(waist) == 1 and abs(waist[0]["half_width"] - 23.0) < 0.01,
+          "the engine now holds the dragged half-width: 46 * 0.5 = 23 "
+          "(got {!r})".format([row.get("half_width") for row in waist]))
+    check(waist and abs(waist[0]["exponent"] - 3.0) < 1e-9,
+          "and the exponent came back untouched — nothing in the viewport "
+          "edits it")
+
+    # A second apply with no rebuild and no chat turn in between, which is
+    # the ADR-122 regression this shares a pump with.
+    cadex_cage.show(scene)
+    drawn = cadex_cage.ring_objects(scene)
+    if len(drawn) != 3:
+        check(False, "the overlay redrew after the apply")
+        return
+    drawn[2].location.x += 40.0
+    bpy.context.view_layer.update()
+    if not apply_and_wait("the second apply"):
+        return
+    second = cadex_backend._state_for(root).revision
+    check(second and second != first,
+          "the second apply moved it again: {!r} -> {!r}".format(first, second))
+    _cages, applied = cadex_backend.script_cages(scene)
+    positions = sorted(round(float(row["position"]), 3) for row in applied or [])
+    check(positions == [0.0, 120.0, 340.0],
+          "and the last ring moved 40 mm down the spine: {!r}".format(positions))
+    check(not model_module.last_error(),
+          "with nothing refused in silence ({:s})".format(
+              first_line_of(model_module.last_error())))
+
+    GATE["cage"] = {"rings": len(drawn), "positions": positions}
+    cadex_cage.clear(scene)
+    check(not cadex_cage.ring_objects(scene), "and the overlay cleans up")
+
+
 def test_live_mode_is_wired_and_refuses_cleanly(live_root):
     """Live mode reaches the engine, and says no politely when it must.
 
@@ -3675,6 +3793,7 @@ def main():
     training_root = tempfile.mkdtemp(prefix="mesh-cadex-training-")
     live_root = tempfile.mkdtemp(prefix="mesh-cadex-live-")
     wiring_root = tempfile.mkdtemp(prefix="mesh-cadex-wiring-")
+    cage_root = tempfile.mkdtemp(prefix="mesh-cadex-cage-")
     try:
         test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
@@ -3727,6 +3846,7 @@ def main():
         test_both_collision_readers_agree(readers_root)
         test_the_training_panel_tracks_a_run(training_root)
         test_two_applies_in_a_row_both_land(wiring_root)
+        test_a_dragged_ring_lands_in_the_accepted_revision(cage_root)
         test_live_mode_is_wired_and_refuses_cleanly(live_root)
     finally:
         try:
@@ -3750,7 +3870,8 @@ def main():
                      assembly_root, shared_root, sim_root, live_root,
                      drag_root, supersede_root, skip_root,
                      preview_root, fallback_root, views_root, collision_root,
-                     shapes_root, isolate_root, readers_root, wiring_root):
+                     shapes_root, isolate_root, readers_root, wiring_root,
+                     cage_root):
             shutil.rmtree(root, ignore_errors=True)
 
     GATE["ok"] = not FAILURES

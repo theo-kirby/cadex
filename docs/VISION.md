@@ -1,6 +1,6 @@
 # VISION.md — What Cadex Is Becoming
 
-Verified against source: 2026-08-01
+Verified against source: 2026-08-05
 
 This document is the product vision. It is authoritative: when a change
 conflicts with this document, the change is wrong or the vision needs an
@@ -112,6 +112,15 @@ in the shell that authored geometry with BMesh, because a second authoring
 path contradicts "nothing happens outside the script". Interactive mesh
 editing is therefore unscheduled and would have to arrive as engine ops, not
 as shell tools.
+
+**And that is how it arrived** (ADR-127, 2026-08-05). Not as BMesh, and not
+as editing: a shape is a `cage(...)` of superellipse rings the script
+declares, `part.loft_cage` builds, and `set_params(cages=[...])` sets. The
+shell draws those rings as an overlay and supplies the *gesture* — drag a
+ring, press Apply — while the script stays the only thing that authors
+geometry. The prediction in the paragraph above held exactly: engine ops, on
+a declared table. `docs/ORGANIC.md` is the arc, and O4 (subD) is the part
+that is still unscheduled.
 
 Everything else FreeCAD offers (FEM, CAM, TechDraw, BIM, Draft, Points,
 Robot, Spreadsheet, …) is out of scope. Deleted in the VibeCAD teardown at
@@ -248,5 +257,11 @@ returning it.
   upgrade makes an existing project refuse to open — and nothing tells the
   user that `open_project restore=false` and a re-accept is the way through.
   The rule is right; the migration path is missing.
-- **Whether interactive mesh editing ever arrives**, and if so as engine ops
-  rather than shell tools — see the correction under Scope.
+- ~~Whether interactive mesh editing ever arrives, and if so as engine ops
+  rather than shell tools~~ — answered 2026-08-05 (ADR-127): **as engine ops,
+  on a declared table, with the shell supplying only the gesture.** A shape
+  is a `cage(...)` of rings the script declares, `part.loft_cage` builds and
+  `set_params(cages=[...])` sets; the shell draws those rings as an overlay
+  and sends them on one button. Nothing is edited outside the script, the
+  mesh domain gained no editing surface, and the rule under Scope stands
+  unchanged. `docs/ORGANIC.md` is the arc.

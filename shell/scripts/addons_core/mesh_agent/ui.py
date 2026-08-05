@@ -337,6 +337,60 @@ class MESH_AGENT_OT_toggle_collision(Operator):
         return {'FINISHED'}
 
 
+class MESH_AGENT_OT_toggle_cage(Operator):
+    """Show or hide the section cage's rings, so they can be dragged."""
+
+    bl_idname = "mesh_agent.toggle_cage"
+    bl_label = "Section Cage"
+    bl_description = ("Show or hide the rings of the cage(...) table this "
+                      "model declares. Move or scale a ring, then Apply")
+
+    def execute(self, context):
+        from . import cadex_cage
+        try:
+            report = cadex_cage.toggle()
+        except Exception as error:
+            self.report({'WARNING'}, str(error))
+            return {'CANCELLED'}
+        message = str(report.get("message") or "")
+        if message:
+            self.report({'INFO'}, message)
+        elif report.get("shown"):
+            self.report({'INFO'}, "{:d} ring(s) drawn. Move or scale one, "
+                                  "then press Apply.".format(
+                                      int(report.get("rings") or 0)))
+        return {'FINISHED'}
+
+
+class MESH_AGENT_OT_apply_cage(Operator):
+    """Send the dragged rings to the engine: one rebuild, however many moved.
+
+    Apply rather than auto-push, and ADR-122 is the reason: the wiring editor
+    pushed on every edit into a single-slot pump and nineteen of twenty edits
+    were dropped in silence. A ring drag is a stream of transform events and
+    would be worse.
+    """
+
+    bl_idname = "mesh_agent.apply_cage"
+    bl_label = "Apply"
+    bl_description = ("Rebuild the model from the rings as they now sit. One "
+                      "re-execute, however many you have moved")
+
+    @classmethod
+    def poll(cls, context):
+        from . import cadex_cage
+        return cadex_cage.enabled(context.scene)
+
+    def execute(self, context):
+        from . import cadex_cage
+        ok, report = cadex_cage.apply(context.scene)
+        if not ok:
+            self.report({'ERROR'}, str(report))
+            return {'CANCELLED'}
+        self.report({'INFO'}, str(report))
+        return {'FINISHED'}
+
+
 class CADEX_ENV_PT_collision(Panel):
     """What the solver touches, for a model that has collision geometry.
 
@@ -746,6 +800,19 @@ class CADEX_PARAMS_PT_parameters(Panel):
         row.operator(MESH_AGENT_OT_apply_slider_defaults.bl_idname,
                      icon='CHECKMARK')
 
+        # The section cage (ADR-127), in the parameters editor rather than in
+        # an editor of its own: a ring is a declared control the user sets
+        # without the AI, which is what this editor is for, and a new space
+        # type would spend BLENDER-TREE §2b budget this slice has no claim on.
+        from . import cadex_cage
+        box = layout.box().column(align=True)
+        box.operator(MESH_AGENT_OT_toggle_cage.bl_idname, icon='MOD_LATTICE')
+        if cadex_cage.enabled(context.scene):
+            flag = context.scene.get(cadex_cage.SCENE_FLAG) or {}
+            box.label(text="{:d} ring(s) — drag, then Apply".format(
+                int(flag.get("rings") or 0)), icon='INFO')
+            box.operator(MESH_AGENT_OT_apply_cage.bl_idname, icon='CHECKMARK')
+
 
 class CADEX_CHAT_PT_transcript(Panel):
     """The conversation, in the chat editor's main region."""
@@ -992,6 +1059,8 @@ classes = (
     MESH_AGENT_OT_apply_slider_defaults,
     MESH_AGENT_OT_toggle_params,
     MESH_AGENT_OT_toggle_collision,
+    MESH_AGENT_OT_toggle_cage,
+    MESH_AGENT_OT_apply_cage,
     # Panel order IS registration order -- nothing here sets `bl_order` --
     # so these stay grouped by the editor they now live in (ADR-108).
     CADEX_ENV_PT_collision,

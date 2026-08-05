@@ -661,6 +661,50 @@ def _law_factor(law: list[list[float]], position: float) -> float:
     return float(law[-1][1])
 
 
+def _lofted_cage(
+    operation: str, payload: dict[str, Any], properties: dict[str, Any]
+) -> Any:
+    """Loft a declared cage's rings (ADR-127).
+
+    The section geometry is ``CadexCage.ring_points`` — plain arithmetic, no
+    kernel — and what happens here is what the wolf's script was already
+    doing by hand: a closed B-spline through each ring's points, and one
+    ``makeLoft`` through the wires. The table is the change; the loft is not.
+    """
+
+    import Part
+    from CadexCage import CageError, ring_points
+
+    from FreeCAD import Vector
+
+    definition = _argument(payload, 0, "cage")
+    if not isinstance(definition, dict):
+        raise _error(operation, "cage", "must be a declared cage")
+    rings = list(definition.get("rings") or [])
+    if len(rings) < 2:
+        raise _error(operation, "cage", "needs at least two rings to loft between")
+    axis = definition.get("axis") or [1.0, 0.0, 0.0]
+    origin = definition.get("origin") or [0.0, 0.0, 0.0]
+    up = definition.get("up") or [0.0, 0.0, 1.0]
+
+    sections = []
+    for index, row in enumerate(rings):
+        try:
+            points = ring_points(row, axis=axis, origin=origin, up=up)
+        except CageError as exc:
+            raise _error(operation, f"cage.rings[{index}]", str(exc)) from exc
+        curve = Part.BSplineCurve()
+        curve.interpolate([Vector(*point) for point in points], PeriodicFlag=True)
+        sections.append(Part.Wire([curve.toShape()]))
+
+    return Part.makeLoft(
+        sections,
+        bool(properties.get("solid", True)),
+        bool(properties.get("ruled")),
+        bool(properties.get("closed")),
+    )
+
+
 #: Below this a common volume is two faces touching, which is what a mate is
 #: supposed to produce. Above it the parts are inside one another.
 _MATE_INTERFERENCE_MM3 = 1.0e-6
@@ -3424,6 +3468,8 @@ def _build(
         )
     if operation == "mate":
         return _mated(operation, payload, properties)
+    if operation == "loft_cage":
+        return _lofted_cage(operation, payload, properties)
     if operation == "transform":
         shape = _shape(operation, "shape", _argument(payload, 0, "shape")).copy()
         pivot = _vector(operation, "pivot", properties.get("pivot", [0.0, 0.0, 0.0]))

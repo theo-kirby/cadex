@@ -142,6 +142,14 @@ def _exponent(value: Any, *, what: str) -> float:
     return result
 
 
+def _default_up(axis: Sequence[float]) -> list[float]:
+    """World up, or +Y for a cage that runs along Z."""
+
+    if abs(float(axis[2])) > 0.9:
+        return [0.0, 1.0, 0.0]
+    return [0.0, 0.0, 1.0]
+
+
 # ---------------------------------------------------------------------------
 # declaration
 
@@ -183,7 +191,7 @@ def section_cage(
     *,
     axis: Sequence[float] = (1.0, 0.0, 0.0),
     origin: Sequence[float] = (0.0, 0.0, 0.0),
-    up: Sequence[float] = (0.0, 0.0, 1.0),
+    up: Sequence[float] | None = None,
     units: str = "mm",
 ) -> dict[str, Any]:
     """Declare one cage: an axis, an origin, and the rings along it.
@@ -193,6 +201,11 @@ def section_cage(
     *height* points, so a cage is a frame rather than an aim — the same thing
     a mount's roll does, and for the same reason.
 
+    Left out, ``up`` is world +Z, or +Y for a cage that runs *along* Z — a
+    leg is the commonest cage there is and refusing it over a default nobody
+    stated would be a footgun. An ``up`` that is stated **and** parallel to
+    the axis is still refused: that one is a mistake, not an omission.
+
     A curved spine is `part.sweep(scale_law=...)`'s job (ADR-125); this is
     the straight one, where every ring is separately shaped.
     """
@@ -201,7 +214,10 @@ def section_cage(
         clean_units = _units(units, what="section_cage() units")
         clean_axis = _unit(axis, what="section_cage() axis")
         clean_origin = _triple(origin, what="section_cage() origin")
-        clean_up = _unit(up, what="section_cage() up")
+        stated = up is not None
+        clean_up = _unit(
+            up if stated else _default_up(clean_axis), what="section_cage() up"
+        )
     except _RowError as exc:
         raise _wrap(exc) from exc
     if abs(sum(a * b for a, b in zip(clean_axis, clean_up))) > 1.0 - 1.0e-9:

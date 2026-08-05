@@ -995,7 +995,8 @@ def begin_set_nets(scene, rows, cancelled=None):
     return begin_set_tables(scene, nets=rows, cancelled=cancelled)
 
 
-def begin_set_tables(scene, nets=None, boards=None, mounts=None, cancelled=None):
+def begin_set_tables(scene, nets=None, boards=None, mounts=None, cages=None,
+                     cancelled=None):
     """Start one ``set_params`` carrying whichever declared tables changed.
 
     One op and one re-execute, because a rename that moves a terminal *and*
@@ -1028,6 +1029,8 @@ def begin_set_tables(scene, nets=None, boards=None, mounts=None, cancelled=None)
         args["boards"] = list(boards)
     if mounts is not None:
         args["mounts"] = list(mounts)
+    if cages is not None:
+        args["cages"] = list(cages)
     if len(args) == 1:
         return True, "No change."
     return _queue_wiring(scene, root, args)
@@ -1222,6 +1225,49 @@ def begin_set_mounts(scene, rows, cancelled=None):
     return begin_set_tables(scene, mounts=rows, cancelled=cancelled)
 
 
+def begin_set_cages(scene, rows, cancelled=None):
+    """Start a section-cage edit. Returns ``(ok, report)``.
+
+    The fifth table through the one op (ADR-127), and the one that most
+    needs the single-slot pump: a ring drag is a stream of transform events,
+    so the overlay accumulates and **Apply** sends the whole table once.
+    """
+
+    return begin_set_tables(scene, cages=rows, cancelled=cancelled)
+
+
+def script_cages(scene):
+    """The cage table as the engine holds it: ``(cages, rows)``.
+
+    ``cages`` carries each declared cage's frame — axis, origin, up — which
+    is what the overlay needs to put a ring on its spine, and ``rows`` is the
+    table Apply replaces wholesale.
+    """
+
+    block = _script_block(scene, "cages")
+    if block is None:
+        return None, None
+    return (
+        [dict(entry) for entry in list(block.get("cages") or [])
+         if isinstance(entry, dict)],
+        [dict(row) for row in list(block.get("rows") or []) if isinstance(row, dict)],
+    )
+
+
+def _script_block(scene, key):
+    """One block of ``inspect scope="script"``, or None."""
+
+    ok, _report = ensure_open(scene)
+    if not ok:
+        return None
+    payload = _inspect_full(_client(project_root(scene)), "script", "")
+    if not isinstance(payload, dict) or payload.get("ok") is False:
+        return None
+    value = payload.get("value") if isinstance(payload.get("value"), dict) else payload
+    block = value.get(key) if isinstance(value, dict) else None
+    return block if isinstance(block, dict) else None
+
+
 def script_mounts(scene):
     """The mount table as the engine holds it: ``(components, rows)``.
 
@@ -1230,15 +1276,8 @@ def script_mounts(scene):
     ``set_params(mounts=...)`` replaces it wholesale.
     """
 
-    ok, report = ensure_open(scene)
-    if not ok:
-        return None, None
-    payload = _inspect_full(_client(project_root(scene)), "script", "")
-    if not isinstance(payload, dict) or payload.get("ok") is False:
-        return None, None
-    value = payload.get("value") if isinstance(payload.get("value"), dict) else payload
-    block = value.get("mounts") if isinstance(value, dict) else None
-    if not isinstance(block, dict):
+    block = _script_block(scene, "mounts")
+    if block is None:
         return None, None
     return (
         [str(name) for name in list(block.get("components") or [])],

@@ -13059,3 +13059,120 @@ engine would reject with the measurement lost.
 
 **Verification.** `pixi run python -m pytest src/Mod/cadex/cadex_tests` —
 1565 passed, 22 skipped.
+
+---
+
+## ADR-127 — The section cage, and the answer to an open question (2026-08-05)
+
+**Decision.** Slice O3 of Phase 15. A shape becomes a declared table of
+cross-sections:
+
+```python
+c = cage({
+    "torso": section_cage([
+        ring(0,   30, 38, exponent=2.4),
+        ring(120, 46, 52, exponent=3.0),
+        ring(300, 34, 40, exponent=2.2),
+    ], axis=(1, 0, 0)),
+})
+
+result["torso"] = part.loft_cage(c["torso"], solid=True)
+```
+
+The shell draws those rings as an edge-only overlay; the user grabs one,
+moves or scales it, and presses **Apply**, which sends the whole table
+through `set_params(cages=[...])`.
+
+**This answers `docs/VISION.md`'s open question** — whether interactive mesh
+editing ever arrives, and if so as engine ops rather than shell tools — with
+**as engine ops, on a declared table, with the shell supplying only the
+gesture.** The question is struck from *Open questions* and the answer is
+recorded under Scope, beside the correction that predicted its shape. The
+mesh domain gained no editing surface; "nothing happens outside the script"
+is untouched, because the ring the user drags *is* a row of the script's own
+table.
+
+**Rationale.** `docs/ORGANIC.md` §1's fourth gap, and §4's finding. The
+wolf's script **is already a section table** — six rings for the torso,
+eight for the neck and head, six per leg — spelled as Python literals inside
+three helper functions. Everything about that works except the spelling.
+And when O0 finally let anyone *see* the model, the defect that dominated it
+was one bad row: a leg-root ring whose half-width is computed as
+`min(r*(1.50+0.60*b), 0.5*L - abs(x) - ...)` and flares at default
+parameters into a disc twice the body's height. It survived eleven accepted
+revisions. Fixing it today means a chat turn to change an arithmetic
+expression buried in a helper; with a table it is a drag.
+
+**No new kernel mathematics.** `part.loft` already lofts NURBS through
+section wires. What is new is that the sections are a table.
+
+**The exponent is why this is a table and not a list of ellipses.** A ring is
+a superellipse, `|x/a|^n + |y/b|^n = 1`, sampled by the parametrisation that
+reduces *exactly* to `(a cos t, b sin t)` at `n = 2` — so the exponent is a
+continuous knob rather than a mode, and a test asserts the n=2 case lies on
+the ellipse to 1e-9. Measured on a 40 × 40 × 100 prism: `n = 2` is
+πr²h = 125,664 mm³, `n = 8` is more than 15% larger and still inside the
+160,000 mm³ box. That single number is the difference between a limb that
+reads as tubular and one that reads as muscled, and it costs a parameter
+rather than an operation.
+
+**The table is the fourth of its kind and deliberately identical.**
+`nets` (ADR-065), `boards` (ADR-120), `mounts` (ADR-126), now `cages`:
+declared by the script, stored wholesale, drift pruned rather than refused,
+one op. Two things are different, both stated in `CadexCage`:
+
+- **A ring has no name.** Its identity is its place in its cage's order. A
+  name would invite an override addressing a ring the script has since moved
+  past, and the stored list is complete, so there is nothing a name is for.
+- **Overrides replace per *cage*, not per project.** A stored list that
+  mentions one cage says nothing about the others, so a cage nobody edited
+  keeps its declared rings.
+
+**No new space type**, and that was a constraint rather than a discovery:
+`docs/BLENDER-TREE.md` §2b's budget is not this slice's to spend. The
+overlay is a sibling collection (`cadex_collision`'s pattern, including why
+it must be a sibling — the contract GC walks `all_objects` and would sweep a
+child), and the panel is two rows in the parameters editor, which is the
+editor for declared controls a user sets without the AI.
+
+**Apply, not auto-push**, and ADR-122 is the whole reason: the wiring editor
+pushed on every edit into a single-slot pump and nineteen of twenty edits
+were dropped in silence. A ring drag is a *stream* of transform events and
+would be strictly worse. So edits accumulate in the viewport and one button
+sends the table once.
+
+**Two things the overlay deliberately does not do.**
+
+- **Movement across the spine is dropped.** A cage is a straight spine by
+  construction — a curved one is `part.sweep(scale_law=...)` (ADR-125) — and
+  silently bending it because a ring was dragged sideways would produce a
+  shape the script cannot express.
+- **Rotation does not become roll, and nothing becomes the exponent.**
+  Neither is a transform the user meant to make, and inventing one from a
+  gesture is exactly the quiet reinterpretation a declared table exists to
+  prevent. Both stay editable as numbers.
+
+**Consequences.**
+
+- `cage_specs`/`cage_values` join the store; they enter
+  `project_script_revision` only when non-empty, so every existing project
+  keeps a byte-identical revision. `set_params` takes `cages?`;
+  `inspect scope="script"` serves the table with each cage's frame;
+  `docs/INTEGRATION.md` and the `open_project` goldens move with both.
+- `CadexCage.py` is staged into the worker bundle and is in
+  `DECLARED_ENGINE_MODULES`. `part.loft_cage` and `part.mate` join the part
+  domain's exports.
+- `test_cage.py` is new: 23 tests, 22 of which need no FreeCAD, including
+  the ellipse identity and the area ordering that proves the exponent does
+  real work.
+- The gate gains `test_a_dragged_ring_lands_in_the_accepted_revision`, built
+  directly on `test_two_applies_in_a_row_both_land` and applying twice for
+  its reason. It drags the waist ring to half width, applies, and asserts
+  the engine holds 23.0 mm — with the exponent unchanged — then moves the
+  last ring 40 mm down the spine and applies again with no rebuild in
+  between. Both land. `GATE["cage"]` records the positions.
+
+**Verification.** `pixi run python -m pytest src/Mod/cadex/cadex_tests` —
+1588 passed, 22 skipped. `pixi run gate` `ok: true`,
+`engine_from_bundle: true`, `GATE["cage"] = {"rings": 3, "positions": [0.0,
+120.0, 340.0]}`, slider latency 0.55 s median within the 0.65 s bar.

@@ -424,6 +424,36 @@ own. Without it the major axis lands wherever rotating +Z onto `normal`
 happens to send +X, and a section table has to follow every ellipse with
 rotations to undo that.
 
+### The section cage: a shape as a table of rings `[ADR-127]`
+
+```python
+c = cage({
+    "torso": section_cage([
+        ring(0,   30, 38, exponent=2.4),
+        ring(120, 46, 52, exponent=3.0),
+        ring(300, 34, 40, exponent=2.2),
+    ], axis=(1, 0, 0)),
+})
+
+result["torso"] = part.loft_cage(c["torso"], solid=True)
+```
+
+A ring is a **superellipse**: `|x/a|^n + |y/b|^n = 1`, where `exponent` 2.0
+is an ellipse and larger fills the corners out towards a rounded rectangle.
+That number is the difference between a limb that reads as tubular and one
+that reads as muscled, and it costs a parameter rather than an operation.
+
+Rings are perpendicular to the cage's `axis` and stationed at their
+`position` along it from `origin`; `up` fixes which way a ring's *height*
+points, defaulting to world +Z (or +Y for a cage that runs along Z). A
+**curved** spine is `part.sweep(scale_law=...)`'s job instead.
+
+The user can grab a ring in the viewport and drag it, so a silhouette stops
+costing a chat turn — which is the whole reason to spell a section table
+this way rather than as literals. `set_params(cages=[...])` replaces a
+cage's rings wholesale; a ring carries **no name**, because its identity is
+its place in its cage's order.
+
 ### Mounts: where one component bolts to another `[ADR-126]`
 
 A **mount** is a terminal row plus the two things a terminal has no use for:
