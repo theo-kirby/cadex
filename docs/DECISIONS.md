@@ -13929,3 +13929,113 @@ The last is the one that justifies ADR-134's model comparison existing. A
 bundle at all** — same joints, same limits, same action table, same
 observations. A bundle-only equivalence check would have accepted a policy
 against a different machine, and said nothing.
+
+## ADR-136 — a live session runs until the machine falls (2026-08-07)
+
+**Decision.** `evaluate_episode` takes two new keywords, `endless` and
+`record_steps`, both defaulting to the loop that was already there. Live mode
+(ADR-109) passes `endless=True, record_steps=False`, so a session plays one
+episode until a termination rule fires — or until you close it — instead of
+truncating every six seconds and starting again.
+
+### The horizon was never physical
+
+The task's `max_steps` is the length the policy was **trained** at. Nothing
+happens there. An observation is sensor channels and carries no clock, so the
+policy cannot tell step 301 from step 5; `mg-legs` is 300 steps at 50 Hz and
+step 301 is the same arithmetic as step 300. Truncation exists because a
+trainer needs episodes to end, and it reports `truncated: true` to say so.
+
+A person watching a machine stand is not a trainer. Six seconds is long
+enough to see it stand and too short to see it *keep* standing, which is the
+question live mode was built to answer at all — and the reset it forced threw
+away the state you had just spent a minute of pushing to reach.
+
+Falls already handled themselves: a termination holds for
+`TERMINATION_HOLD_SECONDS` so the fall is visible, then resets. That part is
+unchanged. What was removed is the reset that fired when nothing had gone
+wrong.
+
+### `record_steps` is what made it affordable
+
+`evaluate_episode` accumulates one dict per control step — the action, every
+observation, every reward term — into a `steps` list it **returns** rather
+than streams. Measured on the `b8` mg-legs task and its `stand10.001700`
+policy, one process per row, RSS growth over the model load and policy decode:
+
+| simulated | steps | horizons | old behaviour | `record_steps=False` |
+|---|---|---|---|---|
+| 1 min | 3 000 | 10× | **+20.8 MB** | +0.9 MB |
+| 10 min | 30 000 | 100× | **+198.3 MB** | +1.0 MB |
+| 30 min | 90 000 | 300× | **+553.0 MB** | +1.6 MB |
+
+That is 6.1 kB a control step, or ~1.1 GB an hour at 50 Hz — against a flat
+1.6 MB over half an hour of simulation. Throughput is unmoved either way
+(36.7 s vs 37.1 s of wall clock for the 30-minute run, ~49× real time both),
+so the flag costs nothing to have on.
+
+**Live mode reads none of it.** `cadex_live_worker._run` takes
+`terminated_step` and `termination` from the returned dict and drops the
+rest; every frame the shell draws left earlier on the queue, through the
+`sample` hook. So an endless episode without this flag is a worker that grows
+by half a gigabyte an hour to build a history nobody will ever open.
+
+The precedent was already in the file. `_Session._sample` returns `None`
+explicitly, with the comment *"its `samples` list would otherwise grow
+without bound for a session that never ends"*. That was the same bug, one
+list over, seen and dodged for the hook and missed for the loop.
+
+The flag turns off **accumulation, not work**: rewards are still evaluated
+and still summed into `total_reward`, termination is still checked every
+step, `step_count` is still exact. What is lost is per-step history, which is
+what a session nobody will replay has no use for. This is the ephemerality
+the shell already assumes — no trace, no store, no digest (ADR-109).
+
+### What is deliberately not changed
+
+**The protocol.** `live_open` still answers `episode_seconds`, and the
+response shape is untouched, so `docs/INTEGRATION.md`'s op table and the
+ADR-027 goldens are unmoved. The field's *meaning* is now stated where it is
+produced: it is the horizon the policy was trained at, not one the session
+stops at. The shell says exactly that — `"12.40 s this episode"` over
+`"trained on 6 s episodes"` — because being well past the training horizon is
+the interesting thing about what you are watching, and `"12.40 s of 6.00 s"`
+was nonsense.
+
+**`MAXIMUM_EPISODE_STEPS`** stays at 200 000. It guards *task declaration*,
+and raising a task's `episode_seconds` was always the wrong lever: that
+bundle is the one training and rollouts share, and `episode.episode_seconds`
+is a digest input — ADR-135's own refusal table has `6.0 → 9.0` rejected by
+`policy_task_equivalence`. Live mode needed its own horizon, not a different
+task.
+
+**Auto-shoves still stop.** A task's disturbances are drawn once per episode
+inside a window (0.3–1.5 s for `mg-legs`), so an hour-long episode gets one
+shove in the first second and a hundred if you use the mouse. That is a
+consequence, not a regression: the drawn shove belongs to the reproducible
+half of the system and the mouse belongs to this half. A calm session
+(ADR-110, `seed=None`) draws none either way.
+
+**Rollouts, traces and digests are untouched.** Both defaults are the old
+behaviour and `step_count == len(steps)` still holds for every caller that
+does not opt out. `step_count` did change from `len(steps)` to a counter,
+which is exactly the kind of edit that is correct until it is off by one, so
+it is pinned directly.
+
+### Evidence
+
+`test_dynamics_endless_episode.py`, nine tests: an endless episode reaches
+step 80 on a 20-step task **one step at a time with no gap** (a bare
+inequality would pass for a loop that got there some other way); its
+trajectory matches a bounded one exactly up to the old horizon; it still
+terminates at the step a long bounded episode terminates at, with
+`truncated: false`; `record_steps=False` empties `steps` and leaves
+`step_count`, `total_reward`, `terminated_step` and the `sample` stream
+bit-for-bit identical; `final` is never raised on an endless episode; and the
+worker is driven directly, against a stub `evaluate_episode`, to pin that it
+asks for `endless=True, record_steps=False` and still passes ADR-110's
+uncoerced seed. Full engine suite green: 1698 passed, 22 skipped.
+
+Beyond the suite, the table above is the thing that mattered and it was
+*measured*, not asserted: 30 minutes of mg-legs simulation — 300× the old
+horizon, driven by its own trained policy — grew the process by 1.6 MB.

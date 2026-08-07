@@ -1027,9 +1027,16 @@ class CADEX_LIVE_PT_session(Panel):
 
         box = layout.box().column(align=True)
         box.enabled = False
-        box.label(text="{:.2f} s of {:.2f} s".format(
-            live.time_s, live.episode_seconds),
-            icon='TIME')
+        # Elapsed, not "x of y": a live episode has no y to be out of, and
+        # runs until the machine falls (ADR-136). The trained horizon is
+        # still worth a line, because being well past it is the interesting
+        # thing to know about what you are watching -- so it is said as what
+        # it is, a fact about the policy rather than a bound on the session.
+        box.label(text="{:.2f} s this episode".format(live.time_s),
+                  icon='TIME')
+        if live.episode_seconds > 0.0:
+            box.label(text="trained on {:g} s episodes".format(
+                live.episode_seconds))
         box.label(
             text=("terminated: " + (live.termination or "yes"))
             if live.terminated else ("paused" if live.paused else "standing"),

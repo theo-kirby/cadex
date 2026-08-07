@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import itertools
 import json
 import math
 from typing import Any, Mapping, MutableMapping, Sequence
@@ -7388,6 +7389,8 @@ def evaluate_episode(
     sample: Any = None,
     forces: Any = None,
     seed: int | None = None,
+    endless: bool = False,
+    record_steps: bool = True,
 ) -> dict[str, Any]:
     """One full episode, from the bundle, in the engine.
 
@@ -7454,6 +7457,32 @@ def evaluate_episode(
     no number from the stream, and a bundle knows nothing of it. A live
     session is a *thing to watch*, not a thing to reproduce -- which is why
     live mode also never writes a trace.
+
+    ``endless`` and ``record_steps`` are the same caller and the same reason
+    (ADR-136). ``endless`` drops the horizon: the loop runs until a
+    termination rule fires or a hook unwinds it, instead of stopping at
+    ``episode.max_steps``. Nothing physical happens at that number -- it is
+    the length the policy was *trained* at, and the policy cannot see it,
+    because an observation is sensor channels and carries no clock. So the
+    horizon is a truncation for a trainer that needs episodes to end, and
+    live mode is the one caller that does not.
+
+    ``record_steps=False`` is what makes that safe. The ``steps`` list is
+    one dict per control step -- action, every observation, every reward
+    term -- and it is returned rather than streamed, so an episode that
+    never ends grows it until the worker dies. Measured on mg-legs: **6.1 kB
+    a control step**, which is 553 MB for half an hour of simulation and
+    about 1.1 GB an hour at 50 Hz, **none of which live mode reads**. It
+    takes ``terminated_step`` and ``termination`` and drops the rest. So the
+    flag turns off the accumulation, not the work --
+    rewards are still evaluated and still summed into ``total_reward``,
+    termination is still checked every step, and ``step_count`` is still
+    exact. What is lost is the per-step history, which is precisely the
+    thing a session nobody will replay has no use for.
+
+    Both default to the old behaviour, and every rollout, every trace and
+    every digest keeps it. ``record_steps=True`` leaves ``step_count ==
+    len(steps)`` as it has always been.
     """
 
     mujoco = _mujoco_module()
@@ -7535,10 +7564,13 @@ def evaluate_episode(
             samples.append(record)
 
     total = 0.0
+    step_count = 0
     terminated_step: int | None = None
     termination_label = ""
-    _sampled(0, max_steps < 1, None)
-    for step in range(max_steps):
+    # An endless episode has no last step to be final at, so the reset pose
+    # is only ever final for a bounded episode with no steps in it at all.
+    _sampled(0, not endless and max_steps < 1, None)
+    for step in itertools.count() if endless else range(max_steps):
         time_s = step * control_interval
         # Once per control step and held across the solver steps below,
         # which is the same granularity the action has and the same one MJX
@@ -7593,8 +7625,9 @@ def evaluate_episode(
         reward = 0.0
         for label, weight, code in reward_terms:
             raw = evaluate_reward(code, landed, context=f"reward {label!r}")
-            contributions.append({"label": label, "value": raw,
-                                  "weighted": weight * raw})
+            if record_steps:
+                contributions.append({"label": label, "value": raw,
+                                      "weighted": weight * raw})
             reward += weight * raw
         total += reward
         reason = ""
@@ -7605,36 +7638,47 @@ def evaluate_episode(
             ):
                 reason = label
                 break
-        steps.append(
-            {
-                "step": step,
-                "time_s": time_s + control_interval,
-                "action": applied,
-                "observation": landed,
-                "reward": reward,
-                "reward_terms": contributions,
-                "terminated": bool(reason),
-                "termination": reason,
-            }
+        step_count += 1
+        if record_steps:
+            steps.append(
+                {
+                    "step": step,
+                    "time_s": time_s + control_interval,
+                    "action": applied,
+                    "observation": landed,
+                    "reward": reward,
+                    "reward_terms": contributions,
+                    "terminated": bool(reason),
+                    "termination": reason,
+                }
+            )
+        _sampled(
+            step + 1,
+            bool(reason) or (not endless and step == max_steps - 1),
+            applied,
         )
-        _sampled(step + 1, bool(reason) or step == max_steps - 1, applied)
         if reason:
             terminated_step = step
             termination_label = reason
             break
     return {
         "label": str(task.get("label") or ""),
+        # Empty when ``record_steps`` is false -- the only caller that asks
+        # for that reads neither this nor ``total_reward``.
         "steps": steps,
         # Empty unless a ``sample`` callable was given, and never inspected
         # by this loop: what a record *is* belongs to whoever asked for one.
         "samples": samples,
-        "step_count": len(steps),
+        # Counted rather than measured off ``steps``, which may not be there.
+        "step_count": step_count,
         "total_reward": total,
         "terminated_step": terminated_step,
         "termination": termination_label,
         # A run that used its whole budget and one that was cut short are
         # different outcomes, and a trainer has to be able to tell them
-        # apart: the first is a horizon, the second is a failure.
+        # apart: the first is a horizon, the second is a failure. An endless
+        # episode has no budget to use, so it is never truncated: it returns
+        # only by terminating, and any other ending unwinds through a hook.
         "truncated": terminated_step is None,
         "randomisation": drawn,
         # What this episode actually drew, so that a rollout that fell over

@@ -48,6 +48,14 @@ when ``sample`` runs, so a frame can carry what was actually pushing each
 body rather than what somebody meant to push it with; see
 :meth:`_Session._applied_forces`.
 
+**An episode ends when the machine falls, and otherwise not at all**
+(ADR-136). The task's ``max_steps`` is the horizon it was *trained* at, and
+nothing physical happens there: the policy's observation is sensor channels
+and carries no clock, so it cannot tell step 301 from step 5. Truncating at
+it is a trainer's need, not a viewer's, so this passes ``endless=True`` and
+watches a session for as long as it stands. ``record_steps=False`` goes with
+it and is what keeps that bounded -- see :func:`CadexDynamics.evaluate_episode`.
+
 **Auto-reset.** A terminated episode holds for
 :data:`TERMINATION_HOLD_SECONDS` of wall time so the fall is visible, then
 starts again at a fresh seed and reports ``reset_count``. Credit granted
@@ -201,6 +209,11 @@ class _Session:
                 }
                 for action in self._task["actions"]
             ],
+            # The horizon the policy was TRAINED at, not one this session
+            # stops at -- a live episode runs until it falls (ADR-136). It
+            # is still worth sending, because "you are now 40 s into a
+            # machine trained on 6 s episodes" is the interesting thing a
+            # viewer can be told, and the shell says exactly that.
             "episode_seconds": self._max_steps * self._control_interval,
         }
 
@@ -365,6 +378,13 @@ class _Session:
                     sample=self._sample,
                     forces=self._forces,
                     seed=seed,
+                    # An episode ends when the machine falls, and otherwise
+                    # not at all (ADR-136). ``record_steps`` is what makes
+                    # that affordable: the per-step history this returns is
+                    # read by nobody here and would be the whole memory cost
+                    # of a session left running.
+                    endless=True,
+                    record_steps=False,
                 )
                 with self._lock:
                     self._terminated = episode["terminated_step"] is not None

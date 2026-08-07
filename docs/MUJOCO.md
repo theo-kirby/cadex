@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-08-03
+Verified against source: 2026-08-07
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -2756,6 +2756,21 @@ It costs almost nothing, which is why it was worth building: **344 µs per
 control step** against a 10 ms interval — 29× real time — and a measured
 median `live_step` round trip of **1.72 ms** for the 3-step batch a 30 Hz
 pump sends, against a 33 ms bar.
+
+**It runs until the machine falls** (ADR-136). Live mode used to stop every
+six seconds, because it played the task's episode and the task's episode is
+the length a *trainer* wanted. Nothing physical happens there: an observation
+is sensor channels and carries no clock, so the policy cannot tell step 301
+from step 5, and the reset threw away the state you had just spent a minute
+of pushing to reach. So `evaluate_episode` takes `endless=True` — and
+`record_steps=False` with it, which is what keeps that bounded: the per-step
+history it otherwise accumulates is 6.1 kB a step — measured at **+553 MB
+for half an hour** of mg-legs against **+1.6 MB** with the flag, at the same
+throughput — and live mode reads none of it. A fall still holds a second so
+you can see it, then resets. The panel now reads `12.40 s this episode` over
+`trained
+on 6 s episodes`, because being well past the training horizon is the
+interesting thing about what you are watching.
 
 **Use it before you dispatch.** The cheapest thing in §7's order that is not
 in §7's order: open the last policy that trained, push it from each side by a

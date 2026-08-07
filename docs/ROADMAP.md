@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-08-05
+Verified against source: 2026-08-07
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -1037,6 +1037,20 @@ the order they had to happen:
       applied forces and stands; a 0.75 N push reports **0.7500 N at
       90.00°** at the pelvis centre of mass; a held push is constant across
       26 ticks and stops **0.142 s** after release.
+- [x] **A live session that does not stop on its own** (ADR-136). Live mode
+      truncated every six seconds, because it played the *task's* episode —
+      the length a trainer wanted, not a viewer. Nothing physical is there:
+      an observation carries no clock, so the policy cannot tell step 301
+      from step 5, and the reset threw away the state a minute of pushing had
+      reached. Two keywords on `evaluate_episode`, both defaulting to the old
+      loop: `endless` drops the horizon, and `record_steps=False` is what
+      makes that affordable — the per-step history it returns is 6.1 kB a
+      step, and live mode reads none of it. Measured on mg-legs: half an
+      hour of simulation, 300× the old horizon, grows the process by
+      **+1.6 MB** against **+553 MB**, at the same throughput. A
+      fall still holds a second and resets. No protocol change: `live_open`
+      still answers `episode_seconds`, now stated as the horizon the policy
+      was *trained* at, and the panel says so. Nine tests, engine suite green.
 - [ ] **The GPU run and the policy it produces.** Blocked, not skipped: the
       training box runs its **own** checkout of `training/cadex_train.py`
       and it predates ADR-104, so a dispatch would silently ignore both new
