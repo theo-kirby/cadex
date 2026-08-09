@@ -345,7 +345,8 @@ This repo's memory lives in two graphs under `.hypergraph/` (see `.hypergraph/AG
 The record graph's epoch marker is `winter-rain-7897` (2026-08-09); the 14 nodes
 before it are prehistory, distilled from the repo and an author interview.
 
-**These last two paragraphs are project-specific and live inside the sentinels,
-so `hypergraph upgrade` overwrites them.** Re-add them after any upgrade until
-the tool learns to preserve them.
+**The last two paragraphs are project-specific and live inside the sentinels.**
+`hypergraph upgrade` at **0.0.7 and earlier overwrites them** — re-add them after
+running it. Later releases report this block and step back instead, so the
+warning retires itself once the CLI here is past 0.0.7.
 <!-- hypergraph:end -->
