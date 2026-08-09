@@ -7,7 +7,7 @@ project: my-project
 # against the running CLI and `hypergraph upgrade` refreshes them and re-stamps it.
 # Not a compatibility floor — the node files are additive, and an older CLI reads a
 # newer graph fine.
-hypergraph_version: 0.0.7
+hypergraph_version: 0.0.8
 
 record_root:
   node_id: 00000000-0000-0000-0000-000000000000

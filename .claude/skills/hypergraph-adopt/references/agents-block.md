@@ -1,7 +1,10 @@
 <!-- hypergraph:begin -->
 ## Hypergraph protocol
 
-This repo's memory lives in two graphs under `.hypergraph/` (see `.hypergraph/AGENTS.md`):
+This repo's memory lives in two graphs under `.hypergraph/` (see `.hypergraph/AGENTS.md`)
+— an append-only record of what happened, and a distilled projection of what is true
+now, with every claim citing the evidence it rests on. Work that is not recorded did
+not happen, and a dead end recorded is worth as much as a success:
 
 1. **Orient on arrival**: run the `hypergraph-orient` skill or read `STATE.md` —
    the frontier (open/broken/blocked) is what matters now.

@@ -1,7 +1,19 @@
-# Hypergraph Protocol — v0.0.7
+# Hypergraph Protocol — v0.0.8
 
-Hypergraph is a protocol for maintaining **two graphs per research project**, kept as
-[markdown files committed in the repo](backend/local-adapter.md):
+Hypergraph is a **substrate for autonomous research and engineering**: the memory
+layer an agent needs to carry real work across months and across contexts without a
+human holding the thread.
+
+The failure it targets is structural rather than a matter of agent capability. A chat
+log is not memory. A codebase records what was kept and never what was tried and
+rejected. A task list rots as soon as reality moves. So each fresh context re-derives
+what the last one knew, repeats dead ends nobody wrote down, and contradicts decisions
+it never saw. The protocol's whole job is to make those outcomes unavailable: give
+knowledge somewhere to go, make being wrong a first-class result, and put *what is
+true now* in front of an arriving agent instead of everything that ever happened.
+
+Mechanically it maintains **two graphs per project**, kept as [markdown files committed
+in the repo](backend/local-adapter.md):
 
 - **Record graph** — the append-only historical log of everything that happened:
   decisions, experiments, evidence, dead ends. Topology is causal/chronological.
@@ -10,11 +22,22 @@ Hypergraph is a protocol for maintaining **two graphs per research project**, ke
   **frontier**), and accumulated negative knowledge. Topology mirrors the project's
   architecture (components/capabilities), not history.
 
-Every state node cites the record nodes it derives from — a many-to-one provenance
-mapping across the two graphs. That cross-graph citation structure is the "hypergraph."
+Every state node cites the record nodes it derives from. A claim answers to many pieces
+of evidence and a piece of evidence bears on many claims, so those citations join sets
+to sets across two graphs rather than forming a tree — that cross-graph structure is
+the "hypergraph", and it is what makes any claim auditable back to what it rests on.
 
 The point: a fresh agent landing on a mature project should orient to the frontier in a
 handful of tool calls instead of traversing thousands of record nodes.
+
+**Maturity, stated plainly.** The record graph is established practice — an append-only
+causal log of what was done and why is a lab notebook under another name, and this
+implements a known good idea. The state graph, and the cross-graph citation structure
+that falls out of it, is the novel and **actively developing** half: whether a
+single-writer distillation stays small and honest as its evidence base grows without
+bound, and whether agents genuinely orient better against it than against raw history,
+is the open question this protocol exists to test. The invariants below are stable
+enough to build on and the projection above them is a live hypothesis.
 
 ## Vocabulary
 
@@ -337,9 +360,12 @@ uv run tools/hypergraph.py viz    --record .hypergraph/cache/record.json --state
 `check` exits nonzero on any I2/I4/I5/I6/I7 violation. `viz` emits a self-contained
 interactive HTML visualization (no network, no JS dependencies): a single
 toggleable view over both graphs — with presets reproducing the classic record,
-state, columns, and force arrangements — where `## Provenance` citations and
-`## State Impact` declarations are drawn as cross-graph links — the markdown
-pointers made visible, still never graph edges.
+state, columns, and force arrangements, plus an everything-on default — where
+`## Provenance` citations and `## State Impact` declarations are drawn as
+cross-graph links — the markdown pointers made visible, still never graph edges.
+An optional `viz: blob:` block in `.hypergraph/config.yml` presets the page's blob
+geometry, so a tuning travels with the repo; it is display configuration only and
+no invariant reads it.
 
 ## Storage
 

@@ -325,7 +325,10 @@ Working rules on top of the change policy above:
 <!-- hypergraph:begin -->
 ## Hypergraph protocol
 
-This repo's memory lives in two graphs under `.hypergraph/` (see `.hypergraph/AGENTS.md`):
+This repo's memory lives in two graphs under `.hypergraph/` (see `.hypergraph/AGENTS.md`)
+— an append-only record of what happened, and a distilled projection of what is true
+now, with every claim citing the evidence it rests on. Work that is not recorded did
+not happen, and a dead end recorded is worth as much as a success:
 
 1. **Orient on arrival**: run the `hypergraph-orient` skill or read `STATE.md` —
    the frontier (open/broken/blocked) is what matters now.
@@ -344,9 +347,4 @@ This repo's memory lives in two graphs under `.hypergraph/` (see `.hypergraph/AG
 
 The record graph's epoch marker is `winter-rain-7897` (2026-08-09); the 14 nodes
 before it are prehistory, distilled from the repo and an author interview.
-
-**The last two paragraphs are project-specific and live inside the sentinels.**
-`hypergraph upgrade` at **0.0.7 and earlier overwrites them** — re-add them after
-running it. Later releases report this block and step back instead, so the
-warning retires itself once the CLI here is past 0.0.7.
 <!-- hypergraph:end -->

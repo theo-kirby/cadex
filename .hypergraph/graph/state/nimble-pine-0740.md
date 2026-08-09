@@ -16,5 +16,5 @@ Adopted the Hypergraph protocol on 2026-08-09 (mode B — no legacy graph existe
 
 ## Reconciliation
 
-- high_water_mark: twilight-sail-5604
-- reconciled_at: 2026-08-09T18:03:58+00:00
+- high_water_mark: tidy-banner-0293
+- reconciled_at: 2026-08-09T19:54:00+00:00

@@ -70,10 +70,19 @@ day-zero project. Nothing to decide.
    ```
    hypergraph adopt --init                 # both roots + a valid config
    ```
-   **It is here, not later, for a mechanical reason**: nothing can be authored until a
-   root exists to parent on, so the roots and the config must precede step 5. In mode
-   A the import has already landed the legacy root — `--init` adopts that one rather
-   than minting a rival, and says which it did (`adopted existing` / `minted`).
+   **The rule is `--init` before anything is *authored*** — nothing can be authored
+   until a root exists to parent on. It is not "before anything happens", and the two
+   modes want different orders:
+   - **Mode B**: `--init` first, exactly as numbered. It mints both roots.
+   - **Mode A**: **import first, then `--init`.** `--init` adopts the imported legacy
+     root instead of minting a rival, and says which it did (`adopted existing` /
+     `minted`). Run it the other way and you get a *minted* root plus the imported
+     one, i.e. two parentless roots — which `check` does not flag, so nothing tells
+     you. Recovering means deleting the minted root file and re-running
+     `--init --force`.
+
+   `hypergraph import` does not need a config, which is what makes the mode A order
+   possible — pass `--graph-dir .hypergraph/graph` and it writes node files directly.
 5. **Bring in the history.**
    - **Mode A**: `hypergraph import --record <export> [--state <export>] --fork` —
      node_ids and slugs are preserved verbatim; this *is* the fork (the host has no
@@ -87,8 +96,9 @@ day-zero project. Nothing to decide.
      archive (never truncate — the archive keeps everything); it is also how you
      mirror less history when a full push would be thousands of creates.
 
-     (If you imported *before* running step 4 — the natural order when the pull is
-     already in hand — that is fine: `--init` adopts the imported root.)
+     The pull writes `legacy-record.json` / `legacy-state.json`. **Keep them.** Step 7
+     reads the legacy export (`--resolve-prefixes --against`), and it is the only
+     record of what stayed on the archive — pre-import artifact counts included.
    - **Mode B**: author the prehistory record nodes (`hypergraph new record`; they may
      parent on the record root) from the repo evidence *and* the interview. **Roughly
      one node per era or workstream** — about 3 for a young project, up to about 10
@@ -104,12 +114,22 @@ day-zero project. Nothing to decide.
    epoch-split only → the marker becomes the record **root** of the local graph
    (`--root`, no other root exists locally) and records the archive lineage in its
    content, since local files cannot parent on slugs that don't resolve locally.
+
+   **Mode B with several workstreams**: parent the marker on **every** prehistory tip,
+   not just the newest. That makes the marker the single record tip, so one
+   high-water mark covers the whole authored history instead of one branch of it.
    ```
    hypergraph adopt --marker <slug>        # records the epoch, refusing a slug that
                                            # does not resolve
    ```
    That `epoch:` block is what makes `check` exempt strictly-older nodes from I2.
-   Then advance the HWM to the marker and gitignore `.hypergraph/cache/`.
+   Then gitignore `.hypergraph/cache/` and advance the HWM — **see step 7 for what
+   to advance it to; it is usually not the marker.**
+
+   **Do not put state-graph statistics in the marker.** You are writing it before the
+   state graph exists, so any "three broken, two blocked" is a guess, and record nodes
+   are immutable — a wrong count can only be corrected by a child node. Describe what
+   you imported or authored; leave the distillation to describe itself.
 7. **Distillation → state graph.** The state skeleton must reflect what is *actually
    known*, not an empty template. **Re-read the interview answers before you start** —
    they were given in step 3, several steps of authoring ago, and working from memory
@@ -132,7 +152,16 @@ day-zero project. Nothing to decide.
      statuses; 4 becomes `blocked`; 5 belongs in a decision record node, not the
      state graph.
    - Every claim cites resolvable slugs (legacy, prehistory, or marker). `check`
-     enforces this.
+     enforces this, and a claim is a bullet **or a prose paragraph** — both are
+     checked. **One slug per bracket**: `[rec: a] [rec: b]`, never `[rec: a, b]`,
+     which the checker does not read as a citation at all.
+   - **Advance the HWM to the record *tips*, not to the marker.** On a wide DAG the
+     marker's ancestors are one branch, so marking it leaves everything else
+     unreconciled — one adoption set it and found 111 nodes still outstanding. Run
+     `hypergraph hwm --record <export> --state <export>`; `--suggest` prints the
+     frontier to write. In the adoption you *are* the reconcile pass, so the write is
+     `hypergraph update <state-root> --reconcile`, by hand, in the root's
+     `## Reconciliation` block.
 8. **Onboarding install.**
    - Append [agents-block.md](references/agents-block.md) to the repo's `AGENTS.md`
      (create the file if absent) — idempotently: if `<!-- hypergraph:begin -->` is
@@ -141,14 +170,40 @@ day-zero project. Nothing to decide.
      conflicting discipline (e.g. "commit findings as <other system> nodes"), amend
      those sections to route through hypergraph — never leave two contradictory
      contracts standing.
+     This is **two writes, not one**, and doing only the first is the common failure:
+     1. The authoritative amendment goes **inside the sentinels**, woven into the
+        numbered item it qualifies, alongside whatever else is project-specific (the
+        epoch marker slug, the prehistory count).
+     2. A short pointer goes **at the head of each conflicting section**, where a
+        reader actually meets it. An amendment 300 lines away does not stop someone
+        following the instructions in front of them. Never rewrite the author's prose
+        — a dated one-line note above it is enough.
+
+     `hypergraph upgrade` will not overwrite a block once you have edited it — it
+     reports the block and steps back, naming the shipped template to merge against.
+     Only a block still verbatim as we shipped it is refreshed automatically.
    - **Never break a CLAUDE.md→AGENTS.md symlink**: step 1's survey already reported
      whether either file is a link and where it points. Edit the *target*, never the
      link.
    - Write `.hypergraph/AGENTS.md`: the full onboarding — the four non-negotiables
      expanded, this project's graph roots and epoch, where the archive lives (mode
      A), the skills to use, and the check command verbatim.
+   - **Install the skills, and make sure they can be committed.**
+     ```
+     hypergraph skills install            # into ./.claude/skills
+     git check-ignore -v .claude/skills   # silence is what you want
+     ```
+     The block you just wrote says "run the `hypergraph-orient` skill". If the repo
+     has no `.claude/skills`, or a broad ignore rule (`.*`, `.claude/`) hides it,
+     every instruction you installed is dead on arrival for the next clone. Un-ignore
+     it in the same commit that un-ignores `.hypergraph/`. Say in
+     `.hypergraph/AGENTS.md` how to get the CLI too — it is a package, not a file, so
+     it cannot travel with the repo: `uv tool install hypergraph-protocol`.
 
-   Finally, before you commit: `hypergraph export` → `render` → `check` **exit 0**.
+   Finally, before you commit: **`hypergraph sync`** — it exports, regenerates
+   `STATE.md`, checks, and publishes if a mirror is configured, and it must **exit 0**.
+   (`render` alone prints to stdout and does not write `STATE.md` unless you pass
+   `-o`; `sync` is the gate.)
 
 ## The interview
 
@@ -188,12 +243,78 @@ Three rules:
   than be asked — a pasted message, a notes file, an old design doc — mine that
   first and then ask only what it left open. Someone who already has the context
   written down somewhere is the common case.
-- **A declined interview is recorded, not hidden.** If the author skips it, the
-  prehistory bodies say so in as many words: claims derived from repo evidence
-  alone, no author input. An adoption that reads as author-informed when it was not
-  breaks I8.
+- **A declined interview is recorded, not hidden.** If the author skips it, say so in
+  as many words: claims derived from repo evidence alone, no author input. In mode B
+  that goes in the prehistory bodies; **in mode A there are no prehistory bodies, so
+  it goes in the epoch marker and in `.hypergraph/AGENTS.md`.** Say what the gap
+  costs, not just that it exists — intent is the part evidence cannot supply, so
+  phrase those claims as claims about the evidence, or mark them `open`. Hand the
+  author the questions it could not settle. An adoption that reads as author-informed
+  when it was not breaks I8.
 - **Answers are evidence, not prose to paste.** You still write the claims and you
   still cite. An interview answer is cited to the prehistory node that records it.
+
+## Authoring nodes: four traps
+
+Every one of these cost a real adoption a throwaway node or a hand-edit. None is
+discoverable from the templates.
+
+- **`## State Impact` comes from flags, never from the body.** A body containing that
+  heading is refused (`--body already contains a '## State Impact' heading`). Use
+  `--impact` once per line, or `--none "<reason>"`. The same is true of `## Current`
+  on a state node.
+- **`--impact` already writes `- target: `.** Pass `"<slug> — <delta>"`, *not*
+  `"target: <slug> — <delta>"` — copying a line out of the template verbatim yields
+  `- target: target: …` and an I2 violation.
+- **You cannot choose a state node's slug.** They are minted `adjective-noun-####`;
+  `--slug sim-substrate` is refused. So the readable `NEW <kebab-name>` target in an
+  impact line never resolves to the node you then mint. Write the mapping down —
+  kebab name → minted slug — in the node that declared them.
+- **Record nodes are immutable.** `hypergraph update <record-slug>` refuses. A
+  correction is a **new child node**, which is why you should not write a count you
+  have not measured yet.
+
+## Mode A, end to end
+
+The order below is the one that works; §4 says why it is not the numbered one.
+
+```bash
+# 1. anchors. No repo writes them down as UUIDs — find them from the docs' own
+#    description of the graph, then confirm every node slug the docs cite is
+#    reachable from the root you picked. That reachability check is what proves it
+#    is the only anchor.
+flywheel nodes:get --node_id <root> --projection full
+
+# 2. pull the legacy graph (this needs no config)
+hypergraph mirror pull --record-node-id <root> --out-dir .hypergraph/cache
+#    → legacy-record.json; a draft `archive:` block on stderr — keep it
+
+# 3. import BEFORE init: --fork preserves node_ids, slugs and topology verbatim
+hypergraph import --record .hypergraph/cache/legacy-record.json --fork \
+                  --graph-dir .hypergraph/graph
+
+# 4. now init — it adopts the imported root rather than minting a rival
+hypergraph adopt --init          # expect: "record root: <slug> (adopted existing)"
+
+# 5. paste the archive: block into the config, and say what stayed behind
+#    (artifact counts, tag taxonomies — none of it travels)
+
+# 6. marker on the newest legacy node, then the epoch
+hypergraph new record --title "Adopted Hypergraph" --parent <newest-legacy-slug> \
+                      --repo-auto --impact "..." --body marker.md
+hypergraph adopt --marker <marker-slug>
+
+# 7. distil, then set the HWM to the record tips (not the marker)
+hypergraph adopt --resolve-prefixes --against .hypergraph/cache/legacy-record.json
+hypergraph hwm --record <export> --state <export> --suggest
+
+# 8. onboarding + skills, then the gate
+hypergraph skills install && git check-ignore -v .claude/skills
+hypergraph sync                  # must exit 0
+```
+
+**The archive is read-only for the whole of this.** Verify it afterwards if you want
+the proof: its root's `revision` and `updated_at` must be unchanged.
 
 ## Guardrails
 
