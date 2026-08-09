@@ -16,5 +16,5 @@ Adopted the Hypergraph protocol on 2026-08-09 (mode B — no legacy graph existe
 
 ## Reconciliation
 
-- high_water_mark: tidy-banner-0293
-- reconciled_at: 2026-08-09T19:54:00+00:00
+- high_water_mark: forest-wind-3489, tidy-banner-0293
+- reconciled_at: 2026-08-09T22:03:54+00:00
