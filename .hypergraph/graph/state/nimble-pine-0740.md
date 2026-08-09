@@ -16,5 +16,5 @@ Adopted the Hypergraph protocol on 2026-08-09 (mode B — no legacy graph existe
 
 ## Reconciliation
 
-- high_water_mark: quiet-wing-7912
-- reconciled_at: 2026-08-09T16:05:00+00:00
+- high_water_mark: rising-chart-1564
+- reconciled_at: 2026-08-09T16:55:07+00:00

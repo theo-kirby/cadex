@@ -22,12 +22,16 @@ Two failures are measured rather than suspected:
 
 The fix is known and is a `shell/` diff, which makes it a decision rather than something to slip in: cache the failure code from the last open on the per-root state, and let the chat panel draw the re-accept box it already draws for an orphaned project [rec: western-badger-3023].
 
+**One adjacent feature was checked against this and cleared, at the engine level only.** Refreshing a linked part moves the consuming project's digest by design, so it was a candidate for the second failure above. It is not: refresh goes through the ordinary rebuild-and-accept path rather than swapping bytes under an accepted model, and a live test closes the project after a refresh, reopens it, and asserts the restore pass **performed and matched**. That is `open_project`, not the shell's `load_post` — it says nothing about the hydration failure, which is untouched [rec: ancient-current-9419].
+
 ## Negative knowledge
 
 - [scope: opening a .blend beside its .cadex | confidence: high | evidence: western-badger-3023] Do not assume a file open hydrates the model. Nothing queues a rebuild on the file-open path, so the viewport is empty until a tool call, a slider drag or Rebuild Model provokes the first request.
 - [scope: digest-moving engine changes | confidence: high | evidence: western-badger-3023] Rebuild Model cannot recover a project locked out by a digest change, and it is correct to refuse. The remedy is open_project restore=false then write_script, and no button reaches it — every digest-moving change ships with a manual recovery until that lands.
+- [scope: Save-As and project assets | confidence: high | evidence: ancient-current-9419] Save-As carries assets forward through the shell's own suffix list, not the engine's. A new asset type absent from that list is dropped silently, and the copy fails later with a script that cannot run. `.cxpart` was fixed; `.cxpolicy` has the same gap and is still open.
 
 ## Provenance
 
 - western-badger-3023 — the author names this as one of the two most fragile areas, and the two measured failures behind that
 - crisp-glacier-6395 — why digest-moving changes are routine here rather than rare
+- ancient-current-9419 — linked-part refresh checked against the lockout failure, and the Save-As asset gap it exposed
