@@ -619,6 +619,20 @@ def _serialize_output(
             raise ValueError("Point output points must be an array.")
         item["points"] = points
         item["facts"] = {"count": len(points)}
+    elif output_type == "measurement":
+        # A measurement has no artifact and never will: what it publishes is
+        # two points and a number (ADR-139). It reaches the digest through
+        # `payload_sha256` -- the hash of its own declaration -- which is
+        # right: what identifies a dimension is which selectors it names, not
+        # what today's parameters make it read.
+        from cadex_part_worker import measurement_record
+
+        item["measurement"] = measurement_record(
+            _shape_from_payload(
+                _payload(_argument(payload, 0, "shape"), serialized=True)
+            ),
+            dict(payload.get("properties") or {}),
+        )
     elif output_type == "solver_diagnostics":
         properties = dict(payload.get("properties") or {})
         item["diagnostics"] = {

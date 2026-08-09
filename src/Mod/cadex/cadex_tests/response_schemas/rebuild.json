@@ -23,6 +23,28 @@
       "placement": "null",
       "tessellation": "null"
     },
+    "height": {
+      "artifact_kind": "null",
+      "artifact_path": "null",
+      "measurement": {
+        "anchors_mm": [
+          [
+            "float"
+          ]
+        ],
+        "center_mm": "null",
+        "kind": "str",
+        "label": "str",
+        "normal": "null",
+        "places": "int",
+        "radius_mm": "null",
+        "subject": "str",
+        "text": "str",
+        "value_mm": "float"
+      },
+      "placement": "null",
+      "tessellation": "null"
+    },
     "plate": {
       "artifact_kind": "str",
       "artifact_path": "str",

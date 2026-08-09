@@ -77,6 +77,11 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         # the part api and worker import it for part.loft_cage, and the host
         # imports it to validate a stored row list.
         "CadexCage.py",
+        # The linked-part container (ADR-138). Staged for CadexCage's reasons
+        # exactly: the part worker imports it inside the sandbox to read one
+        # `.cxpart` back into an OCCT solid, and the host imports it to build
+        # one out of another project's accepted attempt. Pure on both sides.
+        "CadexLinkedPart.py",
         "cadex_partdesign_api.py",
         "cadex_partdesign_worker.py",
         "cadex_mesh_api.py",
@@ -135,13 +140,27 @@ _POLICY_ASSET_SUFFIXES = frozenset({".cxpolicy"})
 #: is bytes in a directory.
 _PROVENANCE_ASSET_SUFFIXES = frozenset({".json", ".xml"})
 
+#: A part built in another project (ADR-138): one exact OCCT solid, the
+#: script that made it, and where it came from, in one content-addressed
+#: file that ``part.import_part`` reads.
+#:
+#: A **fourth** constant rather than one more member above, for the reason
+#: there is a third. What ``mesh.import_file`` reads, what a trained policy
+#: arrives in, what that policy's provenance travels as, and what one project
+#: hands to another are four questions with four answers, and the union below
+#: is the only place they have to be one.
+_LINKED_PART_ASSET_SUFFIXES = frozenset({".cxpart"})
+
 #: Everything the store accepts, stages and lists. ``put_asset`` and
 #: ``import_geometry`` perform no suffix check of their own -- they pass the
 #: path through and let the engine refuse -- so widening this is the whole of
 #: what it takes for a policy to reach the store through the tool that
 #: already exists.
 _STORED_ASSET_SUFFIXES = (
-    _ASSET_SUFFIXES | _POLICY_ASSET_SUFFIXES | _PROVENANCE_ASSET_SUFFIXES
+    _ASSET_SUFFIXES
+    | _POLICY_ASSET_SUFFIXES
+    | _PROVENANCE_ASSET_SUFFIXES
+    | _LINKED_PART_ASSET_SUFFIXES
 )
 
 _MAX_ASSET_FILES = 64
@@ -393,7 +412,11 @@ def store_project_asset(
     policy arrives in. Both travel the same ``put_asset`` path because that
     path performs **no suffix check of its own** — it passes the path through
     and lets the engine refuse — so a policy needed no new op and no
-    ``shell/`` diff to come home.
+    ``shell/`` diff to come home. ADR-135 added the ``.json``/``.xml`` a
+    policy's provenance travels as, and ADR-138 the ``.cxpart`` a part built
+    in another project arrives in — the last of those written by
+    ``link_part`` rather than picked by a user, which is the only way the
+    four differ here.
     """
 
     from cadex_mesh_api import _asset_filename
@@ -413,8 +436,10 @@ def store_project_asset(
             f"{source.name!r} is not one of the formats this project store "
             f"holds {sorted(_STORED_ASSET_SUFFIXES)}: the mesh formats "
             "mesh.import_file reads, the .cxpolicy a trained control policy "
-            "arrives in, or the .json task bundle and .xml model a policy "
-            "travels with for assembly.policy(..., trained_task=)."
+            "arrives in, the .json task bundle and .xml model a policy "
+            "travels with for assembly.policy(..., trained_task=), or the "
+            ".cxpart a part built in another project arrives in for "
+            "part.import_part."
         )
     target_name = _asset_filename(
         "put_asset",
@@ -2240,6 +2265,31 @@ def _capability_api_listing() -> dict[str, dict[str, Any]]:
         "In a project script mesh.from_shape(shape, ...) takes a part value "
         "created in the same script, and mesh.import_file(name) reads one "
         "STL/OBJ/PLY file placed directly in the project assets directory."
+    )
+    listing["part"]["notes"] = (
+        "part.import_part(name) reads one .cxpart file placed directly in the "
+        "project assets directory and yields the exact OCCT solid another "
+        "project accepted. It is the lossless counterpart of "
+        "part.shape_from_mesh: that one converts triangles and lands a shell "
+        "of thousands of planar faces that selectors are near-useless on, "
+        "this one carries the BREP itself, so subshape, fillet and booleans "
+        "behave as they do on a solid built here, and assembly.component "
+        "takes it like any other part value. It is a snapshot rather than a "
+        "live link: the file changes only when the part is linked again, so "
+        "a rebuild never depends on another project's current state. A "
+        ".cxpart arrives through the link_part op, which is not a script "
+        "surface -- a script that needs one and has none says so and stops. "
+        "part.measurement(shape, kind=...) declares a dimension the viewport "
+        "draws over the model: kind='distance' with start=/end= selectors "
+        "measures between two subshapes, kind='diameter' with an at= selector "
+        "measures one circular edge or cylindrical face, and kind='extent' "
+        "with axis='x'|'y'|'z' measures the shape's overall span -- which is "
+        "what 'the height of the part' means on anything that is not a box. "
+        "element_type='face'|'edge' says which topology the selectors resolve "
+        "against and applies to both ends. It is a declared output carrying "
+        "no geometry, so return it in the result dict like any other output; "
+        "it measures the shape it is given, so it follows a parameter that "
+        "moves that shape."
     )
     listing["assembly"]["notes"] = (
         "In a project script assembly.component(source, ...) takes a part or "

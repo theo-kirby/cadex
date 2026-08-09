@@ -667,7 +667,14 @@ def test_a_terminal_is_never_a_declarable_output() -> None:
 
     assert "terminal" not in PROJECT_PACK.output_types
     assert "terminals" not in PROJECT_PACK.output_types
-    assert PART_PACK.output_types == ("solid", "shell", "face", "wire", "compound")
+    # Pinned exactly, because the point of this test is what is *absent*.
+    # `measurement` is the one member that is not geometry and is declarable
+    # anyway (ADR-139) — it publishes two points and a number, and that is
+    # precisely the distinction a terminal fails: nothing builds, digests or
+    # hydrates a terminal, and a measurement does all three.
+    assert PART_PACK.output_types == (
+        "solid", "shell", "face", "wire", "compound", "measurement",
+    )
     assert MESH_PACK.output_types == ("mesh",)
 
     terminals = _part().terminals(_board(), header=HEADER, names=SIGNALS)

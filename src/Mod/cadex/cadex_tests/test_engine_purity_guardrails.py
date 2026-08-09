@@ -105,6 +105,12 @@ DECLARED_ENGINE_MODULES = frozenset(
         "CadexBoards",
         "CadexMounts",
         "CadexCage",
+        # The linked-part container (ADR-138). In the closure *and* in the
+        # worker bundle, which is CadexNets' standing exactly: cadexd's
+        # link_part op builds a container with it, and the sandboxed part
+        # worker reads one back. Both halves are pure Python with no FreeCAD
+        # and no kernel, which is what makes being in two places free.
+        "CadexLinkedPart",
         "CadexSubshapeQuery",
         "cadex_tessellation",
         # the five domain APIs and the host-side workers they pull in

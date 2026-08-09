@@ -310,6 +310,72 @@ class MESH_AGENT_OT_toggle_params(Operator):
         return {'FINISHED'}
 
 
+class MESH_AGENT_OT_toggle_dimensions(Operator):
+    """Show or hide the dimensions the script declares.
+
+    A measurement is an output like any other (``part.measurement``, ADR-139),
+    so what this toggles is whether the viewport draws them — not whether they
+    exist. On with no measurements declared, it says so rather than appearing
+    to do nothing.
+    """
+
+    bl_idname = "mesh_agent.toggle_dimensions"
+    bl_label = "Dimensions"
+    bl_description = ("Show or hide the dimensions this script declares, "
+                      "drawn over the model at any viewing angle")
+
+    def execute(self, context):
+        from . import cadex_dimension
+        try:
+            report = cadex_dimension.toggle()
+        except Exception as error:
+            self.report({'WARNING'}, str(error))
+            return {'CANCELLED'}
+        message = str(report.get("message") or "")
+        if message:
+            self.report({'INFO'}, message)
+        return {'FINISHED'}
+
+
+class MESH_AGENT_OT_measure_pins(Operator):
+    """Ask for a dimension between the faces picked so far.
+
+    Deliberately does **not** write the script itself. `begin_write_script` is
+    right there and `restore_version` already calls it with no agent in the
+    loop — but adding a measurement means appending a call *and* editing the
+    result dict, and mechanically rewriting the one artifact this product
+    treats as the source of truth is how a script gets quietly corrupted. The
+    script keeps exactly one author (ADR-139).
+
+    So this rides the pin queue that already exists: the picks are attached to
+    the next message, and this adds the sentence that says what to do with
+    them.
+    """
+
+    bl_idname = "mesh_agent.measure_pins"
+    bl_label = "Measure"
+    bl_description = ("Ask for a dimension between the picked faces, on the "
+                      "next message")
+
+    @classmethod
+    def poll(cls, _context):
+        from . import cadex_pick
+        return cadex_pick.pending_pin_count() >= 2
+
+    def execute(self, _context):
+        from . import cadex_pick
+        count = cadex_pick.pending_pin_count()
+        if count < 2:
+            self.report({'WARNING'}, "Pick two faces first.")
+            return {'CANCELLED'}
+        cadex_pick.queue_request(
+            "Declare a part.measurement between the pinned faces and return "
+            "it in the result dict, then rebuild.")
+        self.report({'INFO'},
+                    "Will ask for a dimension between {:d} picks.".format(count))
+        return {'FINISHED'}
+
+
 class MESH_AGENT_OT_toggle_collision(Operator):
     """Show or hide the collision geometry the solver actually simulates.
 
@@ -957,6 +1023,12 @@ def draw_chat_buttons(layout, context):
     gather.operator("mesh_agent.pick_pin", icon='EYEDROPPER',
                     text="{:d}".format(pinned) if pinned else "")
     gather.operator("mesh_agent.pick_point", icon='CURSOR', text="")
+    # Two picks and this asks for a dimension between them (ADR-139). Greyed
+    # until there are two, because one pin is not a measurement.
+    measure = gather.row(align=True)
+    measure.enabled = bool(MESH_AGENT_OT_measure_pins.poll(context))
+    measure.operator(MESH_AGENT_OT_measure_pins.bl_idname, text="",
+                     icon='DRIVER_DISTANCE')
     # Measuring a terminal off the model (ADR-067): the same kind of thing --
     # gathered now, read by the assistant on the next turn -- and counted the
     # same way, so several picks visibly batch into one message.
@@ -1033,6 +1105,11 @@ def draw_chat_buttons(layout, context):
     views.operator(MESH_AGENT_OT_toggle_collision.bl_idname, text="",
                    icon='MOD_PHYSICS',
                    depress=cadex_collision.SCENE_FLAG in context.scene)
+    # Dimensions read the same way, and for the same reason (ADR-139).
+    from . import cadex_dimension
+    views.operator(MESH_AGENT_OT_toggle_dimensions.bl_idname, text="",
+                   icon='DRIVER_DISTANCE',
+                   depress=cadex_dimension.SCENE_FLAG in context.scene)
 
     # --- the turn ----------------------------------------------------------
     # Starting over is one button, not a trash can: what the user wants back
@@ -1059,6 +1136,8 @@ classes = (
     MESH_AGENT_OT_apply_slider_defaults,
     MESH_AGENT_OT_toggle_params,
     MESH_AGENT_OT_toggle_collision,
+    MESH_AGENT_OT_toggle_dimensions,
+    MESH_AGENT_OT_measure_pins,
     MESH_AGENT_OT_toggle_cage,
     MESH_AGENT_OT_apply_cage,
     # Panel order IS registration order -- nothing here sets `bl_order` --

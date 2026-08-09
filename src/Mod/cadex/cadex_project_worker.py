@@ -318,6 +318,41 @@ def _stamp_source_output(
         item["source_output"] = str(source)
 
 
+def _stamp_measurement_subjects(
+    outputs: list[dict[str, Any]],
+    artifact_by_definition: Mapping[str, dict[str, Any]],
+) -> None:
+    """Name the declared output each measurement measures (ADR-139).
+
+    The same problem ``_stamp_source_output`` solves, arriving from the other
+    direction: a measurement's anchors are in the measured shape's **own**
+    frame, and a consumer holding them needs to know whose frame that is
+    before it can draw them where the geometry is.
+
+    Resolved by canonical definition, which is the join
+    ``artifact_by_definition`` already exists to serve — the API layer refuses
+    anything but a part value, so a measurement's argument is always a part
+    payload, and it matches a declared output exactly when the script also
+    returned that shape.
+
+    Left empty rather than absent when the measured shape is an undeclared
+    intermediate: there is no placement to look up in that case, and the
+    anchors are already the model's own coordinates.
+    """
+
+    for item in outputs:
+        if str(item.get("type") or "") != "measurement":
+            continue
+        arguments = list((item.get("definition") or {}).get("arguments") or [])
+        if not arguments or not isinstance(arguments[0], Mapping):
+            continue
+        matched = artifact_by_definition.get(_canonical_json(dict(arguments[0])))
+        if matched is not None:
+            item.setdefault("measurement", {})["subject"] = str(
+                matched.get("name") or ""
+            )
+
+
 def _attach_routes(outputs: list[dict[str, Any]]) -> None:
     """Hang each wire's own centreline on the output that built it (ADR-118).
 
@@ -702,6 +737,11 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
             item = serialize(name, value, "part")
             outputs.append(item)
             artifact_by_definition[_canonical_json(item["definition"])] = item
+
+        # A measurement can name a shape the script declares later in the
+        # result dict, so subjects are stamped once the part outputs are all
+        # in rather than inside the loop that builds them (ADR-139).
+        _stamp_measurement_subjects(outputs, artifact_by_definition)
 
         # partdesign — native Body histories through the existing builder
         if grouped["partdesign"]:

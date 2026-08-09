@@ -34,6 +34,14 @@ scene, which in Cadex is a display mirror of the engine's outputs and not the
 model. Importing geometry into the model means putting the file in the engine
 project's asset store, which only the engine may write -- so the row calls a
 `put_asset` op, and the model then names the stored asset from the script.
+
+`Link Part...` and `Refresh Linked Parts` are its lossless siblings
+(ADR-138), and they are ours for the same reason plus one of their own:
+what they bring in is not a file at all but *another Cadex model's accepted
+output*, pulled straight out of that project's store as the exact solid it
+holds. Both go through one op, `link_part`, and refreshing is that op called
+again -- so there is one engine surface behind two rows, and the second row
+is a loop over the first.
 """
 
 import bpy
@@ -76,6 +84,147 @@ class MESH_AGENT_OT_import_asset(Operator):
         return {'FINISHED'}
 
 
+#: Candidate output names from the last `Link Part...` pick, and the project
+#: they came from. Module state rather than operator properties because the
+#: enum step is a *second* operator: Blender's file browser owns the first
+#: one's lifetime, and nothing survives it.
+_link_pending = {"source": "", "candidates": ()}
+
+
+def _link_source_from(path):
+    """The project root a picked path names, or "".
+
+    A user picks the thing they think of as the other model: its `.blend`.
+    That derives its project root exactly as `cadex_backend.project_root`
+    does, so the two can never disagree. Picking the `.cadex` directory
+    itself, or a file inside it, works too -- somebody who knows where the
+    project is should not have to go and find the .blend.
+    """
+    import os
+
+    path = os.path.abspath(os.path.expanduser(str(path or "")))
+    if not path:
+        return ""
+    if path.endswith(".blend"):
+        return os.path.splitext(path)[0] + ".cadex"
+    if path.endswith(".cadex") and os.path.isdir(path):
+        return path
+    parent = os.path.dirname(path)
+    if parent.endswith(".cadex") and os.path.isdir(parent):
+        return parent
+    if os.path.isdir(path):
+        return path
+    return ""
+
+
+class MESH_AGENT_OT_link_part(Operator):
+    bl_idname = "mesh_agent.link_part"
+    bl_label = "Link Part"
+    bl_description = ("Bring a part built in another Cadex model into this "
+                      "one, as the exact solid that model accepted")
+
+    filepath: bpy.props.StringProperty(subtype='FILE_PATH')
+    filter_glob: bpy.props.StringProperty(default="*.blend;*.cadex",
+                                          options={'HIDDEN'})
+
+    def invoke(self, context, _event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        from . import cadex_backend
+
+        history = agent_module.get_agent().history
+        source = _link_source_from(self.filepath)
+        if not source:
+            history.add("status",
+                        "That is not a Cadex model: pick another model's "
+                        ".blend file, or its .cadex project folder.")
+            self.report({'WARNING'}, "Not a Cadex model")
+            return {'CANCELLED'}
+
+        # Ask with no output named: the refusal is what carries the list of
+        # what that project publishes, so one round trip both validates the
+        # project and populates the choice.
+        payload = cadex_backend.link_part(context.scene, source)
+        candidates = [str(item) for item in (payload.get("candidates") or [])]
+        if not candidates:
+            report = str(payload.get("error") or payload)
+            history.add("status", "Could not link a part: " + report)
+            self.report({'WARNING'}, report.splitlines()[0] if report else
+                        "Link failed")
+            return {'CANCELLED'}
+
+        _link_pending["source"] = source
+        _link_pending["candidates"] = tuple(candidates)
+        return bpy.ops.mesh_agent.choose_linked_part('INVOKE_DEFAULT')
+
+
+def _pending_candidates(_self, _context):
+    return [(name, name, "") for name in _link_pending["candidates"]]
+
+
+class MESH_AGENT_OT_choose_linked_part(Operator):
+    bl_idname = "mesh_agent.choose_linked_part"
+    bl_label = "Which part?"
+    bl_description = "Choose which of that model's parts to link"
+
+    output: bpy.props.EnumProperty(name="Part", items=_pending_candidates)
+
+    def invoke(self, context, _event):
+        if not _link_pending["candidates"]:
+            return {'CANCELLED'}
+        # One candidate is not a choice; skip the dialog entirely.
+        if len(_link_pending["candidates"]) == 1:
+            self.output = _link_pending["candidates"][0]
+            return self.execute(context)
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        from . import cadex_backend
+
+        history = agent_module.get_agent().history
+        source = _link_pending["source"]
+        output = str(self.output or "")
+        if not source or not output:
+            return {'CANCELLED'}
+
+        payload = cadex_backend.link_part(context.scene, source, output=output)
+        if payload.get("ok") is not True:
+            report = str(payload.get("error") or payload)
+            history.add("status", "Could not link a part: " + report)
+            self.report({'WARNING'}, report.splitlines()[0] if report else
+                        "Link failed")
+            return {'CANCELLED'}
+        name = str(payload.get("name") or "")
+        # Name the stored container, because that name -- not the project the
+        # user picked -- is what part.import_part() takes.
+        history.add("status",
+                    "Linked {:s} from {:s}. Ask for it by name: "
+                    "part.import_part(\"{:s}\").".format(
+                        output, source, name))
+        return {'FINISHED'}
+
+
+class MESH_AGENT_OT_refresh_linked_parts(Operator):
+    bl_idname = "mesh_agent.refresh_linked_parts"
+    bl_label = "Refresh Linked Parts"
+    bl_description = ("Re-pull every part this model links from another "
+                      "model, and rebuild if any of them moved")
+
+    def execute(self, context):
+        from . import cadex_backend
+
+        history = agent_module.get_agent().history
+        ok, report = cadex_backend.refresh_linked_parts(context.scene)
+        history.add("status", report or "Nothing to refresh.")
+        if not ok:
+            self.report({'WARNING'},
+                        (report or "Refresh failed").splitlines()[0])
+            return {'CANCELLED'}
+        return {'FINISHED'}
+
+
 class CADEX_MT_file(Menu):
     bl_label = "File"
 
@@ -114,6 +263,12 @@ class CADEX_MT_file(Menu):
         # scene, which is the display mirror (ADR-043).
         layout.operator("mesh_agent.import_asset", text="Import Geometry...",
                         icon='IMPORT')
+        # ...and its lossless sibling: a part from another Cadex model, as the
+        # solid that model accepted rather than a mesh of it (ADR-138).
+        layout.operator("mesh_agent.link_part", text="Link Part...",
+                        icon='LINKED')
+        layout.operator("mesh_agent.refresh_linked_parts",
+                        text="Refresh Linked Parts", icon='FILE_REFRESH')
 
         layout.separator()
 
@@ -206,6 +361,9 @@ def uninstall():
 
 classes = (
     MESH_AGENT_OT_import_asset,
+    MESH_AGENT_OT_link_part,
+    MESH_AGENT_OT_choose_linked_part,
+    MESH_AGENT_OT_refresh_linked_parts,
     CADEX_MT_file,
     CADEX_MT_edit,
     CADEX_MT_editor_menus,

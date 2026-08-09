@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-08-07
+Verified against source: 2026-08-09
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -104,6 +104,21 @@ from facts instead of re-exploration.
 - [x] CI test: delete document → rebuild from script → digest matches
       (`test_project_rebuild.py`, ctest `CadexProjectRebuildDigest`;
       rebuild-vs-accepted and rebuild-vs-rebuild equality verified).
+- [x] **How projects compose** — the question `docs/VISION.md` and
+      `docs/XSCRIPT.md` Part II each parked (sub-scripts? imports? one flat
+      script?), answered by **none of the three** (ADR-138). A project stays
+      one flat script and composes another through its *store*: `link_part`
+      pulls one accepted solid out of another project as a content-addressed
+      `.cxpart` in this one's `assets/`, and `part.import_part` reads it back
+      as the exact OCCT solid. One op, one script primitive, one suffix
+      constant; refresh is the same call again.
+- [x] **Declared dimensions** — `part.measurement` (ADR-139), the first part
+      output that carries no geometry at all: two exact anchor points and a
+      number, drawn by the viewport as an architectural dimension. Three
+      kinds — `distance`, `diameter`, `extent` — anchored by ADR-029 selector,
+      so a dimension follows the parameter that moves its part and fails
+      loudly, naming the selector, when a change removes what it measured. No
+      new op, no new artifact kind and no change to `compute_project_digest`.
 
 **Exit criteria:** the digest CI test passes; no user-visible multi-program
 concept remains.

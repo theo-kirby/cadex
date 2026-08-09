@@ -170,7 +170,10 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
         "PartWorkbench",
         "part",
         "Part",
-        ("solid", "shell", "face", "wire", "compound"),
+        # `measurement` is the one member that is not a shape class: it is a
+        # declared output with no geometry at all, the way `solver_diagnostics`
+        # is on the assembly side (ADR-139).
+        ("solid", "shell", "face", "wire", "compound", "measurement"),
         "Build direct OCC shapes and declare the exact accepted shape class for "
         "each stable output.",
         (
@@ -218,6 +221,12 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "reverse",
             "sew",
             "shape_from_mesh",
+            # The lossless counterpart of shape_from_mesh: a part authored in
+            # another project, arriving as its exact BREP (ADR-138).
+            "import_part",
+            # A declared output that carries no geometry: two anchor points
+            # and a number, drawn as a dimension (ADR-139).
+            "measurement",
             "repair",
             "fillet",
             "chamfer",

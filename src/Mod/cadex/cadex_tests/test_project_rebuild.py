@@ -73,9 +73,22 @@ placed = mesh.transform(
 )
 scan_solid = part.shape_from_mesh(scan)
 carved = part.cut(plate, scan_solid)
+linked = part.import_part("sensor.cxpart")
+bolted = part.cut(linked, part.cylinder(2.0, 40, origin=[5.0, 5.0, -5.0]))
+tall = part.measurement(plate, kind="extent", axis="z", label="plate thickness")
+across = part.measurement(
+    plate,
+    kind="distance",
+    start={"geometry_type": "Plane", "normal": [0.0, -1.0, 0.0]},
+    end={"geometry_type": "Plane", "normal": [0.0, 1.0, 0.0]},
+)
+wide = part.measurement(
+    bolted, kind="diameter", at={"geometry_type": "Cylinder", "radius": 2.0}
+)
 result = {"plate": plate, "base": base, "top": top, "asm": asm, "diag": diag,
           "hull": hull, "lite": lite, "scan": scan, "placed": placed,
-          "scan_solid": scan_solid, "carved": carved}
+          "scan_solid": scan_solid, "carved": carved, "linked": linked,
+          "bolted": bolted, "tall": tall, "across": across, "wide": wide}
 '''
 
 TETRA_STL = '''solid tetra
@@ -113,6 +126,44 @@ endsolid tetra
 root = Path(tempfile.mkdtemp(prefix="cadex-rebuild-ci-"))
 (root / "assets").mkdir(parents=True)
 (root / "assets" / "tetra.stl").write_text(TETRA_STL, encoding="utf-8")
+
+# A linked part (ADR-138), in the store the same way the link_part op puts
+# one there. Written here from a shape rather than pulled from a second
+# project because what this CI is about is the *rebuild*: an imported BREP
+# has to reproduce byte-for-byte across two runs of the same script, exactly
+# as an imported mesh does, or a project holding one drifts on every open.
+import hashlib
+
+import Part
+
+from CadexLinkedPart import LINKED_PART_SCHEMA, encode_linked_part
+
+_seed = Part.makeBox(18.0, 12.0, 9.0)
+_brep = root / "seed.brep"
+_seed.exportBrep(str(_brep))
+_bytes = _brep.read_bytes()
+_brep.unlink()
+(root / "assets" / "sensor.cxpart").write_bytes(
+    encode_linked_part(
+        {
+            "schema": LINKED_PART_SCHEMA,
+            "source": {
+                "project_root": str(root),
+                "project_title": "seed",
+                "output": "sensor",
+                "revision": "seedrev",
+                "digest": "seeddigest",
+                "output_type": "solid",
+            },
+            "params": {},
+            "param_specs": [],
+            "script": 'result = {"sensor": part.box(18, 12, 9)}\n',
+            "shape_sha256": hashlib.sha256(_bytes).hexdigest(),
+            "brep_bytes": len(_bytes),
+        },
+        _bytes,
+    )
+)
 report = {}
 try:
     # create + accept in a live document
@@ -142,6 +193,7 @@ try:
             "domain": item.get("domain"),
             "shape_type": (item.get("facts") or {}).get("shape_type"),
             "volume_mm3": (item.get("facts") or {}).get("volume_mm3"),
+            "measurement": item.get("measurement"),
         }
         for item in json.loads(
             (Path(prepared["staging"]) / "result.json").read_text(encoding="utf-8")
@@ -215,3 +267,44 @@ def test_rebuild_digest_matches_accepted_and_is_reproducible(tmp_path) -> None:
     assert outputs["scan_solid"]["shape_type"] == "Solid", report
     assert outputs["carved"]["artifact_kind"] == "brep", report
     assert 0.0 < outputs["carved"]["volume_mm3"] < outputs["plate"]["volume_mm3"], report
+    # ...and the same two statements for a linked part (ADR-138). The digest
+    # assertions above are what actually matter here: an imported container
+    # must re-export byte-identically on every rebuild, or a project holding
+    # one drifts every time it is opened.
+    assert outputs["linked"]["artifact_kind"] == "brep", report
+    assert outputs["linked"]["domain"] == "part", report
+    assert outputs["linked"]["shape_type"] == "Solid", report
+    assert outputs["linked"]["volume_mm3"] == pytest.approx(18.0 * 12.0 * 9.0), report
+    assert 0.0 < outputs["bolted"]["volume_mm3"] < outputs["linked"]["volume_mm3"], report
+    # Measurements (ADR-139). The digest assertions above already say the
+    # important thing -- a measurement is declared, so it enters the digest
+    # through its own definition, and a project carrying three of them still
+    # rebuilds to the same digest twice. These say the numbers are the ones
+    # a person would get with a ruler.
+    tall = outputs["tall"]["measurement"]
+    assert outputs["tall"]["artifact_kind"] is None, report
+    assert tall["kind"] == "extent" and tall["subject"] == "plate", report
+    assert tall["value_mm"] == pytest.approx(4.0), report
+    assert tall["text"] == "4.00 mm", report
+    assert tall["label"] == "plate thickness", report
+    # The anchors run down the centre of the part, not off a corner.
+    assert tall["anchors_mm"][0] == pytest.approx([15.0, 9.0, 0.0]), report
+    assert tall["anchors_mm"][1] == pytest.approx([15.0, 9.0, 4.0]), report
+
+    across = outputs["across"]["measurement"]
+    assert across["kind"] == "distance" and across["subject"] == "plate", report
+    assert across["value_mm"] == pytest.approx(18.0), report
+    assert across["label"] == "", report
+
+    # A diameter publishes the circle, never a pair of points: which diameter
+    # reads widest is the viewport's question and it changes as you orbit.
+    wide = outputs["wide"]["measurement"]
+    assert wide["kind"] == "diameter" and wide["subject"] == "bolted", report
+    assert wide["value_mm"] == pytest.approx(4.0), report
+    assert wide["radius_mm"] == pytest.approx(2.0), report
+    assert wide["anchors_mm"] is None, report
+    assert wide["text"] == "Ø4.00 mm", report
+    # The centre sits on the bore's axis, at the middle of the measured face.
+    assert wide["center_mm"][0] == pytest.approx(5.0), report
+    assert wide["center_mm"][1] == pytest.approx(5.0), report
+    assert wide["normal"] == pytest.approx([0.0, 0.0, 1.0]), report

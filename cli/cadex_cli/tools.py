@@ -39,6 +39,11 @@ CLI_TOOL_OPS = (
     "set_params",
     "rebuild",
     "inspect",
+    # A part built in another project (ADR-138). Here rather than left to the
+    # `cadex link` subcommand because a turn that is told "use the sensor
+    # from ../sensorA" cannot otherwise do it: nothing else in the surface
+    # reaches outside this project.
+    "link_part",
 )
 
 #: Filled in by the bridge from the last reply, so never asked of the model.
@@ -88,6 +93,16 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "Read engine state. This is how you verify your work: there is no "
         "viewport here and no screenshot to look at."
     ),
+    "link_part": (
+        "Pull one accepted solid out of ANOTHER project directory and store "
+        "it here as a .cxpart, which a script then uses with "
+        "part.import_part(\"<name>.cxpart\"). It arrives as the exact solid "
+        "that project accepted — not a mesh of it — so booleans, selectors "
+        "and assembly.component all work on it. Call it again with the same "
+        "arguments to refresh: the reply's `changed` says whether the other "
+        "project moved, and a rebuild is what makes a change take effect "
+        "here. Omit `output` to be told what that project declares."
+    ),
 }
 
 ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
@@ -129,6 +144,19 @@ ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
         "patch: rows you omit are dropped, so read the current table with "
         "`inspect scope=wiring` first. Omit this argument entirely to leave "
         "the terminals alone."
+    ),
+    ("link_part", "source_project"): (
+        "Path to the OTHER project's root directory — the one that owns the "
+        "part. It is never opened and never changed; only its accepted "
+        "revision is read."
+    ),
+    ("link_part", "output"): (
+        "Which of that project's declared outputs to pull. It must be a "
+        "solid. Omit this to be told what it declares."
+    ),
+    ("link_part", "name"): (
+        "Filename to store it under here, ending in .cxpart. Defaults to "
+        "<output>.cxpart. Re-using a name is how a part is refreshed."
     ),
     ("inspect", "scope"): (
         "What to read. `script` is the current source, parameters and "

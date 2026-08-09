@@ -479,6 +479,7 @@ def test_the_store_holds_what_a_policy_travels_with(tmp_path: Path) -> None:
     import CadexScriptedRuntime as runtime
     from CadexScriptedRuntime import (
         _ASSET_SUFFIXES,
+        _LINKED_PART_ASSET_SUFFIXES,
         _POLICY_ASSET_SUFFIXES,
         _PROVENANCE_ASSET_SUFFIXES,
         _STORED_ASSET_SUFFIXES,
@@ -487,8 +488,14 @@ def test_the_store_holds_what_a_policy_travels_with(tmp_path: Path) -> None:
     assert _PROVENANCE_ASSET_SUFFIXES == frozenset({".json", ".xml"})
     # The mesh set stays exactly three: the shell mirrors it by name.
     assert _ASSET_SUFFIXES == frozenset({".stl", ".obj", ".ply"})
+    # ...and the union is the sum of the named sets, which is what makes
+    # widening it free. ADR-138 added the fourth on those terms exactly.
+    assert _LINKED_PART_ASSET_SUFFIXES == frozenset({".cxpart"})
     assert _STORED_ASSET_SUFFIXES == (
-        _ASSET_SUFFIXES | _POLICY_ASSET_SUFFIXES | _PROVENANCE_ASSET_SUFFIXES
+        _ASSET_SUFFIXES
+        | _POLICY_ASSET_SUFFIXES
+        | _PROVENANCE_ASSET_SUFFIXES
+        | _LINKED_PART_ASSET_SUFFIXES
     )
 
     project_root = tmp_path / "project"

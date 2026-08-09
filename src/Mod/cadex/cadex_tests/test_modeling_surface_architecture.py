@@ -259,6 +259,11 @@ def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None
         "CadexBoards.py",
         "CadexMounts.py",
         "CadexCage.py",
+        # The linked-part container part.import_part reads: pure Python,
+        # staged for the same reason, and the one module here that cadexd
+        # also imports -- it builds a container out of another project's
+        # accepted attempt (ADR-138).
+        "CadexLinkedPart.py",
         "cadex_partdesign_api.py",
         "cadex_partdesign_worker.py",
         "cadex_mesh_api.py",

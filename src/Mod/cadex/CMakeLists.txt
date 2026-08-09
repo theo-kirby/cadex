@@ -16,6 +16,7 @@ set(Cadex_Scripts
     CadexBoards.py
     CadexMounts.py
     CadexCage.py
+    CadexLinkedPart.py
     CadexProject.py
     CadexScriptStore.py
     CadexSubshapeQuery.py

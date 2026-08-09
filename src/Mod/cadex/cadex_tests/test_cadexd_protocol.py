@@ -49,6 +49,7 @@ def test_op_list_is_pinned() -> None:
         "set_params",
         "rebuild",
         "put_asset",
+        "link_part",
         "resolve_pin",
         "inspect",
         "preview_params",
@@ -80,6 +81,9 @@ def test_op_list_is_pinned() -> None:
         # Writes the project store; modeling so it cannot race the staging
         # a rebuild does out of that same directory (ADR-043).
         "put_asset",
+        # ...and link_part ends in the same store write, so it is here for
+        # the same reason and no other (ADR-138).
+        "link_part",
     }
 
 

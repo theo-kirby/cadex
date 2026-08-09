@@ -264,6 +264,11 @@ def unregister():
     if _frame_change_handler in bpy.app.handlers.frame_change_post:
         bpy.app.handlers.frame_change_post.remove(_frame_change_handler)
     cadex_live_module.unregister()
+    # The dimension overlay owns a draw handler and nothing else, so it needs
+    # teardown but no registration (ADR-139). A handle left behind outlives
+    # the module it points into and raises on the next reload.
+    from . import cadex_dimension as _cadex_dimension_module
+    _cadex_dimension_module.unregister()
     wiring_ui_module.unregister()
     topbar_module.unregister()
     spaces.unregister()

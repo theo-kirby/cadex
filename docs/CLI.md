@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-08-01. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-08-09. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no Blender, no display, no `bpy`, no shell code.
@@ -47,6 +47,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex script` | Print the project script. | no |
 | `cadex script --set FILE` | Replace the script from a file and rebuild. | no |
 | `cadex export` | Rebuild the accepted script and write its outputs. | no |
+| `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
 
 Flags, valid on either side of the subcommand:
 
@@ -65,6 +66,19 @@ Prompt-only flags: `--resume` (continue this project's conversation),
 an output the accepted revision declares — without it such a script is
 refused, because `write_script` replaces *the whole* script and losing an
 output by accident is easy (ADR-045).
+
+`link` takes `--from DIR` (the other project's root, read and never
+changed), `--output NAME` (which of its declared outputs to pull; omit it
+and the refusal lists what it declares), and `--name FILE` (what to store it
+under, default `<output>.cxpart`). **There is no separate refresh command,
+because there is no separate operation** (ADR-138): the op overwrites the
+stored container, and overwriting an asset is re-import, so running the same
+command again is the whole of refreshing. A run that finds the other project
+moved rebuilds this one behind it — so the new geometry lands as one normal
+accepted revision — and a run that finds nothing moved rebuilds nothing,
+because a no-op that re-accepted the model would put a meaningless revision
+in the history every time somebody checked. A rebuild that then fails
+against the new shape exits `3` and says what broke.
 
 ### Exit codes
 

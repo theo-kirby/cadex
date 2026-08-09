@@ -45,7 +45,7 @@ CADEXD_UNAVAILABLE = "CADEXD_UNAVAILABLE"
 #: (ADR-055). Adding it would make the two refuse each other instead.
 MODELING_OPS = frozenset(
     {"open_project", "write_script", "edit_script", "set_params", "rebuild",
-     "put_asset"}
+     "put_asset", "link_part"}
 )
 
 _READY_TIMEOUT_SECONDS = 120.0

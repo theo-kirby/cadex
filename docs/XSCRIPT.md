@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-08-05
+Verified against source: 2026-08-09
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -18,10 +18,13 @@ replaced the VibeCAD-era per-domain multi-program surface `[Cadex-new]`.
   five capability domains and is the sole source of truth — the user can
   open it, read it, and diff it; nothing model-shaped exists outside it.
   Assets the script names live under `<project>/assets/` (flat): mesh
-  geometry `.stl`/`.obj`/`.ply` (ADR-043) and trained
-  policies `.cxpolicy` (ADR-084). Nothing outside cadexd writes that
+  geometry `.stl`/`.obj`/`.ply` (ADR-043), trained
+  policies `.cxpolicy` (ADR-084) with the `.json`/`.xml` their provenance
+  travels as (ADR-135), and parts built in another project, `.cxpart`
+  (ADR-138). Nothing outside cadexd writes that
   directory: the `put_asset` op copies a file the user picked into it and
-  returns the name the script may then reference, and
+  returns the name the script may then reference, the `link_part` op writes
+  a `.cxpart` by reading another project's accepted attempt, and
   `inspect scope="assets"` lists what is there.
 - Sidecar state: `<project>/script.json` (schema `cadex-project-script-v1`,
   `CadexScriptStore.py:62`, class `CadexProjectScriptStore` — split out of
@@ -98,7 +101,30 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   kernel. Going the other way, `part.shape_from_mesh()` converts a mesh value
   into BREP topology (`makeShapeFromMesh`, then promoted to a solid unless
   `solid=False`) so an imported component can be cut against, assembled and
-  padded around — see ADR-043 for what that costs. Every
+  padded around — see ADR-043 for what that costs.
+  `part.import_part("sensor.cxpart")` is the **lossless** counterpart of that
+  last one (ADR-138): it reads a `.cxpart` container out of the same flat
+  `assets/` directory and yields the exact OCCT solid another project
+  accepted, so the imported part keeps the forty faces it was authored with
+  rather than the thousands of planar triangles a converted STL lands, and
+  `subshape`/`fillet`/booleans behave on it as they do on a solid built here.
+  A snapshot, not a live link: the container changes only when `link_part`
+  writes it again, so a rebuild never depends on another project's current
+  state.
+- **`part.measurement(shape, kind=...)`** declares a **dimension** (ADR-139) —
+  the one part output that carries no geometry at all. `kind="distance"` takes
+  `start=`/`end=` selectors and measures between the two subshapes they name;
+  `kind="diameter"` takes one `at=` selector on a circular edge or a
+  cylindrical face; `kind="extent"` takes `axis="x"|"y"|"z"` and measures the
+  shape's overall span, which is what "the height of the part" means on
+  anything that is not a box. `element_type="face"|"edge"` says which topology
+  the selectors resolve against and applies to both ends. It is anchored by
+  ADR-029 selector rather than by ordinal, so it survives a rebuild the way
+  every other selector does and fails loudly, naming the selector, when a
+  change removes what it measured — and it *moves* when a parameter moves the
+  shape, because it is recomputed rather than remembered. What it publishes is
+  two exact anchor points and a number already formatted to text; everything
+  else about the drawing is the viewport's, per frame. Every
   mesh output is rebuilt in canonical vertex/facet order (booleans
   immediately, all outputs before export), and the digest identifies a mesh
   by its exact sorted vertex set (`geometry_sha256`) — the native set
@@ -972,9 +998,12 @@ Source is validated before any worker runs (AST policy in
 - One attempt = one windowless `FreeCADCmd --safe-mode -c …` subprocess
   (runner in `CadexScriptedProcess.py`). The project bundle stages all five
   `cadex_<domain>_{api,worker}.py` modules with entry
-  `cadex_project_worker.py` — **and six more modules by filename**:
+  `cadex_project_worker.py` — **and fourteen more modules by filename**:
   `CadexSubshapeQuery.py`, `CadexRouting.py`, `CadexBundle.py`,
-  `CadexDynamics.py`, `cadex_tessellation.py` and `cadex_preview_worker.py`
+  `CadexTerminals.py`, `CadexSolder.py`, `CadexNets.py`, `CadexBoards.py`,
+  `CadexMounts.py`, `CadexCage.py`, `CadexLinkedPart.py`,
+  `CadexDynamics.py`, `cadex_tessellation.py`, `cadex_preview_worker.py` and
+  `cadex_live_worker.py`
   (`_DOMAIN_WORKER_BUNDLES["project"]`, `CadexScriptedRuntime.py:38`). Copied
   in rather than imported, so a worker module can `import` them inside the
   sandbox while `cadexd`'s own module closure never reaches them — which for
@@ -1122,8 +1151,18 @@ is a coincidence of shape, not the same concept.
 - **Incremental re-execution**: today every mutation re-runs the whole
   script (one worker attempt). Cached per-region revisions keyed by content
   hash are a possible optimization; the revision machinery points the way.
-- **Sub-modules**: whether large projects split into importable sub-modules
-  under the project root, or stay one flat script.
+- ~~**Sub-modules**: whether large projects split into importable sub-modules
+  under the project root, or stay one flat script.~~ **Answered (ADR-138):
+  one flat script, and a project composes another through its *store*.**
+  `link_part` pulls one accepted solid out of another project into this one's
+  `assets/` as a `.cxpart`, and `part.import_part("sensor.cxpart")` reads it
+  back as the exact OCCT solid — same path an imported STL travels, lossless
+  instead of tessellated. So a large project splits into *projects*, each one
+  flat, each rebuildable on its own, joined by content-addressed files rather
+  than by an import graph. What crosses the boundary is a built artifact
+  whose bytes are checked, not a program this project has to run; the AST
+  policy's blanket refusal of `import` stays exactly as it is, and turns out
+  to have been the right answer rather than a limitation to route around.
 - **Interactive mesh editing**: still unscheduled, and still a decision
   rather than an oversight. The plan used to be that it would arrive via
   BMesh in the Blender shell. It has not, and the route narrowed rather than

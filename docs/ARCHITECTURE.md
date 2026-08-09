@@ -92,10 +92,13 @@ NDJSON client with no cadex imports.
   `ScriptedMemoryLimitMB`). The project bundle
   (`_DOMAIN_WORKER_BUNDLES["project"]`, `CadexScriptedRuntime.py:38`) stages
   all five domain api/worker modules with entry `cadex_project_worker.py`
-  — **and six more modules by filename**, which is the pattern worth
-  knowing: `CadexRouting.py`, `CadexBundle.py`, `CadexDynamics.py`,
-  `CadexSubshapeQuery.py`, `cadex_tessellation.py` and
-  `cadex_preview_worker.py` are copied in rather than imported, so a worker
+  — **and fourteen more modules by filename**, which is the pattern worth
+  knowing: `CadexRouting.py`, `CadexBundle.py`, `CadexTerminals.py`,
+  `CadexSolder.py`, `CadexNets.py`, `CadexBoards.py`, `CadexMounts.py`,
+  `CadexCage.py`, `CadexLinkedPart.py`, `CadexDynamics.py`,
+  `CadexSubshapeQuery.py`, `cadex_tessellation.py`,
+  `cadex_preview_worker.py` and `cadex_live_worker.py`
+  are copied in rather than imported, so a worker
   module can `import` them inside the sandbox while `cadexd`'s own module
   closure never reaches them. For `CadexDynamics.py` that is not a
   convenience but the invariant `test_engine_purity_guardrails` asserts
@@ -108,7 +111,12 @@ NDJSON client with no cadex imports.
   materializes a nested mesh value inside the part build through the entry
   point `configure_part_assets` binds. Trained policies
   (`assets/*.cxpolicy`, ADR-084) are staged the same way and read by
-  `assembly.policy`. Wire schema: `cadex-xscript-project-worker-v1`.
+  `assembly.policy`, and parts built in another project
+  (`assets/*.cxpart`, ADR-138) the same way again, read by
+  `part.import_part` — which authenticates the container against the digest
+  in its own header before importing the BREP, the check
+  `configure_part_references` performs on a host-staged snapshot one step
+  further out. Wire schema: `cadex-xscript-project-worker-v1`.
 - **Publisher** (`src/Mod/cadex/CadexScriptedDomainPublication.py`,
   `CadexScriptedPublication.py`): `publish_project_candidate` applies all
   domains under ONE transaction (per-domain sub-publishes with
@@ -167,10 +175,11 @@ Ownership closure, lint, and orphan queries live in
 | `CadexSolder.py` | The joint behind `part.solder` (ADR-063, ADR-064, ADR-117, **experimental**): from a terminal's `metrics` plus three numbers it derives the bore, pad, collar and fillet, refuses the ways they can fail to describe a joint, and returns a closed *outline* in the `(r, z)` half-plane — the annulus from the lead to the pad rim, a concave meniscus arc solved to be tangent to the lead, the collar, the crown's round-over, and the lead's own radius back down — which the worker turns into one wire, one face and one `revolve`. **One outline serves a bore and a pad alike** since ADR-117: the cap cone, bore wall and entry annulus described a lead ending at the bottom of the barrel, and a terminal lands in the mouth now, so what a bore still contributes is its radius (the pad's default width, and the floor a stated `pad_dia_mm` must clear) and nothing else. No fuse and no cut, so no boolean at all. Also the contour-integral volume (`V = π ∮ r² dz`) the kernel probe asserts against, and the stated radial basis that fixes where the BREP seam lands. Kernel-neutral and FreeCAD-free, staged by filename. `[Cadex-new]` |
 | `CadexNets.py` | The connection table behind `nets(...)` / `wire(...)` (ADR-065, **experimental**): the declaration, its refusals, the `"<port>.<terminal>"` endpoint grammar, the canonical row shape shared by the declared table and the stored overrides, and the two rules the wiring editor rests on — a stored row list *replaces* the declaration rather than patching it, and a row whose port a rewritten script no longer declares is pruned rather than raised on (ADR-039). Kernel-neutral and FreeCAD-free like the four above, unit-testable headless, staged into the worker bundle by filename. `[Cadex-new]` |
 | `CadexBoards.py` | The board table behind `boards(...)` / `board(...)` / `term(...)` (ADR-120, **experimental**): the declaration and its refusals, the canonical terminal row (`board`, `name`, `origin`, `axis`, `hole_dia`, `depth` — always **millimetres in the board's own frame**, so `units="m"` is a declaration-time convenience and never a second unit system in the store), the header form expanded to explicit rows at declaration, the same two editor rules `CadexNets` rests on (a stored row list replaces the declaration; a row naming a board the script no longer declares is pruned), and `row_from_world`, the arithmetic that carries a terminal *measured in the viewport* back into its board's frame through the inverse of the placement chain the run resolved. Returns a mapping of `TerminalSet`, so `nets(ports=b)` takes it unchanged. Kernel-neutral and FreeCAD-free like the five above, unit-testable headless, staged into the worker bundle by filename. `[Cadex-new]` |
+| `CadexLinkedPart.py` | The `.cxpart` container behind `link_part` and `part.import_part` (ADR-138): `CXPART1\n | <u64 LE header length> | <canonical JSON> | <raw BREP>`, deliberately isomorphic to `CadexDynamics`' `.cxpolicy` and for its reasons — a length-prefixed header and a byte range are readable inside the `--safe-mode` sandbox by fifteen lines that parse no archive format. `build_linked_part` reads one project's pinned accepted attempt (`CadexPinResolution`'s three public helpers plus `read_accepted_source`) and returns the container bytes; `decode_linked_part` verifies magic, schema, every declared length and the BREP's own SHA-256 before a shape is built from it. The header carries the source project's script, params and param specs — **carried and not yet read**, which is what a parameter override needs and what makes a linked part rebuildable rather than baked. FreeCAD-free and kernel-neutral: building a container needs no worker, no OCCT call and no open source project. The one module both staged into the worker bundle *and* in `cadexd`'s import closure, which is `CadexNets.py`'s standing exactly. `[Cadex-new]` |
 | `CadexDynamics.py` | **The dynamics and control vertical**, 7,296 lines, and the largest single module in the tree (ADR-077, ADR-079…081, ADR-083…085; **experimental**). Five things, in the order the arc built them. **(1) The translator** behind `assembly.dynamics`: the joint table, a breadth-first spanning forest with loop closures as equality constraints, exact OCCT inertia converted to SI, the `mjSpec` build and the stepping loop that emits a `cadex-assembly-simulation-trace-v1`. **(2) Collision and contact** (M3): the convexity measurement that refuses a part MuJoCo would silently hull (`scipy.spatial.ConvexHull`, imported the same deferred way `mujoco` is), restitution to a damping ratio, collision groups to bitmasks, full extents to half-extents, and the solver flags, integrator and two step budgets that make a trace reproducible across processes. **(3) Actuation** (M4): `motor`/`position`/`velocity` actuators, joint damping/armature/friction-loss, and a whitelisted formula-of-`time` compiler for setpoints — arbitrary Python would leave the determinism gate. **(4) MJCF export** (M5): `export_mjcf` calls MuJoCo's own `MjSpec.to_xml()`, then reloads the file and diffs it field by field against the model it just wrote, refusing rather than emitting past tolerance — the writer's six significant figures are why that check is a measured tolerance and not an identity. **(5) Tasks, policies and rollouts** (M6–M8): the `cadex-training-task-v1` bundle, the `cadex-policy-v1` container reader, a **pure-Python forward pass** (4,564 Hz against a 50 Hz control rate — measured, and the reason numpy is not imported here), the witness re-computation that turns an architecture mismatch into a refusal, and the episode loop whose one keyword-only `sample` callable is the whole difference between verifying a policy and rolling one out. Kernel-neutral and FreeCAD-free like `CadexRouting.py`, staged into the worker bundle by filename -- and the only module in the tree that may import `mujoco`, which it does inside functions so `cadexd`'s closure never reaches it. The worker does every FreeCAD read; this does every arithmetic operation including every unit conversion, and a test greps to keep that true. `[Cadex-new]` |
 | `cadex_preview_worker.py` | The resident preview worker's entry point (ADR-055): a read-only oracle that answers a pose-only parameter change with solved placements in 33 ms and writes nothing at all. In the worker bundle rather than beside `cadexd`, because it runs in the same `--safe-mode` sandbox out of the same content-addressed directory and must never be importable by the service. `[Cadex-new]` |
 | `CadexWarmWorker.py` | cadexd's side of that: one resident worker per open project, spawned lazily on the first `preview_params`, bound to one `(source, api_contracts, assets)` generation and killed by anything that changes them. `[Cadex-new]` |
-| `cadex_domain_api.py` / `cadex_domain_worker.py` | Shared domain API/worker plumbing (`_execute_source` is the composition substrate). `[VibeCAD-era]` |
+| `cadex_domain_api.py` / `cadex_domain_worker.py` | Shared domain API/worker plumbing (`_execute_source` is the composition substrate). `_serialize_output` is where an output type decides what it *is*: a BREP type exports an artifact, `mesh` writes a PLY, and `points`, `solver_diagnostics` and — since ADR-139 — `measurement` attach a dict and **no `artifact_kind` at all**. That branch is the whole cost of a non-geometric output: `compute_project_digest` keys on *having* an artifact, so an artifact-less output falls through to `payload_sha256`, the hash of its own declaration. A measurement's identity is therefore which selectors it names, not what today's parameters make it read. `[VibeCAD-era]` |
 | `CadexGeometryWorker.cpp` | Isolated C++ BREP validation / distance worker. `[VibeCAD-era]` |
 
 ### The shell
@@ -253,9 +262,13 @@ macOS). Layout:
   assets/                       flat .stl/.obj/.ply the script imports by
                                 name (mesh.import_file, part.shape_from_mesh)
                                 plus .cxpolicy trained policies
-                                (assembly.policy, ADR-084); bounded at
-                                64 files / 128 MB, written only by the
-                                put_asset op (ADR-043)
+                                (assembly.policy, ADR-084) with the
+                                .json/.xml their provenance travels as
+                                (ADR-135), plus .cxpart parts built in
+                                another project (part.import_part, ADR-138);
+                                bounded at 64 files / 128 MB, written only by
+                                the put_asset op (ADR-043) and, for a
+                                .cxpart, the link_part op that builds one
 ```
 
 **cadexd is the sole writer.** Every byte that lands in the store goes
@@ -266,8 +279,9 @@ are in one tree.
 
 The shell reads exactly one directory of it, and only ever to hand the paths
 straight back: on Save-As it lists `assets/` in the root it is *leaving*, so
-that `put_asset` can carry the user's imported geometry into the new project
-(ADR-046). Assets are the one thing in the store the shell supplied in the
+that `put_asset` can carry the user's imported geometry — and, since ADR-138,
+the linked parts — into the new project (ADR-046). Assets are the one thing
+in the store the shell supplied in the
 first place, and the shell already chooses where the store lives (below).
 Nothing else in the store is read by the shell, and nothing at all is
 written by it.
@@ -325,11 +339,11 @@ so most of the suite runs headless without a built FreeCAD:
 pixi run python -m pytest src/Mod/cadex/cadex_tests
 ```
 
-**1,698 passed, 22 skipped** (1,720 collected), measured 2026-08-09. The count
+**1,730 passed, 22 skipped** (1,752 collected), measured 2026-08-09. The count
 fell from 425 to 226 across Phases 7 and 13a — the Qt shell, the provider
 stack and the shell's deleted local bpy path took their suites with them —
-rose to 1,105 at the close of Phase 14's M8, and has climbed to 1,698 across
-M9, the organic vertical and live mode; 45 of the files are
+rose to 1,105 at the close of Phase 14's M8, and has climbed to 1,730 across
+M9, the organic vertical, live mode, linked parts and measurements; 45 of the files are
 `test_dynamics_*.py`. **The 22 skips are by design, not breakage:** they are
 the MJX-gated tests (phase 0 measurements, real training runs), which need a
 venv built from `training/requirements.txt` rather than the pixi environment.

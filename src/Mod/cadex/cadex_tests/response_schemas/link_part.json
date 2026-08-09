@@ -1,0 +1,17 @@
+{
+  "assets": [
+    {
+      "bytes": "int",
+      "name": "str",
+      "sha256": "str"
+    }
+  ],
+  "bytes": "int",
+  "changed": "bool",
+  "name": "str",
+  "ok": "bool",
+  "previous_revision": "str",
+  "sha256": "str",
+  "source_digest": "str",
+  "source_revision": "str"
+}

@@ -14099,3 +14099,419 @@ moves.
   (`blocked` — the GPU box runs its own pre-ADR-104 checkout of the trainer), and
   inherited-tree reduction (`open` — Phase 8 and Phase 13b).
 - Verified: `hypergraph check` exits 0 with no violations and no warnings.
+
+## ADR-138 — A part travels between projects as one file (2026-08-09)
+
+**Decision.** A part built in one project can be used in another. It travels
+as **one content-addressed file in the consuming project's `assets/`**,
+along the path an imported STL already travels, but carrying an exact OCCT
+solid instead of triangles plus the script that made it. Four pieces, behind
+the unchanged protocol shape:
+
+1. **`.cxpart`**, schema `cadex-linked-part-v1`, in a new FreeCAD-free
+   `CadexLinkedPart.py`:
+   `CXPART1\n | <u64 LE header length> | <canonical JSON header> | <raw BREP>`.
+   The header records where it came from (project root, title, output,
+   revision, digest, output type), the source project's `script`, `params`
+   and `param_specs`, and the BREP's own `shape_sha256`.
+2. **`link_part`** — a new op (`{source_project, output?, name?}` →
+   `{name, bytes, sha256, source_revision, source_digest, previous_revision,
+   changed, assets}`), a `MODELING_OP`, plus **File → Link Part…** and
+   **File → Refresh Linked Parts** in the Cadex top bar, a `link_part` MCP
+   tool, and `cadex link --from DIR --output NAME`.
+3. **`part.import_part("sensor.cxpart")`** — a part-domain leaf shaped
+   exactly like `part.shape_from_mesh`, yielding a `solid` the part,
+   partdesign and assembly domains consume.
+4. **`_LINKED_PART_ASSET_SUFFIXES`** — a fourth constant joining
+   `_STORED_ASSET_SUFFIXES`. `_ASSET_SUFFIXES` stays exactly three.
+
+**This answers a question the docs parked twice**: `docs/VISION.md`'s "how
+assemblies-of-parts compose in a single project script (sub-scripts?
+imports? one flat script?)" and `docs/XSCRIPT.md` Part II's *Sub-modules*.
+The answer is **none of the three**. A project stays one flat script and
+composes another through that project's *store*. What crosses a project
+boundary is a **built artifact whose bytes are checked**, carrying the source
+that built it as provenance — not a program this project has to run to find
+out what the other one means. Sub-scripts would have made a rebuild here
+depend on another project's current state, its assets and its engine version;
+a container makes it deterministic from this project's own `assets/` alone.
+The AST policy's blanket refusal of every `import` statement
+(`CadexScriptedDomains.py:558`) is untouched, and turns out to have been the
+right answer rather than a limitation to route around. Both paragraphs are
+**rewritten**, the way ADR-043 rewrote the "stays that way" one, rather than
+left standing with a newer entry contradicting them.
+
+**Rationale.** The only existing route was STL: export, `mesh.import_file`,
+`part.shape_from_mesh` — which `cadex_part_api.py` says in its own docstring
+is "not feature-editable … for cutting clearance against, not for editing."
+The part arrived **baked**: a shell of thousands of planar triangle faces, no
+params, no rebuild, no way back to the thing that made it. Nothing else
+existed at all: no include, no sub-script, no cross-project reference
+anywhere in the engine, and `assembly.component` refuses a foreign source by
+name. "Use the sensor module I built last week" is an ordinary thing to ask a
+CAD tool, and it was impossible.
+
+**Why one op and not two.** The obvious shape is *export from A, import into
+B*: two operations, two sessions, and a file the user shuttles by hand.
+Collapsing it to **B pulls from A's directory** removes all three. One op
+does both halves atomically, and **project A never opens** — everything the
+pull reads is a file under A's root. Standalone export costs nothing extra
+either: the `.cxpart` sitting in B's `assets/` *is* the shippable file. Copy
+it out and anyone can bring it in with the `import_geometry` tool that
+already exists.
+
+**Why this was cheap.** Two findings carry the whole design.
+
+The **accepted solid is already a file on disk**. `accepted_attempt_dir`,
+`load_worker_report` and `accepted_output_item` (public since ADR-043) locate
+a pinned, never-GC'd staging directory holding `request.json` — the exact
+source that ran — and `outputs/output-NNN.brep`. `prune_artifacts` resolves
+`accepted_attempt` and skips it explicitly (`CadexScriptStore.py:324`), which
+is the one assumption the pull path rests on and it holds. So
+`build_linked_part` is **pure Python file reading: no FreeCAD, no worker, no
+OCCT call**, and A may be closed, or open in another session, while it runs.
+
+And the **asset union has now been widened three times at zero cost**.
+`_STORED_ASSET_SUFFIXES` is the union of separate constants: ADR-084 added
+`.cxpolicy`, ADR-135 added `.json`/`.xml`, and this adds `.cxpart` — each as
+its own fourth constant, because widening the union costs **no `shell/`
+diff** while widening `_ASSET_SUFFIXES` (pinned at exactly three, mirrored by
+name at `cadex_backend.py:53`) would. Net new concepts for the whole feature:
+one op, one script primitive, one suffix constant. **No new output type, no
+new `artifact_kind`, no change to `compute_project_digest`, no Blender-tree
+diff.**
+
+**Why `link_part` is a modeling op.** It ends in the same
+`store_project_asset` call `put_asset` does, so it inherits ADR-043's
+reasoning verbatim: membership in `MODELING_OPS` is what makes it mutually
+exclusive with an in-flight rebuild, so a container can never land
+half-copied while `_stage_project_assets` reads that directory.
+
+**Refresh is the same call with the same arguments.** Overwriting an asset is
+re-import — `store_project_asset` already said so — so there is no second op
+and no second code path. The reply's `changed` compares the pulled shape's
+digest against the one already stored under that name, and
+`previous_revision` is the other half of the sentence, so a caller can say
+"sensor: 3f2a → 9c11" without having read the old container. It does **not**
+rebuild the consuming project: the caller issues the ordinary `rebuild`, so
+the new geometry lands as one normal accepted revision with one undo step,
+and B's digest changes because B's model really did change. A refresh that
+finds nothing moved rebuilds nothing, because a no-op that re-accepted the
+model would put a meaningless revision in the history every time somebody
+checked.
+
+**Why the script and the params are carried but not yet read.** Nothing in
+this slice consumes `script`, `params` or `param_specs`. They are what a
+parameter override needs — `part.import_part("s.cxpart", bore=6)`, slice 2 —
+and what makes a linked part *rebuildable* rather than baked. Recording them
+now costs bytes; adding them later would cost a container version bump. This
+paragraph exists so their presence reads as a decision rather than as an
+oversight, and a test asserts them for the same reason.
+
+**What this gives up.**
+
+- **A linked part is a snapshot, not a live link.** B holds one accepted
+  revision of A and it changes only when somebody links it again. That is
+  deliberate: a rebuild of B must not depend on A's current state, and a part
+  that moved under a model without being asked is worse than one that is out
+  of date and says so.
+- **Selectors can break on refresh.** If B's script names a face of the
+  linked part with an ADR-029 selector and A's shape changed, the rebuild
+  fails. That is correct and loud — the refusal already names the selector —
+  but it is a real cost, and it is why refresh reports and rebuilds rather
+  than silently swapping bytes under an accepted model.
+- **One output per container, and it must be a solid.** A shell, a mesh
+  output or a component link is refused by name at the pull, where the fix
+  is: the source project is where a shell gets closed.
+- **`project_root` in the header is a hint, never a load-bearing path** —
+  the same standing `mesh_cadex_source_root` has (ADR-046). A `.cxpart`
+  imports with A deleted, off another machine, out of a directory that never
+  existed here; only *refresh* needs the path, and the refusal when it is
+  gone names it.
+
+**This does not reopen ADR-011.** Cross-*document* component references stay
+retired. A linked part is a same-script solid, built in this script from a
+file in this project's store — structurally identical to
+`part.shape_from_mesh(mesh.import_file("scan.stl"))`, which ADR-043 already
+blessed. `assembly.component` needed **no change at all**: it accepts any
+`DomainValue` whose domain is `part`, and `part.import_part` returns one, so
+components, `assembly.body`, collision shapes, joints and mass all work by
+construction.
+
+**One defect found and fixed on the way.** `cadex_backend._assets_in`
+filtered Save-As's carry-forward on the shell's three-suffix
+`ASSET_SUFFIXES`, so a Save-As would have **dropped** every `.cxpart` and left
+the new file with a script that could not run — ADR-046's exact bug arriving
+on a new file type. A separate `CARRIED_ASSET_SUFFIXES` fixes it without
+touching the mirrored three, and the gate pins it. The same gap exists today
+for `.cxpolicy` and its provenance pair; it is **named in the constant's
+comment and deliberately not fixed here**, because carrying trained weights
+on every Save-As is its own decision and this feature does not license it
+(ADR-086 §4's rule). The two rough edges §4 parked — `import_geometry`'s
+success wording and `_ASSET_SUFFIXES` staying at three — stay parked.
+
+**Consequences.**
+
+- *Protocol.* One new op in `OP_ARG_SPECS`, `MODELING_OPS` and
+  `OP_RESPONSE_SPECS`; a golden `response_schemas/link_part.json`; both
+  tables in `docs/INTEGRATION.md`, each cross-checked against the code by a
+  live-parsing test. `output` is **optional**, which is not a convenience:
+  omitting it is how a caller asks what the source project declares, and the
+  refusal's `candidates` is what populates the shell's second step. No new
+  failure envelope — `candidates` was already in `FAILURE_RESPONSE_SPEC`.
+- *Module placement.* `CadexLinkedPart.py` is in **both**
+  `DECLARED_ENGINE_MODULES` and `_DOMAIN_WORKER_BUNDLES["project"]` — which
+  is `CadexNets.py`'s standing exactly, and the right one: cadexd builds a
+  container with it, the sandboxed part worker reads one back, and both
+  halves are pure Python with no FreeCAD and no kernel. It is in
+  `src/Mod/cadex/CMakeLists.txt` in the same commit, because ADR-023's rule
+  that a source tree proves nothing about a payload is what
+  `test_every_engine_module_is_installed_by_cmake` exists to enforce.
+- *Import by path, not from memory.* The worker writes the container's BREP
+  into its own staging directory and `importBrep`s it, then deletes the copy.
+  `importBrepFromString` exists on the pinned build, but every other BREP
+  ingest in the engine takes a path (`configure_part_references`,
+  `_import_staged_shape`) and it parses a `char*` rather than bytes; matching
+  the existing call sites keeps one import behaviour rather than two.
+- *Digest.* None added. A `solid` output's digest identity already *is* its
+  exported BREP bytes, and those are deterministic because they come from a
+  fixed file — which `test_project_rebuild`'s rebuild-vs-rebuild assertion
+  now covers for a linked part as it already did for an imported mesh.
+- *Shell.* Every changed line is under
+  `shell/scripts/addons_core/mesh_agent/` or `shell/tests/python/`:
+  `topbar.py` (three operators, two menu rows), `cadex_backend.py`
+  (`link_part`, `linked_parts`, `refresh_linked_parts`, the carry-forward
+  fix), `cadexd_client.py` (one name into `MODELING_OPS`), `tools.py` (one
+  tool and its executor), and the two suites. **`docs/BLENDER-TREE.md` §2a
+  stays eight files**; §2b and §2c are unmoved.
+- *Three operators for two rows.* `MESH_AGENT_OT_choose_linked_part` is only
+  the enum step Blender's file browser cannot host: the first call omits the
+  output and the refusal's `candidates` populates the dialog, which is
+  skipped entirely when the source project publishes one solid.
+- *CLI.* `cadex link`, and `link_part` added to `CLI_TOOL_OPS`. The op list
+  is chosen even though the schemas are generated, and a turn told "use the
+  sensor from ../sensorA" cannot do it otherwise — nothing else in that
+  surface reaches outside the project.
+- *Docs.* `VISION.md` (the open question struck and answered),
+  `XSCRIPT.md` (store, part vocabulary, the rewritten *Sub-modules*
+  paragraph, and the stale worker-bundle list corrected from six to fourteen),
+  `INTEGRATION.md` (both tables), `ARCHITECTURE.md` (staging, store layout,
+  file map, the same bundle list, test count), `BLENDER.md` (the tool list and
+  the two menu rows), `CLI.md` (the subcommand), `ROADMAP.md` (Phase 2).
+
+**Evidence.** `pixi run python -m pytest src/Mod/cadex/cadex_tests` —
+**1,723 passed, 22 skipped** (was 1,698). `pixi run python -m pytest
+cli/tests` — **80 passed** (was 76). `pixi run gate` — `"ok": true`, no failures.
+`CADEX_ENGINE_ROOT=build/engine/cadex-engine-0.0.0-macos-arm64 pytest
+test_cadexd_lifecycle.py test_linked_part_live.py` — 14 passed against the
+**packaged payload**, which is what proves `CadexLinkedPart.py` actually
+ships.
+
+New coverage, and the split between the two files is ADR-135's lesson made
+structural. `test_linked_part_container.py` (21 tests, no FreeCAD) builds
+containers out of a hand-assembled real store: what the header carries, byte
+determinism across two pulls, the round trip through a file, a container that
+still reads with the source project **deleted**, every refusal by name, four
+truncation points, a tampered container failing its own digest — and, the one
+that would have caught ADR-134's failure, `.cxpart` actually going through
+`store_project_asset` and coming back out of `list_project_assets`.
+`test_linked_part_live.py` drives **two real cadexd children**: project A
+builds a sensor and accepts it, B pulls it, imports it, cuts a plate with it
+and hangs an assembly component on it; then A's bore moves, B refreshes, B
+rebuilds, and B's geometry follows. The imported solid's volume equals A's to
+`rel=1e-12` and its **face count equals A's exactly** and is under 100 —
+which is the whole difference from the STL route, stated as a number.
+
+The last assertion in that test is there because of a specific risk. A
+refresh moves B's digest by design, and `simple-willow-8989` is a live
+`broken` node about a digest-moving change locking a project out at open with
+no button back in. So the test closes B after the refresh, reopens it, and
+asserts the restore pass **performed** and **matched**. It does, because
+refresh goes through the ordinary rebuild path rather than swapping bytes
+under an accepted model — but that is the kind of thing to check rather than
+reason about.
+
+The gate adds `test_link_part_travels_between_two_models`: two real `.blend`
+files, the picked `.blend` resolving to the project beside it, the link, the
+build, a refresh with nothing to do rebuilding **nothing**, a real refresh
+rebuilding and moving the digest, and a Save-As carrying the container into
+the new project — which is where the `_assets_in` defect above would
+otherwise have shipped.
+
+## ADR-139 — a dimension is a declared output, drawn in screen space (2026-08-09)
+
+**Decision.** A measurement is a **declared output that carries no geometry**.
+`part.measurement(shape, kind=...)` publishes two exact anchor points in the
+measured shape's own frame plus a number already formatted to text; the shell
+draws them as an architectural dimension — an extension line at each anchor, a
+dimension line between them, and the number in the middle with the line broken
+around it. Three kinds in this slice: `distance` between two selected
+subshapes, `diameter` of one circular edge or cylindrical face, and `extent`
+along an axis of the shape's bounding box.
+
+Net new surface: **one script primitive, one optional response key, one
+overlay module.** No new op, no new `artifact_kind`, no change to
+`compute_project_digest`, no change to `cadex_hydrate`, and no line added to
+the inherited Blender tree.
+
+### Why the script rather than the shell
+
+The alternative was scene data in the `.blend`, with anchors re-resolved
+against the engine after each rebuild. It is much cheaper and it is wrong
+here: it would be the only piece of model state not in the script. A Save-As
+or a fresh clone would lose it, the agent could not author one, and it could
+not travel in a `.cxpart`.
+
+Putting it in the script buys the property the feature is actually for: a
+measurement is **anchored by ADR-029 selector and recomputed, not
+remembered**, so it follows the parameter that moves its part and fails
+loudly — naming the selector — when a change removes what it measured. The
+live test moves a width from 60 to 90 mm and asserts the span reads 90.00 mm
+while the thickness and the bore, which nothing moved, do not.
+
+### Why screen space rather than world space
+
+This is the decision the whole overlay rests on, and it is the one that made
+it small.
+
+A dimension needs a plane. Fix that plane in the model and it is a proper
+drawing — stable, reproducible — but orbit until you look along it and the
+whole dimension collapses to a line. Recompute the plane per frame from the
+camera and it can never go edge-on, but then the arithmetic is a 3D
+construction with a degenerate case and a pixel-vs-millimetre offset problem.
+
+The third answer costs least and reads best: **project the two anchors, then
+do every other part of the drawing in 2D pixels.** The offset direction is
+perpendicular *on the screen*, so it cannot go edge-on by construction rather
+than by care. Extension gaps, ticks, text padding and text size are pixel
+constants, so a 2 mm boss and a 2 m beam read identically and nothing changes
+when you zoom. One `POST_PIXEL` pass, where the force arrows in `cadex_live`
+need two, because a dimension is not a world object.
+
+Two consequences, stated rather than discovered:
+
+- **A dimension draws over the part, never behind it** (`depth_test_set
+  ('NONE')`). A drawing sheet does not occlude its dimensions either.
+- **The dimension swims as you orbit.** It rotates continuously with the
+  on-screen axis, and the one place continuity breaks is where the axis
+  vanishes — which is the case below.
+
+### The degenerate case is handled, not avoided
+
+Look straight down the measured axis and the two anchors project to the same
+pixel. Below `MINIMUM_SPAN_PX` the drawing stops being a dimension and becomes
+a **leader**: a stub and the number. So the value is legible from every
+viewing angle, which is the thing the feature was asked for, and it is checked
+in the gate from three view matrices rather than by orbiting and hoping.
+
+**Diameter is the one view-dependent case.** A circle has infinitely many
+diameters and the legible one is whichever faces the camera, so the engine
+publishes the *circle* — centre, radius, axis — and the overlay picks the
+widest on-screen diameter from sixteen projected samples per frame. Sixteen
+samples rather than a closed form for the projected ellipse's major axis: the
+same answer to within a pixel, and it cannot be got subtly wrong.
+
+### Why `extent` exists when the plan said two kinds
+
+The example that started this was "from the top of the part to the bottom".
+On a box that is a distance between two planar faces and the selector language
+already says it. On anything that is not a box — a dome, a fused organic body
+— there is no pair of faces to name and the thing meant is the bounding span.
+Ten lines, and it reuses the distance drawing exactly.
+
+### What it cost, and what it did not
+
+`_OPERATION_OUTPUT_TYPES` already mapped `measurement`, from the inspection
+domain that has no API and never ran. Two artifact-less output types already
+worked — `points` and `solver_diagnostics` — so `measurement` is a third
+branch in `cadex_domain_worker._serialize_output` in the same shape, attaching
+a dict and **no `artifact_kind` at all**.
+
+That last part is what keeps the digest untouched. `compute_project_digest`
+keys on *having* an artifact, so an artifact-less output falls through to
+`payload_sha256`, the hash of its own declaration. A measurement's digest
+identity is therefore **which selectors it names**, not what today's
+parameters make it read — which is right: adding or removing a dimension
+changes the model, and a value moving is already covered by the measured
+shape's own entry moving.
+
+`distToShape` supplies the distance **and both closest points** in one call,
+for faces, edges, wires and solids alike, so `kind="distance"` has no
+per-geometry special case at all. That is why the vocabulary is three kinds
+and not nine.
+
+Two constants had to come apart. `_PUBLISHABLE_TYPES` was both the pack's
+output-type contract and the validator for a caller's `output_type=`
+argument; those were the same set only for as long as every output was a
+shape. `_PACK_OUTPUT_TYPES` is now the first plus `measurement`, and
+`sew(..., output_type="measurement")` is still the typo it always was.
+
+`_display_block` gained an optional `measurement` key on exactly the terms
+`source_output` has since ADR-049: present only on the entries it describes,
+so its presence is the test and every other entry keeps the four keys it has
+always had. `hydrate_display` already skips any entry with no tessellation, so
+the shell's hydration path cost **zero lines**.
+
+### The UI asks; it does not write
+
+Two face picks and a **Measure** button queue the sentence asking for a
+`part.measurement` between them, on the pin queue that already batches picks
+into the next message. It deliberately does not write the script itself, even
+though `begin_write_script` is right there and `restore_version` already calls
+it with no agent in the loop: adding a measurement means appending a call
+*and* editing the result dict, and mechanically rewriting the one artifact
+this product treats as the source of truth is how a script gets quietly
+corrupted. The script keeps exactly one author.
+
+The cost is a turn per measuring gesture. If that proves too expensive in
+practice, the clean answer is a **sixth `set_params` table** beside
+`nets`/`boards`/`mounts`/`cages` — ADR-127's mechanism exists for exactly this
+kind of viewport-edited model state. That is a decision to take deliberately,
+not a fix to slip in.
+
+### What it gives up
+
+- **A snapshot of a selector, not a live probe.** A measurement naming a face
+  that a parameter change removes fails the rebuild. Correctly and loudly —
+  the refusal already names the selector — but it fails.
+- **`distToShape` returns a minimum.** Two parallel planes give the thickness,
+  which is what is wanted; two faces at an angle give the closest approach,
+  which is a real answer but may not be the intended one. The record carries
+  both anchors, so what was measured is drawn rather than implied.
+- **One subject shape.** Measuring *between* two outputs — a bracket to a
+  plate — needs a second value argument and a placement question answered, and
+  is not in this slice.
+- **Faces and edges only, and picking is faces only.** Vertex anchors and
+  viewport edge picking need a BREP edge id map in the tessellation sidecar,
+  which is a format both halves parse. Deliberately not opened here.
+
+### Evidence
+
+`pixi run python -m pytest src/Mod/cadex/cadex_tests` — **1,730 passed, 22
+skipped** (was 1,723). With `CADEX_ENGINE_ROOT` pointing at the staged
+payload, `test_cadexd_lifecycle.py` + `test_measurement.py` +
+`test_linked_part_live.py` — **21 passed**, which is what proves the primitive
+ships rather than merely working in a source tree (ADR-023). `pixi run gate` —
+**675 checks, `"ok": true`**.
+
+`test_project_rebuild.py`'s driver gained one measurement of each kind, so
+rebuild-vs-rebuild digest equality now covers them: a project carrying three
+dimensions rebuilds to the same digest twice, and the anchors come back at
+`[15, 9, 0]`–`[15, 9, 4]` on a 30×18×4 plate, down the centre line rather than
+off a corner.
+
+The gate's own test is the one that speaks for the feature. It builds a
+measured part, then asks for the drawing from three view matrices: from the
+front it is a dimension with six segments and its number; after a 60° orbit it
+is still a dimension and the drawing has moved although the anchors have not;
+and **looking straight down the measured axis it is a leader still carrying
+`10.00 mm`**. Then the width slider moves and the span reads `100.00 mm` while
+the height does not budge.
+
+One assertion had to be thrown away on the way, and it is worth recording
+because it is the same mistake ADR-138's gate test made. Counting viewport
+polygons cannot tell you anything about a dimension — the mesh in the viewport
+is a tessellation whatever the output is. What can be checked is the drawing,
+given a camera, which is why `drawing_for` is a function the gate can call
+with a made-up region rather than something that only exists inside a draw
+handler.
