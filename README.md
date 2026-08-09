@@ -160,7 +160,7 @@ pixi run gate                                         # CADEX-BLENDER-GATE, the 
 
 ## Documentation
 
-Start with [`CLAUDE.md`](CLAUDE.md) (repo map, commands, change policy) and
+Start with [`AGENTS.md`](AGENTS.md) (repo map, commands, change policy) and
 the doc set under [`docs/`](docs/):
 [VISION](docs/VISION.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) ·
 [XSCRIPT](docs/XSCRIPT.md) · [MUJOCO](docs/MUJOCO.md) ·

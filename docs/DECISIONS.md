@@ -1,7 +1,7 @@
 # DECISIONS.md — Decision Log
 
 Append-only. One entry per decision, newest last. Every removal of code,
-files, or public surface gets an entry (policy in `CLAUDE.md`). Format:
+files, or public surface gets an entry (policy in `AGENTS.md`). Format:
 date, decision, rationale, consequences.
 
 **A note on numbering (2026-08-01).** `main` and `MJC` numbered independently
@@ -14039,3 +14039,63 @@ uncoerced seed. Full engine suite green: 1698 passed, 22 skipped.
 Beyond the suite, the table above is the thing that mattered and it was
 *measured*, not asserted: 30 minutes of mg-legs simulation — 300× the old
 horizon, driven by its own trained policy — grew the process by 1.6 MB.
+
+## ADR-137 — the project gets a state graph, and the ADR log keeps its job (2026-08-09)
+
+**Decision.** Cadex adopts the Hypergraph two-graph protocol. Two graphs live
+as committed markdown node files under `.hypergraph/graph/`: an append-only
+**record graph** of units of work, and a small single-writer **state graph**
+projecting what is true now. `STATE.md` at the repo root is generated from the
+second. The onboarding contract is appended to `AGENTS.md` between
+`<!-- hypergraph:begin -->` markers, and `.hypergraph/AGENTS.md` carries the
+full version.
+
+**`AGENTS.md` comes back as the file, and `CLAUDE.md` becomes a pointer to
+it.** ADR-005 deleted `AGENTS.md` because two agent-instruction files that
+disagreed was one too many, and that reasoning is untouched — there is still
+exactly one contract. What changed is which name carries it: `AGENTS.md` now
+holds the entire contract verbatim, and `CLAUDE.md` contains one line,
+`@AGENTS.md`, which Claude Code expands. One file to read, one file to edit,
+and the contract is now legible to agents that look for `AGENTS.md` by
+convention as well as to those that look for `CLAUDE.md`.
+
+**This supersedes ADR-005's mechanism, not its rationale.** Anyone reading
+ADR-005 should read it as "one contract, and it was in `CLAUDE.md`"; the
+one-contract rule is the part that binds. Adding content to `CLAUDE.md` is now
+the violation — it would recreate exactly the split ADR-005 closed.
+
+**Rationale.** `docs/DECISIONS.md` answers *why did this happen* extremely well
+— 136 ADRs in 16 days, and the reason this project is legible at all. What it
+does not answer, and was never shaped to answer, is *what should I not waste a
+day on*. That question is asked by every arriving agent, and answering it today
+costs a full read of `ROADMAP.md` plus `ARCHITECTURE.md` plus whichever vertical
+doc is relevant. A distilled, cited projection with an explicit frontier
+(`open`/`broken`/`blocked`) and explicit negative knowledge answers it in a
+handful of reads.
+
+**The ADR log is not superseded and does not shrink.** It remains the narrative
+record of decisions and the place a direction change is argued; the record graph
+is where a unit of work lands *with a declared state impact*. Substantial work
+earns both, and they must agree. Nothing about the change policy in `CLAUDE.md`
+moves.
+
+**Consequences.**
+
+- Adoption was **mode B** — no hosted graph existed, so nothing was imported and
+  nothing was truncated, and the config carries no `archive:` block.
+- Fourteen prehistory record nodes were authored, one per era or workstream,
+  from the doc set and from an author interview on 2026-08-09. They are honest
+  summaries rather than an event-by-event reconstruction. The interview is the
+  source of everything that is not in the tree: the VibeCAD origin, the era
+  names, the GPU box, the undocumented attempt to unify the mesh and constraint
+  paradigms, and the fragility assessment. Interview-only claims are carried at
+  low confidence and marked as such.
+- The epoch marker is `winter-rain-7897`. Record nodes created before it are
+  exempt from the protocol's impact-declaration invariant; everything at or
+  after it is held to the full protocol.
+- The state graph opens at ten nodes with a frontier of three: the
+  Blender-inherited file lifecycle (`broken` — ADR-073's empty viewport on open,
+  and the digest lockout with no button back in), the RL training loop
+  (`blocked` — the GPU box runs its own pre-ADR-104 checkout of the trainer), and
+  inherited-tree reduction (`open` — Phase 8 and Phase 13b).
+- Verified: `hypergraph check` exits 0 with no violations and no warnings.

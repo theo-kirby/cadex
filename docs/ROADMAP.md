@@ -52,12 +52,12 @@ working, buildable, launchable product; that ordering is the point
 **Goal:** a repo whose docs and code tell the truth, so future agents start
 from facts instead of re-exploration.
 
-- [x] Documentation set written (`README.md`, `CLAUDE.md`, `docs/*.md`).
+- [x] Documentation set written (`README.md`, `AGENTS.md`, `docs/*.md`).
 - [x] Stale `_DOMAIN_WORKER_BUNDLES` entries deleted (14 culled domains) —
       `src/Mod/cadex/CadexScriptedRuntime.py:38` (`_DOMAIN_WORKER_BUNDLES`).
 - [x] Dead lazy imports of deleted `xscript_*` workers pruned from
       `src/Mod/cadex/CadexScriptedDomains.py`.
-- [x] `AGENTS.md` retired; change policy now in `CLAUDE.md`.
+- [x] `AGENTS.md` retired; change policy now in `AGENTS.md`.
 - [x] Stale docs moved to `docs/history/` with superseded banners
       (`vibescript-system-design-feasibility.md`, `RUNTIME_VERIFICATION.md`).
 

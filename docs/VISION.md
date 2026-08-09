@@ -184,7 +184,7 @@ returning it.
    the one that adds a switch.
 2. **Remove more than we add.** Subtractive change in `src/Mod/cadex/**`,
    `cli/**` and docs is encouraged, not merely permitted (policy in
-   `CLAUDE.md`; every removal logged in `docs/DECISIONS.md`).
+   `AGENTS.md`; every removal logged in `docs/DECISIONS.md`).
 3. **The script is the truth; everything else is a cache.** Any state that
    can't be rebuilt from the script is a bug.
 

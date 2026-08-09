@@ -58,7 +58,7 @@ Everything here is `[Cadex-new]` unless marked as upstream Blender.
   minimal, and justified"** — each row says what changed, why, and what a
   merge conflict in it would mean.
 
-This mirrors the stance toward inherited FreeCAD core (see `CLAUDE.md`),
+This mirrors the stance toward inherited FreeCAD core (see `AGENTS.md`),
 which likewise moved from "don't touch" to "reduce the delta where you can,
 and say what you did" (ADR-022).
 

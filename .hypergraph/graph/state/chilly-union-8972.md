@@ -1,0 +1,31 @@
+---
+node_id: 3325626a-1f72-5999-9ce6-5a38f2da49dd
+slug: chilly-union-8972
+title: The headless CLI
+created_at: '2026-08-09T15:22:02+00:00'
+parents:
+- nimble-pine-0740
+summary: ''
+---
+Status: working
+
+## Current
+
+`cli/` plus the `./cadex` shim is a second **front end** and the third client of the cadexd protocol: no Blender, no display, no shell code. It needs a built engine and nothing else [rec: jolly-walrus-3692].
+
+- Four subcommands — `-p`, `params`, `script`, `export` — of which exactly one spends tokens. The point is a cost asymmetry: one expensive turn authors a *parametric* script, and a cheap loop then sweeps its parameters with no model in the loop at all [rec: jolly-walrus-3692].
+- Its whole model-facing tool surface is **generated from `OP_ARG_SPECS`**, so it cannot drift from the contract it drives [rec: jolly-walrus-3692].
+- It cost **no engine change and no protocol change**, which is the evidence it was built to produce: a third client that had needed the contract widened would have been evidence against the contract [rec: jolly-walrus-3692] [rec: simple-hollow-8675].
+- `cli/` is **LGPL and `shell/` is GPL**, and the boundary is one-way and hard. Copying a line of the shell's client into `cli/` relicenses the engine side; derive from the engine-side precedents instead [rec: jolly-walrus-3692] [rec: lone-haven-0640].
+- Verified end to end on Linux, in CI, against both a build tree and a staged payload. **Never run on macOS by hand** [rec: jolly-walrus-3692].
+
+## Negative knowledge
+
+- [scope: cli/ on macOS | confidence: medium | evidence: jolly-walrus-3692] Nothing in the CLI is macOS-hostile, but it has never been run there by hand and 'should work' is not evidence. Expect the macOS CI job to be the thing that finds anything.
+- [scope: copying code into cli/ | confidence: high | evidence: jolly-walrus-3692] Copying a line from the GPL shell's client into LGPL cli/ relicenses the engine side. It is not a judgement call — derive from the engine-side precedents instead.
+
+## Provenance
+
+- jolly-walrus-3692 — the CLI's whole design, its verified scope and its stated gaps
+- simple-hollow-8675 — the protocol it is the third client of
+- lone-haven-0640 — the LGPL/GPL boundary it sits on the engine side of

@@ -6,7 +6,7 @@ Verified against source: 2026-08-01
 slated for removal, what is already gone — the peer of `docs/FREECAD.md`
 for the engine half, in the same format and under the same rules.
 
-The change policy is in `CLAUDE.md`: `shell/scripts/addons_core/mesh_agent/`
+The change policy is in `AGENTS.md`: `shell/scripts/addons_core/mesh_agent/`
 is ours and subtractive changes there are encouraged; **everything else
 under `shell/` is inherited-Blender and conservative**. Removals execute
 under the two-commit protocol in `docs/FREECAD.md` §3 (disable, verify;

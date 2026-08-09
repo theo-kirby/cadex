@@ -1,0 +1,19 @@
+# .hypergraph/config.yml — written by `hypergraph adopt --init`.
+project: cadex
+
+record_root:
+  node_id: 9cd90f99-81e3-5d17-9c44-06634151caf4
+  slug: odd-banner-6071
+
+state_root:
+  node_id: 76f41cb1-395d-5a67-b207-edd243158413
+  slug: nimble-pine-0740
+
+cache_dir: .hypergraph/cache
+state_md: STATE.md
+graph_dir: .hypergraph/graph
+
+# Adoption epoch (SPEC: Adoption epochs). Record nodes created strictly
+# before this marker are legacy history, exempt from I2 in `check`.
+epoch:
+  marker: winter-rain-7897

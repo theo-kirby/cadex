@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-08-04
+Verified against source: 2026-08-09
 
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),
@@ -316,7 +316,7 @@ test asserts all three agree. Read `training/README.md` before touching it.
 
 ### Tests
 
-`src/Mod/cadex/cadex_tests/` — 77 Python files, of which 64 are collected as
+`src/Mod/cadex/cadex_tests/` — 97 Python files, of which 84 are collected as
 test modules (the rest are fixtures, reference implementations and
 integration drivers run by hand); `conftest.py` stubs `FreeCAD`/`FreeCADGui`
 so most of the suite runs headless without a built FreeCAD:
@@ -325,14 +325,15 @@ so most of the suite runs headless without a built FreeCAD:
 pixi run python -m pytest src/Mod/cadex/cadex_tests
 ```
 
-**1,105 passed, 12 skipped** (1,117 collected) as of 2026-07-31. The count
+**1,698 passed, 22 skipped** (1,720 collected), measured 2026-08-09. The count
 fell from 425 to 226 across Phases 7 and 13a — the Qt shell, the provider
 stack and the shell's deleted local bpy path took their suites with them —
-and then rose to 1,105 across Phase 14, which is 38 `test_dynamics_*.py`
-files. **The 12 skips are by design, not breakage:** they are the MJX-gated
-tests (phase 0 measurements, real training runs), which need a venv built
-from `training/requirements.txt` rather than the pixi environment. The
-suites are written to run from either interpreter.
+rose to 1,105 at the close of Phase 14's M8, and has climbed to 1,698 across
+M9, the organic vertical and live mode; 45 of the files are
+`test_dynamics_*.py`. **The 22 skips are by design, not breakage:** they are
+the MJX-gated tests (phase 0 measurements, real training runs), which need a
+venv built from `training/requirements.txt` rather than the pixi environment.
+The suites are written to run from either interpreter.
 
 The arc's naming convention is worth knowing because it is uniform, four
 files a slice: `*_api` for the authoring surface and its refusals, `*_model`

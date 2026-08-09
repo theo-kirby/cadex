@@ -225,7 +225,7 @@ and the removals are the design of Cadex:
 
 The `cadex-teardown` branch at `github.com/theo-kirby/vibecad` holds that
 six-phase history. Nothing deleted there returns without an ADR — that rule
-is in `CLAUDE.md`, and [`FREECAD.md`](FREECAD.md) §4 is the do-not-resurrect
+is in `AGENTS.md`, and [`FREECAD.md`](FREECAD.md) §4 is the do-not-resurrect
 list.
 
 ## 7. How two licences live in one repository

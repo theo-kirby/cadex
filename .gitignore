@@ -9,6 +9,8 @@
 !/.github/
 !/.gitignore
 !/.gitmodules
+!/.hypergraph/
+/.hypergraph/cache/
 !/.packit.yaml
 !/.pre-commit-config.yaml
 !/.pylintrc
