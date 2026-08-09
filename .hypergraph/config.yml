@@ -1,6 +1,10 @@
 # .hypergraph/config.yml — written by `hypergraph adopt --init`.
 project: cadex
 
+# The release that last installed this project's skills, AGENTS.md
+# block and workflows — refreshed by `hypergraph upgrade`.
+hypergraph_version: 0.0.7
+
 record_root:
   node_id: 9cd90f99-81e3-5d17-9c44-06634151caf4
   slug: odd-banner-6071

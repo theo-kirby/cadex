@@ -1,0 +1,87 @@
+# .hypergraph/config.yml — written by hypergraph-init, read by all skills + tools.
+project: my-project
+
+# The release that last installed this project's *copies* of what the package ships:
+# the skills under .claude/skills/, the AGENTS.md block, the workflows. `uv tool
+# upgrade` refreshes the CLI and cannot see any of them, so `check` compares this
+# against the running CLI and `hypergraph upgrade` refreshes them and re-stamps it.
+# Not a compatibility floor — the node files are additive, and an older CLI reads a
+# newer graph fine.
+hypergraph_version: 0.0.7
+
+record_root:
+  node_id: 00000000-0000-0000-0000-000000000000
+  slug: adjective-noun-0000
+
+state_root:
+  node_id: 00000000-0000-0000-0000-000000000000
+  slug: adjective-noun-0000
+
+# Where reconcile saves graph exports for the checker/renderer (gitignored).
+cache_dir: .hypergraph/cache
+
+# Generated state snapshot (committed; never hand-edited).
+state_md: STATE.md
+
+# Where the node files live (committed). These files ARE the graphs — there is no
+# storage to choose (SPEC: Storage). A `backend:` key from a pre-0.0.4 config is
+# ignored; `check` warns if it says anything other than `local`.
+graph_dir: .hypergraph/graph
+
+# The branch a mirror is published from, and the branch reconcile belongs on
+# (SPEC: Collaboration). Defaults to `origin/HEAD` if it resolves, else `main`.
+# `push` stands down at exit 0 anywhere else, so a contributor's fork and a feature
+# branch both run the same reconcile workflow without a config test. Set it only if
+# this project publishes from something other than its default branch.
+# publish_branch: main
+
+# Optional: publish the committed node files to a hosted graph you own
+# (backend/mirror.md). One-way — the files stay canonical and the mirror is a
+# regenerable projection. Absent → `hypergraph push` is a no-op that exits 0, which
+# is why callers never have to test for it. The skills do not know it exists.
+# A fork inherits this key and has no credentials for it; that is expected, and
+# `push` stands down rather than failing. CI passes `--require-mirror` to invert it.
+# mirror: flywheel
+
+# The account that owns the mirror roots. Set it: without it, running with a key
+# from a different account reports "the graph is missing" rather than "wrong
+# account", which is the same symptom as a deleted graph and is not the same thing.
+# `hypergraph mirror doctor` checks it and prints the id to paste here.
+# mirror_account_id: 00000000-0000-0000-0000-000000000000
+
+# Optional: adoption epoch (SPEC: Adoption epochs). Record nodes created strictly
+# before the marker node are legacy history, exempt from I2/template compliance in
+# `check`. Written by hypergraph-adopt.
+# epoch:
+#   marker: adjective-noun-0000
+
+# Optional: fresh mirror roots for a project that publishes its own full history
+# under roots it owns. Exempt from `push --verify`'s no-local-counterpart check;
+# `push` parents local roots here. Mint them with `hypergraph mirror roots --mint`,
+# which appends this block for you. Absent → `push` falls back to record_root /
+# state_root above, which is right for a project re-homed from its own hosted graph.
+# mirror_roots:
+#   record:
+#     node_id: 00000000-0000-0000-0000-000000000000
+#     slug: adjective-noun-0000
+#   state:
+#     node_id: 00000000-0000-0000-0000-000000000000
+#     slug: adjective-noun-0000
+
+# Optional (mandatory for mode-A adoptions): where the pre-adoption graph lives.
+# The checker doesn't read it, but it does two jobs: it is the only pointer to legacy
+# artifacts (they do not survive import — node files have no artifact operation), and
+# it is what the mirror record root's lineage body is rendered from — so give every
+# root a `title`, and keep the block current if roots are added. `push` refuses to
+# treat an archive root as a mirror root, because splicing the archive into a verify
+# export makes a nearly-empty mirror verify clean.
+# The archive is frozen: this project never writes to it.
+# archive:
+#   backend: flywheel
+#   roots:
+#     - node_id: 00000000-0000-0000-0000-000000000000
+#       slug: adjective-noun-0000
+#       title: the graph this project forked from
+#   imported: 0                    # fallback count if no node file carries `origin:`
+#   artifacts: retained-on-archive
+#   note: frozen pre-adoption graph; artifacts live here
