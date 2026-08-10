@@ -55,9 +55,24 @@ TOOL_DEFS = [
         "name": "get_script",
         "description": (
             "Return the current model script plus the declared parameters with "
-            "their current values. Call this before editing an existing model."
+            "their current values. Call this before editing an existing model. "
+            "Called with no arguments it returns the WHOLE script, which is "
+            "what an edit needs. If the host refuses that result as too large, "
+            "read it in windows with `offset` (1-based line) and `limit` "
+            "(line count); every window states the totals and the next offset, "
+            "so keep calling until it says the end is reached. Never edit the "
+            "script to make it shorter so that it fits — the window moves, the "
+            "script does not."
         ),
-        "input_schema": {"type": "object", "properties": {}},
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "offset": {"type": "integer",
+                           "description": "First line to return, 1-based. Default 1."},
+                "limit": {"type": "integer",
+                          "description": "How many lines to return. Default: all of them."},
+            },
+        },
     },
     {
         "name": "write_script",
@@ -538,11 +553,37 @@ def execute_blocking(name, tool_input, agent=None):
     return result.wait() if isinstance(result, Pending) else result
 
 
-def _tool_get_script(_tool_input):
+def _window_arg(tool_input, name):
+    """One optional 1-or-more integer, or a sentence saying why it is not.
+
+    ``bool`` is rejected on purpose: ``True`` is an ``int`` in Python and
+    ``offset=true`` would silently read line one.
+    """
+    if name not in tool_input or tool_input[name] is None:
+        return None, None
+    value = tool_input[name]
+    if isinstance(value, str) and value.strip().lstrip("+").isdigit():
+        value = int(value.strip())
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return None, ("get_script `{:s}` must be a whole number 1 or greater; "
+                      "got {!r}.".format(name, tool_input[name]))
+    return value, None
+
+
+def _tool_get_script(tool_input):
     import bpy
     from . import cadex_backend
 
-    ok, report = cadex_backend.get_script_report(bpy.context.scene)
+    tool_input = tool_input or {}
+    offset, complaint = _window_arg(tool_input, "offset")
+    if complaint:
+        return _text(complaint), True
+    limit, complaint = _window_arg(tool_input, "limit")
+    if complaint:
+        return _text(complaint), True
+
+    ok, report = cadex_backend.get_script_report(
+        bpy.context.scene, offset=offset, limit=limit)
     return _text(_truncate(report, _SCRIPT_CHARS)), not ok
 
 

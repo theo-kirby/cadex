@@ -2160,6 +2160,73 @@ def test_get_script_is_not_truncated(root):
     check("truncated" not in text, "and nothing was elided")
 
 
+def test_get_script_serves_windows(root):
+    """ADR-140: the script is read in windows, so it is never edited to fit.
+
+    The host — not this add-on — can refuse a tool result that is too large.
+    Faced with that, an agent trimmed comment blocks out of a user's script
+    to make the next read smaller. A window is the alternative that does not
+    touch the model.
+    """
+    print("test_get_script_serves_windows")
+    reset_scene(root)
+
+    padding = "\n".join(
+        "# padding line {:03d} ".format(n) + "x" * 60 for n in range(120))
+    source = BASELINE_SCRIPT + "\n" + padding + "\n# LAST-LINE-MARKER\n"
+    total = len(source.splitlines())
+
+    ok, _report = run_tool("write_script", {"content": source})
+    check(ok, "the long script is accepted")
+
+    # The default is unchanged: the whole script, no banner. ADR-044 stands.
+    ok, whole = run_tool("get_script", {})
+    check(ok and "# LAST-LINE-MARKER" in whole, "no arguments still serves it all")
+    check("get_script window" not in whole, "and says nothing about windows")
+
+    # A window is a window, and says so.
+    ok, first = run_tool("get_script", {"offset": 1, "limit": 10})
+    check(ok, "a window is served")
+    check("get_script window: lines 1-10 of {:d}".format(total) in first,
+          "the banner carries the range and the total")
+    check("NOT THE SCRIPT" in first, "and refuses to be mistaken for the whole")
+    check("offset=11" in first, "and says how to continue")
+    check("# LAST-LINE-MARKER" not in first, "the window really is cut")
+
+    # The windows reassemble into the script exactly -- no lost or doubled line.
+    rebuilt, cursor = [], 1
+    while cursor <= total:
+        ok, chunk = run_tool("get_script", {"offset": cursor, "limit": 50})
+        check(ok, "window at offset {:d} is served".format(cursor))
+        body = chunk.split("]\n", 1)[1] if "]\n" in chunk else chunk
+        rebuilt.append(body.split("\nEngine revision:")[0])
+        cursor += 50
+    check("\n".join(rebuilt).strip() == source.strip(),
+          "the windows reassemble into the exact script")
+
+    # The last window says it is the last one.
+    ok, tail = run_tool("get_script", {"offset": max(1, total - 5)})
+    check(ok and "reaches the end of the script" in tail,
+          "the final window announces the end")
+    check("# LAST-LINE-MARKER" in tail, "and carries the last line")
+
+    # Past the end is a sentence, not an empty result the model reads as done.
+    ok, past = run_tool("get_script", {"offset": total + 500})
+    check(ok and "past the end" in past, "an offset past the end says so")
+
+    # Bad arguments are refused in a sentence rather than silently defaulted.
+    for bad in ({"offset": 0}, {"offset": -3}, {"limit": 0},
+                {"offset": "seven"}, {"offset": True}):
+        ok, complaint = run_tool("get_script", bad)
+        check(not ok and "whole number 1 or greater" in complaint,
+              "get_script refuses {!r}".format(bad))
+
+    # A string of digits is what an MCP host actually sends; accept it.
+    ok, coerced = run_tool("get_script", {"offset": "1", "limit": "10"})
+    check(ok and "lines 1-10 of {:d}".format(total) in coerced,
+          "numeric strings are read as numbers")
+
+
 # -- ADR-045: history, revert, and the destructive-overwrite guard ----------
 
 def test_write_script_refuses_to_drop_existing_outputs(root):
@@ -4110,6 +4177,7 @@ def main():
     repair_root = tempfile.mkdtemp(prefix="mesh-cadex-repair-")
     stdout_root = tempfile.mkdtemp(prefix="mesh-cadex-stdout-")
     long_root = tempfile.mkdtemp(prefix="mesh-cadex-long-")
+    window_root = tempfile.mkdtemp(prefix="mesh-cadex-window-")
     guard_root = tempfile.mkdtemp(prefix="mesh-cadex-guard-")
     history_root = tempfile.mkdtemp(prefix="mesh-cadex-history-")
     prune_root = tempfile.mkdtemp(prefix="mesh-cadex-prune-")
@@ -4169,6 +4237,7 @@ def main():
             repair_root)
         test_a_working_scripts_stdout_reaches_the_caller(stdout_root)
         test_get_script_is_not_truncated(long_root)
+        test_get_script_serves_windows(window_root)
         test_write_script_refuses_to_drop_existing_outputs(guard_root)
         test_script_history_and_revert(history_root)
         test_stale_attempts_are_pruned(prune_root)

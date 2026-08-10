@@ -1921,11 +1921,53 @@ def _schedule_refine(scene):
     bpy.app.timers.register(fire, first_interval=REFINE_DELAY_SECONDS)
 
 
-def get_script_report(scene):
+def _script_window(source, offset, limit):
+    """``(text, banner)`` for one get_script call. Banner is None for the lot.
+
+    Line-based, and the window carries NO line numbers: the text a model is
+    shown is the text ``edit_script`` makes it match, so anything decorating
+    it becomes an edit that cannot apply.
+    """
+    if offset is None and limit is None:
+        return source, None
+
+    all_lines = source.splitlines()
+    total = len(all_lines)
+    first = 1 if offset is None else offset
+    if first > total:
+        return "", (
+            "get_script window: offset {:d} is past the end. The script is "
+            "{:d} lines / {:d} characters. Nothing follows.".format(
+                first, total, len(source)))
+    last = total if limit is None else min(total, first + limit - 1)
+    window = "\n".join(all_lines[first - 1:last])
+
+    if last < total:
+        tail = ("Lines {:d}-{:d} FOLLOW THIS WINDOW — call get_script again "
+                "with offset={:d} to continue.".format(last + 1, total, last + 1))
+    else:
+        tail = "This window reaches the end of the script."
+    banner = (
+        "[get_script window: lines {:d}-{:d} of {:d} ({:d} characters of "
+        "{:d}). THIS IS A PART OF THE SCRIPT, NOT THE SCRIPT. {:s} An "
+        "edit_script `old` string must not span a window boundary.]".format(
+            first, last, total, len(window), len(source), tail))
+    return window, banner
+
+
+def get_script_report(scene, offset=None, limit=None):
     """The get_script tool body for the cadex backend.
 
     Reads on an unrestored project too: rewriting a script you are not
     allowed to read is not a recovery path (ADR-044).
+
+    ``offset``/``limit`` cut a window of LINES out of the script. The default
+    is still the whole thing, because the whole thing is what an edit has to
+    match; the window exists for the one case ADR-140 records, where the host
+    -- not this add-on -- refuses a result that big. A window is announced by
+    a banner carrying the totals and the next offset, so a model can never
+    mistake one for the script (ADR-044's rule, kept: silence is the defect,
+    not the cut).
     """
     ok, report = ensure_open(scene, unrestored_ok=True)
     if not ok:
@@ -1935,7 +1977,8 @@ def get_script_report(scene):
     source = model.get_script()
     if not state.script_present and not source.strip():
         return True, "(the project script is empty — no model yet)"
-    lines = [source]
+    source, banner = _script_window(source, offset, limit)
+    lines = [banner, source] if banner else [source]
     if state.values:
         lines.append("\nCurrent parameter values: "
                      + json.dumps(state.values, sort_keys=True))

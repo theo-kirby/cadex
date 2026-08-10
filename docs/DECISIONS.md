@@ -14515,3 +14515,79 @@ is a tessellation whatever the output is. What can be checked is the drawing,
 given a camera, which is why `drawing_for` is a function the gate can call
 with a made-up region rather than something that only exists inside a draw
 handler.
+
+## ADR-140 — a script is read in windows, so it is never edited to fit (2026-08-10)
+
+**Decision.** `get_script` takes two optional arguments, `offset` (1-based
+line) and `limit` (line count):
+
+1. **Called with no arguments it is unchanged** — the whole script, no
+   banner, no marker. That is ADR-044's rule and it is not being relaxed:
+   the whole script is what `edit_script` has to match, so the whole script
+   is the default.
+2. **A window is announced.** Any call carrying `offset` or `limit` is
+   prefixed with a banner giving the range, the total line count, the
+   character counts, the literal words `THIS IS A PART OF THE SCRIPT, NOT THE
+   SCRIPT`, and either the next `offset=` to call or a statement that the end
+   is reached.
+3. **The window carries no line numbers.** The text served is the text an
+   edit must match, so anything decorating it becomes an edit that cannot
+   apply.
+4. **An offset past the end is a sentence**, not an empty result — an empty
+   result reads as "done".
+5. **Bad arguments are refused in a sentence.** Zero, negative, non-numeric
+   and `True` are all rejected; a string of digits is coerced, because that
+   is what an MCP host actually sends. `True` is called out separately
+   because it is an `int` in Python and would otherwise silently read line
+   one.
+
+**Rationale.** Reconstructed from a real session, in the same way ADR-044
+was. A user asked for a universal servo mount across ten joints on a 1,189
+line project script. `get_script` served all 55,747 characters — correctly,
+and well inside its own 64 KB cap. **The host refused the result**, saved it
+to a file, and told the agent to read that file with offset and limit.
+
+The agent did not do that. It called `get_script` again with `offset` and
+`limit`, which that tool did not accept — its `input_schema` was literally
+`{"properties": {}}` — so the arguments were dropped and the identical
+oversized result came back. It tried a JSON-pointer slice,
+`/source[4096:12288]`, which the engine refused. It then concluded *"the
+engine only shows me a 4 KB window"*, which is false: `MAX_RESULT_CHARS` is
+4096 and applies to every mesh tool **except** this one, and it never
+checked. Acting on that, it began **deleting comment blocks out of the
+user's script** so that "the window advances", and those edits were accepted:
+122 lines and 4.8 KB of design rationale — why the nominal pose is a crouch,
+where the joint limits come from, what the servo torque numbers mean — were
+removed to make a *read* smaller. It found the correct path eventually
+(reading the host's saved file), but only after the damage.
+
+The chain is ADR-044's chain with one link replaced. There the truncation was
+silent; here it was loud, and the tool still offered no way to comply with
+it. **A tool that cannot serve part of a thing invites the model to make the
+thing smaller** — and the model has write access to it. The cap that bit is
+not ours and cannot be raised from here, so the fix is to make partial reads
+a first-class request instead of something an agent has to improvise.
+
+**Consequences.** The default path and its ADR-044 guarantee are untouched;
+`test_get_script_is_not_truncated` still passes unmodified. The tool
+description now states the rule the session got wrong, in the imperative:
+read in windows, and *never edit the script to make it shorter so that it
+fits — the window moves, the script does not*. `MAX_RESULT_CHARS = 4096`
+stays as it is; the confusion it caused was about which tools it governs, and
+a `get_script` that can be paginated no longer needs the reader to know.
+
+This does not make large scripts good. The script in the session was 160 KB
+before its simulation half was removed, and a 55 KB CAD script is still a lot
+to hold. The window makes it readable; it does not make it small.
+
+### Evidence
+
+`pixi run gate` — **696 checks, `"ok": true`** (was 675). The new
+`test_get_script_serves_windows` is 21 of them, next to the ADR-044 test it
+extends, and the load-bearing one is that **the windows reassemble into the
+exact script**: read 50 lines at a time to the end, strip the banners,
+rejoin, and compare against the source that was written. That is what says a
+window is a view and not a copy. It also asserts the default still carries
+the last line and mentions no window at all, that a cut window does *not*
+carry the last line, that the final window says it is final, and that all
+five bad-argument shapes are refused rather than defaulted.
