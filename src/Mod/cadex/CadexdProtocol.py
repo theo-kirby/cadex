@@ -36,6 +36,8 @@ CADEXD_RESTORE_FAILED = "CADEXD_RESTORE_FAILED"
 #: belongs here and not in :data:`READ_OPS`: membership is what makes it
 #: mutually exclusive with an in-flight rebuild, so an asset can never land
 #: half-copied while ``_stage_project_assets`` is reading (ADR-043).
+#: ``link_part`` is here for exactly that reason and no other -- it ends in
+#: the same ``store_project_asset`` call (ADR-138).
 MODELING_OPS = frozenset(
     {
         "open_project",
@@ -44,6 +46,7 @@ MODELING_OPS = frozenset(
         "set_params",
         "rebuild",
         "put_asset",
+        "link_part",
     }
 )
 #: Read-only ops; these queue behind an in-flight modeling op.
@@ -123,6 +126,17 @@ OP_ARG_SPECS: dict[str, tuple[dict[str, type], dict[str, type]]] = {
     # Both halves share a filesystem and the protocol already relies on it
     # (``inspect scope=image`` hands back a store path).
     "put_asset": ({"source_path": str}, {"name": str}),
+    # Pull one accepted solid out of another project and store it here as a
+    # `.cxpart` (ADR-138). One op rather than an export/import pair: the
+    # consuming project pulls, so the source project never opens and there is
+    # no file for a user to shuttle. **Refresh is this same call with the same
+    # arguments** -- overwriting an asset is re-import, which is what the
+    # store already did.
+    #
+    # `output` is optional so that omitting it is how a caller asks what the
+    # source project declares: the refusal carries the accepted contract's
+    # names in `candidates`, which is the shell's second step.
+    "link_part": ({"source_project": str}, {"output": str, "name": str}),
     "resolve_pin": ({"output": str, "selection": dict}, {}),
     "inspect": (
         {"scope": str},
@@ -295,6 +309,30 @@ OP_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset({"name", "bytes", "sha256", "assets"}),
         frozenset(),
     ),
+    # The stored container's identity, plus where it came from and whether it
+    # moved. `changed` is what makes refresh a report rather than a guess: it
+    # compares the pulled shape's digest against the one already stored under
+    # this name, so `false` means the source project genuinely has not moved.
+    # `previous_revision` is the other half of that sentence -- empty on a
+    # first pull, and what lets a caller say "sensor: 3f2a -> 9c11" without
+    # having read the old container itself. `assets` is put_asset's listing,
+    # for put_asset's reason: one round trip answers "did it land" and "what
+    # is importable now".
+    "link_part": (
+        frozenset(
+            {
+                "name",
+                "bytes",
+                "sha256",
+                "source_revision",
+                "source_digest",
+                "previous_revision",
+                "changed",
+                "assets",
+            }
+        ),
+        frozenset(),
+    ),
     "resolve_pin": (
         frozenset({"output", "revision", "subelements", "details"}),
         frozenset(),
@@ -364,11 +402,13 @@ NESTED_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset(),
     ),
     # `source_output` rides only on component entries: the declared output
-    # whose geometry this one places (ADR-049). Optional because every other
-    # output kind has no source to name.
+    # whose geometry this one places (ADR-049). `measurement` rides only on
+    # measurement entries: the anchors and the number a dimension is drawn
+    # from (ADR-139). Both optional because every other output kind has
+    # neither a source to name nor a value to state.
     "display.*": (
         frozenset({"artifact_kind", "artifact_path", "placement", "tessellation"}),
-        frozenset({"source_output"}),
+        frozenset({"source_output", "measurement"}),
     ),
     "display.*.tessellation": (
         frozenset(

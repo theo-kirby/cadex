@@ -13,11 +13,11 @@ Status: working
 
 `cli/` plus the `./cadex` shim is a second **front end** and the third client of the cadexd protocol: no Blender, no display, no shell code. It needs a built engine and nothing else [rec: jolly-walrus-3692].
 
-- Four subcommands — `-p`, `params`, `script`, `export` — of which exactly one spends tokens. The point is a cost asymmetry: one expensive turn authors a *parametric* script, and a cheap loop then sweeps its parameters with no model in the loop at all [rec: jolly-walrus-3692].
-- Its whole model-facing tool surface is **generated from `OP_ARG_SPECS`**, so it cannot drift from the contract it drives [rec: jolly-walrus-3692].
+- **Five** subcommands — `-p`, `params`, `script`, `export`, `link` — of which exactly one spends tokens. The point is a cost asymmetry: one expensive turn authors a *parametric* script, and a cheap loop then sweeps its parameters, or pulls a part in from another project, with no model in the loop at all [rec: jolly-walrus-3692] [rec: ancient-current-9419].
+- Its whole model-facing tool surface is **generated from `OP_ARG_SPECS`**, so it cannot drift from the contract it drives [rec: jolly-walrus-3692]. `link_part` arrived that way — the model gained it with no CLI code at all, and `cadex link` exists only for the token-free path [rec: ancient-current-9419].
 - It cost **no engine change and no protocol change**, which is the evidence it was built to produce: a third client that had needed the contract widened would have been evidence against the contract [rec: jolly-walrus-3692] [rec: simple-hollow-8675].
 - `cli/` is **LGPL and `shell/` is GPL**, and the boundary is one-way and hard. Copying a line of the shell's client into `cli/` relicenses the engine side; derive from the engine-side precedents instead [rec: jolly-walrus-3692] [rec: lone-haven-0640].
-- Verified end to end on Linux, in CI, against both a build tree and a staged payload. **Never run on macOS by hand** [rec: jolly-walrus-3692].
+- Verified end to end on Linux, in CI, against both a build tree and a staged payload. **Never run on macOS by hand** [rec: jolly-walrus-3692]. Its suite is **80 passed**, measured 2026-08-09 [rec: ancient-current-9419].
 
 ## Negative knowledge
 
@@ -29,3 +29,4 @@ Status: working
 - jolly-walrus-3692 — the CLI's whole design, its verified scope and its stated gaps
 - simple-hollow-8675 — the protocol it is the third client of
 - lone-haven-0640 — the LGPL/GPL boundary it sits on the engine side of
+- ancient-current-9419 — the `link` subcommand, and the tool it gained from `OP_ARG_SPECS` for free

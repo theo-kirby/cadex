@@ -1,6 +1,6 @@
 # BLENDER-TREE.md — Inherited Shell Substrate Inventory
 
-Verified against source: 2026-08-01
+Verified against source: 2026-08-09
 
 `shell/` is a Blender fork. This is its ledger — what we keep, what is
 slated for removal, what is already gone — the peer of `docs/FREECAD.md`
@@ -53,6 +53,26 @@ lines across `cadex_backend.py`, `ui.py`, `tools.py` and `modes.py`, plus
 entirely inside code that is ours.** Nothing in §2 moved: the
 inherited-tree delta is unchanged, §2a is still eight files and must stay
 eight. Counted 2026-07-31 — treat these as of that date, not as a contract.
+
+ADR-138 added linked parts: **+541/-5 across six files** — `topbar.py`
+(+158: three operators and two File rows), `cadex_backend.py` (+165:
+`link_part`, `linked_parts`, `refresh_linked_parts`, and the carry-forward
+fix that would otherwise have made Save-As drop a `.cxpart`), `tools.py`
+(+77: one tool and its executor), `cadexd_client.py` (one name into
+`MODELING_OPS`), and the two suites (+144). Every one of those six is under
+`shell/scripts/addons_core/mesh_agent/` or `shell/tests/python/`; **nothing
+in §2 moved and §2a is still eight files.** Counted 2026-08-09.
+
+ADR-139 added dimensions: **one new file plus +331/-3 across six** —
+`cadex_dimension.py` (650: the overlay, a pure screen-space half and a
+`POST_PIXEL` handler), `ui.py` (+79: two operators and two buttons),
+`cadex_pick.py` (+24: requests beside the pins), `cadex_backend.py` (+13: one
+wrapped call in `hydrate`), `__init__.py` (+5: teardown for the draw handler)
+and the two suites (+210). ADR-138 and ADR-139 share three of those files, so
+these are counted per hunk rather than off one `git diff --stat` — take them
+as an order of magnitude, not an audit. Again every file is under
+`shell/scripts/addons_core/mesh_agent/` or `shell/tests/python/`; **nothing in
+§2 moved and §2a is still eight files.** Counted 2026-08-09.
 
 **ADR-108 is the first time since the merge that §2 moved**, and it moved
 where §2b says it may: four new editor directories of ours, and one additive

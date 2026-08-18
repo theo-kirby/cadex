@@ -18,11 +18,20 @@ from CadexCage import CageSet
 from CadexMounts import Mount, MountSet
 from CadexTerminals import Terminal, TerminalError, TerminalSet, declared_layout, selector_layout
 from cadex_domain_api import DomainValue
-from cadex_mesh_api import payload_tree_is_deterministic
+from cadex_mesh_api import _asset_filename, payload_tree_is_deterministic
 
 
 _TOPOLOGY_TYPES = frozenset({"edge", "wire", "face", "shell", "solid", "compound"})
+#: The shape classes an operation may be *asked* to return. This is what
+#: validates a caller's ``output_type=``, so it must stay shapes only —
+#: ``sew(..., output_type="measurement")`` is a typo, not a request.
 _PUBLISHABLE_TYPES = frozenset({"wire", "face", "shell", "solid", "compound"})
+#: What the pack may publish, which is the above plus the one output type that
+#: is not a shape at all: a measurement carries two points and a number and no
+#: geometry (ADR-139). Deliberately a second constant rather than a widened
+#: first one — the pack contract and the ``output_type=`` argument were the
+#: same set only for as long as every output was a shape.
+_PACK_OUTPUT_TYPES = _PUBLISHABLE_TYPES | frozenset({"measurement"})
 _JOIN_TYPES = frozenset({"arc", "tangent", "intersection"})
 _TRANSITION_TYPES = frozenset({"transformed", "right_corner", "round_corner"})
 #: What a loft does when its surface escapes the sections it interpolates
@@ -47,6 +56,40 @@ _PROJECTION_MODES = frozenset({"parallel", "perspective"})
 #: many worked and the largest radius that would have; the other two are how
 #: a model opts into partial work *after* being told what it is accepting.
 _BLEND_FAILURE_MODES = frozenset({"refuse", "skip", "reduce"})
+#: What ``import_part`` reads: one part authored in another project (ADR-138).
+#: Named here rather than reaching for the store's union, because this is the
+#: one format *this* operation accepts — the same reason ``_asset_filename``
+#: takes a ``suffixes`` argument at all.
+_LINKED_PART_SUFFIXES = frozenset({".cxpart"})
+
+#: What ``measurement`` can measure (ADR-139). Closed, and each member is a
+#: different *drawing* rather than a different formula: a distance is a line
+#: between two anchors, a diameter is a line whose ends are chosen per frame,
+#: and an extent is a distance whose anchors nothing had to name.
+_MEASUREMENT_KINDS = frozenset({"distance", "diameter", "extent"})
+#: Which topology a measurement's selectors resolve against. Faces and edges
+#: only: those are the two ``resolve_pin`` speaks and the two the viewport can
+#: put a number on. Applies to both ends of a distance — a face-to-edge
+#: measurement is a later slice, not an oversight.
+_MEASURED_ELEMENT_TYPES = frozenset({"face", "edge"})
+_MEASURED_AXES = frozenset({"x", "y", "z"})
+#: Decimals a measurement's number is formatted to. Bounded because the text
+#: is drawn in a fixed pixel space: at twelve places the label is wider than
+#: the part and the dimension line disappears behind its own value.
+_MAXIMUM_MEASUREMENT_PLACES = 6
+
+
+def _places(operation: str, value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise _error(operation, "places", "must be an integer", value)
+    if not 0 <= value <= _MAXIMUM_MEASUREMENT_PLACES:
+        raise _error(
+            operation,
+            "places",
+            f"must be between 0 and {_MAXIMUM_MEASUREMENT_PLACES}",
+            value,
+        )
+    return int(value)
 
 
 def _error(operation: str, parameter: str, message: str, value: Any = None) -> ValueError:
@@ -710,7 +753,7 @@ class PartDomainAPI:
             raise RuntimeError(
                 f"Part pack does not declare runtime exports: {', '.join(undeclared)}."
             )
-        if frozenset(str(item) for item in output_types) != _PUBLISHABLE_TYPES:
+        if frozenset(str(item) for item in output_types) != _PACK_OUTPUT_TYPES:
             raise RuntimeError(
                 "Part pack output types do not match the production runtime contract."
             )
@@ -2509,6 +2552,165 @@ class PartDomainAPI:
             label=label,
         )
 
+    def import_part(self, filename: str, *, label: str = "") -> DomainValue:
+        """Build on a part authored in **another project**, losslessly.
+
+        ``part.import_part("sensor.cxpart")`` reads one ``.cxpart`` container
+        placed directly in this project's assets directory, and yields the
+        exact OCCT solid the other project accepted — not a tessellation of
+        it::
+
+            sensor = part.import_part("sensor.cxpart")
+            mount = part.cut(plate, sensor)
+            body = assembly.component(sensor, grounded=True)
+
+        This is the lossless half of the pair ``shape_from_mesh`` opens. That
+        one takes an STL through triangles and lands a shell of thousands of
+        planar faces that selectors are near-useless on; this one carries the
+        BREP itself, so the imported part has the forty faces it was authored
+        with and ``subshape``, ``fillet`` and a boolean all behave as they do
+        on a solid built here. It is consumable everywhere a part value is,
+        ``assembly.component`` included.
+
+        **A snapshot, not a live link** (ADR-138). The container holds one
+        accepted revision of the other project, and it changes when — and
+        only when — somebody links it again. That is deliberate: a rebuild of
+        this project must not depend on another project's current state, and
+        a part that moved under a model without being asked is worse than one
+        that is out of date and says so.
+
+        The container arrives through the ``link_part`` op, which pulls it
+        from the source project and stores it here. Its bytes are
+        authenticated against the digest its own header records before
+        anything is built from them.
+        """
+
+        operation = "import_part"
+        return self._value(
+            operation,
+            "solid",
+            _asset_filename(operation, filename, suffixes=_LINKED_PART_SUFFIXES),
+            label=label,
+        )
+
+    def measurement(
+        self,
+        shape: DomainValue,
+        *,
+        kind: str = "distance",
+        start: Mapping[str, Any] | None = None,
+        end: Mapping[str, Any] | None = None,
+        at: Mapping[str, Any] | None = None,
+        axis: str = "",
+        element_type: str = "face",
+        label: str = "",
+        places: int = 2,
+    ) -> DomainValue:
+        """Declare a dimension on this shape, drawn like a drawing's (ADR-139).
+
+        A measurement is a **declared output that carries no geometry**. It
+        publishes two exact anchor points and a formatted number; the shell
+        draws them as an architectural dimension — an extension line at each
+        anchor, a dimension line between them, the number in the middle::
+
+            plate  = part.box(60, 40, 10)
+            bored  = part.cut(plate, part.cylinder(3, 20))
+
+            height = part.measurement(bored, kind="extent", axis="z",
+                                      label="overall height")
+            bore   = part.measurement(bored, kind="diameter",
+                                      at={"geometry_type": "Cylinder",
+                                          "radius": 3.0})
+
+            result = {"bored": bored, "height": height, "bore": bore}
+
+        Three kinds:
+
+        - ``"distance"`` — between the two subshapes ``start`` and ``end``
+          name. The kernel's own closest-approach calculation supplies both
+          the value and the two anchor points, so a plate's thickness, a
+          boss's height and the gap between two ribs are all the same call.
+        - ``"diameter"`` — of the one circular edge or cylindrical face ``at``
+          names.
+        - ``"extent"`` — the shape's overall span along ``axis``. This is what
+          "from the top of the part to the bottom" means on anything that is
+          not a box: a dome has no pair of planar faces to name, and its
+          height is a property of the whole solid.
+
+        ``element_type`` says whether ``start``/``end``/``at`` resolve against
+        faces or edges, exactly as ``fillet``'s ``edges=`` names its own kind.
+        It applies to both ends; measuring a face to an edge is not in this
+        slice.
+
+        **It is anchored by selector, not by ordinal**, so it survives a
+        rebuild the way every other selector does — and fails loudly, naming
+        the selector, when a change removes what it measured. A measurement
+        moves when a parameter moves it, because it is recomputed from the
+        shape rather than remembered.
+
+        ``places`` is how many decimals the number is formatted to. The text
+        is formatted here rather than in the viewport, so a screenshot and a
+        chat reply can never disagree about what a part measures.
+        """
+
+        operation = "measurement"
+        clean_shape = _shape(operation, "shape", shape)
+        clean_kind = str(kind or "")
+        if clean_kind not in _MEASUREMENT_KINDS:
+            raise _error(
+                operation,
+                "kind",
+                f"must be one of {sorted(_MEASUREMENT_KINDS)}",
+                kind,
+            )
+        clean_elements = str(element_type or "")
+        if clean_elements not in _MEASURED_ELEMENT_TYPES:
+            raise _error(
+                operation,
+                "element_type",
+                f"must be one of {sorted(_MEASURED_ELEMENT_TYPES)}",
+                element_type,
+            )
+
+        properties: dict[str, Any] = {
+            "kind": clean_kind,
+            "element_type": clean_elements,
+            "places": _places(operation, places),
+        }
+        if clean_kind == "distance":
+            if start is None or end is None:
+                raise _error(
+                    operation,
+                    "start/end",
+                    "kind='distance' needs both start= and end= selectors",
+                )
+            properties["start"] = _selector(operation, "start", start, fixed_count=1)
+            properties["end"] = _selector(operation, "end", end, fixed_count=1)
+        elif clean_kind == "diameter":
+            if at is None:
+                raise _error(
+                    operation, "at", "kind='diameter' needs an at= selector"
+                )
+            properties["at"] = _selector(operation, "at", at, fixed_count=1)
+        else:
+            clean_axis = str(axis or "").lower()
+            if clean_axis not in _MEASURED_AXES:
+                raise _error(
+                    operation,
+                    "axis",
+                    f"kind='extent' needs axis= to be one of {sorted(_MEASURED_AXES)}",
+                    axis,
+                )
+            properties["axis"] = clean_axis
+
+        return self._value(
+            operation,
+            "measurement",
+            clean_shape,
+            label=label,
+            **properties,
+        )
+
     def repair(
         self,
         shape: DomainValue,
@@ -2944,6 +3146,8 @@ class PartDomainAPI:
             "reverse",
             "sew",
             "shape_from_mesh",
+            "import_part",
+            "measurement",
             "repair",
             "fillet",
             "chamfer",

@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-08-04
+Verified against source: 2026-08-09
 
 **This document is the contract between the two halves of the product.**
 They live in one repository (ADR-030) and in two processes, under two
@@ -116,7 +116,8 @@ lifetime signal.
 | `describe_api` | — | `describe_project_api()` verbatim |
 | `write_script` / `edit_script` / `set_params` | today's tool args + optional `display {quality, deflection, edges}`; `write_script` also takes `replace?` (ADR-045); `set_params` also takes `nets?` — the **complete** replacement row list for the connections a script declares with `nets(...)`, each row `{name, a, b, gauge_mm, solder, enabled}` with `a`/`b` addressed `<port>.<terminal>` (ADR-065). A full list rather than a patch, so the wiring editor can add and drop rows; a nets-only edit sends `values: {}`. `set_params` also takes `boards?` — the **complete** replacement row list for the terminals a script declares with `boards(...)`, each row `{board, name, origin, axis, hole_dia, depth}` in **millimetres in that board's own frame**, `hole_dia` present meaning a hole and absent meaning a pad (ADR-120). Full list, not a patch, for the reason `nets` is. A row may also carry `frame: "world"`: a measurement taken in the viewport, which cadexd cannot convert because it has no geometry and never runs user code — the worker converts it through the inverse of that component's placement chain and the canonical board-frame row is written back into `board_values`, so a pick is converted exactly once. `set_params` also takes `mounts?` — the **complete** replacement row list for the mounts a script declares with `mounts(...)`, each row `{component, name, origin, axis, roll, fastener, clearance}` in **millimetres in that component's own frame** (ADR-126). A mount is a terminal row plus a `roll`, so the frame is fully determined rather than only aimed, plus the fastener and clearance the mating half reads. Full list not a patch, `frame: "world"` converted by the worker, drift dropped rather than refused — the board table's terms exactly, one table over. `set_params` also takes `cages?` — the **complete** replacement ring list for the cages a script declares with `cage(...)`, each row `{cage, position, half_width, half_height, roll, exponent}` in millimetres along that cage's own axis (ADR-127). `exponent` is the superellipse power: 2.0 is an ellipse, larger fills the corners out. A ring carries **no name** — its identity is its place in its cage's order, and the stored list is complete — and rows naming a cage the script no longer declares are dropped | **byte-identical** to the in-process tool payload (accept payload / `tool_failure` envelope, `STALE_PROGRAM_REVISION` guard included) + per-output `display {artifact_kind, artifact_path (abs), placement, tessellation\|null}` |
 | `rebuild` | `display?` | explicit deterministic re-run of the stored script (same payload shape) |
-| `put_asset` | `source_path`, `name?` | copies **one file the project store accepts** into `assets/` under a validated name (overwrite = re-import), returns its `{name, bytes, sha256}` plus the full listing. Accepted suffixes are `.stl`/`.obj`/`.ply` — geometry a script imports with `mesh.import_file` or `part.shape_from_mesh` — **and `.cxpolicy`**, a trained control policy `assembly.policy` names by file and digest (ADR-084). The op performs no suffix check of its own: it passes the path through and lets the engine refuse, which is exactly why widening what the store holds cost no protocol change and no `shell/` diff. A **modeling** op: it writes the store, and exclusion against an in-flight rebuild is what stops a half-copied asset being staged. A path, not bytes — the asset budget is 128 MB against an 8 MB frame cap |
+| `put_asset` | `source_path`, `name?` | copies **one file the project store accepts** into `assets/` under a validated name (overwrite = re-import), returns its `{name, bytes, sha256}` plus the full listing. Accepted suffixes are `.stl`/`.obj`/`.ply` — geometry a script imports with `mesh.import_file` or `part.shape_from_mesh` — **`.cxpolicy`**, a trained control policy `assembly.policy` names by file and digest (ADR-084), the `.json`/`.xml` that policy's provenance travels as (ADR-135), and **`.cxpart`**, a part built in another project that `part.import_part` reads (ADR-138). The op performs no suffix check of its own: it passes the path through and lets the engine refuse, which is exactly why widening what the store holds cost no protocol change and no `shell/` diff. A **modeling** op: it writes the store, and exclusion against an in-flight rebuild is what stops a half-copied asset being staged. A path, not bytes — the asset budget is 128 MB against an 8 MB frame cap |
+| `link_part` | `source_project`, `output?`, `name?` | pulls one **accepted solid** out of another project and stores it here as a `.cxpart` — an exact OCCT solid plus the script that made it, provenance included (ADR-138). **One op, not an export/import pair**: the consuming project pulls, so the source project never opens and there is no file for a user to shuttle. Everything it reads is a file under that project's root — its pinned accepted attempt holds the exact BREP and the exact source — so this needs no FreeCAD, no worker and no OCCT call. **Refresh is this same call with the same arguments**: it ends in `store_project_asset`, where overwriting a name is re-import, and the reply's `changed` says whether the source moved. Omitting `output` is how a caller asks what is on offer — the refusal carries the source's accepted output names in `candidates`. A **modeling** op for `put_asset`'s reason exactly, being the same store write. It does **not** rebuild this project: the caller issues the ordinary `rebuild`, so new geometry lands as one normal accepted revision with one undo step |
 | `resolve_pin` | `output`, `selection` (fingerprint query or `{element_type, index}`) | `{ok, output, revision, subelements, details}` against the accepted revision's staged BREP (`CadexPinResolution.py`) |
 | `inspect` | today's `core.inspect` args | same contract; `document/object` serve the ephemeral doc, `script/api/image/assets/history/wiring` the store; `selection` rejected (shell-only). `wiring` is the harness as a graph (ADR-065): the terminals the accepted run resolved, joined to the connection table, with `editable: false` and `source: "derived"` for a script written before `nets(...)`. One node per **terminal set**, not per component, and its `port` is unique across the graph — a board with two headers is two sets, and while they shared a name the canvas gave one set's sockets to the other (ADR-115). On the `nets` path a row may carry `editable: false` and a `kind`: a cable or bundle the script built outside the table, drawn so the picture is complete and never sent back to `set_params(nets=...)`. Since ADR-118 a row also carries the route its run followed: `path`, the whole swept centreline, and `waypoints`, the interior of it a user may author — both read-only here, because a path is script state and `set_params(nets=)` carries editor state. An **empty** `waypoints` on a row that has a `path` is a bundle conductor, whose route belongs to the lay; the keys are **absent** entirely on a project accepted before ADR-118, which the canvas draws rather than refuses. Since ADR-120 a component also carries `board` — the name `boards(...)` gave it, or `""` — and `editable`, true when that board's terminals are a declared table rather than a selector's derived rows; each terminal carries its row fields `origin`/`axis`/`hole_dia`/`depth`, which is what `set_params(boards=...)` writes back. **A declared board is a node whether or not anything is wired to it**: a terminal set that is only assigned to a variable used to reach the canvas as nothing at all |
 | `preview_params` | `values`, `expected_revision` | solved component placements for a **pose-only** parameter change, from a resident read-only worker (ADR-055) — no BREP, no tessellation, no digest, no publication, **no store write**. A **read** op: it queues behind an in-flight modeling request rather than refusing one. Answers `previewable: false` with a `reason` whenever the change was not pose-only, the revision is stale, or the worker is unavailable; the debounced `set_params` behind it is the real answer either way |
@@ -142,6 +143,7 @@ prose. Every response also carries `id` and `ok`.
 | `describe_api` | `domain`, `domains`, `engine`, `instructions`, `program_schema`, `result_contract`, `revision_rule`, `source_globals`, `parameters`, `connections`, `boards`, `mounts`, `cages`, `mutation_selection` |
 | `write_script` / `edit_script` / `set_params` / `rebuild` | `tool`, `revision`, `accepted_revision`, `digest`, `model_state`, `outputs`, `live_outputs`, `removed`, `display`?, `stdout`? |
 | `put_asset` | `name`, `bytes`, `sha256`, `assets` |
+| `link_part` | `name`, `bytes`, `sha256`, `source_revision`, `source_digest`, `previous_revision`, `changed`, `assets` |
 | `resolve_pin` | `output`, `revision`, `subelements`, `details` |
 | `inspect` | `scope`, `target`, `path`, `value`, `page`, `document`, `surface`, `result_json_bytes` |
 | `preview_params` | `placements`, `revision`, `previewable`, `reason`? |
@@ -167,7 +169,8 @@ against the pre-ADR-044 shape still validates.
 
 Nested shapes the shell reads by name are pinned too
 (`NESTED_RESPONSE_SPECS`): `display.<output> {artifact_kind,
-artifact_path, placement, tessellation}` plus optional `source_output`, its
+artifact_path, placement, tessellation}` plus optional `source_output` and
+`measurement`, its
 `tessellation {artifact_kind,
 artifact_path, sidecar_path, counts, deflection, quality}` and that block's
 `counts {faces, edges, triangles, vertices, edge_vertices}`; `model_state
@@ -188,6 +191,37 @@ consumer that does not know the key sees exactly the shape it saw before.
 A client rendering a solved assembly instances `source_output`'s geometry
 at the component's `placement` — without it, an entry with no tessellation
 looks like nothing to draw, which is what made solved assemblies invisible.
+
+**There is a third kind, and `measurement` is how you tell it apart**
+(ADR-139). A `measurement` output has no artifact, no tessellation and no
+placement of its own: it is a declared *dimension*, and what it carries is
+what a client needs to draw one.
+
+- **`kind`** — `distance`, `diameter` or `extent`.
+- **`subject`** — the declared output whose frame the anchors are in, or the
+  empty string when the measured shape was an undeclared intermediate.
+- **`label`** — what the script called it, or the empty string.
+- **`value_mm`** — the measured number.
+- **`text`** — that number *already formatted*, diameter sign and unit
+  included.
+- **`places`** — the decimals `text` was formatted to.
+- **`anchors_mm`** — two points, for `distance` and `extent`; null for
+  `diameter`.
+- **`center_mm`**, **`radius_mm`**, **`normal`** — the circle, for `diameter`;
+  null otherwise.
+
+A diameter publishes the circle rather than two points because a circle has
+infinitely many diameters and the legible one is whichever faces the camera —
+so its endpoints are the client's to choose, per frame, and only its
+endpoints. Everything else is settled here.
+
+`text` is formatted engine-side so that a screenshot and a chat reply can
+never disagree about what a part measures. A client that reformats
+`value_mm` itself is reintroducing exactly that risk.
+
+The anchors are in **`subject`'s own frame**, not the model's. A client must
+apply `display[subject].placement` before drawing them, or a dimension on an
+assembled part lands where the part is not.
 
 **`artifact_kind` is an open set, and a client must treat it as one.** The
 kinds a shell may see today:

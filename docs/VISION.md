@@ -1,6 +1,6 @@
 # VISION.md — What Cadex Is Becoming
 
-Verified against source: 2026-08-05
+Verified against source: 2026-08-09
 
 This document is the product vision. It is authoritative: when a change
 conflicts with this document, the change is wrong or the vision needs an
@@ -224,8 +224,20 @@ returning it.
 
 ## Open questions
 
-- How assemblies-of-parts compose in a single project script (sub-scripts?
-  imports? one flat script?) — Phase 2 design work.
+- ~~How assemblies-of-parts compose in a single project script (sub-scripts?
+  imports? one flat script?)~~ — answered 2026-08-09 (ADR-138): **none of the
+  three.** A project stays one flat script, and it composes another project
+  by importing that project's *accepted, verified output* — never its source
+  as a second program. `link_part` pulls one accepted solid out of another
+  project as a content-addressed `.cxpart` in this project's `assets/`, and
+  `part.import_part` reads it back as the exact OCCT solid, along the path an
+  imported STL already travels. The sandbox's refusal of every `import`
+  statement turns out to be the right answer rather than an obstacle: what
+  crosses a project boundary is a built artifact whose bytes are checked,
+  carrying the source that built it as provenance, not a program this project
+  has to run to find out what the other one means. Sub-scripts would have made
+  a rebuild here depend on another project's current state; a container makes
+  it deterministic from this project's own `assets/` alone.
 - Where the boundary between "parameter" (slider, no AI) and "change request"
   (chat turn) sits for things like suppressing a feature.
 - ~~Whether the Qt shell is retired outright or kept headless-only as an

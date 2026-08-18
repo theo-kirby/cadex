@@ -2,12 +2,13 @@
 
 """``cadex`` — the command line.
 
-Four subcommands over one project, of which exactly one spends tokens::
+Five subcommands over one project, of which exactly one spends tokens::
 
     cadex -p "a mounting bracket for a NEMA17, 4 mm wall" --out ./out
     cadex params --set fin_angle=12 --out ./sweep/12
     cadex script --set bracket.py --out ./out
     cadex export --out ./out
+    cadex link --from ../sensorA --output sensor
 
 That asymmetry is the whole design. An expensive turn authors a *parametric*
 script once; after that a sweep is ``set_params`` and a re-export, with no
@@ -135,6 +136,35 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow the new script to drop outputs the accepted revision "
         "declares.",
+    )
+
+    link_parser = subparsers.add_parser(
+        "link",
+        help="Bring a part in from another project, or refresh one. No AI, "
+        "no tokens.",
+    )
+    _common(link_parser, inherit=True)
+    link_parser.add_argument(
+        "--from",
+        dest="source_project",
+        default="",
+        metavar="DIR",
+        help="The other project's root. It is read, never opened or changed.",
+    )
+    link_parser.add_argument(
+        "--output",
+        default="",
+        metavar="NAME",
+        help="Which of its declared outputs to pull. Omit to be told what it "
+        "declares.",
+    )
+    link_parser.add_argument(
+        "--name",
+        dest="asset_name",
+        default="",
+        metavar="FILE",
+        help="Store it under this name. Defaults to <output>.cxpart; re-using "
+        "a name is how a part is refreshed.",
     )
     return parser
 
@@ -458,6 +488,94 @@ def command_script(args: argparse.Namespace, report: RunReport) -> int:
         return EXIT_OK
 
 
+def command_link(args: argparse.Namespace, report: RunReport) -> int:
+    """Bring a part in from another project — and refresh one, identically.
+
+    There is no separate refresh command, because there is no separate
+    operation: ``link_part`` overwrites the stored container, and overwriting
+    an asset is re-import (ADR-138). Running this command again is the whole
+    of refreshing, and the engine's ``changed`` is what says whether the other
+    project actually moved.
+
+    A change that moved is followed by a rebuild here, so the new geometry
+    lands as one normal accepted revision. A change that moved *nothing*
+    rebuilds nothing: a no-op that re-accepted the model would put a
+    meaningless revision in the history every time somebody checked.
+    """
+
+    if not args.source_project:
+        report.error = "link needs --from DIR, the other project's root."
+        return EXIT_USAGE
+
+    request: dict[str, Any] = {
+        "source_project": str(Path(args.source_project).expanduser())
+    }
+    if args.output:
+        request["output"] = args.output
+    if args.asset_name:
+        request["name"] = args.asset_name
+
+    with _engine_session(args, report) as (engine, client):
+        _progress(f" · link_part  {args.output or '?'}")
+        reply = client.request("link_part", request)
+        if reply.get("ok") is not True:
+            report.error = str(
+                reply.get("error") or reply.get("failure_code") or "link_part failed"
+            )
+            candidates = [str(item) for item in reply.get("candidates") or []]
+            if candidates:
+                report.notes.append(
+                    "that project declares: " + ", ".join(candidates)
+                )
+            return EXIT_REJECTED
+
+        name = str(reply.get("name") or "")
+        revision = str(reply.get("source_revision") or "")[:16]
+        if not reply.get("changed"):
+            report.notes.append(
+                f"{name} is already at {revision}; nothing moved, so nothing "
+                "was rebuilt."
+            )
+            _refresh_script_state(client, report)
+            report.ok = True
+            return EXIT_OK
+
+        previous = str(reply.get("previous_revision") or "")
+        report.notes.append(
+            f"{name} moved from {previous[:16]} to {revision}."
+            if previous
+            else f"{name} linked at {revision}. Use it with "
+            f'part.import_part("{name}").'
+        )
+
+        # A first pull has nothing to rebuild *into* yet: no script names the
+        # container. A refresh does, and that rebuild is what makes it real.
+        if not read_script_source(client).strip():
+            _refresh_script_state(client, report)
+            report.ok = True
+            return EXIT_OK
+
+        _progress(" · rebuild")
+        rebuilt = client.request("rebuild")
+        apply_modeling_reply(report, rebuilt)
+        if rebuilt.get("ok") is not True:
+            report.error = str(
+                rebuilt.get("error")
+                or rebuilt.get("failure_code")
+                or "rebuild failed"
+            )
+            report.notes.append(
+                "the part was updated, but this project no longer builds "
+                "against it; the refusal above names what broke."
+            )
+            _refresh_script_state(client, report)
+            return EXIT_REJECTED
+        _refresh_script_state(client, report)
+        _finish(args, report, engine, rebuilt.get("display"))
+        report.ok = True
+        return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -478,6 +596,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_export(args, report)
         elif command == "script":
             code = command_script(args, report)
+        elif command == "link":
+            code = command_link(args, report)
         else:  # argparse already refuses anything else
             return EXIT_USAGE
     except (ValueError, ExportError) as exc:

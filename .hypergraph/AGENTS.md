@@ -71,6 +71,29 @@ hypergraph check --record .hypergraph/cache/record.json \
 `check` must **exit 0**. `.hypergraph/cache/` is gitignored and regenerated;
 the node files under `.hypergraph/graph/` are the storage and are committed.
 
+## Getting the tool
+
+The skills under `.claude/skills/hypergraph-*` **are committed** and arrive with a
+clone. The `hypergraph` CLI is not — it is a Python package, so install it once
+per machine:
+
+```bash
+uv tool install hypergraph-protocol      # provides `hypergraph`
+hypergraph --version                     # this project is on 0.0.7
+```
+
+The CLI and the committed copies are upgraded by two different commands, and one
+cannot see the other:
+
+```bash
+uv tool upgrade hypergraph-protocol      # the CLI on this machine
+hypergraph upgrade                       # this repo's skills + AGENTS.md block
+```
+
+`check` warns when the two are out of step. **After `hypergraph upgrade`, re-read
+the block in the root `AGENTS.md`**: it overwrites everything between the
+sentinels, including this project's ADR-log clause and epoch note.
+
 ## Skills
 
 | Skill | When |

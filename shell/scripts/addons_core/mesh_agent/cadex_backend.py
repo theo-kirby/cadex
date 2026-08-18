@@ -52,6 +52,28 @@ SOURCE_PROP = "mesh_cadex_source_root"
 #: one of them; the shell never decides what the engine will accept.
 ASSET_SUFFIXES = (".stl", ".obj", ".ply")
 
+#: A part built in another project (cadex ADR-138): the container `link_part`
+#: writes into the store and `part.import_part` reads back.
+#:
+#: A separate name rather than a fourth member of ``ASSET_SUFFIXES``, and the
+#: reason is the comment above: that tuple mirrors the engine's
+#: ``_ASSET_SUFFIXES`` by name, that set is exactly three, and a mirror that
+#: quietly grew a member would make its own docstring false. The engine keeps
+#: these apart for the same reason (four constants, one union).
+LINKED_PART_SUFFIX = ".cxpart"
+
+#: What a Save-As must carry into the new project. Assets are *inputs* — the
+#: script names them and cannot run without them — so a file built on any of
+#: them has no recovery path if they are left behind (ADR-046). A linked part
+#: is an input on exactly those terms, so it is here.
+#:
+#: Not the engine's whole stored union: a ``.cxpolicy`` and its provenance
+#: pair are not carried today, which is a real gap and a pre-existing one
+#: (ADR-084 shipped before ADR-046's carry-forward existed). Naming it here
+#: rather than widening this silently, because carrying trained weights on
+#: every Save-As is its own decision.
+CARRIED_ASSET_SUFFIXES = ASSET_SUFFIXES + (LINKED_PART_SUFFIX,)
+
 #: Progressive display (cadex INTEGRATION.md): slider drags request a
 #: coarse, edge-free tessellation to stay under the latency parity bar;
 #: once the drag settles, a background ``rebuild`` re-streams the standard
@@ -138,6 +160,21 @@ def hydrate(payload, animate=True):
     except Exception:
         hydration["collision"] = {"shown": False,
                                   "error": traceback.format_exc()}
+        traceback.print_exc()
+
+    # The dimension overlay (ADR-139), on the same terms again. It refreshes
+    # its records on EVERY response, mid-drag included, and does not clear the
+    # way collision does: a dimension is measured on the shape in front of you
+    # and re-published with it, so mid-drag the numbers are current rather
+    # than lagging. That is the opposite trade from a wire cage, for the
+    # opposite reason -- a cage left over from the previous shape is wrong,
+    # and a number recomputed for this one is right.
+    try:
+        from . import cadex_dimension
+        hydration["dimensions"] = cadex_dimension.apply(payload)
+    except Exception:
+        hydration["dimensions"] = {"shown": False,
+                                   "error": traceback.format_exc()}
         traceback.print_exc()
     return hydration
 
@@ -364,7 +401,7 @@ def source_root(scene):
 
 
 def _assets_in(root):
-    """Absolute paths of the importable mesh files in one project root.
+    """Absolute paths of the carryable input files in one project root.
 
     The only directory of the store the shell ever reads, and it reads it
     only to hand the paths back to ``put_asset``. What is in there is not
@@ -372,6 +409,11 @@ def _assets_in(root):
     what supplied in the first place. The walk mirrors the engine's staging
     walk -- flat, known suffixes, no symlinks -- so it never offers a file a
     run would skip (ADR-046).
+
+    ``.cxpart`` is in the set the same way and for the same reason: a script
+    that says ``part.import_part("sensor.cxpart")`` cannot run without it,
+    so a Save-As that left it behind would break exactly the recovery ADR-046
+    exists to keep (ADR-138).
     """
     directory = os.path.join(root, "assets")
     if not os.path.isdir(directory):
@@ -385,7 +427,7 @@ def _assets_in(root):
         path = os.path.join(directory, name)
         if os.path.islink(path) or not os.path.isfile(path):
             continue
-        if os.path.splitext(name)[1].lower() not in ASSET_SUFFIXES:
+        if os.path.splitext(name)[1].lower() not in CARRIED_ASSET_SUFFIXES:
             continue
         found.append(path)
     return found
@@ -1984,6 +2026,140 @@ def put_asset(scene, source_path, name=""):
     if name:
         args["name"] = str(name)
     return _client(project_root(scene)).request("put_asset", args)
+
+
+def link_part(scene, source_project, output="", name=""):
+    """Pull one accepted solid out of another project. Payload verbatim.
+
+    One op, not an export from there and an import here: *this* project
+    pulls, the other one is only read, and it does not have to be open --
+    which is what makes this work between two .blend files without either
+    window knowing about the other (cadex ADR-138).
+
+    Omitting ``output`` is how the caller asks what that project declares:
+    the refusal carries the names in ``candidates``.
+
+    Refreshing is this same call with the same arguments. It does **not**
+    rebuild: the caller issues the ordinary rebuild afterwards, so new
+    geometry lands as one normal accepted revision with one undo step.
+    """
+    ok, report = ensure_open(scene)
+    if not ok:
+        return {"ok": False, "error": report}
+    args = {"source_project": str(source_project)}
+    if output:
+        args["output"] = str(output)
+    if name:
+        args["name"] = str(name)
+    return _client(project_root(scene)).request("link_part", args)
+
+
+def linked_parts(scene):
+    """The ``.cxpart`` containers this project holds, newest listing first.
+
+    Read through ``inspect scope=assets`` rather than off the filesystem,
+    because the engine is the store's sole reader (docs/ARCHITECTURE.md) and
+    what is importable is its answer, not a directory listing's.
+    """
+    names = stored_asset_names(scene)
+    if names is None:
+        return []
+    return sorted(name for name in names
+                  if str(name).lower().endswith(LINKED_PART_SUFFIX))
+
+
+def refresh_linked_parts(scene):
+    """Re-pull every linked part, then rebuild once if anything moved.
+
+    Returns ``(ok, report)``. A refresh that finds nothing moved rebuilds
+    nothing on purpose: a no-op that re-accepted the model would put a
+    meaningless revision in the undo trail every time somebody checked.
+
+    The rebuild is the ordinary one, which is what keeps a refresh safe --
+    the new geometry lands as one accepted revision, with one undo step, and
+    a script that no longer builds against the new shape is refused by name
+    rather than leaving a half-updated model.
+    """
+    names = linked_parts(scene)
+    if not names:
+        return True, "This model has no linked parts."
+
+    moved, unchanged, refused = [], [], []
+    for name in names:
+        sources = _linked_part_source(scene, name)
+        if not sources:
+            refused.append("{:s} (its source project is not recorded)".format(name))
+            continue
+        source_project, output = sources
+        if not os.path.isdir(source_project):
+            refused.append(
+                "{:s} (the project it came from is no longer at {:s})".format(
+                    name, source_project))
+            continue
+        payload = link_part(scene, source_project, output=output, name=name)
+        if payload.get("ok") is not True:
+            refused.append("{:s} ({:s})".format(
+                name, str(payload.get("error") or "refused")))
+        elif payload.get("changed"):
+            moved.append("{:s}: {:s} → {:s}".format(
+                name,
+                str(payload.get("previous_revision") or "?")[:8],
+                str(payload.get("source_revision") or "?")[:8]))
+        else:
+            unchanged.append(name)
+
+    lines = []
+    if moved:
+        lines.append("Updated: " + "; ".join(moved))
+    if unchanged:
+        lines.append("Already current: " + ", ".join(unchanged) + ".")
+    if refused:
+        lines.append("Could NOT refresh: " + "; ".join(refused))
+    if not moved:
+        return not refused, "\n".join(lines)
+
+    ok, report = rebuild_model(scene)
+    if not ok:
+        lines.append(
+            "The parts were updated, but this model no longer builds against "
+            "them: " + str(report or "").splitlines()[0])
+        lines.append(
+            "Refresh again from the project that owns the part, or fix the "
+            "script -- the refusal above names what broke.")
+        return False, "\n".join(lines)
+    lines.append("Model rebuilt.")
+    return not refused, "\n".join(lines)
+
+
+def _linked_part_source(scene, name):
+    """``(source_project, output)`` out of one stored container's header.
+
+    The header is read here rather than asked of the engine because it is
+    what the container *is*: a magic line, a length and a JSON object, in a
+    file this project owns. Reading fourteen bytes and one object needs no
+    round trip and no engine module -- and the path it yields is a **hint**,
+    checked by the caller, never trusted (the standing ``SOURCE_PROP`` has).
+    """
+    path = os.path.join(project_root(scene), "assets", str(name))
+    try:
+        with open(path, "rb") as handle:
+            magic = handle.read(8)
+            if magic != b"CXPART1\n":
+                return None
+            length = int.from_bytes(handle.read(8), "little")
+            if not 0 < length <= 4 * 1024 * 1024:
+                return None
+            header = json.loads(handle.read(length).decode("ascii"))
+    except (OSError, ValueError, UnicodeDecodeError):
+        return None
+    source = header.get("source") if isinstance(header, dict) else None
+    if not isinstance(source, dict):
+        return None
+    root = str(source.get("project_root") or "")
+    output = str(source.get("output") or "")
+    if not root or not output:
+        return None
+    return root, output
 
 
 def engine_summary(scene):

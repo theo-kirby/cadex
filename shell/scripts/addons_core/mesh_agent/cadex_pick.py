@@ -22,6 +22,10 @@ from . import cadex_hydrate
 #: Pins resolved since the last chat turn; drained by consume_pin_notes().
 _pending_pins = []
 
+#: Sentences queued beside those pins, saying what they are for. Drained by
+#: the same call, so a gesture and its instruction can never separate.
+_pending_requests = []
+
 
 def face_index_of_polygon(obj, polygon_index):
     """The 1-based BREP face index behind one tessellation triangle."""
@@ -151,18 +155,37 @@ def queue_pin(pin):
     _pending_pins.append(pin)
 
 
+def queue_request(text):
+    """Queue one sentence saying what to do with the pins (ADR-139).
+
+    A pin says *which* subshape; it never says why it was picked. Measure is
+    the first gesture that needs the second half, and it needs nothing more
+    than the sentence — so this is a list of strings beside the pins rather
+    than a second mechanism.
+    """
+
+    cleaned = str(text or "").strip()
+    if cleaned:
+        _pending_requests.append(cleaned)
+
+
 def pending_pin_count():
     return len(_pending_pins)
 
 
 def consume_pin_notes():
     """Prompt suffix describing pins picked since the last turn (drains)."""
-    if not _pending_pins:
+    if not _pending_pins and not _pending_requests:
         return ""
     lines = ["[The user pinned {:s} — engine detail: {:s}]".format(
         format_pin(pin), json.dumps(pin.get("detail") or {}, default=str))
         for pin in _pending_pins]
+    # After the pins, so the instruction reads against a list the model has
+    # already been given rather than one it is about to be.
+    lines.extend("[The user asked: {:s}]".format(text)
+                 for text in _pending_requests)
     _pending_pins.clear()
+    _pending_requests.clear()
     return "\n\n" + "\n".join(lines)
 
 

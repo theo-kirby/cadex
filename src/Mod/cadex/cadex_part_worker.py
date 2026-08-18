@@ -92,6 +92,139 @@ def configure_part_assets(
     _MESH_PLACEMENT = mesh_placement
 
 
+def _imported_linked_part(operation: str, filename: Any) -> Any:
+    """One ``.cxpart`` from the staged assets directory, as an OCCT solid.
+
+    The authentication is the point, and it is the one
+    :func:`configure_part_references` performs one step further out: a
+    host-staged reference crossed a process boundary, and a linked part
+    crossed a project, a filesystem and possibly a machine. So the container
+    is checked against the digest its own header records **before** a shape
+    is built from it, and the shape is then checked for validity and for
+    being the solid the header claimed.
+
+    The blob is written into this worker's own staging directory and imported
+    by path rather than from memory: every other BREP ingest in the engine
+    takes a path (``configure_part_references``, ``_import_staged_shape``),
+    and matching them keeps one import behaviour rather than two.
+    """
+
+    import Part
+
+    from CadexLinkedPart import LinkedPartError, decode_linked_part
+
+    clean = str(filename or "")
+    suffix = ("." + clean.rsplit(".", 1)[-1]).lower() if "." in clean else ""
+    if (
+        not clean
+        or any(separator in clean for separator in ("/", "\\"))
+        or ".." in clean
+        or suffix != ".cxpart"
+    ):
+        raise PartOperationError(
+            f"api.{operation}: {clean!r} is not a valid staged part asset name.",
+            stage="part_contract",
+            operation=operation,
+            parameter="filename",
+            correction=(
+                "Name one .cxpart file placed directly inside the project "
+                "assets directory."
+            ),
+        )
+    if _ASSET_ROOT is None:
+        raise PartOperationError(
+            f"api.{operation}: this worker request has no staged assets "
+            "directory to read a linked part from",
+            stage="part_contract",
+            operation=operation,
+            correction=(
+                "Build import_part from the project script surface; that is "
+                "the surface that stages the project's assets."
+            ),
+        )
+    root = Path(_ASSET_ROOT)
+    path = (root / "assets" / clean).resolve()
+    if path.parent != (root / "assets").resolve() or not path.is_file():
+        raise PartOperationError(
+            f"api.{operation}: no staged part asset named {clean!r} exists.",
+            stage="part_contract",
+            operation=operation,
+            parameter="filename",
+            correction=(
+                "Link the part into this project first; link_part pulls one "
+                "accepted output out of another project and stores it here."
+            ),
+        )
+    try:
+        header, brep = decode_linked_part(
+            path.read_bytes(), context=f"api.{operation}: {clean!r}"
+        )
+    except LinkedPartError as exc:
+        raise PartOperationError(
+            str(exc),
+            stage="part_contract",
+            operation=operation,
+            parameter="filename",
+            correction=(
+                "Link the part again from the project that owns it; a .cxpart "
+                "is written by link_part and is not editable by hand."
+            ),
+        ) from exc
+    except OSError as exc:
+        raise PartOperationError(
+            f"api.{operation}: {clean!r} could not be read: {exc}",
+            stage="part_contract",
+            operation=operation,
+            parameter="filename",
+        ) from exc
+
+    scratch = root / "linked_parts"
+    scratch.mkdir(parents=True, exist_ok=True)
+    staged = scratch / f"{path.stem}.brep"
+    shape = Part.Shape()
+    try:
+        staged.write_bytes(brep)
+        shape.importBrep(str(staged))
+    finally:
+        # ``importBrep`` reads the whole file, so the copy has no readers the
+        # moment it returns. Removed rather than left behind because the
+        # attempt directory it sits in is *pinned* once the revision is
+        # accepted, and nothing should keep a second copy of a part forever.
+        try:
+            staged.unlink()
+        except OSError:
+            pass
+    if shape.isNull() or not shape.isValid():
+        raise PartOperationError(
+            f"api.{operation}: the BREP in {clean!r} is not a valid shape.",
+            stage="part_kernel",
+            operation=operation,
+            parameter="filename",
+            correction=(
+                "Link the part again from the project that owns it, and "
+                "re-accept that project if the refusal repeats."
+            ),
+        )
+    if str(shape.ShapeType) != "Solid":
+        source = dict(header.get("source") or {})
+        raise PartOperationError(
+            f"api.{operation}: {clean!r} holds a {shape.ShapeType}, not a "
+            "solid.",
+            stage="part_kernel",
+            operation=operation,
+            parameter="filename",
+            observed={
+                "shape_type": str(shape.ShapeType),
+                "source_output": str(source.get("output") or ""),
+            },
+            correction=(
+                "Link a solid output; a linked part is one solid, and the "
+                "source project is where a shell gets closed."
+            ),
+        )
+    return shape
+
+
 def configure_part_references(root: Path, entries: list[dict[str, Any]]) -> None:
     """Load and authenticate host-staged BREP snapshots for one worker request."""
 
@@ -470,6 +603,153 @@ def _selected_subshapes(
         operation, parameter, shape, requested, kind
     )
     return selected
+
+
+# -- measurements: two points and a number, and no geometry at all (ADR-139) --
+
+#: Below this a distance is a touch rather than a gap, and a dimension drawn
+#: on it would have both anchors in the same place. The kernel's own
+#: confusion tolerance, so this refuses exactly what OCCT would not
+#: distinguish anyway.
+_MEASUREMENT_TOUCH_MM = 1.0e-7
+
+#: The diameter sign. ``U+00D8``, not ``U+2300``: the latter is the *correct*
+#: character and is missing from the viewport's font, where it draws as a
+#: hollow box. A number nobody can read is worse than the wrong codepoint.
+_DIAMETER_SIGN = "Ø"
+
+
+def _measured_subshape(operation, parameter, shape, requested, kind):
+    """The one subshape a measurement's selector names."""
+
+    selected = _selected_subshapes(operation, parameter, shape, requested, kind)
+    if len(selected) != 1:
+        raise _error(
+            operation,
+            parameter,
+            f"names {len(selected)} subshapes; a measurement measures one",
+        )
+    return selected[0]
+
+
+def _axis_circle(operation, subshape):
+    """``(center, axis, radius)`` of a circular edge or a cylindrical face.
+
+    The centre is the point **on the axis** nearest the subshape's centroid,
+    not the centroid itself and not the kernel's own ``Center``. For a full
+    circle those three agree; for a half-cylinder or an arc they do not, and
+    only this one is on the axis where a diameter has to start.
+    """
+
+    for attribute in ("Surface", "Curve"):
+        geometry = getattr(subshape, attribute, None)
+        radius = getattr(geometry, "Radius", None)
+        if radius is None:
+            continue
+        origin = getattr(geometry, "Center", None)
+        axis = getattr(geometry, "Axis", None)
+        if origin is None or axis is None:
+            continue
+        centroid = getattr(subshape, "CenterOfMass", origin)
+        # `axis * along` returns a new vector; `axis.multiply()` would scale
+        # the kernel's own axis in place and leave the geometry altered.
+        along = float((centroid - origin).dot(axis))
+        center = origin + axis * along
+        return center, axis, float(radius)
+    raise _error(
+        operation,
+        "at",
+        (
+            f"is a {_geometry_type(subshape)} and has no radius; a diameter "
+            "needs a circular edge or a cylindrical face"
+        ),
+    )
+
+
+def _extent_anchors(shape, axis):
+    """The two ends of a bounding-box span, on the centre line of the part.
+
+    "From the top of the part to the bottom" is a property of the whole solid
+    once the solid is not a box: a dome has no pair of planar faces to name.
+    The anchors run down the middle of the other two axes so the dimension
+    reads through the part rather than off one arbitrary corner.
+    """
+
+    bounds = shape.BoundBox
+    low = [float(bounds.XMin), float(bounds.YMin), float(bounds.ZMin)]
+    high = [float(bounds.XMax), float(bounds.YMax), float(bounds.ZMax)]
+    index = {"x": 0, "y": 1, "z": 2}[axis]
+    middle = [(low[value] + high[value]) / 2.0 for value in range(3)]
+    start, end = list(middle), list(middle)
+    start[index], end[index] = low[index], high[index]
+    return start, end, high[index] - low[index]
+
+
+def measurement_record(shape, properties):
+    """One declared measurement, resolved against the shape it measures.
+
+    Returns the record the shell draws: a value, the text to draw it as, and
+    either two anchor points or -- for a diameter, whose legible endpoints
+    depend on where the camera is -- the circle to choose them from.
+
+    Called from ``cadex_domain_worker`` for the ``measurement`` output type.
+    It attaches no artifact, which is what keeps a dimension out of the
+    artifact-bearing half of ``compute_project_digest``: what identifies a
+    measurement is its declaration, not what today's parameters make it read.
+    """
+
+    operation = "measurement"
+    kind = str(properties.get("kind") or "distance")
+    element_type = str(properties.get("element_type") or "face")
+    places = int(properties.get("places", 2) or 0)
+    record = {
+        "kind": kind,
+        "subject": "",
+        "label": str(properties.get("label") or ""),
+        "places": places,
+        "anchors_mm": None,
+        "center_mm": None,
+        "radius_mm": None,
+        "normal": None,
+    }
+
+    if kind == "diameter":
+        target = _measured_subshape(
+            operation, "at", shape, properties.get("at"), element_type
+        )
+        center, axis, radius = _axis_circle(operation, target)
+        value = 2.0 * radius
+        record["center_mm"] = _point_fact(center)
+        record["radius_mm"] = radius
+        record["normal"] = _point_fact(axis)
+        record["text"] = "{:s}{:.{places}f} mm".format(
+            _DIAMETER_SIGN, value, places=places
+        )
+    elif kind == "extent":
+        start, end, value = _extent_anchors(shape, str(properties.get("axis") or "z"))
+        record["anchors_mm"] = [start, end]
+        record["text"] = "{:.{places}f} mm".format(value, places=places)
+    else:
+        first = _measured_subshape(
+            operation, "start", shape, properties.get("start"), element_type
+        )
+        second = _measured_subshape(
+            operation, "end", shape, properties.get("end"), element_type
+        )
+        distance, pairs, _info = first.distToShape(second)
+        value = float(distance)
+        if value <= _MEASUREMENT_TOUCH_MM:
+            raise _error(
+                operation,
+                "start/end",
+                "name subshapes that touch; the measured distance is 0 mm",
+            )
+        near, far = pairs[0][0], pairs[0][1]
+        record["anchors_mm"] = [_point_fact(near), _point_fact(far)]
+        record["text"] = "{:.{places}f} mm".format(value, places=places)
+
+    record["value_mm"] = float(value)
+    return record
 
 
 # -- blending: what to do when the kernel refuses some of the edges --------
@@ -3544,6 +3824,12 @@ def _build(
             f"the mesh sewed into {len(shells)} shells, so it cannot form one "
             "solid; pass solid=False for a shell, or repair the mesh so it is "
             "one closed surface",
+        )
+    if operation == "import_part":
+        # The lossless ingest: an exact OCCT solid another project accepted,
+        # arriving as bytes rather than as triangles (ADR-138).
+        return _imported_linked_part(
+            operation, _argument(payload, 0, "filename")
         )
     if operation == "sew":
         shapes = _shape_list(operation, "shapes", _argument(payload, 0, "shapes"))

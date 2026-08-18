@@ -2,6 +2,13 @@
 .*
 !*.gitattributes
 !*.gitignore
+# The hypergraph skills are the workflows AGENTS.md tells an agent to run, so
+# they have to travel with the repo — `.*` above would otherwise hide them and a
+# fresh clone would get the contract without the means to follow it. Only
+# skills/ is un-ignored; the rest of .claude/ stays local.
+!/.claude/
+/.claude/*
+!/.claude/skills/
 !/.clang-format
 !/.clang-tidy
 !/.git-blame-ignore-revs

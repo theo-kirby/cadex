@@ -48,7 +48,7 @@ MUTATING_TOOLS = {"write_script", "set_params", "edit_script", "rebuild_model",
 _ENGINE_TOOLS = {"get_script", "write_script", "set_params",
                  "edit_script", "restore_version", "inspect_model",
                  "describe_cad_api", "scene_summary", "rebuild_model",
-                 "import_geometry"}
+                 "import_geometry", "link_part"}
 
 TOOL_DEFS = [
     {
@@ -387,6 +387,41 @@ TOOL_DEFS = [
                                         "stored name replaces that asset."},
             },
             "required": ["path"],
+        },
+    },
+    {
+        "name": "link_part",
+        "description": (
+            "Bring a part built in ANOTHER Cadex model into this one. Point "
+            "it at that model's .blend or .cadex folder and name the output "
+            "you want; it arrives as the exact solid that model accepted — "
+            "not a mesh of it — so booleans, selectors and assembly "
+            "components all work on it, and the script uses it with "
+            "part.import_part(). Returns the stored name; pass that name, "
+            "not the path. Call it again with the same arguments to refresh: "
+            "'changed' says whether the other model moved, and a rebuild is "
+            "what makes a change take effect here. Omit 'output' to be told "
+            "what that model publishes. Use this when the user says a part "
+            "lives in another file."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "source": {"type": "string",
+                           "description": "Path to the other model's .blend "
+                                          "file or .cadex project folder. It "
+                                          "is only read, never changed."},
+                "output": {"type": "string",
+                           "description": "Which of that model's outputs to "
+                                          "link. It must be a solid. Omit to "
+                                          "be told what it publishes."},
+                "name": {"type": "string",
+                         "description": "Optional name to store it under, "
+                                        "ending in .cxpart (default: "
+                                        "<output>.cxpart). Re-using a stored "
+                                        "name is how a part is refreshed."},
+            },
+            "required": ["source"],
         },
     },
     {
@@ -871,6 +906,45 @@ def _tool_import_geometry(tool_input):
     ), False
 
 
+def _tool_link_part(tool_input):
+    import bpy
+    from . import cadex_backend
+    from .topbar import _link_source_from
+
+    source = _link_source_from(tool_input.get("source"))
+    if not source:
+        return _text("link_part needs the path of another Cadex model — its "
+                     ".blend file or its .cadex project folder."), True
+    output = str(tool_input.get("output") or "").strip()
+    payload = cadex_backend.link_part(
+        bpy.context.scene, source, output=output,
+        name=str(tool_input.get("name") or "").strip())
+    if payload.get("ok") is not True:
+        # The refusal for an omitted output *is* the answer to "what does
+        # that model publish", so it is not framed as a failure.
+        candidates = [str(item) for item in (payload.get("candidates") or [])]
+        if candidates and not output:
+            return _text("That model publishes: {:s}. Call link_part again "
+                         "with one of them as 'output'.".format(
+                             ", ".join(candidates))), False
+        return _text(_truncate("The engine refused the link: "
+                               + str(payload.get("error") or payload))), True
+    name = str(payload.get("name") or "")
+    moved = (
+        "It moved from {:s} to {:s}.".format(
+            str(payload.get("previous_revision") or "?")[:8],
+            str(payload.get("source_revision") or "?")[:8])
+        if payload.get("previous_revision")
+        else "It is at revision {:s}.".format(
+            str(payload.get("source_revision") or "?")[:8])
+    ) if payload.get("changed") else "It had not moved; nothing changed here."
+    return _text(
+        "Linked {:s} from {:s} as {:s} ({:d} bytes). {:s}\nReference it in "
+        "the script with part.import_part(\"{:s}\").".format(
+            output or name, source, name, int(payload.get("bytes") or 0),
+            moved, name)), False
+
+
 def _tool_focus_view(tool_input):
     import bpy
 
@@ -950,6 +1024,7 @@ _HANDLERS = {
     "render_views": _tool_render_views,
     "export_stl": _tool_export_stl,
     "import_geometry": _tool_import_geometry,
+    "link_part": _tool_link_part,
     "focus_view": _tool_focus_view,
     "collision_view": _tool_collision_view,
 }

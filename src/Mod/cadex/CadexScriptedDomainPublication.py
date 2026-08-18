@@ -66,6 +66,10 @@ _NATIVE_TYPE_BY_OUTPUT: dict[str, str] = {
     "mjcf": "App::FeaturePython",
     "task": "App::FeaturePython",
     "policy": "App::FeaturePython",
+    # A measurement is a row in the tree with no geometry under it, exactly
+    # as solver_diagnostics is (ADR-139). The value it carries lives in the
+    # response, not on the object -- nothing in the document reads it.
+    "measurement": "App::FeaturePython",
 }
 
 _BREP_OUTPUT_TYPES = frozenset(

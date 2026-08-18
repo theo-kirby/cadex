@@ -49,6 +49,7 @@ from mesh_agent import cadex_pick  # noqa: E402
 from mesh_agent import cadexd_client  # noqa: E402
 from mesh_agent import model as model_module  # noqa: E402
 from mesh_agent import tools  # noqa: E402
+from mesh_agent import topbar  # noqa: E402
 from mesh_agent.mock_backend import MockBackend  # noqa: E402
 
 FAILURES = []
@@ -160,6 +161,39 @@ result = {"widget": widget}
 MOVED_GEOMETRY_SCRIPT = """
 widget = mesh.transform(mesh.import_file("widget.stl"), translation=(5, 0, 0))
 result = {"widget": widget}
+"""
+
+#: The other model, in the two-model story ADR-138 is about: a parametric
+#: sensor body whose bore is what moves when the source is edited.
+LINKED_SENSOR_SCRIPT = """
+p = params(bore=num(6.0, unit="mm", min=2.0, max=14.0, step=0.5))
+block = part.box(40.0, 25.0, 15.0)
+bore = part.cylinder(p.bore / 2.0, 25.0, origin=[20.0, 12.5, -5.0])
+sensor = part.cut(block, bore)
+result = {"sensor": sensor}
+"""
+
+#: A measured part: one dimension of each kind, on a shape whose width is a
+#: parameter, so the gate can watch the numbers follow a slider (ADR-139).
+MEASURED_SCRIPT = """
+p = params(width=num(60.0, unit="mm", min=20.0, max=120.0, step=1.0))
+plate = part.box(p.width, 40.0, 10.0)
+bored = part.cut(plate, part.cylinder(3.0, 30.0, origin=[15.0, 20.0, -10.0]))
+height = part.measurement(bored, kind="extent", axis="z", label="height")
+span = part.measurement(bored, kind="extent", axis="x")
+bore = part.measurement(
+    bored, kind="diameter", at={"geometry_type": "Cylinder", "radius": 3.0})
+result = {"bored": bored, "height": height, "span": span, "bore": bore}
+"""
+
+#: ...and this model, building on it. `part.cut` is the assertion that the
+#: linked part is a real solid the kernel will boolean, not a shell of
+#: triangles.
+LINKED_CONSUMER_SCRIPT = """
+sensor = part.import_part("sensor.cxpart")
+plate = part.box(80.0, 60.0, 10.0)
+mount = part.cut(plate, part.transform(sensor, translation=[10.0, 10.0, 4.0]))
+result = {"sensor": sensor, "plate": plate, "mount": mount}
 """
 
 #: A closed tetrahedron, the smallest thing `mesh.import_file` will take.
@@ -1577,6 +1611,305 @@ def test_save_as_carries_imported_geometry(workdir):
     check(len(revision_sources(os.path.join(workdir, "asset-copy.cadex"))) == 1,
           "the new project starts its own trail -- the original's two "
           "revisions did NOT come across")
+
+
+def test_link_part_travels_between_two_models(workdir):
+    """A part built in one .blend, used in another, and refreshed.
+
+    The shell's half of ADR-138, end to end and through the real operators:
+    `File > Link Part...` picks another model's .blend, the engine pulls the
+    solid that model accepted, the script here builds on it with
+    `part.import_part`, and `File > Refresh Linked Parts` re-pulls it after
+    the source moves.
+
+    Three things this is the only place that can prove:
+
+    - the picked **.blend** resolves to the right project root, which is the
+      whole user-facing gesture (nobody picks a `.cadex` folder);
+    - the refresh **rebuilds** this model, so the new shape is in the
+      viewport rather than only in the store;
+    - a Save-As **carries the container**, which is ADR-046's bug arriving
+      on a new file type and would otherwise ship broken.
+    """
+    print("test_link_part_travels_between_two_models")
+
+    source_blend = os.path.join(workdir, "sensorA.blend")
+    consumer_blend = os.path.join(workdir, "assembly.blend")
+
+    # -- the other model: one accepted solid ------------------------------
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.wm.save_as_mainfile(filepath=source_blend)
+    ok, report = run_tool("write_script", {"content": LINKED_SENSOR_SCRIPT})
+    check(ok, "the source model is accepted ({:s})".format(report[:80]))
+    source_root = os.path.join(workdir, "sensorA.cadex")
+    check(os.path.isdir(source_root), "the source model has a project root")
+
+    # -- this model: link it ---------------------------------------------
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.wm.save_as_mainfile(filepath=consumer_blend)
+    scene = bpy.context.scene
+
+    # The gesture, not the backend call: the .blend the user picks is what
+    # has to resolve to the project root beside it.
+    check(topbar._link_source_from(source_blend) == source_root,
+          "picking a .blend resolves to the project beside it")
+
+    payload = cadex_backend.link_part(scene, source_root)
+    check(payload.get("ok") is not True and payload.get("candidates") == ["sensor"],
+          "omitting the output is answered with what that model publishes")
+
+    payload = cadex_backend.link_part(scene, source_root, output="sensor")
+    check(payload.get("ok") is True,
+          "the part lands in this model's store ({:s})".format(
+              str(payload.get("error") or "clean")[:80]))
+    check(payload.get("name") == "sensor.cxpart",
+          "it is stored under the output's name")
+    check(payload.get("changed") is True and not payload.get("previous_revision"),
+          "a first pull reports itself as new")
+    check(cadex_backend.linked_parts(scene) == ["sensor.cxpart"],
+          "the model lists exactly one linked part")
+
+    ok, report = run_tool("write_script", {"content": LINKED_CONSUMER_SCRIPT})
+    check(ok, "a model built on the linked part is accepted ({:s})".format(
+        report[:120]))
+    check(bpy.data.objects.get("sensor") is not None,
+          "the linked part is in the viewport")
+    # It arrived as BREP and hydrated as BREP -- which is what the shell can
+    # say about it. That it is *the same solid*, to the volume and the face
+    # count, is asserted where the numbers are: cadex_tests/
+    # test_linked_part_live.py. The viewport mesh is a tessellation either
+    # way, so counting its polygons here would prove nothing.
+    check("sensor" in [obj.name for obj in brep_objects()],
+          "the linked part hydrated as BREP, not as a mesh output")
+    check("mount" in [obj.name for obj in brep_objects()],
+          "...and the kernel cut a plate with it")
+    consumer_root = cadex_backend.project_root(scene)
+    first_digest = store_state(consumer_root)["accepted_digest"]
+
+    # Nothing moved yet: a refresh must not manufacture a revision.
+    ok, report = cadex_backend.refresh_linked_parts(scene)
+    check(ok and "Already current" in report,
+          "a refresh with nothing to do says so ({:s})".format(report[:80]))
+    check(store_state(consumer_root)["accepted_digest"] == first_digest,
+          "...and rebuilt nothing")
+
+    # -- move the source model, then refresh ------------------------------
+    bpy.ops.wm.open_mainfile(filepath=source_blend)
+    ok, report = run_tool("set_params", {"params": {"bore": 12.0}})
+    check(ok, "the source model moves ({:s})".format(report[:80]))
+
+    bpy.ops.wm.open_mainfile(filepath=consumer_blend)
+    scene = bpy.context.scene
+    ok, report = cadex_backend.refresh_linked_parts(scene)
+    check(ok, "the refresh succeeds ({:s})".format((report or "")[:160]))
+    check("Updated:" in (report or ""),
+          "the report says which part moved and between which revisions")
+    check("Model rebuilt" in (report or ""),
+          "...and that this model was rebuilt behind it")
+    check(store_state(consumer_root)["accepted_digest"] != first_digest,
+          "the refreshed model has a different digest")
+    check(bpy.data.objects.get("sensor") is not None,
+          "the refreshed part is still in the viewport")
+
+    # -- and a Save-As carries it ----------------------------------------
+    copy_blend = os.path.join(workdir, "assembly-copy.blend")
+    bpy.ops.wm.save_as_mainfile(filepath=copy_blend)
+    scene = bpy.context.scene
+    ok, report = cadex_backend.adopt_saved_script(scene)
+    check(ok, "the Save-As'd model rebuilds ({:s})".format(
+        (report or "clean")[:160]))
+    check("sensor.cxpart" in (report or ""),
+          "the report names the linked part it carried across")
+    check(cadex_backend.linked_parts(scene) == ["sensor.cxpart"],
+          "the new model holds the container in its own store")
+    check(bpy.data.objects.get("sensor") is not None,
+          "the linked part is back in the new file's viewport")
+
+
+# -- ADR-139: dimensions, from any angle ------------------------------------
+
+def _view_matrix(rotation_degrees_x, rotation_degrees_z):
+    """A view matrix looking at the model from one direction."""
+    import math
+    from mathutils import Matrix
+
+    rotation = (Matrix.Rotation(math.radians(rotation_degrees_z), 4, 'Z')
+                @ Matrix.Rotation(math.radians(rotation_degrees_x), 4, 'X'))
+    return (Matrix.Translation((-30.0, -20.0, -400.0)) @ rotation.inverted())
+
+
+class _Region:
+    """The two attributes ``location_3d_to_region_2d`` reads off a region."""
+
+    def __init__(self, width=1200, height=800):
+        self.width = width
+        self.height = height
+
+
+class _RegionData:
+    """...and the two it reads off the region's 3D view data."""
+
+    def __init__(self, view_matrix):
+        from mathutils import Matrix
+
+        self.view_matrix = view_matrix
+        # Orthographic, and scaled so a 10 mm feature spans ~200 px. That
+        # matters: below about 60 px the number is wider than the dimension
+        # line and the two halves correctly collapse to nothing, which would
+        # make the segment count below a statement about the zoom rather than
+        # about the drawing.
+        self.window_matrix = Matrix.Diagonal((0.02, 0.05, -0.002, 1.0))
+        self.perspective_matrix = self.window_matrix @ view_matrix
+        self.is_perspective = False
+
+
+def test_dimensions_are_readable_from_every_angle(root):
+    """The shell's half of ADR-139, and the claim the feature is judged on.
+
+    A dimension is drawn in screen space from two model-space anchors, so
+    "can you read it from here" is a question about a view matrix — which is
+    exactly what a headless gate can ask and a person can only answer by
+    orbiting for a while and hoping.
+
+    Three views, and the third is the one that matters: looking straight down
+    the measured axis, where the two anchors project to the same pixel. That
+    must become a leader carrying the number, not a zero-length line and not
+    nothing at all.
+    """
+    print("test_dimensions_are_readable_from_every_angle")
+
+    from mesh_agent import cadex_dimension
+
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(root, "measured.blend"))
+    ok, report = run_tool("write_script", {"content": MEASURED_SCRIPT})
+    check(ok, "the measured model is accepted ({:s})".format(report[:120]))
+
+    # The engine published them and the overlay picked them up, without the
+    # overlay being visible: records are refreshed on every accepted
+    # revision, so turning it on is a redraw rather than a round trip.
+    records = cadex_dimension.records()
+    by_name = {record["output"]: record for record in records}
+    check(sorted(by_name) == ["bore", "height", "span"],
+          "the three declared measurements reached the shell")
+    check(by_name["height"]["text"] == "10.00 mm",
+          "and their numbers arrived formatted by the engine")
+    check(by_name["bore"]["text"] == "Ø6.00 mm",
+          "including the diameter sign")
+    check(by_name["height"]["subject"] == "bored",
+          "each names the output whose frame its anchors are in")
+    check(len(by_name["bore"].get("ring_mm") or ()) ==
+          cadex_dimension.DIAMETER_SAMPLES,
+          "a diameter arrives as a ring, because its endpoints are per frame")
+
+    # Nothing here counts polygons: the viewport mesh is a tessellation
+    # whatever the output is, so that number cannot tell you anything about a
+    # dimension. What can be checked is the drawing, from a given camera.
+    region = _Region()
+    front = _RegionData(_view_matrix(90.0, 0.0))
+    drawing = cadex_dimension.drawing_for(by_name["height"], region, front)
+    check(drawing is not None, "a dimension seen from the front draws")
+    check(drawing["kind"] == "dimension", "and it draws as a dimension")
+    check(len(drawing["segments"]) == 6,
+          "two extension lines, two dimension-line halves and two ticks")
+    check(drawing["text"] == "10.00 mm", "carrying its number")
+
+    # Orbit 60 degrees. The anchors have not moved; the drawing has.
+    turned = cadex_dimension.drawing_for(
+        by_name["height"], region, _RegionData(_view_matrix(90.0, 60.0)))
+    check(turned is not None and turned["kind"] == "dimension",
+          "and it is still a dimension after a 60 degree orbit")
+    check(turned["text_at"] != drawing["text_at"],
+          "the drawing follows the camera even though the anchors did not")
+
+    # ...and now look straight down the Z axis, which is what `height`
+    # measures. This is the case the whole design is judged on.
+    down_the_axis = cadex_dimension.drawing_for(
+        by_name["height"], region, _RegionData(_view_matrix(0.0, 0.0)))
+    check(down_the_axis is not None,
+          "looking down the measured axis still draws something")
+    check(down_the_axis["kind"] == "leader",
+          "it becomes a leader rather than collapsing to a point")
+    check(down_the_axis["text"] == "10.00 mm",
+          "and the number survives, which is the whole claim")
+
+    # The span is across the screen from that same camera, so the two
+    # measurements cannot both be edge-on at once.
+    span_down = cadex_dimension.drawing_for(
+        by_name["span"], region, _RegionData(_view_matrix(0.0, 0.0)))
+    check(span_down is not None and span_down["kind"] == "dimension",
+          "while a measurement across that view draws normally")
+
+    # -- the toggle, and a slider ----------------------------------------
+    scene = bpy.context.scene
+    check(cadex_dimension.SCENE_FLAG not in scene, "the overlay starts hidden")
+    report = cadex_dimension.toggle()
+    check(report["shown"] is True and report["count"] == 3,
+          "the toggle shows all three")
+    check(cadex_dimension.SCENE_FLAG in scene,
+          "and the scene flag is what the header button reads")
+
+    ok, message = run_tool("set_params", {"params": {"width": 100.0}})
+    check(ok, "the width slider moves ({:s})".format(message[:120]))
+    moved = {record["output"]: record for record in cadex_dimension.records()}
+    check(moved["span"]["text"] == "100.00 mm",
+          "a measurement follows the parameter that moves its part")
+    check(moved["height"]["text"] == "10.00 mm",
+          "and one nothing moved stays where it was")
+
+    report = cadex_dimension.toggle()
+    check(report["shown"] is False, "the toggle hides them again")
+    check(cadex_dimension.SCENE_FLAG not in scene,
+          "and takes the scene flag with it")
+    check(cadex_dimension.records() == [],
+          "a hidden overlay forgets what it was drawing, so it cannot go stale")
+
+
+def test_measure_asks_rather_than_rewriting_the_script(root):
+    """Two picks and a button queue a request; nothing edits script.py.
+
+    The script has exactly one author. The Measure button rides the pin
+    queue that already batches picks into the next message (ADR-139) — so
+    what this checks is that the button is inert until there are two picks,
+    and that what it queues is a sentence rather than a write.
+    """
+    print("test_measure_asks_rather_than_rewriting_the_script")
+
+    from mesh_agent import cadex_pick
+    from mesh_agent import ui as mesh_ui
+
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(root, "measure.blend"))
+    ok, report = run_tool("write_script", {"content": MEASURED_SCRIPT})
+    check(ok, "a model to pick on ({:s})".format(report[:120]))
+    root_dir = cadex_backend.project_root(bpy.context.scene)
+    before = store_state(root_dir)["accepted_digest"]
+
+    cadex_pick.consume_pin_notes()  # drain anything an earlier test left
+    check(mesh_ui.MESH_AGENT_OT_measure_pins.poll(bpy.context) is False,
+          "Measure is inert with no picks")
+    cadex_pick.queue_pin({"kind": "face", "output": "bored", "face_index": 1,
+                          "detail": {}, "revision": ""})
+    check(mesh_ui.MESH_AGENT_OT_measure_pins.poll(bpy.context) is False,
+          "and still inert with one -- one pin is not a measurement")
+    cadex_pick.queue_pin({"kind": "face", "output": "bored", "face_index": 2,
+                          "detail": {}, "revision": ""})
+    check(mesh_ui.MESH_AGENT_OT_measure_pins.poll(bpy.context) is True,
+          "two picks arm it")
+
+    check(bpy.ops.mesh_agent.measure_pins() == {'FINISHED'},
+          "and it runs")
+    after = store_state(root_dir)["accepted_digest"]
+    check(after == before,
+          "the button wrote no script -- the model is untouched")
+
+    note = cadex_pick.consume_pin_notes()
+    check("@face-1 of bored" in note and "@face-2 of bored" in note,
+          "the next message carries both picks")
+    check("part.measurement" in note,
+          "and the sentence saying what to do with them")
+    check(cadex_pick.consume_pin_notes() == "",
+          "draining is once -- a request cannot be sent twice")
 
 
 # -- M5: the restore pass runs on every open --------------------------------
@@ -3761,6 +4094,9 @@ def main():
     saveas_root = tempfile.mkdtemp(prefix="mesh-cadex-saveas-")
     duplicate_root = tempfile.mkdtemp(prefix="mesh-cadex-duplicate-")
     carry_root = tempfile.mkdtemp(prefix="mesh-cadex-carry-")
+    linked_root = tempfile.mkdtemp(prefix="mesh-cadex-linked-")
+    dimension_root = tempfile.mkdtemp(prefix="mesh-cadex-dimension-")
+    measure_root = tempfile.mkdtemp(prefix="mesh-cadex-measure-")
     restore_root = tempfile.mkdtemp(prefix="mesh-cadex-restore-")
     corrupt_root = tempfile.mkdtemp(prefix="mesh-cadex-corrupt-")
     describe_root = tempfile.mkdtemp(prefix="mesh-cadex-describe-")
@@ -3821,6 +4157,9 @@ def main():
         test_save_as_and_multi_file_lifecycle(saveas_root)
         test_duplicated_file_keeps_its_parameters(duplicate_root)
         test_save_as_carries_imported_geometry(carry_root)
+        test_link_part_travels_between_two_models(linked_root)
+        test_dimensions_are_readable_from_every_angle(dimension_root)
+        test_measure_asks_rather_than_rewriting_the_script(measure_root)
         test_reopen_restores(reopen_root)
         test_open_runs_the_restore_pass(restore_root)
         test_restore_failure_is_first_class(corrupt_root)
@@ -3862,7 +4201,8 @@ def main():
         for root in (corpus_root, baseline_root, wide_root, turn_root,
                      reopen_root,
                      threading_root, cancel_root, saveas_root,
-                     duplicate_root, carry_root,
+                     duplicate_root, carry_root, linked_root,
+                     dimension_root, measure_root,
                      restore_root, corrupt_root, describe_root, edit_root,
                      drop_root, rederive_root, mirror_root, defaults_root,
                      refused_root, rewrite_root, repair_root, stdout_root,

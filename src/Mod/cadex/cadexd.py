@@ -144,6 +144,13 @@ def _display_block(
         source_output = str(item.get("source_output") or "")
         if source_output:
             entry["source_output"] = source_output
+        # And only measurements have one (ADR-139), for the same reason and on
+        # the same terms: a positive signal that this entry is two points and
+        # a number rather than a thing with a shape. Every other entry keeps
+        # exactly the four keys it has always had.
+        measurement = item.get("measurement")
+        if isinstance(measurement, Mapping):
+            entry["measurement"] = dict(measurement)
         tessellation = item.get("display")
         if isinstance(tessellation, Mapping):
             entry["tessellation"] = {
@@ -664,6 +671,137 @@ class CadexdServer:
         return {
             "ok": True,
             **stored,
+            "assets": list_project_assets(self._project_root),
+        }
+
+    def _op_link_part(
+        self, _request_id: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Pull one accepted solid out of another project into this one.
+
+        One op rather than an export from A and an import into B (ADR-138).
+        The consuming project pulls, so project A never opens: everything
+        this reads is a file under A's root, and the pinned accepted attempt
+        is where the exact BREP and the exact source that produced it already
+        sit. Refresh is this same call with the same arguments — it ends in
+        ``store_project_asset``, where overwriting a name is re-import.
+
+        A modeling op for ``put_asset``'s reason exactly: it writes the store,
+        and exclusion against an in-flight rebuild is what stops a container
+        landing half-copied while ``_stage_project_assets`` reads.
+        """
+
+        not_open = self._require_open()
+        if not_open is not None:
+            return not_open
+        import shutil
+        import tempfile
+
+        from CadexLinkedPart import (
+            LinkedPartError,
+            build_linked_part,
+            decode_linked_part,
+            source_outputs,
+        )
+        from CadexScriptedRuntime import list_project_assets, store_project_asset
+        from CadexTools import tool_failure
+
+        source_project = str(args["source_project"])
+        output = str(args.get("output") or "").strip()
+        name = str(args.get("name") or "").strip()
+        requested = {
+            "source_project": source_project,
+            "output": output,
+            "name": name,
+        }
+
+        def refuse(message: str, candidates: Any = ()) -> dict[str, Any]:
+            return tool_failure(
+                "cadexd.link_part",
+                "LINKED_PART_REJECTED",
+                "precondition",
+                message,
+                requested=requested,
+                observed={"assets": list_project_assets(self._project_root)},
+                candidates=[str(item) for item in candidates],
+            )
+
+        source_root = Path(source_project).expanduser()
+        try:
+            same = source_root.resolve() == Path(self._project_root).resolve()
+        except OSError:
+            same = False
+        if same:
+            return refuse("A project cannot link a part from itself.")
+        if not source_root.is_dir():
+            return refuse(f"'{source_root}' is not a project directory.")
+        if not output:
+            # Omitting the output is how a caller asks what is on offer; the
+            # names are the answer, not a diagnostic.
+            try:
+                declared = source_outputs(source_root)
+            except LinkedPartError as exc:
+                return refuse(str(exc))
+            names = [str(item["name"]) for item in declared]
+            return refuse(
+                f"link_part needs the output to pull from '{source_root}'; it "
+                f"declares: {', '.join(names) or '(nothing)'}.",
+                candidates=names,
+            )
+
+        # An imported part is part of the preview generation for the same
+        # reason an imported mesh is: part.import_part resolves against the
+        # staged copy, so a new one is a new model.
+        self._invalidate_resident_workers()
+        try:
+            blob = build_linked_part(source_root, output)
+        except LinkedPartError as exc:
+            return refuse(str(exc), exc.candidates)
+        header, _brep = decode_linked_part(blob)
+        source = dict(header.get("source") or {})
+
+        target_name = name or f"{output}.cxpart"
+        # What is already stored under this name, so the reply can say whether
+        # the source project moved. Unreadable or absent means "nothing to
+        # compare against", which is a first pull rather than a failure.
+        previous_revision = ""
+        changed = True
+        stored_path = Path(self._project_root) / "assets" / target_name
+        if stored_path.is_file():
+            try:
+                previous, _ = decode_linked_part(stored_path.read_bytes())
+            except (LinkedPartError, OSError):
+                previous = {}
+            if previous:
+                previous_revision = str(
+                    dict(previous.get("source") or {}).get("revision") or ""
+                )
+                changed = str(previous.get("shape_sha256") or "") != str(
+                    header.get("shape_sha256") or ""
+                )
+
+        scratch = Path(tempfile.mkdtemp(prefix="cadex-link-part-"))
+        try:
+            # A fixed scratch name, never the caller's: `target_name` is
+            # validated by `store_project_asset` (traversal, length, suffix),
+            # and joining it onto a path before that check would be the one
+            # place it could escape.
+            staged = scratch / "part.cxpart"
+            staged.write_bytes(blob)
+            stored = store_project_asset(
+                self._project_root, str(staged), target_name
+            )
+        except (OSError, ValueError) as exc:
+            return refuse(str(exc))
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
+        return {
+            "ok": True,
+            **stored,
+            "source_revision": str(source.get("revision") or ""),
+            "source_digest": str(source.get("digest") or ""),
+            "previous_revision": previous_revision,
+            "changed": bool(changed),
             "assets": list_project_assets(self._project_root),
         }
 

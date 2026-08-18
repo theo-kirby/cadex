@@ -22,6 +22,7 @@ Status: working
 - **One branch.** The `MJC` ref still exists, pointing at the merge; nothing should be committed to it [rec: open-key-6334].
 - **Related repositories, and what they are not.** `~/cdx-rl` and `~/cdx-mjc` are independent spin-off projects that *use* Cadex and occasionally open a wishlist pull request here; they are not part of this repository's concerns. `~/arch` is not a project at all — it is where the author's `.blend` and `.cadex` files live, and they are **live files**: copy before building or probing [rec: western-badger-3023].
 - **Where code and doc disagree, the code wins** — and the doc is fixed in the same PR with its `Verified against source:` date bumped [rec: slender-basin-4979].
+- **The hypergraph tooling comes in two halves that upgrade separately.** The skills under `.claude/skills/hypergraph-*` are **committed** and arrive with a clone; the `hypergraph` CLI is a Python package and is not, so each machine runs `uv tool install hypergraph-protocol` once. `uv tool upgrade hypergraph-protocol` moves the CLI, `hypergraph upgrade` moves this repo's copies, and neither can see the other's half — `check` warns on the skew, which is what `hypergraph_version: 0.0.7` in the config exists to make visible [rec: twilight-sail-5604].
 
 ## Negative knowledge
 
@@ -31,6 +32,8 @@ Status: working
 - [scope: ctest | confidence: high | evidence: merry-eagle-4093] The inherited FreeCAD ctest has roughly 160 pre-existing environmental failures. Diff against build/ctest_baseline_failures.txt; never expect 100%.
 
 - [scope: figures restated in summary docs | confidence: high | evidence: even-cliff-3863] A number restated in a summary doc has no owner and drifts silently — the engine suite count sat at 1,105 in CLAUDE.md while the ADR log tracked it to 1,698. The ADR log and the command are the live sources; treat an undated figure in a summary doc as unverified.
+- [scope: a repo-wide `.*` ignore rule | confidence: high | evidence: twilight-sail-5604] Agent tooling disappears from every clone while looking clean on the author's disk — the files are present locally and `git status` is quiet, so only a fresh clone shows the gap. `.claude/skills/` was ignored here for the whole first week of the adoption, which would have handed a collaborator the AGENTS.md contract with no skills to run it. A project that un-ignores `.hypergraph/` must un-ignore `.claude/skills/` in the same commit.
+- [scope: running `hypergraph upgrade` | confidence: high | evidence: tidy-banner-0293] **Superseding the 0.0.7 behaviour recorded here previously.** From 0.0.8 it replaces the `<!-- hypergraph:begin -->` block only while that block is still verbatim a template the project shipped; anything you have edited is reported as `customized`, left untouched, and the shipped template is named for you to merge against by hand. Verified here against the very block 0.0.7 destroyed — both project-specific paragraphs survived. `--agents-block` opts into overwriting. So: merge the new template after an upgrade; you no longer have to restore lost paragraphs.
 
 ## Provenance
 
@@ -41,3 +44,5 @@ Status: working
 - quiet-wing-7912 — the contract's move to AGENTS.md and the pointer left behind
 - open-key-6334 — one branch, and the ADR renumbering
 - simple-hollow-8675 — why a passing source tree proves nothing about a payload
+- twilight-sail-5604 — the two-halves tooling install, the `.*` ignore trap, and what 0.0.7's `hypergraph upgrade` overwrote
+- tidy-banner-0293 — 0.0.8 preserves an edited block; verified against the one 0.0.7 destroyed

@@ -514,6 +514,16 @@ def test_cadex_budgets_reach_open_project():
 _ALLOWED_API_NAMES = {
     "assembly.mjcf",     # ADR-091: check the collision shapes after this call
     "mesh.import_file",  # ADR-086 §4: import_geometry's wording, parked
+    # ADR-138: link_part's whole point is that the stored name is what the
+    # script then names, so the tool that stores it says which call takes it.
+    # The same shape as import_geometry's line above, and named for the same
+    # reason -- a tool that puts a file in the store and does not say how to
+    # reach it leaves the model guessing.
+    "part.import_part",
+    # ADR-139: the Measure button queues a sentence for the next turn rather
+    # than writing the script itself, so the sentence has to name the call it
+    # is asking for. Nothing else in the overlay mentions measurements.
+    "part.measurement",
 }
 
 #: The local-bpy-mode vocabulary ADR-030 deleted. It survived in the base
@@ -1404,6 +1414,180 @@ def test_render_views_cameras_frame_the_model():
           "and it never reaches the engine")
 
 
+def test_dimension_is_drawn_in_pixels_around_its_number():
+    from mesh_agent import cadex_dimension
+
+    # 200 px apart, horizontal, with a 60 px wide number.
+    drawing = cadex_dimension.dimension_geometry(
+        (100.0, 100.0), (300.0, 100.0), 60.0)
+
+    check(drawing["kind"] == "dimension", "a 200 px span is a dimension")
+    check(len(drawing["segments"]) == 6,
+          "two extension lines, two dimension-line halves and two ticks")
+
+    # The dimension line is *broken* around the number, which is the shape
+    # the feature was asked for: a line from each end, and a gap in the
+    # middle exactly wide enough for the text plus its padding.
+    halves = [segment for segment in drawing["segments"]
+              if abs(segment[1] - segment[3]) < 1e-9
+              and abs(segment[1] - (100.0 + cadex_dimension.OFFSET_PX)) < 1e-9]
+    check(len(halves) == 2, "the dimension line is two segments, not one")
+    gap = min(segment[0] for segment in halves
+              if segment[0] > 200.0) - max(segment[2] for segment in halves
+                                           if segment[2] < 200.0)
+    check(abs(gap - (60.0 + 2.0 * cadex_dimension.TEXT_PAD_PX)) < 1e-9,
+          "and the gap is the number's width plus its padding")
+
+    # Extension lines start clear of the anchor and overrun the dimension
+    # line, both by pixel constants rather than by anything model-sized.
+    verticals = [segment for segment in drawing["segments"]
+                 if abs(segment[0] - segment[2]) < 1e-9]
+    check(len(verticals) == 2, "one extension line per anchor")
+    for segment in verticals:
+        check(abs(segment[1] - 105.0) < 1e-9,
+              "an extension line starts EXTENSION_GAP_PX clear of its anchor")
+        check(abs(segment[3] - 130.0) < 1e-9,
+              "and overruns the dimension line by EXTENSION_OVERRUN_PX")
+
+    check(abs(drawing["text_angle"]) < 1e-9,
+          "a horizontal dimension has horizontal text")
+
+    # A number wider than the span leaves no line to draw. It must clamp
+    # rather than emit a segment that runs backwards through its own label.
+    crowded = cadex_dimension.dimension_geometry(
+        (100.0, 100.0), (130.0, 100.0), 200.0)
+    check(len(crowded["segments"]) == 4,
+          "a number wider than the span suppresses the dimension line halves")
+
+    # Text follows the line, and is never upside down: the flip happens
+    # exactly once, as the line passes vertical.
+    import math as _math
+    check(abs(_math.degrees(cadex_dimension.text_angle((0.0, 1.0))) - 90.0) < 1e-9,
+          "a vertical dimension reads bottom-to-top")
+    check(abs(_math.degrees(cadex_dimension.text_angle((-1.0, -0.001)))) < 1.0,
+          "and a line pointing down-left reads left-to-right, not upside down")
+
+
+def test_an_edge_on_dimension_becomes_a_leader():
+    from mesh_agent import cadex_dimension
+
+    # Looking straight down the measured axis: the two anchors project to
+    # nearly the same pixel. This is the case the whole overlay is judged on
+    # -- the number must survive, because "see the right value from any
+    # angle" is the feature.
+    drawing = cadex_dimension.dimension_geometry(
+        (100.0, 100.0), (103.0, 101.0), 60.0)
+
+    check(drawing["kind"] == "leader",
+          "a span under MINIMUM_SPAN_PX stops being a dimension")
+    check(len(drawing["segments"]) == 2, "a leader is a stub and a shelf")
+    check(abs(drawing["text_angle"]) < 1e-9,
+          "and its number is horizontal, whatever the camera is doing")
+    check(drawing["text_at"][0] > 100.0 and drawing["text_at"][1] > 100.0,
+          "the number sits clear of the anchor it points at")
+
+    # The threshold is a real boundary, not a rounding accident.
+    just_over = cadex_dimension.dimension_geometry(
+        (0.0, 0.0), (cadex_dimension.MINIMUM_SPAN_PX + 0.1, 0.0), 10.0)
+    check(just_over["kind"] == "dimension",
+          "and one pixel over the threshold is a dimension again")
+
+
+def test_diameter_picks_the_widest_on_screen_and_survives_a_bore_down_z():
+    from mesh_agent import cadex_dimension
+
+    # A circle has infinitely many diameters; the legible one is whichever
+    # faces the camera. The ring is published, the endpoints are per frame.
+    ring = cadex_dimension.circle_points((0.0, 0.0, 0.0), (0.0, 0.0, 1.0), 5.0)
+    check(len(ring) == cadex_dimension.DIAMETER_SAMPLES,
+          "the ring is sampled DIAMETER_SAMPLES times")
+    for point in ring:
+        check(abs((point[0] ** 2 + point[1] ** 2) ** 0.5 - 5.0) < 1e-9,
+              "every sample is on the circle")
+        check(abs(point[2]) < 1e-9, "and in the circle's own plane")
+
+    # A bore drilled down Z is the most common thing anyone measures, so a
+    # basis built from a fixed reference axis would fail on the first real
+    # model rather than an exotic one.
+    for normal in ((0.0, 0.0, 1.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)):
+        points = cadex_dimension.circle_points((0.0, 0.0, 0.0), normal, 2.0)
+        check(all(abs(sum(point[axis] * normal[axis] for axis in range(3)))
+                  < 1e-9 for point in points),
+              "the ring stays perpendicular to its normal, down {!s}".format(
+                  normal))
+
+    # Projected as an ellipse squashed 4:1, the widest diameter is the major
+    # axis -- and it is a diameter, never a chord.
+    projected = [(point[0] * 10.0 + 200.0, point[1] * 2.5 + 200.0)
+                 for point in ring]
+    near, far = cadex_dimension.widest_diameter(projected)
+    width = ((far[0] - near[0]) ** 2 + (far[1] - near[1]) ** 2) ** 0.5
+    check(abs(width - 100.0) < 1e-6,
+          "the widest diameter of a 4:1 squashed ring is its major axis")
+    check(abs(near[0] + far[0] - 400.0) < 1e-6
+          and abs(near[1] + far[1] - 400.0) < 1e-6,
+          "and its two ends are opposite each other about the centre")
+
+    # A point behind the camera disqualifies its pair rather than its ring.
+    holed = list(projected)
+    holed[0] = None
+    check(cadex_dimension.widest_diameter(holed) is not None,
+          "one unprojectable sample does not lose the whole measurement")
+    check(cadex_dimension.widest_diameter([None] * len(projected)) is None,
+          "and a ring entirely behind the camera draws nothing")
+
+
+def test_measurement_anchors_follow_the_placement_of_what_they_measure():
+    from mesh_agent import cadex_dimension
+
+    # The anchors the engine publishes are in the measured output's OWN
+    # frame. An output an assembly places carries a solved placement, and
+    # skipping it puts the dimension somewhere the part is not.
+    moved = cadex_dimension.transformed(
+        (1.0, 2.0, 3.0),
+        [1.0, 0.0, 0.0, 10.0,
+         0.0, 1.0, 0.0, 20.0,
+         0.0, 0.0, 1.0, 30.0,
+         0.0, 0.0, 0.0, 1.0])
+    check(moved == (11.0, 22.0, 33.0), "a translation moves an anchor")
+    check(cadex_dimension.transformed((1.0, 2.0, 3.0), []) == (1.0, 2.0, 3.0),
+          "and no placement leaves it alone")
+
+    display = {
+        "plate": {"artifact_kind": "brep", "tessellation": {},
+                  "placement": [1.0, 0.0, 0.0, 5.0,
+                                0.0, 1.0, 0.0, 0.0,
+                                0.0, 0.0, 1.0, 0.0,
+                                0.0, 0.0, 0.0, 1.0]},
+        "height": {"artifact_kind": None, "tessellation": None,
+                   "measurement": {"kind": "distance", "subject": "plate",
+                                   "label": "overall height",
+                                   "value_mm": 10.0, "text": "10.00 mm",
+                                   "anchors_mm": [[0.0, 0.0, 0.0],
+                                                  [0.0, 0.0, 10.0]]}},
+        "bore": {"artifact_kind": None, "tessellation": None,
+                 "measurement": {"kind": "diameter", "subject": "plate",
+                                 "label": "", "value_mm": 6.0,
+                                 "text": "⌀6.00 mm",
+                                 "center_mm": [0.0, 0.0, 5.0],
+                                 "radius_mm": 3.0,
+                                 "normal": [0.0, 0.0, 1.0]}},
+    }
+    records = cadex_dimension.records_from_display(display)
+    check(len(records) == 2,
+          "only the outputs carrying a measurement are drawn")
+    by_name = {record["output"]: record for record in records}
+    check(by_name["height"]["anchors_mm"][0] == (5.0, 0.0, 0.0),
+          "a distance's anchors are moved by its subject's placement")
+    ring = by_name["bore"]["ring_mm"]
+    check(all(abs(((point[0] - 5.0) ** 2 + point[1] ** 2) ** 0.5 - 3.0) < 1e-9
+              and abs(point[2] - 5.0) < 1e-9 for point in ring),
+          "and a diameter's whole ring moves with it, still 3 mm about the "
+          "placed centre")
+    check(by_name["bore"]["text"] == "⌀6.00 mm",
+          "the number is formatted engine-side and passed through verbatim")
+
+
 def main():
     print("=== bl_mesh_agent tests ===")
     mesh_agent.register()
@@ -1431,6 +1615,10 @@ def main():
         test_playback_skips_the_input_frame()
         test_the_simulation_panel_polls_on_content_not_geometry()
         test_render_views_cameras_frame_the_model()
+        test_dimension_is_drawn_in_pixels_around_its_number()
+        test_an_edge_on_dimension_becomes_a_leader()
+        test_diameter_picks_the_widest_on_screen_and_survives_a_bore_down_z()
+        test_measurement_anchors_follow_the_placement_of_what_they_measure()
         if os.environ.get("MESH_AGENT_LIVE"):
             test_live_claude_turn()
         else:
