@@ -3741,6 +3741,351 @@ def test_a_dragged_ring_lands_in_the_accepted_revision(root):
     check(not cadex_cage.ring_objects(scene), "and the overlay cleans up")
 
 
+#: A blind bore: a 10 mm hole down into a 20 mm block that does NOT break
+#: through. Nothing on the outside of this part says whether it did, which is
+#: the case the section view exists for (ADR-148). Its depth is a parameter so
+#: the same model can be rebuilt under the cut.
+BLIND_BORE_SCRIPT = """
+p = params(depth=num(10.0, unit="mm", min=2.0, max=18.0, step=0.5))
+block = part.box(40.0, 30.0, 20.0)
+bore = part.cylinder(5.0, p.depth + 1.0, origin=[20.0, 15.0, 20.0 - p.depth])
+result = {"body": part.cut(block, bore)}
+"""
+
+
+def test_the_section_view_cuts_the_model_open(root):
+    """ADR-148, end to end against the bundled engine.
+
+    The three claims worth a gate, in the order they can fail:
+
+    1. **the cut is capped** — a boolean closes the surface it opens, which
+       is the whole reason this is a boolean rather than the viewport's own
+       clipping planes. A polygon lying in the cutting plane is the evidence,
+       and it is evidence the `--background` gate can actually collect;
+       nothing about ``rv3d.clip_planes`` can be seen from here at all.
+    2. **the bore is open in the section** — the cap is the *material*
+       cross-section, so the wall of the blind bore has to appear in it. This
+       is what a person turns the section on to see.
+    3. **nothing reached the engine** — the accepted revision before and
+       after is the same revision. The section is a view (`docs/VISION.md`:
+       nothing happens outside the script), and this is the assertion that
+       says so rather than the docstring that claims it.
+
+    ...plus the one that breaks quietly: a rebuild under the cut. The
+    modifier rides on the object and ``cadex_hydrate`` swaps the mesh
+    datablock, so it should survive — and if that ever stops being true, the
+    section silently stops applying to the newest shape.
+    """
+    print("test_the_section_view_cuts_the_model_open")
+    from mesh_agent import cadex_section
+
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, report = run_tool("write_script", {"content": BLIND_BORE_SCRIPT})
+    check(ok, "the blind-bore script was accepted: {:s}".format(
+        first_line_of(report)))
+    if not ok:
+        return
+
+    body = next((obj for obj in brep_objects()
+                 if obj.get(cadex_hydrate.OUTPUT_PROP) == "body"), None)
+    check(body is not None, "the part hydrated")
+    if body is None:
+        return
+
+    def evaluated(obj):
+        """World-space points and polygons of what is actually drawn."""
+        bpy.context.view_layer.update()
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        mesh = obj.evaluated_get(depsgraph).to_mesh()
+        points = [obj.matrix_world @ vertex.co for vertex in mesh.vertices]
+        polygons = [[points[index] for index in polygon.vertices]
+                    for polygon in mesh.polygons]
+        obj.evaluated_get(depsgraph).to_mesh_clear()
+        return points, polygons
+
+    points, _polygons = evaluated(body)
+    check(max(point.x for point in points) > 39.0,
+          "the whole part is drawn before the cut")
+    before = cadex_backend._state_for(root).revision
+
+    # -- on, through the agent's tool, which is the path with no button ------
+    ok, message = run_tool("section_view", {"show": True, "axis": "X"})
+    check(ok, "section_view turned it on ({:s})".format(first_line_of(message)))
+    flag = dict(scene.get(cadex_section.SCENE_FLAG) or {})
+    check(flag.get("axis") == 'X' and abs(float(flag.get("offset") or 0.0) - 20.0)
+          < 0.51,
+          "and centred the plane on the part: {!r}".format(
+              (flag.get("axis"), flag.get("offset"))))
+    offset = float(flag.get("offset") or 0.0)
+
+    points, polygons = evaluated(body)
+    check(points and all(cadex_section.is_kept(point, 'X', offset + 1e-3)
+                         for point in points),
+          "every drawn point is on the surviving side of the plane")
+    caps = [polygon for polygon in polygons
+            if all(abs(point.x - offset) < 1e-3 for point in polygon)]
+    check(caps, "the cut face is capped: {:d} polygon(s) lie in the plane"
+                .format(len(caps)))
+
+    # The bore's wall, in the cut face: 5 mm from the bore axis at y = 15,
+    # above the blind floor at z = 10. A clip plane cannot produce this
+    # because it fills nothing; an uncut part cannot either.
+    wall = [point for polygon in caps for point in polygon
+            if abs(abs(point.y - 15.0) - 5.0) < 0.4 and point.z > 9.0]
+    check(wall, "the blind bore is open in the section — its wall is in the "
+                "cut face ({:d} point(s))".format(len(wall)))
+
+    check(cadex_backend._state_for(root).revision == before,
+          "and the engine never heard about any of it: the accepted "
+          "revision is unchanged")
+    check(bpy.data.objects.get(cadex_section.CUTTER_NAME) is not None
+          and not bpy.data.objects[cadex_section.CUTTER_NAME].visible_get(),
+          "the cutter is in the scene and hidden")
+
+    # Down onto solid material well clear of both the bore and the plane: the
+    # cutter box wraps the whole model, so if a hidden object could be hit
+    # this ray would find it before it found the part.
+    hit = scene.ray_cast(bpy.context.view_layer.depsgraph,
+                         (8.0, 6.0, 400.0), (0.0, 0.0, -1.0))
+    check(hit[0] and getattr(hit[4], "name", "") != cadex_section.CUTTER_NAME,
+          "and never steals a face pick: {!r}".format(
+              (hit[0], getattr(hit[4], "name", None))))
+
+    # -- how long the cut takes, which is what a slider drag pays -----------
+    started = time.perf_counter()
+    for step in range(6):
+        scene.cadex_section.offset = offset + (step - 3) * 2.0
+        bpy.context.view_layer.update()
+        bpy.context.evaluated_depsgraph_get().update()
+        body.evaluated_get(bpy.context.evaluated_depsgraph_get()).to_mesh_clear()
+    seconds = (time.perf_counter() - started) / 6.0
+    GATE["section_cut_seconds"] = round(seconds, 4)
+    scene.cadex_section.offset = offset
+
+    # -- a rebuild under the cut --------------------------------------------
+    ok, message = run_tool("set_params", {"params": {"depth": 16.0}})
+    check(ok, "the model rebuilt with the section on: {:s}".format(
+        first_line_of(message)))
+    body = next((obj for obj in brep_objects()
+                 if obj.get(cadex_hydrate.OUTPUT_PROP) == "body"), None)
+    check(body is not None
+          and body.modifiers.get(cadex_section.MODIFIER_NAME) is not None,
+          "the cut survived the rebuild")
+    if body is not None:
+        points, polygons = evaluated(body)
+        check(points and all(cadex_section.is_kept(point, 'X', offset + 1e-3)
+                             for point in points),
+              "and still applies to the shape that came back")
+        deeper = [point for polygon in polygons for point in polygon
+                  if abs(point.x - offset) < 1e-3 and point.z < 5.0
+                  and abs(abs(point.y - 15.0) - 5.0) < 0.4]
+        check(deeper, "the deeper bore is visible in the same section")
+
+    # -- render_views does not show the cut ---------------------------------
+    restore = cadex_section.suspend()
+    points, _polygons = evaluated(body)
+    check(max(point.x for point in points) > 39.0,
+          "suspended for render_views, the whole part is drawn again")
+    restore()
+    points, _polygons = evaluated(body)
+    check(max(point.x for point in points) < offset + 1e-3,
+          "and the cut comes back after it")
+
+    # -- off ----------------------------------------------------------------
+    ok, message = run_tool("section_view", {"show": False})
+    check(ok, "section_view turned it off ({:s})".format(first_line_of(message)))
+    check(all(obj.modifiers.get(cadex_section.MODIFIER_NAME) is None
+              for obj in bpy.data.objects if obj.modifiers),
+          "no modifier is left anywhere")
+    check(bpy.data.objects.get(cadex_section.CUTTER_NAME) is None
+          and bpy.data.node_groups.get(cadex_section.CLIP_GROUP_NAME) is None,
+          "and neither the cutter nor its node group outlives it")
+    points, _polygons = evaluated(body)
+    check(max(point.x for point in points) > 39.0, "the part is whole again")
+
+    GATE["section"] = {"caps": len(caps), "bore_wall_points": len(wall)}
+
+
+#: The jointed assembly with one slider of each kind (the PREVIEW_SCRIPT
+#: pair), plus a two-move staged explosion on the same component -- up, then
+#: over -- which is what makes the staged windows observable at factor 0.5.
+EXPLODED_SCRIPT = """
+p = params(reach=num(12, unit="mm", min=0, max=30, step=1, label="Reach"),
+           width=num(40, unit="mm", min=10, max=90, step=1, label="Width"))
+plate = part.box(p.width, 20, 4)
+arm = part.box(30, 6, 6)
+base = assembly.component(plate, grounded=True)
+swing = assembly.component(arm, placement=[0, 0, 40])
+j = assembly.joint("revolute",
+                   assembly.connector(base, "origin", offset=[p.reach, 0, 4]),
+                   assembly.connector(swing, "origin"))
+asm = assembly.assembly([base, swing], [j])
+diag = assembly.solve(asm)
+boom = assembly.exploded_view(asm, [
+    {"components": [swing], "transform": [0, 0, 30]},
+    {"components": [swing], "transform": [20, 0, 0]},
+])
+result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
+          "j": j, "asm": asm, "diag": diag, "boom": boom}
+"""
+
+
+def test_the_exploded_view_spreads_the_assembly(root):
+    """ADR-149, end to end against the bundled engine.
+
+    The factor-0.5 check comes first on purpose: it is the D3 risk made a
+    test. The pure half predicts a mid-stage pose, the viewport is asked
+    for the same pose through ``matrix_world``, and if the depsgraph or the
+    hook ordering ever fights the re-application, this is the assertion
+    that says so before anything subtler gets a chance to.
+    """
+    print("test_the_exploded_view_spreads_the_assembly")
+    from mesh_agent import cadex_explode
+
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, report = run_tool("write_script", {"content": EXPLODED_SCRIPT})
+    check(ok, "the exploded-assembly script was accepted: {:s}".format(
+        first_line_of(report)))
+    if not ok:
+        return
+
+    swing = bpy.data.objects.get("swing")
+    base = bpy.data.objects.get("base")
+    check(swing is not None and base is not None, "the components hydrated")
+    if swing is None or base is None:
+        return
+
+    display = dict(cadex_backend.last_accepted(root).get("display") or {})
+    record = (display.get("boom") or {}).get("exploded_view")
+    check(isinstance(record, dict),
+          "the display entry carries the exploded-view record")
+    if not isinstance(record, dict):
+        return
+    stages = list(record["stages"])
+    solved = cadex_explode._solved_poses(display, list(record["final_poses"]))
+    solved_swing = tuple(swing.matrix_world.translation)
+    solved_base = tuple(base.matrix_world.translation)
+    revision_before = cadex_backend._state_for(root).revision
+
+    def at(obj):
+        return tuple(obj.matrix_world.translation)
+
+    def near(a, b, tolerance=1e-4):
+        return max(abs(x - y) for x, y in zip(a, b)) < tolerance
+
+    # -- (b) FIRST: the viewport at factor 0.5 is the pure half's number ----
+    ok, message = run_tool("exploded_view", {"show": True, "factor": 0.5})
+    check(ok, "exploded_view turned it on ({:s})".format(
+        first_line_of(message)))
+    predicted = cadex_explode.poses_at(0.5, solved, stages)
+    check(near(at(swing), predicted["swing"][0]),
+          "factor 0.5 matches the staged interpolation (viewport {!r}, "
+          "predicted {!r})".format(at(swing), predicted["swing"][0]))
+
+    # -- (a) factor 1 is the engine's final pose; 0 and off reassemble ------
+    scene.cadex_explode.factor = 1.0
+    final_swing = tuple(record["final_poses"]["swing"]["position_mm"])
+    check(near(at(swing), final_swing),
+          "factor 1 is the engine's final pose ({!r})".format(at(swing)))
+    check(near(at(base), solved_base),
+          "the grounded component never moves")
+    scene.cadex_explode.factor = 0.0
+    check(near(at(swing), solved_swing),
+          "factor 0 is the solved pose again")
+    scene.cadex_explode.factor = 1.0
+
+    # -- (c) the leader lines are real, sibling-collected and untagged ------
+    lines_obj = bpy.data.objects.get(cadex_explode.LINES_NAME)
+    check(lines_obj is not None, "the leader lines are drawn")
+    check(cadex_explode.COLLECTION_NAME in scene.collection.children,
+          "in a collection that is a SIBLING of Model")
+    check(lines_obj is not None
+          and cadex_hydrate.OUTPUT_PROP not in lines_obj,
+          "and carry no output tag, so the hydrate GC ignores them")
+
+    check(cadex_backend._state_for(root).revision == revision_before,
+          "and the engine never heard about any of it: the accepted "
+          "revision is unchanged")
+
+    # -- how long a factor step takes, which is what the slider pays --------
+    started = time.perf_counter()
+    for step in range(6):
+        scene.cadex_explode.factor = 0.15 * step
+    factor_seconds = (time.perf_counter() - started) / 6.0
+    scene.cadex_explode.factor = 1.0
+
+    # -- (d) a rebuild under the explosion keeps it, from the NEW record ----
+    ok, message = run_tool("set_params", {"params": {"width": 60.0}})
+    check(ok, "the model rebuilt with the explosion on: {:s}".format(
+        first_line_of(message)))
+    swing = bpy.data.objects.get("swing")
+    display = dict(cadex_backend.last_accepted(root).get("display") or {})
+    record = (display.get("boom") or {}).get("exploded_view")
+    check(swing is not None and isinstance(record, dict),
+          "the rebuild republished the record")
+    if swing is None or not isinstance(record, dict):
+        return
+    check(near(at(swing), tuple(record["final_poses"]["swing"]["position_mm"])),
+          "the explosion was re-applied from the new response's own data")
+
+    # -- (e) a preview drag under it neither crashes nor collapses ----------
+    model_module.apply_values({"reach": 20.0})
+    cadex_backend.note_preview(scene)
+    cadex_backend.pump_preview_once()
+    _pump_preview_until_idle()
+    cadex_backend.pump_preview_once()      # applies poses + re-applies the spread
+    check(bpy.data.objects.get(cadex_explode.LINES_NAME) is not None,
+          "mid-drag the explosion is still standing")
+    ok, message = run_tool("set_params", {"params": {"reach": 20.0}})
+    check(ok, "the drag settled: {:s}".format(first_line_of(message)))
+    swing = bpy.data.objects.get("swing")
+    display = dict(cadex_backend.last_accepted(root).get("display") or {})
+    record = (display.get("boom") or {}).get("exploded_view")
+    check(swing is not None and isinstance(record, dict)
+          and near(at(swing),
+                   tuple(record["final_poses"]["swing"]["position_mm"])),
+          "and the settled rebuild left it exploded on fresh endpoints "
+          "({!r})".format(None if swing is None else at(swing)))
+    settled_solved = cadex_explode._solved_poses(
+        display, list(record["final_poses"]))
+
+    # -- (g) render_views sees the assembled model: the suspend round trip --
+    restore = cadex_explode.suspend()
+    check(near(at(swing), settled_solved["swing"][0]),
+          "suspended for render_views, the assembly is back together")
+    restore()
+    check(near(at(swing),
+               tuple(record["final_poses"]["swing"]["position_mm"])),
+          "and the spread comes back after it")
+
+    # -- off restores the solved placements and removes what drew it --------
+    ok, message = run_tool("exploded_view", {"show": False})
+    check(ok, "exploded_view turned it off ({:s})".format(
+        first_line_of(message)))
+    check(near(at(swing), settled_solved["swing"][0]),
+          "off is the engine's solved placement, exactly")
+    check(bpy.data.objects.get(cadex_explode.LINES_NAME) is None
+          and bpy.data.collections.get(cadex_explode.COLLECTION_NAME) is None,
+          "and neither the lines nor their collection outlives it")
+
+    # -- (f) a baked simulation refuses the explosion -----------------------
+    # `replace`: this revision drops the exploded-view output on purpose.
+    ok, _report = run_tool("write_script", {"content": SIMULATION_SCRIPT,
+                                            "replace": True})
+    check(ok, "a simulation script accepted on the same project")
+    ok, message = run_tool("exploded_view", {"show": True})
+    check(not ok and "simulation" in message,
+          "with a simulation baked the tool refuses, naming the conflict "
+          "({:s})".format(first_line_of(message)))
+
+    GATE["exploded_view"] = {
+        "stages": len(stages),
+        "factor_step_seconds": round(factor_seconds, 4),
+    }
+
+
 def test_live_mode_is_wired_and_refuses_cleanly(live_root):
     """Live mode reaches the engine, and says no politely when it must.
 
@@ -4198,6 +4543,8 @@ def main():
     live_root = tempfile.mkdtemp(prefix="mesh-cadex-live-")
     wiring_root = tempfile.mkdtemp(prefix="mesh-cadex-wiring-")
     cage_root = tempfile.mkdtemp(prefix="mesh-cadex-cage-")
+    section_root = tempfile.mkdtemp(prefix="mesh-cadex-section-")
+    explode_root = tempfile.mkdtemp(prefix="mesh-cadex-explode-")
     try:
         test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
@@ -4255,6 +4602,8 @@ def main():
         test_the_training_panel_tracks_a_run(training_root)
         test_two_applies_in_a_row_both_land(wiring_root)
         test_a_dragged_ring_lands_in_the_accepted_revision(cage_root)
+        test_the_section_view_cuts_the_model_open(section_root)
+        test_the_exploded_view_spreads_the_assembly(explode_root)
         test_live_mode_is_wired_and_refuses_cleanly(live_root)
     finally:
         try:
@@ -4280,7 +4629,7 @@ def main():
                      drag_root, supersede_root, skip_root,
                      preview_root, fallback_root, views_root, collision_root,
                      shapes_root, isolate_root, readers_root, wiring_root,
-                     cage_root):
+                     cage_root, section_root):
             shutil.rmtree(root, ignore_errors=True)
 
     GATE["ok"] = not FAILURES

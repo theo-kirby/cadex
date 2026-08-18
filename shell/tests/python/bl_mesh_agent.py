@@ -1414,6 +1414,132 @@ def test_render_views_cameras_frame_the_model():
           "and it never reaches the engine")
 
 
+def test_exploded_poses_interpolate_in_staged_windows():
+    """The explosion arithmetic, in the half that imports no bpy (ADR-149).
+
+    Stage i of N owns factor window [i/N, (i+1)/N]: a component moves inside
+    its own windows, holds outside them, and carries earlier stages forward.
+    The midpoint check is the load-bearing one — it is the number the gate's
+    factor-0.5 assertion compares the viewport against, so it must be pinned
+    here first, on a fixture whose answer is checkable by hand.
+    """
+    print("test_exploded_poses_interpolate_in_staged_windows")
+    from mesh_agent import cadex_explode
+
+    half_root_two = 0.5 ** 0.5
+    identity = (0.0, 0.0, 0.0, 1.0)
+    quarter_z = (0.0, 0.0, half_root_two, half_root_two)
+    solved = {"top": ((0.0, 0.0, 0.0), identity),
+              "base": ((0.0, 0.0, -10.0), identity)}
+    # Two moves, both on `top`, cumulative: up 20, then over 10 with a 90°
+    # twist. `base` is never named, so it must sit still at every factor.
+    stages = [
+        {"move_index": 0, "kind": "normal", "component_outputs": ["top"],
+         "poses": {"top": {"position_mm": [0.0, 0.0, 20.0],
+                           "quaternion_xyzw": list(identity)}}},
+        {"move_index": 1, "kind": "normal", "component_outputs": ["top"],
+         "poses": {"top": {"position_mm": [10.0, 0.0, 20.0],
+                           "quaternion_xyzw": list(quarter_z)}}},
+    ]
+
+    def near(a, b, tolerance=1e-9):
+        return max(abs(x - y) for x, y in zip(a, b)) < tolerance
+
+    at_zero = cadex_explode.poses_at(0.0, solved, stages)
+    check(near(at_zero["top"][0], (0.0, 0.0, 0.0))
+          and near(at_zero["top"][1], identity),
+          "factor 0 is the solved pose")
+    check(near(at_zero["base"][0], (0.0, 0.0, -10.0)),
+          "an unmoved component sits at its solved pose")
+
+    at_half = cadex_explode.poses_at(0.5, solved, stages)
+    check(near(at_half["top"][0], (0.0, 0.0, 20.0)),
+          "factor 0.5 is exactly the end of stage 0 of 2")
+    check(near(at_half["top"][1], identity),
+          "and stage 1's twist has not started")
+
+    # Middle of stage 1: half the translation, half the rotation — a 45°
+    # twist, which is the slerp midpoint, not the lerp one.
+    at_three_quarters = cadex_explode.poses_at(0.75, solved, stages)
+    eighth_z = (0.0, 0.0, (0.5 - 0.5 * half_root_two) ** 0.5,
+                (0.5 + 0.5 * half_root_two) ** 0.5)
+    check(near(at_three_quarters["top"][0], (5.0, 0.0, 20.0)),
+          "mid-stage translation is the lerp midpoint")
+    check(near(at_three_quarters["top"][1], eighth_z, 1e-9),
+          "mid-stage rotation is the slerp midpoint (45° about Z)")
+    check(near(at_three_quarters["base"][0], (0.0, 0.0, -10.0)),
+          "the unmoved component still has not moved")
+
+    at_one = cadex_explode.poses_at(1.0, solved, stages)
+    check(near(at_one["top"][0], (10.0, 0.0, 20.0))
+          and near(at_one["top"][1], quarter_z),
+          "factor 1 is the final pose")
+
+    # q and -q are one orientation: a target on the far hemisphere must
+    # interpolate the short way round, not sweep 270°.
+    flipped = cadex_explode._slerp(identity,
+                                   tuple(-v for v in quarter_z), 0.5)
+    agreement = abs(sum(x * y for x, y in zip(flipped, eighth_z)))
+    check(abs(agreement - 1.0) < 1e-9,
+          "a sign-flipped quaternion still takes the short way")
+
+    # The factor-0 endpoint comes from the display placement matrix.
+    ninety_about_z = [0.0, -1.0, 0.0, 1.0,
+                      1.0, 0.0, 0.0, 2.0,
+                      0.0, 0.0, 1.0, 3.0,
+                      0.0, 0.0, 0.0, 1.0]
+    position, quaternion = cadex_explode.decompose_matrix16(ninety_about_z)
+    check(near(position, (1.0, 2.0, 3.0)),
+          "decompose reads the translation column")
+    check(near(quaternion, quarter_z, 1e-9),
+          "decompose reads the rotation as an xyzw quaternion")
+
+    # One exploded view or none: the D5 rule, stated once and refused with
+    # every candidate named.
+    record = {"assembly_output": "asm"}
+    entry, reason = cadex_explode.exploded_entry(
+        {"boom": {"exploded_view": record}, "plate": {}})
+    check(entry == ("boom", record) and reason == "",
+          "one exploded view is found by its key")
+    entry, reason = cadex_explode.exploded_entry({"plate": {}})
+    check(entry is None and "no exploded view" in reason,
+          "no exploded view is a stated reason, not an error")
+    entry, reason = cadex_explode.exploded_entry(
+        {"boom": {"exploded_view": record},
+         "bang": {"exploded_view": record}})
+    check(entry is None and "bang" in reason and "boom" in reason,
+          "two exploded views are refused with both named")
+
+    # Leader lines grow with their component's own staged progress: the k-th
+    # line of a component is its k-th move, and grows only during it.
+    lines = [
+        {"component_output": "top", "start_mm": [0.0, 0.0, 0.0],
+         "end_mm": [0.0, 0.0, 20.0]},
+        {"component_output": "top", "start_mm": [0.0, 0.0, 20.0],
+         "end_mm": [10.0, 0.0, 20.0]},
+    ]
+    check(cadex_explode.line_points_at(
+              0.0, lines, cadex_explode.component_progress(0.0, stages)) == [],
+          "no lines at factor 0")
+    at_half_lines = cadex_explode.line_points_at(
+        0.5, lines, cadex_explode.component_progress(0.5, stages))
+    check(len(at_half_lines) == 1 and near(at_half_lines[0][1], (0.0, 0.0, 20.0)),
+          "at factor 0.5 the first line is complete and the second absent")
+    at_three_quarter_lines = cadex_explode.line_points_at(
+        0.75, lines, cadex_explode.component_progress(0.75, stages))
+    check(len(at_three_quarter_lines) == 2
+          and near(at_three_quarter_lines[1][1], (5.0, 0.0, 20.0)),
+          "mid-stage, its line has grown exactly halfway")
+
+    from mesh_agent import tools
+    names = [entry["name"] for entry in tools.TOOL_DEFS]
+    check("exploded_view" in names, "exploded_view is a tool")
+    check("exploded_view" not in tools.MUTATING_TOOLS,
+          "looking at the assembly spread does not enter the undo stack")
+    check("exploded_view" not in tools._ENGINE_TOOLS,
+          "and it never reaches the engine")
+
+
 def test_dimension_is_drawn_in_pixels_around_its_number():
     from mesh_agent import cadex_dimension
 
@@ -1615,6 +1741,7 @@ def main():
         test_playback_skips_the_input_frame()
         test_the_simulation_panel_polls_on_content_not_geometry()
         test_render_views_cameras_frame_the_model()
+        test_exploded_poses_interpolate_in_staged_windows()
         test_dimension_is_drawn_in_pixels_around_its_number()
         test_an_edge_on_dimension_becomes_a_leader()
         test_diameter_picks_the_widest_on_screen_and_survives_a_bore_down_z()

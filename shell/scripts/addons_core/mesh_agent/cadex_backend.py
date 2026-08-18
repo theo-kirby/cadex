@@ -169,6 +169,40 @@ def hydrate(payload, animate=True):
     # than lagging. That is the opposite trade from a wire cage, for the
     # opposite reason -- a cage left over from the previous shape is wrong,
     # and a number recomputed for this one is right.
+    # The section view (ADR-148), on the same terms as the two above, and for
+    # one reason only: an output that has just entered the contract is a NEW
+    # object, and a new object has no modifier on it. Everything else about
+    # the section survives a rebuild by itself -- ``cadex_hydrate`` swaps the
+    # mesh datablock and keeps the object, so the modifier stack rides
+    # through every drag and every settled refine untouched. Mid-drag it
+    # refreshes rather than clearing: the cut is computed from the shape in
+    # front of you, so it is current rather than lagging -- the dimension
+    # trade, not the collision one.
+    try:
+        from . import cadex_section
+        if cadex_section.enabled():
+            hydration["section"] = cadex_section.refresh()
+    except Exception:
+        hydration["section"] = {"shown": False,
+                                "error": traceback.format_exc()}
+        traceback.print_exc()
+
+    # The exploded view (ADR-149), after the section and for a sharper
+    # reason than a new object: hydrate just wrote every component's SOLVED
+    # matrix_world, and an explosion that is on must be re-applied on top of
+    # those fresh poses — from the record THIS response carried, so a
+    # rebuild that moved a part moves its exploded pose on the same
+    # response. Order is the contract: engine poses first, explosion after,
+    # always.
+    try:
+        from . import cadex_explode
+        if cadex_explode.enabled():
+            hydration["explode"] = cadex_explode.refresh()
+    except Exception:
+        hydration["explode"] = {"shown": False,
+                                "error": traceback.format_exc()}
+        traceback.print_exc()
+
     try:
         from . import cadex_dimension
         hydration["dimensions"] = cadex_dimension.apply(payload)
@@ -1752,6 +1786,30 @@ def _finish_preview(scene, root, slot):
     if str(payload.get("revision") or "") != _state_for(root).revision:
         return
     slot["applied"] += cadex_hydrate.apply_placements(payload.get("placements"))
+
+    # A pose-only change moves objects without rehydrating them, and the wire
+    # clip carries the plane in each object's OWN frame (ADR-148) -- so a
+    # component that just moved is cut on the plane it was at before. The
+    # solids need nothing: their cutter is in world space and does not move.
+    try:
+        from . import cadex_section
+        if cadex_section.enabled(scene):
+            cadex_section.refresh(scene)
+    except Exception:
+        traceback.print_exc()
+
+    # ...and the explosion (ADR-149): ``apply_placements`` just wrote solved
+    # preview poses over the exploded ones, so re-apply the explosion — from
+    # the last SETTLED record, whose endpoints are stale against this drag
+    # by design (the preview path drops exploded views engine-side). The
+    # settled rebuild behind the drag refreshes the endpoints through the
+    # hydrate hook above.
+    try:
+        from . import cadex_explode
+        if cadex_explode.enabled(scene):
+            cadex_explode.refresh(scene)
+    except Exception:
+        traceback.print_exc()
 
 
 def preview_stats(root=None, reset=False):

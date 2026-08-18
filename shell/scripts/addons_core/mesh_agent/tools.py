@@ -355,6 +355,71 @@ TOOL_DEFS = [
         },
     },
     {
+        "name": "section_view",
+        "description": (
+            "Cut the model open on a plane and take the near half away, so "
+            "the inside can be seen: a bore that does not break through, a "
+            "wall left too thin, a pocket that missed the boss it was meant "
+            "to clear. The cut face is filled, so what you see is material. "
+            "Turn it on and take a viewport_screenshot -- render_views "
+            "deliberately shows the whole model instead. Read-only: it "
+            "changes what is drawn, never the script or the model."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "show": {
+                    "type": "boolean",
+                    "description": "True to cut, false to stop, omitted to toggle.",
+                },
+                "axis": {
+                    "type": "string",
+                    "enum": ["X", "Y", "Z"],
+                    "description": "Which axis the plane is square to (default Z).",
+                },
+                "offset": {
+                    "type": "number",
+                    "description": ("Where the plane sits along that axis, in "
+                                    "mm. Omitted cuts through the middle of "
+                                    "the model."),
+                },
+                "flip": {
+                    "type": "boolean",
+                    "description": "Keep the other half.",
+                },
+            },
+        },
+    },
+    {
+        "name": "exploded_view",
+        "description": (
+            "Spread the assembly apart along the explosion moves the script "
+            "declares, from 0 (assembled) to 1 (fully exploded), with leader "
+            "lines from each part back to its place. The moves come from the "
+            "script's declared exploded view -- this only plays them; if the "
+            "script declares none, this says so. Turn it on and take a "
+            "viewport_screenshot to show how the mechanism goes together -- "
+            "render_views deliberately shows the assembled model instead. "
+            "Refused while a simulation is baked. Read-only: it changes what "
+            "is drawn, never the script or the model."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "show": {
+                    "type": "boolean",
+                    "description": ("True to explode, false to reassemble, "
+                                    "omitted to toggle."),
+                },
+                "factor": {
+                    "type": "number",
+                    "description": ("How far apart, 0 to 1 (default 1 when "
+                                    "switching on)."),
+                },
+            },
+        },
+    },
+    {
         "name": "export_stl",
         "description": (
             "Export model parts as STL files for 3D printing, one file per "
@@ -1050,6 +1115,106 @@ def _tool_collision_view(tool_input):
     return _text("\n".join(lines)), False
 
 
+def _tool_section_view(tool_input):
+    """Cut the model open, for the party that cannot press a button.
+
+    Warranted as a tool for the reason ``collision_view`` is (ADR-091): the
+    agent is the one that has to check whether a bore broke through, and it
+    cannot reach a button. Same two exclusions, for the same two reasons --
+    not in ``MUTATING_TOOLS``, because looking inside the model must not
+    enter the undo stack; not in ``_ENGINE_TOOLS``, because it never speaks
+    to the engine at all.
+    """
+
+    from . import cadex_section
+
+    import bpy
+
+    scene = bpy.context.scene
+    group = cadex_section.settings(scene)
+    if group is None:
+        return _text("The section view is unavailable in this file."), True
+
+    show = tool_input.get("show")
+    want = (not group.show) if show is None else bool(show)
+    if not want:
+        cadex_section.toggle(False, scene=scene)
+        return _text("Section view off."), False
+
+    # Aim first, then switch on: `toggle` centres the plane on the axis it is
+    # given, so an offset supplied here must be applied after that or it
+    # would be overwritten by the centring.
+    if "axis" in tool_input:
+        group.axis = str(tool_input["axis"]).upper()
+    report = cadex_section.toggle(True, scene=scene)
+    if report.get("message"):
+        return _text(str(report["message"])), True
+    if "offset" in tool_input:
+        group.offset = float(tool_input["offset"])
+    if "flip" in tool_input:
+        group.flip = bool(tool_input["flip"])
+    report = dict(scene.get(cadex_section.SCENE_FLAG) or {})
+
+    lines = ["Section on: cutting across {:s} at {:.2f} mm{:s}.".format(
+        str(report.get("axis") or ""), float(report.get("offset") or 0.0),
+        ", far half kept" if report.get("flip") else "")]
+    lines.append("{:d} part(s) cut.".format(int(report.get("solids") or 0)))
+    span = list(report.get("span") or ())
+    if len(span) == 2:
+        lines.append("The model spans {:.2f} to {:.2f} mm on that axis.".format(
+            span[0], span[1]))
+    if report.get("clear"):
+        lines.append("The plane is off the end of the model, so nothing is "
+                     "cut -- move the offset inside that span.")
+    lines.append("Take a viewport_screenshot to see it.")
+    return _text("\n".join(lines)), False
+
+
+def _tool_exploded_view(tool_input):
+    """Spread the assembly, for the party that cannot press a button.
+
+    Warranted as a tool for the reason ``section_view`` is: the agent is
+    the one that has to show the user how a mechanism goes together, and it
+    cannot reach a button. Same two exclusions, for the same two reasons --
+    not in ``MUTATING_TOOLS``, because looking at the assembly spread must
+    not enter the undo stack; not in ``_ENGINE_TOOLS``, because it plays a
+    record already cached against the accepted revision.
+    """
+
+    from . import cadex_explode
+
+    import bpy
+
+    scene = bpy.context.scene
+    group = cadex_explode.settings(scene)
+    if group is None:
+        return _text("The exploded view is unavailable in this file."), True
+
+    show = tool_input.get("show")
+    want = (not group.show) if show is None else bool(show)
+    if not want:
+        cadex_explode.toggle(False, scene=scene)
+        return _text("Exploded view off; the assembly is back together."), False
+
+    report = cadex_explode.toggle(True, scene=scene)
+    if report.get("message"):
+        return _text(str(report["message"])), True
+    if "factor" in tool_input:
+        group.factor = max(0.0, min(1.0, float(tool_input["factor"])))
+        report = dict(scene.get(cadex_explode.SCENE_FLAG) or {})
+    if not report.get("shown"):
+        return _text(str(report.get("reason") or "Nothing to explode.")), True
+
+    lines = ["Exploded to factor {:.2f}: {:d} component(s) spread over "
+             "{:d} stage(s), {:d} leader line(s).".format(
+                 float(report.get("factor") or 0.0),
+                 int(report.get("components") or 0),
+                 int(report.get("stages") or 0),
+                 int(report.get("lines") or 0))]
+    lines.append("Take a viewport_screenshot to see it.")
+    return _text("\n".join(lines)), False
+
+
 _HANDLERS = {
     "get_script": _tool_get_script,
     "write_script": _tool_write_script,
@@ -1068,6 +1233,8 @@ _HANDLERS = {
     "link_part": _tool_link_part,
     "focus_view": _tool_focus_view,
     "collision_view": _tool_collision_view,
+    "section_view": _tool_section_view,
+    "exploded_view": _tool_exploded_view,
 }
 
 # Handlers that additionally receive the calling Agent.

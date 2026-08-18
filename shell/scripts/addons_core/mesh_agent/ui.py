@@ -403,6 +403,62 @@ class MESH_AGENT_OT_toggle_collision(Operator):
         return {'FINISHED'}
 
 
+class MESH_AGENT_OT_toggle_section(Operator):
+    """Cut the model open on a plane, so the inside can be looked at.
+
+    A view, not a feature (ADR-148): the plane never reaches the script, the
+    accepted revision is the same revision with it on, and switching it off
+    leaves the model exactly as it was. What it changes is what is drawn.
+    """
+
+    bl_idname = "mesh_agent.toggle_section"
+    bl_label = "Section View"
+    bl_description = ("Cut the model open on a plane so the inside is "
+                      "visible. The cut face is filled, and nothing about "
+                      "the model itself changes")
+
+    def execute(self, context):
+        from . import cadex_section
+        try:
+            report = cadex_section.toggle(scene=context.scene)
+        except Exception as error:
+            self.report({'WARNING'}, str(error))
+            return {'CANCELLED'}
+        message = str(report.get("message") or "")
+        if message:
+            self.report({'INFO'}, message)
+        return {'FINISHED'}
+
+
+class MESH_AGENT_OT_toggle_explode(Operator):
+    """Spread the assembly along its declared explosion moves.
+
+    A view, not a feature (ADR-149): the moves live in the script, the
+    factor lives here, and the accepted revision is the same revision with
+    the explosion on as with it off. What it changes is where the drawn
+    components sit.
+    """
+
+    bl_idname = "mesh_agent.toggle_explode"
+    bl_label = "Exploded View"
+    bl_description = ("Spread the assembly apart along its declared "
+                      "explosion moves, with a factor slider from assembled "
+                      "to fully exploded. Nothing about the model itself "
+                      "changes")
+
+    def execute(self, context):
+        from . import cadex_explode
+        try:
+            report = cadex_explode.toggle(scene=context.scene)
+        except Exception as error:
+            self.report({'WARNING'}, str(error))
+            return {'CANCELLED'}
+        message = str(report.get("message") or "")
+        if message:
+            self.report({'INFO'}, message)
+        return {'FINISHED'}
+
+
 class MESH_AGENT_OT_toggle_cage(Operator):
     """Show or hide the section cage's rings, so they can be dragged."""
 
@@ -879,6 +935,59 @@ class CADEX_PARAMS_PT_parameters(Panel):
                 int(flag.get("rings") or 0)), icon='INFO')
             box.operator(MESH_AGENT_OT_apply_cage.bl_idname, icon='CHECKMARK')
 
+        # The section view (ADR-148), here for the reason the cage is here:
+        # it is set without the AI in the loop, and a space type of its own
+        # would spend BLENDER-TREE §2b budget this slice has no claim on. The
+        # difference from every other control in this editor is that this one
+        # changes nothing about the model -- so it is a box at the bottom,
+        # under the controls that do.
+        from . import cadex_section
+        section = cadex_section.settings(context.scene)
+        box = layout.box().column(align=True)
+        box.operator(MESH_AGENT_OT_toggle_section.bl_idname,
+                     icon='MOD_BOOLEAN',
+                     depress=bool(section and section.show))
+        if section and section.show:
+            row = box.row(align=True)
+            row.prop(section, "axis", expand=True)
+            box.prop(section, "offset")
+            box.prop(section, "flip", toggle=True)
+            flag = context.scene.get(cadex_section.SCENE_FLAG) or {}
+            span = list(flag.get("span") or ())
+            if flag.get("clear"):
+                # Not clamped, and this is the line that pays for that: a
+                # slider that refuses to leave the model lies about where the
+                # model is, so it says where the model is instead.
+                box.label(text="the plane is clear of the model",
+                          icon='INFO')
+            if len(span) == 2:
+                note = box.row()
+                note.enabled = False
+                note.label(text="{:s} spans {:.2f} … {:.2f} mm".format(
+                    str(flag.get("axis") or ""), span[0], span[1]))
+
+        # The exploded view (ADR-149), under the section for the section's
+        # reasons: a view control set without the AI in the loop, changing
+        # nothing about the model. The moves themselves are the script's —
+        # only how far along them the viewport sits is decided here.
+        from . import cadex_explode
+        explode = cadex_explode.settings(context.scene)
+        box = layout.box().column(align=True)
+        box.operator(MESH_AGENT_OT_toggle_explode.bl_idname,
+                     icon='MOD_EXPLODE',
+                     depress=bool(explode and explode.show))
+        if explode and explode.show:
+            box.prop(explode, "factor", slider=True)
+            flag = context.scene.get(cadex_explode.SCENE_FLAG) or {}
+            if flag.get("shown"):
+                note = box.row()
+                note.enabled = False
+                note.label(text="{:d} component(s), {:d} stage(s)".format(
+                    int(flag.get("components") or 0),
+                    int(flag.get("stages") or 0)))
+            elif flag.get("reason"):
+                box.label(text=str(flag["reason"]), icon='INFO')
+
 
 class CADEX_CHAT_PT_transcript(Panel):
     """The conversation, in the chat editor's main region."""
@@ -1110,6 +1219,19 @@ def draw_chat_buttons(layout, context):
     views.operator(MESH_AGENT_OT_toggle_dimensions.bl_idname, text="",
                    icon='DRIVER_DISTANCE',
                    depress=cadex_dimension.SCENE_FLAG in context.scene)
+    # ...and the section view, third of the same kind (ADR-148). Its plane is
+    # aimed from the parameters editor; this is the switch, where the other
+    # two switches are.
+    from . import cadex_section
+    views.operator(MESH_AGENT_OT_toggle_section.bl_idname, text="",
+                   icon='MOD_BOOLEAN',
+                   depress=cadex_section.enabled(context.scene))
+    # ...and the exploded view, fourth of the same kind (ADR-149). Its
+    # factor is dragged in the parameters editor; this is the switch.
+    from . import cadex_explode
+    views.operator(MESH_AGENT_OT_toggle_explode.bl_idname, text="",
+                   icon='MOD_EXPLODE',
+                   depress=cadex_explode.enabled(context.scene))
 
     # --- the turn ----------------------------------------------------------
     # Starting over is one button, not a trash can: what the user wants back
@@ -1138,6 +1260,8 @@ classes = (
     MESH_AGENT_OT_toggle_collision,
     MESH_AGENT_OT_toggle_dimensions,
     MESH_AGENT_OT_measure_pins,
+    MESH_AGENT_OT_toggle_section,
+    MESH_AGENT_OT_toggle_explode,
     MESH_AGENT_OT_toggle_cage,
     MESH_AGENT_OT_apply_cage,
     # Panel order IS registration order -- nothing here sets `bl_order` --

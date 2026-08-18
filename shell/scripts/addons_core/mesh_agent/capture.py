@@ -497,22 +497,39 @@ def render_views(max_size=1024):
     if space is None:
         return None, "No 3D viewport found; use scene_summary instead."
 
-    bbox = model_bbox()
-    if bbox is None:
-        return None, ("The Model collection is empty, so there is nothing to "
-                      "render; check scene_summary for what the engine built.")
+    # The section view is suspended here for the reason the sibling
+    # collections are hidden here (ADR-148): a cut model is not what was
+    # built, and this is the tool that answers "what did I build".
+    # ``viewport_screenshot`` answers the other question and leaves it alone.
+    # It goes FIRST, before the model is measured, because ``bound_box``
+    # reads evaluated geometry -- cameras fitted while the cut was on would
+    # frame the half of the part that survived it.
+    from . import cadex_section
 
+    undo_section = cadex_section.suspend()
+    # The exploded view is suspended on the same reasoning (ADR-149): spread
+    # components are not what was built, and the cameras are about to be
+    # fitted to bounds the spread would inflate.
+    from . import cadex_explode
+
+    undo_explode = cadex_explode.suspend()
     tile = max(8, int(max_size) // 2)
-    views = view_matrices(bbox, aspect=1.0)
-
     undo_isolation = _isolate_model(bpy.context.view_layer)
     undo_presentation = _present_model(space)
     try:
+        bbox = model_bbox()
+        if bbox is None:
+            return None, ("The Model collection is empty, so there is nothing "
+                          "to render; check scene_summary for what the engine "
+                          "built.")
+        views = view_matrices(bbox, aspect=1.0)
         tiles = [_tile_pixels(space, region, tile, tile, view["view"], view["window"])
                  for view in views]
     finally:
         undo_presentation()
         undo_isolation()
+        undo_explode()
+        undo_section()
 
     pixels, width, height = composite_2x2(tiles, tile, tile)
 

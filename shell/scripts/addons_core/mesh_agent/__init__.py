@@ -28,6 +28,8 @@ from . import agent as agent_module
 from . import cadex_backend as cadex_backend_module
 from . import cadex_live as cadex_live_module
 from . import cadex_pick as cadex_pick_module
+from . import cadex_explode as cadex_explode_module
+from . import cadex_section as cadex_section_module
 from . import cadex_terminal_pick as cadex_terminal_pick_module
 from . import cadex_wire_path as cadex_wire_path_module
 from . import cadex_training as cadex_training_module
@@ -227,6 +229,13 @@ def register():
     model_module.register()
     cadex_backend_module.register()
     cadex_pick_module.register()
+    # The section view owns one PropertyGroup on the scene and nothing else
+    # (ADR-148); registering it before ui.py is what lets a panel draw it.
+    cadex_section_module.register()
+    # The exploded view owns one PropertyGroup on the scene and nothing else
+    # (ADR-149), on the section view's exact terms and for the same reason
+    # here: before ui.py, so a panel can draw it.
+    cadex_explode_module.register()
     cadex_terminal_pick_module.register()
     cadex_wire_path_module.register()
     cadex_training_module.register()
@@ -277,6 +286,8 @@ def unregister():
     cadex_training_module.unregister()
     cadex_wire_path_module.unregister()
     cadex_terminal_pick_module.unregister()
+    cadex_explode_module.unregister()
+    cadex_section_module.unregister()
     cadex_pick_module.unregister()
     cadex_backend_module.unregister()
     model_module.unregister()
