@@ -127,6 +127,33 @@ Robot, Spreadsheet, …) is out of scope. Deleted in the VibeCAD teardown at
 the runtime level; the remaining source trees are slated for removal
 (`docs/FREECAD.md`).
 
+**And FEM arrived the same way mesh editing did** (ADR-145, 2026-08-11). Not
+as a workbench, and not as a solver you drive: `part.stress(...)` is one
+primitive on the part domain that takes an ADR-029 selector for what holds
+the part, a list of loads, four declared material properties with their units
+in their names, and an element budget — and publishes a **safety factor and
+no geometry**, exactly as `part.measurement` publishes a dimension. Three
+facts make that honest rather than a walk-back:
+
+- **Nothing is being resurrected.** FreeCAD's `Fem` tree was *deleted*, not
+  disabled — 3,589 files in commit `e85fe5ea` — so there is no workbench
+  here to switch back on. This is new Cadex surface that happens to compute
+  the same physics.
+- **There is no sixth domain.** It is one operation on `part`, so by the test
+  the line above sets for scope it costs no protocol op, no new
+  `artifact_kind` and no `shell/` diff. The count of domains is still five.
+- **The expensive half stays offboard.** Topology optimisation, refinement
+  sweeps, CalculiX as a second opinion and load cases measured off a MuJoCo
+  rollout all live in `analysis/`, which is not the engine and never will be
+  (ADR-141). What came in is the single linear solve that a *rebuild* needs
+  in order for a verdict to follow its part — and it is pinned equal by test
+  to the offboard implementation that was verified against a closed form and
+  against CalculiX.
+
+The prediction in the mesh-editing paragraph above held again: engine ops, on
+declared inputs, with the script still the only thing that authors geometry.
+`docs/STRUCTURAL.md` is the arc.
+
 **Interchange is in scope and first-class.** A parametric CAD app that
 cannot emit STEP is not a product; STEP import/export is an engine
 deliverable (Phase 11), not a shell convenience (ADR-025). **MJCF export is

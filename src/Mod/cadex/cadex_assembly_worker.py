@@ -1520,6 +1520,34 @@ def _placement_fact(placement: Any) -> dict[str, Any]:
     }
 
 
+def _compact_pose(fact: Mapping[str, Any]) -> dict[str, list[float]]:
+    """A placement fact reduced to the pose the shell interpolates.
+
+    Takes the ``_placement_fact`` mapping rather than a native Placement so
+    the display record below stays a pure dict-to-dict function. The
+    quaternion order is xyzw -- the simulation-trace convention
+    (``_compact_placement``), so a client that reads traces reads this too.
+    """
+
+    axis = [float(value) for value in fact["rotation_axis"]]
+    angle = math.radians(float(fact["rotation_angle_degrees"]))
+    magnitude = math.sqrt(sum(value * value for value in axis))
+    if magnitude <= 1.0e-15:
+        quaternion = [0.0, 0.0, 0.0, 1.0]
+    else:
+        half_sin = math.sin(angle / 2.0) / magnitude
+        quaternion = [
+            axis[0] * half_sin,
+            axis[1] * half_sin,
+            axis[2] * half_sin,
+            math.cos(angle / 2.0),
+        ]
+    return {
+        "position_mm": [float(value) for value in fact["position_mm"]],
+        "quaternion_xyzw": quaternion,
+    }
+
+
 def _global_placement_fact(
     obj: Any,
     *,
@@ -2717,6 +2745,56 @@ def _execute_native_exploded_view(
         },
     }
     return data
+
+
+def _exploded_display_record(exploded_view_data: Mapping[str, Any]) -> dict[str, Any]:
+    """The compact display record an exploded-view output publishes.
+
+    A pure dict-to-dict projection of ``_execute_native_exploded_view``'s
+    data: the per-move cumulative poses become interpolation stages, the
+    final placements become endpoints, and the leader-line segments are
+    flattened into one list. This is the whole wire payload -- one optional
+    ``display.*`` key beside ``measurement``/``mesh_check``/``stress``
+    rather than a retained artifact, whose hash would enter the restore
+    digest and demand byte-reproducible native readback.
+    """
+
+    stages: list[dict[str, Any]] = []
+    lines: list[dict[str, Any]] = []
+    for move in exploded_view_data["moves"]:
+        stages.append(
+            {
+                "move_index": int(move["move_index"]),
+                "kind": str(move["kind"]),
+                "component_outputs": [str(name) for name in move["component_outputs"]],
+                "poses": {
+                    str(name): _compact_pose(fact)
+                    for name, fact in move["final_placements"].items()
+                },
+            }
+        )
+        for segment in move.get("line_segments") or []:
+            lines.append(
+                {
+                    "component_output": str(segment["component_output"]),
+                    "start_mm": [float(value) for value in segment["start_mm"]],
+                    "end_mm": [float(value) for value in segment["end_mm"]],
+                }
+            )
+    bounds = exploded_view_data["assembly_bounds"]
+    return {
+        "assembly_output": str(exploded_view_data["assembly_output"]),
+        "bounds": {
+            "center_mm": [float(value) for value in bounds["center_mm"]],
+            "diagonal_mm": float(bounds["diagonal_mm"]),
+        },
+        "stages": stages,
+        "final_poses": {
+            str(name): _compact_pose(fact)
+            for name, fact in exploded_view_data["final_component_placements"].items()
+        },
+        "lines": lines,
+    }
 
 
 def _simulation_trace_preview(frames: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -5937,6 +6015,13 @@ def validate_and_solve_assembly(
             components=components,
         )
         by_name[exploded_view_output]["assembly_data"] = exploded_view_data
+        # The display record rides the output item the same way `stress`
+        # does on part outputs: an optional key `cadexd._display_block`
+        # copies verbatim, so the shell can interpolate the explosion
+        # without a second request or a retained artifact.
+        by_name[exploded_view_output]["exploded_view"] = _exploded_display_record(
+            exploded_view_data
+        )
         moved_components = list(
             dict.fromkeys(
                 component_name

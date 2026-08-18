@@ -752,6 +752,206 @@ def measurement_record(shape, properties):
     return record
 
 
+# -- a stress check: a safety factor and no geometry (ADR-145) -------------
+
+
+#: The most anchor points one selector's faces may produce. A cap rather
+#: than a hope: the sampling below is driven by the grid spacing, so a very
+#: fine `element_mm` on a very large face would otherwise generate points
+#: without bound.
+_ANCHOR_POINT_CAP = 400_000
+
+
+def _sample_triangles(triangles, step, cap=_ANCHOR_POINT_CAP):
+    """Barycentric samples covering each triangle at roughly ``step`` spacing.
+
+    Necessary, not decorative, and the failure it fixes is instructive: a
+    **planar face tessellates to four vertices**. Taking those as the anchors
+    left a 100x10x10 mm bar held at four corner nodes out of twenty-five and
+    loaded at four, which is a different structure -- it reported a tip
+    deflection of 1.78 mm against a closed form of 1.15, soft by 55%, and
+    every number in the report was internally consistent about the wrong
+    problem. Covering the face is what makes "which nodes lie on this face"
+    a question about the face rather than about its triangulation.
+    """
+
+    import numpy as np
+
+    edges = np.stack(
+        [
+            np.linalg.norm(triangles[:, 1] - triangles[:, 0], axis=1),
+            np.linalg.norm(triangles[:, 2] - triangles[:, 1], axis=1),
+            np.linalg.norm(triangles[:, 0] - triangles[:, 2], axis=1),
+        ],
+        axis=1,
+    )
+    divisions = np.maximum(
+        1, np.ceil(edges.max(axis=1) / max(float(step), 1e-9)).astype(int)
+    )
+    samples: list[Any] = []
+    total = 0
+    for index, n in enumerate(divisions):
+        a, b, c = triangles[index]
+        i, j = np.meshgrid(np.arange(n + 1), np.arange(n + 1), indexing="ij")
+        keep = (i + j) <= n
+        u = (i[keep] / n)[:, None]
+        v = (j[keep] / n)[:, None]
+        samples.append(a[None, :] + u * (b - a)[None, :] + v * (c - a)[None, :])
+        total += len(u)
+        if total >= cap:
+            break
+    return np.concatenate(samples, axis=0) if samples else np.zeros((0, 3))
+
+
+def _face_anchor_points(operation, parameter, shape, requested, deflection, step):
+    """Points covering the faces one selector names.
+
+    This is how an **ADR-029 selector becomes a boundary condition**. The
+    selector resolves to faces exactly as ``fillet``'s and ``measurement``'s
+    do -- so it survives a rebuild the way every other selector does, and
+    fails loudly naming the selector when a change removes the face it held
+    -- and each face is then tessellated and sampled finely enough that the
+    solver's "which grid nodes lie on this face" is a question about the
+    face.
+
+    Faces, not edges: a load applied along a line is a stress singularity
+    with no converged value, so there is nothing honest to report about it.
+    """
+
+    import numpy as np
+
+    faces = _selected_subshapes(operation, parameter, shape, requested, "face")
+    if not faces:
+        raise _error(
+            operation,
+            parameter,
+            "names no face of this shape. A stress check is anchored to the "
+            "faces it holds and loads, so a selector that matches nothing is "
+            "a load case that cannot be applied",
+        )
+    blocks = []
+    for face in faces:
+        try:
+            vertices, facets = face.tessellate(deflection)
+        except Exception as exc:  # pragma: no cover - kernel dependent
+            raise _error(
+                operation,
+                parameter,
+                f"names a face the kernel could not tessellate: {exc}",
+            ) from exc
+        if not facets:
+            continue
+        points = np.asarray(
+            [[float(p.x), float(p.y), float(p.z)] for p in vertices], dtype=float
+        )
+        blocks.append(
+            _sample_triangles(points[np.asarray(facets, dtype=np.int64)], step)
+        )
+    if not blocks:
+        raise _error(
+            operation, parameter, "names faces that tessellated to no triangles"
+        )
+    return np.concatenate(blocks, axis=0), len(faces)
+
+
+def stress_record(shape, properties):
+    """One declared stress check, resolved and solved against the shape.
+
+    Called from ``cadex_domain_worker`` for the ``stress`` output type. It
+    attaches no artifact, which is what keeps a check out of the
+    artifact-bearing half of ``compute_project_digest``: what identifies a
+    stress check is which faces it names and what material it declares, not
+    what today's parameters make it read. That is the same reading ADR-139
+    took for a measurement, and S1's digest cache depends on it -- the same
+    digest means the same geometry means the same number.
+
+    The solve itself is ``CadexStress``, which imports no FreeCAD and is
+    staged into this sandbox by filename. Everything shaped happens here.
+    """
+
+    import CadexStress
+
+    operation = "stress"
+    element_mm = float(properties.get("element_mm") or 0.0)
+    # Fine enough that a face's vertices stand in for its surface at the
+    # grid's own resolution, and no finer: the anchors are only ever asked
+    # "is a node within three quarters of a cell of you".
+    deflection = max(element_mm / 4.0, 1.0e-4)
+
+    try:
+        vertices, facets = shape.tessellate(deflection)
+    except Exception as exc:
+        raise _error(
+            operation,
+            "shape",
+            f"could not be tessellated for a stress solve: {exc}",
+        ) from exc
+    if not facets:
+        raise _error(
+            operation, "shape", "tessellated to no triangles, so it has no volume"
+        )
+
+    import numpy as np
+
+    points = np.asarray(
+        [[float(p.x), float(p.y), float(p.z)] for p in vertices], dtype=float
+    )
+    triangles = points[np.asarray(facets, dtype=np.int64)]
+
+    # Anchors are sampled at a third of a cell, so a node lying on a face is
+    # always within the solver's own search radius of one of them.
+    step = element_mm / 3.0
+
+    holds = []
+    for index, entry in enumerate(list(properties.get("hold") or [])):
+        anchors, face_count = _face_anchor_points(
+            operation, f"hold[{index}].at", shape, entry.get("at"), deflection, step
+        )
+        holds.append({
+            "anchors": anchors,
+            "axes": [{"x": 0, "y": 1, "z": 2}[axis] for axis in entry.get("axes") or ["x", "y", "z"]],
+            "faces": face_count,
+        })
+
+    loads = []
+    for index, entry in enumerate(list(properties.get("load") or [])):
+        anchors, face_count = _face_anchor_points(
+            operation, f"load[{index}].at", shape, entry.get("at"), deflection, step
+        )
+        loads.append({
+            "anchors": anchors,
+            "force_n": list(entry.get("force_n") or [0.0, 0.0, 0.0]),
+            "torque_n_mm": list(entry.get("torque_n_mm") or [0.0, 0.0, 0.0]),
+            "faces": face_count,
+        })
+
+    material = {
+        key: float(properties[key])
+        for key in (
+            "youngs_modulus_mpa",
+            "poissons_ratio",
+            "yield_strength_mpa",
+            "density_kg_m3",
+        )
+    }
+    try:
+        record = CadexStress.analyse(
+            triangles,
+            element_mm=element_mm,
+            material=material,
+            holds=holds,
+            loads=loads,
+        )
+    except CadexStress.StressError as exc:
+        raise _error(operation, "shape", str(exc)) from exc
+
+    record["label"] = str(properties.get("label") or "")
+    record["material"] = material
+    record["held_faces"] = [entry["faces"] for entry in holds]
+    record["loaded_faces"] = [entry["faces"] for entry in loads]
+    return record
+
+
 # -- blending: what to do when the kernel refuses some of the edges --------
 #
 # ``TopoShapePy::makeFillet`` builds a ``BRepFilletAPI_MakeFillet`` and calls

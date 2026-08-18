@@ -404,11 +404,27 @@ NESTED_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     # `source_output` rides only on component entries: the declared output
     # whose geometry this one places (ADR-049). `measurement` rides only on
     # measurement entries: the anchors and the number a dimension is drawn
-    # from (ADR-139). Both optional because every other output kind has
-    # neither a source to name nor a value to state.
+    # from (ADR-139). `mesh_check` rides only on mesh-check entries: whether
+    # another output's mesh is sound, and the counts behind that (ADR-144).
+    # All three optional because every other output kind has none of a source
+    # to name, a value to state, or a mesh to vouch for.
     "display.*": (
         frozenset({"artifact_kind", "artifact_path", "placement", "tessellation"}),
-        frozenset({"source_output", "measurement"}),
+        frozenset(
+            {"source_output", "measurement", "mesh_check", "stress", "exploded_view"}
+        ),
+    ),
+    # `exploded_view` rides only on exploded-view entries (ADR-149): the
+    # staged poses, endpoints and leader lines the shell interpolates a
+    # factor slider over. List-element shapes (stages, lines, poses) cannot
+    # be pinned by this validator; the lifecycle test pins them instead.
+    "display.*.exploded_view": (
+        frozenset({"assembly_output", "bounds", "stages", "final_poses", "lines"}),
+        frozenset(),
+    ),
+    "display.*.exploded_view.bounds": (
+        frozenset({"center_mm", "diagonal_mm"}),
+        frozenset(),
     ),
     "display.*.tessellation": (
         frozenset(

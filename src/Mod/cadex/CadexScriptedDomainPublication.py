@@ -70,6 +70,12 @@ _NATIVE_TYPE_BY_OUTPUT: dict[str, str] = {
     # as solver_diagnostics is (ADR-139). The value it carries lives in the
     # response, not on the object -- nothing in the document reads it.
     "measurement": "App::FeaturePython",
+    # And a mesh check is the same species of row, for the same reason
+    # (ADR-144): four integers about another output's geometry, carried in
+    # the response and read by nothing in the document. A stress check is
+    # the third (ADR-145).
+    "mesh_check": "App::FeaturePython",
+    "stress": "App::FeaturePython",
 }
 
 _BREP_OUTPUT_TYPES = frozenset(
@@ -2796,7 +2802,11 @@ def _configure_object(
     prepared: Mapping[str, Any],
 ) -> None:
     output_type = str(item["type"])
-    if prepared["pack"].domain == "mesh":
+    # Keyed on the output type as well as the domain, because the mesh domain
+    # now publishes something that is not a mesh: a `mesh_check` is an
+    # App::FeaturePython row carrying no geometry, so it wants no native
+    # configuration at all -- exactly as a `measurement` gets none (ADR-144).
+    if prepared["pack"].domain == "mesh" and output_type == "mesh":
         _configure_mesh(obj, item)
     elif output_type == "sketch":
         _configure_sketch(doc, obj, item)

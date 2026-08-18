@@ -170,10 +170,10 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
         "PartWorkbench",
         "part",
         "Part",
-        # `measurement` is the one member that is not a shape class: it is a
-        # declared output with no geometry at all, the way `solver_diagnostics`
-        # is on the assembly side (ADR-139).
-        ("solid", "shell", "face", "wire", "compound", "measurement"),
+        # `measurement` and `stress` are the members that are not shape
+        # classes: declared outputs with no geometry at all, the way
+        # `solver_diagnostics` is on the assembly side (ADR-139, ADR-145).
+        ("solid", "shell", "face", "wire", "compound", "measurement", "stress"),
         "Build direct OCC shapes and declare the exact accepted shape class for "
         "each stable output.",
         (
@@ -227,6 +227,7 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             # A declared output that carries no geometry: two anchor points
             # and a number, drawn as a dimension (ADR-139).
             "measurement",
+            "stress",
             "repair",
             "fillet",
             "chamfer",
@@ -246,10 +247,14 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
         "MeshWorkbench",
         "mesh",
         "Mesh",
-        ("mesh",),
+        # `mesh_check` is the one member that is not a triangle mesh: a
+        # declared output carrying four integers and no geometry, the way
+        # `part.measurement` is on the part side (ADR-144).
+        ("mesh", "mesh_check"),
         "Tessellate part shapes, import STL/OBJ/PLY assets, place them with "
         "transform, apply native mesh set operations, and decimate. Every "
-        "published output is exactly one validated triangle mesh.",
+        "published mesh is exactly one validated triangle mesh; mesh.check "
+        "publishes no geometry at all and reports whether one is sound.",
         (
             "from_shape",
             "import_file",
@@ -259,6 +264,7 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "decimate",
             "transform",
             "terminals",
+            "check",
         ),
         production_ready=True,
     ),

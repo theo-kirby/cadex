@@ -31,7 +31,19 @@ ASSET_SUFFIXES = frozenset({".stl", ".obj", ".ply"})
 #: GTS-derived decimation collapses edges in address-dependent tie order).
 #: Their outputs — and anything built on them — are digest-identified by
 #: their canonical definition instead of a geometry fingerprint.
+#:
+#: ``check`` is deliberately **not** here. It is approximating in no sense:
+#: it reads a mesh and returns counts, it mutates nothing, and it publishes
+#: no geometry at all — so there is nothing for a fingerprint to identify
+#: and its digest is the hash of its own declaration either way (ADR-144).
 APPROXIMATING_OPERATIONS = frozenset({"decimate"})
+
+#: What the Mesh pack may publish. ``mesh_check`` is the one member that is
+#: not a triangle mesh: it is a declared output carrying four integers and no
+#: geometry, the way ``part.measurement`` is on the part side (ADR-139) and
+#: ``solver_diagnostics`` is on the assembly side. The split exists so that
+#: ``__init__`` can still assert the pack and the runtime agree exactly.
+_PACK_OUTPUT_TYPES = frozenset({"mesh", "mesh_check"})
 
 
 def payload_tree_is_deterministic(payload: Any) -> bool:
@@ -113,6 +125,20 @@ def _mesh(operation: str, parameter: str, value: Any) -> DomainValue:
             parameter,
             "expected a value returned by this Mesh api",
             type(value).__name__,
+        )
+    # The domain alone stopped being enough when the domain gained a second
+    # output type (ADR-144). A `mesh_check` is four integers about a mesh,
+    # not a mesh, so it has no triangles to unite, place or decimate -- and
+    # left unchecked here it would reach the kernel and fail there, naming
+    # the composed chain instead of the line the script wrote.
+    if value.output_type != "mesh":
+        raise _error(
+            operation,
+            parameter,
+            f"expected a mesh, and mesh.{value.operation} returns a "
+            f"{value.output_type} -- a statement about a mesh, with no "
+            "triangles of its own. Pass the mesh it checked",
+            value.output_type,
         )
     return value
 
@@ -217,7 +243,7 @@ class MeshDomainAPI:
             raise RuntimeError(
                 f"Mesh pack does not declare runtime exports: {', '.join(undeclared)}."
             )
-        if frozenset(str(item) for item in output_types) != {"mesh"}:
+        if frozenset(str(item) for item in output_types) != _PACK_OUTPUT_TYPES:
             raise RuntimeError(
                 "Mesh pack output types do not match the production runtime contract."
             )
@@ -227,6 +253,7 @@ class MeshDomainAPI:
         operation: str,
         *arguments: Any,
         label: str = "",
+        output_type: str = "mesh",
         **properties: Any,
     ) -> DomainValue:
         clean_label = _label(operation, label)
@@ -235,7 +262,7 @@ class MeshDomainAPI:
         return DomainValue(
             domain="mesh",
             operation=operation,
-            output_type="mesh",
+            output_type=output_type,
             arguments=tuple(arguments),
             properties=properties,
         )
@@ -329,6 +356,41 @@ class MeshDomainAPI:
             _mesh(operation, "mesh", mesh),
             tolerance=_number(operation, "tolerance", tolerance, minimum=0.0, strict=True),
             reduction=clean_reduction,
+            label=label,
+        )
+
+    def check(self, mesh: DomainValue, *, label: str = "") -> DomainValue:
+        """Report whether a mesh is sound: four integers and no geometry.
+
+        Non-manifold edges, self-intersecting facet pairs, whether the
+        surface is closed, and the volume it encloses. It publishes **no
+        geometry** — it is a row in the tree that states a fact about
+        another output, the way ``part.measurement`` states a dimension
+        (ADR-139, ADR-144).
+
+        Two things it exists for, both measured rather than anticipated:
+
+        * **A combinatorial closure check cannot see a self-intersection.**
+          A surface can have every edge in exactly two triangles and still
+          have two facets passing through each other. Measured on a
+          marching-tetrahedra topology-optimisation result: watertight by
+          every count, and one self-intersecting pair.
+        * **``decimate`` does not tell you what it did.** Measured on that
+          same mesh, a 50% and a 90% reduction request both returned 7248
+          facets — the tolerance bound, not the reduction, and nothing said
+          so. ``check`` is how a script finds out.
+
+        It never repairs. A repair op that mutates geometry and reports
+        nothing is the wrong shape of answer to "is this sound"; the script
+        owns the geometry, so the script decides what to do about the
+        answer.
+        """
+
+        operation = "check"
+        return self._value(
+            operation,
+            _mesh(operation, "mesh", mesh),
+            output_type="mesh_check",
             label=label,
         )
 
@@ -431,4 +493,5 @@ class MeshDomainAPI:
             "decimate",
             "transform",
             "terminals",
+            "check",
         )

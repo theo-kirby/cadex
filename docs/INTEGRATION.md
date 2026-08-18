@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-08-09
+Verified against source: 2026-08-18
 
 **This document is the contract between the two halves of the product.**
 They live in one repository (ADR-030) and in two processes, under two
@@ -222,6 +222,68 @@ never disagree about what a part measures. A client that reformats
 The anchors are in **`subject`'s own frame**, not the model's. A client must
 apply `display[subject].placement` before drawing them, or a dimension on an
 assembled part lands where the part is not.
+
+**And there are two more of that third kind, on the same terms**: `mesh_check`
+(ADR-144) and `stress` (ADR-145). Both are outputs with no artifact, no
+tessellation and no placement, whose one optional key *is* what they publish.
+Neither needs a new op, a new `artifact_kind` or a `shell/` change — the shell
+has never had to know they exist, and a client that does not know the key sees
+exactly the shape it always saw.
+
+`mesh_check` — `mesh.check(mesh)` — carries `facets`, `points`,
+`non_manifold`, `self_intersections` (capped at 1000, with
+`self_intersections_capped` saying when the cap bound), `closed`,
+`components`, `volume_mm3`, `area_mm2` and a `sound` verdict that is the
+conjunction of the first three. It exists because two things were unknowable
+from outside: a *combinatorial* watertightness check cannot see a
+self-intersection, and `mesh.decimate` does not report what it actually did.
+
+`stress` — `part.stress(shape, hold=…, load=[…], …)` — carries
+`safety_factor`, `p99_von_mises_mpa`, `peak_von_mises_mpa`,
+`peak_away_from_holds_mpa`, `max_displacement_mm`, `mass_g`, `volume_mm3`,
+`yield_strength_mpa`, the `material` it was declared with, a `grid` block, a
+`solver` block, `warnings`, and a `note`.
+
+**Read `safety_factor` as dividing by `p99_von_mises_mpa`, never by the peak**,
+and the `note` in every payload says so. Peak von Mises at a held face is a
+genuine stress singularity on a stair-stepped grid: it does not converge, it
+grows with every refinement, and a safety factor built on it would be a
+number pretending to be a verdict. The peak travels beside it because it is
+still information about where the part is working hardest — not because it
+is the answer.
+
+Both are recomputed on every rebuild from the shape they name, exactly as a
+measurement is, and neither carries geometry into the digest: an artifact-less
+output is identified by the hash of its own declaration. That is the right
+reading and the one the parameter-search cache depends on — the same digest
+means the same geometry means the same number.
+
+**And a fourth optional key, `exploded_view`** (ADR-149), on the same terms
+once more: no new op, no new `artifact_kind`, and a client that does not
+know the key sees the shape it always saw. An `assembly.exploded_view`
+output's display entry carries the data a client needs to interpolate an
+explosion factor from 0 (assembled) to 1 (fully exploded), engine-authored
+and recomputed on every rebuild:
+
+- **`assembly_output`** — the assembly the moves explode.
+- **`bounds`** — `{center_mm, diagonal_mm}` of the solved assembly.
+- **`stages`** — one entry per move, in move order:
+  `{move_index, kind ("normal"|"radial"), component_outputs, poses}`, where
+  `poses` maps each moved component to its **cumulative** pose after that
+  move — `{position_mm, quaternion_xyzw}`, the simulation-trace quaternion
+  convention. Stage *i* of *N* animates over factor *t* ∈ [i/N, (i+1)/N];
+  a component holds outside its own window.
+- **`final_poses`** — the factor-1 pose of **every** component of the
+  assembly, moved or not.
+- **`lines`** — flattened leader-line segments,
+  `{component_output, start_mm, end_mm}` each, in world millimetres.
+
+The factor-0 endpoint is not here: it is the component's own solved
+`placement` on its display entry, which a client already reads. Bounded by
+the op's own limits (1–64 moves, ≤256 component references), the record
+stays well under the frame cap; it is deliberately **not** a retained
+artifact, whose hash would enter the restore digest and demand
+byte-reproducible native readback.
 
 **`artifact_kind` is an open set, and a client must treat it as one.** The
 kinds a shell may see today:

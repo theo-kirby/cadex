@@ -25,7 +25,16 @@ import re
 import os
 import FreeCAD as App
 
-from pivy import coin
+try:
+    from pivy import coin
+except ImportError:
+    # Coin scene graphs are view-provider concerns, and the packaged engine
+    # carries neither pivy nor libCoin (cadex ADR-022, ADR-149). The
+    # ExplodedView/ExplodedViewStep document objects and
+    # _calculateExplodedPlacements below never touch coin; only the view
+    # providers do, and nothing headless instantiates them. Same guard
+    # shape as JointObject.py.
+    coin = None
 from Part import LineSegment, Compound
 
 try:

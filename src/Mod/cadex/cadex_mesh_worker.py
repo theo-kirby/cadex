@@ -21,7 +21,7 @@ from typing import Any
 # Re-exported: the approximating-tree test moved to the API module so
 # ``part.shape_from_mesh`` can apply it without importing a worker (ADR-043),
 # and every existing reader of it lives on this side of the boundary.
-from cadex_mesh_api import payload_tree_is_deterministic  # noqa: F401
+from cadex_mesh_api import _PACK_OUTPUT_TYPES, payload_tree_is_deterministic  # noqa: F401
 
 
 class MeshOperationError(ValueError):
@@ -244,6 +244,51 @@ def build_mesh(payload: dict[str, Any], root: Path):
     )
 
 
+#: How many self-intersecting facet pairs a check will name before it stops
+#: counting. ``getSelfIntersections`` returns the whole list, and a badly
+#: broken mesh can return a very long one -- which would then cross the JSON
+#: boundary and land in a rebuild response. A count is the answer to "is this
+#: sound"; the list is not, and an unbounded return is exactly the shape of
+#: thing that has to be capped before it becomes a protocol payload.
+_SELF_INTERSECTION_CAP = 1000
+
+
+def mesh_check_record(payload: dict[str, Any], root: Path) -> dict[str, Any]:
+    """Four questions about one mesh, and no geometry (ADR-144).
+
+    ``hasNonManifolds`` returns a bool and ``getSelfIntersections`` a list,
+    so neither can ride on ``MeshDomainAPI._value``'s mesh output type -- and
+    that is the whole reason this is a separate output kind rather than a
+    property on a mesh.
+
+    The counts are what a script can act on. ``self_intersections`` is
+    capped, and says so when it was: an agent reading "1000, capped" knows
+    as much as it needs to, and a response carrying forty thousand facet
+    index pairs helps nobody.
+    """
+
+    mesh = build_mesh(payload, root)
+    try:
+        pairs = list(mesh.getSelfIntersections())
+    except Exception:  # pragma: no cover - kernel-dependent
+        pairs = []
+    capped = len(pairs) > _SELF_INTERSECTION_CAP
+    return {
+        "facets": int(mesh.CountFacets),
+        "points": int(mesh.CountPoints),
+        "non_manifold": bool(mesh.hasNonManifolds()),
+        "self_intersections": min(len(pairs), _SELF_INTERSECTION_CAP),
+        "self_intersections_capped": capped,
+        "closed": bool(mesh.isSolid()),
+        "components": int(mesh.countComponents()),
+        "volume_mm3": float(mesh.Volume),
+        "area_mm2": float(mesh.Area),
+        "sound": bool(
+            not mesh.hasNonManifolds() and not pairs and mesh.isSolid()
+        ),
+    }
+
+
 def canonical_mesh(mesh: Any):
     """Rebuild a mesh in canonical vertex/facet order for byte-stable artifacts.
 
@@ -335,11 +380,28 @@ def serialize_mesh_output(
 
     payload = _payload(value)
     output_type = str(payload.get("output_type") or "")
-    if output_type != expected["type"] or output_type != "mesh":
+    if output_type != expected["type"] or output_type not in _PACK_OUTPUT_TYPES:
         raise ValueError(
             f"Output {expected['name']!r} returned type {output_type!r}; "
-            "the Mesh domain publishes only 'mesh' outputs."
+            f"the Mesh domain publishes {sorted(_PACK_OUTPUT_TYPES)} outputs."
         )
+    if output_type == "mesh_check":
+        # The artifact-less kind, and the mesh side's answer to
+        # `part.measurement` (ADR-139, ADR-144). It builds the mesh it was
+        # handed, asks the kernel its questions and throws the mesh away:
+        # what it publishes is the answers. It writes no file, so it reaches
+        # the digest through `payload_sha256` -- the hash of its own
+        # declaration -- which is right for the same reason it is right for a
+        # measurement: what identifies a check is *which mesh it names*, not
+        # what today's parameters make that mesh read.
+        return {
+            "name": expected["name"],
+            "type": output_type,
+            "definition": payload,
+            "mesh_check": mesh_check_record(
+                _nested_payload(_argument(payload, 0, "mesh")), root
+            ),
+        }
     mesh = canonical_mesh(build_mesh(payload, root))
     facts = mesh_facts(mesh)
     if facts["facets"] < 1 or facts["points"] < 3:

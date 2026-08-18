@@ -671,11 +671,12 @@ def test_a_terminal_is_never_a_declarable_output() -> None:
     # `measurement` is the one member that is not geometry and is declarable
     # anyway (ADR-139) — it publishes two points and a number, and that is
     # precisely the distinction a terminal fails: nothing builds, digests or
-    # hydrates a terminal, and a measurement does all three.
+    # hydrates a terminal, and a measurement does all three. `mesh_check` is
+    # the mesh side's member of that same class (ADR-144).
     assert PART_PACK.output_types == (
-        "solid", "shell", "face", "wire", "compound", "measurement",
+        "solid", "shell", "face", "wire", "compound", "measurement", "stress",
     )
-    assert MESH_PACK.output_types == ("mesh",)
+    assert MESH_PACK.output_types == ("mesh", "mesh_check")
 
     terminals = _part().terminals(_board(), header=HEADER, names=SIGNALS)
     assert not isinstance(terminals, DomainValue)

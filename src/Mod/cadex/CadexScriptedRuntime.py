@@ -44,6 +44,13 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         "cadex_sketcher_worker.py",
         "cadex_part_api.py",
         "cadex_part_worker.py",
+        # The linear-elastic solve (ADR-145). Staged by filename and never
+        # imported by cadexd, for the reason CadexDynamics is: numpy and
+        # scipy are in the payload already, but a service whose job is
+        # reading NDJSON off a pipe should not import them to discover it.
+        # `DECLARED_ENGINE_MODULES` does not name it, and
+        # test_engine_purity_guardrails asserts it stays that way.
+        "CadexStress.py",
         # The wire router (ADR-056). Staged like every other worker module —
         # by filename, not imported — so cadex_part_worker can import it
         # inside the sandbox.

@@ -14591,3 +14591,1233 @@ window is a view and not a copy. It also asserts the default still carries
 the last line and mentions no window at all, that a cut window does *not*
 carry the last line, that the final window says it is final, and that all
 five bad-argument shapes are refused rather than defaulted.
+
+## ADR-141 — a second offboard tree, and a stress number that survives a second opinion (2026-08-10)
+
+**Decision.** `analysis/` joins `training/` at the repository root as a
+second **non-engine** tree, under the identical ADR-084 contract:
+
+1. **CMake never installs it, no payload carries it, and nothing in it
+   enters `pixi.toml`.** `CARRIED_PYPI_PACKAGES` stays one entry long. Its
+   dependencies are exactly pinned in `analysis/requirements.txt` and
+   installed into a venv on whatever machine runs the analysis.
+   `test_analysis_stress.py` asserts each of those, including that nothing
+   from the tree reaches a *staged* payload, which is the shape of the
+   `jax`/`mjx` assertion `test_engine_purity_guardrails` already makes.
+2. **It does not speak the protocol.** It reads a solid and a load-case JSON
+   off disk and writes one JSON report — exactly one line on stdout, the
+   human-readable stream on stderr, and nothing parses stderr (ADR-093). Like
+   the trainer it reports `cadex_importable`, so a test can assert the
+   negative.
+3. **The first slice, S0, is a stress number and the evidence for it.** A
+   hex-grid linear-elastic solver in numpy/scipy; a load case that can be
+   declared by hand or **measured from a policy rollout**; and CalculiX
+   driven as a subprocess as an independent second opinion.
+4. **Nothing under `analysis/` may import a GPL package**, and that is
+   test-enforced rather than advisory. `ccx` is GPL-2 and is therefore a
+   subprocess: a text deck in, a text result out, never linked and never
+   imported — the same arm's length FreeCAD's own LGPL Fem module used.
+   `ccx` stays pruned out of the payload, where
+   `package/engine/build_engine_payload.sh` keeps exactly four binaries.
+
+`docs/STRUCTURAL.md` is the arc, S0–S3. **S3 — anything in-engine — is not
+authorised by this entry** and needs its own ADR and owner sign-off, because
+`docs/VISION.md:125` puts FEM out of scope and a new Cadex surface is still a
+decision even though it is not a resurrection of FreeCAD's `Fem`.
+
+**Rationale.** Three jobs asked for this: lighter printed parts, robot legs
+whose mass feeds back into the dynamics a policy has to control, and shape
+search. All three need one thing first, which is a stress number somebody can
+believe.
+
+*Why outside the engine.* The same argument ADR-084 made for training,
+arriving at the same place from a different direction. Assembly is not the
+cost — a structured hex grid at 54,000 elements and 176k degrees of freedom
+assembles in 0.61 s here — but the **solve** is, and a SIMP system is
+ill-conditioned by construction as densities go to zero. That is a thing to
+find out about on a machine with time, not inside a service that owes a
+viewport an answer. And ADR-084's shape already exists: expensive compute
+happens elsewhere and one self-contained file comes home.
+
+*Why a hand-written hex core rather than a library.* Four measured reasons.
+S2 needs a voxel grid anyway, so a tetrahedral pipeline for S0 and a voxel
+pipeline for S2 would be two codebases for one job. numpy and scipy are
+already in the payload (23 MB and 50 MB, measured), so if S3 ever moves a
+solve in-engine it costs no bytes. Filling a structured grid needs no mesher,
+so it needs no `gmsh`, so it raises no licence question. And an August 2026
+survey of the field found nothing better under those constraints: the
+maintained permissive options are `scikit-fem` (BSD, assembles only — a
+dependency for the part that was never hard), `torch-fem` (MIT, excellent,
+and drags PyTorch into a 3.3 GB app) and `SfePy` (BSD, no osx-arm64 build),
+while the two best-known topology-optimisation stacks, JAX-FEM and fenitop,
+are **GPL-3**.
+
+*Why the licence rule is written down.* `analysis/` is engine-side and
+`docs/PROVENANCE.md` §1 puts the engine side at LGPL. `AGENTS.md` calls the
+GPL boundary "one-way and hard" about `shell/`; the reasoning transfers
+exactly, and this tree is more exposed than `training/` was, because the
+obvious tools for the job are the GPL ones — `gmsh`, `pymeshlab`, `mmapy`,
+`ccx2paraview`, `pygalmesh`, `pymeshfix`, `tetgen`. A GPL import in a
+repository-resident file is not a judgement call, so it is a test.
+
+*Why the element is C3D8I.* A fully-integrated trilinear hex shear-locks in
+bending and reports a part **stiffer than it is** — the direction that
+flatters it, which is the worst direction for a safety factor to be wrong in.
+Wilson incompatible modes, statically condensed, cost almost nothing here:
+every element of a structured grid is geometrically identical so the
+condensed matrix is computed once, and condensation commutes with a uniform
+scaling of the element energy so the same matrix is reusable under a SIMP
+density in S2. Measured on the cantilever: **5.1% stiff against 0.9%.**
+
+*Why CalculiX is in the room at all.* ADR-129 is the standing lesson: a
+plausible-looking result survived being written down and was wrong, and what
+caught it was comparing against a second method. A few hundred lines of
+linear elasticity written here do not fail by crashing — they fail by
+producing a plausible number nobody can check.
+
+**Consequences.** A second root-level directory, and the doc index grows a
+third vertical beside `docs/MUJOCO.md` and `docs/ORGANIC.md`. No engine
+code, no protocol change, no payload bytes, and no new op.
+
+The robot-legs half needed nothing from the engine either, which was the
+result worth having: `mj_rnePostConstraint` already fills `cfrc_int` and
+`cfrc_ext`, so the load case is the worst wrench a body saw across a rollout,
+read out of the same MJCF `assembly.mjcf` already exports.
+`contact_force` being a *deferred engine observation*
+(`CadexDynamics.py:5532`) does not matter, because this is stock MuJoCo
+offboard.
+
+Two things that would have been silently wrong and are now pinned by tests:
+MuJoCo's `cfrc_*` are com-based, so the torque is about the subtree centre of
+mass rather than the body and is moved onto the body here — left alone, the
+forces check out and the moments are wrong by `r × F`, which on a leg is the
+whole number. And a replay is only the rollout if it *tracked* the rollout,
+so the replay is checked frame by frame against the trace's own recorded
+poses and the mismatch is in the report.
+
+One standing guidance falls out of that check: **author a rollout at
+`frames_per_second` equal to the control rate when you intend to read loads
+off it.** A trace sampled more coarsely holds only some of the actions;
+measured on a two-link leg, the same motion recorded half as often replays
+142 mm away from itself.
+
+### Evidence
+
+`pixi run python -m pytest src/Mod/cadex/cadex_tests/test_analysis_stress.py`
+— **27 passed**, and the whole engine suite is unchanged beside it.
+
+The numeric half really runs in the pixi environment, because numpy, scipy,
+mujoco and `ccx` are all there; it skips cleanly where they are not and is
+written to run from either interpreter, which is how the MJX-gated dynamics
+tests behave.
+
+What was measured:
+
+| Check | Result |
+|---|---|
+| Cantilever tip deflection vs Timoshenko | 1.14184 mm vs 1.15218 mm — **0.9%** |
+| Midspan bending stress vs `M y / I` | 2.2500 vs 2.2500, and 2.6250 vs 2.6250 |
+| C3D8 (locking) vs C3D8I, same grid | **5.1%** stiff vs **0.9%** |
+| CalculiX 2.23 vs the hex core, same grid | **4.4e-7** displacement, **5.4e-8** von Mises |
+| Constant-strain patch test | incompatible modes vanish to 1e-12 |
+| Rollout replay vs its own trace | **0.0 mm**; the same motion at half the frame rate, **142 mm** |
+| Reaction at rest vs weight | the shank's mass × g, to 2% |
+
+The convergence sweep is asserted to behave the way the physics says it must:
+displacement converges, `p99` converges, and **peak von Mises does not** —
+a clamped face is a genuine singularity with no limiting value, so it grows
+with every refinement, and a report that called it converged would be lying.
+
+One bug is recorded in `docs/STRUCTURAL.md` §3.5 rather than only fixed,
+because of how it was visible. The voxel parity fill lost the whole `x = y`
+diagonal of a cylinder — 11 columns of a 20-cell layer, 4.5% of the volume —
+because the sample nudge that exists to keep a ray off a shared triangle edge
+used the *same* irrational fraction on x and y and so could not move a point
+off that diagonal. It showed up only after a float32 round trip through an
+STL. The fix is a different nudge per axis **and** collapsing coincident
+crossings, the second of which is exact rather than merely unlikely: a ray
+through a shared edge crosses the surface once. The regression test compares
+a float64 fill against a float32 one and requires them to agree.
+
+## ADR-142 — the search reads the space off disk and drives the CLI, one process at a time (2026-08-10)
+
+**Decision.** `analysis/search.py` closes S1: sweep or optimise a project's
+declared parameters against declared objectives, with no model in the loop.
+Five choices, and each of them is the entry.
+
+1. **The design space is read off the project's own `script.json`, not
+   asked for.** `params()`/`num()`'s collected specs live there with their
+   `min`, `max`, `step` and `unit`. Reading the bounds is a file read.
+2. **An evaluation is `./cadex params --set k=v --out DIR --json` as a
+   subprocess** — not an import of `cli/cadex_cli/client.py`.
+3. **Two caches, and they are not the same cache**: one on the parameter
+   vector, which skips the rebuild, and one on the **`digest`**, which skips
+   the objective.
+4. **Inside a search the stress objective runs on one fixed grid**, not S0's
+   refinement sweep, and the report carries a `note` saying so.
+5. **Optuna and pymoo are not dependencies.** `grid`, `random` and `scipy`
+   need nothing that is not already installed; asking for either of the
+   other two is refused with the reason.
+
+Every design point is snapped into range and onto its declared `step`. The
+Pareto front is computed from the evaluated set rather than produced by the
+search. A constraint marks a point infeasible rather than dropping it, and a
+design point the engine *refuses* is counted and carried past rather than
+treated as a failure of the search.
+
+**Rationale.**
+
+*Why a subprocess.* Importing the client is allowed — `cli/` is engine-side
+and LGPL, so no boundary is crossed, and the plan named it as an option the
+`cdx-rl` location did not have. It was still the wrong choice. Driving the
+CLI keeps this tree's whole discipline intact: `analysis/` imports nothing
+from the engine, reports `cadex_importable` false, and needs no view on the
+protocol at all — so S1 costs the tree none of what ADR-141 bought. It also
+buys **crash isolation per evaluation**, which is what you want on
+evaluation 173 when a rebuild segfaults rather than refuses. The cost is one
+process spawn per design point, and the measurement says that is noise: a
+rebuild of a small parametric bracket is **0.7 s**, and a 16-point grid with
+an FEA solve on every point ran end to end in **12.7 s**.
+
+*Why two caches.* The parameter-vector cache is obvious and free. The digest
+cache is the one worth writing down: two *different* parameter vectors can
+produce the same model — a control that rounds away, a feature that clamps,
+a parameter declared for a feature not written yet — and the digest is the
+only thing that says so. The rebuild still happens, because only the engine
+can say the digest is unchanged; what it saves is the **objective**, which
+is the expensive half when the objective is an FEA solve. And `digest` is
+the right key rather than the files, for the reason `docs/CLI.md`:126-131
+already gives: STEP embeds a wall-clock timestamp in `FILE_NAME`, so two
+exports of an identical model differ byte for byte across a second boundary.
+
+*Why one grid inside a search.* This looks like it contradicts ADR-141, and
+it is the opposite. S0's sweep exists because a single grid is not a
+*measurement*; a search does not want a measurement, it wants a consistent
+**ranking**, and a fixed grid gives every candidate the same discretisation
+bias. A per-candidate adaptive sweep would let the discretisation move
+between two designs being compared, which is worse for a comparison and
+better for nothing. The report says which it did, so a ranked number is
+never mistaken for a converged one.
+
+*Why the step snap.* A parameter carries a `step` because a person moves it
+with a slider. A design point off that step is one the project cannot be put
+back into by hand, so an optimiser's 7.3184 mm becomes a control position
+before anything is built. It also stops the parameter cache missing on two
+values that are the same position.
+
+*Why a refusal is not a failure.* `docs/CLI.md` gives exit 3 its own meaning
+precisely because a refused script is a modelling problem rather than an
+infrastructure one. A sweep that aborted on the first zero-thickness plate
+would never map anything, so the search records the refusal, says how many,
+and carries on. A refused region is a fact about the space.
+
+*Why neither Optuna nor pymoo, yet.* The plan named pymoo; the August 2026
+survey argued Optuna. Both arguments are answered by things that cost
+nothing. Optuna's case was ask/tell suiting a subprocess evaluator and its
+SQLite storage being a free resume — the resume here is a JSONL you can read
+with `tail`. pymoo's case was a real Pareto front — the front here is
+computed from the evaluated points, so `grid` and `random` produce one
+without any multi-objective machinery. Which one earns a pin is now a
+question a measurement can answer, which is the state it should have been in
+before either was added.
+
+**Consequences.** One new file and one new suite. No engine code, no
+protocol change, no payload bytes, no CLI change: `search.py` uses `cadex
+params`, `--out`, `--format`, `--json` and `--wait` exactly as
+`docs/CLI.md` documents them.
+
+`analysis/` loses one property it had after S0 and gains nothing to replace
+it: **`search.py` spawns a process where the other three only read files.**
+That is stated in `analysis/README.md` rather than glossed, because the
+tree's discipline is what makes it auditable and "it never spawns an engine"
+was a true sentence that is now only true of three files out of four.
+
+Evaluations run **serially**. The project takes a lock, so two rebuilds of
+one project cannot overlap and parallelism would mean N copies of the
+project. At 0.7 s a rebuild that is 500 design points in six minutes, so it
+is not worth the machinery; the report carries per-trial wall time, which is
+what will say when it is.
+
+### Evidence
+
+`pixi run python -m pytest src/Mod/cadex/cadex_tests/test_analysis_search.py`
+— **19 passed**. Eleven of them need no engine; eight drive a **real project
+through the real CLI**, because the claim being tested is that the loop
+closes and a mock cannot fail the way the loop can. They skip without a
+built engine, the bar `cli/tests` sets.
+
+The measurement, on a three-parameter bracket — a 4×4 grid over two of them,
+mass against p99 von Mises with a 12 MPa cap, 16 rebuilds and 16 FEA solves
+in **12.7 s**:
+
+```
+wall=2.00 rib= 8.50 ->  17.11 g,  6.42 MPa
+wall=2.00 rib=14.50 ->  26.04 g,  2.56 MPa
+wall=2.00 rib=20.00 ->  34.22 g,  1.40 MPa
+wall=5.50 rib=14.50 ->  33.85 g,  2.41 MPa
+wall=5.50 rib=20.00 ->  42.04 g,  1.31 MPa
+```
+
+Five non-dominated points, and the physics is the physics: a deeper rib is
+stiffer and heavier, so mass and peak stress genuinely conflict and the
+answer is a front rather than a winner.
+
+The two caches are pinned separately, because they are separate claims. The
+parameter cache: the same point twice, one rebuild — and 4.1 mm snapping to
+4.0 mm is the *same* point. The digest cache: a declared-but-unused
+parameter moved between two design points gives two rebuilds, one digest and
+**one** objective evaluation.
+
+The refusal path is pinned with a script whose plate thickness reaches zero
+inside its own declared range: three design points, at least one refused,
+zero counted as failures, and the buildable points still make a front.
+
+One bug, and it was the CLI's contract being read wrong rather than a
+subtlety. `--json` **pretty-prints the envelope across the whole of
+stdout** (`docs/CLI.md` §3: progress goes to stderr, the report goes to
+stdout), and this file read only the last line — which is the convention
+`analysis/`'s own tools follow, and which here parses a closing brace. Every
+one of the 16 design points failed identically, which is the good version of
+getting a contract wrong.
+
+---
+
+## ADR-143 — SIMP on S0's own grid, and a surface welded on grid edges rather than on a tolerance (2026-08-11)
+
+**Decision.** `analysis/topology.py` closes S2: carve a declared blank
+against a declared load case and hand back a watertight STL. Offboard, no
+engine code, no protocol change, no payload bytes, and **no new pinned
+dependency** — `analysis/requirements.txt` stays at its three.
+
+Six choices, and each of them is the entry.
+
+1. **The SIMP solver is S0's solver.** Four edits to
+   `analysis/cadex_stress.py`, none of which change S0's behaviour: `solve`
+   splits into `prepare` (everything a density cannot change — the element
+   matrix, the node numbering, the held degrees of freedom, the assembled
+   force vector, the free-DOF index) and `solve_system`; the assembly gains
+   a density vector; CG gains `x0`; and `_DIRECT_DOF_LIMIT` drops from
+   60,000 to 10,000. S0's 27 tests pass unmodified, which is the evidence
+   that the split is a split.
+2. **Geometry extraction is hand-written marching tetrahedra**, not
+   `scikit-image`. Six tetrahedra per cube, all sharing the main diagonal.
+3. **The volume constraint is on the physical density**, and it is exact.
+4. **Discreteness is read off the design variable, not off the density.**
+5. **Printability is deferred by decision.** Overhang angle and minimum wall
+   thickness are not built and are not planned. The filter radius stays, and
+   for a reason that has nothing to do with printing.
+6. **S2 invents no new asset suffix.**
+
+**Rationale.**
+
+*Why the density belongs in the assembly and nowhere else.* Line 1009 of
+`cadex_stress.py` was `data = np.tile(flat, len(block))` — every element gets
+the same 24×24 matrix. It became
+`data = (scale[:, None] * flat[None, :]).ravel()`. That one line is the whole
+of what makes S0's solver a SIMP solver, and it is legitimate with C3D8I
+because **static condensation commutes with a uniform scaling of the element
+energy**: scaling every block of the element energy by `s` scales `Kcc`,
+`Kci` and `Kii` alike, and `s·Kcc − (s·Kci)(s·Kii)⁻¹(s·Kci)ᵀ` is exactly `s`
+times the unscaled condensed matrix. That is the property ADR-141 claimed
+when it chose the element; S2 is where it is cashed in, and a test asserts
+the assembled matrices agree to 1e-9 relative rather than taking the algebra
+on trust.
+
+*Why `_DIRECT_DOF_LIMIT` was wrong, and this is an S0 fix that S2 paid for.*
+Measured on the same laptop that set it:
+
+```
+free dofs            21,800      47,000     158,000
+direct (splu)        1.22 s      7.22 s          --
+CG + Jacobi          0.24 s      0.65 s      3.13 s
+```
+
+The old limit of 60,000 sent every problem in the interesting range to the
+slower solver — 3× slower at 21.8k and 11× at 47k. It is 10,000 now, with
+that table in the comment beside it.
+
+*What a run costs, so nobody has to guess whether this needs a GPU box.* One
+iteration is about **0.8 s at 13.5k elements** and **3.7 s at 48k**, so a
+100-iteration run is one and a half to six minutes on a laptop. S2 needs no
+GPU box and gets none.
+
+*Why marching tetrahedra rather than marching cubes.* Three reasons, and the
+third is the one that decided it. It costs no dependency, where `scikit-image`
+would be a fourth pin for one function. A tetrahedron's four vertices admit
+**no ambiguous case** — sixteen sign patterns, none of which two different
+surfaces could separate — where marching cubes has exactly that hole and
+produces non-manifold output through it. And the intersection points are
+identified by **the grid edge they lie on**, so two tetrahedra sharing an
+edge produce the same vertex *index*, not two vertices a millionth of a
+millimetre apart that a welding pass then has to guess about. The result is
+watertight by construction rather than by tolerance, and the tests assert
+both closure (every undirected edge in exactly two triangles) and consistent
+winding (every directed edge exactly once).
+
+*The bug that argument nearly hid.* The winding table is derived from a
+parity argument on the vertex order, and a parity argument only means
+anything against a fixed handedness. Three of the six natural tetrahedron
+listings are left-handed. With them left so, the extracted surface was
+topologically closed, had zero boundary edges and zero non-manifold edges —
+and **half its triangles inside out**, so the closure check passed and the
+enclosed volume came out as exactly 0.0. The fix is to orient the six
+listings at import; the test asserts each one's determinant is positive, and
+says why.
+
+*What the extraction is worth, measured against a shape with a known answer.*
+A sphere of radius 7 mm, sampled at cell centres with a one-cell void pad:
+
+```
+cells across    marching tets    Taubin    plain Laplacian
+10              −4.46%           +0.52%    −19.9%
+20              −0.68%           +0.19%    −4.96%
+40              −0.16%           +0.06%    −1.27%
+```
+
+So the extraction converges, and Taubin smoothing does not shrink the shape
+while the plain Laplacian everybody reaches for first eats a fifth of it at
+the coarsest grid. `|μ| > λ` is the whole trick and the last column is why it
+is not optional.
+
+*Why the volume constraint had to move onto the physical density.* The
+optimality-criteria bisection first constrained `sum(x)`, the design
+variable. A normalised density filter does not preserve a sum, so the
+**reported** volume fraction landed 1.4% off the declared one — measured, not
+feared. Because the filter is linear, the physical volume is exactly
+`x · dV/dx` with `dV/dx = Hᵀ(1/d)`, one convolution computed once at
+construction; so the bisection can enforce the real constraint and stay
+arithmetic instead of running two hundred convolutions an iteration. It holds
+to 1e-6 now, and a test asserts it at every iteration rather than at the end.
+
+*Why discreteness is read off the design variable.* A density filter of
+radius R smears a perfectly binary design over a band of width R, so any
+member thinner than 2R is grey right through its core however well the run
+converged. Measured on the cantilever: a design variable of 3833 cells at 0,
+1638 at 1 and 129 anywhere else — a non-discreteness of **0.017**, which is as
+resolved as SIMP gets — has a *density* non-discreteness of **0.32**. Reading
+the second number as a quality score says the run failed when it did not.
+Both are in the report; the warning is spent on the first. What makes that
+safe rather than a matter of taste is that the extracted surface is the
+`ρ = 0.5` level set and the grey band is symmetric about it: on that same run
+the cells above the level set came to 1683 against a density integral of
+1680.
+
+*Why the filter radius stays although printability does not.* `filter_radius_mm`
+is not a manufacturing constraint. Without it SIMP checkerboards: the
+discretised problem has no minimiser and the answer changes with the grid. It
+is what makes the problem well-posed, and it is tested on exactly that claim
+— a 4 mm radius at 2.5 mm and at 1.5 mm cells agrees about **95.5%** of the
+solid/void decision and about the stiffness achieved to 2.3%. Overhang angle
+and minimum wall thickness are a different kind of thing and are deferred by
+decision: supports handle overhangs, and a constraint nobody needs is a
+constraint that distorts the result.
+
+*Why the round trip costs nothing.* `.stl` is already in the engine's
+`_ASSET_SUFFIXES` *and* in the shell's `CARRIED_ASSET_SUFFIXES`, so a SIMP
+result arrives through `put_asset` and Save-As carries it. That imposes one
+rule: **S2 invents no new asset suffix.** A `.cxdensity` or a sidecar receipt
+would be silently dropped by Save-As — the exact bug ADR-046 recorded and
+ADR-138 fixed for `.cxpart`, still open today for `.cxpolicy`. The density
+field and the run's receipt stay offboard, in the run directory, where
+nothing can drop them. And because `compute_project_digest` does not walk
+`assets/`, **nothing verifies an STL's bytes** unless the script publishes
+the imported mesh as an output — a mesh output carries `geometry_sha256`, the
+sorted exact vertex set, and that does reach the digest. So the script
+publishes it, and the round-trip test asserts a stable digest across two
+rebuilds rather than assuming one.
+
+*What is deliberately not built.* No stress-constrained TO: SIMP minimises
+compliance, and the ground there is thin. The maintained permissive option is
+`beso` (LGPL-3, drives the same `ccx`); the standard MMA implementation
+`mmapy` is **GPL-3** and barred from this tree by the test ADR-141 wrote.
+Recorded as an open question rather than built. No mesh → parametric body:
+`part.shape_from_mesh` makes a shell of triangle faces, not an editable
+feature tree, so **TO informs the redesign** — the agent reads the optimised
+shape and rewrites the script, which is VISION principle 3 holding rather
+than a limitation to route around.
+
+**Consequences.** `analysis/topology.py` (new); `analysis/cadex_stress.py`
+gains `Prepared`, `prepare`, `assemble_stiffness`, `solve_system`,
+`simp_scale` and `simp_scale_gradient`, and `solve` becomes the two-line
+wrapper it always was in effect. Tests in
+`cadex_tests/test_analysis_topology.py` — 24, of which one drives a real
+cadexd child through `put_asset` and a real rebuild.
+`cadex_tests/test_analysis_stress.py` extends its tree-contract loops over
+the new file. `docs/STRUCTURAL.md` §5 is rewritten from a plan into a record.
+No engine file changed, no CMake rule references the tree, and
+`CARRIED_PYPI_PACKAGES` is still one entry long.
+
+---
+
+## ADR-144 — S2's output earned a check, not a repair, and `mesh.check` is the whole of S3a (2026-08-11)
+
+**Decision.** The mesh domain gains **one** operation, `mesh.check`, and no
+repair ops at all. It publishes four integers and no geometry — the mesh
+side's `part.measurement` (ADR-139). `MeshWorkbench.output_types` becomes
+`("mesh", "mesh_check")`.
+
+The S3a plan named a likely set — `smooth`, `fillupHoles`, `harmonizeNormals`,
+`fixSelfIntersections` — and said the op set was to be **decided by S2's
+measured output rather than by anticipation**, with "fewer, or none" an
+allowed answer. This is that answer.
+
+**Rationale.**
+
+*What the measurement said.* A real S2 result — a 60×20×30 mm cantilever
+carved at 2 mm, extracted by marching tetrahedra, Taubin-smoothed — put
+through the engine's own `Mesh` kernel:
+
+| | raw marching tets | + Taubin | decimate(0.5) | decimate(0.9) |
+|---|---|---|---|---|
+| facets | 13320 | 13320 | 7248 | **7248** |
+| `hasNonManifolds` | false | false | false | false |
+| self-intersections | **1** | **0** | 0 | 0 |
+| `isSolid` | true | true | true | true |
+| components | 1 | 1 | 1 | 1 |
+| non-uniformly oriented facets | 0 | 0 | 0 | 0 |
+
+Every repair op the plan anticipated is answered by a column of that table.
+`fillupHoles` has nothing to fill — zero boundary edges, at every stage.
+`harmonizeNormals` has nothing to harmonise — zero non-uniformly oriented
+facets, because marching tetrahedra winds its triangles from a parity
+argument rather than guessing. `smooth` is already done, offboard, by a
+Taubin pass that does not shrink the shape where the kernel's own smoother
+would. So the honest answer to "which ops earned their place" is **none of
+the repair ops did**, and adding them anyway would have been building a
+capability against an imagined input.
+
+*What did earn its place, and it is a diagnostic.* Two findings in that same
+table, both of which a script can only act on if something tells it:
+
+1. **A combinatorial closure check cannot see a self-intersection.** The raw
+   marching-tetrahedra surface has every undirected edge in exactly two
+   triangles and every directed edge exactly once — watertight and
+   consistently wound by construction, which is the whole claim ADR-143
+   makes for it — *and* one pair of facets passing through each other. Those
+   are different properties. The offboard checker proves the first and is
+   structurally incapable of noticing the second.
+2. **`decimate` does not tell you what it did.** A 50% reduction request and
+   a 90% one both returned 7248 facets: the tolerance bound is what binds,
+   not the reduction, and nothing said so. `docs/STRUCTURAL.md` §6 posed
+   exactly this question — `mesh.decimate` exists and nothing tells you
+   whether the reduction was safe — and it had no answer until now.
+
+*Why a check and never a repair.* A repair op mutates geometry and reports
+nothing, which is the wrong shape of answer to "is this sound". The script
+owns the geometry (VISION principle 3), so the script decides what to do
+about the answer; an op that quietly fixed the model would be authoring
+geometry the script did not write. If a repair is ever needed, it will be
+because a measurement showed one is, and it will arrive with that
+measurement attached.
+
+*Two things carried, both from the existing discipline.* Determinism is
+**measured per op, not assumed** (ADR-016): `check` does not join
+`APPROXIMATING_OPERATIONS`, because it re-triangulates nothing — it reads a
+mesh and returns counts — and it publishes no geometry for a fingerprint to
+identify either way. And ADR-043 already accepts that `Mod/Mesh` is slated
+for replacement by `manifold` in ROADMAP 11b, so this is one op on a
+substrate flagged for a swap; a diagnostic survives that swap more easily
+than a repair would.
+
+*One gap found on the way, and closed in the same pass.* `inspect
+scope="output"` did not carry `measurement` — `_OUTPUT_DETAIL_KEYS` listed
+only keys describing a thing with geometry. So an output that *is* a number
+was readable on the rebuild response that produced it and nowhere else.
+Tolerable for a dimension the viewport draws beside the part; not tolerable
+for a soundness verdict an agent has to read an hour later. Both keys are
+there now, and the worker had already computed both.
+
+*One bound worth stating.* `getSelfIntersections` returns the whole list, and
+a badly broken mesh returns a long one. A count is the answer to "is this
+sound"; forty thousand facet index pairs in a display block helps nobody. The
+count is capped at 1000 and the record says when the cap bound.
+
+**Consequences.** `cadex_mesh_api.py` gains `check`, `_PACK_OUTPUT_TYPES` and
+an `output_type` parameter on `_value`; `_mesh()` now validates the output
+type as well as the domain, because the domain alone stopped being enough the
+moment the domain had two. `cadex_mesh_worker.py` gains `mesh_check_record`
+and a branch in `serialize_mesh_output` — **not** in
+`cadex_domain_worker._serialize_output`, which is where the plan expected it:
+the mesh domain has its own serializer and that is where the branch belongs.
+`CadexScriptedDomainPublication._configure_object` is keyed on output type as
+well as domain now. Plus one row in `_NATIVE_TYPE_BY_OUTPUT`, one optional key
+in `cadexd._display_block` and in `NESTED_RESPONSE_SPECS["display.*"]`, and
+two in `_OUTPUT_DETAIL_KEYS`. No new op, no new `artifact_kind`, no digest
+change, and no `shell/` diff.
+
+---
+
+## ADR-145 — a stress check is a declared output that follows its part (2026-08-11)
+
+**Decision.** `part.stress(...)` — one primitive on the part domain that
+publishes a **safety factor and no geometry**, modelled line for line on
+`part.measurement` (ADR-139). `docs/VISION.md`'s "FEM … is out of scope" line
+gets an amendment, not a workaround. The offboard solver stays and is what
+this one is checked against.
+
+Five commitments, each with its precedent:
+
+1. **Anchored by ADR-029 selector**, the same validator `fillet` and
+   `measurement` use — including its `expected_count`. That is what makes the
+   result *follow the shape*, and fail loudly naming the selector when a
+   change removes the face it held.
+2. **Units in the names, no defaults, bounded, and a refusal that teaches.**
+   `assembly.body`'s `density_kg_m3` is the precedent.
+3. **Expensive-on-rebuild is not novel** — `assembly.simulation` already is —
+   but stating the ceiling is: `element_mm` is a declared budget, the engine
+   caps the element count and refuses above it naming the size that would fit.
+4. **It publishes p99, not the peak, as the safety factor's denominator.**
+5. **Two implementations, pinned equal by a test.**
+
+**Rationale.**
+
+*Why the VISION line moves rather than being routed around.* The doc already
+contains the template two paragraphs above it: interactive mesh editing was
+ruled out, then arrived as `part.loft_cage` on a declared table, and the doc
+says "And that is how it arrived" (ADR-127). Three facts make the same move
+honest here. FreeCAD's `Fem` tree was **deleted, not disabled** — 3,589 files,
+commit `e85fe5ea` — so nothing is being resurrected. There is **no sixth
+domain**: it is one op on `part`, so by VISION's own test it costs no protocol
+op, no new `artifact_kind` and no `shell/` diff. And the expensive half —
+topology optimisation, refinement sweeps, CalculiX, load cases measured off a
+rollout — stays offboard in `analysis/`, which is not the engine and never
+will be.
+
+*Why the verdict divides by p99.* ADR-141 measured that peak von Mises at a
+clamped face does not converge and **must not** — a clamped face is a genuine
+stress singularity with no limiting value, so it grows with every refinement
+for ever. An output that published a peak safety factor would be lying. Both
+numbers travel and the `note` says which is which, in the payload rather than
+only in a doc.
+
+*The two implementations, and what the agreement is worth.* `analysis/` may
+not import the engine and the engine may not import `analysis/`, both
+test-enforced. So the algorithm is written twice and
+`test_part_stress` solves the identical cantilever on the identical grid
+through both. They agree to 1e-9 on displacement, peak and p99 — because they
+are the same algorithm, which is the point: what the test catches is one of
+them *drifting*. Measured through a live cadexd on the 100×10×10 mm PLA
+cantilever at 2.5 mm:
+
+```
+tip deflection   1.13916 mm   (closed form 1.15218, 1.1% low)
+peak von Mises   5.3790 MPa
+p99  von Mises   5.3389 MPa
+```
+
+— the same three digits `docs/STRUCTURAL.md` §3.3 records for the offboard
+solver at that grid.
+
+*The bug worth writing down, because it was invisible.* An ADR-029 selector
+resolves to faces; the faces are tessellated; the solver asks which grid
+nodes lie on them. **A planar face tessellates to four vertices.** Taking
+those as the anchors held the bar at four corner nodes out of twenty-five and
+loaded it at four — a different structure, reported with a residual of 2e-11,
+no warnings, and every number in it internally consistent about the wrong
+problem. It came out as a tip deflection of 1.78 mm against a closed form of
+1.15: soft by 55%, and only visible because the benchmark had an answer to
+check against. The fix is to sample each face's triangles barycentrically at
+a third of a cell, capped. This is ADR-129's lesson again, and it is why the
+first assertion written was against arithmetic rather than against the
+previous run.
+
+*Where the staging argument did not survive contact.* The plan said
+`CadexStress.py` would go into `_DOMAIN_WORKER_BUNDLES["project"]` as a
+filename string and `DECLARED_ENGINE_MODULES` would **not** grow, mirroring
+how `CadexDynamics` stays out of cadexd's import closure. That mechanism is
+not available here. `CadexDynamics` is unreachable because the only module
+that reaches it, `cadex_assembly_worker`, is *itself* staged by filename and
+outside the closure; `cadex_part_worker` is **inside** it. So
+`DECLARED_ENGINE_MODULES` grows by one, deliberately, rather than being
+routed around with an `importlib` trick that would make the file harder to
+read in order to make a list shorter.
+
+What is asserted instead is the property that actually costs something:
+**nothing imports `CadexStress` at module scope, and `CadexStress` imports
+numpy and scipy inside its own functions.** So a `cadexd` process that
+imports `cadex_part_worker` does not load the solver, and a worker that loads
+the solver does not thereby load 73 MB of numerics. Reachable and loaded are
+different questions; the guardrail now asks the second one, and says so.
+`CadexStress.py` is also a new CMake install line, which is exactly the
+failure mode Phase 10b hit — a source tree that passes proving nothing about
+a payload (ADR-023) — so the test asserts the CMake rule exists too.
+
+*What it imports, which is nothing.* `CadexStress` imports no FreeCAD at all.
+The shape work — resolving a selector, tessellating, sampling — is
+`cadex_part_worker`'s, and what crosses into the solver is triangles and
+point clouds. That is not tidiness: it is what makes the file the same
+species of thing as `analysis/cadex_stress.py` and therefore comparable to
+it, which is the entire basis for trusting the number.
+
+**Consequences.** `src/Mod/cadex/CadexStress.py` (new, staged by filename and
+by CMake); `part.stress` in `cadex_part_api.py`; `stress_record`,
+`_face_anchor_points` and `_sample_triangles` in `cadex_part_worker.py`; the
+`stress` output type through `_OPERATION_OUTPUT_TYPES`, the pack, the domain
+worker's artifact-less branch, `_NATIVE_TYPE_BY_OUTPUT`, `_display_block`,
+`NESTED_RESPONSE_SPECS["display.*"]` and `_OUTPUT_DETAIL_KEYS`. Tests in
+`cadex_tests/test_part_stress.py` (14, of which two drive a real cadexd
+child) and one new guardrail in `test_engine_purity_guardrails.py`. No
+protocol op, no new `artifact_kind`, no digest change, no `shell/` diff.
+
+## ADR-146 — four opt-in keys on the field, and a blend that has to be measured before it is believed (2026-08-11)
+
+**Decision.** `analysis/topology.py` gains four plan keys — `symmetry`,
+`extrude`, `interface_pad_mm`, `pin_domain_planes` — **all off by default**,
+so a plan written against S2 carves the same field. Three of them are defects
+the first real render exposed; the fourth is what makes a result read as
+designed. This is S4a of `docs/STRUCTURAL.md` §8. No engine code, no protocol
+change, no payload bytes, no new pinned dependency, no `shell/` diff.
+
+And, before any of it: **spike zero**, which was authorised to sink the slice
+and did not, though it moved twice.
+
+**Rationale.**
+
+*Spike zero, which is the reason S4 has a script to emit at all.*
+`docs/ORGANIC.md` §1 is why it was run first: the robot wolf tried to weld
+sixteen fused lofts and failed twice, and `part.fuse(blend=)` (ADR-124/125)
+was built to close exactly that gap. It had never been asked to blend
+forty-way. Hand-written lattices of 14, 24, 44 and 64 spheres-plus-members,
+through a real `cadexd`, with `blend = 2.0 mm`:
+
+| solids | `blend=None` | `refuse` | `reduce` | `skip` |
+|---|---|---|---|---|
+| 14 | 0.95 s | **fails**, 9 of 37 edges | 6.7 s | 6.8 s |
+| 24 | 1.64 s | **fails**, 7 of 65 | 10.8 s | 10.9 s |
+| 44 | 2.06 s | **fails**, 15 of 114 | 4.9 s | 5.0 s |
+| 64 | 3.35 s | **fails**, 18 of 166 | 5.9 s | 5.9 s |
+
+and a radius sweep at 49 solids, because the obvious reading of the above is
+"2 mm is too big for a 1.6 mm member":
+
+| blend | `refuse` | `reduce` |
+|---|---|---|
+| 2.0 mm | fails, 16 of 127 | 4.7 s |
+| 0.8 mm | fails, 8 of 127 | 15.1 s |
+| 0.6 mm | fails, 4 of 127 | 18.4 s |
+| 0.4 mm | fails, **1** of 127 | 9.6 s |
+
+**No radius survives `refuse`.** Even 0.4 mm — a quarter of the thinnest
+member — leaves one seam of 127 that OCC will not round. So the gate passes,
+well inside its ~30 s bar, and it passes on a mode rather than on a size:
+`blend_on_failure` is not a convenience here, it is load-bearing. The
+fallbacks the spike was authorised to choose — a pairwise fuse tree, or
+`blend=None` with oversized node spheres — are **not taken**.
+
+*And the first thing the spike actually found was not about blending at all.*
+Every one of the first forty struts was refused with `api.cone: OpenCascade
+rejected the requested operation: creation of cone failed`, before a blend
+had been attempted. **OCC has no cone of equal radii** — that surface is a
+cylinder, and `gp_Cone` needs a non-zero semi-angle. So the emitted `_strut`
+helper branches on `abs(r0 - r1) < 1e-6`, and a test pins it. Three lines,
+and nothing in the plan predicted them.
+
+*Why the sensitivity is where symmetry and extrusion are imposed.* Between
+the chain rule and the optimality-criteria update. Before the filter they
+would be smeared back out by it; after the update they would fight the volume
+bisection. And it holds *exactly* rather than approximately, because the OC
+update is pointwise and monotone in the sensitivity: a symmetric sensitivity
+and a symmetric starting design give a symmetric step for ever after.
+Measured on a cantilever with its tip load pushed off to one side, the
+mirror residual is **9.4e-16** — floating point, not convergence. The design
+variable is never projected, so the volume constraint is untouched.
+
+Symmetry **refuses** a design domain that is not itself symmetric about the
+named mid-plane, because mirroring the sensitivity there would push material
+into cells that are not in the domain; and it *warns* when the `keep` regions
+are asymmetric, because `keep` is a promise about the shape and is held as
+declared.
+
+*Extrude needed a second edit nobody would have predicted.* Averaging the
+sensitivity alone leaves the design tapered: the volume gradient
+`filt.backward(inside)` is not constant along the axis near the domain's
+faces, so the bisection puts the filter's edge effect straight back in.
+Measured on a 40 × 16 × 20 cantilever, the largest column standard deviation
+of the density is **0.105** — a taper you can see. Averaging the volume
+gradient along the same axis brings it to **0.0009**. That is free, because
+averaging preserves each column's sum, so for a design already constant along
+the axis `x · gradient_extruded` equals `x · gradient` term for term and the
+volume the bisection enforces is still the volume the filter produces.
+
+The remaining 0.0009 is in the **density** and is left there. The cone filter
+is not separable, so its normalised response to a column-constant design
+still varies near the domain's faces. Projecting the density would remove it
+and break the one property this file's whole test strategy rests on —
+`rho = Hx/d` is what makes the analytic sensitivity exactly checkable against
+a finite difference. A 0.09% ripple is not worth an unfalsifiable gradient.
+
+*`interface_pad_mm` is a bug fix wearing an aesthetics hat.* A support or a
+load is declared over a region of the *surface*, so left to itself the
+optimiser builds the cheapest membrane that can receive the force there —
+structurally correct, and useless as a mounting interface. The pad dilates
+each declared region by a physical millimetre count (the same discipline
+`cone_kernel` follows: the declared radius must mean the same thing at two
+grid resolutions) and adds it to `keep`.
+
+Two details that are not obvious. The interfaces are taken on **nodes** and
+mapped to the cells that touch them, not through `_cell_regions` — a load
+declared as a zero-thickness plane at `x = 60` selects nodes there and *no
+cell centre at all*, because the last centre sits half an element short of
+the face. And a pad that overlaps a declared `void` is **clipped, with a
+warning**: `void` is the region a person declared and the pad is the one this
+file grew.
+
+*`pin_domain_planes` is three lines and a tolerance of nothing.* A vertex
+that came out exactly on a face of the blank came out of a cell the run held
+at density 1, and the level set of a step from 1 to a padded 0 lands exactly
+on the cell face — which is exactly the box face. So the pin is a test on
+`1e-6 mm` rather than a tolerance to tune, it touches only the coordinate
+normal to the plane, and a vertex on two planes is pinned by both and stays
+on the edge. It still slides *within* the plane, so the staircase along the
+rim still goes; measured, an unpinned smoother moves the cantilever's root
+face by more than 1e-3 mm and a pinned one by less than 1e-9.
+
+**Consequences.** `Plan.symmetry` / `.extrude` / `.interface_pad_mm` /
+`.pin_domain_planes`; `_axis_index`, `_interface_cells`, `_dilate`,
+`_impose_symmetry`, `_impose_extrusion`, `domain_planes` and a `planes=`
+argument on `taubin_smooth` in `analysis/topology.py`; `Run.pads`; four new
+report fields under `plan` and one under `grid`. Nine new tests in
+`cadex_tests/test_analysis_topology.py`. The documented example grid rises to
+1.0–1.25 mm, which the corrected `_DIRECT_DOF_LIMIT` already paid for
+(ADR-143).
+
+## ADR-147 — the optimiser finds the topology and the deliverable is a script (2026-08-11)
+
+**Decision.** `analysis/skeleton.py` closes S4: a SIMP density field in, a
+**parametric xscript** out — fitted, emitted, installed through
+`./cadex script --set`, sized against the real hex FEA on the rebuilt CAD,
+and judged by one number. Offboard, under the identical contract as the rest
+of `analysis/`: no CMake rule, no payload, nothing in `pixi.toml`, no GPL
+import, and `requirements.txt` still three pins. No engine change, no
+protocol op, no `shell/` diff.
+
+`docs/VISION.md` principle 3 already demanded this — *the optimiser never
+authors geometry the script does not own* — and until now it was honoured
+only in spirit, by handing over an STL and hoping the agent redrew it. Every
+generative-design tool on the market ends in a mesh you cannot edit. Cadex is
+the one product whose native artifact is a script, so it can end somewhere
+else.
+
+**The verdict, which is the point of the slice.** On the S4 benchmark — a
+two-footed bracket, 60 × 40 × 40 mm, carved at 2 mm to a volume fraction of
+0.3 with S4a's symmetry, pads and plane pinning on:
+
+```
+SIMP optimum      compliance 10.234 N·mm   mass 40.58 g
+rebuilt script    compliance  6.042 N·mm   mass 41.07 g
+compliance ratio  0.59        bar 1.15     verdict: ship
+coverage 0.926    23 nodes, 51 struts, 3 pads
+```
+
+The parametric part is **1.7× stiffer than the SIMP optimum at the same
+mass**. That is not the fit beating the optimiser: SIMP minimises compliance
+over a *grey* density field, and the ratio compares it against a solid part
+of equal mass, where the grey band that a filter of radius R smears over
+every member is real material carrying nothing. The bar exists to catch a fit
+that lost the load path, and 0.59 says this one did not.
+
+**Rationale, in the order things were wrong.**
+
+*No 3-D thinning, and no local maxima either.* Thinning a blobby SIMP field
+gives spurious branches and 250 hand-written lines. The plan proposed local
+maxima of the distance transform instead — and that is also wrong, for a
+reason worth writing down: **a member is a ridge of the distance field, and a
+cell on a ridge is not a strict local maximum.** A 3×3×3 maximum filter
+proposed 25 cells out of 3500 on the benchmark, the packing kept 11, and the
+fitted struts covered 0.45 of a part whose members run 8 to 14 mm thick — a
+fit starved of nodes, reported as a field that did not want struts. Handing
+the whole solid to the packing instead is the classic maximal-ball medial
+axis and costs one sort.
+
+*The distance transform is the whole fit, and it is biased.* Its value **is**
+the local member radius. Measured on a synthetic 8 mm cylinder on a 1 mm
+grid, whose deepest cell centre is a true 7.293 mm from the surface: the
+binary transform reads 7.616. Subtracting the textbook half cell gives 7.116,
+and a strut of 7.1 covers `(7.1/8)² = 79%` of the cylinder it was fitted to —
+so a *perfect* fit to a *perfect* strut scored 0.69 on the coverage gate and
+was refused.
+
+The fix is to interpolate the **density** onto a half-cell grid before the
+transform, because the binary field throws away the information that says
+where between two cell centres the surface is. How much to subtract is then a
+measurement rather than a derivation, since the bias runs the other way for a
+curved boundary than for a flat one. Three canonical cases at `refine = 2`,
+as raw transform minus truth: convex cylinder **−0.069** cells, slab between
+two parallel planes **+0.25**, flat domain face **+0.125**. A quarter of a
+*fine* cell — an eighth of a coarse one — minimises the worst of those and
+leaves every case inside **0.194 cells**.
+
+*The graph has to agree with the field about connectivity, and Delaunay plus
+a floor does not.* On the cantilever the field is one connected component of
+2916 cells, and the bars thicker than one cell split the fit into 73 + 9 + 9
++ 3 + … nodes, orphaning the tip load. So the thin bars are added back by
+Kruskal on `min(r0, r1)`, largest first, until nothing more joins two
+components — a maximum spanning forest over exactly the edges that were going
+to be thrown away, costing one sort. What those promoted bars claim is the
+**topology** and not the size, and the report says so with their count and
+their thinnest radius.
+
+*An anchor goes where the pad has material, not where its centroid is.* A pad
+is a ball or a slab intersected with the carved solid, so its centroid is
+routinely pulled onto its own rim: measured on the cantilever's tip load, the
+centroid landed one cell from the surface, where the transform reads a single
+cell, and every bar into it was pruned for being thinner than a member. The
+anchor "was disconnected" from a structure it was sitting in the middle of.
+It now goes to the cells within 20% of the region's own deepest, and among
+those the one nearest the centroid.
+
+*Coverage: what it measures, and what it turned out not to measure.* The bar
+is **0.85**, as planned, and the discrimination is real:
+
+| field | solids | coverage |
+|---|---|---|
+| S4 bracket (SIMP) | 74 | **0.93** |
+| A-truss (synthetic) | ~90 | **0.97** |
+| cantilever (SIMP) | 134 | 0.76 |
+| hollow box shell | 5 | 0.56 |
+| solid block | 26 | 0.79 |
+
+But decision 2's *reason* — "a SIMP field often wants a flat web, so refuse
+rather than fit plates" — is only half right, and the measurement is what
+says so. **A slab fits fine**: its medial axis is one sheet, the packing
+lands nodes all over it, and coverage comes back 0.90 to 0.97. What fails is
+a **shell** — several sheets a cell or two thick meeting at edges — and a
+SIMP cantilever, which is one. So the gate is a *fidelity* gate: it says the
+emitted strut part does not contain the material the field had. That is the
+number worth having, it refuses the right fields, and it is the evidence the
+plan said would ask for S5.
+
+Two corrections to how it is counted, both of which the number needs to mean
+anything. Half a cell of **slack**, because the field knows its own occupancy
+only to within a cell and a fitted node sits at a cell *centre* rather than on
+the true medial axis — asking a cell centre to be strictly inside a fitted
+primitive asks the fit for sub-cell accuracy the field does not have. And the
+**pads count**, because they are material the script emits; a coverage number
+that ignored them reports a hole exactly where the mounting boss goes.
+
+*Why the node packing is two radii apart.* `_SUPPRESSION = 2.0` is a
+diameter: consecutive spheres along a member just touch and the strut between
+them fills the gap rather than being buried inside them. It is also what
+makes the output buildable, which is a constraint spike zero put on this file
+from outside — at 1.0 the bracket fits with 556 solids and covers 0.99, at
+2.0 with **74** solids and 0.93. Below 2.0 the coverage barely moves and the
+solid count explodes past what `part.fuse` will blend in a sane time.
+
+*The emitted script, and the one thing that made it hard.* Three `num()`
+parameters — `strut_scale`, `min_radius_mm`, `blend_mm` — and the radii as a
+plain editable table, because `num()` is numeric-only and forty parameters is
+not a search space `analysis/search.py` could sweep. That is the right
+division: S4 fixes the topology, S1 tunes the sizes. Verified: `./cadex
+params --set strut_scale=1.1` moves the exported volume from 32 975 mm³ to
+35 751 mm³ with no model in the loop.
+
+The hard part is `part.stress`. A fitted lattice **has no flat face
+anywhere**, and a mounting interface that is a sphere is not a mounting
+interface — so the script also emits each anchor's pad as a `part.box`,
+snapped out to whichever plane of the blank it touches. Its outer face is
+then exactly that plane, and the ADR-029 selector needs **four** keys, each
+because the other three were not enough: `geometry_type` and `normal` pick
+every plane facing that way, which on a fused lattice includes the flat end
+cap of every strut; `near_point` narrows to the pad's neighbourhood and
+separates two pads on one plane; `min_area` separates the pad from the end
+caps that survived the boolean near it. Measured, a `near_point` of 18.7 mm
+around the boss with no area band caught more than one face and the engine
+refused the whole script for cardinality. If an interface does not reach a
+face of the blank, the check is **omitted with a warning** rather than the
+script refused: the script still builds and still sweeps, and
+`analysis/cadex_stress.py` still measures it from outside.
+
+*The sizing loop, and the one word that made it diverge.* A fully-stressed
+design on real per-element von Mises, with two corrections that had to be
+separated before either converged. `_resize` decides *where* the material
+goes and is not volume-neutral on its own, so it is renormalised back to its
+own analytic volume; only then does the *measured* mass of the last rebuild
+say how much material there should be in total. The renormalisation bisects
+rather than solving, because there is no formula — members go as `r²`, joints
+as `r³`, both are clipped at a floor and at a headroom, and the joints are
+sized *from* the members.
+
+And `_lift_nodes` said `max(current, incident)`. A joint radius could
+therefore only ever grow, so every pass ratcheted the part heavier whatever
+the mass correction asked for, and a 40.6 g target settled at 45.2 g with the
+controller pulling the other way the whole time. A joint has no size of its
+own; it has the size of the members it joins, and shrinking them has to
+shrink it.
+
+Two ceilings on every member, and the tighter wins: the **blank's own
+headroom**, which keeps the part inside the domain it was carved from — a
+strut that grew from 6.3 to 11.3 mm swallowed the boss pad's whole top face
+and the emitted selector stopped resolving — and **three times the fitted
+radius**, which keeps it recognisable as the fit.
+
+*A pass that will not build ends the loop, not the run.* The last geometry
+that did build is a real answer and throwing it away to report a refusal
+helps nobody. Pass zero is the exception: a fit that cannot be built at all
+has nothing behind it. This is not hypothetical — the benchmark's fourth pass
+is refused with *"OpenCascade produced an invalid shape"*, reproducibly, and
+the shipped result is the third.
+
+*What spike zero's blend measurement did not survive.* On a hand-written
+lattice `reduce` cleared every size and radius tried. On a **fitted** one it
+does not: it looks for a single radius that blends *every* seam, and with
+near-tangent members there is none, so it refused the whole part down to
+0.0555 mm. `skip` — blend what works, leave the rest sharp — is what the
+emitted script uses. And even `skip` refuses when *nothing* blends, which is
+what happens on the shipped bracket: at `strut_scale = 1.0` **no** radius
+tried (0.25, 0.5, 1.0, 2.0 mm) blends a single seam, while at
+`strut_scale = 0.9` a 1.0 mm blend succeeds and adds 30 000 triangles.
+So "the fillets come for free" is the one premise of the plan that did not
+survive contact. The loop blends only the geometry it finally keeps, drops
+the blend if the kernel refuses, and says so; `blend_mm` stays a declared
+parameter because **whether a given lattice blends is a property of the
+lattice that only the kernel knows**, and that makes it a knob to try rather
+than a promise this file can make.
+
+*One thing that is computed and cannot be read.* `part.stress` is a declared
+output that carries no geometry (ADR-145), and `cadex export`'s `--json`
+envelope describes only BREP outputs — a stress check comes back as
+`{"kind": "none", "skipped": "not a BREP output"}`. Its safety factor is
+computed, it is in the project store, and no subcommand serves it. Reading
+the store's own attempt files would couple this tree to a layout ADR-142
+deliberately keeps it away from, so it does not. What the check is *for*
+still works and is the more valuable half: it is evaluated on every rebuild,
+so a parameter change that moves a mounting face until the load case no
+longer resolves fails the rebuild loudly instead of quietly measuring
+something else. A `cadex` subcommand that serves a non-BREP output's value is
+a small, separate piece of work.
+
+**Consequences.** `analysis/skeleton.py` (new, ~1 500 lines);
+`analysis/README.md` and `docs/STRUCTURAL.md` §8; `SKELETON` added to the
+tree-contract loops in `cadex_tests/test_analysis_stress.py`; 20 new tests in
+`cadex_tests/test_analysis_skeleton.py`, one of which drives a real cadexd
+child. Nothing under `src/`, nothing under `shell/`, nothing in `pixi.toml`,
+and `requirements.txt` still three pins.
+
+## ADR-148 — the section is a boolean, and the section is a view (2026-08-17)
+
+**Decision.** The shell can cut the model open on a plane and take the near
+half away, so the inside can be looked at. A hidden cutter box plus a
+**Boolean DIFFERENCE** modifier on each hydrated solid, a geometry-nodes clip
+on each edge-wire child, and a plane aimed by three properties on the scene:
+axis, offset in mm, flip. A toggle in the chat header beside Collision and
+Dimensions, the controls in the parameters editor, and one agent tool,
+`section_view`.
+
+Net new surface: **one add-on module, one operator, one tool, four scene
+properties.** No engine change, no protocol op, no `artifact_kind`, no line
+in the inherited Blender tree, and no change to `cadex_hydrate` at all.
+
+### Why a boolean and not the viewport's clipping planes
+
+Blender already has a half-space clip — `rv3d.clip_planes`, what Alt+B sets —
+and it is free, instant at any model size, and clips wires and solids alike.
+It was still the wrong answer here, for three reasons that are each
+sufficient:
+
+- **It cannot fill what it opens.** A clipped solid is an open shell: you see
+  through the cut into the far inside wall, lit from the wrong side. A
+  boolean closes the surface it opens, so a cut bracket reads as material
+  with a ring where the bore is. That is the difference between a section
+  view and a hole in the picture.
+- **No screenshot carries it.** Clip planes are per-region view state.
+  `capture` renders through `GPUOffScreen.draw_view3d` with its own matrices,
+  so the agent — the party that most needs to check whether a bore broke
+  through — would ask for a section, take a screenshot, and be shown the
+  uncut part.
+- **The gate cannot see it.** `pixi run gate` is `--background`: there are no
+  3D regions and no `RegionView3D` at all. A feature whose only evidence is
+  "it looked right when I ran the app" is a feature that breaks silently.
+
+The boolean costs real work per frame. Measured on the blind-bore part, one
+offset change costs **6.3 ms** end to end (`GATE["section_cut_seconds"]`),
+against the 650 ms slider bar this shares a viewport with. `EXACT` rather
+than the newer `MANIFOLD` solver: a tessellated BREP is usually a closed
+manifold and usually is not the interesting case — the one that matters is a
+mesh-domain import, which may be neither.
+
+### The edges needed a second mechanism
+
+The model is drawn as two kinds of object: a solid, and a wire child carrying
+the BREP edges (`cadex_hydrate`). A Boolean has nothing to say about a mesh
+with no faces in it, and edges left uncut hang in the air where the material
+they outline has gone — which looks like a bug, not a section.
+
+So the wires get a geometry-nodes modifier instead: delete every point on the
+far side of the same plane. Eight nodes, one shared group, and the plane
+handed to it **in each object's own frame**, because geometry nodes read
+`Position` locally and a component instance's wire child sits at the
+component's solved placement. Converting in Python rather than adding an
+Object Info / Self Object pair to the group keeps the group at eight nodes
+and keeps the arithmetic in the language the rest of the module is written
+in. The cut edge lands on a tessellation vertex rather than exactly on the
+plane; at the deflections this shell asks for, that is under a pixel.
+
+### It is a view, and the gate says so
+
+`docs/VISION.md`: nothing happens outside the script. A section plane is not
+a feature, so it never reaches the engine, is never written to the script,
+and does not move the accepted revision — the gate asserts exactly that,
+comparing the revision guard either side of switching it on. What it changes
+is the display mirror, which is what `cadex_collision` and `cadex_dimension`
+already do.
+
+Two consequences of it being modifiers rather than an overlay, both of which
+are why this cost `cadex_hydrate` nothing:
+
+- **A rebuild carries it.** Hydration finds an object by `cadex_output` and
+  swaps its mesh datablock, so the modifier rides through every drag, every
+  settled refine and every re-execute untouched. The only thing
+  `cadex_backend.hydrate` has to do is call `refresh` — because an output
+  that has just entered the contract is a *new* object with no modifier on
+  it, and a section that quietly stopped applying to the newest part is worse
+  than no section.
+- **`render_views` suspends it.** That tool answers "what did I build" and
+  hides every overlay to do it (ADR-124); a cut model is not what was built.
+  `viewport_screenshot` answers the other question and leaves it alone, which
+  is why `section_view`'s description sends the agent to the screenshot.
+
+*The one thing that had to be measured before it was believed.*
+`obj.bound_box` reflects **evaluated** geometry: with the cut on, the model's
+measured top is the cut. Every number this feature derives from the model —
+where the centre of the axis is, how big the cutter has to be, what range the
+panel reports — would then feed back on the cut that produced it, so the
+offset a person is dragging would be measured against a range that moves as
+they drag it. `cadex_section.model_bounds` therefore reads the mesh
+datablocks with numpy instead of `bound_box`, and `render_views` suspends the
+section *before* it measures rather than after. A 20 mm cube cut at z = 5
+reports a top of 5, which is how this was found.
+
+*One line that was written and taken back out.* The Cadex system-prompt
+overlay (`modes.py`) gained a sentence telling the assistant to cut the model
+open when it wants to know what is inside one — and `bl_mesh_agent.py` caps
+that overlay at 3500 characters, of which **53 were left**. The cap is a
+bloat guard on the one text every turn pays for, so the line came back out
+rather than the cap going up: the collision sentence beside it earned its
+place with two shipped bugs (ADR-087, ADR-090), and this feature has none
+yet. The tool description carries the same guidance, and the model reads that
+too.
+
+*Why the plane is not clamped to the model.* A slider that refuses to leave
+the part lies about where the part is. The offset goes where it is put, and
+when it is off the end the panel and the tool both say so — "the plane is
+clear of the model" — which is a sentence, where a clamp is a mystery.
+
+**Consequences.** `shell/scripts/addons_core/mesh_agent/cadex_section.py`
+(new, ~560 lines, pure half separable); one operator, one header button and
+one panel box in `ui.py`; the `section_view` tool in `tools.py`; a `refresh`
+call in `cadex_backend.hydrate` and another after a preview's placements; the
+suspend in `capture.render_views`; registration in `__init__.py`; and
+`test_the_section_view_cuts_the_model_open` in the gate suite — and nothing
+in `modes.py`, per the paragraph above. Every line is
+under `mesh_agent/` or `shell/tests/python/`, so `docs/BLENDER-TREE.md` §2a
+is still eight files and §2b and §2c are unmoved (ADR-091).
+
+## ADR-149 — the explosion rides the display entry, and the shell interpolates it (2026-08-18)
+
+**Decision.** The exploded view a user can see. The engine half existed
+since the op did — `assembly.exploded_view(assembly, moves)` computed staged
+moves, final placements and leader lines, and all of it died inside the
+worker: the output's display entry was all-nulls and no shell code read it.
+Two owner decisions frame the feature: the **moves are engine-declared**
+(the AI authors them in the script; the shell invents no geometry), and the
+**gesture is a toggle plus a factor slider 0→1** — 0 assembled, 1 fully
+exploded, interpolated live with leader lines and no engine round trip on
+the drag.
+
+Net new surface: one optional `display.*` key, one add-on module
+(`cadex_explode.py`), one operator, one tool (`exploded_view`), two scene
+properties — and one guarded import in the inherited Assembly tree (below).
+No new protocol op, no new `artifact_kind`, no `cadex_hydrate` change.
+
+### The wire route is a display key, not an artifact
+
+The fourth optional key on a display entry, after `measurement` (ADR-139),
+`mesh_check` (ADR-144) and `stress` (ADR-145), on identical terms: a
+positive signal that this entry is staged poses and leader lines rather
+than geometry, copied verbatim by `cadexd._display_block`, pinned in
+`NESTED_RESPONSE_SPECS` (`display.*.exploded_view` and its `bounds`; the
+validator cannot pin list elements, so the lifecycle test pins the stage,
+pose and line shapes). Bounded by the op's own limits — ≤64 moves, ≤256
+component references — the record stays well under the frame cap.
+
+A retained artifact was rejected deliberately: its hash would enter the
+restore digest, demanding byte-reproducible native readback from FreeCAD's
+`ExplodedView` graph, for data every rebuild recomputes anyway. Stage poses
+are the per-move **cumulative** placements the worker already validated;
+`final_poses` covers every component so factor 1 is a statement, not an
+inference; the factor-0 endpoint is deliberately *not* in the record — it
+is the component's own solved `placement`, which every client already
+reads, so "assembled" is exact by construction.
+
+### matrix_world, re-applied by the hydrate hooks — not delta channels
+
+The shell writes interpolated poses to `matrix_world` — the channel the
+hydrate and preview paths already own — and the ordering is the contract:
+engine poses land first, `cadex_explode.refresh()` runs after, from the
+record the same response carried. Delta channels (`delta_location`) were
+rejected: their composition with `matrix_world` assignment is undocumented
+and version-fragile, and a second pose channel means two owners for one
+question. The precedence rules, each pinned by a gate check:
+
+- **`set_params` rebuild while exploded** — hydrate writes the new solved
+  poses, the hook re-applies the explosion from the NEW record, same
+  response.
+- **Pose-only preview drag while exploded** — `apply_placements` wins the
+  tick, the post-apply hook re-applies the (stale-endpoint) explosion, and
+  the settled rebuild refreshes the endpoints. The preview path drops
+  exploded views engine-side (`skip_derived`), so stale-until-settled is
+  the design, not a race.
+- **Baked simulation** — the toggle REFUSES, naming the conflict. F-Curves
+  on the basis channels and `matrix_world` writes cannot share an object
+  honestly: the depsgraph re-evaluates the action over whatever was
+  written, at its own times. Mutual exclusion, not layering.
+
+The factor-0.5 gate check is written first because it is this decision's
+risk made a test: the pure half predicts a mid-stage pose, the viewport is
+asked for the same number through `matrix_world`.
+
+Interpolation is staged: stage *i* of *N* owns factor window
+[i/N, (i+1)/N]; a component lerps position and slerps orientation (with the
+hemisphere flip `cadex_animate._continuous` records) inside its own
+windows, holds outside them, and carries earlier stages forward. Leader
+lines are one wire object in a sibling "Exploded" collection — the
+collision precedent, not the GPU-handler dimension one, because the lines
+must exist under the `--background` gate and in renders — growing with each
+component's own staged progress. `render_views` suspends the explosion (an
+exploded model is not what was built, ADR-124); `viewport_screenshot`
+leaves it on. One exploded view per model: two is refused naming both,
+`cadex_animate`'s two-simulations rule.
+
+*What the packaged gate caught, again.* `CommandCreateView.py` imported
+`pivy` bare at module scope. The pixi environment carries pivy, so the
+source tree passed; the payload prunes it, so the staged engine failed on
+the first exploded-view script it saw — the exact class of miss ADR-023
+exists for. Fixed with the identical guard shape `JointObject.py` already
+carries (coin = None; only the never-instantiated view providers use it),
+a minimal diff in the inherited tree.
+
+*The Phase 8 note.* This feature deepens the engine's `CommandCreateView`
+import — ROADMAP's one non-mechanical Phase 8 obstacle. The eventual out is
+known and small: `_calculateExplodedPlacements` is ~40 lines and portable
+into the worker, and the display key is the seam that makes that port
+invisible to every client. Deliberately not taken now.
+
+**Consequences.** Engine: `_compact_pose` + `_exploded_display_record` in
+`cadex_assembly_worker.py` and the item-key write beside `assembly_data`;
+the fifth optional-key block in `cadexd._display_block`; the
+`NESTED_RESPONSE_SPECS` pins; the pivy guard in
+`src/Mod/Assembly/CommandCreateView.py`; the lifecycle test
+`test_cadexd_serves_an_exploded_view_display_record`; `docs/INTEGRATION.md`
+and `docs/XSCRIPT.md` updated in the same change (the op had never been
+documented). Shell: `cadex_explode.py` (new, pure half separable); one
+operator, one header button and one panel box in `ui.py`; the
+`exploded_view` tool in `tools.py`; a `refresh` in `cadex_backend.hydrate`
+and another after a preview's placements; the suspend in
+`capture.render_views`; registration in `__init__.py`; pure-half tests in
+`bl_mesh_agent.py` and `test_the_exploded_view_spreads_the_assembly` in the
+gate suite — and nothing in `modes.py`, per ADR-148's overlay-cap
+paragraph. Every shell line is under `mesh_agent/` or
+`shell/tests/python/`, so `docs/BLENDER-TREE.md` §2a is still eight files
+and §2b and §2c are unmoved (ADR-091). `cli/` needed zero changes: it
+imports `CadexdProtocol` directly, so the pin is what keeps its reply
+validation green.

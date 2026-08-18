@@ -860,6 +860,14 @@ def _complete_wiring(captured: Mapping[str, Any]) -> Any:
 
 #: Per-output detail the worker already computed, in the order an agent
 #: reading a page wants it. Absent keys are simply not reported.
+#:
+#: ``measurement`` and ``mesh_check`` are the artifact-less kinds, and they
+#: were the gap this list had (ADR-144). Everything else here describes a
+#: thing with geometry, so an output that *is* a number was reachable only
+#: on the rebuild response that produced it — which is tolerable for a
+#: dimension the viewport draws beside the part, and not tolerable at all
+#: for a soundness verdict an agent has to read an hour later. Adding them
+#: costs nothing: the worker already computed both.
 _OUTPUT_DETAIL_KEYS = (
     "name",
     "type",
@@ -867,6 +875,9 @@ _OUTPUT_DETAIL_KEYS = (
     "artifact_kind",
     "facts",
     "mesh_data",
+    "measurement",
+    "mesh_check",
+    "stress",
     "operation_diagnostics",
 )
 

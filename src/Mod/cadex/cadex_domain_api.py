@@ -45,6 +45,7 @@ _OPERATION_OUTPUT_TYPES: dict[str, str] = {
     "point_cloud": "points",
     "inspection": "inspection_group",
     "measurement": "measurement",
+    "stress": "stress",
     "report": "report",
     "robot": "robot",
     "waypoint": "waypoints",

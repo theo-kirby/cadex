@@ -151,6 +151,24 @@ def _display_block(
         measurement = item.get("measurement")
         if isinstance(measurement, Mapping):
             entry["measurement"] = dict(measurement)
+        # ...and only mesh checks have one (ADR-144), on the same terms
+        # again: a positive signal that this entry is four integers about
+        # another output rather than a thing with a shape.
+        mesh_check = item.get("mesh_check")
+        if isinstance(mesh_check, Mapping):
+            entry["mesh_check"] = dict(mesh_check)
+        # ...and only stress checks have one (ADR-145). Three optional keys
+        # now, all on the same terms: a positive signal that this entry
+        # states a fact about geometry rather than being geometry.
+        stress = item.get("stress")
+        if isinstance(stress, Mapping):
+            entry["stress"] = dict(stress)
+        # ...and only exploded views have one (ADR-149), on the same terms
+        # once more: a positive signal that this entry is staged poses and
+        # leader lines for the shell to interpolate, not geometry of its own.
+        exploded_view = item.get("exploded_view")
+        if isinstance(exploded_view, Mapping):
+            entry["exploded_view"] = dict(exploded_view)
         tessellation = item.get("display")
         if isinstance(tessellation, Mapping):
             entry["tessellation"] = {

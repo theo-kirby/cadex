@@ -31,7 +31,10 @@ _PUBLISHABLE_TYPES = frozenset({"wire", "face", "shell", "solid", "compound"})
 #: geometry (ADR-139). Deliberately a second constant rather than a widened
 #: first one — the pack contract and the ``output_type=`` argument were the
 #: same set only for as long as every output was a shape.
-_PACK_OUTPUT_TYPES = _PUBLISHABLE_TYPES | frozenset({"measurement"})
+#: ...and, since ADR-145, the second one: a stress check carries a safety
+#: factor and no geometry either. Both are the same species of thing, and
+#: adding the second cost one member here because the split already existed.
+_PACK_OUTPUT_TYPES = _PUBLISHABLE_TYPES | frozenset({"measurement", "stress"})
 _JOIN_TYPES = frozenset({"arc", "tangent", "intersection"})
 _TRANSITION_TYPES = frozenset({"transformed", "right_corner", "round_corner"})
 #: What a loft does when its surface escapes the sections it interpolates
@@ -2711,6 +2714,229 @@ class PartDomainAPI:
             **properties,
         )
 
+    def stress(
+        self,
+        shape: DomainValue,
+        *,
+        hold: Mapping[str, Any] | Sequence[Mapping[str, Any]],
+        load: Sequence[Mapping[str, Any]],
+        youngs_modulus_mpa: float,
+        poissons_ratio: float,
+        yield_strength_mpa: float,
+        density_kg_m3: float,
+        element_mm: float,
+        label: str = "",
+    ) -> DomainValue:
+        """Declare a stress check on this shape (ADR-145).
+
+        A stress check is a **declared output that carries no geometry**, the
+        same species of thing as ``part.measurement``. It publishes a safety
+        factor, the stresses behind it and the mass of the part::
+
+            bracket = part.cut(part.box(60, 40, 10),
+                               part.cylinder(3, 20))
+
+            check = part.stress(
+                bracket,
+                hold={"geometry_type": "Plane", "normal": [0, 0, -1],
+                      "expected_count": 1},
+                load=[{"at": {"geometry_type": "Plane", "normal": [1, 0, 0],
+                              "expected_count": 1},
+                       "force_n": [0, 0, -250]}],
+                youngs_modulus_mpa=3500, poissons_ratio=0.36,
+                yield_strength_mpa=50, density_kg_m3=1240,
+                element_mm=2.0,
+            )
+
+            result = {"bracket": bracket, "check": check}
+
+        ``hold`` is one **ADR-029 selector** naming the faces the part is held
+        by, or a list of ``{"at": selector, "axes": ["x", "z"]}`` mappings when
+        different faces are held differently. ``load`` is a list of
+        ``{"at": selector, "force_n": [...], "torque_n_mm": [...]}``. Both are
+        anchored by selector rather than by ordinal, so the load case
+        **follows the shape**: it moves when a parameter moves the face, and
+        fails loudly naming the selector when a change removes it.
+
+        Every selector carries its own ``expected_count``, exactly as
+        ``fillet``'s and ``measurement``'s do. That is not ceremony here: a
+        held face that silently becomes two after an edit changes what the
+        part is bolted to, and a load spread over a face that split in half
+        is a different load case reported as the same one. The cardinality is
+        what makes that fail instead of quietly answering a different
+        question.
+
+        **Every material property is required and has no default**, and each
+        carries its unit in its name. ``assembly.body``'s ``density_kg_m3`` is
+        the precedent: a guessed stiffness produces a plausible-looking number
+        that is wrong, and a safety factor against a strength nobody declared
+        is a number pretending to be a verdict. PLA is roughly 3500 MPa /
+        0.36 / 50 MPa / 1240; ABS 2100 / 0.35 / 40 / 1040; aluminium 6061
+        69000 / 0.33 / 275 / 2700; steel 200000 / 0.30 / 250 / 7850.
+
+        ``element_mm`` is a declared **budget**, not a hint. The solve is
+        expensive on every rebuild -- ``assembly.simulation`` is the precedent
+        -- so the engine caps the total element count and refuses above it,
+        naming the size to declare instead. The payload reports its own wall
+        time.
+
+        **The safety factor divides by p99 von Mises, not by the peak.** Peak
+        stress at a held face is a genuine singularity on a stair-stepped
+        grid and grows with every refinement for ever (ADR-141), so an output
+        that published a peak safety factor would be lying. Both numbers
+        travel and only one carries the verdict. For a refinement sweep, a
+        second opinion from CalculiX, or a load case measured off a MuJoCo
+        rollout, run ``analysis/cadex_stress.py`` -- the offboard
+        implementation this one is pinned equal to by test.
+        """
+
+        operation = "stress"
+        clean_shape = _shape(operation, "shape", shape)
+
+        holds: list[dict[str, Any]] = []
+        raw_holds = hold if isinstance(hold, (list, tuple)) else [hold]
+        if not raw_holds:
+            raise _error(
+                operation,
+                "hold",
+                "needs at least one selector; an unheld part has six "
+                "rigid-body modes and no stress",
+            )
+        for index, entry in enumerate(raw_holds):
+            if isinstance(entry, Mapping) and "at" in entry:
+                selector = entry["at"]
+                axes = entry.get("axes") or ["x", "y", "z"]
+            else:
+                selector = entry
+                axes = ["x", "y", "z"]
+            clean_axes = [str(axis).lower() for axis in axes]
+            if not clean_axes or any(axis not in "xyz" or len(axis) != 1
+                                     for axis in clean_axes):
+                raise _error(
+                    operation,
+                    f"hold[{index}].axes",
+                    "must name axes from x, y and z",
+                    axes,
+                )
+            holds.append({
+                "at": _selector(operation, f"hold[{index}].at", selector),
+                "axes": sorted(set(clean_axes)),
+            })
+
+        loads: list[dict[str, Any]] = []
+        if not isinstance(load, (list, tuple)) or not load:
+            raise _error(
+                operation,
+                "load",
+                "is a list of at least one {'at': selector, 'force_n': [...]}",
+                load,
+            )
+        for index, entry in enumerate(load):
+            if not isinstance(entry, Mapping) or "at" not in entry:
+                raise _error(
+                    operation,
+                    f"load[{index}]",
+                    "needs an 'at' selector naming the face it acts on",
+                    entry,
+                )
+            force = _vector(
+                operation, f"load[{index}].force_n", entry.get("force_n") or [0.0, 0.0, 0.0]
+            )
+            torque = _vector(
+                operation,
+                f"load[{index}].torque_n_mm",
+                entry.get("torque_n_mm") or [0.0, 0.0, 0.0],
+            )
+            if not any(force) and not any(torque):
+                raise _error(
+                    operation,
+                    f"load[{index}]",
+                    "declares neither a force_n nor a torque_n_mm, so it "
+                    "loads the part with nothing",
+                )
+            loads.append({
+                "at": _selector(operation, f"load[{index}].at", entry["at"]),
+                "force_n": force,
+                "torque_n_mm": torque,
+            })
+
+        # Bounded above as well as below, and each refusal names materials
+        # rather than the range. `assembly.body`'s density refusal is the
+        # precedent and is required by test to name steel and aluminium: a
+        # bound that only says "must be under 1e6" tells an author that the
+        # number is wrong and nothing about what a right one looks like.
+        modulus = _number(
+            operation, "youngs_modulus_mpa", youngs_modulus_mpa,
+            minimum=0.0, strict=True,
+        )
+        if modulus > 1.0e6:
+            raise _error(
+                operation,
+                "youngs_modulus_mpa",
+                "is stiffer than any engineering material: diamond is about "
+                "1.1e6 MPa, steel 200000, aluminium 69000, PLA 3500. Check "
+                "the units -- this is MPa, not Pa",
+                youngs_modulus_mpa,
+            )
+        nu = _number(operation, "poissons_ratio", poissons_ratio)
+        if not -1.0 < nu < 0.5:
+            raise _error(
+                operation,
+                "poissons_ratio",
+                "is outside (-1, 0.5), where the isotropic stiffness matrix "
+                "stops being positive definite. Steel is 0.30, aluminium "
+                "0.33, PLA 0.36, rubber approaches 0.5",
+                poissons_ratio,
+            )
+        strength = _number(
+            operation, "yield_strength_mpa", yield_strength_mpa,
+            minimum=0.0, strict=True,
+        )
+        if strength > 1.0e6:
+            raise _error(
+                operation,
+                "yield_strength_mpa",
+                "is stronger than any engineering material: steel is about "
+                "250 MPa, aluminium 6061 275, PLA 50. Check the units",
+                yield_strength_mpa,
+            )
+        density = _number(
+            operation, "density_kg_m3", density_kg_m3, minimum=0.0, strict=True
+        )
+        if density > 30000.0:
+            raise _error(
+                operation,
+                "density_kg_m3",
+                "is denser than any engineering material: steel is 7850, "
+                "aluminium 2700, PLA 1240",
+                density_kg_m3,
+            )
+        element = _number(
+            operation, "element_mm", element_mm, minimum=0.0, strict=True
+        )
+        if element > 1000.0:
+            raise _error(
+                operation,
+                "element_mm",
+                "is a metre across, which is larger than any part this "
+                "solves. It is the size of one hexahedral cell",
+                element_mm,
+            )
+
+        return self._value(
+            operation,
+            "stress",
+            clean_shape,
+            hold=holds,
+            load=loads,
+            youngs_modulus_mpa=modulus,
+            poissons_ratio=nu,
+            yield_strength_mpa=strength,
+            density_kg_m3=density,
+            element_mm=element,
+            label=label,
+        )
+
     def repair(
         self,
         shape: DomainValue,
@@ -3148,6 +3374,7 @@ class PartDomainAPI:
             "shape_from_mesh",
             "import_part",
             "measurement",
+            "stress",
             "repair",
             "fillet",
             "chamfer",

@@ -633,6 +633,21 @@ def _serialize_output(
             ),
             dict(payload.get("properties") or {}),
         )
+    elif output_type == "stress":
+        # The second artifact-less part output, and the same reading as the
+        # measurement above it (ADR-145): it publishes a safety factor and
+        # the stresses behind it, and reaches the digest through
+        # `payload_sha256` -- the hash of its own declaration. What
+        # identifies a check is which faces it names and what material it
+        # declares, not what today's parameters make it read.
+        from cadex_part_worker import stress_record
+
+        item["stress"] = stress_record(
+            _shape_from_payload(
+                _payload(_argument(payload, 0, "shape"), serialized=True)
+            ),
+            dict(payload.get("properties") or {}),
+        )
     elif output_type == "solver_diagnostics":
         properties = dict(payload.get("properties") or {})
         item["diagnostics"] = {

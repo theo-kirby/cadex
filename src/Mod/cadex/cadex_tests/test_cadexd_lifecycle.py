@@ -138,6 +138,27 @@ result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
           "j": j, "asm": asm, "diag": diag}
 """
 
+#: The jointed assembly above, exploded in two staged moves — the second
+#: move reuses the component the first one lifted, which is what makes the
+#: staged (cumulative) semantics of the display record observable.
+EXPLODED_VIEW_SCRIPT = """
+plate = part.box(40, 20, 4)
+arm = part.box(30, 6, 6)
+base = assembly.component(plate, grounded=True)
+swing = assembly.component(arm, placement=[0, 0, 40])
+j = assembly.joint("revolute",
+                   assembly.connector(base, "origin", offset=[12, 0, 4]),
+                   assembly.connector(swing, "origin"))
+asm = assembly.assembly([base, swing], [j])
+diag = assembly.solve(asm)
+boom = assembly.exploded_view(asm, [
+    {"components": [swing], "transform": [0, 0, 30]},
+    {"components": [swing], "transform": [20, 0, 0]},
+])
+result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
+          "j": j, "asm": asm, "diag": diag, "boom": boom}
+"""
+
 #: The jointed assembly above, driven. Every script containing
 #: ``assembly.simulation(...)`` failed at publication until ADR-048, because
 #: the publisher read ``simulation_trace_preview`` and no code anywhere
@@ -672,6 +693,93 @@ def test_cadexd_solves_a_jointed_assembly() -> None:
         grounded = [round(value, 6)
                     for value in written["display"]["base"]["placement"][3::4]]
         assert grounded == [0.0, 0.0, 0.0, 1.0], grounded
+
+        done = client.request("shutdown", timeout=60)
+        assert done["ok"] is True
+    finally:
+        _stop(client)
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@pytest.mark.skipif(
+    FREECADCMD is None, reason="No FreeCADCmd binary available for cadexd CI."
+)
+def test_cadexd_serves_an_exploded_view_display_record() -> None:
+    """An exploded-view output carries its display key over the wire (ADR-149).
+
+    The engine computed staged moves, final placements and leader lines
+    since the op existed, and all of it died inside the worker: the display
+    entry was all-nulls and no shell code could read it. This pins the wire
+    shape the shell's factor slider interpolates — the validator cannot pin
+    list-element shapes, so the stage/pose/line internals are asserted here.
+    """
+
+    root = Path(tempfile.mkdtemp(prefix="cadexd-exploded-ci-"))
+    client = None
+    try:
+        client = _spawn_cadexd()
+        opened = client.request("open_project", {"project_root": str(root)})
+        assert opened["ok"] is True, opened
+
+        written = client.request(
+            "write_script",
+            {"source": EXPLODED_VIEW_SCRIPT, "expected_revision": ""},
+        )
+        assert written["ok"] is True, written
+        assert _validate_response("write_script", written) == []
+
+        display = written["display"]
+        entry = display["boom"]
+        record = entry["exploded_view"]
+        assert isinstance(record, dict), entry
+        assert set(record) == {
+            "assembly_output", "bounds", "stages", "final_poses", "lines",
+        }, sorted(record)
+        assert record["assembly_output"] == "asm"
+        assert len(record["bounds"]["center_mm"]) == 3, record["bounds"]
+        assert record["bounds"]["diagonal_mm"] > 0.0, record["bounds"]
+
+        # Only the exploded-view entry carries the key; presence is the test,
+        # exactly as it is for source_output/measurement/mesh_check/stress.
+        for name in ("plate", "arm", "base", "swing", "j", "asm", "diag"):
+            assert "exploded_view" not in display[name], name
+
+        # Two staged moves on one component, cumulative: the second stage's
+        # pose continues from the first rather than restarting from solved.
+        stages = record["stages"]
+        assert [stage["move_index"] for stage in stages] == [0, 1], stages
+        for stage in stages:
+            assert stage["kind"] == "normal", stage
+            assert stage["component_outputs"] == ["swing"], stage
+            pose = stage["poses"]["swing"]
+            assert len(pose["position_mm"]) == 3, pose
+            assert len(pose["quaternion_xyzw"]) == 4, pose
+        solved = display["swing"]["placement"]
+        solved_position = [round(value, 6) for value in solved[3::4]][:3]
+        first = stages[0]["poses"]["swing"]["position_mm"]
+        second = stages[1]["poses"]["swing"]["position_mm"]
+        assert first == pytest.approx(
+            [solved_position[0], solved_position[1], solved_position[2] + 30.0]
+        ), (solved_position, first)
+        assert second == pytest.approx(
+            [first[0] + 20.0, first[1], first[2]]
+        ), (first, second)
+
+        # Every component has a factor-1 endpoint, moved or not, and the
+        # unmoved one's endpoint IS its solved placement.
+        final_poses = record["final_poses"]
+        assert set(final_poses) == {"base", "swing"}, sorted(final_poses)
+        assert final_poses["swing"]["position_mm"] == pytest.approx(second)
+        base_solved = [round(value, 6) for value in display["base"]["placement"][3::4]][:3]
+        assert final_poses["base"]["position_mm"] == pytest.approx(base_solved)
+
+        # One leader line per component reference, flattened in move order.
+        lines = record["lines"]
+        assert len(lines) == 2, lines
+        for line in lines:
+            assert set(line) == {"component_output", "start_mm", "end_mm"}, line
+            assert line["component_output"] == "swing", line
+            assert len(line["start_mm"]) == 3 and len(line["end_mm"]) == 3, line
 
         done = client.request("shutdown", timeout=60)
         assert done["ok"] is True

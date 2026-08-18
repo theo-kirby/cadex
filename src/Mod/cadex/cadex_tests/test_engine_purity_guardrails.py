@@ -123,6 +123,19 @@ DECLARED_ENGINE_MODULES = frozenset(
         "cadex_sketcher_worker",
         "cadex_mesh_api",
         "cadex_assembly_api",
+        # The linear-elastic solve (ADR-145). It is here, and CadexDynamics is
+        # not, and the difference is which worker reaches them:
+        # `cadex_assembly_worker` is staged by filename and outside this
+        # closure, while `cadex_part_worker` is inside it. So static
+        # reachability was never available as the mechanism here, and what
+        # keeps the cost off `cadexd` is the *deferred* import instead --
+        # `cadex_part_worker` imports CadexStress inside `stress_record`, and
+        # CadexStress imports numpy and scipy inside its own functions.
+        # `test_the_stress_solver_costs_a_service_that_never_solves_nothing`
+        # asserts both, which is the property that actually matters: this
+        # list is about what could be reached, and that one is about what is
+        # loaded.
+        "CadexStress",
     }
 )
 
@@ -295,6 +308,71 @@ def test_mujoco_never_enters_the_engine_closure() -> None:
         module for module, roots in closure.items() if "mujoco" in roots
     )
     assert not leaked, f"{leaked} import mujoco inside the engine closure."
+
+
+def test_the_stress_solver_costs_a_service_that_never_solves_nothing() -> None:
+    """ADR-077's mechanism, applied to the third thing that needs it (ADR-145).
+
+    ``CadexStress`` is a linear-elastic solve on a structured hex grid, and
+    the interesting thing about it is that the *cheap* answer was not
+    available. ``CadexDynamics`` stays out of the engine closure entirely
+    because the only module that reaches it, ``cadex_assembly_worker``, is
+    itself staged by filename and outside the closure. ``cadex_part_worker``
+    is **inside** it, so static unreachability was never on offer here and
+    ``DECLARED_ENGINE_MODULES`` grows by one -- deliberately, and recorded as
+    such rather than routed around with an ``importlib`` trick.
+
+    What is asserted instead is the property that actually costs something:
+    **nothing imports it at module scope, and it imports its numerics inside
+    functions.** So a ``cadexd`` process that imports ``cadex_part_worker``
+    does not load the solver, and a worker that loads the solver does not
+    thereby load 73 MB of numpy and scipy. Reachable and loaded are different
+    questions, and this is the one about loading.
+    """
+
+    import ast
+
+    import CadexScriptedRuntime as runtime
+
+    for path in sorted(MODULE_DIR.glob("*.py")):
+        if path.stem == "CadexStress":
+            continue
+        assert "CadexStress" not in _module_scope_import_roots(path), (
+            f"{path.name} imports CadexStress at module scope. The import "
+            "belongs inside `stress_record`, so that a service which never "
+            "solves anything never loads a solver."
+        )
+
+    assert "CadexStress.py" in runtime._DOMAIN_WORKER_BUNDLES["project"], (
+        "CadexStress left the worker bundle, so a script that declares a "
+        "stress check would fail inside the sandbox with an ImportError."
+    )
+    cmake = (MODULE_DIR / "CMakeLists.txt").read_text(encoding="utf-8")
+    assert "CadexStress.py" in cmake, (
+        "CadexStress.py is staged by filename but no CMake rule installs it, "
+        "so a source tree would pass and a payload would not (ADR-023)."
+    )
+
+    tree = ast.parse((MODULE_DIR / "CadexStress.py").read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+        if isinstance(node, ast.Import):
+            roots = {alias.name.split(".")[0] for alias in node.names}
+        else:
+            roots = {(node.module or "").split(".")[0]}
+        if node.col_offset == 0:
+            assert roots <= {"__future__", "math", "typing"}, (
+                f"CadexStress line {node.lineno} imports {roots} at module "
+                "scope. numpy and scipy are deferred into functions on "
+                "purpose."
+            )
+        assert "FreeCAD" not in roots and "Part" not in roots, (
+            f"CadexStress line {node.lineno} imports the kernel. It takes "
+            "triangles and point clouds, which is what makes it the same "
+            "species of thing as analysis/cadex_stress.py and therefore "
+            "comparable to it."
+        )
 
     dynamics = _module_scope_import_roots(MODULE_DIR / "CadexDynamics.py")
     assert "mujoco" not in dynamics, (

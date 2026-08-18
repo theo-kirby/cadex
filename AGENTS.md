@@ -1,6 +1,6 @@
 # AGENTS.md — Agent Entry Point
 
-Verified against source: 2026-08-09. **This is the single agent contract.**
+Verified against source: 2026-08-11. **This is the single agent contract.**
 `CLAUDE.md` exists only to import it (`@AGENTS.md`) and holds nothing of its
 own, so there is one file to read and one file to edit — which is what ADR-005
 asked for, reached from the other direction (ADR-137).
@@ -33,6 +33,19 @@ repository boundary:
   as the simulation trace it already played.
 - **`training/`**, at the repo root — the offboard PPO trainer. Not part of
   the engine, in no payload, copied to a machine with a GPU (ADR-084).
+- **`analysis/`**, beside it — the offboard structural analysis: stress,
+  topology optimisation and shape search (ADR-141, ADR-143,
+  `docs/STRUCTURAL.md`, all five slices closed). Same contract as
+  `training/`, and one rule of its own: nothing in it may import a GPL
+  package. It reaches the engine only by running `./cadex` as a subprocess
+  (ADR-142), never by importing it. Its useful half came *in* rather than
+  the tree moving: `mesh.check` and `part.stress` (ADR-144, ADR-145) are
+  engine ops, and this tree stays offboard. **S4 is what the whole thing was
+  for** (ADR-146, ADR-147): `analysis/skeleton.py` fits a strut graph to a
+  carved density field and emits a **parametric xscript** rather than a mesh,
+  so a generative result arrives as a feature tree a person can edit —
+  which is `docs/VISION.md` principle 3 made literal, and the one thing no
+  other generative-design tool does.
 
 Plus a **second front end**, under `cli/` — a third client of the same
 protocol, with no Blender and no display (ADR-061). `./cadex -p "…"` runs one
@@ -69,9 +82,10 @@ Read `docs/VISION.md` before designing anything.
 | `docs/VISION.md` | What the product is; principles; non-goals. **Authoritative.** |
 | `docs/ARCHITECTURE.md` | What exists today: pipeline, file map, project store, substrate. |
 | `docs/XSCRIPT.md` | The scripting model — today (per-domain programs) vs target (one project script). |
-| `docs/ROADMAP.md` | Phases 0–14, status checkboxes, exit criteria. Living status lives here. |
+| `docs/ROADMAP.md` | Phases 0–16, status checkboxes, exit criteria. Living status lives here. |
 | `docs/MUJOCO.md` | **This branch's vertical**: dynamics and control, slices M0–M9 (all closed), the hazards, and the measured facts. §7 is the **end-to-end walkthrough** — how to take a drawing to a trained policy, in the order that costs least. ROADMAP Phase 14 is its status line. |
 | `docs/ORGANIC.md` | **Phase 15's vertical**: organic modelling and the CAD/mesh interface, slices O0–O3. §1 is the measurement it is sized from — a robot wolf built entirely in `part`, and the three ways it failed to weld its own seams. §4 is the benchmark log. |
+| `docs/STRUCTURAL.md` | **Phase 16's vertical**: stress, topology optimisation and shape search, slices **S0–S4, all closed**. §3 is S0's measurements; §4 is the search loop and why it drives the CLI rather than importing it; §5 is SIMP and the marching-tetrahedra extraction; §6 is the in-engine half and what it deliberately did *not* build; §7 is the loop closed; **§8 is S4 — the fit that ends in a script rather than a mesh**, its spike-zero blend measurements, its coverage gate and the one premise that did not survive contact. S0–S2 and S4 are outside the engine by construction; S3 is one op on `mesh` and one on `part`, and costs no protocol op and no `shell/` diff. |
 | `docs/DECISIONS.md` | ADR log. Append an entry for every removal or direction change. |
 | `docs/PROVENANCE.md` | Which code came from FreeCAD, from Blender, and from VibeCAD; licences, credit, and how two licences share one repo. |
 | `docs/FREECAD.md` | Inherited-tree ledger for the **engine**: kept / disabled / already-deleted. |
@@ -83,6 +97,7 @@ Read `docs/VISION.md` before designing anything.
 | `docs/cadex-release-packaging.md` | One bundle: what ships, how it is gated. |
 | `training/README.md` | The offboard trainer: why training is not in the engine, what it reads and writes, how a policy comes home. |
 | `training/SETUP.md` | How to actually run it, four ways: one GPU machine, CPU only, a separate GPU box, and driving that box with `remote_train.sh` (ADR-089). |
+| `analysis/README.md` | The offboard structural analysis (ADR-141, ADR-143, ADR-147): what it reads and writes, how to declare a load case, how to declare a topology plan, how to fit a **parametric script** to the carve, how to read the report — and the licence rule this tree has that `training/` did not need. |
 | `docs/history/` | Superseded VibeCAD-era docs. Historical context only — never cite as current. |
 
 Doc conventions: each doc carries a `Verified against source:` date;
@@ -118,6 +133,18 @@ training/                 the offboard PPO trainer (ADR-084). NOT the engine:
                           nothing in it enters pixi.toml. Read its README
                           and SETUP.md; remote_train.sh dispatches to a GPU
                           box and is dispatch machinery only (ADR-089)
+analysis/                 the offboard structural analysis (ADR-141,
+                          ADR-142, ADR-143). The SECOND non-engine tree,
+                          under the identical contract: no CMake rule, no
+                          payload, nothing in pixi.toml. A hex-grid FEA core,
+                          a load case measured from a MuJoCo rollout,
+                          CalculiX as an arm's-length second opinion, a SIMP
+                          topology optimiser with hand-written marching
+                          tetrahedra, and a parameter search that drives
+                          `./cadex params` as a subprocess rather than
+                          importing anything. Its requirements.txt is THREE
+                          pins and stays three. Nothing here may import a
+                          GPL package — that one is test-enforced
 package/engine/           the engine payload build (ADR-023)
 package/app/build_app.sh  the shell build, with the conda env scrubbed off
                           PATH — read its header before touching the build
@@ -155,7 +182,20 @@ pixi run install-app          # ...and copy it to /Applications so it opens like
                               # an app. Local install: the staged payload keeps
                               # resolving its libs out of this repo (ADR-058).
 
-pixi run test-engine          # THE engine suite (1698 tests), no build needed
+# The offboard structural analysis (docs/STRUCTURAL.md, ADR-141). Needs no
+# engine and no build; its numeric tests really run under pixi, because
+# numpy, scipy, mujoco and ccx are all in this environment.
+pixi run python analysis/cadex_stress.py --self-check     # the cantilever
+pixi run python analysis/calculix.py --self-check         # ...and via ccx
+pixi run python analysis/search.py plan.json --out ./sweep  # a parameter sweep
+pixi run python analysis/topology.py --self-check          # carve a cantilever
+pixi run python analysis/topology.py carve.json --out ./run
+pixi run python analysis/skeleton.py carve.json --run ./run --out ./fit
+                              # ...and fit a parametric SCRIPT to that carve.
+                              # Add --project P to install it and size it,
+                              # which rebuilds for real and needs an engine.
+
+pixi run test-engine          # THE engine suite (1757 tests), no build needed
 pixi run configure            # CMake configure (debug, GUI ON)
 pixi run build                # build debug        | pixi run build-release (GUI OFF)
 pixi run test                 # inherited FreeCAD ctest, NOT the above
@@ -189,11 +229,25 @@ before the shell's suites see them, and `pixi run stage-engine` before the
 
 The philosophy is **remove more than we add** (`docs/VISION.md`). Zones:
 
-- **`src/Mod/cadex/**`, `cli/**`, `shell/scripts/addons_core/mesh_agent/**`
-  and `docs/**` — subtractive changes encouraged.** These are ours. Dead
-  code, unreachable branches, stale docs: delete them. Every removal gets a
-  `docs/DECISIONS.md` entry (one line in an existing ADR or a new one) and
-  is verified by build + tests in the same PR.
+- **`src/Mod/cadex/**`, `cli/**`, `shell/scripts/addons_core/mesh_agent/**`,
+  `training/**`, `analysis/**` and `docs/**` — subtractive changes
+  encouraged.** These are ours. Dead code, unreachable branches, stale docs:
+  delete them. Every removal gets a `docs/DECISIONS.md` entry (one line in an
+  existing ADR or a new one) and is verified by build + tests in the same PR.
+- **`training/**` and `analysis/**` are at the root because they are *not*
+  the engine** (ADR-084, ADR-141). Same contract for both: no CMake rule may
+  reference them, no payload may carry them, and nothing in them may enter
+  `pixi.toml` — their dependencies live in their own exactly-pinned
+  `requirements.txt` and are installed into a venv on whatever machine runs
+  them. Tests assert all three; moving either under `src/Mod/cadex/` would be
+  one CMake line away from dragging jax, or a solver, into the payload.
+  **`analysis/**` additionally may not import a GPL package** — the obvious
+  tools for structural work are the GPL ones, so that is a test rather than
+  a note. CalculiX is driven as a subprocess and stays pruned out of the
+  payload, and `mmapy` (the standard MMA optimiser) is barred for the same
+  reason. Its `requirements.txt` is **three pins and stays three**: S2's
+  geometry extraction is sixty hand-written lines of marching tetrahedra
+  rather than a fourth dependency, which is what kept it there (ADR-143).
 - **`cli/**` is LGPL and `shell/**` is GPL — the boundary is one-way and
   hard.** `cli/` is engine-side (`docs/PROVENANCE.md` §1). Read the shell's
   `cadexd_client.py`, `backend.py`, `mcp_shim.py` and `modes.py` as

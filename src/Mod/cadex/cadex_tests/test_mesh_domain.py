@@ -44,7 +44,10 @@ def _part_solid() -> DomainValue:
 
 def test_mesh_pack_is_registered_production_ready_and_toolless() -> None:
     assert MESH_PACK.domain == "mesh"
-    assert MESH_PACK.output_types == ("mesh",)
+    # Two output types, and the second is not a triangle mesh: `mesh_check`
+    # publishes four integers and no geometry, the way `part.measurement`
+    # publishes a dimension (ADR-144).
+    assert MESH_PACK.output_types == ("mesh", "mesh_check")
     assert MESH_PACK.production_ready is True
     # Capability packs carry no tool surface (ADR-013); the four project
     # tools stay the only mutation surface.
@@ -228,6 +231,155 @@ def test_transform_does_not_make_its_tree_approximating() -> None:
     assert not payload_tree_is_deterministic(
         api.transform(decimated, translation=[1.0, 0.0, 0.0]).to_payload()
     )
+
+
+def test_check_publishes_no_geometry_and_says_so_in_its_output_type() -> None:
+    """The mesh side's ``part.measurement`` (ADR-144).
+
+    ``hasNonManifolds`` returns a bool and ``getSelfIntersections`` a list,
+    so neither can ride on a mesh output. ``check`` is therefore a second
+    output type rather than a property, and the pack and the runtime have to
+    agree about it exactly or ``MeshDomainAPI.__init__`` refuses at worker
+    start.
+    """
+
+    api = _api()
+    checked = api.check(api.import_file("scan.stl"))
+    payload = checked.to_payload()
+    assert payload["output_type"] == "mesh_check"
+    assert payload["domain"] == "mesh"
+    assert payload["operation"] == "check"
+    # It names one mesh and carries nothing else: what identifies a check is
+    # which mesh it names.
+    assert len(payload["arguments"]) == 1
+    assert payload["arguments"][0]["output_type"] == "mesh"
+
+    assert "check" in MESH_PACK.api_exports
+    assert "mesh_check" in MESH_PACK.output_types
+    with pytest.raises(RuntimeError, match="output types"):
+        MeshDomainAPI(MESH_PACK.api_exports, ("mesh",))
+
+
+def test_check_takes_a_mesh_and_refuses_anything_else() -> None:
+    api = _api()
+    with pytest.raises(ValueError, match="check"):
+        api.check(_part_solid())
+    with pytest.raises(ValueError, match="check"):
+        api.check("scan.stl")  # type: ignore[arg-type]
+    # ...and a check is not a mesh, so it cannot be fed back into one.
+    checked = api.check(api.import_file("scan.stl"))
+    with pytest.raises(ValueError, match="union"):
+        api.union(checked, api.import_file("b.stl"))
+
+
+def test_a_check_of_an_approximating_tree_is_still_deterministic() -> None:
+    """``check`` reads; it never re-triangulates, so it approximates nothing.
+
+    The tree *below* it can be approximating and that still propagates --
+    but the check itself does not join ``APPROXIMATING_OPERATIONS``, because
+    it publishes no geometry for a fingerprint to identify. Its digest is
+    the hash of its own declaration either way.
+    """
+
+    from cadex_mesh_api import APPROXIMATING_OPERATIONS
+    from cadex_mesh_worker import payload_tree_is_deterministic
+
+    assert "check" not in APPROXIMATING_OPERATIONS
+    api = _api()
+    clean = api.check(api.import_file("scan.stl"))
+    assert payload_tree_is_deterministic(clean.to_payload())
+    rough = api.check(api.decimate(api.import_file("scan.stl"),
+                                   tolerance=0.5, reduction=0.5))
+    assert not payload_tree_is_deterministic(rough.to_payload())
+
+
+def test_a_mesh_check_reaches_inspect_and_so_does_a_measurement() -> None:
+    """The gap ADR-144 closed, and it was open for both artifact-less kinds.
+
+    ``inspect scope="output"`` reported only the keys that describe a thing
+    with geometry, so an output that *is* a number was readable on the
+    rebuild response that produced it and nowhere else. Tolerable for a
+    dimension the viewport draws beside the part; not tolerable for a
+    soundness verdict an agent has to read an hour later.
+    """
+
+    from CadexInspection import _OUTPUT_DETAIL_KEYS
+
+    assert "mesh_check" in _OUTPUT_DETAIL_KEYS
+    assert "measurement" in _OUTPUT_DETAIL_KEYS
+
+
+def test_the_display_block_carries_a_check_as_an_optional_key() -> None:
+    """One optional key, and no new op, no new artifact_kind, no shell diff.
+
+    ``source_output`` (ADR-049) and ``measurement`` (ADR-139) set the
+    pattern: a positive signal that an entry is something other than a thing
+    with a shape, so every other entry keeps exactly the four keys it has
+    always had.
+    """
+
+    from CadexdProtocol import NESTED_RESPONSE_SPECS
+
+    required, optional = NESTED_RESPONSE_SPECS["display.*"]
+    assert "mesh_check" in optional
+    assert "mesh_check" not in required
+    # The four keys every entry has always had, unchanged -- which is the
+    # half of this that matters here. The exhaustive pin on the optional set
+    # lives in `test_part_stress`, with the newest member, so that adding one
+    # is one edit rather than two.
+    assert required == frozenset(
+        {"artifact_kind", "artifact_path", "placement", "tessellation"}
+    )
+
+
+def test_a_check_is_published_as_a_row_with_no_geometry_under_it() -> None:
+    from CadexScriptedDomainPublication import _NATIVE_TYPE_BY_OUTPUT, _native_type
+
+    assert _NATIVE_TYPE_BY_OUTPUT["mesh_check"] == "App::FeaturePython"
+    assert _native_type("mesh_check") == "App::FeaturePython"
+    assert _native_type("mesh") == "Mesh::Feature"
+
+
+def test_a_check_output_falls_through_to_the_payload_digest(tmp_path: Path) -> None:
+    """No artifact, so no artifact hash: the declaration is the identity.
+
+    Right for the same reason it is right for a measurement (ADR-139). What
+    identifies a check is *which mesh it names*, not what today's parameters
+    make that mesh read -- and S1's digest cache depends on exactly that
+    reading: the same digest means the same geometry means the same answer.
+    """
+
+    api = _api()
+    checked = api.check(api.import_file("scan.stl"))
+    item = {
+        "name": "health",
+        "domain": "mesh",
+        "type": "mesh_check",
+        "definition": checked.to_payload(),
+        "mesh_check": {"facets": 12, "sound": True},
+    }
+    digest = project_worker.compute_project_digest(tmp_path, [item])
+    assert isinstance(digest, str) and len(digest) == 64
+    # The measured value is not in the digest; the declaration is.
+    moved = dict(item, mesh_check={"facets": 999, "sound": False})
+    assert project_worker.compute_project_digest(tmp_path, [moved]) == digest
+    # ...and naming a different mesh *is* a different check.
+    other = dict(item, definition=_api().check(
+        _api().import_file("other.stl")).to_payload())
+    assert project_worker.compute_project_digest(tmp_path, [other]) != digest
+
+
+def test_the_self_intersection_list_is_capped_before_it_crosses_the_boundary(
+) -> None:
+    """``getSelfIntersections`` is unbounded; a rebuild response is not.
+
+    A count is the answer to "is this sound". The list is not, and forty
+    thousand facet index pairs in a display block helps nobody.
+    """
+
+    from cadex_mesh_worker import _SELF_INTERSECTION_CAP
+
+    assert 0 < _SELF_INTERSECTION_CAP <= 10_000
 
 
 def test_api_is_immutable_and_payloads_are_json_safe() -> None:

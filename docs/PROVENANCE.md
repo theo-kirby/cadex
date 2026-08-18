@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-08-01
+Verified against source: 2026-08-10
 
 Cadex is not written from scratch. It is a **derivative work of two large
 free-software projects**, carrying the design lessons of a third that we
@@ -35,12 +35,15 @@ Cadex adds roughly **109,000 lines** of its own across both halves, or about
 | the shell's Cadex suites | 5,331 | `shell/tests/python/bl_mesh_agent*.py` |
 | the headless CLI | 4,540 | `cli/` — a second front end, not a second engine (ADR-061) |
 | the offboard trainer | 2,516 | `training/` — **not part of the product** (§5) |
+| the offboard analysis | 4,759 | `analysis/` — **not part of the product** (§5). Re-measured 2026-08-11, after `topology.py` (ADR-143) |
 | the app template | 111 | `shell/scripts/startup/bl_app_templates_system/Mesh/` |
 
 Everything else in this repository, which is the overwhelming majority of
 it, belongs to FreeCAD or Blender. Measured 2026-08-01, after the merge
 that brought the CLI, terminals, solder and the wiring graph together with
-the dynamics vertical (ADR-102).
+the dynamics vertical (ADR-102) — except the `analysis/` row, re-measured on
+the date beside it. The engine rows have grown since and are not re-measured
+here; treat 2026-08-01 as the date they are honest to.
 
 We do not track either upstream. Both were imported as squashed snapshots,
 and the direction of travel is **subtractive**: we delete from these trees
@@ -176,7 +179,7 @@ project. What Cadex adds is on the other side of the boundary: standard MJCF
 authoring guesses inertia from convex hulls or hand-tunes it, and we have the
 BREP, so `<inertial>` gets exact `GProp_GProps` mass properties.
 
-## 5. `training/` — ours, and not part of the product
+## 5. `training/` and `analysis/` — ours, and not part of the product
 
 `training/cadex_train.py` is `[Cadex-new]`, LGPL-2.1-or-later like the rest
 of the engine, and **it ships in nothing**. CMake never installs it, no
@@ -186,9 +189,47 @@ are pinned in `training/requirements.txt` and installed into a venv on that
 machine. None of them is in `pixi.toml`, none is in the payload, and a test
 asserts that no `jax` or `mjx` reaches either.
 
-It is listed here because a reader auditing what this repository
-redistributes should be able to find the one directory that looks like a
-dependency surface and confirm that it is not one.
+`analysis/` is the second tree under that contract (ADR-141, ADR-142,
+ADR-143) and is `[Cadex-new]`, LGPL-2.1-or-later, shipping in nothing on the
+same terms. Its dependencies are **still exactly three** — `numpy`, `scipy`,
+`mujoco` — pinned in `analysis/requirements.txt` and installed into a venv;
+none is in `pixi.toml`, and `test_analysis_stress` asserts that no CMake rule
+references the tree and that nothing from it reaches a staged payload. S2
+kept that count by writing its own marching tetrahedra rather than taking
+`scikit-image` for one function (ADR-143).
+
+It carries one licence rule of its own, and it is the reason this section
+now names two directories rather than one. **Nothing under `analysis/` may
+import a GPL package**, because the obvious tools for structural work are
+the GPL ones — `gmsh`, `pymeshlab`, `mmapy`, `ccx2paraview`, `pygalmesh`,
+`pymeshfix`, `tetgen`, JAX-FEM. `mmapy` is the sharpest of those: it is the
+standard MMA optimiser, it is what a stress-constrained topology run would
+reach for, and it is GPL-3 — which is a large part of why S2 minimises
+compliance and leaves stress to a second measurement (ADR-143). A GPL import in a repository-resident,
+engine-side file is not a judgement call, so it is a test rather than a
+note. **CalculiX is the one GPL tool this repository does use, and it is
+used as a subprocess** — `analysis/calculix.py` writes a text deck, runs
+`ccx`, and reads a text result; it is never linked and never imported,
+which is the same arm's length FreeCAD's own LGPL Fem module kept. `ccx`
+comes from conda-forge via `pixi.toml` for development and **is not
+redistributed**: `package/engine/build_engine_payload.sh` keeps exactly four
+binaries and `ccx` is not one of them.
+
+Both are listed here because a reader auditing what this repository
+redistributes should be able to find the directories that look like a
+dependency surface and confirm that they are not one.
+
+**What `analysis/` sent in-engine, and what it did not.** ADR-145 added
+`src/Mod/cadex/CadexStress.py`, a linear-elastic solve that is `[Cadex-new]`
+and LGPL-2.1-or-later like the rest of the engine, and which *does* ship —
+CMake installs it and the payload carries it. It costs no new payload
+dependency, because `numpy` and `scipy` were already there. It is a **second
+implementation** of `analysis/cadex_stress.py`'s numeric core rather than a
+copy of it, written that way because `analysis/` may not import the engine
+and the engine may not import `analysis/`; a test solves the same benchmark
+through both and requires them to agree. Nothing else crossed: topology
+optimisation, refinement sweeps, CalculiX and rollout-measured load cases all
+stay offboard.
 
 ## 6. VibeCAD — the predecessor
 

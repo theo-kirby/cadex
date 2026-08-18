@@ -1,0 +1,47 @@
+# The offboard structural-analysis dependencies (docs/STRUCTURAL.md S0, ADR-141).
+#
+# Exactly pinned, for the reason training/requirements.txt pins its four: a
+# stress number is a claim about a part, and a claim is only reproducible if
+# the thing that computed it is. `mujoco` is pinned for the stronger reason
+# ADR-075 gives -- MuJoCo's own VERSIONING.md disclaims cross-version
+# numerical reproducibility, so a load case measured from a rollout must be
+# measured against the release that wrote the model.
+#
+# NONE of this enters pixi.toml. The engine builds and ships without a line
+# of it, `CARRIED_PYPI_PACKAGES` stays one entry long, and
+# `test_analysis_stress` asserts that no CMake rule references this tree and
+# that nothing from it reaches a staged payload. Install into a venv on
+# whatever machine runs the analysis:
+#
+#     python3 -m venv .venv && .venv/bin/pip install -r analysis/requirements.txt
+#
+# These three versions are what the engine payload itself carries, which is
+# deliberate: if S3 ever moves a linear solve in-engine it costs no payload
+# bytes, and the number it computes there is the number computed here.
+numpy==1.26.4
+scipy==1.17.0
+mujoco==3.10.0
+
+# NOT dependencies, and both are decisions rather than omissions:
+#
+#   pythonocc-core  -- optional. It reads a STEP directly and is LGPL like the
+#                      engine side, but it is a conda package rather than a
+#                      wheel and this file pins only what pip can install
+#                      anywhere. `cadex_stress.py` imports it lazily and falls
+#                      back to the tessellation `./cadex --out` writes beside
+#                      the STEP. The pixi environment already has it.
+#
+#   CalculiX (ccx)  -- a **binary**, driven as a subprocess by
+#                      analysis/calculix.py, never linked and never imported.
+#                      It is GPL-2, and that boundary is the reason it is a
+#                      subprocess (docs/PROVENANCE.md 1, ADR-141). It is in
+#                      pixi.toml already and is pruned out of the payload by
+#                      package/engine/build_engine_payload.sh, which keeps
+#                      exactly four binaries. Leave it pruned.
+#
+# And a standing prohibition, test-enforced: nothing under analysis/ may
+# import a GPL package. gmsh (GPL-2, and its linking exception runs the other
+# way), pymeshlab, mmapy, ccx2paraview, pygalmesh, pymeshfix, tetgen (AGPL)
+# and jax-fem are all off the table here for the same reason a GPL import is
+# off the table in cli/: this tree is engine-side, and the boundary is not a
+# judgement call.

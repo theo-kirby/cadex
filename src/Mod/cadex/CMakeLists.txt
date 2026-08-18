@@ -12,6 +12,7 @@ set(Cadex_Scripts
     CadexDynamics.py
     CadexTerminals.py
     CadexSolder.py
+    CadexStress.py
     CadexNets.py
     CadexBoards.py
     CadexMounts.py

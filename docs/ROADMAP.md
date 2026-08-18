@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-08-09
+Verified against source: 2026-08-18
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -10,7 +10,9 @@ Phases 0–7 built the engine/shell split on two forks. Phases 8–13 reduce
 both forks toward one application we own, keeping OCCT (ADR-025). **Phase 14
 is the dynamics and control vertical** — closed, and the reason this branch
 exists (ADR-086). **Phase 15 is the organic-modelling vertical**, opened by
-the measurement ADR-123 asked for (`docs/ORGANIC.md`).
+the measurement ADR-123 asked for (`docs/ORGANIC.md`). **Phase 16 is the
+structural vertical** — stress, topology optimisation and shape search
+(`docs/STRUCTURAL.md`), whose first slice is offboard by construction.
 
 **Phase 13a came early (ADR-030).** Merging the repositories never depended
 on owning the engine or the shell — it was a repo-layout and
@@ -401,6 +403,29 @@ depends on. Independent of Phase 8.
       Degrading is part of the contract: a refusal latches previews off for
       that parameter's drag, lifts when a different parameter moves or the
       drag settles, and never reaches `model.last_error()`.
+
+- [x] **The section view** (ADR-148, 2026-08-17). Cut the model open on a
+      plane and take the near half away, so a blind bore, a thin wall or a
+      pocket that missed its boss is something you can *see*. A hidden cutter
+      box and a Boolean DIFFERENCE modifier on each solid — **capped**, which
+      is the whole reason it is not the viewport's clipping planes — plus a
+      geometry-nodes clip on the edge wires, aimed by axis/offset/flip from
+      the parameters editor and by a `section_view` tool from the assistant.
+      **6.3 ms** per offset change, measured in the gate. Zero engine change,
+      zero protocol change, and the accepted revision is provably unchanged
+      by switching it on: it is a view, not a feature. Every line is inside
+      `mesh_agent/` and the gate suite.
+
+- [x] **The exploded view** (ADR-149, 2026-08-18). The half-built feature
+      finished: `assembly.exploded_view` always computed staged moves, final
+      placements and leader lines, and the data died inside the worker. Now
+      it rides the output's display entry as the fourth optional key (after
+      measurement/mesh_check/stress), and the shell interpolates it — a
+      toggle plus a factor slider 0→1, live, with leader lines, no engine
+      round trip on the drag, and a refusal while a simulation is baked.
+      The moves are engine-declared; the shell invents no geometry. One
+      protocol pin, one add-on module, one tool; the packaged gate caught a
+      bare `pivy` import on the way (ADR-023's lesson, again).
 
 **Exit criteria:** one script format across the product; both new gates
 green; slider median materially below 0.548 s *(met: 0.496 s end-to-end,
@@ -1629,3 +1654,118 @@ What makes them experimental, and what would settle it:
   with a manual recovery** — a solver bump, a sweep-frame fix, the next one.
 - **Linux and Windows shell bundles.** The engine payload builds for both;
   only macOS arm64 has shell CI. Moot once Phase 12 lands — revisit then.
+
+## Phase 16 — Structural analysis, topology optimisation and shape search `(S0–S4 closed; S0/S1 2026-08-10 ADR-141/ADR-142, S2/S3/S4 2026-08-11 ADR-143/ADR-144/ADR-145/ADR-146/ADR-147)`
+
+**Goal:** stress-test a part, find where material can be removed safely, and
+let a search pick the shape. The three jobs it is sized from, the slices, the
+measurements and the honest limits are `docs/STRUCTURAL.md`; only status
+lives here.
+
+**Depends on nothing** and blocks nothing. S0–S2 and S4 are outside the
+engine entirely — no engine code, no protocol change, no payload bytes, and
+(as it turned out) no new pinned dependency either. S3 is in-engine and still
+costs no protocol op and no `shell/` diff, so Phases 11 and 12 are as
+available after this as before. The outer loop of every optimisation here is
+`./cadex params --set k=v --json`, which shipped with Phase 9 and which
+`docs/CLI.md` §1 already describes for exactly this use.
+
+**Why it is offboard first.** ADR-084's argument, reached again. Assembly is
+cheap (54,000 elements and 176k degrees of freedom in 0.61 s, measured), but
+the solve is not, and a SIMP system is ill-conditioned by construction — a
+thing to find out about on a machine with time, not inside a service that
+owes a viewport an answer.
+
+- [x] **S0 — A stress number we can trust** (ADR-141, 2026-08-10).
+      `analysis/`, a second non-engine tree under the ADR-084 contract: a
+      hex-grid linear-elastic core in numpy/scipy, a load case that can be
+      declared or **measured from a policy rollout** via `cfrc_int`/`cfrc_ext`
+      in stock MuJoCo, and CalculiX driven as a subprocess as an independent
+      second opinion. Verified against the cantilever's closed form (0.9%),
+      against `M y / I` for the recovered stress, and against `ccx` 2.23 on
+      the same grid (4.4e-7 displacement, 5.4e-8 von Mises). 27 tests.
+- [x] **S1 — The search driver** (ADR-142, 2026-08-10). `analysis/search.py`:
+      the design space is read off the project's own `script.json`, every
+      design point is `./cadex params --json` as a subprocess, and two caches
+      — on the parameter vector and on the `digest` — make a repeat free and
+      a same-model repeat skip the objective. Pareto front computed from the
+      evaluated set, so `grid` and `random` answer a multi-objective question
+      with no multi-objective machinery. A 16-point grid with an FEA solve on
+      every point: **12.7 s**. 19 tests. Optuna and pymoo deliberately still
+      unpinned — the arguments for both are answered by things that cost
+      nothing, so the choice is now a measurement.
+- [x] **S2 — Topology optimisation** (ADR-143, 2026-08-11).
+      `analysis/topology.py`: SIMP on the grid S0 already builds, which cost
+      four edits to `cadex_stress.py` that S0's 27 tests did not notice. The
+      density enters in **one line** of the assembly, legitimately, because
+      static condensation commutes with a uniform scaling of the element
+      energy. Geometry extraction is hand-written **marching tetrahedra** —
+      no ambiguous cases, vertices welded on grid edges rather than on a
+      tolerance, so the surface is watertight by construction and
+      `requirements.txt` stays at three pins. Verified by a finite-difference
+      sensitivity check (3e-6), a cantilever that beats a uniform design of
+      the same volume by **7.3×**, an MBB beam, mesh independence (95.5%
+      agreement across grids), extraction volume converging on a sphere
+      (−4.5% → −0.16%), and a round trip through a real cadexd. One
+      iteration is 0.8 s at 13.5k elements: **no GPU box**. 24 tests. Also
+      fixed `_DIRECT_DOF_LIMIT`, which was 6× too high and sent every
+      interesting problem to the slower solver.
+- [x] **S3 — In-engine, and only what earned it**
+      (ADR-144/ADR-145, 2026-08-11). Authorised by the owner; the
+      `docs/VISION.md` FEM line got an **amendment**, on the template ADR-127
+      set for mesh editing.
+      - **S3a is one op, not four.** S2's output measured through the
+        engine's own kernel is already manifold, closed, one component and
+        uniformly wound at every stage, so `smooth`/`fillupHoles`/
+        `harmonizeNormals`/`fixSelfIntersections` earned nothing. What earned
+        its place is the **diagnostic**: `mesh.check`, because a
+        combinatorial watertightness check cannot see a self-intersection
+        (the raw surface had one) and `mesh.decimate` does not report what it
+        did (a 50% and a 90% request both returned 7248 facets).
+      - **S3b is `part.stress`** — a declared output carrying a safety factor
+        and no geometry, anchored by ADR-029 selector so it follows the part.
+        It divides by p99, never the peak, because ADR-141 measured that the
+        peak does not converge. Pinned equal by test to the offboard solver
+        on the identical grid, and agreeing with the closed form to 1.1%.
+      - Both are artifact-less outputs, so no new protocol op, no new
+        `artifact_kind`, no digest change and **no `shell/` diff**. Closed the
+        `inspect scope="output"` gap that had left `measurement` unreadable
+        after the rebuild that produced it.
+- [x] **S4 — Generative design that ends in a script, not a mesh**
+      (ADR-146/ADR-147, 2026-08-11). `analysis/skeleton.py`: the optimiser
+      finds the *topology* and the deliverable is a **feature tree the human
+      and the agent can both edit**, which is the thing no other generative
+      tool ends in. Offboard again — no engine change, no protocol op, no
+      payload bytes, no `shell/` diff, and `requirements.txt` still three
+      pins.
+      - **Spike zero first**, because `docs/ORGANIC.md` §1 said the blend
+        might sink it. It did not, but it found that `part.cone` refuses
+        equal radii and that **no** blend radius survives
+        `blend_on_failure="refuse"` on a lattice — not even 0.4 mm against a
+        1.6 mm member. 64 solids blend in under 20 s.
+      - **S4a** adds four opt-in plan keys to `topology.py` — `symmetry`,
+        `extrude`, `interface_pad_mm`, `pin_domain_planes` — all off by
+        default, so an S2 plan carves the same field. Symmetry holds to
+        9e-16; `extrude` needed the **volume gradient** averaged as well as
+        the sensitivity, which took the density's column spread from 0.105
+        to 0.0009.
+      - **S4b–d** fit a strut graph to the field (distance transform,
+        maximal-ball packing, Delaunay), emit a script with three `num()`
+        parameters and the radii as an editable table, install it through
+        `./cadex script --set`, and size it with a fully-stressed-design loop
+        that runs the **real hex FEA on the rebuilt CAD** every pass.
+      - **The verdict is one number**: the rebuilt part's compliance against
+        the SIMP optimum's at equal mass. On the benchmark bracket **0.59**
+        against a bar of 1.15 — the parametric part is 1.7× stiffer at the
+        same mass, because the grey band a density filter smears over every
+        member is real material carrying nothing.
+      - **The coverage gate refuses** a field a strut graph cannot hold:
+        0.93 on the bracket, 0.76 on the plate-like cantilever, 0.56 on a
+        hollow shell. That number is the evidence that would ask for S5 —
+        constraining SIMP itself toward strut-like solutions, which S4
+        deliberately does not do.
+      - **What did not survive contact:** the fillets are not free. On a
+        *fitted* lattice `reduce` refuses and even `skip` refuses when
+        nothing at all blends, which the shipped bracket does at
+        `strut_scale = 1.0`. `blend_mm` stays a declared parameter, and the
+        loop drops the blend and says so.

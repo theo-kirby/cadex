@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-08-09
+Verified against source: 2026-08-18
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -62,7 +62,7 @@ p = params(width=num(100, unit="mm", min=10, max=500, step=1, label="Width"))
 profile = sketcher.sketch(...)           # sketcher API
 plate   = part.box(p.width, 20, 5)       # part API
 body    = partdesign.body(...)           # partdesign API (sketcher/part co-staged)
-hull    = mesh.from_shape(plate)         # mesh API (tessellate/import/boolean/decimate)
+hull    = mesh.from_shape(plate)         # mesh API (tessellate/import/boolean/decimate/check)
 base    = assembly.component(plate, grounded=True)
 asm     = assembly.assembly([base, ...])
 
@@ -98,7 +98,15 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   one (same kwargs and same order of operations as `part.transform`, composed
   into a single matrix because `Mesh` has no `scale`); `mesh.union`/
   `difference`/`intersection` and `mesh.decimate` run on the native mesh
-  kernel. Going the other way, `part.shape_from_mesh()` converts a mesh value
+  kernel; `mesh.check()` reads one and publishes **no geometry at all** —
+  facets, non-manifold edges, self-intersections, closedness, components
+  and volume, plus a `sound` verdict (ADR-144). It exists because a
+  watertightness check outside the kernel is combinatorial and cannot see a
+  self-intersection, and because `decimate` does not report what it actually
+  did: a 50% and a 90% reduction request on the same mesh both returned 7248
+  facets, tolerance-bound, silently. It never repairs — the script owns the
+  geometry, so the script decides what to do about the answer.
+  Going the other way, `part.shape_from_mesh()` converts a mesh value
   into BREP topology (`makeShapeFromMesh`, then promoted to a solid unless
   `solid=False`) so an imported component can be cut against, assembled and
   padded around — see ADR-043 for what that costs.
@@ -132,6 +140,20 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   coplanar regions differently for identical geometry. `decimate` is
   approximating (run-dependent result), so decimate trees are
   digest-identified by their canonical definition instead (ADR-016).
+- `part.stress()` declares a **structural check** on a part value and, like
+  `part.measurement`, publishes no geometry (ADR-145). It takes an ADR-029
+  selector for what holds the part, a list of loads, four material
+  properties with their units in their names and no defaults, and an
+  `element_mm` budget the engine caps and refuses above. What it publishes
+  is a safety factor — **dividing by p99 von Mises, never the peak**,
+  because peak stress at a held face is a stair-stepped singularity that
+  does not converge — alongside the peak, the displacement, the mass and a
+  solver block. It is recomputed on every rebuild from the shape it names,
+  so it follows a parameter change and fails loudly, naming the selector,
+  when a change removes the face it held. The expensive half of structural
+  work — topology optimisation, refinement sweeps, CalculiX as a second
+  opinion, load cases measured off a MuJoCo rollout — stays offboard in
+  `analysis/` (`docs/STRUCTURAL.md`).
 - `part.terminals()` / `mesh.terminals()` name the places a wire attaches to
   a component, from its geometry rather than from a measured constant
   (ADR-062) — see *Terminals* below. The result is not geometry: it
@@ -363,6 +385,25 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   is refused rather than silently under-delivered. Components that a joint
   connects never collide with each other: they overlap at the joint by
   construction.
+- `assembly.exploded_view(assembly, moves)` declares one **exploded view** of
+  a solved assembly (ADR-149): an ordered list of 1 through 64 moves, at
+  most 256 component references across all of them. Each move names
+  `components` (values listed in that assembly) plus **exactly one** of
+  `transform` — the same placement form `assembly.component` takes, applied
+  to every named component — or `radial_distance_mm` — FreeCAD's native
+  radial control: displacement along the assembly-centre→component-centre
+  direction, scaled by four times the distance over the assembly diagonal,
+  so components near the centre barely move. Moves are **staged**: a
+  component may appear again in a later move, and the shell animates move
+  *i* of *N* over its own window of the 0→1 explosion factor. Preconditions
+  and refusals: the assembly graph must be cleanly **solved** (even under
+  `require_solved=False`); a move whose components do not all actually
+  change placement is refused with the unchanged names (a radial move on a
+  centred component is the usual cause); a zero transform and a zero radial
+  distance are refused at declaration. The solved state is never changed —
+  an exploded view is a *view*, published as staged poses, final poses and
+  leader lines on the output's display entry (`docs/INTEGRATION.md`), not
+  as geometry.
 - Outputs are evaluated per domain in fixed order sketcher → part →
   partdesign → mesh → assembly, reusing the per-domain evaluators and
   serializers.
@@ -1057,7 +1098,11 @@ one validated candidate under **ONE** document transaction — one undo step:
   (ADR-068): the clause is keyed on having an artifact rather than on a list
   of known kinds, so a new output kind joins the digest by writing a file.
   `mesh` is the one exclusion, because a decimate tree's bytes are
-  run-dependent by construction where its recipe is not. `CadexDigest.py:document_digest` recomputes a diagnostic digest
+  run-dependent by construction where its recipe is not. The artifact-less
+  outputs — `measurement`, `mesh_check`, `stress` — write no file and so are
+  identified by their declaration alone, which is the right reading: what a
+  stress check *is* is which faces it holds and what material it declares,
+  not what today's parameters make it read. `CadexDigest.py:document_digest` recomputes a diagnostic digest
   from the live tagged objects (schema `cadex-document-digest-v1`; a
   different quantity — do not compare across schemas).
 - **Headless rebuild** (D9): `cadex_rebuild.py` re-runs THE script into a

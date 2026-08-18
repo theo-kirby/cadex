@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -251,6 +252,10 @@ def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None
         # staged for the same reason again (ADR-062).
         "CadexTerminals.py",
         "CadexSolder.py",
+        # The linear-elastic solve part.stress runs: pure numpy/scipy, no
+        # FreeCAD import at all, staged so the part worker can reach it
+        # inside the sandbox and cadexd never does (ADR-145).
+        "CadexStress.py",
         # The connection table nets()/wire() declare: pure Python, staged so
         # the project worker can stage it into the exec namespace (ADR-065).
         "CadexNets.py",
@@ -591,6 +596,118 @@ def test_assembly_api_rejects_ambiguous_graphs_and_wrong_joint_parameters() -> N
             mechanism,
             [{"components": [first], "radial_distance_mm": 0}],
         )
+
+def test_exploded_display_record_is_a_pure_projection_of_the_native_data() -> None:
+    """The display record (ADR-149) is dict-to-dict: no FreeCAD needed."""
+
+    from cadex_assembly_worker import _compact_pose, _exploded_display_record
+
+    def fact(position, axis, angle_degrees):
+        return {
+            "position_mm": list(position),
+            "rotation_axis": list(axis),
+            "rotation_angle_degrees": angle_degrees,
+            "matrix": [0.0] * 16,
+        }
+
+    identity = _compact_pose(fact([1.0, 2.0, 3.0], [0.0, 0.0, 1.0], 0.0))
+    assert identity == {
+        "position_mm": [1.0, 2.0, 3.0],
+        "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0],
+    }
+    quarter = _compact_pose(fact([0.0, 0.0, 0.0], [0.0, 0.0, 1.0], 90.0))
+    half_root_two = math.sqrt(0.5)
+    assert quarter["quaternion_xyzw"] == pytest.approx(
+        [0.0, 0.0, half_root_two, half_root_two]
+    )
+    # A zero axis (the degenerate identity FreeCAD can emit) is the identity
+    # quaternion rather than a division by zero.
+    degenerate = _compact_pose(fact([0.0, 0.0, 0.0], [0.0, 0.0, 0.0], 0.0))
+    assert degenerate["quaternion_xyzw"] == [0.0, 0.0, 0.0, 1.0]
+
+    record = _exploded_display_record(
+        {
+            "schema": "cadex-assembly-exploded-view-v1",
+            "assembly_output": "asm",
+            "moves": [
+                {
+                    "move_index": 0,
+                    "kind": "normal",
+                    "component_outputs": ["top"],
+                    "transform": {},
+                    "movement_transform": fact([0, 0, 20], [0, 0, 1], 0.0),
+                    "changed_component_outputs": ["top"],
+                    "final_placements": {"top": fact([0, 0, 20], [0, 0, 1], 0.0)},
+                    "line_segments": [
+                        {
+                            "component_output": "top",
+                            "start_mm": [0.0, 0.0, 5.0],
+                            "end_mm": [0.0, 0.0, 25.0],
+                            "length_mm": 20.0,
+                        }
+                    ],
+                },
+                {
+                    "move_index": 1,
+                    "kind": "radial",
+                    "component_outputs": ["left", "right"],
+                    "radial_distance_mm": 10.0,
+                    "movement_transform": fact([10, 0, 0], [0, 0, 1], 0.0),
+                    "changed_component_outputs": ["left", "right"],
+                    "final_placements": {
+                        "left": fact([-15, 0, 0], [0, 0, 1], 90.0),
+                        "right": fact([15, 0, 0], [0, 0, 1], 0.0),
+                    },
+                    "line_segments": [
+                        {
+                            "component_output": "left",
+                            "start_mm": [-5.0, 0.0, 0.0],
+                            "end_mm": [-15.0, 0.0, 0.0],
+                            "length_mm": 10.0,
+                        },
+                        {
+                            "component_output": "right",
+                            "start_mm": [5.0, 0.0, 0.0],
+                            "end_mm": [15.0, 0.0, 0.0],
+                            "length_mm": 10.0,
+                        },
+                    ],
+                },
+            ],
+            "assembly_bounds": {"center_mm": [0.0, 0.0, 2.5], "diagonal_mm": 40.0},
+            "final_component_placements": {
+                "base": fact([0, 0, 0], [0, 0, 1], 0.0),
+                "top": fact([0, 0, 20], [0, 0, 1], 0.0),
+                "left": fact([-15, 0, 0], [0, 0, 1], 90.0),
+                "right": fact([15, 0, 0], [0, 0, 1], 0.0),
+            },
+            "line_count": 3,
+            "native_readback": {"view_proxy_class": "ExplodedView"},
+        }
+    )
+    assert set(record) == {
+        "assembly_output", "bounds", "stages", "final_poses", "lines",
+    }
+    assert record["assembly_output"] == "asm"
+    assert record["bounds"] == {"center_mm": [0.0, 0.0, 2.5], "diagonal_mm": 40.0}
+    assert [stage["move_index"] for stage in record["stages"]] == [0, 1]
+    assert [stage["kind"] for stage in record["stages"]] == ["normal", "radial"]
+    assert record["stages"][1]["component_outputs"] == ["left", "right"]
+    # Stage poses are the per-move cumulative placements, compacted.
+    assert record["stages"][0]["poses"]["top"]["position_mm"] == [0.0, 0.0, 20.0]
+    assert record["stages"][1]["poses"]["left"]["quaternion_xyzw"] == pytest.approx(
+        [0.0, 0.0, half_root_two, half_root_two]
+    )
+    # Every component has a factor-1 endpoint, moved or not.
+    assert set(record["final_poses"]) == {"base", "top", "left", "right"}
+    # Lines are flattened in move order, without the redundant length.
+    assert [line["component_output"] for line in record["lines"]] == [
+        "top", "left", "right",
+    ]
+    assert all(
+        set(line) == {"component_output", "start_mm", "end_mm"}
+        for line in record["lines"]
+    )
 
 def test_assembly_occurrence_global_placement_failure_is_never_silently_local() -> None:
     from cadex_assembly_worker import (
