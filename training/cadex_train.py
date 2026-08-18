@@ -603,6 +603,28 @@ def train(
     output_scale = [(float(a["high"]) - float(a["low"])) / 2.0 for a in actions]
     output_bias = [(float(a["high"]) + float(a["low"])) / 2.0 for a in actions]
 
+    # ADR-138: the command may be low-passed before it reaches `data.ctrl`.
+    #
+    # `alpha` is a PYTHON float and every branch on it below is taken at
+    # TRACE time, not at run time. That is the whole design: at the default
+    # 1.0 this file emits **exactly** the graph it emitted before the flag
+    # existed -- no extra carry member, no `where`, no multiply -- so a run
+    # at 1.0 is bitwise identical to one under the unmodified trainer, and
+    # `test_action_filter.py` proves it rather than assuming it. A runtime
+    # `jnp.where(alpha < 1.0, ...)` would have been shorter and would have
+    # changed the graph for everybody.
+    action_filter_alpha = float(options.action_filter_alpha)
+    if not (0.0 < action_filter_alpha <= 1.0):
+        raise SystemExit(
+            f"--action-filter-alpha {action_filter_alpha:g} is outside "
+            f"(0, 1]. At 0 the command is frozen at the first step of every "
+            f"episode and the policy cannot act at all; above 1 the filter "
+            f"extrapolates past the raw command and AMPLIFIES the "
+            f"step-to-step change, which is the opposite of what it is for. "
+            f"1.0 is no filter."
+        )
+    filtering = action_filter_alpha < 1.0
+
     reward_terms = [
         (float(term["weight"]),
          compile_expression(str(term["expression"]), names, table))
@@ -855,7 +877,7 @@ def train(
             )
         return xfrc
 
-    def step_env(m, data, surface):
+    def step_env(m, data, surface, *filter_state):
         """One control step: clamp, scale into ctrl, integrate, observe, score.
 
         **The only unit arithmetic on this boundary is the bundle's own
@@ -866,6 +888,22 @@ def train(
         """
 
         clamped = jnp.clip(surface, low, high)
+        if filtering:
+            # AFTER the clamp, so the filter's memory only ever holds a
+            # command the actuator could actually have been given, and the
+            # convex combination of two in-box commands is itself in box --
+            # no second clamp is needed and none is applied.
+            #
+            # `first` is the episode's own step counter being zero, so the
+            # first command of every episode passes through UNFILTERED.
+            # Seeding from zero instead would spend the first tau of every
+            # episode ramping out of a posture the policy never asked for,
+            # inside the reset drop.
+            previous, first = filter_state
+            clamped = jnp.where(
+                first, clamped,
+                action_filter_alpha * clamped
+                + (1.0 - action_filter_alpha) * previous)
         ctrl = data.ctrl.at[ctrl_index].set(clamped * ctrl_scale)
         data = data.replace(ctrl=ctrl)
 
@@ -874,11 +912,22 @@ def train(
 
         data, _ = jax.lax.scan(one, data, None, length=per_action)
         vector = observe(data)
+        if filtering:
+            # The ISSUED command joins the outputs, because it is the next
+            # step's filter state and there is nowhere else to get it: it is
+            # not recoverable from `data.ctrl`, which holds it multiplied by
+            # the actuator scale.
+            return data, vector, reward_of(vector), done_of(vector), clamped
         return data, vector, reward_of(vector), done_of(vector)
 
+    # `(previous, first)` are per environment, so they vmap on axis 0 like
+    # `surface`. Empty at alpha 1.0, which is what keeps the traced signature
+    # identical to the pre-ADR-138 one.
+    _filter_axes = (0, 0) if filtering else ()
     batched_step = (
-        jax.vmap(step_env, in_axes=(None, 0, 0)) if model_axes is None
-        else jax.vmap(step_env, in_axes=(model_axes, 0, 0))
+        jax.vmap(step_env, in_axes=(None, 0, 0) + _filter_axes)
+        if model_axes is None
+        else jax.vmap(step_env, in_axes=(model_axes, 0, 0) + _filter_axes)
     )
     batched_forward = (
         jax.vmap(mjx.forward, in_axes=(None, 0)) if model_axes is None
@@ -910,6 +959,17 @@ def train(
     state = (data, first_forces, first_starts,
              jnp.zeros((envs,), dtype=jnp.float32),
              jnp.zeros((envs,), dtype=jnp.int32))
+    if filtering:
+        # ADR-138's sixth member: the previous ISSUED command, per
+        # environment. Episode-local for exactly the reason `elapsed` and
+        # `steps` are -- a filter that carried across a reset would low-pass
+        # the first command of an episode towards the last command of the
+        # one before it, which is a different machine.
+        #
+        # The initial value is never read: `steps` is zero for every
+        # environment here, so the first step of the first episode takes the
+        # unfiltered branch.
+        state = state + (jnp.zeros((envs, len(actions)), dtype=jnp.float32),)
     actor = initial_parameters(jax, jnp, actor_key, shapes)
     critic = initial_parameters(jax, jnp, critic_key, critic_shapes)
     log_std = jnp.full((len(actions),), math.log(float(options.initial_std)),
@@ -1037,7 +1097,10 @@ def train(
         """
 
         def stepped(carry, _):
-            data, key, forces, starts, elapsed, steps = carry
+            # `filter_carry` is ADR-138's `[previous_action]` when filtering
+            # and EMPTY otherwise, so at alpha 1.0 the carry pytree is the
+            # six-tuple it has always been.
+            data, key, forces, starts, elapsed, steps, *filter_carry = carry
             key, act_key = jax.random.split(key)
             vector = jax.vmap(observe)(data)
             normalised = normalise(vector, mean, variance)
@@ -1052,7 +1115,16 @@ def train(
                 data = data.replace(
                     xfrc_applied=applied_forces(forces, starts, elapsed)
                 )
-            data, landed, reward, terminated = batched_step(model, data, surface)
+            if filtering:
+                # `steps` here is the count of steps ALREADY taken this
+                # episode, because it is incremented below -- so `steps == 0`
+                # is exactly the first step of an episode and needs no
+                # separate flag in the carry.
+                data, landed, reward, terminated, issued = batched_step(
+                    model, data, surface, filter_carry[0], steps == 0)
+            else:
+                data, landed, reward, terminated = batched_step(
+                    model, data, surface)
             elapsed = elapsed + control_interval
             steps = steps + 1
             # An integer compare, not a float one on `elapsed`: 600 additions
@@ -1093,22 +1165,32 @@ def train(
             starts = jnp.where(done[:, None], fresh_starts, starts)
             elapsed = jnp.where(done, 0.0, elapsed)
             steps = jnp.where(done, 0, steps)
-            return (data, key, forces, starts, elapsed, steps), (
+            if filtering:
+                # Zeroed on `done` for the same reason `elapsed` and `steps`
+                # are. The value is not read after a reset -- `steps` is 0,
+                # so the next step takes the unfiltered branch -- but leaving
+                # the finished episode's last command in the carry would make
+                # a debugger and a reader both wrong about what the state
+                # means.
+                filter_carry = [jnp.where(done[:, None], 0.0, issued)]
+            return (data, key, forces, starts, elapsed, steps,
+                    *filter_carry), (
                 vector, sampled, logp, value, reward, done, landed, terminated
             )
 
-        data, forces, starts, elapsed, steps = state
+        data, forces, starts, elapsed, steps, *filter_state = state
         carry, traces = jax.lax.scan(
-            stepped, (data, key, forces, starts, elapsed, steps), None,
+            stepped, (data, key, forces, starts, elapsed, steps,
+                      *filter_state), None,
             length=unroll,
         )
-        data, key, forces, starts, elapsed, steps = carry
+        data, key, forces, starts, elapsed, steps, *filter_state = carry
         # No trailing bootstrap: `landed` is the post-step, pre-reset
         # observation at *every* step, so the critic's value of it is the
         # next-state value the whole way through -- including at a boundary,
         # where `values[t + 1]` is the value of an environment that has
         # already been reset. `advantages` reads it directly.
-        return (data, forces, starts, elapsed, steps), key, traces
+        return (data, forces, starts, elapsed, steps, *filter_state), key, traces
 
     discount = float(options.discount)
     lam = float(options.gae_lambda)
@@ -1600,6 +1682,12 @@ def policy_header(
                 Path(__file__).resolve().read_bytes()
             ).hexdigest(),
             "seed": int(options.seed),
+            # ADR-138. Written as its own key as well as appearing in
+            # ``hyperparameters`` below, because this is the one an
+            # *evaluator* reads: a policy trained with a filter has to be
+            # PLAYED with it, and a driver that had to be told separately is
+            # a driver somebody will forget to tell.
+            "action_filter_alpha": float(options.action_filter_alpha),
             # ``init_from`` is excluded for the same reason ``bundle`` and
             # ``out`` are: it is a path on one machine, not a hyperparameter.
             # What it started from is recorded as a digest under
@@ -1743,6 +1831,16 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--entropy", type=float, default=1.0e-3)
     parser.add_argument("--value-weight", type=float, default=0.5)
     parser.add_argument("--initial-std", type=float, default=0.3)
+    parser.add_argument(
+        "--action-filter-alpha", type=float, default=1.0,
+        help="low-pass the command before it reaches the actuators: "
+             "a[t] = A*clamped[t] + (1-A)*a[t-1], per environment, reset with "
+             "the episode and with the first command of each episode passed "
+             "through unfiltered. 1.0 (the default) is NO FILTER and emits "
+             "the same computation graph as a trainer without this flag. "
+             "The resolved value is written into the .cxpolicy header, so an "
+             "evaluator plays the policy with the filter it was trained "
+             "with instead of being told separately")
     parser.add_argument(
         "--init-from",
         default="",
