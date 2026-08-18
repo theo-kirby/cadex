@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""The trainer's action filter (ADR-138).
+"""The trainer's action filter (ADR-140).
 
 ``--action-filter-alpha`` low-passes the command between the clamp and
 ``data.ctrl``::
@@ -75,7 +75,7 @@ def behavioural_digest(path: Path) -> str:
     identical runs differ in bytes by construction. What is reproducible on
     CPU at a fixed seed is the network and the witness, and that is what
     ``test_a_second_run_at_the_same_seed_writes_the_same_policy`` has always
-    compared. This is the same four blocks, named once here because ADR-138's
+    compared. This is the same four blocks, named once here because ADR-140's
     whole case rests on them.
 
     It also has to be these four for a second reason particular to this

@@ -603,7 +603,7 @@ def train(
     output_scale = [(float(a["high"]) - float(a["low"])) / 2.0 for a in actions]
     output_bias = [(float(a["high"]) + float(a["low"])) / 2.0 for a in actions]
 
-    # ADR-138: the command may be low-passed before it reaches `data.ctrl`.
+    # ADR-140: the command may be low-passed before it reaches `data.ctrl`.
     #
     # `alpha` is a PYTHON float and every branch on it below is taken at
     # TRACE time, not at run time. That is the whole design: at the default
@@ -922,7 +922,7 @@ def train(
 
     # `(previous, first)` are per environment, so they vmap on axis 0 like
     # `surface`. Empty at alpha 1.0, which is what keeps the traced signature
-    # identical to the pre-ADR-138 one.
+    # identical to the pre-ADR-140 one.
     _filter_axes = (0, 0) if filtering else ()
     batched_step = (
         jax.vmap(step_env, in_axes=(None, 0, 0) + _filter_axes)
@@ -960,7 +960,7 @@ def train(
              jnp.zeros((envs,), dtype=jnp.float32),
              jnp.zeros((envs,), dtype=jnp.int32))
     if filtering:
-        # ADR-138's sixth member: the previous ISSUED command, per
+        # ADR-140's sixth member: the previous ISSUED command, per
         # environment. Episode-local for exactly the reason `elapsed` and
         # `steps` are -- a filter that carried across a reset would low-pass
         # the first command of an episode towards the last command of the
@@ -1097,7 +1097,7 @@ def train(
         """
 
         def stepped(carry, _):
-            # `filter_carry` is ADR-138's `[previous_action]` when filtering
+            # `filter_carry` is ADR-140's `[previous_action]` when filtering
             # and EMPTY otherwise, so at alpha 1.0 the carry pytree is the
             # six-tuple it has always been.
             data, key, forces, starts, elapsed, steps, *filter_carry = carry
@@ -1682,7 +1682,7 @@ def policy_header(
                 Path(__file__).resolve().read_bytes()
             ).hexdigest(),
             "seed": int(options.seed),
-            # ADR-138. Written as its own key as well as appearing in
+            # ADR-140. Written as its own key as well as appearing in
             # ``hyperparameters`` below, because this is the one an
             # *evaluator* reads: a policy trained with a filter has to be
             # PLAYED with it, and a driver that had to be told separately is
