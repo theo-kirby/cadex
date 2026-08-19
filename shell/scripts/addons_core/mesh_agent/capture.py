@@ -35,6 +35,34 @@ VIEWS = (
      "azimuth": 45.0, "elevation": 25.0, "up": (0.0, 0.0, 1.0), "ortho": False},
 )
 
+# Every view a composed sheet can ask for by name (ADR-151). The four in
+# VIEWS above stay the render_views contract; this table is the superset the
+# sheet's ``views`` argument validates against. ``_direction``/``_basis``
+# already handle every entry, including the top/bottom up-flip.
+NAMED_VIEWS = {
+    "front": {"name": "front",
+              "direction": (0.0, -1.0, 0.0), "up": (0.0, 0.0, 1.0),
+              "ortho": True},
+    "back": {"name": "back",
+             "direction": (0.0, 1.0, 0.0), "up": (0.0, 0.0, 1.0),
+             "ortho": True},
+    "left": {"name": "left",
+             "direction": (-1.0, 0.0, 0.0), "up": (0.0, 0.0, 1.0),
+             "ortho": True},
+    "right": {"name": "right",
+              "direction": (1.0, 0.0, 0.0), "up": (0.0, 0.0, 1.0),
+              "ortho": True},
+    "top": {"name": "top",
+            "direction": (0.0, 0.0, 1.0), "up": (0.0, 1.0, 0.0),
+            "ortho": True},
+    "bottom": {"name": "bottom",
+               "direction": (0.0, 0.0, -1.0), "up": (0.0, 1.0, 0.0),
+               "ortho": True},
+    "three-quarter": {"name": "three-quarter",
+                      "azimuth": 45.0, "elevation": 25.0,
+                      "up": (0.0, 0.0, 1.0), "ortho": False},
+}
+
 # Vertical field of view of the perspective view, in degrees.
 HERO_FOV = 40.0
 
@@ -144,16 +172,18 @@ def project(view_matrix, window_matrix, point):
     return (clip[0] / clip[3], clip[1] / clip[3], clip[2] / clip[3])
 
 
-def view_matrices(bbox, aspect=1.0, margin=MARGIN):
-    """Fit the four cameras to a world bounding box.
+def fit_view(view, bbox, aspect=1.0, margin=MARGIN):
+    """Fit ONE camera to a world bounding box, at one cell's aspect.
 
-    ``bbox`` is ((min_x, min_y, min_z), (max_x, max_y, max_z)); ``aspect`` is
-    the width/height of ONE tile, not of the composite. Returns a tuple of
-    dicts carrying the view name, its quadrant, and its ``view``/``window``
-    matrices as row-major tuples ready for ``GPUOffScreen.draw_view3d``.
+    ``view`` is a VIEWS/NAMED_VIEWS-shaped dict (``direction`` or
+    ``azimuth``/``elevation``, ``up``, ``ortho``); ``bbox`` is
+    ((min_x, min_y, min_z), (max_x, max_y, max_z)); ``aspect`` is the
+    width/height of the one tile this camera fills. Returns the dict
+    ``render_views`` has always consumed, ready for ``draw_view3d``.
 
     No bpy: this is arithmetic on the bounding box, and it is what the
-    headless suite checks.
+    headless suite checks. ``view_matrices`` is now a wrapper over this,
+    one call per VIEWS entry (ADR-151).
     """
 
     (x0, y0, z0), (x1, y1, z1) = bbox
@@ -166,47 +196,62 @@ def view_matrices(bbox, aspect=1.0, margin=MARGIN):
         radius = 0.5
     aspect = float(aspect) if aspect and aspect > 0 else 1.0
 
-    built = []
-    for view in VIEWS:
-        direction = _direction(view)
-        basis = _basis(direction, view["up"])
-        if view["ortho"]:
-            distance = radius * 3.0
-            eye = tuple(centre[i] + direction[i] * distance for i in range(3))
-            view_matrix = _look_at(eye, basis)
-            local = [transform(view_matrix, corner) for corner in corners]
-            # The floor is what keeps a flat model -- a plate seen edge-on,
-            # or the degenerate box above -- from dividing by zero here.
-            floor = radius * 1e-3
-            half_width = max(max(abs(p[0]) for p in local) * margin, floor)
-            half_height = max(max(abs(p[1]) for p in local) * margin, floor)
-            if half_width / half_height < aspect:
-                half_width = half_height * aspect
-            else:
-                half_height = half_width / aspect
-            window = _ortho_window(max(half_width, 1e-6), max(half_height, 1e-6),
-                                   distance - radius * 2.0, distance + radius * 2.0)
+    direction = _direction(view)
+    basis = _basis(direction, view["up"])
+    if view["ortho"]:
+        distance = radius * 3.0
+        eye = tuple(centre[i] + direction[i] * distance for i in range(3))
+        view_matrix = _look_at(eye, basis)
+        local = [transform(view_matrix, corner) for corner in corners]
+        # The floor is what keeps a flat model -- a plate seen edge-on,
+        # or the degenerate box above -- from dividing by zero here.
+        floor = radius * 1e-3
+        half_width = max(max(abs(p[0]) for p in local) * margin, floor)
+        half_height = max(max(abs(p[1]) for p in local) * margin, floor)
+        if half_width / half_height < aspect:
+            half_width = half_height * aspect
         else:
-            half_v = math.radians(HERO_FOV) / 2.0
-            half_h = math.atan(math.tan(half_v) * aspect)
-            distance = radius * margin / math.sin(min(half_v, half_h))
-            eye = tuple(centre[i] + direction[i] * distance for i in range(3))
-            view_matrix = _look_at(eye, basis)
-            window = _perspective_window(
-                HERO_FOV, aspect,
-                max(distance - radius * 2.0, distance * 0.01),
-                distance + radius * 2.0)
-        built.append({
-            "name": view["name"],
-            "quadrant": view["quadrant"],
-            "ortho": view["ortho"],
-            "direction": direction,
-            "eye": eye,
-            "distance": distance,
-            "view": view_matrix,
-            "window": window,
-        })
-    return tuple(built)
+            half_height = half_width / aspect
+        window = _ortho_window(max(half_width, 1e-6), max(half_height, 1e-6),
+                               distance - radius * 2.0, distance + radius * 2.0)
+    else:
+        half_v = math.radians(HERO_FOV) / 2.0
+        half_h = math.atan(math.tan(half_v) * aspect)
+        distance = radius * margin / math.sin(min(half_v, half_h))
+        eye = tuple(centre[i] + direction[i] * distance for i in range(3))
+        view_matrix = _look_at(eye, basis)
+        window = _perspective_window(
+            HERO_FOV, aspect,
+            max(distance - radius * 2.0, distance * 0.01),
+            distance + radius * 2.0)
+    built = {
+        "name": view["name"],
+        "ortho": view["ortho"],
+        "direction": direction,
+        "eye": eye,
+        "distance": distance,
+        "view": view_matrix,
+        "window": window,
+    }
+    if "quadrant" in view:
+        built["quadrant"] = view["quadrant"]
+    return built
+
+
+def view_matrices(bbox, aspect=1.0, margin=MARGIN):
+    """Fit the four cameras to a world bounding box.
+
+    ``bbox`` is ((min_x, min_y, min_z), (max_x, max_y, max_z)); ``aspect`` is
+    the width/height of ONE tile, not of the composite. Returns a tuple of
+    dicts carrying the view name, its quadrant, and its ``view``/``window``
+    matrices as row-major tuples ready for ``GPUOffScreen.draw_view3d``.
+
+    No bpy: this is arithmetic on the bounding box, and it is what the
+    headless suite checks.
+    """
+
+    return tuple(fit_view(view, bbox, aspect=aspect, margin=margin)
+                 for view in VIEWS)
 
 
 def quadrant_legend(views=None):
@@ -465,26 +510,41 @@ def _tile_pixels(space, region, width, height, view_matrix, window_matrix):
         offscreen.free()
 
 
+def composite_rects(tiles, canvas_width, canvas_height):
+    """Flat RGBA tile buffers into one canvas buffer, by rect (ADR-151).
+
+    ``tiles`` is ``[(pixels, (x, y, w, h))]``: bottom-up row-major buffers,
+    rects in canvas pixels with ``y`` measured from the bottom — the layout
+    the buffers themselves use, so a copy is a row slice and the per-pixel
+    work stays in C. A None buffer leaves its rect on the ground colour.
+    """
+
+    out = [0.0] * (canvas_width * canvas_height * 4)
+    stride = canvas_width * 4
+    for tile, (x, y, w, h) in tiles:
+        if tile is None:
+            continue
+        tile_stride = w * 4
+        for row in range(h):
+            src = row * tile_stride
+            dst = (y + row) * stride + x * 4
+            out[dst:dst + tile_stride] = tile[src:src + tile_stride]
+    return out
+
+
 def composite_2x2(tiles, tile_width, tile_height):
     """Four flat RGBA row-major (bottom-up) tile buffers into one buffer.
 
     Plain pixel arithmetic, in the order VIEWS declares: top-left, top-right,
-    bottom-left, bottom-right. Rows are copied by slice assignment, so the
-    per-pixel work stays in C.
+    bottom-left, bottom-right. A wrapper over :func:`composite_rects` with
+    the four quadrant rects; the pure suite pins the equivalence.
     """
 
     width, height = tile_width * 2, tile_height * 2
-    out = [0.0] * (width * height * 4)
-    stride = width * 4
-    tile_stride = tile_width * 4
     placement = ((0, 1), (1, 1), (0, 0), (1, 0))  # (column, row-from-bottom)
-    for tile, (column, row) in zip(tiles, placement):
-        if tile is None:
-            continue
-        for y in range(tile_height):
-            src = y * tile_stride
-            dst = (row * tile_height + y) * stride + column * tile_stride
-            out[dst:dst + tile_stride] = tile[src:src + tile_stride]
+    rects = [(column * tile_width, row * tile_height, tile_width, tile_height)
+             for column, row in placement]
+    out = composite_rects(list(zip(tiles, rects)), width, height)
     return out, width, height
 
 
@@ -553,26 +613,59 @@ def render_views(max_size=1024):
     return base64.b64encode(data).decode("ascii"), None
 
 
-# -- render_blueprint: the four-view sheet, in the drawing style (ADR-150) ---
+# -- render_blueprint: the composed, dressed sheet (ADR-150, ADR-151) --------
 
-def render_blueprint(theme="blueprint", max_size=1024):
-    """The four fitted views, styled as a blueprint sheet.
+def render_blueprint(theme="blueprint", max_size=1024, views=None,
+                     layout="auto", label=""):
+    """Agent-composed fitted views, styled and dressed as a blueprint sheet.
 
-    Returns ``({"path", "base64", "legend", "views"}, None)`` or
-    ``(None, error)``. The PNG lands in a temp file because its home is the
-    project store: the caller hands the path to ``put_blueprint`` and the
-    engine copies it in (the shell never writes the store).
+    Returns ``({"path", "base64", "legend", "views", "layout", "rects",
+    "size", "version", "project", "note"}, None)`` or ``(None, error)``.
+    The PNG lands in a temp file because its home is the project store: the
+    caller hands the path to ``put_blueprint`` and the engine copies it in
+    (the shell never writes the store).
+
+    ``views``/``layout`` are the ADR-151 composition surface, validated by
+    ``cadex_sheet`` — and validated FIRST, before the background refusal,
+    so a bad spec is refused for what is wrong with it even in the headless
+    gate, while a valid spec still refuses headless in the unchanged
+    sentence.
 
     Deliberately does **not** suspend the section or the exploded view —
     the contrast with ``render_views``: that tool answers "what did I
     build" and reassembles everything first (ADR-124); this one draws the
-    *current presentation* as a sheet, and a sectioned or exploded blueprint
-    is exactly the drawing someone asked for. Only the sibling overlays that
-    are not presentation (the collision cage, the section-cage rings) are
-    hidden, and the exploded leader lines stay in shot.
+    *current presentation* as a sheet, per-view overrides layered on top of
+    it and restored from one flat snapshot afterwards. Only the sibling
+    overlays that are not presentation (the collision cage, the
+    section-cage rings) are hidden, and the exploded leader lines stay in
+    shot.
     """
 
+    import time
+
     import bpy
+
+    from . import cadex_backend
+    from . import cadex_blueprint
+    from . import cadex_explode
+    from . import cadex_section
+    from . import cadex_sheet
+    from . import cadexd_client
+
+    scene = bpy.context.scene
+    root = cadex_backend.project_root(scene)
+    accepted = cadex_backend.last_accepted(root)
+    display = dict(accepted.get("display") or {})
+
+    specs, error = cadex_sheet.normalize_views(views, sorted(display))
+    if error:
+        return None, error
+    template, hero_index, error = cadex_sheet.choose_layout(layout, specs)
+    if error:
+        return None, error
+    error = cadex_sheet.validate_against_model(scene, specs)
+    if error:
+        return None, error
 
     if bpy.app.background:
         return None, ("Blueprint rendering is unavailable in background "
@@ -582,27 +675,69 @@ def render_blueprint(theme="blueprint", max_size=1024):
     if space is None:
         return None, "No 3D viewport found; use scene_summary instead."
 
-    from . import cadex_blueprint
-    from . import cadex_explode
+    rects, field_w, field_h = cadex_sheet.layout_rects(
+        template, len(specs), max(8, int(max_size)), hero=hero_index)
+    margin = cadex_sheet.margin_px(max(field_w, field_h))
 
-    tile = max(8, int(max_size) // 2)
+    notes = []
+    snapshot = cadex_sheet.snapshot_state(scene)
     undo_isolation = _isolate_model(bpy.context.view_layer,
                                     keep={cadex_explode.COLLECTION_NAME})
     undo_presentation = cadex_blueprint.present(space, theme)
     try:
-        bbox = model_bbox()
-        if bbox is None:
-            return None, ("The Model collection is empty, so there is "
-                          "nothing to draw; check scene_summary for what "
-                          "the engine built.")
-        views = view_matrices(bbox, aspect=1.0)
-        tiles = [_tile_pixels(space, region, tile, tile, view["view"], view["window"])
-                 for view in views]
+        tiles = []
+        for index, (spec, rect) in enumerate(zip(specs, rects)):
+            cadex_sheet.apply_view_state(scene, spec, snapshot)
+            bbox = model_bbox()
+            if bbox is None:
+                if spec["hide"]:
+                    return None, ("views[{:d}] hides every visible output; "
+                                  "nothing to draw in that "
+                                  "cell.".format(index))
+                return None, ("The Model collection is empty, so there is "
+                              "nothing to draw; check scene_summary for "
+                              "what the engine built.")
+            if isinstance(spec.get("section"), dict):
+                report = dict(scene.get(cadex_section.SCENE_FLAG) or {})
+                if report.get("clear"):
+                    # The section module's own doctrine: a plane past the
+                    # model says nothing, but it is not an error.
+                    notes.append("views[{:d}]'s section offset is clear of "
+                                 "the model, so that cell shows the whole "
+                                 "part".format(index))
+            x, y, w, h = rect
+            fitted = fit_view(spec, bbox, aspect=w / float(h))
+            tiles.append((_tile_pixels(space, region, w, h,
+                                       fitted["view"], fitted["window"]),
+                          rect))
     finally:
+        cadex_sheet.restore_state(scene, snapshot)
         undo_presentation()
         undo_isolation()
 
-    pixels, width, height = composite_2x2(tiles, tile, tile)
+    field_pixels = composite_rects(tiles, field_w, field_h)
+
+    project = os.path.basename(os.path.normpath(root))
+    if project.endswith(".cadex"):
+        project = project[:-len(".cadex")]
+    version = cadexd_client.engine_version(cadex_backend.bundle_roots())
+    revision = str(accepted.get("revision") or "")
+    titles = cadex_sheet.title_lines(
+        project if not label else "{:s} — {:s}".format(project, label),
+        version, revision, time.strftime("%Y-%m-%d"), theme)
+
+    label_size = max(10.0, cadex_sheet.margin_px(max(field_w, field_h))
+                     * 0.55)
+    cell_labels = [(spec["label"],
+                    margin + rect[0] + 6,
+                    margin + rect[1] + rect[3] - 6 - label_size)
+                   for spec, rect in zip(specs, rects)]
+    sheet_w = field_w + 2 * margin
+    sheet_h = field_h + 2 * margin
+    pixels, width, height = cadex_sheet._dress_sheet(
+        field_pixels, field_w, field_h, margin,
+        cadex_blueprint.THEMES[str(theme or cadex_blueprint.DEFAULT_THEME)],
+        cadex_sheet.zone_grid(sheet_w, sheet_h), titles, cell_labels)
 
     image = bpy.data.images.new("mesh_agent_blueprint", width, height, alpha=True)
     try:
@@ -619,7 +754,12 @@ def render_blueprint(theme="blueprint", max_size=1024):
     return {
         "path": path,
         "base64": base64.b64encode(data).decode("ascii"),
-        "legend": quadrant_legend(views),
-        "views": [view["name"] for view in views],
+        "legend": cadex_sheet.cell_legend(specs, rects),
+        "views": [cadex_sheet.spec_meta(spec) for spec in specs],
+        "layout": template,
+        "rects": [list(rect) for rect in rects],
         "size": [width, height],
+        "version": version,
+        "project": project,
+        "note": "; ".join(notes),
     }, None

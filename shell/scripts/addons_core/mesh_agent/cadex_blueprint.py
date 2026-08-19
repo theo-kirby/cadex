@@ -55,18 +55,18 @@ DEFAULT_THEME = "blueprint"
 #: ``line`` the outline and wire colour.
 THEMES = {
     "blueprint": {
-        "background": (0.045, 0.110, 0.295),
-        "solid": (0.090, 0.190, 0.420),
+        "background": (0.032, 0.082, 0.230),
+        "solid": (0.070, 0.150, 0.350),
         "line": (1.0, 1.0, 1.0),
     },
     "cutting_mat": {
-        "background": (0.060, 0.220, 0.170),
-        "solid": (0.100, 0.310, 0.240),
+        "background": (0.045, 0.170, 0.130),
+        "solid": (0.080, 0.245, 0.190),
         "line": (1.0, 1.0, 1.0),
     },
     "grey": {
-        "background": (0.160, 0.160, 0.160),
-        "solid": (0.290, 0.290, 0.290),
+        "background": (0.125, 0.125, 0.125),
+        "solid": (0.235, 0.235, 0.235),
         "line": (1.0, 1.0, 1.0),
     },
 }

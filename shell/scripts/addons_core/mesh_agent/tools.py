@@ -457,16 +457,22 @@ TOOL_DEFS = [
     {
         "name": "make_blueprint",
         "description": (
-            "Render a four-view blueprint sheet of the model -- front, "
-            "right, top and a three-quarter perspective, white lines on a "
-            "blueprint-blue, cutting-mat-green or grey ground -- and store "
-            "it in the project as a drawing attached to the accepted "
-            "revision. Unlike render_views it draws the CURRENT "
-            "presentation: a section cut or an exploded spread stays in the "
-            "sheet, which is how you make a sectioned or exploded drawing. "
-            "It does not need blueprint_view to be on. The stored sheets "
-            "are listed by inspect_model scope=blueprint. Unavailable when "
-            "Blender runs headless."
+            "Render a blueprint sheet of the model -- white lines on a "
+            "blueprint-blue, cutting-mat-green or grey ground, dressed as "
+            "a drawing sheet (zone grid, project name, version block) -- "
+            "and store it in the project as a drawing attached to the "
+            "accepted revision. You compose it: pick up to 6 views (named "
+            "orthos, three-quarter, or custom azimuth/elevation), and give "
+            "each view its own hidden outputs (hide the housing so the "
+            "insides show), exploded factor and section cut. Omit views "
+            "for the default sheet: front, top and right stacked left, a "
+            "big three-quarter hero on the right. Per-view overrides "
+            "inherit the live presentation -- a section or explosion that "
+            "is on stays in every cell that does not override it. The "
+            "image comes back in the reply, so look at it and iterate; "
+            "sheets are cheap, so compose another rather than cram one. "
+            "The stored sheets are listed by inspect_model "
+            "scope=blueprint. Unavailable when Blender runs headless."
         ),
         "input_schema": {
             "type": "object",
@@ -484,8 +490,90 @@ TOOL_DEFS = [
                 },
                 "max_size": {
                     "type": "integer",
-                    "description": ("Longest edge of the sheet in pixels "
-                                    "(default 1024; each view gets half)."),
+                    "description": ("Longest edge of the view area in "
+                                    "pixels (default 1024; the margin band "
+                                    "adds a little)."),
+                },
+                "views": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 6,
+                    "description": ("The cells of the sheet, in order "
+                                    "(default: front, top, right, "
+                                    "three-quarter as hero)."),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "view": {
+                                "type": "string",
+                                "enum": ["front", "back", "left", "right",
+                                         "top", "bottom", "three-quarter",
+                                         "custom"],
+                                "description": ("Which way this cell "
+                                                "looks; 'custom' takes "
+                                                "azimuth/elevation."),
+                            },
+                            "azimuth": {
+                                "type": "number",
+                                "description": ("Custom only: degrees from "
+                                                "the front towards +X."),
+                            },
+                            "elevation": {
+                                "type": "number",
+                                "description": ("Custom only: degrees up "
+                                                "from the ground plane."),
+                            },
+                            "projection": {
+                                "type": "string",
+                                "enum": ["ortho", "perspective"],
+                                "description": ("Override the view's "
+                                                "default projection."),
+                            },
+                            "hide": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": ("Declared outputs hidden "
+                                                "in THIS cell only."),
+                            },
+                            "explode": {
+                                "type": "number",
+                                "description": ("Exploded factor 0..1 for "
+                                                "this cell (needs a "
+                                                "declared exploded view)."),
+                            },
+                            "section": {
+                                "type": "string",
+                                "enum": ["X", "Y", "Z", "off"],
+                                "description": ("Cut this cell on an axis, "
+                                                "or 'off' to lift a live "
+                                                "cut in this cell."),
+                            },
+                            "section_offset_mm": {
+                                "type": "number",
+                                "description": ("Where the cut sits, in mm "
+                                                "(default: the model's "
+                                                "centre on that axis)."),
+                            },
+                            "section_flip": {
+                                "type": "boolean",
+                                "description": "Keep the other half.",
+                            },
+                            "hero": {
+                                "type": "boolean",
+                                "description": ("Give this view the big "
+                                                "cell (one per sheet)."),
+                            },
+                        },
+                        "required": ["view"],
+                    },
+                },
+                "layout": {
+                    "type": "string",
+                    "enum": ["auto", "single", "row", "column", "grid",
+                             "hero"],
+                    "description": ("How the cells tile (default auto: "
+                                    "hero when one view stands out, grid "
+                                    "otherwise)."),
                 },
             },
         },
@@ -1356,17 +1444,24 @@ def _tool_make_blueprint(tool_input):
         return _text("Unknown theme {!r}; one of: {:s}.".format(
             theme, ", ".join(sorted(cadex_blueprint.THEMES)))), True
     max_size = int(tool_input.get("max_size") or 1024)
+    label = str(tool_input.get("name") or "").strip()
 
-    sheet, error = capture.render_blueprint(theme=theme, max_size=max_size)
+    sheet, error = capture.render_blueprint(
+        theme=theme, max_size=max_size, views=tool_input.get("views"),
+        layout=str(tool_input.get("layout") or "auto"), label=label)
     if sheet is None:
         return _text(error), True
 
     scene = bpy.context.scene
     payload = cadex_backend.put_blueprint(
-        scene, sheet["path"],
-        label=str(tool_input.get("name") or "").strip(),
-        meta={"theme": theme, "views": list(sheet.get("views") or ()),
-              "size": list(sheet.get("size") or ())})
+        scene, sheet["path"], label=label,
+        meta={"theme": theme,
+              "size": list(sheet.get("size") or ()),
+              "layout": str(sheet.get("layout") or ""),
+              "rects": list(sheet.get("rects") or ()),
+              "views": list(sheet.get("views") or ()),
+              "version": str(sheet.get("version") or ""),
+              "project": str(sheet.get("project") or "")})
     try:
         os.remove(sheet["path"])       # the store copy is its home now
     except OSError:
@@ -1377,14 +1472,17 @@ def _tool_make_blueprint(tool_input):
 
     root = cadex_backend.project_root(scene)
     stored_path = os.path.join(root, "blueprints", str(payload.get("name")))
-    return [
-        {"type": "image", "data": sheet["base64"], "mimeType": "image/png"},
-        {"type": "text", "text":
-            "Blueprint sheet stored at {:s} ({:d} bytes), attached to "
-            "revision {:s}. {:s} -- {:s}.".format(
+    text = ("Blueprint sheet stored at {:s} ({:d} bytes), attached to "
+            "revision {:s}. {:s}, {:s} layout -- {:s}.".format(
                 stored_path, int(payload.get("bytes") or 0),
                 str(payload.get("revision") or "?")[:12], theme,
-                str(sheet.get("legend") or ""))},
+                str(sheet.get("layout") or ""),
+                str(sheet.get("legend") or "")))
+    if sheet.get("note"):
+        text += " Note: {:s}.".format(str(sheet["note"]))
+    return [
+        {"type": "image", "data": sheet["base64"], "mimeType": "image/png"},
+        {"type": "text", "text": text},
     ], False
 
 

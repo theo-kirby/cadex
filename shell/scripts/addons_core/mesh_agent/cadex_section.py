@@ -42,6 +42,8 @@ It is where the plane and the cutter's placement are worked out, which is the
 arithmetic that can be silently wrong, and it is the half Phase 12 keeps.
 """
 
+from contextlib import contextmanager as _contextmanager
+
 #: Collection name. A **sibling** of "Model" at the scene root, never a child:
 #: ``cadex_hydrate``'s contract GC walks ``collection.all_objects``, which
 #: recurses, and removes every tagged object that is not in the pass's keep
@@ -192,6 +194,22 @@ def clear_of_model(bbox, axis, offset):
 #: Guard against an update callback that assigns to another property of the
 #: same group and re-enters this module through its update callback.
 _settling = False
+
+
+@_contextmanager
+def quiet():
+    """Hold the settle guard so a caller can write several settings and
+    trigger :func:`refresh` once, explicitly — the pattern :func:`toggle`
+    uses inline, exposed so ``cadex_sheet`` need not poke ``_settling``
+    (ADR-151)."""
+
+    global _settling
+    previous = _settling
+    _settling = True
+    try:
+        yield
+    finally:
+        _settling = previous
 
 
 def settings(scene=None):

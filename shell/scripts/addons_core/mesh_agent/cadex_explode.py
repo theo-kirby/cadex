@@ -37,6 +37,7 @@ and it is the half Phase 12 keeps.
 """
 
 import math
+from contextlib import contextmanager as _contextmanager
 
 #: Collection name. A **sibling** of "Model" at the scene root, never a
 #: child: ``cadex_hydrate``'s contract GC walks ``collection.all_objects``,
@@ -243,6 +244,22 @@ def line_points_at(t, lines, progress):
 #: Guard against an update callback that assigns to another property of the
 #: same group and re-enters this module through its update callback.
 _settling = False
+
+
+@_contextmanager
+def quiet():
+    """Hold the settle guard so a caller can write several settings and
+    trigger :func:`refresh` once, explicitly — the pattern :func:`toggle`
+    uses inline, exposed so ``cadex_sheet`` need not poke ``_settling``
+    (ADR-151)."""
+
+    global _settling
+    previous = _settling
+    _settling = True
+    try:
+        yield
+    finally:
+        _settling = previous
 
 
 def settings(scene=None):

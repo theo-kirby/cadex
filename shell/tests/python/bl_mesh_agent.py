@@ -1634,6 +1634,272 @@ def test_blueprint_styles_the_viewport_from_one_table():
           "the client serialises put_blueprint against rebuilds")
 
 
+def test_blueprint_sheets_compose_from_pure_arithmetic():
+    """ADR-151's pure half: the spec, the tiling and the dressing arithmetic.
+
+    The tiling assertion is paint-counting: every template at every count
+    and at awkward sizes must cover its canvas exactly once, because the
+    boundaries are shared integer arrays and no-gap/no-overlap is meant to
+    hold by construction. The fit_view and composite_rects checks are
+    wrapper regressions: render_views' behaviour must not have moved when
+    its internals became the sheet's primitives.
+    """
+    print("test_blueprint_sheets_compose_from_pure_arithmetic")
+    from mesh_agent import capture, cadex_sheet, tools
+
+    outputs = ("housing", "pin", "shaft")
+
+    # -- defaults: an omitted views is the four-view hero-right sheet --------
+    specs, error = cadex_sheet.normalize_views(None, outputs)
+    check(error == "" and len(specs) == 4,
+          "omitted views yield the four default specs")
+    check([spec["view"] for spec in specs] ==
+          ["front", "top", "right", "three-quarter"],
+          "front, top, right and the three-quarter")
+    check(specs[3]["hero"] and not any(spec["hero"] for spec in specs[:3]),
+          "the three-quarter carries the hero flag")
+    template, hero_index, error = cadex_sheet.choose_layout("auto", specs)
+    check((template, hero_index, error) == ("hero", 3, ""),
+          "auto lays the default sheet out hero-right")
+
+    # -- every refusal is a sentence carrying the fix ------------------------
+    cases = (
+        ([{"view": "rear"}], "Unknown view 'rear' in views[0]"),
+        ([{"view": "front"}] * 9, "at most 6 views; got 9"),
+        ([], "views is empty"),
+        ([{"view": "custom"}], "does not give both azimuth and elevation"),
+        ([{"view": "front", "azimuth": 30.0}],
+         "angles belong to view 'custom'"),
+        ([{"view": "front", "hide": ["housng"]}], "names no declared output"),
+        ([{"view": "front", "hero": True}, {"view": "top", "hero": True}],
+         "both flagged hero"),
+        ([{"view": "front", "explode": 3}], "0 (assembled) to 1"),
+        ([{"view": "front", "section": "Q"}], "one of X, Y, Z"),
+        ([{"view": "front", "section_offset_mm": 4}], "no section axis"),
+        ([{"view": "front", "section": "off", "section_flip": True}],
+         "drop them"),
+        ([{"view": "front", "hid": ["x"]}], "unknown key"),
+        ([{"view": "front", "projection": "iso"}],
+         "'ortho' or 'perspective'"),
+        (["front"], "must be an object"),
+    )
+    for raw, fragment in cases:
+        result, error = cadex_sheet.normalize_views(raw, outputs)
+        check(result is None and fragment in error,
+              "refused with {!r} in: {:s}".format(fragment,
+                                                  error or "(no error)"))
+    bad_hide = cadex_sheet.normalize_views(
+        [{"view": "front", "hide": ["housng"]}], outputs)[1]
+    check("housing, pin, shaft" in bad_hide,
+          "the hide refusal names the declared outputs")
+    check("Compose two sheets" in cadex_sheet.normalize_views(
+              [{"view": "front"}] * 9, outputs)[1],
+          "the cap refusal offers the fix: compose two sheets")
+
+    # -- duplicates are allowed; overrides land in the spec ------------------
+    specs, error = cadex_sheet.normalize_views(
+        [{"view": "front", "hide": ["housing"], "explode": 0.5,
+          "section": "z", "section_offset_mm": 4, "section_flip": True},
+         {"view": "front"},
+         {"view": "custom", "azimuth": 30, "elevation": 15},
+         {"view": "three-quarter", "projection": "ortho"}], outputs)
+    check(error == "" and len(specs) == 4,
+          "duplicates and per-view overrides pass: " + (error or "ok"))
+    check(specs[0]["hide"] == ("housing",) and specs[0]["explode"] == 0.5
+          and specs[0]["section"] == {"axis": "Z", "offset_mm": 4.0,
+                                      "flip": True},
+          "the overrides are normalized into the spec")
+    check(specs[2]["view"] == "custom" and not specs[2]["ortho"]
+          and specs[2]["label"] == "custom 30/15",
+          "a custom view defaults to perspective and labels its angles")
+    check(specs[3]["ortho"] is True,
+          "projection overrides the named view's default")
+    meta = cadex_sheet.spec_meta(specs[0])
+    check(meta["hide"] == ["housing"] and meta["explode"] == 0.5
+          and meta["section"] == {"axis": "Z", "offset_mm": 4.0,
+                                  "flip": True},
+          "spec_meta is the JSON-safe record of the overrides")
+
+    # -- choose_layout picks by shape ----------------------------------------
+    one = cadex_sheet.normalize_views([{"view": "front"}], outputs)[0]
+    two = cadex_sheet.normalize_views([{"view": "front"}, {"view": "top"}],
+                                      outputs)[0]
+    three = cadex_sheet.normalize_views(
+        [{"view": "front"}, {"view": "top"}, {"view": "right"}], outputs)[0]
+    mixed = cadex_sheet.normalize_views(
+        [{"view": "front"}, {"view": "three-quarter"}, {"view": "top"}],
+        outputs)[0]
+    check(cadex_sheet.choose_layout("auto", one)[0] == "single",
+          "auto: one view is a single")
+    check(cadex_sheet.choose_layout("auto", two)[0] == "row",
+          "auto: two orthos are a row")
+    check(cadex_sheet.choose_layout("auto", three)[0] == "grid",
+          "auto: an all-ortho sheet is a grid")
+    check(cadex_sheet.choose_layout("auto", mixed)[:2] == ("hero", 1),
+          "auto: one perspective among orthos is the hero, unflagged")
+    check(cadex_sheet.choose_layout("hero", three)[:2] == ("hero", 2),
+          "explicit hero with no candidate takes the last view")
+    check(cadex_sheet.choose_layout("hero", one)[0] == "single",
+          "a hero of one degenerates to single")
+    check("Unknown layout 'mosaic'"
+          in cadex_sheet.choose_layout("mosaic", one)[2],
+          "unknown layouts are refused")
+    check("takes one view" in cadex_sheet.choose_layout("single", two)[2],
+          "single with two views is refused")
+
+    # -- layout_rects: exact tiling by paint-counting, at awkward sizes ------
+    for template in ("single", "row", "column", "grid", "hero"):
+        for count in range(1, cadex_sheet.MAX_VIEWS + 1):
+            if template == "single" and count > 1:
+                continue
+            for size in (256, 1023, 1024):
+                rects, width, height = cadex_sheet.layout_rects(
+                    template, count, size, hero=count - 1)
+                tag = "{:s}/{:d}/{:d}".format(template, count, size)
+                check(len(rects) == count, tag + ": one rect per view")
+                canvas = bytearray(width * height)
+                overlapped = False
+                for x, y, w, h in rects:
+                    for row in range(y, y + h):
+                        start = row * width + x
+                        if any(canvas[start:start + w]):
+                            overlapped = True
+                        canvas[start:start + w] = b"\x01" * w
+                check(not overlapped and all(canvas),
+                      tag + ": no gap, no overlap, whole canvas covered")
+                if template == "hero" and count >= 2:
+                    x, y, w, h = rects[count - 1]
+                    areas = [rw * rh for _x, _y, rw, rh in rects]
+                    check(areas[count - 1] == max(areas)
+                          and areas.count(max(areas)) == 1
+                          and x + w == width and h == height and x > 0,
+                          tag + ": the hero cell is strictly largest, full "
+                                "height, on the RIGHT")
+
+    # rects come back in view order, hero placed by index
+    rects, width, height = cadex_sheet.layout_rects("hero", 4, 1024, hero=3)
+    check(rects[3] == (341, 0, 683, 1024),
+          "the default hero cell is the right two-thirds at full height")
+    check(all(rect[0] == 0 and rect[2] == 341 for rect in rects[:3])
+          and [rect[3] for rect in rects[:3]] == [341, 342, 341],
+          "the three orthos stack down the left at ~341 px")
+    check(rects[0][1] > rects[1][1] > rects[2][1],
+          "in view order, top to bottom")
+    moved, _w, _h = cadex_sheet.layout_rects("hero", 4, 1024, hero=0)
+    check(moved[0] == (341, 0, 683, 1024),
+          "the hero index places the hero cell, whichever view it is")
+    grid, width, height = cadex_sheet.layout_rects("grid", 3, 1024)
+    check(grid[0][1] + grid[0][3] == height and grid[0][0] == 0,
+          "a grid reads from the top-left")
+    check(grid[2][2] == 1024,
+          "a partial last row widens to span -- no hole")
+
+    # -- fit_view is view_matrices' loop body, field for field ---------------
+    bbox = ((-30.0, -10.0, 0.0), (10.0, 50.0, 24.0))
+    wrapped = capture.view_matrices(bbox, aspect=1.3)
+    for index, view in enumerate(capture.VIEWS):
+        check(capture.fit_view(view, bbox, aspect=1.3) == dict(wrapped[index]),
+              "fit_view({:s}) equals view_matrices' entry".format(
+                  view["name"]))
+
+    # -- NAMED_VIEWS aim true, at every entry ---------------------------------
+    centre = (-10.0, 20.0, 12.0)
+    corners = [(x, y, z) for x in (-30.0, 10.0) for y in (-10.0, 50.0)
+               for z in (0.0, 24.0)]
+    axis_true = {"front": (0.0, -1.0, 0.0), "back": (0.0, 1.0, 0.0),
+                 "left": (-1.0, 0.0, 0.0), "right": (1.0, 0.0, 0.0),
+                 "top": (0.0, 0.0, 1.0), "bottom": (0.0, 0.0, -1.0)}
+    for name, view in capture.NAMED_VIEWS.items():
+        fitted = capture.fit_view(view, bbox)
+        aimed = capture.transform(fitted["view"], centre)
+        check(abs(aimed[0]) < 1e-6 and abs(aimed[1]) < 1e-6 and aimed[2] < 0,
+              "{:s} looks at the bbox centre".format(name))
+        projected = [capture.project(fitted["view"], fitted["window"], c)
+                     for c in corners]
+        check(all(p is not None and abs(p[0]) <= 1.0 and abs(p[1]) <= 1.0
+                  and -1.0 <= p[2] <= 1.0 for p in projected),
+              "{:s} contains the whole bbox".format(name))
+        expected = axis_true.get(name)
+        if expected is not None:
+            check(max(abs(a - b) for a, b in
+                      zip(fitted["direction"], expected)) < 1e-9,
+                  "{:s} is axis-true".format(name))
+
+    # -- composite_rects places by rect; the 2x2 wrapper is unchanged --------
+    red, green, blue, white = ([1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 1.0],
+                               [0.0, 0.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0])
+    direct = capture.composite_rects(
+        [(red, (0, 1, 1, 1)), (green, (1, 1, 1, 1)),
+         (blue, (0, 0, 1, 1)), (white, (1, 0, 1, 1))], 2, 2)
+    wrapped_pixels, width, height = capture.composite_2x2(
+        [red, green, blue, white], 1, 1)
+    check((width, height) == (2, 2) and wrapped_pixels == direct,
+          "composite_2x2 is composite_rects with the quadrant rects")
+    tile = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+    out = capture.composite_rects([(tile, (1, 0, 1, 2))], 3, 2)
+    check(out[4:8] == tile[0:4] and out[16:20] == tile[4:8]
+          and out[0:4] == [0.0] * 4,
+          "a rect lands row by row exactly where it says")
+
+    # -- the dressing arithmetic ----------------------------------------------
+    check(cadex_sheet.margin_px(256) == 20
+          and cadex_sheet.margin_px(1024) == 25,
+          "the margin band scales with the sheet and floors at 20 px")
+    grid = cadex_sheet.zone_grid(1074, 1074)
+    check(grid["pitch"] == 130 and abs(grid["sub_pitch"] - 26.0) < 1e-9,
+          "the zone pitch is a round pixel count with a fifth sub-grid")
+    check([label for label, _x in grid["columns"]][:3] == ["1", "2", "3"]
+          and [label for label, _y in grid["rows"]][:3] == ["A", "B", "C"],
+          "columns are numbered along the top, rows lettered down the left")
+    check(grid["rows"][0][1] > grid["rows"][-1][1],
+          "row A sits at the TOP of the sheet")
+    check(all(float(x) % grid["pitch"] == 0.0 for x in grid["verticals"]),
+          "zone lines sit on the pitch")
+    check(all(min(x % grid["pitch"], grid["pitch"] - x % grid["pitch"]) > 1.0
+              for x in grid["sub_verticals"]),
+          "the sub-grid skips the zone lines")
+
+    titles = cadex_sheet.title_lines("bracket", "1.2.3", "abcdef123456789",
+                                     "2026-08-19", "blueprint")
+    check(titles[0] == {"corner": "top-left", "text": "bracket"},
+          "the project name sits in the top corner")
+    check(titles[1]["corner"] == "bottom-right"
+          and "CADEX 1.2.3" in titles[1]["text"]
+          and "rev abcdef123456" in titles[1]["text"]
+          and "2026-08-19" in titles[1]["text"]
+          and "blueprint" in titles[1]["text"],
+          "the version block carries version, revision, date and theme")
+    check("CADEX dev"
+          in cadex_sheet.title_lines("", "", "", "", "")[0]["text"],
+          "a missing version reads dev, not nothing")
+
+    hero_specs, _error = cadex_sheet.normalize_views(
+        [{"view": "front"}, {"view": "top"}, {"view": "right"},
+         {"view": "three-quarter", "hero": True, "hide": ["housing"],
+          "explode": 1.0}], outputs)
+    rects, _width, _height = cadex_sheet.layout_rects("hero", 4, 1024,
+                                                      hero=3)
+    legend = cadex_sheet.cell_legend(hero_specs, rects)
+    check("cell 4 (large, right): three-quarter perspective" in legend
+          and "housing hidden" in legend and "exploded 1" in legend,
+          "the legend names the hero cell and its overrides")
+    check(legend.index("cell 1") < legend.index("cell 4"),
+          "cells are captioned in view order")
+
+    # -- the tool advertises the composition surface --------------------------
+    entry = next(e for e in tools.TOOL_DEFS if e["name"] == "make_blueprint")
+    properties = entry["input_schema"]["properties"]
+    check("views" in properties and "layout" in properties,
+          "make_blueprint's schema advertises views and layout")
+    check(properties["views"]["maxItems"] == cadex_sheet.MAX_VIEWS,
+          "and caps views at the module's MAX_VIEWS")
+    check(set(properties["views"]["items"]["properties"])
+          == set(cadex_sheet.SPEC_KEYS),
+          "the per-view schema is exactly the spec keys, one level deep")
+    check(tuple(properties["layout"]["enum"]) == cadex_sheet.LAYOUTS,
+          "and the layout enum is the module's LAYOUTS")
+
+
 def test_dimension_is_drawn_in_pixels_around_its_number():
     from mesh_agent import cadex_dimension
 
@@ -1837,6 +2103,7 @@ def main():
         test_render_views_cameras_frame_the_model()
         test_exploded_poses_interpolate_in_staged_windows()
         test_blueprint_styles_the_viewport_from_one_table()
+        test_blueprint_sheets_compose_from_pure_arithmetic()
         test_dimension_is_drawn_in_pixels_around_its_number()
         test_an_edge_on_dimension_becomes_a_leader()
         test_diameter_picks_the_widest_on_screen_and_survives_a_bore_down_z()

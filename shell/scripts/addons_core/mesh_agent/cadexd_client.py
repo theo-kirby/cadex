@@ -120,6 +120,34 @@ def read_engine_manifest(directory):
     return freecadcmd, module_dir
 
 
+def engine_version(bundle_roots=()):
+    """The bundled engine payload's ``version`` string, or ``""``.
+
+    The manifest has always carried it (``build_engine_payload.sh`` writes
+    CMake's PACKAGE_VERSION in) and :func:`read_engine_manifest` has always
+    dropped it — that reader answers "can I run this payload", and its
+    signature is pinned by two call sites and their tests, so the version
+    gets its own small reader (ADR-151: the blueprint sheet's title block).
+    Deliberately tolerant where the launcher is strict: a sheet's title is
+    worth printing even off a payload this client would refuse to run.
+    """
+    override = os.path.expanduser(os.environ.get("MESH_CADEX_ENGINE", ""))
+    for root in ([override] if override else []) + [str(r) for r in bundle_roots]:
+        if not root:
+            continue
+        path = os.path.join(root, ENGINE_MANIFEST_NAME)
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                manifest = json.load(handle)
+        except (OSError, ValueError):
+            continue
+        if isinstance(manifest, dict):
+            version = manifest.get("version")
+            if isinstance(version, str) and version:
+                return version
+    return ""
+
+
 def find_bundled_engine(bundle_roots=()):
     """First valid engine payload among ``bundle_roots``, or None.
 

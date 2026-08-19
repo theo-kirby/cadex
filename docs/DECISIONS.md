@@ -15924,3 +15924,83 @@ CLI: `blueprint` in `INSPECT_SCOPES`, `export_blueprints` +
 `ARCHITECTURE.md`, `CLI.md`, `BLENDER.md` — and nothing in `modes.py`: the
 agent guidance lives in the tool descriptions, per ADR-148's overlay-cap
 paragraph.
+
+## ADR-151 — the blueprint sheet is agent-composed, and dressed like a drawing (2026-08-19)
+
+**Decision.** ADR-150's fixed 2×2 sheet becomes **composable**: the agent
+picks up to six views (the six named orthos, the three-quarter, or a custom
+azimuth/elevation), gives each cell its own hidden outputs, exploded factor
+and section override, and picks a layout — default **hero-right**, three
+small orthos stacked left and the big three-quarter perspective filling the
+right two-thirds, which fixes "the perspective is too small". The stored PNG
+is **dressed as a drawing sheet**: a faint uniform page grid with border
+zone marks (1, 2, 3 along the top, A, B, C down the left), the project name
+top-left, and `CADEX <version> · rev · date · theme` bottom-right — all in
+the theme's line colour, all fainter than the model lines. The live
+viewport blueprint stays as it was (owner choice), and the theme grounds
+darken ~20–25%, lines still white. All of it lives in the shell
+(`cadex_sheet.py` + `capture.py` + `mesh_agent` tests); the **protocol is
+untouched** — the view specs travel in `put_blueprint`'s free-form `meta`
+(≤8 KB, which is why the sheet caps at 6 views), and `render_views` is
+unmoved behind two wrapper regressions (`fit_view`, `composite_rects`).
+
+**The calls, each one an argument.**
+
+- **Templates, not freeform spans.** The layout surface is five templates
+  (`single`/`row`/`column`/`grid`/`hero`) tiled by shared integer boundary
+  arrays, so the schema stays flat (one nesting level — a schema the model
+  fills correctly) and the no-gap/no-overlap invariant is testable by
+  paint-counting rather than promised. Freeform per-cell spans were
+  rejected as an invitation to overlapping, hole-ridden sheets that no test
+  could pin.
+- **Per-cell hides ride `obj.hide_set()`, never `hide_viewport`** — that
+  channel is owned by `cadex_hydrate._hide_instanced_sources`'s marker
+  protocol, and both `model_bbox`'s `visible_get()` and `draw_view3d`'s
+  depsgraph respect `hide_set`. The Edges child is hidden with its solid;
+  parenting does not propagate visibility.
+- **One flat snapshot/restore, not per-view undo stacks.**
+  `snapshot_state` captures the live presentation once;
+  `apply_view_state` layers each cell (hides → explode → section — section
+  last because the wire clip bakes the plane in each object's OWN frame,
+  the `_finish_preview` ordering); `restore_state` is a single
+  exception-hardened restore in the renderer's `finally`, so a
+  `draw_view3d` failure on view 3 of 5 still restores from the original
+  snapshot. The three-branch restore shape (originally-on → write back +
+  refresh; touched-but-off → clear; untouched → nothing) is the ADR-150
+  lesson applied: a clear when never applied must touch nothing. `quiet()`
+  on `cadex_explode`/`cadex_section` exposes the settle guard those
+  modules' own `toggle()` already used inline, so several settings write
+  and ONE explicit `refresh` fires.
+- **Validation before the background refusal.** `normalize_views` /
+  `choose_layout` / `validate_against_model` run first, so a bad spec is
+  refused for what is wrong with it — in full sentences carrying the fix —
+  even in the `--background` gate, and a valid spec still refuses headless
+  in ADR-150's unchanged sentence. The gate pins the order.
+- **The dressing is a second offscreen pass** (`_dress_sheet`), drawn with
+  the recipe the in-tree blf test proves (bind → clear → explicit viewport
+  → identity + pixel-orthographic projection → blf in pixels), the tile
+  field as a textured quad inset by the margin band, lines through the
+  dimension overlay's POLYLINE/fallback idiom, DejaVuSansMono via
+  `bpy.utils.system_resource` falling back to font 0, `blf.size` two-arg.
+  Alpha is forced opaque after readback (the `bl_pyapi_blf` fix-up, in
+  FLOAT).
+- **Zone marks over per-view mm graph paper** — owner choice: a uniform
+  page grid with border zones reads as a drawing sheet at any scale, where
+  true-scale graph paper would need a per-cell scale legend and would lie
+  under a perspective cell anyway.
+- **The version comes off the engine manifest the shell already ships.**
+  `cadexd_client.engine_version()` is a new small reader because
+  `read_engine_manifest`'s signature is pinned by two call sites and their
+  tests; it is deliberately tolerant where the launcher is strict, because
+  a title block is worth printing even off a payload the client would
+  refuse to run. Falls back to `dev`.
+
+**Verified.** Pure suite: spec refusals sentence-for-sentence, paint-count
+tiling over every template × count 1–6 × sizes {256, 1023, 1024}, hero
+strictly largest and on the right, `fit_view` ≡ `view_matrices` field for
+field, `composite_rects` ⊇ `composite_2x2`, dressing shapes, schema =
+`SPEC_KEYS`. Gate: refusal ordering pinned; the state machinery
+round-trips bit-for-bit against the bundled engine with the live toggles
+both on (write-back branch) and off (clear branch), revision unchanged
+throughout. The dressed pixels themselves: the windowed probe (ADR-124
+precedent), uncommitted.

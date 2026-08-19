@@ -4198,6 +4198,216 @@ def test_the_exploded_view_spreads_the_assembly(root):
     }
 
 
+def test_sheet_state_applies_and_restores(root):
+    """ADR-151's scene-state half, end to end and with no GL.
+
+    What a ``--background`` gate can prove about the composed sheet, in the
+    order it can fail: spec refusals come back through the tool BEFORE the
+    headless refusal (and a valid spec still refuses headless in the
+    unchanged ADR-150 sentence); ``apply_view_state`` lands one cell's
+    hide + explode + section (the Edges child hidden too, the settings
+    carrying the overrides); the next cell with no overrides sees the LIVE
+    presentation again, not cell 1's; and ``restore_state`` puts the whole
+    presentation back bit-for-bit — with the live toggles initially ON (the
+    write-back-and-refresh branch) and initially OFF (the clear branch,
+    which is the class of bug the ADR-150 gate caught once already). Plus
+    ``quiet()``: several settings written, no refresh until the explicit
+    call.
+    """
+    print("test_sheet_state_applies_and_restores")
+    from mesh_agent import cadex_explode, cadex_section, cadex_sheet
+
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, report = run_tool("write_script", {"content": EXPLODED_SCRIPT})
+    check(ok, "the exploded-assembly script was accepted: {:s}".format(
+        first_line_of(report)))
+    if not ok:
+        return
+    display = dict(cadex_backend.last_accepted(root).get("display") or {})
+    record = (display.get("boom") or {}).get("exploded_view")
+    check(isinstance(record, dict), "the exploded-view record is published")
+    if not isinstance(record, dict):
+        return
+    final = tuple(record["final_poses"]["swing"]["position_mm"])
+
+    # -- spec refusals land BEFORE the headless refusal ----------------------
+    ok, message = run_tool("make_blueprint", {"views": [{"view": "rear"}]})
+    check(not ok and "Unknown view 'rear'" in message
+          and "background" not in message,
+          "a bad view name is refused for what it is, not for headlessness: "
+          "{:s}".format(first_line_of(message)))
+    ok, message = run_tool("make_blueprint",
+                           {"views": [{"view": "front", "hide": ["swng"]}]})
+    check(not ok and "'swng'" in message and "swing" in message,
+          "a bad hide is refused naming the declared outputs: {:s}".format(
+              first_line_of(message)))
+    ok, message = run_tool("make_blueprint", {"views": [{"view": "front"}],
+                                              "layout": "mosaic"})
+    check(not ok and "Unknown layout" in message,
+          "a bad layout is refused: {:s}".format(first_line_of(message)))
+    ok, message = run_tool(
+        "make_blueprint",
+        {"views": [{"view": "three-quarter", "explode": 0.5}]})
+    check(not ok and "Blueprint rendering is unavailable in background mode"
+          in message,
+          "a VALID composed spec still refuses headless, in the unchanged "
+          "sentence: {:s}".format(first_line_of(message)))
+
+    def presentation():
+        # A parented Edges child's matrix_world is an EVALUATED value; a
+        # capture taken between a matrix write and the next depsgraph pass
+        # would snapshot the stale pose and blame the restore for it.
+        bpy.context.view_layer.update()
+        bpy.context.evaluated_depsgraph_get()
+        objects = {}
+        for obj in bpy.data.objects:
+            try:
+                hidden = obj.hide_get()
+            except Exception:
+                hidden = None
+            objects[obj.name] = (
+                tuple(tuple(row) for row in obj.matrix_world),
+                hidden,
+                tuple((modifier.name, modifier.type,
+                       bool(modifier.show_viewport))
+                      for modifier in obj.modifiers),
+            )
+        explode, section = scene.cadex_explode, scene.cadex_section
+        return {
+            "objects": objects,
+            "explode": (bool(explode.show), float(explode.factor)),
+            "section": (bool(section.show), str(section.axis),
+                        float(section.offset), bool(section.flip)),
+            "explode_flag": cadex_sheet._scene_flag(
+                scene, cadex_explode.SCENE_FLAG),
+            "section_flag": cadex_sheet._scene_flag(
+                scene, cadex_section.SCENE_FLAG),
+        }
+
+    def same_presentation(before, after, label):
+        wrong = []
+        if set(before["objects"]) != set(after["objects"]):
+            wrong.append("the object set")
+        for name in sorted(set(before["objects"]) & set(after["objects"])):
+            matrix_b, hidden_b, mods_b = before["objects"][name]
+            matrix_a, hidden_a, mods_a = after["objects"][name]
+            if not all(abs(a - b) < 1e-5
+                       for row_a, row_b in zip(matrix_a, matrix_b)
+                       for a, b in zip(row_a, row_b)):
+                wrong.append(name + " matrix_world")
+            if hidden_a != hidden_b:
+                wrong.append(name + " hide state")
+            if mods_a != mods_b:
+                wrong.append(name + " modifiers")
+        for key in ("explode", "section", "explode_flag", "section_flag"):
+            if before[key] != after[key]:
+                wrong.append(key)
+        check(not wrong, "{:s}: the presentation is restored exactly "
+                         "(differs: {:s})".format(label,
+                                                  ", ".join(wrong) or "none"))
+
+    specs, error = cadex_sheet.normalize_views(
+        [{"view": "front", "hide": ["swing"], "explode": 1.0,
+          "section": "Z"},
+         {"view": "top"}], sorted(display))
+    check(error == "", "the two-cell spec normalizes: " + (error or "ok"))
+    if error:
+        return
+    collection = cadex_hydrate._model_collection()
+    swing = cadex_hydrate._find(collection, "swing", edges=False)
+    swing_edges = cadex_hydrate._find(collection, "swing", edges=True)
+    check(swing is not None and swing_edges is not None,
+          "the component and its Edges child hydrated")
+    if swing is None or swing_edges is None:
+        return
+
+    def at(obj):
+        return tuple(obj.matrix_world.translation)
+
+    def near(a, b, tolerance=1e-4):
+        return max(abs(x - y) for x, y in zip(a, b)) < tolerance
+
+    # -- live toggles ON: the write-back-and-refresh branch ------------------
+    # Explosion FIRST, section second: the cutter's matrix is derived from
+    # the model bounds at refresh time, and a section switched on before an
+    # explosion holds a matrix computed at the solved poses that no later
+    # refresh reproduces. The restore recomputes -- which is what the
+    # product's own next refresh would do -- so bit-equality is asserted
+    # against a section whose live value is itself reproducible.
+    ok, message = run_tool("exploded_view", {"show": True, "factor": 0.25})
+    check(ok, "a live explosion went on ({:s})".format(
+        first_line_of(message)))
+    ok, message = run_tool("section_view", {"show": True, "axis": "X"})
+    check(ok, "a live section went on ({:s})".format(first_line_of(message)))
+    revision_before = cadex_backend._state_for(root).revision
+    before = presentation()
+
+    snapshot = cadex_sheet.snapshot_state(scene)
+    cadex_sheet.apply_view_state(scene, specs[0], snapshot)
+    check(swing.hide_get() is True,
+          "the cell's hide landed through hide_set")
+    check(swing_edges.hide_get() is True,
+          "and the Edges child is hidden with it")
+    check(near(at(swing), final),
+          "the cell's explode factor 1.0 landed ({!r})".format(at(swing)))
+    check(float(scene.cadex_explode.factor) == 1.0
+          and str(scene.cadex_section.axis) == 'Z',
+          "the settings carry the overrides while the cell renders")
+    report = cadex_sheet._scene_flag(scene, cadex_section.SCENE_FLAG) or {}
+    check(report.get("axis") == 'Z', "the section refresh ran on Z")
+
+    cadex_sheet.apply_view_state(scene, specs[1], snapshot)
+    check(swing.hide_get() is False,
+          "the next cell unhides what cell 1 hid")
+    check(float(scene.cadex_explode.factor) == 0.25
+          and str(scene.cadex_section.axis) == 'X',
+          "and inherits the LIVE presentation, not cell 1's overrides")
+
+    cadex_sheet.restore_state(scene, snapshot)
+    same_presentation(before, presentation(), "live-on restore")
+    check(cadex_backend._state_for(root).revision == revision_before,
+          "the engine never heard about any of it: the accepted revision "
+          "is unchanged")
+
+    # -- live toggles OFF: the clear branch ----------------------------------
+    ok, _message = run_tool("exploded_view", {"show": False})
+    check(ok, "the live explosion went off")
+    ok, _message = run_tool("section_view", {"show": False})
+    check(ok, "the live section went off")
+    before = presentation()
+    snapshot = cadex_sheet.snapshot_state(scene)
+    cadex_sheet.apply_view_state(scene, specs[0], snapshot)
+    check(any(obj.modifiers.get(cadex_section.MODIFIER_NAME) is not None
+              for obj in bpy.data.objects if obj.modifiers),
+          "the cell's own section put its modifiers on")
+    check(near(at(swing), final), "and the cell's own explode landed")
+    cadex_sheet.restore_state(scene, snapshot)
+    check(all(obj.modifiers.get(cadex_section.MODIFIER_NAME) is None
+              for obj in bpy.data.objects if obj.modifiers)
+          and bpy.data.objects.get(cadex_section.CUTTER_NAME) is None,
+          "the clear branch removed everything the cell added")
+    check(bpy.data.objects.get(cadex_explode.LINES_NAME) is None,
+          "including the leader lines")
+    same_presentation(before, presentation(), "live-off restore")
+
+    # -- quiet(): several settings written, ONE explicit refresh -------------
+    solved = at(swing)
+    with cadex_explode.quiet():
+        scene.cadex_explode.show = True
+        scene.cadex_explode.factor = 1.0
+    check(at(swing) == solved,
+          "quiet() holds the update callbacks: no refresh fired")
+    cadex_explode.refresh(scene)
+    check(near(at(swing), final), "until the explicit refresh call")
+    with cadex_explode.quiet():
+        scene.cadex_explode.show = False
+    cadex_explode.clear(scene)
+    check(near(at(swing), solved), "and the cleanup reassembles")
+
+    GATE["sheet"] = {"outputs": len(display), "spec_refusals": 4}
+
+
 def test_live_mode_is_wired_and_refuses_cleanly(live_root):
     """Live mode reaches the engine, and says no politely when it must.
 
@@ -4658,6 +4868,7 @@ def main():
     section_root = tempfile.mkdtemp(prefix="mesh-cadex-section-")
     explode_root = tempfile.mkdtemp(prefix="mesh-cadex-explode-")
     blueprint_root = tempfile.mkdtemp(prefix="mesh-cadex-blueprint-")
+    sheet_root = tempfile.mkdtemp(prefix="mesh-cadex-sheet-")
     try:
         test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
@@ -4718,6 +4929,7 @@ def main():
         test_the_section_view_cuts_the_model_open(section_root)
         test_the_exploded_view_spreads_the_assembly(explode_root)
         test_the_blueprint_view_restyles_and_restores(blueprint_root)
+        test_sheet_state_applies_and_restores(sheet_root)
         test_live_mode_is_wired_and_refuses_cleanly(live_root)
     finally:
         try:
@@ -4743,7 +4955,8 @@ def main():
                      drag_root, supersede_root, skip_root,
                      preview_root, fallback_root, views_root, collision_root,
                      shapes_root, isolate_root, readers_root, wiring_root,
-                     cage_root, section_root, explode_root, blueprint_root):
+                     cage_root, section_root, explode_root, blueprint_root,
+                     sheet_root):
             shutil.rmtree(root, ignore_errors=True)
 
     GATE["ok"] = not FAILURES
