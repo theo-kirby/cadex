@@ -13,9 +13,7 @@ in to, so there is no storage question to put to the user.
 
 ## The CLI
 
-Invocations below write `hypergraph …`. In a dev checkout of the protocol repo that is
-`uv run tools/hypergraph.py …`; an adopter gets the bare `hypergraph` from
-`uv tool install hypergraph-protocol`. Same tool, same flags — pick whichever resolves.
+`hypergraph …` — in a dev checkout of the protocol repo, `uv run tools/hypergraph.py …`.
 
 ## When To Use
 
@@ -44,17 +42,18 @@ years of commits, or docs describing what already works → adopt.
    hypergraph new record --root --title "<project> — record" --body record-root.md
    hypergraph new state  --root --title "<project> — state"  --body overview.md --reconcile
    ```
-3. **Seed the state skeleton**: one child of the state root per architecture component
-   (`hypergraph new state --parent <state-root> --status open --prov "…" --reconcile`).
-   Each follows the state-node template with `Status: open`, a one-line `## Current`
-   describing intent,
-   `## Negative knowledge` = `None yet.`, and `## Provenance` citing the init record
-   node's slug (create record node #1 first if you need the slug — order steps 3/4
-   accordingly).
-4. **Record node #1** (`hypergraph-record` discipline): child of the record root titled
-   "Project initialized under Hypergraph", documenting the chosen architecture, with
-   `## State Impact` listing `- target: <each seeded state slug> — seeded, status open`
-   (or `NEW` lines if you created record node #1 before the skeleton).
+3. **Record node #1** (`hypergraph-record` discipline): child of the record root
+   titled "Project initialized under Hypergraph", documenting the chosen
+   architecture, with `## State Impact` listing one `- target: NEW <kebab-name> —
+   seeded, status open` line per component. Record node #1 comes **first** so the
+   skeleton can cite its minted slug — provenance is never written from memory.
+   (A `NEW <kebab-name>` never auto-resolves to the slug step 4 mints; the mapping
+   lives in this node's impact lines and step 4 fulfils it.)
+4. **Seed the state skeleton**: one child of the state root per architecture
+   component (`hypergraph new state --parent <state-root> --status open
+   --prov "<record-node-1-slug> — seeded at project init" --reconcile`). Each
+   follows the state-node template with `Status: open`, a one-line `## Current`
+   describing intent, and `## Negative knowledge` = `None yet.`.
 5. **Advance the HWM** through record node #1 so `high_water_mark:` names its slug:
    `hypergraph update <state-root> --body root.md --expect $(hypergraph update
    <state-root> --print-sha) --reconcile` (local-adapter §7).
@@ -63,15 +62,30 @@ years of commits, or docs describing what already works → adopt.
    `node_id` + `slug`, and `graph_dir:`. Add `.hypergraph/cache/` to the repo's
    `.gitignore` — and make sure `.hypergraph/graph/` is **not** ignored; it is the
    project's memory.
-7. **Export + render**: `hypergraph export --config .hypergraph/config.yml` →
-   `.hypergraph/cache/{record,state}.json`, then:
-   ```
-   hypergraph render --state .hypergraph/cache/state.json --config .hypergraph/config.yml -o STATE.md
-   hypergraph check --record .hypergraph/cache/record.json --state .hypergraph/cache/state.json --config .hypergraph/config.yml
-   ```
-   The check must exit 0 before you report success.
-8. **Commit**: `git add .hypergraph/config.yml .hypergraph/graph STATE.md`. The
-   project is not initialized until the node files are committed.
+7. **The gate**: `hypergraph sync --config .hypergraph/config.yml` — it exports,
+   writes `STATE.md`, checks, and publishes if a mirror is configured. It must
+   **exit 0** before you report success.
+8. **Onboarding install** — the contract that makes arriving agents use what you
+   just built. A repo with two graphs and no instructions to its agents has memory
+   nobody consults:
+   - Append [agents-block.md](references/agents-block.md) to the repo's `AGENTS.md`
+     (create the file if absent) — idempotently: if `<!-- hypergraph:begin -->` is
+     already present, replace the existing block rather than appending a second
+     one. **Never break a `CLAUDE.md` → `AGENTS.md` symlink** — edit the target,
+     never the link.
+   - Write `.hypergraph/AGENTS.md`: the five non-negotiables expanded, this
+     project's graph roots, the skills to use, and how to get the CLI
+     (`uv tool install hypergraph-protocol` — it is a package, not a file).
+   - **Install the skills, and make sure they can be committed:**
+     ```
+     hypergraph skills install            # into ./.claude/skills
+     git check-ignore -v .claude/skills   # silence is what you want
+     ```
+     If a broad ignore rule (`.*`, `.claude/`) hides them, every instruction you
+     just installed is dead on arrival for the next clone.
+9. **Commit**: `git add .hypergraph/config.yml .hypergraph/graph STATE.md AGENTS.md
+   .claude/skills`. The project is not initialized until the node files are
+   committed.
 
 ## Guardrails
 
@@ -79,7 +93,11 @@ years of commits, or docs describing what already works → adopt.
   (SPEC: pointers are markdown slugs, not edges).
 - Keep the skeleton small — components, not tasks. A handful of `open` nodes is a
   healthy day-one frontier.
-- `--reconcile` is required for every state write (SPEC I3), and init is one of the
-  two places allowed to pass it. It is a gate, not a formality.
+- Named views are strictly post-init (SPEC: Views): init creates the two mandatory
+  graphs only; a later reconcile pass adds a view with `hypergraph views add` if
+  the project grows a second axis worth distilling.
+- `--reconcile` is required for every state write (SPEC I3). Three writers ever
+  pass it: init and adopt once each at setup, the reconcile skill ongoing. It is a
+  gate, not a formality.
 - Report the created slugs (both roots + skeleton) to the user; they are permanent
   handles.

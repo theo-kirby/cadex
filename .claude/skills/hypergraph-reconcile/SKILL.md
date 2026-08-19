@@ -5,20 +5,25 @@ description: The single-writer librarian pass for a Hypergraph project - folds d
 
 # Hypergraph Reconcile
 
-The **only** writer of state nodes (SPEC I3). Reads record nodes past the high-water
-mark, folds their declared impacts into the distilled state graph, advances the HWM,
-and regenerates STATE.md. Protocol: [spec.md](references/spec.md).
+The only **ongoing** writer of state nodes (SPEC I3) — init and adopt each pass
+`--reconcile` once at setup; every later state write happens here. Reads record nodes
+past the high-water mark, folds their declared impacts into the distilled state
+graph, advances the HWM, and regenerates STATE.md. Protocol: [spec.md](references/spec.md).
+
+If the project keeps **named views** (`views:` in the config — SPEC: Views), the
+same single-writer rule holds *per view*, and this pass is the writer for every
+one: each view has its own high-water mark over the record graph, and view-qualified
+impacts (`policy/<slug>`) fold into their view exactly as unqualified ones fold into
+state.
 
 ## The CLI
 
-Invocations below write `hypergraph …`. In a dev checkout of the protocol repo that is
-`uv run tools/hypergraph.py …`; an adopter gets the bare `hypergraph` from
-`uv tool install hypergraph-protocol`. Same tool, same flags — pick whichever resolves.
+`hypergraph …` — in a dev checkout of the protocol repo, `uv run tools/hypergraph.py …`.
 
 Every state write goes through `hypergraph update <slug> --expect <sha> --reconcile`
 or `hypergraph new state … --reconcile` ([local-adapter.md](references/local-adapter.md)
-§1/§2/§7). Both refuse without `--reconcile` — that flag is the I3 gate, and this is
-the only skill that ever passes it.
+§1/§2/§7). Both refuse without `--reconcile` — that flag is the I3 gate, and after setup this
+is the only skill that passes it.
 
 ## When To Use
 
@@ -40,9 +45,11 @@ record it first (SPEC I1), then reconcile it in.
    parse `## Reconciliation` for the current HWM.
 2. **Export both graphs** → `.hypergraph/cache/{record,state}.json`:
    `hypergraph export --config .hypergraph/config.yml`.
-3. **Enumerate unreconciled nodes**: record nodes created after the HWM node, in
-   causal/created order — `check` prints the count and the pending impact targets. If
-   none, regenerate STATE.md and stop.
+3. **Enumerate unreconciled nodes**: record nodes that are not ancestors of any
+   frontier tip (reachability, never wall clock — a node authored before the last
+   reconcile but merged after it is unreconciled). `check` prints the count and the
+   pending impact targets; `hypergraph hwm` lists the nodes. If none, regenerate
+   STATE.md and stop.
 4. **Fold impacts, per state node** (batch all pending deltas for a target into one
    write). For each affected state node: read-sha → compose the complete new body →
    `hypergraph update --expect --reconcile`.
@@ -64,17 +71,30 @@ record it first (SPEC I1), then reconcile it in.
    `high_water_mark:` = the record **tips** you folded through and `reconciled_at:` = now
    (SPEC I5), through the same read-sha → update sequence. Do this *after* the folds so
    a crashed run under-reports rather than skips.
-   - Usually one slug — the newest node you folded. After a merge there are several,
-     because a branch's tip is not an ancestor of main's. `hypergraph hwm` lists what is
-     outstanding; anything still listed after you write the mark was not covered.
+   - The mark is the record graph's **tips**, comma-separated on one line:
+     `high_water_mark: <tip>, <tip>, …` (SPEC I5). Often one slug — the newest node
+     you folded; after a merge there are several, because a branch's tip is not an
+     ancestor of main's. `hypergraph hwm --tips` prints exactly the frontier a
+     fold-everything pass writes; plain `hypergraph hwm` lists what is outstanding,
+     and anything still listed after you write the mark was not covered.
    - If `check` says nodes *predate* the mark and names `hwm --suggest`, this graph is
      crossing the v0.0.5 change. Run it and write the frontier it prints — those nodes
      were already folded, and folding them again duplicates claims.
+5b. **Named views, if any: repeat steps 4–5 per view.** For each configured view
+   (`hypergraph views ls`): fold that view's qualified impacts (`check` tallies them
+   as `<view>/<target>`) into its nodes — `hypergraph new <view> … --reconcile` /
+   `update … --reconcile`, same template, provenance citing record nodes only — then
+   advance *that view's* `## Reconciliation` on its own root. The marks are
+   independent: a view you did not touch keeps its old mark honestly, but folding a
+   view's pending impacts without advancing its mark under-reports, same as state.
+   A brand-new axis worth tracking is declared here, and only here:
+   `hypergraph views add <name> [--md FILE] --reconcile`.
 6. **Regenerate and check**:
    ```
    hypergraph sync --config .hypergraph/config.yml
    ```
-   `sync` re-exports both graphs, regenerates STATE.md, runs `check`, and publishes.
+   `sync` re-exports every graph (views included), regenerates STATE.md and each
+   view's `md:` snapshot, runs `check`, and publishes.
    It stops before publishing if `check` reports violations. (The separate
    `export` / `render` / `check` commands still exist if you want the steps apart.)
 7. **Publish.** `sync` already did this; run `hypergraph push` on its own if you split
@@ -87,7 +107,8 @@ record it first (SPEC I1), then reconcile it in.
    - *drift* — the published copy no longer matches the node files. **Local files are
      canonical.** Fix drift by re-publishing, or by investigating who else wrote;
      never by editing node files to match.
-8. **Commit.** `git add .hypergraph/graph STATE.md` — the reconcile is not durable
+8. **Commit.** `git add .hypergraph/graph STATE.md` (plus any view snapshots and the
+   config, if `views add` ran) — the reconcile is not durable
    until the node files are committed. Do this *after* publishing, so the frontmatter
    `push` writes is caught by the same `git add`.
 9. **Report honestly**: what was folded, what was created, checker output verbatim —

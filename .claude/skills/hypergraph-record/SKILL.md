@@ -11,12 +11,9 @@ into the state graph. Protocol: [spec.md](references/spec.md).
 
 ## The CLI
 
-Invocations below write `hypergraph …`. In a dev checkout of the protocol repo that is
-`uv run tools/hypergraph.py …`; an adopter gets the bare `hypergraph` from
-`uv tool install hypergraph-protocol`. Same tool, same flags — pick whichever resolves.
-
+`hypergraph …` — in a dev checkout of the protocol repo, `uv run tools/hypergraph.py …`.
 The graphs are markdown node files committed in this repo
-([local-adapter.md](references/local-adapter.md)) — one `hypergraph` call per operation.
+([local-adapter.md](references/local-adapter.md)).
 
 ## When To Use
 
@@ -39,6 +36,10 @@ The graphs are markdown node files committed in this repo
 Not for editing state nodes (that is reconcile's job — SPEC I3) or for orientation
 (use hypergraph-orient).
 
+On a branch or fork, `hypergraph check --since <base-ref>` is the PR gate: it fails
+when the branch changed files without adding a record node — run it before opening
+the pull request.
+
 ## Workflow
 
 1. Read `.hypergraph/config.yml` for the record root.
@@ -56,18 +57,58 @@ Not for editing state nodes (that is reconcile's job — SPEC I3) or for orienta
    - `- target: NEW <kebab-name> — <delta>` when reconcile should create a state node;
    - `none: <reason>` when current state truly doesn't change.
    Look up real state slugs in STATE.md — a wrong target fails `check`.
-5. **Commit.** Write `## What/Why/Method/Result` to a body file, then:
+
+   If this project keeps **named views** (a `views:` block in the config — SPEC:
+   Views), the same two target forms may be view-qualified: `- target:
+   <view>/<slug> — <delta>` and `- target: <view>/NEW <kebab-name> — <delta>`.
+   Unqualified targets always mean the state graph. The view must already exist —
+   an impact naming an undeclared view fails `check` (run
+   `hypergraph views add <view> --md <FILE> --reconcile` first, from a reconcile
+   pass; `views ls` lists what exists).
+5. **Tag it, if this project keeps a vocabulary.** Read `.hypergraph/tags.yml`. If
+   there is no such file, **tag nothing** — this project has not opted in, and one
+   node with tags in a repo with none is noise. If there is one:
+   - use **declared names only**, from `hypergraph tags list`;
+   - to add a name, `hypergraph tags add <name>` — **never hand-edit the file**. A
+     hand-merged duplicate name is the one unrecoverable tag failure;
+   - pass them with `--tag <name>` (repeatable) in step 6.
+
+   A tag is a way to **find** nodes, never a way to assert things about them — no
+   invariant reads one, so a claim that lives only as a tag is invisible; it goes in
+   the body and in `## State Impact`. Two or three per node (`kind:*`, `outcome:*`,
+   `cluster:*`).
+6. **Commit.** Write `## What/Why/Method/Result` to a body file, then:
    ```
    hypergraph new record --title "…" --body body.md --parent <slug> \
-       --impact "<state-slug> — <delta>" --repo-auto
+       --impact "<state-slug> — <delta>" --repo-auto [--tag kind:experiment]
    ```
    The CLI generates `## Repo` and `## State Impact`, validates the node against the
    checker, and prints the minted slug. Exit 2 = nothing was written; fix and retry.
    Then `hypergraph export --config .hypergraph/config.yml` and **commit the node file
    to git** — an uncommitted node file is as invisible as no node at all.
-6. **Attach evidence** when it exists (logs, plots, data): commit the files to the repo
-   and reference them by path from `## Method` / `## Result`.
-7. Tell the user the new slug and its declared impact. If impacts are piling up,
+7. **Attach evidence** when it exists (logs, plots, data). Three things, and the
+   third is the one that is easy to skip:
+   - **Commit the files** — or don't. Gitignoring a 40 GB dataset is a legitimate
+     call; it is yours to make. Just know that an uncommitted file that gets
+     published is a file the mirror alone holds.
+   - **Explain them** in `## Method` / `## Result`: what the run was, what the plot
+     shows, what you concluded. Prose is the claim.
+   - **Enumerate them** so a tool can find them. The list is the claim's index:
+     ```
+     hypergraph artifacts add <record-slug> research/runs/2026-08-14/train.log plots/loss.png
+     hypergraph artifacts ls <record-slug>       # missing / untracked / outside repo
+     ```
+     or at authoring time, `hypergraph new record --artifact plots/loss.png …`.
+     Paths are typed cwd-relative, like `git add`, and stored repo-relative so they
+     survive a clone. Order matters and is preserved — the log before the plot it
+     explains.
+
+   **Never attach to a state node** — it is a `check` violation. Evidence hangs off
+   the record node whose work produced it; a state node reaches it through
+   `## Provenance` in one hop.
+   If a file moves later, `hypergraph artifacts mv <record-slug> OLD NEW` repoints the
+   record (it never touches the working tree — run `git mv` yourself).
+8. Tell the user the new slug and its declared impact. If impacts are piling up,
    suggest running hypergraph-reconcile.
 
 ## Guardrails
@@ -77,6 +118,11 @@ Not for editing state nodes (that is reconcile's job — SPEC I3) or for orienta
   which only the reconcile skill passes. Declare the impact instead.
 - Record nodes are immutable once committed: follow-ups and corrections are new child
   nodes, not edits.
+- **`artifacts:` is the one exception, and only that key.** Editing the evidence list
+  on a committed record node is fine — `hypergraph artifacts add|rm|mv` writes
+  frontmatter and the append-only hash covers the *body*, exactly as `push` stamping
+  `flywheel:` has always done. Editing the body is not fine, and `hypergraph update`
+  still refuses record nodes outright. If the claim was wrong, write a child node.
 - One node per unit of work — don't batch a week into one node, don't split one
   experiment into five.
 - Reproduction-grade content (`## Method` / `## Result`): numbers, commands,
