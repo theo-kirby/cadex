@@ -361,22 +361,27 @@ def model_bbox():
     return (tuple(low), tuple(high))
 
 
-def _isolate_model(view_layer):
+def _isolate_model(view_layer, keep=()):
     """Hide every root collection except Model; returns an undo callable.
 
     The Collision cage and the section-cage overlay are siblings of Model at
     the scene root exactly so they can be swept as a unit (cadex_collision's
     docstring says why they must not be children). That makes isolating the
     model one loop over the root layer collections.
+
+    ``keep`` names sibling collections that stay in shot — the blueprint
+    sheet keeps the exploded leader lines, because it deliberately renders
+    the current presentation (ADR-150).
     """
 
     from . import model
 
     import bpy
 
+    kept = {model.COLLECTION_NAME} | set(keep)
     changed = []
     for layer in view_layer.layer_collection.children:
-        if layer.collection.name == model.COLLECTION_NAME:
+        if layer.collection.name in kept:
             continue
         if not layer.hide_viewport:
             layer.hide_viewport = True
@@ -426,6 +431,11 @@ def _present_model(space):
             pass
         shading.color_type = saved["color_type"]
         overlay.show_overlays = saved["show_overlays"]
+        if saved["background_type"] is not None:
+            try:
+                shading.background_type = saved["background_type"]
+            except (TypeError, ValueError):
+                pass
 
     return restore
 
@@ -497,22 +507,17 @@ def render_views(max_size=1024):
     if space is None:
         return None, "No 3D viewport found; use scene_summary instead."
 
-    # The section view is suspended here for the reason the sibling
-    # collections are hidden here (ADR-148): a cut model is not what was
-    # built, and this is the tool that answers "what did I build".
-    # ``viewport_screenshot`` answers the other question and leaves it alone.
-    # It goes FIRST, before the model is measured, because ``bound_box``
-    # reads evaluated geometry -- cameras fitted while the cut was on would
-    # frame the half of the part that survived it.
-    from . import cadex_section
+    # Every registered view that knows how to suspend is suspended here, for
+    # the reason the sibling collections are hidden here (ADR-148, ADR-149):
+    # a cut, spread or restyled model is not what was built, and this is the
+    # tool that answers "what did I build". ``viewport_screenshot`` answers
+    # the other question and leaves them alone. It goes FIRST, before the
+    # model is measured, because ``bound_box`` reads evaluated geometry --
+    # cameras fitted while a cut was on would frame the half of the part
+    # that survived it.
+    from . import cadex_views
 
-    undo_section = cadex_section.suspend()
-    # The exploded view is suspended on the same reasoning (ADR-149): spread
-    # components are not what was built, and the cameras are about to be
-    # fitted to bounds the spread would inflate.
-    from . import cadex_explode
-
-    undo_explode = cadex_explode.suspend()
+    undo_views = cadex_views.suspend_for_render()
     tile = max(8, int(max_size) // 2)
     undo_isolation = _isolate_model(bpy.context.view_layer)
     undo_presentation = _present_model(space)
@@ -528,8 +533,7 @@ def render_views(max_size=1024):
     finally:
         undo_presentation()
         undo_isolation()
-        undo_explode()
-        undo_section()
+        undo_views()
 
     pixels, width, height = composite_2x2(tiles, tile, tile)
 
@@ -547,3 +551,75 @@ def render_views(max_size=1024):
         bpy.data.images.remove(image)
 
     return base64.b64encode(data).decode("ascii"), None
+
+
+# -- render_blueprint: the four-view sheet, in the drawing style (ADR-150) ---
+
+def render_blueprint(theme="blueprint", max_size=1024):
+    """The four fitted views, styled as a blueprint sheet.
+
+    Returns ``({"path", "base64", "legend", "views"}, None)`` or
+    ``(None, error)``. The PNG lands in a temp file because its home is the
+    project store: the caller hands the path to ``put_blueprint`` and the
+    engine copies it in (the shell never writes the store).
+
+    Deliberately does **not** suspend the section or the exploded view —
+    the contrast with ``render_views``: that tool answers "what did I
+    build" and reassembles everything first (ADR-124); this one draws the
+    *current presentation* as a sheet, and a sectioned or exploded blueprint
+    is exactly the drawing someone asked for. Only the sibling overlays that
+    are not presentation (the collision cage, the section-cage rings) are
+    hidden, and the exploded leader lines stay in shot.
+    """
+
+    import bpy
+
+    if bpy.app.background:
+        return None, ("Blueprint rendering is unavailable in background "
+                      "mode; use scene_summary instead.")
+
+    window, area, space, region = _find_view3d()
+    if space is None:
+        return None, "No 3D viewport found; use scene_summary instead."
+
+    from . import cadex_blueprint
+    from . import cadex_explode
+
+    tile = max(8, int(max_size) // 2)
+    undo_isolation = _isolate_model(bpy.context.view_layer,
+                                    keep={cadex_explode.COLLECTION_NAME})
+    undo_presentation = cadex_blueprint.present(space, theme)
+    try:
+        bbox = model_bbox()
+        if bbox is None:
+            return None, ("The Model collection is empty, so there is "
+                          "nothing to draw; check scene_summary for what "
+                          "the engine built.")
+        views = view_matrices(bbox, aspect=1.0)
+        tiles = [_tile_pixels(space, region, tile, tile, view["view"], view["window"])
+                 for view in views]
+    finally:
+        undo_presentation()
+        undo_isolation()
+
+    pixels, width, height = composite_2x2(tiles, tile, tile)
+
+    image = bpy.data.images.new("mesh_agent_blueprint", width, height, alpha=True)
+    try:
+        image.pixels.foreach_set(pixels)
+        path = os.path.join(tempfile.gettempdir(), "mesh_agent_blueprint.png")
+        image.filepath_raw = path
+        image.file_format = 'PNG'
+        image.save()
+        with open(path, "rb") as file:
+            data = file.read()
+    finally:
+        bpy.data.images.remove(image)
+
+    return {
+        "path": path,
+        "base64": base64.b64encode(data).decode("ascii"),
+        "legend": quadrant_legend(views),
+        "views": [view["name"] for view in views],
+        "size": [width, height],
+    }, None

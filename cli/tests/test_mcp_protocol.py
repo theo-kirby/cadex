@@ -113,6 +113,12 @@ def test_inspect_offers_only_scopes_a_headless_client_can_serve(protocol) -> Non
     (offered,) = scopes
     assert "image" not in offered
     assert "output" in offered and "script" in offered
+    # `blueprint` is served and the asymmetry with `image` is the point
+    # (ADR-150): a reference image is a shell-only input, a blueprint sheet
+    # is a stored deliverable this client exports. Writing one stays
+    # shell-only — nothing headless can render.
+    assert "blueprint" in offered
+    assert "put_blueprint" not in CLI_TOOL_OPS
 
 
 # -- calls ---------------------------------------------------------------

@@ -1540,6 +1540,100 @@ def test_exploded_poses_interpolate_in_staged_windows():
           "and it never reaches the engine")
 
 
+def test_blueprint_styles_the_viewport_from_one_table():
+    from mesh_agent import cadex_blueprint, cadex_views, cadexd_client, tools
+
+    # The themes are honest RGB: three channels in range, and the lines
+    # always contrast with the ground they are drawn on.
+    check(cadex_blueprint.DEFAULT_THEME in cadex_blueprint.THEMES,
+          "the default theme exists")
+    for name, theme in cadex_blueprint.THEMES.items():
+        check(set(theme) == {"background", "solid", "line"},
+              "theme {:s} carries exactly its three colours".format(name))
+        for key, color in theme.items():
+            check(len(color) == 3 and all(0.0 <= c <= 1.0 for c in color),
+                  "{:s}.{:s} is an RGB 3-tuple in range".format(name, key))
+        contrast = sum(theme["line"]) - sum(theme["background"])
+        check(contrast > 1.0,
+              "{:s}'s lines stand off its ground".format(name))
+
+    # The field table is the contract the gate asserts against the styled
+    # viewport, so its invariants are pinned here: overlays ON (the Edges
+    # wires do not draw otherwise), every sub-overlay explicitly held, the
+    # grid pair following the toggle, and facet wires never fighting the
+    # true BREP edges.
+    values = cadex_blueprint.shading_values("blueprint", grid=True)
+    check(next(iter(values)) == "shading.type",
+          "shading.type is applied first, so enum writes validate")
+    check(values["shading.type"] == 'SOLID'
+          and values["shading.color_type"] == 'SINGLE'
+          and values["shading.background_type"] == 'VIEWPORT',
+          "flat single-colour solids on a viewport ground")
+    check(values["overlay.show_overlays"] is True,
+          "overlays are ON -- the wires draw through the overlay pass")
+    check(values["shading.show_object_outline"] is True
+          and values["shading.object_outline_color"]
+          == cadex_blueprint.THEMES["blueprint"]["line"],
+          "every object is silhouetted in the line colour")
+    check(values["overlay.show_wireframes"] is False,
+          "facet wires stay off; the Edges children are the real edges")
+    check(values["overlay.show_floor"] is True
+          and values["overlay.show_ortho_grid"] is True,
+          "grid=True drives both grid overlays")
+    no_grid = cadex_blueprint.shading_values("grey", grid=False)
+    check(no_grid["overlay.show_floor"] is False
+          and no_grid["overlay.show_ortho_grid"] is False,
+          "grid=False switches both off")
+    others = {field: value for field, value in values.items()
+              if field.startswith("overlay.")
+              and field not in ("overlay.show_overlays", "overlay.show_floor",
+                                "overlay.show_ortho_grid",
+                                "overlay.grid_scale")}
+    check(all(value is False for value in others.values()),
+          "every other sub-overlay is explicitly False")
+    check(set(cadex_blueprint.PRODUCT_LOOK) == set(values),
+          "the fallback restore table covers exactly the fields written")
+    check(cadex_blueprint.PRODUCT_LOOK["shading.type"] == 'SOLID'
+          and cadex_blueprint.PRODUCT_LOOK["shading.light"] == 'MATCAP'
+          and cadex_blueprint.PRODUCT_LOOK["overlay.show_overlays"] is False,
+          "the fallback equals the pinned startup look the gate asserts")
+
+    # The registry orders the five views; blueprint suspends for
+    # render_views and hooks nothing else.
+    names = [view.name for view in cadex_views.registered()]
+    check(names == ["collision", "section", "explode", "dimensions",
+                    "blueprint"],
+          "the view registry is the five views in order: {!r}".format(names))
+    blueprint_view = next(view for view in cadex_views.registered()
+                          if view.name == "blueprint")
+    check(blueprint_view.suspend is not None
+          and blueprint_view.on_hydrate is None,
+          "blueprint suspends for renders and needs no hydrate hook")
+
+    # This suite runs --background, which is exactly where the sheet
+    # renderer must refuse in the sentence the tool relays.
+    from mesh_agent import capture
+    sheet, error = capture.render_blueprint()
+    check(sheet is None and error == (
+              "Blueprint rendering is unavailable in background mode; "
+              "use scene_summary instead."),
+          "render_blueprint refuses headless, in the stated sentence")
+
+    # Classification: the toggle is a view (neither set); the sheet maker
+    # reaches the engine (preflighted) but never the undo stack.
+    names = [entry["name"] for entry in tools.TOOL_DEFS]
+    check("blueprint_view" in names and "make_blueprint" in names,
+          "both blueprint tools are served")
+    check("blueprint_view" not in tools.MUTATING_TOOLS
+          and "blueprint_view" not in tools._ENGINE_TOOLS,
+          "the view toggle is in neither set (the section_view precedent)")
+    check("make_blueprint" in tools._ENGINE_TOOLS
+          and "make_blueprint" not in tools.MUTATING_TOOLS,
+          "the sheet maker preflights the engine and skips the undo stack")
+    check("put_blueprint" in cadexd_client.MODELING_OPS,
+          "the client serialises put_blueprint against rebuilds")
+
+
 def test_dimension_is_drawn_in_pixels_around_its_number():
     from mesh_agent import cadex_dimension
 
@@ -1742,6 +1836,7 @@ def main():
         test_the_simulation_panel_polls_on_content_not_geometry()
         test_render_views_cameras_frame_the_model()
         test_exploded_poses_interpolate_in_staged_windows()
+        test_blueprint_styles_the_viewport_from_one_table()
         test_dimension_is_drawn_in_pixels_around_its_number()
         test_an_edge_on_dimension_becomes_a_leader()
         test_diameter_picks_the_widest_on_screen_and_survives_a_bore_down_z()

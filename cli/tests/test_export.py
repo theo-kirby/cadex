@@ -197,3 +197,106 @@ def test_step_carries_a_wall_clock_stamp_so_pipelines_hash_the_digest(
     first = Path(export_outputs(engine, display, tmp_path / "c", ["brep"])[0].files["brep"])
     second = Path(export_outputs(engine, display, tmp_path / "d", ["brep"])[0].files["brep"])
     assert first.read_bytes() == second.read_bytes()
+
+
+# -- the blueprint sheets (ADR-150) ----------------------------------------
+# Read entirely through inspect scope=blueprint against the protocol-checked
+# fake: the engine stays the store's sole reader, and these tests pin the
+# two-step read (listing, then a per-sheet path) the export performs.
+
+
+def _inspect_frame(**overrides):
+    frame = {
+        "ok": True,
+        "scope": "blueprint",
+        "target": "",
+        "path": "",
+        "value": None,
+        "page": None,
+        "document": {},
+        "surface": {},
+        "result_json_bytes": 2,
+    }
+    frame.update(overrides)
+    return frame
+
+
+def test_export_blueprints_copies_every_sheet_under_its_store_name(tmp_path) -> None:
+    from fake_cadexd import FakeCadexd
+
+    from cadex_cli.export import export_blueprints
+
+    store = tmp_path / "store"
+    store.mkdir()
+    entries = []
+    sheets = {}
+    for ordinal in (1, 2):
+        name = f"000{ordinal}-abcdef123456.png"
+        path = store / name
+        path.write_bytes(b"png-bytes-%d" % ordinal)
+        sheets[str(ordinal)] = path
+        entries.append(
+            {
+                "ordinal": ordinal,
+                "revision": "abcdef123456",
+                "file": name,
+                "bytes": path.stat().st_size,
+                "label": f"sheet {ordinal}",
+            }
+        )
+
+    def inspect(args):
+        assert args["scope"] == "blueprint"
+        if args.get("target"):
+            return _inspect_frame(
+                target=args["target"], path="/path",
+                value=str(sheets[args["target"]]),
+            )
+        return _inspect_frame(path="/blueprints", value=list(entries))
+
+    client = FakeCadexd(replies={"inspect": inspect})
+    out = tmp_path / "out"
+    copied = export_blueprints(client, out)
+
+    assert [row["file"] for row in copied] == [entry["file"] for entry in entries]
+    for row, entry in zip(copied, entries):
+        assert (out / entry["file"]).read_bytes() == sheets[
+            str(entry["ordinal"])
+        ].read_bytes()
+        assert row["revision"] == "abcdef123456"
+        assert row["label"] == entry["label"]
+
+
+def test_export_blueprints_with_nothing_stored_is_a_no_op(tmp_path) -> None:
+    from fake_cadexd import FakeCadexd
+
+    from cadex_cli.export import export_blueprints
+
+    def inspect(_args):
+        return _inspect_frame(path="/blueprints", value=[])
+
+    copied = export_blueprints(FakeCadexd(replies={"inspect": inspect}),
+                               tmp_path / "out")
+    assert copied == []
+    assert not (tmp_path / "out").exists(), "an empty store creates nothing"
+
+
+def test_export_blueprints_refuses_a_sheet_with_no_readable_path(tmp_path) -> None:
+    from fake_cadexd import FakeCadexd
+
+    from cadex_cli.export import export_blueprints
+
+    entry = {"ordinal": 1, "revision": "abcdef123456",
+             "file": "0001-abcdef123456.png", "bytes": 4, "label": ""}
+
+    def inspect(args):
+        if args.get("target"):
+            return _inspect_frame(
+                target=args["target"], path="/path",
+                value={"ok": False, "error": "gone"},
+            )
+        return _inspect_frame(path="/blueprints", value=[entry])
+
+    with pytest.raises(ExportError, match="no readable store path"):
+        export_blueprints(FakeCadexd(replies={"inspect": inspect}),
+                          tmp_path / "out")

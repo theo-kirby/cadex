@@ -36,6 +36,7 @@ import traceback
 from . import cadexd_client
 from . import cadex_animate
 from . import cadex_hydrate
+from . import cadex_views
 
 ROOT_PROP = "mesh_cadex_root"
 
@@ -136,80 +137,27 @@ def hydrate(payload, animate=True):
                                        "error": traceback.format_exc()}
             traceback.print_exc()
 
-    # The collision overlay (ADR-091), on the same terms as the bake: a
-    # sibling module, wrapped, so a malformed collision record costs the
-    # overlay and never the geometry.
+    # The presentation views (collision, section, explode, dimensions,
+    # blueprint), each on the geometry's own terms: a malformed record costs
+    # its view and never the geometry. The per-view trades — collision
+    # clears mid-drag, dimensions refresh on every response, engine poses
+    # land before the explosion is re-applied — live with the views, in
+    # ``cadex_views`` and the modules it registers.
     #
-    # Mid-drag (``animate=False``) it CLEARS rather than lags. The shapes it
-    # draws are attached to a model that is being re-solved every debounce
-    # tick, and a wire cage left over from the previous shape is worse than
-    # no wire cage -- this whole feature exists because collision geometry
-    # in the wrong place is invisible. Same trade the bake already makes.
+    # The accepted {display, revision} record is written FIRST, outside any
+    # view's failure domain: it is what lets a view be switched on between
+    # rebuilds (``last_accepted``), so no view's exception may cost it.
+    root = None
     try:
         import bpy
-        from . import cadex_collision
         root = project_root(bpy.context.scene)
         if animate:
             state = _state_for(root)
             state.accepted = {"display": payload.get("display") or {},
                               "revision": str(payload.get("revision") or "")}
-            hydration["collision"] = cadex_collision.apply(payload, root)
-        elif cadex_collision.enabled():
-            cadex_collision.clear()
-            hydration["collision"] = {"shown": False, "reason": "mid-drag"}
     except Exception:
-        hydration["collision"] = {"shown": False,
-                                  "error": traceback.format_exc()}
         traceback.print_exc()
-
-    # The dimension overlay (ADR-139), on the same terms again. It refreshes
-    # its records on EVERY response, mid-drag included, and does not clear the
-    # way collision does: a dimension is measured on the shape in front of you
-    # and re-published with it, so mid-drag the numbers are current rather
-    # than lagging. That is the opposite trade from a wire cage, for the
-    # opposite reason -- a cage left over from the previous shape is wrong,
-    # and a number recomputed for this one is right.
-    # The section view (ADR-148), on the same terms as the two above, and for
-    # one reason only: an output that has just entered the contract is a NEW
-    # object, and a new object has no modifier on it. Everything else about
-    # the section survives a rebuild by itself -- ``cadex_hydrate`` swaps the
-    # mesh datablock and keeps the object, so the modifier stack rides
-    # through every drag and every settled refine untouched. Mid-drag it
-    # refreshes rather than clearing: the cut is computed from the shape in
-    # front of you, so it is current rather than lagging -- the dimension
-    # trade, not the collision one.
-    try:
-        from . import cadex_section
-        if cadex_section.enabled():
-            hydration["section"] = cadex_section.refresh()
-    except Exception:
-        hydration["section"] = {"shown": False,
-                                "error": traceback.format_exc()}
-        traceback.print_exc()
-
-    # The exploded view (ADR-149), after the section and for a sharper
-    # reason than a new object: hydrate just wrote every component's SOLVED
-    # matrix_world, and an explosion that is on must be re-applied on top of
-    # those fresh poses — from the record THIS response carried, so a
-    # rebuild that moved a part moves its exploded pose on the same
-    # response. Order is the contract: engine poses first, explosion after,
-    # always.
-    try:
-        from . import cadex_explode
-        if cadex_explode.enabled():
-            hydration["explode"] = cadex_explode.refresh()
-    except Exception:
-        hydration["explode"] = {"shown": False,
-                                "error": traceback.format_exc()}
-        traceback.print_exc()
-
-    try:
-        from . import cadex_dimension
-        hydration["dimensions"] = cadex_dimension.apply(payload)
-    except Exception:
-        hydration["dimensions"] = {"shown": False,
-                                   "error": traceback.format_exc()}
-        traceback.print_exc()
+    cadex_views.hydrate_views(hydration, payload, root, animate)
     return hydration
 
 
@@ -1787,29 +1735,13 @@ def _finish_preview(scene, root, slot):
         return
     slot["applied"] += cadex_hydrate.apply_placements(payload.get("placements"))
 
-    # A pose-only change moves objects without rehydrating them, and the wire
-    # clip carries the plane in each object's OWN frame (ADR-148) -- so a
-    # component that just moved is cut on the plane it was at before. The
-    # solids need nothing: their cutter is in world space and does not move.
-    try:
-        from . import cadex_section
-        if cadex_section.enabled(scene):
-            cadex_section.refresh(scene)
-    except Exception:
-        traceback.print_exc()
-
-    # ...and the explosion (ADR-149): ``apply_placements`` just wrote solved
-    # preview poses over the exploded ones, so re-apply the explosion — from
-    # the last SETTLED record, whose endpoints are stale against this drag
-    # by design (the preview path drops exploded views engine-side). The
-    # settled rebuild behind the drag refreshes the endpoints through the
-    # hydrate hook above.
-    try:
-        from . import cadex_explode
-        if cadex_explode.enabled(scene):
-            cadex_explode.refresh(scene)
-    except Exception:
-        traceback.print_exc()
+    # A pose-only change moves objects without rehydrating them, and the
+    # views that read poses must be re-run over them: the wire clip carries
+    # the plane in each object's OWN frame (ADR-148), and ``apply_placements``
+    # just wrote solved preview poses over any exploded ones (ADR-149). The
+    # per-view reasoning lives with the views; the registry keeps the order
+    # (section re-aims before the explosion re-poses).
+    cadex_views.preview_views(scene)
 
 
 def preview_stats(root=None, reset=False):
@@ -2127,6 +2059,26 @@ def put_asset(scene, source_path, name=""):
     if name:
         args["name"] = str(name)
     return _client(project_root(scene)).request("put_asset", args)
+
+
+def put_blueprint(scene, source_path, label="", meta=None):
+    """Store one rendered blueprint sheet in the project store. Payload
+    verbatim.
+
+    ``put_asset``'s arrangement exactly (the shell never writes the store,
+    docs/ARCHITECTURE.md), for a file that is a *record* rather than an
+    input: the engine attaches it to the accepted revision and the reply
+    says which one (ADR-150).
+    """
+    ok, report = ensure_open(scene)
+    if not ok:
+        return {"ok": False, "error": report}
+    args = {"source_path": str(source_path)}
+    if label:
+        args["label"] = str(label)
+    if isinstance(meta, dict) and meta:
+        args["meta"] = meta
+    return _client(project_root(scene)).request("put_blueprint", args)
 
 
 def link_part(scene, source_project, output="", name=""):

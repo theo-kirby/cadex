@@ -567,14 +567,43 @@ def _register_settings():
 _settings_class = None
 
 
+def _hydrate_hook(_payload, _root, _animate):
+    """The registry hook (ADR-149), ordered AFTER the section's and for a
+    sharper reason than a new object: hydrate just wrote every component's
+    SOLVED matrix_world, and an explosion that is on must be re-applied on
+    top of those fresh poses — from the record THIS response carried, so a
+    rebuild that moved a part moves its exploded pose on the same response.
+    Order is the contract: engine poses first, explosion after, always."""
+
+    return refresh() if enabled() else None
+
+
+def _preview_hook(scene):
+    """``apply_placements`` just wrote solved preview poses over the exploded
+    ones, so re-apply the explosion — from the last SETTLED record, whose
+    endpoints are stale against this drag by design (the preview path drops
+    exploded views engine-side). The settled rebuild behind the drag
+    refreshes the endpoints through the hydrate hook above."""
+
+    if enabled(scene):
+        refresh(scene)
+
+
 def register():
     global _settings_class
     _settings_class = _register_settings()
+    from . import cadex_views
+    cadex_views.register_view(name="explode", order=40,
+                              on_hydrate=_hydrate_hook,
+                              on_preview=_preview_hook,
+                              suspend=suspend)
 
 
 def unregister():
     import bpy
     global _settings_class
+    from . import cadex_views
+    cadex_views.unregister_view("explode")
     try:
         del bpy.types.Scene.cadex_explode
     except Exception:

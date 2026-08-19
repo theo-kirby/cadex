@@ -1,0 +1,23 @@
+{
+  "blueprints": [
+    {
+      "bytes": "int",
+      "created_at": "str",
+      "digest": "str",
+      "file": "str",
+      "label": "str",
+      "meta": {},
+      "ordinal": "int",
+      "outputs": [
+        "str"
+      ],
+      "revision": "str",
+      "sha256": "str"
+    }
+  ],
+  "bytes": "int",
+  "name": "str",
+  "ok": "bool",
+  "revision": "str",
+  "sha256": "str"
+}

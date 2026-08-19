@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-08-09. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-08-19. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no Blender, no display, no `bpy`, no shell code.
@@ -56,6 +56,7 @@ Flags, valid on either side of the subcommand:
 | `--project DIR` | Project root; **created if absent**. Default `./.cadex`, or `$CADEX_PROJECT`. |
 | `--out DIR` | Write exported files here. Omit and nothing is written. |
 | `--format step,stl` | Any of `step`, `stl`, `brep`. Default `step,stl`. |
+| `--blueprints` | `export` only: also copy the project's stored blueprint sheets into `--out`, store filenames kept (ADR-150). Read-only — the shell renders them; this only reaches the store through `inspect scope=blueprint`. |
 | `--engine ROOT` | A staged engine payload. Default: `$CADEX_ENGINE_ROOT`, then the dev tree. |
 | `--json` | Emit the machine-readable envelope on stdout. |
 | `--wait` | Block for the project lock instead of failing. |
@@ -302,7 +303,11 @@ about a payload (ADR-023).
 - **Linux and macOS.** The lockfile is POSIX `flock` and the bridge is a unix
   socket. Windows is not supported.
 - **No pictures.** `inspect scope=image`, `resolve_pin` and offscreen
-  rendering are all absent, deliberately (§4).
+  rendering are all absent, deliberately (§4). One caveat since ADR-150:
+  blueprint *sheets* the shell already rendered and stored are readable —
+  `inspect scope=blueprint` lists them and `export --blueprints` copies
+  them out — because a stored deliverable is not a render. Making one
+  (`put_blueprint`) stays shell-only.
 - **Export is BREP-only.** Mesh outputs (`.ply`), assembly components and
   solve diagnostics are reported as `skipped` with a reason rather than
   silently dropped. Export runs as a short `FreeCADCmd` job rather than a

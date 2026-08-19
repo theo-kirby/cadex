@@ -47,6 +47,7 @@ MODELING_OPS = frozenset(
         "rebuild",
         "put_asset",
         "link_part",
+        "put_blueprint",
     }
 )
 #: Read-only ops; these queue behind an in-flight modeling op.
@@ -137,6 +138,13 @@ OP_ARG_SPECS: dict[str, tuple[dict[str, type], dict[str, type]]] = {
     # source project declares: the refusal carries the accepted contract's
     # names in `candidates`, which is the shell's second step.
     "link_part": ({"source_project": str}, {"output": str, "name": str}),
+    # A rendered blueprint sheet comes home (ADR-150). A path, not bytes, on
+    # put_asset's reasoning exactly; a modeling op because it writes the
+    # project store — but unlike put_asset it does NOT invalidate resident
+    # workers, because a blueprint documents a run and is never an input to
+    # one. `meta` is the renderer's own record (theme, views), stored
+    # verbatim in the index.
+    "put_blueprint": ({"source_path": str}, {"label": str, "meta": dict}),
     "resolve_pin": ({"output": str, "selection": dict}, {}),
     "inspect": (
         {"scope": str},
@@ -331,6 +339,14 @@ OP_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
                 "assets",
             }
         ),
+        frozenset(),
+    ),
+    # The stored sheet's identity, the accepted revision it documents, and
+    # the whole listing — put_asset's one-round-trip shape. `blueprints` is a
+    # list of index entries; its element keys are pinned by the lifecycle
+    # test rather than by a nested spec, the exploded-view precedent.
+    "put_blueprint": (
+        frozenset({"name", "bytes", "sha256", "revision", "blueprints"}),
         frozenset(),
     ),
     "resolve_pin": (

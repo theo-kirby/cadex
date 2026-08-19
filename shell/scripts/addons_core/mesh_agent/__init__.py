@@ -26,11 +26,13 @@ from bpy.app.handlers import persistent
 
 from . import agent as agent_module
 from . import cadex_backend as cadex_backend_module
+from . import cadex_blueprint as cadex_blueprint_module
 from . import cadex_live as cadex_live_module
 from . import cadex_pick as cadex_pick_module
 from . import cadex_explode as cadex_explode_module
 from . import cadex_section as cadex_section_module
 from . import cadex_terminal_pick as cadex_terminal_pick_module
+from . import cadex_views as cadex_views_module
 from . import cadex_wire_path as cadex_wire_path_module
 from . import cadex_training as cadex_training_module
 from . import model as model_module
@@ -229,6 +231,10 @@ def register():
     model_module.register()
     cadex_backend_module.register()
     cadex_pick_module.register()
+    # The view registry first (ADR-150): collision and dimensions are
+    # installed here because they own no register() of their own; section,
+    # explode and blueprint add themselves from theirs, below.
+    cadex_views_module.install()
     # The section view owns one PropertyGroup on the scene and nothing else
     # (ADR-148); registering it before ui.py is what lets a panel draw it.
     cadex_section_module.register()
@@ -236,6 +242,9 @@ def register():
     # (ADR-149), on the section view's exact terms and for the same reason
     # here: before ui.py, so a panel can draw it.
     cadex_explode_module.register()
+    # ...and the blueprint view (ADR-150), the fifth of the kind and the
+    # first registered through cadex_views rather than hand-wired.
+    cadex_blueprint_module.register()
     cadex_terminal_pick_module.register()
     cadex_wire_path_module.register()
     cadex_training_module.register()
@@ -286,8 +295,10 @@ def unregister():
     cadex_training_module.unregister()
     cadex_wire_path_module.unregister()
     cadex_terminal_pick_module.unregister()
+    cadex_blueprint_module.unregister()
     cadex_explode_module.unregister()
     cadex_section_module.unregister()
+    cadex_views_module.uninstall()
     cadex_pick_module.unregister()
     cadex_backend_module.unregister()
     model_module.unregister()

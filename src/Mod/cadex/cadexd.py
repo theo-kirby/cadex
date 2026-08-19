@@ -823,6 +823,54 @@ class CadexdServer:
             "assets": list_project_assets(self._project_root),
         }
 
+    def _op_put_blueprint(
+        self, _request_id: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Store one rendered blueprint sheet in the open project (ADR-150).
+
+        The shell renders the sheet and the engine stores it, because the
+        engine is the sole writer of the project store — ``put_asset``'s
+        arrangement exactly, path and all. A modeling op, so it cannot race
+        a rebuild's store reads.
+
+        Deliberately NO ``_invalidate_resident_workers()``, and the absence
+        is the difference from ``put_asset``: an asset is an *input* to the
+        next run (``mesh.import_file`` reads it), while a blueprint is a
+        *record* of the last one — no script can name it, so no worker's
+        preview generation is stale for its arrival.
+        """
+
+        not_open = self._require_open()
+        if not_open is not None:
+            return not_open
+        from CadexBlueprints import read_blueprints, store_project_blueprint
+        from CadexTools import tool_failure
+
+        source_path = str(args["source_path"])
+        label = str(args.get("label") or "")
+        meta = args.get("meta") if isinstance(args.get("meta"), dict) else {}
+        try:
+            entry = store_project_blueprint(
+                self._project_root, source_path, label, meta
+            )
+        except (OSError, ValueError) as exc:
+            return tool_failure(
+                "cadexd.put_blueprint",
+                "BLUEPRINT_REJECTED",
+                "precondition",
+                str(exc),
+                requested={"source_path": source_path, "label": label},
+                observed={"blueprints": read_blueprints(self._project_root)},
+            )
+        return {
+            "ok": True,
+            "name": str(entry["file"]),
+            "bytes": int(entry["bytes"]),
+            "sha256": str(entry["sha256"]),
+            "revision": str(entry["revision"]),
+            "blueprints": read_blueprints(self._project_root),
+        }
+
     def _op_preview_params(
         self, _request_id: str, args: dict[str, Any]
     ) -> dict[str, Any]:

@@ -791,6 +791,105 @@ def test_cadexd_serves_an_exploded_view_display_record() -> None:
 @pytest.mark.skipif(
     FREECADCMD is None, reason="No FreeCADCmd binary available for cadexd CI."
 )
+def test_cadexd_stores_and_serves_a_blueprint() -> None:
+    """A rendered sheet enters the store over the wire and reads back (ADR-150).
+
+    Refuse-before-accept, store, list, target, sha256 round trip. The entry
+    keys are pinned here because the validator cannot pin list-element
+    shapes — the exploded-view precedent.
+    """
+
+    # A real 1x1 PNG: the magic check must pass on honest bytes.
+    import base64
+
+    png_bytes = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+        "AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    )
+    root = Path(tempfile.mkdtemp(prefix="cadexd-blueprint-ci-"))
+    incoming_dir = Path(tempfile.mkdtemp(prefix="cadexd-blueprint-in-"))
+    client = None
+    try:
+        client = _spawn_cadexd()
+        opened = client.request("open_project", {"project_root": str(root)})
+        assert opened["ok"] is True, opened
+
+        sheet = incoming_dir / "sheet.png"
+        sheet.write_bytes(png_bytes)
+
+        # Before the first accepted revision there is nothing to document.
+        refused = client.request("put_blueprint", {"source_path": str(sheet)})
+        assert refused["ok"] is False, refused
+        assert refused["failure_code"] == "BLUEPRINT_REJECTED", refused
+        assert "no accepted revision" in str(refused.get("error")), refused
+
+        written = client.request(
+            "write_script",
+            {"source": "result = {'plate': part.box(20, 10, 4)}",
+             "expected_revision": ""},
+        )
+        assert written["ok"] is True, written
+        accepted_revision = str(written["accepted_revision"])
+
+        # ...and a non-PNG is refused by its bytes, not its suffix.
+        impostor = incoming_dir / "impostor.png"
+        impostor.write_bytes(b"JFIF nothing PNG about this")
+        rejected = client.request(
+            "put_blueprint", {"source_path": str(impostor)})
+        assert rejected["ok"] is False, rejected
+        assert rejected["failure_code"] == "BLUEPRINT_REJECTED", rejected
+
+        stored = client.request(
+            "put_blueprint",
+            {"source_path": str(sheet), "label": "the plate, three-quarter",
+             "meta": {"theme": "blueprint", "views": ["front"]}},
+        )
+        assert stored["ok"] is True, stored
+        assert stored["revision"] == accepted_revision, stored
+        assert stored["bytes"] == len(png_bytes), stored
+        assert stored["sha256"] == hashlib.sha256(png_bytes).hexdigest()
+        assert stored["name"] == "0001-{:s}.png".format(accepted_revision[:12])
+        entry = stored["blueprints"][-1]
+        # The entry keys the shell and the CLI read; a drifted key fails
+        # here rather than at a user.
+        assert set(entry) == {
+            "ordinal", "revision", "digest", "file", "bytes", "sha256",
+            "created_at", "label", "outputs", "meta",
+        }, sorted(entry)
+        assert entry["revision"] == accepted_revision, entry
+        assert entry["outputs"] == ["plate"], entry
+        assert entry["meta"] == {"theme": "blueprint", "views": ["front"]}
+        stored_file = root / "blueprints" / entry["file"]
+        assert stored_file.is_file()
+        assert hashlib.sha256(stored_file.read_bytes()).hexdigest() == stored["sha256"]
+
+        # inspect scope=blueprint: the listing, then the sheet's store path.
+        listing = client.request("inspect", {"scope": "blueprint"})
+        assert listing["ok"] is True, listing
+        assert listing["value"]["blueprint_count"] == 1, listing
+        one = client.request(
+            "inspect", {"scope": "blueprint", "target": "1"})
+        assert one["ok"] is True, one
+        served_path = one["value"]["path"]
+        # The engine serves the sheet resolved (the containment check needs
+        # it); on macOS that unfolds /var into /private/var.
+        assert Path(served_path) == stored_file.resolve(), one
+        assert one["value"]["blueprint"]["sha256"] == stored["sha256"], one
+        missing = client.request(
+            "inspect", {"scope": "blueprint", "target": "no-such"})
+        assert missing["ok"] is True and missing["value"]["ok"] is False, missing
+
+        done = client.request("shutdown", timeout=60)
+        assert done["ok"] is True
+    finally:
+        _stop(client)
+        shutil.rmtree(root, ignore_errors=True)
+        shutil.rmtree(incoming_dir, ignore_errors=True)
+
+
+@pytest.mark.skipif(
+    FREECADCMD is None, reason="No FreeCADCmd binary available for cadexd CI."
+)
 def test_cadexd_publishes_a_simulation() -> None:
     """A driven assembly publishes, and retains a readable trace.
 

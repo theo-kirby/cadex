@@ -183,6 +183,11 @@ ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
 
 #: Scopes a headless client can serve. `image` is left out: it lists the
 #: reference images a *shell* stored, and nothing here can put one there.
+#: `blueprint` is IN, and the asymmetry is deliberate (ADR-150): a reference
+#: image is a shell-only *input*, while a blueprint sheet is a stored
+#: *deliverable* of the project — a headless caller cannot render one
+#: (`put_blueprint` is absent from CLI_TOOL_OPS for exactly that reason),
+#: but reading and exporting what the shell stored is this client's job.
 INSPECT_SCOPES = (
     "script",
     "output",
@@ -191,6 +196,7 @@ INSPECT_SCOPES = (
     "assets",
     "history",
     "wiring",
+    "blueprint",
     "api",
 )
 

@@ -703,14 +703,42 @@ def _register_settings():
 _settings_class = None
 
 
+def _hydrate_hook(_payload, _root, _animate):
+    """The registry hook (ADR-148): an output that has just entered the
+    contract is a NEW object, and a new object has no modifier on it.
+    Everything else about the section survives a rebuild by itself --
+    ``cadex_hydrate`` swaps the mesh datablock and keeps the object. Mid-drag
+    it refreshes rather than clearing: the cut is computed from the shape in
+    front of you -- the dimension trade, not the collision one."""
+
+    return refresh() if enabled() else None
+
+
+def _preview_hook(scene):
+    """A pose-only preview moved objects without rehydrating them, and the
+    wire clip carries the plane in each object's OWN frame -- so a component
+    that just moved is cut on the plane it was at before. The solids need
+    nothing: their cutter is in world space and does not move."""
+
+    if enabled(scene):
+        refresh(scene)
+
+
 def register():
     global _settings_class
     _settings_class = _register_settings()
+    from . import cadex_views
+    cadex_views.register_view(name="section", order=30,
+                              on_hydrate=_hydrate_hook,
+                              on_preview=_preview_hook,
+                              suspend=suspend)
 
 
 def unregister():
     import bpy
     global _settings_class
+    from . import cadex_views
+    cadex_views.unregister_view("section")
     try:
         del bpy.types.Scene.cadex_section
     except Exception:

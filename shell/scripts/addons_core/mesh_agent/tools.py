@@ -48,7 +48,7 @@ MUTATING_TOOLS = {"write_script", "set_params", "edit_script", "rebuild_model",
 _ENGINE_TOOLS = {"get_script", "write_script", "set_params",
                  "edit_script", "restore_version", "inspect_model",
                  "describe_cad_api", "scene_summary", "rebuild_model",
-                 "import_geometry", "link_part"}
+                 "import_geometry", "link_part", "make_blueprint"}
 
 TOOL_DEFS = [
     {
@@ -415,6 +415,77 @@ TOOL_DEFS = [
                     "type": "number",
                     "description": ("How far apart, 0 to 1 (default 1 when "
                                     "switching on)."),
+                },
+            },
+        },
+    },
+    {
+        "name": "blueprint_view",
+        "description": (
+            "Draw the model as white outlines on a blueprint-blue, "
+            "cutting-mat-green or grey background, live in the viewport, "
+            "with an optional 10 mm grid. Turn it on when the user asks for "
+            "a technical-drawing look, then take a viewport_screenshot to "
+            "show it. It layers over section_view and exploded_view, so a "
+            "sectioned or exploded blueprint works; make_blueprint renders "
+            "the four-view sheet in this style without needing this toggle. "
+            "Turning it off restores the viewport exactly as it was. "
+            "Read-only: it changes how the viewport draws, never the script "
+            "or the model."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "show": {
+                    "type": "boolean",
+                    "description": ("True to style, false to restore, "
+                                    "omitted to toggle."),
+                },
+                "theme": {
+                    "type": "string",
+                    "enum": ["blueprint", "cutting_mat", "grey"],
+                    "description": ("The background the white lines are "
+                                    "drawn on (default blueprint)."),
+                },
+                "grid": {
+                    "type": "boolean",
+                    "description": "Draw the 10 mm grid (default true).",
+                },
+            },
+        },
+    },
+    {
+        "name": "make_blueprint",
+        "description": (
+            "Render a four-view blueprint sheet of the model -- front, "
+            "right, top and a three-quarter perspective, white lines on a "
+            "blueprint-blue, cutting-mat-green or grey ground -- and store "
+            "it in the project as a drawing attached to the accepted "
+            "revision. Unlike render_views it draws the CURRENT "
+            "presentation: a section cut or an exploded spread stays in the "
+            "sheet, which is how you make a sectioned or exploded drawing. "
+            "It does not need blueprint_view to be on. The stored sheets "
+            "are listed by inspect_model scope=blueprint. Unavailable when "
+            "Blender runs headless."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": ("A one-line label stored with the sheet "
+                                    "(what the drawing shows)."),
+                },
+                "theme": {
+                    "type": "string",
+                    "enum": ["blueprint", "cutting_mat", "grey"],
+                    "description": ("The ground the white lines are drawn "
+                                    "on (default blueprint)."),
+                },
+                "max_size": {
+                    "type": "integer",
+                    "description": ("Longest edge of the sheet in pixels "
+                                    "(default 1024; each view gets half)."),
                 },
             },
         },
@@ -1215,6 +1286,108 @@ def _tool_exploded_view(tool_input):
     return _text("\n".join(lines)), False
 
 
+def _tool_blueprint_view(tool_input):
+    """Restyle the viewport as a blueprint, for the party that cannot press
+    a button.
+
+    Warranted as a tool for the reason ``section_view`` is: the agent is the
+    one asked to show the user a drawing-office look, and it cannot reach a
+    button. Same two exclusions, for the same two reasons -- not in
+    ``MUTATING_TOOLS``, because restyling the viewport must not enter the
+    undo stack; not in ``_ENGINE_TOOLS``, because it writes per-viewport
+    draw state and never speaks to the engine at all.
+    """
+
+    from . import cadex_blueprint
+
+    import bpy
+
+    scene = bpy.context.scene
+    group = cadex_blueprint.settings(scene)
+    if group is None:
+        return _text("The blueprint view is unavailable in this file."), True
+
+    show = tool_input.get("show")
+    want = (not group.show) if show is None else bool(show)
+    if not want:
+        cadex_blueprint.toggle(False, scene=scene)
+        return _text("Blueprint view off; the viewport look is restored."), False
+
+    if "theme" in tool_input:
+        theme = str(tool_input["theme"])
+        if theme not in cadex_blueprint.THEMES:
+            return _text("Unknown theme {!r}; one of: {:s}.".format(
+                theme, ", ".join(sorted(cadex_blueprint.THEMES)))), True
+        group.theme = theme
+    if "grid" in tool_input:
+        group.grid = bool(tool_input["grid"])
+    report = cadex_blueprint.toggle(True, scene=scene)
+    if report.get("message"):
+        return _text(str(report["message"])), True
+
+    lines = ["Blueprint on: {:s} theme, grid {:s}, {:d} viewport(s) "
+             "styled.".format(
+                 str(report.get("theme") or ""),
+                 "on" if report.get("grid") else "off",
+                 int(report.get("viewports") or 0))]
+    lines.append("Take a viewport_screenshot to see it.")
+    return _text("\n".join(lines)), False
+
+
+def _tool_make_blueprint(tool_input):
+    """Render the four-view sheet and store it through the engine (ADR-150).
+
+    In ``_ENGINE_TOOLS`` — it writes the project store through
+    ``put_blueprint``, so a missing engine must refuse in a sentence — and
+    NOT in ``MUTATING_TOOLS``, the ``import_geometry``/``link_part``
+    precedent: a store write is not a scene edit and must not enter the
+    undo stack.
+    """
+
+    import os
+
+    import bpy
+    from . import capture
+    from . import cadex_backend
+    from . import cadex_blueprint
+
+    theme = str(tool_input.get("theme") or cadex_blueprint.DEFAULT_THEME)
+    if theme not in cadex_blueprint.THEMES:
+        return _text("Unknown theme {!r}; one of: {:s}.".format(
+            theme, ", ".join(sorted(cadex_blueprint.THEMES)))), True
+    max_size = int(tool_input.get("max_size") or 1024)
+
+    sheet, error = capture.render_blueprint(theme=theme, max_size=max_size)
+    if sheet is None:
+        return _text(error), True
+
+    scene = bpy.context.scene
+    payload = cadex_backend.put_blueprint(
+        scene, sheet["path"],
+        label=str(tool_input.get("name") or "").strip(),
+        meta={"theme": theme, "views": list(sheet.get("views") or ()),
+              "size": list(sheet.get("size") or ())})
+    try:
+        os.remove(sheet["path"])       # the store copy is its home now
+    except OSError:
+        pass
+    if payload.get("ok") is not True:
+        return _text(_truncate("The engine refused the blueprint: "
+                               + str(payload.get("error") or payload))), True
+
+    root = cadex_backend.project_root(scene)
+    stored_path = os.path.join(root, "blueprints", str(payload.get("name")))
+    return [
+        {"type": "image", "data": sheet["base64"], "mimeType": "image/png"},
+        {"type": "text", "text":
+            "Blueprint sheet stored at {:s} ({:d} bytes), attached to "
+            "revision {:s}. {:s} -- {:s}.".format(
+                stored_path, int(payload.get("bytes") or 0),
+                str(payload.get("revision") or "?")[:12], theme,
+                str(sheet.get("legend") or ""))},
+    ], False
+
+
 _HANDLERS = {
     "get_script": _tool_get_script,
     "write_script": _tool_write_script,
@@ -1235,6 +1408,8 @@ _HANDLERS = {
     "collision_view": _tool_collision_view,
     "section_view": _tool_section_view,
     "exploded_view": _tool_exploded_view,
+    "blueprint_view": _tool_blueprint_view,
+    "make_blueprint": _tool_make_blueprint,
 }
 
 # Handlers that additionally receive the calling Agent.

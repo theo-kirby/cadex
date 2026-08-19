@@ -459,6 +459,34 @@ class MESH_AGENT_OT_toggle_explode(Operator):
         return {'FINISHED'}
 
 
+class MESH_AGENT_OT_toggle_blueprint(Operator):
+    """Draw the model as white lines on a drawing-office background.
+
+    A view, not a feature (ADR-150): what it changes is the viewport's
+    shading and overlay state, never an object and never the script, and the
+    accepted revision is the same revision with the blueprint on as with it
+    off. It layers over the section and the exploded view by construction.
+    """
+
+    bl_idname = "mesh_agent.toggle_blueprint"
+    bl_label = "Blueprint"
+    bl_description = ("Draw the model as white outlines on a blueprint-blue, "
+                      "cutting-mat-green or grey background, with an "
+                      "optional grid. Nothing about the model itself changes")
+
+    def execute(self, context):
+        from . import cadex_blueprint
+        try:
+            report = cadex_blueprint.toggle(scene=context.scene)
+        except Exception as error:
+            self.report({'WARNING'}, str(error))
+            return {'CANCELLED'}
+        message = str(report.get("message") or "")
+        if message:
+            self.report({'INFO'}, message)
+        return {'FINISHED'}
+
+
 class MESH_AGENT_OT_toggle_cage(Operator):
     """Show or hide the section cage's rings, so they can be dragged."""
 
@@ -988,6 +1016,21 @@ class CADEX_PARAMS_PT_parameters(Panel):
             elif flag.get("reason"):
                 box.label(text=str(flag["reason"]), icon='INFO')
 
+        # The blueprint view (ADR-150), under the exploded view for the same
+        # reasons again: a view control set without the AI in the loop,
+        # changing nothing about the model. Theme and grid live here; the
+        # switch is also in the chat row, where the other switches are.
+        from . import cadex_blueprint
+        blueprint = cadex_blueprint.settings(context.scene)
+        box = layout.box().column(align=True)
+        box.operator(MESH_AGENT_OT_toggle_blueprint.bl_idname,
+                     icon='SHADING_WIRE',
+                     depress=bool(blueprint and blueprint.show))
+        if blueprint and blueprint.show:
+            row = box.row(align=True)
+            row.prop(blueprint, "theme", expand=True)
+            box.prop(blueprint, "grid", toggle=True)
+
 
 class CADEX_CHAT_PT_transcript(Panel):
     """The conversation, in the chat editor's main region."""
@@ -1232,6 +1275,12 @@ def draw_chat_buttons(layout, context):
     views.operator(MESH_AGENT_OT_toggle_explode.bl_idname, text="",
                    icon='MOD_EXPLODE',
                    depress=cadex_explode.enabled(context.scene))
+    # ...and the blueprint view, fifth of the same kind (ADR-150). Its theme
+    # and grid live in the parameters editor; this is the switch.
+    from . import cadex_blueprint
+    views.operator(MESH_AGENT_OT_toggle_blueprint.bl_idname, text="",
+                   icon='SHADING_WIRE',
+                   depress=cadex_blueprint.enabled(context.scene))
 
     # --- the turn ----------------------------------------------------------
     # Starting over is one button, not a trash can: what the user wants back
@@ -1262,6 +1311,7 @@ classes = (
     MESH_AGENT_OT_measure_pins,
     MESH_AGENT_OT_toggle_section,
     MESH_AGENT_OT_toggle_explode,
+    MESH_AGENT_OT_toggle_blueprint,
     MESH_AGENT_OT_toggle_cage,
     MESH_AGENT_OT_apply_cage,
     # Panel order IS registration order -- nothing here sets `bl_order` --

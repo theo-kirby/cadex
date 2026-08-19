@@ -111,6 +111,11 @@ DECLARED_ENGINE_MODULES = frozenset(
         # worker reads one back. Both halves are pure Python with no FreeCAD
         # and no kernel, which is what makes being in two places free.
         "CadexLinkedPart",
+        # The blueprint store (ADR-150): cadexd's put_blueprint op writes it
+        # and inspect scope=blueprint reads it. Pure Python over the script
+        # store's own idioms — no FreeCAD, no kernel, no pixels (the shell
+        # renders; the engine only files).
+        "CadexBlueprints",
         "CadexSubshapeQuery",
         "cadex_tessellation",
         # the five domain APIs and the host-side workers they pull in

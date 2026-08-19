@@ -42,7 +42,7 @@ from .agent import (
 from .bridge import Bridge, ToolCall
 from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine
-from .export import ExportError, export_outputs, parse_formats
+from .export import ExportError, export_blueprints, export_outputs, parse_formats
 from .report import (
     EXIT_FAILURE,
     EXIT_OK,
@@ -117,6 +117,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     export_parser = subparsers.add_parser(
         "export", help="Rebuild the accepted script and write its outputs."
+    )
+    export_parser.add_argument(
+        "--blueprints",
+        action="store_true",
+        default=False,
+        help="Also copy the project's stored blueprint sheets into --out "
+        "(the shell renders them; this only reads the store).",
     )
     _common(export_parser, inherit=True)
 
@@ -442,6 +449,14 @@ def command_export(args: argparse.Namespace, report: RunReport) -> int:
             )
             return EXIT_REJECTED
         _finish(args, report, engine, reply.get("display"))
+        if getattr(args, "blueprints", False):
+            copied = export_blueprints(client, args.out)
+            report.notes.append(
+                "blueprints: copied {:d} sheet(s) into {:s}.".format(
+                    len(copied), str(Path(args.out).expanduser()))
+                if copied else
+                "blueprints: the project has none stored."
+            )
         report.ok = True
         return EXIT_OK
 

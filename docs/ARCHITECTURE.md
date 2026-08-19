@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-08-09
+Verified against source: 2026-08-19
 
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),
@@ -226,7 +226,7 @@ resolved. Its whole model-facing tool surface is generated from
 | `cadexd.py` | The service: serial dispatch, cancel, busy, the ephemeral document, the restore pass, the per-output `display` block. |
 | `CadexTools.py` | `FAILURE_STAGES`, the `tool_failure` envelope every refusal is shaped as (and every shell parses), `unchanged_state`, `ToolSpec` as a declaration. |
 | `CadexEngineSettings.py` | The engine's own preference group and sandbox budget defaults. Split from the Qt preferences in C1. |
-| `CadexInspection.py` | The bounded `inspect` read surface (scopes `document`, `object`, `script`, `api`, `image`, `output`, `assets`, `history`; `output`/`assets` added in ADR-043 — per-output facts from the pinned accepted attempt, and the importable-asset listing — and `history` in ADR-045, the accepted-revision undo trail `restore_version` reads. `selection` was shell-only and is gone). |
+| `CadexInspection.py` | The bounded `inspect` read surface (scopes `document`, `object`, `script`, `api`, `image`, `output`, `assets`, `history`, `wiring`, `blueprint`; `output`/`assets` added in ADR-043 — per-output facts from the pinned accepted attempt, and the importable-asset listing — `history` in ADR-045, the accepted-revision undo trail `restore_version` reads, and `blueprint` in ADR-150, the stored drawing sheets: the listing, or one entry plus its containment-checked store path, never pixels. `selection` was shell-only and is gone). |
 | `CadexReferenceContracts.py` | Geometry pins: shared handle + owner + subelement hint + geometric fingerprint, and fingerprint re-resolution when the revision moved. |
 | `CadexPinResolution.py` | Resolves a pick or fingerprint against the accepted revision's staged BREP. |
 | `CadexSubshapeQuery.py` | The selector vocabulary a pin *and* a script argument both speak — since Phase 10b the five index-taking part ops resolve through it, so naming geometry means the same thing in chat and in the script. |
@@ -275,6 +275,13 @@ macOS). Layout:
                                 bounded at 64 files / 128 MB, written only by
                                 the put_asset op (ADR-043) and, for a
                                 .cxpart, the link_part op that builds one
+  blueprints/                   rendered blueprint sheets (ADR-150):
+                                {ordinal:04d}-{revision[:12]}.png +
+                                blueprints.json (cadex-blueprint-v1), each
+                                entry attached to the accepted (revision,
+                                digest) pair it documents; newest 25 kept,
+                                written only by the put_blueprint op, read
+                                back through inspect scope=blueprint
 ```
 
 **cadexd is the sole writer.** Every byte that lands in the store goes

@@ -3907,6 +3907,118 @@ def test_the_section_view_cuts_the_model_open(root):
     GATE["section"] = {"caps": len(caps), "bore_wall_points": len(wall)}
 
 
+def test_the_blueprint_view_restyles_and_restores(root):
+    """ADR-150 in the viewport half, end to end against the bundled engine.
+
+    The claims worth a gate, in the order they can fail: the styled viewport
+    equals ``shading_values`` field for field (any sub-overlay missing from
+    that table would appear uninvited, because this is the one view that
+    turns overlays ON); the engine never hears about any of it; it layers
+    over the section instead of excluding it; ``suspend_for_render`` takes
+    the styling off and its undo puts it back; a rebuild under it leaves the
+    styling standing; and off restores the pre-toggle look EXACTLY — the
+    gate scene's look is the shipped startup look, which the startup test
+    pins, so exact restore here is what keeps that pin true after a
+    blueprint has been on. Plus the sheet renderer's headless refusal, which
+    is all a ``--background`` gate can prove about it.
+    """
+    print("test_the_blueprint_view_restyles_and_restores")
+    from mesh_agent import cadex_blueprint, cadex_section, cadex_views
+
+    def near_field(got, want):
+        if isinstance(want, tuple):
+            return (len(tuple(got)) == len(want)
+                    and all(abs(float(g) - float(w)) < 1e-4
+                            for g, w in zip(tuple(got), want)))
+        if isinstance(want, float):
+            return abs(float(got) - want) < 1e-4
+        return got == want
+
+    def styled_exactly(space, values, label):
+        for field, want in values.items():
+            got = cadex_blueprint._read_field(space, field)
+            check(near_field(got, want),
+                  "{:s}: {:s} is {!r} (wanted {!r})".format(
+                      label, field, got, want))
+
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, report = run_tool("write_script", {"content": BLIND_BORE_SCRIPT})
+    check(ok, "the script was accepted: {:s}".format(first_line_of(report)))
+    if not ok:
+        return
+    before = cadex_backend._state_for(root).revision
+
+    spaces = cadex_blueprint._spaces()
+    check(bool(spaces), "the gate scene has a 3D viewport space")
+    if not spaces:
+        return
+    space = spaces[0]
+    fields = cadex_blueprint.shading_values()
+    look_before = {field: cadex_blueprint._read_field(space, field)
+                   for field in fields}
+
+    # -- on, through the agent's tool, which is the path with no button ------
+    ok, message = run_tool("blueprint_view",
+                           {"show": True, "theme": "blueprint", "grid": True})
+    check(ok, "blueprint_view turned it on ({:s})".format(
+        first_line_of(message)))
+    styled_exactly(space, cadex_blueprint.shading_values("blueprint", True),
+                   "styled")
+    check(cadex_backend._state_for(root).revision == before,
+          "and the engine never heard about it: the accepted revision is "
+          "unchanged")
+
+    # -- it layers over the section rather than excluding it -----------------
+    ok, message = run_tool("section_view", {"show": True, "axis": "X"})
+    check(ok, "the section went on under the blueprint ({:s})".format(
+        first_line_of(message)))
+    check(dict(scene.get(cadex_section.SCENE_FLAG) or {}).get("shown") is True,
+          "the section reports shown with the blueprint on")
+    styled_exactly(space, cadex_blueprint.shading_values("blueprint", True),
+                   "sectioned")
+    run_tool("section_view", {"show": False})
+
+    # -- a rebuild under it leaves the styling standing -----------------------
+    ok, message = run_tool("set_params", {"params": {"depth": 16.0}})
+    check(ok, "the model rebuilt with the blueprint on: {:s}".format(
+        first_line_of(message)))
+    styled_exactly(space, cadex_blueprint.shading_values("blueprint", True),
+                   "rebuilt")
+
+    # -- the theme is live state, not a one-shot ------------------------------
+    scene.cadex_blueprint.theme = 'grey'
+    styled_exactly(space, cadex_blueprint.shading_values("grey", True),
+                   "retinted")
+    scene.cadex_blueprint.theme = 'blueprint'
+
+    # -- render_views suspends it, and the undo puts it back ------------------
+    undo = cadex_views.suspend_for_render()
+    styled_exactly(space, look_before, "suspended")
+    undo()
+    styled_exactly(space, cadex_blueprint.shading_values("blueprint", True),
+                   "resumed")
+
+    # -- the sheet renderer refuses headless, in the stated sentence ----------
+    ok, message = run_tool("make_blueprint", {})
+    check(not ok and "Blueprint rendering is unavailable in background mode"
+          in str(message),
+          "make_blueprint refuses under --background: {:s}".format(
+              first_line_of(message)))
+
+    # -- off restores the pre-toggle look EXACTLY -----------------------------
+    ok, message = run_tool("blueprint_view", {"show": False})
+    check(ok, "blueprint_view turned it off ({:s})".format(
+        first_line_of(message)))
+    styled_exactly(space, look_before, "restored")
+    check(cadex_blueprint.SCENE_FLAG not in scene
+          and cadex_blueprint.SAVED_KEY not in scene,
+          "both scene flags are gone")
+
+    GATE["blueprint"] = {"fields": len(fields),
+                         "themes": sorted(cadex_blueprint.THEMES)}
+
+
 #: The jointed assembly with one slider of each kind (the PREVIEW_SCRIPT
 #: pair), plus a two-move staged explosion on the same component -- up, then
 #: over -- which is what makes the staged windows observable at factor 0.5.
@@ -4545,6 +4657,7 @@ def main():
     cage_root = tempfile.mkdtemp(prefix="mesh-cadex-cage-")
     section_root = tempfile.mkdtemp(prefix="mesh-cadex-section-")
     explode_root = tempfile.mkdtemp(prefix="mesh-cadex-explode-")
+    blueprint_root = tempfile.mkdtemp(prefix="mesh-cadex-blueprint-")
     try:
         test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
@@ -4604,6 +4717,7 @@ def main():
         test_a_dragged_ring_lands_in_the_accepted_revision(cage_root)
         test_the_section_view_cuts_the_model_open(section_root)
         test_the_exploded_view_spreads_the_assembly(explode_root)
+        test_the_blueprint_view_restyles_and_restores(blueprint_root)
         test_live_mode_is_wired_and_refuses_cleanly(live_root)
     finally:
         try:
@@ -4629,7 +4743,7 @@ def main():
                      drag_root, supersede_root, skip_root,
                      preview_root, fallback_root, views_root, collision_root,
                      shapes_root, isolate_root, readers_root, wiring_root,
-                     cage_root, section_root):
+                     cage_root, section_root, explode_root, blueprint_root):
             shutil.rmtree(root, ignore_errors=True)
 
     GATE["ok"] = not FAILURES

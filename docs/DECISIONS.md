@@ -15821,3 +15821,106 @@ paragraph. Every shell line is under `mesh_agent/` or
 and §2b and §2c are unmoved (ADR-091). `cli/` needed zero changes: it
 imports `CadexdProtocol` directly, so the pin is what keeps its reply
 validation green.
+
+## ADR-150 — a blueprint is a stored deliverable, and the engine is still the sole writer (2026-08-19)
+
+**Decision.** The shell gains a **blueprint view** — the model drawn as white
+outlines on a blueprint-blue, cutting-mat-green or grey ground, live in the
+viewport — and a **blueprint sheet**: the four fitted views (`render_views`'s
+cameras) rendered in that style and stored **in the project store**, as a
+first-class file attached to the accepted script revision. Never inside
+`script.py`, never inside the `.blend`. Two mechanisms, deliberately split:
+
+- **The view is pure viewport state.** `cadex_blueprint.py` writes
+  `space.shading`/`space.overlay` from one field table (`shading_values`),
+  captures what it replaced on the scene, and restores it exactly on toggle
+  off. Everything it needs survived the Blender fork already ON: Workbench
+  flat shading, `background_type='VIEWPORT'`, `show_object_outline` (a
+  silhouette around *every* object), and the true-BREP `… Edges` children
+  `cadex_hydrate` draws — so white outlines cost zero inherited-tree lines.
+  Freestyle/EEVEE were rejected: slow, offline-only, and deletion-candidate
+  code. One measured dependency is load-bearing: the Edges wires draw in the
+  **overlay** wireframe pass (`overlay_wireframe.hh` skips wire objects with
+  overlays off), so this is the one view that turns `show_overlays` ON and
+  must therefore hold every sub-overlay explicitly False.
+  `wireframe_color_type='OBJECT'` makes the wires white because nothing
+  writes `obj.color` — the collision cage's wires go white under a blueprint
+  too, which is cosmetic and accepted. It **layers** over the section and
+  the exploded view by construction (per-space draw state touches no
+  object); an exploded blueprint is a feature, not a conflict.
+- **The sheet goes home through the protocol.** `make_blueprint` renders the
+  2×2 sheet offscreen — deliberately NOT suspending section/explode: it
+  draws the *current presentation*, the contrast with `render_views` stated
+  in both tools' descriptions — and hands the PNG's **path** to a new
+  `put_blueprint` op. Path, not bytes, on `put_asset`'s reasoning exactly
+  (8 MB frame cap; both halves share a filesystem). The engine
+  (`CadexBlueprints.py`) validates (PNG magic, ≤16 MB, label ≤120 chars,
+  meta ≤8 KB JSON) and files it as
+  `blueprints/{ordinal:04d}-{revision[:12]}.png` + `blueprints.json`,
+  each entry carrying the accepted `(revision, digest)` pair and the
+  contract's output names — that pair is the whole of "attached to the
+  script". `inspect scope=blueprint` lists and serves entries plus a
+  containment-checked store path, never pixels.
+
+**The membership calls, each one an argument.** `put_blueprint` is a
+MODELING op (it writes the store, so it must not race a rebuild's store
+reads) but — unlike `put_asset` — it does **not** invalidate resident
+workers: an asset is an *input* to the next run, a blueprint is a *record*
+of the last one, and no script can name it. `make_blueprint` is in
+`_ENGINE_TOOLS` (a store write must preflight the engine) and not in
+`MUTATING_TOOLS` (the `import_geometry`/`link_part` precedent — a store
+write is not a scene edit). `blueprint_view` is in neither set (the
+`section_view` precedent). The CLI serves `inspect scope=blueprint` and an
+`export --blueprints` copy — the asymmetry with `image` scope is the point:
+a reference image is a shell-only input, a blueprint is a stored
+deliverable — while `put_blueprint` stays out of `CLI_TOOL_OPS`, because
+nothing headless can render one.
+
+**Shapes rejected.** `references.json` as the index template — it is a
+Qt-era orphan with no writer, and copying a dead shape forward would have
+been provenance theatre; the index follows `script_history/`'s live idioms
+instead (ordinals forever, bounded keep of 25, newest pruned last — old
+revisions' sheets are *kept* until the count pushes them out, history
+semantics rather than latest-only). A Save-As carry for sheets — rejected:
+re-rendering is cheap and revision-correct, while a carried sheet lies
+about the new project's revisions. Bytes over the wire — rejected above.
+Writing the store from the shell — never on the table
+(docs/ARCHITECTURE.md).
+
+**The registry refactor rides along.** Five presentation views were
+hand-wired into the same four hook sites; `cadex_views.py` makes the wiring
+data — `register_view(name, order, on_hydrate, on_preview, suspend)`,
+orders collision 20 / section 30 / explode 40 / dimensions 50 / blueprint
+60, per-record try/except preserving each view's stated failure terms, one
+`suspend_for_render()` undo unwinding in reverse. The proof of
+no-behavior-change was the existing gate passing unmodified before any
+blueprint code landed. The accepted `{display, revision}` write was hoisted
+out of collision's try block on the way: no view's exception may cost the
+record that lets views switch on between rebuilds. `_present_model` also
+gained the `background_type` restore it had always saved and never applied.
+
+**What the gate caught.** The first cut of `clear()` restored the fallback
+product look even when the blueprint had never been applied — so the tool's
+theme write (an update-callback `refresh` with `show` still off) stomped
+the user's viewport with the fallback, which the subsequent toggle-on then
+captured as "the look to restore". A clear with neither scene flag present
+now touches nothing. The exact-restore gate assertion is what found it.
+
+**Consequences.** Engine: `CadexBlueprints.py` (new, in
+`DECLARED_ENGINE_MODULES` and CMake-installed so the payload carries it),
+`put_blueprint` in `CadexdProtocol` (+ specs) and `cadexd.py`,
+`scope=blueprint` in `CadexInspection.py`; `test_blueprints.py`, the
+op-list pin, `response_schemas/put_blueprint.json`, lifecycle
+`test_cadexd_stores_and_serves_a_blueprint`. Shell: `cadex_views.py` and
+`cadex_blueprint.py` (new), rewired `cadex_backend.hydrate`/
+`_finish_preview`, `capture.render_views`/`render_blueprint`/
+`_isolate_model(keep=)`, one operator + views-row button + panel box in
+`ui.py`, `blueprint_view`/`make_blueprint` in `tools.py`, `put_blueprint`
+in `cadexd_client.MODELING_OPS`; pure-suite and gate tests. Every shell
+line is under `mesh_agent/` or `shell/tests/python/`, so
+`docs/BLENDER-TREE.md` §2a is still eight files and §2b/§2c are unmoved.
+CLI: `blueprint` in `INSPECT_SCOPES`, `export_blueprints` +
+`export --blueprints`. Docs: `INTEGRATION.md` (both test-enforced tables),
+`ARCHITECTURE.md`, `CLI.md`, `BLENDER.md` — and nothing in `modes.py`: the
+agent guidance lives in the tool descriptions, per ADR-148's overlay-cap
+paragraph.

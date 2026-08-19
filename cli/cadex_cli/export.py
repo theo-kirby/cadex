@@ -29,6 +29,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tempfile
 from typing import Any, Iterable, Mapping
@@ -252,6 +253,69 @@ def export_outputs(
         )
         raise ExportError(f"The engine could not export: {detail}")
     return rows
+
+
+def export_blueprints(client: Any, out_dir: Path | str) -> list[dict[str, Any]]:
+    """Copy every stored blueprint sheet into ``out_dir``, store names kept.
+
+    Read entirely through ``inspect scope=blueprint`` (ADR-150): the listing
+    for what exists, one targeted inspect per sheet for its resolved store
+    path — the engine stays the store's sole reader, and this function never
+    guesses at the layout. Copying is legitimate because both halves share a
+    filesystem, which is the same fact ``put_blueprint``'s path-not-bytes
+    argument rests on. An empty store is an empty list, not an error.
+    """
+
+    entries: list[dict[str, Any]] = []
+    offset = 0
+    while True:
+        reply = client.request(
+            "inspect",
+            {"scope": "blueprint", "path": "/blueprints",
+             "offset": offset, "limit": 50},
+        )
+        if reply.get("ok") is not True:
+            raise ExportError(
+                "inspect scope=blueprint failed: "
+                f"{reply.get('error') or reply.get('failure_code')}"
+            )
+        page = reply.get("value")
+        if isinstance(page, list):
+            entries.extend(item for item in page if isinstance(item, Mapping))
+        next_offset = (reply.get("page") or {}).get("next_offset")
+        if not isinstance(next_offset, int) or next_offset <= offset:
+            break
+        offset = next_offset
+    if not entries:
+        return []
+
+    destination = Path(out_dir).expanduser()
+    destination.mkdir(parents=True, exist_ok=True)
+    copied: list[dict[str, Any]] = []
+    for entry in entries:
+        selector = str(entry.get("ordinal") or entry.get("file") or "")
+        reply = client.request(
+            "inspect", {"scope": "blueprint", "target": selector, "path": "/path"}
+        )
+        source = reply.get("value") if reply.get("ok") is True else None
+        if not isinstance(source, str) or not source:
+            raise ExportError(
+                f"blueprint {selector!r} has no readable store path: "
+                f"{reply.get('error') or reply.get('failure_code') or reply}"
+            )
+        name = str(entry.get("file") or Path(source).name)
+        target = destination / name
+        shutil.copyfile(source, target)
+        copied.append(
+            {
+                "file": name,
+                "path": str(target),
+                "bytes": int(entry.get("bytes") or 0),
+                "revision": str(entry.get("revision") or ""),
+                "label": str(entry.get("label") or ""),
+            }
+        )
+    return copied
 
 
 def _parse_result(stdout: str, stderr: str, returncode: int) -> dict[str, Any]:

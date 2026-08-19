@@ -272,6 +272,18 @@ def capture_inspection(service: Any, arguments: Mapping[str, Any]) -> dict[str, 
             "kind": "history",
             "project_root": str(service.project_scope_snapshot().get("root") or ""),
         }
+    if scope == "blueprint":
+        # The stored drawing sheets (ADR-150): every put_blueprint, newest
+        # last, each labelled with the accepted revision it documents.
+        # Store-backed, so the read happens off the document thread. With no
+        # target it lists; with one it serves that entry plus the sheet's
+        # store path — metadata and a path, never the bytes, on image
+        # scope's terms.
+        return {
+            **common,
+            "kind": "blueprint",
+            "project_root": str(service.project_scope_snapshot().get("root") or ""),
+        }
     raise ValueError(f"Unknown core.inspect scope: {scope!r}.")
 
 
@@ -428,6 +440,65 @@ def _complete_assets(captured: Mapping[str, Any]) -> Any:
         "note": (
             "Names here are what mesh.import_file() takes. Add one with the "
             "shell's File > Import Geometry, or the import_geometry tool."
+        ),
+    }
+
+
+def _complete_blueprint(captured: Mapping[str, Any]) -> Any:
+    """The project's stored blueprint sheets (ADR-150).
+
+    No target lists the index, newest last. A target selects one sheet by
+    ordinal, revision prefix or filename and adds its resolved store path —
+    the shell shares the filesystem and reads the pixels there; the bytes
+    are never served through this op. The containment check is
+    ``_complete_image``'s: only a file that really is under the project's
+    ``blueprints/`` directory ever comes back as a path.
+    """
+
+    root = str(captured.get("project_root") or "")
+    if not root:
+        return {
+            "ok": False,
+            "error": "The active document has no durable Cadex project root.",
+        }
+    from CadexBlueprints import (
+        BLUEPRINT_DIR_NAME,
+        blueprint_path,
+        read_blueprints,
+        resolve_blueprint,
+    )
+
+    target = str(captured.get("target") or "").strip()
+    if target:
+        entry = resolve_blueprint(root, target)
+        if entry is None:
+            return {
+                "ok": False,
+                "error": (
+                    "No stored blueprint matches {!r}. Inspect "
+                    "scope=blueprint with no target for the list.".format(target)
+                ),
+            }
+        allowed_root = (Path(root) / BLUEPRINT_DIR_NAME).resolve()
+        try:
+            resolved = blueprint_path(root, entry).resolve(strict=True)
+            resolved.relative_to(allowed_root)
+        except (OSError, ValueError) as exc:
+            return {
+                "ok": False,
+                "error": f"Blueprint sheet is unavailable: {exc}",
+            }
+        return {"blueprint": entry, "path": str(resolved)}
+
+    entries = read_blueprints(root)
+    return {
+        "blueprint_count": len(entries),
+        "blueprints": entries,
+        "note": (
+            "Every stored blueprint sheet, oldest first, each recording the "
+            "accepted revision it was rendered from. Inspect one with "
+            "target=<ordinal|revision|file> for its store path; make a new "
+            "one with the shell's make_blueprint tool."
         ),
     }
 
@@ -1148,6 +1219,8 @@ def complete_inspection(captured: Mapping[str, Any]) -> dict[str, Any]:
             raw = _complete_output(captured)
         elif kind == "history":
             raw = _complete_history(captured)
+        elif kind == "blueprint":
+            raw = _complete_blueprint(captured)
         elif kind == "wiring":
             raw = _complete_wiring(captured)
         else:

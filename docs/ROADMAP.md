@@ -427,6 +427,16 @@ depends on. Independent of Phase 8.
       protocol pin, one add-on module, one tool; the packaged gate caught a
       bare `pivy` import on the way (ADR-023's lesson, again).
 
+- [x] **Blueprint mode** (ADR-150, 2026-08-19). The model as white outlines
+      on a drawing-office ground, two ways: a live viewport view (pure
+      shading/overlay state, exact restore on toggle off) and a four-view
+      PNG sheet the agent stores **in the project store**, attached to the
+      accepted revision — a new `put_blueprint` op and `inspect
+      scope=blueprint`, path-not-bytes, the engine still the store's sole
+      writer. Rode in on a refactor: the five presentation views now share
+      one registry (`cadex_views.py`) instead of five copies of the same
+      hand wiring, proven no-behavior-change by the untouched gate.
+
 **Exit criteria:** one script format across the product; both new gates
 green; slider median materially below 0.548 s *(met: 0.496 s end-to-end,
 0.389–0.42 s engine-only; and 5.6 ms end-to-end for a motion slider, which

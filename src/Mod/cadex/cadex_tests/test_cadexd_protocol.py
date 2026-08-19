@@ -50,6 +50,7 @@ def test_op_list_is_pinned() -> None:
         "rebuild",
         "put_asset",
         "link_part",
+        "put_blueprint",
         "resolve_pin",
         "inspect",
         "preview_params",
@@ -84,6 +85,10 @@ def test_op_list_is_pinned() -> None:
         # ...and link_part ends in the same store write, so it is here for
         # the same reason and no other (ADR-138).
         "link_part",
+        # ...and put_blueprint writes the store too (ADR-150) -- but unlike
+        # the two above it invalidates no resident worker, because a
+        # blueprint documents a run rather than feeding one.
+        "put_blueprint",
     }
 
 
