@@ -17,7 +17,8 @@ Status: working
 - Its whole model-facing tool surface is **generated from `OP_ARG_SPECS`**, so it cannot drift from the contract it drives [rec: jolly-walrus-3692]. `link_part` arrived that way — the model gained it with no CLI code at all, and `cadex link` exists only for the token-free path [rec: ancient-current-9419].
 - It cost **no engine change and no protocol change**, which is the evidence it was built to produce: a third client that had needed the contract widened would have been evidence against the contract [rec: jolly-walrus-3692] [rec: simple-hollow-8675].
 - `cli/` is **LGPL and `shell/` is GPL**, and the boundary is one-way and hard. Copying a line of the shell's client into `cli/` relicenses the engine side; derive from the engine-side precedents instead [rec: jolly-walrus-3692] [rec: lone-haven-0640].
-- Verified end to end on Linux, in CI, against both a build tree and a staged payload. **Never run on macOS by hand** [rec: jolly-walrus-3692]. Its suite is **80 passed**, measured 2026-08-09 [rec: ancient-current-9419].
+- **It reads the store's deliverables without being able to make one** (ADR-150): `inspect scope=blueprint` is served — the asymmetry with the absent `image` scope is deliberate, a reference image being a shell-only input while a blueprint sheet is a stored deliverable of the project — and `export --blueprints` copies stored sheets into `--out` under their store names, entirely through inspect (listing, then a per-sheet resolved path). `put_blueprint` is deliberately absent from `CLI_TOOL_OPS`, because nothing headless can render a sheet [rec: windy-wolf-5012].
+- Verified end to end on Linux, in CI, against both a build tree and a staged payload; since 2026-08-19 also exercised by hand on macOS (`export --blueprints` against a real store) [rec: windy-wolf-5012]. Its suite is **83 passed**, measured 2026-08-19 [rec: ancient-current-9419] [rec: windy-wolf-5012].
 
 ## Negative knowledge
 
@@ -30,3 +31,4 @@ Status: working
 - simple-hollow-8675 — the protocol it is the third client of
 - lone-haven-0640 — the LGPL/GPL boundary it sits on the engine side of
 - ancient-current-9419 — the `link` subcommand, and the tool it gained from `OP_ARG_SPECS` for free
+- windy-wolf-5012 — inspect scope=blueprint, export --blueprints, and why put_blueprint stays out of CLI_TOOL_OPS
