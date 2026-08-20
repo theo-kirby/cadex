@@ -437,14 +437,16 @@ depends on. Independent of Phase 8.
       one registry (`cadex_views.py`) instead of five copies of the same
       hand wiring, proven no-behavior-change by the untouched gate.
 
-- [x] **Blueprint Sheet v2** (ADR-151, 2026-08-19). The stored sheet is
-      agent-composed: up to 6 views (named orthos, three-quarter, custom
-      azimuth/elevation) with per-cell hidden outputs, exploded factor and
-      section override; five layout templates, hero-right the default; the
-      PNG dressed as a drawing sheet (zone-marked page grid, project name,
-      CADEX version/rev/date/theme off the engine manifest); themes
-      darkened. All shell-side (`cadex_sheet.py`), protocol untouched —
-      specs ride `put_blueprint`'s free-form `meta`.
+- [x] **Blueprint Sheet v2** (ADR-151, 2026-08-19; addendum 2026-08-20).
+      The stored sheet is agent-composed: up to 6 views (named orthos,
+      three-quarter, custom azimuth/elevation) with per-cell hidden
+      outputs, exploded factor and section override; six layout templates,
+      the **triptych** the default (front/top/bottom stacked left, the
+      perspective centre, the rear perspective exploded right); the PNG
+      dressed as a drawing sheet (zone-marked page grid, project name,
+      CADEX version/rev/date/theme off the engine manifest) on ONE uniform
+      ground; themes darkened. All shell-side (`cadex_sheet.py`), protocol
+      untouched — specs ride `put_blueprint`'s free-form `meta`.
 
 **Exit criteria:** one script format across the product; both new gates
 green; slider median materially below 0.548 s *(met: 0.496 s end-to-end,

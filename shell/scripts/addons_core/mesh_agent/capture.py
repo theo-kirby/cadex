@@ -657,9 +657,26 @@ def render_blueprint(theme="blueprint", max_size=1024, views=None,
     accepted = cadex_backend.last_accepted(root)
     display = dict(accepted.get("display") or {})
 
+    defaults_used = views is None
     specs, error = cadex_sheet.normalize_views(views, sorted(display))
     if error:
         return None, error
+    if defaults_used:
+        if str(layout or "auto") == "auto":
+            layout = "triptych"
+        # The default sheet's right column is the exploded rear
+        # three-quarter — but only when there is an explosion to draw.
+        # A plain part (or a baked simulation) gets the same view
+        # unexploded, never a refusal: the default must work everywhere.
+        from . import cadex_animate
+
+        entry, _reason = cadex_explode.exploded_entry(display)
+        if entry is None or cadex_animate.SCENE_FLAG in scene:
+            specs = tuple(
+                dict(spec, explode=None, name="rear three-quarter",
+                     label="rear three-quarter")
+                if spec.get("explode") is not None else spec
+                for spec in specs)
     template, hero_index, error = cadex_sheet.choose_layout(layout, specs)
     if error:
         return None, error
@@ -732,12 +749,21 @@ def render_blueprint(theme="blueprint", max_size=1024, views=None,
                     margin + rect[0] + 6,
                     margin + rect[1] + rect[3] - 6 - label_size)
                    for spec, rect in zip(specs, rects)]
+    theme_colors = cadex_blueprint.THEMES[
+        str(theme or cadex_blueprint.DEFAULT_THEME)]
+    # One uniform ground: the margin band takes the colour the tiles
+    # actually came back in (colour-managed), sampled off the field's
+    # corner pixel — the theme value pushed through display_color is only
+    # the fallback for a corner a model somehow reached.
+    ground = tuple(field_pixels[0:3])
+    if all(value == 0.0 for value in ground):
+        ground = cadex_sheet.display_color(theme_colors["background"])
     sheet_w = field_w + 2 * margin
     sheet_h = field_h + 2 * margin
     pixels, width, height = cadex_sheet._dress_sheet(
-        field_pixels, field_w, field_h, margin,
-        cadex_blueprint.THEMES[str(theme or cadex_blueprint.DEFAULT_THEME)],
-        cadex_sheet.zone_grid(sheet_w, sheet_h), titles, cell_labels)
+        field_pixels, field_w, field_h, margin, theme_colors,
+        cadex_sheet.zone_grid(sheet_w, sheet_h), titles, cell_labels,
+        background=ground)
 
     image = bpy.data.images.new("mesh_agent_blueprint", width, height, alpha=True)
     try:

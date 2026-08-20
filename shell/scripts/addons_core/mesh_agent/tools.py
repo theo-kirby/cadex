@@ -465,8 +465,11 @@ TOOL_DEFS = [
             "orthos, three-quarter, or custom azimuth/elevation), and give "
             "each view its own hidden outputs (hide the housing so the "
             "insides show), exploded factor and section cut. Omit views "
-            "for the default sheet: front, top and right stacked left, a "
-            "big three-quarter hero on the right. Per-view overrides "
+            "for the default sheet: front, top and bottom stacked down "
+            "the left third, the three-quarter perspective filling the "
+            "centre third, and the rear (Z+180) perspective fully "
+            "exploded in the right third -- unexploded when the model "
+            "declares no exploded view. Per-view overrides "
             "inherit the live presentation -- a section or explosion that "
             "is on stays in every cell that does not override it. The "
             "image comes back in the reply, so look at it and iterate; "
@@ -570,10 +573,12 @@ TOOL_DEFS = [
                 "layout": {
                     "type": "string",
                     "enum": ["auto", "single", "row", "column", "grid",
-                             "hero"],
+                             "hero", "triptych"],
                     "description": ("How the cells tile (default auto: "
                                     "hero when one view stands out, grid "
-                                    "otherwise)."),
+                                    "otherwise; triptych stacks all but "
+                                    "the last two views left and gives "
+                                    "those two full-height columns)."),
                 },
             },
         },

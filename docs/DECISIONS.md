@@ -16004,3 +16004,27 @@ round-trips bit-for-bit against the bundled engine with the live toggles
 both on (write-back branch) and off (clear branch), revision unchanged
 throughout. The dressed pixels themselves: the windowed probe (ADR-124
 precedent), uncommitted.
+
+**Addendum (2026-08-20) — the triptych default and the uniform ground.**
+Two owner corrections after using it:
+
+- **The default sheet is now the `triptych` layout** (a sixth template):
+  front, top and **bottom** stacked down the left third, the three-quarter
+  perspective filling the centre third, and the same perspective spun 180°
+  about Z — azimuth 225 — **fully exploded** in the right third. The
+  explode override degrades rather than refuses: when the model declares
+  no exploded view (or a simulation is baked), the renderer strips it and
+  the right column reads "rear three-quarter" — the default must work on a
+  plain part. Explicitly-composed specs stay strict. `hero` remains
+  available; `auto` is unchanged for composed sheets, and only an omitted
+  `views` routes to the triptych.
+- **One uniform ground.** The tiles come back from `draw_view3d`
+  colour-managed while the offscreen `clear` took the raw linear theme
+  value, so the margin band read as a darker border — first accepted as a
+  frame, then rejected by the owner. The band now takes the colour the
+  tiles actually arrived in, sampled off the composited field's corner
+  pixel, with a pure `display_color` (sRGB encode) as the deterministic
+  fallback; the probe measured (53, 82, 131) at band and field alike.
+  `cell_legend`'s position words moved to edge-touch logic on the way,
+  because a centre column's midpoint rounds to a half that "left/right"
+  lies about.

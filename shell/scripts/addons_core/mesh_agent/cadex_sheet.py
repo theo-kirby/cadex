@@ -45,13 +45,25 @@ import math
 #: than cram.
 MAX_VIEWS = 6
 
-LAYOUTS = ("auto", "single", "row", "column", "grid", "hero")
+LAYOUTS = ("auto", "single", "row", "column", "grid", "hero", "triptych")
 
 #: How much of the sheet's width the hero cell takes, on the right.
 HERO_FRACTION = 2.0 / 3.0
 
-#: What an omitted ``views`` means: three orthos and the hero three-quarter.
-DEFAULT_VIEW_NAMES = ("front", "top", "right", "three-quarter")
+#: What an omitted ``views`` means (the owner-chosen default, ADR-151
+#: addendum): front, top and bottom stacked down the left third, the
+#: three-quarter perspective filling the centre third, and the same
+#: perspective spun 180 degrees about Z — the rear three-quarter — fully
+#: exploded in the right third. The renderer drops the explode override
+#: gracefully when the model declares no exploded view (or a simulation is
+#: baked), so the default never refuses a plain part.
+DEFAULT_VIEWS = (
+    {"view": "front"},
+    {"view": "top"},
+    {"view": "bottom"},
+    {"view": "three-quarter"},
+    {"view": "custom", "azimuth": 225.0, "elevation": 25.0, "explode": 1.0},
+)
 
 #: Dressing alphas, all on the theme's line colour (white), all fainter than
 #: the model lines. Tuned against the windowed probe's PNGs.
@@ -83,6 +95,26 @@ def _view_names():
     return tuple(capture.NAMED_VIEWS)
 
 
+def display_color(linear_rgb):
+    """A linear theme colour as the viewport shows it: sRGB-encoded.
+
+    The tiles come back from ``draw_view3d`` colour-managed, while an
+    offscreen ``clear`` takes raw values — clearing with the linear theme
+    ground gave the sheet a visibly darker margin band (the probe measured
+    it, and the owner asked for one uniform colour). The renderer prefers
+    sampling the composited field itself; this is the deterministic
+    fallback, and the half a pure test can pin.
+    """
+
+    def encode(channel):
+        channel = max(0.0, min(1.0, float(channel)))
+        if channel <= 0.0031308:
+            return 12.92 * channel
+        return 1.055 * channel ** (1.0 / 2.4) - 0.055
+
+    return tuple(encode(channel) for channel in linear_rgb)
+
+
 def _is_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
@@ -102,9 +134,9 @@ def normalize_views(raw, output_names):
     from . import capture
 
     outputs = tuple(str(name) for name in (output_names or ()))
-    if raw is None:
-        raw = [{"view": name} for name in DEFAULT_VIEW_NAMES]
-        raw[-1] = {"view": DEFAULT_VIEW_NAMES[-1], "hero": True}
+    defaults = raw is None
+    if defaults:
+        raw = [dict(item) for item in DEFAULT_VIEWS]
     if not isinstance(raw, (list, tuple)):
         return None, ("views must be a list of view objects; got {:s}. Omit "
                       "it for the default four-view sheet.".format(
@@ -252,6 +284,9 @@ def normalize_views(raw, output_names):
             "hero": hero,
         })
         specs.append(spec)
+    if defaults:
+        # The default right column reads as what it is, not as its angles.
+        specs[-1]["name"] = specs[-1]["label"] = "exploded"
     return tuple(specs), ""
 
 
@@ -287,6 +322,10 @@ def choose_layout(layout, specs):
     if template == "single" and count > 1:
         return None, None, ("Layout 'single' takes one view; got {:d}. Use "
                             "row, column, grid or hero.".format(count))
+    if template == "triptych" and count < 3:
+        return None, None, ("Layout 'triptych' takes at least 3 views (the "
+                            "last two fill the centre and right columns); "
+                            "got {:d}. Use row or single.".format(count))
     if template == "hero" and count == 1:
         template = "single"
 
@@ -351,6 +390,22 @@ def layout_rects(template, count, max_size, hero=None):
             rects[index] = (0, size - ys[slot + 1], left_width,
                             ys[slot + 1] - ys[slot])
             slot += 1
+        return rects, size, size
+
+    if template == "triptych":
+        if count == 2:
+            # choose_layout refuses this; called directly, degrade to a row
+            # rather than tile two columns of a three-column field.
+            return layout_rects("row", count, size)
+        # Three equal columns: views[:-2] stack down the left, views[-2]
+        # fills the centre at full height, views[-1] the right.
+        xs = _boundaries(size, 3)
+        ys = _boundaries(size, count - 2)
+        rects = [(0, size - ys[index + 1], xs[1],
+                  ys[index + 1] - ys[index])
+                 for index in range(count - 2)]
+        rects.append((xs[1], 0, xs[2] - xs[1], size))
+        rects.append((xs[2], 0, xs[3] - xs[2], size))
         return rects, size, size
 
     # grid: near-square, the partial last row widened to span (no hole).
@@ -475,7 +530,16 @@ def cell_legend(specs, rects):
             words = []
             if areas[index] == largest and areas.count(largest) == 1:
                 words.append("large")
-            words.append("left" if cx <= width / 2.0 else "right")
+            # Horizontal placement by which field edges the cell touches:
+            # a centre column touches neither, whatever its centre rounds to.
+            if x == 0 and x + w == width:
+                words.append("full width")
+            elif x + w == width:
+                words.append("right")
+            elif x == 0:
+                words.append("left")
+            else:
+                words.append("centre")
             if h < height:
                 words.append("top" if cy > 2.0 * height / 3.0 else
                              "bottom" if cy < height / 3.0 else "middle")
@@ -917,7 +981,7 @@ def _shorten(font_id, text, size, max_width):
 
 
 def _dress_sheet(pixels, field_w, field_h, margin, colors, grid, titles,
-                 cell_labels):
+                 cell_labels, background=None):
     """The composited tile field into a dressed sheet; returns
     ``(sheet_pixels, sheet_w, sheet_h)``.
 
@@ -926,6 +990,12 @@ def _dress_sheet(pixels, field_w, field_h, margin, colors, grid, titles,
     projection), the tile field as a textured quad inset by the margin,
     then the page grid, the zone marks, the cell labels and the titles over
     it — all in the theme's line colour, all fainter than the model lines.
+
+    ``background`` is the margin band's colour in DISPLAY space — the
+    caller samples it off the composited field so the band and the tiles
+    are one uniform colour (the owner's ask; the tiles are colour-managed
+    and a raw theme clear read as a darker border). Omitted, it falls back
+    to :func:`display_color` of the theme ground.
     """
 
     import blf
@@ -935,7 +1005,9 @@ def _dress_sheet(pixels, field_w, field_h, margin, colors, grid, titles,
 
     sheet_w = field_w + 2 * margin
     sheet_h = field_h + 2 * margin
-    background = tuple(colors["background"]) + (1.0,)
+    if background is None:
+        background = display_color(colors["background"])
+    background = tuple(background)[:3] + (1.0,)
     line = tuple(colors["line"])
 
     data = gpu.types.Buffer('FLOAT', field_w * field_h * 4, pixels)

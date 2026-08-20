@@ -1649,18 +1649,24 @@ def test_blueprint_sheets_compose_from_pure_arithmetic():
 
     outputs = ("housing", "pin", "shaft")
 
-    # -- defaults: an omitted views is the four-view hero-right sheet --------
+    # -- defaults: an omitted views is the five-view triptych sheet ----------
     specs, error = cadex_sheet.normalize_views(None, outputs)
-    check(error == "" and len(specs) == 4,
-          "omitted views yield the four default specs")
+    check(error == "" and len(specs) == 5,
+          "omitted views yield the five default specs")
     check([spec["view"] for spec in specs] ==
-          ["front", "top", "right", "three-quarter"],
-          "front, top, right and the three-quarter")
-    check(specs[3]["hero"] and not any(spec["hero"] for spec in specs[:3]),
-          "the three-quarter carries the hero flag")
-    template, hero_index, error = cadex_sheet.choose_layout("auto", specs)
-    check((template, hero_index, error) == ("hero", 3, ""),
-          "auto lays the default sheet out hero-right")
+          ["front", "top", "bottom", "three-quarter", "custom"],
+          "front, top, bottom, the three-quarter and the rear perspective")
+    check(specs[4]["label"] == "exploded"
+          and specs[4]["explode"] == 1.0
+          and specs[4]["azimuth"] == 225.0
+          and specs[4]["elevation"] == 25.0
+          and not specs[4]["ortho"],
+          "the default right column is the rear (Z+180) perspective, "
+          "fully exploded")
+    template, hero_index, error = cadex_sheet.choose_layout("triptych",
+                                                            specs)
+    check((template, hero_index, error) == ("triptych", None, ""),
+          "the default sheet lays out as a triptych")
 
     # -- every refusal is a sentence carrying the fix ------------------------
     cases = (
@@ -1746,9 +1752,12 @@ def test_blueprint_sheets_compose_from_pure_arithmetic():
           "unknown layouts are refused")
     check("takes one view" in cadex_sheet.choose_layout("single", two)[2],
           "single with two views is refused")
+    check("takes at least 3 views"
+          in cadex_sheet.choose_layout("triptych", two)[2],
+          "a triptych of two is refused")
 
     # -- layout_rects: exact tiling by paint-counting, at awkward sizes ------
-    for template in ("single", "row", "column", "grid", "hero"):
+    for template in ("single", "row", "column", "grid", "hero", "triptych"):
         for count in range(1, cadex_sheet.MAX_VIEWS + 1):
             if template == "single" and count > 1:
                 continue
@@ -1793,6 +1802,15 @@ def test_blueprint_sheets_compose_from_pure_arithmetic():
           "a grid reads from the top-left")
     check(grid[2][2] == 1024,
           "a partial last row widens to span -- no hole")
+    rects, width, height = cadex_sheet.layout_rects("triptych", 5, 1024)
+    check((width, height) == (1024, 1024)
+          and all(rect[0] == 0 and rect[2] == 341 for rect in rects[:3])
+          and rects[0][1] > rects[1][1] > rects[2][1],
+          "a triptych stacks the first views down the left third, top to "
+          "bottom")
+    check(rects[3] == (341, 0, 342, 1024)
+          and rects[4] == (683, 0, 341, 1024),
+          "and the last two views are full-height centre and right columns")
 
     # -- fit_view is view_matrices' loop body, field for field ---------------
     bbox = ((-30.0, -10.0, 0.0), (10.0, 50.0, 24.0))
@@ -1885,6 +1903,23 @@ def test_blueprint_sheets_compose_from_pure_arithmetic():
           "the legend names the hero cell and its overrides")
     check(legend.index("cell 1") < legend.index("cell 4"),
           "cells are captioned in view order")
+    tri_specs, _error = cadex_sheet.normalize_views(None, outputs)
+    tri_rects, _w2, _h2 = cadex_sheet.layout_rects("triptych", 5, 1024)
+    tri_legend = cadex_sheet.cell_legend(tri_specs, tri_rects)
+    check("cell 4 (large, centre)" in tri_legend
+          and "cell 5 (right)" in tri_legend and "exploded 1" in tri_legend,
+          "the triptych legend reads centre and right, not left/right "
+          "halves")
+
+    encoded = cadex_sheet.display_color((0.032, 0.082, 0.230))
+    check(all(0.0 <= value <= 1.0 for value in encoded)
+          and all(after > before for after, before
+                  in zip(encoded, (0.032, 0.082, 0.230))),
+          "display_color lifts the linear ground into display range")
+    ends = cadex_sheet.display_color((0.0, 1.0, 2.0))
+    check(ends[0] == 0.0 and abs(ends[1] - 1.0) < 1e-9
+          and abs(ends[2] - 1.0) < 1e-9,
+          "and is clamped at the ends")
 
     # -- the tool advertises the composition surface --------------------------
     entry = next(e for e in tools.TOOL_DEFS if e["name"] == "make_blueprint")
