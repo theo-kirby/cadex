@@ -461,21 +461,29 @@ TOOL_DEFS = [
             "blueprint-blue, cutting-mat-green or grey ground, dressed as "
             "a drawing sheet (zone grid, project name, version block) -- "
             "and store it in the project as a drawing attached to the "
-            "accepted revision. You compose it: pick up to 6 views (named "
-            "orthos, three-quarter, or custom azimuth/elevation), and give "
-            "each view its own hidden outputs (hide the housing so the "
-            "insides show), exploded factor and section cut. Omit views "
-            "for the default sheet: front, top and bottom stacked down "
-            "the left third, the three-quarter perspective filling the "
-            "centre third, and the rear (Z+180) perspective fully "
-            "exploded in the right third -- unexploded when the model "
-            "declares no exploded view. Per-view overrides "
-            "inherit the live presentation -- a section or explosion that "
-            "is on stays in every cell that does not override it. The "
-            "image comes back in the reply, so look at it and iterate; "
-            "sheets are cheap, so compose another rather than cram one. "
-            "The stored sheets are listed by inspect_model "
-            "scope=blueprint. Unavailable when Blender runs headless."
+            "accepted revision. You CURATE it for what was built, cell by "
+            "cell: pick up to 6 views (named orthos, three-quarter, or "
+            "custom azimuth/elevation), and give each view its own hidden "
+            "outputs (hide the casing so the insides show), isolated "
+            "outputs (only: show just these gears), exploded factor and "
+            "section cut -- e.g. a gearbox reads best as a big exploded "
+            "stack beside a mid-cut section with the shell hidden, not as "
+            "front/side boilerplate. Lay the cells out with a template "
+            "(layout), or place them freely: give every view a cell "
+            "[row, column] and optional span [rows, columns] on a mosaic "
+            "grid -- spans make big cells, unclaimed cells stay empty "
+            "ground, so asymmetric compositions are fine. Omit views for "
+            "the default sheet: front, top and bottom stacked down the "
+            "left third, the three-quarter perspective filling the centre "
+            "third, and the rear (Z+180) perspective fully exploded in "
+            "the right third -- unexploded when the model declares no "
+            "exploded view. Per-view overrides inherit the live "
+            "presentation -- a section or explosion that is on stays in "
+            "every cell that does not override it. The image comes back "
+            "in the reply, so look at it and iterate; sheets are cheap, "
+            "so compose another rather than cram one. The stored sheets "
+            "are listed by inspect_model scope=blueprint. Unavailable "
+            "when Blender runs headless."
         ),
         "input_schema": {
             "type": "object",
@@ -538,6 +546,15 @@ TOOL_DEFS = [
                                 "description": ("Declared outputs hidden "
                                                 "in THIS cell only."),
                             },
+                            "only": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": ("Show ONLY these declared "
+                                                "outputs in this cell; "
+                                                "everything else is "
+                                                "hidden (mutually "
+                                                "exclusive with hide)."),
+                            },
                             "explode": {
                                 "type": "number",
                                 "description": ("Exploded factor 0..1 for "
@@ -566,6 +583,25 @@ TOOL_DEFS = [
                                 "description": ("Give this view the big "
                                                 "cell (one per sheet)."),
                             },
+                            "cell": {
+                                "type": "array",
+                                "items": {"type": "integer"},
+                                "minItems": 2,
+                                "maxItems": 2,
+                                "description": ("Mosaic placement: [row, "
+                                                "column], 1-based from "
+                                                "the top-left. Give it on "
+                                                "every view or none."),
+                            },
+                            "span": {
+                                "type": "array",
+                                "items": {"type": "integer"},
+                                "minItems": 2,
+                                "maxItems": 2,
+                                "description": ("How many [rows, columns] "
+                                                "this cell covers "
+                                                "(default [1, 1])."),
+                            },
                         },
                         "required": ["view"],
                     },
@@ -573,12 +609,14 @@ TOOL_DEFS = [
                 "layout": {
                     "type": "string",
                     "enum": ["auto", "single", "row", "column", "grid",
-                             "hero", "triptych"],
+                             "hero", "triptych", "mosaic"],
                     "description": ("How the cells tile (default auto: "
-                                    "hero when one view stands out, grid "
-                                    "otherwise; triptych stacks all but "
-                                    "the last two views left and gives "
-                                    "those two full-height columns)."),
+                                    "mosaic when the views carry cell "
+                                    "placements, hero when one view "
+                                    "stands out, grid otherwise; triptych "
+                                    "stacks all but the last two views "
+                                    "left and gives those two full-height "
+                                    "columns)."),
                 },
             },
         },

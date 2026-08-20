@@ -446,7 +446,10 @@ depends on. Independent of Phase 8.
       dressed as a drawing sheet (zone-marked page grid, project name,
       CADEX version/rev/date/theme off the engine manifest) on ONE uniform
       ground; themes darkened. All shell-side (`cadex_sheet.py`), protocol
-      untouched — specs ride `put_blueprint`'s free-form `meta`.
+      untouched — specs ride `put_blueprint`'s free-form `meta`. ADR-152
+      adds the curation surface: per-cell `only` (the isolate) and the
+      freeform `mosaic` layout (`cell` + `span` on an inferred grid,
+      holes allowed as ground, overlap refused).
 
 **Exit criteria:** one script format across the product; both new gates
 green; slider median materially below 0.548 s *(met: 0.496 s end-to-end,

@@ -16028,3 +16028,54 @@ Two owner corrections after using it:
   `cell_legend`'s position words moved to edge-touch logic on the way,
   because a centre column's midpoint rounds to a half that "left/right"
   lies about.
+
+## ADR-152 — the sheet is curated, not templated: `only` and the mosaic (2026-08-20)
+
+**Decision.** Two additions to the composed blueprint sheet (ADR-151), from
+the owner's direction that the agent should **curate** sheets for what was
+built — a gearbox reads as a big exploded stack beside a mid-cut section
+with the casing hidden, not as front/side boilerplate:
+
+- **`only`** — the per-cell isolate: show just the named outputs, hide the
+  rest. Normalized in the pure half into the SAME complement `hide` tuple
+  the apply path already honours, so isolating a cell costs the state
+  machinery nothing; the spec keeps `only` for the legend and the meta
+  ("only gear_a, gear_b shown", never fourteen hides). Mutually exclusive
+  with `hide` by refusal.
+- **The `mosaic` layout** — freeform placement: every view carries
+  `cell [row, column]` (1-based, top-left origin, the zone marks' reading
+  order) and an optional `span [rows, columns]`; the grid's extent is
+  inferred from the placements, the field's aspect follows it
+  (columns:rows, longest edge `max_size`), and `auto` routes to it whenever
+  the views carry cells. **Unclaimed cells stay uniform ground on
+  purpose** — asymmetry is what the mosaic is for.
+
+**The reversal, named.** ADR-151 chose "templates, not freeform spans"
+because the no-gap/no-overlap invariant was testable by construction. The
+owner overruled the premise ("I just don't want it always front view side
+view — it depends on what you're building"), and the invariant survived
+the reversal in a weaker but still test-pinned form: cells and spans live
+on the SAME shared integer boundary arrays the templates use, overlap is
+**refused** in `choose_layout` with both views named, every-view-placed is
+refused likewise, and the grid caps at 6×6 (`MAX_GRID` — with six views, a
+finer grid is empty space pretending to be composition). What was dropped
+is only the no-hole half, deliberately, because a hole is now a
+composition choice on a uniform ground. Holes-by-refusal-not-construction
+is the whole cost of the flexibility, and the pure suite paint-counts it.
+
+**What was NOT built.** Per-viewport visibility via Blender local
+collections — the owner floated it; it was already the wrong tool. The
+renderer applies each cell's state sequentially (ADR-151's snapshot →
+apply → flat restore), which covers hides trivially and is strictly more
+general: a per-cell section cut or exploded factor could never ride a
+collection trick. And no sheet-level rows/columns knob: the grid is
+inferred from the cells, so there is no second number to disagree with
+them.
+
+**Verified.** Pure suite: the complement, the meta shape, both `only`
+refusals; mosaic normalize/auto-routing; rect arithmetic pinned exactly on
+a spanned 3×3 with a hole (paint-count: no overlap, hole present); the
+aspect following the grid; six refusal sentences. Gate: an `only`
+apply/restore round-trips bit-for-bit against the bundled engine. Windowed
+probe: the gearbox-shaped sheet — a 3×2-span exploded three-quarter beside
+an isolated cell and a sectioned cell, the unclaimed corner clean ground.

@@ -45,7 +45,12 @@ import math
 #: than cram.
 MAX_VIEWS = 6
 
-LAYOUTS = ("auto", "single", "row", "column", "grid", "hero", "triptych")
+LAYOUTS = ("auto", "single", "row", "column", "grid", "hero", "triptych",
+           "mosaic")
+
+#: The mosaic's grid never exceeds this many rows or columns: with at most
+#: six views, a finer grid is empty space pretending to be composition.
+MAX_GRID = 6
 
 #: How much of the sheet's width the hero cell takes, on the right.
 HERO_FRACTION = 2.0 / 3.0
@@ -75,8 +80,9 @@ TITLE_ALPHA = 0.6
 
 #: The keys one view object may carry, flat on purpose: a schema one nesting
 #: level deep is a schema the model fills correctly.
-SPEC_KEYS = ("view", "azimuth", "elevation", "projection", "hide", "explode",
-             "section", "section_offset_mm", "section_flip", "hero")
+SPEC_KEYS = ("view", "azimuth", "elevation", "projection", "hide", "only",
+             "explode", "section", "section_offset_mm", "section_flip",
+             "hero", "cell", "span")
 
 _SECTION_AXES = ("X", "Y", "Z")
 
@@ -206,6 +212,32 @@ def normalize_views(raw, output_names):
                               ", ".join(outputs)
                               or "none are declared yet; rebuild first"))
 
+        # `only` is the isolate: show just these outputs, hide the rest --
+        # a gearbox cell that names two gears instead of hiding fourteen.
+        # Normalized here into the SAME hide tuple the apply path already
+        # honours, so isolating costs the state machinery nothing.
+        only = item.get("only")
+        if only is not None:
+            if hide:
+                return None, ("views[{:d}] carries both hide and only; "
+                              "only already hides everything else. Use "
+                              "one.".format(index))
+            if (not isinstance(only, (list, tuple)) or not only
+                    or any(not isinstance(entry, str) for entry in only)):
+                return None, ("views[{:d}].only must be a non-empty list "
+                              "of declared output names.".format(index))
+            missing = [entry for entry in only if entry not in outputs]
+            if missing:
+                return None, ("views[{:d}].only names no declared output: "
+                              "{:s}. Outputs: {:s}.".format(
+                                  index,
+                                  ", ".join(map(repr, missing)),
+                                  ", ".join(outputs)
+                                  or "none are declared yet; rebuild "
+                                     "first"))
+            shown = set(only)
+            hide = tuple(name for name in outputs if name not in shown)
+
         explode = item.get("explode")
         if explode is not None:
             if not _is_number(explode) or not 0.0 <= float(explode) <= 1.0:
@@ -250,6 +282,37 @@ def normalize_views(raw, output_names):
                               "one.".format(hero_at, index))
             hero_at = index
 
+        # Mosaic placement: cell = [row, column], 1-based from the
+        # top-left (the zone marks' reading order); span = [rows, columns].
+        cell = item.get("cell")
+        span = item.get("span")
+        if span is not None and cell is None:
+            return None, ("views[{:d}] carries span but no cell; place "
+                          "the cell first ([row, column], 1-based from "
+                          "the top-left).".format(index))
+
+        def _pair(value):
+            return (isinstance(value, (list, tuple)) and len(value) == 2
+                    and all(isinstance(part, int)
+                            and not isinstance(part, bool)
+                            and part >= 1 for part in value))
+
+        if cell is not None:
+            if not _pair(cell):
+                return None, ("views[{:d}].cell must be [row, column], "
+                              "1-based integers from the "
+                              "top-left.".format(index))
+            if span is None:
+                span = (1, 1)
+            elif not _pair(span):
+                return None, ("views[{:d}].span must be [rows, columns], "
+                              "each at least 1.".format(index))
+            if (cell[0] + span[0] - 1 > MAX_GRID
+                    or cell[1] + span[1] - 1 > MAX_GRID):
+                return None, ("A mosaic goes up to {:d} rows and {:d} "
+                              "columns; views[{:d}] reaches past "
+                              "that.".format(MAX_GRID, MAX_GRID, index))
+
         if named is not None:
             label = name
             spec = {
@@ -279,10 +342,14 @@ def normalize_views(raw, output_names):
             "name": label,
             "label": label,
             "hide": tuple(hide),
+            "only": tuple(only) if only else (),
             "explode": explode,
             "section": section,
             "hero": hero,
         })
+        if cell is not None:
+            spec["cell"] = (int(cell[0]), int(cell[1]))
+            spec["span"] = (int(span[0]), int(span[1]))
         specs.append(spec)
     if defaults:
         # The default right column reads as what it is, not as its angles.
@@ -293,9 +360,14 @@ def normalize_views(raw, output_names):
 def choose_layout(layout, specs):
     """``(template, hero_index, "")`` or ``(None, None, refusal)``.
 
-    ``auto``: single for one view; hero when a view is flagged hero or
-    exactly one perspective sits among orthos; row for two; grid otherwise.
-    A hero template with one view degenerates to single.
+    ``auto``: mosaic when the views carry cell placements; single for one
+    view; hero when a view is flagged hero or exactly one perspective sits
+    among orthos; row for two; grid otherwise. A hero template with one
+    view degenerates to single. A mosaic's placements are checked here —
+    every view placed, no two overlapping — because the tiling invariant
+    the templates hold by construction, freeform placement must hold by
+    refusal (ADR-152). Holes are allowed on purpose: an empty grid cell is
+    uniform ground, and asymmetry is what the mosaic is for.
     """
 
     layout = str(layout or "auto")
@@ -304,6 +376,39 @@ def choose_layout(layout, specs):
             layout, ", ".join(LAYOUTS)))
 
     count = len(specs)
+    placed = [index for index, spec in enumerate(specs)
+              if spec.get("cell") is not None]
+    if placed and len(placed) != count:
+        unplaced = next(index for index in range(count)
+                        if index not in placed)
+        return None, None, ("A mosaic places every view by cell, but "
+                            "views[{:d}] has none; give every view a cell "
+                            "([row, column]) or drop them "
+                            "all.".format(unplaced))
+    if placed and layout not in ("auto", "mosaic"):
+        return None, None, ("The views carry cell placements; use layout "
+                            "'mosaic' (or 'auto'), not "
+                            "{!r}.".format(layout))
+    if layout == "mosaic" and not placed:
+        return None, None, ("Layout 'mosaic' places views by cell; give "
+                            "every view a cell ([row, column], 1-based "
+                            "from the top-left) and an optional span.")
+    if placed:
+        taken = {}
+        for index, spec in enumerate(specs):
+            row0, col0 = spec["cell"]
+            row_span, col_span = spec["span"]
+            for row in range(row0, row0 + row_span):
+                for col in range(col0, col0 + col_span):
+                    if (row, col) in taken:
+                        return None, None, (
+                            "views[{:d}] and views[{:d}] overlap on the "
+                            "mosaic at row {:d}, column {:d}; cells and "
+                            "spans must not overlap.".format(
+                                taken[(row, col)], index, row, col))
+                    taken[(row, col)] = index
+        return "mosaic", None, ""
+
     flagged = [index for index, spec in enumerate(specs) if spec.get("hero")]
     perspectives = [index for index, spec in enumerate(specs)
                     if not spec["ortho"]]
@@ -348,9 +453,16 @@ def _boundaries(total, cells):
             for index in range(cells + 1)]
 
 
-def layout_rects(template, count, max_size, hero=None):
+def layout_rects(template, count, max_size, hero=None, cells=None):
     """``(rects, width, height)`` — one ``(x, y, w, h)`` per view, in view
     order, ``y`` measured from the BOTTOM (the buffer layout).
+
+    ``cells`` drives the ``mosaic`` template: one ``(row, col, row_span,
+    col_span)`` per view, 1-based from the top-left, already
+    overlap-checked by :func:`choose_layout`. The grid's extent is inferred
+    from the placements (no separate rows/columns knob to disagree with
+    them), the field's aspect follows it — columns:rows, longest edge
+    ``max_size`` — and a grid cell no view claims stays uniform ground.
 
     ``max_size`` is the tile field's longest edge; the margin band is the
     caller's to add. ``hero`` places the flagged view's cell: the right
@@ -360,6 +472,28 @@ def layout_rects(template, count, max_size, hero=None):
 
     size = max(8, int(max_size))
     count = max(1, int(count))
+
+    if template == "mosaic" and cells:
+        rows = max(row + row_span - 1
+                   for row, _col, row_span, _col_span in cells)
+        columns = max(col + col_span - 1
+                      for _row, col, _row_span, col_span in cells)
+        if columns >= rows:
+            width = size
+            height = max(8, int(round(size * rows / float(columns))))
+        else:
+            height = size
+            width = max(8, int(round(size * columns / float(rows))))
+        xs = _boundaries(width, columns)
+        ys = _boundaries(height, rows)
+        rects = []
+        for row, col, row_span, col_span in cells:
+            top0, top1 = ys[row - 1], ys[row - 1 + row_span]
+            rects.append((xs[col - 1], height - top1,
+                          xs[col - 1 + col_span] - xs[col - 1],
+                          top1 - top0))
+        return rects, width, height
+
     if template == "single" or count == 1:
         return [(0, 0, size, size)], size, size
 
@@ -551,7 +685,10 @@ def cell_legend(specs, rects):
                 spec["azimuth"], spec["elevation"])
         else:
             described = VIEW_DESCRIPTIONS.get(spec["view"], spec["view"])
-        notes = ["{:s} hidden".format(name) for name in spec["hide"]]
+        if spec.get("only"):
+            notes = ["only {:s} shown".format(", ".join(spec["only"]))]
+        else:
+            notes = ["{:s} hidden".format(name) for name in spec["hide"]]
         if spec.get("explode") is not None:
             notes.append("exploded {:g}".format(spec["explode"]))
         section = spec.get("section")
@@ -583,8 +720,13 @@ def spec_meta(spec):
     if spec["view"] == "custom":
         meta["azimuth"] = spec["azimuth"]
         meta["elevation"] = spec["elevation"]
-    if spec["hide"]:
+    if spec.get("only"):
+        meta["only"] = list(spec["only"])   # hide is only's derived complement
+    elif spec["hide"]:
         meta["hide"] = list(spec["hide"])
+    if spec.get("cell") is not None:
+        meta["cell"] = list(spec["cell"])
+        meta["span"] = list(spec["span"])
     if spec.get("explode") is not None:
         meta["explode"] = spec["explode"]
     section = spec.get("section")

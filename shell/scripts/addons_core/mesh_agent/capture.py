@@ -692,8 +692,13 @@ def render_blueprint(theme="blueprint", max_size=1024, views=None,
     if space is None:
         return None, "No 3D viewport found; use scene_summary instead."
 
+    cells = None
+    if template == "mosaic":
+        cells = [(spec["cell"][0], spec["cell"][1],
+                  spec["span"][0], spec["span"][1]) for spec in specs]
     rects, field_w, field_h = cadex_sheet.layout_rects(
-        template, len(specs), max(8, int(max_size)), hero=hero_index)
+        template, len(specs), max(8, int(max_size)), hero=hero_index,
+        cells=cells)
     margin = cadex_sheet.margin_px(max(field_w, field_h))
 
     notes = []

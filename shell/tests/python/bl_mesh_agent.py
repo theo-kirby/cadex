@@ -1747,14 +1747,99 @@ def test_blueprint_sheets_compose_from_pure_arithmetic():
           "explicit hero with no candidate takes the last view")
     check(cadex_sheet.choose_layout("hero", one)[0] == "single",
           "a hero of one degenerates to single")
-    check("Unknown layout 'mosaic'"
-          in cadex_sheet.choose_layout("mosaic", one)[2],
+    check("Unknown layout 'hexagon'"
+          in cadex_sheet.choose_layout("hexagon", one)[2],
           "unknown layouts are refused")
     check("takes one view" in cadex_sheet.choose_layout("single", two)[2],
           "single with two views is refused")
     check("takes at least 3 views"
           in cadex_sheet.choose_layout("triptych", two)[2],
           "a triptych of two is refused")
+
+    # -- only: the isolate, normalized into the hide the apply path knows ----
+    iso, error = cadex_sheet.normalize_views(
+        [{"view": "front", "only": ["pin", "shaft"]}], outputs)
+    check(error == "" and iso[0]["only"] == ("pin", "shaft")
+          and iso[0]["hide"] == ("housing",),
+          "only becomes the complement hide over the declared outputs")
+    check(cadex_sheet.spec_meta(iso[0]).get("only") == ["pin", "shaft"]
+          and "hide" not in cadex_sheet.spec_meta(iso[0]),
+          "and the meta records the only, not its derived complement")
+    for raw, fragment in (
+            ([{"view": "front", "only": ["pin"], "hide": ["housing"]}],
+             "both hide and only"),
+            ([{"view": "front", "only": []}], "non-empty list"),
+            ([{"view": "front", "only": ["gearz"]}],
+             "names no declared output"),
+    ):
+        result, error = cadex_sheet.normalize_views(raw, outputs)
+        check(result is None and fragment in error,
+              "only refused with {!r} in: {:s}".format(
+                  fragment, error or "(no error)"))
+
+    # -- mosaic: freeform placement, held to the tiling invariant by refusal -
+    placed, error = cadex_sheet.normalize_views(
+        [{"view": "three-quarter", "cell": [1, 1], "span": [2, 2]},
+         {"view": "front", "cell": [1, 3]},
+         {"view": "top", "cell": [3, 1], "span": [1, 3]}], outputs)
+    check(error == "" and placed[0]["cell"] == (1, 1)
+          and placed[0]["span"] == (2, 2) and placed[1]["span"] == (1, 1),
+          "cells and spans normalize, span defaulting to [1, 1]")
+    check(cadex_sheet.choose_layout("auto", placed)[:2] == ("mosaic", None),
+          "auto routes placed views to the mosaic")
+    check(cadex_sheet.choose_layout("mosaic", placed)[:2]
+          == ("mosaic", None),
+          "and explicit mosaic agrees")
+    rects, width, height = cadex_sheet.layout_rects(
+        "mosaic", 3, 1024,
+        cells=[(1, 1, 2, 2), (1, 3, 1, 1), (3, 1, 1, 3)])
+    check((width, height) == (1024, 1024)
+          and rects[0] == (0, 341, 683, 683)
+          and rects[1] == (683, 683, 341, 341)
+          and rects[2] == (0, 0, 1024, 341),
+          "mosaic rects follow the shared boundaries, spans and all")
+    canvas = bytearray(width * height)
+    overlapped = False
+    for x, y, w, h in rects:
+        for row in range(y, y + h):
+            start = row * width + x
+            if any(canvas[start:start + w]):
+                overlapped = True
+            canvas[start:start + w] = b"\x01" * w
+    check(not overlapped and not all(canvas),
+          "no overlap, and the unclaimed cell stays a hole on purpose")
+    wide_rects, wide_w, wide_h = cadex_sheet.layout_rects(
+        "mosaic", 2, 1024, cells=[(1, 1, 1, 1), (1, 2, 1, 1)])
+    check((wide_w, wide_h) == (1024, 512),
+          "the field's aspect follows the grid, longest edge max_size")
+    for raw, layout, fragment in (
+            ([{"view": "front", "cell": [1, 1], "span": [2, 2]},
+              {"view": "top", "cell": [2, 2]}], "auto", "overlap on the "
+                                                        "mosaic"),
+            ([{"view": "front", "cell": [1, 1]}, {"view": "top"}], "auto",
+             "views[1] has none"),
+            ([{"view": "front", "cell": [1, 1]}], "hero",
+             "use layout 'mosaic'"),
+            ([{"view": "front"}], "mosaic", "give every view a cell"),
+    ):
+        mosaic_specs, error = cadex_sheet.normalize_views(raw, outputs)
+        check(error == "", "the mosaic fixture normalizes: " + error)
+        _t, _h, error = cadex_sheet.choose_layout(layout, mosaic_specs)
+        check(fragment in error,
+              "mosaic refused with {!r} in: {:s}".format(
+                  fragment, error or "(no error)"))
+    for raw, fragment in (
+            ([{"view": "front", "span": [2, 2]}], "span but no cell"),
+            ([{"view": "front", "cell": [0, 1]}], "1-based"),
+            ([{"view": "front", "cell": [1, 1], "span": [1, 0]}],
+             "at least 1"),
+            ([{"view": "front", "cell": [6, 1], "span": [2, 1]}],
+             "up to 6 rows"),
+    ):
+        result, error = cadex_sheet.normalize_views(raw, outputs)
+        check(result is None and fragment in error,
+              "mosaic spec refused with {!r} in: {:s}".format(
+                  fragment, error or "(no error)"))
 
     # -- layout_rects: exact tiling by paint-counting, at awkward sizes ------
     for template in ("single", "row", "column", "grid", "hero", "triptych"):

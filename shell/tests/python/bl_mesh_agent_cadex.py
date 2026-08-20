@@ -4243,9 +4243,14 @@ def test_sheet_state_applies_and_restores(root):
           "a bad hide is refused naming the declared outputs: {:s}".format(
               first_line_of(message)))
     ok, message = run_tool("make_blueprint", {"views": [{"view": "front"}],
-                                              "layout": "mosaic"})
+                                              "layout": "hexagon"})
     check(not ok and "Unknown layout" in message,
           "a bad layout is refused: {:s}".format(first_line_of(message)))
+    ok, message = run_tool("make_blueprint", {"views": [{"view": "front"}],
+                                              "layout": "mosaic"})
+    check(not ok and "give every view a cell" in message,
+          "a mosaic without cells is refused with the fix: {:s}".format(
+              first_line_of(message)))
     ok, message = run_tool(
         "make_blueprint",
         {"views": [{"view": "three-quarter", "explode": 0.5}]})
@@ -4391,6 +4396,20 @@ def test_sheet_state_applies_and_restores(root):
           "including the leader lines")
     same_presentation(before, presentation(), "live-off restore")
 
+    # -- only: isolate one output; everything else hides and comes back ------
+    before = presentation()
+    snapshot = cadex_sheet.snapshot_state(scene)
+    iso_specs, error = cadex_sheet.normalize_views(
+        [{"view": "front", "only": ["swing"]}], sorted(display))
+    check(error == "", "the only spec normalizes: " + (error or "ok"))
+    cadex_sheet.apply_view_state(scene, iso_specs[0], snapshot)
+    base = cadex_hydrate._find(collection, "base", edges=False)
+    check(base is not None and base.hide_get() is True,
+          "only hides the outputs it does not name")
+    check(swing.hide_get() is False, "and keeps the one it does")
+    cadex_sheet.restore_state(scene, snapshot)
+    same_presentation(before, presentation(), "only restore")
+
     # -- quiet(): several settings written, ONE explicit refresh -------------
     solved = at(swing)
     with cadex_explode.quiet():
@@ -4405,7 +4424,7 @@ def test_sheet_state_applies_and_restores(root):
     cadex_explode.clear(scene)
     check(near(at(swing), solved), "and the cleanup reassembles")
 
-    GATE["sheet"] = {"outputs": len(display), "spec_refusals": 4}
+    GATE["sheet"] = {"outputs": len(display), "spec_refusals": 5}
 
 
 def test_live_mode_is_wired_and_refuses_cleanly(live_root):
