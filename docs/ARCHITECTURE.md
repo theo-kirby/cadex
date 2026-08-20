@@ -276,12 +276,19 @@ macOS). Layout:
                                 the put_asset op (ADR-043) and, for a
                                 .cxpart, the link_part op that builds one
   blueprints/                   rendered blueprint sheets (ADR-150):
-                                {ordinal:04d}-{revision[:12]}.png +
+                                {ordinal:04d}-{slug or revision[:12]}.png +
                                 blueprints.json (cadex-blueprint-v1), each
                                 entry attached to the accepted (revision,
                                 digest) pair it documents; newest 25 kept,
                                 written only by the put_blueprint op, read
-                                back through inspect scope=blueprint
+                                back through inspect scope=blueprint.
+                                Since ADR-157 an entry may carry a name and
+                                a version: a name is an IDENTITY, so storing
+                                again under it appends the next version,
+                                resolves to the newest (name@2 pins one),
+                                survives the prune, and names the file. The
+                                recipe the sheet can be re-rendered from
+                                rides the entry's free-form meta
   print/                        the print job (ADR-156): one <output>.stl per
                                 output marked printable, written off the
                                 ACCEPTED brep/mesh artifact rather than the

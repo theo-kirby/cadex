@@ -12,9 +12,19 @@ that pair is the whole of "attached to the script": the sheet documents a
 script state, and a rebuild that moves the model leaves the old sheet
 honestly labelled with the revision it drew.
 
+A sheet may also carry a **name** (ADR-157) — ``"gearbox overview v1"`` —
+and a name is an identity rather than a caption: re-rendering under the same
+name stores the next **version** of that sheet, ``resolve_blueprint`` serves
+the newest version by name, and the prune never drops a name's newest
+version. That is what makes a blueprint revisable: the shell stores the
+recipe it rendered from in ``meta``, reads it back by name, and re-renders
+with the agent's edits on top.
+
 Layout under one project root:
 
-- ``blueprints/{ordinal:04d}-{revision[:12]}.png`` — the sheets themselves.
+- ``blueprints/{ordinal:04d}-{slug or revision[:12]}.png`` — the sheets
+  themselves, the slug being the name reduced to filename characters so an
+  exported directory reads as the drawings it holds.
 - ``blueprints/blueprints.json`` — the index (schema ``cadex-blueprint-v1``).
 
 The shape is ``CadexScriptStore.record_history``'s deliberately: ordinals
@@ -49,7 +59,9 @@ BLUEPRINT_INDEX_NAME = "blueprints.json"
 #: Sheets kept, newest last. A bound on the directory's readability, exactly
 #: as ``HISTORY_LIMIT`` is for the undo trail: old revisions' sheets stay
 #: until the count pushes them out, so a project's recent drawing history
-#: survives its rebuilds.
+#: survives its rebuilds. **Named** sheets are additionally protected — each
+#: name's newest version is kept past the bound (ADR-157), so the index can
+#: hold a few more rows than this when many names are in play.
 BLUEPRINT_LIMIT = 25
 
 #: One rendered sheet is a few hundred KB; sixteen megabytes is a composite
@@ -59,9 +71,15 @@ MAX_BLUEPRINT_BYTES = 16 * 1024 * 1024
 #: ``label`` is one line under a drawing, not a document.
 MAX_LABEL_CHARS = 120
 
-#: ``meta`` is the renderer's own record (theme, views, sizes), bounded so
-#: the index stays an index.
-MAX_META_BYTES = 8 * 1024
+#: ``name`` is what a person calls the drawing — "gearbox overview v1" —
+#: short enough to read in a listing and to survive as a filename slug.
+MAX_NAME_CHARS = 60
+
+#: ``meta`` is the renderer's own record (theme, views, sizes) *and*, since
+#: ADR-157, the **recipe** the sheet can be re-rendered from — text panels
+#: included. Bounded so the index stays an index; the shell trims its own
+#: optional records before it hits this.
+MAX_META_BYTES = 16 * 1024
 
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
@@ -84,14 +102,58 @@ def read_blueprints(project_root: Path | str) -> list[dict[str, Any]]:
     return [dict(item) for item in entries or [] if isinstance(item, dict)]
 
 
+def normalize_name(name: str) -> str:
+    """The stored form of a sheet's name, or ``ValueError`` on a bad one.
+
+    Whitespace collapses (a name is one line), control characters are
+    refused rather than smuggled into an index a person reads, and the cap
+    is :data:`MAX_NAME_CHARS`. An empty name is legal and means "unnamed" —
+    the pre-ADR-157 sheet, which is a record and not a thing to revise.
+    """
+
+    text = " ".join(str(name or "").split())
+    if not text:
+        return ""
+    if any(ord(char) < 32 or ord(char) == 127 for char in text):
+        raise ValueError("A blueprint name is one line of plain text.")
+    if len(text) > MAX_NAME_CHARS:
+        raise ValueError(
+            f"name is {len(text)} characters; the cap is {MAX_NAME_CHARS}. "
+            "A name is what you call the drawing; the label is the caption."
+        )
+    return text
+
+
+def name_slug(name: str) -> str:
+    """A name reduced to filename characters, or ``""`` if nothing survives.
+
+    Exports keep store filenames (``export --blueprints``), so this is what
+    makes an exported directory read as the drawings it holds rather than as
+    a column of revision prefixes.
+    """
+
+    out = []
+    for char in str(name or "").lower():
+        out.append(char if char.isalnum() and char.isascii() else "-")
+    slug = "-".join(part for part in "".join(out).split("-") if part)
+    return slug[:32].strip("-")
+
+
+def _named(entry: Any) -> str:
+    return str((entry or {}).get("name") or "").casefold()
+
+
 def resolve_blueprint(
     project_root: Path | str, selector: str | int
 ) -> dict[str, Any] | None:
-    """One stored sheet, by ordinal, revision prefix or filename.
+    """One stored sheet, by ordinal, name, revision prefix or filename.
 
-    ``read_history_source``'s selector rules: an exact ordinal wins, then a
-    unique revision prefix, then the exact stored filename. Ambiguity is
-    None, not a guess.
+    ``read_history_source``'s selector rules, plus the name: an exact
+    ordinal wins, then an exact name (``"gearbox v1"`` — its **newest**
+    version, or a pinned one with ``"gearbox v1@2"``), then a unique
+    revision prefix, then the exact stored filename. Ambiguity is None, not
+    a guess — and a name is never ambiguous, because its versions are
+    ordered.
     """
 
     entries = read_blueprints(project_root)
@@ -99,6 +161,16 @@ def resolve_blueprint(
     if not want:
         return None
     matched = [e for e in entries if str(e.get("ordinal")) == want]
+    if not matched:
+        wanted_name, _, wanted_version = want.rpartition("@")
+        if not wanted_name or not wanted_version.isdigit():
+            wanted_name, wanted_version = want, ""
+        named = [e for e in entries if _named(e) == wanted_name.strip()]
+        if named and wanted_version:
+            named = [e for e in named
+                     if str(e.get("version") or "") == wanted_version]
+        if named:
+            return dict(named[-1])       # the newest version of that name
     if not matched:
         matched = [e for e in entries
                    if str(e.get("revision") or "").lower().startswith(want)]
@@ -119,12 +191,18 @@ def store_project_blueprint(
     source_path: str,
     label: str = "",
     meta: dict[str, Any] | None = None,
+    name: str = "",
 ) -> dict[str, Any]:
     """Copy one rendered PNG into ``blueprints/`` and index it.
 
     A path, not bytes, on ``put_asset``'s reasoning exactly: both halves
     share a filesystem, and the frame cap is 8 MB. Raises ``ValueError`` on
     every refusal; the op handler turns those into ``tool_failure``.
+
+    ``name`` makes the sheet revisable (ADR-157): storing again under a name
+    that already exists appends the next ``version`` of it rather than an
+    unrelated row, and the prune below protects each name's newest version.
+    An empty ``label`` takes the name, so a named sheet captions itself.
 
     Write order is PNG first, index second: a crash between the two leaves
     an unindexed file, never an index row pointing at nothing.
@@ -163,7 +241,8 @@ def store_project_blueprint(
             f"sheet at {MAX_BLUEPRINT_BYTES}."
         )
 
-    label = str(label or "").strip()
+    name = normalize_name(name)
+    label = str(label or "").strip() or name
     if len(label) > MAX_LABEL_CHARS:
         raise ValueError(
             f"label is {len(label)} characters; the cap is {MAX_LABEL_CHARS}."
@@ -184,7 +263,13 @@ def store_project_blueprint(
 
     entries = read_blueprints(project_root)
     ordinal = int(entries[-1].get("ordinal") or 0) + 1 if entries else 1
-    name = "{:04d}-{:s}.png".format(ordinal, revision[:12])
+    version = 1 + max(
+        (int(entry.get("version") or 1) for entry in entries
+         if name and _named(entry) == name.casefold()),
+        default=0,
+    )
+    slug = name_slug(name)
+    filename = "{:04d}-{:s}.png".format(ordinal, slug or revision[:12])
 
     directory = _blueprint_dir(project_root)
     directory.mkdir(parents=True, exist_ok=True)
@@ -194,10 +279,10 @@ def store_project_blueprint(
             digest.update(chunk)
     # Dot-prefixed and .tmp-suffixed, the store's convention: no reader ever
     # sees a half-copied sheet under its final name.
-    temporary = directory / f".{name}.{uuid.uuid4().hex}.tmp"
+    temporary = directory / f".{filename}.{uuid.uuid4().hex}.tmp"
     try:
         shutil.copyfile(source, temporary)
-        temporary.replace(directory / name)
+        temporary.replace(directory / filename)
     finally:
         try:
             temporary.unlink()
@@ -206,9 +291,11 @@ def store_project_blueprint(
 
     entry = {
         "ordinal": ordinal,
+        "name": name,
+        "version": version,
         "revision": revision,
         "digest": str(state.get("accepted_digest") or ""),
-        "file": name,
+        "file": filename,
         "bytes": size,
         "sha256": digest.hexdigest(),
         "created_at": now_iso(),
@@ -222,12 +309,24 @@ def store_project_blueprint(
     }
     entries.append(entry)
 
-    for stale in entries[:-BLUEPRINT_LIMIT]:
+    # The bound keeps the directory readable; a *name* outranks it. A named
+    # sheet is a thing the user comes back to and revises, so its newest
+    # version survives however many unnamed sheets were rendered since —
+    # otherwise "revise the drawing I made yesterday" fails on a busy day.
+    keep = set(range(max(0, len(entries) - BLUEPRINT_LIMIT), len(entries)))
+    newest_named: dict[str, int] = {}
+    for index, item in enumerate(entries):
+        if _named(item):
+            newest_named[_named(item)] = index
+    keep |= set(newest_named.values())
+    for index, stale in enumerate(entries):
+        if index in keep:
+            continue
         try:
             (directory / str(stale.get("file") or "")).unlink()
         except OSError:
             pass
-    entries = entries[-BLUEPRINT_LIMIT:]
+    entries = [item for index, item in enumerate(entries) if index in keep]
     atomic_write_json(
         directory / BLUEPRINT_INDEX_NAME,
         {"schema": BLUEPRINT_SCHEMA, "entries": entries},

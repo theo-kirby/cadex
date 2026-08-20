@@ -7,12 +7,14 @@
       "file": "str",
       "label": "str",
       "meta": {},
+      "name": "str",
       "ordinal": "int",
       "outputs": [
         "str"
       ],
       "revision": "str",
-      "sha256": "str"
+      "sha256": "str",
+      "version": "int"
     }
   ],
   "bytes": "int",

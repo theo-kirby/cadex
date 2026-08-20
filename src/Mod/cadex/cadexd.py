@@ -848,10 +848,11 @@ class CadexdServer:
 
         source_path = str(args["source_path"])
         label = str(args.get("label") or "")
+        name = str(args.get("name") or "")
         meta = args.get("meta") if isinstance(args.get("meta"), dict) else {}
         try:
             entry = store_project_blueprint(
-                self._project_root, source_path, label, meta
+                self._project_root, source_path, label, meta, name
             )
         except (OSError, ValueError) as exc:
             return tool_failure(
@@ -859,7 +860,11 @@ class CadexdServer:
                 "BLUEPRINT_REJECTED",
                 "precondition",
                 str(exc),
-                requested={"source_path": source_path, "label": label},
+                requested={
+                    "source_path": source_path,
+                    "label": label,
+                    "name": name,
+                },
                 observed={"blueprints": read_blueprints(self._project_root)},
             )
         return {

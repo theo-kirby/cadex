@@ -4406,9 +4406,36 @@ def test_sheet_state_applies_and_restores(root):
     ok, message = run_tool(
         "make_blueprint",
         {"views": [{"view": "params", "explode": 1.0}]})
-    check(not ok and "takes only cell, span and hero" in message,
+    check(not ok and "takes only cell, span, hero, aspect and title" in message,
           "a params cell with camera keys is refused for what it is: "
           "{:s}".format(first_line_of(message)))
+    ok, message = run_tool(
+        "make_blueprint", {"views": [{"view": "text"}]})
+    check(not ok and "carries no text" in message,
+          "an empty text panel is refused for what it is: {:s}".format(
+              first_line_of(message)))
+    ok, message = run_tool(
+        "make_blueprint",
+        {"views": [{"view": "front", "aspect": "1:9"}]})
+    check(not ok and "between 1:5 and 5:1" in message,
+          "an extreme cell aspect names its bounds: {:s}".format(
+              first_line_of(message)))
+    ok, message = run_tool("make_blueprint", {"based_on": "no-such-sheet"})
+    check(not ok and "No stored blueprint matches" in message
+          and "scope=blueprint" in message,
+          "based_on against nothing points at the listing: {:s}".format(
+              first_line_of(message)))
+    ok, message = run_tool(
+        "make_blueprint",
+        {"name": "shop notes v1",
+         "views": [{"view": "front", "aspect": "2:1", "title": "as built"},
+                   {"view": "text", "text": "M3 threads.\nDeburr edges.",
+                    "title": "notes", "aspect": "1:2"}]})
+    check(not ok and "Blueprint rendering is unavailable in background mode"
+          in message,
+          "a named sheet with a text panel and per-cell shapes validates "
+          "and only then refuses headless: {:s}".format(
+              first_line_of(message)))
     ok, message = run_tool("make_blueprint",
                            {"views": [{"view": "front"}], "aspect": "wide"})
     check(not ok and "width:height" in message,
@@ -4594,7 +4621,7 @@ def test_sheet_state_applies_and_restores(root):
     cadex_explode.clear(scene)
     check(near(at(swing), solved), "and the cleanup reassembles")
 
-    GATE["sheet"] = {"outputs": len(display), "spec_refusals": 7}
+    GATE["sheet"] = {"outputs": len(display), "spec_refusals": 9}
 
 
 def test_live_mode_is_wired_and_refuses_cleanly(live_root):

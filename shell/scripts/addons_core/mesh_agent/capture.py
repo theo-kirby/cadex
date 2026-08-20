@@ -619,8 +619,9 @@ def render_blueprint(theme="blueprint", max_size=1024, views=None,
                      layout="auto", aspect=None, label=""):
     """Agent-composed fitted views, styled and dressed as a blueprint sheet.
 
-    Returns ``({"path", "base64", "legend", "views", "layout", "rects",
-    "size", "version", "project", "note"}, None)`` or ``(None, error)``.
+    Returns ``({"path", "base64", "legend", "views", "recipe", "layout",
+    "rects", "size", "version", "project", "note"}, None)`` or
+    ``(None, error)``.
     The PNG lands in a temp file because its home is the project store: the
     caller hands the path to ``put_blueprint`` and the engine copies it in
     (the shell never writes the store).
@@ -674,7 +675,7 @@ def render_blueprint(theme="blueprint", max_size=1024, views=None,
         if entry is None or cadex_animate.SCENE_FLAG in scene:
             specs = tuple(
                 dict(spec, explode=None, name="rear three-quarter",
-                     label="rear three-quarter")
+                     label="rear three-quarter", title="rear three-quarter")
                 if spec.get("explode") is not None else spec
                 for spec in specs)
     template, hero_index, error = cadex_sheet.choose_layout(layout, specs)
@@ -701,7 +702,8 @@ def render_blueprint(theme="blueprint", max_size=1024, views=None,
                   spec["span"][0], spec["span"][1]) for spec in specs]
     rects, field_w, field_h = cadex_sheet.layout_rects(
         template, len(specs), max(8, int(max_size)), hero=hero_index,
-        cells=cells, aspect=ratio)
+        cells=cells, aspect=ratio,
+        aspects=[spec.get("aspect") for spec in specs])
     margin = cadex_sheet.margin_px(max(field_w, field_h))
     label_size = max(10.0, margin * 0.55)
     theme_colors = cadex_blueprint.THEMES[
@@ -716,7 +718,7 @@ def render_blueprint(theme="blueprint", max_size=1024, views=None,
     undo_presentation = cadex_blueprint.present(space, theme)
     try:
         for index, (spec, rect) in enumerate(zip(specs, rects)):
-            if spec["view"] == "params":
+            if spec["view"] in cadex_sheet.PANEL_VIEWS:
                 continue   # a sheet cell, not a scene state; drawn below
             cadex_sheet.apply_view_state(scene, spec, snapshot)
             bbox = model_bbox()
@@ -769,30 +771,45 @@ def render_blueprint(theme="blueprint", max_size=1024, views=None,
         undo_presentation()
         undo_isolation()
 
-    # The params cells, after the scene is back as it was: they draw the
-    # declared sliders, not the model, on the same sampled ground as the
-    # rendered tiles (the ADR-151 uniform-ground lesson).
-    param_cells = [(index, rect) for index, (spec, rect)
+    # The panel cells, after the scene is back as it was: they draw the
+    # declared sliders or the agent's own words, not the model, on the same
+    # sampled ground as the rendered tiles (the ADR-151 uniform-ground
+    # lesson).
+    panel_cells = [(index, spec, rect) for index, (spec, rect)
                    in enumerate(zip(specs, rects))
-                   if spec["view"] == "params"]
-    if param_cells:
-        from . import model as model_module
-
-        state = cadex_backend.cached_script_state(scene)
-        try:
-            stored = model_module.stored_values(scene)
-        except Exception:
-            stored = {}
-        rows = cadex_sheet.param_rows(
-            list(getattr(state, "specs", None) or []), dict(stored or {}))
+                   if spec["view"] in cadex_sheet.PANEL_VIEWS]
+    if panel_cells:
         sample = next((tile for tile in tiles if tile is not None), None)
         ground = (tuple(sample[0][0:3])
                   if sample is not None and any(sample[0][0:3])
                   else cadex_sheet.display_color(
                       theme_colors["background"]))
-        for index, rect in param_cells:
+        rows = None
+        for index, spec, rect in panel_cells:
+            if spec["view"] == "text":
+                pixels, dropped = cadex_sheet._draw_text_tile(
+                    rect[2], rect[3], spec.get("text") or "", theme_colors,
+                    ground, top_pad=label_size + 8.0)
+                tiles[index] = (pixels, rect)
+                if dropped:
+                    notes.append("views[{:d}]: {:d} line(s) of text did not "
+                                 "fit -- give the panel a taller cell or "
+                                 "fewer words".format(index, dropped))
+                continue
+            if rows is None:
+                from . import model as model_module
+
+                state = cadex_backend.cached_script_state(scene)
+                try:
+                    stored = model_module.stored_values(scene)
+                except Exception:
+                    stored = {}
+                rows = cadex_sheet.param_rows(
+                    list(getattr(state, "specs", None) or []),
+                    dict(stored or {}))
             tiles[index] = (cadex_sheet._draw_params_tile(
-                rect[2], rect[3], rows, theme_colors, ground), rect)
+                rect[2], rect[3], rows, theme_colors, ground,
+                top_pad=label_size + 8.0), rect)
 
     field_pixels = composite_rects([tile for tile in tiles
                                     if tile is not None],
@@ -837,15 +854,23 @@ def render_blueprint(theme="blueprint", max_size=1024, views=None,
     finally:
         bpy.data.images.remove(image)
 
+    sheet_aspect_text = (str(aspect) if aspect is not None
+                         else ("auto" if template == "mosaic"
+                               else cadex_sheet.DEFAULT_ASPECT))
     return {
         "path": path,
         "base64": base64.b64encode(data).decode("ascii"),
         "legend": cadex_sheet.cell_legend(specs, rects),
         "views": [cadex_sheet.spec_meta(spec) for spec in specs],
+        # What this sheet can be drawn again from (ADR-157). The template
+        # rather than the requested layout, and the specs rather than the
+        # raw input, so a revision starts from what was *drawn* -- including
+        # the default sheet, which is how "change one cell of the default"
+        # works without the agent restating the other four.
+        "recipe": cadex_sheet.sheet_recipe(specs, theme, template,
+                                           sheet_aspect_text, max_size),
         "layout": template,
-        "aspect": (str(aspect) if aspect is not None
-                   else ("auto" if template == "mosaic"
-                         else cadex_sheet.DEFAULT_ASPECT)),
+        "aspect": sheet_aspect_text,
         "rects": [list(rect) for rect in rects],
         "size": [width, height],
         "version": version,

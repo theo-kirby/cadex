@@ -144,9 +144,19 @@ OP_ARG_SPECS: dict[str, tuple[dict[str, type], dict[str, type]]] = {
     # put_asset's reasoning exactly; a modeling op because it writes the
     # project store — but unlike put_asset it does NOT invalidate resident
     # workers, because a blueprint documents a run and is never an input to
-    # one. `meta` is the renderer's own record (theme, views), stored
+    # one. `meta` is the renderer's own record (theme, views, and — since
+    # ADR-157 — the recipe the sheet can be re-rendered from), stored
     # verbatim in the index.
-    "put_blueprint": ({"source_path": str}, {"label": str, "meta": dict}),
+    #
+    # `name` is the sheet's identity rather than its caption (ADR-157):
+    # storing again under a name that exists appends the next *version* of
+    # that sheet, `inspect scope=blueprint` serves the newest by name, and
+    # the prune protects it. That is the whole of "revise the drawing I made
+    # yesterday", and it is one optional string.
+    "put_blueprint": (
+        {"source_path": str},
+        {"label": str, "meta": dict, "name": str},
+    ),
     # Which outputs are parts the user means to print (ADR-156). `printable`
     # is a **complete replacement** list of output names, like every other
     # table arg — the panel sends what is ticked, not a diff.

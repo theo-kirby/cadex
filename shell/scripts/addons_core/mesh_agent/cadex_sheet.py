@@ -7,22 +7,33 @@ tile, and the drawing-sheet dressing around them (ADR-151).
 
 ADR-150's sheet was fixed: four views, one 2x2 grid, nothing per cell. This
 module is what makes it composable — the agent names the views (the named
-orthos, the three-quarter, a custom azimuth/elevation, or the parameters
-panel), gives each cell its own hidden outputs, exploded factor, section
-override and part-name callouts, and picks a layout. The default is the
-**triptych** (:data:`DEFAULT_VIEWS`), on a 16:9 sheet (ADR-153).
+orthos, the three-quarter, a custom azimuth/elevation, the parameters panel
+or a **text panel**), gives each cell its own hidden outputs, exploded
+factor, section override, part-name callouts, title and **shape**, and picks
+a layout. The default is the **triptych** (:data:`DEFAULT_VIEWS`), on a 16:9
+sheet (ADR-153).
 
 Three responsibilities, three groups of functions:
 
 - **the spec** — :func:`normalize_views` and :func:`choose_layout` turn the
   tool's free-form input into validated specs and a layout template, refusing
   in full sentences that carry the fix. Structural only: no scene, no bpy.
+  :func:`recipe_views` turns validated specs back into that free-form input,
+  which is what makes a stored sheet **revisable** (ADR-157): the recipe
+  rides ``put_blueprint``'s ``meta``, comes back through ``inspect
+  scope=blueprint``, and re-renders with the agent's edits on top.
 - **the tiling** — :func:`layout_rects` places the cells by shared integer
   boundary arrays, so no-gap/no-overlap holds by construction, at any size.
+  Boundaries are **weighted** (ADR-157), which is how a per-cell ``aspect``
+  is honoured: an exploded stack asks to be a tall narrow column, its track
+  is scaled toward that shape, and the tiling invariant is untouched because
+  the boundaries are still one shared integer array.
   :func:`zone_grid`, :func:`title_lines` and :func:`cell_legend` are the
   dressing arithmetic: the page grid with border zone marks (1, 2, 3 along
   the top, A, B, C down the left — a drawing office's zones, not graph
-  paper), the title texts, and the caption.
+  paper), the title texts, and the caption. The caption reports the shape a
+  cell was actually drawn at, because a per-cell aspect is a **request**
+  against a fixed sheet, not a promise.
 - **the scene state** — the bpy half. :func:`snapshot_state` captures the
   live presentation ONCE, :func:`apply_view_state` puts one cell's overrides
   on the scene (hides by ``hide_set`` — ``hide_viewport`` is the hydrate
@@ -105,7 +116,37 @@ CALLOUT_MIN_WIDTH = 240
 #: level deep is a schema the model fills correctly.
 SPEC_KEYS = ("view", "azimuth", "elevation", "projection", "hide", "only",
              "explode", "section", "section_offset_mm", "section_flip",
-             "hero", "cell", "span", "callouts")
+             "hero", "cell", "span", "callouts", "aspect", "title", "text")
+
+#: The cells that draw the sheet rather than the model. They take placement,
+#: a title and a shape, and nothing that steers a camera or the scene.
+PANEL_VIEWS = ("params", "text")
+
+#: A text panel is a caption block, not a document: what does not fit is
+#: counted rather than drawn, and past this it is refused with the fix
+#: (split it across two panels).
+MAX_PANEL_TEXT_CHARS = 500
+
+#: A cell title is a heading over one cell, so it is bounded like the
+#: sheet's own label rather than like its body text.
+MAX_TITLE_CHARS = 60
+
+#: What the engine will accept as ``put_blueprint``'s ``meta``
+#: (``CadexBlueprints.MAX_META_BYTES``), minus room for the keys the shell
+#: does not control. The engine enforces its own cap and is the authority;
+#: this one exists so :func:`trim_meta` can drop the optional records
+#: *before* a rendered sheet is refused for carrying them.
+MAX_STORED_META_BYTES = 15 * 1024
+
+#: How far a per-cell ``aspect`` may push its track, as a multiple of the
+#: shape that cell would otherwise have had. Bounded because the sheet is
+#: fixed: an unbounded ask starves its neighbours down to slivers.
+MAX_CELL_SCALE = 4.0
+
+#: Refinement passes for the per-cell aspects. Each pass measures the shape
+#: a cell was actually placed at and nudges its track; two or three converge
+#: for any sheet this module will ever draw.
+ASPECT_PASSES = 3
 
 _SECTION_AXES = ("X", "Y", "Z")
 
@@ -144,17 +185,15 @@ def display_color(linear_rgb):
     return tuple(encode(channel) for channel in linear_rgb)
 
 
-def sheet_aspect(aspect, template):
-    """The tile field's width:height as a ratio: ``(ratio, "")`` or
-    ``(None, "")`` for the layout-derived shape, or ``(None, refusal)``.
+def parse_aspect(aspect, what="aspect"):
+    """``"16:9"`` into a ratio: ``(ratio, "")``, ``(None, "")`` for ``auto``,
+    or ``(None, refusal)``.
 
-    An omitted ``aspect`` means :data:`DEFAULT_ASPECT` — except for the
-    mosaic, whose shape is the agent's grid and stays ``auto`` unless the
-    agent says otherwise.
+    One parser for the sheet's shape and for a cell's, because they are the
+    same string in the same units and a second spelling would be a second
+    thing to get wrong. ``what`` names the offender in the refusal.
     """
 
-    if aspect is None:
-        aspect = "auto" if template == "mosaic" else DEFAULT_ASPECT
     text = str(aspect).strip().lower()
     if text == "auto":
         return None, ""
@@ -166,13 +205,33 @@ def sheet_aspect(aspect, template):
         except ValueError:
             width = height = 0.0
     if width <= 0.0 or height <= 0.0:
-        return None, ("aspect must be 'width:height' (like '16:9') or "
-                      "'auto' to follow the layout; got {!r}.".format(aspect))
+        return None, ("{:s} must be 'width:height' (like '16:9') or 'auto'; "
+                      "got {!r}.".format(what, aspect))
     ratio = width / height
     if not 0.2 <= ratio <= 5.0:
-        return None, ("aspect {!r} is extreme; keep width:height between "
-                      "1:5 and 5:1.".format(aspect))
+        return None, ("{:s} {!r} is extreme; keep width:height between 1:5 "
+                      "and 5:1.".format(what, aspect))
     return ratio, ""
+
+
+def sheet_aspect(aspect, template):
+    """The tile field's width:height as a ratio: ``(ratio, "")`` or
+    ``(None, "")`` for the layout-derived shape, or ``(None, refusal)``.
+
+    An omitted ``aspect`` means :data:`DEFAULT_ASPECT` — except for the
+    mosaic, whose shape is the agent's grid and stays ``auto`` unless the
+    agent says otherwise.
+    """
+
+    if aspect is None:
+        aspect = "auto" if template == "mosaic" else DEFAULT_ASPECT
+    ratio, error = parse_aspect(aspect, "aspect")
+    if error:
+        # The sheet's own refusal keeps its wording: 'auto' follows the
+        # layout here, which is not true of a cell.
+        return None, error.replace(
+            "or 'auto';", "or 'auto' to follow the layout;")
+    return ratio, error
 
 
 def _is_number(value):
@@ -224,11 +283,35 @@ def normalize_views(raw, output_names):
 
         name = str(item.get("view") or "").strip()
         named = capture.NAMED_VIEWS.get(name)
-        if named is None and name not in ("custom", "params"):
+        if named is None and name not in ("custom",) + PANEL_VIEWS:
             return None, ("Unknown view {!r} in views[{:d}]; one of: {:s}, "
-                          "custom with azimuth/elevation, or params for "
-                          "the parameters panel.".format(
+                          "custom with azimuth/elevation, params for the "
+                          "parameters panel, or text for a panel of your "
+                          "own words.".format(
                               name, index, ", ".join(_view_names())))
+
+        # A cell's own shape (ADR-157), and a heading of the agent's
+        # choosing: both belong to every cell, model or panel.
+        cell_aspect = None
+        if item.get("aspect") is not None:
+            cell_aspect, error = parse_aspect(
+                item["aspect"], "views[{:d}].aspect".format(index))
+            if error:
+                return None, error
+            if cell_aspect is None:
+                return None, ("views[{:d}].aspect is 'auto'; omit it to "
+                              "take the layout's own shape for that "
+                              "cell.".format(index))
+        title = item.get("title")
+        if title is not None:
+            if not isinstance(title, str) or not title.strip():
+                return None, ("views[{:d}].title must be a line of text "
+                              "naming the cell.".format(index))
+            title = " ".join(title.split())
+            if len(title) > MAX_TITLE_CHARS:
+                return None, ("views[{:d}].title is {:d} characters; the cap "
+                              "is {:d}.".format(index, len(title),
+                                                MAX_TITLE_CHARS))
 
         hero = bool(item.get("hero"))
         if hero:
@@ -269,11 +352,12 @@ def normalize_views(raw, output_names):
                               "columns; views[{:d}] reaches past "
                               "that.".format(MAX_GRID, MAX_GRID, index))
 
-        # The parameters panel (ADR-153): a cell of the sheet, not of the
-        # model — it renders the declared parameters as labelled sliders
-        # at their current values, so it takes placement keys and nothing
-        # that steers a camera or the scene.
-        if name == "params":
+        # The panels (ADR-153, ADR-157): cells of the sheet, not of the
+        # model. `params` renders the declared parameters as labelled
+        # sliders at their current values; `text` renders words the agent
+        # wrote. Both take placement, a title and a shape, and nothing that
+        # steers a camera or the scene.
+        if name in PANEL_VIEWS:
             taken = sorted(key for key in ("azimuth", "elevation",
                                            "projection", "hide", "only",
                                            "explode", "section",
@@ -281,18 +365,47 @@ def normalize_views(raw, output_names):
                                            "section_flip", "callouts")
                            if item.get(key) is not None)
             if taken:
-                return None, ("views[{:d}] is the parameters panel; it "
-                              "takes only cell, span and hero — drop "
-                              "{:s}.".format(index, ", ".join(taken)))
-            spec = {"view": "params", "up": (0.0, 0.0, 1.0), "ortho": True,
-                    "name": "parameters", "label": "parameters",
+                return None, ("views[{:d}] is the {:s} panel; it takes only "
+                              "cell, span, hero, aspect and title — drop "
+                              "{:s}.".format(index, name, ", ".join(taken)))
+            default_label = "parameters" if name == "params" else "notes"
+            spec = {"view": name, "up": (0.0, 0.0, 1.0), "ortho": True,
+                    "name": title or default_label,
+                    "label": title or default_label,
                     "hide": (), "only": (), "explode": None,
                     "section": None, "hero": hero, "callouts": None}
+            if name == "text":
+                body = item.get("text")
+                if not isinstance(body, str) or not body.strip():
+                    return None, ("views[{:d}] is a text panel but carries "
+                                  "no text; give it the words to "
+                                  "draw.".format(index))
+                body = body.replace("\r\n", "\n").replace("\r", "\n").strip()
+                if len(body) > MAX_PANEL_TEXT_CHARS:
+                    return None, ("views[{:d}].text is {:d} characters; a "
+                                  "panel holds {:d}. Split it across two "
+                                  "panels, or shorten it — a sheet is read "
+                                  "at a glance.".format(
+                                      index, len(body),
+                                      MAX_PANEL_TEXT_CHARS))
+                spec["text"] = body
+            elif item.get("text") is not None:
+                return None, ("views[{:d}] carries text but is the params "
+                              "panel; text belongs to view "
+                              "'text'.".format(index))
+            if title is not None:
+                spec["title"] = title
+            if cell_aspect is not None:
+                spec["aspect"] = cell_aspect
             if cell is not None:
                 spec["cell"] = (int(cell[0]), int(cell[1]))
                 spec["span"] = (int(span[0]), int(span[1]))
             specs.append(spec)
             continue
+
+        if item.get("text") is not None:
+            return None, ("views[{:d}] carries text but draws the model; a "
+                          "panel of words is view 'text'.".format(index))
 
         has_angles = "azimuth" in item or "elevation" in item
         if named is not None and has_angles:
@@ -426,8 +539,8 @@ def normalize_views(raw, output_names):
                           else False),
             }
         spec.update({
-            "name": label,
-            "label": label,
+            "name": title or label,
+            "label": title or label,
             "hide": tuple(hide),
             "only": tuple(only) if only else (),
             "explode": explode,
@@ -435,13 +548,20 @@ def normalize_views(raw, output_names):
             "hero": hero,
             "callouts": callouts,
         })
+        if title is not None:
+            spec["title"] = title
+        if cell_aspect is not None:
+            spec["aspect"] = cell_aspect
         if cell is not None:
             spec["cell"] = (int(cell[0]), int(cell[1]))
             spec["span"] = (int(span[0]), int(span[1]))
         specs.append(spec)
     if defaults:
         # The default right column reads as what it is, not as its angles.
+        # As a title rather than a bare relabel, so the recipe carries it
+        # and a revision of the default sheet keeps the word (ADR-157).
         specs[-1]["name"] = specs[-1]["label"] = "exploded"
+        specs[-1]["title"] = "exploded"
     return tuple(specs), ""
 
 
@@ -535,14 +655,179 @@ def choose_layout(layout, specs):
 
 def _boundaries(total, cells):
     """Shared integer boundaries: ``cells + 1`` positions spanning exactly
-    ``[0, total]``, so adjacent rects share an edge by construction."""
+    ``[0, total]``, so adjacent rects share an edge by construction.
 
-    return [int(round(index * total / float(cells)))
-            for index in range(cells + 1)]
+    ``cells`` is a count for equal tracks, or a sequence of positive
+    **weights** for unequal ones — the whole of the per-cell aspect support
+    (ADR-157). Weighted or not, the boundaries are one shared integer array
+    and the last one is exactly ``total``, so no-gap/no-overlap still holds
+    by construction rather than by rounding luck.
+    """
+
+    if isinstance(cells, int):
+        weights = [1.0] * max(1, cells)
+    else:
+        weights = [float(weight) if weight and weight > 0.0 else 1.0
+                   for weight in cells] or [1.0]
+    span = sum(weights)
+    out = [0]
+    running = 0.0
+    for weight in weights:
+        running += weight
+        out.append(int(round(running * total / span)))
+    out[-1] = int(total)
+    return out
+
+
+def _scaled(count, scale, indices=None, root=False):
+    """Per-cell track weights: 1.0 each, times the cells' aspect scales.
+
+    ``root`` splits the ask between the two axes (``sqrt``), which is what a
+    cell whose width *and* height are both free needs — a grid or mosaic
+    cell. A cell that owns only one axis (a full-height column, a row of a
+    stack) takes the scale whole.
+    """
+
+    indices = range(count) if indices is None else indices
+    out = []
+    for index in indices:
+        value = float(scale[index]) if scale else 1.0
+        out.append(math.sqrt(value) if root else value)
+    return out or [1.0]
+
+
+def _place_rects(template, count, size, hero, cells, aspect, scale):
+    """One placement pass. :func:`layout_rects` is this plus the refinement."""
+
+    def field(ratio):
+        if ratio is None:
+            return size, size
+        if ratio >= 1.0:
+            return size, max(8, int(round(size / ratio)))
+        return max(8, int(round(size * ratio))), size
+
+    if template == "mosaic" and cells:
+        rows = max(row + row_span - 1
+                   for row, _col, row_span, _col_span in cells)
+        columns = max(col + col_span - 1
+                      for _row, col, _row_span, col_span in cells)
+        # Only single-track cells steer a track: a spanning cell's ask is
+        # shared between tracks and would be an argument with its
+        # neighbours rather than a placement.
+        col_weights = [[] for _ in range(columns)]
+        row_weights = [[] for _ in range(rows)]
+        for index, (row, col, row_span, col_span) in enumerate(cells):
+            factor = math.sqrt(float(scale[index]) if scale else 1.0)
+            if col_span == 1:
+                col_weights[col - 1].append(factor)
+            if row_span == 1:
+                row_weights[row - 1].append(1.0 / factor)
+        columns_w = [sum(track) / len(track) if track else 1.0
+                     for track in col_weights]
+        rows_w = [sum(track) / len(track) if track else 1.0
+                  for track in row_weights]
+        width, height = field(aspect if aspect is not None
+                              else sum(columns_w) / sum(rows_w))
+        xs = _boundaries(width, columns_w)
+        ys = _boundaries(height, rows_w)
+        rects = []
+        for row, col, row_span, col_span in cells:
+            top0, top1 = ys[row - 1], ys[row - 1 + row_span]
+            rects.append((xs[col - 1], height - top1,
+                          xs[col - 1 + col_span] - xs[col - 1],
+                          top1 - top0))
+        return rects, width, height
+
+    if template == "single" or count == 1:
+        width, height = field(aspect)
+        return [(0, 0, width, height)], width, height
+
+    if template == "row":
+        weights = _scaled(count, scale)
+        width, height = field(aspect if aspect is not None
+                              else float(sum(weights)))
+        xs = _boundaries(width, weights)
+        return ([(xs[i], 0, xs[i + 1] - xs[i], height)
+                 for i in range(count)], width, height)
+
+    if template == "column":
+        weights = [1.0 / value for value in _scaled(count, scale)]
+        width, height = field(aspect if aspect is not None
+                              else 1.0 / sum(weights))
+        ys = _boundaries(height, weights)
+        # View order runs top to bottom; the buffer's y runs bottom-up.
+        return ([(0, height - ys[i + 1], width, ys[i + 1] - ys[i])
+                 for i in range(count)], width, height)
+
+    if template == "hero":
+        width, height = field(aspect)
+        hero = count - 1 if hero is None else int(hero)
+        others = [index for index in range(count) if index != hero]
+        hero_width = int(round(width * HERO_FRACTION
+                               * (float(scale[hero]) if scale else 1.0)))
+        # The left column must survive the hero's appetite, and so must the
+        # hero: both floors are the tiling's, not the look's.
+        hero_width = max(int(width * 0.25), min(int(width * 0.85),
+                                                hero_width))
+        left_width = width - hero_width
+        ys = _boundaries(height, [1.0 / value for value
+                                  in _scaled(count, scale, others)])
+        rects = [None] * count
+        rects[hero] = (left_width, 0, hero_width, height)
+        for slot, index in enumerate(others):
+            rects[index] = (0, height - ys[slot + 1], left_width,
+                            ys[slot + 1] - ys[slot])
+        return rects, width, height
+
+    if template == "triptych":
+        if count == 2:
+            # choose_layout refuses this; called directly, degrade to a row
+            # rather than tile two columns of a three-column field.
+            return _place_rects("row", count, size, hero, cells, aspect,
+                                scale)
+        # Three columns: views[:-2] stack down the left, views[-2] fills
+        # the centre at full height, views[-1] the right. The two
+        # full-height columns take their cells' ask whole; the left column
+        # is shared by its stack, so it takes the mean of theirs.
+        stacked = _scaled(count, scale, range(count - 2), root=True)
+        width, height = field(aspect)
+        xs = _boundaries(width, [sum(stacked) / len(stacked),
+                                 float(scale[count - 2]) if scale else 1.0,
+                                 float(scale[count - 1]) if scale else 1.0])
+        ys = _boundaries(height, [1.0 / value for value in stacked])
+        rects = [(0, height - ys[index + 1], xs[1],
+                  ys[index + 1] - ys[index])
+                 for index in range(count - 2)]
+        rects.append((xs[1], 0, xs[2] - xs[1], height))
+        rects.append((xs[2], 0, xs[3] - xs[2], height))
+        return rects, width, height
+
+    # grid: near-square, the partial last row widened to span (no hole).
+    width, height = field(aspect)
+    columns = int(math.ceil(math.sqrt(count)))
+    rows = int(math.ceil(count / float(columns)))
+    in_rows = []
+    placed = 0
+    for _row in range(rows):
+        in_row = min(columns, count - placed)
+        in_rows.append(list(range(placed, placed + in_row)))
+        placed += in_row
+    ys = _boundaries(height, [
+        sum(1.0 / value for value
+            in _scaled(count, scale, members, root=True))
+        / len(members) for members in in_rows])
+    rects = []
+    for row, members in enumerate(in_rows):
+        xs = _boundaries(width, _scaled(count, scale, members, root=True))
+        top0, top1 = ys[row], ys[row + 1]
+        for cell, _index in enumerate(members):
+            rects.append((xs[cell], height - top1, xs[cell + 1] - xs[cell],
+                          top1 - top0))
+    return rects, width, height
 
 
 def layout_rects(template, count, max_size, hero=None, cells=None,
-                 aspect=None):
+                 aspect=None, aspects=None):
     """``(rects, width, height)`` — one ``(x, y, w, h)`` per view, in view
     order, ``y`` measured from the BOTTOM (the buffer layout).
 
@@ -559,103 +844,50 @@ def layout_rects(template, count, max_size, hero=None, cells=None,
     shaped like its grid. ``hero`` places the flagged view's cell: the
     right :data:`HERO_FRACTION` of the field at full height, the small
     views stacked top-down in the left column.
+
+    ``aspects`` is the per-cell ask (ADR-157): one width:height ratio per
+    view, ``None`` where the cell did not ask. It is honoured by
+    *measurement*, not by algebra — place the cells, see what shape each
+    one came out, scale its track toward what it wanted, place again
+    (:data:`ASPECT_PASSES` times). That converges on the ask when one cell
+    asks and splits the difference when several do, which is the honest
+    behaviour for a **fixed** sheet: the requests compete for one field.
+    An ask that would starve a neighbour below 8 px is dropped whole, and
+    the unweighted layout stands — a sliver is not a panel.
     """
 
     size = max(8, int(max_size))
     count = max(1, int(count))
-
-    def field(ratio):
-        if ratio is None:
-            return size, size
-        if ratio >= 1.0:
-            return size, max(8, int(round(size / ratio)))
-        return max(8, int(round(size * ratio))), size
-
-    if template == "mosaic" and cells:
-        rows = max(row + row_span - 1
-                   for row, _col, row_span, _col_span in cells)
-        columns = max(col + col_span - 1
-                      for _row, col, _row_span, col_span in cells)
-        width, height = field(aspect if aspect is not None
-                              else columns / float(rows))
-        xs = _boundaries(width, columns)
-        ys = _boundaries(height, rows)
-        rects = []
-        for row, col, row_span, col_span in cells:
-            top0, top1 = ys[row - 1], ys[row - 1 + row_span]
-            rects.append((xs[col - 1], height - top1,
-                          xs[col - 1 + col_span] - xs[col - 1],
-                          top1 - top0))
-        return rects, width, height
-
     if template == "single" or count == 1:
-        width, height = field(aspect)
-        return [(0, 0, width, height)], width, height
+        # One cell IS the field, so its ask is the sheet's shape — but only
+        # where the sheet did not state one; an explicit sheet aspect wins.
+        if aspect is None and aspects and aspects[0]:
+            aspect = float(aspects[0])
+        return _place_rects("single", count, size, hero, cells, aspect, None)
 
-    if template == "row":
-        width, height = field(aspect if aspect is not None
-                              else float(count))
-        xs = _boundaries(width, count)
-        return ([(xs[i], 0, xs[i + 1] - xs[i], height)
-                 for i in range(count)], width, height)
+    plain = _place_rects(template, count, size, hero, cells, aspect, None)
+    if not aspects or not any(aspects):
+        return plain
 
-    if template == "column":
-        width, height = field(aspect if aspect is not None
-                              else 1.0 / count)
-        ys = _boundaries(height, count)
-        # View order runs top to bottom; the buffer's y runs bottom-up.
-        return ([(0, height - ys[i + 1], width, ys[i + 1] - ys[i])
-                 for i in range(count)], width, height)
-
-    if template == "hero":
-        width, height = field(aspect)
-        hero = count - 1 if hero is None else int(hero)
-        hero_width = int(round(width * HERO_FRACTION))
-        left_width = width - hero_width
-        ys = _boundaries(height, count - 1)
-        rects = [None] * count
-        rects[hero] = (left_width, 0, hero_width, height)
-        slot = 0
+    rects, width, height = plain
+    scale = [1.0] * count
+    for _pass in range(ASPECT_PASSES):
+        adjust = []
         for index in range(count):
-            if index == hero:
+            want = aspects[index] if index < len(aspects) else None
+            _x, _y, cell_w, cell_h = rects[index]
+            if not want or cell_w <= 0 or cell_h <= 0:
+                adjust.append(1.0)
                 continue
-            rects[index] = (0, height - ys[slot + 1], left_width,
-                            ys[slot + 1] - ys[slot])
-            slot += 1
-        return rects, width, height
-
-    if template == "triptych":
-        if count == 2:
-            # choose_layout refuses this; called directly, degrade to a row
-            # rather than tile two columns of a three-column field.
-            return layout_rects("row", count, size, aspect=aspect)
-        # Three equal columns: views[:-2] stack down the left, views[-2]
-        # fills the centre at full height, views[-1] the right.
-        width, height = field(aspect)
-        xs = _boundaries(width, 3)
-        ys = _boundaries(height, count - 2)
-        rects = [(0, height - ys[index + 1], xs[1],
-                  ys[index + 1] - ys[index])
-                 for index in range(count - 2)]
-        rects.append((xs[1], 0, xs[2] - xs[1], height))
-        rects.append((xs[2], 0, xs[3] - xs[2], height))
-        return rects, width, height
-
-    # grid: near-square, the partial last row widened to span (no hole).
-    width, height = field(aspect)
-    columns = int(math.ceil(math.sqrt(count)))
-    rows = int(math.ceil(count / float(columns)))
-    ys = _boundaries(height, rows)
-    rects = []
-    placed = 0
-    for row in range(rows):
-        in_row = min(columns, count - placed)
-        xs = _boundaries(width, in_row)
-        top0, top1 = ys[row], ys[row + 1]
-        for cell in range(in_row):
-            rects.append((xs[cell], height - top1, xs[cell + 1] - xs[cell],
-                          top1 - top0))
-            placed += 1
+            adjust.append(float(want) / (cell_w / float(cell_h)))
+        if all(abs(value - 1.0) < 0.02 for value in adjust):
+            break
+        scale = [max(1.0 / MAX_CELL_SCALE, min(MAX_CELL_SCALE, was * now))
+                 for was, now in zip(scale, adjust)]
+        rects, width, height = _place_rects(template, count, size, hero,
+                                            cells, aspect, scale)
+    if any(rect[2] < 8 or rect[3] < 8 for rect in rects):
+        return plain
     return rects, width, height
 
 
@@ -772,17 +1004,22 @@ def param_rows(specs, values):
     return tuple(rows)
 
 
-def params_panel_layout(count, width, height):
+def params_panel_layout(count, width, height, top_pad=0.0):
     """How a params cell divides into rows: ``{"pad", "row_height",
     "text_size", "shown", "more"}``.
 
     ``shown`` rows are drawn; when they do not all fit, the last visible
     slot becomes a ``+N more`` line and ``more`` counts what it covers.
+
+    ``top_pad`` is the band the sheet dressing draws this cell's label in.
+    It was missing until ADR-157 and a windowed probe showed what that
+    costs: in a short cell the first slider row is drawn *through* the word
+    "parameters".
     """
 
     width, height = int(width), int(height)
     pad = max(10, min(width, height) // 18)
-    usable = max(1.0, height - 2.0 * pad)
+    usable = max(1.0, height - 2.0 * pad - float(top_pad))
     row_height = max(24.0, min(46.0, usable / max(1, int(count))))
     fits = max(0, int(usable // row_height))
     shown = min(int(count), fits)
@@ -791,6 +1028,85 @@ def params_panel_layout(count, width, height):
     return {"pad": pad, "row_height": row_height,
             "text_size": max(9.0, min(14.0, row_height * 0.38)),
             "shown": shown, "more": int(count) - shown}
+
+
+def _break_word(word, measure, max_width):
+    """One over-wide word into pieces that fit. A part number with no spaces
+    in it must not run off the cell."""
+
+    parts = []
+    rest = str(word)
+    while rest and measure(rest) > max_width:
+        cut = len(rest) - 1
+        while cut > 1 and measure(rest[:cut]) > max_width:
+            cut -= 1
+        parts.append(rest[:cut])
+        rest = rest[cut:]
+    if rest:
+        parts.append(rest)
+    return parts
+
+
+def wrap_text(text, measure, max_width, max_lines=None):
+    """Word-wrap for a text panel: ``(lines, dropped)`` (ADR-157).
+
+    ``measure`` is a callable returning the drawn width of a string, so the
+    pure half wraps against real glyph widths without importing ``blf`` —
+    the bpy half passes a blf measure, a test passes ``len``. Blank lines
+    between paragraphs are kept (they are the agent's paragraph breaks);
+    trailing ones are not. Over ``max_lines``, the excess is *counted*
+    rather than silently lost, so the caption can say what did not fit.
+    """
+
+    lines = []
+    for paragraph in str(text or "").replace("\r\n", "\n").split("\n"):
+        words = paragraph.split()
+        if not words:
+            lines.append("")
+            continue
+        current = ""
+        for word in words:
+            pieces = ((word,) if measure(word) <= max_width
+                      else _break_word(word, measure, max_width))
+            for piece in pieces:
+                candidate = piece if not current else current + " " + piece
+                if current and measure(candidate) > max_width:
+                    lines.append(current)
+                    current = piece
+                else:
+                    current = candidate
+        if current:
+            lines.append(current)
+    while lines and not lines[-1]:
+        lines.pop()
+
+    dropped = 0
+    if max_lines is not None and len(lines) > max_lines:
+        dropped = len(lines) - max_lines
+        lines = lines[:max(0, max_lines)]
+    return tuple(lines), dropped
+
+
+def text_panel_layout(width, height, top_pad=0.0):
+    """How a text cell divides: ``{"pad", "text_size", "line_height",
+    "max_lines", "text_width"}``.
+
+    ``params_panel_layout``'s shape and its padding, for the same reason:
+    the two panels sit side by side on one sheet and must read as one
+    design. ``top_pad`` is the band the cell's own title occupies, drawn by
+    the sheet dressing rather than by the tile.
+    """
+
+    width, height = int(width), int(height)
+    pad = max(10, min(width, height) // 18)
+    text_size = max(9.0, min(15.0, min(width, height) / 24.0))
+    line_height = text_size * 1.45
+    usable = max(0.0, height - 2.0 * pad - float(top_pad))
+    return {"pad": pad,
+            "text_size": text_size,
+            "line_height": line_height,
+            "max_lines": max(1, int(usable // line_height)),
+            "text_width": max(1.0, width - 2.0 * pad)}
 
 
 def zone_grid(width, height):
@@ -915,6 +1231,10 @@ def cell_legend(specs, rects):
 
         if spec["view"] == "params":
             described = "parameters panel"
+        elif spec["view"] == "text":
+            body = " ".join(str(spec.get("text") or "").split())
+            described = "text panel, {!r}".format(
+                body if len(body) <= 48 else body[:47] + "…")
         elif spec["view"] == "custom":
             described = "custom {:s} (azimuth {:g} deg, elevation {:g} deg)".format(
                 "ortho" if spec["ortho"] else "perspective",
@@ -937,8 +1257,14 @@ def cell_legend(specs, rects):
             if section.get("flip"):
                 note += ", flipped"
             notes.append(note)
-        if spec["view"] != "params" and callouts_active(spec):
+        if spec["view"] not in PANEL_VIEWS and callouts_active(spec):
             notes.append("parts named")
+        if spec.get("aspect"):
+            # A per-cell aspect is a request against a fixed sheet, so the
+            # caption reports what was drawn, not what was asked. That is
+            # the agent's feedback channel for iterating on a shape.
+            notes.append("asked {:s}, drawn {:s}".format(
+                _ratio_text(spec["aspect"]), _ratio_text(w / float(h))))
         sentence = "cell {:d} ({:s}): {:s}".format(index + 1, where,
                                                    described)
         if notes:
@@ -947,11 +1273,30 @@ def cell_legend(specs, rects):
     return "; ".join(parts)
 
 
-def spec_meta(spec):
-    """The JSON-safe record of one spec, for ``put_blueprint``'s ``meta``."""
+def _ratio_text(ratio):
+    """A width:height ratio as a person writes it."""
 
-    if spec["view"] == "params":
-        meta = {"view": "params", "label": spec["label"]}
+    ratio = float(ratio)
+    if ratio >= 1.0:
+        return "{:g}:1".format(round(ratio, 2))
+    return "1:{:g}".format(round(1.0 / ratio, 2))
+
+
+def spec_meta(spec):
+    """The JSON-safe record of one spec, for ``put_blueprint``'s ``meta``.
+
+    The *record* of what was drawn, which is not the same document as
+    :func:`recipe_view`'s *input* — a text panel records how much text it
+    carried and the recipe carries the text itself, so the two live in one
+    ``meta`` without storing a panel's words twice.
+    """
+
+    if spec["view"] in PANEL_VIEWS:
+        meta = {"view": spec["view"], "label": spec["label"]}
+        if spec["view"] == "text":
+            meta["chars"] = len(str(spec.get("text") or ""))
+        if spec.get("aspect"):
+            meta["aspect"] = _ratio_text(spec["aspect"])
         if spec.get("cell") is not None:
             meta["cell"] = list(spec["cell"])
             meta["span"] = list(spec["span"])
@@ -964,6 +1309,8 @@ def spec_meta(spec):
         "label": spec["label"],
         "projection": "ortho" if spec["ortho"] else "perspective",
     }
+    if spec.get("aspect"):
+        meta["aspect"] = _ratio_text(spec["aspect"])
     if spec.get("callouts") is not None:
         meta["callouts"] = bool(spec["callouts"])
     if spec["view"] == "custom":
@@ -986,6 +1333,93 @@ def spec_meta(spec):
     if spec.get("hero"):
         meta["hero"] = True
     return meta
+
+
+def recipe_view(spec):
+    """One validated spec back as the **input** object that produced it.
+
+    The half of ADR-157 that makes a sheet revisable: a stored recipe is
+    only worth storing if feeding it back yields the same sheet, so this
+    emits nothing but :data:`SPEC_KEYS` and
+    ``normalize_views(recipe_views(specs)) == specs`` is a test rather than
+    a hope. ``hide`` is dropped where ``only`` is present, because the two
+    together are refused and ``hide`` is ``only``'s derived complement.
+    """
+
+    out = {"view": spec["view"]}
+    if spec.get("title"):
+        out["title"] = spec["title"]
+    if spec.get("aspect"):
+        out["aspect"] = _ratio_text(spec["aspect"])
+    if spec.get("cell") is not None:
+        out["cell"] = list(spec["cell"])
+        out["span"] = list(spec["span"])
+    if spec.get("hero"):
+        out["hero"] = True
+
+    if spec["view"] in PANEL_VIEWS:
+        if spec["view"] == "text":
+            out["text"] = str(spec.get("text") or "")
+        return out
+
+    out["projection"] = "ortho" if spec["ortho"] else "perspective"
+    if spec["view"] == "custom":
+        out["azimuth"] = spec["azimuth"]
+        out["elevation"] = spec["elevation"]
+    if spec.get("only"):
+        out["only"] = list(spec["only"])
+    elif spec.get("hide"):
+        out["hide"] = list(spec["hide"])
+    if spec.get("explode") is not None:
+        out["explode"] = spec["explode"]
+    if spec.get("callouts") is not None:
+        out["callouts"] = bool(spec["callouts"])
+    section = spec.get("section")
+    if section == "off":
+        out["section"] = "off"
+    elif isinstance(section, dict):
+        out["section"] = section["axis"]
+        if section.get("offset_mm") is not None:
+            out["section_offset_mm"] = section["offset_mm"]
+        if section.get("flip"):
+            out["section_flip"] = True
+    return out
+
+
+def recipe_views(specs):
+    return [recipe_view(spec) for spec in specs]
+
+
+def sheet_recipe(specs, theme, layout, aspect, max_size):
+    """Everything ``make_blueprint`` needs to draw this sheet again."""
+
+    return {
+        "theme": str(theme or ""),
+        "layout": str(layout or "auto"),
+        "aspect": str(aspect or ""),
+        "max_size": int(max_size),
+        "views": recipe_views(specs),
+    }
+
+
+def trim_meta(meta, cap):
+    """``meta`` down to ``cap`` bytes of JSON, recipe last out the door.
+
+    The engine refuses an oversized ``meta`` and it is right to (the index
+    must stay an index), but a refusal *after* the sheet is drawn wastes the
+    render. So the optional records go first — the tile rectangles, then the
+    per-cell record — and the **recipe** is what is defended, because
+    without it the sheet stops being revisable.
+    """
+
+    import json
+
+    trimmed = dict(meta)
+    for key in ("rects", "views"):
+        if len(json.dumps(trimmed).encode("utf-8")) <= cap:
+            return trimmed
+        trimmed.pop(key, None)
+    return trimmed
 
 
 # -- the bpy half -----------------------------------------------------------
@@ -1292,6 +1726,8 @@ def validate_against_model(scene, specs):
         return ("views[{:d}].section: this file predates the section view; "
                 "save and reopen it.".format(wants_section[0]))
 
+    # A text panel needs nothing from the scene — it is the agent's own
+    # words — so it is deliberately absent from this function.
     wants_params = [index for index, spec in enumerate(specs)
                     if spec["view"] == "params"]
     if wants_params:
@@ -1422,7 +1858,7 @@ def _shorten(font_id, text, size, max_width):
     return text + "…"
 
 
-def _draw_params_tile(width, height, rows, colors, background):
+def _draw_params_tile(width, height, rows, colors, background, top_pad=0.0):
     """One params cell as a flat FLOAT RGBA buffer, tile-shaped.
 
     The declared parameters as labelled slider rows: label left, current
@@ -1437,8 +1873,9 @@ def _draw_params_tile(width, height, rows, colors, background):
     from mathutils import Matrix
 
     width, height = int(width), int(height)
-    layout = params_panel_layout(len(rows), width, height)
+    layout = params_panel_layout(len(rows), width, height, top_pad)
     pad = float(layout["pad"])
+    top_edge = height - pad - float(top_pad)
     row_h = layout["row_height"]
     text_size = layout["text_size"]
     line = tuple(colors["line"])
@@ -1463,7 +1900,7 @@ def _draw_params_tile(width, height, rows, colors, background):
             inner_right = width - pad
             for index in range(layout["shown"]):
                 row = rows[index]
-                top = height - pad - index * row_h
+                top = top_edge - index * row_h
                 baseline = top - text_size * 1.25
                 track_y = top - row_h * 0.72
                 label = _shorten(font_id, row["label"], text_size,
@@ -1494,6 +1931,63 @@ def _draw_params_tile(width, height, rows, colors, background):
                                          'FLOAT')
         out.dimensions = width * height * 4
         return list(out)
+    finally:
+        offscreen.free()
+
+
+def _draw_text_tile(width, height, text, colors, background, top_pad=0.0):
+    """One text cell as a flat FLOAT RGBA buffer, tile-shaped (ADR-157).
+
+    Returns ``(pixels, dropped)``. ``_draw_params_tile``'s recipe exactly —
+    one offscreen, the sampled display-space ground so the cell matches the
+    rendered tiles, the bundled mono font — over the agent's own words,
+    wrapped against the real glyph widths. ``top_pad`` reserves the band the
+    sheet dressing draws this cell's title in.
+    """
+
+    import gpu
+    from mathutils import Matrix
+
+    width, height = int(width), int(height)
+    layout = text_panel_layout(width, height, top_pad)
+    font_id = _font()
+    text_size = layout["text_size"]
+    lines, dropped = wrap_text(
+        text, lambda item: _text_width(font_id, item, text_size),
+        layout["text_width"], layout["max_lines"])
+    if dropped:
+        # Spend the last line saying so, rather than ending mid-thought.
+        dropped += 1                      # the line the notice replaces
+        lines = tuple(lines[:-1]) + ("+{:d} more lines".format(dropped),)
+    line = tuple(colors["line"])
+    background = tuple(background)[:3] + (1.0,)
+
+    offscreen = gpu.types.GPUOffScreen(width, height)
+    try:
+        with offscreen.bind():
+            framebuffer = gpu.state.active_framebuffer_get()
+            framebuffer.clear(color=background)
+            gpu.state.blend_set('ALPHA')
+            gpu.state.viewport_set(0, 0, width, height)
+            gpu.matrix.load_matrix(Matrix.Identity(4))
+            gpu.matrix.load_projection_matrix(Matrix((
+                (2.0 / width, 0.0, 0.0, -1.0),
+                (0.0, 2.0 / height, 0.0, -1.0),
+                (0.0, 0.0, -1.0, 0.0),
+                (0.0, 0.0, 0.0, 1.0))))
+
+            top = height - layout["pad"] - float(top_pad)
+            for index, item in enumerate(lines):
+                if not item:
+                    continue
+                baseline = top - (index + 1) * layout["line_height"]
+                _draw_text(font_id, item, layout["pad"], baseline,
+                           text_size, line, 0.85)
+
+            gpu.state.blend_set('NONE')
+            out = framebuffer.read_color(0, 0, width, height, 4, 0, 'FLOAT')
+        out.dimensions = width * height * 4
+        return list(out), dropped
     finally:
         offscreen.free()
 

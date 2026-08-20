@@ -853,8 +853,8 @@ def test_cadexd_stores_and_serves_a_blueprint() -> None:
         # The entry keys the shell and the CLI read; a drifted key fails
         # here rather than at a user.
         assert set(entry) == {
-            "ordinal", "revision", "digest", "file", "bytes", "sha256",
-            "created_at", "label", "outputs", "meta",
+            "ordinal", "name", "version", "revision", "digest", "file",
+            "bytes", "sha256", "created_at", "label", "outputs", "meta",
         }, sorted(entry)
         assert entry["revision"] == accepted_revision, entry
         assert entry["outputs"] == ["plate"], entry
@@ -878,6 +878,44 @@ def test_cadexd_stores_and_serves_a_blueprint() -> None:
         missing = client.request(
             "inspect", {"scope": "blueprint", "target": "no-such"})
         assert missing["ok"] is True and missing["value"]["ok"] is False, missing
+
+        # ...and a NAMED sheet is a thing you come back to (ADR-157): the
+        # name is the identity, storing again under it is the next version,
+        # and the recipe rides `meta` so the shell can re-render from it.
+        recipe = {"theme": "grey", "layout": "row",
+                  "views": [{"view": "front"}, {"view": "text",
+                                                "text": "deburr all edges"}]}
+        named = client.request(
+            "put_blueprint",
+            {"source_path": str(sheet), "name": "Gearbox Overview v1",
+             "meta": {"recipe": recipe}},
+        )
+        assert named["ok"] is True, named
+        assert named["name"] == "0002-gearbox-overview-v1.png", named
+        first_named = named["blueprints"][-1]
+        assert first_named["name"] == "Gearbox Overview v1", first_named
+        assert first_named["version"] == 1, first_named
+        # An omitted label takes the name, so a named sheet captions itself.
+        assert first_named["label"] == "Gearbox Overview v1", first_named
+
+        revised = client.request(
+            "put_blueprint",
+            {"source_path": str(sheet), "name": "gearbox overview v1",
+             "meta": {"recipe": recipe}},
+        )
+        assert revised["ok"] is True, revised
+        assert revised["blueprints"][-1]["version"] == 2, revised
+
+        by_name = client.request(
+            "inspect", {"scope": "blueprint", "target": "gearbox overview v1"})
+        assert by_name["ok"] is True, by_name
+        served = by_name["value"]["blueprint"]
+        assert served["version"] == 2, "a name serves its newest version"
+        assert served["meta"]["recipe"] == recipe, served
+        pinned = client.request(
+            "inspect",
+            {"scope": "blueprint", "target": "gearbox overview v1@1"})
+        assert pinned["value"]["blueprint"]["version"] == 1, pinned
 
         done = client.request("shutdown", timeout=60)
         assert done["ok"] is True

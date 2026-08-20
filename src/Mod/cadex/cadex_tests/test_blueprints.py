@@ -66,10 +66,11 @@ def test_store_indexes_a_sheet_against_the_accepted_pair(tmp_path: Path) -> None
 
     # The entry keys are the contract inspect and the shell both read.
     assert set(entry) == {
-        "ordinal", "revision", "digest", "file", "bytes", "sha256",
-        "created_at", "label", "outputs", "meta",
+        "ordinal", "name", "version", "revision", "digest", "file", "bytes",
+        "sha256", "created_at", "label", "outputs", "meta",
     }
     assert entry["ordinal"] == 1
+    assert entry["name"] == "" and entry["version"] == 1
     assert entry["revision"] == REVISION
     assert entry["digest"] == DIGEST
     assert entry["file"] == f"0001-{REVISION[:12]}.png"
@@ -148,6 +149,92 @@ def test_resolve_by_ordinal_revision_prefix_and_filename(tmp_path: Path) -> None
     assert blueprints.resolve_blueprint(root, REVISION[:8]) is None
     assert blueprints.resolve_blueprint(root, "") is None
     assert blueprints.resolve_blueprint(root, "no-such") is None
+
+
+def test_a_name_versions_the_sheet_and_captions_it(tmp_path: Path) -> None:
+    """ADR-157: a name is an identity, so storing again revises it."""
+
+    root = _accepted_project(tmp_path)
+    source = _png(tmp_path)
+
+    first = blueprints.store_project_blueprint(
+        root, str(source), name="  Gearbox   Overview v1 ")
+    assert first["name"] == "Gearbox Overview v1"
+    assert first["version"] == 1
+    # The name collapses to one line, and captions the sheet by default.
+    assert first["label"] == "Gearbox Overview v1"
+    # The slug is what an exported directory reads as.
+    assert first["file"] == "0001-gearbox-overview-v1.png"
+    assert (root / "blueprints" / first["file"]).is_file()
+
+    second = blueprints.store_project_blueprint(
+        root, str(source), label="now with the housing off",
+        name="gearbox overview v1")
+    assert second["version"] == 2, "the same name is the next version"
+    assert second["label"] == "now with the housing off"
+    assert second["file"] == "0002-gearbox-overview-v1.png"
+
+    other = blueprints.store_project_blueprint(root, str(source), name="detail")
+    assert other["version"] == 1, "a different name starts its own count"
+
+    # Resolution: the newest version of a name, or a pinned one.
+    assert blueprints.resolve_blueprint(root, "gearbox overview v1") == second
+    assert blueprints.resolve_blueprint(root, "GEARBOX OVERVIEW V1") == second
+    assert blueprints.resolve_blueprint(root, "gearbox overview v1@1") == first
+    assert blueprints.resolve_blueprint(root, "gearbox overview v1@9") is None
+    assert blueprints.resolve_blueprint(root, "detail") == other
+    assert blueprints.resolve_blueprint(root, 1) == first
+
+
+def test_a_name_is_refused_when_it_is_not_one_line(tmp_path: Path) -> None:
+    root = _accepted_project(tmp_path)
+    source = _png(tmp_path)
+
+    with pytest.raises(ValueError, match="the cap is 60"):
+        blueprints.store_project_blueprint(
+            root, str(source), name="x" * (blueprints.MAX_NAME_CHARS + 1))
+    with pytest.raises(ValueError, match="one line of plain text"):
+        blueprints.store_project_blueprint(root, str(source), name="a\x07b")
+    assert blueprints.read_blueprints(root) == []
+
+    # A name of pure punctuation has no slug; the file falls back to the
+    # revision prefix rather than becoming "0001-.png".
+    punctuation = blueprints.store_project_blueprint(
+        root, str(source), name="!!!")
+    assert punctuation["file"] == f"0001-{REVISION[:12]}.png"
+    assert blueprints.resolve_blueprint(root, "!!!") == punctuation
+
+
+def test_the_prune_never_drops_a_named_sheets_newest_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A drawing you named is one you meant to come back to (ADR-157)."""
+
+    monkeypatch.setattr(blueprints, "BLUEPRINT_LIMIT", 3)
+    root = _accepted_project(tmp_path)
+    source = _png(tmp_path)
+
+    kept = blueprints.store_project_blueprint(root, str(source), name="keep me")
+    superseded = blueprints.store_project_blueprint(
+        root, str(source), name="revised")
+    current = blueprints.store_project_blueprint(
+        root, str(source), name="revised")
+    for _ in range(6):
+        blueprints.store_project_blueprint(root, str(source))
+
+    entries = blueprints.read_blueprints(root)
+    names = [(entry["name"], entry["version"]) for entry in entries]
+    assert ("keep me", 1) in names, "the only version of a name survives"
+    assert ("revised", 2) in names and ("revised", 1) not in names, (
+        "only the newest version of a name is protected"
+    )
+    assert [entry["ordinal"] for entry in entries][-3:] == [7, 8, 9]
+    assert blueprints.resolve_blueprint(root, "keep me") == kept
+    assert blueprints.resolve_blueprint(root, "revised") == current
+    assert blueprints.resolve_blueprint(root, superseded["file"]) is None
+
+    on_disk = {path.name for path in (root / "blueprints").glob("*.png")}
+    assert on_disk == {entry["file"] for entry in entries}
 
 
 def test_a_broken_index_reads_as_empty(tmp_path: Path) -> None:

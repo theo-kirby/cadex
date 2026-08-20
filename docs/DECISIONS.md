@@ -16307,3 +16307,127 @@ print. The box is now drawn on the way out of that branch as well, through
 one shared `_draw_printable`. Nothing else in that panel was moved — the
 cage, section and exploded-view boxes still sit behind the early return, and
 whether that is right for them is a separate question.
+
+## ADR-157 — a blueprint has a name, a cell has a shape, and a panel can hold words (2026-08-20)
+
+**Decision.** Three additions to the composed blueprint sheet (ADR-151,
+ADR-152, ADR-153), from one owner ask: *make a blueprint called something,
+look at it, come back and change one view.*
+
+- **A sheet has a `name`, and a name is an identity.** `put_blueprint`
+  gains one optional string. Rendering again under a name that already
+  exists stores the next **version** of that drawing rather than an
+  unrelated row; `inspect scope=blueprint` resolves a name to its newest
+  version (`name@2` pins one); the prune keeps each name's newest version
+  past `BLUEPRINT_LIMIT`; and the store filename carries the name's slug,
+  so `export --blueprints` produces a directory that reads as the drawings
+  it holds instead of a column of revision prefixes.
+- **`make_blueprint` gains `based_on`.** It reads a stored sheet's
+  **recipe** out of the project store and renders it again with this call's
+  arguments on top — pass only what changes. The recipe is
+  `cadex_sheet.sheet_recipe`: theme, layout, aspect, max_size, and the
+  views in *input* form.
+- **Every cell takes an `aspect` and a `title`, and `{"view": "text"}` is a
+  panel of the agent's own words** (up to 500 characters, newlines as
+  paragraph breaks), drawn by `_draw_text_tile` on the params panel's
+  recipe exactly.
+
+**What was missing, in the owner's words.** An exploded diagram is long and
+skinny; drawn in a square cell it is a thin model in a field of empty
+ground. And a sheet that cannot be revised is not a drawing, it is a
+screenshot: `make_blueprint` could compose anything and remember nothing, so
+"the one I made yesterday, but with the section instead of the top view"
+meant restating all five cells from scratch.
+
+**Why the recipe lives in `meta` and not in a new op.** ADR-151 put the view
+specs in `put_blueprint`'s free-form `meta` to avoid a protocol change, and
+that decision is what made this one cheap: the recipe is more of the same
+document, read back through the `inspect scope=blueprint` that already
+served entries. The **one** protocol change is `name`, and it is a protocol
+change rather than another `meta` key because the engine acts on it —
+resolution and pruning are the store's business, and a store that had to
+parse `meta` to know what to keep would be reading the shell's private
+record.
+
+**Why the recipe is the *drawn* specs rather than the raw input.** It is
+built from the normalized specs after the layout resolved, so `layout:
+"auto"` stores as `triptych` and an omitted `views` stores as the five
+default cells. That is what makes "change one cell of the default sheet"
+work: the agent asks for the default, gets a recipe with five cells in it,
+and edits one. The property that has to hold for any of it to be true is
+`normalize_views(recipe_views(specs)) == specs`, and it is a test rather
+than a hope.
+
+**Why a per-cell aspect is measured rather than solved.** The honest
+statement of the problem is that the cells compete for one fixed field, so
+an exact solve is over-determined the moment two cells ask. So
+`layout_rects` places the cells, *measures* what shape each came out, scales
+the track that cell owns toward what it asked for, and places again — three
+passes. One asker converges (a 1:3 ask on a triptych column lands within
+0.05 of 1:3, and on an `auto` sheet a row meets its asks outright); several
+askers split the difference; an impossible ask stops at
+`MAX_CELL_SCALE`. The caption then reports **the shape each cell was drawn
+at**, which turns the whole thing into something the agent can iterate on by
+looking, exactly as it iterates on the composition. The tiling invariant is
+untouched: `_boundaries` takes weights instead of a count and its last
+boundary is still exactly `total`, so no-gap/no-overlap still holds by
+construction — pinned by the same paint-counting the templates get, now over
+random asks at awkward sizes.
+
+**What this does not do.** There is no per-cell *patch* surface: revising
+one cell of a five-cell sheet means passing the five-cell `views` list back
+with one entry changed, and the recipe the agent reads is what it edits. A
+patch language (`{"at": 3, "set": {...}}`) is a second spelling of `views`
+with its own semantics to get wrong, for a case the model handles by
+editing JSON. A text panel is also not a rich-text surface — one size, one
+colour, wrapped against real glyph widths, overflow counted into a `+N more
+lines` row rather than clipped silently.
+
+**Cost.** Engine: `name`/`version` on the blueprint entry, `normalize_name`
+and `name_slug`, name-aware `resolve_blueprint`, a name-protecting prune,
+`MAX_META_BYTES` 8 KB → 16 KB (the recipe rides there). Protocol: one
+optional arg. Shell: `cadex_sheet` gains `parse_aspect`, weighted
+`_boundaries`, `_place_rects` + the refinement loop in `layout_rects`,
+`wrap_text`/`text_panel_layout`/`_draw_text_tile`, `recipe_view(s)`,
+`sheet_recipe`, `trim_meta`, and `PANEL_VIEWS`, plus a `top_pad` on
+`params_panel_layout`; `capture.render_blueprint` passes the per-cell asks
+and draws both panel kinds; `tools.py` gains `based_on` and three per-view
+keys; `cadex_backend` gains `read_blueprint`. No UI diff, no new op, and
+nothing added to the inherited Blender tree.
+
+**One thing the plan did not predict.** A windowed probe found the
+**parameters** panel drawing its first slider row *through* the word
+"parameters" — the cell's own label is drawn over the tile by the sheet
+dressing, and `_draw_params_tile` never knew about that band.
+`params_panel_layout` now takes the same `top_pad` the text panel does. It is
+an ADR-153 defect rather than one of this change's, fixed here because this
+change is what made it visible and because the fix is the parameter the text
+panel needed anyway.
+
+**Verified.** `pixi run python -m pytest src/Mod/cadex/cadex_tests`: 1902
+passed, 33 skipped, including four new blueprint-store tests and a named
+round trip over the wire in `test_cadexd_lifecycle`. The **packaged** gate
+against a freshly staged payload: 14 passed. `pixi run python -m pytest
+cli/tests`: 83 passed. `tests/python/bl_mesh_agent.py`: all passed, including
+the new `test_blueprint_sheets_are_named_shaped_and_revisable` — weighted
+tiling paint-counted over random asks across five templates, the 1:3
+convergence measured, and the recipe round-trip asserted on a composed sheet,
+on the default sheet and on a mosaic. `pixi run gate`: `"ok": true`, with the
+new refusals landing before the headless one.
+
+The rest is a **windowed probe** against the built bundle, because the gate
+runs `--background` and this feature is pixels (ADR-124's precedent; probes
+are not committed). Five sheets against a three-output parametric model: a
+named sheet with a titled cell, a text panel and two shaped cells; the same
+name re-rendered with `based_on` and *only* a theme passed, which came back
+as version 2 with every view inherited; a third version with the top view
+swapped for the parameters panel; the unnamed default sheet; and that default
+sheet re-based by ordinal under a new name. Store filenames came out
+`0001-probe-sheet-v1.png … 0005-default-plus-notes.png`, versions 1/2/3 under
+one name, and each recipe stored at ~1.3 KB. The text panel drew its heading,
+its paragraph break and a hyphenated part number wrapped at the real glyph
+widths. The measured shapes are the honest ones: the full-height column asked
+1:3 and was **drawn 1:2.97**; the text panel in the shared left stack asked
+1:2 and was **drawn 1.31:1**, because in a three-cell column the width is not
+that cell's to spend. Both numbers are in the caption the agent reads back,
+and the tool's own description now says where to put an extreme shape.

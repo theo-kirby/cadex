@@ -2105,7 +2105,7 @@ def put_asset(scene, source_path, name=""):
     return _client(project_root(scene)).request("put_asset", args)
 
 
-def put_blueprint(scene, source_path, label="", meta=None):
+def put_blueprint(scene, source_path, label="", meta=None, name=""):
     """Store one rendered blueprint sheet in the project store. Payload
     verbatim.
 
@@ -2113,6 +2113,9 @@ def put_blueprint(scene, source_path, label="", meta=None):
     docs/ARCHITECTURE.md), for a file that is a *record* rather than an
     input: the engine attaches it to the accepted revision and the reply
     says which one (ADR-150).
+
+    ``name`` is the sheet's identity, not its caption: storing again under
+    a name that exists appends the next version of that drawing (ADR-157).
     """
     ok, report = ensure_open(scene)
     if not ok:
@@ -2120,9 +2123,36 @@ def put_blueprint(scene, source_path, label="", meta=None):
     args = {"source_path": str(source_path)}
     if label:
         args["label"] = str(label)
+    if name:
+        args["name"] = str(name)
     if isinstance(meta, dict) and meta:
         args["meta"] = meta
     return _client(project_root(scene)).request("put_blueprint", args)
+
+
+def read_blueprint(scene, selector):
+    """One stored blueprint sheet's index entry: ``(entry, "")`` or
+    ``(None, refusal)``.
+
+    Through ``_inspect_full`` rather than a bare ``inspect``, and the reason
+    is the same as ``begin_restore_version``'s: a sheet's ``meta`` carries
+    the recipe it was drawn from, the pager stubs anything over 1 KiB, and a
+    truncated recipe would re-render a *different* sheet rather than fail.
+    """
+    ok, report = ensure_open(scene)
+    if not ok:
+        return None, report
+    selector = str(selector).strip()
+    if not selector:
+        return None, "Which blueprint? Give its name, or its ordinal."
+    whole = _inspect_full(_client(project_root(scene)), "blueprint",
+                          "/blueprint", target=selector)
+    if not isinstance(whole, dict) or not whole:
+        return None, (
+            "No stored blueprint matches {!r}. Use inspect_model "
+            "scope=blueprint for the list of sheets and their "
+            "names.".format(selector))
+    return whole, ""
 
 
 def link_part(scene, source_project, output="", name=""):

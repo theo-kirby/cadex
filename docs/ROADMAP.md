@@ -456,6 +456,19 @@ depends on. Independent of Phase 8.
       anywhere), and the **parameters panel** as a placeable cell
       (`view: params` — the declared sliders at their current values).
 
+- [x] **Named, revisable sheets** (ADR-157, 2026-08-20). A sheet is a
+      drawing you come back to: `name` is its **identity**, so rendering
+      again under it stores the next version, `inspect scope=blueprint`
+      resolves a name to its newest (`name@2` pins one), the prune protects
+      it and the store filename carries its slug. `make_blueprint
+      based_on=<name>` reads the stored **recipe** back and re-renders it
+      with only what changed passed in. Two more per-cell knobs land with
+      it: an `aspect` per cell — an exploded stack asks for `1:3` and the
+      weighted boundary arrays give it, the caption reporting the shape
+      actually drawn — and `{"view": "text"}`, a panel of the agent's own
+      words beside the model. One optional protocol arg (`name`); the
+      recipe rides `meta` as ADR-151's specs already did.
+
 - [x] **Printable parts** (ADR-156, 2026-08-20). The model leaves for a
       slicer: tick which outputs are parts you mean to print, then
       **File → Export Printable Parts…**, and the engine writes one STL per

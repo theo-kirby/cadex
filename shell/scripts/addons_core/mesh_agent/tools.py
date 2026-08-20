@@ -478,7 +478,23 @@ TOOL_DEFS = [
             "columns] on a mosaic grid -- spans make big cells, "
             "unclaimed cells stay empty ground, so asymmetric "
             "compositions are fine. Sheets are 16:9 by default; aspect "
-            "takes any 'width:height', or 'auto' to follow the layout. "
+            "takes any 'width:height', or 'auto' to follow the layout, "
+            "and ANY CELL takes its own aspect too -- an exploded stack "
+            "reads far better as '1:3' down a column than as a square "
+            "with empty ground either side. A cell aspect is a request "
+            "against a fixed sheet: the caption reports the shape each "
+            "cell was actually drawn at, so look and ask again. A cell "
+            "with view 'text' draws words you supply instead of the "
+            "model -- notes, a bill of materials, tolerances -- and any "
+            "cell takes a title, which is the heading drawn over it. "
+            "NAME the sheet and it becomes revisable: name is its "
+            "identity, so rendering again under the same name stores the "
+            "next version, and based_on='<that name>' starts from the "
+            "stored recipe -- pass only what changes (a different theme, "
+            "one edited views list) and everything else is inherited. "
+            "inspect_model scope=blueprint lists the names, versions and "
+            "recipes, so a sheet from last week can be revised in this "
+            "session. "
             "Omit views for the default sheet: front, top and bottom "
             "stacked down the left third, the three-quarter perspective "
             "filling the centre third, and the rear (Z+180) perspective "
@@ -497,8 +513,19 @@ TOOL_DEFS = [
             "properties": {
                 "name": {
                     "type": "string",
-                    "description": ("A one-line label stored with the sheet "
-                                    "(what the drawing shows)."),
+                    "description": ("What this drawing is called, e.g. "
+                                    "'gearbox overview v1'. It is the "
+                                    "sheet's identity: rendering again "
+                                    "under the same name stores the next "
+                                    "version of it, and based_on takes it."),
+                },
+                "based_on": {
+                    "type": "string",
+                    "description": ("Start from a stored sheet's recipe: "
+                                    "its name (newest version), 'name@2' "
+                                    "for one version, or its ordinal. "
+                                    "Anything you pass here overrides that "
+                                    "recipe; everything else is inherited."),
                 },
                 "theme": {
                     "type": "string",
@@ -527,14 +554,15 @@ TOOL_DEFS = [
                                 "type": "string",
                                 "enum": ["front", "back", "left", "right",
                                          "top", "bottom", "three-quarter",
-                                         "custom", "params"],
+                                         "custom", "params", "text"],
                                 "description": ("Which way this cell "
                                                 "looks; 'custom' takes "
                                                 "azimuth/elevation; "
                                                 "'params' draws the "
                                                 "parameters panel in "
                                                 "this cell instead of "
-                                                "the model."),
+                                                "the model; 'text' draws "
+                                                "the words you give it."),
                             },
                             "azimuth": {
                                 "type": "number",
@@ -620,6 +648,39 @@ TOOL_DEFS = [
                                                 "with leader lines in "
                                                 "this cell (default: on "
                                                 "for exploded cells)."),
+                            },
+                            "aspect": {
+                                "type": "string",
+                                "description": ("This cell's own shape, "
+                                                "'width:height' -- '1:3' "
+                                                "for a tall narrow "
+                                                "exploded column, '3:1' "
+                                                "for a wide strip. A "
+                                                "request against a fixed "
+                                                "sheet: the caption says "
+                                                "what it was drawn at. A "
+                                                "cell that owns a whole "
+                                                "column or row (triptych's "
+                                                "last two, the hero cell, "
+                                                "a mosaic span) gets what "
+                                                "it asks; a cell sharing "
+                                                "a track with others gets "
+                                                "a compromise, so put an "
+                                                "extreme shape in a "
+                                                "column of its own."),
+                            },
+                            "title": {
+                                "type": "string",
+                                "description": ("The heading drawn over "
+                                                "this cell, instead of "
+                                                "the view's own name."),
+                            },
+                            "text": {
+                                "type": "string",
+                                "description": ("Text-panel cells only: "
+                                                "the words to draw, up to "
+                                                "500 characters. Newlines "
+                                                "are paragraph breaks."),
                             },
                         },
                         "required": ["view"],
@@ -1492,13 +1553,19 @@ def _tool_blueprint_view(tool_input):
 
 
 def _tool_make_blueprint(tool_input):
-    """Render the four-view sheet and store it through the engine (ADR-150).
+    """Render the composed sheet and store it through the engine (ADR-150).
 
     In ``_ENGINE_TOOLS`` — it writes the project store through
     ``put_blueprint``, so a missing engine must refuse in a sentence — and
     NOT in ``MUTATING_TOOLS``, the ``import_geometry``/``link_part``
     precedent: a store write is not a scene edit and must not enter the
     undo stack.
+
+    ``based_on`` (ADR-157) reads a stored sheet's recipe back out of the
+    project store and renders it again with this call's arguments on top.
+    That is the whole of "revise the drawing": the recipe is the engine's
+    to keep, so the model needs to remember nothing between sessions, and a
+    revision under the same name lands as the next version of it.
     """
 
     import os
@@ -1507,33 +1574,68 @@ def _tool_make_blueprint(tool_input):
     from . import capture
     from . import cadex_backend
     from . import cadex_blueprint
+    from . import cadex_sheet
 
-    theme = str(tool_input.get("theme") or cadex_blueprint.DEFAULT_THEME)
+    scene = bpy.context.scene
+    name = str(tool_input.get("name") or "").strip()
+    based_on = str(tool_input.get("based_on") or "").strip()
+
+    recipe = {}
+    source_name = ""
+    if based_on:
+        entry, error = cadex_backend.read_blueprint(scene, based_on)
+        if entry is None:
+            return _text(error), True
+        recipe = dict((dict(entry.get("meta") or {})).get("recipe") or {})
+        source_name = str(entry.get("name") or "")
+        if not recipe.get("views"):
+            return _text(
+                "The stored sheet {!r} carries no recipe -- it was drawn "
+                "before sheets became revisable, so there is nothing to "
+                "start from. Compose this one with views instead.".format(
+                    based_on)), True
+        if not name:
+            name = source_name
+
+    def chosen(key, fallback):
+        value = tool_input.get(key)
+        if value is None:
+            value = recipe.get(key)
+        return fallback if value is None else value
+
+    theme = str(chosen("theme", cadex_blueprint.DEFAULT_THEME))
     if theme not in cadex_blueprint.THEMES:
         return _text("Unknown theme {!r}; one of: {:s}.".format(
             theme, ", ".join(sorted(cadex_blueprint.THEMES)))), True
-    max_size = int(tool_input.get("max_size") or 1024)
-    label = str(tool_input.get("name") or "").strip()
+    try:
+        max_size = int(chosen("max_size", 1024))
+    except (TypeError, ValueError):
+        return _text("max_size must be a whole number of pixels."), True
+    views = tool_input.get("views")
+    if views is None:
+        views = recipe.get("views")
+    aspect = chosen("aspect", None)
+    layout = str(chosen("layout", "auto") or "auto")
 
-    aspect = tool_input.get("aspect")
     sheet, error = capture.render_blueprint(
-        theme=theme, max_size=max_size, views=tool_input.get("views"),
-        layout=str(tool_input.get("layout") or "auto"),
-        aspect=str(aspect) if aspect is not None else None, label=label)
+        theme=theme, max_size=max_size, views=views, layout=layout,
+        aspect=str(aspect) if aspect is not None else None, label=name)
     if sheet is None:
         return _text(error), True
 
-    scene = bpy.context.scene
-    payload = cadex_backend.put_blueprint(
-        scene, sheet["path"], label=label,
-        meta={"theme": theme,
-              "size": list(sheet.get("size") or ()),
-              "layout": str(sheet.get("layout") or ""),
-              "aspect": str(sheet.get("aspect") or ""),
-              "rects": list(sheet.get("rects") or ()),
-              "views": list(sheet.get("views") or ()),
-              "version": str(sheet.get("version") or ""),
-              "project": str(sheet.get("project") or "")})
+    meta = cadex_sheet.trim_meta(
+        {"theme": theme,
+         "size": list(sheet.get("size") or ()),
+         "layout": str(sheet.get("layout") or ""),
+         "aspect": str(sheet.get("aspect") or ""),
+         "rects": list(sheet.get("rects") or ()),
+         "views": list(sheet.get("views") or ()),
+         "recipe": dict(sheet.get("recipe") or {}),
+         "version": str(sheet.get("version") or ""),
+         "project": str(sheet.get("project") or "")},
+        cadex_sheet.MAX_STORED_META_BYTES)
+    payload = cadex_backend.put_blueprint(scene, sheet["path"], label=name,
+                                          meta=meta, name=name)
     try:
         os.remove(sheet["path"])       # the store copy is its home now
     except OSError:
@@ -1544,12 +1646,25 @@ def _tool_make_blueprint(tool_input):
 
     root = cadex_backend.project_root(scene)
     stored_path = os.path.join(root, "blueprints", str(payload.get("name")))
+    stored = next((dict(item) for item in payload.get("blueprints") or []
+                   if isinstance(item, dict)
+                   and item.get("file") == payload.get("name")), {})
     text = ("Blueprint sheet stored at {:s} ({:d} bytes), attached to "
             "revision {:s}. {:s}, {:s} layout -- {:s}.".format(
                 stored_path, int(payload.get("bytes") or 0),
                 str(payload.get("revision") or "?")[:12], theme,
                 str(sheet.get("layout") or ""),
                 str(sheet.get("legend") or "")))
+    if name:
+        version = int(stored.get("version") or 1)
+        text += (" Named {!r}, version {:d}{:s} -- revise it with "
+                 "based_on={!r}.".format(
+                     name, version,
+                     " (based on {!r})".format(based_on)
+                     if based_on and based_on != name else "",
+                     name))
+    elif based_on:
+        text += " Based on {!r}, and stored unnamed.".format(based_on)
     if sheet.get("note"):
         text += " Note: {:s}.".format(str(sheet["note"]))
     return [

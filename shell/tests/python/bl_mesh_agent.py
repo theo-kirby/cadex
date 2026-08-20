@@ -2137,7 +2137,8 @@ def test_blueprint_sheets_compose_from_pure_arithmetic():
           "a params cell places and spans on the mosaic like any view")
     result, error = cadex_sheet.normalize_views(
         [{"view": "params", "explode": 1.0}], outputs)
-    check(result is None and "takes only cell, span and hero" in error
+    check(result is None
+          and "takes only cell, span, hero, aspect and title" in error
           and "explode" in error,
           "camera and scene keys on a params cell are refused by name")
     check("parameters panel" in cadex_sheet.cell_legend(
@@ -2173,6 +2174,12 @@ def test_blueprint_sheets_compose_from_pure_arithmetic():
     squeezed = cadex_sheet.params_panel_layout(20, 200, 150)
     check(squeezed["shown"] == 4 and squeezed["more"] == 16,
           "a small cell shows what fits and counts the rest as +N more")
+    # ADR-157: the cell's own label is drawn over it by the sheet dressing,
+    # and a windowed probe found the first slider row running through it.
+    capped = cadex_sheet.params_panel_layout(6, 341, 144, top_pad=28.0)
+    check(capped["shown"] < cadex_sheet.params_panel_layout(
+              6, 341, 144)["shown"] and capped["more"] > 0,
+          "a params cell yields rows to the band its title is drawn in")
 
     # -- the tool advertises the composition surface --------------------------
     entry = next(e for e in tools.TOOL_DEFS if e["name"] == "make_blueprint")
@@ -2190,6 +2197,244 @@ def test_blueprint_sheets_compose_from_pure_arithmetic():
           "the per-view schema is exactly the spec keys, one level deep")
     check(tuple(properties["layout"]["enum"]) == cadex_sheet.LAYOUTS,
           "and the layout enum is the module's LAYOUTS")
+
+
+def test_blueprint_sheets_are_named_shaped_and_revisable():
+    """ADR-157's pure half: per-cell shape, text panels, and the recipe.
+
+    Three properties carry the feature, and each one is a property rather
+    than an example: **the tiling invariant survives weighting** (checked by
+    the same paint-counting the templates get, over random asks), **a cell
+    that asks for a shape gets measurably closer to it**, and **a recipe
+    round-trips** — ``normalize_views(recipe_views(specs)) == specs``, which
+    is what makes a stored sheet revisable rather than merely recorded.
+    """
+    print("test_blueprint_sheets_are_named_shaped_and_revisable")
+    import random
+
+    from mesh_agent import cadex_sheet, tools
+
+    outputs = ("housing", "pin", "shaft")
+
+    def paint(rects, width, height):
+        canvas = bytearray(width * height)
+        overlapped = False
+        for x, y, w, h in rects:
+            if w <= 0 or h <= 0:
+                return False, False
+            for row in range(y, y + h):
+                start = row * width + x
+                if any(canvas[start:start + w]):
+                    overlapped = True
+                canvas[start:start + w] = b"\x01" * w
+        return not overlapped, all(canvas)
+
+    # -- a cell's own aspect: parsed like the sheet's, refused like it ------
+    check(cadex_sheet.parse_aspect("1:3")[0] == 1.0 / 3.0
+          and cadex_sheet.parse_aspect("auto") == (None, ""),
+          "parse_aspect is one parser for the sheet's shape and a cell's")
+    for raw, fragment in (
+            ([{"view": "front", "aspect": "tall"}], "must be 'width:height'"),
+            ([{"view": "front", "aspect": "1:9"}], "between 1:5 and 5:1"),
+            ([{"view": "front", "aspect": "auto"}], "omit it to take the "
+                                                    "layout's own shape"),
+    ):
+        result, error = cadex_sheet.normalize_views(raw, outputs)
+        check(result is None and fragment in error,
+              "cell aspect refused with {!r} in: {:s}".format(
+                  fragment, error or "(no error)"))
+    shaped, error = cadex_sheet.normalize_views(
+        [{"view": "front"}, {"view": "top"},
+         {"view": "custom", "azimuth": 225, "elevation": 25, "explode": 1.0,
+          "aspect": "1:3"}], outputs)
+    check(error == "" and abs(shaped[2]["aspect"] - 1.0 / 3.0) < 1e-9
+          and "aspect" not in shaped[0],
+          "the ask rides the spec, and only where it was made")
+
+    # -- the tiling invariant survives weighting -----------------------------
+    random.seed(157)
+    asks = (None, None, 0.25, 0.5, 1.0, 2.0, 4.0)
+    for template in ("row", "column", "grid", "hero", "triptych"):
+        for count in range(2, cadex_sheet.MAX_VIEWS + 1):
+            if template == "triptych" and count < 3:
+                continue
+            for size in (256, 1023):
+                for sheet in (None, 16.0 / 9.0, 0.5):
+                    wanted = [random.choice(asks) for _ in range(count)]
+                    rects, width, height = cadex_sheet.layout_rects(
+                        template, count, size, hero=count - 1, aspect=sheet,
+                        aspects=wanted)
+                    clean, whole = paint(rects, width, height)
+                    check(clean and whole,
+                          "{:s}/{:d}/{:d}: weighted tiling still covers the "
+                          "canvas exactly once".format(template, count, size))
+
+    # -- and a cell that asks gets measurably closer -------------------------
+    plain, _w, _h = cadex_sheet.layout_rects("triptych", 5, 1024,
+                                             aspect=16.0 / 9.0)
+    asked, width, height = cadex_sheet.layout_rects(
+        "triptych", 5, 1024, aspect=16.0 / 9.0,
+        aspects=[None, None, None, None, 1.0 / 3.0])
+    before = plain[4][2] / float(plain[4][3])
+    after = asked[4][2] / float(asked[4][3])
+    check(abs(after - 1.0 / 3.0) < abs(before - 1.0 / 3.0)
+          and abs(after - 1.0 / 3.0) < 0.05,
+          "a 1:3 ask on the right column lands within 0.05 of 1:3 "
+          "(was {:.2f}, now {:.2f})".format(before, after))
+    check((width, height) == (1024, 576),
+          "and the sheet's own shape is untouched by a cell's ask")
+    check(sum(rect[2] for rect in asked[-2:]) + asked[0][2] == width,
+          "the columns still share their boundaries exactly")
+    exact, _w, _h = cadex_sheet.layout_rects(
+        "row", 3, 1024, aspect=None, aspects=[None, 3.0, None])
+    check(abs(exact[1][2] / float(exact[1][3]) - 3.0) < 0.02,
+          "on an auto sheet the ask is met outright")
+    check(cadex_sheet.layout_rects("single", 1, 1024, aspects=[0.4])[1:]
+          == (410, 1024),
+          "one cell IS the field, so its ask is the sheet's shape")
+    check(cadex_sheet.layout_rects("single", 1, 1024, aspect=16.0 / 9.0,
+                                   aspects=[0.4])[1:] == (1024, 576),
+          "...unless the sheet stated one, which wins")
+
+    # An ask nobody can satisfy must not produce slivers.
+    crowded, width, height = cadex_sheet.layout_rects(
+        "row", 6, 256, aspect=16.0 / 9.0, aspects=[0.2] * 6)
+    clean, whole = paint(crowded, width, height)
+    check(clean and whole and all(rect[2] >= 8 for rect in crowded),
+          "six impossible asks on one small sheet stay drawable")
+
+    # -- the legend reports the shape it drew, not the shape asked for -------
+    legend = cadex_sheet.cell_legend(shaped, cadex_sheet.layout_rects(
+        "triptych", 3, 1024, aspect=16.0 / 9.0,
+        aspects=[spec.get("aspect") for spec in shaped])[0])
+    check("asked 1:3, drawn 1:" in legend,
+          "the caption is the agent's feedback channel: " + legend)
+
+    # -- text panels ---------------------------------------------------------
+    panels, error = cadex_sheet.normalize_views(
+        [{"view": "three-quarter"},
+         {"view": "text", "text": "M3 threads.\nDeburr all edges.",
+          "title": "notes to the shop", "aspect": "1:2"}], outputs)
+    check(error == "" and panels[1]["view"] == "text"
+          and panels[1]["label"] == "notes to the shop"
+          and panels[1]["text"] == "M3 threads.\nDeburr all edges.",
+          "a text panel normalizes with its words and its heading")
+    check(cadex_sheet.spec_meta(panels[1]) == {
+              "view": "text", "label": "notes to the shop", "chars": 29,
+              "aspect": "1:2"},
+          "and its RECORD counts the characters -- the recipe keeps the "
+          "text, so a panel's words are not stored twice")
+    for raw, fragment in (
+            ([{"view": "text"}], "carries no text"),
+            ([{"view": "text", "text": "  "}], "carries no text"),
+            ([{"view": "text", "text": "x" * 501}], "Split it across two"),
+            ([{"view": "text", "text": "hi", "explode": 1.0}],
+             "is the text panel"),
+            ([{"view": "params", "text": "hi"}], "text belongs to view"),
+            ([{"view": "front", "text": "hi"}], "a panel of words is view"),
+            ([{"view": "front", "title": "x" * 61}], "the cap is 60"),
+            ([{"view": "front", "title": " "}], "must be a line of text"),
+    ):
+        result, error = cadex_sheet.normalize_views(raw, outputs)
+        check(result is None and fragment in error,
+              "text panel refused with {!r} in: {:s}".format(
+                  fragment, error or "(no error)"))
+    check("text panel, 'M3 threads. Deburr all edges.'"
+          in cadex_sheet.cell_legend(
+              panels, cadex_sheet.layout_rects("row", 2, 512)[0]),
+          "the legend quotes what the panel says")
+    titled, error = cadex_sheet.normalize_views(
+        [{"view": "front", "title": "section A-A"}], outputs)
+    check(error == "" and titled[0]["label"] == "section A-A",
+          "a title renames any cell, not just a panel")
+
+    # -- wrapping is measured, not counted -----------------------------------
+    lines, dropped = cadex_sheet.wrap_text(
+        "the quick brown fox jumps over the lazy dog", len, 12)
+    check(dropped == 0 and all(len(line) <= 12 for line in lines)
+          and " ".join(lines) == "the quick brown fox jumps over the lazy dog",
+          "wrapping loses no words and breaks under the width: {!r}".format(
+              lines))
+    paragraphs, _dropped = cadex_sheet.wrap_text("one\n\ntwo", len, 20)
+    check(paragraphs == ("one", "", "two"),
+          "a blank line between paragraphs is kept")
+    check(cadex_sheet.wrap_text("one\n\n\n", len, 20)[0] == ("one",),
+          "and trailing blanks are not")
+    broken, _dropped = cadex_sheet.wrap_text("M3x0.5-6H-THROUGH-BORE", len, 8)
+    check(all(len(line) <= 8 for line in broken)
+          and "".join(broken) == "M3x0.5-6H-THROUGH-BORE",
+          "a word with no spaces in it is broken by character, not clipped")
+    clipped, dropped = cadex_sheet.wrap_text("a b c d e f g h", len, 3,
+                                             max_lines=2)
+    check(clipped == ("a b", "c d") and dropped == 2,
+          "what does not fit is counted, so the caption can say so")
+
+    shape = cadex_sheet.text_panel_layout(341, 576, top_pad=24.0)
+    check(shape["max_lines"] > 1 and shape["text_width"] < 341
+          and 9.0 <= shape["text_size"] <= 15.0,
+          "a text cell divides into readable rows inside its padding")
+    check(cadex_sheet.text_panel_layout(200, 40)["max_lines"] >= 1,
+          "and a cell too short for a line still reports one, not zero")
+
+    # -- the recipe round-trips ----------------------------------------------
+    composed, error = cadex_sheet.normalize_views(
+        [{"view": "front", "hide": ["housing"], "section": "z",
+          "section_offset_mm": 4, "section_flip": True, "aspect": "2:1"},
+         {"view": "custom", "azimuth": 225, "elevation": 25, "explode": 1.0,
+          "callouts": False, "title": "exploded rear"},
+         {"view": "top", "only": ["pin", "shaft"], "hero": True},
+         {"view": "params"},
+         {"view": "text", "text": "Bill of materials:\n2x M3 bolt"}],
+        outputs)
+    check(error == "", "the composed fixture normalizes: " + (error or "ok"))
+    again, error = cadex_sheet.normalize_views(
+        cadex_sheet.recipe_views(composed), outputs)
+    check(error == "" and again == composed,
+          "normalize_views(recipe_views(specs)) == specs -- a stored sheet "
+          "can be drawn again: " + (error or "ok"))
+    defaults, _error = cadex_sheet.normalize_views(None, outputs)
+    round_tripped, error = cadex_sheet.normalize_views(
+        cadex_sheet.recipe_views(defaults), outputs)
+    check(error == "" and round_tripped == defaults,
+          "the DEFAULT sheet round-trips too, so 'change one cell of the "
+          "default' needs no restatement of the other four")
+    placed, _error = cadex_sheet.normalize_views(
+        [{"view": "front", "cell": [1, 1], "span": [2, 1]},
+         {"view": "text", "text": "notes", "cell": [1, 2]}], outputs)
+    check(cadex_sheet.normalize_views(cadex_sheet.recipe_views(placed),
+                                      outputs)[0] == placed,
+          "and so does a mosaic, placements and panels included")
+
+    recipe = cadex_sheet.sheet_recipe(composed, "grey", "mosaic", "4:3", 800)
+    check(recipe["theme"] == "grey" and recipe["layout"] == "mosaic"
+          and recipe["aspect"] == "4:3" and recipe["max_size"] == 800
+          and len(recipe["views"]) == 5,
+          "the sheet recipe carries everything make_blueprint needs again")
+
+    # -- meta is trimmed before the engine can refuse it ---------------------
+    fat = {"recipe": recipe, "views": [{"pad": "y" * 400}] * 8,
+           "rects": [[0, 0, 10, 10]] * 8, "theme": "grey"}
+    trimmed = cadex_sheet.trim_meta(fat, 2048)
+    check("recipe" in trimmed and "rects" not in trimmed
+          and "views" not in trimmed,
+          "the recipe is what a trim defends -- without it the sheet stops "
+          "being revisable")
+    check(cadex_sheet.trim_meta(fat, 64 * 1024) == fat,
+          "and a meta that fits is untouched")
+
+    # -- the tool advertises all of it ---------------------------------------
+    entry = next(e for e in tools.TOOL_DEFS if e["name"] == "make_blueprint")
+    properties = entry["input_schema"]["properties"]
+    check("based_on" in properties,
+          "make_blueprint's schema advertises based_on")
+    check(set(properties["views"]["items"]["properties"])
+          == set(cadex_sheet.SPEC_KEYS),
+          "the per-view schema is still exactly the spec keys")
+    check("text" in properties["views"]["items"]["properties"]["view"]["enum"],
+          "and the view enum offers the text panel")
+    check(all(word in entry["description"]
+              for word in ("based_on", "text", "aspect")),
+          "and the description tells the model the three new moves")
 
 
 def test_dimension_is_drawn_in_pixels_around_its_number():
@@ -2396,6 +2641,7 @@ def main():
         test_exploded_poses_interpolate_in_staged_windows()
         test_blueprint_styles_the_viewport_from_one_table()
         test_blueprint_sheets_compose_from_pure_arithmetic()
+        test_blueprint_sheets_are_named_shaped_and_revisable()
         test_dimension_is_drawn_in_pixels_around_its_number()
         test_an_edge_on_dimension_becomes_a_leader()
         test_diameter_picks_the_widest_on_screen_and_survives_a_bore_down_z()
