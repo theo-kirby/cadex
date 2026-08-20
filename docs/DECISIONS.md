@@ -16161,3 +16161,57 @@ same failure as a stale default.
 `bl_mesh_agent.py` suite, and `pixi run gate` — the gate registers the
 add-on, so the EnumProperty default is exercised by every run rather than
 by a test written for it.
+
+## ADR-155 — the Save-As hint is written only when the root moves (2026-08-20)
+
+**Decision.** `remember_source_root` takes the destination `save_pre` is
+handed and records the current project root **only when the destination
+root differs from it**. `migrate_assets` no longer returns `(True, "")`
+when it found nowhere to carry from: it says so, and names which of the two
+reasons applies. The gate test that covers this now carries two assets, not
+one, and saves the copy before adopting it.
+
+**The bug.** ADR-046 made Save-As carry imported geometry across by storing
+the old project root in the .blend at `save_pre`, where `bpy.data.filepath`
+still names the old file. That is correct for the Save-As itself. But
+`save_pre` fires on **every** write, and the hint was rewritten every time
+— so the first ordinary Ctrl-S after a Save-As replaced the pointer back to
+the original project with the new file's own root. `source_root` then
+rejects it for being the current root, finds no open root to fall back on in
+a fresh session, and returns `""`. `migrate_assets` carried nothing and said
+nothing, and `adopt_saved_script` went on to `write_script` anyway — by
+design, since ADR-046 judged the engine's "no staged mesh asset named X"
+the better error. It is a better error only when the carry actually ran.
+
+**Measured on a real model.** `actuator-v9`, Saved-As from `actuator-v7`,
+whose script imports two STLs. Its stored hint pointed at
+`actuator-v9.cadex` — itself. Three rebuild attempts in the artifact trail,
+the first two with no staged assets at all and the third with one, the
+error walking from the first import to the second: the "import the file the
+error names, press rebuild, read the next error" loop, one file per press,
+with nothing on screen to suggest a carry had been attempted and failed.
+`migrate_assets` itself was never at fault — run headless against the same
+two files it carries both, and two `put_asset` calls to a real `cadexd`
+both succeed.
+
+**Why the destination, and not a guess after the fact.** `wm_files.cc`
+passes `save_pre` the path being written (and `""` for the startup file), so
+"does the root move" is answerable before the write rather than inferrable
+after it. `destination_root` is `project_root`'s derivation asked about a
+file that is not current yet, explicit `ROOT_PROP` override included — a
+root the user chose does not move because the .blend was renamed. An empty
+destination now records nothing rather than recording the current root,
+which is the startup-file write and is not this model being saved anywhere.
+
+**What this does not do.** It cannot repair a .blend already damaged by the
+old handler: the imported files are wherever the original project is and
+nothing in the file names it any more. That case gets a sentence saying
+exactly that, instead of silence.
+
+**Verified.** `pixi run gate` (exit 0). The extended
+`test_save_as_carries_imported_geometry` fails on six checks with the old
+unconditional handler restored and passes with it fixed — including
+`"Carried 2 imported file(s) over from asset-orig.cadex: bracket.stl,
+widget.stl."`, which one asset could never have distinguished from a carry
+that stops after the first. `pixi run test-engine`: unchanged, no engine
+file moved.

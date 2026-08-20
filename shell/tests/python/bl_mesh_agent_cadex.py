@@ -153,14 +153,20 @@ result = {"plate": plate}
 
 #: A model that cannot be rebuilt from its script alone: the script names a
 #: file the user supplied. This is what Save-As used to lose (ADR-046).
+#:
+#: **Two** files, not one (ADR-155). One asset cannot tell a carry that
+#: moves everything apart from a carry that moves the first thing it finds
+#: and stops, and the real model that found this had two.
 IMPORTED_GEOMETRY_SCRIPT = """
 widget = mesh.import_file("widget.stl")
-result = {"widget": widget}
+bracket = mesh.import_file("bracket.stl")
+result = {"widget": widget, "bracket": bracket}
 """
 
 MOVED_GEOMETRY_SCRIPT = """
 widget = mesh.transform(mesh.import_file("widget.stl"), translation=(5, 0, 0))
-result = {"widget": widget}
+bracket = mesh.import_file("bracket.stl")
+result = {"widget": widget, "bracket": bracket}
 """
 
 #: The other model, in the two-model story ADR-138 is about: a parametric
@@ -1554,11 +1560,20 @@ def test_save_as_carries_imported_geometry(workdir):
 
     Assets are inputs, not derived state. They come across; the revision
     history, which *is* derived and would fork if copied, does not (ADR-046).
+
+    Two things here are ADR-155's, and both are about what this test used to
+    let through. It carried **one** file, so a carry that stopped after the
+    first would have passed; and it adopted the copy without ever saving it
+    again, so it never exercised the ordinary Ctrl-S that was overwriting
+    the pointer back to the original.
     """
     print("test_save_as_carries_imported_geometry")
 
     supplied = os.path.join(workdir, "widget.stl")
     with open(supplied, "w", encoding="utf-8") as handle:
+        handle.write(TETRAHEDRON_STL)
+    second_supplied = os.path.join(workdir, "bracket.stl")
+    with open(second_supplied, "w", encoding="utf-8") as handle:
         handle.write(TETRAHEDRON_STL)
 
     first = os.path.join(workdir, "asset-orig.blend")
@@ -1571,6 +1586,9 @@ def test_save_as_carries_imported_geometry(workdir):
     payload = cadex_backend.put_asset(scene, supplied)
     check(payload.get("ok") is True,
           "the supplied component lands in the first project's store")
+    payload = cadex_backend.put_asset(scene, second_supplied)
+    check(payload.get("ok") is True,
+          "...and so does the second one")
     ok, report = run_tool("write_script", {"content": IMPORTED_GEOMETRY_SCRIPT})
     check(ok, "a model built on the imported file is accepted ({:s})".format(
         report[:80]))
@@ -1594,23 +1612,51 @@ def test_save_as_carries_imported_geometry(workdir):
               os.path.join(workdir, "asset-orig.cadex")),
           "the new file remembers which project its geometry came from")
 
+    # ADR-155: the ordinary save that used to destroy that memory. `save_pre`
+    # fires on every write, and the hint was rewritten unconditionally -- so
+    # one Ctrl-S between the Save-As and the rebuild replaced the pointer to
+    # asset-orig.cadex with this file's own root, which `source_root` then
+    # refuses for being the current one. Nothing said so: the carry found
+    # nowhere to carry from and the rebuild died on the first import.
+    bpy.ops.wm.save_mainfile()
+    scene = bpy.context.scene
+    check(cadex_backend.source_root(scene) == os.path.abspath(
+              os.path.join(workdir, "asset-orig.cadex")),
+          "an ordinary save does NOT overwrite that memory with its own root")
+
     ok, report = cadex_backend.adopt_saved_script(scene)
     check(ok, "the saved script rebuilds the Save-As'd project ({:s})".format(
         (report or "clean")[:160]))
-    check("widget.stl" in (report or ""),
-          "the report names the component it carried across")
+    check("widget.stl" in (report or "") and "bracket.stl" in (report or ""),
+          "the report names BOTH components it carried across ({:s})".format(
+              (report or "")[:120]))
     check(bpy.data.objects.get("widget") is not None,
           "the imported component is back in the new file's viewport")
+    check(bpy.data.objects.get("bracket") is not None,
+          "...and so is the second one")
     check(not cadex_backend.orphaned_project(scene),
           "the adopted project is no longer orphaned")
-    check(cadex_backend.stored_asset_names(scene) == {"widget.stl"},
-          "the new project holds the component in its own store")
+    check(cadex_backend.stored_asset_names(scene) == {"widget.stl",
+                                                      "bracket.stl"},
+          "the new project holds both components in its own store")
     check(os.path.isfile(os.path.join(workdir, "asset-orig.cadex",
                                       "assets", "widget.stl")),
           "the original project keeps its own copy")
     check(len(revision_sources(os.path.join(workdir, "asset-copy.cadex"))) == 1,
           "the new project starts its own trail -- the original's two "
           "revisions did NOT come across")
+
+    # The shape a .blend damaged by the pre-ADR-155 handler is already in:
+    # its own root recorded as the source, so the original is named nowhere.
+    # This cannot repair that -- the files are wherever the original is and
+    # nothing here knows where -- but it must not be silent about it, which
+    # is what sent a real model round the "import the file the error names,
+    # press rebuild, read the next error" loop one file at a time.
+    scene[cadex_backend.SOURCE_PROP] = cadex_backend.project_root(scene)
+    ok, report = cadex_backend.migrate_assets(scene)
+    check(ok and "its own project" in (report or ""),
+          "a file that records its own root as the source says so, rather "
+          "than carrying nothing quietly ({:s})".format((report or "")[:120]))
 
 
 def test_link_part_travels_between_two_models(workdir):

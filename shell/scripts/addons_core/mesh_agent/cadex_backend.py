@@ -337,7 +337,22 @@ def project_root(scene):
     return root
 
 
-def remember_source_root(scene):
+def destination_root(scene, filepath):
+    """The project root this scene will have once written to ``filepath``.
+
+    ``project_root``'s derivation, asked about a file that is not current
+    yet. The explicit override wins here for the same reason it wins there:
+    a root the user chose does not move because the .blend was renamed.
+    """
+    explicit = str(scene.get(ROOT_PROP, "") or "")
+    if explicit:
+        return os.path.abspath(os.path.expanduser(explicit))
+    stem = os.path.splitext(os.path.basename(filepath))[0]
+    return os.path.abspath(
+        os.path.join(os.path.dirname(filepath), stem + ".cadex"))
+
+
+def remember_source_root(scene, filepath=""):
     """Record the project root this file is about to be written away from.
 
     Called from ``save_pre``, where ``bpy.data.filepath`` still names the
@@ -346,11 +361,35 @@ def remember_source_root(scene):
     Save-As is the case that needs it, but the first save of an unsaved
     file -- temp root to ``<stem>.cadex`` -- is the same move and loses its
     imported geometry the same way, so it gets the same hint.
+
+    **Only when the root actually moves** (ADR-155). ``save_pre`` fires on
+    every write, not only on Save-As, and the hint used to be rewritten
+    every time. One ordinary Ctrl-S after a Save-As was therefore enough to
+    replace the pointer back to the original project with the file's own
+    root -- which ``source_root`` then rejects for being the current one,
+    leaving the recovery path with nowhere to carry imported geometry from
+    and no way to say so. ``filepath`` is what ``save_pre`` is handed
+    (``wm_files.cc``: the destination for a file write, ``""`` for the
+    startup file), so "does the root move" is a question that can be asked
+    before the write rather than guessed after it.
     """
     if scene is None:
         return
     try:
-        scene[SOURCE_PROP] = project_root(scene)
+        current = os.path.abspath(project_root(scene))
+    except Exception:
+        return
+    # No destination is the startup-file write, which is not this model
+    # being saved anywhere: leave whatever the scene remembers alone.
+    if not str(filepath or ""):
+        return
+    try:
+        if destination_root(scene, str(filepath)) == current:
+            return
+    except Exception:
+        return
+    try:
+        scene[SOURCE_PROP] = current
     except Exception:
         pass
 
@@ -2579,6 +2618,35 @@ def stored_asset_names(scene):
             for entry in list(value.get("assets") or [])}
 
 
+def _no_origin_report(scene):
+    """Why no imported geometry came across, when the answer is not "none".
+
+    Three cases, and only the first is ordinary. A file that never imported
+    anything has nothing to say; the other two are the ones a user cannot
+    tell apart from the outside, and both used to look like silence.
+    """
+    try:
+        current = os.path.abspath(project_root(scene))
+    except Exception:
+        return ""
+    remembered = ""
+    try:
+        remembered = str(scene.get(SOURCE_PROP, "") or "")
+    except Exception:
+        pass
+    if not remembered:
+        return ""
+    if os.path.abspath(remembered) == current:
+        # Written by the pre-ADR-155 save handler: the pointer back to the
+        # original was overwritten with this file's own root. The files are
+        # still wherever the original project is; nothing here knows where.
+        return ("No imported files came across: this file records its own "
+                "project as their source, so the original is not named "
+                "anywhere in it. Import them again by hand.")
+    return ("No imported files came across: {:s} holds none, or is no "
+            "longer there.".format(os.path.basename(remembered)))
+
+
 def migrate_assets(scene):
     """Carry the previous project's imported geometry into this one.
 
@@ -2595,12 +2663,19 @@ def migrate_assets(scene):
     Every file goes in through ``put_asset``, one at a time: cadexd stays
     the sole writer of the store, so the 64-file / 128 MB budget is enforced
     where it is defined and nothing can land half-copied under its final
-    name. Returns (ok, report); ``ok`` is False only if a file was refused,
-    and the report is "" when there was nothing to carry.
+    name. Returns (ok, report); ``ok`` is False only if a file was refused.
+
+    A file with nothing to carry stays quiet, but a file that *remembers* a
+    source it could not use does not (ADR-155). That combination used to
+    return ``(True, "")`` and let ``write_script`` die on the first import, so
+    the only thing the user saw was the engine naming a file -- which is
+    true, and says nothing about the carry having silently found nowhere to
+    carry from. It also names the shape a .blend damaged by the pre-ADR-155
+    handler is in, which is the one case this cannot repair by itself.
     """
     origin = source_root(scene)
     if not origin:
-        return True, ""
+        return True, _no_origin_report(scene)
     sources = _assets_in(origin)
     if not sources:
         return True, ""

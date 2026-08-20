@@ -201,7 +201,14 @@ that `docs/VISION.md` describes, and the protocol client that
   without it, so `migrate_assets()` carries `assets/` into the new project
   through `put_asset` when the script is adopted. `save_pre` is what records
   *which* project to carry from (`SOURCE_PROP` — `bpy.data.filepath` still
-  names the old file there, and the value saves into the new one).
+  names the old file there, and the value saves into the new one) — but
+  **only when the root actually moves** (ADR-155). `save_pre` fires on every
+  write, and recording unconditionally meant one ordinary Ctrl-S after a
+  Save-As overwrote the pointer to the original with the file's own root,
+  leaving the carry with nowhere to carry from and no way to say so.
+  `remember_source_root` compares `destination_root(scene, filepath)` — the
+  path `save_pre` is handed — against the current root, and writes nothing
+  when they match.
 - **There is one backend.** Until ADR-030 there were two, chosen by a mode
   dropdown: this one, and a local path that `exec()`d the script against
   `bpy`. The local path and everything serving it — `cad_api.py` (the
