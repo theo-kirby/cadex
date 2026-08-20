@@ -118,6 +118,15 @@ class CadexProjectScriptStore:
             # migration for a script.json written before it.
             "cage_specs": {},
             "cage_values": [],
+            # Which outputs are parts the user means to print (ADR-156) — the
+            # sixth such pair, same merge, same absence of a migration. The
+            # one that is not like the others: ``print_specs`` is not a
+            # *declaration* the script made, it is the accepted run's output
+            # roster, harvested on validation. And neither key enters
+            # ``project_script_revision``, because a print mark changes no
+            # geometry and a checkbox that costs a rebuild is not a checkbox.
+            "print_specs": {},
+            "print_values": [],
             "working_revision": "",
             "accepted_revision": "",
             "accepted_contract": None,

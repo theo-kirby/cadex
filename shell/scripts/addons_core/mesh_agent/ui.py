@@ -541,6 +541,38 @@ class MESH_AGENT_OT_apply_cage(Operator):
         return {'FINISHED'}
 
 
+class MESH_AGENT_OT_toggle_printable(Operator):
+    """Tick or untick one output as a part to print (cadex ADR-156).
+
+    An operator per row rather than a real ``BoolProperty``: the roster is
+    whatever the last accepted rebuild published, so a property would have
+    to be a dynamically-registered ``PropertyGroup`` the way ``model.py``
+    has to build one for the parameters. A checkbox that is really a button
+    costs one icon and no registration.
+
+    No ``bl_options``: this writes the project store, not the scene, so it
+    is not an undo step — the same reasoning the store-writing tools use.
+    """
+
+    bl_idname = "mesh_agent.toggle_printable"
+    bl_label = "Printable"
+    bl_description = ("Mark this part as one to print. File > Export "
+                      "Printable Parts writes an STL for each marked part")
+
+    name: bpy.props.StringProperty(name="Output", default="")
+
+    def execute(self, context):
+        from . import cadex_print
+        ok, report = cadex_print.toggle(context.scene, self.name)
+        if not ok:
+            agent_module.get_agent().history.add(
+                "status", "Could not change what is printable: " + str(report))
+            self.report({'WARNING'},
+                        first_line(str(report)) or "Could not mark that part")
+            return {'CANCELLED'}
+        return {'FINISHED'}
+
+
 class CADEX_ENV_PT_collision(Panel):
     """What the solver touches, for a model that has collision geometry.
 
@@ -893,6 +925,46 @@ class CADEX_TRAINING_PT_training(Panel):
                         cadex_training.PROGRESS_NAME)
 
 
+def _draw_printable(layout, scene):
+    """One checkbox per accepted output, and where the STLs come out.
+
+    In the parameters editor for the cage's reason — a mark is a control the
+    user sets without the AI, which is what this editor is for — and one of
+    its own: a row per output is the same shape as the sliders, and what it
+    feeds is a File-menu row rather than an editor.
+
+    Drawn from ``cadex_print``'s cache, never from a request: a panel's draw
+    runs on every redraw and must not talk to a subprocess. The cache is
+    filled off the script block the backend adopts on open and after every
+    accepted rebuild, so it is never older than the model.
+    """
+
+    from . import cadex_print
+    roster = cadex_print.cached(scene)
+    if not roster:
+        return
+    box = layout.box().column(align=True)
+    box.label(text="Print", icon='EXPORT')
+    for entry in roster:
+        name = str(entry.get("name") or "")
+        row = box.row(align=True)
+        # LEFT, or the button takes the whole row and the label drifts to the
+        # far side of the panel with its own checkbox — which reads as two
+        # unrelated widgets rather than as one checkbox with a name.
+        row.alignment = 'LEFT'
+        # An operator per row rather than a BoolProperty: the roster is
+        # whatever the last accepted rebuild published, so a property would
+        # mean registering a PropertyGroup at runtime the way the parameter
+        # sliders have to. A checkbox that is really a button costs one icon.
+        row.operator(MESH_AGENT_OT_toggle_printable.bl_idname, text=name,
+                     icon=('CHECKBOX_HLT' if entry.get("printable")
+                           else 'CHECKBOX_DEHLT'),
+                     emboss=False).name = name
+    note = box.row()
+    note.enabled = False
+    note.label(text="File > Export Printable Parts...")
+
+
 class CADEX_PARAMS_PT_parameters(Panel):
     """The sole occupant of the parameters editor, and now literally so.
 
@@ -934,6 +1006,11 @@ class CADEX_PARAMS_PT_parameters(Panel):
             row.label(text="No parameters in this model"
                       if group is not None else "Parameters load after build",
                       icon='INFO')
+            # ...but a model with no sliders still has parts to print, so the
+            # print box is drawn on the way out of this branch rather than
+            # after it. A plain `result = {"bracket": part.box(...)}` declares
+            # no parameters and is exactly the model somebody wants to print.
+            _draw_printable(layout, context.scene)
             return
         column = layout.column()
         for spec in specs:
@@ -949,6 +1026,8 @@ class CADEX_PARAMS_PT_parameters(Panel):
         row.enabled = model.defaults_differ_from_sliders(context.scene)
         row.operator(MESH_AGENT_OT_apply_slider_defaults.bl_idname,
                      icon='CHECKMARK')
+
+        _draw_printable(layout, context.scene)
 
         # The section cage (ADR-127), in the parameters editor rather than in
         # an editor of its own: a ring is a declared control the user sets
@@ -1314,6 +1393,7 @@ classes = (
     MESH_AGENT_OT_toggle_blueprint,
     MESH_AGENT_OT_toggle_cage,
     MESH_AGENT_OT_apply_cage,
+    MESH_AGENT_OT_toggle_printable,
     # Panel order IS registration order -- nothing here sets `bl_order` --
     # so these stay grouped by the editor they now live in (ADR-108).
     CADEX_ENV_PT_collision,

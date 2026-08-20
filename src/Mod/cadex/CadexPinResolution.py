@@ -86,15 +86,28 @@ def accepted_output_item(
     raise KeyError(output)
 
 
-def _import_staged_shape(staging: Path, item: Mapping[str, Any]) -> Any:
-    import Part
+def staged_artifact_path(staging: Path, item: Mapping[str, Any]) -> Path:
+    """One output's staged artifact, containment-checked against ``staging``.
+
+    Public since ADR-156: ``export_printable`` reads the same accepted
+    artifacts this module resolves pins against — the BREP *and* the PLY —
+    and the check that the report's path stays inside the attempt directory
+    is the part neither caller may skip.
+    """
 
     artifact = str(item.get("artifact_path") or "")
     path = (staging / artifact).resolve()
     if staging.resolve() not in path.parents or not path.is_file():
         raise ValueError(
-            f"Accepted BREP artifact for output {item.get('name')!r} is missing."
+            f"Accepted artifact for output {item.get('name')!r} is missing."
         )
+    return path
+
+
+def _import_staged_shape(staging: Path, item: Mapping[str, Any]) -> Any:
+    import Part
+
+    path = staged_artifact_path(staging, item)
     shape = Part.Shape()
     shape.importBrep(str(path))
     if shape.isNull() or not shape.isValid():

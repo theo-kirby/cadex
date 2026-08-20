@@ -946,7 +946,13 @@ def test_cadex_topbar_is_the_product_bar():
     operators, menus = _identifiers_drawn_by(topbar)
     for idname in ("wm.open_mainfile", "wm.save_mainfile",
                    "wm.save_as_mainfile", "wm.revert_mainfile",
-                   "screen.userpref_show"):
+                   "screen.userpref_show",
+                   # Ours, and the way a model leaves for a slicer (cadex
+                   # ADR-156). Named explicitly rather than left to the
+                   # source-scrape below, because the scrape only proves the
+                   # rows that *are* drawn resolve — it cannot notice one
+                   # going missing.
+                   "mesh_agent.export_printable"):
         check(idname in operators, "the bar offers {:s}".format(idname))
     for name in ('TOPBAR_MT_file_import', 'TOPBAR_MT_file_export',
                  'TOPBAR_MT_file_open_recent'):

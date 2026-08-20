@@ -52,6 +52,9 @@
    ],
    "values": {}
   },
+  "printable": {
+   "outputs": []
+  },
   "revisions": {
    "accepted_revision": "str",
    "working_revision": "str"

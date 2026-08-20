@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-08-18
+Verified against source: 2026-08-20
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -455,6 +455,19 @@ depends on. Independent of Phase 8.
       on exploded cells (on by default there, `callouts` overrides
       anywhere), and the **parameters panel** as a placeable cell
       (`view: params` — the declared sliders at their current values).
+
+- [x] **Printable parts** (ADR-156, 2026-08-20). The model leaves for a
+      slicer: tick which outputs are parts you mean to print, then
+      **File → Export Printable Parts…**, and the engine writes one STL per
+      marked part into `<project>.cadex/print/`, each at its own origin.
+      Two ops, `set_printable` and `export_printable`, because the engine is
+      the store's sole writer — which also buys the STL coming off the
+      **accepted solid** rather than the display mirror, and the whole thing
+      working headless. The marks are the sixth stored spec/value pair and
+      the first whose specs no script declares: the roster is the accepted
+      run's own output list, so there is no `printable(...)` global, and it
+      is deliberately outside the content revision, because a checkbox that
+      costs a rebuild is not a checkbox.
 
 **Exit criteria:** one script format across the product; both new gates
 green; slider median materially below 0.548 s *(met: 0.496 s end-to-end,

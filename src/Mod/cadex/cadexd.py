@@ -871,6 +871,299 @@ class CadexdServer:
             "blueprints": read_blueprints(self._project_root),
         }
 
+    def _op_set_printable(
+        self, _request_id: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Mark which accepted outputs are parts to print (ADR-156).
+
+        A **complete replacement** of the mark list, like every other table
+        the store holds. What is unlike them is what it costs: nothing. No
+        worker runs, no geometry is rebuilt, and the content revision does
+        not move — a print mark says what to do with an output, not what the
+        output is, so folding it into ``set_params`` would buy a full rebuild
+        for every tick of a checkbox.
+
+        Deliberately NO ``_invalidate_resident_workers()``, on
+        ``put_blueprint``'s reasoning exactly: no script can name a mark, so
+        no worker's preview generation is stale for one arriving.
+
+        Loud here, silent on drift: a name the accepted roster does not
+        publish is **refused** when a caller asks for it, and **dropped**
+        when the script stops publishing it (``prune_printable_rows``, at
+        the next validated rebuild). That asymmetry is ADR-039's, and it is
+        what keeps a rewritten script from wedging the panel.
+        """
+
+        not_open = self._require_open()
+        if not_open is not None:
+            return not_open
+        from CadexPrintables import (
+            PrintableError,
+            canonical_printable_rows,
+            declared_printables,
+        )
+        from CadexScriptStore import CadexProjectScriptStore
+        from CadexTools import tool_failure
+
+        store = CadexProjectScriptStore(self._project_root)
+        state = store.read_state()
+        roster = declared_printables(state.get("print_specs"))
+        requested = args["printable"]
+        try:
+            marks = canonical_printable_rows(requested, what="printable")
+        except PrintableError as exc:
+            return tool_failure(
+                "cadexd.set_printable",
+                "PRINTABLE_REJECTED",
+                "precondition",
+                str(exc),
+                requested={"printable": requested},
+                observed={"outputs": sorted(roster)},
+            )
+        unknown = [name for name in marks if name not in roster]
+        if unknown:
+            return tool_failure(
+                "cadexd.set_printable",
+                "UNKNOWN_PRINTABLE_OUTPUT",
+                "precondition",
+                f"The accepted revision publishes no printable output named "
+                f"{', '.join(repr(name) for name in unknown)}. Only outputs "
+                "with a surface — a solid or a mesh — can become an STL.",
+                requested={"printable": marks},
+                observed={"outputs": sorted(roster)},
+            )
+        store.write(state_updates={"print_values": marks})
+        marked = set(marks)
+        return {
+            "ok": True,
+            "printable": marks,
+            "outputs": [
+                {"name": name, "artifact_kind": kind, "printable": name in marked}
+                for name, kind in roster.items()
+            ],
+        }
+
+    def _op_export_printable(
+        self, _request_id: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Write one STL per marked part into ``print/`` (ADR-156).
+
+        The engine writes the files because the engine is the sole writer of
+        the project store (``docs/ARCHITECTURE.md``) — and it is the better
+        answer anyway: the STL comes off the **accepted BREP**, not the
+        shell's display tessellation, and the same call works headless from
+        ``./cadex``.
+
+        Each part lands at **its own origin**, which is free rather than
+        earned: the staged ``.brep`` is written in the part's own frame, and
+        an assembly's placement lives in the display block the shell applies.
+        That is exactly what a slicer wants — a plate to lay out, not a
+        model posed as it was assembled.
+
+        Called with no ``conflict``, an export that would overwrite anything
+        **refuses and names the files**. That is ``link_part``'s arrangement:
+        the refusal carries what the shell needs to ask the question, so one
+        round trip both checks and populates the dialog.
+        """
+
+        not_open = self._require_open()
+        if not_open is not None:
+            return not_open
+        import uuid
+
+        from CadexPinResolution import (
+            accepted_attempt_dir,
+            accepted_output_item,
+            load_worker_report,
+            staged_artifact_path,
+        )
+        from CadexPrintables import (
+            EXPORTABLE_KINDS,
+            PrintableError,
+            allocate_file_name,
+            declared_printables,
+            effective_printables,
+            stl_file_name,
+        )
+        from CadexScriptStore import CadexProjectScriptStore
+        from CadexTools import tool_failure
+
+        def refuse(code: str, message: str, **details: Any) -> dict[str, Any]:
+            return tool_failure(
+                "cadexd.export_printable", code, "precondition", message, **details
+            )
+
+        root = Path(self._project_root)
+        store = CadexProjectScriptStore(root)
+        state = store.read_state()
+        if not str(state.get("accepted_revision") or ""):
+            return refuse(
+                "NO_ACCEPTED_REVISION",
+                "This project has no accepted revision to print; build the "
+                "model first.",
+            )
+        try:
+            staging = accepted_attempt_dir(root, state)
+            report = load_worker_report(staging)
+        except ValueError as exc:
+            return refuse("PRINT_ARTIFACT_MISSING", str(exc))
+
+        specs = dict(state.get("print_specs") or {})
+        roster = declared_printables(specs)
+        try:
+            names = effective_printables(specs, state.get("print_values"))
+        except PrintableError as exc:
+            return refuse("PRINTABLE_REJECTED", str(exc))
+        if not names:
+            return refuse(
+                "NOTHING_MARKED_PRINTABLE",
+                "No output is marked printable, so there is nothing to "
+                "export. Tick the parts you mean to print first.",
+                observed={"outputs": sorted(roster)},
+            )
+
+        conflict = str(args.get("conflict") or "")
+        if conflict and conflict not in {"overwrite", "keep_both"}:
+            return refuse(
+                "PRINT_CONFLICT_INVALID",
+                f"conflict must be 'overwrite' or 'keep_both'; received "
+                f"{conflict!r}.",
+                allowed_values=["overwrite", "keep_both"],
+            )
+
+        # Resolve every part before writing any of them: a half-written print
+        # folder is worse than a refusal, and the collision check below is
+        # only honest if it has seen the whole job.
+        plan: list[list[Any]] = []
+        reserved: set[str] = set()
+        for name in names:
+            try:
+                item = accepted_output_item(report, name)
+            except KeyError:
+                return refuse(
+                    "PRINT_ARTIFACT_MISSING",
+                    f"The accepted worker report has no output {name!r}.",
+                    observed={"outputs": sorted(roster)},
+                )
+            kind = str(item.get("artifact_kind") or "")
+            if kind not in EXPORTABLE_KINDS:
+                return refuse(
+                    "PRINT_ARTIFACT_MISSING",
+                    f"Output {name!r} is {kind or 'not'} artifact-backed; only "
+                    "a solid or a mesh has a surface to print.",
+                    observed={"artifact_kind": kind},
+                )
+            try:
+                staged_artifact_path(staging, item)
+            except ValueError as exc:
+                return refuse("PRINT_ARTIFACT_MISSING", str(exc))
+            # Two output names can sanitise to one filename; the run steps
+            # past itself here, and past what is on disk below.
+            base = stl_file_name(name)
+            chosen = allocate_file_name(base, reserved)
+            reserved.add(chosen)
+            plan.append([name, item, kind, base, chosen])
+
+        directory = root / "print"
+        collisions = sorted(
+            entry[4] for entry in plan if (directory / entry[4]).is_file()
+        )
+        if collisions and not conflict:
+            return refuse(
+                "PRINT_FILES_EXIST",
+                "{:d} file(s) of this print job are already in print/: "
+                "{:s}. Say whether to overwrite them or keep both.".format(
+                    len(collisions), ", ".join(collisions)
+                ),
+                observed={"existing": collisions, "directory": "print"},
+            )
+        if conflict == "keep_both":
+            # Step past everything the folder holds, not only this job's own
+            # names: `print/` is a deliverable and nothing prunes it, so the
+            # next free ordinal is the whole answer.
+            taken = {path.name for path in directory.iterdir()} if (
+                directory.is_dir()
+            ) else set()
+            for entry in plan:
+                entry[4] = allocate_file_name(entry[3], taken)
+                taken.add(entry[4])
+
+        directory.mkdir(parents=True, exist_ok=True)
+        files: list[dict[str, Any]] = []
+        for name, item, kind, _base, file_name in plan:
+            mesh = self._printable_mesh(staging, item, kind, args.get("deflection"))
+            target = directory / file_name
+            # Dot-prefixed and .tmp-suffixed, the store's convention: no
+            # slicer watching this folder ever sees a half-written STL under
+            # its final name. `Format` is explicit because the temporary name
+            # has no suffix to infer it from; "STL" is binary STL.
+            temporary = directory / f".{file_name}.{uuid.uuid4().hex}.tmp"
+            try:
+                mesh.write(Filename=str(temporary), Format="STL")
+                temporary.replace(target)
+            finally:
+                try:
+                    temporary.unlink()
+                except FileNotFoundError:
+                    pass
+            files.append({
+                "name": name,
+                "file": file_name,
+                "bytes": int(target.stat().st_size),
+                "triangles": int(mesh.CountFacets),
+            })
+        return {
+            "ok": True,
+            "directory": "print",
+            "revision": str(state.get("accepted_revision") or ""),
+            "files": files,
+        }
+
+    @staticmethod
+    def _printable_mesh(
+        staging: Path, item: Mapping[str, Any], kind: str, deflection: Any
+    ) -> Any:
+        """One accepted output as a triangle mesh, ready to be written.
+
+        A ``mesh`` output already is one — its staged PLY is read straight
+        back. A ``brep`` output is tessellated by ``cadex_tessellation``
+        rather than ``MeshPart.meshFromShape``, for two reasons: it is
+        already in cadexd's declared import closure, and ``BRepMesh`` skips
+        faces that carry a triangulation, which is the digest hazard
+        ``cadex_part_worker.build_part_shape`` documents. Nothing here feeds
+        a digest, but borrowing the path that cannot go wrong costs nothing.
+        """
+
+        from CadexPinResolution import staged_artifact_path
+
+        import Mesh
+
+        if kind == "mesh":
+            mesh = Mesh.Mesh()
+            mesh.read(Filename=str(staged_artifact_path(staging, item)))
+            return mesh
+
+        import Part
+
+        from cadex_tessellation import resolve_deflection, tessellate_shape
+
+        shape = Part.Shape()
+        shape.importBrep(str(staged_artifact_path(staging, item)))
+        display = {} if deflection is None else {"deflection": float(deflection)}
+        chord = resolve_deflection(display, float(shape.BoundBox.DiagonalLength))
+        # Edges are the viewport's business; an STL is triangles only.
+        tessellation = tessellate_shape(shape, chord, include_edges=False)
+        points = tessellation["vertices"]
+        indices = tessellation["triangles"]
+        corners = [
+            (points[3 * i], points[3 * i + 1], points[3 * i + 2])
+            for i in range(len(points) // 3)
+        ]
+        return Mesh.Mesh([
+            [corners[indices[i]], corners[indices[i + 1]], corners[indices[i + 2]]]
+            for i in range(0, len(indices), 3)
+        ])
+
     def _op_preview_params(
         self, _request_id: str, args: dict[str, Any]
     ) -> dict[str, Any]:

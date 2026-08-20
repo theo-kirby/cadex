@@ -48,6 +48,8 @@ MODELING_OPS = frozenset(
         "put_asset",
         "link_part",
         "put_blueprint",
+        "set_printable",
+        "export_printable",
     }
 )
 #: Read-only ops; these queue behind an in-flight modeling op.
@@ -145,6 +147,26 @@ OP_ARG_SPECS: dict[str, tuple[dict[str, type], dict[str, type]]] = {
     # one. `meta` is the renderer's own record (theme, views), stored
     # verbatim in the index.
     "put_blueprint": ({"source_path": str}, {"label": str, "meta": dict}),
+    # Which outputs are parts the user means to print (ADR-156). `printable`
+    # is a **complete replacement** list of output names, like every other
+    # table arg — the panel sends what is ticked, not a diff.
+    #
+    # An op of its own rather than a sixth keyword on `set_params`, and the
+    # reason is the revision: `set_params` feeds `project_script_revision`,
+    # so a mark routed through it would rebuild the whole project on every
+    # tick of a checkbox. This one writes the store and returns. A modeling
+    # op because it writes the store, and — like `put_blueprint` and for the
+    # same reason — it invalidates no resident worker: a mark is a record of
+    # what to do with a run's output, never an input to the next one.
+    "set_printable": ({"printable": list}, {}),
+    # ...and the deliverable itself: one STL per marked part, at its own
+    # origin, into `print/`. `conflict` is absent on the first call **on
+    # purpose**: the refusal is what carries the list of files already there,
+    # which is `link_part`'s arrangement exactly — ask with nothing chosen,
+    # and the refusal is the question. Then "overwrite" or "keep_both".
+    # `deflection` is the tessellation chord height for a BREP output, in
+    # millimetres; left out, the display default sizes it off the shape.
+    "export_printable": ({}, {"conflict": str, "deflection": float}),
     "resolve_pin": ({"output": str, "selection": dict}, {}),
     "inspect": (
         {"scope": str},
@@ -349,6 +371,17 @@ OP_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset({"name", "bytes", "sha256", "revision", "blueprints"}),
         frozenset(),
     ),
+    # The marks as they now stand, plus the roster they were checked
+    # against: one round trip answers "did it take" and "what else is there
+    # to tick", which is `put_asset`'s one-round-trip shape one more time.
+    "set_printable": (frozenset({"printable", "outputs"}), frozenset()),
+    # Where the STLs went, what they are, and which accepted revision they
+    # came out of — a print job is a record of a revision, so naming it is
+    # what lets a user tell two folders apart.
+    "export_printable": (
+        frozenset({"directory", "files", "revision"}),
+        frozenset(),
+    ),
     "resolve_pin": (
         frozenset({"output", "revision", "subelements", "details"}),
         frozenset(),
@@ -486,6 +519,11 @@ NESTED_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
                 # ...and the section cage (ADR-127), which the overlay draws
                 # and the Apply button writes back.
                 "cages",
+                # ...and the printable marks (ADR-156), for the same reason
+                # once more: the panel draws a checkbox per accepted output
+                # and `set_printable` replaces the whole list, so the party
+                # doing the ticking reads the roster and the flags from here.
+                "printable",
             }
         ),
         frozenset(),

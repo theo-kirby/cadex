@@ -16215,3 +16215,95 @@ unconditional handler restored and passes with it fixed — including
 widget.stl."`, which one asset could never have distinguished from a carry
 that stops after the first. `pixi run test-engine`: unchanged, no engine
 file moved.
+
+## ADR-156 — printable parts: mark them, then one click to STL (2026-08-20)
+
+**Decision.** Two new protocol ops and one new engine module. `set_printable`
+records **which accepted outputs are parts the user means to print** — a
+complete replacement list of output names, stored in `script.json` as
+`print_values`. `export_printable` writes one STL per marked part into
+`<project>.cadex/print/`, each at its own origin, off the **accepted BREP or
+PLY**. In the shell: a checkbox per candidate in the Parameters editor, and
+**File → Export Printable Parts…**. Running it twice asks Overwrite or Keep
+Both.
+
+**What was missing.** Cadex could build an assembly and could not hand it to
+a slicer. The only STL path was `_tool_export_stl`, an *AI tool* rather than
+a menu item, which exported the Blender **display mirror** and wrote beside
+the `.blend` — the wrong geometry, in the wrong place, reachable only by
+asking the model for it in words.
+
+**Why the engine writes the files.** `docs/ARCHITECTURE.md`: cadexd is the
+sole writer of the store. That rule alone settles it, and the result is
+better anyway on three counts the rule was not arguing for: the mesh comes
+off the accepted solid rather than off a tessellation made for a viewport;
+the same call works headless, with no Blender in the process at all; and
+each part lands **in its own frame for free**, because the staged `.brep` is
+written in that frame and an assembly's placement lives in the display block
+the shell applies. A slicer wants a plate to lay out, not a model posed as it
+was assembled.
+
+**Why the marks are not a `set_params` table.** They would have been the
+sixth, and the pattern was right there — declare, store, override wholesale,
+prune on drift. What stopped it is the revision: `set_params` feeds
+`CadexScriptedDomains.project_script_revision`, so a mark routed through it
+would enter the content hash and buy **a full rebuild for every tick of a
+checkbox**. So `set_printable` is its own op: it validates, writes the store
+and returns — no worker, no rebuild, no revision bump. A gate check asserts
+the revision guard does not move across a tick, because that is the whole
+claim.
+
+**Why the specs are the output roster rather than a script global.** There is
+no `printable(...)` and the AI never declares printability. Every other
+table's specs are a declaration the script makes; this one's are the
+`brep`/`mesh` outputs the last **accepted** run published, harvested in
+`validate_project_result`. That is the better fit rather than the cheaper
+one: the `result` dict already declares the outputs, and printability is
+metadata *about* an output, not a new declared entity. It also cost about
+half the plan — no collector module, no worker change, no `describe_api`
+block, no threading through `prepare_project_candidate`.
+
+**Loud on request, silent on drift.** A caller naming a part the roster does
+not publish is refused (`UNKNOWN_PRINTABLE_OUTPUT`, roster attached); a mark
+whose output the script *stops* publishing is dropped at the next validated
+rebuild. ADR-039's asymmetry exactly, and the second half is what stops a
+rewritten script wedging the panel.
+
+**Why `print/` is not pruned.** Every other directory in the store is the
+engine's bookkeeping — attempts are garbage-collected, blueprints keep the
+newest 25. This one is a **deliverable**: the user owns what is in it, so
+nothing deletes from it and nothing overwrites without being told to. That
+is why a second export refuses rather than replacing, and why the refusal
+**names the files** — `link_part`'s arrangement, where calling with nothing
+chosen makes the refusal the question. `keep_both` takes the next free
+`<name>-002.stl`.
+
+**What this does not do.** It does not remove the old AI-facing `export_stl`
+tool, which is now redundant and exports the wrong thing. That is a removal
+under the normal protocol, with its own ADR line, and one authorised feature
+does not license an unrelated deletion. `deflection` is on the op from day
+one and the shell does not pass it, so STL quality is the display default
+until somebody asks for a knob.
+
+**Verified.** `pixi run python -m pytest src/Mod/cadex/cadex_tests`: 1899
+passed, 33 skipped (26 of them the new `test_printable.py`). The packaged
+gate against a staged payload (`CADEX_ENGINE_ROOT=build/engine/…
+test_cadexd_lifecycle.py`): 14 passed, and the payload carries
+`CadexPrintables.py`. `pixi run gate`: `"ok": true`, with
+`"printable": {"bytes": 684, "files": ["bracket-002.stl", "bracket.stl"],
+"outputs": ["arm", "bracket"]}` — a two-part model whose roster is both
+outputs, one ticked, one 684-byte STL out, the second export refused by name,
+`keep_both` leaving two files. `tests/python/bl_mesh_agent.py`: all passed,
+including `mesh_agent.export_printable` resolving in the built bundle.
+Against a real cadexd, a 40×25×15 box came back as 12 triangles spanning
+exactly `[0,0,0] … [40,25,15]` — the part at its own origin, measured out of
+the binary STL rather than asserted.
+
+**One thing the plan did not predict.** A windowed probe of the built bundle
+showed the Print box drawing nowhere: `CADEX_PARAMS_PT_parameters.draw`
+**returns early** when a model declares no parameters, and a plain
+`result = {"bracket": part.box(…)}` is exactly the model somebody wants to
+print. The box is now drawn on the way out of that branch as well, through
+one shared `_draw_printable`. Nothing else in that panel was moved — the
+cage, section and exploded-view boxes still sit behind the early return, and
+whether that is right for them is a separate question.

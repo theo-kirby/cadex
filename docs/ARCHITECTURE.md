@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-08-19
+Verified against source: 2026-08-20
 
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),
@@ -282,6 +282,16 @@ macOS). Layout:
                                 digest) pair it documents; newest 25 kept,
                                 written only by the put_blueprint op, read
                                 back through inspect scope=blueprint
+  print/                        the print job (ADR-156): one <output>.stl per
+                                output marked printable, written off the
+                                ACCEPTED brep/mesh artifact rather than the
+                                shell's display tessellation, each at its own
+                                origin. Written only by the export_printable
+                                op. NOT pruned and not indexed — unlike every
+                                other directory here this one is a
+                                deliverable, so the user owns what is in it;
+                                re-exporting asks whether to overwrite or to
+                                keep both (<name>-002.stl)
 ```
 
 **cadexd is the sole writer.** Every byte that lands in the store goes

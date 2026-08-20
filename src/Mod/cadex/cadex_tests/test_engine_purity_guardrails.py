@@ -105,6 +105,11 @@ DECLARED_ENGINE_MODULES = frozenset(
         "CadexBoards",
         "CadexMounts",
         "CadexCage",
+        # Which outputs are parts to print, and what an STL is named
+        # (ADR-156). Pure Python beside the five table modules above, and the
+        # one of the six whose specs the script never declares: the roster is
+        # the accepted run's own output list.
+        "CadexPrintables",
         # The linked-part container (ADR-138). In the closure *and* in the
         # worker bundle, which is CadexNets' standing exactly: cadexd's
         # link_part op builds a container with it, and the sandboxed part

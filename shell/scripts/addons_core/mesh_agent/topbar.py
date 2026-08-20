@@ -42,6 +42,16 @@ output*, pulled straight out of that project's store as the exact solid it
 holds. Both go through one op, `link_part`, and refreshing is that op called
 again -- so there is one engine surface behind two rows, and the second row
 is a loop over the first.
+
+`Export Printable Parts...` is the way back out (cadex ADR-156), and it is
+ours for `Import Geometry`'s reason exactly: stock Export writes the Blender
+scene, which here is a display mirror, so a slicer would be handed a
+tessellation instead of the model. The engine writes the STLs off the
+accepted solids, one per part ticked in the Parameters editor, each at its
+own origin. Running it twice is where the second operator comes in: the
+engine refuses rather than overwriting, and the refusal names the files, so
+the Overwrite / Keep Both dialog is built from the answer instead of from a
+directory listing this side is not allowed to take.
 """
 
 import bpy
@@ -225,6 +235,98 @@ class MESH_AGENT_OT_refresh_linked_parts(Operator):
         return {'FINISHED'}
 
 
+#: What an export refused for a collision: the conflict dialog's whole input.
+_export_pending = {"files": ()}
+
+
+def _report_export(operator, payload):
+    """Land one export reply in both channels. Returns the operator result.
+
+    Both, not one: the status bar is where the user is looking, and the
+    history is where the *model* is looking — an AI asked "did that print
+    job come out" has no other way to know.
+    """
+    history = agent_module.get_agent().history
+    if payload.get("ok") is not True:
+        report = str(payload.get("error") or payload)
+        history.add("status", "Could not export printable parts: " + report)
+        operator.report({'WARNING'},
+                        report.splitlines()[0] if report else "Export failed")
+        return {'CANCELLED'}
+    files = [str(item.get("file") or "") for item in
+             list(payload.get("files") or []) if isinstance(item, dict)]
+    message = "Wrote {:d} STL file(s) into {:s}/: {:s}.".format(
+        len(files), str(payload.get("directory") or "print"), ", ".join(files))
+    history.add("status", message)
+    operator.report({'INFO'}, message)
+    return {'FINISHED'}
+
+
+class MESH_AGENT_OT_export_printable(Operator):
+    bl_idname = "mesh_agent.export_printable"
+    bl_label = "Export Printable Parts"
+    bl_description = ("Write one STL per part marked printable, at its own "
+                      "origin, into this model's print folder")
+
+    # No REGISTER/UNDO: this writes the engine's project store, not the
+    # scene, so there is nothing for Ctrl-Z to give back.
+
+    def execute(self, context):
+        from . import cadex_backend
+
+        payload = cadex_backend.export_printable(context.scene)
+        if str(payload.get("failure_code") or "") == "PRINT_FILES_EXIST":
+            observed = payload.get("observed")
+            existing = (observed or {}).get("existing") if isinstance(
+                observed, dict) else None
+            _export_pending["files"] = tuple(str(name) for name in
+                                             (existing or ()))
+            # The refusal IS the question: it came back naming the files, so
+            # one round trip both checked and populated the dialog.
+            return bpy.ops.mesh_agent.resolve_print_conflict('INVOKE_DEFAULT')
+        return _report_export(self, payload)
+
+
+class MESH_AGENT_OT_resolve_print_conflict(Operator):
+    bl_idname = "mesh_agent.resolve_print_conflict"
+    bl_label = "These parts are already exported"
+    bl_description = "Overwrite the STLs already in print/, or keep both"
+
+    conflict: bpy.props.EnumProperty(
+        name="Then",
+        items=(('overwrite', "Overwrite",
+                "Replace the files already in print/"),
+               ('keep_both', "Keep Both",
+                "Write beside them, as <name>-002.stl")),
+        default='overwrite',
+    )
+
+    def invoke(self, context, _event):
+        if not _export_pending["files"]:
+            return {'CANCELLED'}
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, _context):
+        layout = self.layout
+        layout.label(text="Already in print/:", icon='ERROR')
+        for name in _export_pending["files"]:
+            row = layout.row()
+            row.enabled = False
+            row.label(text=name)
+        layout.prop(self, "conflict", expand=True)
+
+    def execute(self, context):
+        from . import cadex_backend
+
+        if not _export_pending["files"]:
+            return {'CANCELLED'}
+        _export_pending["files"] = ()
+        return _report_export(
+            self,
+            cadex_backend.export_printable(context.scene,
+                                           conflict=str(self.conflict)))
+
+
 class CADEX_MT_file(Menu):
     bl_label = "File"
 
@@ -269,6 +371,13 @@ class CADEX_MT_file(Menu):
                         icon='LINKED')
         layout.operator("mesh_agent.refresh_linked_parts",
                         text="Refresh Linked Parts", icon='FILE_REFRESH')
+        # ...and the way out: the parts marked printable in the Parameters
+        # editor, as one STL each, written by the engine off the accepted
+        # solid rather than off this scene's display mirror (cadex ADR-156).
+        # Ours for Import Geometry's reason exactly — stock Export writes the
+        # mirror, and the mirror is not the model.
+        layout.operator("mesh_agent.export_printable",
+                        text="Export Printable Parts...", icon='EXPORT')
 
         layout.separator()
 
@@ -364,6 +473,8 @@ classes = (
     MESH_AGENT_OT_link_part,
     MESH_AGENT_OT_choose_linked_part,
     MESH_AGENT_OT_refresh_linked_parts,
+    MESH_AGENT_OT_export_printable,
+    MESH_AGENT_OT_resolve_print_conflict,
     CADEX_MT_file,
     CADEX_MT_edit,
     CADEX_MT_editor_menus,

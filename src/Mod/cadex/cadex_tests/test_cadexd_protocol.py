@@ -51,6 +51,8 @@ def test_op_list_is_pinned() -> None:
         "put_asset",
         "link_part",
         "put_blueprint",
+        "set_printable",
+        "export_printable",
         "resolve_pin",
         "inspect",
         "preview_params",
@@ -89,6 +91,13 @@ def test_op_list_is_pinned() -> None:
         # the two above it invalidates no resident worker, because a
         # blueprint documents a run rather than feeding one.
         "put_blueprint",
+        # ...and both halves of the print job (ADR-156), on put_blueprint's
+        # terms exactly: set_printable writes the mark list and
+        # export_printable writes print/, so neither may race a rebuild, and
+        # neither invalidates a resident worker because no script can name a
+        # mark or an exported STL.
+        "set_printable",
+        "export_printable",
     }
 
 

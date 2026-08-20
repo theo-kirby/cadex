@@ -3787,6 +3787,112 @@ def test_a_dragged_ring_lands_in_the_accepted_revision(root):
     check(not cadex_cage.ring_objects(scene), "and the overlay cleans up")
 
 
+TWO_PART_SCRIPT = """
+result = {
+    "bracket": part.box(40.0, 25.0, 15.0),
+    "arm": part.cylinder(6.0, 60.0, origin=[80.0, 0.0, 0.0]),
+}
+"""
+
+
+def test_marked_parts_export_as_stl(root):
+    """ADR-156, end to end against the bundled engine.
+
+    Four claims, in the order they can fail:
+
+    1. **the roster is the accepted output list** — no script global
+       declares it, so a two-output script must produce two candidates,
+       both unticked, with no help from the panel.
+    2. **a tick costs no rebuild** — the accepted revision before and after
+       is the same revision. That is the whole reason ``set_printable`` is
+       an op of its own rather than a sixth ``set_params`` table, and it is
+       the assertion that says so rather than the ADR that claims it.
+    3. **the export writes real STLs into the store** — one file per marked
+       part, in ``print/``, written by the engine off the accepted solid.
+    4. **the second export refuses and names what is there** — then
+       ``keep_both`` writes beside it. The refusal is what the Overwrite /
+       Keep Both dialog is built from, so a refusal that did not name the
+       files would leave that dialog with nothing to say.
+    """
+    print("test_marked_parts_export_as_stl")
+    from mesh_agent import cadex_print
+
+    reset_scene(root)
+    scene = bpy.context.scene
+    ok, report = run_tool("write_script", {"content": TWO_PART_SCRIPT})
+    check(ok, "the two-part script was accepted: {:s}".format(
+        first_line_of(report)))
+    if not ok:
+        return
+
+    roster = cadex_backend.script_printable(scene)
+    names = sorted(str(entry["name"]) for entry in roster or [])
+    check(names == ["arm", "bracket"],
+          "both outputs are printable candidates: {!r}".format(names))
+    check(all(not entry.get("printable") for entry in roster or []),
+          "and nothing is ticked until somebody ticks it")
+    # The roster reaches the panel's cache off the block the backend already
+    # adopts, so the checkboxes are drawable with no round trip of their own.
+    check(len(cadex_print.cached(scene)) == 2,
+          "the panel's cache holds the roster after the rebuild")
+
+    before = cadex_backend._state_for(root).revision
+    ok, report = cadex_print.toggle(scene, "bracket")
+    check(ok, "ticking one part took: {:s}".format(first_line_of(report)))
+    check(cadex_print.marked(scene) == ["bracket"],
+          "and it is the one that is marked: {!r}".format(
+              cadex_print.marked(scene)))
+    check(cadex_backend._state_for(root).revision == before,
+          "a print mark did NOT move the revision guard — no rebuild for a "
+          "checkbox ({!r} -> {!r})".format(
+              before, cadex_backend._state_for(root).revision))
+
+    # ...and again through the registered operator, which is what the row in
+    # the Parameters editor actually calls. A panel row is a button here, not
+    # a BoolProperty, so this is the only thing that proves the name reaches
+    # the engine.
+    check(bpy.ops.mesh_agent.toggle_printable(name="arm") == {'FINISHED'},
+          "the panel's per-row operator ticks a second part")
+    check(cadex_print.marked(scene) == ["bracket", "arm"],
+          "both are marked now: {!r}".format(cadex_print.marked(scene)))
+    bpy.ops.mesh_agent.toggle_printable(name="arm")
+    check(cadex_print.marked(scene) == ["bracket"],
+          "and ticking it again unticks it: {!r}".format(
+              cadex_print.marked(scene)))
+
+    payload = cadex_backend.export_printable(scene)
+    check(payload.get("ok") is True,
+          "the export ran: {!r}".format(payload.get("error") or "ok"))
+    written = [str(item.get("file")) for item in payload.get("files") or []]
+    check(written == ["bracket.stl"],
+          "one STL, for the one marked part: {!r}".format(written))
+    stls = sorted(os.path.basename(path) for path in
+                  glob.glob(os.path.join(root, "print", "*.stl")))
+    check(stls == ["bracket.stl"],
+          "and it is on disk in print/: {!r}".format(stls))
+    size = os.path.getsize(os.path.join(root, "print", "bracket.stl"))
+    check(size > 84, "with real triangles in it ({:d} bytes)".format(size))
+
+    repeat = cadex_backend.export_printable(scene)
+    check(str(repeat.get("failure_code")) == "PRINT_FILES_EXIST",
+          "a second export refuses rather than overwriting: {!r}".format(
+              repeat.get("failure_code")))
+    existing = list((repeat.get("observed") or {}).get("existing") or [])
+    check(existing == ["bracket.stl"],
+          "and the refusal names the file, which is what the dialog shows: "
+          "{!r}".format(existing))
+
+    kept = cadex_backend.export_printable(scene, conflict="keep_both")
+    check(kept.get("ok") is True,
+          "keep_both went through: {!r}".format(kept.get("error") or "ok"))
+    stls = sorted(os.path.basename(path) for path in
+                  glob.glob(os.path.join(root, "print", "*.stl")))
+    check(stls == ["bracket-002.stl", "bracket.stl"],
+          "leaving both files: {!r}".format(stls))
+
+    GATE["printable"] = {"outputs": names, "files": stls, "bytes": size}
+
+
 #: A blind bore: a 10 mm hole down into a 20 mm block that does NOT break
 #: through. Nothing on the outside of this part says whether it did, which is
 #: the case the section view exists for (ADR-148). Its depth is a parameter so
@@ -4948,6 +5054,7 @@ def main():
     live_root = tempfile.mkdtemp(prefix="mesh-cadex-live-")
     wiring_root = tempfile.mkdtemp(prefix="mesh-cadex-wiring-")
     cage_root = tempfile.mkdtemp(prefix="mesh-cadex-cage-")
+    print_root = tempfile.mkdtemp(prefix="mesh-cadex-print-")
     section_root = tempfile.mkdtemp(prefix="mesh-cadex-section-")
     explode_root = tempfile.mkdtemp(prefix="mesh-cadex-explode-")
     blueprint_root = tempfile.mkdtemp(prefix="mesh-cadex-blueprint-")
@@ -5009,6 +5116,7 @@ def main():
         test_the_training_panel_tracks_a_run(training_root)
         test_two_applies_in_a_row_both_land(wiring_root)
         test_a_dragged_ring_lands_in_the_accepted_revision(cage_root)
+        test_marked_parts_export_as_stl(print_root)
         test_the_section_view_cuts_the_model_open(section_root)
         test_the_exploded_view_spreads_the_assembly(explode_root)
         test_the_blueprint_view_restyles_and_restores(blueprint_root)
@@ -5038,7 +5146,8 @@ def main():
                      drag_root, supersede_root, skip_root,
                      preview_root, fallback_root, views_root, collision_root,
                      shapes_root, isolate_root, readers_root, wiring_root,
-                     cage_root, section_root, explode_root, blueprint_root,
+                     cage_root, print_root, section_root,
+                     explode_root, blueprint_root,
                      sheet_root):
             shutil.rmtree(root, ignore_errors=True)
 

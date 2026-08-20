@@ -337,6 +337,11 @@ def _complete_script(captured: Mapping[str, Any]) -> Any:
         # and Apply writes them back, so the shell has to be able to read
         # the table it is about to replace.
         "cages": _script_cages(state),
+        # ...and the printable marks (ADR-156). One read gives the panel both
+        # halves of what it draws — every output that *could* be printed, and
+        # which of them are ticked — because `set_printable` replaces the
+        # whole list and a partial view would send back a wrong one.
+        "printable": _script_printable(state),
         "latest_candidate": state.get("latest_candidate"),
         "updated_at": str(state.get("updated_at") or ""),
     }
@@ -368,6 +373,25 @@ def _script_cages(state: Mapping[str, Any]) -> dict[str, Any]:
             for name, entry in declared.items()
         ],
         "rows": effective_rings(specs, state.get("cage_values")),
+    }
+
+
+def _script_printable(state: Mapping[str, Any]) -> dict[str, Any]:
+    from CadexPrintables import declared_printables, prune_printable_rows
+
+    # Pruned rather than validated: this is a read path, and a stored list
+    # that somehow went bad should read as "nothing ticked" rather than
+    # taking `inspect scope="script"` down with it. The write path
+    # (`set_printable`) is where a malformed list is refused.
+    specs = dict(state.get("print_specs") or {})
+    marked = set(prune_printable_rows(
+        list(state.get("print_values") or []), specs
+    ))
+    return {
+        "outputs": [
+            {"name": name, "artifact_kind": kind, "printable": name in marked}
+            for name, kind in declared_printables(specs).items()
+        ]
     }
 
 

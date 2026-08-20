@@ -1,0 +1,13 @@
+{
+  "directory": "str",
+  "files": [
+    {
+      "bytes": "int",
+      "file": "str",
+      "name": "str",
+      "triangles": "int"
+    }
+  ],
+  "ok": "bool",
+  "revision": "str"
+}
