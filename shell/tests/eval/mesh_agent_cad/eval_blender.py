@@ -7,7 +7,7 @@ Runs ONE Part Design eval case inside Blender, driving a real Claude Code
 backend (real API calls — costs money; see README.md). Invoked by runner.py:
 
     blender --background --factory-startup --python eval_blender.py -- \
-        --case single_gear [--model claude-opus-4-8] [--results-dir results]
+        --case single_gear [--model claude-opus-5] [--results-dir results]
 
 Scoring is fully local (no LLM judging), out of 100:
     30  turn completes + rebuild-on-rerun is deterministic
@@ -53,7 +53,7 @@ def parse_args():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", required=True)
-    parser.add_argument("--model", default="claude-fable-5")
+    parser.add_argument("--model", default="claude-opus-5")
     parser.add_argument("--results-dir",
                         default=os.path.join(_HERE, "results"))
     return parser.parse_args(argv)

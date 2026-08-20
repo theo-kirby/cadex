@@ -9,7 +9,7 @@ per case, then aggregates a scorecard. Makes REAL Claude API calls — run by
 hand, never in CI. See README.md.
 
     tests/eval/mesh_agent_cad/runner.py --blender <path/to/blender> \
-        [--cases single_gear,gear_pair_plate] [--model claude-opus-4-8]
+        [--cases single_gear,gear_pair_plate] [--model claude-opus-5]
 """
 
 import argparse
@@ -106,7 +106,7 @@ def main():
                         help="Path to the Blender executable to test")
     parser.add_argument("--cases", default="",
                         help="Comma-separated case ids (default: all)")
-    parser.add_argument("--model", default="claude-fable-5")
+    parser.add_argument("--model", default="claude-opus-5")
     parser.add_argument("--results-dir",
                         default=os.path.join(_HERE, "results"))
     args = parser.parse_args()

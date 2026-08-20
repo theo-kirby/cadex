@@ -16135,3 +16135,29 @@ two-parameter fixture validates and only then refuses headless. Windowed
 probe: the 16:9 default with named parts in the exploded column, the
 params panel as a hero cell and as a mosaic column, callouts forced on
 and off, nothing left behind after restore.
+
+## ADR-154 — Opus 5 is the default model, in both front ends (2026-08-20)
+
+**Decision.** `agent.DEFAULT_MODEL` is `claude-opus-5` in the shell and in
+`cli/`, and the add-on's model picker defaults to it. Fable stays in the
+picker as the "most capable" option; nothing else about the model surface
+moves. Owner direction.
+
+**One constant, two front ends.** The shell's preference default now reads
+`agent_module.DEFAULT_MODEL` rather than repeating the string, so the
+picker and the code that runs a turn cannot disagree. `cli/` keeps its own
+copy of the constant — it may not import from `shell/` (the GPL/LGPL
+boundary, ADR-061) — but its comment says whose default it is following, so
+the next change moves both.
+
+**Also fixed, because the change required it.** The picker's Opus row was
+`claude-opus-4-8`, a previous generation; defaulting to a stale id would
+have shipped a picker whose default could not run. The Sonnet row is
+likewise a generation behind (`claude-sonnet-4-6`) and is deliberately
+**not** touched here — one logical change, and a stale option is not the
+same failure as a stale default.
+
+**Verified.** `pixi run python -m pytest cli/tests` (83 passed), the pure
+`bl_mesh_agent.py` suite, and `pixi run gate` — the gate registers the
+add-on, so the EnumProperty default is exercised by every run rather than
+by a test written for it.

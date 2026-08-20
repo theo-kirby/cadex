@@ -62,7 +62,7 @@ Flags, valid on either side of the subcommand:
 | `--wait` | Block for the project lock instead of failing. |
 
 Prompt-only flags: `--resume` (continue this project's conversation),
-`--model` (default `claude-fable-5`), `--claude` (path to the CLI).
+`--model` (default `claude-opus-5`), `--claude` (path to the CLI).
 `script --set` also takes `--replace`, which is you saying you mean to drop
 an output the accepted revision declares — without it such a script is
 refused, because `write_script` replaces *the whole* script and losing an
@@ -116,7 +116,7 @@ nothing else, so `cadex script > model.py` works.
      "files": {"step": "/…/impeller.step", "stl": "/…/impeller.stl"}}
   ],
   "session_id": "96e5d6ce-…",
-  "model": "claude-fable-5",
+  "model": "claude-opus-5",
   "engine": {"source": "dev-tree", "freecadcmd": "…", "module_dir": "…"},
   "out_dir": "/…/out",
   "notes": ["…the turn's closing summary…"]

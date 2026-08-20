@@ -33,9 +33,10 @@ from typing import Any
 
 from .tools import CLI_TOOL_OPS
 
-#: The shell's default, and for the same reason: it is the model that
-#: writes the best xscript. Override with ``--model``.
-DEFAULT_MODEL = "claude-fable-5"
+#: The shell's default, and it stays the shell's default: one model
+#: answers "what does Cadex run" wherever you ask. Override with
+#: ``--model``.
+DEFAULT_MODEL = "claude-opus-5"
 
 MCP_SERVER_NAME = "cadex"
 

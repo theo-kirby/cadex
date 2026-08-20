@@ -64,12 +64,12 @@ class MeshAgentPreferences(bpy.types.AddonPreferences):
         name="Model",
         description="Claude model used by the assistant",
         items=(
+            ('claude-opus-5', "Opus (default)", "High quality"),
             ('claude-fable-5', "Fable (most capable)", "Best quality, newest model"),
-            ('claude-opus-4-8', "Opus", "High quality"),
             ('claude-sonnet-4-6', "Sonnet (balanced)", "Good quality, faster"),
             ('claude-haiku-4-5', "Haiku (fastest)", "Snappy simple edits"),
         ),
-        default='claude-fable-5',
+        default=agent_module.DEFAULT_MODEL,
     )
     claude_path: bpy.props.StringProperty(
         name="Claude Code Path",

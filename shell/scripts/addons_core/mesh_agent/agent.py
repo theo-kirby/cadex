@@ -28,7 +28,7 @@ from . import modes
 from . import tools
 from .bridge import BridgeServer
 
-DEFAULT_MODEL = "claude-fable-5"
+DEFAULT_MODEL = "claude-opus-5"
 DEFAULT_TOOL_CAP = 25
 
 # Behaviour, and nothing about the API. Every claim this prompt used to make
