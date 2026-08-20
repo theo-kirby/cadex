@@ -712,6 +712,54 @@ def flat_parameters(np: Any, parameters) -> list[float]:
 # ---------------------------------------------------------------------------
 
 
+def resolved_command_slew_deg(options) -> float:
+    """ADR-153's limit in degrees, resolved once.
+
+    Module level and not a local of ``train`` because ``policy_header`` needs
+    the same number and the two are different scopes: the first draft read it
+    as a local there and every run died in the header writer. Two spellings of
+    a resolution rule are two rules.
+
+    ``None``, absent, zero and negative all mean **no limit** and return 0.0 —
+    the flag's OFF value, unlike the action filter's alpha where 0 would freeze
+    the command and is refused.
+    """
+
+    value = getattr(options, "command_slew_deg", 0.0)
+    if value is None:
+        return 0.0
+    value = float(value)
+    if not math.isfinite(value):
+        raise SystemExit(
+            "--command-slew-deg must be a finite number of degrees. 0 (the "
+            "default) is NO LIMIT.")
+    return value if value > 0.0 else 0.0
+
+
+def resolved_command_slew_deg(options) -> float:
+    """ADR-153's limit in degrees, resolved once.
+
+    Module level and not a local of ``train`` because ``policy_header`` needs
+    the same number and the two are different scopes: the first draft read it
+    as a local there and every run died in the header writer. Two spellings of
+    a resolution rule are two rules.
+
+    ``None``, absent, zero and negative all mean **no limit** and return 0.0 --
+    the flag's OFF value, unlike the action filter's alpha where 0 would freeze
+    the command and is refused.
+    """
+
+    value = getattr(options, "command_slew_deg", 0.0)
+    if value is None:
+        return 0.0
+    value = float(value)
+    if not math.isfinite(value):
+        raise SystemExit(
+            "--command-slew-deg must be a finite number of degrees. 0 (the "
+            "default) is NO LIMIT.")
+    return value if value > 0.0 else 0.0
+
+
 def train(
     bundle: dict[str, Any],
     options: argparse.Namespace,
@@ -778,6 +826,39 @@ def train(
             f"1.0 is no filter."
         )
     filtering = action_filter_alpha < 1.0
+
+    # ADR-153. A SLEW LIMIT IS A DIFFERENT OPERATOR FROM THE EMA, and this
+    # repository spent two experiments (021, 023) discovering that the hard
+    # way. An EMA's per-step change is `alpha * |raw - previous|`, which on a
+    # +/-25 deg box at alpha 0.65 is up to 32.5 deg in ONE control step: it
+    # bounds the command's SMOOTHNESS and does not bound its RATE at all.
+    # This clamps the rate directly, so the setpoint cannot run away from a
+    # joint that physically reaches 12.53 deg per 40 ms control step.
+    #
+    # Degrees, because the command surface is degrees -- `actions[].unit` is
+    # "deg" and `scale` is the pi/180 that follows the clamp. There is no new
+    # conversion site; `test_dynamics_units` greps for exactly that.
+    #
+    # `None`/0 is NO LIMIT and takes the pre-ADR-153 branch, emitting the same
+    # graph a trainer without this flag emits.
+    command_slew_deg = resolved_command_slew_deg(options)
+    slewing = command_slew_deg > 0.0
+    if slewing:
+        # A limit wider than the box can never bind: the whole command range
+        # is `high - low`, so any step is at most that. Refusing is better
+        # than silently training an unlimited run under a flag that says
+        # otherwise -- 016 lost two clips to a literal that could not bind.
+        widest = float(jnp.max(high - low))
+        if command_slew_deg >= widest:
+            raise SystemExit(
+                f"--command-slew-deg {command_slew_deg:g} is at or above the "
+                f"widest command range in this bundle ({widest:g} deg), so it "
+                f"can never bind and the run would be unlimited under a flag "
+                f"that claims a limit. Pick a value below {widest:g}.")
+    # One carry serves both operators: the previous ISSUED command, per
+    # environment, episode-local. Everything below that used to test
+    # `filtering` tests this instead.
+    carrying = filtering or slewing
 
     reward_terms = [
         (float(term["weight"]),
@@ -1042,7 +1123,7 @@ def train(
         """
 
         clamped = jnp.clip(surface, low, high)
-        if filtering:
+        if carrying:
             # AFTER the clamp, so the filter's memory only ever holds a
             # command the actuator could actually have been given, and the
             # convex combination of two in-box commands is itself in box --
@@ -1054,10 +1135,26 @@ def train(
             # episode ramping out of a posture the policy never asked for,
             # inside the reset drop.
             previous, first = filter_state
-            clamped = jnp.where(
-                first, clamped,
-                action_filter_alpha * clamped
-                + (1.0 - action_filter_alpha) * previous)
+            if filtering:
+                clamped = jnp.where(
+                    first, clamped,
+                    action_filter_alpha * clamped
+                    + (1.0 - action_filter_alpha) * previous)
+            if slewing:
+                # AFTER the EMA, so the two compose in the same order the
+                # harness composes them (`harness/_policy.py`): the rate limit
+                # is the last thing between the policy and the actuator, and
+                # what it bounds is what the actuator actually receives. The
+                # other order would rate-limit a signal the EMA then smooths
+                # back across the limit, which is not a rate limit.
+                #
+                # Still in box: `previous` is in box and this moves at most
+                # `command_slew_deg` toward another in-box value, so the
+                # result lies between them. No second clamp is applied.
+                clamped = jnp.where(
+                    first, clamped,
+                    jnp.clip(clamped, previous - command_slew_deg,
+                             previous + command_slew_deg))
         ctrl = data.ctrl.at[ctrl_index].set(clamped * ctrl_scale)
         data = data.replace(ctrl=ctrl)
 
@@ -1066,7 +1163,7 @@ def train(
 
         data, _ = jax.lax.scan(one, data, None, length=per_action)
         vector = observe(data)
-        if filtering:
+        if carrying:
             # The ISSUED command joins the outputs, because it is the next
             # step's filter state and there is nowhere else to get it: it is
             # not recoverable from `data.ctrl`, which holds it multiplied by
@@ -1077,7 +1174,7 @@ def train(
     # `(previous, first)` are per environment, so they vmap on axis 0 like
     # `surface`. Empty at alpha 1.0, which is what keeps the traced signature
     # identical to the pre-ADR-151 one.
-    _filter_axes = (0, 0) if filtering else ()
+    _filter_axes = (0, 0) if carrying else ()
     batched_step = (
         jax.vmap(step_env, in_axes=(None, 0, 0) + _filter_axes)
         if model_axes is None
@@ -1113,8 +1210,9 @@ def train(
     state = (data, first_forces, first_starts,
              jnp.zeros((envs,), dtype=jnp.float32),
              jnp.zeros((envs,), dtype=jnp.int32))
-    if filtering:
-        # ADR-151's sixth member: the previous ISSUED command, per
+    if carrying:
+        # ADR-151's sixth member (ADR-153 shares it): the previous ISSUED
+        # command, per
         # environment. Episode-local for exactly the reason `elapsed` and
         # `steps` are -- a filter that carried across a reset would low-pass
         # the first command of an episode towards the last command of the
@@ -1301,7 +1399,7 @@ def train(
                 data = data.replace(
                     xfrc_applied=applied_forces(forces, starts, elapsed)
                 )
-            if filtering:
+            if carrying:
                 # `steps` here is the count of steps ALREADY taken this
                 # episode, because it is incremented below -- so `steps == 0`
                 # is exactly the first step of an episode and needs no
@@ -1351,7 +1449,7 @@ def train(
             starts = jnp.where(done[:, None], fresh_starts, starts)
             elapsed = jnp.where(done, 0.0, elapsed)
             steps = jnp.where(done, 0, steps)
-            if filtering:
+            if carrying:
                 # Zeroed on `done` for the same reason `elapsed` and `steps`
                 # are. The value is not read after a reset -- `steps` is 0,
                 # so the next step takes the unfiltered branch -- but leaving
@@ -1874,6 +1972,11 @@ def policy_header(
             # PLAYED with it, and a driver that had to be told separately is
             # a driver somebody will forget to tell.
             "action_filter_alpha": float(options.action_filter_alpha),
+            # ADR-153, and its own key for exactly ADR-151's reason: a policy
+            # trained under a rate limit has to be PLAYED under one, and a
+            # driver that had to be told separately is a driver somebody will
+            # forget to tell. 0.0 is no limit.
+            "command_slew_deg": resolved_command_slew_deg(options),
             # ``init_from`` is excluded for the same reason ``bundle`` and
             # ``out`` are: it is a path on one machine, not a hyperparameter.
             # What it started from is recorded as a digest under
@@ -2035,6 +2138,17 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "The resolved value is written into the .cxpolicy header, so an "
              "evaluator plays the policy with the filter it was trained "
              "with instead of being told separately")
+    parser.add_argument(
+        "--command-slew-deg", type=float, default=0.0,
+        help="cap the per-step change of the ISSUED command at this many "
+             "degrees on every joint, applied AFTER the action filter and "
+             "reset with the episode. This bounds the command's RATE, which "
+             "the EMA does not: an EMA's per-step change is alpha*|raw - "
+             "previous|, up to the full box width. 0.0 (the default) is NO "
+             "LIMIT and emits the same computation graph as a trainer "
+             "without this flag. The resolved value is written into the "
+             ".cxpolicy header so an evaluator plays the policy under the "
+             "limit it was trained under")
     parser.add_argument(
         "--init-from",
         default="",
