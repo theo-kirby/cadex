@@ -2006,11 +2006,177 @@ def test_blueprint_sheets_compose_from_pure_arithmetic():
           and abs(ends[2] - 1.0) < 1e-9,
           "and is clamped at the ends")
 
+    # -- ADR-153: the sheet's aspect ------------------------------------------
+    check(cadex_sheet.sheet_aspect(None, "grid") == (16.0 / 9.0, ""),
+          "an omitted aspect is 16:9")
+    check(cadex_sheet.sheet_aspect(None, "mosaic") == (None, ""),
+          "except on the mosaic, whose shape is the agent's grid")
+    check(cadex_sheet.sheet_aspect("auto", "grid") == (None, ""),
+          "'auto' follows the layout's own shape")
+    check(cadex_sheet.sheet_aspect("4:3", "grid")[0] == 4.0 / 3.0
+          and cadex_sheet.sheet_aspect("9:16", "grid")[0] == 9.0 / 16.0,
+          "any width:height parses, portrait included")
+    for bad in ("wide", "16:0", "0:9", "16:9:2"):
+        ratio, error = cadex_sheet.sheet_aspect(bad, "grid")
+        check(ratio is None and "width:height" in error,
+              "aspect {!r} refused: {:s}".format(bad, error or "(none)"))
+    check("between 1:5 and 5:1"
+          in cadex_sheet.sheet_aspect("1:9", "grid")[1],
+          "an extreme aspect names its bounds")
+
+    rects, width, height = cadex_sheet.layout_rects("triptych", 5, 1024,
+                                                    aspect=16.0 / 9.0)
+    check((width, height) == (1024, 576)
+          and rects[0] == (0, 384, 341, 192)
+          and rects[3] == (341, 0, 342, 576)
+          and rects[4] == (683, 0, 341, 576),
+          "the default 16:9 triptych is three columns over 1024x576")
+    for template in ("single", "row", "column", "grid", "hero", "triptych"):
+        for count in (1, 3, 5):
+            if template == "single" and count > 1:
+                continue
+            rects, width, height = cadex_sheet.layout_rects(
+                template, count, 1023, hero=count - 1, aspect=16.0 / 9.0)
+            tag = "16:9 {:s}/{:d}".format(template, count)
+            canvas = bytearray(width * height)
+            overlapped = False
+            for x, y, w, h in rects:
+                for row in range(y, y + h):
+                    start = row * width + x
+                    if any(canvas[start:start + w]):
+                        overlapped = True
+                    canvas[start:start + w] = b"\x01" * w
+            check(not overlapped and all(canvas),
+                  tag + ": exact tiling holds at 16:9 too")
+    check(cadex_sheet.layout_rects("single", 1, 1024, aspect=0.5)[1:]
+          == (512, 1024),
+          "a portrait aspect keeps the longest edge at max_size")
+    check(cadex_sheet.layout_rects(
+              "mosaic", 2, 1024, cells=[(1, 1, 1, 1), (1, 2, 1, 1)],
+              aspect=16.0 / 9.0)[1:] == (1024, 576),
+          "an explicit aspect overrides the mosaic's grid shape")
+
+    # -- ADR-153: part-name callouts ------------------------------------------
+    check(cadex_sheet.callouts_active({"callouts": None, "explode": 1.0})
+          and not cadex_sheet.callouts_active({"callouts": None,
+                                               "explode": 0.0})
+          and not cadex_sheet.callouts_active({"callouts": None,
+                                               "explode": None})
+          and not cadex_sheet.callouts_active({"callouts": False,
+                                               "explode": 1.0})
+          and cadex_sheet.callouts_active({"callouts": True}),
+          "callouts default on for exploded cells; an explicit flag wins")
+    named, error = cadex_sheet.normalize_views(
+        [{"view": "front", "callouts": True},
+         {"view": "top", "explode": 1.0, "callouts": False}], outputs)
+    check(error == "" and named[0]["callouts"] is True
+          and named[1]["callouts"] is False,
+          "the callouts flag rides the spec")
+    check(cadex_sheet.spec_meta(named[1]).get("callouts") is False,
+          "and an explicit flag lands in the meta")
+    result, error = cadex_sheet.normalize_views(
+        [{"view": "front", "callouts": "yes"}], outputs)
+    check(result is None and "true or false" in error,
+          "a non-boolean callouts is refused")
+    defaults, _error = cadex_sheet.normalize_views(None, outputs)
+    check(cadex_sheet.callouts_active(defaults[4]),
+          "the default sheet's exploded column names its parts")
+    check("parts named" in cadex_sheet.cell_legend(
+              defaults, cadex_sheet.layout_rects("triptych", 5, 1024)[0]),
+          "and the legend says so")
+
+    anchors = [("base", 100.0, 400.0), ("pin", 120.0, 380.0),
+               ("swing", 500.0, 300.0)]
+    entries, dropped = cadex_sheet.callout_layout(anchors, 600, 500, 12.0,
+                                                  top_pad=20.0)
+    check(dropped == 0 and len(entries) == 3,
+          "every anchor gets a label when the cell has room")
+    sides = {entry["name"]: entry["side"] for entry in entries}
+    check(sides == {"base": "left", "pin": "left", "swing": "right"},
+          "labels go to the side their anchor is on")
+    lefts = sorted((entry for entry in entries if entry["side"] == "left"),
+                   key=lambda entry: -entry["label_y"])
+    check(lefts[0]["label_y"] - lefts[1]["label_y"] >= 12.0 + 6.0,
+          "stacked labels keep the minimum spacing")
+    check(all(abs(entry["label_x"] - 4.8) < 1e-9 for entry in lefts)
+          and abs(next(entry for entry in entries
+                       if entry["side"] == "right")["label_x"] - 595.2)
+          < 1e-9,
+          "label_x is the outer text edge on each side")
+    crowded = [("p{:d}".format(index), 10.0, 30.0) for index in range(5)]
+    entries, dropped = cadex_sheet.callout_layout(crowded, 600, 40, 12.0)
+    check(dropped == 3 and len(entries) == 2,
+          "a cell too small for its callouts drops the excess, counted")
+    check(cadex_sheet.callout_layout(crowded, 600, 10, 12.0) == ((), 5),
+          "a cell with no label band drops them all")
+    check(cadex_sheet.callout_layout(anchors, 200, 500, 12.0) == ((), 3),
+          "and so does a cell too narrow to carry names beside the model")
+
+    # -- ADR-153: the parameters panel ----------------------------------------
+    panel, error = cadex_sheet.normalize_views(
+        [{"view": "three-quarter"}, {"view": "params"}], outputs)
+    check(error == "" and panel[1]["view"] == "params"
+          and panel[1]["label"] == "parameters" and panel[1]["ortho"]
+          and panel[1]["hide"] == (),
+          "a params cell normalizes: a cell of the sheet, not of the model")
+    check(cadex_sheet.spec_meta(panel[1]) == {"view": "params",
+                                              "label": "parameters"},
+          "and its meta is just what it is")
+    placed_panel, error = cadex_sheet.normalize_views(
+        [{"view": "front", "cell": [1, 1]},
+         {"view": "params", "cell": [1, 2], "span": [2, 1]}], outputs)
+    check(error == ""
+          and placed_panel[1]["cell"] == (1, 2)
+          and placed_panel[1]["span"] == (2, 1),
+          "a params cell places and spans on the mosaic like any view")
+    result, error = cadex_sheet.normalize_views(
+        [{"view": "params", "explode": 1.0}], outputs)
+    check(result is None and "takes only cell, span and hero" in error
+          and "explode" in error,
+          "camera and scene keys on a params cell are refused by name")
+    check("parameters panel" in cadex_sheet.cell_legend(
+              panel, cadex_sheet.layout_rects("row", 2, 512)[0]),
+          "the legend names the panel")
+
+    rows = cadex_sheet.param_rows(
+        [{"name": "bore", "default": 6.0, "min": 2.0, "max": 14.0,
+          "unit": "mm", "label": "Bore"},
+         {"name": "tooth_count", "default": 4.0},
+         {"name": "offset", "default": -2.0},
+         {"default": 1.0}], {"bore": 8.0})
+    check(len(rows) == 3, "a nameless spec is skipped, as the bridge does")
+    check(rows[0]["label"] == "Bore" and rows[0]["value_text"] == "8 mm"
+          and abs(rows[0]["fraction"] - 0.5) < 1e-9,
+          "a declared range places the knob at the value's fraction")
+    check(rows[1]["label"] == "Tooth Count"
+          and (rows[1]["min"], rows[1]["max"]) == (0.0, 16.0)
+          and abs(rows[1]["fraction"] - 0.25) < 1e-9,
+          "an undeclared range defaults exactly as the slider bridge does")
+    check((rows[2]["min"], rows[2]["max"]) == (-8.0, 1.0),
+          "and a negative default gets the bridge's negative range")
+    clamped = cadex_sheet.param_rows(
+        [{"name": "bore", "default": 6.0, "min": 2.0, "max": 14.0}],
+        {"bore": 99.0})
+    check(clamped[0]["fraction"] == 1.0,
+          "an out-of-range value clamps the knob, not the panel")
+
+    layout_info = cadex_sheet.params_panel_layout(4, 341, 576)
+    check(layout_info["shown"] == 4 and layout_info["more"] == 0
+          and layout_info["row_height"] == 46.0,
+          "four params in a tall cell all fit at the full row height")
+    squeezed = cadex_sheet.params_panel_layout(20, 200, 150)
+    check(squeezed["shown"] == 4 and squeezed["more"] == 16,
+          "a small cell shows what fits and counts the rest as +N more")
+
     # -- the tool advertises the composition surface --------------------------
     entry = next(e for e in tools.TOOL_DEFS if e["name"] == "make_blueprint")
     properties = entry["input_schema"]["properties"]
-    check("views" in properties and "layout" in properties,
-          "make_blueprint's schema advertises views and layout")
+    check("views" in properties and "layout" in properties
+          and "aspect" in properties,
+          "make_blueprint's schema advertises views, layout and aspect")
+    check("params" in properties["views"]["items"]["properties"]["view"]
+          ["enum"],
+          "and the view enum offers the parameters panel")
     check(properties["views"]["maxItems"] == cadex_sheet.MAX_VIEWS,
           "and caps views at the module's MAX_VIEWS")
     check(set(properties["views"]["items"]["properties"])

@@ -449,7 +449,12 @@ depends on. Independent of Phase 8.
       untouched — specs ride `put_blueprint`'s free-form `meta`. ADR-152
       adds the curation surface: per-cell `only` (the isolate) and the
       freeform `mosaic` layout (`cell` + `span` on an inferred grid,
-      holes allowed as ground, overlap refused).
+      holes allowed as ground, overlap refused). ADR-153 makes the sheet
+      read like a drawing: **16:9 by default** (`aspect`, any
+      width:height or `auto`), **part-name callouts** with leader lines
+      on exploded cells (on by default there, `callouts` overrides
+      anywhere), and the **parameters panel** as a placeable cell
+      (`view: params` — the declared sliders at their current values).
 
 **Exit criteria:** one script format across the product; both new gates
 green; slider median materially below 0.548 s *(met: 0.496 s end-to-end,

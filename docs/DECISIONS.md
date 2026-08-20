@@ -16079,3 +16079,59 @@ aspect following the grid; six refusal sentences. Gate: an `only`
 apply/restore round-trips bit-for-bit against the bundled engine. Windowed
 probe: the gearbox-shaped sheet — a 3×2-span exploded three-quarter beside
 an isolated cell and a sectioned cell, the unclaimed corner clean ground.
+
+## ADR-153 — the sheet reads like a drawing: 16:9, part callouts, the params panel (2026-08-20)
+
+**Decision.** Three additions to the composed blueprint sheet (ADR-151,
+ADR-152), all owner-directed:
+
+- **16:9 by default.** A new optional `aspect` argument on
+  `make_blueprint`: any `"width:height"` string (the longest field edge
+  stays `max_size`), `"auto"` for the pre-ADR-153 shapes (square
+  templates; a row/column as wide or tall as its cells; a mosaic shaped
+  like its grid), default `"16:9"`. The **mosaic alone defaults to
+  `auto`**, because its shape IS the agent's grid — forcing wide would
+  fight a deliberate composition; an explicit aspect still overrides it.
+  `layout_rects` grew the ratio parameter and nothing else: the same
+  shared integer boundary arrays tile the non-square field, and the pure
+  suite paint-counts every template at 16:9 too.
+- **Part-name callouts.** The classic exploded-diagram dressing: a leader
+  line from each visible output to its name, an elbow, the text stacked
+  down the cell's left and right margins. Per-view `callouts: true/false`;
+  omitted, they switch on exactly when the cell is exploded (factor > 0) —
+  so the default sheet's right column now names its parts with no new
+  input. The anchors are the outputs' bbox centres projected through the
+  SAME `fit_view` matrices the tile renders with; a callout cell renders
+  at a wider fit margin (`CALLOUT_FIT_MARGIN = 1.45`) so the names have
+  ground to sit on; labels that do not fit are **dropped and counted** in
+  the tool's note, never overdrawn. The side/stack/spacing arithmetic
+  (`callout_layout`) is pure and pinned; only glyph measurement lives in
+  the bpy half, because only `blf` knows where a text ends.
+- **The parameters panel.** `{"view": "params"}` is a CELL, not a mode: it
+  places and spans like any view (hero, mosaic, all of it) and renders the
+  project's declared parameters as labelled slider rows — track, knob at
+  the current value's fraction of its range, value text — instead of the
+  model. `param_rows` mirrors `cadex_backend._bridge_params`'s range
+  defaulting **on purpose**, so the panel shows the sliders the user
+  actually has; rows that do not fit collapse into one `+N more` line
+  (`params_panel_layout`, pure and pinned). A params cell takes only
+  placement keys (camera/scene keys refused by name), skips the scene
+  state machine entirely, and is drawn after the flat restore on the same
+  sampled ground as the rendered tiles (the ADR-151 uniform-ground
+  lesson). A script with no parameters refuses the cell in a sentence —
+  checked in `validate_against_model`, so the gate pins it headless.
+
+**Not changed.** The protocol (the new spec keys ride `put_blueprint`'s
+free-form `meta` like the rest), the headless refusal sentence, the
+6-view cap, and `render_views` — the 2×2 stays what it always was.
+
+**Verified.** Pure suite: aspect parsing and refusals, the 16:9 triptych
+pinned exactly (1024×576, three 341-wide columns), paint-count at 16:9
+across every template, callout side/spacing/drop arithmetic, `param_rows`
+against the bridge's defaulting, the schema advertising all three. Gate:
+a params cell with camera keys and a bad aspect refuse for what they are
+BEFORE the headless sentence; a valid params cell against the
+two-parameter fixture validates and only then refuses headless. Windowed
+probe: the 16:9 default with named parts in the exploded column, the
+params panel as a hero cell and as a mosaic column, callouts forced on
+and off, nothing left behind after restore.

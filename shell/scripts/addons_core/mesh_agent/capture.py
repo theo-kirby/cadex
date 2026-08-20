@@ -616,7 +616,7 @@ def render_views(max_size=1024):
 # -- render_blueprint: the composed, dressed sheet (ADR-150, ADR-151) --------
 
 def render_blueprint(theme="blueprint", max_size=1024, views=None,
-                     layout="auto", label=""):
+                     layout="auto", aspect=None, label=""):
     """Agent-composed fitted views, styled and dressed as a blueprint sheet.
 
     Returns ``({"path", "base64", "legend", "views", "layout", "rects",
@@ -680,6 +680,9 @@ def render_blueprint(theme="blueprint", max_size=1024, views=None,
     template, hero_index, error = cadex_sheet.choose_layout(layout, specs)
     if error:
         return None, error
+    ratio, error = cadex_sheet.sheet_aspect(aspect, template)
+    if error:
+        return None, error
     error = cadex_sheet.validate_against_model(scene, specs)
     if error:
         return None, error
@@ -698,17 +701,23 @@ def render_blueprint(theme="blueprint", max_size=1024, views=None,
                   spec["span"][0], spec["span"][1]) for spec in specs]
     rects, field_w, field_h = cadex_sheet.layout_rects(
         template, len(specs), max(8, int(max_size)), hero=hero_index,
-        cells=cells)
+        cells=cells, aspect=ratio)
     margin = cadex_sheet.margin_px(max(field_w, field_h))
+    label_size = max(10.0, margin * 0.55)
+    theme_colors = cadex_blueprint.THEMES[
+        str(theme or cadex_blueprint.DEFAULT_THEME)]
 
     notes = []
+    callouts = []
+    tiles = [None] * len(specs)
     snapshot = cadex_sheet.snapshot_state(scene)
     undo_isolation = _isolate_model(bpy.context.view_layer,
                                     keep={cadex_explode.COLLECTION_NAME})
     undo_presentation = cadex_blueprint.present(space, theme)
     try:
-        tiles = []
         for index, (spec, rect) in enumerate(zip(specs, rects)):
+            if spec["view"] == "params":
+                continue   # a sheet cell, not a scene state; drawn below
             cadex_sheet.apply_view_state(scene, spec, snapshot)
             bbox = model_bbox()
             if bbox is None:
@@ -728,16 +737,66 @@ def render_blueprint(theme="blueprint", max_size=1024, views=None,
                                  "the model, so that cell shows the whole "
                                  "part".format(index))
             x, y, w, h = rect
-            fitted = fit_view(spec, bbox, aspect=w / float(h))
-            tiles.append((_tile_pixels(space, region, w, h,
-                                       fitted["view"], fitted["window"]),
-                          rect))
+            named = cadex_sheet.callouts_active(spec)
+            # The wider fit buys the label band; a cell too narrow to
+            # carry one gets the normal fit and the drop note below.
+            roomy = named and w >= cadex_sheet.CALLOUT_MIN_WIDTH
+            fitted = fit_view(spec, bbox, aspect=w / float(h),
+                              margin=(cadex_sheet.CALLOUT_FIT_MARGIN
+                                      if roomy else MARGIN))
+            tiles[index] = (_tile_pixels(space, region, w, h,
+                                         fitted["view"], fitted["window"]),
+                            rect)
+            if named:
+                anchors = cadex_sheet.callout_anchors(
+                    sorted(display), spec["hide"], fitted, w, h)
+                entries, dropped = cadex_sheet.callout_layout(
+                    anchors, w, h, max(9.0, margin * 0.45),
+                    top_pad=label_size + 8.0)
+                for entry in entries:
+                    entry = dict(entry)
+                    ax, ay = entry["anchor"]
+                    entry["anchor"] = (margin + x + ax, margin + y + ay)
+                    entry["label_x"] += margin + x
+                    entry["label_y"] += margin + y
+                    callouts.append(entry)
+                if dropped:
+                    notes.append("views[{:d}]: {:d} part name(s) dropped "
+                                 "-- the cell is too small for all its "
+                                 "callouts".format(index, dropped))
     finally:
         cadex_sheet.restore_state(scene, snapshot)
         undo_presentation()
         undo_isolation()
 
-    field_pixels = composite_rects(tiles, field_w, field_h)
+    # The params cells, after the scene is back as it was: they draw the
+    # declared sliders, not the model, on the same sampled ground as the
+    # rendered tiles (the ADR-151 uniform-ground lesson).
+    param_cells = [(index, rect) for index, (spec, rect)
+                   in enumerate(zip(specs, rects))
+                   if spec["view"] == "params"]
+    if param_cells:
+        from . import model as model_module
+
+        state = cadex_backend.cached_script_state(scene)
+        try:
+            stored = model_module.stored_values(scene)
+        except Exception:
+            stored = {}
+        rows = cadex_sheet.param_rows(
+            list(getattr(state, "specs", None) or []), dict(stored or {}))
+        sample = next((tile for tile in tiles if tile is not None), None)
+        ground = (tuple(sample[0][0:3])
+                  if sample is not None and any(sample[0][0:3])
+                  else cadex_sheet.display_color(
+                      theme_colors["background"]))
+        for index, rect in param_cells:
+            tiles[index] = (cadex_sheet._draw_params_tile(
+                rect[2], rect[3], rows, theme_colors, ground), rect)
+
+    field_pixels = composite_rects([tile for tile in tiles
+                                    if tile is not None],
+                                   field_w, field_h)
 
     project = os.path.basename(os.path.normpath(root))
     if project.endswith(".cadex"):
@@ -748,14 +807,10 @@ def render_blueprint(theme="blueprint", max_size=1024, views=None,
         project if not label else "{:s} — {:s}".format(project, label),
         version, revision, time.strftime("%Y-%m-%d"), theme)
 
-    label_size = max(10.0, cadex_sheet.margin_px(max(field_w, field_h))
-                     * 0.55)
     cell_labels = [(spec["label"],
                     margin + rect[0] + 6,
                     margin + rect[1] + rect[3] - 6 - label_size)
                    for spec, rect in zip(specs, rects)]
-    theme_colors = cadex_blueprint.THEMES[
-        str(theme or cadex_blueprint.DEFAULT_THEME)]
     # One uniform ground: the margin band takes the colour the tiles
     # actually came back in (colour-managed), sampled off the field's
     # corner pixel — the theme value pushed through display_color is only
@@ -768,7 +823,7 @@ def render_blueprint(theme="blueprint", max_size=1024, views=None,
     pixels, width, height = cadex_sheet._dress_sheet(
         field_pixels, field_w, field_h, margin, theme_colors,
         cadex_sheet.zone_grid(sheet_w, sheet_h), titles, cell_labels,
-        background=ground)
+        background=ground, callouts=callouts)
 
     image = bpy.data.images.new("mesh_agent_blueprint", width, height, alpha=True)
     try:
@@ -788,6 +843,9 @@ def render_blueprint(theme="blueprint", max_size=1024, views=None,
         "legend": cadex_sheet.cell_legend(specs, rects),
         "views": [cadex_sheet.spec_meta(spec) for spec in specs],
         "layout": template,
+        "aspect": (str(aspect) if aspect is not None
+                   else ("auto" if template == "mosaic"
+                         else cadex_sheet.DEFAULT_ASPECT)),
         "rects": [list(rect) for rect in rects],
         "size": [width, height],
         "version": version,

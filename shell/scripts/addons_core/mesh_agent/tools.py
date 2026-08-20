@@ -468,16 +468,23 @@ TOOL_DEFS = [
             "outputs (only: show just these gears), exploded factor and "
             "section cut -- e.g. a gearbox reads best as a big exploded "
             "stack beside a mid-cut section with the shell hidden, not as "
-            "front/side boilerplate. Lay the cells out with a template "
-            "(layout), or place them freely: give every view a cell "
-            "[row, column] and optional span [rows, columns] on a mosaic "
-            "grid -- spans make big cells, unclaimed cells stay empty "
-            "ground, so asymmetric compositions are fine. Omit views for "
-            "the default sheet: front, top and bottom stacked down the "
-            "left third, the three-quarter perspective filling the centre "
-            "third, and the rear (Z+180) perspective fully exploded in "
-            "the right third -- unexploded when the model declares no "
-            "exploded view. Per-view overrides inherit the live "
+            "front/side boilerplate. Exploded cells name their parts by "
+            "default: leader lines run from each part to its output name "
+            "(callouts true/false overrides that on any cell). A cell "
+            "with view 'params' renders the parameters panel instead -- "
+            "the declared sliders at their current values. Lay the cells "
+            "out with a template (layout), or place them freely: give "
+            "every view a cell [row, column] and optional span [rows, "
+            "columns] on a mosaic grid -- spans make big cells, "
+            "unclaimed cells stay empty ground, so asymmetric "
+            "compositions are fine. Sheets are 16:9 by default; aspect "
+            "takes any 'width:height', or 'auto' to follow the layout. "
+            "Omit views for the default sheet: front, top and bottom "
+            "stacked down the left third, the three-quarter perspective "
+            "filling the centre third, and the rear (Z+180) perspective "
+            "fully exploded in the right third -- unexploded when the "
+            "model declares no exploded view. Per-view overrides inherit "
+            "the live "
             "presentation -- a section or explosion that is on stays in "
             "every cell that does not override it. The image comes back "
             "in the reply, so look at it and iterate; sheets are cheap, "
@@ -510,8 +517,9 @@ TOOL_DEFS = [
                     "minItems": 1,
                     "maxItems": 6,
                     "description": ("The cells of the sheet, in order "
-                                    "(default: front, top, right, "
-                                    "three-quarter as hero)."),
+                                    "(default: the triptych -- front/top/"
+                                    "bottom, three-quarter, exploded "
+                                    "rear)."),
                     "items": {
                         "type": "object",
                         "properties": {
@@ -519,10 +527,14 @@ TOOL_DEFS = [
                                 "type": "string",
                                 "enum": ["front", "back", "left", "right",
                                          "top", "bottom", "three-quarter",
-                                         "custom"],
+                                         "custom", "params"],
                                 "description": ("Which way this cell "
                                                 "looks; 'custom' takes "
-                                                "azimuth/elevation."),
+                                                "azimuth/elevation; "
+                                                "'params' draws the "
+                                                "parameters panel in "
+                                                "this cell instead of "
+                                                "the model."),
                             },
                             "azimuth": {
                                 "type": "number",
@@ -602,9 +614,23 @@ TOOL_DEFS = [
                                                 "this cell covers "
                                                 "(default [1, 1])."),
                             },
+                            "callouts": {
+                                "type": "boolean",
+                                "description": ("Name the visible parts "
+                                                "with leader lines in "
+                                                "this cell (default: on "
+                                                "for exploded cells)."),
+                            },
                         },
                         "required": ["view"],
                     },
+                },
+                "aspect": {
+                    "type": "string",
+                    "description": ("The sheet's width:height, e.g. "
+                                    "'16:9' (the default), '4:3', '1:1'; "
+                                    "'auto' follows the layout's own "
+                                    "shape."),
                 },
                 "layout": {
                     "type": "string",
@@ -1489,9 +1515,11 @@ def _tool_make_blueprint(tool_input):
     max_size = int(tool_input.get("max_size") or 1024)
     label = str(tool_input.get("name") or "").strip()
 
+    aspect = tool_input.get("aspect")
     sheet, error = capture.render_blueprint(
         theme=theme, max_size=max_size, views=tool_input.get("views"),
-        layout=str(tool_input.get("layout") or "auto"), label=label)
+        layout=str(tool_input.get("layout") or "auto"),
+        aspect=str(aspect) if aspect is not None else None, label=label)
     if sheet is None:
         return _text(error), True
 
@@ -1501,6 +1529,7 @@ def _tool_make_blueprint(tool_input):
         meta={"theme": theme,
               "size": list(sheet.get("size") or ()),
               "layout": str(sheet.get("layout") or ""),
+              "aspect": str(sheet.get("aspect") or ""),
               "rects": list(sheet.get("rects") or ()),
               "views": list(sheet.get("views") or ()),
               "version": str(sheet.get("version") or ""),

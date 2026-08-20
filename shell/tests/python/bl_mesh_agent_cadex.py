@@ -4253,11 +4253,29 @@ def test_sheet_state_applies_and_restores(root):
               first_line_of(message)))
     ok, message = run_tool(
         "make_blueprint",
+        {"views": [{"view": "params", "explode": 1.0}]})
+    check(not ok and "takes only cell, span and hero" in message,
+          "a params cell with camera keys is refused for what it is: "
+          "{:s}".format(first_line_of(message)))
+    ok, message = run_tool("make_blueprint",
+                           {"views": [{"view": "front"}], "aspect": "wide"})
+    check(not ok and "width:height" in message,
+          "a bad aspect is refused with the format: {:s}".format(
+              first_line_of(message)))
+    ok, message = run_tool(
+        "make_blueprint",
         {"views": [{"view": "three-quarter", "explode": 0.5}]})
     check(not ok and "Blueprint rendering is unavailable in background mode"
           in message,
           "a VALID composed spec still refuses headless, in the unchanged "
           "sentence: {:s}".format(first_line_of(message)))
+    ok, message = run_tool(
+        "make_blueprint",
+        {"views": [{"view": "front"}, {"view": "params"}]})
+    check(not ok and "Blueprint rendering is unavailable in background mode"
+          in message,
+          "a params cell against a two-parameter script validates and only "
+          "then refuses headless: {:s}".format(first_line_of(message)))
 
     def presentation():
         # A parented Edges child's matrix_world is an EVALUATED value; a
@@ -4424,7 +4442,7 @@ def test_sheet_state_applies_and_restores(root):
     cadex_explode.clear(scene)
     check(near(at(swing), solved), "and the cleanup reassembles")
 
-    GATE["sheet"] = {"outputs": len(display), "spec_refusals": 5}
+    GATE["sheet"] = {"outputs": len(display), "spec_refusals": 7}
 
 
 def test_live_mode_is_wired_and_refuses_cleanly(live_root):

@@ -7,10 +7,10 @@ tile, and the drawing-sheet dressing around them (ADR-151).
 
 ADR-150's sheet was fixed: four views, one 2x2 grid, nothing per cell. This
 module is what makes it composable — the agent names the views (the named
-orthos, the three-quarter, or a custom azimuth/elevation), gives each cell
-its own hidden outputs, exploded factor and section override, and picks a
-layout. The default is **hero-right**: three small orthos stacked on the
-left, the big three-quarter perspective filling the right two-thirds.
+orthos, the three-quarter, a custom azimuth/elevation, or the parameters
+panel), gives each cell its own hidden outputs, exploded factor, section
+override and part-name callouts, and picks a layout. The default is the
+**triptych** (:data:`DEFAULT_VIEWS`), on a 16:9 sheet (ADR-153).
 
 Three responsibilities, three groups of functions:
 
@@ -52,6 +52,14 @@ LAYOUTS = ("auto", "single", "row", "column", "grid", "hero", "triptych",
 #: six views, a finer grid is empty space pretending to be composition.
 MAX_GRID = 6
 
+#: The sheet's default proportions (ADR-153): a 16:9 field, the shape of
+#: the screens the sheet is read on. ``aspect`` is optional — any
+#: ``"width:height"`` string works, and ``"auto"`` keeps the pre-ADR-153
+#: shapes (square fields; a row or column as wide or tall as its cells; a
+#: mosaic shaped like its grid). The mosaic alone defaults to ``auto``,
+#: because its shape IS the agent's grid.
+DEFAULT_ASPECT = "16:9"
+
 #: How much of the sheet's width the hero cell takes, on the right.
 HERO_FRACTION = 2.0 / 3.0
 
@@ -78,11 +86,26 @@ FRAME_ALPHA = 0.5
 LABEL_ALPHA = 0.45
 TITLE_ALPHA = 0.6
 
+#: Callout dressing (ADR-153): the part names and their leader lines are
+#: content, not dressing, so they sit above the dressing alphas.
+CALLOUT_TEXT_ALPHA = 0.85
+CALLOUT_LINE_ALPHA = 0.55
+
+#: The wider fit a callout cell renders with, so the part names have a band
+#: of ground to sit on either side of the model.
+CALLOUT_FIT_MARGIN = 1.45
+
+#: Narrower than this, a cell has no label band worth the name — the text
+#: lands on the model instead of beside it (measured on a 256 px sheet,
+#: whose triptych columns are 85 px). Such a cell drops its callouts and
+#: says so, rather than drawing them over the part.
+CALLOUT_MIN_WIDTH = 240
+
 #: The keys one view object may carry, flat on purpose: a schema one nesting
 #: level deep is a schema the model fills correctly.
 SPEC_KEYS = ("view", "azimuth", "elevation", "projection", "hide", "only",
              "explode", "section", "section_offset_mm", "section_flip",
-             "hero", "cell", "span")
+             "hero", "cell", "span", "callouts")
 
 _SECTION_AXES = ("X", "Y", "Z")
 
@@ -121,6 +144,37 @@ def display_color(linear_rgb):
     return tuple(encode(channel) for channel in linear_rgb)
 
 
+def sheet_aspect(aspect, template):
+    """The tile field's width:height as a ratio: ``(ratio, "")`` or
+    ``(None, "")`` for the layout-derived shape, or ``(None, refusal)``.
+
+    An omitted ``aspect`` means :data:`DEFAULT_ASPECT` — except for the
+    mosaic, whose shape is the agent's grid and stays ``auto`` unless the
+    agent says otherwise.
+    """
+
+    if aspect is None:
+        aspect = "auto" if template == "mosaic" else DEFAULT_ASPECT
+    text = str(aspect).strip().lower()
+    if text == "auto":
+        return None, ""
+    parts = text.split(":")
+    width = height = 0.0
+    if len(parts) == 2:
+        try:
+            width, height = float(parts[0]), float(parts[1])
+        except ValueError:
+            width = height = 0.0
+    if width <= 0.0 or height <= 0.0:
+        return None, ("aspect must be 'width:height' (like '16:9') or "
+                      "'auto' to follow the layout; got {!r}.".format(aspect))
+    ratio = width / height
+    if not 0.2 <= ratio <= 5.0:
+        return None, ("aspect {!r} is extreme; keep width:height between "
+                      "1:5 and 5:1.".format(aspect))
+    return ratio, ""
+
+
 def _is_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
@@ -130,7 +184,7 @@ def normalize_views(raw, output_names):
     ``(None, refusal)``.
 
     Structural validation only — everything checkable without a scene.
-    Defaults filled: an omitted ``views`` is the four-view hero sheet.
+    Defaults filled: an omitted ``views`` is :data:`DEFAULT_VIEWS`.
     Duplicates are allowed on purpose (front-with-housing-hidden beside a
     plain front is a legitimate sheet). Each spec is ready for
     ``capture.fit_view`` (it carries ``name``/``up``/``ortho`` and either
@@ -145,11 +199,11 @@ def normalize_views(raw, output_names):
         raw = [dict(item) for item in DEFAULT_VIEWS]
     if not isinstance(raw, (list, tuple)):
         return None, ("views must be a list of view objects; got {:s}. Omit "
-                      "it for the default four-view sheet.".format(
+                      "it for the default sheet.".format(
                           type(raw).__name__))
     if not raw:
-        return None, ("views is empty; omit it for the default four-view "
-                      "sheet, or name at least one view.")
+        return None, ("views is empty; omit it for the default sheet, or "
+                      "name at least one view.")
     if len(raw) > MAX_VIEWS:
         return None, ("make_blueprint takes at most {:d} views; got {:d}. "
                       "Compose two sheets instead.".format(MAX_VIEWS,
@@ -170,10 +224,75 @@ def normalize_views(raw, output_names):
 
         name = str(item.get("view") or "").strip()
         named = capture.NAMED_VIEWS.get(name)
-        if named is None and name != "custom":
+        if named is None and name not in ("custom", "params"):
             return None, ("Unknown view {!r} in views[{:d}]; one of: {:s}, "
-                          "or custom with azimuth/elevation.".format(
+                          "custom with azimuth/elevation, or params for "
+                          "the parameters panel.".format(
                               name, index, ", ".join(_view_names())))
+
+        hero = bool(item.get("hero"))
+        if hero:
+            if hero_at is not None:
+                return None, ("views[{:d}] and views[{:d}] are both flagged "
+                              "hero; a sheet has one hero cell. Drop "
+                              "one.".format(hero_at, index))
+            hero_at = index
+
+        # Mosaic placement: cell = [row, column], 1-based from the
+        # top-left (the zone marks' reading order); span = [rows, columns].
+        cell = item.get("cell")
+        span = item.get("span")
+        if span is not None and cell is None:
+            return None, ("views[{:d}] carries span but no cell; place "
+                          "the cell first ([row, column], 1-based from "
+                          "the top-left).".format(index))
+
+        def _pair(value):
+            return (isinstance(value, (list, tuple)) and len(value) == 2
+                    and all(isinstance(part, int)
+                            and not isinstance(part, bool)
+                            and part >= 1 for part in value))
+
+        if cell is not None:
+            if not _pair(cell):
+                return None, ("views[{:d}].cell must be [row, column], "
+                              "1-based integers from the "
+                              "top-left.".format(index))
+            if span is None:
+                span = (1, 1)
+            elif not _pair(span):
+                return None, ("views[{:d}].span must be [rows, columns], "
+                              "each at least 1.".format(index))
+            if (cell[0] + span[0] - 1 > MAX_GRID
+                    or cell[1] + span[1] - 1 > MAX_GRID):
+                return None, ("A mosaic goes up to {:d} rows and {:d} "
+                              "columns; views[{:d}] reaches past "
+                              "that.".format(MAX_GRID, MAX_GRID, index))
+
+        # The parameters panel (ADR-153): a cell of the sheet, not of the
+        # model — it renders the declared parameters as labelled sliders
+        # at their current values, so it takes placement keys and nothing
+        # that steers a camera or the scene.
+        if name == "params":
+            taken = sorted(key for key in ("azimuth", "elevation",
+                                           "projection", "hide", "only",
+                                           "explode", "section",
+                                           "section_offset_mm",
+                                           "section_flip", "callouts")
+                           if item.get(key) is not None)
+            if taken:
+                return None, ("views[{:d}] is the parameters panel; it "
+                              "takes only cell, span and hero — drop "
+                              "{:s}.".format(index, ", ".join(taken)))
+            spec = {"view": "params", "up": (0.0, 0.0, 1.0), "ortho": True,
+                    "name": "parameters", "label": "parameters",
+                    "hide": (), "only": (), "explode": None,
+                    "section": None, "hero": hero, "callouts": None}
+            if cell is not None:
+                spec["cell"] = (int(cell[0]), int(cell[1]))
+                spec["span"] = (int(span[0]), int(span[1]))
+            specs.append(spec)
+            continue
 
         has_angles = "azimuth" in item or "elevation" in item
         if named is not None and has_angles:
@@ -274,44 +393,12 @@ def normalize_views(raw, output_names):
                           "'off' to lift a live cut in this "
                           "cell.".format(index, section_raw))
 
-        hero = bool(item.get("hero"))
-        if hero:
-            if hero_at is not None:
-                return None, ("views[{:d}] and views[{:d}] are both flagged "
-                              "hero; a sheet has one hero cell. Drop "
-                              "one.".format(hero_at, index))
-            hero_at = index
-
-        # Mosaic placement: cell = [row, column], 1-based from the
-        # top-left (the zone marks' reading order); span = [rows, columns].
-        cell = item.get("cell")
-        span = item.get("span")
-        if span is not None and cell is None:
-            return None, ("views[{:d}] carries span but no cell; place "
-                          "the cell first ([row, column], 1-based from "
-                          "the top-left).".format(index))
-
-        def _pair(value):
-            return (isinstance(value, (list, tuple)) and len(value) == 2
-                    and all(isinstance(part, int)
-                            and not isinstance(part, bool)
-                            and part >= 1 for part in value))
-
-        if cell is not None:
-            if not _pair(cell):
-                return None, ("views[{:d}].cell must be [row, column], "
-                              "1-based integers from the "
-                              "top-left.".format(index))
-            if span is None:
-                span = (1, 1)
-            elif not _pair(span):
-                return None, ("views[{:d}].span must be [rows, columns], "
-                              "each at least 1.".format(index))
-            if (cell[0] + span[0] - 1 > MAX_GRID
-                    or cell[1] + span[1] - 1 > MAX_GRID):
-                return None, ("A mosaic goes up to {:d} rows and {:d} "
-                              "columns; views[{:d}] reaches past "
-                              "that.".format(MAX_GRID, MAX_GRID, index))
+        # Callouts: the part names with leader lines. Omitted, they switch
+        # on with an exploded cell — :func:`callouts_active` is the rule.
+        callouts = item.get("callouts")
+        if callouts is not None and not isinstance(callouts, bool):
+            return None, ("views[{:d}].callouts must be true or "
+                          "false.".format(index))
 
         if named is not None:
             label = name
@@ -346,6 +433,7 @@ def normalize_views(raw, output_names):
             "explode": explode,
             "section": section,
             "hero": hero,
+            "callouts": callouts,
         })
         if cell is not None:
             spec["cell"] = (int(cell[0]), int(cell[1]))
@@ -453,7 +541,8 @@ def _boundaries(total, cells):
             for index in range(cells + 1)]
 
 
-def layout_rects(template, count, max_size, hero=None, cells=None):
+def layout_rects(template, count, max_size, hero=None, cells=None,
+                 aspect=None):
     """``(rects, width, height)`` — one ``(x, y, w, h)`` per view, in view
     order, ``y`` measured from the BOTTOM (the buffer layout).
 
@@ -461,29 +550,34 @@ def layout_rects(template, count, max_size, hero=None, cells=None):
     col_span)`` per view, 1-based from the top-left, already
     overlap-checked by :func:`choose_layout`. The grid's extent is inferred
     from the placements (no separate rows/columns knob to disagree with
-    them), the field's aspect follows it — columns:rows, longest edge
-    ``max_size`` — and a grid cell no view claims stays uniform ground.
+    them) and a grid cell no view claims stays uniform ground.
 
     ``max_size`` is the tile field's longest edge; the margin band is the
-    caller's to add. ``hero`` places the flagged view's cell: the right
-    :data:`HERO_FRACTION` of the field at full height, the small views
-    stacked top-down in the left column.
+    caller's to add. ``aspect`` is the field's width:height ratio from
+    :func:`sheet_aspect`; ``None`` keeps each template's own shape — a
+    square field, a row or column as wide or tall as its cells, a mosaic
+    shaped like its grid. ``hero`` places the flagged view's cell: the
+    right :data:`HERO_FRACTION` of the field at full height, the small
+    views stacked top-down in the left column.
     """
 
     size = max(8, int(max_size))
     count = max(1, int(count))
+
+    def field(ratio):
+        if ratio is None:
+            return size, size
+        if ratio >= 1.0:
+            return size, max(8, int(round(size / ratio)))
+        return max(8, int(round(size * ratio))), size
 
     if template == "mosaic" and cells:
         rows = max(row + row_span - 1
                    for row, _col, row_span, _col_span in cells)
         columns = max(col + col_span - 1
                       for _row, col, _row_span, col_span in cells)
-        if columns >= rows:
-            width = size
-            height = max(8, int(round(size * rows / float(columns))))
-        else:
-            height = size
-            width = max(8, int(round(size * columns / float(rows))))
+        width, height = field(aspect if aspect is not None
+                              else columns / float(rows))
         xs = _boundaries(width, columns)
         ys = _boundaries(height, rows)
         rects = []
@@ -495,68 +589,208 @@ def layout_rects(template, count, max_size, hero=None, cells=None):
         return rects, width, height
 
     if template == "single" or count == 1:
-        return [(0, 0, size, size)], size, size
+        width, height = field(aspect)
+        return [(0, 0, width, height)], width, height
 
     if template == "row":
-        xs = _boundaries(size, count)
-        height = max(8, int(round(size / float(count))))
+        width, height = field(aspect if aspect is not None
+                              else float(count))
+        xs = _boundaries(width, count)
         return ([(xs[i], 0, xs[i + 1] - xs[i], height)
-                 for i in range(count)], size, height)
+                 for i in range(count)], width, height)
 
     if template == "column":
-        ys = _boundaries(size, count)
-        width = max(8, int(round(size / float(count))))
+        width, height = field(aspect if aspect is not None
+                              else 1.0 / count)
+        ys = _boundaries(height, count)
         # View order runs top to bottom; the buffer's y runs bottom-up.
-        return ([(0, size - ys[i + 1], width, ys[i + 1] - ys[i])
-                 for i in range(count)], width, size)
+        return ([(0, height - ys[i + 1], width, ys[i + 1] - ys[i])
+                 for i in range(count)], width, height)
 
     if template == "hero":
+        width, height = field(aspect)
         hero = count - 1 if hero is None else int(hero)
-        hero_width = int(round(size * HERO_FRACTION))
-        left_width = size - hero_width
-        ys = _boundaries(size, count - 1)
+        hero_width = int(round(width * HERO_FRACTION))
+        left_width = width - hero_width
+        ys = _boundaries(height, count - 1)
         rects = [None] * count
-        rects[hero] = (left_width, 0, hero_width, size)
+        rects[hero] = (left_width, 0, hero_width, height)
         slot = 0
         for index in range(count):
             if index == hero:
                 continue
-            rects[index] = (0, size - ys[slot + 1], left_width,
+            rects[index] = (0, height - ys[slot + 1], left_width,
                             ys[slot + 1] - ys[slot])
             slot += 1
-        return rects, size, size
+        return rects, width, height
 
     if template == "triptych":
         if count == 2:
             # choose_layout refuses this; called directly, degrade to a row
             # rather than tile two columns of a three-column field.
-            return layout_rects("row", count, size)
+            return layout_rects("row", count, size, aspect=aspect)
         # Three equal columns: views[:-2] stack down the left, views[-2]
         # fills the centre at full height, views[-1] the right.
-        xs = _boundaries(size, 3)
-        ys = _boundaries(size, count - 2)
-        rects = [(0, size - ys[index + 1], xs[1],
+        width, height = field(aspect)
+        xs = _boundaries(width, 3)
+        ys = _boundaries(height, count - 2)
+        rects = [(0, height - ys[index + 1], xs[1],
                   ys[index + 1] - ys[index])
                  for index in range(count - 2)]
-        rects.append((xs[1], 0, xs[2] - xs[1], size))
-        rects.append((xs[2], 0, xs[3] - xs[2], size))
-        return rects, size, size
+        rects.append((xs[1], 0, xs[2] - xs[1], height))
+        rects.append((xs[2], 0, xs[3] - xs[2], height))
+        return rects, width, height
 
     # grid: near-square, the partial last row widened to span (no hole).
+    width, height = field(aspect)
     columns = int(math.ceil(math.sqrt(count)))
     rows = int(math.ceil(count / float(columns)))
-    ys = _boundaries(size, rows)
+    ys = _boundaries(height, rows)
     rects = []
     placed = 0
     for row in range(rows):
         in_row = min(columns, count - placed)
-        xs = _boundaries(size, in_row)
+        xs = _boundaries(width, in_row)
         top0, top1 = ys[row], ys[row + 1]
         for cell in range(in_row):
-            rects.append((xs[cell], size - top1, xs[cell + 1] - xs[cell],
+            rects.append((xs[cell], height - top1, xs[cell + 1] - xs[cell],
                           top1 - top0))
             placed += 1
-    return rects, size, size
+    return rects, width, height
+
+
+def callouts_active(spec):
+    """Whether a cell gets part-name callouts: an explicit ``callouts``
+    wins; omitted, they switch on with an exploded cell (factor > 0) — the
+    classic exploded diagram names its parts."""
+
+    flag = spec.get("callouts")
+    if flag is not None:
+        return bool(flag)
+    explode = spec.get("explode")
+    return explode is not None and float(explode) > 0.0
+
+
+def callout_layout(anchors, rect_w, rect_h, text_size, top_pad=0.0):
+    """Place one cell's part-name callouts: ``(entries, dropped)``.
+
+    ``anchors`` is ``[(name, x, y)]`` in CELL-local pixels (``y`` from the
+    bottom, the buffer layout). Labels go to the side their anchor is on,
+    stack top-down at a minimum spacing, and drop — counted, so the
+    caption can say so — when the cell cannot fit them all. Each entry is
+    ``{"name", "side", "label_x", "label_y", "anchor"}`` with ``label_x``
+    the OUTER text edge (left side: the text begins there; right side: it
+    ends there). The bpy half measures the glyphs and draws the leader
+    from the text's inner edge, through an elbow, to the anchor.
+
+    ``top_pad`` keeps the top rows clear of the cell's view label.
+    """
+
+    text_size = float(text_size)
+    pad = max(4.0, text_size * 0.4)
+    low = pad
+    high = float(rect_h) - pad - text_size - float(top_pad)
+    spacing = text_size + 6.0
+    if high <= low or rect_w < CALLOUT_MIN_WIDTH:
+        return (), len(anchors)
+    capacity = int((high - low) / spacing) + 1
+
+    entries = []
+    dropped = 0
+    for side in ("left", "right"):
+        mine = [(name, x, y) for name, x, y in anchors
+                if (x < rect_w / 2.0) == (side == "left")]
+        mine.sort(key=lambda anchor: -anchor[2])
+        if len(mine) > capacity:
+            dropped += len(mine) - capacity
+            mine = mine[:capacity]
+        placed = []
+        previous = None
+        for name, ax, ay in mine:
+            y = min(max(ay - text_size / 2.0, low), high)
+            if previous is not None:
+                y = min(y, previous - spacing)
+            y = max(y, low)
+            placed.append({"name": name, "side": side,
+                           "label_x": pad if side == "left"
+                           else rect_w - pad,
+                           "label_y": y, "anchor": (ax, ay)})
+            previous = y
+        # The bottom clamp can stack rows onto each other; walk back up.
+        # Capacity guarantees the walk stays under ``high``.
+        for index in range(len(placed) - 2, -1, -1):
+            floor = placed[index + 1]["label_y"] + spacing
+            if placed[index]["label_y"] < floor:
+                placed[index]["label_y"] = floor
+        entries.extend(placed)
+    return tuple(entries), dropped
+
+
+def param_rows(specs, values):
+    """Engine ``param_specs`` plus current values, as drawable rows.
+
+    Mirrors ``cadex_backend._bridge_params``'s range defaulting on
+    purpose, so the panel shows the sliders the user actually has: an
+    undeclared min/max becomes the same usable range the sidebar shows.
+    Each row: ``{"name", "label", "value_text", "fraction", "min",
+    "max"}``, the fraction clamped to [0, 1].
+    """
+
+    rows = []
+    for spec in specs or ():
+        name = str(spec.get("name") or "")
+        if not name:
+            continue
+        try:
+            default = float(spec.get("default") or 0.0)
+        except (TypeError, ValueError):
+            default = 0.0
+        low = spec.get("min")
+        high = spec.get("max")
+        if low is None:
+            low = 0.0 if default >= 0.0 else default * 4.0
+        if high is None:
+            high = default * 4.0 if default > 0.0 else 1.0
+        low, high = float(low), float(high)
+        if high <= low:
+            high = low + 1.0
+        label = (str(spec.get("label") or "")
+                 or name.replace("_", " ").title())
+        unit = str(spec.get("unit") or "")
+        value = values.get(name, default) if values else default
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            value = default
+        fraction = (value - low) / (high - low)
+        fraction = max(0.0, min(1.0, fraction))
+        text = "{:g}".format(value)
+        if unit:
+            text += " " + unit
+        rows.append({"name": name, "label": label, "value_text": text,
+                     "fraction": fraction, "min": low, "max": high})
+    return tuple(rows)
+
+
+def params_panel_layout(count, width, height):
+    """How a params cell divides into rows: ``{"pad", "row_height",
+    "text_size", "shown", "more"}``.
+
+    ``shown`` rows are drawn; when they do not all fit, the last visible
+    slot becomes a ``+N more`` line and ``more`` counts what it covers.
+    """
+
+    width, height = int(width), int(height)
+    pad = max(10, min(width, height) // 18)
+    usable = max(1.0, height - 2.0 * pad)
+    row_height = max(24.0, min(46.0, usable / max(1, int(count))))
+    fits = max(0, int(usable // row_height))
+    shown = min(int(count), fits)
+    if shown < count and shown > 0:
+        shown -= 1
+    return {"pad": pad, "row_height": row_height,
+            "text_size": max(9.0, min(14.0, row_height * 0.38)),
+            "shown": shown, "more": int(count) - shown}
 
 
 def zone_grid(width, height):
@@ -679,7 +913,9 @@ def cell_legend(specs, rects):
                              "bottom" if cy < height / 3.0 else "middle")
             where = ", ".join(words)
 
-        if spec["view"] == "custom":
+        if spec["view"] == "params":
+            described = "parameters panel"
+        elif spec["view"] == "custom":
             described = "custom {:s} (azimuth {:g} deg, elevation {:g} deg)".format(
                 "ortho" if spec["ortho"] else "perspective",
                 spec["azimuth"], spec["elevation"])
@@ -701,6 +937,8 @@ def cell_legend(specs, rects):
             if section.get("flip"):
                 note += ", flipped"
             notes.append(note)
+        if spec["view"] != "params" and callouts_active(spec):
+            notes.append("parts named")
         sentence = "cell {:d} ({:s}): {:s}".format(index + 1, where,
                                                    described)
         if notes:
@@ -712,11 +950,22 @@ def cell_legend(specs, rects):
 def spec_meta(spec):
     """The JSON-safe record of one spec, for ``put_blueprint``'s ``meta``."""
 
+    if spec["view"] == "params":
+        meta = {"view": "params", "label": spec["label"]}
+        if spec.get("cell") is not None:
+            meta["cell"] = list(spec["cell"])
+            meta["span"] = list(spec["span"])
+        if spec.get("hero"):
+            meta["hero"] = True
+        return meta
+
     meta = {
         "view": spec["view"],
         "label": spec["label"],
         "projection": "ortho" if spec["ortho"] else "perspective",
     }
+    if spec.get("callouts") is not None:
+        meta["callouts"] = bool(spec["callouts"])
     if spec["view"] == "custom":
         meta["azimuth"] = spec["azimuth"]
         meta["elevation"] = spec["elevation"]
@@ -1042,7 +1291,58 @@ def validate_against_model(scene, specs):
     if wants_section and cadex_section.settings(scene) is None:
         return ("views[{:d}].section: this file predates the section view; "
                 "save and reopen it.".format(wants_section[0]))
+
+    wants_params = [index for index, spec in enumerate(specs)
+                    if spec["view"] == "params"]
+    if wants_params:
+        state = cadex_backend.cached_script_state(scene)
+        if state is None or not getattr(state, "specs", None):
+            return ("views[{:d}] asks for the parameters panel, but the "
+                    "project script declares no parameters.".format(
+                        wants_params[0]))
     return ""
+
+
+def callout_anchors(names, hidden, fitted, width, height):
+    """Each visible output's centre, projected into CELL pixels.
+
+    ``fitted`` is :func:`capture.fit_view`'s dict for this cell — the
+    anchors are measured through the same matrices the tile renders with,
+    so a name points at the pixels its part occupies. Solids only: the
+    Edges child traces the same geometry.
+    """
+
+    import bpy  # noqa: F401 -- the collection lookups need a live session
+    from mathutils import Vector
+
+    from . import cadex_hydrate
+    from . import capture
+
+    try:
+        collection = cadex_hydrate._model_collection()
+    except Exception:
+        return []
+    hidden = set(hidden or ())
+    anchors = []
+    for name in names:
+        if name in hidden:
+            continue
+        obj = cadex_hydrate._find(collection, name, edges=False)
+        if obj is None or not obj.visible_get():
+            continue
+        matrix = obj.matrix_world
+        centre = Vector((0.0, 0.0, 0.0))
+        for corner in obj.bound_box:
+            centre += matrix @ Vector(corner)
+        centre /= 8.0
+        ndc = capture.project(fitted["view"], fitted["window"],
+                              tuple(centre))
+        if ndc is None:
+            continue
+        anchors.append((name,
+                        (ndc[0] + 1.0) / 2.0 * width,
+                        (ndc[1] + 1.0) / 2.0 * height))
+    return anchors
 
 
 _font_id = None
@@ -1122,8 +1422,84 @@ def _shorten(font_id, text, size, max_width):
     return text + "…"
 
 
+def _draw_params_tile(width, height, rows, colors, background):
+    """One params cell as a flat FLOAT RGBA buffer, tile-shaped.
+
+    The declared parameters as labelled slider rows: label left, current
+    value right, a track under them with the knob at the value's fraction
+    of its range. ``background`` is the cell's ground in DISPLAY space —
+    the caller samples it off a rendered 3D tile so this cell matches the
+    others (the ADR-151 uniform-ground lesson); rows that do not fit
+    collapse into one ``+N more`` line.
+    """
+
+    import gpu
+    from mathutils import Matrix
+
+    width, height = int(width), int(height)
+    layout = params_panel_layout(len(rows), width, height)
+    pad = float(layout["pad"])
+    row_h = layout["row_height"]
+    text_size = layout["text_size"]
+    line = tuple(colors["line"])
+    background = tuple(background)[:3] + (1.0,)
+    font_id = _font()
+
+    offscreen = gpu.types.GPUOffScreen(width, height)
+    try:
+        with offscreen.bind():
+            framebuffer = gpu.state.active_framebuffer_get()
+            framebuffer.clear(color=background)
+            gpu.state.blend_set('ALPHA')
+            gpu.state.viewport_set(0, 0, width, height)
+            gpu.matrix.load_matrix(Matrix.Identity(4))
+            gpu.matrix.load_projection_matrix(Matrix((
+                (2.0 / width, 0.0, 0.0, -1.0),
+                (0.0, 2.0 / height, 0.0, -1.0),
+                (0.0, 0.0, -1.0, 0.0),
+                (0.0, 0.0, 0.0, 1.0))))
+
+            inner_left = pad
+            inner_right = width - pad
+            for index in range(layout["shown"]):
+                row = rows[index]
+                top = height - pad - index * row_h
+                baseline = top - text_size * 1.25
+                track_y = top - row_h * 0.72
+                label = _shorten(font_id, row["label"], text_size,
+                                 (inner_right - inner_left) * 0.62)
+                _draw_text(font_id, label, inner_left, baseline,
+                           text_size, line, 0.8)
+                value = row["value_text"]
+                value_w = _text_width(font_id, value, text_size)
+                _draw_text(font_id, value, inner_right - value_w,
+                           baseline, text_size, line, 0.9)
+                knob_x = inner_left + row["fraction"] * (inner_right
+                                                         - inner_left)
+                _draw_lines([(inner_left, track_y, inner_right, track_y)],
+                            line, 0.22)
+                if knob_x > inner_left:
+                    _draw_lines([(inner_left, track_y, knob_x, track_y)],
+                                line, 0.6, width=2.0)
+                _draw_lines([(knob_x, track_y - 4.0, knob_x,
+                              track_y + 4.0)], line, 0.95, width=2.0)
+            if layout["more"]:
+                text = "+{:d} more parameter{:s}".format(
+                    layout["more"], "" if layout["more"] == 1 else "s")
+                _draw_text(font_id, text, inner_left, pad, text_size,
+                           line, 0.5)
+
+            gpu.state.blend_set('NONE')
+            out = framebuffer.read_color(0, 0, width, height, 4, 0,
+                                         'FLOAT')
+        out.dimensions = width * height * 4
+        return list(out)
+    finally:
+        offscreen.free()
+
+
 def _dress_sheet(pixels, field_w, field_h, margin, colors, grid, titles,
-                 cell_labels, background=None):
+                 cell_labels, background=None, callouts=()):
     """The composited tile field into a dressed sheet; returns
     ``(sheet_pixels, sheet_w, sheet_h)``.
 
@@ -1245,6 +1621,31 @@ def _dress_sheet(pixels, field_w, field_h, margin, colors, grid, titles,
             for text, x, y in cell_labels:
                 _draw_text(font_id, text, x, y, label_size, line,
                            LABEL_ALPHA)
+
+            # Part-name callouts (ADR-153): the leader runs from the
+            # text's inner edge, through an elbow, to the part — measured
+            # here, because only the glyphs know where the text ends.
+            callout_size = max(9.0, margin * 0.45)
+            for entry in callouts:
+                text = entry["name"]
+                text_w = _text_width(font_id, text, callout_size)
+                ax, ay = entry["anchor"]
+                if entry["side"] == "left":
+                    text_x = entry["label_x"]
+                    inner = text_x + text_w + 5.0
+                    elbow = max(min(inner + 12.0, ax - 3.0), inner)
+                else:
+                    text_x = entry["label_x"] - text_w
+                    inner = text_x - 5.0
+                    elbow = min(max(inner - 12.0, ax + 3.0), inner)
+                mid = entry["label_y"] + callout_size * 0.35
+                _draw_lines([(inner, mid, elbow, mid),
+                             (elbow, mid, ax, ay),
+                             (ax - 2.0, ay - 2.0, ax + 2.0, ay + 2.0),
+                             (ax - 2.0, ay + 2.0, ax + 2.0, ay - 2.0)],
+                            line, CALLOUT_LINE_ALPHA, width=1.2)
+                _draw_text(font_id, text, text_x, entry["label_y"],
+                           callout_size, line, CALLOUT_TEXT_ALPHA)
 
             # The titles: project top-left, the CADEX line bottom-right.
             for entry in fitted_titles:
