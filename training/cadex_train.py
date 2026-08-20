@@ -279,11 +279,149 @@ def unflatten_parameters(np: Any, weights: Sequence[float], shapes):
     return parameters
 
 
+#: ADR-152: the top-level bundle keys a CURRICULUM may move.
+#:
+#: :func:`check_policy_fits` compares the bundle's WHOLE-FILE digest, which is
+#: the right default and the wrong floor. It makes a curriculum impossible:
+#: training a walker against a harder shove band is the ordinary way to teach
+#: a recovery step, and this trainer could reach that band only from a fresh
+#: network. cdx-rl's experiment 022 spent 10.63 GPU-hours establishing what
+#: that costs -- a band whose median shove demands a step, learned COLD, is a
+#: wall and not a curriculum, and the run finished BELOW the incumbent's own
+#: zero-shot score on the same bundle.
+#:
+#: What may move is bounded by one question: does the change alter what the
+#: network READS or what it EMITS?
+#:
+#: * ``disturbance`` does not. There is no disturbance channel among the
+#:   observations -- a shove reaches the policy only through the state it
+#:   produces, which is the same 39 numbers either way.
+#: * ``reward`` does not. It changes the gradient, which is the point.
+#: * ``episode`` does not, for the horizon, and the engine says so in its own
+#:   words (ADR-136): "the policy cannot see it, because an observation is
+#:   sensor channels and carries no clock."
+#: * ``randomisation``, ``reset_variation`` and ``termination`` do not: they
+#:   move the distribution of states, not the vector describing one.
+#:
+#: ``observations``, ``actions``, ``model``, ``functions`` and ``schema`` are
+#: absent BECAUSE they do exactly that -- and every one of them keeps being
+#: checked independently below. This flag skips the whole-file digest and
+#: nothing else.
+CURRICULUM_TASK_KEYS = frozenset({
+    "disturbance",
+    "episode",
+    "label",
+    "randomisation",
+    "reset_variation",
+    "reward",
+    "termination",
+})
+
+#: The ``episode`` sub-keys a curriculum may move.
+#:
+#: The horizon is invisible to the policy (ADR-136). The CADENCE is not: it
+#: sets what one action *means* in time, so a policy warmed across it was
+#: trained by a different controller than the one now running. cdx-rl's
+#: experiment 016 measured that directly -- the same policy dropped zero-shot
+#: from 50 Hz into 25 Hz survives 3 of 12 where it survived 7 of 12 at its own
+#: rate. That is a distribution shift big enough to be its own experiment, so
+#: it does not get to ride along inside somebody's band change.
+CURRICULUM_EPISODE_KEYS = frozenset({"episode_seconds", "max_steps"})
+
+
+def check_curriculum_change(
+    header_task: dict[str, Any],
+    bundle: dict[str, Any],
+    options: argparse.Namespace,
+    reason: str,
+) -> list[str]:
+    """ADR-152: which keys moved, having refused the ones that may not.
+
+    Returns the sorted list of differing top-level keys, for the run record.
+
+    The parent bundle is supplied rather than reconstructed, because a
+    ``.cxpolicy`` header carries its task's *digest and label* and not its
+    content -- and it is **tied to that digest here**, so the file handed in
+    cannot quietly be a different bundle that happens to parse.
+    """
+
+    def refuse(message: str) -> None:
+        raise SystemExit(
+            f"--init-from-task-change: {message}\n"
+            "A curriculum step may change the task the network is being "
+            "trained AGAINST. It may not change what the network reads or "
+            "emits -- those weights would mean something else."
+        )
+
+    supplied = str(getattr(options, "init_from_parent_task", "") or "").strip()
+    if not supplied:
+        refuse(
+            "--init-from-parent-task is required beside it. The policy's "
+            "header records its task's digest, not its content, so the only "
+            "way to say WHICH keys moved is to be handed the bundle it "
+            "trained on."
+        )
+    parent_path = Path(supplied).expanduser()
+    try:
+        parent_bytes = parent_path.read_bytes()
+    except OSError as exc:
+        refuse(f"cannot read --init-from-parent-task {parent_path}: {exc}")
+    parent_digest = hashlib.sha256(parent_bytes).hexdigest()
+    if parent_digest != str(header_task.get("sha256")):
+        refuse(
+            f"the bundle at {parent_path} is not the one this policy trained "
+            f"on.\n"
+            f"  policy's task: {header_task.get('sha256')}\n"
+            f"  file supplied: {parent_digest}"
+        )
+    try:
+        parent = json.loads(parent_bytes.decode("utf-8"))
+    except ValueError as exc:
+        refuse(f"--init-from-parent-task {parent_path} is not JSON: {exc}")
+
+    child = bundle["task"]
+    changed = sorted(
+        key for key in set(parent) | set(child)
+        if parent.get(key) != child.get(key)
+    )
+    if not changed:
+        # The digests differ and no key does, so the difference is whitespace
+        # or key order. That is a REAL difference to every digest in the
+        # calling repository and the flag is being used to paper over it.
+        refuse(
+            "the two bundles differ as bytes and agree on every top-level "
+            "key, so the difference is formatting. Re-emit the child through "
+            "the same serialiser rather than warm-starting across it."
+        )
+    disallowed = sorted(set(changed) - CURRICULUM_TASK_KEYS)
+    if disallowed:
+        refuse(
+            f"these keys moved and may not: {disallowed}. A curriculum may "
+            f"move {sorted(CURRICULUM_TASK_KEYS)}."
+        )
+    if "episode" in changed:
+        parent_episode = dict(parent.get("episode") or {})
+        child_episode = dict(child.get("episode") or {})
+        moved = sorted(
+            key for key in set(parent_episode) | set(child_episode)
+            if parent_episode.get(key) != child_episode.get(key)
+        )
+        cadence = sorted(set(moved) - CURRICULUM_EPISODE_KEYS)
+        if cadence:
+            refuse(
+                f"these episode keys moved and may not: {cadence}. Only the "
+                f"HORIZON is invisible to the policy (ADR-136); the control "
+                f"and solver cadence is what one action means in time, and "
+                f"warming across it trains one controller and scores another."
+            )
+    return changed
+
+
 def check_policy_fits(
     header: dict[str, Any],
     bundle: dict[str, Any],
     options: argparse.Namespace,
-) -> None:
+) -> list[str] | None:
     """``--init-from``'s half of ``CadexDynamics.verify_policy``.
 
     A warm start is only meaningful when the network being warmed is the same
@@ -308,8 +446,23 @@ def check_policy_fits(
         )
 
     task = header.get("task") or {}
+    reason = str(getattr(options, "init_from_task_change", "") or "").strip()
+    curriculum: list[str] | None = None
     if task.get("sha256") != bundle["task_sha256"]:
-        refuse("the task digest", bundle["task_sha256"], task.get("sha256"))
+        if not reason:
+            refuse("the task digest", bundle["task_sha256"], task.get("sha256"))
+        # ADR-152. Every check below still runs, unchanged: this branch skips
+        # the whole-file digest and buys nothing else.
+        curriculum = check_curriculum_change(task, bundle, options, reason)
+    elif reason:
+        # The flag asserts a change. There isn't one, so either the wrong
+        # bundle is being trained or the wrong policy is being warmed, and
+        # both of those are silent-wrongs worth an exit code.
+        raise SystemExit(
+            "--init-from-task-change was given and the bundle is byte-"
+            "identical to the one this policy trained on. The flag asserts a "
+            "curriculum step; there is no step here."
+        )
     model = header.get("model") or {}
     if model.get("sha256") != bundle["model_sha256"]:
         refuse("the model digest", bundle["model_sha256"], model.get("sha256"))
@@ -342,6 +495,7 @@ def check_policy_fits(
         refuse(
             "the network shape (check --hidden)", wanted_layers, found_layers
         )
+    return curriculum
 
 
 # ---------------------------------------------------------------------------
@@ -603,7 +757,7 @@ def train(
     output_scale = [(float(a["high"]) - float(a["low"])) / 2.0 for a in actions]
     output_bias = [(float(a["high"]) + float(a["low"])) / 2.0 for a in actions]
 
-    # ADR-140: the command may be low-passed before it reaches `data.ctrl`.
+    # ADR-151: the command may be low-passed before it reaches `data.ctrl`.
     #
     # `alpha` is a PYTHON float and every branch on it below is taken at
     # TRACE time, not at run time. That is the whole design: at the default
@@ -922,7 +1076,7 @@ def train(
 
     # `(previous, first)` are per environment, so they vmap on axis 0 like
     # `surface`. Empty at alpha 1.0, which is what keeps the traced signature
-    # identical to the pre-ADR-140 one.
+    # identical to the pre-ADR-151 one.
     _filter_axes = (0, 0) if filtering else ()
     batched_step = (
         jax.vmap(step_env, in_axes=(None, 0, 0) + _filter_axes)
@@ -960,7 +1114,7 @@ def train(
              jnp.zeros((envs,), dtype=jnp.float32),
              jnp.zeros((envs,), dtype=jnp.int32))
     if filtering:
-        # ADR-140's sixth member: the previous ISSUED command, per
+        # ADR-151's sixth member: the previous ISSUED command, per
         # environment. Episode-local for exactly the reason `elapsed` and
         # `steps` are -- a filter that carried across a reset would low-pass
         # the first command of an episode towards the last command of the
@@ -989,6 +1143,18 @@ def train(
     seen = jnp.float32(1.0e-4)
 
     init_from_provenance: dict[str, Any] | None = None
+    if not getattr(options, "init_from", "") and (
+            str(getattr(options, "init_from_task_change", "") or "").strip()
+            or str(getattr(options, "init_from_parent_task", "") or "").strip()
+    ):
+        # Both flags qualify --init-from. Silently ignoring them would let a
+        # dispatcher believe it launched a curriculum step and launch a cold
+        # run instead, which is a whole GPU budget spent on the wrong arm.
+        raise SystemExit(
+            "--init-from-task-change / --init-from-parent-task only mean "
+            "anything beside --init-from. Without it this is a cold run and "
+            "there is no parent task to change from."
+        )
     if getattr(options, "init_from", ""):
         # Applied here, after the fresh network and the zeroed Adam moments
         # exist, and that ordering is the whole trick. Every moment is
@@ -1004,7 +1170,7 @@ def train(
         except OSError as exc:
             raise SystemExit(f"--init-from: cannot read {source}: {exc}") from exc
         decoded = decode_policy(blob, context=str(source))
-        check_policy_fits(decoded["header"], bundle, options)
+        curriculum_keys = check_policy_fits(decoded["header"], bundle, options)
         restored = unflatten_parameters(np, decoded["weights"], shapes)
         params["actor"] = [
             (jnp.asarray(weight), jnp.asarray(bias))
@@ -1041,6 +1207,20 @@ def train(
             # know about later, and this is the only place it can be said.
             "trainer_sha256": source_training.get("trainer_sha256"),
         }
+        if curriculum_keys is not None:
+            # ADR-152. The run record carries BOTH task digests and the keys
+            # that moved, because "warm-started" and "warm-started across a
+            # harder band" are different provenance and a reader six months
+            # out has only this to tell them apart.
+            init_from_provenance["task_change"] = {
+                "reason": str(options.init_from_task_change).strip(),
+                "keys": list(curriculum_keys),
+                "parent_task_sha256": str(
+                    (decoded["header"].get("task") or {}).get("sha256") or ""),
+                "parent_task_label": str(
+                    (decoded["header"].get("task") or {}).get("label") or ""),
+                "task_sha256": bundle["task_sha256"],
+            }
         if not options.quiet:
             print(
                 f"init-from  {source.name}  "
@@ -1048,6 +1228,12 @@ def train(
                 f"sha256={init_from_provenance['sha256'][:16]}…",
                 flush=True,
             )
+            if curriculum_keys is not None:
+                print(
+                    f"curriculum  the task changed in {list(curriculum_keys)} "
+                    f"— {str(options.init_from_task_change).strip()}",
+                    flush=True,
+                )
 
     scale_out = jnp.asarray(output_scale, dtype=jnp.float32)
     bias_out = jnp.asarray(output_bias, dtype=jnp.float32)
@@ -1097,7 +1283,7 @@ def train(
         """
 
         def stepped(carry, _):
-            # `filter_carry` is ADR-140's `[previous_action]` when filtering
+            # `filter_carry` is ADR-151's `[previous_action]` when filtering
             # and EMPTY otherwise, so at alpha 1.0 the carry pytree is the
             # six-tuple it has always been.
             data, key, forces, starts, elapsed, steps, *filter_carry = carry
@@ -1682,7 +1868,7 @@ def policy_header(
                 Path(__file__).resolve().read_bytes()
             ).hexdigest(),
             "seed": int(options.seed),
-            # ADR-140. Written as its own key as well as appearing in
+            # ADR-151. Written as its own key as well as appearing in
             # ``hyperparameters`` below, because this is the one an
             # *evaluator* reads: a policy trained with a filter has to be
             # PLAYED with it, and a driver that had to be told separately is
@@ -1693,10 +1879,18 @@ def policy_header(
             # What it started from is recorded as a digest under
             # ``init_from`` below, which identifies the bytes and survives
             # being copied somewhere else.
+            #
+            # ADR-152's two flags go with it and for the same reason: one
+            # names a second file and the other is a sentence explaining a
+            # warm start. Both describe THIS RUN's provenance, not the
+            # algorithm, and both are recorded under ``init_from.task_change``
+            # where a reader will look for them.
             "hyperparameters": {
                 key: value
                 for key, value in sorted(vars(options).items())
-                if key not in ("bundle", "out", "quiet", "label", "init_from")
+                if key not in ("bundle", "out", "quiet", "label", "init_from",
+                               "init_from_task_change",
+                               "init_from_parent_task")
             },
             "init_from": trained.get("init_from"),
             # The iterations this policy actually saw, which for a
@@ -1852,6 +2046,32 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
             "table and the network shape --hidden asks for. Only the actor "
             "and the observation normaliser are carried: the critic and the "
             "optimiser start fresh, because the container holds neither."
+        ),
+    )
+    parser.add_argument(
+        "--init-from-task-change",
+        default="",
+        metavar="REASON",
+        help=(
+            "ADR-152: permit --init-from across a task change -- a "
+            "CURRICULUM step -- and say why in one line, which is written "
+            "into the run record. Without this, the bundle's whole-file "
+            "digest must match the policy's, so a harder disturbance band "
+            "can only ever be learned from a fresh network. Requires "
+            "--init-from-parent-task. Only keys that change what the network "
+            "is trained AGAINST may move; keys that change what it reads or "
+            "emits are refused, and every other --init-from check still runs"
+        ),
+    )
+    parser.add_argument(
+        "--init-from-parent-task",
+        default="",
+        metavar="BUNDLE",
+        help=(
+            "the task bundle --init-from's policy was trained on, so the "
+            "curriculum step can be named key by key. Its digest must equal "
+            "the one in that policy's header. Only meaningful beside "
+            "--init-from-task-change"
         ),
     )
     parser.add_argument("--label", default="")
