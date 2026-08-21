@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-08-20
+Verified against source: 2026-08-21
 
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),
@@ -290,7 +290,8 @@ macOS). Layout:
                                 recipe the sheet can be re-rendered from
                                 rides the entry's free-form meta
   print/                        the print job (ADR-156): one <output>.stl per
-                                output marked printable, written off the
+                                output the CALLER named (ADR-158 -- the
+                                engine stores no marks), written off the
                                 ACCEPTED brep/mesh artifact rather than the
                                 shell's display tessellation, each at its own
                                 origin. Written only by the export_printable

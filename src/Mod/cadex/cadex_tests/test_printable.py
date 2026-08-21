@@ -1,28 +1,24 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""Printable parts: the marks, and the export that reads them (ADR-156).
+"""Printable parts: the roster, and the export that is told what to write.
 
-Cadex could build an assembly and could not hand it to a slicer. The missing
-step is small and it is not geometry — *which* outputs are parts you mean to
-print, and where the STLs go — so this is the sixth stored spec/value pair
-in ``script.json`` and it behaves like the five before it in every way that
-was already load-bearing: the spec cache is flat JSON, the marks replace
-wholesale, and drift is **pruned rather than refused** (ADR-039).
+ADR-156 built this as a stored table — a sixth spec/value pair in
+``script.json`` and a ``set_printable`` op to write it. ADR-158 took the
+store back out: a tick is a decision about a *view* of the model, not a
+property of it, so the caller keeps its ticks and names them on the export
+call. What is left in the engine is the half that has to be in the engine:
 
-Two things are deliberately unlike them, and both are asserted here rather
-than described:
+- the **roster**, derived from the accepted worker report rather than cached
+  anywhere, which is what makes "what the panel may tick" and "what the
+  export will accept" the same list by construction;
+- the **refusal** — a requested name the accepted revision does not publish
+  is told so, with the roster attached;
+- and the **plan** — which files, under which names, and what happens when
+  they are already there, because that is where a refusal has to be right.
 
-- the specs are **not a declaration**. There is no ``printable(...)``
-  script global; the roster is whatever ``brep``/``mesh`` outputs the last
-  accepted run published. So a rebuild is what moves it.
-- neither key touches ``project_script_revision``. A print mark changes no
-  geometry, and a checkbox that costs a full rebuild is not a checkbox.
-
-The export's own half is the *plan* — which files, under which names, and
-what happens when they are already there — because that is where a refusal
-has to be right. Turning a solid into triangles is exercised where a kernel
-exists (``test_cadexd_lifecycle``, the shell gate); here the mesh maker is
-replaced so the plan can be tested without one.
+Turning a solid into triangles is exercised where a kernel exists
+(``test_cadexd_lifecycle``, the shell gate); here the mesh maker is replaced
+so the plan can be tested without one.
 """
 
 from __future__ import annotations
@@ -39,10 +35,7 @@ from CadexPrintables import (
     PrintableError,
     allocate_file_name,
     canonical_printable_rows,
-    declared_printables,
-    effective_printables,
-    prune_printable_rows,
-    roster_from_outputs,
+    printable_roster,
     stl_file_name,
 )
 from CadexScriptStore import CadexProjectScriptStore
@@ -63,35 +56,22 @@ def _outputs():
 
 
 # --------------------------------------------------------------------------
-# the table's six invariants
+# the roster
 # --------------------------------------------------------------------------
 
 
-def test_the_spec_cache_is_json_and_flat() -> None:
-    specs = roster_from_outputs(_outputs())
-    encoded = json.loads(json.dumps(specs))
-    assert encoded == {
-        "outputs": [
-            {"name": "bracket", "artifact_kind": "brep"},
-            {"name": "arm", "artifact_kind": "brep"},
-            {"name": "shell", "artifact_kind": "mesh"},
-        ]
-    }
-    # Only the two things the export needs; an output record's other fields
-    # are the run's business rather than the store's.
-    assert all(set(entry) == {"name", "artifact_kind"}
-               for entry in encoded["outputs"])
-    assert set(EXPORTABLE_KINDS) == {"brep", "mesh"}
-
-
 def test_only_outputs_with_a_surface_are_candidates() -> None:
-    roster = declared_printables(roster_from_outputs(_outputs()))
+    roster = printable_roster(_outputs())
     assert roster == {"bracket": "brep", "arm": "brep", "shell": "mesh"}
     assert "solve" not in roster
+    assert set(EXPORTABLE_KINDS) == {"brep", "mesh"}
+    # Report order, not sorted: the panel draws the parts in the order the
+    # script published them, which is the order somebody wrote them in.
+    assert list(roster) == ["bracket", "arm", "shell"]
 
 
 def test_a_row_may_not_smuggle_a_non_string() -> None:
-    """A mark is a name. There is exactly one thing to say about an output
+    """A name is a name. There is exactly one thing to say about an output
     here, and an object with one key in it would be a table pretending to a
     shape it does not have."""
 
@@ -122,25 +102,6 @@ def test_a_name_that_could_become_a_path_is_refused() -> None:
         canonical_printable_rows(["x"] * (MAX_PRINTABLE + 1), what="printable")
 
 
-def test_marks_replace_wholesale() -> None:
-    specs = roster_from_outputs(_outputs())
-    assert effective_printables(specs, ["arm", "bracket"]) == ["arm", "bracket"]
-    # ...and the empty list is a statement, not an absence: nothing ticked.
-    assert effective_printables(specs, []) == []
-
-
-def test_a_name_the_script_no_longer_publishes_is_pruned_not_raised_on() -> None:
-    """ADR-039, on the silent half of the asymmetry. A script that stops
-    publishing a part has changed its mind, not made an error, and a store
-    that wedged on that is what ADR-039 was written about."""
-
-    before = roster_from_outputs(_outputs())
-    marks = effective_printables(before, ["bracket", "arm"])
-    after = roster_from_outputs([_outputs()[0]])
-    assert prune_printable_rows(marks, after) == ["bracket"]
-    assert effective_printables(after, marks) == ["bracket"]
-
-
 # --------------------------------------------------------------------------
 # names on disk
 # --------------------------------------------------------------------------
@@ -161,34 +122,45 @@ def test_keep_both_takes_the_next_free_ordinal() -> None:
 
 
 # --------------------------------------------------------------------------
-# the store, and what it costs
+# what the store does NOT carry (ADR-158)
 # --------------------------------------------------------------------------
 
 
-def test_the_store_carries_the_pair_and_needs_no_migration(tmp_path) -> None:
-    default = CadexProjectScriptStore.default_state()
-    assert default["print_specs"] == {}
-    assert default["print_values"] == []
+def test_the_store_carries_no_print_state_at_all() -> None:
+    """The claim ADR-158 is: a tick is not project state.
 
-    # A script.json written before ADR-156 loads unchanged, exactly as one
-    # written before every other table's pair does.
+    ``write`` refuses a field the default state does not declare, so this is
+    also what stops anything writing a mark back into ``script.json`` by
+    accident.
+    """
+
+    default = CadexProjectScriptStore.default_state()
+    assert not [key for key in default if key.startswith("print")]
+
+
+def test_a_store_written_under_adr_156_needs_no_migration(tmp_path) -> None:
+    """The two dead keys are simply dropped; nothing reads them, nothing
+    trips over them, and the next write leaves them out."""
+
     store = CadexProjectScriptStore(tmp_path)
     store.state_path.parent.mkdir(parents=True, exist_ok=True)
-    legacy = {key: value for key, value in default.items()
-              if not key.startswith("print_")}
+    legacy = dict(CadexProjectScriptStore.default_state())
+    legacy["print_specs"] = {"outputs": [
+        {"name": "bracket", "artifact_kind": "brep"}]}
+    legacy["print_values"] = ["bracket"]
     store.state_path.write_text(json.dumps(legacy), encoding="utf-8")
+
     state = store.read_state()
-    assert state["print_specs"] == {}
-    assert state["print_values"] == []
+    assert "print_specs" not in state and "print_values" not in state
+    written = store.write(state_updates={"working_revision": "abcdef01"})
+    assert not [key for key in written if key.startswith("print")]
+    with pytest.raises(ValueError):
+        store.write(state_updates={"print_values": ["bracket"]})
 
 
 def test_a_print_mark_does_not_move_the_content_revision() -> None:
-    """The whole reason this is not a sixth ``set_params`` table.
-
-    ``project_script_revision`` takes the five declared tables and nothing
-    else; if a mark ever reached it, ticking a checkbox would rebuild the
-    project.
-    """
+    """Unchanged from ADR-156, and now true for free: there is no mark in
+    the store to keep out of ``project_script_revision``."""
 
     import inspect as _inspect
 
@@ -199,117 +171,7 @@ def test_a_print_mark_does_not_move_the_content_revision() -> None:
 
 
 # --------------------------------------------------------------------------
-# set_printable
-# --------------------------------------------------------------------------
-
-
-class _Server:
-    """A cadexd server with a project root and no document."""
-
-    def __init__(self, root: Path) -> None:
-        self.frames: list[dict] = []
-        self.server = CadexdServer(self.frames.append)
-        self.server._service = object()
-        self.server._project_root = Path(root)
-        self.store = CadexProjectScriptStore(root)
-
-    def set_printable(self, names):
-        return self.server._op_set_printable("r1", {"printable": list(names)})
-
-    def export(self, **args):
-        return self.server._op_export_printable("r1", dict(args))
-
-
-def _project(tmp_path, *, marks=None, outputs=None):
-    harness = _Server(tmp_path)
-    harness.store.write(state_updates={
-        "print_specs": roster_from_outputs(
-            _outputs() if outputs is None else outputs),
-        "print_values": list(marks or []),
-    })
-    return harness
-
-
-def test_set_printable_replaces_the_whole_list(tmp_path) -> None:
-    harness = _project(tmp_path, marks=["bracket"])
-    payload = harness.set_printable(["arm", "shell"])
-    assert payload["ok"] is True
-    assert payload["printable"] == ["arm", "shell"]
-    assert harness.store.read_state()["print_values"] == ["arm", "shell"]
-    # The roster rides back with the flags on it: one round trip answers
-    # "did it take" and "what else is there to tick".
-    assert payload["outputs"] == [
-        {"name": "bracket", "artifact_kind": "brep", "printable": False},
-        {"name": "arm", "artifact_kind": "brep", "printable": True},
-        {"name": "shell", "artifact_kind": "mesh", "printable": True},
-    ]
-    assert not protocol.validate_response(
-        "set_printable", {"id": "r1", **payload})
-
-
-def test_a_requested_unknown_name_is_refused(tmp_path) -> None:
-    """The loud half of the asymmetry. Pruning is for drift the script
-    caused; a caller naming a part that is not there is a caller with a
-    stale roster, and it is told so with the roster attached."""
-
-    harness = _project(tmp_path)
-    payload = harness.set_printable(["bracket", "flange"])
-    assert payload["ok"] is False
-    assert payload["failure_code"] == "UNKNOWN_PRINTABLE_OUTPUT"
-    assert "flange" in payload["error"]
-    assert payload["observed"]["outputs"] == ["arm", "bracket", "shell"]
-    # Nothing was written: a refused mark list leaves the old one alone.
-    assert harness.store.read_state()["print_values"] == []
-
-
-def test_a_malformed_mark_list_is_refused(tmp_path) -> None:
-    harness = _project(tmp_path, marks=["bracket"])
-    payload = harness.set_printable([{"name": "arm"}])
-    assert payload["failure_code"] == "PRINTABLE_REJECTED"
-    assert harness.store.read_state()["print_values"] == ["bracket"]
-
-
-def test_set_printable_needs_an_open_project() -> None:
-    server = CadexdServer(lambda _frame: None)
-    payload = server._op_set_printable("r1", {"printable": []})
-    assert payload["failure_code"] == "CADEXD_NOT_OPEN"
-
-
-# --------------------------------------------------------------------------
-# the inspect block
-# --------------------------------------------------------------------------
-
-
-def test_the_inspect_block_is_the_roster_plus_the_flags(tmp_path) -> None:
-    _project(tmp_path, marks=["arm"])
-    from CadexInspection import _complete_script
-
-    block = _complete_script({"project_root": str(tmp_path)})["printable"]
-    assert block == {
-        "outputs": [
-            {"name": "bracket", "artifact_kind": "brep", "printable": False},
-            {"name": "arm", "artifact_kind": "brep", "printable": True},
-            {"name": "shell", "artifact_kind": "mesh", "printable": False},
-        ]
-    }
-    assert "printable" in protocol.NESTED_RESPONSE_SPECS["script"][0]
-
-
-def test_a_stored_list_gone_bad_reads_as_nothing_ticked(tmp_path) -> None:
-    """A read path may not take ``inspect`` down with it; the write path is
-    where a malformed list is refused."""
-
-    harness = _project(tmp_path)
-    harness.store.write(state_updates={"print_values": [{"name": "arm"}, 7]})
-    from CadexInspection import _complete_script
-
-    block = _complete_script({"project_root": str(tmp_path)})["printable"]
-    assert [entry["printable"] for entry in block["outputs"]] == [
-        False, False, False]
-
-
-# --------------------------------------------------------------------------
-# export_printable
+# the harness
 # --------------------------------------------------------------------------
 
 
@@ -326,7 +188,22 @@ class _FakeMesh:
         Path(Filename).write_bytes(b"solid " + self._name.encode("ascii"))
 
 
-def _accepted(tmp_path, *, marks, outputs=None):
+class _Server:
+    """A cadexd server with a project root and no document."""
+
+    def __init__(self, root: Path) -> None:
+        self.frames: list[dict] = []
+        self.server = CadexdServer(self.frames.append)
+        self.server._service = object()
+        self.server._project_root = Path(root)
+        self.store = CadexProjectScriptStore(root)
+
+    def export(self, names=(), **args):
+        return self.server._op_export_printable(
+            "r1", {"printable": list(names), **args})
+
+
+def _accepted(tmp_path, *, outputs=None):
     """A project with an accepted revision whose artifacts are on disk."""
 
     items = _outputs() if outputs is None else outputs
@@ -346,8 +223,6 @@ def _accepted(tmp_path, *, marks, outputs=None):
             "staging": "script_artifacts/abcdef01/attempt-000",
             "revision": "abcdef01",
         },
-        "print_specs": roster_from_outputs(items),
-        "print_values": list(marks),
     })
     harness.server._printable_mesh = (
         lambda _staging, item, _kind, _deflection: _FakeMesh(str(item["name"]))
@@ -355,16 +230,72 @@ def _accepted(tmp_path, *, marks, outputs=None):
     return harness
 
 
+# --------------------------------------------------------------------------
+# the inspect block
+# --------------------------------------------------------------------------
+
+
+def test_the_inspect_block_is_the_roster_and_only_the_roster(tmp_path) -> None:
+    """No ``printable`` flag on an entry, because the engine does not know
+    of one. What the panel draws a tick from is its own state (ADR-158)."""
+
+    _accepted(tmp_path)
+    from CadexInspection import _complete_script
+
+    block = _complete_script({"project_root": str(tmp_path)})["printable"]
+    assert block == {
+        "outputs": [
+            {"name": "bracket", "artifact_kind": "brep"},
+            {"name": "arm", "artifact_kind": "brep"},
+            {"name": "shell", "artifact_kind": "mesh"},
+        ]
+    }
+    assert "printable" in protocol.NESTED_RESPONSE_SPECS["script"][0]
+
+
+def test_a_project_with_nothing_accepted_reads_as_an_empty_roster(
+    tmp_path,
+) -> None:
+    """A read path may not take ``inspect`` down with it — and this is the
+    ordinary state of a project somebody has only just opened."""
+
+    from CadexInspection import _complete_script
+
+    CadexProjectScriptStore(tmp_path).write(state_updates={})
+    block = _complete_script({"project_root": str(tmp_path)})["printable"]
+    assert block == {"outputs": []}
+
+
+def test_a_report_that_cannot_be_read_reads_as_an_empty_roster(
+    tmp_path,
+) -> None:
+    harness = _accepted(tmp_path)
+    (tmp_path / "script_artifacts/abcdef01/attempt-000/result.json").write_text(
+        "{not json", encoding="utf-8")
+    from CadexInspection import _complete_script
+
+    block = _complete_script({"project_root": str(tmp_path)})["printable"]
+    assert block == {"outputs": []}
+    # ...and the export refuses rather than writing a partial job.
+    assert harness.export(["bracket"])["failure_code"] == (
+        "PRINT_ARTIFACT_MISSING")
+
+
+# --------------------------------------------------------------------------
+# export_printable
+# --------------------------------------------------------------------------
+
+
 def test_export_refuses_before_the_first_accepted_revision(tmp_path) -> None:
-    harness = _project(tmp_path, marks=["bracket"])
-    payload = harness.export()
+    harness = _Server(tmp_path)
+    payload = harness.export(["bracket"])
     assert payload["failure_code"] == "NO_ACCEPTED_REVISION"
     assert not (tmp_path / "print").exists()
 
 
-def test_export_refuses_with_nothing_marked(tmp_path) -> None:
-    harness = _accepted(tmp_path, marks=[])
-    payload = harness.export()
+def test_export_refuses_with_nothing_named(tmp_path) -> None:
+    harness = _accepted(tmp_path)
+    payload = harness.export([])
     assert payload["failure_code"] == "NOTHING_MARKED_PRINTABLE"
     # The roster rides on the refusal, so a caller that asked too early is
     # told what it could have ticked.
@@ -372,9 +303,35 @@ def test_export_refuses_with_nothing_marked(tmp_path) -> None:
     assert not (tmp_path / "print").exists()
 
 
-def test_export_writes_one_stl_per_marked_part(tmp_path) -> None:
-    harness = _accepted(tmp_path, marks=["bracket", "shell"])
-    payload = harness.export()
+def test_a_requested_unknown_name_is_refused(tmp_path) -> None:
+    """The loud half of ADR-039's asymmetry, and now the only half the
+    engine has: a caller naming a part that is not there has a stale roster,
+    and is told so with the current one attached."""
+
+    harness = _accepted(tmp_path)
+    payload = harness.export(["bracket", "flange"])
+    assert payload["ok"] is False
+    assert payload["failure_code"] == "UNKNOWN_PRINTABLE_OUTPUT"
+    assert "flange" in payload["error"]
+    assert payload["observed"]["outputs"] == ["arm", "bracket", "shell"]
+    # An output with no surface is not in the roster either, so it is
+    # refused by the same check rather than by one of its own.
+    assert harness.export(["solve"])["failure_code"] == (
+        "UNKNOWN_PRINTABLE_OUTPUT")
+    assert not (tmp_path / "print").exists()
+
+
+def test_a_malformed_name_list_is_refused(tmp_path) -> None:
+    harness = _accepted(tmp_path)
+    payload = harness.export([{"name": "arm"}])
+    assert payload["failure_code"] == "PRINTABLE_REJECTED"
+    assert payload["observed"]["outputs"] == ["arm", "bracket", "shell"]
+    assert not (tmp_path / "print").exists()
+
+
+def test_export_writes_one_stl_per_named_part(tmp_path) -> None:
+    harness = _accepted(tmp_path)
+    payload = harness.export(["bracket", "shell"])
     assert payload["ok"] is True
     assert payload["directory"] == "print"
     assert payload["revision"] == "abcdef01"
@@ -387,15 +344,19 @@ def test_export_writes_one_stl_per_marked_part(tmp_path) -> None:
         "bracket.stl", "shell.stl"]
     assert not protocol.validate_response(
         "export_printable", {"id": "r1", **payload})
+    # Nothing was remembered: the job was the argument, and a project that
+    # holds no marks holds none after a print either.
+    state = harness.store.read_state()
+    assert not [key for key in state if key.startswith("print")]
 
 
 def test_a_second_export_refuses_and_names_the_files(tmp_path) -> None:
     """``link_part``'s arrangement: call it with nothing chosen and the
     *refusal* is what carries the list the dialog is built from."""
 
-    harness = _accepted(tmp_path, marks=["bracket", "shell"])
-    assert harness.export()["ok"] is True
-    payload = harness.export()
+    harness = _accepted(tmp_path)
+    assert harness.export(["bracket", "shell"])["ok"] is True
+    payload = harness.export(["bracket", "shell"])
     assert payload["failure_code"] == "PRINT_FILES_EXIST"
     assert payload["observed"]["existing"] == ["bracket.stl", "shell.stl"]
     assert "bracket.stl" in payload["error"]
@@ -405,38 +366,38 @@ def test_a_second_export_refuses_and_names_the_files(tmp_path) -> None:
 
 
 def test_overwrite_replaces_and_keep_both_takes_002(tmp_path) -> None:
-    harness = _accepted(tmp_path, marks=["bracket"])
-    assert harness.export()["ok"] is True
+    harness = _accepted(tmp_path)
+    assert harness.export(["bracket"])["ok"] is True
     (tmp_path / "print/bracket.stl").write_bytes(b"stale")
 
-    overwritten = harness.export(conflict="overwrite")
+    overwritten = harness.export(["bracket"], conflict="overwrite")
     assert overwritten["ok"] is True
     assert (tmp_path / "print/bracket.stl").read_bytes() != b"stale"
     assert [path.name for path in (tmp_path / "print").iterdir()] == [
         "bracket.stl"]
 
-    kept = harness.export(conflict="keep_both")
+    kept = harness.export(["bracket"], conflict="keep_both")
     assert [item["file"] for item in kept["files"]] == ["bracket-002.stl"]
     assert sorted(path.name for path in (tmp_path / "print").iterdir()) == [
         "bracket-002.stl", "bracket.stl"]
     # ...and again, so "next free" is really next free rather than "-002".
     assert [item["file"] for item in
-            harness.export(conflict="keep_both")["files"]] == [
+            harness.export(["bracket"], conflict="keep_both")["files"]] == [
         "bracket-003.stl"]
 
 
 def test_an_unknown_conflict_is_refused(tmp_path) -> None:
-    harness = _accepted(tmp_path, marks=["bracket"])
-    payload = harness.export(conflict="rename")
+    harness = _accepted(tmp_path)
+    payload = harness.export(["bracket"], conflict="rename")
     assert payload["failure_code"] == "PRINT_CONFLICT_INVALID"
     assert payload["allowed_values"] == ["overwrite", "keep_both"]
 
 
-def test_a_mark_whose_artifact_is_gone_refuses_before_writing(tmp_path) -> None:
-    harness = _accepted(tmp_path, marks=["bracket", "shell"])
+def test_a_part_whose_artifact_is_gone_refuses_before_writing(tmp_path) -> None:
+    harness = _accepted(tmp_path)
     (tmp_path / "script_artifacts/abcdef01/attempt-000/outputs/output-000.brep"
      ).unlink()
-    payload = harness.export()
+    payload = harness.export(["bracket", "shell"])
     assert payload["failure_code"] == "PRINT_ARTIFACT_MISSING"
     # Nothing was written: the whole job is resolved before any of it lands.
     assert not (tmp_path / "print").exists()
@@ -453,9 +414,8 @@ def test_two_names_that_sanitise_alike_do_not_collide(tmp_path) -> None:
         {"name": "left_arm", "domain": "part", "artifact_kind": "brep",
          "artifact_path": "outputs/output-001.brep"},
     ]
-    harness = _accepted(tmp_path, marks=["left arm", "left_arm"],
-                        outputs=outputs)
-    payload = harness.export()
+    harness = _accepted(tmp_path, outputs=outputs)
+    payload = harness.export(["left arm", "left_arm"])
     assert [item["file"] for item in payload["files"]] == [
         "left_arm.stl", "left_arm-002.stl"]
     assert [item["name"] for item in payload["files"]] == [
@@ -464,5 +424,15 @@ def test_two_names_that_sanitise_alike_do_not_collide(tmp_path) -> None:
 
 def test_export_needs_an_open_project() -> None:
     server = CadexdServer(lambda _frame: None)
-    assert server._op_export_printable("r1", {})["failure_code"] == (
-        "CADEXD_NOT_OPEN")
+    payload = server._op_export_printable("r1", {"printable": ["bracket"]})
+    assert payload["failure_code"] == "CADEXD_NOT_OPEN"
+
+
+def test_the_op_takes_the_job_as_an_argument() -> None:
+    """The protocol half of ADR-158: ``printable`` is required, and there is
+    no op that stores one."""
+
+    required, optional = protocol.OP_ARG_SPECS["export_printable"]
+    assert required == {"printable": list}
+    assert set(optional) == {"conflict", "deflection"}
+    assert "set_printable" not in protocol.OP_ARG_SPECS

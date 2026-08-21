@@ -2,24 +2,36 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
-"""Which parts are printable: the panel's side of it (cadex ADR-156).
+"""Which parts are printable: the ticks, which are ours (cadex ADR-158).
 
-The engine holds the marks — a list of accepted output names — and hands
-back a roster: every output that *could* become an STL, with a flag saying
-whether it is ticked. ``set_printable`` replaces that list **wholesale**,
-so a checkbox is a read, a flip and a push of the whole list, and this
-module is where those three lines live rather than in ``ui.py``.
+The engine hands back a **roster** — every accepted output that *could*
+become an STL — and knows nothing else about printing until an export names
+the parts to write. The ticks are this file's, and they live in the scene:
 
-The cache is what makes the panel drawable at all. A panel's ``draw`` runs
-on every redraw and must not talk to a subprocess, so the roster is drawn
-from memory — the arrangement ``model.load_specs`` already has for the
-parameter specs.
+- **the roster** is cached per project root, filled off the ``inspect
+  scope="script"`` block the backend already adopts on open and after every
+  accepted rebuild (``_adopt_script_state``). A panel's ``draw`` runs on
+  every redraw and must not talk to a subprocess, so this is what makes the
+  checkboxes drawable at all — the arrangement ``model.load_specs`` already
+  has for the parameter specs.
+- **the ticks** are one scene ID property, ``cadex_printable``. Stored on
+  the scene rather than in the engine's ``script.json`` because a tick is a
+  decision about a view of the model, like a selection: it belongs to the
+  file you are looking at it in, it costs the engine nothing, and it saves
+  and reloads with the .blend for free. Newline-joined, because an ID
+  property array holds numbers and an output name may not carry a control
+  character.
 
-Filling it costs **nothing**: the roster rides in the ``inspect
-scope="script"`` block the backend already adopts on open and after every
-accepted rebuild (``_adopt_script_state``), so there is no extra round trip
-and no moment where the panel is showing a roster older than the model.
+A tick therefore costs **no round trip at all** — no store write, no
+revision, nothing to fail. Drift is handled here too: a name the accepted
+revision stopped publishing is dropped when the roster is adopted, which is
+the same rebuild that dropped the part (cadex ADR-039).
 """
+
+#: The scene ID property the ticks live in. Read through the helpers below,
+#: never directly: the newline join is an implementation detail of "an ID
+#: property is a string" and nothing outside this file should know it.
+_MARKS_KEY = "cadex_printable"
 
 #: The last roster read from the engine, per project root, so two open
 #: models do not show each other's parts.
@@ -32,6 +44,31 @@ def _key(scene):
     return str(cadex_backend.project_root(scene) or "")
 
 
+def _stored(scene):
+    """The ticked names as the scene holds them, in tick order."""
+
+    raw = scene.get(_MARKS_KEY) if scene is not None else None
+    if not isinstance(raw, str):
+        return []
+    return [name for name in raw.split("\n") if name]
+
+
+def _store(scene, names):
+    ordered = []
+    for name in names:
+        name = str(name or "")
+        if name and name not in ordered:
+            ordered.append(name)
+    if ordered:
+        scene[_MARKS_KEY] = "\n".join(ordered)
+    elif _MARKS_KEY in scene.keys():
+        # Nothing ticked is the absence of the property rather than an empty
+        # string in it: a .blend that never printed anything and one that
+        # unticked its last part should read the same.
+        del scene[_MARKS_KEY]
+    return ordered
+
+
 def cached(scene):
     """The roster as last read, without touching the engine. May be ``[]``."""
 
@@ -42,23 +79,18 @@ def adopt(scene, block):
     """Take the roster out of one ``inspect scope="script"`` block.
 
     The free path, and the one that matters: a rebuild is what changes which
-    outputs exist, and the engine drops the mark of an output the script
-    stopped publishing — so a roster adopted anywhere later than here would
-    draw a tick that is no longer real.
+    outputs exist, so this is also where a tick for a part the script has
+    stopped publishing is dropped — anywhere later and the panel would draw
+    a tick that is no longer real.
     """
 
     entries = list((block or {}).get("outputs") or [])
-    _ROSTER[_key(scene)] = [dict(entry) for entry in entries
-                            if isinstance(entry, dict)]
-
-
-def invalidate(scene=None):
-    """Forget the cache; the next ``refresh`` re-reads it."""
-
-    if scene is None:
-        _ROSTER.clear()
-        return
-    _ROSTER.pop(_key(scene), None)
+    roster = [dict(entry) for entry in entries if isinstance(entry, dict)]
+    _ROSTER[_key(scene)] = roster
+    names = {str(entry.get("name") or "") for entry in roster}
+    stored = _stored(scene)
+    if [name for name in stored if name not in names]:
+        _store(scene, [name for name in stored if name in names])
 
 
 def refresh(scene):
@@ -70,44 +102,44 @@ def refresh(scene):
     if entries is None:
         return cached(scene)
     _ROSTER[_key(scene)] = [dict(entry) for entry in entries]
-    return list(_ROSTER[_key(scene)])
+    return cached(scene)
 
 
 def marked(scene):
-    """The ticked names, in roster order."""
+    """The ticked names that the accepted revision still publishes.
 
-    return [str(entry.get("name") or "") for entry in cached(scene)
-            if entry.get("printable")]
+    Filtered rather than trusted: the roster can have moved under a scene
+    that has not adopted one since, and naming a part the engine no longer
+    publishes would turn a whole export into one refusal.
+    """
+
+    names = {str(entry.get("name") or "") for entry in cached(scene)}
+    return [name for name in _stored(scene) if name in names]
+
+
+def is_marked(scene, name):
+    """Whether one output is ticked. What the panel draws its icon from."""
+
+    return str(name or "") in _stored(scene)
 
 
 def toggle(scene, name):
-    """Flip one output's mark and push the whole list. ``(ok, report)``.
+    """Flip one output's tick. ``(ok, report)``.
 
-    Reads the roster first rather than trusting the cache the panel drew:
-    the roster can have moved under a panel that has not redrawn since the
-    last rebuild, and pushing a stale list would silently un-tick a part.
+    Checked against the roster rather than taken on trust: the operator
+    carries a name out of a panel that may not have redrawn since the last
+    rebuild, and a tick for a part that no longer exists would sit there
+    looking real until the export refused it.
     """
 
-    from . import cadex_backend
-
     name = str(name or "")
-    entries = refresh(scene)
+    entries = cached(scene) or refresh(scene)
     if not any(str(entry.get("name") or "") == name for entry in entries):
         return False, ("{:s} is not one of this model's printable outputs. "
                        "Rebuild, then try again.".format(name))
-    wanted = []
-    for entry in entries:
-        entry_name = str(entry.get("name") or "")
-        ticked = bool(entry.get("printable"))
-        if entry_name == name:
-            ticked = not ticked
-        if ticked:
-            wanted.append(entry_name)
-    payload = cadex_backend.set_printable(scene, wanted)
-    if payload.get("ok") is not True:
-        invalidate(scene)
-        return False, str(payload.get("error") or payload)
-    _ROSTER[_key(scene)] = [dict(entry) for entry in
-                            list(payload.get("outputs") or [])
-                            if isinstance(entry, dict)]
+    stored = _stored(scene)
+    if name in stored:
+        _store(scene, [row for row in stored if row != name])
+    else:
+        _store(scene, stored + [name])
     return True, ""

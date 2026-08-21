@@ -118,15 +118,16 @@ class CadexProjectScriptStore:
             # migration for a script.json written before it.
             "cage_specs": {},
             "cage_values": [],
-            # Which outputs are parts the user means to print (ADR-156) — the
-            # sixth such pair, same merge, same absence of a migration. The
-            # one that is not like the others: ``print_specs`` is not a
-            # *declaration* the script made, it is the accepted run's output
-            # roster, harvested on validation. And neither key enters
-            # ``project_script_revision``, because a print mark changes no
-            # geometry and a checkbox that costs a rebuild is not a checkbox.
-            "print_specs": {},
-            "print_values": [],
+            # There is deliberately no sixth pair for the printable marks
+            # (ADR-158). ADR-156 put one here — ``print_specs`` /
+            # ``print_values`` — and the shape was wrong: a tick says what
+            # somebody means to do with a run's output, not what the model
+            # is, so it belongs with the view rather than in the store. A
+            # store written under ADR-156 needs no migration for the removal
+            # any more than it needed one for the arrival: ``read_state``
+            # keeps only the keys declared here, so the two are gone at the
+            # next write and nothing can name them again (``write`` refuses
+            # an undeclared field).
             "working_revision": "",
             "accepted_revision": "",
             "accepted_contract": None,

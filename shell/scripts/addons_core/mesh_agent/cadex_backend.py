@@ -556,7 +556,9 @@ def _adopt_script_state(scene, script_state, preserve_local=False):
         mirror_script_text(source)
     # The printable roster rides in this same block (cadex ADR-156), so the
     # parameters panel gets a truthful set of checkboxes on open and after
-    # every accepted rebuild without a round trip of its own.
+    # every accepted rebuild without a round trip of its own — and adopting
+    # it is also what drops a tick for a part this rebuild stopped
+    # publishing, the ticks being the scene's since cadex ADR-158.
     from . import cadex_print
     cadex_print.adopt(scene, script_state.get("printable"))
     _bridge_params(scene, state)
@@ -2184,10 +2186,10 @@ def link_part(scene, source_project, output="", name=""):
 def script_printable(scene):
     """The printable roster as the engine holds it: a list of entries.
 
-    Each entry is ``{name, artifact_kind, printable}`` — every output of the
-    accepted revision that *could* become an STL, and whether it is ticked.
-    The panel needs both halves in one read because ``set_printable``
-    replaces the whole list; a partial view would send back a wrong one.
+    Each entry is ``{name, artifact_kind}`` — every output of the accepted
+    revision that *could* become an STL. Which of them are ticked is not
+    here and never reaches the engine: the ticks are the scene's
+    (cadex ADR-158, ``cadex_print``).
 
     ``None`` means the engine could not be reached, which the caller draws
     as "no roster yet" rather than as an empty one.
@@ -2199,37 +2201,26 @@ def script_printable(scene):
             if isinstance(entry, dict)]
 
 
-def set_printable(scene, names):
-    """Replace the printable mark list wholesale. Payload verbatim.
-
-    Deliberately **not** through the ``begin_set_tables`` pump: that pump
-    exists to coalesce a drag's stream of edits into one rebuild, and there
-    is no rebuild here. A print mark changes no geometry, so the engine
-    writes the store and returns (cadex ADR-156).
-    """
-    ok, report = ensure_open(scene)
-    if not ok:
-        return {"ok": False, "error": report}
-    return _client(project_root(scene)).request(
-        "set_printable", {"printable": [str(name) for name in (names or ())]})
-
-
 def export_printable(scene, conflict=""):
-    """Write one STL per marked part into the project's ``print/``. Verbatim.
+    """Write one STL per ticked part into the project's ``print/``. Verbatim.
 
     The engine writes the files, not us: it is the store's sole writer
     (docs/ARCHITECTURE.md), and the STL it produces comes off the accepted
-    solid rather than off the display mirror in this scene.
+    solid rather than off the display mirror in this scene. What it does not
+    hold is *which* parts — the ticks are the scene's, so the job is named
+    on the call (cadex ADR-158).
 
     Called with no ``conflict``, an export that would overwrite anything
     refuses with ``PRINT_FILES_EXIST`` and names the files — which is the
     list the "overwrite or keep both" dialog is built from, exactly as
     ``link_part``'s refusal carries the parts to choose between.
     """
+    from . import cadex_print
+
     ok, report = ensure_open(scene)
     if not ok:
         return {"ok": False, "error": report}
-    args = {}
+    args = {"printable": cadex_print.marked(scene)}
     if conflict:
         args["conflict"] = str(conflict)
     return _client(project_root(scene)).request("export_printable", args)

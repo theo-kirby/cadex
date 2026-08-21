@@ -16431,3 +16431,100 @@ widths. The measured shapes are the honest ones: the full-height column asked
 1:2 and was **drawn 1.31:1**, because in a three-cell column the width is not
 that cell's to spend. Both numbers are in the caption the agent reads back,
 and the tool's own description now says where to put an extreme shape.
+
+## ADR-158 — a print tick is a view setting, not project state (2026-08-21)
+
+**Decision.** The printable marks leave `script.json` and leave the
+protocol. `set_printable` is deleted; `print_specs` / `print_values` are
+deleted; `export_printable` now takes `printable`, the list of output names
+to write, and stores nothing. The shell keeps its ticks in one scene ID
+property (`cadex_printable`), so they save with the `.blend`. The roster the
+panel draws — which accepted outputs *could* become an STL — is derived from
+the accepted worker report when somebody asks for it, rather than cached in
+the store. This supersedes the storage half of ADR-156; every other claim of
+ADR-156 stands unchanged.
+
+**What was wrong.** ADR-156 asked the right question about the *revision*
+and the wrong question about the *store*. It established that a mark must
+not enter `project_script_revision` — a checkbox that costs a rebuild is not
+a checkbox — and then, having won that argument, kept the mark in
+`script.json` anyway, as a sixth spec/value pair with an op to write it. But
+the reason a mark does not belong in the content hash is the same reason it
+does not belong in the project state at all: **a tick says what somebody
+means to do with a run's output, not what the model is.** It is a selection,
+a camera, a visibility flag — a property of the view, and the view already
+has a file of its own.
+
+**What it cost to keep it there.** One protocol op, one store pair, a
+defaults-merge entry, a harvest-and-prune block in `validate_project_result`
+that ran on every accepted rebuild, a roster cache that had to be kept in
+step with the report it was copied from, and a subprocess round trip for
+every tick of a checkbox — on a control whose entire job is to be flipped
+idly while deciding what to print. Two lists that had to agree (the cached
+`print_specs` and the report the export actually resolved) are now one list
+derived from the report in both places, so they agree by construction.
+
+**What moved rather than vanished.** ADR-039's asymmetry — loud on a
+requested unknown name, silent on drift — is intact, with one half on each
+side of the boundary now. The **loud** half is still the engine's:
+`export_printable` refuses a name the accepted revision does not publish,
+with the roster attached, which is the check that matters because it guards
+a write. The **silent** half is the shell's: adopting a new roster (which
+happens on open and after every accepted rebuild, off the `inspect
+scope="script"` block it already reads) drops a tick for a part the script
+stopped publishing. That is the same rebuild that dropped the part, so it is
+the same moment it always was.
+
+**What this gives up.** A tick no longer follows the *project* — open the
+same project from a different `.blend` and nothing is ticked. That is the
+correct behaviour for a view setting and it is what a selection already
+does, but it is a real difference from ADR-156 and worth saying plainly. It
+also means `./cadex` cannot print "whatever was ticked": a headless caller
+names its parts, which is better for a headless caller anyway — a script
+that prints a fixed list is reproducible, and one that printed a checkbox
+somebody left set is not.
+
+**Cost.** Engine: `CadexPrintables.py` loses `declared_printables`,
+`prune_printable_rows`, `effective_printables` and the store-shaped
+`roster_from_outputs`, and gains one `printable_roster`; `cadexd.py` loses
+`_op_set_printable` (70 lines) and two now-unreachable checks inside
+`_op_export_printable`, the roster having already proved both;
+`CadexScriptStore` loses a pair, `CadexScriptedRuntime` loses the harvest
+block, `CadexInspection._script_printable` reads the report the way
+`scope="output"` beside it already does. 19 ops → **18**. Shell:
+`cadex_print.py` swaps its push for a scene property, gains `is_marked` and
+loses `invalidate` (its only caller was the failed-push path, and a tick can
+no longer fail in a way that leaves the cache suspect);
+`cadex_backend.set_printable` is deleted and `export_printable` names the
+job; one line off `cadexd_client.MODELING_OPS`. No migration: `read_state`
+keeps only the keys the default state declares, so an ADR-156 store's two
+dead keys are gone at its next write, and `write` refuses a field it does
+not declare, which is what stops anything putting them back.
+
+**What deriving the roster costs.** One file read and one JSON parse on
+`inspect scope="script"`, which the shell issues on open and after every
+accepted rebuild — so it is on the slider path. Measured against the
+largest real accepted report on this machine (`actuator-v13`, 1.5 MB, 30
+outputs): **12.2 ms**, against a 650 ms parity bar and a ~0.54 s measured
+slider round trip. That is the price of not keeping two lists in step, and
+it is worth it. The same read already happens for `inspect scope="output"`
+beside it.
+
+**Verified.** `pixi run python -m pytest src/Mod/cadex/cadex_tests`: 1898
+passed, 33 skipped, with `test_printable.py` rewritten around the roster,
+the refusal and the plan (and two tests that assert the store carries no
+print state and that an ADR-156 store needs no migration). The packaged
+lifecycle gate against a staged payload: 14 passed, the payload carrying
+the rewritten `CadexPrintables.py`. `pixi run python -m pytest cli/tests`:
+83 passed. `pixi run gate`: `"ok": true`, `"printable": {"bytes": 684,
+"files": ["bracket-002.stl", "bracket.stl"], "outputs": ["arm",
+"bracket"]}`, with the printable case extended by three checks — the tick
+landing in the scene, `script.json` holding nothing whose key starts with
+`print`, and the drop-on-drift that moved to the shell (rewrite to a
+one-output script, roster follows, the dropped part's tick goes with it).
+Slider median 0.538 s, inside the bar. One earlier gate run measured 1.124 s
+and failed that check with **every** number in the run 2–3× its usual value
+(open 3.0 s vs 2.0 s, refine 3.1 s vs 1.4 s) on a machine at load average
+13.7; it is recorded here rather than omitted, because a latency bar read
+off a loaded machine is the one measurement in that file nobody should
+trust.

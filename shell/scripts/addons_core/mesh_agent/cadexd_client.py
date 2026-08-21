@@ -43,16 +43,13 @@ CADEXD_UNAVAILABLE = "CADEXD_UNAVAILABLE"
 #: queueing behind an in-flight modeling request is exactly what a drag's
 #: preview should do when it meets the ``set_params`` that settles it
 #: (ADR-055). Adding it would make the two refuse each other instead.
-#: ``export_printable`` tessellates and writes one STL per marked part, which
+#: ``export_printable`` tessellates and writes one STL per ticked part, which
 #: is minutes of work on a large assembly and emphatically not a 60-second
-#: read. ``set_printable`` writes no geometry at all, but it writes the store
-#: and the engine serializes it against an in-flight rebuild the same way, so
-#: it takes the same tier rather than sitting behind a read timeout that the
-#: rebuild it is queued behind can outlast.
+#: read. Ticking a part is not here and needs no tier: it writes the scene
+#: and never reaches the engine at all (cadex ADR-158).
 MODELING_OPS = frozenset(
     {"open_project", "write_script", "edit_script", "set_params", "rebuild",
-     "put_asset", "link_part", "put_blueprint", "set_printable",
-     "export_printable"}
+     "put_asset", "link_part", "put_blueprint", "export_printable"}
 )
 
 _READY_TIMEOUT_SECONDS = 120.0

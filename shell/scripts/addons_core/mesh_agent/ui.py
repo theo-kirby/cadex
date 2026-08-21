@@ -542,7 +542,7 @@ class MESH_AGENT_OT_apply_cage(Operator):
 
 
 class MESH_AGENT_OT_toggle_printable(Operator):
-    """Tick or untick one output as a part to print (cadex ADR-156).
+    """Tick or untick one output as a part to print (cadex ADR-156, 158).
 
     An operator per row rather than a real ``BoolProperty``: the roster is
     whatever the last accepted rebuild published, so a property would have
@@ -550,8 +550,11 @@ class MESH_AGENT_OT_toggle_printable(Operator):
     has to build one for the parameters. A checkbox that is really a button
     costs one icon and no registration.
 
-    No ``bl_options``: this writes the project store, not the scene, so it
-    is not an undo step — the same reasoning the store-writing tools use.
+    It writes the scene and nothing else — no engine round trip, no store,
+    no revision — so it is the cheapest control in this editor. No
+    ``bl_options`` all the same: a tick is a view setting like a selection,
+    and putting one on the undo stack between two real edits would make
+    Ctrl-Z step through checkboxes on its way back to the model.
     """
 
     bl_idname = "mesh_agent.toggle_printable"
@@ -570,6 +573,11 @@ class MESH_AGENT_OT_toggle_printable(Operator):
             self.report({'WARNING'},
                         first_line(str(report)) or "Could not mark that part")
             return {'CANCELLED'}
+        # The panel draws its icons out of the scene, and nothing else in
+        # this operator touches Blender's data, so the redraw is ours to ask
+        # for. Without it the tick lands and the checkbox does not move.
+        for area in getattr(context.screen, "areas", ()) or ():
+            area.tag_redraw()
         return {'FINISHED'}
 
 
@@ -936,7 +944,9 @@ def _draw_printable(layout, scene):
     Drawn from ``cadex_print``'s cache, never from a request: a panel's draw
     runs on every redraw and must not talk to a subprocess. The cache is
     filled off the script block the backend adopts on open and after every
-    accepted rebuild, so it is never older than the model.
+    accepted rebuild, so it is never older than the model. The ticks come
+    out of the scene, which is where they live (cadex ADR-158) — so a draw
+    here reads two pieces of memory and nothing else.
     """
 
     from . import cadex_print
@@ -957,7 +967,8 @@ def _draw_printable(layout, scene):
         # mean registering a PropertyGroup at runtime the way the parameter
         # sliders have to. A checkbox that is really a button costs one icon.
         row.operator(MESH_AGENT_OT_toggle_printable.bl_idname, text=name,
-                     icon=('CHECKBOX_HLT' if entry.get("printable")
+                     icon=('CHECKBOX_HLT'
+                           if cadex_print.is_marked(scene, name)
                            else 'CHECKBOX_DEHLT'),
                      emboss=False).name = name
     note = box.row()

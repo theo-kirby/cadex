@@ -337,11 +337,11 @@ def _complete_script(captured: Mapping[str, Any]) -> Any:
         # and Apply writes them back, so the shell has to be able to read
         # the table it is about to replace.
         "cages": _script_cages(state),
-        # ...and the printable marks (ADR-156). One read gives the panel both
-        # halves of what it draws — every output that *could* be printed, and
-        # which of them are ticked — because `set_printable` replaces the
-        # whole list and a partial view would send back a wrong one.
-        "printable": _script_printable(state),
+        # ...and the printable roster (ADR-156, ADR-158): every output of the
+        # accepted revision that *could* become an STL. Not which of them are
+        # ticked — the ticks are the shell's, and the engine has no opinion
+        # about them until an `export_printable` call names them.
+        "printable": _script_printable(root, state),
         "latest_candidate": state.get("latest_candidate"),
         "updated_at": str(state.get("updated_at") or ""),
     }
@@ -376,21 +376,28 @@ def _script_cages(state: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _script_printable(state: Mapping[str, Any]) -> dict[str, Any]:
-    from CadexPrintables import declared_printables, prune_printable_rows
+def _script_printable(root: str, state: Mapping[str, Any]) -> dict[str, Any]:
+    """The accepted run's exportable outputs, read where they are recorded.
 
-    # Pruned rather than validated: this is a read path, and a stored list
-    # that somehow went bad should read as "nothing ticked" rather than
-    # taking `inspect scope="script"` down with it. The write path
-    # (`set_printable`) is where a malformed list is refused.
-    specs = dict(state.get("print_specs") or {})
-    marked = set(prune_printable_rows(
-        list(state.get("print_values") or []), specs
-    ))
+    Off the accepted worker report rather than out of a cache in the store
+    (ADR-158): `export_printable` resolves the very same report, so the
+    candidates a panel draws and the names the export will accept cannot
+    drift apart. A project with nothing accepted yet — and a report that is
+    unreadable for any reason — reads as an empty roster, because a read
+    path may not take `inspect scope="script"` down with it.
+    """
+
+    from CadexPinResolution import accepted_attempt_dir, load_worker_report
+    from CadexPrintables import printable_roster
+
+    try:
+        report = load_worker_report(accepted_attempt_dir(Path(root), state))
+    except (OSError, ValueError):
+        return {"outputs": []}
     return {
         "outputs": [
-            {"name": name, "artifact_kind": kind, "printable": name in marked}
-            for name, kind in declared_printables(specs).items()
+            {"name": name, "artifact_kind": kind}
+            for name, kind in printable_roster(report.get("outputs")).items()
         ]
     }
 

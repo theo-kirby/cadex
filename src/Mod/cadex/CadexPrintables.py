@@ -1,31 +1,26 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""Which outputs are parts a person means to print (ADR-156).
+"""Which outputs are parts a person means to print (ADR-156, ADR-158).
 
 A project can build an assembly and could not hand one to a slicer. The
 missing step is small and it is not geometry: **which** of the outputs a
 script publishes are parts you intend to print, and where the STLs go.
 
-So this is the sixth stored spec/value pair in ``script.json``, and the
-first one whose specs the **script does not declare**. Every other table —
-parameters, nets, boards, mounts, cages — is declared by a call in
-``script.py`` and overridden by the store. There is no ``printable(...)``
-global and there will not be one, for one reason: marking a part printable
-changes no geometry. Routing it through ``set_params`` would fold it into
-the content revision (``project_script_revision``) and buy a full rebuild
-for every tick of a checkbox.
+The tick is **not stored here** (ADR-158). It was, for one slice — a sixth
+spec/value pair in ``script.json`` and an op to write it — and it should not
+have been: a print mark is a decision about a *view* of the model, like a
+selection or a camera, not a property of the model. The shell keeps its
+ticks and names the parts it wants in the ``export_printable`` call, so this
+module holds only what the engine actually needs to answer that call:
 
-What plays the part of a declaration instead is the **accepted output
-roster**: every geometry output the last accepted run published is a
-candidate, and the stored values are the ones ticked. That is a better fit
-than a script global anyway — the ``result`` dict already declares the
-outputs, and printability is metadata *about* an output rather than a new
-declared entity.
+- the **roster** — which of an accepted run's outputs have a surface at all,
+  read off the accepted worker report rather than out of the store, so there
+  is exactly one source for it and nothing to keep in step;
+- the **validation** of a requested list of names;
+- and the **names on disk** the export writes under.
 
-Everything else is the pattern the other five tables already have: the spec
-cache is flat JSON, the stored values replace wholesale, and a name the
-script no longer publishes is **pruned rather than refused** (ADR-039) —
-loudly on request, silently on drift.
+There is no ``printable(...)`` script global and there never was. Nothing
+the AI writes decides what a person prints.
 
 Like ``CadexCage``, ``CadexBoards``, ``CadexMounts`` and ``CadexNets``, this
 module **imports nothing from FreeCAD and touches no kernel object**, so it
@@ -34,7 +29,7 @@ is exercised by the stubbed pytest suite exactly as it runs in the service.
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping
 
 __all__ = [
     "EXPORTABLE_KINDS",
@@ -43,10 +38,7 @@ __all__ = [
     "PrintableError",
     "allocate_file_name",
     "canonical_printable_rows",
-    "declared_printables",
-    "effective_printables",
-    "prune_printable_rows",
-    "roster_from_outputs",
+    "printable_roster",
     "stl_file_name",
 ]
 
@@ -56,21 +48,21 @@ __all__ = [
 #: surface to print and is not a candidate at all.
 EXPORTABLE_KINDS = ("brep", "mesh")
 
-#: Marks in one project. A project with more printable parts than this is
-#: not a print job, and the cap keeps one bad list out of the store.
+#: Parts in one print job. A job with more parts than this is not a print
+#: job, and the cap keeps one bad list out of the export.
 MAX_PRINTABLE = 256
 
 #: The longest output name the worker itself accepts (``_group_result_by_domain``).
 MAX_PRINTABLE_NAME_CHARS = 128
 
 #: What a name may not carry once it becomes half of a filename. The export
-#: sanitises anyway, but a control character in the *store* is a bug in
-#: whatever wrote it rather than something to be quietly cleaned up.
+#: sanitises anyway, but a control character in a *requested* name is a bug
+#: in whatever asked rather than something to be quietly cleaned up.
 _FORBIDDEN_CHARS = frozenset({"/", "\\", "\x00"})
 
 
 class PrintableError(ValueError):
-    """A printable mark that could not be stated, or could not be applied."""
+    """A print job that could not be stated, or could not be written."""
 
     def __init__(
         self, message: str, *, details: Mapping[str, Any] | None = None
@@ -83,55 +75,39 @@ class PrintableError(ValueError):
 # the roster: what the accepted run published
 
 
-def roster_from_outputs(items: Any) -> dict[str, Any]:
-    """The spec cache, built from one worker report's ``outputs`` list.
+def printable_roster(items: Any) -> dict[str, str]:
+    """``{output name: artifact_kind}`` for the outputs that have a surface.
 
-    Keeps the outputs that have a surface — :data:`EXPORTABLE_KINDS` — and
-    records only ``name`` and ``artifact_kind``, because those are the two
-    things the export needs and everything else in an output record is the
-    run's business rather than the store's.
+    Built from one worker report's ``outputs`` list — the accepted report,
+    at both call sites — because that is the only record of which outputs
+    are artifact-backed, and deriving it rather than caching it is what
+    makes "the panel's candidates" and "what the export will accept" the
+    same list by construction rather than by discipline.
     """
 
-    outputs: list[dict[str, str]] = []
-    seen: set[str] = set()
+    roster: dict[str, str] = {}
     for item in list(items or []):
         if not isinstance(item, Mapping):
             continue
         name = str(item.get("name") or "")
         kind = str(item.get("artifact_kind") or "")
-        if not name or name in seen or kind not in EXPORTABLE_KINDS:
+        if not name or name in roster or kind not in EXPORTABLE_KINDS:
             continue
-        seen.add(name)
-        outputs.append({"name": name, "artifact_kind": kind})
-    return {"outputs": outputs}
-
-
-def declared_printables(specs: Mapping[str, Any] | None) -> dict[str, str]:
-    """``{output name: artifact_kind}`` from a stored ``print_specs`` block."""
-
-    result: dict[str, str] = {}
-    for entry in list((specs or {}).get("outputs") or []):
-        if not isinstance(entry, Mapping):
-            continue
-        name = str(entry.get("name") or "")
-        kind = str(entry.get("artifact_kind") or "")
-        if name and kind in EXPORTABLE_KINDS:
-            result[name] = kind
-    return result
+        roster[name] = kind
+    return roster
 
 
 # ---------------------------------------------------------------------------
-# the canonical row
+# the requested job
 
 
 def canonical_printable_rows(rows: Any, *, what: str) -> list[str]:
-    """Validate a full mark list into canonical JSON, or refuse it.
+    """Validate a requested list of names into canonical JSON, or refuse it.
 
     A row is a **name**, not an object: there is exactly one thing to say
     about an output here and an object with one key in it would be a table
     pretending to have a shape it does not have. Order is preserved and
-    repeats are dropped, so the list a panel sends back is stored as the list
-    it meant.
+    repeats are dropped, so the list a panel sends is the job it meant.
     """
 
     if isinstance(rows, (str, bytes, Mapping)) or not isinstance(
@@ -142,8 +118,8 @@ def canonical_printable_rows(rows: Any, *, what: str) -> list[str]:
         )
     if len(rows) > MAX_PRINTABLE:
         raise PrintableError(
-            f"{what} holds {len(rows)} marks; a project marks at most "
-            f"{MAX_PRINTABLE} parts printable"
+            f"{what} holds {len(rows)} names; one print job writes at most "
+            f"{MAX_PRINTABLE} parts"
         )
     result: list[str] = []
     seen: set[str] = set()
@@ -170,42 +146,6 @@ def canonical_printable_rows(rows: Any, *, what: str) -> list[str]:
         seen.add(name)
         result.append(name)
     return result
-
-
-def prune_printable_rows(
-    rows: Sequence[Any], specs: Mapping[str, Any] | None
-) -> list[str]:
-    """Drop marks the accepted roster no longer publishes (ADR-039).
-
-    Silent, and deliberately so: a script that stops publishing a part has
-    not made an error, it has changed its mind, and a store that wedged on
-    that is what ADR-039 was written about. The *requested* unknown name is
-    the loud case, and it is refused by the op rather than here.
-    """
-
-    roster = declared_printables(specs)
-    result: list[str] = []
-    for row in list(rows or []):
-        name = str(row or "").strip()
-        if name in roster and name not in result:
-            result.append(name)
-    return result
-
-
-def effective_printables(
-    specs: Mapping[str, Any] | None, values: Any
-) -> list[str]:
-    """The marks as they stand: stored, validated, pruned against the roster.
-
-    There is no declared half to fall back on — nothing is printable until
-    somebody says so — which makes this the whole answer rather than a merge.
-    """
-
-    if not values:
-        return []
-    return prune_printable_rows(
-        canonical_printable_rows(values, what="printable values"), specs
-    )
 
 
 # ---------------------------------------------------------------------------

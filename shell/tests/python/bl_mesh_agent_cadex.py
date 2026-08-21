@@ -3794,21 +3794,28 @@ result = {
 }
 """
 
+#: ...and the same model with one of them gone: what a script changing its
+#: mind looks like, and what a tick for the missing part has to survive.
+ONE_PART_SCRIPT = """
+result = {"bracket": part.box(40.0, 25.0, 15.0)}
+"""
+
 
 def test_marked_parts_export_as_stl(root):
-    """ADR-156, end to end against the bundled engine.
+    """ADR-156 and ADR-158, end to end against the bundled engine.
 
     Four claims, in the order they can fail:
 
     1. **the roster is the accepted output list** — no script global
        declares it, so a two-output script must produce two candidates,
        both unticked, with no help from the panel.
-    2. **a tick costs no rebuild** — the accepted revision before and after
-       is the same revision. That is the whole reason ``set_printable`` is
-       an op of its own rather than a sixth ``set_params`` table, and it is
-       the assertion that says so rather than the ADR that claims it.
-    3. **the export writes real STLs into the store** — one file per marked
-       part, in ``print/``, written by the engine off the accepted solid.
+    2. **a tick is the scene's, and reaches the engine not at all** — it
+       lands in a scene property, the accepted revision does not move, and
+       ``script.json`` holds nothing about printing. That is ADR-158 stated
+       as assertions rather than claimed by an ADR.
+    3. **the export writes real STLs into the store** — one file per ticked
+       part, in ``print/``, written by the engine off the accepted solid
+       from the list the shell named.
     4. **the second export refuses and names what is there** — then
        ``keep_both`` writes beside it. The refusal is what the Overwrite /
        Keep Both dialog is built from, so a refusal that did not name the
@@ -3829,7 +3836,11 @@ def test_marked_parts_export_as_stl(root):
     names = sorted(str(entry["name"]) for entry in roster or [])
     check(names == ["arm", "bracket"],
           "both outputs are printable candidates: {!r}".format(names))
-    check(all(not entry.get("printable") for entry in roster or []),
+    check(all(set(entry) == {"name", "artifact_kind"}
+              for entry in roster or []),
+          "the roster carries no tick — the engine has no opinion about one "
+          "(cadex ADR-158): {!r}".format(roster))
+    check(not cadex_print.marked(scene),
           "and nothing is ticked until somebody ticks it")
     # The roster reaches the panel's cache off the block the backend already
     # adopts, so the checkboxes are drawable with no round trip of their own.
@@ -3842,15 +3853,23 @@ def test_marked_parts_export_as_stl(root):
     check(cadex_print.marked(scene) == ["bracket"],
           "and it is the one that is marked: {!r}".format(
               cadex_print.marked(scene)))
+    check(cadex_print.is_marked(scene, "bracket")
+          and "bracket" in str(scene.get("cadex_printable") or ""),
+          "the tick is in the SCENE, which is what saves it with the .blend")
     check(cadex_backend._state_for(root).revision == before,
           "a print mark did NOT move the revision guard — no rebuild for a "
           "checkbox ({!r} -> {!r})".format(
               before, cadex_backend._state_for(root).revision))
+    with open(os.path.join(root, "script.json"), "r") as handle:
+        stored = json.load(handle)
+    check(not [key for key in stored if key.startswith("print")],
+          "and script.json holds nothing about printing at all: {!r}".format(
+              sorted(key for key in stored if key.startswith("print"))))
 
     # ...and again through the registered operator, which is what the row in
     # the Parameters editor actually calls. A panel row is a button here, not
     # a BoolProperty, so this is the only thing that proves the name reaches
-    # the engine.
+    # the tick list at all.
     check(bpy.ops.mesh_agent.toggle_printable(name="arm") == {'FINISHED'},
           "the panel's per-row operator ticks a second part")
     check(cadex_print.marked(scene) == ["bracket", "arm"],
@@ -3891,6 +3910,25 @@ def test_marked_parts_export_as_stl(root):
           "leaving both files: {!r}".format(stls))
 
     GATE["printable"] = {"outputs": names, "files": stls, "bytes": size}
+
+    # Drop-on-drift, which moved to this side of the boundary with the ticks
+    # (cadex ADR-158): a rebuild that stops publishing a part is what drops
+    # its tick, and adopting the new roster is where that happens. Ticking
+    # `arm` first so there is something to lose as well as something to keep.
+    bpy.ops.mesh_agent.toggle_printable(name="arm")
+    # `replace` because this rewrite *drops* an output, which is the ADR-045
+    # guard rather than anything to do with printing.
+    ok, report = run_tool("write_script", {"content": ONE_PART_SCRIPT,
+                                           "replace": True})
+    check(ok, "the one-part rewrite was accepted: {:s}".format(
+        first_line_of(report)))
+    if ok:
+        check([str(entry["name"]) for entry in cadex_print.cached(scene)] ==
+              ["bracket"], "the roster follows the rebuild: {!r}".format(
+                  [str(entry["name"]) for entry in cadex_print.cached(scene)]))
+        check(cadex_print.marked(scene) == ["bracket"],
+              "and the tick for the part that is gone went with it: "
+              "{!r}".format(cadex_print.marked(scene)))
 
 
 #: A blind bore: a 10 mm hole down into a 20 mm block that does NOT break

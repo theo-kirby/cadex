@@ -876,82 +876,10 @@ class CadexdServer:
             "blueprints": read_blueprints(self._project_root),
         }
 
-    def _op_set_printable(
-        self, _request_id: str, args: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Mark which accepted outputs are parts to print (ADR-156).
-
-        A **complete replacement** of the mark list, like every other table
-        the store holds. What is unlike them is what it costs: nothing. No
-        worker runs, no geometry is rebuilt, and the content revision does
-        not move — a print mark says what to do with an output, not what the
-        output is, so folding it into ``set_params`` would buy a full rebuild
-        for every tick of a checkbox.
-
-        Deliberately NO ``_invalidate_resident_workers()``, on
-        ``put_blueprint``'s reasoning exactly: no script can name a mark, so
-        no worker's preview generation is stale for one arriving.
-
-        Loud here, silent on drift: a name the accepted roster does not
-        publish is **refused** when a caller asks for it, and **dropped**
-        when the script stops publishing it (``prune_printable_rows``, at
-        the next validated rebuild). That asymmetry is ADR-039's, and it is
-        what keeps a rewritten script from wedging the panel.
-        """
-
-        not_open = self._require_open()
-        if not_open is not None:
-            return not_open
-        from CadexPrintables import (
-            PrintableError,
-            canonical_printable_rows,
-            declared_printables,
-        )
-        from CadexScriptStore import CadexProjectScriptStore
-        from CadexTools import tool_failure
-
-        store = CadexProjectScriptStore(self._project_root)
-        state = store.read_state()
-        roster = declared_printables(state.get("print_specs"))
-        requested = args["printable"]
-        try:
-            marks = canonical_printable_rows(requested, what="printable")
-        except PrintableError as exc:
-            return tool_failure(
-                "cadexd.set_printable",
-                "PRINTABLE_REJECTED",
-                "precondition",
-                str(exc),
-                requested={"printable": requested},
-                observed={"outputs": sorted(roster)},
-            )
-        unknown = [name for name in marks if name not in roster]
-        if unknown:
-            return tool_failure(
-                "cadexd.set_printable",
-                "UNKNOWN_PRINTABLE_OUTPUT",
-                "precondition",
-                f"The accepted revision publishes no printable output named "
-                f"{', '.join(repr(name) for name in unknown)}. Only outputs "
-                "with a surface — a solid or a mesh — can become an STL.",
-                requested={"printable": marks},
-                observed={"outputs": sorted(roster)},
-            )
-        store.write(state_updates={"print_values": marks})
-        marked = set(marks)
-        return {
-            "ok": True,
-            "printable": marks,
-            "outputs": [
-                {"name": name, "artifact_kind": kind, "printable": name in marked}
-                for name, kind in roster.items()
-            ],
-        }
-
     def _op_export_printable(
         self, _request_id: str, args: dict[str, Any]
     ) -> dict[str, Any]:
-        """Write one STL per marked part into ``print/`` (ADR-156).
+        """Write one STL per named part into ``print/`` (ADR-156, ADR-158).
 
         The engine writes the files because the engine is the sole writer of
         the project store (``docs/ARCHITECTURE.md``) — and it is the better
@@ -969,6 +897,14 @@ class CadexdServer:
         **refuses and names the files**. That is ``link_part``'s arrangement:
         the refusal carries what the shell needs to ask the question, so one
         round trip both checks and populates the dialog.
+
+        ``printable`` is the whole job, named by the caller (ADR-158). The
+        engine stores no marks and remembers no ticks between calls: which
+        parts a person means to print is a decision about a view of the
+        model, so it lives with whoever is drawing that view. What the
+        engine still owns is the refusal — a name the accepted revision does
+        not publish as a printable output is told so, with the roster
+        attached.
         """
 
         not_open = self._require_open()
@@ -983,11 +919,10 @@ class CadexdServer:
             staged_artifact_path,
         )
         from CadexPrintables import (
-            EXPORTABLE_KINDS,
             PrintableError,
             allocate_file_name,
-            declared_printables,
-            effective_printables,
+            canonical_printable_rows,
+            printable_roster,
             stl_file_name,
         )
         from CadexScriptStore import CadexProjectScriptStore
@@ -1013,17 +948,40 @@ class CadexdServer:
         except ValueError as exc:
             return refuse("PRINT_ARTIFACT_MISSING", str(exc))
 
-        specs = dict(state.get("print_specs") or {})
-        roster = declared_printables(specs)
+        # The roster is derived from the report just read, never cached: the
+        # candidates the panel drew came out of this same file (`inspect
+        # scope="script"`), so the two lists cannot disagree.
+        roster = printable_roster(report.get("outputs"))
+        requested = args["printable"]
         try:
-            names = effective_printables(specs, state.get("print_values"))
+            names = canonical_printable_rows(requested, what="printable")
         except PrintableError as exc:
-            return refuse("PRINTABLE_REJECTED", str(exc))
+            return refuse(
+                "PRINTABLE_REJECTED",
+                str(exc),
+                requested={"printable": requested},
+                observed={"outputs": sorted(roster)},
+            )
         if not names:
             return refuse(
                 "NOTHING_MARKED_PRINTABLE",
-                "No output is marked printable, so there is nothing to "
+                "No output was named to print, so there is nothing to "
                 "export. Tick the parts you mean to print first.",
+                observed={"outputs": sorted(roster)},
+            )
+        unknown = [name for name in names if name not in roster]
+        if unknown:
+            # The loud half of ADR-039's asymmetry, and now the only half the
+            # engine has: a caller naming a part the accepted revision does
+            # not publish has a stale roster, and is told so with the current
+            # one attached. Dropping a mark the script stopped publishing is
+            # the caller's own business, because the marks are.
+            return refuse(
+                "UNKNOWN_PRINTABLE_OUTPUT",
+                f"The accepted revision publishes no printable output named "
+                f"{', '.join(repr(name) for name in unknown)}. Only outputs "
+                "with a surface — a solid or a mesh — can become an STL.",
+                requested={"printable": names},
                 observed={"outputs": sorted(roster)},
             )
 
@@ -1042,22 +1000,12 @@ class CadexdServer:
         plan: list[list[Any]] = []
         reserved: set[str] = set()
         for name in names:
-            try:
-                item = accepted_output_item(report, name)
-            except KeyError:
-                return refuse(
-                    "PRINT_ARTIFACT_MISSING",
-                    f"The accepted worker report has no output {name!r}.",
-                    observed={"outputs": sorted(roster)},
-                )
-            kind = str(item.get("artifact_kind") or "")
-            if kind not in EXPORTABLE_KINDS:
-                return refuse(
-                    "PRINT_ARTIFACT_MISSING",
-                    f"Output {name!r} is {kind or 'not'} artifact-backed; only "
-                    "a solid or a mesh has a surface to print.",
-                    observed={"artifact_kind": kind},
-                )
+            # No "is it there" and no "does it have a surface" check: the
+            # roster came out of this report, and the name was checked
+            # against the roster. What is still worth checking is the file,
+            # which is a different question from the record of it.
+            item = accepted_output_item(report, name)
+            kind = roster[name]
             try:
                 staged_artifact_path(staging, item)
             except ValueError as exc:

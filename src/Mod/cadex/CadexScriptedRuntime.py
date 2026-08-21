@@ -1882,24 +1882,13 @@ def validate_project_result(
     prepared["cage_values"] = prune_ring_rows(
         list(prepared.get("cage_values") or []), cage_specs
     )
-    # ...and the printable roster (ADR-156), which is the one entry here that
-    # is not a declared table: nothing in the script states it, so it is
-    # harvested from the outputs this run actually published, and the marks
-    # are pruned against it. That is the whole rebuild-side integration — a
-    # part the script no longer publishes silently loses its mark, ADR-039's
-    # drop-on-drift in two lines. It is deliberately **not** an argument to
-    # `project_script_revision` below: a print mark changes no geometry.
-    # The marks themselves are read back off the store rather than threaded
-    # through `prepare_project_candidate`: `set_printable` never runs a
-    # worker, so there is no candidate for a mark to ride on and nothing
-    # downstream of here that wants one.
-    from CadexPrintables import prune_printable_rows, roster_from_outputs
-
+    # There is deliberately nothing here for the printable marks (ADR-158).
+    # ADR-156 harvested a roster into the store at this point and pruned the
+    # marks against it; both are gone. The roster is derived from this run's
+    # own worker report when somebody asks for it, and the marks are the
+    # shell's — so a rebuild that stops publishing a part costs this path no
+    # code at all.
     store = CadexProjectScriptStore(str(prepared["project_root"]))
-    print_specs = roster_from_outputs(outputs)
-    print_values = prune_printable_rows(
-        list(store.read_state().get("print_values") or []), print_specs
-    )
     final_revision = contracts.project_script_revision(
         source=str(prepared["source"]),
         param_specs=param_specs,
@@ -1925,8 +1914,6 @@ def validate_project_result(
             "mount_values": list(prepared["mount_values"]),
             "cage_specs": cage_specs,
             "cage_values": list(prepared["cage_values"]),
-            "print_specs": print_specs,
-            "print_values": print_values,
             "working_revision": final_revision,
             "latest_candidate": {
                 "status": "validated",
