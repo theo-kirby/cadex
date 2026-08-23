@@ -16528,3 +16528,93 @@ and failed that check with **every** number in the run 2–3× its usual value
 13.7; it is recorded here rather than omitted, because a latency bar read
 off a loaded machine is the one measurement in that file nobody should
 trust.
+
+## ADR-159 — the two cdx-rl trainer PRs land, with one defect fixed (2026-08-23)
+
+**Decision.** Merge PRs #7 and #8 into `main`, and fix on arrival the two
+things #8 shipped broken. Both are cdx-rl's work on the offboard trainer;
+this entry is the cadex-side record of what landed, because neither PR
+carried a `DECISIONS.md` entry or a record node of its own.
+
+**What landed.**
+
+- **#7 — `--init-from-task-change REASON`** (`training/cadex_train.py`,
+  `training/test_curriculum_warm_start.py`). `check_policy_fits` compares
+  the bundle's whole-file digest, which is the right default and the wrong
+  floor: it makes a **curriculum** impossible, so a walker could only reach
+  a harder shove band from a fresh network. The flag skips the whole-file
+  task digest and nothing else — model digest, observation channels in
+  order, the action table field by field and the network shape are all still
+  checked — and the differing top-level keys must be a subset of
+  `CURRICULUM_TASK_KEYS`, which answers one question: does the change alter
+  what the network reads or what it emits? `--init-from-parent-task` is
+  required beside it, because a `.cxpolicy` header carries its task's digest
+  rather than its content.
+- **#8 — `--command-slew-deg`** (`training/cadex_train.py`,
+  `src/Mod/cadex/cadex_tests/test_dynamics_command_slew.py`). A cap on the
+  per-step change of the **issued** command, applied after the action filter
+  and before the `ctrl` write, reset with the episode. It is a different
+  operator from the EMA: an EMA bounds the command's smoothness and does not
+  bound its rate at all, which the new suite pins numerically. Default 0.0
+  means **no limit** — the opposite convention from the filter's alpha,
+  where 0 would freeze the command and is refused — and at 0.0 the emitted
+  graph is unchanged, so an existing policy trains the same as before.
+
+**The defect, and why it is worth a paragraph.** #8 arrived red, and the CI
+failure was real rather than environmental:
+`test_zero_is_no_limit_and_not_a_frozen_command` asserted the literal string
+`command_slew_deg = 0.0` appears in the trainer. It does not: the resolution
+moved into a module-level `resolved_command_slew_deg(options)` — deliberately,
+because `policy_header` needs the same number as `train` and the first draft
+read it as a local — and the assertion was left pinning the draft. Beside it,
+`resolved_command_slew_deg` was **defined twice**, two identical copies
+differing only in an em-dash, the signature of a hunk applied twice across a
+stacked rebase. The second silently won; the first was dead.
+
+Fixed here: the duplicate is deleted, and the assertion now reads the
+resolver's own body — `getattr(options, "command_slew_deg", 0.0)` and
+`return value if value > 0.0 else 0.0`, which is the "absent, None, zero and
+negative all mean no limit" rule stated where it lives — while keeping
+`slewing = command_slew_deg > 0.0` pinned as text, because that branch is
+what makes 0.0 a true no-op.
+
+**A numbering hazard, recorded rather than rewritten.** Both PRs cite
+"ADR-152" and "ADR-153" in their titles, docstrings and test prose. **Those
+are cdx-rl's numbers, not this log's** — in `docs/DECISIONS.md`, ADR-152 and
+ADR-153 are the blueprint-sheet decisions from 2026-08-20. The merged
+docstrings are left as they are rather than rewritten across two files; this
+entry is the pointer that stops the next reader chasing a curriculum flag
+into a drawing ADR.
+
+**Verified.** `pixi run python -m pytest src/Mod/cadex/cadex_tests`: 1909
+passed, 45 skipped — the 12 MJX-gated slew tests skip in the pixi
+environment by design (ADR-084), as do the trainer's own.
+`pixi run python -m pytest training/test_curriculum_warm_start.py`: 16
+passed. `pixi run python -m pytest cli/tests`: 83 passed. The trees these
+PRs touch are the offboard trainer and one engine test file, so no build,
+payload or `shell/` surface moves.
+
+**Note on CI.** Both PRs showed a red "Application (macOS arm64)" check, on
+the *Build the shell* step. That is this repository's standing CI state
+rather than anything these branches did — every scheduled and push run on
+`main` has failed the same way for weeks, including runs whose diff was a
+reconcile commit touching only markdown. It is worth its own investigation
+and is not one of these merges.
+
+**One unrelated bug, found by the same suite run and fixed here.** Three
+`test_tessellation.py` cases failed on the merged tree and had nothing to do
+with either PR: `shared_worker_bundle` treated **the existence of the bundle
+directory** as proof it was populated. macOS purges `/var/folders` by age of
+*file*, so the staged modules go and the directory stays — and a
+`__pycache__` written later keeps that directory's own mtime fresh. The
+engine then hands a sandboxed worker an empty bundle, and the run dies at
+import with nothing on screen connecting it to a temp sweep three days
+earlier. A machine that sat idle over a weekend is all it takes.
+
+Fixed: the reuse check now requires **every member file**, not the
+directory; and because `os.replace` refuses a non-empty target, a gutted
+bundle is moved aside under a `.dead-<uuid>` name and removed before the
+freshly staged one is published — so a worker holding the old path always
+holds a valid directory and nothing is half-replaced in place.
+`test_a_bundle_gutted_by_a_temp_sweep_is_rebuilt_rather_than_used` guts a
+real bundle, leaves the husk a sweep would leave, and asserts the rebuild.

@@ -139,7 +139,17 @@ def test_zero_is_no_limit_and_not_a_frozen_command() -> None:
     """
 
     source = _source()
-    assert "command_slew_deg = 0.0" in source
+    # Read off the resolver rather than off a spelling: the trainer resolves
+    # this in one module-level function so `train` and `policy_header` cannot
+    # disagree, and an assertion looking for a literal `command_slew_deg =
+    # 0.0` assignment pinned a draft that no longer exists. The rule is
+    # "absent, None, zero and negative all mean no limit", so that is what is
+    # asserted — with the OFF switch itself, `slewing`, still pinned as text
+    # because it is the branch that keeps 0.0 a true no-op.
+    resolver = source[source.index("def resolved_command_slew_deg(options)"):]
+    resolver = resolver[:resolver.index("\ndef ", 1)]
+    assert 'getattr(options, "command_slew_deg", 0.0)' in resolver
+    assert "return value if value > 0.0 else 0.0" in resolver
     assert "slewing = command_slew_deg > 0.0" in source
 
 

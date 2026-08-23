@@ -301,3 +301,29 @@ def test_the_worker_bundle_is_built_once_and_content_addressed() -> None:
     assert staged.stat().st_size == source.stat().st_size
     # And the mtime survives, which is what makes __pycache__ validate.
     assert int(staged.stat().st_mtime) == int(source.stat().st_mtime)
+
+
+def test_a_bundle_gutted_by_a_temp_sweep_is_rebuilt_rather_than_used() -> None:
+    """The failure mode macOS actually produces, and it is not theoretical.
+
+    ``/var/folders`` is purged by **age of file**: the modules go and the
+    directory stays, and a ``__pycache__`` written later keeps that directory
+    looking fresh. A presence check on the directory alone then hands a
+    worker an empty bundle, which fails at import with nothing on screen to
+    connect it to a temp sweep three days earlier. Caught on a real machine
+    (ADR-159), which is why this asserts the husk rather than the happy path.
+    """
+
+    module_root = Path(tess.__file__).resolve().parent
+    bundle, entry = shared_worker_bundle(module_root, "project")
+    for path in bundle.iterdir():
+        if path.is_file():
+            path.unlink()
+    # What the sweep leaves behind: the directory, and often a __pycache__.
+    (bundle / "__pycache__").mkdir(exist_ok=True)
+    assert bundle.is_dir() and not (bundle / entry).is_file()
+
+    rebuilt, rebuilt_entry = shared_worker_bundle(module_root, "project")
+    assert rebuilt == bundle and rebuilt_entry == entry
+    assert (rebuilt / entry).is_file()
+    assert (rebuilt / "cadex_tessellation.py").is_file()

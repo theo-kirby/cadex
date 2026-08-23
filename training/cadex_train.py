@@ -736,30 +736,6 @@ def resolved_command_slew_deg(options) -> float:
     return value if value > 0.0 else 0.0
 
 
-def resolved_command_slew_deg(options) -> float:
-    """ADR-153's limit in degrees, resolved once.
-
-    Module level and not a local of ``train`` because ``policy_header`` needs
-    the same number and the two are different scopes: the first draft read it
-    as a local there and every run died in the header writer. Two spellings of
-    a resolution rule are two rules.
-
-    ``None``, absent, zero and negative all mean **no limit** and return 0.0 --
-    the flag's OFF value, unlike the action filter's alpha where 0 would freeze
-    the command and is refused.
-    """
-
-    value = getattr(options, "command_slew_deg", 0.0)
-    if value is None:
-        return 0.0
-    value = float(value)
-    if not math.isfinite(value):
-        raise SystemExit(
-            "--command-slew-deg must be a finite number of degrees. 0 (the "
-            "default) is NO LIMIT.")
-    return value if value > 0.0 else 0.0
-
-
 def train(
     bundle: dict[str, Any],
     options: argparse.Namespace,

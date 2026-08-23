@@ -316,7 +316,23 @@ def shared_worker_bundle(module_root: Path, domain: str) -> tuple[Path, str]:
     clean_domain = str(domain or "").strip().lower()
     root = Path(tempfile.gettempdir()) / _BUNDLE_CACHE_DIRNAME
     bundle = root / f"{clean_domain}-{digest.hexdigest()[:24]}"
-    if bundle.is_dir():
+
+    def populated() -> bool:
+        """Every member present, not merely a directory of the right name.
+
+        The distinction is not theoretical: macOS purges *files* out of
+        ``/var/folders`` by age and leaves the directories behind — and a
+        `__pycache__` written later keeps the directory looking fresh while
+        the modules beside it are gone. A presence check on the directory
+        alone then hands a worker an empty bundle, which fails at import
+        with nothing on screen to connect it to a temp sweep three days ago.
+        """
+
+        return bundle.is_dir() and all(
+            (bundle / name).is_file() for name in set(members)
+        )
+
+    if populated():
         return bundle, entry_module
 
     root.mkdir(parents=True, exist_ok=True)
@@ -325,12 +341,24 @@ def shared_worker_bundle(module_root: Path, domain: str) -> tuple[Path, str]:
     try:
         for name in set(members):
             _link_or_copy(module_root / name, pending / name)
+        if bundle.is_dir():
+            # A gutted bundle from a temp sweep. `os.replace` refuses a
+            # non-empty directory, so the husk goes first — under a name of
+            # its own, so a worker reading the old directory keeps a valid
+            # path and nothing is ever half-replaced in place.
+            husk = root / f".dead-{uuid.uuid4().hex}"
+            try:
+                os.replace(bundle, husk)
+            except OSError:
+                husk = None
+            if husk is not None:
+                shutil.rmtree(husk, ignore_errors=True)
         os.replace(pending, bundle)
     except OSError:
         shutil.rmtree(pending, ignore_errors=True)
         # Lost a race with another worker, or could not publish. Either the
         # bundle is there now or the caller's next attempt rebuilds it.
-        if not bundle.is_dir():
+        if not populated():
             raise
     return bundle, entry_module
 
