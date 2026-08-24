@@ -172,6 +172,16 @@ jobs:
           MESH_FREECADCMD: ""
           MESH_CADEXD_MODULE: ""
           MESH_CADEX_ENGINE: ""
+          # The 0.65 s slider-drag bar is a parity criterion against the Qt
+          # shell, and it is an absolute wall-clock number. A shared runner is
+          # ~2.2-2.5x slower at *everything* in this gate than the developer
+          # Mac -- open, refine and rebuild all move together with the drag --
+          # so enforcing it here fails the build for the hardware rather than
+          # for the product (ADR-163). 2.6 s is 4x parity and about 2x the
+          # measured runner median: a collapse still fails, runner noise does
+          # not. The payload keeps reporting `median_within_bar` against the
+          # real 0.65 s, so the artifact never claims parity it did not meet.
+          CADEX_GATE_LATENCY_BAR: "2.6"
         run: |
           pixi run gate | tee gate.txt
           grep -q '"ok": true' gate.txt

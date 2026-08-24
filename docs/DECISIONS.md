@@ -16877,6 +16877,52 @@ The step runs after the toolchain step, because that is what installs git-lfs,
 and it asserts the file is over 1 KB rather than trusting the pull. The Linux
 engine job needs no LFS path at all and does not pay for it.
 
+**It was three walls, not one, and each hid the next.** This is the part worth
+remembering: a build that aborts early tells you about exactly one problem, and
+a job that has been red for weeks has been accumulating them silently.
+
+1. **The LFS pointer file**, above. Fixing it moved configure four lines
+   further.
+2. **Xcode.** `platform_apple_xcode.cmake` refuses anything below **Xcode
+   16.0**, and the `macos-14` image tops out at 15.4 with no newer Xcode
+   installed to select. The job moved to **`macos-15`**. This was invisible
+   while wall 1 stood, because the startup-blend check runs before the
+   compiler check.
+3. **The slider-drag parity bar.** With the shell finally building, the gate
+   ran and failed one assertion: median 1.268 s against the 0.65 s bar.
+
+That third one is **not a regression, and the gate's own payload proves it.**
+Every wall-clock number in the same run is uniformly slower on the runner than
+on the developer Mac, measured on one commit, same code, same day:
+
+| | developer Mac | GitHub runner | ratio |
+|---|---|---|---|
+| `open_seconds` | 2.005 | 5.102 | 2.54× |
+| `refine_seconds` | 1.358 | 3.021 | 2.22× |
+| `main_thread_rebuild_seconds` | 1.502 | 2.775 | 1.85× |
+| **slider median** | **0.520** | **1.268** | **2.44×** |
+
+The drag's ratio sits in the middle of the others: the runner is slow at
+everything, not slow at dragging.
+
+**Decision.** The 0.65 s bar is a **parity criterion against the Qt shell** and
+an absolute wall-clock number, so it is only meaningful on hardware a person
+would use. `CADEX_GATE_LATENCY_BAR` raises the *enforced* ceiling; the CI job
+sets it to **2.6 s** — 4× parity, about 2× the measured runner median, so a
+genuine collapse still fails and runner noise does not.
+
+What it deliberately does **not** do is relabel the bar. `parity_bar_seconds`
+and `median_within_bar` in the gate payload always report against the real
+0.65 s, and the suite prints a line saying parity is not being enforced. A
+relaxed ceiling reported as "the bar" would launder the runner's slowness into
+a passing parity claim, and the uploaded `gate.txt` would then be evidence of
+something that never happened.
+
+This is the same signature ADR-158 hit locally at load average 13.7 (median
+1.124 s, 0.538 s on a quiet machine) and recorded rather than hid. Twice now,
+so it is a property of the measurement and not an accident: **an absolute
+latency bar cannot be enforced on a machine you do not control.**
+
 ### 3. Three trainer decisions were citing other decisions' numbers
 
 **Decision, and a standing rule.** cdx-rl proposes an ADR number in its own
