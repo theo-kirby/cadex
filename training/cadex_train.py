@@ -279,7 +279,7 @@ def unflatten_parameters(np: Any, weights: Sequence[float], shapes):
     return parameters
 
 
-#: ADR-152: the top-level bundle keys a CURRICULUM may move.
+#: ADR-161: the top-level bundle keys a CURRICULUM may move.
 #:
 #: :func:`check_policy_fits` compares the bundle's WHOLE-FILE digest, which is
 #: the right default and the wrong floor. It makes a curriculum impossible:
@@ -335,7 +335,7 @@ def check_curriculum_change(
     options: argparse.Namespace,
     reason: str,
 ) -> list[str]:
-    """ADR-152: which keys moved, having refused the ones that may not.
+    """ADR-161: which keys moved, having refused the ones that may not.
 
     Returns the sorted list of differing top-level keys, for the run record.
 
@@ -451,7 +451,7 @@ def check_policy_fits(
     if task.get("sha256") != bundle["task_sha256"]:
         if not reason:
             refuse("the task digest", bundle["task_sha256"], task.get("sha256"))
-        # ADR-152. Every check below still runs, unchanged: this branch skips
+        # ADR-161. Every check below still runs, unchanged: this branch skips
         # the whole-file digest and buys nothing else.
         curriculum = check_curriculum_change(task, bundle, options, reason)
     elif reason:
@@ -713,7 +713,7 @@ def flat_parameters(np: Any, parameters) -> list[float]:
 
 
 def resolved_command_slew_deg(options) -> float:
-    """ADR-153's limit in degrees, resolved once.
+    """ADR-162's limit in degrees, resolved once.
 
     Module level and not a local of ``train`` because ``policy_header`` needs
     the same number and the two are different scopes: the first draft read it
@@ -781,7 +781,7 @@ def train(
     output_scale = [(float(a["high"]) - float(a["low"])) / 2.0 for a in actions]
     output_bias = [(float(a["high"]) + float(a["low"])) / 2.0 for a in actions]
 
-    # ADR-151: the command may be low-passed before it reaches `data.ctrl`.
+    # ADR-160: the command may be low-passed before it reaches `data.ctrl`.
     #
     # `alpha` is a PYTHON float and every branch on it below is taken at
     # TRACE time, not at run time. That is the whole design: at the default
@@ -803,7 +803,7 @@ def train(
         )
     filtering = action_filter_alpha < 1.0
 
-    # ADR-153. A SLEW LIMIT IS A DIFFERENT OPERATOR FROM THE EMA, and this
+    # ADR-162. A SLEW LIMIT IS A DIFFERENT OPERATOR FROM THE EMA, and this
     # repository spent two experiments (021, 023) discovering that the hard
     # way. An EMA's per-step change is `alpha * |raw - previous|`, which on a
     # +/-25 deg box at alpha 0.65 is up to 32.5 deg in ONE control step: it
@@ -815,7 +815,7 @@ def train(
     # "deg" and `scale` is the pi/180 that follows the clamp. There is no new
     # conversion site; `test_dynamics_units` greps for exactly that.
     #
-    # `None`/0 is NO LIMIT and takes the pre-ADR-153 branch, emitting the same
+    # `None`/0 is NO LIMIT and takes the pre-ADR-162 branch, emitting the same
     # graph a trainer without this flag emits.
     command_slew_deg = resolved_command_slew_deg(options)
     slewing = command_slew_deg > 0.0
@@ -1149,7 +1149,7 @@ def train(
 
     # `(previous, first)` are per environment, so they vmap on axis 0 like
     # `surface`. Empty at alpha 1.0, which is what keeps the traced signature
-    # identical to the pre-ADR-151 one.
+    # identical to the pre-ADR-160 one.
     _filter_axes = (0, 0) if carrying else ()
     batched_step = (
         jax.vmap(step_env, in_axes=(None, 0, 0) + _filter_axes)
@@ -1187,7 +1187,7 @@ def train(
              jnp.zeros((envs,), dtype=jnp.float32),
              jnp.zeros((envs,), dtype=jnp.int32))
     if carrying:
-        # ADR-151's sixth member (ADR-153 shares it): the previous ISSUED
+        # ADR-160's sixth member (ADR-162 shares it): the previous ISSUED
         # command, per
         # environment. Episode-local for exactly the reason `elapsed` and
         # `steps` are -- a filter that carried across a reset would low-pass
@@ -1282,7 +1282,7 @@ def train(
             "trainer_sha256": source_training.get("trainer_sha256"),
         }
         if curriculum_keys is not None:
-            # ADR-152. The run record carries BOTH task digests and the keys
+            # ADR-161. The run record carries BOTH task digests and the keys
             # that moved, because "warm-started" and "warm-started across a
             # harder band" are different provenance and a reader six months
             # out has only this to tell them apart.
@@ -1357,7 +1357,7 @@ def train(
         """
 
         def stepped(carry, _):
-            # `filter_carry` is ADR-151's `[previous_action]` when filtering
+            # `filter_carry` is ADR-160's `[previous_action]` when filtering
             # and EMPTY otherwise, so at alpha 1.0 the carry pytree is the
             # six-tuple it has always been.
             data, key, forces, starts, elapsed, steps, *filter_carry = carry
@@ -1942,13 +1942,13 @@ def policy_header(
                 Path(__file__).resolve().read_bytes()
             ).hexdigest(),
             "seed": int(options.seed),
-            # ADR-151. Written as its own key as well as appearing in
+            # ADR-160. Written as its own key as well as appearing in
             # ``hyperparameters`` below, because this is the one an
             # *evaluator* reads: a policy trained with a filter has to be
             # PLAYED with it, and a driver that had to be told separately is
             # a driver somebody will forget to tell.
             "action_filter_alpha": float(options.action_filter_alpha),
-            # ADR-153, and its own key for exactly ADR-151's reason: a policy
+            # ADR-162, and its own key for exactly ADR-160's reason: a policy
             # trained under a rate limit has to be PLAYED under one, and a
             # driver that had to be told separately is a driver somebody will
             # forget to tell. 0.0 is no limit.
@@ -1959,7 +1959,7 @@ def policy_header(
             # ``init_from`` below, which identifies the bytes and survives
             # being copied somewhere else.
             #
-            # ADR-152's two flags go with it and for the same reason: one
+            # ADR-161's two flags go with it and for the same reason: one
             # names a second file and the other is a sentence explaining a
             # warm start. Both describe THIS RUN's provenance, not the
             # algorithm, and both are recorded under ``init_from.task_change``
@@ -2143,7 +2143,7 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
         default="",
         metavar="REASON",
         help=(
-            "ADR-152: permit --init-from across a task change -- a "
+            "ADR-161: permit --init-from across a task change -- a "
             "CURRICULUM step -- and say why in one line, which is written "
             "into the run record. Without this, the bundle's whole-file "
             "digest must match the policy's, so a harder disturbance band "

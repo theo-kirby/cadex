@@ -76,6 +76,31 @@ result = {"box": box, "cone": cone, "donut": donut, "drilled": drilled,
           "skin": skin}
 """
 
+#: The parity bar, in seconds. A **product** criterion: a slider drag has to
+#: feel like the Qt shell's did, and that is an absolute wall-clock number
+#: measured on a machine a person would actually use.
+PARITY_BAR_SECONDS = 0.65
+
+#: ...which is why a shared CI runner cannot measure it, and
+#: ``CADEX_GATE_LATENCY_BAR`` exists (ADR-163). Every wall-clock number in the
+#: gate is uniformly ~2.2-2.5x slower on a GitHub macOS runner than on the
+#: developer Mac -- measured on one commit, same code, same day:
+#:
+#:     open 2.005 -> 5.102 s   refine 1.358 -> 3.021 s
+#:     rebuild 1.502 -> 2.775  drag median 0.520 -> 1.268 s
+#:
+#: The drag's ratio (2.44x) sits in the middle of the others, so the runner is
+#: slow at everything rather than slow at dragging. Failing the gate on it
+#: would mean a red build that says nothing about the product, which is how a
+#: CI job stops being read at all.
+#:
+#: The override raises the **enforced** ceiling only. ``parity_bar_seconds``
+#: and ``median_within_bar`` in the gate payload always report against the
+#: real 0.65 s bar, so a CI artifact still tells the truth about parity --
+#: it just does not fail the build for the runner being a runner.
+_LATENCY_BAR = float(
+    os.environ.get("CADEX_GATE_LATENCY_BAR", "") or PARITY_BAR_SECONDS)
+
 #: Latency baseline: the same 24-hole/fillet/mesh-skin part the Qt
 #: switchover integration measured (median 0.479 s, bar 0.65 s).
 BASELINE_SCRIPT = """
@@ -708,8 +733,12 @@ def test_params_and_latency(root):
     GATE["slider_latency"] = {
         "seconds": [round(value, 3) for value in durations],
         "median_seconds": round(median, 3),
-        "parity_bar_seconds": 0.65,
-        "median_within_bar": median <= 0.65,
+        # Always the real bar, whatever ceiling is being enforced: a gate
+        # payload that reported a relaxed bar as "the bar" would launder the
+        # runner's slowness into a passing parity claim.
+        "parity_bar_seconds": PARITY_BAR_SECONDS,
+        "median_within_bar": median <= PARITY_BAR_SECONDS,
+        "enforced_bar_seconds": _LATENCY_BAR,
     }
     # Hydration's share of the drag. Measured, not bounded: it is here to
     # say whether the viewport half of a drag is worth optimising at all.
@@ -720,9 +749,13 @@ def test_params_and_latency(root):
         "share_of_drag": (round(hydrate_median / median, 3)
                           if median > 0 else None),
     }
-    check(median <= 0.65,
-          "slider-drag median {:.3f} s within the 0.65 s parity bar".format(
-              median))
+    if _LATENCY_BAR > PARITY_BAR_SECONDS:
+        print("  note: slider-drag median {:.3f} s; parity bar {:.2f} s is "
+              "NOT enforced here (ceiling {:.2f} s)".format(
+                  median, PARITY_BAR_SECONDS, _LATENCY_BAR))
+    check(median <= _LATENCY_BAR,
+          "slider-drag median {:.3f} s within the {:.2f} s bar".format(
+              median, _LATENCY_BAR))
     check(bpy.data.objects.get("plate" + cadex_hydrate.EDGE_SUFFIX) is None,
           "coarse drag display drops the edge wire object")
 

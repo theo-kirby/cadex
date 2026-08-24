@@ -54,7 +54,14 @@ concurrency:
 jobs:
   app:
     name: Application (macOS arm64)
-    runs-on: macos-14
+    # macos-15, not macos-14: the shell's own
+    # build_files/cmake/platform/platform_apple_xcode.cmake refuses anything
+    # below Xcode 16.0, and the macos-14 image tops out at 15.4 -- there is no
+    # newer Xcode on it to select. This was the *second* wall behind the
+    # missing LFS checkout (ADR-163); the first one aborted configure before
+    # the compiler check was ever reached, so neither was visible while the
+    # other stood.
+    runs-on: macos-15
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
@@ -91,6 +98,28 @@ jobs:
         # built with the conda environment scrubbed off PATH. See
         # package/app/build_app.sh.
         run: brew install cmake ninja git-lfs
+
+      # `actions/checkout` does not fetch Git LFS content, and this repository
+      # keeps ~790 MB of the shell's binary assets there. One of them is
+      # shell/release/datafiles/startup.blend, and the shell's own CMakeLists
+      # measures it: under 1 KB it is a pointer file, and the configure step
+      # aborts with "Detected incomplete startup blend". That is what has
+      # failed every run of this job for weeks (ADR-163) -- always at *Build
+      # the shell*, always for this reason, on branches that never touched the
+      # shell at all.
+      #
+      # It runs after the toolchain step because that is what installs
+      # git-lfs. Every LFS path in the repository is under shell/, so the
+      # engine job below needs none of this and does not pay for it.
+      - name: Fetch the shell's Git LFS assets
+        run: |
+          git lfs install --local
+          git lfs pull --include="shell/**"
+          size="$(wc -c < shell/release/datafiles/startup.blend)"
+          test "${size}" -gt 1024 || {
+            echo "FAIL: startup.blend is ${size} bytes -- still an LFS pointer"
+            exit 1
+          }
 
       - name: Set up
         run: pixi run setup
@@ -143,6 +172,16 @@ jobs:
           MESH_FREECADCMD: ""
           MESH_CADEXD_MODULE: ""
           MESH_CADEX_ENGINE: ""
+          # The 0.65 s slider-drag bar is a parity criterion against the Qt
+          # shell, and it is an absolute wall-clock number. A shared runner is
+          # ~2.2-2.5x slower at *everything* in this gate than the developer
+          # Mac -- open, refine and rebuild all move together with the drag --
+          # so enforcing it here fails the build for the hardware rather than
+          # for the product (ADR-163). 2.6 s is 4x parity and about 2x the
+          # measured runner median: a collapse still fails, runner noise does
+          # not. The payload keeps reporting `median_within_bar` against the
+          # real 0.65 s, so the artifact never claims parity it did not meet.
+          CADEX_GATE_LATENCY_BAR: "2.6"
         run: |
           pixi run gate | tee gate.txt
           grep -q '"ok": true' gate.txt

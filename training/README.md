@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-08-02. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-08-24. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -136,6 +136,30 @@ on and publishes a receipt.
 | `--hidden` | `64 64` | the MLP the container records |
 | `--checkpoint-every` | `0` (off) | write a complete `.cxpolicy` every N iterations, plus `<out>.best.cxpolicy` |
 | `--progress` | beside `--out` | where to rewrite `progress.json` |
+
+## Shaping the command, and warm-starting across a task change
+
+Three flags arrived from cdx-rl and are documented here because a merged pull
+request body is not documentation. All three default to **off**, and off means
+the emitted jax graph is the one this file emitted before the flag existed —
+each is a Python value branched on at trace time, never a `jnp.where`.
+
+| Flag | Default | What it is |
+|---|---|---|
+| `--action-filter-alpha` | `1.0` (no filter) | ADR-160. Low-passes the command between the clamp and `data.ctrl`: `a[t] = α·clamped[t] + (1−α)·a[t−1]`, per environment, reset with the episode. Bounds **smoothness**. |
+| `--command-slew-deg` | `0.0` (no limit) | ADR-162. Clips the issued command to `previous ± S` degrees, *after* the filter. Bounds **rate**, which the filter does not. `0` is off here, unlike alpha, where `0` freezes the command and is refused. |
+| `--init-from-task-change REASON` | off | ADR-161. Lets `--init-from` cross a task change, as a **curriculum**. Skips the whole-file task digest and nothing else; the keys that differ must be a subset of `CURRICULUM_TASK_KEYS`. Requires `--init-from-parent-task`. |
+
+**Filter, smooth and rate-limit are three different operators.** An EMA's
+per-step change is `α·|raw − previous|`, so on a ±25° command box at α 0.65 it
+can still move 32.5° in one control step — more than the box's own half-width.
+Turning alpha further down does not turn it into a rate limit; that is what
+`--command-slew-deg` is for, and the two compose in that order because the
+playback harness composes them in that order.
+
+A slew limit at or below the joint's own physical reach in one control step is
+worse than none: it forbids commands the servo *can* execute. Measure it
+against the actuator rather than deriving it — ADR-162 carries the numbers.
 
 ## Checkpoints, and the file a run publishes while it runs (ADR-098)
 

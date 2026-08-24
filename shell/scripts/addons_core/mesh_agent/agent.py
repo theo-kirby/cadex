@@ -129,6 +129,9 @@ class Agent:
         self._pending = None
         # Per-turn cancel flag, polled by the cadexd client every 50 ms.
         self._cancel_event = threading.Event()
+        # Set once per turn when the model has written a tool call into its
+        # prose instead of making one. See _note_imitated_tool_call.
+        self._imitated_tool_call = False
 
     # -- setup -------------------------------------------------------------
 
@@ -295,6 +298,7 @@ class Agent:
         self._tool_calls = 0
         self._mutations = 0
         self._got_result = False
+        self._imitated_tool_call = False
         self.last_error = ""
         self._cancel_event.clear()
         self.busy = True
@@ -437,6 +441,32 @@ class Agent:
         self._settle(request, outcome)
         return True
 
+    def _note_imitated_tool_call(self, text):
+        """Say so when the model writes a tool call instead of making one.
+
+        A model that has been told it has tools but cannot reach them does not
+        say so. It writes the call out as prose -- ``<invoke name="mcp__mesh__
+        get_script">`` -- invents a plausible reply to itself, and answers as
+        though the work happened. That is indistinguishable from a working turn
+        until you look at the model and find it unchanged, which is how ADR-163
+        went unnoticed for as long as it did.
+
+        The markup is never legitimate: a real call arrives as a ``tool_use``
+        block and never reaches the transcript as text. So one sentence, once
+        per turn, naming the likely cause.
+        """
+        if self._imitated_tool_call or "<invoke name=" not in text:
+            return
+        self._imitated_tool_call = True
+        self.history.end_assistant()
+        self.history.add(
+            "status",
+            "The assistant wrote a tool call as text instead of making one, "
+            "which means it cannot reach the Mesh tools. Nothing in this turn "
+            "changed the model. Check that the Claude Code CLI still honours "
+            "ENABLE_TOOL_SEARCH (mesh_agent/backend.py, ADR-163).")
+        self.history.begin_assistant()
+
     def _on_stream(self, obj):
         obj_type = obj.get("type")
         if obj_type == "stream_event":
@@ -447,6 +477,8 @@ class Agent:
                     self.history.append_stream(delta["text"])
         elif obj_type == "assistant":
             for block in obj.get("message", {}).get("content", []):
+                if block.get("type") == "text":
+                    self._note_imitated_tool_call(block.get("text", ""))
                 if block.get("type") == "tool_use":
                     name = block.get("name", "")
                     short = name.rsplit("__", 1)[-1]

@@ -1,4 +1,4 @@
-"""ADR-152: `--init-from` across a task change, and every refusal around it.
+"""ADR-161: `--init-from` across a task change, and every refusal around it.
 
 No jax. `check_policy_fits` is a pure function of a header, a bundle dict and
 an options namespace, so the whole surface is testable without a device --
@@ -93,7 +93,7 @@ def child_with(**changes) -> dict:
 
 
 # --------------------------------------------------------------------------
-# The default path, unchanged. These two are the regression guard: ADR-152
+# The default path, unchanged. These two are the regression guard: ADR-161
 # buys a new branch and must not move the old one.
 # --------------------------------------------------------------------------
 

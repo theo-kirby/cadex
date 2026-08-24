@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""The trainer's command slew limit (ADR-153).
+"""The trainer's command slew limit (ADR-162).
 
 ``--command-slew-deg`` caps the per-step change of the ISSUED command::
 
@@ -27,7 +27,7 @@ caller has published was trained under the old file.
 
 That is why the limit is a **Python float branched on at trace time** rather
 than a traced value: at 0.0 there is no extra carry member, no ``where`` and
-no ``clip`` in the emitted graph, and the carry that ADR-151 added is
+no ``clip`` in the emitted graph, and the carry that ADR-160 added is
 *shared* rather than duplicated — ``carrying = filtering or slewing``.
 
 Structured like its siblings: the source assertions run anywhere, and the
@@ -175,7 +175,7 @@ def test_the_carry_is_shared_with_the_action_filter() -> None:
     """One carry member, not two.
 
     Both operators need exactly the same thing — the previous issued command,
-    per environment, episode-local — so ADR-153 reuses ADR-151's rather than
+    per environment, episode-local — so ADR-162 reuses ADR-160's rather than
     adding a seventh state member that would have to be kept in step with it.
     """
 
@@ -191,7 +191,7 @@ def test_zero_emits_no_carry_state() -> None:
     """The mechanism behind the no-op, asserted separately from its effect.
 
     At slew 0 and alpha 1.0 the vmap axes are empty, so the traced signature
-    is the pre-ADR-151 one and the graph cannot differ.
+    is the pre-ADR-160 one and the graph cannot differ.
     """
 
     assert "_filter_axes = (0, 0) if carrying else ()" in _source()
@@ -268,7 +268,7 @@ def test_zero_reproduces_the_unmodified_trainer(tmp_path) -> None:
 
 
 def test_the_filter_is_unchanged_by_this_flag_existing(tmp_path) -> None:
-    """ADR-151's own no-op still holds after ADR-153 shares its carry.
+    """ADR-160's own no-op still holds after ADR-162 shares its carry.
 
     The carry became conditional on ``filtering or slewing``; this asserts
     that a filtered, unlimited run is still exactly what it was, which is what
@@ -334,7 +334,7 @@ def test_the_two_operators_compose_rather_than_replace(tmp_path) -> None:
 
 
 def test_the_resolved_limit_reaches_the_header(tmp_path) -> None:
-    """Its own key, for ADR-151's reason: a driver told separately is forgotten."""
+    """Its own key, for ADR-160's reason: a driver told separately is forgotten."""
 
     python = _venv_python()
     if python is None:
@@ -427,7 +427,7 @@ def test_the_recurrence_restarts_at_an_episode_boundary() -> None:
 
 
 def test_the_ema_does_not_bound_the_rate() -> None:
-    """The whole reason ADR-153 exists, as a number rather than as a sentence.
+    """The whole reason ADR-162 exists, as a number rather than as a sentence.
 
     An EMA at alpha 0.65 on a +/-25 deg box can move the command 32.5 deg in
     one control step — more than the box's own half-width, and 2.6x what the
