@@ -1,6 +1,6 @@
 # BLENDER.md — The Shell
 
-Verified against source: 2026-08-21
+Verified against source: 2026-08-24
 
 **The shell is the product, and since ADR-030 it is in this repository**, at
 `shell/` — a Blender fork whose `mesh_agent` add-on is the interface. Nothing
@@ -226,6 +226,15 @@ that `docs/VISION.md` describes, and the protocol client that
   stdio and relays each tool call to `bridge.py` over authenticated localhost
   TCP; the bridge queues the call for the Blender main thread and returns the
   result.
+- **Two settings that only work together** (ADR-163). `--tools ""` disables
+  Claude Code's own file and shell tools, so every mutation has to arrive
+  through the Mesh tools and run on Blender's main thread. `ENABLE_TOOL_SEARCH
+  =false` in the subprocess environment stops Claude Code deferring MCP tool
+  *schemas* behind its built-in `ToolSearch` — which is itself one of the
+  built-ins `--tools ""` removes. Set one without the other and the model gets
+  a list of tool names it cannot open; it then writes `<invoke name="…">` into
+  the chat as prose, invents the reply, and changes nothing.
+  `agent.py` watches the streamed text for that markup and says so.
 - Undo policy: mutating tool calls (`write_script`, `set_params`) increment a
   counter; when the turn finishes, if any mutation happened, exactly one
   `ed.undo_push()` is issued, labeled "Mesh: " + the first 60 chars of the

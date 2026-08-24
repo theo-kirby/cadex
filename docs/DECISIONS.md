@@ -16586,6 +16586,13 @@ docstrings are left as they are rather than rewritten across two files; this
 entry is the pointer that stops the next reader chasing a curriculum flag
 into a drawing ADR.
 
+> **Superseded by ADR-163 (2026-08-24).** Both judgements in this entry were
+> wrong. The citations *were* rewritten — ADR-151/152/153 → **160/161/162**,
+> the numbers those three decisions now hold here — and the collision turned
+> out to include a third case, the action filter, that this entry did not
+> notice. The CI note below was likewise deferred and has since been fixed:
+> the shell build was failing on a missing Git LFS checkout, nothing more.
+
 **Verified.** `pixi run python -m pytest src/Mod/cadex/cadex_tests`: 1909
 passed, 45 skipped — the 12 MJX-gated slew tests skip in the pixi
 environment by design (ADR-084), as do the trainer's own.
@@ -16618,3 +16625,280 @@ freshly staged one is published — so a worker holding the old path always
 holds a valid directory and nothing is half-replaced in place.
 `test_a_bundle_gutted_by_a_temp_sweep_is_rebuilt_rather_than_used` guts a
 real bundle, leaves the husk a sweep would leave, and asserts the rebuild.
+
+## ADR-160 — the command can be low-passed before it reaches the actuators (2026-08-18)
+
+**Decision.** `training/cadex_train.py` gains `--action-filter-alpha`, which
+low-passes the command between the clamp and the `data.ctrl` write:
+
+```
+a[t] = alpha * clamped[t] + (1 - alpha) * a[t-1]
+```
+
+per environment, reset with the episode, first command of each episode passed
+through unfiltered. **The default is `1.0`, which is no filter.** The resolved
+value is written into the `.cxpolicy` header at `training.action_filter_alpha`.
+
+Arrived as PR #6 from cdx-rl, proposed there as ADR-138, then ADR-140, then
+ADR-151 — none of which was ever free in this log. Renumbered here under the
+rule in ADR-163.
+
+**Why the trainer and not a reward term.** A policy commands its servo faster
+than the servo can move, and no reward term can say otherwise. Measured off
+the compiled `mg-legs` model: the actuator is a PD position source, so its
+saturation error is **16.42°** and its no-load speed **313.3 deg/s**. The best
+arm trained to that date (`stand26`) commands it at **372.89 deg/s** with a
+per-step p95 of **37.15°** — 1.19× the speed the motor can reach and 2.3× the
+error at which it saturates — while reversing on **65.7 %** of the steps
+available to it. The setpoint runs away from the joint and the servo lives in
+saturation.
+
+Every other lever was closed, and measured rather than assumed. A reward term
+cannot express it: a term is a memoryless, branch-free algebraic function of
+58 post-step scalars with `__builtins__ == {}` and no access to the previous
+action (`CadexDynamics.py:5618-5623`, `:7623`), so action rate, jerk,
+smoothness and alternation are all unexpressible. Pricing the load is
+bracketed on both sides — `effort` at σ 191.32 underpriced, at 295.94 nearly
+winning, at 140.38 dead. Halving the control rate made the *relative* chatter
+worse (reversals ÷ ceiling 0.419 → 0.585).
+
+**The engine is not touched, and that is the shape of the change.**
+`evaluate_episode` already takes its commands from an `actions=` callable the
+caller owns (`CadexDynamics.py:7605`), so *evaluation* needed nothing: cdx-rl
+had been filtering a played policy at 24 seeds × 5 alphas since 2026-08-12,
+and found α = 0.5 raised step completion **36.1 % → 56.3 % at zero survival
+cost**. Training was the only side of the loop unreachable from out there, and
+a policy trained with its own chatter in the loop and then filtered at
+evaluation is off-distribution — which is what the flag is for.
+
+**Two decisions inside it.**
+
+- **Post-clamp, not pre-clamp.** The filter sits between the clip and the
+  `data.ctrl` write, so its memory only ever holds a command the actuator
+  could have been given, and the convex combination of two in-box commands is
+  in-box. No second clamp is needed and none is applied. Filtering the raw
+  surface would let the memory hold out-of-box commands and would then need a
+  clamp this file does not have.
+- **A trace-time branch, not a traced one.** `alpha` is a Python float and
+  `filtering = alpha < 1.0` is a Python bool, so every use is a
+  statement-level `if`. **At the default the emitted graph has no extra carry
+  member, no `where` and no multiply** — it is the graph this file emitted
+  before the flag existed. A `jnp.where(alpha < 1.0, …)` would have changed
+  every run that does not use the feature.
+
+## ADR-161 — `--init-from` may cross a task change, as a curriculum (2026-08-23)
+
+**Decision.** `--init-from-task-change REASON` skips the whole-file task
+digest in `check_policy_fits` and **nothing else**. Arrived as PR #7 from
+cdx-rl as its ADR-152; renumbered here under ADR-163.
+
+**The problem.** `check_policy_fits` compares the task bundle's whole-file
+digest. That is the right default and the wrong floor: it makes a
+**curriculum** impossible. Training a walker against a harder shove band is
+the ordinary way to teach a recovery step, and this trainer could reach that
+band only from a fresh network.
+
+cdx-rl measured what that costs. A band whose median shove demands a step,
+learned **cold**, is a wall and not a curriculum: 2400 iterations and 10.63
+GPU-hours finished *below* the incumbent's own zero-shot score on the same
+bundle, with 86.5 % of episodes never reaching the goal.
+
+**What still gets checked.** Model digest, observation channels in order, the
+action table field by field, the network shape — all unchanged. And the
+differing top-level keys must be a subset of `CURRICULUM_TASK_KEYS`, which
+answers exactly one question: *does the change alter what the network reads or
+what it emits?*
+
+- `disturbance` does not — there is no disturbance channel, and a shove
+  reaches the policy only through the state it produces.
+- `reward` does not — it changes the gradient, which is the point.
+- `episode` does not, **for the horizon only**, and ADR-136 already says so in
+  its own words: an observation is sensor channels and carries no clock.
+- `observations`, `actions`, `model`, `functions`, `schema` are absent
+  **because they do exactly that**.
+
+Inside `episode` only the horizon may move. The **cadence** sets what one
+action means in time, and a policy dropped zero-shot from 50 Hz into 25 Hz was
+measured surviving 3 of 12 where it survived 7 of 12 at its own rate. That is
+its own experiment, not something that rides along inside a band change.
+
+**`--init-from-parent-task` is required beside it.** A `.cxpolicy` header
+carries its task's digest and label, not its content, so the file is tied to
+that digest and the wrong bundle is a refusal rather than a plausible diff.
+
+Both flags stay out of the header's `hyperparameters`, for the same reason
+`--init-from` does: they describe this run's provenance, not the algorithm.
+They are recorded under `init_from.task_change` with both digests and the keys
+that moved, so *"warm-started"* and *"warm-started across a harder band"* stay
+distinguishable a year later.
+
+**No bridge run was owed, structurally.** The diff touches
+`check_policy_fits`, argparse and a provenance dict; not one expression jax
+traces has moved. 16 tests in `training/test_curriculum_warm_start.py`, none
+needing a device — a warm start that will be refused should be refused before
+anything reserves a card.
+
+## ADR-162 — the command's rate can be bounded, which the filter does not do (2026-08-23)
+
+**Decision.** `--command-slew-deg S` clips the issued command to
+`previous ± S`, per environment, **after** ADR-160's action filter, reset with
+the episode, first command of each episode unlimited. Arrived as PR #8 from
+cdx-rl as its ADR-153; renumbered here under ADR-163.
+
+**Why a second knob rather than more of the first.** Two experiments used
+ADR-160's filter to cut resting servo duty hard — 6.81 % → 1.45 % → 1.29 % —
+and **both still failed their chatter criteria**. The reason is arithmetic,
+not tuning. An EMA's per-step change is `α·|raw − previous|`; on a ±25°
+command box at α 0.65 that is up to **32.5° in one control step**, more than
+the box's own half-width. It bounds the command's **smoothness** and does not
+bound its **rate** at all. Meanwhile the joint it drives physically reaches
+**12.53°** in a 40 ms control step, so a measured p95 command step of 24–25°
+is a setpoint running away from the servo roughly 2:1, and the excess is not a
+command — it is saturation.
+
+**Filter, smooth and rate-limit are three different operators, and a knob
+doing one will not start doing another however far you turn it.**
+
+**The decisions in it.**
+
+- **Degrees**, because the command surface is degrees: `actions[].unit` is
+  `"deg"` and the bundle's own `× scale` follows the clamp. No new conversion
+  site.
+- **After the filter**, because the other order lets the EMA smooth the signal
+  back across the limit, and what reached the actuator would then not be rate
+  limited at all. The playback harness composes them in this order too, so a
+  policy is not trained by one controller and played by another.
+- **It shares ADR-160's carry member** rather than adding a seventh state
+  member: both operators need the previous issued command, per environment,
+  episode-local. `carrying = filtering or slewing`.
+- **`0` is OFF here**, unlike alpha, where 0 would freeze the command and is
+  refused. A limit at or above the widest command range is **refused** rather
+  than quietly accepted, because a flag that claims a limit must never train
+  an unlimited run.
+
+**Measured before it was written**, imposed on a trained policy at 24
+evaluation seeds. It is a cliff rather than a gradient:
+
+| limit | settled duty ≥ 90 % of rating | p95 command step | survived |
+|---|---|---|---|
+| none | 7.21 % | 25.48° | 13 / 24 |
+| 30° | 9.59 % | 25.62° | 14 / 24 |
+| 25° | 6.15 % | 25.00° | 14 / 24 |
+| **20°** | **1.59 %** | **20.00°** | **15 / 24** |
+| 12.53° | — | — | 6 / 24 |
+
+So the value has to be measured, not derived: at or below the joint's own
+physical reach the limit forbids commands the servo can execute and the
+machine collapses.
+
+**No bridge run owed.** The limit is a Python float branched on at trace time,
+so at the default `0.0` there is no extra carry member, no `where` and no
+`clip` in the emitted graph. Proved on a real bundle at seed 0 on CPU: the
+parent trainer with no flag, this trainer with the flag absent, and this
+trainer at an explicit `0.0` all give behavioural digest `593deb88df09b787`
+over `observations` / `network` / `normaliser` / `evaluation`; `S = 20` gives
+`90166db188daf7b8`. Those four blocks and not the whole file, because a
+`.cxpolicy`'s whole-file sha256 has never been reproducible — its header
+carries `wall_time_s` and the reward curve.
+
+## ADR-163 — the assistant could not reach its own tools, and CI could not check the shell (2026-08-24)
+
+Three things, and they are one thing: for weeks the product's two loudest
+promises — *the assistant edits your model* and *CI builds the app* — were
+both false, and neither said so.
+
+### 1. The assistant could not reach its own tools
+
+**Decision.** `mesh_agent/backend.py` launches the Claude Code CLI with
+`ENABLE_TOOL_SEARCH=false` in its environment.
+
+**What was wrong.** Claude Code defers MCP tool *schemas* behind its built-in
+`ToolSearch` tool: only the tool's name sits in the model's context, and the
+schema is fetched on demand. We pass `--tools ""` to disable Claude Code's own
+file and shell tools, so that every mutation has to arrive through the Mesh
+tools and run on Blender's main thread. That was and remains right.
+`ToolSearch` is one of those built-ins. So the two flags together left the
+model holding a list of ~30 tool names and no way to open any of them.
+
+**It does not report that.** It writes the call out as prose —
+`<invoke name="mcp__mesh__get_script">` — invents a reply to itself, and
+answers as though the work happened. Reproduced from the operator's own
+transcript: a turn on the `pga-v6` project in which the model quoted back a
+complete "current script" that does not exist, in an API this product does not
+have (`param(...)`, `cylinder(...)`, where real xscript uses
+`params(...)`/`num(...)`), against a project whose real script it had never
+read. The whole turn ran on **1670 tokens of context** and changed nothing.
+
+**Measured, against a stub MCP server exposing two tools.** With `--tools ""`
+and deferral on: no tool call, and the model answers *"I don't have a
+`get_script` tool available."* With `ENABLE_TOOL_SEARCH=false`: a real
+`tool_use` block for `mcp__mesh__get_script`, first try, no extra round trip.
+
+**The alternative was tried and does not work.** `--tools ToolSearch` — keep
+built-ins off but re-admit the one key — still produced no tool call: the
+model imitated `ToolSearch` itself. Deferral off is the only path that works,
+and it is also the cheaper one. Making the Mesh tools resident is what they
+should have been anyway: they are the entire tool surface, all ~30 of them are
+in play, and no turn can start without them.
+
+**And the failure is now loud.** `agent.py` watches the streamed assistant
+text for `<invoke name=`, which a real tool call can never produce — it
+arrives as a `tool_use` block and never reaches the transcript as text. One
+status line, once per turn, saying the model cannot reach the Mesh tools and
+that nothing in the turn changed the model. A silent wrong answer is the worst
+failure mode this application has, and it had it.
+
+`test_the_mesh_tools_are_not_deferred_behind_a_disabled_tool` pins both halves
+and the join between them: built-ins off, deferral off. Changing either one
+alone is the bug.
+
+**Negative knowledge worth keeping.** The opt-in live turn
+(`MESH_AGENT_LIVE=1`) would have caught this on the first run and is exactly
+the test that never runs. Everything else in the agent suite drives the mock
+backend, which by construction cannot reproduce a CLI flag interaction.
+
+### 2. CI could not build the shell
+
+**Decision.** The macOS job pulls the repository's Git LFS content before it
+configures the shell.
+
+`actions/checkout` does not fetch LFS, and all 6713 LFS paths in this
+repository are under `shell/` — about 790 MB. One of them is
+`shell/release/datafiles/startup.blend`, and the shell's own `CMakeLists.txt`
+measures it: under 1 KB it is a pointer file, and configure aborts with
+*"Detected incomplete startup blend"*. That is the whole of the failure, and
+it had failed **every scheduled and push run for weeks**, always at *Build the
+shell*, including runs whose entire diff was a reconcile commit touching
+markdown — which is how it came to read as background noise rather than as a
+break. ADR-159 recorded it honestly as standing state and deferred it; this is
+that investigation.
+
+The step runs after the toolchain step, because that is what installs git-lfs,
+and it asserts the file is over 1 KB rather than trusting the pull. The Linux
+engine job needs no LFS path at all and does not pay for it.
+
+### 3. Three trainer decisions were citing other decisions' numbers
+
+**Decision, and a standing rule.** cdx-rl proposes an ADR number in its own
+log; **this repository assigns the real one on merge, and the merging commit
+rewrites the citations.** That already happened twice (ADR-123/124 → 131/132,
+ADR-138/139) and was skipped three times running, so:
+
+| was cited as | is now | what it is | arrived as |
+|---|---|---|---|
+| ADR-151 | **ADR-160** | the action filter | PR #6 |
+| ADR-152 | **ADR-161** | the curriculum warm start | PR #7 |
+| ADR-153 | **ADR-162** | the command slew limit | PR #8 |
+
+All three numbers were already taken here — by the blueprint-sheet decisions
+of 2026-08-19 and 2026-08-20 — so a reader following a citation in
+`training/cadex_train.py` landed on a drawing ADR. ADR-159 noticed the
+collision for two of the three and judged the rewrite not worth it. That was
+wrong twice over: it was also true of ADR-160, which nobody had noticed, and
+the cost is a `perl -pi -e` over three files. Comments and docstrings only —
+`training/cadex_train.py`, `training/test_curriculum_warm_start.py`,
+`src/Mod/cadex/cadex_tests/test_dynamics_command_slew.py`. No behaviour moves,
+and the trainer digest does.
+
+The three decisions themselves are now written out above, from their PR
+bodies, because a merged PR body is not this log.

@@ -207,6 +207,43 @@ def test_bridge_chunked_request():
         agent.shutdown()
 
 
+def test_the_mesh_tools_are_not_deferred_behind_a_disabled_tool():
+    """The two flags that must agree, and the reason they must (ADR-163).
+
+    ``--tools ""`` turns off Claude Code's built-in tools, so the agent can
+    only mutate the scene through the Mesh tools, on Blender's main thread.
+    ``ToolSearch`` is a built-in, and Claude Code defers MCP tool *schemas*
+    behind it. Together those two facts leave the model with a list of tool
+    names and no way to open any of them -- at which point it writes the call
+    out as prose and invents the reply, which reads as a working turn and
+    changes nothing.
+
+    So this asserts both halves and the join: built-ins off, deferral off.
+    A change to either one alone is the bug.
+    """
+    print("test_the_mesh_tools_are_not_deferred_behind_a_disabled_tool")
+    from mesh_agent import tools as tools_module
+    from mesh_agent.backend import ClaudeCodeBackend
+
+    backend = ClaudeCodeBackend(
+        claude_path="/nonexistent/claude", model="claude-opus-5",
+        system_prompt="test", bridge_port=1, bridge_token="t",
+        tool_names=[tool["name"] for tool in tools_module.list_tools()])
+    command = backend._command("hello")
+    environment = backend._environment()
+
+    check("--tools" in command and command[command.index("--tools") + 1] == "",
+          "the built-in tool set is still disabled")
+    check(environment.get("ENABLE_TOOL_SEARCH", "").lower()
+          in {"false", "0", "off"},
+          "tool-schema deferral is off, so the Mesh tools are resident "
+          "({!r})".format(environment.get("ENABLE_TOOL_SEARCH")))
+    # The environment is ours plus the switch, not a stripped one: the CLI
+    # needs PATH and HOME to find its own install and the user's login.
+    check(environment.get("PATH") == os.environ.get("PATH"),
+          "the CLI keeps the environment it was launched with")
+
+
 def test_mcp_shim_protocol():
     """Speak real MCP (JSON-RPC over stdio) to the shim subprocess."""
     print("test_mcp_shim_protocol")
@@ -2628,6 +2665,7 @@ def main():
         test_confirming_the_input_sends()
         test_every_chat_action_is_in_one_row_under_the_message_box()
         test_message_box_widget_is_available()
+        test_the_mesh_tools_are_not_deferred_behind_a_disabled_tool()
         test_mcp_shim_protocol()
         test_cadex_engine_discovery()
         test_cadex_budgets_reach_open_project()

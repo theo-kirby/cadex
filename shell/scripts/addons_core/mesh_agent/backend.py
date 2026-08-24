@@ -31,6 +31,27 @@ _CLAUDE_CANDIDATES = (
     "/usr/bin/claude",
 )
 
+#: Claude Code defers MCP tool *schemas* behind its built-in ``ToolSearch``
+#: tool: only the tool name sits in the model's context, and the schema is
+#: fetched on demand. That default is wrong for us in a way that is silent,
+#: and it broke every turn until ADR-163.
+#:
+#: We pass ``--tools ""`` so the agent cannot reach Claude Code's own file and
+#: shell tools -- every mutation has to arrive through the Mesh tools, on
+#: Blender's main thread. ``ToolSearch`` is one of those built-ins. Disabling
+#: the built-in set therefore removes the only key to the deferred Mesh tools,
+#: and the model is left holding a list of names it can never open.
+#:
+#: It does not report that. It writes ``<invoke name="mcp__mesh__get_script">``
+#: into the chat as prose, invents a reply, and carries on, so the user reads
+#: a turn that looks like work and changed nothing.
+#:
+#: Turning deferral off makes the Mesh tools resident, which is what they
+#: should have been all along: there are ~30 of them, they are the entire tool
+#: surface, and the turn cannot start without them. It also costs one round
+#: trip less per turn than searching would.
+_NO_DEFERRED_TOOLS = {"ENABLE_TOOL_SEARCH": "false"}
+
 
 def find_claude(explicit_path=""):
     """Locate the `claude` CLI binary, or return None."""
@@ -92,6 +113,7 @@ class ClaudeCodeBackend:
             "--strict-mcp-config",
             # Disable Claude Code's built-in tools; the agent must go through
             # the Mesh tools so every mutation runs on Blender's main thread.
+            # This is only safe alongside _NO_DEFERRED_TOOLS -- read it.
             "--tools", "",
             "--system-prompt", self.system_prompt,
             "--allowedTools",
@@ -100,6 +122,12 @@ class ClaudeCodeBackend:
         if self.session_id:
             command.extend(["--resume", self.session_id])
         return command
+
+    def _environment(self):
+        """The CLI's environment: ours, plus the tool-deferral switch."""
+        environment = dict(os.environ)
+        environment.update(_NO_DEFERRED_TOOLS)
+        return environment
 
     def start_turn(self, prompt, events):
         """Spawn `claude -p` for this turn; stream stdout onto `events`."""
@@ -135,6 +163,7 @@ class ClaudeCodeBackend:
                 stderr=subprocess.PIPE,
                 stdin=subprocess.DEVNULL,
                 cwd=self._workdir,
+                env=self._environment(),
                 text=True,
                 encoding="utf-8",
                 errors="replace",

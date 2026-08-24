@@ -92,6 +92,28 @@ jobs:
         # package/app/build_app.sh.
         run: brew install cmake ninja git-lfs
 
+      # `actions/checkout` does not fetch Git LFS content, and this repository
+      # keeps ~790 MB of the shell's binary assets there. One of them is
+      # shell/release/datafiles/startup.blend, and the shell's own CMakeLists
+      # measures it: under 1 KB it is a pointer file, and the configure step
+      # aborts with "Detected incomplete startup blend". That is what has
+      # failed every run of this job for weeks (ADR-163) -- always at *Build
+      # the shell*, always for this reason, on branches that never touched the
+      # shell at all.
+      #
+      # It runs after the toolchain step because that is what installs
+      # git-lfs. Every LFS path in the repository is under shell/, so the
+      # engine job below needs none of this and does not pay for it.
+      - name: Fetch the shell's Git LFS assets
+        run: |
+          git lfs install --local
+          git lfs pull --include="shell/**"
+          size="$(wc -c < shell/release/datafiles/startup.blend)"
+          test "${size}" -gt 1024 || {
+            echo "FAIL: startup.blend is ${size} bytes -- still an LFS pointer"
+            exit 1
+          }
+
       - name: Set up
         run: pixi run setup
 
