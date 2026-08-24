@@ -26,6 +26,9 @@ What works, and is not in doubt:
 - **`--command-slew-deg`** bounds the per-step change of the **issued** command, after the action filter and before the `ctrl` write, reset with the episode. A different operator from the EMA, which bounds smoothness and does not bound rate at all. Default 0.0 is **no limit** — the opposite convention from the filter's alpha, where 0 freezes the command and is refused — and at 0.0 the emitted graph is unchanged, so an existing policy trains the same [rec: merry-rain-9062].
 
 **Still open**: half the episodes at the declared shove band end `tipped`, and backward is the worst direction. B7 is the run that would spend the tenth observation kind — and it is the run the stale checkout blocks [rec: humble-path-4466] [rec: western-badger-3023].
+- **The three trainer decisions that arrived from cdx-rl now have cadex ADR numbers**: the action filter is **ADR-160**, the curriculum warm start **ADR-161**, the command slew limit **ADR-162** — renumbered from cdx-rl's 151/152/153, which were already taken here by the blueprint-sheet decisions. All three are written out in `docs/DECISIONS.md` with their measurements, and `training/README.md` documents their flags for the first time [rec: weathered-sand-9705].
+- **The standing rule**: cdx-rl proposes an ADR number in its own log; **this repository assigns the real one on merge, and the merging commit rewrites the citations.** It had happened twice (ADR-123/124 → 131/132, ADR-138/139) and was then skipped three times running [rec: weathered-sand-9705].
+
 
 ## Negative knowledge
 
@@ -36,6 +39,8 @@ What works, and is not in doubt:
 
 - [scope: a test that pins behaviour by source text | confidence: high | evidence: merry-rain-9062] A source-string assertion outlives the source it describes. PR #8 asserted the literal `command_slew_deg = 0.0` appears in the trainer, while a refactor **in the same PR** replaced it with a named `resolved_command_slew_deg()`; every other assertion in the file passed and CI went red on the one that had nothing to do with the feature. Assert on the thing that holds the rule, not on how it was first spelled.
 - [scope: a stacked rebase over one file | confidence: high | evidence: merry-rain-9062] One hunk can be applied twice and nothing complains. `resolved_command_slew_deg` shipped **defined twice**, two identical copies differing only in an em-dash; the second silently wins, the first is dead, and the suite passes straight through the duplicate. Neither CI nor review saw it.
+- [scope: merging a cdx-rl pull request | confidence: high | evidence: weathered-sand-9705] Deferring the citation rewrite is cheaper than it looks and wrong anyway. ADR-159 judged it "a bigger edit than the confusion warrants"; it was one `perl -pi -e` over three files, and the deferral concealed a third collision (the action filter) that nobody had noticed. Renumber on merge, in the merge.
+
 
 ## Provenance
 
@@ -44,3 +49,4 @@ What works, and is not in doubt:
 - humble-path-4466 — the mg-legs arc, B6, and how a policy is selected
 - sage-wood-0687 — why the engine verifies a policy and never produces one
 - merry-rain-9062 — ADR-159: the two cdx-rl trainer PRs merged — the curriculum warm start and the command slew limit — and the two defects fixed on arrival
+- weathered-sand-9705 — the three trainer ADRs renumbered, and the standing rule restated
