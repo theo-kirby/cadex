@@ -54,7 +54,14 @@ concurrency:
 jobs:
   app:
     name: Application (macOS arm64)
-    runs-on: macos-14
+    # macos-15, not macos-14: the shell's own
+    # build_files/cmake/platform/platform_apple_xcode.cmake refuses anything
+    # below Xcode 16.0, and the macos-14 image tops out at 15.4 -- there is no
+    # newer Xcode on it to select. This was the *second* wall behind the
+    # missing LFS checkout (ADR-163); the first one aborted configure before
+    # the compiler check was ever reached, so neither was visible while the
+    # other stood.
+    runs-on: macos-15
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
