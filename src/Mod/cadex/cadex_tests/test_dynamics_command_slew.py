@@ -136,11 +136,24 @@ def test_zero_is_no_limit_and_not_a_frozen_command() -> None:
     spelling of "no rate limit imposed" and the flag's absence has to mean
     something. Pinned here so the two conventions are never harmonised by
     somebody tidying up.
+
+    ADR-164 note: the first assertion here read
+    ``"command_slew_deg = 0.0" in source`` and **that string has never been in
+    the trainer** — this test was red at ADR-153's own head. It asserted the
+    variable's default the way an author remembered writing it rather than the
+    way it is written, which is a source-reading test's characteristic failure
+    and is why the replacements below read the two *decisions* instead: that
+    the resolver treats non-positive as OFF, and that alpha's guard does the
+    opposite.
     """
 
     source = _source()
-    assert "command_slew_deg = 0.0" in source
+    # Slew: non-positive resolves to 0.0, which is OFF.
+    assert "return value if value > 0.0 else 0.0" in source
     assert "slewing = command_slew_deg > 0.0" in source
+    # Alpha: 0 is REFUSED, not treated as OFF. The opposite convention, and
+    # the whole point of this test is that the two are never harmonised.
+    assert "if not (0.0 < action_filter_alpha <= 1.0):" in source
 
 
 def test_the_limit_is_applied_after_the_filter_and_before_the_ctrl_write() -> None:
@@ -167,14 +180,23 @@ def test_the_carry_is_shared_with_the_action_filter() -> None:
     Both operators need exactly the same thing — the previous issued command,
     per environment, episode-local — so ADR-153 reuses ADR-151's rather than
     adding a seventh state member that would have to be kept in step with it.
+
+    ADR-164 reuses the same member for the same quantity — under it the carry
+    holds the previous limited MEAN, which at play time is the previous issued
+    command. So the predicate gained a third disjunct and did not gain a
+    seventh state member, which is the claim this test is really making.
     """
 
     source = _source()
-    assert "carrying = filtering or slewing" in source
-    # Every plumbing site tests the shared flag. The ONE surviving bare
-    # `if filtering:` is the EMA arithmetic itself, nested inside the shared
-    # branch -- if a second one appears, a carry site has been missed.
-    assert source.count("if filtering:") == 1
+    assert "carrying = filtering or slewing or mean_slewing" in source
+    # Every plumbing site tests a shared flag. TWO bare `if filtering:` now,
+    # and they are the EMA arithmetic itself in its two possible places --
+    # `step_env`'s, on the issued command, and `stepped`'s, on the mean --
+    # each nested inside a shared branch. Exactly one of the two ever runs,
+    # because `step_carrying` and `mean_slewing` are complementary. If a
+    # THIRD appears, a carry site has been missed.
+    assert source.count("if filtering:") == 2
+    assert "step_carrying = carrying and not mean_slewing" in source
 
 
 def test_zero_emits_no_carry_state() -> None:
@@ -182,9 +204,15 @@ def test_zero_emits_no_carry_state() -> None:
 
     At slew 0 and alpha 1.0 the vmap axes are empty, so the traced signature
     is the pre-ADR-151 one and the graph cannot differ.
+
+    ADR-164 renamed the predicate to ``step_carrying``, because under a
+    mean-side limit ``step_env`` does no filtering at all — the operators have
+    moved upstream — while a carry member still exists. The two questions
+    ("is there state?" and "does step_env use it?") stopped having the same
+    answer and now have their own names.
     """
 
-    assert "_filter_axes = (0, 0) if carrying else ()" in _source()
+    assert "_filter_axes = (0, 0) if step_carrying else ()" in _source()
 
 
 @pytest.mark.parametrize("bad", ["nan", "inf"])

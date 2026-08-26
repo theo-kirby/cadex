@@ -100,6 +100,19 @@ WITNESS_SAMPLES = 32
 #: that a millisecond of arithmetic here would have condemned at minute one.
 POLICY_WITNESS_TOLERANCE = 1.0e-4
 
+#: How far ADR-164's ``atanh`` is kept off the asymptote.
+#:
+#: ``tanh`` never reaches +/-1, so undoing the output map is exact in real
+#: arithmetic. In float32 it is not: a command within an ulp of the command
+#: box maps to ``atanh(+/-1) = inf``, and a single inf in the policy mean
+#: poisons the whole batch's log-probability and every gradient taken from it.
+#:
+#: 1e-6 caps the round trip at ``atanh(1 - 1e-6) ~= 7.25`` in pre-activation
+#: space. That is far outside anything a trained network reaches -- ``tanh``
+#: is within 1e-6 of saturation there -- so the clip is unreachable in
+#: practice and is a guard against arithmetic, not a change to the operator.
+ATANH_EPS = 1.0e-6
+
 
 # ---------------------------------------------------------------------------
 # The expression evaluator, built from scratch and checked against the bundle.
@@ -720,30 +733,6 @@ def resolved_command_slew_deg(options) -> float:
     as a local there and every run died in the header writer. Two spellings of
     a resolution rule are two rules.
 
-    ``None``, absent, zero and negative all mean **no limit** and return 0.0 —
-    the flag's OFF value, unlike the action filter's alpha where 0 would freeze
-    the command and is refused.
-    """
-
-    value = getattr(options, "command_slew_deg", 0.0)
-    if value is None:
-        return 0.0
-    value = float(value)
-    if not math.isfinite(value):
-        raise SystemExit(
-            "--command-slew-deg must be a finite number of degrees. 0 (the "
-            "default) is NO LIMIT.")
-    return value if value > 0.0 else 0.0
-
-
-def resolved_command_slew_deg(options) -> float:
-    """ADR-153's limit in degrees, resolved once.
-
-    Module level and not a local of ``train`` because ``policy_header`` needs
-    the same number and the two are different scopes: the first draft read it
-    as a local there and every run died in the header writer. Two spellings of
-    a resolution rule are two rules.
-
     ``None``, absent, zero and negative all mean **no limit** and return 0.0 --
     the flag's OFF value, unlike the action filter's alpha where 0 would freeze
     the command and is refused.
@@ -758,6 +747,64 @@ def resolved_command_slew_deg(options) -> float:
             "--command-slew-deg must be a finite number of degrees. 0 (the "
             "default) is NO LIMIT.")
     return value if value > 0.0 else 0.0
+
+
+def resolved_command_slew_mean_deg(options) -> float:
+    """ADR-164's limit in degrees, resolved once. Same shape as ADR-153's.
+
+    A SEPARATE FLAG rather than a mode switch on ``--command-slew-deg``, and
+    that is deliberate. ADR-153's flag carries a published no-op proof and
+    every ``.cxpolicy`` header written since; turning it into a two-valued
+    thing would put a second meaning behind one name and make the header's
+    number ambiguous about where the operator sat. Two operators, two names.
+
+    ``None``, absent, zero and negative all mean **no limit** and return 0.0.
+    """
+
+    value = getattr(options, "command_slew_mean_deg", 0.0)
+    if value is None:
+        return 0.0
+    value = float(value)
+    if not math.isfinite(value):
+        raise SystemExit(
+            "--command-slew-mean-deg must be a finite number of degrees. 0 "
+            "(the default) is NO LIMIT.")
+    return value if value > 0.0 else 0.0
+
+
+def deployed_command_slew_deg(options) -> float:
+    """The limit a PLAYER must impose, whichever flag put it there.
+
+    ``harness/_policy.resolve_slew`` reads ``training.command_slew_deg`` out
+    of the header and applies it to the deterministic command. That command is
+    the same object under both flags -- ADR-153 clips the issued command and
+    ADR-164 clips the mean, and at play time the noise is zero so the mean IS
+    the issued command. So the number an evaluator needs is the same number,
+    and it is written under the key every driver already reads. What differs
+    is ``command_slew_applied_to``, which is provenance about TRAINING and is
+    the only thing distinguishing 025's arm from 028's.
+
+    The two flags cannot both be non-zero -- ``train`` refuses that pair -- so
+    this is unambiguous rather than a precedence rule.
+    """
+
+    return (resolved_command_slew_deg(options)
+            or resolved_command_slew_mean_deg(options))
+
+
+def command_slew_applied_to(options) -> str:
+    """``"issued"`` (ADR-153), ``"mean"`` (ADR-164) or ``"none"``.
+
+    Provenance, not a control: two runs can carry the same
+    ``command_slew_deg`` and be different experiments, and 025 vs 028 is
+    exactly that pair.
+    """
+
+    if resolved_command_slew_deg(options) > 0.0:
+        return "issued"
+    if resolved_command_slew_mean_deg(options) > 0.0:
+        return "mean"
+    return "none"
 
 
 def train(
@@ -855,10 +902,65 @@ def train(
                 f"widest command range in this bundle ({widest:g} deg), so it "
                 f"can never bind and the run would be unlimited under a flag "
                 f"that claims a limit. Pick a value below {widest:g}.")
+
+    # ADR-164. THE SAME RATE LIMIT, ON THE POLICY MEAN INSTEAD OF THE SAMPLE.
+    #
+    # ADR-153's operator is the LAST thing before the actuator, 165 lines
+    # downstream of the mean, so the environment executes `clip(sampled)`
+    # while PPO's log-probability credits `sampled`. Inside the clip
+    # `d(executed)/d(sampled)` is exactly ZERO, so the gradient is BIASED
+    # rather than merely small -- and cdx-rl's experiment 025 measured what
+    # that costs: survival 0 of 24 on six consecutive checkpoints, from a
+    # parent that scores 12.625 under the SAME limit imposed at play time.
+    #
+    # Moving the operator upstream of the noise restores the one invariant
+    # 025 lacked: **executed == sampled**. `surface_of(sampled)` is the
+    # tanh-squashed sample of a Gaussian whose mean is the limited command, so
+    # what runs is what the gradient credits, and the executed action stays a
+    # differentiable function of it everywhere.
+    #
+    # A Python float branched on at TRACE time, exactly like `alpha` and
+    # `command_slew_deg` above, so 0.0 emits the pre-ADR-164 graph.
+    command_slew_mean_deg = resolved_command_slew_mean_deg(options)
+    mean_slewing = command_slew_mean_deg > 0.0
+    if mean_slewing and slewing:
+        # Both bound the same command path and would compose into a limit
+        # neither flag names. Refusing is the only reading that cannot be
+        # silently wrong: 025 and 028 are a comparison about WHERE the
+        # operator sits, and a run with both is neither arm.
+        raise SystemExit(
+            f"--command-slew-deg {command_slew_deg:g} and "
+            f"--command-slew-mean-deg {command_slew_mean_deg:g} are both "
+            f"non-zero. They are the SAME operator in two places -- on the "
+            f"issued command (ADR-153) and on the policy mean (ADR-164) -- "
+            f"and running both bounds the command path twice under a name "
+            f"for neither. Pick one; 0 is OFF for both.")
+    if mean_slewing:
+        widest = float(jnp.max(high - low))
+        if command_slew_mean_deg >= widest:
+            raise SystemExit(
+                f"--command-slew-mean-deg {command_slew_mean_deg:g} is at or "
+                f"above the widest command range in this bundle "
+                f"({widest:g} deg), so it can never bind and the run would be "
+                f"unlimited under a flag that claims a limit. Pick a value "
+                f"below {widest:g}.")
+
     # One carry serves both operators: the previous ISSUED command, per
     # environment, episode-local. Everything below that used to test
     # `filtering` tests this instead.
-    carrying = filtering or slewing
+    #
+    # ADR-164 reuses the same member for the same quantity. Under it the
+    # carry holds the previous LIMITED MEAN, which at play time is the
+    # previous issued command -- the same recursion, one step earlier in the
+    # pipeline. What changes is WHO reads it: `stepped` rather than
+    # `step_env`, because that is where the mean is.
+    carrying = filtering or slewing or mean_slewing
+    # Whether `step_env` still does the arithmetic. Under ADR-164 the EMA and
+    # the limit have MOVED upstream, so applying them again downstream would
+    # low-pass and rate-limit a signal that has already been low-passed and
+    # rate-limited -- and would put the dead zone back on the sampled action,
+    # which is the entire defect this flag exists to remove.
+    step_carrying = carrying and not mean_slewing
 
     reward_terms = [
         (float(term["weight"]),
@@ -1123,7 +1225,7 @@ def train(
         """
 
         clamped = jnp.clip(surface, low, high)
-        if carrying:
+        if step_carrying:
             # AFTER the clamp, so the filter's memory only ever holds a
             # command the actuator could actually have been given, and the
             # convex combination of two in-box commands is itself in box --
@@ -1163,7 +1265,7 @@ def train(
 
         data, _ = jax.lax.scan(one, data, None, length=per_action)
         vector = observe(data)
-        if carrying:
+        if step_carrying:
             # The ISSUED command joins the outputs, because it is the next
             # step's filter state and there is nowhere else to get it: it is
             # not recoverable from `data.ctrl`, which holds it multiplied by
@@ -1174,7 +1276,7 @@ def train(
     # `(previous, first)` are per environment, so they vmap on axis 0 like
     # `surface`. Empty at alpha 1.0, which is what keeps the traced signature
     # identical to the pre-ADR-151 one.
-    _filter_axes = (0, 0) if carrying else ()
+    _filter_axes = (0, 0) if step_carrying else ()
     batched_step = (
         jax.vmap(step_env, in_axes=(None, 0, 0) + _filter_axes)
         if model_axes is None
@@ -1353,6 +1455,34 @@ def train(
     def surface_of(raw):
         return jnp.tanh(raw) * scale_out + bias_out
 
+    def inverse_surface_of(command):
+        """``surface_of`` undone: degrees back to the pre-activation space.
+
+        ADR-164 limits the command where the command IS -- in degrees, the
+        same space ADR-153's limit and the harness's ``_slew_limit`` work in
+        -- and then has to hand the result back to the sampler, which lives
+        pre-tanh. This is that hand-back.
+
+        **The eps clip is not cosmetic.** ``tanh`` never reaches +/-1, so an
+        exact round trip is fine in real arithmetic; in float32 a command
+        within an ulp of the box edge maps to ``atanh(+/-1) = inf``, and one
+        inf in the mean poisons the whole batch's log-probability. 1e-6 caps
+        the round trip at ~7.25 in raw space, which is far outside anything a
+        trained ``log_std`` explores.
+
+        **The chain rule is why this does not amplify gradients.**
+        ``d(raw_eff)/d(mean_iss) = 1 / (scale * (1 - u^2))`` grows at the box
+        edge -- but ``d(mean_cmd)/d(raw) = scale * (1 - tanh^2 raw)`` shrinks
+        there by the same factor, and where the limit does not bind the two
+        cancel to EXACTLY 1. Where it does bind the upstream derivative is 0
+        anyway. ``test_dynamics_command_slew_mean`` asserts the product
+        numerically rather than trusting this paragraph.
+        """
+
+        u = jnp.clip((command - bias_out) / scale_out,
+                     -1.0 + ATANH_EPS, 1.0 - ATANH_EPS)
+        return jnp.arctanh(u)
+
     def gaussian_logp(sampled, raw, log_std):
         return jnp.sum(
             -0.5 * ((sampled - raw) / jnp.exp(log_std)) ** 2
@@ -1389,9 +1519,52 @@ def train(
             vector = jax.vmap(observe)(data)
             normalised = normalise(vector, mean, variance)
             raw = net(params["actor"], normalised)
+            if mean_slewing:
+                # ADR-164. The EMA and the rate limit, applied to the POLICY
+                # MEAN, before the exploration noise -- so the distribution
+                # PPO credits is the distribution the environment samples
+                # from, and `executed == sampled` exactly.
+                #
+                # Everything below is in COMMAND space (degrees), which is
+                # where a rate limit means something and where ADR-153,
+                # `harness/_policy._slew_limit` and the joint's own 12.53
+                # deg/step reach all already live. There is no new unit
+                # arithmetic: `surface_of` and its inverse are the bundle's
+                # own output map, both directions.
+                mean_prev = filter_carry[0]
+                # `steps` counts steps ALREADY taken this episode, so
+                # `steps == 0` is the first step -- the same flag `step_env`
+                # is handed under ADR-151/153, derived here rather than
+                # passed because the mean never crosses the vmap boundary.
+                # `[:, None]` because this batch is (envs, actuators) where
+                # `step_env` sees one environment at a time.
+                first = (steps == 0)[:, None]
+                # In box by construction: `surface_of` is tanh-bounded into
+                # [low, high] for every bundle in this repository, and the
+                # clip is the same belt-and-braces `step_env` applies. It
+                # must come FIRST so the EMA's memory only ever holds a
+                # command the actuator could have been given.
+                mean_cmd = jnp.clip(surface_of(raw), low, high)
+                if filtering:
+                    mean_cmd = jnp.where(
+                        first, mean_cmd,
+                        action_filter_alpha * mean_cmd
+                        + (1.0 - action_filter_alpha) * mean_prev)
+                # THEN the rate limit, in ADR-153's order and for ADR-153's
+                # reason: the other order lets the EMA smooth the signal back
+                # across the limit. `harness/_policy.action_callable`
+                # composes the two the same way, so the arm is played by the
+                # controller it was trained by.
+                mean_iss = jnp.where(
+                    first, mean_cmd,
+                    jnp.clip(mean_cmd, mean_prev - command_slew_mean_deg,
+                             mean_prev + command_slew_mean_deg))
+                raw_eff = inverse_surface_of(mean_iss)
+            else:
+                raw_eff = raw
             noise = jax.random.normal(act_key, raw.shape, dtype=jnp.float32)
-            sampled = raw + noise * jnp.exp(params["log_std"])
-            logp = gaussian_logp(sampled, raw, params["log_std"])
+            sampled = raw_eff + noise * jnp.exp(params["log_std"])
+            logp = gaussian_logp(sampled, raw_eff, params["log_std"])
             surface = surface_of(sampled)
             value = net(params["critic"], normalised)[:, 0]
 
@@ -1399,7 +1572,7 @@ def train(
                 data = data.replace(
                     xfrc_applied=applied_forces(forces, starts, elapsed)
                 )
-            if carrying:
+            if step_carrying:
                 # `steps` here is the count of steps ALREADY taken this
                 # episode, because it is incremented below -- so `steps == 0`
                 # is exactly the first step of an episode and needs no
@@ -1409,6 +1582,14 @@ def train(
             else:
                 data, landed, reward, terminated = batched_step(
                     model, data, surface)
+            if mean_slewing:
+                # The next step's carry is the LIMITED MEAN, not the executed
+                # command. Noise-free on purpose: the recursion has to be the
+                # one that runs at play time, where there is no noise, or the
+                # trained controller and the played controller are two
+                # different filters. `step_env` returned no `issued` above --
+                # it did no filtering, so it has nothing to report.
+                issued = mean_iss
             elapsed = elapsed + control_interval
             steps = steps + 1
             # An integer compare, not a float one on `elapsed`: 600 additions
@@ -1976,7 +2157,24 @@ def policy_header(
             # trained under a rate limit has to be PLAYED under one, and a
             # driver that had to be told separately is a driver somebody will
             # forget to tell. 0.0 is no limit.
-            "command_slew_deg": resolved_command_slew_deg(options),
+            #
+            # ADR-164 writes the SAME key. At play time the noise is zero, so
+            # the policy mean IS the issued command and the limit an evaluator
+            # must impose is the same number wherever it sat during training.
+            # Writing a second key for a player to read would mean every
+            # driver had to learn a second spelling of one limit, which is the
+            # `--fps` lesson: derive it from the artifact, and have ONE place
+            # to derive it from.
+            "command_slew_deg": deployed_command_slew_deg(options),
+            # ADR-164's own key, and it is PROVENANCE rather than a control.
+            # Two runs can carry an identical `command_slew_deg` and be
+            # different experiments -- 025 clipped the SAMPLED action and was
+            # destroyed by the clip's dead zone; 028 clips the MEAN, where the
+            # executed action stays a differentiable function of what the
+            # gradient credits. This key is the only thing in the artifact
+            # that tells them apart.
+            "command_slew_mean_deg": resolved_command_slew_mean_deg(options),
+            "command_slew_applied_to": command_slew_applied_to(options),
             # ``init_from`` is excluded for the same reason ``bundle`` and
             # ``out`` are: it is a path on one machine, not a hyperparameter.
             # What it started from is recorded as a digest under
@@ -2149,6 +2347,21 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "without this flag. The resolved value is written into the "
              ".cxpolicy header so an evaluator plays the policy under the "
              "limit it was trained under")
+    parser.add_argument(
+        "--command-slew-mean-deg", type=float, default=0.0,
+        help="the same rate limit as --command-slew-deg, applied to the "
+             "POLICY MEAN before the exploration noise instead of to the "
+             "issued command after it (ADR-164). The two flags are mutually "
+             "exclusive. Clipping the SAMPLED action makes the executed "
+             "trajectory differ from the one PPO credits, and inside the clip "
+             "d(executed)/d(sampled) is zero -- a biased gradient, which "
+             "destroyed a policy in under 300 iterations. Clipping the mean "
+             "keeps executed == sampled. 0.0 (the default) is NO LIMIT and "
+             "emits the same computation graph as a trainer without this "
+             "flag. The resolved value reaches the header's command_slew_deg "
+             "-- at play time the noise is zero, so the mean IS the issued "
+             "command -- beside command_slew_applied_to, which records where "
+             "the operator sat during training")
     parser.add_argument(
         "--init-from",
         default="",
