@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-08-07
+Verified against source: 2026-08-29
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -1195,13 +1195,19 @@ their bytes.
 **The caps** (`CadexDynamics`): `MAXIMUM_POLICY_BYTES` 4 MiB, 1 000 000
 parameters, 8 layers, 1024 width, 8–256 witness samples.
 
-**What the CI gate proves, and what it does not.** The live training gate
-trains a *tiny* task — one hinge, swing-up, seed 0, 150 iterations, 128
-environments — on **CPU**, because that is what a test machine has. It
-converges visibly: reward per step 1.10 → **2.487** against a ceiling of
-2.5, in 4.2 seconds. **The GPU is a speed difference, not a semantic one,
-and it is the same trainer file — but this gate does not prove the GPU
-path.** A remote GPU run is exercised manually.
+**What the live training gate proves, and what it does not.** The gate
+trains a *tiny* task — one hinge, swing-up, 150 iterations, 128
+environments — on **CPU**, because that is what a test machine has, and it
+takes the best of three seeds, stopping at the first that converges: PPO
+from a fixed seed is bimodal on this task (a converged run scores 3.3+
+reward per step, a failed one 0.9–1.8, and a zero-torque episode about
+0.9), and *which* seeds win is platform arithmetic — seed 0 converged on
+the machine that authored the gate and plateaued on an M4 Mac Mini. One
+attempt is ~7 s on that M4. Note the gate runs only where jax does — the
+pixi CI environment deliberately lacks it, so it skips there and a venv
+run is what actually exercises it. **The GPU is a speed difference, not a
+semantic one, and it is the same trainer file — but this gate does not
+prove the GPU path.** A remote GPU run is exercised manually.
 
 **M8 is a swap, not a discovery.** `evaluate_episode`'s `actions=` callable
 was written in M6 as M8's seam and already takes `policy_forward`: through
@@ -2735,6 +2741,95 @@ one. Work out which world axis your machine's forward is — from where its
 feet and toes sit — before declaring an arc, and make the instrument assert
 it rather than assume it. mg-legs faces **+Y**, so `[-60, 60]` about +X is a
 *lateral* band and the column headed `lat` held the *sagittal* pushes.
+
+## 7b. The same arc, locally, on CPU
+
+§7 is the arc at gait scale: a GPU box, detached dispatch, an hour a run.
+This is the identical arc run **entirely on one machine** — an M4 Mac Mini,
+16 GB, no GPU — at toy scale, measured on 2026-08-29 with a desk balance
+toy (ADR-170): an 80 mm puck, a 15 × 15 × 120 mm post, and a 90 mm arm on
+one revolute hinge with an MG90-class torque motor (200 N·mm), all PLA at
+1240 kg/m³, authored by the agent through `./cadex -p` in one turn. The
+project lives at `~/cadex-balance` — outside this repository, per ADR-088;
+what is recorded here is the method and the numbers.
+
+**The loop, and what each leg cost.** Venv per `training/SETUP.md` §b
+(Homebrew 3.13, the four pins). Bundle out of the accepted attempt's
+`outputs/`. Train with `--progress <project>/training-progress.json`, which
+lights the Training panel *and* the reward-curve plot live with no `watch`
+leg and nothing else running. Policy home through `put_asset` +
+`assembly.policy` + `assembly.rollout`, exactly §7's steps 11–12:
+
+- **Training**: 300 iterations × 64 envs in **61.6 s**, then 500 more
+  warm-started (`--init-from`) in **79.1 s** — ~5–6 it/s, peak RSS
+  **2.2 GB**. Reward per step 0.77 → 1.85 against a ~2.16 inverted-hold
+  ceiling; witness error 3.0e-08, a 3300× margin; 4609 parameters, 68 KB.
+- **Engine verification**: the receipt records `device: "cpu"` — a
+  *feature* at this scale, not a smell: the header says honestly what kind
+  of run produced it, and a validation-scale CPU run is exactly what the
+  local loop is for.
+- **The rollout**: 215.0 total reward against 87.8 for zero torque, the
+  full 100-step horizon, 52 frames at 25 fps, baked into the shell as
+  ordinary keyframes.
+- **Recovery** (§7 step 6's metric): 32/32 episodes survive the declared
+  shove band. But the declared band was toothless — 0.15 N peak against
+  200 N·mm of authority — so the capability sweep (§7 step 9) is what
+  actually measured it: 16/16 at ×1/×10/×30 scale, **9/16 at ×100**
+  (15 N), 6/16 at ×300. The edge is real and sits around 30–100× the
+  training band.
+
+**What the toy taught, in the order it bit:**
+
+- **`assembly.reset_variation` refuses a grounded mechanism** — correctly;
+  it varies a floating base, and this toy has none. The agent's adaptation
+  is the pattern to copy: a `StartKick` disturbance drawn in the first
+  control interval, so every episode still starts already moving.
+- **MJX implements no cylinder↔box collision pair.** The engine accepted a
+  puck with the obvious cylinder collision and the trainer refused it at
+  `mjx.put_model` (`NotImplementedError`). Box collision on the grounded
+  puck costs nothing. The engine does not currently warn at export time;
+  until it does, this paragraph is the warning.
+- **An overpowered tiny mechanism needs its spin-out guard sized against
+  exploration, not physics.** 200 N·mm on an 8 g arm is α ≈ 9300 rad/s²:
+  one σ-wide exploration action moves the rate ~3200 deg/s in a single
+  control step, so a 3000 deg/s termination ended every young episode in
+  2–4 steps and PPO had no horizon to learn from (measured: mean episode
+  length 3.7 of 100; reward plateaued at 1.29). Raising the guard to
+  12000 and letting the spin *cost* do the shaping took the same trainer
+  to 1.85 and a policy that holds inverted. Rule of thumb: the guard must
+  exceed `σ · torque_limit / I · Δt` by a comfortable factor, or the
+  guard is the curriculum.
+- **MuJoCo's warp fallback still prints to stdout** (ADR-093's finding,
+  met again): a plain `>` redirection of the trainer's receipt captures
+  two `Failed to import warp` lines before the JSON. Read the last line,
+  as every harness in this repo already does.
+
+**The rehearsal: the same toy, agent-driven, one prompt.** The arc was
+then repeated on a fresh project as a single prompt to the product agent
+(`./cadex -p`, 2026-08-29), with the two traps above given one sentence
+each and nothing else. Three turns and two human legs later the engine's
+own trace reads **+1729.95 against a −302.17 zero-torque baseline**, full
+horizon, arm 2.1° off vertical at t = 3 s — and the agent checked the
+bracing hazard (ADR-092) unprompted: holding torque ±5 N·mm of 25,
+sign-changing, not pinned. What the rehearsal measured:
+
+- **Both traps were dodged from one sentence each** — and the agent's
+  collision fix was *better* than the one above: contact groups
+  (`contype`/`conaffinity` masks) so the cylinder–box pair is never
+  formed, no geometry compromise at all. It also found and fixed, from
+  in-engine evidence alone, a solver-flattened rest pose and damping at
+  14× critical.
+- **The two human legs are tool-surface gaps, not intelligence gaps.**
+  The CLI agent's tools are `describe_api`, `edit_script`, `inspect`,
+  `link_part`, `rebuild`, `set_params`, `write_script` — no shell, so it
+  cannot *run* the trainer (and, unable to read `training/SETUP.md`, it
+  guessed a wrong flag shape for the command it handed back); and no
+  `put_asset`, so it cannot bring a policy home. Both refusals were
+  clean, precise and resumable. Closing the North Star arc as one CLI
+  prompt therefore needs either those tools or a dispatcher; the in-app
+  agent has a shell and does not share the first gap.
+- **It would not claim success without the engine.** "I will not claim it
+  holds inverted until the engine's own trace says so" — and it didn't.
 
 ## 8. Live mode: watching it, rather than reading about it
 

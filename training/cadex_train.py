@@ -81,6 +81,32 @@ _POLICY_ACTION_FIELDS = ("actuator", "index", "unit", "low", "high", "scale")
 #: writes, because two of its three readers are on other machines.
 PROGRESS_SCHEMA = "cadex-training-progress-v1"
 
+#: The most reward-curve points ``progress.json`` carries. 512 pairs is
+#: ~12 KB of JSON rewritten per iteration and more x-resolution than any
+#: panel has pixels for; the full-fidelity curve still exists in memory and
+#: on stderr, this is only what the progress file republishes.
+CURVE_POINTS_CAP = 512
+
+
+def decimated_curve(curve, cap=CURVE_POINTS_CAP):
+    """The reward curve as ``[[iteration, reward_per_step], ...]``, capped.
+
+    Uniform stride with the first and last points always kept, so the
+    shape survives and the newest point is always the real newest point.
+    Pure stdlib on plain dicts, so the static half of the trainer suite can
+    pin it without jax in the room.
+    """
+
+    points = [
+        [int(entry["iteration"]), float(entry["reward_per_step"])]
+        for entry in curve
+    ]
+    if cap < 2 or len(points) <= cap:
+        return points
+    last = len(points) - 1
+    return [points[round(index * last / (cap - 1))] for index in range(cap)]
+
+
 #: Mirrors ``CadexDynamics.MAXIMUM_POLICY_BYTES``. Checked here so a run that
 #: would produce a file the engine refuses fails at the end of training
 #: rather than at the end of the trip home.
@@ -2289,6 +2315,12 @@ def main(argv: Sequence[str]) -> int:
                 None if not curve or curve[-1].get("action_std") is None
                 else float(curve[-1]["action_std"])
             ),
+            # Additive on the same terms again, under the same unchanged
+            # schema: the curve itself, as compact [iteration, reward] pairs
+            # capped at CURVE_POINTS_CAP, so a panel can draw the run's
+            # shape rather than its last number. A reader written before
+            # this field renders exactly what it always did.
+            "curve": decimated_curve(curve),
             "best_reward_per_step": (
                 None if not best or best.get("iteration", -1) < 0
                 else float(best["reward_per_step"])

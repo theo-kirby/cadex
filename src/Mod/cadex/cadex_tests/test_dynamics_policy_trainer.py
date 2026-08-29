@@ -1163,6 +1163,66 @@ def test_the_trainer_reports_episode_length(tmp_path) -> None:
     assert report["episode_steps"] == pytest.approx(rows[-1]["episode_steps"])
 
 
+def test_the_progress_curve_is_decimated_uniformly() -> None:
+    """The pure half of the curve field: shape-preserving, capped, stdlib.
+
+    ``progress.json`` is rewritten every iteration, so the curve it carries
+    is capped -- and the cap must never cost the endpoints, because the
+    first point is the run's baseline and the last is the number every
+    other field in the file quotes.
+    """
+
+    module = _trainer_module()
+    rows = [{"iteration": index, "reward_per_step": float(index) / 10.0}
+            for index in range(2000)]
+
+    assert module.decimated_curve([]) == []
+
+    short = module.decimated_curve(rows[:5])
+    assert short == [[index, index / 10.0] for index in range(5)]
+
+    capped = module.decimated_curve(rows)
+    assert len(capped) == module.CURVE_POINTS_CAP
+    assert capped[0] == [0, 0.0]
+    assert capped[-1] == [1999, 199.9]
+    iterations = [pair[0] for pair in capped]
+    assert iterations == sorted(set(iterations)), "stride must stay monotone"
+
+    # A cap that cannot hold both endpoints holds what fits, verbatim.
+    assert module.decimated_curve(rows, cap=1) == [
+        [row["iteration"], row["reward_per_step"]] for row in rows
+    ]
+
+
+def test_the_trainer_publishes_the_reward_curve(tmp_path) -> None:
+    """The curve reaches ``progress.json``, additively, under the same
+    schema -- the field the shell's Training plot draws (same terms as
+    ``episode_steps``, ADR-101, and ``action_std``, ADR-103)."""
+
+    python = _venv_python()
+    if python is None:
+        pytest.skip("the offboard trainer's dependencies are not installed here")
+
+    prepared = pf.swing_up_bundle()
+    out, report = _train(
+        python, prepared, tmp_path, name="curved",
+        extra=("--iterations", "3", "--envs", "8", "--unroll", "10"),
+    )
+
+    progress = json.loads((out.parent / "progress.json").read_text("utf-8"))
+    assert progress["schema"] == "cadex-training-progress-v1"
+    curve = progress["curve"]
+    assert isinstance(curve, list) and len(curve) == 3
+    for pair in curve:
+        assert isinstance(pair, list) and len(pair) == 2
+        iteration, reward = pair
+        assert isinstance(iteration, int)
+        assert math.isfinite(float(reward))
+    assert [pair[0] for pair in curve] == [0, 1, 2]
+    assert curve[-1][1] == pytest.approx(progress["reward_per_step"])
+    assert curve[-1][1] == pytest.approx(report["reward_per_step"])
+
+
 def test_shquote_survives_a_string_containing_a_quote() -> None:
     """The latent bug M9 walked into, pinned so it cannot come back.
 

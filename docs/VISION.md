@@ -1,6 +1,6 @@
 # VISION.md — What Cadex Is Becoming
 
-Verified against source: 2026-08-09
+Verified against source: 2026-08-29
 
 This document is the product vision. It is authoritative: when a change
 conflicts with this document, the change is wrong or the vision needs an
@@ -38,7 +38,12 @@ learned gait: the mechanism is designed through the ordinary assembly
 surface, `assembly.mjcf` exports it, `assembly.task` defines the problem,
 `training/cadex_train.py` solves it on a machine we do not ship to,
 `assembly.policy` verifies what comes back, and `assembly.rollout` plays it.
-That arc closed on 2026-07-31 (ADR-085).
+That arc closed on 2026-07-31 (ADR-085), and has since been rehearsed
+end to end on one CPU-only desk machine at toy scale (ADR-170,
+`docs/MUJOCO.md` §7b). Its full form is the product's North Star — *"design
+me a quadruped robot, all 3D-printable, MG90 servos, and train it to walk
+and wave"*, one prompt ending in a part sheet, print files, a BOM, a policy
+and a gait video — and 0.1.0 roughly means that sentence works.
 
 ### Everything is driven by the script
 

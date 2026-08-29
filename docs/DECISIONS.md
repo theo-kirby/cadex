@@ -17227,3 +17227,101 @@ trimmed copy. Files: `Mesh/startup.blend` (git-LFS re-save),
 `Mesh/__init__.py` (docstring), `cadex_landing.py`, `landing_logo.png`,
 `bl_mesh_agent.py`, `bl_mesh_agent_cadex.py`, `docs/BLENDER.md`; deleted:
 `docs/images/cadex-mark.svg`.
+
+## ADR-169 — the reward curve reaches the Training editor: an additive progress field, and the shell's first plot (2026-08-29)
+
+The Training panel showed a run as numbers — reward, best, episode
+length — and never as a shape, which is the thing a person actually
+reads a training run by. Two changes, one on each side of the file that
+joins them, and neither touches the engine, the protocol, or inherited
+Blender.
+
+**The trainer publishes the curve.** `report()` in
+`training/cadex_train.py` always received the full reward curve and kept
+one point of it. `progress.json` now carries
+`"curve": [[iteration, reward_per_step], ...]`, decimated to
+`CURVE_POINTS_CAP` (512) pairs by uniform stride with the endpoints
+always kept — ~12 KB at the cap, rewritten atomically as ever. Additive
+under the unchanged `cadex-training-progress-v1` schema, on exactly the
+precedent of `episode_steps` (ADR-101) and `action_std` (ADR-103): the
+shell validates the schema string alone, so a reader from before this
+field renders what it always did, and a file from before it draws
+panel-only.
+
+**The shell draws it.** `mesh_agent/cadex_training_plot.py` — a **new
+module by necessity**: the gate pins `cadex_training.py`'s import
+closure to exactly `{json, os, bpy}`, and even a lazy import of a plot
+would trip it. The dependency is one-way (`plot → training`, through
+`read_progress`) and a gate check asserts the reverse direction never
+appears. The plot is a `POST_PIXEL` draw handler on
+`SpaceCadexTraining` — the first draw handler on a Cadex space type,
+probed against the built bundle before anything was written (a no-op
+callback fired twice on redraw of a `CADEX_TRAINING` area and removed
+cleanly). It draws the curve, the best-so-far marker, a zero line when
+the curve crosses zero, and 1/2/5-ladder ticks, in the bottom
+`PLOT_FRACTION` (0.42) of the window region so the floating panel keeps
+the top. The pure half (`curve_from`, `axis_ticks`, `plot_layout`)
+imports `math` alone; `gpu`/`blf` are fetched inside the draw callback
+(`cadex_dimension`'s rule — `from_builtin` raises under
+`--background`). **No operator classes**: there is still no train
+button (ADR-084), and no timer of its own — `cadex_training.poll`
+already tags the area.
+
+Not taken, deliberately: plotting `episode_steps` as a second line
+(the strongest candidate; it doubles the y-axis question and the first
+plot should earn its place before growing), any x-axis time mapping,
+and any mouse interaction with the plot — it is a readout.
+
+Verified: trainer suites 29 passed/8 skipped under pixi and 37 passed
+from the venv (the curve field asserted end to end against a real
+3-iteration run); full engine suite 1910 passed/46 skipped;
+`bl_mesh_agent.py` suite green (the pure half's None-cases, monotone
+x-mapping, flat-curve padding, garbage tolerance); `pixi run gate`
+green with the new plot checks (import pins, handler idempotence,
+curve-fixture → layout, curve-less fixture → None); `pixi run
+build-shell` stamps 0.0.5 build 301 with the module in the bundle.
+Files: `training/cadex_train.py`, `training/README.md`,
+`mesh_agent/cadex_training_plot.py`, `mesh_agent/__init__.py`,
+`test_dynamics_policy_trainer.py`, `bl_mesh_agent.py`,
+`bl_mesh_agent_cadex.py`, `docs/BLENDER.md`. `docs/BLENDER-TREE.md`
+unchanged — zero inherited-tree lines.
+
+## ADR-170 — the balance-toy litmus: the whole training arc, locally, on CPU (2026-08-29)
+
+The North Star prompt — "design me a quadruped robot, all 3D-printable,
+MG90 servos, and train it to walk and wave", carried end to end by the
+agent — needs the training loop rehearsable on one machine at small
+scale before it is worth attempting at gait scale. This sitting ran the
+whole arc on the M4 Mac Mini (16 GB, CPU-only) against a purpose-built
+litmus: a desk balance toy (puck, post, one hinged arm, MG90-class
+torque motor, PLA densities), authored by the agent through
+`./cadex -p`, trained locally, verified, rolled out, and watched in the
+editor with the ADR-169 plot live.
+
+**The litmus lives outside the repository** at `~/cadex-balance`
+(ADR-088 precedent: the method is reproducible, the project is not the
+product). `docs/MUJOCO.md` §7b is the record: the loop's measured costs
+(300 + 500 iterations in 61.6 s + 79.1 s at 64 envs, peak RSS 2.2 GB,
+~5–6 it/s), the policy (reward 0.77 → 1.85 against a ~2.16 ceiling,
+witness margin 3300×, holds inverted at 215.0 vs 87.8 for zero torque
+over the full horizon), and the recovery numbers (32/32 at the declared
+band; capability sweep puts the real edge at 30–100× it).
+
+**What it surfaced**, now recorded in §7b as operational knowledge:
+`reset_variation` correctly refuses grounded mechanisms and the
+StartKick-disturbance adaptation is the pattern; **MJX has no
+cylinder↔box collision** and the engine accepts a model the trainer
+then refuses — an export-time warning is future work, the doc is the
+warning today; an overpowered tiny mechanism needs its spin-out guard
+sized against exploration violence (`σ·τ/I·Δt`), or the guard becomes
+the curriculum — measured as episodes dying in 3.7 steps and a 1.29
+plateau before the fix, 1.85 and a clean inverted hold after; and
+ADR-093's warp-stdout lines met again outside the harnesses that
+already guard them.
+
+`device: "cpu"` in the policy header is recorded as a feature:
+validation-scale runs are what the local loop is for, and the artifact
+says what produced it. The GPU box (ADR-104 frontier) is still what a
+gait needs; nothing here changes that. No engine, protocol, or shell
+change anywhere in this sitting — the litmus consumed only surface that
+already existed, which was the point of running it.

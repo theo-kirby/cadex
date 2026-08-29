@@ -7,7 +7,7 @@
 
 # Cadex
 
-Verified against source: 2026-08-01
+Verified against source: 2026-08-29
 
 Author:
 "Cadex is an experimental side project, far from production software.
@@ -40,9 +40,20 @@ mechanism you designed falls, collides and is actuated on
 [MuJoCo](https://github.com/google-deepmind/mujoco); `assembly.mjcf` exports
 it with *exact* OCCT inertias rather than the convex-hull guesses standard
 MJCF authoring settles for; `assembly.task` states the control problem as
-data; a trainer you copy to a GPU box solves it; and `assembly.rollout`
-plays the result back in the viewport. "Design me a quadruped and teach it
-to walk" is a sequence of chat turns. See [docs/MUJOCO.md](docs/MUJOCO.md).
+data; a trainer solves it — on a GPU box for a gait, or right on your own
+CPU for a toy-scale mechanism, with the reward curve drawing itself live in
+the editor while it runs; and `assembly.rollout` plays the result back in
+the viewport. See [docs/MUJOCO.md](docs/MUJOCO.md).
+
+**The North Star** — the prompt this whole application is pointed at — is:
+*"design me a quadruped robot, all 3D-printable, MG90 servos, and train it
+to walk and wave."* One prompt, carried end to end by the agent: the parts,
+the assembly, the MJCF export, the training dispatch, the policy
+iteration — ending in a part sheet, print files, a BOM, a trained policy
+and a gait video. Every vertical in this repository exists because that
+sentence needs it. The whole arc has been rehearsed locally at toy scale
+([docs/MUJOCO.md §7b](docs/MUJOCO.md)); **0.1.0** roughly means the
+quadruped version of it works.
 
 This lived on a branch called `MJC` until 2026-08-01. It was merged once
 the cost was measured rather than assumed: 53.5 MB on a 3.3 GB application,
@@ -53,7 +64,21 @@ and nothing at all at runtime for anyone who never calls it
 sliders below, and the conversation that authored it on the
 right](docs/cadex-example.png)
 
-> **Status:** under active development, pre-release.
+> **Status:** under active development, pre-release — currently **0.0.6**
+> (the version the window chrome and the landing screen show).
+
+The window is the product now: it opens on a **landing screen** with an
+example project (a ducted-fan drone shipped in the bundle), a native menu
+bar, and a chat column that is already live — typing into it dismisses the
+page. Six Cadex editors replace Blender's: **Chat**, **Parameters**,
+**Wiring**, **Training** (a run's numbers *and* its reward curve, polled
+off one JSON file), **Live** (the accepted policy running endlessly in a
+resident worker, with shove operators to test it), and the policy rollout
+playing as ordinary baked keyframes. Beyond dynamics, two more verticals
+are closed: **organic modelling** ([docs/ORGANIC.md](docs/ORGANIC.md)) and
+**structural analysis** — stress, topology optimisation, and a skeleton
+fit that turns a carved density field back into a *parametric script* a
+person can edit ([docs/STRUCTURAL.md](docs/STRUCTURAL.md)).
 
 ## Build and run
 
@@ -103,14 +128,21 @@ Two halves in one repository, separated by a process boundary:
   `cadex-engine.json` manifest, so a built application needs no
   configuration at all.
 
-And one directory that is deliberately neither:
+And two directories that are deliberately neither:
 
 - **`training/`** — the offboard PPO trainer. It is not part of
   the product: CMake never installs it, no payload carries it, and it cannot
-  import Cadex. You copy it to a machine with a GPU, run it, and copy one
-  `.cxpolicy` file back. There is no train button and nothing to press —
-  training needs JAX on a GPU, so the engine verifies a policy and never
-  produces one. [training/README.md](training/README.md).
+  import Cadex. A gait needs a GPU box; a toy-scale mechanism trains on
+  your own CPU in seconds to minutes
+  ([training/SETUP.md](training/SETUP.md) §b). Either way one `.cxpolicy`
+  file comes home and the engine verifies it — there is no train button and
+  nothing to press; the engine verifies a policy and never produces one.
+  [training/README.md](training/README.md).
+- **`analysis/`** — the offboard structural analysis: a hex-grid FEA core,
+  CalculiX as an arm's-length second opinion, a SIMP topology optimiser,
+  and the skeleton fit that ends in a script rather than a mesh. Same
+  contract as the trainer, plus one rule of its own: nothing in it may
+  import a GPL package. [analysis/README.md](analysis/README.md).
 
 The protocol between them is pinned by tests on both the request and the
 response side (`docs/INTEGRATION.md`), which is what keeps either half
@@ -164,6 +196,7 @@ Start with [`AGENTS.md`](AGENTS.md) (repo map, commands, change policy) and
 the doc set under [`docs/`](docs/):
 [VISION](docs/VISION.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) ·
 [XSCRIPT](docs/XSCRIPT.md) · [MUJOCO](docs/MUJOCO.md) ·
+[ORGANIC](docs/ORGANIC.md) · [STRUCTURAL](docs/STRUCTURAL.md) ·
 [INTEGRATION](docs/INTEGRATION.md) ·
 [BLENDER](docs/BLENDER.md) · [CLI](docs/CLI.md) ·
 [FREECAD](docs/FREECAD.md) · [BLENDER-TREE](docs/BLENDER-TREE.md) ·

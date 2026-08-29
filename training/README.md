@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-08-24. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-08-29. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -184,9 +184,17 @@ iteration:
  "iteration": 419, "total": 2000, "reward_per_step": 0.391,
  "episode_steps": 137.5, "action_std": 0.318,
  "best_reward_per_step": 0.402, "best_iteration": 388,
+ "curve": [[0, -0.021], [1, 0.004], ..., [419, 0.391]],
  "wall_time_s": 913.0, "eta_s": 3440.0, "device": "gpu",
  "checkpoints": [...]}
 ```
+
+`curve` is the whole run's reward so far, as compact
+`[iteration, reward_per_step]` pairs decimated to at most
+`CURVE_POINTS_CAP` (512) points with the first and last always kept —
+about 12 KB at the cap, which is what makes rewriting it every iteration
+free. Additive under the same schema, on the same terms as the two rows
+below; it is what the shell's Training editor draws as a curve.
 
 `episode_steps` is the row to actually watch (ADR-101): mean episode length,
 steps in the batch over episodes that ended in it. **A reward that climbs
