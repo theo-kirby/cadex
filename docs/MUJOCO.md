@@ -2804,6 +2804,33 @@ leg and nothing else running. Policy home through `put_asset` +
   two `Failed to import warp` lines before the JSON. Read the last line,
   as every harness in this repo already does.
 
+**The rehearsal: the same toy, agent-driven, one prompt.** The arc was
+then repeated on a fresh project as a single prompt to the product agent
+(`./cadex -p`, 2026-08-29), with the two traps above given one sentence
+each and nothing else. Three turns and two human legs later the engine's
+own trace reads **+1729.95 against a −302.17 zero-torque baseline**, full
+horizon, arm 2.1° off vertical at t = 3 s — and the agent checked the
+bracing hazard (ADR-092) unprompted: holding torque ±5 N·mm of 25,
+sign-changing, not pinned. What the rehearsal measured:
+
+- **Both traps were dodged from one sentence each** — and the agent's
+  collision fix was *better* than the one above: contact groups
+  (`contype`/`conaffinity` masks) so the cylinder–box pair is never
+  formed, no geometry compromise at all. It also found and fixed, from
+  in-engine evidence alone, a solver-flattened rest pose and damping at
+  14× critical.
+- **The two human legs are tool-surface gaps, not intelligence gaps.**
+  The CLI agent's tools are `describe_api`, `edit_script`, `inspect`,
+  `link_part`, `rebuild`, `set_params`, `write_script` — no shell, so it
+  cannot *run* the trainer (and, unable to read `training/SETUP.md`, it
+  guessed a wrong flag shape for the command it handed back); and no
+  `put_asset`, so it cannot bring a policy home. Both refusals were
+  clean, precise and resumable. Closing the North Star arc as one CLI
+  prompt therefore needs either those tools or a dispatcher; the in-app
+  agent has a shell and does not share the first gap.
+- **It would not claim success without the engine.** "I will not claim it
+  holds inverted until the engine's own trace says so" — and it didn't.
+
 ## 8. Live mode: watching it, rather than reading about it
 
 **ADR-109.** Everything above produces a *recording*: six seconds, one drawn
