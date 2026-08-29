@@ -344,11 +344,18 @@ def test_startup_layout_is_the_shipped_file():
     viewport = next((area.spaces.active for screen in bpy.data.screens
                      for area in screen.areas if area.type == 'VIEW_3D'), None)
     check(viewport is not None and viewport.shading.type == 'SOLID'
-          and viewport.shading.light == 'MATCAP',
-          "the viewport keeps its solid/matcap styling")
-    check(viewport is not None and not viewport.overlay.show_overlays
+          and viewport.shading.light == 'MATCAP'
+          and viewport.shading.show_cavity,
+          "the viewport keeps its solid/matcap styling, cavity on")
+    check(viewport is not None and not viewport.show_gizmo
           and not viewport.show_region_ui and not viewport.show_region_header,
-          "the viewport keeps its chrome off")
+          "the viewport keeps its chrome off: no gizmos, no side panels")
+    overlay = viewport.overlay if viewport is not None else None
+    check(overlay is not None and overlay.show_overlays
+          and not overlay.show_floor and not overlay.show_ortho_grid
+          and (overlay.show_axis_x, overlay.show_axis_y,
+               overlay.show_axis_z) == (False, False, True),
+          "overlays are on, bare: no floor, no grid, only the Z axis")
 
     GATE["startup_areas"] = areas
 

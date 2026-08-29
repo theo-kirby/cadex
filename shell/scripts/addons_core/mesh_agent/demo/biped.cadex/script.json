@@ -1,0 +1,490 @@
+{
+  "accepted_attempt": {
+    "attempt_id": "1788039076681-5f03d6cc19f5",
+    "revision": "ec4e79e05d19259e35219117f174d737f863f299cbe261d05ab70a6b5584785e",
+    "staging": "script_artifacts/ec4e79e05d19259e35219117f174d737f863f299cbe261d05ab70a6b5584785e/attempt-1788039076681-5f03d6cc19f5"
+  },
+  "accepted_contract": [
+    {
+      "domain": "part",
+      "name": "foot_l",
+      "type": "compound"
+    },
+    {
+      "domain": "part",
+      "name": "ankle_l",
+      "type": "compound"
+    },
+    {
+      "domain": "part",
+      "name": "shin_l",
+      "type": "compound"
+    },
+    {
+      "domain": "part",
+      "name": "thigh_l",
+      "type": "compound"
+    },
+    {
+      "domain": "part",
+      "name": "hip_l",
+      "type": "compound"
+    },
+    {
+      "domain": "part",
+      "name": "foot_r",
+      "type": "compound"
+    },
+    {
+      "domain": "part",
+      "name": "ankle_r",
+      "type": "compound"
+    },
+    {
+      "domain": "part",
+      "name": "shin_r",
+      "type": "compound"
+    },
+    {
+      "domain": "part",
+      "name": "thigh_r",
+      "type": "compound"
+    },
+    {
+      "domain": "part",
+      "name": "hip_r",
+      "type": "compound"
+    },
+    {
+      "domain": "part",
+      "name": "torso",
+      "type": "compound"
+    },
+    {
+      "domain": "part",
+      "name": "floor",
+      "type": "solid"
+    },
+    {
+      "domain": "assembly",
+      "name": "c_floor",
+      "type": "component_link"
+    },
+    {
+      "domain": "assembly",
+      "name": "c_torso",
+      "type": "component_link"
+    },
+    {
+      "domain": "assembly",
+      "name": "c_hip_l",
+      "type": "component_link"
+    },
+    {
+      "domain": "assembly",
+      "name": "c_thigh_l",
+      "type": "component_link"
+    },
+    {
+      "domain": "assembly",
+      "name": "c_shin_l",
+      "type": "component_link"
+    },
+    {
+      "domain": "assembly",
+      "name": "c_ankle_l",
+      "type": "component_link"
+    },
+    {
+      "domain": "assembly",
+      "name": "c_foot_l",
+      "type": "component_link"
+    },
+    {
+      "domain": "assembly",
+      "name": "c_hip_r",
+      "type": "component_link"
+    },
+    {
+      "domain": "assembly",
+      "name": "c_thigh_r",
+      "type": "component_link"
+    },
+    {
+      "domain": "assembly",
+      "name": "c_shin_r",
+      "type": "component_link"
+    },
+    {
+      "domain": "assembly",
+      "name": "c_ankle_r",
+      "type": "component_link"
+    },
+    {
+      "domain": "assembly",
+      "name": "c_foot_r",
+      "type": "component_link"
+    },
+    {
+      "domain": "assembly",
+      "name": "hip_roll_l",
+      "type": "joint"
+    },
+    {
+      "domain": "assembly",
+      "name": "hip_pitch_l",
+      "type": "joint"
+    },
+    {
+      "domain": "assembly",
+      "name": "knee_l",
+      "type": "joint"
+    },
+    {
+      "domain": "assembly",
+      "name": "ankle_pitch_l",
+      "type": "joint"
+    },
+    {
+      "domain": "assembly",
+      "name": "ankle_roll_l",
+      "type": "joint"
+    },
+    {
+      "domain": "assembly",
+      "name": "hip_roll_r",
+      "type": "joint"
+    },
+    {
+      "domain": "assembly",
+      "name": "hip_pitch_r",
+      "type": "joint"
+    },
+    {
+      "domain": "assembly",
+      "name": "knee_r",
+      "type": "joint"
+    },
+    {
+      "domain": "assembly",
+      "name": "ankle_pitch_r",
+      "type": "joint"
+    },
+    {
+      "domain": "assembly",
+      "name": "ankle_roll_r",
+      "type": "joint"
+    },
+    {
+      "domain": "assembly",
+      "name": "biped",
+      "type": "assembly"
+    },
+    {
+      "domain": "assembly",
+      "name": "solved",
+      "type": "solver_diagnostics"
+    },
+    {
+      "domain": "assembly",
+      "name": "biped_mjcf",
+      "type": "mjcf"
+    },
+    {
+      "domain": "assembly",
+      "name": "balance",
+      "type": "task"
+    }
+  ],
+  "accepted_digest": "6752e7daa12458cec2e7c945a6c97f3b60471bcde851d0891edb8a59574e5a72",
+  "accepted_revision": "ec4e79e05d19259e35219117f174d737f863f299cbe261d05ab70a6b5584785e",
+  "board_specs": {},
+  "board_values": [],
+  "cage_specs": {
+    "cages": []
+  },
+  "cage_values": [],
+  "latest_candidate": {
+    "attempt_id": "1788039076681-5f03d6cc19f5",
+    "digest": "6752e7daa12458cec2e7c945a6c97f3b60471bcde851d0891edb8a59574e5a72",
+    "output_count": 38,
+    "revision": "ec4e79e05d19259e35219117f174d737f863f299cbe261d05ab70a6b5584785e",
+    "status": "accepted"
+  },
+  "mount_specs": {
+    "mounts": []
+  },
+  "mount_values": [],
+  "net_specs": {},
+  "net_values": [],
+  "param_specs": [
+    {
+      "default": 30.0,
+      "label": "Hip half-spacing",
+      "max": 42.0,
+      "min": 24.0,
+      "name": "hip_y",
+      "step": 0.5,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 16.0,
+      "label": "Ankle roll axis height",
+      "max": 24.0,
+      "min": 12.0,
+      "name": "roll_h",
+      "step": 0.5,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 40.0,
+      "label": "Ankle pitch axis height",
+      "max": 52.0,
+      "min": 26.0,
+      "name": "ankle_h",
+      "step": 0.5,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 62.0,
+      "label": "Shin length",
+      "max": 95.0,
+      "min": 40.0,
+      "name": "shin_len",
+      "step": 1.0,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 58.0,
+      "label": "Thigh length",
+      "max": 95.0,
+      "min": 40.0,
+      "name": "thigh_len",
+      "step": 1.0,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 30.0,
+      "label": "Hip pitch to hip roll",
+      "max": 42.0,
+      "min": 16.0,
+      "name": "hip_gap",
+      "step": 0.5,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 80.0,
+      "label": "Foot length",
+      "max": 110.0,
+      "min": 55.0,
+      "name": "foot_len",
+      "step": 1.0,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 44.0,
+      "label": "Foot width",
+      "max": 58.0,
+      "min": 30.0,
+      "name": "foot_w",
+      "step": 1.0,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 3.5,
+      "label": "Sole thickness",
+      "max": 6.0,
+      "min": 2.0,
+      "name": "foot_t",
+      "step": 0.5,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 3.0,
+      "label": "Printed plate thickness",
+      "max": 5.0,
+      "min": 2.0,
+      "name": "plate_t",
+      "step": 0.5,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 4.5,
+      "label": "Thigh/shin wall thickness",
+      "max": 6.0,
+      "min": 3.0,
+      "name": "limb_t",
+      "step": 0.5,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 18.0,
+      "label": "Thigh/shin channel reach",
+      "max": 26.0,
+      "min": 15.0,
+      "name": "limb_w",
+      "step": 0.5,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 2.0,
+      "label": "Edge rounding radius",
+      "max": 4.0,
+      "min": 0.5,
+      "name": "round_r",
+      "step": 0.25,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 11.0,
+      "label": "Plate corner radius",
+      "max": 16.0,
+      "min": 0.0,
+      "name": "plate_r",
+      "step": 0.5,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 20.0,
+      "label": "Clearance kept round a joint",
+      "max": 30.0,
+      "min": 14.0,
+      "name": "joint_clear",
+      "step": 0.5,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 40.0,
+      "label": "Torso depth",
+      "max": 60.0,
+      "min": 30.0,
+      "name": "torso_d",
+      "step": 1.0,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 72.0,
+      "label": "Torso width",
+      "max": 90.0,
+      "min": 60.0,
+      "name": "torso_w",
+      "step": 1.0,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 62.0,
+      "label": "Torso height",
+      "max": 90.0,
+      "min": 45.0,
+      "name": "torso_h",
+      "step": 1.0,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 1300.0,
+      "label": "Mean density, print plus servo",
+      "max": 2200.0,
+      "min": 800.0,
+      "name": "density",
+      "step": 25.0,
+      "type": "num",
+      "unit": "kg/m3"
+    },
+    {
+      "default": 216.0,
+      "label": "MG90S stall torque",
+      "max": 400.0,
+      "min": 90.0,
+      "name": "servo_torque",
+      "step": 2.0,
+      "type": "num",
+      "unit": "N*mm"
+    },
+    {
+      "default": 25.0,
+      "label": "Servo position gain",
+      "max": 60.0,
+      "min": 5.0,
+      "name": "servo_stiff",
+      "step": 1.0,
+      "type": "num",
+      "unit": "N*mm/deg"
+    },
+    {
+      "default": 150.0,
+      "label": "Standing centre of mass height",
+      "max": 220.0,
+      "min": 80.0,
+      "name": "stand_com",
+      "step": 1.0,
+      "type": "num",
+      "unit": "mm"
+    },
+    {
+      "default": 3.0,
+      "label": "Strongest training push",
+      "max": 12.0,
+      "min": 0.5,
+      "name": "push_n",
+      "step": 0.5,
+      "type": "num",
+      "unit": "N"
+    },
+    {
+      "default": 0.0,
+      "label": "Rollout seed",
+      "max": 23.0,
+      "min": 0.0,
+      "name": "rollout_seed",
+      "step": 1.0,
+      "type": "num"
+    }
+  ],
+  "param_values": {
+    "ankle_h": 40.0,
+    "density": 1300.0,
+    "foot_len": 80.0,
+    "foot_t": 3.5,
+    "foot_w": 44.0,
+    "hip_gap": 30.0,
+    "hip_y": 30.0,
+    "joint_clear": 20.0,
+    "limb_t": 4.5,
+    "limb_w": 18.0,
+    "plate_r": 11.0,
+    "plate_t": 3.0,
+    "push_n": 3.0,
+    "roll_h": 16.0,
+    "rollout_seed": 7.0,
+    "round_r": 2.0,
+    "servo_stiff": 25.0,
+    "servo_torque": 216.0,
+    "shin_len": 50.0,
+    "stand_com": 131.0,
+    "thigh_len": 48.0,
+    "torso_d": 40.0,
+    "torso_h": 62.0,
+    "torso_w": 72.0
+  },
+  "schema": "cadex-project-script-v1",
+  "updated_at": "2026-08-29T21:31:38Z",
+  "working_revision": "ec4e79e05d19259e35219117f174d737f863f299cbe261d05ab70a6b5584785e"
+}

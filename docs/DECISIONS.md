@@ -17396,3 +17396,86 @@ relinking is satisfied structurally (replaceable dylibs) but not
 lawyered; the strictest complete-corresponding-source reading for
 `shell/lib/*` rests on Blender's public lib repos, documented rather than
 vendored.
+
+## ADR-172 — the default viewport look: cavity on, gizmos off, overlays on but bare (2026-08-29)
+
+Operator direction. The startup viewport now opens with **cavity shading
+on** (SCREEN type, over the unchanged solid/matcap styling), the
+**transform gizmos off**, and **overlays on but bare** — no floor, no
+ortho grid, no X or Y axis line, **only the Z axis**. Same mechanism as
+every layout change since ADR-037: the look *is* `Mesh/startup.blend`,
+re-saved headlessly through the built bundle and committed; no code
+styles the viewport at startup.
+
+Two knock-ons, both taken in the same change. The gate's
+`test_startup_layout_is_the_shipped_file` pins the new look (cavity on,
+gizmo off, overlays on with exactly the Z axis) in place of the old
+overlays-off chrome check. And `cadex_blueprint.PRODUCT_LOOK` — the
+fallback restore table documented as equal to the gate-pinned startup
+look — follows it, with the pure suite's equality assertion extended to
+the fields that moved. The blueprint view's one measured dependency
+(overlays must be ON for the Edges wires to draw) is now also the
+product default, so its docstring no longer claims to be the only view
+that turns them on; its behaviour is unchanged, since it always pinned
+every sub-overlay explicitly.
+
+Verified: `pixi run gate` green (`ok: true`, startup and blueprint tests
+included); `bl_mesh_agent.py` suite green; the licensing-compliance
+guard green. Files: `Mesh/startup.blend` (git-LFS re-save),
+`bl_mesh_agent_cadex.py`, `bl_mesh_agent.py`, `cadex_blueprint.py`,
+`docs/BLENDER.md`.
+
+## ADR-173 — the biped is the example project: the demo card returns, provenance-clean (2026-08-29)
+
+ADR-171 removed the drone demo because its seven imported STLs were
+models of real commercial parts with no recorded origin, and left the
+landing screen's plumbing in place "so a Cadex-authored demo can return
+by simply being placed there." This is that return. The shipped demo is
+the **MG90S biped** (the ADR-170 balance-toy arc): entirely
+script-authored — every solid is built by `script.py`, no imported mesh
+anywhere — so ADR-171's bar is met by construction. Its one asset is
+`biped-balance.cxpolicy`, the balance policy trained offboard on the
+biped's own MJCF export, which the script replays as a rollout; a fresh
+user's first click lands on a parametric robot that stands up and
+balances.
+
+What ships, in `mesh_agent/demo/`: `biped.blend`, `biped.cadex/`
+(`script.py`, `script.json`, `assets/biped-balance.cxpolicy`, script
+history pruned to the single accepted-revision entry), and `card.png` —
+a 1152x720 offscreen render of the model in the product's own viewport
+look (matcap + cavity, the BREP edge wires, camera fitted three-quarter
+to the robot, the simulation floor hidden for the shot so the robot
+stands alone on the viewport ground, workspace chrome — cursor, axis
+line, origins — suppressed for the draw). Owner direction, twice: a
+first blueprint-sheet card was replaced by the render — the card should
+show the model as the viewport shows it, not a drawing of it — and the
+floor was then dropped from the frame entirely. Sanitized as the drone was: no transcript, no
+machine paths, no blueprints cache, no `.blend1`, no `script_artifacts/`.
+The store's text files were clean as authored, but the `.blend` was not —
+it is a datablock container, and it is exactly where a conversation
+ships: `history.py` mirrors the chat transcript into a text block that
+saves with the file, and hydrate leaves an absolute `cadex_sidecar`
+cache path on every object (stale by design — hydrate compares SHA,
+never path, and rewrites it on open). The scrub removed the transcript
+block, a stray `model.py` text block, and twelve sidecar paths, then
+re-saved through the bundle; byte-level check of the decompressed file
+shows zero `/Users/` strings.
+Code diff is three lines of `cadex_landing.py`: `DEMO_STEM`, the
+`open_demo` success message, and the docstring — the hide-when-absent
+plumbing is untouched, so a future compliance removal stays a file
+deletion.
+
+`test_landing_degrades_without_a_demo` becomes
+`test_landing_demo_payload_ships` again (the ADR-171 rename, reversed):
+completeness, the stems-matched fresh-copy contract, the no-machine-path
+sweep now over every text file in the store, an assets whitelist of
+exactly the policy, and the ADR-171 installed-bundle check kept with its
+sense flipped — the installed `demo/` must carry the biped and no stale
+drone, because `install(DIRECTORY)` is stale in either direction. The
+`.blend` gets its own check the text sweep cannot provide: a headless
+subprocess opens the shipped file and holds it to zero text blocks, zero
+linked libraries and zero `/Users/` strings in any saved property.
+
+Verified: `bl_mesh_agent.py` landing tests green from source. Files:
+`mesh_agent/demo/` (new, git-LFS for .blend/.png),
+`cadex_landing.py`, `bl_mesh_agent.py`, `docs/BLENDER.md`.

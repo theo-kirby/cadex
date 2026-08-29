@@ -21,12 +21,14 @@ the window keeps working.
 
 A demo project, when one ships, lives in ``demo/`` beside this file (a
 ``.blend`` plus its ``.cadex`` store, sanitized: no transcript, no machine
-paths). No demo ships today: the drone example was removed in ADR-171
-because its imported STLs had no recorded origin, and the landing screen
-hides the card when :func:`demo_source` finds nothing. The plumbing stays
-so a Cadex-authored demo can return by simply being placed there. Opening
-a demo always copies first -- the bundle is never opened in place, so a
-save can never write into the app.
+paths). The shipped demo is the MG90S biped (ADR-173) — entirely
+script-authored, so it has none of the provenance problem that removed the
+drone in ADR-171 (imported STLs with no recorded origin); its one asset is
+the Cadex-trained balance policy the script replays. The landing screen
+hides the card when :func:`demo_source` finds nothing, so a compliance
+removal is a file deletion, never a code change. Opening a demo always
+copies first -- the bundle is never opened in place, so a save can never
+write into the app.
 """
 
 import os
@@ -56,7 +58,7 @@ ACTIONS = (
 )
 
 DEMO_DIR_NAME = "demo"
-DEMO_STEM = "drone"
+DEMO_STEM = "biped"
 DEMO_CARD_NAME = "card.png"
 LOGO_NAME = "landing_logo.png"
 #: Where "click to open a copy" lands. A fresh numbered stem each time, so a
@@ -302,9 +304,9 @@ def open_demo():
     shutil.copytree(source_store, store)
     dismiss()
     bpy.ops.wm.open_mainfile(filepath=blend)
-    return True, ("Opened the example project — a ducted-fan drone — "
-                  "as your copy at {}. Move a parameter slider, or ask for "
-                  "a change.".format(blend))
+    return True, ("Opened the example project — an MG90S biped robot with "
+                  "a trained balance policy — as your copy at {}. Move a "
+                  "parameter slider, or ask for a change.".format(blend))
 
 
 # -- state --------------------------------------------------------------------

@@ -1054,49 +1054,99 @@ def test_landing_layout_is_pure_and_hit_testable():
           "a radius past half the rect is clamped, not folded")
 
 
-def test_landing_degrades_without_a_demo():
-    """No demo ships, and the landing screen knows it (ADR-171).
+def test_landing_demo_payload_ships():
+    """The demo project is real, complete, sanitized — and ours (ADR-173).
 
-    The drone example was removed because its imported STLs had no
-    recorded origin — nothing of unknown origin ships. The plumbing
-    stays: ``demo_source`` reports absence, the layout drops the card
-    (no rect to click, no EXAMPLE PROJECT overline), ``hit_test`` never
-    answers ``demo``, and ``open_demo`` refuses politely rather than
-    raising. The logo mark is not part of the demo and still ships.
+    A card that opens nothing is worse than no card: the .blend, its
+    project store and the card art must all ship, and the store's text
+    files must carry no machine path. The demo is the MG90S biped —
+    entirely script-authored, so ADR-171's provenance bar is met by
+    construction: its only asset is the Cadex-trained balance policy,
+    and no imported mesh rides along.
     """
-    print("test_landing_degrades_without_a_demo")
+    print("test_landing_demo_payload_ships")
     from mesh_agent import cadex_landing
 
     blend, store = cadex_landing.demo_source()
-    check(blend is None and store is None,
-          "no demo project ships in the add-on (ADR-171)")
+    check(blend is not None and os.path.isfile(blend),
+          "demo/biped.blend ships")
+    check(store is not None and os.path.isdir(store),
+          "demo/biped.cadex ships")
+    if store is None:
+        return
+    for name in ("script.py", "script.json"):
+        path = os.path.join(store, name)
+        check(os.path.isfile(path) and os.path.getsize(path) > 0,
+              "the demo store carries {}".format(name))
+    assets = os.path.join(store, "assets")
+    stems = sorted(os.listdir(assets)) if os.path.isdir(assets) else []
+    check(stems == ["biped-balance.cxpolicy"],
+          "the demo's only asset is the trained balance policy "
+          "(no file of outside origin ships, ADR-171)")
+    demo_root = os.path.dirname(blend)
+    check(not any(name == ".DS_Store" or name.endswith(".blend1")
+                  for _root, _dirs, files in os.walk(demo_root)
+                  for name in files),
+          "no .DS_Store or .blend1 backup rides along")
+    for root, _dirs, files in os.walk(store):
+        for name in files:
+            if not name.endswith((".py", ".json")):
+                continue
+            with open(os.path.join(root, name), "r",
+                      encoding="utf-8") as fh:
+                check("/Users/" not in fh.read(),
+                      "{} carries no machine path".format(name))
+    # The .blend is a datablock container the text-file sweep cannot see
+    # into -- and it is exactly where a conversation ships: history.py
+    # mirrors the chat transcript into a text block that saves with the
+    # file, and hydrate leaves absolute cadex_sidecar cache paths on every
+    # object. Open the shipped file in a fresh headless instance and hold
+    # it to zero text blocks and zero machine paths in any saved property.
+    import subprocess
+    import bpy
+    probe = (
+        "import bpy\n"
+        "assert not bpy.data.texts, [t.name for t in bpy.data.texts]\n"
+        "assert not bpy.data.libraries, 'no linked libraries'\n"
+        "for coll in (bpy.data.objects, bpy.data.scenes,\n"
+        "             bpy.data.window_managers, bpy.data.collections,\n"
+        "             bpy.data.meshes):\n"
+        "    for block in coll:\n"
+        "        for key in block.keys():\n"
+        "            value = block.get(key)\n"
+        "            assert not (isinstance(value, str)\n"
+        "                        and '/Users/' in value), (block.name, key)\n"
+        "print('DEMO-BLEND-CLEAN')\n"
+    )
+    proc = subprocess.run(
+        [bpy.app.binary_path, "--background", "--factory-startup", blend,
+         "--python-exit-code", "7", "--python-expr", probe],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    check(proc.returncode == 0 and b"DEMO-BLEND-CLEAN" in proc.stdout,
+          "the shipped .blend carries no transcript text block and no "
+          "machine path in any saved property: {}".format(
+              proc.stdout.decode("utf-8", "replace")[-300:]))
 
-    layout = cadex_landing.landing_layout(1600, 900, scale=1.0,
-                                          with_demo=False)
-    check(layout["card"] is None and layout["overline"] is None
-          and layout["caption"] is None,
-          "the layout hides the card when no demo ships")
-    hits = {cadex_landing.hit_test(layout, x, y)
-            for x in range(0, 1600, 40) for y in range(0, 900, 40)}
-    check("demo" not in hits,
-          "no click anywhere resolves to the demo")
-    check({b["id"] for b in layout["buttons"]} <= hits,
-          "the action buttons still hit-test")
-
-    ok, message = cadex_landing.open_demo()
-    check(ok is False and "demo" in message.lower(),
-          "open_demo refuses with a message rather than raising")
-
+    card = os.path.join(demo_root, cadex_landing.DEMO_CARD_NAME)
+    check(os.path.isfile(card) and os.path.getsize(card) > 0,
+          "the card art ships beside the demo")
     logo = os.path.join(os.path.dirname(cadex_landing.__file__),
                         cadex_landing.LOGO_NAME)
     check(os.path.isfile(logo) and os.path.getsize(logo) > 0,
           "the logo mark ships in the add-on")
 
+    dest_blend, dest_store = cadex_landing.demo_destination()
+    check(os.path.splitext(os.path.basename(dest_blend))[0] ==
+          os.path.basename(dest_store)[:-len(".cadex")],
+          "a demo copy keeps blend and store stems matched")
+    check(not os.path.exists(dest_blend) and not os.path.exists(dest_store),
+          "a demo copy always lands on a fresh stem")
+
     # The suite loads the add-on from source, so demo_source() above proves
-    # the source tree. The BUNDLE is a separate question: CMake's
-    # install(DIRECTORY) never deletes files removed from source, so an
-    # incremental build keeps shipping a deleted demo. Assert the installed
-    # copy too -- this is the artifact a user gets.
+    # the source tree. The BUNDLE is a separate question: an install can be
+    # stale against source in either direction (CMake's install(DIRECTORY)
+    # never deletes, and a build older than the demo never copied it).
+    # Assert the installed copy too -- this is the artifact a user gets.
     try:
         import bpy
         installed = os.path.join(bpy.utils.resource_path('LOCAL'),
@@ -1105,9 +1155,11 @@ def test_landing_degrades_without_a_demo():
     except Exception:
         installed = None
     if installed is not None:
-        check(not os.path.isdir(installed),
-              "the installed bundle carries no demo/ either "
-              "(stale incremental install -- delete it from the build tree)")
+        check(os.path.isfile(os.path.join(installed, "biped.blend")) and
+              os.path.isdir(os.path.join(installed, "biped.cadex")) and
+              not os.path.exists(os.path.join(installed, "drone.blend")),
+              "the installed bundle carries the biped demo and no stale "
+              "drone (rerun pixi run build-shell)")
 
 
 def test_landing_shows_dismisses_and_yields_to_chat():
@@ -1826,7 +1878,11 @@ def test_blueprint_styles_the_viewport_from_one_table():
           "the fallback restore table covers exactly the fields written")
     check(cadex_blueprint.PRODUCT_LOOK["shading.type"] == 'SOLID'
           and cadex_blueprint.PRODUCT_LOOK["shading.light"] == 'MATCAP'
-          and cadex_blueprint.PRODUCT_LOOK["overlay.show_overlays"] is False,
+          and cadex_blueprint.PRODUCT_LOOK["shading.show_cavity"] is True
+          and cadex_blueprint.PRODUCT_LOOK["overlay.show_overlays"] is True
+          and cadex_blueprint.PRODUCT_LOOK["overlay.show_floor"] is False
+          and cadex_blueprint.PRODUCT_LOOK["overlay.show_ortho_grid"] is False
+          and cadex_blueprint.PRODUCT_LOOK["overlay.show_axis_z"] is True,
           "the fallback equals the pinned startup look the gate asserts")
 
     # The registry orders the five views; blueprint suspends for
@@ -2929,7 +2985,7 @@ def main():
         test_panels_are_homed_on_the_cadex_editors()
         test_native_menu_targets_exist()
         test_landing_layout_is_pure_and_hit_testable()
-        test_landing_degrades_without_a_demo()
+        test_landing_demo_payload_ships()
         test_landing_shows_dismisses_and_yields_to_chat()
         test_confirming_the_input_sends()
         test_every_chat_action_is_in_one_row_under_the_message_box()

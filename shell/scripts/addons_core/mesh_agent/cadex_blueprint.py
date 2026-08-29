@@ -23,10 +23,10 @@ blueprint is just those views drawn in this style.
 The one non-obvious dependency, measured in the draw engine rather than
 assumed: the Edges wires are drawn by the *overlay* wireframe pass
 (``overlay_wireframe.hh`` skips every wire object when overlays are off), so
-this view must switch ``overlay.show_overlays`` ON — the product look keeps
-it off — and therefore explicitly holds every sub-overlay it does not want
-at False. Any sub-overlay missing from :func:`shading_values` would appear
-uninvited. ``wireframe_color_type='OBJECT'`` makes those wires white for
+this view must switch ``overlay.show_overlays`` ON — the product look now
+has it on too, bare — and therefore explicitly holds every sub-overlay it
+does not want at False. Any sub-overlay missing from :func:`shading_values`
+would appear uninvited. ``wireframe_color_type='OBJECT'`` makes those wires white for
 free because no module writes ``obj.color`` (objects default to white); the
 collision cage's wires ride the same rule and go white under a blueprint,
 which is cosmetic and accepted.
@@ -71,8 +71,9 @@ THEMES = {
     },
 }
 
-#: The startup product look, as the gate pins it (SOLID / MATCAP / overlays
-#: off) plus stock defaults for every other field this view touches. The
+#: The startup product look, as the gate pins it (SOLID / MATCAP / cavity on /
+#: overlays on but bare — no floor, no grid, only the Z axis) plus stock
+#: defaults for every other field this view touches. The
 #: fallback only: :func:`clear` restores the captured look, and reaches for
 #: this table when there is nothing captured to restore — a file saved by an
 #: older build, or a snapshot lost to hand-editing.
@@ -86,17 +87,17 @@ PRODUCT_LOOK = {
     "shading.wireframe_color_type": 'THEME',
     "shading.background_type": 'THEME',
     "shading.background_color": (0.05, 0.05, 0.05),
-    "shading.show_cavity": False,
+    "shading.show_cavity": True,
     "shading.show_shadows": False,
     "shading.show_specular_highlight": True,
     "shading.show_xray": False,
-    "overlay.show_overlays": False,
-    "overlay.show_floor": True,
-    "overlay.show_ortho_grid": True,
+    "overlay.show_overlays": True,
+    "overlay.show_floor": False,
+    "overlay.show_ortho_grid": False,
     "overlay.grid_scale": 1.0,
-    "overlay.show_axis_x": True,
-    "overlay.show_axis_y": True,
-    "overlay.show_axis_z": False,
+    "overlay.show_axis_x": False,
+    "overlay.show_axis_y": False,
+    "overlay.show_axis_z": True,
     "overlay.show_cursor": True,
     "overlay.show_text": True,
     "overlay.show_stats": False,

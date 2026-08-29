@@ -1,0 +1,52 @@
+{
+  "entries": [
+    {
+      "characters": 22999,
+      "file": "0055-ec4e79e05d19.py",
+      "ordinal": 55,
+      "outputs": [
+        "ankle_l",
+        "ankle_pitch_l",
+        "ankle_pitch_r",
+        "ankle_r",
+        "ankle_roll_l",
+        "ankle_roll_r",
+        "balance",
+        "biped",
+        "biped_mjcf",
+        "c_ankle_l",
+        "c_ankle_r",
+        "c_floor",
+        "c_foot_l",
+        "c_foot_r",
+        "c_hip_l",
+        "c_hip_r",
+        "c_shin_l",
+        "c_shin_r",
+        "c_thigh_l",
+        "c_thigh_r",
+        "c_torso",
+        "floor",
+        "foot_l",
+        "foot_r",
+        "hip_l",
+        "hip_pitch_l",
+        "hip_pitch_r",
+        "hip_r",
+        "hip_roll_l",
+        "hip_roll_r",
+        "knee_l",
+        "knee_r",
+        "shin_l",
+        "shin_r",
+        "solved",
+        "thigh_l",
+        "thigh_r",
+        "torso"
+      ],
+      "revision": "ec4e79e05d19259e35219117f174d737f863f299cbe261d05ab70a6b5584785e",
+      "saved_at": "2026-08-29T21:31:15Z"
+    }
+  ],
+  "schema": "cadex-project-script-v1"
+}
