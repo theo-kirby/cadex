@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# SPDX-FileCopyrightText: 2026 Cadex Authors
+# SPDX-License-Identifier: LGPL-2.1-or-later
 
 # call this file from within the FreeCAD git repo
 # this script creates a file with the important version information

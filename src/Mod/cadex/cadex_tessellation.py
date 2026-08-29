@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 """Display tessellation + face/edge ID maps for one worker run (Phase 5.1).

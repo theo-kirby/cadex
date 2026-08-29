@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 """The tool surface the model sees, generated from ``OP_ARG_SPECS``.

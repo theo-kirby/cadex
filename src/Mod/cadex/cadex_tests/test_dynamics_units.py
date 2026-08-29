@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 """The units boundary, written before the feature (docs/MUJOCO.md §3.2).

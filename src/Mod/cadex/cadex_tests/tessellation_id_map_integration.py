@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 """Tessellation + ID-map integration for display artifacts (Phase 5.1).

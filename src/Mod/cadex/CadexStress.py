@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 """A linear-elastic stress solve, in-engine, on a structured hex grid (ADR-145).

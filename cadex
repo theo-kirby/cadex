@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 #
 # ./cadex -- Cadex as a headless CLI (docs/CLI.md, ADR-061).

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Cadex Authors
+# SPDX-License-Identifier: LGPL-2.1-or-later
 
 from __future__ import annotations
 

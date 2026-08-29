@@ -1,4 +1,6 @@
 @echo on
+@REM SPDX-FileCopyrightText: 2026 Cadex Authors
+@REM SPDX-License-Identifier: LGPL-2.1-or-later
 
 @REM CI forwards CCACHE_DIR to a persisted cache directory; local builds get an
 @REM empty value from the recipe, so drop it and let ccache use its own default.

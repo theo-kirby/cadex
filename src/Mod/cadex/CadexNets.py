@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 """Connections as a declared table: ``nets(...)`` and ``wire(...)`` (ADR-065).

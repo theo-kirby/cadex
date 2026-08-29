@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 """Measure OCCT's mass-property convention (docs/MUJOCO.md M2, phase 2).

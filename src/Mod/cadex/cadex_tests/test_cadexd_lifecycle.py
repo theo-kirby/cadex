@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 """cadexd lifecycle CI (Phase 5.3, ctest ``CadexdLifecycle``).

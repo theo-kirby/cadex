@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Cadex Authors
+# SPDX-License-Identifier: LGPL-2.1-or-later
 #
 # Build the cadex engine payload: the headless engine, and nothing else.
 #

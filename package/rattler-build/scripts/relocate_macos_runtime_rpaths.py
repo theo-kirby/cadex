@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Cadex Authors
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
 """Relocate non-system RPATHs in embedded macOS runtimes."""
 
 from __future__ import annotations

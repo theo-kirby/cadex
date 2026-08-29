@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Cadex Authors
+# SPDX-License-Identifier: LGPL-2.1-or-later
 #
 # Drive `training/cadex_train.py` on a remote GPU box (ADR-089).
 #

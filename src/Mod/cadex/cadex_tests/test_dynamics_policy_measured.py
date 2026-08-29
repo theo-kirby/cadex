@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 """What MJX, numpy and Python actually do (docs/MUJOCO.md M7, phase 0).
