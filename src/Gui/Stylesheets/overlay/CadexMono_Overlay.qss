@@ -1,3 +1,10 @@
+/* SPDX-FileCopyrightText: 2026 Cadex Authors
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ *
+ * Based on OpenTheme by Obelisk79
+ * (https://github.com/obelisk79/OpenTheme), LGPL-2.1.
+ * See NOTICE and THIRD_PARTY_LICENSES.md at the repository root. */
+
 /* ==========================================================================
    Cadex Dark — 3D-view overlay panels
    Token palette (matches CadexDark.qss):

@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-08-21
+Verified against source: 2026-08-29
 
 **This document is the contract between the two halves of the product.**
 They live in one repository (ADR-030) and in two processes, under two
@@ -95,6 +95,12 @@ A and D's interim state are now history, not plan.
   keeping.
 - The inverse (embedding GPL Blender code inside the LGPL engine) would not
   be clean. The engine must never gain a `shell/` import.
+- The shipped bundle is an **aggregate** distribution: each component stays
+  under its own license, because putting separate programs in one archive
+  does not relicense any of them. The Blender-derived binary is distributed
+  under GPL-3.0-or-later terms (as Blender's own binaries are — Apache-2.0
+  components require it); the engine payload beside it stays
+  LGPL-2.1-or-later. The full argument is `docs/PROVENANCE.md` §7.
 
 ## cadexd protocol `cadex-cadexd-v1` `[Cadex-new — implemented, ADR-017]`
 

@@ -20,6 +20,7 @@
  *   <https://www.gnu.org/licenses/>.                                       *
  *                                                                          *
  ***************************************************************************/
+/* Modified by the Cadex project, 2026. See docs/FREECAD.md. */
 
 
 #include <boost/core/ignore_unused.hpp>

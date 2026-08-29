@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2006-2023 Blender Authors
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
+# Modified by the Cadex project, 2026. See docs/BLENDER-TREE.md.
 
 function(get_blender_test_install_dir VARIABLE_NAME)
   get_property(GENERATOR_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)

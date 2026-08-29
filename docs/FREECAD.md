@@ -1,6 +1,6 @@
 # FREECAD.md — Inherited Substrate Inventory
 
-Verified against source: 2026-08-05
+Verified against source: 2026-08-29
 
 Cadex's **engine** is a FreeCAD fork. This is the ledger of what we keep,
 what is slated for removal, and what is already gone. Its peer for the shell
@@ -83,6 +83,78 @@ itemised.
 Note what is *not* here: guide curves on a sweep. ADR-125 priced them as a
 fork delta and was wrong — `Part.BRepOffsetAPI.MakePipeShell` already had
 `setAuxiliarySpine`. Grep the class bindings before pricing C++.
+
+## 2b. Our delta against upstream — modifications to inherited files
+
+§2a is the *additions*; this is the ledger of every inherited FreeCAD file
+this repository has **modified** since its import
+(`c2ccddfb3bbcbcff8cecd859968a8750d95832db`, 2026-07-23) — 47 files, 38
+under `src/` and 9 in the build substrate (`CMakeLists.txt`, `cMake/`,
+`tests/`). This ledger existed only as git history until 2026-08-29
+(ADR-171); the machine-readable list is `docs/inherited-modifications.json`,
+kept equal to the git diff by `cadex_tests/test_licensing_compliance.py`,
+and every file carries a one-line modification notice in its header
+(`Modified by the Cadex project, 2026. See docs/FREECAD.md.`), as LGPL-2.1
+§2(a) asks — except nine flagged `ledger-only` in the manifest
+(`Interpreter.cpp`, `Application.cpp`, `MainWindow.cpp`,
+`DlgSettingsGeneral.cpp`, `JointObject.py`,
+`BRepOffsetAPI_MakePipeShellPyImp.cpp`, `TopoShapePyImp.cpp`,
+`StartView.cpp`, `ThemeSelectorWidget.cpp`), where inserting even a
+comment line triggers a whole-file reformat under pre-commit; **this
+listing is their notice**, which is what `ledger-only` means. Grouped by
+why:
+
+- **Workbench-removal and GUI-off build edits** (Phases 1 and 7 — ADR-007,
+  ADR-009, ADR-022): the root `CMakeLists.txt`, five `cMake/` helper
+  modules, `src/Mod/CMakeLists.txt`, the kept workbenches'
+  `CMakeLists.txt` (`Part`, `PartDesign`, `Assembly` ×3), and the
+  `tests/` CMake tree (`tests/CMakeLists.txt`, `tests/src/*/CMakeLists.txt`,
+  `tests/src/Gui/DockLayoutState.cpp`) — deletion of removed-workbench
+  references and the `BUILD_GUI` guards.
+- **The VibeCAD → Cadex rebrand and its revert to stock** (Stage C,
+  Phase 7 C6a): `src/App/ApplicationDirectories.cpp`,
+  `src/Base/Interpreter.cpp`, `src/Gui/Application.cpp`,
+  `src/Gui/MainWindow.{cpp,h}`, `src/Gui/DockWindowManager.cpp`,
+  `src/Gui/OverlayWidgets.cpp`, `src/Gui/ToolBarManager.cpp`,
+  `src/Gui/StartupProcess.cpp` — product identity strings and versioned
+  config discovery, most of it later reverted toward stock, leaving small
+  residual diffs.
+- **Themes and preference packs**: `src/Gui/Stylesheets/CMakeLists.txt`
+  (installs the Cadex themes), `src/Gui/PreferencePacks/CMakeLists.txt` +
+  `package.xml`, `src/Gui/PreferencePages/DlgSettingsGeneral.cpp`.
+- **The Start view's landing edits** (Phase 1.0):
+  `src/Mod/Start/Gui/{AppStartGui,StartView,ThemeSelectorWidget}.cpp`,
+  `StartView.h` — removed tiles for removed workbenches. The tree itself
+  ships in nothing (§1).
+- **Headless-Assembly fixes** (ADR-047, ADR-060):
+  `src/Mod/Assembly/{JointObject,CommandCreateView,Preferences,
+  UtilsAssembly,InitGui}.py`, `App/AppAssembly.cpp`, and the `Gui/` files
+  (`AppAssemblyGui.cpp`, `ViewProviderAssembly.cpp`, `Assembly.qrc`,
+  CMake) — import guards so App-level code survives without PySide, and
+  GUI-list trims.
+- **The ADR-128 kernel features**: `src/Mod/Part/App/` binding files —
+  §2a's table is their itemised story; they appear in the manifest like
+  every other modified file.
+- **Test residue**: `src/Mod/Part/TestPartApp.py` (removed-feature test
+  trims).
+
+**The pre-import bound, stated rather than hidden**: the import commit is
+a squashed snapshot of VibeCAD's `cadex-teardown` branch, itself a FreeCAD
+fork with edits. Modifications made *before* the import cannot be
+enumerated from this repository; the notices are dated 2026 and cover this
+repository's own edits. The same bound holds on the Blender side
+(`docs/BLENDER-TREE.md` §2).
+
+## 2c. Licence
+
+Everything inherited here is **LGPL-2.1-or-later** (the root `LICENSE`,
+FreeCAD's, unchanged); everything of ours under `src/Mod/cadex/` carries
+`SPDX-License-Identifier: LGPL-2.1-or-later` and
+`SPDX-FileCopyrightText: 2026 Cadex Authors`. Upstream license headers in
+inherited files are never edited; a modified inherited file gains the
+one-line notice *after* its header, applied and checked by
+`tools/apply_modification_notices.py`. Attribution and the component map
+live at the root: `NOTICE` and `THIRD_PARTY_LICENSES.md`.
 
 ## 3. Disabled, awaiting removal
 

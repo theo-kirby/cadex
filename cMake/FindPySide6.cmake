@@ -4,6 +4,7 @@
 # be an "include" directory inside the site-packages/PySide6.
 # Over time some distros may provide custom versions, so we also support
 # using a more normal cMake find_package() call
+# Modified by the Cadex project, 2026. See docs/FREECAD.md.
 
 include(FindPackageHandleStandardArgs)
 

@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<!-- Modified by the Cadex project, 2026. See docs/FREECAD.md. -->
 <package format="1">
   <name>Built-In Preference Packs</name>
   <description>Preference Packs included with the FreeCAD distribution</description>
   <version>1.0.0</version>
-  <maintainer email="email@FreeCAD.org">MisterMaker</maintainer>
+  <maintainer email="noreply@cadex">Cadex Authors</maintainer>
   <license file="../../LICENSE">LGPL2</license>
   <url type="repository">https://github.com/FreeCAD/FreeCAD</url>
   <content>

@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 """M7's and M8's exit criteria, end to end (docs/MUJOCO.md M7--M8).

@@ -1,3 +1,4 @@
+# Modified by the Cadex project, 2026. See docs/FREECAD.md.
 add_executable(Base_tests_run
         Axis.cpp
         Base64.cpp

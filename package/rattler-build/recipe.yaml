@@ -1,3 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
+# SPDX-License-Identifier: LGPL-2.1-or-later
+about:
+  license: LGPL-2.1-or-later
+  license_file: LICENSE
+  summary: The Cadex engine — a headless AI-native CAD service (FreeCAD fork)
+  repository: https://github.com/theo-kirby/cadex
+
 context:
   version: "0.0.1"
 

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
+# SPDX-License-Identifier: LGPL-2.1-or-later
 # CI forwards CCACHE_DIR to a persisted cache directory; local builds get an
 # empty value from the recipe, so drop it and let ccache use its own default.
 if [[ -z "${CCACHE_DIR:-}" ]]; then

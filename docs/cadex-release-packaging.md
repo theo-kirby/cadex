@@ -31,6 +31,11 @@ cadex-engine-<version>-<os>-<arch>/
   Mod/cadex/            cadexd + the xscript pipeline
   Mod/{Part,PartDesign,Sketcher,Assembly,Mesh,MeshPart,Import,Material,
        Measure,Show}
+  LICENSE, NOTICE, THIRD_PARTY_LICENSES.md
+                        copied from the repo root (ADR-171)
+  licenses/             per-package license texts harvested from the source
+                        environment + MANIFEST.json, written by
+                        package/engine/collect_licenses.py
 ```
 
 The manifest is the contract (schema in ADR-020; consumed by the shell):
@@ -308,3 +313,30 @@ known.
   relocating path needs a rattler build, so every payload verified during
   the merge (ADR-030) was a staged one. The relocation code is unchanged and
   untested by that work.
+
+## What license material ships where
+
+Two self-contained sets, one per half of the bundle (ADR-171;
+`docs/PROVENANCE.md` §7):
+
+- **`Contents/Resources/text/license/`** — Blender's own license manifest,
+  verbatim: the GPL texts, `licenses.json`, SPDX identifiers, and the
+  third-party licenses for everything the shell binary links. This is the
+  same material every Blender release ships, and it correctly covers the
+  GPL shell binary; it is deliberately not edited.
+- **`Contents/Resources/cadex/`** — the engine payload's set, staged by
+  `package/engine/collect_licenses.py` at payload-build time and carried
+  into the bundle by the existing verbatim `install(DIRECTORY …)` rule
+  (no CMake edit): the root `LICENSE` (LGPL-2.1, FreeCAD's), `NOTICE`
+  (MuJoCo, OCCT, OpenTheme, lineage), `THIRD_PARTY_LICENSES.md`, and
+  `licenses/` — per-conda-package license texts harvested from the source
+  environment (OCCT's LGPL + exception, FreeCAD's own LICENSE.html, the
+  mujoco wheel's LICENSE, ~everything share/doc carried before the prune
+  deleted it) plus `licenses/MANIFEST.json` (schema `cadex-licenses-v1`),
+  the machine-readable per-package inventory of the whole shipped
+  environment.
+
+`build_engine_payload.sh` hard-fails if the named obligations are missing
+from the staged payload (OCCT exception text, NOTICE, mujoco LICENSE,
+MANIFEST), and `test_licensing_compliance.py`'s packaged-gate test
+re-checks a staged payload via `CADEX_ENGINE_ROOT`.

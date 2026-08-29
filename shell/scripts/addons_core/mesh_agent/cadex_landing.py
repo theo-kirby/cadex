@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Mesh Authors
+# SPDX-FileCopyrightText: 2026 Cadex Authors
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -19,10 +19,14 @@ that consumes the click while the screen is up, and a mouse-move updater for
 hover -- rather than a modal operator, so nothing is grabbed and the rest of
 the window keeps working.
 
-The demo project ships in ``demo/`` beside this file (``drone.blend`` plus
-its ``drone.cadex`` store, sanitized: no transcript, no machine paths, the
-one linked node group made local). Opening it always copies first -- the
-bundle is never opened in place, so a save can never write into the app.
+A demo project, when one ships, lives in ``demo/`` beside this file (a
+``.blend`` plus its ``.cadex`` store, sanitized: no transcript, no machine
+paths). No demo ships today: the drone example was removed in ADR-171
+because its imported STLs had no recorded origin, and the landing screen
+hides the card when :func:`demo_source` finds nothing. The plumbing stays
+so a Cadex-authored demo can return by simply being placed there. Opening
+a demo always copies first -- the bundle is never opened in place, so a
+save can never write into the app.
 """
 
 import os
@@ -92,7 +96,7 @@ _quieted_spaces = []
 
 # -- pure geometry ------------------------------------------------------------
 
-def landing_layout(width, height, scale=1.0):
+def landing_layout(width, height, scale=1.0, with_demo=True):
     """Every rect and anchor of the landing screen, in region pixels.
 
     Pure, so the suite can assert the hit targets without a window: y is up
@@ -122,14 +126,16 @@ def landing_layout(width, height, scale=1.0):
         else:
             card_w = content_w
         card_w = max(120.0 * s, card_w)
-        card_h = card_w * CARD_ASPECT
+        card_h = card_w * CARD_ASPECT if with_demo else 0.0
+        if not with_demo:
+            overline_h = caption_h = 0.0
 
         header_h = title_h + 6.0 * s + subtitle_h
         logo_s = header_h  # the mark spans the wordmark + tagline block
-        body_h = max(card_h + overline_h + gap + caption_h + gap,
+        card_block = (card_h + overline_h + gap + caption_h + gap) if with_demo else 0.0
+        body_h = max(card_block,
                      (button_h + gap) * len(ACTIONS)) if two_column else (
-            card_h + overline_h + gap + caption_h + gap
-            + (button_h + gap) * len(ACTIONS))
+            card_block + (button_h + gap) * len(ACTIONS))
         total_h = header_h + 2.0 * gap + body_h + gap + hint_h
         return {
             "pad": pad, "gap": gap, "button_w": button_w,
@@ -189,9 +195,9 @@ def landing_layout(width, height, scale=1.0):
         "title": {"pos": (text_left, title_y), "size": m["title_h"]},
         "version": {"size": m["subtitle_h"]},
         "subtitle": {"pos": (text_left, subtitle_y), "size": m["subtitle_h"]},
-        "overline": {"pos": (left, overline_y), "size": m["overline_h"]},
-        "card": {"rect": card},
-        "caption": {"pos": (left, caption_y), "size": m["caption_h"]},
+        "overline": {"pos": (left, overline_y), "size": m["overline_h"]} if with_demo else None,
+        "card": {"rect": card} if with_demo else None,
+        "caption": {"pos": (left, caption_y), "size": m["caption_h"]} if with_demo else None,
         "buttons": buttons,
         "hint": {"pos": (left, hint_y), "size": m["hint_h"]},
     }
@@ -203,9 +209,10 @@ def _inside(rect, x, y):
 
 
 def hit_test(layout, x, y):
-    """The action id under (x, y), or None. ``demo`` is the card."""
+    """The action id under (x, y), or None. ``demo`` is the card, which is
+    only in the layout when a demo actually ships."""
 
-    if _inside(layout["card"]["rect"], x, y):
+    if layout["card"] is not None and _inside(layout["card"]["rect"], x, y):
         return "demo"
     for button in layout["buttons"]:
         if _inside(button["rect"], x, y):
@@ -601,7 +608,8 @@ def _draw():
         scale = float(bpy.context.preferences.system.ui_scale)
     except Exception:
         scale = 1.0
-    layout = landing_layout(width, height, scale)
+    layout = landing_layout(width, height, scale,
+                            with_demo=demo_source()[0] is not None)
     s = layout["scale"]
 
     gpu.state.blend_set('ALPHA')
@@ -628,25 +636,26 @@ def _draw():
         _text(blf, sx, sy, layout["subtitle"]["size"], pal["dim"],
               "AI-native CAD")
 
-        # The demo card.
-        card = layout["card"]["rect"]
-        card_points = rounded_rect_points(card, CARD_RADIUS * s)
-        ox, oy = layout["overline"]["pos"]
-        _text(blf, ox, oy, layout["overline"]["size"], pal["dim"],
-              "EXAMPLE PROJECT")
-        texture = _gpu_texture(DEMO_DIR_NAME + "/" + DEMO_CARD_NAME)
-        hovered = _hover == "demo"
-        if texture is not None:
-            _draw_image(batch_for_shader, texture, card, CARD_RADIUS * s)
-        else:
-            _draw_fill(shader, batch_for_shader, card_points, pal["panel"])
-        _draw_border(shader, batch_for_shader, card_points,
-                     pal["outline_hover"] if hovered else pal["outline"],
-                     1.0 if hovered else 0.8)
-        cx, cy = layout["caption"]["pos"]
-        _text(blf, cx, cy, layout["caption"]["size"],
-              pal["text"] if hovered else pal["dim"],
-              "Ducted-fan drone")
+        # The demo card -- only when a demo actually ships (ADR-171).
+        if layout["card"] is not None:
+            card = layout["card"]["rect"]
+            card_points = rounded_rect_points(card, CARD_RADIUS * s)
+            ox, oy = layout["overline"]["pos"]
+            _text(blf, ox, oy, layout["overline"]["size"], pal["dim"],
+                  "EXAMPLE PROJECT")
+            texture = _gpu_texture(DEMO_DIR_NAME + "/" + DEMO_CARD_NAME)
+            hovered = _hover == "demo"
+            if texture is not None:
+                _draw_image(batch_for_shader, texture, card, CARD_RADIUS * s)
+            else:
+                _draw_fill(shader, batch_for_shader, card_points, pal["panel"])
+            _draw_border(shader, batch_for_shader, card_points,
+                         pal["outline_hover"] if hovered else pal["outline"],
+                         1.0 if hovered else 0.8)
+            cx, cy = layout["caption"]["pos"]
+            _text(blf, cx, cy, layout["caption"]["size"],
+                  pal["text"] if hovered else pal["dim"],
+                  "Example project")
 
         # The action column.
         for button in layout["buttons"]:
@@ -719,7 +728,8 @@ def _region_layout(context):
         scale = float(bpy.context.preferences.system.ui_scale)
     except Exception:
         scale = 1.0
-    return landing_layout(float(region.width), float(region.height), scale)
+    return landing_layout(float(region.width), float(region.height), scale,
+                          with_demo=demo_source()[0] is not None)
 
 
 def _make_operators():

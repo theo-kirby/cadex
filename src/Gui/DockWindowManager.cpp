@@ -19,6 +19,7 @@
  *   Suite 330, Boston, MA  02111-1307, USA                                *
  *                                                                         *
  ***************************************************************************/
+/* Modified by the Cadex project, 2026. See docs/FREECAD.md. */
 
 #include <array>
 #include <QAction>

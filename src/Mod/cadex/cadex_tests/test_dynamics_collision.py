@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 """Collision geometry, and what it refuses (docs/MUJOCO.md M3, phase 1).

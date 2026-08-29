@@ -1,3 +1,4 @@
+<!-- Modified by the Cadex project, 2026. See docs/FREECAD.md. -->
 <RCC>
     <qresource prefix="/">
         <file>icons/Assembly_ActivateAssembly.svg</file>

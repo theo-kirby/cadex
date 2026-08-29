@@ -206,7 +206,7 @@ returning it.
   What we fork we intend to replace; what we keep, we keep.
   Vendored LGPL components (OCCT, planegcs, OndselSolver, `modelRefine`)
   keep their attribution obligation in the NOTICE file, as does MuJoCo's
-  Apache-2.0 (`docs/PROVENANCE.md` §6); "references to
+  Apache-2.0 (`docs/PROVENANCE.md` §4); "references to
   neither" applies to dependencies, API names and runtime, and never to
   attribution (ADR-025).
 

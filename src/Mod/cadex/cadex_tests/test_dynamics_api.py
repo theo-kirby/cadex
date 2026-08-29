@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 """``assembly.body`` and ``assembly.dynamics`` (docs/MUJOCO.md M2, phase 7).

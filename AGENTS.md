@@ -89,7 +89,7 @@ Read `docs/VISION.md` before designing anything.
 | `docs/DECISIONS.md` | ADR log. Append an entry for every removal or direction change. |
 | `docs/PROVENANCE.md` | Which code came from FreeCAD, from Blender, and from VibeCAD; licences, credit, and how two licences share one repo. |
 | `docs/FREECAD.md` | Inherited-tree ledger for the **engine**: kept / disabled / already-deleted. |
-| `docs/BLENDER-TREE.md` | The same ledger for **`shell/`**, plus the eight-file diff against upstream Blender. |
+| `docs/BLENDER-TREE.md` | The same ledger for **`shell/`**, plus the four-group inherited diff against upstream Blender (§2a is still eight files, and stays eight). |
 | `docs/INTEGRATION.md` | **The process contract**: the cadexd protocol (test-enforced on both requests and responses) and the engine payload. |
 | `docs/BLENDER.md` | The shell: `mesh_agent`'s file map, its tools, and how to run its suites. |
 | `docs/CLI.md` | The headless CLI: subcommands, exit codes, the `--json` envelope, and how it reaches the engine. |
@@ -346,9 +346,13 @@ Working rules on top of the change policy above:
   `shell/` diff is under `shell/scripts/addons_core/mesh_agent/` or
   `shell/tests/python/`, and the inherited Blender tree is untouched.**
   `docs/BLENDER-TREE.md` §2a is still eight files and **must stay eight**;
-  §2b and §2c are unmoved. Adding to *those* is a decision, not a fix you
-  slip in, because every line there is a future merge conflict against
-  upstream Blender. The two rough edges ADR-086 §4 parked
+  §2b, §2c and §2d are unmoved. Adding to *those* is a decision, not a fix
+  you slip in, because every line there is a future merge conflict against
+  upstream Blender — and since ADR-171 the mechanical guard is
+  `cadex_tests/test_licensing_compliance.py`, which holds
+  `docs/inherited-modifications.json` equal to the git diff against each
+  import commit and requires the per-file modification notice on every
+  entry. The two rough edges ADR-086 §4 parked
   (`import_geometry`'s success wording, `_ASSET_SUFFIXES` staying at three
   members) are deliberately **still not taken**: one authorised feature does
   not license unrelated edits.

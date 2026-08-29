@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
 """ADR-161: `--init-from` across a task change, and every refusal around it.
 
 No jax. `check_policy_fits` is a pure function of a header, a bundle dict and

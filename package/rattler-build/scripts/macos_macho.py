@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
 """Strict parsers for the macOS toolchain output used by bundle scripts."""
 
 from __future__ import annotations

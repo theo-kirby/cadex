@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-08-21
+Verified against source: 2026-08-29
 
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),
@@ -57,7 +57,9 @@ protocol. That is what keeps either half replaceable (ROADMAP Phases 11 and
 
 The whole left-hand column lives under `shell/scripts/addons_core/`. What
 crosses the boundary is the protocol in `docs/INTEGRATION.md` and nothing
-else: no shared code, no shared process, no shared licence obligation. Being
+else: no shared code, no shared process, no shared licence obligation — the
+shipped bundle is an aggregate of separate programs, each under its own
+licence (`docs/PROVENANCE.md` §7). Being
 in one repository does not relax that — the left column may not `import`
 anything from `src/`, and `cadexd_client.py` is deliberately a plain GPL
 NDJSON client with no cadex imports.

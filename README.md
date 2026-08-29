@@ -64,13 +64,12 @@ and nothing at all at runtime for anyone who never calls it
 sliders below, and the conversation that authored it on the
 right](docs/cadex-example.png)
 
-> **Status:** under active development, pre-release — currently **0.0.6**
+> **Status:** under active development, pre-release — currently **0.0.7**
 > (the version the window chrome and the landing screen show).
 
-The window is the product now: it opens on a **landing screen** with an
-example project (a ducted-fan drone shipped in the bundle), a native menu
-bar, and a chat column that is already live — typing into it dismisses the
-page. Six Cadex editors replace Blender's: **Chat**, **Parameters**,
+The window is the product now: it opens on a **landing screen** with a
+native menu bar and a chat column that is already live — typing into it
+dismisses the page. Six Cadex editors replace Blender's: **Chat**, **Parameters**,
 **Wiring**, **Training** (a run's numbers *and* its reward curve, polled
 off one JSON file), **Live** (the accepted policy running endlessly in a
 resident worker, with shove operators to test it), and the policy rollout
@@ -221,12 +220,32 @@ them.
   [Blender](https://projects.blender.org/blender/blender) (GPL-2.0+).
 - The dynamics kernel is
   [MuJoCo](https://github.com/google-deepmind/mujoco) (Apache-2.0), kept
-  upstream and unmodified and redistributed inside the engine payload on
-  this branch. Cadex is not affiliated with or endorsed by the MuJoCo
-  project.
-- The CadexLight and CadexDark themes are based on [OpenTheme by
-  Obelisk79](https://github.com/obelisk79/OpenTheme).
+  upstream and unmodified and redistributed inside the engine payload.
+  Cadex is not affiliated with or endorsed by the MuJoCo project.
+- The CadexLight, CadexDark and CadexMono themes are based on [OpenTheme by
+  Obelisk79](https://github.com/obelisk79/OpenTheme) (LGPL-2.1).
 
 Cadex is not affiliated with or endorsed by either project. Which code came
 from where, under which licence, and what we changed is spelled out in
 [docs/PROVENANCE.md](docs/PROVENANCE.md).
+
+## License
+
+Two licenses share this repository, one per fork, separated by the same
+process boundary that separates the halves ([docs/PROVENANCE.md
+§7](docs/PROVENANCE.md)):
+
+- **The engine** — everything outside `shell/` — is
+  **LGPL-2.1-or-later**; the root [`LICENSE`](LICENSE) is FreeCAD's,
+  unchanged.
+- **The shell** — `shell/` — is **GPL-2.0-or-later** in source form
+  ([`shell/COPYING`](shell/COPYING)); the shipped binary is distributed
+  under GPL version 3 or later terms, as Blender's own binaries are,
+  because Apache-2.0 components in the bundle require it.
+
+Third-party attribution lives in [`NOTICE`](NOTICE); the component-level
+license map — vendored trees, the conda-forge payload, the one
+redistributed pypi wheel — is
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). A shipped bundle
+carries all of that plus a per-package `licenses/` directory with a
+machine-readable `MANIFEST.json`, under `Cadex.app/Contents/Resources/cadex/`.

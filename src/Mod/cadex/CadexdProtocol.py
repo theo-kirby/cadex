@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 """cadexd wire protocol: NDJSON codec, op registry, failure codes (ADR-017).

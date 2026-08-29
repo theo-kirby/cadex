@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 """What a policy-driven rollout actually does (docs/MUJOCO.md M8, phase 0).

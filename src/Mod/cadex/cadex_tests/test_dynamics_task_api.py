@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 """``assembly.task`` on the script surface (docs/MUJOCO.md M6, phase 2).

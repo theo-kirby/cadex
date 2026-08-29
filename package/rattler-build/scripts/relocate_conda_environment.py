@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Cadex Authors
+# SPDX-License-Identifier: LGPL-2.1-or-later
 
 from __future__ import annotations
 
@@ -45,6 +47,11 @@ PYTHON_RUNTIME_PROBE = (
 # stale one, keeps the working one, re-points the experimental/studio
 # extensions at @loader_path/../.., and re-signs. Verified by relocating a
 # copy and importing from it -- same free-fall integration to six decimals.
+#
+# package/engine/collect_licenses.py imports this tuple to harvest each
+# carried wheel's dist-info license into the payload's licenses/ directory
+# -- naming a second wheel here obligates nothing extra, the collector
+# follows the name (ADR-171).
 CARRIED_PYPI_PACKAGES = ("mujoco",)
 
 

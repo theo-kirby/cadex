@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 """Do MJX and stock MuJoCo agree about a Cadex model? ADR-103's answer, pinned.

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Cadex Authors
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
 """Resolve Cadex's version metadata to valid Apple bundle versions."""
 
 from __future__ import annotations
