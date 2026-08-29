@@ -47,3 +47,18 @@ roadmap item. Add freely, prune ruthlessly.
 - **`core.inspect` as the cadexd `inspect` verb, unchanged.** The bounded
   inspection contract already looks like a service API; keeping it verbatim
   across the split would keep provider prompts stable through Phase 5.
+
+- **`hide_render` should follow the hydrator's viewport hiding.** Found
+  while rendering the ADR-170 rehearsal video: the raw part outputs are
+  hidden in the viewport but not for renders, so a camera render of an
+  assembly project shows every un-posed part at its authoring position
+  (a stray arm on the floor, in that case). One loop in `cadex_hydrate`
+  mirroring viewport visibility onto `hide_render` would fix it; until
+  then a probe has to do it by hand.
+
+- **The CLI agent's two missing legs for the North Star** (ADR-170
+  rehearsal): no `put_asset` in its tool surface (cannot bring a policy
+  home) and no shell (cannot run the trainer, cannot read
+  `training/SETUP.md`, so it hands back guessed flags). Adding `put_asset`
+  is small; the training leg wants either a dispatcher op or the trainer's
+  invocation shape in the agent contract.
