@@ -1,6 +1,6 @@
 # Training a policy: the four ways
 
-Verified against source: 2026-08-01. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-08-29. Provenance: `[Cadex-new]`. See
 ADR-084 (training is offboard) and ADR-089
 (remote dispatch).
 
@@ -90,24 +90,55 @@ it. If it reads as `envs × unroll` exactly, no episode is ending at all.
 
 ## (b) CPU only
 
-Supported, deliberately, and it is what the CI gate does — but understand
-what you are buying. `test_dynamics_policy_live` converges a *tiny* task
-(one hinge, swing-up) in about four seconds on CPU. The published reference
-for a real gait is a Unitree G1 walking policy converging in ~90 minutes at
-4096 parallel environments on an RTX 4090. On CPU that is days.
+Supported, deliberately, and it is what the live training gate exercises
+(`test_dynamics_policy_live`, which runs wherever jax does — the pixi CI
+environment deliberately lacks it, so a venv run is what actually proves
+it). But understand what you are buying: that gate converges a *tiny* task
+(one hinge, swing-up) in seconds per attempt on an M4 Mac Mini. The
+published reference for a real gait is a Unitree G1 walking policy
+converging in ~90 minutes at 4096 parallel environments on an RTX 4090. On
+CPU that is days. This path is for toy tasks and for proving a task *runs*
+— that the reward expression compiles, the observation channels are the
+ones you meant, the episode does not immediately terminate — before
+renting something. It is not for producing a gait.
+
+**Python ≥ 3.12**, and that is a floor, not a preference: the pinned
+`numpy==2.5.1` has no wheels below cp312. The pixi environment's 3.11
+cannot host this venv — use the OS's own newer interpreter. On macOS the
+Homebrew 3.13 is the recommended one, and all four pins have arm64 wheels
+for cp312/cp313/cp314:
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -r training/requirements.txt        # the CPU jax, as pinned
+/opt/homebrew/bin/python3.13 -m venv .venv           # repo root; gitignored
+.venv/bin/pip install -r training/requirements.txt   # the CPU jax, as pinned
+.venv/bin/pip install pytest                         # to run the venv-gated suites
+```
+
+`pytest` is a convenience for running the trainer's own gates from this
+venv, not a fifth pin — nothing about a training run needs it.
+
+```bash
 .venv/bin/python training/cadex_train.py <outputs>/walk-task.json \
-    --out walk.cxpolicy --envs 16 --iterations 50
+    --out walk.cxpolicy --envs 32 --iterations 300 \
+    --checkpoint-every 50 \
+    --progress <project>/training-progress.json
 ```
 
 Drop `--envs` hard. The default of 256 is sized for a GPU, and on CPU it
-mostly buys memory traffic. This path is for proving a task *runs* — that
-the reward expression compiles, the observation channels are the ones you
-meant, the episode does not immediately terminate — before renting
-something. It is not for producing a gait.
+mostly buys memory traffic — the model is shared but every environment is
+one more row of batched simulation state stepped on the same cores, so
+16–64 is the right band for a toy on a 16 GB machine. `--checkpoint-every
+50` (up to 100 on longer runs) costs about one
+iteration each and every checkpoint is a complete, playable `.cxpolicy` —
+on CPU, where a run you would rather not repeat is measured in minutes,
+that is cheap insurance.
+
+**`--progress` is how a local run lights up the shell.** The Training
+panel polls `<project>/training-progress.json`; on paths (c) and (d) it is
+`remote_train.sh watch` that writes that file, but a local trainer can
+just write it there itself — no `watch` leg, no ssh, nothing else running.
+Note the redirect is total: with `--progress` the trainer writes *only*
+the file you named, not also the default `progress.json` beside `--out`.
 
 ## (c) A separate GPU box
 

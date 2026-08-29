@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-08-07
+Verified against source: 2026-08-29
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -1195,13 +1195,19 @@ their bytes.
 **The caps** (`CadexDynamics`): `MAXIMUM_POLICY_BYTES` 4 MiB, 1 000 000
 parameters, 8 layers, 1024 width, 8–256 witness samples.
 
-**What the CI gate proves, and what it does not.** The live training gate
-trains a *tiny* task — one hinge, swing-up, seed 0, 150 iterations, 128
-environments — on **CPU**, because that is what a test machine has. It
-converges visibly: reward per step 1.10 → **2.487** against a ceiling of
-2.5, in 4.2 seconds. **The GPU is a speed difference, not a semantic one,
-and it is the same trainer file — but this gate does not prove the GPU
-path.** A remote GPU run is exercised manually.
+**What the live training gate proves, and what it does not.** The gate
+trains a *tiny* task — one hinge, swing-up, 150 iterations, 128
+environments — on **CPU**, because that is what a test machine has, and it
+takes the best of three seeds, stopping at the first that converges: PPO
+from a fixed seed is bimodal on this task (a converged run scores 3.3+
+reward per step, a failed one 0.9–1.8, and a zero-torque episode about
+0.9), and *which* seeds win is platform arithmetic — seed 0 converged on
+the machine that authored the gate and plateaued on an M4 Mac Mini. One
+attempt is ~7 s on that M4. Note the gate runs only where jax does — the
+pixi CI environment deliberately lacks it, so it skips there and a venv
+run is what actually exercises it. **The GPU is a speed difference, not a
+semantic one, and it is the same trainer file — but this gate does not
+prove the GPU path.** A remote GPU run is exercised manually.
 
 **M8 is a swap, not a discovery.** `evaluate_episode`'s `actions=` callable
 was written in M6 as M8's seam and already takes `policy_forward`: through
