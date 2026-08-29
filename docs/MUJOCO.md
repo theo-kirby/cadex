@@ -2742,6 +2742,68 @@ feet and toes sit — before declaring an arc, and make the instrument assert
 it rather than assume it. mg-legs faces **+Y**, so `[-60, 60]` about +X is a
 *lateral* band and the column headed `lat` held the *sagittal* pushes.
 
+## 7b. The same arc, locally, on CPU
+
+§7 is the arc at gait scale: a GPU box, detached dispatch, an hour a run.
+This is the identical arc run **entirely on one machine** — an M4 Mac Mini,
+16 GB, no GPU — at toy scale, measured on 2026-08-29 with a desk balance
+toy (ADR-170): an 80 mm puck, a 15 × 15 × 120 mm post, and a 90 mm arm on
+one revolute hinge with an MG90-class torque motor (200 N·mm), all PLA at
+1240 kg/m³, authored by the agent through `./cadex -p` in one turn. The
+project lives at `~/cadex-balance` — outside this repository, per ADR-088;
+what is recorded here is the method and the numbers.
+
+**The loop, and what each leg cost.** Venv per `training/SETUP.md` §b
+(Homebrew 3.13, the four pins). Bundle out of the accepted attempt's
+`outputs/`. Train with `--progress <project>/training-progress.json`, which
+lights the Training panel *and* the reward-curve plot live with no `watch`
+leg and nothing else running. Policy home through `put_asset` +
+`assembly.policy` + `assembly.rollout`, exactly §7's steps 11–12:
+
+- **Training**: 300 iterations × 64 envs in **61.6 s**, then 500 more
+  warm-started (`--init-from`) in **79.1 s** — ~5–6 it/s, peak RSS
+  **2.2 GB**. Reward per step 0.77 → 1.85 against a ~2.16 inverted-hold
+  ceiling; witness error 3.0e-08, a 3300× margin; 4609 parameters, 68 KB.
+- **Engine verification**: the receipt records `device: "cpu"` — a
+  *feature* at this scale, not a smell: the header says honestly what kind
+  of run produced it, and a validation-scale CPU run is exactly what the
+  local loop is for.
+- **The rollout**: 215.0 total reward against 87.8 for zero torque, the
+  full 100-step horizon, 52 frames at 25 fps, baked into the shell as
+  ordinary keyframes.
+- **Recovery** (§7 step 6's metric): 32/32 episodes survive the declared
+  shove band. But the declared band was toothless — 0.15 N peak against
+  200 N·mm of authority — so the capability sweep (§7 step 9) is what
+  actually measured it: 16/16 at ×1/×10/×30 scale, **9/16 at ×100**
+  (15 N), 6/16 at ×300. The edge is real and sits around 30–100× the
+  training band.
+
+**What the toy taught, in the order it bit:**
+
+- **`assembly.reset_variation` refuses a grounded mechanism** — correctly;
+  it varies a floating base, and this toy has none. The agent's adaptation
+  is the pattern to copy: a `StartKick` disturbance drawn in the first
+  control interval, so every episode still starts already moving.
+- **MJX implements no cylinder↔box collision pair.** The engine accepted a
+  puck with the obvious cylinder collision and the trainer refused it at
+  `mjx.put_model` (`NotImplementedError`). Box collision on the grounded
+  puck costs nothing. The engine does not currently warn at export time;
+  until it does, this paragraph is the warning.
+- **An overpowered tiny mechanism needs its spin-out guard sized against
+  exploration, not physics.** 200 N·mm on an 8 g arm is α ≈ 9300 rad/s²:
+  one σ-wide exploration action moves the rate ~3200 deg/s in a single
+  control step, so a 3000 deg/s termination ended every young episode in
+  2–4 steps and PPO had no horizon to learn from (measured: mean episode
+  length 3.7 of 100; reward plateaued at 1.29). Raising the guard to
+  12000 and letting the spin *cost* do the shaping took the same trainer
+  to 1.85 and a policy that holds inverted. Rule of thumb: the guard must
+  exceed `σ · torque_limit / I · Δt` by a comfortable factor, or the
+  guard is the curriculum.
+- **MuJoCo's warp fallback still prints to stdout** (ADR-093's finding,
+  met again): a plain `>` redirection of the trainer's receipt captures
+  two `Failed to import warp` lines before the JSON. Read the last line,
+  as every harness in this repo already does.
+
 ## 8. Live mode: watching it, rather than reading about it
 
 **ADR-109.** Everything above produces a *recording*: six seconds, one drawn

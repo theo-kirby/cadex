@@ -17285,3 +17285,43 @@ Files: `training/cadex_train.py`, `training/README.md`,
 `test_dynamics_policy_trainer.py`, `bl_mesh_agent.py`,
 `bl_mesh_agent_cadex.py`, `docs/BLENDER.md`. `docs/BLENDER-TREE.md`
 unchanged — zero inherited-tree lines.
+
+## ADR-170 — the balance-toy litmus: the whole training arc, locally, on CPU (2026-08-29)
+
+The North Star prompt — "design me a quadruped robot, all 3D-printable,
+MG90 servos, and train it to walk and wave", carried end to end by the
+agent — needs the training loop rehearsable on one machine at small
+scale before it is worth attempting at gait scale. This sitting ran the
+whole arc on the M4 Mac Mini (16 GB, CPU-only) against a purpose-built
+litmus: a desk balance toy (puck, post, one hinged arm, MG90-class
+torque motor, PLA densities), authored by the agent through
+`./cadex -p`, trained locally, verified, rolled out, and watched in the
+editor with the ADR-169 plot live.
+
+**The litmus lives outside the repository** at `~/cadex-balance`
+(ADR-088 precedent: the method is reproducible, the project is not the
+product). `docs/MUJOCO.md` §7b is the record: the loop's measured costs
+(300 + 500 iterations in 61.6 s + 79.1 s at 64 envs, peak RSS 2.2 GB,
+~5–6 it/s), the policy (reward 0.77 → 1.85 against a ~2.16 ceiling,
+witness margin 3300×, holds inverted at 215.0 vs 87.8 for zero torque
+over the full horizon), and the recovery numbers (32/32 at the declared
+band; capability sweep puts the real edge at 30–100× it).
+
+**What it surfaced**, now recorded in §7b as operational knowledge:
+`reset_variation` correctly refuses grounded mechanisms and the
+StartKick-disturbance adaptation is the pattern; **MJX has no
+cylinder↔box collision** and the engine accepts a model the trainer
+then refuses — an export-time warning is future work, the doc is the
+warning today; an overpowered tiny mechanism needs its spin-out guard
+sized against exploration violence (`σ·τ/I·Δt`), or the guard becomes
+the curriculum — measured as episodes dying in 3.7 steps and a 1.29
+plateau before the fix, 1.85 and a clean inverted hold after; and
+ADR-093's warp-stdout lines met again outside the harnesses that
+already guard them.
+
+`device: "cpu"` in the policy header is recorded as a feature:
+validation-scale runs are what the local loop is for, and the artifact
+says what produced it. The GPU box (ADR-104 frontier) is still what a
+gait needs; nothing here changes that. No engine, protocol, or shell
+change anywhere in this sitting — the litmus consumed only surface that
+already existed, which was the point of running it.
