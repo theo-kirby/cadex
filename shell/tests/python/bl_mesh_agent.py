@@ -1008,7 +1008,8 @@ def test_landing_layout_is_pure_and_hit_testable():
 
     for width, height, expect_two_column in ((1600, 900, True),
                                              (620, 820, False)):
-        layout = cadex_landing.landing_layout(width, height, scale=1.0)
+        layout = cadex_landing.landing_layout(width, height, scale=1.0,
+                                              with_demo=True)
         check(layout["two_column"] == expect_two_column,
               "{}x{} lays out {}".format(
                   width, height,
@@ -1053,55 +1054,43 @@ def test_landing_layout_is_pure_and_hit_testable():
           "a radius past half the rect is clamped, not folded")
 
 
-def test_landing_demo_payload_ships():
-    """The demo project is real, complete, and sanitized.
+def test_landing_degrades_without_a_demo():
+    """No demo ships, and the landing screen knows it (ADR-171).
 
-    A card that opens nothing is worse than no card: the .blend, its
-    project store and the card art must all ship, and the store's text
-    files must carry no machine path (the sanitize step that made the
-    wcv12 project shippable).
+    The drone example was removed because its imported STLs had no
+    recorded origin — nothing of unknown origin ships. The plumbing
+    stays: ``demo_source`` reports absence, the layout drops the card
+    (no rect to click, no EXAMPLE PROJECT overline), ``hit_test`` never
+    answers ``demo``, and ``open_demo`` refuses politely rather than
+    raising. The logo mark is not part of the demo and still ships.
     """
-    print("test_landing_demo_payload_ships")
+    print("test_landing_degrades_without_a_demo")
     from mesh_agent import cadex_landing
 
     blend, store = cadex_landing.demo_source()
-    check(blend is not None and os.path.isfile(blend),
-          "demo/drone.blend ships")
-    check(store is not None and os.path.isdir(store),
-          "demo/drone.cadex ships")
-    if store is None:
-        return
-    for name in ("script.py", "script.json"):
-        path = os.path.join(store, name)
-        check(os.path.isfile(path) and os.path.getsize(path) > 0,
-              "the demo store carries {}".format(name))
-    assets = os.path.join(store, "assets")
-    stems = sorted(os.listdir(assets)) if os.path.isdir(assets) else []
-    check(any(name.endswith(".stl") for name in stems),
-          "the demo store carries its mesh assets")
-    demo_root = os.path.dirname(blend)
-    check(not any(name == ".DS_Store" or name.endswith(".blend1")
-                  for _root, _dirs, files in os.walk(demo_root)
-                  for name in files),
-          "no .DS_Store or .blend1 backup rides along")
-    for name in ("script.py", "script.json"):
-        with open(os.path.join(store, name), "r", encoding="utf-8") as fh:
-            check("/Users/" not in fh.read(),
-                  "{} carries no machine path".format(name))
-    card = os.path.join(os.path.dirname(blend), cadex_landing.DEMO_CARD_NAME)
-    check(os.path.isfile(card) and os.path.getsize(card) > 0,
-          "the card art ships beside the demo")
+    check(blend is None and store is None,
+          "no demo project ships in the add-on (ADR-171)")
+
+    layout = cadex_landing.landing_layout(1600, 900, scale=1.0,
+                                          with_demo=False)
+    check(layout["card"] is None and layout["overline"] is None
+          and layout["caption"] is None,
+          "the layout hides the card when no demo ships")
+    hits = {cadex_landing.hit_test(layout, x, y)
+            for x in range(0, 1600, 40) for y in range(0, 900, 40)}
+    check("demo" not in hits,
+          "no click anywhere resolves to the demo")
+    check({b["id"] for b in layout["buttons"]} <= hits,
+          "the action buttons still hit-test")
+
+    ok, message = cadex_landing.open_demo()
+    check(ok is False and "demo" in message.lower(),
+          "open_demo refuses with a message rather than raising")
+
     logo = os.path.join(os.path.dirname(cadex_landing.__file__),
                         cadex_landing.LOGO_NAME)
     check(os.path.isfile(logo) and os.path.getsize(logo) > 0,
           "the logo mark ships in the add-on")
-
-    dest_blend, dest_store = cadex_landing.demo_destination()
-    check(os.path.splitext(os.path.basename(dest_blend))[0] ==
-          os.path.basename(dest_store)[:-len(".cadex")],
-          "a demo copy keeps blend and store stems matched")
-    check(not os.path.exists(dest_blend) and not os.path.exists(dest_store),
-          "a demo copy always lands on a fresh stem")
 
 
 def test_landing_shows_dismisses_and_yields_to_chat():
@@ -2923,7 +2912,7 @@ def main():
         test_panels_are_homed_on_the_cadex_editors()
         test_native_menu_targets_exist()
         test_landing_layout_is_pure_and_hit_testable()
-        test_landing_demo_payload_ships()
+        test_landing_degrades_without_a_demo()
         test_landing_shows_dismisses_and_yields_to_chat()
         test_confirming_the_input_sends()
         test_every_chat_action_is_in_one_row_under_the_message_box()

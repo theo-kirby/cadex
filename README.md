@@ -67,10 +67,9 @@ right](docs/cadex-example.png)
 > **Status:** under active development, pre-release — currently **0.0.6**
 > (the version the window chrome and the landing screen show).
 
-The window is the product now: it opens on a **landing screen** with an
-example project (a ducted-fan drone shipped in the bundle), a native menu
-bar, and a chat column that is already live — typing into it dismisses the
-page. Six Cadex editors replace Blender's: **Chat**, **Parameters**,
+The window is the product now: it opens on a **landing screen** with a
+native menu bar and a chat column that is already live — typing into it
+dismisses the page. Six Cadex editors replace Blender's: **Chat**, **Parameters**,
 **Wiring**, **Training** (a run's numbers *and* its reward curve, polled
 off one JSON file), **Live** (the accepted policy running endlessly in a
 resident worker, with shove operators to test it), and the policy rollout
