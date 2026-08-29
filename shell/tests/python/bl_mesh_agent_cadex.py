@@ -5047,6 +5047,125 @@ def test_the_training_panel_tracks_a_run(training_root):
             pass
 
 
+def test_the_training_plot_reads_the_same_file_and_only_that():
+    """The reward-curve plot (the shell's first plot), headless.
+
+    What `--background` can prove: the import discipline, the handler
+    bookkeeping, and that the pure pipeline turns the progress file the
+    panel reads into a drawable layout — and turns a curve-less file into
+    None, which is how a progress.json from an older trainer degrades to
+    panel-only with no version check anywhere. What only a window can
+    prove — pixels — was probed once against the built bundle before this
+    module existed (a no-op handler on SpaceCadexTraining fired on redraw
+    of a CADEX_TRAINING area) and is checked by looking at a live run.
+    """
+
+    print("test_the_training_plot_reads_the_same_file_and_only_that")
+    import tempfile
+
+    from mesh_agent import cadex_training
+    from mesh_agent import cadex_training_plot as plot
+
+    # The dependency is one-way: the plot imports cadex_training, and
+    # cadex_training must never import the plot -- its import set is pinned
+    # to exactly {json, os, bpy} by the training-panel test above, and this
+    # spells the direction out where the next reader will look.
+    training_source = open(cadex_training.__file__, encoding="utf-8").read()
+    check("cadex_training_plot" not in training_source,
+          "cadex_training never learns the plot exists")
+
+    import ast as _ast
+
+    tree = _ast.parse(open(plot.__file__, encoding="utf-8").read())
+    imported = set()
+    module_level = set()
+    for node in _ast.walk(tree):
+        names = ()
+        if isinstance(node, _ast.Import):
+            names = tuple(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, _ast.ImportFrom) and node.module:
+            names = (node.module.split(".")[0],)
+        imported.update(names)
+        if node in tree.body:
+            module_level.update(names)
+    for forbidden in ("mujoco", "CadexDynamics", "subprocess", "socket",
+                      "urllib", "http"):
+        check(forbidden not in imported, "the plot never imports %s" % forbidden)
+    check(module_level == {"math"},
+          "the pure half imports math at module scope and nothing else "
+          "(got %r)" % (sorted(module_level),))
+    check(plot._shader is None,
+          "no GPU shader is fetched at import or registration")
+
+    # Handler bookkeeping. mesh_agent.register() already added the handler
+    # for the add-on's whole life, so idempotence is asserted from there.
+    handle = plot._draw_handle
+    check(handle is not None, "registering the add-on registered the plot")
+    plot._add_draw_handler()
+    check(plot._draw_handle is handle, "adding twice leaks no second handle")
+    plot._remove_draw_handler()
+    check(plot._draw_handle is None,
+          "removing removes -- a leaked handler draws forever")
+    plot._remove_draw_handler()
+    plot._add_draw_handler()
+    check(plot._draw_handle is not None,
+          "...and back, so unregister has something to remove")
+
+    # The pipeline the draw handler runs, against the very file the panel
+    # reads, with the drawing arithmetic asserted where a region cannot be.
+    root = tempfile.mkdtemp(prefix="cadex-training-plot-")
+    scene = bpy.context.scene
+    scene[cadex_backend.ROOT_PROP] = root
+    path = os.path.join(root, cadex_training.PROGRESS_NAME)
+    try:
+        payload = {
+            "schema": cadex_training.PROGRESS_SCHEMA,
+            "state": "training", "iteration": 40, "total": 100,
+            "reward_per_step": 1.9, "best_reward_per_step": 2.0,
+            "best_iteration": 30, "wall_time_s": 12.0, "eta_s": 18.0,
+            "device": "cpu", "checkpoints": [],
+            "curve": [[i, i * 0.05 - 0.4] for i in range(0, 41, 5)],
+        }
+        with open(path, "w", encoding="utf-8") as handle_:
+            json.dump(payload, handle_)
+        report = cadex_training.read_progress(scene)
+        check(report is not None, "the plot's file is the panel's file")
+        points = plot.curve_from(report)
+        check(len(points) == 9, "the curve field arrives as points")
+        layout = plot.plot_layout(
+            800, 600, points,
+            best_iteration=int(report["best_iteration"]),
+            total=int(report["total"]))
+        check(layout is not None, "a run with a curve lays out a plot")
+        check(layout["best"] is not None,
+              "with the best-so-far marked on the curve")
+        check(layout["frame"][3] <= 600 * plot.PLOT_FRACTION,
+              "and the plot keeps below the floating panel")
+
+        # A progress file from before the curve field: panel-only, by
+        # construction rather than by version check.
+        del payload["curve"]
+        with open(path, "w", encoding="utf-8") as handle_:
+            json.dump(payload, handle_)
+        report = cadex_training.read_progress(scene)
+        check(report is not None, "an old report still reads")
+        check(plot.curve_from(report) == [],
+              "but carries no curve")
+        check(plot.plot_layout(800, 600, plot.curve_from(report)) is None,
+              "so the editor is panel-only, exactly as before the plot")
+
+        # And the handler's own early exit runs clean where there is no
+        # region at all, which is every --background redraw.
+        check(plot._layout_for_context() is None,
+              "no region, no layout, no exception")
+    finally:
+        scene.pop(cadex_backend.ROOT_PROP, None)
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
 class _RecordingLayout:
     """Enough of `UILayout` to run a panel's `draw` and see what it drew.
 
@@ -5219,6 +5338,7 @@ def main():
         test_the_collision_overlay_is_isolated(isolate_root)
         test_both_collision_readers_agree(readers_root)
         test_the_training_panel_tracks_a_run(training_root)
+        test_the_training_plot_reads_the_same_file_and_only_that()
         test_two_applies_in_a_row_both_land(wiring_root)
         test_a_dragged_ring_lands_in_the_accepted_revision(cage_root)
         test_marked_parts_export_as_stl(print_root)

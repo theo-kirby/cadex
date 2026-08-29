@@ -2830,6 +2830,84 @@ def test_measurement_anchors_follow_the_placement_of_what_they_measure():
           "the number is formatted engine-side and passed through verbatim")
 
 
+def test_training_plot_layout_is_pure_arithmetic():
+    """The reward-curve plot's numbers, with no region and no GPU.
+
+    The draw handler draws exactly what ``plot_layout`` returns, so the
+    None-cases here are the handler's early exits and the pixel arithmetic
+    here is the plot.
+    """
+
+    from mesh_agent import cadex_training_plot as plot
+
+    # curve_from tolerates everything an old or torn progress file can be.
+    check(plot.curve_from(None) == [], "no report reads as no curve")
+    check(plot.curve_from({}) == [], "a report without the field too")
+    check(plot.curve_from({"curve": "oops"}) == [],
+          "...and one where the field is not a list")
+    check(plot.curve_from({"curve": [[0, 1.0], [1]]}) == [],
+          "a torn pair poisons nothing: the whole curve reads as absent")
+    check(plot.curve_from({"curve": [[0, 1.0], [1, float("nan")]]}) == [],
+          "...and so does a NaN")
+    points = plot.curve_from({"curve": [[0, -0.5], [10, 0.25], [20, 2.0]]})
+    check(points == [(0, -0.5), (10, 0.25), (20, 2.0)],
+          "a sound curve arrives as (iteration, reward) pairs")
+
+    # The None-cases the handler early-exits on.
+    check(plot.plot_layout(800, 600, []) is None, "no points, no plot")
+    check(plot.plot_layout(800, 600, [(0, 1.0)]) is None,
+          "one point is a dot, not a curve")
+    check(plot.plot_layout(100, 600, points) is None,
+          "a sliver of a region draws panel-only")
+
+    layout = plot.plot_layout(800, 600, points, best_iteration=10, total=50)
+    check(layout is not None, "a real curve in a real region lays out")
+    x0, y0, x1, y1 = layout["frame"]
+    check(y1 <= 600 * plot.PLOT_FRACTION + 1e-9,
+          "the plot keeps to the bottom of the region; the panel owns the top")
+    xs = [point[0] for point in layout["polyline"]]
+    check(xs == sorted(xs) and len(set(xs)) == len(xs),
+          "iteration maps to x monotonically")
+    check(abs(xs[0] - x0) < 1e-9, "the first iteration sits on the frame")
+    check(xs[-1] < x1 - 1e-9,
+          "with total=50 the curve has room to grow: iteration 20 is "
+          "inside the frame, not on its right edge")
+    ys = [point[1] for point in layout["polyline"]]
+    check(all(y0 - 1e-9 <= y <= y1 + 1e-9 for y in ys),
+          "every reward lands inside the frame")
+    check(layout["best"] == layout["polyline"][1],
+          "the best marker sits on its own curve point")
+    check(layout["zero"] is not None and y0 < layout["zero"] < y1,
+          "a curve crossing zero draws the zero line inside the frame")
+    check(layout["ticks"] and all(
+        y0 - 1e-9 <= y <= y1 + 1e-9 for y, _ in layout["ticks"]),
+        "ticks land inside the frame")
+    labels = [label for _, label in layout["ticks"]]
+    check(len(set(labels)) == len(labels), "and no two ticks read the same")
+
+    # A flat curve pads its range rather than dividing by zero.
+    flat = plot.plot_layout(800, 600, [(0, 1.0), (1, 1.0), (2, 1.0)])
+    check(flat is not None, "a flat curve still lays out")
+    flat_ys = {round(point[1], 6) for point in flat["polyline"]}
+    check(len(flat_ys) == 1, "...flat")
+    only = flat["polyline"][0][1]
+    check(flat["frame"][1] < only < flat["frame"][3],
+          "...and mid-frame, not on an edge")
+
+    # An all-negative run keeps zero out of the frame rather than wasting
+    # half of it on empty space.
+    sunk = plot.plot_layout(800, 600, [(0, -3.0), (1, -2.0), (2, -2.5)])
+    check(sunk is not None and sunk["zero"] is None,
+          "zero is only drawn when the curve crosses it")
+
+    check(plot.axis_ticks(0.0, 0.0) == [], "a degenerate range has no ticks")
+    ticks = plot.axis_ticks(-0.13, 2.62)
+    check(ticks and all(-0.13 <= value <= 2.62 for value in ticks),
+          "ticks stay inside the range")
+    steps = {round(b - a, 9) for a, b in zip(ticks, ticks[1:])}
+    check(len(steps) == 1, "and are evenly spaced on a round step")
+
+
 def main():
     print("=== bl_mesh_agent tests ===")
     mesh_agent.register()
@@ -2869,6 +2947,7 @@ def main():
         test_an_edge_on_dimension_becomes_a_leader()
         test_diameter_picks_the_widest_on_screen_and_survives_a_bore_down_z()
         test_measurement_anchors_follow_the_placement_of_what_they_measure()
+        test_training_plot_layout_is_pure_arithmetic()
         if os.environ.get("MESH_AGENT_LIVE"):
             test_live_claude_turn()
         else:

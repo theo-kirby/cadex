@@ -36,6 +36,7 @@ from . import cadex_terminal_pick as cadex_terminal_pick_module
 from . import cadex_views as cadex_views_module
 from . import cadex_wire_path as cadex_wire_path_module
 from . import cadex_training as cadex_training_module
+from . import cadex_training_plot as cadex_training_plot_module
 from . import model as model_module
 from . import spaces
 from . import wiring as wiring_module
@@ -254,6 +255,7 @@ def register():
     cadex_terminal_pick_module.register()
     cadex_wire_path_module.register()
     cadex_training_module.register()
+    cadex_training_plot_module.register()
     wiring_module.register()
     ui.register()
     spaces.register()
@@ -303,6 +305,7 @@ def unregister():
     spaces.unregister()
     ui.unregister()
     wiring_module.unregister()
+    cadex_training_plot_module.unregister()
     cadex_training_module.unregister()
     cadex_wire_path_module.unregister()
     cadex_terminal_pick_module.unregister()

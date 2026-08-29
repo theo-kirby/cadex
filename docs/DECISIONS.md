@@ -17227,3 +17227,61 @@ trimmed copy. Files: `Mesh/startup.blend` (git-LFS re-save),
 `Mesh/__init__.py` (docstring), `cadex_landing.py`, `landing_logo.png`,
 `bl_mesh_agent.py`, `bl_mesh_agent_cadex.py`, `docs/BLENDER.md`; deleted:
 `docs/images/cadex-mark.svg`.
+
+## ADR-169 — the reward curve reaches the Training editor: an additive progress field, and the shell's first plot (2026-08-29)
+
+The Training panel showed a run as numbers — reward, best, episode
+length — and never as a shape, which is the thing a person actually
+reads a training run by. Two changes, one on each side of the file that
+joins them, and neither touches the engine, the protocol, or inherited
+Blender.
+
+**The trainer publishes the curve.** `report()` in
+`training/cadex_train.py` always received the full reward curve and kept
+one point of it. `progress.json` now carries
+`"curve": [[iteration, reward_per_step], ...]`, decimated to
+`CURVE_POINTS_CAP` (512) pairs by uniform stride with the endpoints
+always kept — ~12 KB at the cap, rewritten atomically as ever. Additive
+under the unchanged `cadex-training-progress-v1` schema, on exactly the
+precedent of `episode_steps` (ADR-101) and `action_std` (ADR-103): the
+shell validates the schema string alone, so a reader from before this
+field renders what it always did, and a file from before it draws
+panel-only.
+
+**The shell draws it.** `mesh_agent/cadex_training_plot.py` — a **new
+module by necessity**: the gate pins `cadex_training.py`'s import
+closure to exactly `{json, os, bpy}`, and even a lazy import of a plot
+would trip it. The dependency is one-way (`plot → training`, through
+`read_progress`) and a gate check asserts the reverse direction never
+appears. The plot is a `POST_PIXEL` draw handler on
+`SpaceCadexTraining` — the first draw handler on a Cadex space type,
+probed against the built bundle before anything was written (a no-op
+callback fired twice on redraw of a `CADEX_TRAINING` area and removed
+cleanly). It draws the curve, the best-so-far marker, a zero line when
+the curve crosses zero, and 1/2/5-ladder ticks, in the bottom
+`PLOT_FRACTION` (0.42) of the window region so the floating panel keeps
+the top. The pure half (`curve_from`, `axis_ticks`, `plot_layout`)
+imports `math` alone; `gpu`/`blf` are fetched inside the draw callback
+(`cadex_dimension`'s rule — `from_builtin` raises under
+`--background`). **No operator classes**: there is still no train
+button (ADR-084), and no timer of its own — `cadex_training.poll`
+already tags the area.
+
+Not taken, deliberately: plotting `episode_steps` as a second line
+(the strongest candidate; it doubles the y-axis question and the first
+plot should earn its place before growing), any x-axis time mapping,
+and any mouse interaction with the plot — it is a readout.
+
+Verified: trainer suites 29 passed/8 skipped under pixi and 37 passed
+from the venv (the curve field asserted end to end against a real
+3-iteration run); full engine suite 1910 passed/46 skipped;
+`bl_mesh_agent.py` suite green (the pure half's None-cases, monotone
+x-mapping, flat-curve padding, garbage tolerance); `pixi run gate`
+green with the new plot checks (import pins, handler idempotence,
+curve-fixture → layout, curve-less fixture → None); `pixi run
+build-shell` stamps 0.0.5 build 301 with the module in the bundle.
+Files: `training/cadex_train.py`, `training/README.md`,
+`mesh_agent/cadex_training_plot.py`, `mesh_agent/__init__.py`,
+`test_dynamics_policy_trainer.py`, `bl_mesh_agent.py`,
+`bl_mesh_agent_cadex.py`, `docs/BLENDER.md`. `docs/BLENDER-TREE.md`
+unchanged — zero inherited-tree lines.
