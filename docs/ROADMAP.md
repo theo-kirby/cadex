@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-08-21
+Verified against source: 2026-08-29
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -1227,6 +1227,25 @@ the order they had to happen:
       is the run that spends the tenth kind: a shove band past what ankles
       can answer, `capture` split across two scales, and new `arrest` and
       `swirl` terms.
+
+- [x] **The reward curve reaches the Training editor** (ADR-169,
+      2026-08-29). `progress.json` gains a `curve` field — 512
+      `[iteration, reward]` pairs, additive under the unchanged schema on
+      the ADR-101/ADR-103 precedent — and
+      `mesh_agent/cadex_training_plot.py` draws it: the shell's first
+      plot, and the first draw handler on a Cadex space type. A separate
+      module because the gate pins `cadex_training.py`'s imports to
+      exactly `{json, os, bpy}`; no operator classes, because there is
+      still no train button.
+- [x] **The whole arc runs locally on CPU** (ADR-170, 2026-08-29;
+      `docs/MUJOCO.md` §7b). A venv per `training/SETUP.md` §b on an M4
+      Mac Mini, the agent-authored balance toy at `~/cadex-balance`,
+      800 total iterations in ~141 s at 2.2 GB peak, a policy that holds
+      inverted (215.0 against 87.8 for zero torque), verified and rolled
+      out, with the Training plot live off `--progress`. Along the way the
+      stale live-gate pin was found and fixed (best-of-three seeds), and
+      the MJX cylinder↔box collision gap is recorded. The GPU box stays
+      what a *gait* needs; the loop itself no longer waits on it.
 
 **Standing constraints for this phase**, both from ADR-077 and both cheap to
 lose by accident:
