@@ -6,6 +6,7 @@
  *
  * Enums for space type in the user interface.
  */
+/* Modified by the Cadex project, 2026. See docs/BLENDER-TREE.md. */
 
 #include "BLI_enum_flags.hh"
 

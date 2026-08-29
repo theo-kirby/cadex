@@ -6,6 +6,7 @@
  *
  * Structs for each of space type in the user interface.
  */
+/* Modified by the Cadex project, 2026. See docs/BLENDER-TREE.md. */
 
 #pragma once
 

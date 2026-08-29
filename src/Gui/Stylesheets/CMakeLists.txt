@@ -1,3 +1,4 @@
+# Modified by the Cadex project, 2026. See docs/FREECAD.md.
 
 SET(Stylesheets_Files
     "FreeCAD.qss"

@@ -1,4 +1,5 @@
 # -------------------------------- Qt --------------------------------
+# Modified by the Cadex project, 2026. See docs/FREECAD.md.
 
 # LinguistTools is a *build* tool (lrelease), not a runtime library, and
 # src/App -- which builds with BUILD_GUI=OFF -- compiles its own translations

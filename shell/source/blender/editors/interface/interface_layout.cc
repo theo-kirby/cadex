@@ -1,6 +1,7 @@
 /* SPDX-FileCopyrightText: 2023 Blender Authors
  *
  * SPDX-License-Identifier: GPL-2.0-or-later */
+/* Modified by the Cadex project, 2026. See docs/BLENDER-TREE.md. */
 
 /** \file
  * \ingroup edinterface

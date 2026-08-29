@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2017-2023 Blender Authors
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
+# Modified by the Cadex project, 2026. See docs/BLENDER-TREE.md.
 
 # For documentation on tool definitions: see "bl_ui.space_toolsystem_common.ToolDef"
 # where there are comments for each field and their use.

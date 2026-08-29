@@ -1,3 +1,4 @@
+# Modified by the Cadex project, 2026. See docs/FREECAD.md.
 macro(InitializeFreeCADBuildOptions)
     # ==============================================================================
     # =================   All the options for the build process    =================

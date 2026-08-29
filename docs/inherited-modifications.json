@@ -47,11 +47,13 @@
         },
         {
           "path": "src/Base/Interpreter.cpp",
-          "notice": "comment"
+          "notice": "ledger-only",
+          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
         },
         {
           "path": "src/Gui/Application.cpp",
-          "notice": "comment"
+          "notice": "ledger-only",
+          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
         },
         {
           "path": "src/Gui/DockWindowManager.cpp",
@@ -59,7 +61,8 @@
         },
         {
           "path": "src/Gui/MainWindow.cpp",
-          "notice": "comment"
+          "notice": "ledger-only",
+          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
         },
         {
           "path": "src/Gui/MainWindow.h",
@@ -79,7 +82,8 @@
         },
         {
           "path": "src/Gui/PreferencePages/DlgSettingsGeneral.cpp",
-          "notice": "comment"
+          "notice": "ledger-only",
+          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
         },
         {
           "path": "src/Gui/StartupProcess.cpp",
@@ -131,7 +135,8 @@
         },
         {
           "path": "src/Mod/Assembly/JointObject.py",
-          "notice": "comment"
+          "notice": "ledger-only",
+          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
         },
         {
           "path": "src/Mod/Assembly/Preferences.py",
@@ -151,11 +156,13 @@
         },
         {
           "path": "src/Mod/Part/App/BRepOffsetAPI_MakePipeShellPyImp.cpp",
-          "notice": "comment"
+          "notice": "ledger-only",
+          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
         },
         {
           "path": "src/Mod/Part/App/TopoShapePyImp.cpp",
-          "notice": "comment"
+          "notice": "ledger-only",
+          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
         },
         {
           "path": "src/Mod/Part/CMakeLists.txt",
@@ -175,7 +182,8 @@
         },
         {
           "path": "src/Mod/Start/Gui/StartView.cpp",
-          "notice": "comment"
+          "notice": "ledger-only",
+          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
         },
         {
           "path": "src/Mod/Start/Gui/StartView.h",
@@ -183,7 +191,8 @@
         },
         {
           "path": "src/Mod/Start/Gui/ThemeSelectorWidget.cpp",
-          "notice": "comment"
+          "notice": "ledger-only",
+          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
         },
         {
           "path": "tests/CMakeLists.txt",

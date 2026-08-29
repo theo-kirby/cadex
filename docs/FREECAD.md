@@ -95,7 +95,14 @@ under `src/` and 9 in the build substrate (`CMakeLists.txt`, `cMake/`,
 kept equal to the git diff by `cadex_tests/test_licensing_compliance.py`,
 and every file carries a one-line modification notice in its header
 (`Modified by the Cadex project, 2026. See docs/FREECAD.md.`), as LGPL-2.1
-§2(a) asks. Grouped by why:
+§2(a) asks — except nine flagged `ledger-only` in the manifest
+(`Interpreter.cpp`, `Application.cpp`, `MainWindow.cpp`,
+`DlgSettingsGeneral.cpp`, `JointObject.py`,
+`BRepOffsetAPI_MakePipeShellPyImp.cpp`, `TopoShapePyImp.cpp`,
+`StartView.cpp`, `ThemeSelectorWidget.cpp`), where inserting even a
+comment line triggers a whole-file reformat under pre-commit; **this
+listing is their notice**, which is what `ledger-only` means. Grouped by
+why:
 
 - **Workbench-removal and GUI-off build edits** (Phases 1 and 7 — ADR-007,
   ADR-009, ADR-022): the root `CMakeLists.txt`, five `cMake/` helper
