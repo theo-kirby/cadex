@@ -1,6 +1,6 @@
 # Packaging — One Bundle
 
-Verified against source: 2026-08-01
+Verified against source: 2026-08-29
 
 **One repository builds one application** (ADR-030). `pixi run app` produces
 the bundle, and the *engine payload* — a relocatable directory the shell
@@ -67,6 +67,15 @@ run the gate.
 
 Full relocation requires a rattler-built conda package, where the engine's
 own files are package-managed — see "Staged, or relocated" below.
+
+**The product version** (ADR-166): `VERSION` at the repo root is the single
+source of truth, bumped deliberately with `package/app/bump_version.sh`.
+Every shell build stamps it into the bundle — `Contents/Resources/
+cadex_version.txt` (which the window title reads), `CFBundleShortVersionString`
+and a commit-count `CFBundleVersion` in `Info.plist` — and re-signs the
+bundle ad-hoc, since editing `Info.plist` breaks any existing seal. The
+build number therefore increments with every commit, in CI and locally,
+with no state kept anywhere.
 
 ## What is deliberately in the payload
 

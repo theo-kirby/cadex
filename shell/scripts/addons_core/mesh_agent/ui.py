@@ -24,9 +24,6 @@ from bpy.types import Operator, Panel
 from . import agent as agent_module
 from . import cadex_collision
 
-# Fraction of the viewport's height a freshly split parameters editor takes.
-PARAMS_SPLIT = 0.3
-
 # The message box is a text-box widget: it wraps onto as many lines as it is
 # tall, scrolls when the message outgrows them, and carries a grip on its edge
 # for making it taller. It sits in the chat editor's RGN_TYPE_EXECUTE region,
@@ -250,64 +247,6 @@ def first_line(report, limit=64):
     lines = [line for line in str(report or "").splitlines() if line.strip()]
     line = lines[0].strip() if lines else ""
     return line if len(line) <= limit else line[:limit - 1] + "…"
-
-
-def params_area(screen):
-    """The parameters editor on this screen, or None.
-
-    One `area.type` comparison. There is no pointer bookkeeping and no retry
-    loop because there is no space-data swap to wait on.
-    """
-    return next((area for area in screen.areas
-                 if area.type == 'CADEX_PARAMS'), None)
-
-
-class MESH_AGENT_OT_toggle_params(Operator):
-    bl_idname = "mesh_agent.toggle_params"
-    bl_label = "Parameters"
-    bl_description = "Show or hide the parameters editor"
-
-    def execute(self, context):
-        window = context.window
-        screen = window.screen
-        area = params_area(screen)
-        if area is not None:
-            try:
-                with context.temp_override(window=window, screen=screen,
-                                           area=area):
-                    bpy.ops.screen.area_close()
-            except RuntimeError:
-                # area_close's poll fails when no neighbour can absorb it.
-                self.report({'WARNING'},
-                            "The parameters editor cannot be closed")
-                return {'CANCELLED'}
-            return {'FINISHED'}
-
-        viewports = [a for a in screen.areas if a.type == 'VIEW_3D']
-        if not viewports:
-            self.report({'WARNING'}, "No viewport to split")
-            return {'CANCELLED'}
-        viewport = max(viewports, key=lambda a: a.width * a.height)
-        before = {a.as_pointer() for a in screen.areas}
-        try:
-            with context.temp_override(window=window, screen=screen,
-                                       area=viewport):
-                bpy.ops.screen.area_split(direction='HORIZONTAL',
-                                          factor=PARAMS_SPLIT)
-        except RuntimeError:
-            # The viewport is too short to split (area_split's minimum).
-            self.report({'WARNING'}, "No room for the parameters editor")
-            return {'CANCELLED'}
-        fresh = [a for a in screen.areas if a.as_pointer() not in before]
-        if not fresh:
-            self.report({'WARNING'}, "No room for the parameters editor")
-            return {'CANCELLED'}
-        # Area type changes need a window in the context; without one the
-        # assignment appears to succeed but the space data never switches.
-        with context.temp_override(window=window, screen=screen,
-                                   area=fresh[0]):
-            fresh[0].type = 'CADEX_PARAMS'
-        return {'FINISHED'}
 
 
 class MESH_AGENT_OT_toggle_dimensions(Operator):
@@ -976,6 +915,126 @@ def _draw_printable(layout, scene):
     note.label(text="File > Export Printable Parts...")
 
 
+def _draw_interface(layout, context):
+    """The Interface section (ADR-164): every switch that drives the
+    viewport rather than the model, in the editor a person arranges the app
+    from.
+
+    One grid of toggles, two per row (four across truncates "Collision
+    Shapes" when this editor is arranged as a side column), each depressed
+    while it is on -- so a button reads as the state as well as the switch.
+    A toggle that is on and has settings gets a box under the grid: the
+    grid is *what is showing*, the boxes are *how it shows*.
+
+    There are deliberately no open-this-editor buttons here or anywhere
+    (ADR-165): the script view and the wiring canvas are opened with
+    Blender's own editor dropdown and area tiling, like every editor.
+    """
+    from . import cadex_dimension
+    from . import cadex_cage
+    from . import cadex_section
+    from . import cadex_explode
+    from . import cadex_blueprint
+
+    scene = context.scene
+    section = cadex_section.settings(scene)
+    explode = cadex_explode.settings(scene)
+    blueprint = cadex_blueprint.settings(scene)
+
+    layout.separator()
+    layout.label(text="Interface", icon='WINDOW')
+    column = layout.column(align=True)
+
+    # Always clickable while the assistant is idle: re-runs the script the
+    # engine already holds and sends nothing, so it is the safe thing to
+    # press when it is unclear which side is wrong (ADR-039). Not "Rebuild
+    # From Saved Script", which pushes this file's buffer over the engine --
+    # wrong semantics for a button that is always on.
+    column.operator(MESH_AGENT_OT_rebuild_model.bl_idname,
+                    icon='FILE_REFRESH')
+
+    # The collision overlay (ADR-091) and the dimensions (ADR-139)...
+    row = column.row(align=True)
+    row.operator(MESH_AGENT_OT_toggle_collision.bl_idname,
+                 icon='MOD_PHYSICS',
+                 depress=cadex_collision.SCENE_FLAG in scene)
+    row.operator(MESH_AGENT_OT_toggle_dimensions.bl_idname,
+                 icon='DRIVER_DISTANCE',
+                 depress=cadex_dimension.SCENE_FLAG in scene)
+    # ...the section cage (ADR-127) and the section view (ADR-148)...
+    row = column.row(align=True)
+    row.operator(MESH_AGENT_OT_toggle_cage.bl_idname, icon='MOD_LATTICE',
+                 depress=cadex_cage.enabled(scene))
+    row.operator(MESH_AGENT_OT_toggle_section.bl_idname,
+                 icon='MOD_BOOLEAN',
+                 depress=bool(section and section.show))
+    # ...and the exploded view (ADR-149) and the blueprint view (ADR-150).
+    # All six are in the parameters editor rather than in editors of their
+    # own: they are controls the user sets without the AI in the loop, and
+    # a space type each would spend BLENDER-TREE §2b budget none of their
+    # slices had a claim on.
+    row = column.row(align=True)
+    row.operator(MESH_AGENT_OT_toggle_explode.bl_idname,
+                 icon='MOD_EXPLODE',
+                 depress=bool(explode and explode.show))
+    row.operator(MESH_AGENT_OT_toggle_blueprint.bl_idname,
+                 icon='SHADING_WIRE',
+                 depress=bool(blueprint and blueprint.show))
+
+    # The cage's rings are dragged in the viewport; what belongs here is
+    # the count and the one button that sends them (ADR-127).
+    if cadex_cage.enabled(scene):
+        box = layout.box().column(align=True)
+        flag = scene.get(cadex_cage.SCENE_FLAG) or {}
+        box.label(text="{:d} ring(s) — drag, then Apply".format(
+            int(flag.get("rings") or 0)), icon='INFO')
+        box.operator(MESH_AGENT_OT_apply_cage.bl_idname, icon='CHECKMARK')
+
+    if section and section.show:
+        box = layout.box().column(align=True)
+        box.label(text="Section View", icon='MOD_BOOLEAN')
+        row = box.row(align=True)
+        row.prop(section, "axis", expand=True)
+        box.prop(section, "offset")
+        box.prop(section, "flip", toggle=True)
+        flag = scene.get(cadex_section.SCENE_FLAG) or {}
+        span = list(flag.get("span") or ())
+        if flag.get("clear"):
+            # Not clamped, and this is the line that pays for that: a
+            # slider that refuses to leave the model lies about where the
+            # model is, so it says where the model is instead.
+            box.label(text="the plane is clear of the model",
+                      icon='INFO')
+        if len(span) == 2:
+            note = box.row()
+            note.enabled = False
+            note.label(text="{:s} spans {:.2f} … {:.2f} mm".format(
+                str(flag.get("axis") or ""), span[0], span[1]))
+
+    # The exploded moves themselves are the script's — only how far along
+    # them the viewport sits is decided here (ADR-149).
+    if explode and explode.show:
+        box = layout.box().column(align=True)
+        box.label(text="Exploded View", icon='MOD_EXPLODE')
+        box.prop(explode, "factor", slider=True)
+        flag = scene.get(cadex_explode.SCENE_FLAG) or {}
+        if flag.get("shown"):
+            note = box.row()
+            note.enabled = False
+            note.label(text="{:d} component(s), {:d} stage(s)".format(
+                int(flag.get("components") or 0),
+                int(flag.get("stages") or 0)))
+        elif flag.get("reason"):
+            box.label(text=str(flag["reason"]), icon='INFO')
+
+    if blueprint and blueprint.show:
+        box = layout.box().column(align=True)
+        box.label(text="Blueprint", icon='SHADING_WIRE')
+        row = box.row(align=True)
+        row.prop(blueprint, "theme", expand=True)
+        box.prop(blueprint, "grid", toggle=True)
+
+
 class CADEX_PARAMS_PT_parameters(Panel):
     """The sole occupant of the parameters editor, and now literally so.
 
@@ -1017,11 +1076,13 @@ class CADEX_PARAMS_PT_parameters(Panel):
             row.label(text="No parameters in this model"
                       if group is not None else "Parameters load after build",
                       icon='INFO')
-            # ...but a model with no sliders still has parts to print, so the
-            # print box is drawn on the way out of this branch rather than
-            # after it. A plain `result = {"bracket": part.box(...)}` declares
-            # no parameters and is exactly the model somebody wants to print.
+            # ...but a model with no sliders still has parts to print and an
+            # interface to arrange, so both boxes are drawn on the way out of
+            # this branch rather than after it. A plain `result = {"bracket":
+            # part.box(...)}` declares no parameters and is exactly the model
+            # somebody wants to print.
             _draw_printable(layout, context.scene)
+            _draw_interface(layout, context)
             return
         column = layout.column()
         for spec in specs:
@@ -1039,87 +1100,7 @@ class CADEX_PARAMS_PT_parameters(Panel):
                      icon='CHECKMARK')
 
         _draw_printable(layout, context.scene)
-
-        # The section cage (ADR-127), in the parameters editor rather than in
-        # an editor of its own: a ring is a declared control the user sets
-        # without the AI, which is what this editor is for, and a new space
-        # type would spend BLENDER-TREE §2b budget this slice has no claim on.
-        from . import cadex_cage
-        box = layout.box().column(align=True)
-        box.operator(MESH_AGENT_OT_toggle_cage.bl_idname, icon='MOD_LATTICE')
-        if cadex_cage.enabled(context.scene):
-            flag = context.scene.get(cadex_cage.SCENE_FLAG) or {}
-            box.label(text="{:d} ring(s) — drag, then Apply".format(
-                int(flag.get("rings") or 0)), icon='INFO')
-            box.operator(MESH_AGENT_OT_apply_cage.bl_idname, icon='CHECKMARK')
-
-        # The section view (ADR-148), here for the reason the cage is here:
-        # it is set without the AI in the loop, and a space type of its own
-        # would spend BLENDER-TREE §2b budget this slice has no claim on. The
-        # difference from every other control in this editor is that this one
-        # changes nothing about the model -- so it is a box at the bottom,
-        # under the controls that do.
-        from . import cadex_section
-        section = cadex_section.settings(context.scene)
-        box = layout.box().column(align=True)
-        box.operator(MESH_AGENT_OT_toggle_section.bl_idname,
-                     icon='MOD_BOOLEAN',
-                     depress=bool(section and section.show))
-        if section and section.show:
-            row = box.row(align=True)
-            row.prop(section, "axis", expand=True)
-            box.prop(section, "offset")
-            box.prop(section, "flip", toggle=True)
-            flag = context.scene.get(cadex_section.SCENE_FLAG) or {}
-            span = list(flag.get("span") or ())
-            if flag.get("clear"):
-                # Not clamped, and this is the line that pays for that: a
-                # slider that refuses to leave the model lies about where the
-                # model is, so it says where the model is instead.
-                box.label(text="the plane is clear of the model",
-                          icon='INFO')
-            if len(span) == 2:
-                note = box.row()
-                note.enabled = False
-                note.label(text="{:s} spans {:.2f} … {:.2f} mm".format(
-                    str(flag.get("axis") or ""), span[0], span[1]))
-
-        # The exploded view (ADR-149), under the section for the section's
-        # reasons: a view control set without the AI in the loop, changing
-        # nothing about the model. The moves themselves are the script's —
-        # only how far along them the viewport sits is decided here.
-        from . import cadex_explode
-        explode = cadex_explode.settings(context.scene)
-        box = layout.box().column(align=True)
-        box.operator(MESH_AGENT_OT_toggle_explode.bl_idname,
-                     icon='MOD_EXPLODE',
-                     depress=bool(explode and explode.show))
-        if explode and explode.show:
-            box.prop(explode, "factor", slider=True)
-            flag = context.scene.get(cadex_explode.SCENE_FLAG) or {}
-            if flag.get("shown"):
-                note = box.row()
-                note.enabled = False
-                note.label(text="{:d} component(s), {:d} stage(s)".format(
-                    int(flag.get("components") or 0),
-                    int(flag.get("stages") or 0)))
-            elif flag.get("reason"):
-                box.label(text=str(flag["reason"]), icon='INFO')
-
-        # The blueprint view (ADR-150), under the exploded view for the same
-        # reasons again: a view control set without the AI in the loop,
-        # changing nothing about the model. Theme and grid live here; the
-        # switch is also in the chat row, where the other switches are.
-        from . import cadex_blueprint
-        blueprint = cadex_blueprint.settings(context.scene)
-        box = layout.box().column(align=True)
-        box.operator(MESH_AGENT_OT_toggle_blueprint.bl_idname,
-                     icon='SHADING_WIRE',
-                     depress=bool(blueprint and blueprint.show))
-        if blueprint and blueprint.show:
-            row = box.row(align=True)
-            row.prop(blueprint, "theme", expand=True)
-            box.prop(blueprint, "grid", toggle=True)
+        _draw_interface(layout, context)
 
 
 class CADEX_CHAT_PT_transcript(Panel):
@@ -1198,9 +1179,12 @@ class CADEX_CHAT_PT_input(Panel):
     bl_label = "Message"
 
     def draw(self, context):
-        column = self.layout.column(align=True)
-        draw_chat_input(column, context)
-        draw_chat_buttons(column.row(align=True), context)
+        layout = self.layout
+        draw_chat_input(layout, context)
+        # Air between the box and its buttons: the row used to be glued to
+        # the box by an align=True column, which reads as one widget.
+        layout.separator(factor=0.5)
+        draw_chat_buttons(layout.row(align=True), context)
 
 
 def draw_chat_input(layout, context):
@@ -1223,7 +1207,7 @@ def draw_chat_input(layout, context):
 
 
 def draw_chat_buttons(layout, context):
-    """Every control the chat has, in one row of four groups.
+    """Every control the *chat* has, in one row of two groups.
 
     They used to be in two places -- the pins in the header, everything else
     here -- which meant the answer to "where is the button" was "it depends".
@@ -1231,9 +1215,15 @@ def draw_chat_buttons(layout, context):
     what they act on rather than by what they look like:
 
     ``[attach paste pin-face pin-point define-board define-terminal edit-path
-    confirm-path cancel-path]`` gather things the *next message* will carry; ``[rebuild]`` acts on the *model*;
-    ``[params script wiring]`` open and close *views*, each depressed while
-    its view is open; ``[new-chat send]`` are the *turn*.
+    confirm-path cancel-path]`` gather things the *next message* will carry;
+    ``[new-chat send]`` are the *turn*.
+
+    Rebuild Model and the viewport switches (collision, dimensions, cage,
+    section, explode, blueprint) act on the model or the viewport, not on
+    the chat, so they live in the parameters editor's Interface section
+    (ADR-164, ``_draw_interface``). There are no open-this-editor buttons at
+    all any more (ADR-165): editors are opened and arranged with Blender's
+    own editor dropdown and area tiling, which every area already has.
 
     Nothing in here is hidden when it does not apply. A row that changes width
     as you enter and leave Edit Mode moves every other button under the
@@ -1241,11 +1231,9 @@ def draw_chat_buttons(layout, context):
     exists on a mesh in Edit Mode). This panel has no ``poll`` for the same
     reason, and a test pins that.
     """
-    from . import spaces
     from . import cadex_pick
     from . import cadex_terminal_pick
     from . import cadex_wire_path
-    from . import wiring_ui
 
     agent = agent_module.get_agent()
 
@@ -1318,61 +1306,8 @@ def draw_chat_buttons(layout, context):
         entry.enabled = bool(operator.poll(context))
         entry.operator(operator.bl_idname, icon=icon, text="")
 
-    # --- act on the model --------------------------------------------------
-    # Always here, always clickable while the assistant is idle: re-runs the
-    # script the engine already holds and sends nothing, so it is the safe
-    # thing to press when it is unclear which side is wrong (ADR-039). Not
-    # "Rebuild From Saved Script", which pushes this file's buffer over the
-    # engine -- wrong semantics for a button that is always on.
-    layout.separator()
-    layout.operator(MESH_AGENT_OT_rebuild_model.bl_idname, text="",
-                    icon='FILE_REFRESH')
-
-    # --- open and close views ---------------------------------------------
-    # Depressed while open, so each button reads as the state as well as the
-    # switch.
-    views = layout.row(align=True)
-    views.operator(MESH_AGENT_OT_toggle_params.bl_idname, text="",
-                   icon='OPTIONS',
-                   depress=params_area(context.screen) is not None)
-    views.operator(spaces.MESH_AGENT_OT_show_script.bl_idname, text="",
-                   icon='TEXT',
-                   depress=spaces.script_area(context.screen) is not None)
-    views.operator(wiring_ui.MESH_AGENT_OT_toggle_wiring.bl_idname, text="",
-                   icon='NODETREE',
-                   depress=wiring_ui.wiring_area(context.screen) is not None)
-    # The collision overlay is not a view but reads as one here: on or off,
-    # depressed while it is on -- the same one-button-reads-as-the-state
-    # affordance (ADR-091).
-    views.operator(MESH_AGENT_OT_toggle_collision.bl_idname, text="",
-                   icon='MOD_PHYSICS',
-                   depress=cadex_collision.SCENE_FLAG in context.scene)
-    # Dimensions read the same way, and for the same reason (ADR-139).
-    from . import cadex_dimension
-    views.operator(MESH_AGENT_OT_toggle_dimensions.bl_idname, text="",
-                   icon='DRIVER_DISTANCE',
-                   depress=cadex_dimension.SCENE_FLAG in context.scene)
-    # ...and the section view, third of the same kind (ADR-148). Its plane is
-    # aimed from the parameters editor; this is the switch, where the other
-    # two switches are.
-    from . import cadex_section
-    views.operator(MESH_AGENT_OT_toggle_section.bl_idname, text="",
-                   icon='MOD_BOOLEAN',
-                   depress=cadex_section.enabled(context.scene))
-    # ...and the exploded view, fourth of the same kind (ADR-149). Its
-    # factor is dragged in the parameters editor; this is the switch.
-    from . import cadex_explode
-    views.operator(MESH_AGENT_OT_toggle_explode.bl_idname, text="",
-                   icon='MOD_EXPLODE',
-                   depress=cadex_explode.enabled(context.scene))
-    # ...and the blueprint view, fifth of the same kind (ADR-150). Its theme
-    # and grid live in the parameters editor; this is the switch.
-    from . import cadex_blueprint
-    views.operator(MESH_AGENT_OT_toggle_blueprint.bl_idname, text="",
-                   icon='SHADING_WIRE',
-                   depress=cadex_blueprint.enabled(context.scene))
-
     # --- the turn ----------------------------------------------------------
+    layout.separator()
     # Starting over is one button, not a trash can: what the user wants back
     # is an assistant with an empty head, and that is the session as much as
     # the transcript (Agent.new_conversation).
@@ -1395,7 +1330,6 @@ classes = (
     MESH_AGENT_OT_adopt_script,
     MESH_AGENT_OT_rebuild_model,
     MESH_AGENT_OT_apply_slider_defaults,
-    MESH_AGENT_OT_toggle_params,
     MESH_AGENT_OT_toggle_collision,
     MESH_AGENT_OT_toggle_dimensions,
     MESH_AGENT_OT_measure_pins,

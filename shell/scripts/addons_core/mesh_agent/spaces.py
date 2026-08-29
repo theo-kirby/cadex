@@ -94,91 +94,15 @@ class CADEX_LIVE_HT_header(Header):
 
 # `model.py` is already mirrored into a text datablock with a fake user
 # (`model.set_script`), so the script needs no editor of its own -- the Text
-# Editor brings syntax highlighting, line numbers and find for free.
+# Editor brings syntax highlighting, line numbers and find for free. It is
+# opened like any editor: Blender's editor dropdown, then the text dropdown
+# (ADR-165 removed the open-a-view operators; the tiling manager is the one
+# way to arrange the screen).
 
 
 def script_text():
     from . import model
     return bpy.data.texts.get(model.SCRIPT_NAME)
-
-
-def script_area(screen):
-    """The Text Editor on this screen showing the script mirror, or None.
-
-    Not "any Text Editor": the toggle must not close one the user opened on
-    some other text, and must not claim to be open when it is showing one.
-    """
-    text = script_text()
-    if text is None:
-        return None
-    for area in screen.areas:
-        if area.type != 'TEXT_EDITOR':
-            continue
-        space = area.spaces.active
-        if space is not None and space.text == text:
-            return area
-    return None
-
-
-class MESH_AGENT_OT_show_script(Operator):
-    bl_idname = "mesh_agent.show_script"
-    bl_label = "Script"
-    bl_description = "Show or hide the model script in a Text Editor"
-
-    # No poll. A file with no mirror yet is exactly when someone wants to see
-    # what the script is, and a greyed-out button answers that with nothing;
-    # `model.ensure_script_text` makes the empty mirror instead.
-
-    def execute(self, context):
-        from . import model
-        window = context.window
-        screen = window.screen
-
-        open_area = script_area(screen)
-        if open_area is not None:
-            try:
-                with context.temp_override(window=window, screen=screen,
-                                           area=open_area):
-                    bpy.ops.screen.area_close()
-            except RuntimeError:
-                # area_close's poll fails when no neighbour can absorb it.
-                self.report({'WARNING'}, "The script view cannot be closed")
-                return {'CANCELLED'}
-            return {'FINISHED'}
-
-        text = model.ensure_script_text()
-        area = next((a for a in screen.areas if a.type == 'TEXT_EDITOR'), None)
-        if area is None:
-            viewports = [a for a in screen.areas if a.type == 'VIEW_3D']
-            if not viewports:
-                self.report({'WARNING'}, "No viewport to split")
-                return {'CANCELLED'}
-            viewport = max(viewports, key=lambda a: a.width * a.height)
-            before = {a.as_pointer() for a in screen.areas}
-            try:
-                with context.temp_override(window=window, screen=screen,
-                                           area=viewport):
-                    bpy.ops.screen.area_split(direction='VERTICAL', factor=0.5)
-            except RuntimeError:
-                self.report({'WARNING'}, "No room for the script")
-                return {'CANCELLED'}
-            fresh = [a for a in screen.areas if a.as_pointer() not in before]
-            if not fresh:
-                self.report({'WARNING'}, "No room for the script")
-                return {'CANCELLED'}
-            area = fresh[0]
-            # Area type changes need a window in the context; without one the
-            # assignment appears to succeed but the space data never switches.
-            with context.temp_override(window=window, screen=screen,
-                                       area=area):
-                area.type = 'TEXT_EDITOR'
-
-        space = area.spaces.active
-        space.text = text
-        space.show_line_numbers = True
-        space.show_syntax_highlight = True
-        space.show_word_wrap = False
-        return {'FINISHED'}
 
 
 class MESH_AGENT_OT_revert_script(Operator):
@@ -268,7 +192,6 @@ class CADEX_PT_script(Panel):
 
 
 classes = (
-    MESH_AGENT_OT_show_script,
     MESH_AGENT_OT_revert_script,
     CADEX_CHAT_HT_header,
     CADEX_PARAMS_HT_header,

@@ -361,6 +361,7 @@ extern "C" int GHOST_HACK_getFirstFile(char buf[FIRSTFILEBUFLG])
 - (void)dealloc;
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification;
 - (BOOL)application:(NSApplication *)theApplication openFile:(NSString *)filename;
+- (void)cadexMenuAction:(id)sender;
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender;
 - (void)applicationWillTerminate:(NSNotification *)aNotification;
 - (void)applicationWillBecomeActive:(NSNotification *)aNotification;
@@ -416,6 +417,17 @@ extern "C" int GHOST_HACK_getFirstFile(char buf[FIRSTFILEBUFLG])
 - (BOOL)application:(NSApplication *)theApplication openFile:(NSString *)filename
 {
   return system_cocoa_->handleOpenDocumentRequest(filename);
+}
+
+/* cadex ADR-166: every File/Edit menu item routes here with its tag in
+ * `representedObject`; the items use a nil target, so the responder chain
+ * finds this on the application delegate and auto-enables them. */
+- (void)cadexMenuAction:(id)sender
+{
+  NSString *tag = [(NSMenuItem *)sender representedObject];
+  if (tag != nil) {
+    system_cocoa_->handleNativeMenuRequest([tag UTF8String]);
+  }
 }
 
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender
@@ -582,15 +594,24 @@ GHOST_TSuccess GHOST_SystemCocoa::init()
         NSMenu *windowMenu;
         NSMenu *appMenu;
 
-        /* Create the application menu. */
-        appMenu = [[NSMenu alloc] initWithTitle:@"Blender"];
+        /* Create the application menu. (cadex ADR-030/ADR-166: the product
+         * name in the user-visible literals; "Settings..." is here because
+         * that is where the HIG puts it, wired through the same tag path as
+         * the File and Edit items below.) */
+        appMenu = [[NSMenu alloc] initWithTitle:@"Cadex"];
 
-        [appMenu addItemWithTitle:@"About Blender"
+        [appMenu addItemWithTitle:@"About Cadex"
                            action:@selector(orderFrontStandardAboutPanel:)
                     keyEquivalent:@""];
         [appMenu addItem:[NSMenuItem separatorItem]];
 
-        menuItem = [appMenu addItemWithTitle:@"Hide Blender"
+        menuItem = [appMenu addItemWithTitle:@"Settings..."
+                                      action:@selector(cadexMenuAction:)
+                               keyEquivalent:@""];
+        menuItem.representedObject = @"preferences";
+        [appMenu addItem:[NSMenuItem separatorItem]];
+
+        menuItem = [appMenu addItemWithTitle:@"Hide Cadex"
                                       action:@selector(hide:)
                                keyEquivalent:@"h"];
         menuItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
@@ -605,7 +626,7 @@ GHOST_TSuccess GHOST_SystemCocoa::init()
                            action:@selector(unhideAllApplications:)
                     keyEquivalent:@""];
 
-        menuItem = [appMenu addItemWithTitle:@"Quit Blender"
+        menuItem = [appMenu addItemWithTitle:@"Quit Cadex"
                                       action:@selector(terminate:)
                                keyEquivalent:@"q"];
         menuItem.keyEquivalentModifierMask = NSEventModifierFlagCommand;
@@ -616,6 +637,68 @@ GHOST_TSuccess GHOST_SystemCocoa::init()
         [mainMenubar addItem:menuItem];
         [menuItem release];
         [appMenu release];
+
+        /* cadex ADR-166: File and Edit, in the OS menu bar where every other
+         * application keeps them, instead of an in-window bar. Each item
+         * carries a tag in `representedObject`; the window manager maps tags
+         * to operators (`wm_window.cc`), so GHOST stays ignorant of what any
+         * of them mean. No key equivalents on purpose: Blender's own keymap
+         * already handles the shortcuts, and a Cocoa key equivalent would
+         * intercept the key before the keymap sees it -- Cmd+Z in a text
+         * field would fire a global undo instead of the field's own. */
+        {
+          NSMenu *fileMenu = [[NSMenu alloc] initWithTitle:@"File"];
+          const struct {
+            const char *title;
+            const char *tag;
+          } file_items[] = {
+              {"New", "file.new"},
+              {"Open...", "file.open"},
+              {"Revert", "file.revert"},
+              {"-", ""},
+              {"Save", "file.save"},
+              {"Save As...", "file.save_as"},
+              {"Save Copy...", "file.save_copy"},
+              {"-", ""},
+              {"Import Geometry...", "file.import_geometry"},
+              {"Link Part...", "file.link_part"},
+              {"Refresh Linked Parts", "file.refresh_linked_parts"},
+              {"-", ""},
+              {"Export Printable Parts...", "file.export_printable"},
+          };
+          for (const auto &item : file_items) {
+            if (item.title[0] == '-') {
+              [fileMenu addItem:[NSMenuItem separatorItem]];
+              continue;
+            }
+            menuItem = [fileMenu addItemWithTitle:[NSString stringWithUTF8String:item.title]
+                                           action:@selector(cadexMenuAction:)
+                                    keyEquivalent:@""];
+            menuItem.representedObject = [NSString stringWithUTF8String:item.tag];
+          }
+          menuItem = [[NSMenuItem alloc] init];
+          menuItem.submenu = fileMenu;
+          [mainMenubar addItem:menuItem];
+          [menuItem release];
+          [fileMenu release];
+        }
+
+        {
+          NSMenu *editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+          menuItem = [editMenu addItemWithTitle:@"Undo"
+                                         action:@selector(cadexMenuAction:)
+                                  keyEquivalent:@""];
+          menuItem.representedObject = @"edit.undo";
+          menuItem = [editMenu addItemWithTitle:@"Redo"
+                                         action:@selector(cadexMenuAction:)
+                                  keyEquivalent:@""];
+          menuItem.representedObject = @"edit.redo";
+          menuItem = [[NSMenuItem alloc] init];
+          menuItem.submenu = editMenu;
+          [mainMenubar addItem:menuItem];
+          [menuItem release];
+          [editMenu release];
+        }
 
         /* Create the window menu. */
         windowMenu = [[NSMenu alloc] initWithTitle:@"Window"];
@@ -1430,6 +1513,30 @@ void GHOST_SystemCocoa::handleQuitRequest()
   /* Push the event to Blender so it can open a dialog if needed. */
   pushEvent(std::make_unique<GHOST_Event>(getMilliSeconds(), GHOST_kEventQuitRequest, window));
   outside_loop_event_processed_ = true;
+}
+
+bool GHOST_SystemCocoa::handleNativeMenuRequest(const char *tag)
+{
+  /* cadex ADR-166. The same shape as handleOpenDocumentRequest: a malloc'd
+   * string pushed as event data, freed by ~GHOST_EventString. The window may
+   * be null early in startup; the consumer treats the event as app-level. */
+  if (tag == nullptr || tag[0] == '\0') {
+    return NO;
+  }
+  GHOST_Window *window = window_manager_->getWindows().empty() ?
+                             nullptr :
+                             (GHOST_Window *)window_manager_->getWindows().front();
+  char *temp_buff = (char *)malloc(strlen(tag) + 1);
+  if (temp_buff == nullptr) {
+    return NO;
+  }
+  strcpy(temp_buff, tag);
+  pushEvent(std::make_unique<GHOST_EventString>(getMilliSeconds(),
+                                                GHOST_kEventNativeMenu,
+                                                window,
+                                                static_cast<GHOST_TEventDataPtr>(temp_buff)));
+  outside_loop_event_processed_ = true;
+  return YES;
 }
 
 bool GHOST_SystemCocoa::handleOpenDocumentRequest(void *filepathStr)

@@ -260,12 +260,13 @@ The philosophy is **remove more than we add** (`docs/VISION.md`). Zones:
   the fork's delta against upstream is the exception worth making (ADR-022).
 - **The rest of `shell/**` — inherited Blender, same conservative rules.**
   The delta against upstream Blender is listed in full in
-  `docs/BLENDER-TREE.md` §2, in three groups that age differently: **§2a**
+  `docs/BLENDER-TREE.md` §2, in four groups that age differently: **§2a**
   product identity (eight files of string literals and guarded CMake blocks —
   *this one must stay eight*), **§2b** the Cadex editors (ADR-035, ADR-036 —
   additive rows in enums, exhaustive switches and CMake lists, plus the
-  registration list that *is* the editor menu), and **§2c** the message box
-  (ADR-034). Every line added there is a future merge conflict; what differs
+  registration list that *is* the editor menu), **§2c** the message box
+  (ADR-034), and **§2d** the window chrome (ADR-166 — the native menu bar
+  and the removed window bars). Every line added there is a future merge conflict; what differs
   is whether it conflicts as an insertion the compiler finds or as rewritten
   logic. Prefer the former, and say which you are adding. Removals go through
   the two-commit protocol in `docs/FREECAD.md` §3 — and on this side the

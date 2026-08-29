@@ -936,26 +936,6 @@ def test_panels_are_homed_on_the_cadex_editors():
           "the column-role lookup is gone")
 
 
-#: Menus the File menu points at that are registered from C
-#: (`editors/space_topbar/space_topbar.cc`) and so never appear in
-#: `bpy.types` -- there is no way to check them from Python.
-TOPBAR_C_MENUS = frozenset({'TOPBAR_MT_file_open_recent'})
-
-
-def _identifiers_drawn_by(module):
-    """The operator and menu identifiers a module's draw functions name.
-
-    Read out of the source rather than kept in a list beside it: the point is
-    to catch an upstream rename on a Blender merge, and a hand-maintained
-    list is exactly what a merge does not update.
-    """
-    import inspect
-    import re
-    source = inspect.getsource(module)
-    return (set(re.findall(r'\.operator\(\s*"([^"]+)"', source)),
-            set(re.findall(r'\.menu\(\s*"([^"]+)"', source)))
-
-
 def _operator_exists(idname):
     module, _, function = idname.partition(".")
     submodule = getattr(bpy.ops, module, None)
@@ -964,59 +944,222 @@ def _operator_exists(idname):
     return submodule is not None and function in dir(submodule)
 
 
-def test_cadex_topbar_is_the_product_bar():
-    """File and Edit are back on the top bar, and every entry resolves.
+def test_native_menu_targets_exist():
+    """Every operator the OS menu bar maps to exists in this build.
 
-    The app template blanked the bar entirely (ADR-037), which is how Open,
-    Save, Import, Export and Preferences went missing; ADR-041 puts back two
-    menus of our own rather than Blender's six. A menu entry naming an
-    operator this build does not have draws as a red row, so the identifiers
-    are checked against the running build rather than trusted.
+    ADR-166 moved File and Edit to the native menu bar: the menus are built
+    in `GHOST_SystemCocoa.mm` and each item's tag maps to an operator in
+    `wm_window.cc` (`GHOST_kEventNativeMenu`). That map is C and cannot be
+    read from here, so this list mirrors it -- if an operator below is
+    renamed or dropped, a menu item goes dead silently, which is exactly
+    what this catches. The in-window bar and its menus are gone with the
+    install machinery (`topbar.install`), so what `topbar.py` keeps is the
+    four product operators and their dialogs.
     """
-    print("test_cadex_topbar_is_the_product_bar")
+    print("test_native_menu_targets_exist")
     from mesh_agent import topbar
 
-    for name in ('CADEX_MT_file', 'CADEX_MT_edit', 'CADEX_MT_editor_menus'):
-        check(getattr(bpy.types, name, None) is not None,
-              "{:s} is registered".format(name))
-
-    operators, menus = _identifiers_drawn_by(topbar)
-    for idname in ("wm.open_mainfile", "wm.save_mainfile",
-                   "wm.save_as_mainfile", "wm.revert_mainfile",
-                   "screen.userpref_show",
-                   # Ours, and the way a model leaves for a slicer (cadex
-                   # ADR-156). Named explicitly rather than left to the
-                   # source-scrape below, because the scrape only proves the
-                   # rows that *are* drawn resolve — it cannot notice one
-                   # going missing.
-                   "mesh_agent.export_printable"):
-        check(idname in operators, "the bar offers {:s}".format(idname))
-    for name in ('TOPBAR_MT_file_import', 'TOPBAR_MT_file_export',
-                 'TOPBAR_MT_file_open_recent'):
-        check(name in menus, "the File menu offers {:s}".format(name))
-
-    for idname in sorted(operators):
+    # The native menu map in wm_window.cc, tag for tag.
+    for idname in (
+        "wm.read_homefile",
+        "wm.open_mainfile",
+        "wm.revert_mainfile",
+        "wm.save_mainfile",
+        "wm.save_as_mainfile",
+        "mesh_agent.import_asset",
+        "mesh_agent.link_part",
+        "mesh_agent.refresh_linked_parts",
+        "mesh_agent.export_printable",
+        "ed.undo",
+        "ed.redo",
+        "screen.userpref_show",
+    ):
         check(_operator_exists(idname),
-              "{:s} exists in this build".format(idname))
-    for name in sorted(menus - TOPBAR_C_MENUS):
-        check(getattr(bpy.types, name, None) is not None,
-              "{:s} exists in this build".format(name))
+              "{:s} exists for its native menu item".format(idname))
 
-    # Blender's bar must come back exactly as it was: disabling the add-on
-    # runs uninstall, and a half-restored header is a broken session.
-    stock = bpy.types.TOPBAR_HT_upper_bar.draw
-    check(not topbar.installed(), "the bar is not installed by registering")
+    # The in-window menus and the header swap are gone, not merely unused.
+    for name in ('CADEX_MT_file', 'CADEX_MT_edit', 'CADEX_MT_editor_menus'):
+        check(getattr(bpy.types, name, None) is None,
+              "{:s} is unregistered".format(name))
+    for attr in ('install', 'uninstall', 'installed', 'draw_upper_bar'):
+        check(not hasattr(topbar, attr),
+              "topbar.{:s} is deleted".format(attr))
+
+
+def test_landing_layout_is_pure_and_hit_testable():
+    """The landing screen's geometry is arithmetic, not drawing (ADR-167).
+
+    ``landing_layout`` runs with no window and no gpu, so the hit targets a
+    click resolves against can be pinned here: every target inside the
+    region, no two targets overlapping, and ``hit_test`` naming each one
+    from its own centre.
+    """
+    print("test_landing_layout_is_pure_and_hit_testable")
+    from mesh_agent import cadex_landing
+
+    def centre(rect):
+        x, y, w, h = rect
+        return x + w / 2.0, y + h / 2.0
+
+    def overlaps(a, b):
+        ax, ay, aw, ah = a
+        bx, by, bw, bh = b
+        return ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah
+
+    for width, height, expect_two_column in ((1600, 900, True),
+                                             (620, 820, False)):
+        layout = cadex_landing.landing_layout(width, height, scale=1.0)
+        check(layout["two_column"] == expect_two_column,
+              "{}x{} lays out {}".format(
+                  width, height,
+                  "two-column" if expect_two_column else "single-column"))
+        rects = [("demo", layout["card"]["rect"])]
+        rects += [(b["id"], b["rect"]) for b in layout["buttons"]]
+        check([b["id"] for b in layout["buttons"]] ==
+              ["new", "open", "tutorial"],
+              "the three actions draw in their declared order")
+        for name, rect in rects:
+            x, y, w, h = rect
+            check(0 <= x and x + w <= width and 0 <= y and y + h <= height,
+                  "{} target is inside the {}x{} region".format(
+                      name, width, height))
+            check(cadex_landing.hit_test(layout, *centre(rect)) == name,
+                  "{} answers from its own centre".format(name))
+        for i, (name_a, rect_a) in enumerate(rects):
+            for name_b, rect_b in rects[i + 1:]:
+                check(not overlaps(rect_a, rect_b),
+                      "{} and {} do not overlap".format(name_a, name_b))
+        check(cadex_landing.hit_test(layout, 1.0, 1.0) is None,
+              "the scrim corner hits nothing")
+
+    # A region shorter than the natural layout shrinks instead of clipping.
+    small = cadex_landing.landing_layout(500, 300, scale=1.0)
+    check(small["scale"] < 1.0, "a small region scales the layout down")
+    x, y, w, h = small["card"]["rect"]
+    check(y >= 0 and y + h <= 300, "the shrunken card still fits")
+
+    # The rounded corners are geometry, and the polygon stays in its rect.
+    rect = (10.0, 20.0, 100.0, 50.0)
+    points = cadex_landing.rounded_rect_points(rect, 8.0, segments=6)
+    check(len(points) == 28, "four corners of seven points each")
+    check(all(10.0 - 1e-6 <= px <= 110.0 + 1e-6 and
+              20.0 - 1e-6 <= py <= 70.0 + 1e-6 for px, py in points),
+          "every rounded point stays inside the rect")
+    check(cadex_landing.rounded_rect_points(rect, 0.0) ==
+          [(10.0, 20.0), (110.0, 20.0), (110.0, 70.0), (10.0, 70.0)],
+          "zero radius degenerates to the four corners")
+    oversized = cadex_landing.rounded_rect_points((0, 0, 20, 10), 400.0)
+    check(all(0 <= px <= 20 and 0 <= py <= 10 for px, py in oversized),
+          "a radius past half the rect is clamped, not folded")
+
+
+def test_landing_demo_payload_ships():
+    """The demo project is real, complete, and sanitized.
+
+    A card that opens nothing is worse than no card: the .blend, its
+    project store and the card art must all ship, and the store's text
+    files must carry no machine path (the sanitize step that made the
+    wcv12 project shippable).
+    """
+    print("test_landing_demo_payload_ships")
+    from mesh_agent import cadex_landing
+
+    blend, store = cadex_landing.demo_source()
+    check(blend is not None and os.path.isfile(blend),
+          "demo/drone.blend ships")
+    check(store is not None and os.path.isdir(store),
+          "demo/drone.cadex ships")
+    if store is None:
+        return
+    for name in ("script.py", "script.json"):
+        path = os.path.join(store, name)
+        check(os.path.isfile(path) and os.path.getsize(path) > 0,
+              "the demo store carries {}".format(name))
+    assets = os.path.join(store, "assets")
+    stems = sorted(os.listdir(assets)) if os.path.isdir(assets) else []
+    check(any(name.endswith(".stl") for name in stems),
+          "the demo store carries its mesh assets")
+    demo_root = os.path.dirname(blend)
+    check(not any(name == ".DS_Store" or name.endswith(".blend1")
+                  for _root, _dirs, files in os.walk(demo_root)
+                  for name in files),
+          "no .DS_Store or .blend1 backup rides along")
+    for name in ("script.py", "script.json"):
+        with open(os.path.join(store, name), "r", encoding="utf-8") as fh:
+            check("/Users/" not in fh.read(),
+                  "{} carries no machine path".format(name))
+    card = os.path.join(os.path.dirname(blend), cadex_landing.DEMO_CARD_NAME)
+    check(os.path.isfile(card) and os.path.getsize(card) > 0,
+          "the card art ships beside the demo")
+    logo = os.path.join(os.path.dirname(cadex_landing.__file__),
+                        cadex_landing.LOGO_NAME)
+    check(os.path.isfile(logo) and os.path.getsize(logo) > 0,
+          "the logo mark ships in the add-on")
+
+    dest_blend, dest_store = cadex_landing.demo_destination()
+    check(os.path.splitext(os.path.basename(dest_blend))[0] ==
+          os.path.basename(dest_store)[:-len(".cadex")],
+          "a demo copy keeps blend and store stems matched")
+    check(not os.path.exists(dest_blend) and not os.path.exists(dest_store),
+          "a demo copy always lands on a fresh stem")
+
+
+def test_landing_shows_dismisses_and_yields_to_chat():
+    """The landing screen's exits behave (ADR-167).
+
+    In a headless session it never shows on its own (`--background` is one
+    of `maybe_show_on_startup`'s refusals); shown by hand it dismisses
+    cleanly, the startup file leaves it up, and the first chat message
+    takes it down -- the exit that makes 'the chat is already live' true.
+    """
+    print("test_landing_shows_dismisses_and_yields_to_chat")
+    from mesh_agent import agent as agent_module
+    from mesh_agent import cadex_landing
+
+    check(not cadex_landing.visible(),
+          "a background session never opens onto the landing screen")
+    for idname in ("mesh_agent.landing_click", "mesh_agent.landing_hover",
+                   "mesh_agent.landing_dismiss"):
+        check(_operator_exists(idname),
+              "{:s} is registered".format(idname))
+
+    class _FakeBackend:
+        session_id = None
+
+        def __init__(self):
+            self.prompts = []
+
+        def start_turn(self, prompt, _events):
+            self.prompts.append(prompt)
+
+        def cancel(self):
+            pass
+
+    bpy.ops.wm.read_homefile(use_empty=True)
+    agent = agent_module.get_agent()
+    window_manager = bpy.context.window_manager
     try:
-        topbar.install()
-        check(bpy.types.TOPBAR_HT_upper_bar.draw is topbar.draw_upper_bar,
-              "install puts the Cadex bar on the top bar")
-        topbar.install()
-        check(bpy.types.TOPBAR_HT_upper_bar.draw is topbar.draw_upper_bar,
-              "installing twice is a no-op")
+        cadex_landing.show()
+        check(cadex_landing.visible(), "show() puts the screen up")
+        cadex_landing.on_file_loaded()
+        check(cadex_landing.visible(),
+              "the startup file (no filepath) leaves it up")
+        cadex_landing.dismiss()
+        check(not cadex_landing.visible(), "dismiss() takes it down")
+        cadex_landing.dismiss()  # twice is safe, the cadex_dimension rule
+
+        cadex_landing.show()
+        agent.history.clear()
+        agent.backend = _FakeBackend()
+        window_manager.mesh_chat_input = "make a bracket"
+        check(not cadex_landing.visible(),
+              "the first chat message dismisses the landing screen")
     finally:
-        topbar.uninstall()
-    check(bpy.types.TOPBAR_HT_upper_bar.draw is stock,
-          "uninstall gives the stock bar back")
+        agent.busy = False
+        agent.backend = None
+        agent.history.clear()
+        window_manager.mesh_chat_input = ""
+        cadex_landing.dismiss()
 
 
 def test_confirming_the_input_sends():
@@ -1094,6 +1237,7 @@ class _RecordingLayout:
         return _RecordingLayout(self)
 
     column = row
+    box = row
 
     def separator(self, **_kwargs):
         self.separators[0] += 1
@@ -1162,14 +1306,52 @@ def test_every_chat_action_is_in_one_row_under_the_message_box():
         "mesh_agent.edit_wire_path",
         "mesh_agent.confirm_wire_path",
         "mesh_agent.cancel_wire_path",
-        "mesh_agent.rebuild_model",
-        "mesh_agent.toggle_params",
-        "mesh_agent.show_script",
-        "mesh_agent.toggle_wiring",
         "mesh_agent.chat_new",
         "mesh_agent.chat_send",
     ):
         check(idname in idnames, "{:s} is in the row".format(idname))
+
+    # Rebuild and the viewport switches act on the model or the viewport,
+    # not on the chat, so ADR-164 moved them out of this row and into the
+    # parameters editor's Interface section.
+    for idname in (
+        "mesh_agent.rebuild_model",
+        "mesh_agent.toggle_collision",
+        "mesh_agent.toggle_dimensions",
+        "mesh_agent.toggle_section",
+        "mesh_agent.toggle_explode",
+        "mesh_agent.toggle_blueprint",
+    ):
+        check(idname not in idnames,
+              "{:s} left the chat row for the Interface section".format(
+                  idname))
+
+    interface = _RecordingLayout()
+    mesh_ui._draw_interface(interface, context)
+    interface_idnames = [e["idname"] for e in interface.drawn
+                         if "idname" in e]
+    for idname in (
+        "mesh_agent.rebuild_model",
+        "mesh_agent.toggle_collision",
+        "mesh_agent.toggle_dimensions",
+        "mesh_agent.toggle_cage",
+        "mesh_agent.toggle_section",
+        "mesh_agent.toggle_explode",
+        "mesh_agent.toggle_blueprint",
+    ):
+        check(idname in interface_idnames,
+              "{:s} is in the Interface section".format(idname))
+
+    # There are no open-this-editor operators at all any more (ADR-165):
+    # editors are opened and arranged with Blender's own editor dropdown and
+    # area tiling. Gone from the registry, not merely from the rows.
+    for name in (
+        "MESH_AGENT_OT_toggle_params",
+        "MESH_AGENT_OT_show_script",
+        "MESH_AGENT_OT_toggle_wiring",
+    ):
+        check(getattr(bpy.types, name, None) is None,
+              "{:s} is unregistered".format(name))
 
     # Rebuild is the always-on one: its poll is "the assistant is idle", so
     # nothing about the selection or a pending failure can grey it out.
@@ -2661,7 +2843,10 @@ def main():
         test_cadex_editors_are_registered()
         test_editor_menu_is_short()
         test_panels_are_homed_on_the_cadex_editors()
-        test_cadex_topbar_is_the_product_bar()
+        test_native_menu_targets_exist()
+        test_landing_layout_is_pure_and_hit_testable()
+        test_landing_demo_payload_ships()
+        test_landing_shows_dismisses_and_yields_to_chat()
         test_confirming_the_input_sends()
         test_every_chat_action_is_in_one_row_under_the_message_box()
         test_message_box_widget_is_available()

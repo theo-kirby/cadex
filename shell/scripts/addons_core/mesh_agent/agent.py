@@ -285,6 +285,14 @@ class Agent:
         if not prompt:
             prompt = "See the attached image(s)."
 
+        # The first message is one of the landing screen's exits (ADR-167):
+        # a person who starts typing has chosen the chat over the start page.
+        try:
+            from . import cadex_landing
+            cadex_landing.dismiss()
+        except Exception:
+            pass
+
         self.history.add("user", prompt)
         self._sync_model()
 

@@ -1,6 +1,6 @@
 # BLENDER-TREE.md — Inherited Shell Substrate Inventory
 
-Verified against source: 2026-08-09
+Verified against source: 2026-08-29
 
 `shell/` is a Blender fork. This is its ledger — what we keep, what is
 slated for removal, what is already gone — the peer of `docs/FREECAD.md`
@@ -29,7 +29,7 @@ These files exist in no upstream Blender and cannot conflict with one.
 | Path | What | Lines |
 |---|---|---|
 | `shell/scripts/addons_core/mesh_agent/` | the add-on: chat, params, headers, the top bar, the cadexd protocol client, hydration, playback, picking, the collision overlay and the policy-output readout | 8,684 (21 files) |
-| `shell/source/blender/editors/space_cadex_chat/` | the Cadex Chat editor: transcript, message box, header (ADR-035) | 202 |
+| `shell/source/blender/editors/space_cadex_chat/` | the Cadex Chat editor: transcript, message box (dynamic-size execute region, ADR-164), header (ADR-035) | 220 |
 | `shell/source/blender/editors/space_cadex_params/` | the Cadex Parameters editor (ADR-035) | 170 |
 | `shell/source/blender/editors/space_cadex_{env,policy,training,live}/` | the four editors ADR-108 split out of Parameters: Environment, Policy, Training and Live. Structurally `space_cadex_params.cc` with the names changed, which is the point — see the checklist in §2b | ~200 each |
 | `shell/scripts/startup/bl_app_templates_system/Mesh/` | the app template: `startup.blend` carries the layout, `__init__.py` enables the add-on, installs the Cadex top bar and suppresses the splash (ADR-037, ADR-041, ADR-042) | 111 + a 267 KB `.blend` |
@@ -122,7 +122,7 @@ retires the Blender shell wholesale, which is the horizon on all of it.
 | `CMakeLists.txt` | `WITH_CADEX_ENGINE` option + `CADEX_ENGINE_DIR` cache path | Declares the option that bundles the engine. Additive: one `option()`, one `set(... CACHE PATH ...)`. | Re-add the block; it depends on nothing around it. |
 | `source/creator/CMakeLists.txt` | `install()` rules for the engine payload under `WITH_CADEX_ENGINE`; `Blender.app` → `${CADEX_APP_NAME}.app` in the install destinations and `OUTPUT_NAME` | The engine block is additive, one guarded block beside the existing `scripts` install (ADR-023, ADR-030). The rename is six string literals routed through one variable so the product is `Cadex.app` (ADR-030). | Re-add the engine block after upstream's install rules; re-apply the variable wherever upstream reintroduces a `Blender.app` literal. |
 | `build_files/cmake/testing.cmake`, `build_files/cmake/platform/platform_apple.cmake` | one `Blender.app` literal each → `${CADEX_APP_NAME}.app` | Same rename; these two hold the test-install and `DYLD_LIBRARY_PATH` paths that would otherwise point at a bundle that is not built. | One-line re-apply. |
-| `source/blender/windowmanager/intern/wm_window.cc` | two string literals: `"Blender"` → `"Cadex"`, and `" - Blender {version}"` → `" - Cadex"` | The window title is the most visible instance of the product name (ADR-030). The upstream version string is dropped rather than relabelled — "Cadex 5.3.0 Alpha" would be a lie about which version of what; the shell version stays in the status bar and the About dialog. | Two-line re-apply inside `wm_window_title_text()`. |
+| `source/blender/windowmanager/intern/wm_window.cc` | two string literals: `"Blender"` → `"Cadex"`, and `" - Blender {version}"` → `" - Cadex"` — plus, since ADR-166, the *product* version appended from the bundle's `cadex_version.txt`, and the `GHOST_kEventNativeMenu` case (see §2d) | The window title is the most visible instance of the product name (ADR-030). The upstream version string is dropped rather than relabelled — "Cadex 5.3.0 Alpha" would be a lie about which version of what; the product version (repo-root `VERSION`, stamped by `build_app.sh`) is what the title carries now that the status bar is gone. | Re-apply inside `wm_window_title_text()`; the menu case re-adds beside `GHOST_kEventOpenMainFile`. |
 | `release/darwin/Blender.app/Contents/Info.plist` | `CFBundleName`, `CFBundleExecutable`, `CFBundleIdentifier`, `CFBundleIconFile`; `CFBundleIconName` **removed** | The bundle's own identity (ADR-030). `CFBundleIconName` resolves into `Assets.car` and wins over `CFBundleIconFile` on macOS 11+, so leaving it would have meant shipping our icns and never showing it. | Keep our four values and keep `CFBundleIconName` absent; take upstream's other keys. |
 
 `creator_args.cc` was the other route to a default app template and was
@@ -234,6 +234,21 @@ a bundle older than it.
 | File | Change | On conflict |
 |---|---|---|
 | `editors/include/UI_interface_layout.hh`, `editors/interface/interface_intern.hh`, `editors/interface/interface_layout.cc`, `editors/interface/interface_handlers.cc`, `makesrna/intern/rna_ui_api.cc` | `confirm_only` on the text-box widget: commit the value only when the edit ends by explicit confirmation | The first *behavioural* edit in this table rather than a literal or an insertion, and the one most likely to conflict as logic. Re-apply inside `ui_textedit_end` / the layout API. |
+
+### 2d. The window chrome — ADR-166
+
+File and Edit in the OS menu bar, no in-window bars, and the product version
+in the title. The dispatch shape is `GHOST_kEventOpenMainFile`'s exactly: a
+tag string pushed from Cocoa, mapped to an operator on the Blender side, so
+GHOST never learns an operator name. `wm_window.cc`'s share of this is listed
+with its §2a row; `screen_edit.cc` already appears in §2b for the null-guards.
+
+| File | Change | On conflict |
+|---|---|---|
+| `intern/ghost/GHOST_Types.hh` | `GHOST_kEventNativeMenu` added to the event enum | Re-add beside `GHOST_kEventOpenMainFile`. |
+| `intern/ghost/intern/GHOST_SystemCocoa.hh` | `handleNativeMenuRequest()` declaration | Re-add beside `handleOpenDocumentRequest()`. |
+| `intern/ghost/intern/GHOST_SystemCocoa.mm` | File and Edit `NSMenu`s (tagged items, nil-target `cadexMenuAction:` on the app delegate), "Settings..." in the app menu, `handleNativeMenuRequest()` — and three identity literals: About/Hide/Quit **Cadex** | The menus are one self-contained block after the app menu; the literals re-apply like §2a's. Items carry **no key equivalents** on purpose — Blender's keymap owns the shortcuts. |
+| `editors/screen/screen_edit.cc` | `ED_screen_global_areas_refresh` frees the global areas instead of creating them: no top bar, no status bar, on new windows and on windows loaded from files saved with bars | Re-apply as the tail of the function; the two `*_area_refresh` helpers stay for the day a bar comes back. |
 
 ## 3. Kept — the shell stands on these
 

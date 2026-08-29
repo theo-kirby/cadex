@@ -16948,3 +16948,282 @@ and the trainer digest does.
 
 The three decisions themselves are now written out above, from their PR
 bodies, because a merged PR body is not this log.
+
+## ADR-164 — the chat row is for the chat, and the message box sits on the floor (2026-08-29)
+
+Two quality-of-life defects in the chat editor, both reported from use, and
+one relocation that follows from fixing them.
+
+**What was wrong.** The message box and its button row floated ~90 px above
+the bottom of the window: the execute region is `RGN_ALIGN_BOTTOM` but was a
+fixed `6 * HEADERY` tall, and panel content draws from a region's top, so the
+gap between content and region height sat *under* the input as dead rows.
+The button row was also glued to the box by an `align=True` column — one
+widget to the eye — and had grown to sixteen buttons, most of which act on
+the model or the viewport rather than on the chat.
+
+**Decision, in three parts.**
+
+1. **The execute region hugs its content.** `RGN_FLAG_DYNAMIC_SIZE |
+   RGN_FLAG_NO_USER_RESIZE`, exactly the project editor's execute-region
+   recipe. The box now sits at the bottom of the window with the row under
+   it and nothing below. Region-edge resizing is gone, but the affordance is
+   not: the text box's own grip adds visible lines, which is more content,
+   which the region follows. Saved layouts carry their region flags, so
+   `cadex_chat_init()` enforces the flags the way
+   `BKE_screen_header_alignment_reset()` pins header alignment — the app
+   template and every older user file get the fix without being re-saved.
+
+2. **The row is padded off the box** — a plain column and a
+   `separator(factor=0.5)` instead of the `align=True` column.
+
+3. **The row keeps only what acts on the chat**: the gather group, the
+   parameters toggle, New Chat and Send/Stop. Rebuild Model and the view
+   switches (Script, Wiring, Collision Shapes, Dimensions, Section View,
+   Exploded View, Blueprint) moved to a new **Interface** section at the
+   bottom of the parameters panel (`ui._draw_interface`), joining the
+   section-cage, section-view, exploded-view and blueprint controls that
+   already lived there — the user's own framing: expand the section that
+   exists rather than invent a second panel. The parameters toggle stays in
+   the row because it is the door: an Interface section reachable only from
+   the Interface section is not reachable. The Interface section also draws
+   when the model has no parameters — a view is arrangeable regardless of
+   sliders, which the old code got wrong by drawing the view boxes only on
+   the has-sliders path.
+
+The one-row invariant of ADR-074 is narrowed, not repealed: every *chat*
+action is still in one row that never changes width, and
+`test_every_chat_action_is_in_one_row_under_the_message_box` now also pins
+the eight relocated buttons out of the row and into the Interface section.
+
+Files: `space_cadex_chat.cc` (a Cadex editor of ours — no new §2a/§2b touch
+points), `mesh_agent/ui.py`, `bl_mesh_agent.py`, `docs/BLENDER.md`.
+
+## ADR-165 — one grid in the Interface section, and no open-a-view operators at all (2026-08-29)
+
+Two refinements on ADR-164, both operator feedback on seeing it.
+
+**One grid.** The Interface section drew its six viewport toggles in two
+styles: the four relocated ones in a two-per-row grid, the four controls that
+predated it (Section Cage, Section View, Exploded View, Blueprint) as
+freestanding full-width boxes. Unified: **one grid, two per row** — Collision
+Shapes, Dimensions, Section Cage, Section View, Exploded View, Blueprint —
+each depressed while on. A toggle that is on and has settings gets a box
+under the grid (the cage's ring count and Apply, the section's axis/offset/
+flip, the exploded factor, the blueprint theme and grid): the grid is *what
+is showing*, the boxes are *how it shows*.
+
+**No open-a-view operators.** `mesh_agent.toggle_params` (and with it
+`ui.params_area` and `PARAMS_SPLIT`), `mesh_agent.show_script` (and
+`spaces.script_area`), and `mesh_agent.toggle_wiring` (and
+`wiring_ui.wiring_area` and `WIRING_SPLIT`) are **deleted**, buttons and
+operators both — ~230 lines of split-an-area-and-set-its-type machinery.
+The reasoning is the operator's, verbatim: every area already carries
+Blender's editor dropdown and tiling manager, the parameters editor is open
+in the default layout anyway, and a second bespoke way to do what the
+substrate already does is surface without value. ADR-164's "the parameters
+toggle stays because it is the door" is thereby superseded — the door is the
+editor dropdown, as it always was. The rule is forward-looking too: **no
+future button whose job is to show or hide an editor.**
+
+What this deliberately keeps: the Wiring editor opens from the editor
+dropdown's "Wiring" row and `CadexWiringTree.get_from_context` populates it
+on first redraw (ADR-074's mechanism, now the only path); the script mirror
+is picked in a stock Text Editor; the ui_type-before-node_tree ordering the
+wiring toggle had learned is recorded in `docs/BLENDER.md` for anything
+scripting the space by hand. The chat row is now gather + turn and nothing
+else, and the one-row test additionally pins all three operators as
+unregistered.
+
+Removal verified by `pixi run gate` and the `bl_mesh_agent.py` suite in the
+same change. Files: `mesh_agent/ui.py`, `mesh_agent/spaces.py`,
+`mesh_agent/wiring_ui.py`, `bl_mesh_agent.py`, `docs/BLENDER.md`.
+
+## ADR-166 — File and Edit go native, the window bars go away, and the product gets a version (2026-08-29)
+
+Operator direction, in one sitting with ADR-164/165: the window should be
+the panels and nothing else, and the chrome macOS already provides should be
+used instead of drawn.
+
+### 1. File and Edit are in the OS menu bar
+
+**Decision.** The File and Edit menus are native `NSMenu`s, built in
+`GHOST_SystemCocoa.mm` beside the app and Window menus Blender already
+created there. Each item carries a tag in `representedObject` and a
+nil-target `cadexMenuAction:`, which the responder chain resolves to the
+application delegate; the delegate pushes the tag as a
+`GHOST_kEventNativeMenu` (a `GHOST_EventString`, the
+`GHOST_kEventOpenMainFile` shape exactly), and the tag→operator map lives in
+`wm_window.cc` — so GHOST never learns an operator name and the layering
+holds. The in-window top bar's menus, `draw_upper_bar` and the
+`install()`/`uninstall()` swap are deleted from `topbar.py`, which keeps the
+four product operators the menus call (Import Geometry, Link Part, Refresh
+Linked Parts, Export Printable Parts) and their dialogs. The app menu's
+About/Hide/Quit literals now say **Cadex**, and **Settings…** sits there per
+the HIG.
+
+Two deliberate omissions. The items carry **no key equivalents** — Cocoa
+resolves menu key equivalents before the window sees the key, so a native
+Cmd+Z would fire a global undo inside a text field; Blender's keymap keeps
+the shortcuts. And **Open Recent** and the stock **Import/Export submenus**
+did not survive the move — they are Blender menus a static native menu
+cannot host. Recent files remain reachable by Finder and drag-and-drop;
+revisit if missed.
+
+Verified end to end with System Events against the built bundle: the menu
+bar reads Apple/Cadex/File/Edit/Window, the File menu lists all ten rows,
+"Save As…" reports enabled, and clicking Settings… opened the Preferences
+window. `test_native_menu_targets_exist` mirrors the C map and pins that
+every target operator exists in the build.
+
+### 2. No top bar, no status bar
+
+**Decision.** `ED_screen_global_areas_refresh` frees the global areas
+instead of creating them — freeing also strips the bars off windows loaded
+from files saved with them, the app template included. The status bar
+carried the mouse-hint icons and the Blender version; the top bar carried
+the two menus that just went native. The window is the editors now.
+
+### 3. The product has a version, starting at 0.0.5
+
+**Decision.** `VERSION` at the repo root is the single source of truth,
+starting at **0.0.5**; `package/app/bump_version.sh [patch|minor|major]` is
+the deliberate bump (0.1.0 is a bump away when the operator calls it). The
+build (`build_app.sh stamp_version`) stamps it three ways: into
+`Contents/Resources/cadex_version.txt`, which the **window title** reads —
+`"<name> - Cadex 0.0.5"`, replacing the bare `" - Cadex"` of ADR-030 — and
+into `CFBundleShortVersionString` and `CFBundleVersion` in the bundle's
+Info.plist, so Finder and the native About panel agree. The **build number**
+is `git rev-list --count HEAD` (294 at first stamp): it increments with
+every commit, locally and in CI alike, with no state kept anywhere and no
+CI-side commit dance — which is the "increment on builds" system. CI needed
+no change: `pixi run build-shell` runs the stamp. A raw ninja build has no
+stamp and the title honestly shows no version. Editing Info.plist breaks any
+ad-hoc seal, so the stamp re-signs the bundle ad-hoc, best-effort.
+
+### The ledger
+
+`docs/BLENDER-TREE.md` gains **§2d — the window chrome**: `GHOST_Types.hh`,
+`GHOST_SystemCocoa.hh`, `GHOST_SystemCocoa.mm`, `screen_edit.cc`. §2a is
+still eight files; `wm_window.cc`'s row now also carries the version suffix
+and the menu-event case. The macOS-only reach of the native menus is
+accepted: the product ships a macOS shell only (ADR-060), and the Linux
+engine has no window to lose a menu from.
+
+## ADR-167 — a landing screen in the viewport, and a demo project in the bundle (2026-08-29)
+
+Operator direction, preparing 0.1.0: the app should open onto a start page
+— not Blender's modal splash, closer to FreeCAD's — that lives *in* the UI
+and is clicked through to the working screen; it should carry a demo
+project card with a good thumbnail, New File, Open, a Tutorial stub, and
+Start Chatting; and the current layout's insight should be kept — the
+viewport area hosts the page while the live chat stays beside it, so
+"just start typing" is itself an exit.
+
+**ADR-042 stands.** That decision removed Blender's splash *popup* (logo,
+donate links, a modal in front of an empty window) and it stays removed —
+`wm_splash_screen.cc` untouched, `_hide_splash()` still in the template.
+What ships instead is `mesh_agent/cadex_landing.py`: a `POST_PIXEL` overlay
+drawn in the 3D viewport on a fresh interactive launch, on
+`cadex_dimension.py`'s exact mechanics (module-level handle, lazy
+`gpu`/`blf`, pure `landing_layout`/`hit_test` the suite drives headless).
+Input is three add-on keymap items on the 3D View — a left-click dispatcher
+that owns the region's clicks while the page is up, mouse-move hover,
+Escape — chosen over a modal operator so nothing is grabbed and every other
+editor keeps working, which is what makes the live-chat exit honest:
+`Agent.start_turn` calls `dismiss()`, the one choke point Send and Return
+share. Exits: any action, Escape, a real file load, the first chat message.
+The show decision is deferred through a timer because `register()` runs in
+the restricted context (`bpy.data` is `_RestrictData` there — the first
+probe caught register aborting on `bpy.data.filepath`, which would have
+cost the session its save/load handlers); a timer also never fires under
+`--background`, so the gate never sees the page. While it is up the
+navigation gizmos are quieted and restored on dismiss, the blueprint view's
+snapshot-and-restore trade on one field.
+
+**The demo is wcv12, sanitized, and always opened as a copy.** The
+ducted-fan drone (`wcv12.cadex`, the standing perf benchmark) ships in the
+bundle as `mesh_agent/demo/` — `drone.blend` plus its store minus the 51 MB
+of regenerable `script_artifacts/` (~59 MB, all in the LFS patterns the
+shell already had). Sanitized before it went in: the transcript text block
+removed, `mesh_cadex_source_root` (a machine path) dropped, the one linked
+node group (`Smooth by Angle`, reached by a path relative to `~/arch`) made
+local, both saved viewports re-framed to the fitted three-quarter, and the
+re-save done in an add-on-free session so no handler wrote a path back.
+The store ships artifact-less on `orphaned_project`'s own terms: the root
+existing keeps the offer quiet, and the first rebuild regenerates the rest.
+`open_demo()` copies blend + store to a fresh-numbered stem under
+`~/Documents/Cadex Demo/` and opens the copy — stems must match because the
+engine root derives from the .blend name, the numbering is what makes a
+saved demo session unclobberable, and the bundle is never opened in place.
+The card art is the demo's own blueprint-view three-quarter
+(`demo/card.png`), rendered by the presentation machinery the product
+already had.
+
+Zero inherited-tree lines: add-on, tests and docs only, so
+`docs/BLENDER-TREE.md` is unmoved. Verified: `bl_mesh_agent.py` grows three
+tests (layout purity + hit targets, demo payload present and sanitized,
+show/dismiss/yields-to-chat) and passes; `pixi run gate` passes; windowed
+probes show the page at launch (wordmark + stamped 0.0.5, card, four
+actions, no gizmos) and the demo opening framed with live sliders, no
+orphan offer, root beside the copy. The Tutorial button is a stub that says
+so; wiring a real tutorial behind it is future work on this surface.
+
+**Addendum (same day, operator feedback on seeing it).** Functionally
+right, cosmetically restyled: the page's own blue palette is **gone** — it
+now reads its colours from the running theme (`wcol_regular` composited
+over the viewport ground at the theme's own alpha, hover brightening the
+way the widgets do), so it keeps the app's two-tone grey and follows a
+theme change for free. The **logo mark** heads the page —
+`docs/images/cadex-mark.svg`, rasterized to `landing_logo.png` at 512 px;
+QuickLook was the only rasterizer on the machine and it bakes a white page
+behind the alpha, so the border-connected white was flood-keyed back to
+transparent (the glyph's own whites are inside the tile and survive).
+Corners of the card and buttons are **rounded by pure geometry**
+(`rounded_rect_points`, fan-triangulated into TRIS — Metal dropped
+`TRI_FAN`), pinned in the layout test. The card art switched from the
+blueprint render to the **shaded three-quarter** — the blueprint blue was
+most of the blue. Text was already `blf` font 0, the app's own UI font;
+nothing to change there.
+
+## ADR-168 — the default layout grows an outliner, the chat takes a third, and the landing screen sheds its old logo and its extra words (2026-08-29)
+
+Operator direction, third sitting on this surface. Three parts.
+
+**The startup layout.** The bottom row was all Parameters; it is now
+**Parameters | Outliner**, split in half, and the chat column is sized to
+**one third of the window** (the other two thirds to the viewport and the
+bottom row). Same mechanism as ever (ADR-037): the layout *is*
+`Mesh/startup.blend`, re-saved and committed — no code moves areas at
+startup. The re-author was done by probe rather than by hand, and the
+gotcha is worth recording: `SCREEN_OT_area_move`/`area_split` poll on
+`screen->active_region == NULL`, i.e. **the mouse must sit on an area
+edge** — `window.cursor_warp()` onto the edge being moved, one event-loop
+beat, then the ops run under a plain window+screen override. The gate's
+`test_startup_layout_is_the_shipped_file` now pins the four areas *and*
+the proportions (chat 0.28–0.38 of the window; parameters and outliner
+sharing the bottom row, parameters left).
+
+**The logo.** The landing screen briefly wore
+`docs/images/cadex-mark.svg` — which ADR-059 had already called out as
+the stale VibeCAD-era art, left in place because "regenerating or
+deleting it is its own change". This is that change: the SVG is
+**deleted**, and the landing screen now uses the 512 px representation
+extracted from `cadex_icon.icns` itself, so the page shows exactly the
+mark the Dock shows, alpha intact, no rasterizer in the loop. If the icon
+is ever regenerated (`package/app/make_app_icon.py`), re-extract
+`landing_logo.png` from the new icns.
+
+**The words.** "DEMO PROJECT" → "EXAMPLE PROJECT"; the caption is just
+"Ducted-fan drone"; the whole footer is "Esc to skip"; and the **Start
+Chatting button is removed** as redundant — the chat is open beside the
+page and typing into it dismisses the page, which no button needs to say.
+The chat-message and Escape exits are unchanged and still test-pinned.
+
+Verified: `bl_mesh_agent.py` suite green (three-action order pinned);
+`pixi run gate` green with the new `startup_areas` evidence; windowed
+probe screenshot shows the thirds, the outliner, the real mark and the
+trimmed copy. Files: `Mesh/startup.blend` (git-LFS re-save),
+`Mesh/__init__.py` (docstring), `cadex_landing.py`, `landing_logo.png`,
+`bl_mesh_agent.py`, `bl_mesh_agent_cadex.py`, `docs/BLENDER.md`; deleted:
+`docs/images/cadex-mark.svg`.

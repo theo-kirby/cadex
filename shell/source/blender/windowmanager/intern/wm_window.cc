@@ -47,6 +47,7 @@
 
 #include "BLT_translation.hh"
 
+#include "BKE_appdir.hh"
 #include "BKE_blender_version.h"
 #include "BKE_context.hh"
 #include "BKE_global.hh"
@@ -696,9 +697,36 @@ static std::string wm_window_title_text(
 
   /* cadex ADR-030: the product name. The upstream version string is dropped
    * rather than relabelled -- "Cadex 5.3.0 Alpha" would be a lie about which
-   * version of what. The shell's version stays visible in the status bar and
-   * in the About dialog. */
+   * version of what. Since ADR-166 the *product* version is appended
+   * instead: the build stamps it into the bundle (`VERSION` at the repo
+   * root, via `package/app/build_app.sh`), and a build nothing stamped --
+   * a raw ninja build -- honestly shows none. */
   win_title.append(" - Cadex");
+  {
+    static std::string cadex_version = [] {
+      std::string version;
+      char version_path[FILE_MAX];
+      BLI_path_join(version_path,
+                    sizeof(version_path),
+                    BKE_appdir_program_dir(),
+                    "..",
+                    "Resources",
+                    "cadex_version.txt");
+      if (FILE *fp = fopen(version_path, "r")) {
+        char buf[64] = "";
+        if (fgets(buf, sizeof(buf), fp)) {
+          BLI_str_rstrip(buf);
+          version = buf;
+        }
+        fclose(fp);
+      }
+      return version;
+    }();
+    if (!cadex_version.empty()) {
+      win_title.append(" ");
+      win_title.append(cadex_version);
+    }
+  }
 
   return win_title;
 }
@@ -2000,6 +2028,59 @@ static bool ghost_event_proc(const GHOST_IEvent *ghost_event, GHOST_TUserDataPtr
       }
       break;
     }
+
+    case GHOST_kEventNativeMenu: {
+      /* cadex ADR-166: a native menu-bar item. GHOST hands over the item's
+       * tag; the mapping to operators lives here, on the Blender side of the
+       * boundary, following the #GHOST_kEventOpenMainFile shape above. */
+      const char *tag = static_cast<const char *>(data);
+      const struct {
+        const char *tag;
+        const char *op_idname;
+      } cadex_menu_ops[] = {
+          {"file.new", "WM_OT_read_homefile"},
+          {"file.open", "WM_OT_open_mainfile"},
+          {"file.revert", "WM_OT_revert_mainfile"},
+          {"file.save", "WM_OT_save_mainfile"},
+          {"file.save_as", "WM_OT_save_as_mainfile"},
+          {"file.save_copy", "WM_OT_save_as_mainfile"},
+          {"file.import_geometry", "MESH_AGENT_OT_import_asset"},
+          {"file.link_part", "MESH_AGENT_OT_link_part"},
+          {"file.refresh_linked_parts", "MESH_AGENT_OT_refresh_linked_parts"},
+          {"file.export_printable", "MESH_AGENT_OT_export_printable"},
+          {"edit.undo", "ED_OT_undo"},
+          {"edit.redo", "ED_OT_redo"},
+          {"preferences", "SCREEN_OT_userpref_show"},
+      };
+      if (tag) {
+        for (const auto &entry : cadex_menu_ops) {
+          if (!STREQ(tag, entry.tag)) {
+            continue;
+          }
+          /* The add-on's operators exist only once it has registered;
+           * a menu pick before that is dropped rather than crashed on. */
+          wmOperatorType *ot = WM_operatortype_find(entry.op_idname, true);
+          if (ot == nullptr) {
+            break;
+          }
+          CTX_wm_window_set(C, win);
+          if (STREQ(tag, "file.save_copy")) {
+            PointerRNA props_ptr = WM_operator_properties_create_ptr(ot);
+            RNA_boolean_set(&props_ptr, "copy", true);
+            WM_operator_name_call_ptr(
+                C, ot, wm::OpCallContext::InvokeDefault, &props_ptr, nullptr);
+            WM_operator_properties_free(&props_ptr);
+          }
+          else {
+            WM_operator_name_call_ptr(C, ot, wm::OpCallContext::InvokeDefault, nullptr, nullptr);
+          }
+          CTX_wm_window_set(C, nullptr);
+          break;
+        }
+      }
+      break;
+    }
+
     case GHOST_kEventDraggingDropDone: {
       const GHOST_TEventDragnDropData *ddd = static_cast<const GHOST_TEventDragnDropData *>(data);
 
