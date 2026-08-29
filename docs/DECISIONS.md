@@ -17325,3 +17325,74 @@ says what produced it. The GPU box (ADR-104 frontier) is still what a
 gait needs; nothing here changes that. No engine, protocol, or shell
 change anywhere in this sitting — the litmus consumed only surface that
 already existed, which was the point of running it.
+
+## ADR-171 — Compliance and Licensing: the audit, the notices, and the license material that now ships (2026-08-29)
+
+A three-way release-readiness audit (docs/claims, packaging/dependencies,
+inherited-tree deltas) found the compliance posture well-intentioned but
+broken in verifiable ways: three documents asserted a NOTICE file that did
+not exist; the payload prune deleted the license texts of what it ships
+(153 OCCT dylibs with no LGPL text or exception text anywhere in the
+artifact); ~90 modified inherited files carried no changed-file notice
+(LGPL-2.1 §2(a) / GPL-2 §2(a)); PROVENANCE §3 claimed eight files were the
+entire Blender delta when it is ~43 (only §2a's eight-file claim held);
+§8 claimed the conda dependencies stay on the build machine when they ARE
+the payload; CONTRIBUTING and the code of conduct were still FreeCAD's
+verbatim, offering copyright assignment to the FreeCAD Project
+Association; the shell-side files named a pre-merge copyright holder; and
+no automated check existed for any of it.
+
+**What landed** (branch `compliance-and-licensing`, version 0.0.7):
+
+- `NOTICE` and `THIRD_PARTY_LICENSES.md` at the root, making PROVENANCE
+  §4 / VISION / ADR-025's claims true; every stale doc claim reconciled to
+  disk, with line counts re-measured.
+- `docs/inherited-modifications.json`: 90 modified inherited files (47
+  FreeCAD, 43 Blender — one, `DNA_userdef_types.h`, flagged
+  `premodified`: its edit predates the squashed import), pinned equal to
+  `git diff` against both import commits by the new compliance suite.
+  `tools/apply_modification_notices.py` inserts and checks the per-file
+  notice; nine FreeCAD files are `ledger-only` (a formatter rewrites them
+  whole on any touch) and FREECAD.md §2b's listing is their notice.
+- `package/engine/collect_licenses.py`: harvests per-package license
+  texts from the source environment into the payload's `licenses/`
+  (OCCT's LGPL + exception first among them), copies the root
+  LICENSE/NOTICE/THIRD_PARTY_LICENSES.md, writes `licenses/MANIFEST.json`
+  (`cadex-licenses-v1`, all 341 conda packages), and hard-fails without
+  the named obligations. The mujoco wheel's dist-info LICENSE — which
+  survived only by a glob coincidence — is now asserted by name.
+- Copyright holder unified as **Cadex Authors** (owner decision): the 55
+  shell-side `Mesh Authors` files renamed, ~194 engine-side files gain
+  the line, 19 unheadered scripts gain full SPDX headers. The themes
+  credit OpenTheme by Obelisk79 (LGPL-2.1) in their headers.
+- `recipe.yaml` gains its missing `about:` block; the bundle gains
+  `NSHumanReadableCopyright`.
+- `src/Mod/cadex/cadex_tests/test_licensing_compliance.py`: eleven
+  checks, including the git-equality test that mechanizes "§2a stays
+  eight files" for both forks, and a `CADEX_ENGINE_ROOT`-gated payload
+  check in the packaged-gate pattern.
+
+**Removals** (change policy: logged and proven in the same PR):
+
+- **The drone demo is removed** (owner decision: nothing of unknown
+  origin ships). Its seven STLs were models of real commercial parts with
+  no recorded origin. `demo/` deleted (~59 MB, 9 LFS objects); the
+  landing screen hides the example card when `demo_source()` finds
+  nothing, and the plumbing stays so a Cadex-authored demo (the ADR-170
+  balance toy is the natural candidate) can return by being placed there.
+- **Dead PySide/shiboken dylibs pruned from the payload**:
+  `libpyside6*`/`libshiboken6*` and their dist-info survived the package
+  prune though the packages they served were deleted — LGPL-3 material
+  shipping unlinked (otool-verified). The `leaked=` gate keeps them out.
+
+**Flagged for the owner / counsel, not resolved here**: `libreadline`
+(GPL-3.0) ships as part of the standard conda Python runtime;
+`package/app/make_app_icon.py` declares GPL-2.0-or-later in the LGPL tree
+(a fresh file written with a shell-side header template — harmonizing it
+is a relicensing decision, carried as a test exemption); pre-import fork
+deltas are unreconstructible from this repository, so the 2026-dated
+notices cover this repo's own edits and the ledgers say so; LGPL §4
+relinking is satisfied structurally (replaceable dylibs) but not
+lawyered; the strictest complete-corresponding-source reading for
+`shell/lib/*` rests on Blender's public lib repos, documented rather than
+vendored.

@@ -64,7 +64,7 @@ and nothing at all at runtime for anyone who never calls it
 sliders below, and the conversation that authored it on the
 right](docs/cadex-example.png)
 
-> **Status:** under active development, pre-release — currently **0.0.6**
+> **Status:** under active development, pre-release — currently **0.0.7**
 > (the version the window chrome and the landing screen show).
 
 The window is the product now: it opens on a **landing screen** with a
