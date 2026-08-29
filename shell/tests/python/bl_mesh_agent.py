@@ -1092,6 +1092,23 @@ def test_landing_degrades_without_a_demo():
     check(os.path.isfile(logo) and os.path.getsize(logo) > 0,
           "the logo mark ships in the add-on")
 
+    # The suite loads the add-on from source, so demo_source() above proves
+    # the source tree. The BUNDLE is a separate question: CMake's
+    # install(DIRECTORY) never deletes files removed from source, so an
+    # incremental build keeps shipping a deleted demo. Assert the installed
+    # copy too -- this is the artifact a user gets.
+    try:
+        import bpy
+        installed = os.path.join(bpy.utils.resource_path('LOCAL'),
+                                 "scripts", "addons_core", "mesh_agent",
+                                 "demo")
+    except Exception:
+        installed = None
+    if installed is not None:
+        check(not os.path.isdir(installed),
+              "the installed bundle carries no demo/ either "
+              "(stale incremental install -- delete it from the build tree)")
+
 
 def test_landing_shows_dismisses_and_yields_to_chat():
     """The landing screen's exits behave (ADR-167).
