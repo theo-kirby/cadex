@@ -140,6 +140,13 @@ class GHOST_SystemCocoa : public GHOST_System {
   bool handleOpenDocumentRequest(void *filepathStr);
 
   /**
+   * Handle a native menu-bar item (cadex ADR-166): push the item's tag
+   * string to the window manager as a #GHOST_kEventNativeMenu event. GHOST
+   * does not interpret the tag.
+   */
+  bool handleNativeMenuRequest(const char *tag);
+
+  /**
    * Handles a drag & drop destination event. Called by GHOST_WindowCocoa window subclass.
    * \param eventType: The type of drag & drop event.
    * \param draggedObjectType: The type object concerned.

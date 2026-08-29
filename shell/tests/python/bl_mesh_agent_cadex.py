@@ -317,8 +317,25 @@ def test_startup_layout_is_the_shipped_file():
 
     areas = sorted(area.type for screen in bpy.data.screens
                    for area in screen.areas)
-    check(areas == ['CADEX_CHAT', 'CADEX_PARAMS', 'VIEW_3D'],
-          "the startup layout is the three Cadex areas: {!r}".format(areas))
+    check(areas == ['CADEX_CHAT', 'CADEX_PARAMS', 'OUTLINER', 'VIEW_3D'],
+          "the startup layout is the three Cadex areas plus the outliner "
+          "(ADR-168): {!r}".format(areas))
+
+    # The proportions are the product's (ADR-168): the chat column is about
+    # a third of the window, and parameters/outliner share the bottom row.
+    by_type = {area.type: area for screen in bpy.data.screens
+               for area in screen.areas}
+    if len(by_type) == 4:
+        total_w = max(a.x + a.width for a in by_type.values())
+        chat_ratio = by_type['CADEX_CHAT'].width / max(1, total_w)
+        check(0.28 <= chat_ratio <= 0.38,
+              "the chat column is about a third of the window "
+              "({:.2f})".format(chat_ratio))
+        params, outliner = by_type['CADEX_PARAMS'], by_type['OUTLINER']
+        check(params.y == outliner.y and params.height == outliner.height,
+              "parameters and outliner share the bottom row")
+        check(params.x < outliner.x,
+              "parameters sits left of the outliner")
     workspaces = [workspace.name for workspace in bpy.data.workspaces]
     check(workspaces == ["Simple"],
           "one workspace, named Simple: {!r}".format(workspaces))
@@ -335,23 +352,13 @@ def test_startup_layout_is_the_shipped_file():
 
     GATE["startup_areas"] = areas
 
-    # The other half of the template, and the one a stale bundle loses: the
-    # top bar carries the Cadex File and Edit menus (ADR-041). The template's
-    # own timer never runs here (`load_handler` returns in background), so
-    # this calls what the timer would have called -- from the *shipped*
-    # module, which is the point.
-    from mesh_agent import topbar
+    # File and Edit live in the OS menu bar since ADR-166 -- built in
+    # GHOST_SystemCocoa.mm, unreachable from Python -- so what the template
+    # is checked for here is what it still does.
     template = sys.modules.get("bl_app_templates_system.Mesh")
     check(template is not None, "the Mesh app template module is loaded")
     if template is not None:
-        try:
-            template._cadex_topbar()
-            check(topbar.installed(),
-                  "the shipped app template installs the Cadex top bar")
-        finally:
-            topbar.uninstall()
-
-        # And no splash on the way in (ADR-042). Suppressing it must not
+        # No splash on the way in (ADR-042). Suppressing it must not
         # dirty the preferences: dirty preferences auto-save on exit, and
         # this is the product's decision, not the user's.
         preferences = bpy.context.preferences

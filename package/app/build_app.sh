@@ -164,7 +164,33 @@ cmd_shell() {
         "$@"
 
     scrubbed cmake --build "${build_dir}" --target install
+    stamp_version
     echo "==> ${app_exe}"
+}
+
+# The product version (ADR-166). `VERSION` at the repo root is the single
+# source of truth -- bump it with package/app/bump_version.sh -- and the
+# build number is the commit count, so every commit's build is distinguishable
+# with no state kept anywhere. The stamp lands in three places: the window
+# title reads Resources/cadex_version.txt (wm_window.cc), and the two
+# Info.plist keys are what Finder and the About panel show.
+stamp_version() {
+    [ "${os_ncase}" = "darwin" ] || return 0
+    local version build_number bundle resources
+    version="$(tr -d '[:space:]' < "${repo}/VERSION")"
+    build_number="$(git -C "${repo}" rev-list --count HEAD 2>/dev/null || echo 0)"
+    bundle="${install_dir}/${app_name}.app"
+    resources="${bundle}/Contents/Resources"
+    [ -d "${resources}" ] || { echo "FAIL: no bundle to stamp at ${bundle}"; exit 1; }
+    printf '%s\n' "${version}" > "${resources}/cadex_version.txt"
+    plutil -replace CFBundleShortVersionString -string "${version}" \
+        "${bundle}/Contents/Info.plist"
+    plutil -replace CFBundleVersion -string "${build_number}" \
+        "${bundle}/Contents/Info.plist"
+    # Editing Info.plist breaks any existing ad-hoc seal; put one back so the
+    # bundle stays launchable. Best-effort: an unsigned dev bundle is fine.
+    codesign --force --deep --sign - "${bundle}" >/dev/null 2>&1 || true
+    echo "==> stamped Cadex ${version} (build ${build_number})"
 }
 
 cmd_launch() {

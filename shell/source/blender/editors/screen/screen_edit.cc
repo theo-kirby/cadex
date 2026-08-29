@@ -1345,8 +1345,15 @@ void ED_screen_global_areas_refresh(wmWindow *win)
     return;
   }
 
-  screen_global_topbar_area_refresh(win, screen);
-  screen_global_statusbar_area_refresh(win, screen);
+  /* cadex ADR-166: the product has neither bar. File and Edit are in the OS
+   * menu bar (GHOST_SystemCocoa.mm), and the status bar carried only the
+   * mouse-hint icons and the Blender version. Freeing rather than skipping
+   * covers windows loaded from files saved with the bars. */
+  if (win->global_areas.areabase.first) {
+    screen->do_refresh = true;
+    BKE_screen_area_map_free(&win->global_areas);
+  }
+  UNUSED_VARS(screen_global_topbar_area_refresh, screen_global_statusbar_area_refresh);
 }
 
 /* -------------------------------------------------------------------- */

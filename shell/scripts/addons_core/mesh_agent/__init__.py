@@ -30,6 +30,7 @@ from . import cadex_blueprint as cadex_blueprint_module
 from . import cadex_live as cadex_live_module
 from . import cadex_pick as cadex_pick_module
 from . import cadex_explode as cadex_explode_module
+from . import cadex_landing as cadex_landing_module
 from . import cadex_section as cadex_section_module
 from . import cadex_terminal_pick as cadex_terminal_pick_module
 from . import cadex_views as cadex_views_module
@@ -176,6 +177,9 @@ def _load_post_handler(_filepath):
     # Without this, opening a second .blend leaks the first file's cadexd
     # child and can answer from the wrong project store.
     _report_file_change()
+    # A real file replacing the startup scene takes the landing screen down
+    # (ADR-167); the startup file itself leaves it alone.
+    cadex_landing_module.on_file_loaded()
 
 
 #: Cadex editors whose contents depend on `scene.frame_current`. Parameters
@@ -253,8 +257,8 @@ def register():
     wiring_module.register()
     ui.register()
     spaces.register()
-    # Registers the menus; the app template is what puts them on the bar
-    # (topbar.install), so a stock Blender session keeps its own top bar.
+    # The file operators the native menu bar calls (ADR-166); the File and
+    # Edit menus themselves are the OS's, built in GHOST_SystemCocoa.mm.
     topbar_module.register()
     # Last, and the only one allowed to stand down: a Panel or Header
     # naming an unregistered space type raises "Region not found in
@@ -268,6 +272,10 @@ def register():
     # a bundle built before ADR-108 would otherwise take the
     # whole registration loop down with it.
     cadex_live_module.register()
+    # The landing screen last of all (ADR-167): it names no space type, so
+    # it cannot take the loop down, and its register is what decides whether
+    # this session opens onto the start page.
+    cadex_landing_module.register()
     bpy.app.handlers.save_pre.append(_save_pre_handler)
     bpy.app.handlers.save_post.append(_save_post_handler)
     bpy.app.handlers.load_post.append(_load_post_handler)
@@ -283,6 +291,7 @@ def unregister():
         bpy.app.handlers.load_post.remove(_load_post_handler)
     if _frame_change_handler in bpy.app.handlers.frame_change_post:
         bpy.app.handlers.frame_change_post.remove(_frame_change_handler)
+    cadex_landing_module.unregister()
     cadex_live_module.unregister()
     # The dimension overlay owns a draw handler and nothing else, so it needs
     # teardown but no registration (ADR-139). A handle left behind outlives

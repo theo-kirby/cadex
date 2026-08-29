@@ -1,0 +1,35 @@
+{
+  "entries": [
+    {
+      "characters": 18836,
+      "file": "0001-eb2e25dd5993.py",
+      "ordinal": 1,
+      "outputs": [
+        "battery",
+        "camera",
+        "esp32",
+        "flight_controller",
+        "frame",
+        "motor_1",
+        "motor_2",
+        "motor_3",
+        "motor_4",
+        "prop_1",
+        "prop_2",
+        "prop_3",
+        "prop_4",
+        "range_finder",
+        "wire_batt_fc",
+        "wire_esc_rf",
+        "wire_fc_esc",
+        "wire_motor_1",
+        "wire_motor_2",
+        "wire_motor_3",
+        "wire_motor_4"
+      ],
+      "revision": "eb2e25dd59932e95a21b2b638a3a6e5bedb8e2eb037353371a009bbf738b9ce0",
+      "saved_at": "2026-07-27T20:02:31Z"
+    }
+  ],
+  "schema": "cadex-project-script-v1"
+}

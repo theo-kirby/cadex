@@ -3,8 +3,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 """
-Mesh app template: clean viewport on the left, Cadex Chat on the right,
-Cadex Parameters under the viewport.
+Mesh app template: clean viewport top-left (the landing screen on a fresh
+launch, ADR-167), Cadex Chat as the right third of the window, and Cadex
+Parameters beside an Outliner under the viewport (ADR-168).
 
 Launch with: blender --app-template Mesh
 
@@ -17,17 +18,12 @@ state machine that split areas, monkeypatched two header draw functions and
 re-registered every foreign Tool panel with `poll -> False` is now a file, and
 this module is what is left over (ADR-037).
 
-Three things survive, because none of them can live in a .blend:
+Two things survive, because neither can live in a .blend:
 
 - **Enabling the add-on.** `preferences.addons` is `UserDef`, not `Main`, so a
   startup file cannot carry it. Shipping a `Mesh/userpref.blend` would work
   and would also pin the user's theme, paths, keymap and autosave -- so this
   stays four lines of Python instead.
-- **The top bar.** It carries the Cadex File and Edit menus rather than
-  Blender's six (`mesh_agent.topbar`, ADR-041). A header's draw function is
-  code, not screen data, so no `.blend` can carry it -- and the swap belongs
-  to the product shell rather than to the add-on, so that `mesh_agent` in a
-  stock Blender session leaves that session's top bar alone.
 - **Suppressing the splash** (ADR-042). It is a `UserDef` flag, and the one
   thing here that has to run in the load handler rather than the timer --
   `creator.c` reads the flag immediately after `WM_init`.
@@ -52,13 +48,6 @@ def _ensure_agent_addon():
     except Exception:
         import traceback
         traceback.print_exc()
-
-
-def _cadex_topbar():
-    # Must run after the add-on is enabled: the menus the bar draws are
-    # registered by `mesh_agent.register()`.
-    from mesh_agent import topbar
-    topbar.install()
 
 
 def _hide_splash():
@@ -86,7 +75,6 @@ def _hide_splash():
 def _apply():
     try:
         _ensure_agent_addon()
-        _cadex_topbar()
     except Exception:
         import traceback
         traceback.print_exc()

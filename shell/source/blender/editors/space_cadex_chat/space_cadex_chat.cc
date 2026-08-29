@@ -16,10 +16,14 @@
  * The message box used to live in a screen *area* of its own, because a
  * header region is one row tall by construction and the box needs several.
  * #RGN_TYPE_EXECUTE is not covered by #RGN_TYPE_IS_HEADER_ANY, so it is an
- * ordinary sizable region: the input is a region of this editor now, and the
+ * ordinary panel region: the input is a region of this editor now, and the
  * fourth area -- and the geometry guessing that told the areas apart -- is
- * gone. Unlike the project editor's execute region this one is user-resizable;
- * dragging the message box taller is wanted here.
+ * gone. Like the project editor's execute region it is #RGN_FLAG_DYNAMIC_SIZE:
+ * a fixed-height region left the input floating over dead rows of region, and
+ * hugging the content is what puts the box at the bottom of the window.
+ * Dragging the message box taller is still wanted here, and the box's own
+ * grip provides it -- more visible lines is more content, and the region
+ * follows.
  *
  * The editor is deliberately empty of C-side content. Everything drawn in it
  * comes from panels registered by the `mesh_agent` add-on (`spaces.py`,
@@ -72,6 +76,7 @@ static SpaceLink *cadex_chat_create(const ScrArea * /*area*/, const Scene * /*sc
     BLI_addtail(&chat_space->regionbase, region);
     region->regiontype = RGN_TYPE_EXECUTE;
     region->alignment = RGN_ALIGN_BOTTOM;
+    region->flag |= RGN_FLAG_DYNAMIC_SIZE | RGN_FLAG_NO_USER_RESIZE;
   }
 
   {
@@ -86,7 +91,20 @@ static SpaceLink *cadex_chat_create(const ScrArea * /*area*/, const Scene * /*sc
 
 static void cadex_chat_free(SpaceLink * /*sl*/) {}
 
-static void cadex_chat_init(wmWindowManager * /*wm*/, ScrArea * /*area*/) {}
+static void cadex_chat_init(wmWindowManager * /*wm*/, ScrArea *area)
+{
+  /* Saved layouts -- the app template and every user file written before the
+   * execute region hugged its content -- carry the region flags they were
+   * saved with, so the dynamic size is enforced here rather than trusted to
+   * cadex_chat_create(), the way BKE_screen_header_alignment_reset() pins
+   * header alignment for the same reason. */
+  for (ARegion &region : area->regionbase) {
+    if (region.regiontype == RGN_TYPE_EXECUTE) {
+      region.alignment = RGN_ALIGN_BOTTOM;
+      region.flag |= RGN_FLAG_DYNAMIC_SIZE | RGN_FLAG_NO_USER_RESIZE;
+    }
+  }
+}
 
 static SpaceLink *cadex_chat_duplicate(SpaceLink *sl)
 {

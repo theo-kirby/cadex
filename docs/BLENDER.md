@@ -1,6 +1,6 @@
 # BLENDER.md — The Shell
 
-Verified against source: 2026-08-24
+Verified against source: 2026-08-29
 
 **The shell is the product, and since ADR-030 it is in this repository**, at
 `shell/` — a Blender fork whose `mesh_agent` add-on is the interface. Nothing
@@ -81,8 +81,8 @@ that `docs/VISION.md` describes, and the protocol client that
 | `backend.py` | Spawns `claude -p` as a subprocess per turn; writes the MCP config (shim path/port/token); session continuity via `--resume <session-id>`. |
 | `tools.py` | Tool definitions/executors. Tools: `get_script`, `write_script`, `edit_script`, `restore_version`, `set_params`, `rebuild_model`, `inspect_model`, `describe_cad_api`, `get_attached_image`, `scene_summary`, `viewport_screenshot`, `render_views`, `export_stl`, `import_geometry`, `link_part`, `focus_view`, `render_views` (ADR-124), which renders the MODEL from four fitted cameras rather than the user's viewport — it deliberately does not replace `viewport_screenshot`, which answers the different question of what the user is looking at, and because it hides the collision cage the collision workflow still goes through the pair below; and `collision_view` (ADR-091), which shows or hides the collision overlay and reports what is already touching at t = 0. It is the agent that catches this class of bug, via `viewport_screenshot`, and it cannot press a button; it is read-only, so it is in neither `_ENGINE_TOOLS` nor `MUTATING_TOOLS` — a view toggle must not enter the undo stack. `section_view` (ADR-148) is its sibling on both counts: it cuts the model open on a plane so the agent can see whether a bore broke through or a wall is thinner than it asked for, takes `show`/`axis`/`offset`/`flip`, and is checked the same way — turn it on, then `viewport_screenshot`, because `render_views` deliberately suspends the cut to answer "what did I build". `exploded_view` (ADR-149) and `blueprint_view` (ADR-150) complete the view-toggle family on the same two exclusions: spread the assembly along its declared explosion moves (factor 0..1, refused while a simulation is baked), and draw the model as white outlines on a blueprint-blue / cutting-mat-green / grey ground with an optional 10 mm grid — layering over the section and the explosion, restoring the viewport exactly on toggle off. `make_blueprint` (ADR-150, composable since ADR-151) renders an **agent-composed** sheet in that style — up to 6 views (named orthos, three-quarter, custom azimuth/elevation, or the `params` panel cell — ADR-153), per-view `hide`/`only`/`explode`/`section`/`callouts` overrides, a `layout` (templates plus the freeform `mosaic` — ADR-152; an omitted `views` is the triptych default — ADR-151 addendum) and an `aspect` (16:9 default — ADR-153), the specs validated by `cadex_sheet` and travelling in `put_blueprint`'s free-form `meta` — and stores it in the project through the engine's `put_blueprint`, so it IS in `_ENGINE_TOOLS` and still not in `MUTATING_TOOLS` (the `import_geometry` precedent — a store write is not a scene edit); unlike `render_views` it deliberately draws the *current presentation* (per-cell overrides inherit it and are flat-restored after), and the stored sheets read back through `inspect_model scope=blueprint`. ADR-157 makes a sheet **revisable**: `name` is the drawing's identity rather than a caption (render again under it and the store keeps the next version), `based_on` reads a stored sheet's recipe back out of the project store through `cadex_backend.read_blueprint` and renders it again with this call's arguments on top, and three per-view keys land at once — `aspect` (a cell's own width:height), `title` (the heading drawn over any cell) and `text` (with `view: "text"`, a panel of the agent's own words). The reply names the version and tells the model how to revise it. `import_geometry` copies an external STL/OBJ/PLY into the engine's asset store so a script can name it (ADR-043) — **and it is also how a trained `.cxpolicy` comes home** (ADR-084), because `import_geometry` and the `put_asset` op beneath it perform no suffix check of their own and let the engine refuse. One rough edge, stated rather than papered over: the tool is named for geometry and its success message advises `mesh.import_file(...)`, which is wrong for a policy. Fixing the wording is a `shell/` diff, and although ADR-091 has since spent that diff on the collision overlay it deliberately did not spend it here — one authorised feature does not license unrelated edits (ADR-086 §4) — so the engine-side refusals still carry the correct advice instead. `link_part` is its lossless sibling (ADR-138) and is a different tool rather than a wider `import_geometry` for one reason: what it takes is not a file at all but **another Cadex model**, named by its `.blend` or its `.cadex` folder, out of which the engine pulls one accepted solid. Its success message advises `part.import_part(...)`, which is the call that actually takes the stored name — the wording rough edge above, not repeated. Calling it again with the same arguments is refreshing, and the reply's `changed` is how the model tells whether the other file moved; `inspect_model` gained the `output` and `assets` scopes with it, and the `history` scope with ADR-045. `restore_version` puts a previously accepted version back — it reads `inspect scope=history` and writes the result through `write_script`, so a restored version re-runs and is re-accepted rather than trusted (ADR-045); `write_script` itself now refuses to drop outputs the model currently has unless `replace` is set, because "add a part" answered with a whole-script rewrite is how a project gets deleted. Marks `write_script`/`edit_script`/`restore_version`/`set_params`/`rebuild_model` as mutating for undo counting, and preflights the engine-reaching ones so a missing engine reads as one sentence. `rebuild_model` re-runs the script the engine already holds (ADR-039) — the tool to reach for when the model and the engine have drifted. `describe_cad_api` narrows in three steps (ADR-123): no arguments is the contract plus every domain's function *names*; `domain` is that domain's **compact** block — every signature, each description cut to its first sentence, served by `cadex_backend.compact_domain()` and never truncated; `domain` plus `functions=[...]` is the **full**, untouched entries for the ones the model named, and the only path `_API_DOMAIN_CHARS` (now 32768) still caps. Serving the full block for a whole domain is what broke: at 16 KB it cut `part` and `assembly` mid-structure, so the reply was not JSON and half of each domain was unreachable — while the tool's own description told the model never to guess an API from memory. `get_script` takes optional `offset`/`limit` **line** arguments (ADR-140); with neither it serves the whole script exactly as ADR-044 requires, and with either it serves a window behind a banner carrying the range, the totals and the next `offset=` to call. The window exists because the cap that bites a 55 KB script is the **host's** tool-result limit, not ours — `_SCRIPT_CHARS` is 65536 and `MAX_RESULT_CHARS = 4096` governs every mesh tool *except* this one, a distinction an agent got wrong badly enough to start deleting comment blocks out of a user's script to make the next read smaller. The window carries no line numbers, because the text served is the text `edit_script` must match. |
 | `ui.py` | The panels of the two Cadex editors — transcript, message box, parameter sliders — plus the operators (send, cancel, new chat, attach image, paste, toggle parameters, toggle script, toggle collision shapes, toggle dimensions, toggle section view, measure, rebuild from saved script, rebuild model, apply as defaults). **Dimensions** (ADR-139) reads as a view toggle in the same one-button-is-the-state row the collision overlay uses, and **Section View** (ADR-148) is the third button in it — its plane is aimed from a box at the bottom of the parameters editor (axis, offset in mm, flip) for the reason the cage's box is there: it is set without the AI in the loop, and a space type of its own would spend BLENDER-TREE §2b budget. It is the one control in that editor that changes nothing about the model, which is why it sits under the ones that do, and **Measure** sits with the pin gestures instead — it is a gathering, not a view: two face picks arm it, and what it does is queue the sentence asking for a `part.measurement` between them. It deliberately does **not** write the script. `begin_write_script` is right there and `restore_version` already calls it with no agent in the loop, but adding a measurement means appending a call *and* editing the result dict, and mechanically rewriting the one artifact this product treats as the source of truth is how a script gets quietly corrupted. The script keeps exactly one author. If a turn per measurement proves too expensive in practice, the clean answer is a sixth `set_params` table beside `nets`/`boards`/`mounts`/`cages` — that mechanism exists for viewport-edited model state, and it is a decision rather than something to slip in. The Collision panel (ADR-091) polls a scene flag the way the Simulation panel does and surfaces the initial-contact line — *touching at t = 0 … at z = 20.00 mm* — which is the one row that would have caught the hopper ADR-087 found. No `poll` here asks *where* it is drawing: the space type answers that (ADR-035). The **Policy Outputs** panel (ADR-096) does the same for a rollout: one `layout.progress` bar per actuator, drawn from `scene.frame_current` at draw time against the range the task bundle derived, so a bar pinned at an end *is* the policy saturating that motor. It is a readout, not a control — `progress` takes no input, and these numbers are a recording. The **Training** panel (ADR-098) is the third of that family and the only one that is not about a finished artifact: state, iteration against total, elapsed, ETA, reward, **mean episode length** (ADR-101), best-so-far **and the iteration it happened at**, and the checkpoints pulled so far. The episode-length row is the one to read against the reward: a reward climbing while it falls is a policy failing sooner and being paid more for it, which is what two runs did with nothing recording it. That best-so-far pair is the rest of the point — the gap between the best iteration and the current one is the decision to stop, and `mg-legs` peaked at 1200 of 2000 with nobody able to see it. It polls `cadex_training.read_progress`, so it is absent on a project with no run and stays up on `done`/`failed` rather than vanishing, because "it finished" is information and an empty panel is not. The parameters panel draws a failed drag as an alert row with **Rebuild Model** beside it (ADR-039), and an **Apply as Defaults** button that is live only while a slider sits away from its declared default (ADR-040). |
-| `spaces.py` | Headers for `CADEX_CHAT` and `CADEX_PARAMS`, and the script view: `MESH_AGENT_OT_show_script` (a **toggle** — a Text Editor on the `model.py` mirror, opened or closed), `MESH_AGENT_OT_revert_script`, and `CADEX_PT_script`, its sidebar panel, which says whether the buffer matches the model and offers **Apply to Model** / **Revert to Model** / **Rebuild Model** accordingly (ADR-039). Headers live here rather than in `bl_ui` because `bl_ui` is inherited and this is ours. |
-| `topbar.py` | The Cadex top bar (ADR-041): `CADEX_MT_file` (New, Open…, Open Recent, Revert, Save, Save As…, Save Copy…, **Import Geometry…**, **Link Part…**, **Refresh Linked Parts**, **Export Printable Parts…**, Import ▸, Export ▸, Quit) and `CADEX_MT_edit` (Undo, Redo, Preferences…), and the `install()` / `uninstall()` pair that swaps `TOPBAR_HT_upper_bar`'s draw. Everything the menus point at is a stock operator or a stock menu **except** `MESH_AGENT_OT_import_asset`, which has to be ours: stock Import loads into the Blender scene, which here is the display mirror, so importing *into the model* means a `put_asset` op (ADR-043). The two linked-part rows (ADR-138) are ours for that reason plus one of their own: what they bring in is another Cadex model's accepted output, pulled out of that project's store as the exact solid. Both go through one op — `link_part` — so `MESH_AGENT_OT_refresh_linked_parts` is a loop over what `MESH_AGENT_OT_link_part` does once, and `MESH_AGENT_OT_choose_linked_part` is only the enum step the file browser cannot host: the first call omits the output, and the refusal's `candidates` is what populates the dialog. **Export Printable Parts…** (cadex ADR-156) is the way back out, and ours for `Import Geometry`'s reason exactly — stock Export writes the display mirror, so a slicer would be handed a tessellation instead of the model. It calls `export_printable`, which writes one STL per part ticked in the Parameters editor, off the accepted solid, each at its own origin. `MESH_AGENT_OT_resolve_print_conflict` is the linked-part enum step one more time: the first call names no `conflict`, the engine **refuses** rather than overwriting, and the refusal's `observed.existing` is what populates the Overwrite / Keep Both dialog. Neither operator sets `bl_options` — a store write is not a scene edit, so there is nothing for Ctrl-Z to give back. Registering the add-on does **not** install the bar — the app template does that, so `mesh_agent` in a stock Blender session leaves that session's bar alone; `unregister()` does uninstall, because a header naming menus that are gone draws errors. |
+| `spaces.py` | Headers for `CADEX_CHAT` and `CADEX_PARAMS`, and the script view: `MESH_AGENT_OT_revert_script` and `CADEX_PT_script`, its sidebar panel, which says whether the buffer matches the model and offers **Apply to Model** / **Revert to Model** / **Rebuild Model** accordingly (ADR-039). The Text Editor showing the mirror is opened with Blender's editor dropdown — ADR-165 removed `MESH_AGENT_OT_show_script` with the other open-a-view operators. Headers live here rather than in `bl_ui` because `bl_ui` is inherited and this is ours. |
+| `topbar.py` | The product's file operators (ADR-041, ADR-166). The File and Edit *menus* are native since ADR-166 — built in `GHOST_SystemCocoa.mm`, mapped to operators in `wm_window.cc` — and the in-window bar with its `install()`/`uninstall()` swap is deleted; what this module keeps is the four operators those menus call plus their dialog halves. `MESH_AGENT_OT_import_asset` has to be ours: stock Import loads into the Blender scene, which here is the display mirror, so importing *into the model* means a `put_asset` op (ADR-043). The two linked-part rows (ADR-138) are ours for that reason plus one of their own: what they bring in is another Cadex model's accepted output, pulled out of that project's store as the exact solid. Both go through one op — `link_part` — so `MESH_AGENT_OT_refresh_linked_parts` is a loop over what `MESH_AGENT_OT_link_part` does once, and `MESH_AGENT_OT_choose_linked_part` is only the enum step the file browser cannot host: the first call omits the output, and the refusal's `candidates` is what populates the dialog. **Export Printable Parts…** (cadex ADR-156) is the way back out, and ours for `Import Geometry`'s reason exactly — stock Export writes the display mirror, so a slicer would be handed a tessellation instead of the model. It calls `export_printable`, which writes one STL per part ticked in the Parameters editor, off the accepted solid, each at its own origin. `MESH_AGENT_OT_resolve_print_conflict` is the linked-part enum step one more time: the first call names no `conflict`, the engine **refuses** rather than overwriting, and the refusal's `observed.existing` is what populates the Overwrite / Keep Both dialog. Neither operator sets `bl_options` — a store write is not a scene edit, so there is nothing for Ctrl-Z to give back. |
 | `history.py` | Chat transcript as JSON in `bpy.data.texts["mesh_chat.json"]`; persists inside the .blend file. |
 | `capture.py` | Viewport screenshot (base64 PNG), attached-image loading (downscaled, default max 768 px), and **`render_views`** (ADR-124): four cameras fitted to the Model collection's bounding box — front (−Y), right (+X), top (+Z) orthographic and a three-quarter perspective at azimuth 45° / elevation 25° — rendered at equal size and composited 2×2 into one image, with sibling collections hidden, solid studio shading and overlays off. `view_matrices(bbox, aspect)` is the pure half: it fits the cameras, returns plain tuples and imports no `bpy`, which is the half `bl_mesh_agent.py` tests and the half Phase 12 re-binds — since ADR-151 it is a wrapper over **`fit_view`** (one camera fitted at one cell's aspect, from `VIEWS` or the superset `NAMED_VIEWS` table: the six axis orthos plus the three-quarter), and `composite_2x2` is likewise a wrapper over **`composite_rects`** (rect-based placement, row-slice copies, the pure suite pins both equivalences). Isolating the model needs `view_layer.update()` after toggling `hide_viewport` — the flag syncs lazily and `draw_view3d` runs first, so without it the collection you just hid is still in shot. `render_views` suspends every registered view through `cadex_views.suspend_for_render()`; **`render_blueprint`** (ADR-150, composable since ADR-151) is the renderer that does the opposite — agent-composed cells validated by `cadex_sheet`, each styled by `cadex_blueprint.present` and drawing the current presentation plus that cell's own hide/explode/section overrides (applied and flat-restored by `cadex_sheet`'s snapshot machinery), with the exploded leader lines kept in shot (`_isolate_model(keep=...)`), composited by rect, dressed by `cadex_sheet._dress_sheet`, and returned as a temp PNG whose home is `put_blueprint`. Spec validation runs BEFORE the background refusal, so a bad spec refuses for what is wrong with it even in the headless gate. Since ADR-153 the sheet defaults to **16:9** (`aspect` pass-through to `cadex_sheet.sheet_aspect`), an exploded cell renders at a wider fit margin and collects callout anchors through the SAME fitted matrices its tile draws with, and `params` cells are drawn tile-shaped after the flat restore, on the same sampled ground as the rendered tiles. ADR-157 adds the per-cell asks (passed straight to `cadex_sheet.layout_rects` as `aspects`), the second panel kind (`text` cells drawn by `_draw_text_tile` on the same sampled ground, overflow reported as a note), and the sheet's **recipe** in the returned payload — what `make_blueprint` stores in `meta` so the sheet can be drawn again. |
 | `modes.py` | The Cadex system-prompt overlay and `system_prompt()`. What remains of a three-mode registry after ADR-030 collapsed it to one. |
@@ -97,6 +97,8 @@ that `docs/VISION.md` describes, and the protocol client that
 | `cadex_training.py` | **ADR-098.** The shell's view of a training run happening on another machine, and it is one JSON file: `training-progress.json` in the project root, which `training/remote_train.sh watch` mirrors off the GPU box. Its whole import list is `json`, `os` and `bpy` — **no mujoco** (`test_the_shell_never_learns_about_mujoco` is the branch-wide form of that) and **no transport**, because a panel that opened a network connection would block Blender's main thread the first time a box was slow. A gate check asserts that closure exactly. Absent, unreadable, half-written and wrong-schema all read as *no run*, which is what keeps the panel invisible on a project that never trained; a partial read is deliberately not cached, so the panel notices the moment the writer's `replace` lands rather than on the next write. The `bpy.app.timers` poll is an interactive convenience — it stats the file and tags the parameters editor for redraw — and every function it calls is written to be callable directly, because timers do not fire under `--background` and that is where the gate runs. |
 | `cadex_pick.py` | Viewport pick → a pin queued onto the next chat message (like image attachments), in two flavours sharing one eyedropper modal and one queue. **Face pin** (`mesh_agent.pick_pin`): polygon → `cadex_face` → `resolve_pin` → `@face-N`, BREP outputs only. **Point pin** (`mesh_agent.pick_point`, ADR-056): the ray-cast hit and its normal, pushed back through the object's placement into the output's own space — no engine round-trip, and it works on mesh outputs, which have no faces to name. A point and a direction *is* a `part.cable` port. Since ADR-139 the queue also carries **requests** — one sentence saying what the pins are *for*, drained by the same call, so a gesture and its instruction can never separate. `mesh_agent.measure_pins` is the only thing that queues one and is inert below two pins. |
 | `cadex_dimension.py` | **ADR-139.** Declared measurements, drawn as architectural dimensions: an extension line at each anchor, a dimension line between them, and the number in the middle with the line broken around it. **Everything except the two anchors is computed in screen space**, and that is the design rather than an implementation detail — the number is always upright and the same size at any zoom, the offset direction is perpendicular *on the screen* so it can never go edge-on however you orbit, and every gap, tick and pad is a pixel constant so a 2 mm boss and a 2 m beam read identically. One `POST_PIXEL` handler, not the two `cadex_live` needs, because a dimension is not a world object. **The degenerate case is handled rather than avoided:** look straight down the measured axis and the anchors project to the same pixel, so below `MINIMUM_SPAN_PX` it becomes a *leader* — a stub and the number — and the value is never lost at any angle, which is the whole claim. A diameter is the one view-dependent case: the engine publishes the circle and the overlay picks the widest on-screen diameter from 16 projected samples per frame. Anchors arrive in the measured output's **own** frame and are pushed through `display[subject].placement` once per revision, not per redraw. It creates **no Blender objects**, so unlike `cadex_collision` and `cadex_cage` it needs no sibling collection and cannot be swept by the contract GC. Records refresh on every response including mid-drag — the opposite trade from the collision cage, for the opposite reason: a cage left over from the previous shape is wrong, and a number recomputed for this one is right. |
+| `cadex_landing.py` | **ADR-167, ADR-168.** The landing screen: the start page drawn *inside* the 3D viewport on a fresh launch — example-project card, New/Open/Tutorial — while the chat column stays live beside it. There is deliberately no Start Chatting button: the chat is already open beside the page and typing into it dismisses the page. Not a popup, and not a reversal of ADR-042: Blender's modal splash stays disabled, and this is the FreeCAD-style alternative to it. Mechanics are `cadex_dimension.py`'s exactly (module-level `POST_PIXEL` handler, lazy `gpu`/`blf`, pure `landing_layout`/`hit_test` the suite drives headless); input is three add-on keymap items on the 3D View (left-click dispatcher that consumes the click while the screen is up, mouse-move hover, Escape) rather than a modal grab, so nothing else stops working. Exits: any action, a real file load, Escape, or the first chat message (`Agent.start_turn` calls `dismiss()` — the hook that makes "the chat on the right is live" true). The page has no palette of its own: colours are read from the running theme (`wcol_regular` composited over the viewport ground at the theme's own alpha), corners are rounded by pure geometry (`rounded_rect_points`, fan-triangulated — no `TRI_FAN`, which Metal dropped), and text is `blf` font 0, the app's own UI font. The header is the product mark, `landing_logo.png` — the 512 px representation extracted from `cadex_icon.icns`, so the page shows exactly what the Dock shows (ADR-059 is that icon's provenance; the stale VibeCAD-era `docs/images/cadex-mark.svg` it warned about is now deleted, ADR-168); the card art is a shaded viewport render of the demo shipped as `demo/card.png`. Both are drawn from `gpu.types.Buffer`s so no Image datablock is left to ride into the user's next save. The stamped `cadex_version.txt` is read for the header; a raw ninja build shows none. |
+| `demo/` | **ADR-167.** The shipped demo project: `drone.blend` plus its `drone.cadex/` store (script, `script.json`, mesh assets, history — no `script_artifacts/`, which are regenerable and 51 MB). A sanitized copy of the wcv12 ducted-fan drone: transcript text block removed, machine-path scene keys dropped, the one linked node group made local, so the file is self-contained and publishes nothing. ~59 MB, all in git-LFS. **Opening it always copies first** — `open_demo()` lands a fresh-stem pair under `~/Documents/Cadex Demo/` (stems must match: the engine root is derived from the .blend name) — so the bundle is never opened in place and a saved demo session is never clobbered by the next click. The store ships without artifacts on `orphaned_project`'s own terms: the root existing is what keeps the offer quiet, and the first rebuild regenerates the rest. |
 | `cadex_section.py` | **ADR-148.** The section view: cut the model open on a plane and take the near half away. A hidden cutter box plus a **Boolean DIFFERENCE** modifier on each hydrated solid, and a geometry-nodes clip on each edge-wire child — two mechanisms because the model is drawn as two kinds of object, and a boolean has nothing to say about a mesh with no faces in it. **A boolean rather than `rv3d.clip_planes`** for three reasons, each sufficient: a clip cannot fill what it opens (the cut face is capped here, so a cut bracket reads as material with a ring where the bore is), clip planes are per-region view state that no offscreen render carries, and `--background` has no `RegionView3D` at all so the gate could never see it. Measured cost: **6.3 ms** per offset change on the blind-bore part. **It is a view, not a feature** — nothing reaches the engine, nothing is written to the script, and the gate asserts the accepted revision is unchanged either side of switching it on. Because it is modifiers rather than an overlay it survives a rebuild for free (hydration swaps the mesh datablock and keeps the object), so `cadex_backend.hydrate` calls `refresh` for one reason only: a brand-new output has no modifier on it. `model_bounds` reads the mesh datablocks with numpy rather than `obj.bound_box`, which reflects *evaluated* geometry — measured, not assumed: a 20 mm cube cut at z = 5 reports a top of 5, and every number derived from the model would otherwise feed back on the cut that produced it. The plane is never clamped to the part; when it is off the end the panel and the tool say so. `quiet()` (ADR-151) exposes the settle guard so `cadex_sheet` can write several settings and trigger one explicit `refresh`. The pure half — plane, normal, cutter placement, `is_kept` — imports no `bpy`. |
 | `cadex_explode.py` | **ADR-149.** The exploded view: spread the assembly along the explosion moves the *script* declares, with a factor slider from 0 (assembled) to 1 (fully exploded) and leader lines. The engine authors everything — staged cumulative poses, final poses and line segments arrive on the exploded-view output's display entry — and this module only interpolates: lerp positions, slerp orientations (hemisphere-corrected), stage *i* of *N* owning factor window [i/N, (i+1)/N]. Poses are written to `matrix_world` — the channel hydrate already owns — and re-applied by the hydrate hooks after every response, so engine poses land first and the spread lands on top, always; delta channels were rejected as a second owner for the same question. **Refuses while a simulation is baked**: F-Curves and `matrix_world` writes cannot share an object honestly. Leader lines are one wire object in a sibling `Exploded` collection (the `cadex_collision` pattern — must exist under `--background` and in renders), never tagged `cadex_output`. One exploded view per model; two is refused naming both. `render_views` suspends it; `viewport_screenshot` leaves it on. `quiet()` (ADR-151) exposes the settle guard so `cadex_sheet` can write several settings and trigger one explicit `refresh`. The pure half — staged windows, slerp, matrix decomposition, line growth — imports no `bpy` and no `mathutils`. |
 | `cadex_views.py` | **ADR-150.** The registry of presentation views. Five modules restyle the viewport without touching the script — collision, section, explode, dimensions, blueprint — and used to be hand-wired into the same call sites; now each registers a record (`name`, `order`, and up to three hooks: `on_hydrate`, `on_preview`, `suspend`) and the call sites walk the registry. Orders: collision 20, section 30, explode 40, dimensions 50, blueprint 60 — section before explode is load-bearing on the preview path, dimensions last because it reads what the others posed. Per-record try/except keeps each view's stated failure terms: a malformed record costs its view, never the geometry, never the views after it. `suspend_for_render()` returns one undo that unwinds in reverse order. Collision and dimensions are installed by `install()` (they own no `register()`); the other three self-register. |
@@ -112,9 +114,10 @@ that `docs/VISION.md` describes, and the protocol client that
 - The **single script** is the artifact, and it lives in the engine's project
   store, not here. `bpy.data.texts["model.py"]` (`use_fake_user=True`) is a
   **mirror** of it, so the script is visible and searchable in Blender.
-  `MESH_AGENT_OT_show_script` opens it in the stock **Text Editor** — no
-  custom editor, because that buffer already exists and the Text Editor brings
-  syntax highlighting, line numbers and find for free (ADR-035).
+  It is viewed in the stock **Text Editor** (editor dropdown, then the text
+  dropdown) — no custom editor, because that buffer already exists and the
+  Text Editor brings syntax highlighting, line numbers and find for free
+  (ADR-035; the open-a-view operator went with ADR-165).
 - The mirror is *soft* read-only, and the sidebar panel says so. Blender text
   datablocks have no read-only flag, and the two directions are not
   symmetric: `get_script` reads this buffer, so the assistant sees a hand edit
@@ -258,15 +261,21 @@ registered by the add-on.
 | `RGN_TYPE_HEADER` | model selector, the pinned count | `CADEX_CHAT_HT_header` |
 
 The split between the two is **status in the header, actions in the row**
-(ADR-074). The button row is four aligned groups, and the grouping is the
-documentation:
+(ADR-074), and since ADR-164 the row carries only what acts on the *chat*.
+Two aligned groups, and the grouping is the documentation:
 
 | Group | Buttons | What they act on |
 |---|---|---|
 | gather | attach image, paste image, Pin Face, Pin Point, Define Terminal | what the *next message* will carry |
-| model | Rebuild Model | the *model*: re-runs the script the engine holds, sends nothing |
-| views | Parameters, Script, Wiring | open/close, each depressed while its view is open |
 | turn | New Chat, Send/Stop | the *turn* |
+
+Rebuild Model and the viewport switches (Collision Shapes, Dimensions,
+Section Cage, Section View, Exploded View, Blueprint) act on the model or
+the viewport, so they live in the parameters editor's **Interface** section
+(`ui._draw_interface`, ADR-164) rather than under the message box. There are
+**no open-this-editor buttons anywhere** (ADR-165): the parameters editor,
+the script's Text Editor and the wiring canvas are opened and arranged with
+Blender's own editor dropdown and area tiling, like every other editor.
 
 Nothing in the row is hidden when it does not apply — `Define Terminal` greys
 out instead, because a row that changes width as you enter and leave Edit
@@ -275,14 +284,24 @@ Mode moves every other button under the pointer.
 `RGN_TYPE_EXECUTE` is the load-bearing part. `RGN_TYPE_IS_HEADER_ANY`
 (`DNA_screen_types.h`) covers `HEADER`, `TOOL_HEADER`, `FOOTER`,
 `ASSET_SHELF_HEADER` and `SCRUBBING` and deliberately **not** `EXECUTE` — so
-an execute region is an ordinary sizable panel region, not subject to the
+an execute region is an ordinary panel region, not subject to the
 one-row limit that once forced the message box into a screen area of its own
-(ADR-034). It is `RGN_ALIGN_BOTTOM`, `prefsizey = 6 * HEADERY`, and
-user-resizable.
+(ADR-034). It is `RGN_ALIGN_BOTTOM` and, since ADR-164,
+`RGN_FLAG_DYNAMIC_SIZE`: the region hugs the message box and its button row,
+which is what keeps them at the bottom of the window instead of floating over
+dead region rows. Making the box taller is the box's own grip — more visible
+lines is more content, and the region follows. `cadex_chat_init()` enforces
+the flags on areas loaded from saved layouts, because the app template and
+older user files carry the fixed-height region they were saved with.
 
 **Cadex Parameters**, two regions: `RGN_TYPE_WINDOW` for the sliders
 (`CADEX_PARAMS_PT_parameters`) and a header — and since **ADR-108** that is
-all it holds.
+all it holds. Under the sliders and the print box sits the **Interface**
+section (`ui._draw_interface`, ADR-164): Rebuild Model, then one grid of
+viewport toggles, two per row — Collision Shapes, Dimensions, Section Cage,
+Section View, Exploded View, Blueprint — each depressed while on, with a
+settings box under the grid for each toggle that is on and has settings
+(ADR-165 unified the grid; the boxes used to be freestanding).
 
 Until then, four more panels shared that window, each behind its own `poll`:
 Collision (ADR-091), Simulation, Policy Outputs (ADR-096) and Training
@@ -331,11 +350,10 @@ Each of the four costs the sixteen touch points listed as a checklist in
 `docs/BLENDER-TREE.md` §2b. Reach for them deliberately; the §2b lines are a
 future merge conflict against upstream Blender, which is why they are all
 *additive rows* the compiler finds rather than rewritten logic.
-`mesh_agent.toggle_params` — the
-`OPTIONS` button at the end of the chat button row, depressed while the editor
-is open — closes it, or splits the viewport and sets `area.type`. That is the
-whole operator now: no pointer bookkeeping and no retry timer, because there
-is no space-data swap to wait on.
+There is no operator for opening any of them (ADR-165 removed
+`mesh_agent.toggle_params` and its siblings): an editor is opened by
+splitting an area and picking it from the editor dropdown, which is the one
+tiling mechanism the whole product uses.
 
 **No Cadex space type has DNA fields of its own** — all six are bare
 `SpaceLink` headers, and a gate check asserts it. Transcript scroll is region
@@ -396,6 +414,66 @@ browser is a `SpaceFile` *subtype* and is filtered in
 `pose_library`, `io_mesh_uv_layout`) are no longer enabled by default because
 each registers against an editor that no longer exists.
 
+### The window chrome (ADR-166)
+
+The window is the editors and nothing else. Both of Blender's global bars
+are gone — `ED_screen_global_areas_refresh` (`screen_edit.cc`) frees them
+instead of creating them, which also strips them off windows loaded from
+files saved with bars — and what they carried went to where macOS keeps it:
+
+- **File and Edit are native menus**, built in
+  `intern/ghost/intern/GHOST_SystemCocoa.mm` beside the app and Window menus
+  Blender already had there. Every item carries a tag in
+  `representedObject`, targets nil, and lands on the app delegate's
+  `cadexMenuAction:`, which pushes a `GHOST_kEventNativeMenu` (the
+  `GHOST_kEventOpenMainFile` shape); the tag→operator map lives in
+  `wm_window.cc`, so GHOST never learns an operator name.
+  `test_native_menu_targets_exist` mirrors that map and pins that every
+  target resolves. The items deliberately have **no key equivalents**:
+  Blender's keymap owns the shortcuts, and a Cocoa key equivalent would
+  intercept the key before the keymap sees it. "Settings…" sits in the app
+  menu per the HIG, and the About/Hide/Quit literals say Cadex.
+  What did not survive the move: **Open Recent** and the stock
+  **Import/Export submenus** — Blender menus a static native menu cannot
+  host. Recent files still work via drag-and-drop and Finder; revisit if
+  missed.
+- **The status bar** carried the mouse-hint icons and the Blender version;
+  nothing replaces it. The product version is in the **window title**
+  instead: `wm_window_title_text` appends `" - Cadex <version>"`, reading
+  `Contents/Resources/cadex_version.txt`, which `build_app.sh` stamps from
+  the repo-root `VERSION` file (with `CFBundleShortVersionString` and a
+  commit-count `CFBundleVersion` in `Info.plist`, so the Finder and the
+  About panel agree). A raw ninja build has no stamp and honestly shows
+  none. `package/app/bump_version.sh` is the deliberate bump.
+
+### The landing screen (ADR-167, ADR-168)
+
+A fresh launch opens onto a start page drawn inside the 3D viewport — the
+FreeCAD shape, not the Blender one: no modal, no popup, and the chat column
+beside it is already live. It has no look of its own to maintain: colours
+are the running theme's two-tone grey (read live from `wcol_regular` and
+the viewport ground), text is the app's own UI font, and the corners of
+the card and buttons are rounded by geometry. The header is the product
+mark — the same art as the Dock icon, extracted from `cadex_icon.icns`
+(ADR-059) — with the wordmark and the stamped version; the body is the
+**example project card** ("EXAMPLE PROJECT" over a shaded viewport render,
+captioned "Ducted-fan drone" — click it and a fresh copy of the demo lands
+under `~/Documents/Cadex Demo/` and opens) and three actions: **New File**
+(the empty scene behind the screen *is* the new file, so this just steps
+aside), **Open…**, and **Tutorial** (a stub that says so — coming later).
+There is deliberately no Start Chatting button and no sentence explaining
+the chat: the page's one line of help is "Esc to skip", because the chat
+being open beside it is its own explanation. Every exit is one gesture: an
+action, Escape, opening a real file, or simply typing in the chat — the
+first message dismisses it from `Agent.start_turn`, which is the single
+choke point both the Send button and the Return key pass through.
+
+While the screen is up it owns left-clicks in the viewport (a keymap item
+whose `poll` fails the moment it is dismissed — nothing is grabbed, no
+modal operator runs); everything else in the window keeps working. ADR-042
+stands: Blender's own splash remains disabled, and `wm_splash_screen.cc` is
+untouched — this is add-on surface end to end, zero inherited-tree lines.
+
 ### The Wiring graph
 
 `inspect scope="wiring"` (ADR-065) hands the shell every terminal the accepted
@@ -432,12 +510,15 @@ every apply after the first was refused `STALE_PROGRAM_REVISION` in silence.
 `if (snode.treepath.last)`, only `ED_node_tree_start` pushes onto `treepath`,
 and `snode_set_context` calls it on every redraw *only* for a tree type
 supplying that callback. Without it the editor drew an empty grid while the
-sidebar — which reads `scene.cadex_wiring` directly — listed every board. The
-`NODETREE` button in the chat's row (`mesh_agent.toggle_wiring`) is the
-explicit open/close; it matches on `area.spaces.active.tree_type`, never on
-`area.type` alone, because `NODE_EDITOR` is shared with the compositor, and
-it sets `area.ui_type` *before* `space.node_tree` because
-`rna_SpaceNodeEditor_node_tree_poll` rejects the assignment otherwise.
+sidebar — which reads `scene.cadex_wiring` directly — listed every board.
+The editor is opened from the editor dropdown's **Wiring** row like any
+other (`mesh_agent.toggle_wiring` went with ADR-165), and
+`get_from_context` is what makes that enough: it attaches the tree on the
+first redraw, so a freshly picked Wiring editor is populated without any
+setup operator. For anything scripting the space by hand, the old
+operator's hard-won ordering still applies: set `area.ui_type` *before*
+`space.node_tree`, because `rna_SpaceNodeEditor_node_tree_poll` rejects the
+assignment otherwise.
 
 Run its suite with no engine and no rebuild:
 
@@ -457,36 +538,31 @@ been told.
 **The layout is `startup.blend`, not code** (ADR-037). It became expressible as
 a saved screen the moment the columns became real editors, because a saved
 screen can only record area *types* — and until then the area types were
-lying. Viewport left, Cadex Chat right at full height, Cadex Parameters under
-the viewport; one workspace named "Simple"; an empty scene; solid shading with
+lying. Viewport top-left, Cadex Chat the right **third** of the window at
+full height, Cadex Parameters beside an **Outliner** under the viewport
+(ADR-168); one workspace named "Simple"; an empty scene; solid shading with
 the toon matcap, overlays and regions off. All of that is space data and saves
-into the file.
+into the file. The gate pins the area list *and* the proportions — the chat
+column at about a third, parameters and outliner sharing the bottom row.
 
 `blo_is_builtin_template` (`versioning_defaults.cc`) does not list "Mesh", so
 `BLO_update_defaults_startup_blend`'s destructive pass — free every stored
 panel, reset region sizes, rename screens — never runs on ours. That is
 load-bearing: do not add "Mesh" to that list.
 
-`__init__.py` is 111 lines and does three things, none of which a `.blend`
-can carry:
+`__init__.py` does two things, neither of which a `.blend` can carry:
 
 - **Enables the add-on.** `preferences.addons` is `UserDef`, not `Main`.
   Shipping a `Mesh/userpref.blend` would work and would also pin the user's
   theme, paths, keymap and autosave, so this stays four lines of Python.
-- **Installs the Cadex top bar** — File and Edit, from `mesh_agent.topbar`
-  (ADR-041). A header's draw function is code, not screen data, so no `.blend`
-  can carry it. It is the *template* that installs rather than the add-on, so
-  that `mesh_agent` in a stock Blender session leaves that session's bar alone.
-  Until ADR-041 this line blanked the bar instead, which is how `File > Open`,
-  `Save As`, Import/Export and Preferences went missing.
 - **Suppresses the splash** (ADR-042) — `preferences.view.show_splash = False`,
   restoring `is_dirty` so the user's `userpref.blend` is not edited. This one
   runs *in the load handler*, not in the timer: `creator.c` reads
   `USER_SPLASH_DISABLE` immediately after `WM_init`, before any timer fires.
 
-The first two run from a deferred timer that skips background mode, so a
-headless suite that wants the bar has to call `_cadex_topbar()` itself — the
-gate does, and `_hide_splash()` with it.
+(It installed the in-window top bar too until ADR-166 moved File and Edit to
+the OS menu bar and removed both window bars — see *The window chrome*
+below.)
 
 To re-author the layout: launch, arrange by hand, `File > Defaults > Save
 Startup File`, then copy `<config>/Mesh/startup.blend` over the one in the

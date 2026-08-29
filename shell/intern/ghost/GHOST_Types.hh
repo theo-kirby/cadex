@@ -372,6 +372,10 @@ enum GHOST_TEventType {
   GHOST_kEventDraggingDropDone,
 
   GHOST_kEventOpenMainFile, /* Needed for Cocoa to open double-clicked .blend file at startup. */
+  /* cadex ADR-166: a native (OS menu bar) menu item was chosen. The event
+   * data is a malloc'd tag string the window manager maps to an operator;
+   * GHOST knows nothing about what the tags mean. */
+  GHOST_kEventNativeMenu,
   GHOST_kEventNativeResolutionChange, /* Needed for Cocoa when window moves to other display. */
 
   GHOST_kEventImeCompositionStart,
