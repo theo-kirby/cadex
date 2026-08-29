@@ -178,6 +178,16 @@ rm -rf "${payload}/lib/python"*/site-packages/PySide6 \
        "${payload}/lib/qt6" "${payload}/lib/qml" "${payload}/plugins" \
        "${payload}/translations" "${payload}/qml"
 
+# The bindings' native halves and packaging metadata survived the prune
+# above for as long as it existed: libpyside6*/libshiboken6* dylibs and the
+# PySide6/shiboken6 dist-info directories. otool -L over the payload shows
+# nothing links the dylibs -- the packages they served are deleted two lines
+# up -- so this is dead LGPL-3 material shipping for no reason (ADR-171).
+find "${payload}/lib" -maxdepth 1 \( -name 'libpyside6*' -o -name 'libshiboken6*' \) \
+    -exec rm -rf {} + 2>/dev/null || true
+rm -rf "${payload}/lib/python"*/site-packages/PySide6-*.dist-info \
+       "${payload}/lib/python"*/site-packages/shiboken6-*.dist-info
+
 # Development leftovers: headers, .pc files and CMake config for libraries
 # nothing in the payload ever compiles against.
 rm -rf "${payload}/lib/pkgconfig" "${payload}/lib/cmake" "${payload}/mkspecs" \
@@ -220,11 +230,36 @@ cat > "${payload}/cadex-engine.json" <<MANIFEST
 MANIFEST
 
 # ---------------------------------------------------------------------------
+# License material (ADR-171). The prunes above delete share/doc and
+# conda-meta -- correctly -- so the license texts of what actually ships are
+# harvested from the SOURCE environment, on both staging paths, and the
+# collector hard-fails if the named obligations (OCCT exception, mujoco
+# LICENSE, NOTICE, ...) did not land.
+# ---------------------------------------------------------------------------
+
+python "${repo}/package/engine/collect_licenses.py" \
+    "${source_env_absolute}" "${payload}"
+
+# ---------------------------------------------------------------------------
 # Prove it.
 # ---------------------------------------------------------------------------
 
 test -f "${payload}/${freecadcmd_rel}" || { echo "FAIL: no engine binary"; exit 1; }
 test -f "${payload}/Mod/cadex/cadexd.py" || { echo "FAIL: no cadexd module"; exit 1; }
+
+# License material: the collector asserted its own list; re-assert the
+# heart of it here so a future edit that drops the collector call fails
+# loudly, and pin the wheel's dist-info license -- until ADR-171 that file
+# survived only because relocate's carry glob happened to match it.
+for obligation in "licenses/MANIFEST.json" \
+                  "licenses/occt/OCCT_LGPL_EXCEPTION.txt" \
+                  "licenses/occt/LICENSE_LGPL_21.txt" \
+                  "NOTICE"; do
+    test -f "${payload}/${obligation}" || {
+        echo "FAIL: license material missing: ${obligation} (collect_licenses.py)"; exit 1; }
+done
+ls "${payload}/lib/python"*/site-packages/mujoco-*.dist-info/licenses/LICENSE >/dev/null 2>&1 || {
+    echo "FAIL: the mujoco wheel's LICENSE is not in the payload's dist-info"; exit 1; }
 
 # The gate: no widget toolkit, no Qt Python bindings, no scene-graph
 # renderer anywhere in the payload. Qt6Core/Xml/Concurrent/Network are
@@ -237,6 +272,8 @@ leaked="$(find "${payload}" \( \
         -o -iname 'libQt[65]Designer*' \
         -o -iname 'libCoin*' -o -iname 'libQuarter*' -o -iname 'libsoqt*' \
         -o -iname 'PySide[26]' -o -iname 'shiboken[26]' -o -iname 'pivy' \
+        -o -iname 'libpyside6*' -o -iname 'libshiboken6*' \
+        -o -iname 'PySide6-*.dist-info' -o -iname 'shiboken6-*.dist-info' \
     \) -print 2>/dev/null | head -20 || true)"
 if [ -n "${leaked}" ]; then
     echo "FAIL: a GUI dependency leaked into the headless engine payload:"
