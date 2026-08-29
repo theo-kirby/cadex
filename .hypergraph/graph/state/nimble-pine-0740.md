@@ -16,5 +16,5 @@ Adopted the Hypergraph protocol on 2026-08-09 (mode B — no legacy graph existe
 
 ## Reconciliation
 
-- high_water_mark: tidy-banner-0293, shy-glade-0050, empty-light-4558, neat-tower-5715, careful-key-9041, weathered-falcon-4350, green-tree-7595, hollow-spring-0679, gilded-trail-2519
-- reconciled_at: 2026-08-29T14:05:00+00:00
+- high_water_mark: tidy-banner-0293, shy-glade-0050, empty-light-4558, neat-tower-5715, careful-key-9041, weathered-falcon-4350, green-tree-7595, hollow-spring-0679, wild-sea-9905
+- reconciled_at: 2026-08-29T16:31:34+00:00

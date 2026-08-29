@@ -13,7 +13,9 @@ Status: open
 
 The standing work of shrinking both inherited trees in place, under the two-commit removal protocol: dependency audit → a **disable commit** → a **delete commit** → a `docs/DECISIONS.md` entry, each step independently verified against the same gates [rec: civic-horizon-2730].
 
-Done: 17 unused FreeCAD workbench trees, the Qt shell and the provider stack, the local bpy modes, and the dead publication paths [rec: civic-horizon-2730] [rec: simple-hollow-8675].
+**The delta itself is machine-pinned since ADR-171** [rec: wild-sea-9905]: `docs/inherited-modifications.json` holds the 90 modified inherited files (47 FreeCAD, 43 Blender — one flagged `premodified` because its edit predates the squashed import), `test_licensing_compliance.py` holds that manifest equal to `git diff` against both import commits and requires the per-file §2(a) modification notice on every entry (nine FreeCAD files are ledger-only after formatter fights; FREECAD.md §2b is their notice), and BLENDER-TREE §2a's "eight files stay eight" is test-enforced. An edit to an inherited file now fails the engine suite until it is manifested, noticed and ledgered.
+
+Done: 17 unused FreeCAD workbench trees, the Qt shell and the provider stack, the local bpy modes, and the dead publication paths [rec: civic-horizon-2730] [rec: simple-hollow-8675]. ADR-171 added two removals under the same protocol: the drone demo (~59 MB, seven STLs of unrecorded origin) and the dead PySide/shiboken dylibs the payload prune had always missed [rec: wild-sea-9905].
 
 Outstanding:
 
@@ -35,3 +37,4 @@ Outstanding:
 - kind-ledge-5493 — the outstanding delete commit and the one import that makes it non-mechanical
 - merry-eagle-4093 — why Phases 11 and 12 left the critical path, and what 13b covers on both sides
 - western-badger-3023 — that the replacements are unscheduled by decision rather than stalled
+- wild-sea-9905 — ADR-171: the delta manifest, the notice discipline, and the two removals it logged
