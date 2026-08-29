@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-08-10
+Verified against source: 2026-08-29
 
 Cadex is not written from scratch. It is a **derivative work of two large
 free-software projects**, carrying the design lessons of a third that we
@@ -23,27 +23,25 @@ for the shell.
 | [Blender](https://projects.blender.org/blender/blender) | **the shell** — `shell/` | GPL-2.0-or-later |
 | VibeCAD (ours, predecessor) | the scripted-modeling engine inside `src/Mod/cadex/` | LGPL-2.1-or-later |
 
-Cadex adds roughly **109,000 lines** of its own across both halves, or about
-**65,000** if you do not count tests:
+Cadex adds roughly **161,000 lines** of its own across both halves, or about
+**100,000** if you do not count tests:
 
 | Ours | Lines | Where |
 |---|---|---|
-| the engine, Python | 48,362 | `src/Mod/cadex/*.py` |
-| the engine's suites | 36,220 | `src/Mod/cadex/cadex_tests/` |
-| the engine, C++ | 1,031 | `CadexGeometryWorker.cpp` and its headers |
-| the shell add-on | 10,544 | `shell/scripts/addons_core/mesh_agent/` |
-| the shell's Cadex suites | 5,331 | `shell/tests/python/bl_mesh_agent*.py` |
-| the headless CLI | 4,540 | `cli/` — a second front end, not a second engine (ADR-061) |
-| the offboard trainer | 2,516 | `training/` — **not part of the product** (§5) |
-| the offboard analysis | 4,759 | `analysis/` — **not part of the product** (§5). Re-measured 2026-08-11, after `topology.py` (ADR-143) |
-| the app template | 111 | `shell/scripts/startup/bl_app_templates_system/Mesh/` |
+| the engine, Python | 59,981 | `src/Mod/cadex/*.py` |
+| the engine's suites | 51,248 | `src/Mod/cadex/cadex_tests/` |
+| the engine, C++ | 1,031 | `CadexGeometryWorker.cpp` |
+| the shell add-on | 24,061 | `shell/scripts/addons_core/mesh_agent/` |
+| the shell's Cadex suites | 10,321 | `shell/tests/python/bl_mesh_agent*.py` |
+| the headless CLI | 5,065 | `cli/` — a second front end, not a second engine (ADR-061) |
+| the offboard trainer | 2,643 | `training/` — **not part of the product** (§5) |
+| the offboard analysis | 6,980 | `analysis/` — **not part of the product** (§5) |
+| the app template | 99 | `shell/scripts/startup/bl_app_templates_system/Mesh/` |
 
 Everything else in this repository, which is the overwhelming majority of
-it, belongs to FreeCAD or Blender. Measured 2026-08-01, after the merge
-that brought the CLI, terminals, solder and the wiring graph together with
-the dynamics vertical (ADR-102) — except the `analysis/` row, re-measured on
-the date beside it. The engine rows have grown since and are not re-measured
-here; treat 2026-08-01 as the date they are honest to.
+it, belongs to FreeCAD or Blender. Measured 2026-08-29 (`wc -l` over the
+listed globs); these numbers drift as the trees grow, so treat the date as
+part of the claim.
 
 We do not track either upstream. Both were imported as squashed snapshots,
 and the direction of travel is **subtractive**: we delete from these trees
@@ -101,17 +99,22 @@ tree.
 repository at `ac5af55948d`, which was itself a Blender fork — Blender 5.3
 alpha. Blender's 163,789-commit history stayed behind, deliberately.
 
-**What we changed — eight files, in seven changes.** That is the entire delta
-against stock Blender, and keeping it that short is why the shell was cheap
-to absorb.
-The changes are: a default app template so a new user meets the Cadex
-layout, and the `read_userdef` line that makes that default reach an
-existing profile too (ADR-058); two CMake additions that bundle the engine;
-the product rename (`Blender.app` → `Cadex.app`, and the window title); and
-the macOS bundle's `Info.plist` identity. Every one is listed in
-[`BLENDER-TREE.md`](BLENDER-TREE.md) §2 with a conflict-resolution note,
-because each is a future merge conflict and we would rather write down how
-to resolve it now.
+**What we changed — four groups, about forty-three files.** The delta
+against stock Blender is listed in full, file by file, in
+[`BLENDER-TREE.md`](BLENDER-TREE.md) §2, in four groups that age
+differently: **§2a**, product identity — the default app template, the
+engine-bundling CMake, the rename, the bundle's `Info.plist` — which is
+eight files of string literals and guarded blocks *and must stay eight*;
+**§2b**, the price of owning six Cadex editors and unregistering the ones
+we do not ship (ADR-035, ADR-036, ADR-108) — additive rows in enums,
+exhaustive switches and CMake lists across ~25 files; **§2c**, the
+message-box widget behavior (ADR-034); and **§2d**, the native menu bar and
+window chrome (ADR-166). Every file carries a conflict-resolution note in
+the ledger and a per-file modification notice in its header, and the full
+list is pinned machine-readably by `docs/inherited-modifications.json` and
+the licensing compliance suite. An earlier revision of this section claimed
+eight files were the *entire* delta; that was §2a's true claim, mis-scoped
+to the whole tree.
 
 **What we added.** Three things that exist in no upstream Blender and so can
 never conflict with one: the `mesh_agent` add-on (chat, the parameter panel,
@@ -160,11 +163,15 @@ that carries a redistribution obligation.
 **Licence flow.** Apache-2.0 → the engine's LGPL-2.1-**or-later**. The "or
 later" is doing the work: Apache-2.0 is incompatible with LGPL-2.1-*only* and
 compatible with the v3 family, so the "or later" clause is what makes the
-combination clean. The shipped bundle as a whole carries GPL-2.0-or-later
-obligations (§7 below), and Apache-2.0 is compatible with GPL-3.0 the same
-way. **NOTICE carries the entry**, and Apache-2.0 §4(d) means the
-attribution requirement is real rather than courteous — see the vendored-LGPL
-note in `docs/VISION.md`'s non-goals, which now names MuJoCo alongside OCCT.
+combination clean. On the shell side the same clause does the same work:
+the Blender-derived **binary** is distributed under GPL version 3 or later
+terms (§7 below) — exactly as Blender's own binaries are, and for the same
+reason, Apache-2.0 components in the bundle — while the source stays
+GPL-2.0-or-later. **The root `NOTICE` file carries the entry**, and
+Apache-2.0 §4(d) means the attribution requirement is real rather than
+courteous — see the vendored-LGPL note in `docs/VISION.md`'s non-goals,
+which names MuJoCo alongside OCCT. The wheel's own LICENSE ships in the
+payload and `package/engine/collect_licenses.py` hard-fails if it does not.
 
 **Version.** Exactly pinned, and for a stated reason rather than caution:
 MuJoCo's own `VERSIONING.md` disclaims cross-version numerical
@@ -184,7 +191,7 @@ BREP, so `<inertial>` gets exact `GProp_GProps` mass properties.
 `training/cadex_train.py` is `[Cadex-new]`, LGPL-2.1-or-later like the rest
 of the engine, and **it ships in nothing**. CMake never installs it, no
 payload carries it, and it is copied by hand to a machine with a GPU
-(ADR-084). Its four dependencies — `jax`, `mujoco`, `mujoco-mjx`, `flax` —
+(ADR-084). Its four dependencies — `jax`, `mujoco`, `mujoco-mjx`, `numpy` —
 are pinned in `training/requirements.txt` and installed into a venv on that
 machine. None of them is in `pixi.toml`, none is in the payload, and a test
 asserts that no `jax` or `mjx` reaches either.
@@ -295,29 +302,50 @@ program linked together:
   engine-side precedents in `src/Mod/cadex/cadex_tests/`, and the system
   prompt is written fresh.
 
-The shipped bundle distributes both, so the distribution as a whole carries
-GPL-2.0-or-later obligations, and the complete corresponding source is this
-public repository. This is a description of how the repository is
-structured, not legal advice; if you are redistributing Cadex, read the
-licences.
+The shipped bundle distributes both halves side by side, and the right
+frame for it is **aggregation**: each component stays under its own
+licence, because putting separate programs in one archive does not
+relicense any of them. The Blender-derived binary in the bundle is
+distributed under GPL version 3 or later terms (the GPL-2.0-or-later
+source's "or later", elected the same way Blender's own releases elect it,
+because Apache-2.0 components require it); the engine payload beside it
+stays LGPL-2.1-or-later; the MuJoCo wheel inside that stays Apache-2.0.
+The complete corresponding source for all of it is this public repository,
+plus Blender's public library repositories for the prebuilt
+`shell/lib/<platform>` submodules. The licence material itself ships in
+two places: Blender's own `Resources/text/license/` for the shell binary,
+and `Resources/cadex/` — `LICENSE`, `NOTICE`, `THIRD_PARTY_LICENSES.md`
+and a per-package `licenses/` directory with `MANIFEST.json` — for the
+engine payload. This is a description of how the repository is structured,
+not legal advice; if you are redistributing Cadex, read the licences.
 
 ## 8. Everything else
 
 - **Bundled third-party code** lives in `src/3rdParty/` (Clipper2, PyCXX,
   salomesmesh, libE57Format, OndselSolver, GSL and others) and in Blender's
-  `shell/extern/`. Each keeps its own licence file; the licence texts
-  Blender ships are in `shell/doc/license/`.
+  `shell/extern/`. Most keep their own licence file in-tree; the ones that
+  do not are named, with their licences, in
+  [`THIRD_PARTY_LICENSES.md`](../THIRD_PARTY_LICENSES.md) §2. The licence
+  texts Blender ships are in `shell/doc/license/`.
 - **Prebuilt libraries** for the shell come from Blender's own
   `projects.blender.org` library repositories, consumed as submodules under
   `shell/lib/<platform>`. They are never vendored into this tree.
-- **Build dependencies** for the engine (OCCT, Qt6, Coin3D, compilers) come
-  from conda-forge through pixi, pinned in `pixi.lock`. These stay on the
-  build machine.
+- **Runtime dependencies from conda-forge** (OCCT, Python, numpy/scipy and
+  ~330 more, pinned in `pixi.lock`) **do not stay on the build machine —
+  they are the payload.** The engine payload is a relocated copy of the
+  pixi environment, so every conda package that survives the prune ships
+  inside `Cadex.app`. An earlier revision of this bullet claimed the
+  opposite. What each shipped package's licence is, and where its text
+  landed, is recorded per-package in the payload's
+  `licenses/MANIFEST.json`, written by `package/engine/collect_licenses.py`
+  at staging time.
 - **The one pypi wheel that ships** is `mujoco == 3.10.0` —
   §4. It is neither vendored source nor a build-only dependency, which is why
   it has a section of its own rather than a bullet here.
-- **The CadexLight and CadexDark themes** are based on
-  [OpenTheme by Obelisk79](https://github.com/obelisk79/OpenTheme).
+- **The CadexLight, CadexDark and CadexMono themes** are based on
+  [OpenTheme by Obelisk79](https://github.com/obelisk79/OpenTheme)
+  (LGPL-2.1); the derived `.qss` files say so in their headers, and NOTICE
+  carries the entry.
 
 ## 9. Where this goes
 

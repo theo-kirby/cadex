@@ -102,11 +102,24 @@ deliverable that makes the next one mechanical.
 
 ## 2. Modified upstream files — the whole delta
 
-Two kinds of edit, and they age very differently. **2a** is product identity:
+Four kinds of edit, and they age very differently. **2a** is product identity:
 string literals and guarded CMake blocks, eight files, and it must stay eight.
 **2b** is the price of owning editors and of not shipping the ones we do not
 want (ADR-035, ADR-036) — a deliberate, bounded investment that roughly
-tripled the surface. **2c** is the in-flight message-box work.
+tripled the surface. **2c** is the message-box widget behavior (ADR-034,
+landed with ADR-164). **2d** is the window chrome (ADR-166).
+
+Every file listed in this section carries a one-line **modification
+notice** in its header (`Modified by the Cadex project, 2026. See
+docs/BLENDER-TREE.md.`), as GPL-2 §2(a) asks of a modified file. The full
+list is machine-readable in `docs/inherited-modifications.json`, kept in
+step with git by `tools/apply_modification_notices.py`, and pinned by
+`cadex_tests/test_licensing_compliance.py` — which also mechanizes "§2a is
+eight files and stays eight" for both this ledger and the manifest. One
+file's edit predates the squashed import and so is invisible to a git diff
+against it: `DNA_userdef_types.h`'s `"Mesh"` default came in with the
+`mesh` snapshot. It carries the notice like the rest and is flagged
+`premodified` in the manifest.
 
 Every addition here is a future merge conflict. The distinction that matters
 is *how* it conflicts: 2a and most of 2b conflict as insertions the compiler

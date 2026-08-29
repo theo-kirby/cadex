@@ -1,0 +1,401 @@
+{
+  "schema": "cadex-inherited-modifications-v1",
+  "comment": "Modified inherited files, per fork. Generated from git (git diff --name-only --diff-filter=M <import_commit> HEAD -- <scopes>, minus the 'ours' prefixes) and pinned by cadex_tests/test_licensing_compliance.py. Files with notice 'comment' carry a one-line in-file modification notice applied by tools/apply_modification_notices.py; 'ledger-only' files are listed in their ledger doc instead. 'premodified' marks files whose modification predates the squashed import commit and so cannot appear in the git diff; they still carry the notice.",
+  "trees": {
+    "freecad": {
+      "import_commit": "c2ccddfb3bbcbcff8cecd859968a8750d95832db",
+      "ledger": "docs/FREECAD.md",
+      "scopes": [
+        "src/",
+        "cMake/",
+        "tests/",
+        "CMakeLists.txt"
+      ],
+      "ours": [
+        "src/Mod/cadex/",
+        "src/Tools/resolve_release_artifact_name.py",
+        "src/Tools/tests/test_release_artifact_name.py"
+      ],
+      "files": [
+        {
+          "path": "CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "cMake/FindPySide6.cmake",
+          "notice": "comment"
+        },
+        {
+          "path": "cMake/FreeCAD_Helpers/CheckInterModuleDependencies.cmake",
+          "notice": "comment"
+        },
+        {
+          "path": "cMake/FreeCAD_Helpers/InitializeFreeCADBuildOptions.cmake",
+          "notice": "comment"
+        },
+        {
+          "path": "cMake/FreeCAD_Helpers/PrintFinalReport.cmake",
+          "notice": "comment"
+        },
+        {
+          "path": "cMake/FreeCAD_Helpers/SetupQt.cmake",
+          "notice": "comment"
+        },
+        {
+          "path": "src/App/ApplicationDirectories.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Base/Interpreter.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Gui/Application.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Gui/DockWindowManager.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Gui/MainWindow.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Gui/MainWindow.h",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Gui/OverlayWidgets.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Gui/PreferencePacks/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Gui/PreferencePacks/package.xml",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Gui/PreferencePages/DlgSettingsGeneral.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Gui/StartupProcess.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Gui/Stylesheets/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Gui/ToolBarManager.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Assembly/App/AppAssembly.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Assembly/App/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Assembly/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Assembly/CommandCreateView.py",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Assembly/Gui/AppAssemblyGui.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Assembly/Gui/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Assembly/Gui/Resources/Assembly.qrc",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Assembly/Gui/ViewProviderAssembly.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Assembly/InitGui.py",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Assembly/JointObject.py",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Assembly/Preferences.py",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Assembly/UtilsAssembly.py",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Part/App/BRepOffsetAPI_MakePipeShell.pyi",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Part/App/BRepOffsetAPI_MakePipeShellPyImp.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Part/App/TopoShapePyImp.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Part/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Part/TestPartApp.py",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/PartDesign/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Start/Gui/AppStartGui.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Start/Gui/StartView.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Start/Gui/StartView.h",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Start/Gui/ThemeSelectorWidget.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "tests/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "tests/src/Base/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "tests/src/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "tests/src/Gui/DockLayoutState.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "tests/src/Mod/CMakeLists.txt",
+          "notice": "comment"
+        }
+      ]
+    },
+    "blender": {
+      "import_commit": "48204c30696e4f65fd3baca1f8cabcade025cc97",
+      "ledger": "docs/BLENDER-TREE.md",
+      "scopes": [
+        "shell/"
+      ],
+      "ours": [
+        "shell/scripts/addons_core/mesh_agent/",
+        "shell/tests/python/",
+        "shell/tests/eval/mesh_agent_cad/",
+        "shell/scripts/startup/bl_app_templates_system/",
+        "shell/source/blender/editors/space_cadex_",
+        "shell/release/darwin/Blender.app/Contents/Resources/cadex_icon.icns"
+      ],
+      "files": [
+        {
+          "path": "shell/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/build_files/cmake/platform/platform_apple.cmake",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/build_files/cmake/testing.cmake",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/intern/ghost/GHOST_Types.hh",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/intern/ghost/intern/GHOST_SystemCocoa.hh",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/intern/ghost/intern/GHOST_SystemCocoa.mm",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/release/darwin/Blender.app/Contents/Info.plist",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/scripts/modules/addon_utils.py",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/scripts/presets/keyconfig/keymap_data/blender_default.py",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/scripts/startup/bl_ui/__init__.py",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/scripts/startup/bl_ui/space_toolsystem_toolbar.py",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/blenkernel/BKE_context.hh",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/blenkernel/intern/blendfile.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/blenkernel/intern/context.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/blenkernel/intern/grease_pencil_convert_legacy.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/blenkernel/intern/screen.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/blenloader/intern/readfile.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/blenloader/intern/versioning_280.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/editors/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/editors/animation/anim_filter.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/editors/include/ED_space_api.hh",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/editors/include/UI_interface_layout.hh",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/editors/interface/interface_handlers.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/editors/interface/interface_intern.hh",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/editors/interface/interface_layout.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/editors/interface/resources.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/editors/interface/templates/interface_template_search_menu.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/editors/screen/area.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/editors/screen/screen_edit.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/editors/space_api/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/editors/space_api/spacetypes.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/editors/space_file/space_file.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/makesdna/DNA_space_enums.h",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/makesdna/DNA_space_types.h",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/makesdna/DNA_userdef_types.h",
+          "notice": "comment",
+          "premodified": true
+        },
+        {
+          "path": "shell/source/blender/makesrna/intern/rna_screen.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/makesrna/intern/rna_space.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/makesrna/intern/rna_ui_api.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/python/intern/bpy_rna_callback.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/windowmanager/intern/wm_draw.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/windowmanager/intern/wm_operators.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/windowmanager/intern/wm_window.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/creator/CMakeLists.txt",
+          "notice": "comment"
+        }
+      ]
+    }
+  }
+}

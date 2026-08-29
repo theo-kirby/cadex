@@ -1,0 +1,89 @@
+Cadex
+Copyright 2026 Cadex Authors
+
+Cadex is a derivative work of two free-software projects and redistributes
+several third-party components. This file carries the attribution notices
+those components require; the component-level license map is
+THIRD_PARTY_LICENSES.md, and the full provenance story is
+docs/PROVENANCE.md. In a shipped bundle this file is installed at
+Cadex.app/Contents/Resources/cadex/NOTICE, beside LICENSE and a
+per-package licenses/ directory with a machine-readable MANIFEST.json.
+
+--------------------------------------------------------------------------
+
+MuJoCo
+Copyright DeepMind Technologies Limited
+Licensed under the Apache License, Version 2.0 (the "License"); you may
+not use this software except in compliance with the License. You may
+obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+https://github.com/google-deepmind/mujoco
+
+Cadex redistributes the unmodified `mujoco` Python wheel (exact pinned
+version) inside the engine payload as its dynamics kernel. The wheel's own
+LICENSE file ships beside it in the payload's site-packages and is
+mirrored under licenses/ in the payload root. This paragraph is the
+attribution Apache-2.0 section 4(d) asks a NOTICE file to carry.
+
+--------------------------------------------------------------------------
+
+Open CASCADE Technology (OCCT)
+Copyright OPEN CASCADE SAS
+Licensed under the GNU Lesser General Public License version 2.1, with the
+additional Open CASCADE exception.
+https://dev.opencascade.org/
+
+OCCT is Cadex's geometry kernel: every solid, boolean and fillet is
+computed by OCCT libraries redistributed in the engine payload. The LGPL
+text and the OCCT exception text ship in the payload under
+licenses/occt/.
+
+--------------------------------------------------------------------------
+
+FreeCAD
+Copyright the FreeCAD contributors
+Licensed under the GNU Lesser General Public License version 2.1 or later.
+https://github.com/FreeCAD/FreeCAD
+
+The Cadex engine — this repository's root tree — is a fork of FreeCAD,
+imported as a squashed snapshot of the FreeCAD 1.2 development line.
+Modified inherited files carry a per-file modification notice; the ledger
+is docs/FREECAD.md and the machine-readable list is
+docs/inherited-modifications.json. FreeCAD's own license is the root
+LICENSE file, unchanged.
+
+--------------------------------------------------------------------------
+
+Blender
+Copyright the Blender Authors
+Licensed under the GNU General Public License version 2 or later; official
+binary releases are distributed under GPL version 3 or later terms.
+https://www.blender.org/
+
+The Cadex shell — shell/ — is a Blender fork (via the intermediate `mesh`
+fork). Blender's own COPYING file is at shell/COPYING, unchanged, and the
+license texts Blender ships are installed into the bundle at
+Resources/text/license/. Modified inherited files carry a per-file
+modification notice; the ledger is docs/BLENDER-TREE.md.
+
+--------------------------------------------------------------------------
+
+OpenTheme
+Copyright Obelisk79
+Licensed under the GNU Lesser General Public License version 2.1.
+https://github.com/obelisk79/OpenTheme
+
+The CadexLight, CadexDark and CadexMono themes
+(src/Gui/Stylesheets/Cadex*.qss and their overlay variants) are based on
+OpenTheme's OpenLight and OpenDark preference packs.
+
+--------------------------------------------------------------------------
+
+VibeCAD
+Copyright 2026 Cadex Authors (as the VibeCAD project)
+Licensed under the GNU Lesser General Public License version 2.1 or later.
+https://github.com/theo-kirby/vibecad
+
+The scripted-modeling engine under src/Mod/cadex/ descends from our own
+VibeCAD predecessor's cadex-teardown branch. Same authorship, same
+license; listed here so the [VibeCAD-era] provenance tags in the docs
+resolve to a named project.
