@@ -17480,6 +17480,15 @@ Verified: `bl_mesh_agent.py` landing tests green from source. Files:
 `mesh_agent/demo/` (new, git-LFS for .blend/.png),
 `cadex_landing.py`, `bl_mesh_agent.py`, `docs/BLENDER.md`.
 
+
+**2026-09-05 licensing correction.** The bundled working script and its
+single history snapshot now carry the shell-side GPL-2.0-or-later SPDX
+header. Recomputed their content revision with `project_script_revision`,
+updated the saved revision references and history filename/character count,
+and verified a real-engine restore still matches the accepted model digest.
+The old hash-named history file is replaced by the corrected snapshot; no
+geometry or policy bytes change.
+
 ## ADR-174 — the assistant is a preference: Codex joins Claude Code behind one event contract (2026-08-30)
 
 User direction: the assistant should not require a Claude subscription

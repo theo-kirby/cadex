@@ -1,8 +1,8 @@
 {
   "accepted_attempt": {
     "attempt_id": "1788039076681-5f03d6cc19f5",
-    "revision": "ec4e79e05d19259e35219117f174d737f863f299cbe261d05ab70a6b5584785e",
-    "staging": "script_artifacts/ec4e79e05d19259e35219117f174d737f863f299cbe261d05ab70a6b5584785e/attempt-1788039076681-5f03d6cc19f5"
+    "revision": "1e5a8b01a956678b470a7476b8ee7744b15b92b0be501c6125a041e0c5490b88",
+    "staging": "script_artifacts/1e5a8b01a956678b470a7476b8ee7744b15b92b0be501c6125a041e0c5490b88/attempt-1788039076681-5f03d6cc19f5"
   },
   "accepted_contract": [
     {
@@ -197,7 +197,7 @@
     }
   ],
   "accepted_digest": "6752e7daa12458cec2e7c945a6c97f3b60471bcde851d0891edb8a59574e5a72",
-  "accepted_revision": "ec4e79e05d19259e35219117f174d737f863f299cbe261d05ab70a6b5584785e",
+  "accepted_revision": "1e5a8b01a956678b470a7476b8ee7744b15b92b0be501c6125a041e0c5490b88",
   "board_specs": {},
   "board_values": [],
   "cage_specs": {
@@ -208,7 +208,7 @@
     "attempt_id": "1788039076681-5f03d6cc19f5",
     "digest": "6752e7daa12458cec2e7c945a6c97f3b60471bcde851d0891edb8a59574e5a72",
     "output_count": 38,
-    "revision": "ec4e79e05d19259e35219117f174d737f863f299cbe261d05ab70a6b5584785e",
+    "revision": "1e5a8b01a956678b470a7476b8ee7744b15b92b0be501c6125a041e0c5490b88",
     "status": "accepted"
   },
   "mount_specs": {
@@ -486,5 +486,5 @@
   },
   "schema": "cadex-project-script-v1",
   "updated_at": "2026-08-29T21:31:38Z",
-  "working_revision": "ec4e79e05d19259e35219117f174d737f863f299cbe261d05ab70a6b5584785e"
+  "working_revision": "1e5a8b01a956678b470a7476b8ee7744b15b92b0be501c6125a041e0c5490b88"
 }

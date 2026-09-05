@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
+# SPDX-License-Identifier: GPL-2.0-or-later
+
 # =====================================================================
 # MG90S biped robot - 10 DOF, 3D printable, ESP32-S3 + PCA9685
 # Both legs come from one signed builder (no mirrored solids).
