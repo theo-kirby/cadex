@@ -18268,3 +18268,80 @@ report as `model_objects_on_open` and `hydrate_on_open_seconds`.
   it needs cached and is the next unit.
 - A1 is unchanged and still worth having: it would make this open one
   script run instead of two.
+
+## ADR-187 — A locked-out project has a button back in (2026-09-06)
+
+**Decision.** A project whose restore pass fails at open gets a **re-accept
+box** in the chat panel, wired to `write_script`. The box is drawn off
+`open_failure_code` on the per-root state (the hook ADR-186 cached and
+stopped at), and the one operator behind it —
+`MESH_AGENT_OT_reaccept_script`, "Re-accept Stored Script" →
+`cadex_backend.reaccept_stored_script` — is the manual recovery ROADMAP
+recorded (`open_project restore=false`, then `write_script`) as one button.
+The parameters panel's alert row offers the same operator in place of
+Rebuild Model while the project is locked out, because Rebuild Model
+refuses there, correctly, and the user was back at the alert row with
+nothing else to press.
+
+### 1. The failure
+
+A digest-moving engine change — a solver bump, a sweep-frame fix, the next
+one — leaves the stored script unchanged and the accepted digest wrong. The
+next open runs the restore pass, `CADEXD_RESTORE_FAILED` comes back, and
+every operation that would fix it opens the project first. `adopt_script`
+is drawn only for an *empty* project or a *dirty* buffer, and a project
+that opened fine yesterday under a different engine build is neither, so
+nothing was drawn at all. Measured on `wiring-demo/harness.cadex` after
+ADR-074 and recovered by hand; every digest-moving change since has shipped
+with that manual recovery.
+
+### 2. What the button does, and what it does not
+
+- **It sends the engine's stored source, not the `.blend`'s mirror.** For
+  the engine-moved case the two are the same script. For a script edited
+  outside Mesh they are not, and the edit is accepted **as edited** — the
+  operator's description says so. Reverting a hand edit is what a backup of
+  the `.cadex` directory is for, and the failure report still says that.
+- **`ensure_open(unrestored_ok=True)` first**, so the reopen is the same
+  `restore: False` open every `write_script` already takes (ADR-044);
+  nothing new crosses the protocol.
+- **The failure code is now cached on both open paths.** ADR-186 cached it
+  from the hydrate-on-open pump only; the synchronous `ensure_open` — a tool
+  call or Rebuild Model on a file that was not queued — now caches it too,
+  and `_open_unrestored` keeps it, since that open did not restore. It is
+  cleared by an open whose restore pass passes and by the accept of a
+  `write_script`, which is the moment the store is consistent again.
+- **The blocking `write_script` now runs through `begin_write_script`.**
+  It used to take its own `_lifecycle` route with `unrestored_ok=False` and
+  no accept hook, so a rewrite that ended a lockout cleared the warning on
+  the tool path and not on the button path. One code path, one meaning of
+  an accepted rewrite; `adopt_saved_script` and `apply_slider_defaults`
+  ride on it unchanged.
+- **`locked_out_project` is read-only**, off `cached_script_state`; a panel
+  draw opens nothing, exactly as `orphaned_project`.
+- **Not taken:** a diff between the accepted and restored digests in the
+  box (the report has them, and the box is two lines), and a route that
+  re-accepts from the `.blend`'s mirror (that is `adopt_script`, for a
+  different failure).
+
+### 3. Verification
+
+`test_a_locked_out_project_is_reaccepted_from_the_chat` in the gate moves
+the accepted digest in `script.json` with the script untouched — the only
+way to reproduce an engine move without rebuilding the engine — reopens the
+file through `load_post`'s queued open, and checks: the queued open refuses
+as a restore failure; the code is cached; `locked_out_project` is true and
+`orphaned_project` false; the parameters panel has a failure to draw;
+Rebuild Model refuses and the digest stays where it was; the operator runs
+`{'FINISHED'}` from the locked-out state; the code, the unrestored warning
+and the panel's failure are all cleared; the accepted digest is the true
+one again; the geometry is in the viewport; `get_script` no longer carries
+"WITHOUT restoring"; a fresh restoring open passes; and the operator
+refuses a project that stores no script.
+
+### 4. Consequences
+
+- The second of the two open failures on the file-lifecycle state node is
+  closed. What remains there is the `.cxpolicy` Save-As suffix.
+- A digest-moving change no longer ships with a manual recovery. It still
+  moves digests, and the box says so rather than hiding it.

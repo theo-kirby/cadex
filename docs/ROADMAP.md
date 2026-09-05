@@ -1759,31 +1759,23 @@ What makes them experimental, and what would settle it:
   `test_opening_a_file_hydrates` drains the queue by hand and asserts
   `model_objects_on_open > 0`. A1 still stands: it would make that open one
   script run instead of two.
-- **A digest-moving engine change locks a project out of the UI, with no
-  visible way back in.** ADR-064 called a friendlier migration path "worth
-  having and not built here"; ADR-074 is the first change to make a user hit
-  it, and it is worse than that note reads. The failure is at *open*, not at
-  the next edit: `ensure_open` runs the restore pass, `CADEXD_RESTORE_FAILED`
-  comes back, and every operation that would fix it is behind the same call.
-  **Rebuild Model cannot be the remedy** — `begin_rebuild_model` passes
-  `unrestored_ok=False`, correctly, because re-running a model whose script
-  no longer reproduces it is exactly what the guard exists to stop. The
-  operation that *is* the remedy is `write_script`, which already passes
-  `unrestored_ok=True` and re-accepts on success; what is missing is a
-  **button that reaches it in this state**. `adopt_script` is drawn only when
-  the engine project is *empty* (`orphaned_project`) or the script buffer is
-  *dirty* — and a project that opened fine yesterday under a different engine
-  build is neither, so nothing is drawn at all.
-
+- [x] **A digest-moving engine change locked a project out of the UI, with
+  no visible way back in** (measured after ADR-074, ADR-187 landed the way
+  back). The failure is at *open*: `ensure_open` runs the restore pass,
+  `CADEXD_RESTORE_FAILED` comes back, and every operation that would fix it
+  is behind the same call. **Rebuild Model cannot be the remedy** — it
+  passes `unrestored_ok=False`, correctly. The remedy is `write_script`,
+  which re-accepts on success, and `adopt_script` was drawn only for an
+  *empty* project or a *dirty* buffer, so nothing was drawn at all.
   Measured on `wiring-demo/harness.cadex` after ADR-074: accepted
-  `7e073ae6…`, restored `25fdf64f…`, four cables. Recovered by hand with
-  `open_project restore=false` then `write_script`, which is precisely what
-  the missing button would do. The shape of the fix: cache the failure code
-  from the last open on the per-root state, and let the chat panel draw the
-  re-accept box it already draws for an orphan, saying the model was accepted
-  under a different engine build. That is a `shell/` diff and a decision, so
-  it wants its own ADR. Until it lands, **every digest-moving change ships
-  with a manual recovery** — a solver bump, a sweep-frame fix, the next one.
+  `7e073ae6…`, restored `25fdf64f…`, four cables; recovered by hand with
+  `open_project restore=false` then `write_script`. That is now
+  `MESH_AGENT_OT_reaccept_script` ("Re-accept Stored Script"), drawn in the
+  chat panel off the failure code both open paths cache on the per-root
+  state, and offered in place of Rebuild Model in the parameters panel's
+  alert row. The gate's `test_a_locked_out_project_is_reaccepted_from_the_chat`
+  moves the accepted digest with the script untouched and drives the
+  operator from the locked-out state.
 - **Linux and Windows shell bundles.** The engine payload builds for both;
   only macOS arm64 has shell CI. Moot once Phase 12 lands — revisit then.
 

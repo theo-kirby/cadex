@@ -264,10 +264,13 @@ class _State:
         #: (ADR-044). Rides on every tool result from such a project so the
         #: caller cannot mistake a rewrite-in-progress for a healthy model.
         self.restore_warning = ""
-        #: ``failure_code`` of the last ``open_project`` that failed, or "".
-        #: Set by the hydrate-on-open pump (ADR-186), where there is no
-        #: conversation to report into yet; cleared by any open that
-        #: succeeds. A panel can read it without opening anything.
+        #: ``failure_code`` of the last *restoring* ``open_project`` that
+        #: failed, or "". Set by the hydrate-on-open pump (ADR-186), where
+        #: there is no conversation to report into yet, and by
+        #: :func:`ensure_open`; cleared by an open whose restore pass
+        #: passes and by the ``write_script`` that re-accepts the model
+        #: (ADR-187). A panel can read it without opening anything: it is
+        #: what draws the re-accept box (:func:`locked_out_project`).
         self.open_failure_code = ""
         #: The last accepted response's ``display`` block and revision, so
         #: the collision overlay (ADR-091) can be switched on between
@@ -762,7 +765,10 @@ def ensure_open(scene, unrestored_ok=False):
         {"project_root": root, "restore": True},
         progress_callback=_progress)
     if opened.get("ok") is not True:
-        if str(opened.get("failure_code") or "") == RESTORE_FAILED_CODE:
+        # Cached on the state for the same reason the pump caches it: the
+        # panels read it without opening anything (ADR-187).
+        state.open_failure_code = str(opened.get("failure_code") or "")
+        if state.open_failure_code == RESTORE_FAILED_CODE:
             report = _restore_failure_report(root, opened)
             if not unrestored_ok:
                 return False, report
@@ -814,6 +820,9 @@ def _open_unrestored(scene, root, state, client, report):
         progress_callback=_progress)
     if opened.get("ok") is not True:
         return False, _failure_report("open_project", opened)
+    # ``open_failure_code`` stays: this open did not restore, and the box
+    # that offers the way back in is drawn from it until a write_script
+    # re-accepts the model (ADR-187).
     state.opened = True
     state.restore = dict(opened.get("restore") or {})
     state.restore_warning = (
@@ -1018,8 +1027,11 @@ def begin_write_script(scene, source, replace=False, cancelled=None):
     """
     def accepted():
         # The rewrite ran and was accepted, so the store is consistent again:
-        # this revision is both the working and the accepted one.
-        _state_for(project_root(scene)).restore_warning = ""
+        # this revision is both the working and the accepted one, and the
+        # lockout box (ADR-187) has nothing left to offer.
+        state = _state_for(project_root(scene))
+        state.restore_warning = ""
+        state.open_failure_code = ""
         _refresh_script_state(scene)
 
     args = {"source": source}
@@ -1396,11 +1408,17 @@ def _lifecycle(scene, op, args, display=None, guarded=True):
 
 
 def write_script(scene, source):
-    """Replace THE project script through the engine. Returns (ok, report)."""
-    ok, report = _lifecycle(scene, "write_script", {"source": source})
-    if ok:
-        _refresh_script_state(scene)
-    else:
+    """Replace THE project script through the engine. Returns (ok, report).
+
+    Blocking :func:`begin_write_script`, so the two forms share one meaning
+    of an accepted rewrite -- the refresh, and the end of a restore lockout
+    (ADR-187) -- rather than two that agree today.
+    """
+    started = begin_write_script(scene, source)
+    if isinstance(started, Lifecycle):
+        started = started.wait()
+    ok, report = started
+    if not ok:
         # Keep the attempted source visible, and marked as not in the model.
         mirror_script_text(source, accepted=False)
     return ok, report
@@ -2647,6 +2665,46 @@ def orphaned_project(scene):
     # Last, and only when it can change the answer: this one parses the
     # saved specs, and it runs on every panel draw.
     return empty and scene_remembers_a_model(scene)
+
+
+def locked_out_project(scene):
+    """The engine refused to restore this file's project (ADR-187).
+
+    ``CADEXD_RESTORE_FAILED`` came back from the last restoring open --
+    the stored script no longer reproduces the accepted digest -- and no
+    ``write_script`` has re-accepted the model since. Every operation that
+    builds on the model refuses in this state, Rebuild Model included, and
+    correctly; the one that is the remedy is :func:`reaccept_stored_script`.
+
+    Read-only, off the cached state: a panel draw must not open anything.
+    """
+    state = cached_script_state(scene)
+    return state is not None and state.open_failure_code == RESTORE_FAILED_CODE
+
+
+def reaccept_stored_script(scene):
+    """Re-run the script the project stores and accept what it builds now.
+
+    The way back in from a restore lockout (ADR-187). The project is
+    reopened without restoring, the engine's own stored source is sent back
+    through ``write_script`` -- the one op that runs on an unproven model,
+    because it replaces rather than builds on it (ADR-044) -- and the
+    accepted digest becomes whatever this engine build produces. That is
+    the manual recovery (``open_project restore=false``, ``write_script``)
+    as one button.
+
+    It is the *engine's* source, not the .blend's mirror: a project
+    accepted under a different engine build has the same script in both,
+    and a script edited outside Mesh is accepted **as edited** -- the
+    button says so. Returns (ok, report).
+    """
+    ok, report = ensure_open(scene, unrestored_ok=True)
+    if not ok:
+        return False, report
+    state = _state_for(project_root(scene))
+    if not state.script_present or not state.source.strip():
+        return False, "The project stores no script to re-accept."
+    return write_script(scene, state.source)
 
 
 def begin_rebuild_model(scene, cancelled=None):

@@ -184,6 +184,40 @@ class MESH_AGENT_OT_rebuild_model(Operator):
         return {'FINISHED'}
 
 
+class MESH_AGENT_OT_reaccept_script(Operator):
+    bl_idname = "mesh_agent.reaccept_script"
+    bl_label = "Re-accept Stored Script"
+    # The way back in from a restore lockout (ADR-187). Rebuild Model refuses
+    # a project whose script no longer reproduces its digest, correctly; this
+    # one reopens it without restoring and sends the engine's own stored
+    # script back through write_script, so what the script builds under
+    # THIS engine becomes the accepted model. The manual recovery, as a
+    # button.
+    bl_description = ("Re-run the script this project stores and accept what "
+                      "it builds now as the model. For a model accepted under "
+                      "a different engine build; a script edited outside "
+                      "Mesh is accepted as edited")
+
+    @classmethod
+    def poll(cls, context):
+        return not agent_module.get_agent().busy
+
+    def execute(self, context):
+        from . import cadex_backend
+        from . import model
+        ok, report = cadex_backend.reaccept_stored_script(context.scene)
+        agent = agent_module.get_agent()
+        if not ok:
+            agent.history.add("status", report)
+            model.record_error(report)
+            self.report({'WARNING'}, "The stored script could not be re-accepted")
+            return {'CANCELLED'}
+        model.clear_last_error()
+        agent.history.add("status", "Re-accepted the stored script: what it "
+                                    "builds under this engine is the model again.")
+        return {'FINISHED'}
+
+
 class MESH_AGENT_OT_apply_slider_defaults(Operator):
     bl_idname = "mesh_agent.apply_slider_defaults"
     bl_label = "Apply as Defaults"
@@ -1138,11 +1172,17 @@ class CADEX_PARAMS_PT_parameters(Panel):
         # nothing. The remedy sits in the same panel as the failure.
         failure = model.last_error()
         if failure:
+            from . import cadex_backend
             box = layout.box().column(align=True)
             row = box.row()
             row.alert = True
             row.label(text=first_line(failure), icon='ERROR')
-            box.operator(MESH_AGENT_OT_rebuild_model.bl_idname,
+            # Rebuild Model is the wrong button for a restore lockout: it
+            # refuses, correctly, and the user is back here. Offer the one
+            # that gets back in (ADR-187).
+            locked = cadex_backend.locked_out_project(context.scene)
+            box.operator(MESH_AGENT_OT_reaccept_script.bl_idname
+                         if locked else MESH_AGENT_OT_rebuild_model.bl_idname,
                          icon='FILE_REFRESH')
 
         specs = model.load_specs(context.scene)
@@ -1216,6 +1256,22 @@ class CADEX_CHAT_PT_transcript(Panel):
             orphan.label(text="This file's engine project is empty.",
                          icon='ERROR')
             orphan.operator(MESH_AGENT_OT_adopt_script.bl_idname,
+                            icon='FILE_REFRESH')
+        # A project whose stored script no longer reproduces its accepted
+        # digest -- accepted under a different engine build, or edited
+        # outside Mesh -- refuses to open, and every tool that could fix it
+        # opens it first. The re-accept box is the one way back in
+        # (ADR-187); it is drawn off the cached failure code, so it costs
+        # no open of its own.
+        elif cadex_backend.locked_out_project(context.scene):
+            locked = layout.box().column(align=True)
+            locked.label(text="The engine could not restore this model.",
+                         icon='ERROR')
+            note = locked.column(align=True)
+            note.enabled = False
+            note.label(text="Its stored script no longer builds the")
+            note.label(text="accepted geometry under this engine.")
+            locked.operator(MESH_AGENT_OT_reaccept_script.bl_idname,
                             icon='FILE_REFRESH')
 
         # Rough character wrap width from the region width (~7 px per char,
@@ -1441,6 +1497,7 @@ classes = (
     MESH_AGENT_OT_paste_image,
     MESH_AGENT_OT_adopt_script,
     MESH_AGENT_OT_rebuild_model,
+    MESH_AGENT_OT_reaccept_script,
     MESH_AGENT_OT_apply_slider_defaults,
     MESH_AGENT_OT_toggle_collision,
     MESH_AGENT_OT_toggle_dimensions,

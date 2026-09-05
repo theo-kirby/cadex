@@ -575,7 +575,10 @@ The steps:
   (restore pass included) and the display `rebuild` on a worker thread and
   hydrates on the main thread; `ensure_open` drains a queued open rather
   than racing it. The read-only panel state still does not open the
-  project. A1 would shorten that open to one script run; it is unchanged.
+  project. A restore failure at that open caches its code on the per-root
+  state and the chat draws the re-accept box from it (ADR-187), so a
+  digest-moving engine change no longer needs a manual recovery. A1 would
+  shorten that open to one script run; it is unchanged.
 - Whether `CadexModelingSurface.py`'s surface resolution collapses further
   now that one global project surface exists and no provider consumes it.
 - What remains of `CadexProject.py` once the conversation store is gone —
