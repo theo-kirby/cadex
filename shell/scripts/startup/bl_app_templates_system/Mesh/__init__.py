@@ -18,15 +18,15 @@ state machine that split areas, monkeypatched two header draw functions and
 re-registered every foreign Tool panel with `poll -> False` is now a file, and
 this module is what is left over (ADR-037).
 
-Two things survive, because neither can live in a .blend:
+One thing survives, because it cannot live in a .blend:
 
-- **Enabling the add-on.** `preferences.addons` is `UserDef`, not `Main`, so a
-  startup file cannot carry it. Shipping a `Mesh/userpref.blend` would work
-  and would also pin the user's theme, paths, keymap and autosave -- so this
-  stays four lines of Python instead.
-- **Suppressing the splash** (ADR-042). It is a `UserDef` flag, and the one
-  thing here that has to run in the load handler rather than the timer --
-  `creator.c` reads the flag immediately after `WM_init`.
+- **Suppressing the splash** (ADR-042). It is a `UserDef` flag that has to
+  be set from the load handler -- `creator.c` reads the flag immediately
+  after `WM_init`.
+
+The add-on enable that used to sit beside it is gone (ADR-183): the
+assistant is application code in `scripts/startup/mesh_agent` now, registered
+by the script loader like `bl_ui`, so there is nothing to enable.
 
 To re-author the layout: launch, arrange it by hand, `File > Defaults > Save
 Startup File`, then copy
@@ -37,17 +37,6 @@ reclaimed.
 
 import bpy
 from bpy.app.handlers import persistent
-
-
-def _ensure_agent_addon():
-    # Must run deferred: add-on paths are not registered yet while the app
-    # template's own register() executes during startup.
-    import addon_utils
-    try:
-        addon_utils.enable("mesh_agent", default_set=False)
-    except Exception:
-        import traceback
-        traceback.print_exc()
 
 
 def _hide_splash():
@@ -72,22 +61,11 @@ def _hide_splash():
     preferences.is_dirty = was_dirty
 
 
-def _apply():
-    try:
-        _ensure_agent_addon()
-    except Exception:
-        import traceback
-        traceback.print_exc()
-    return None
-
-
 @persistent
 def load_handler(_):
     if bpy.app.background:
         return
     _hide_splash()
-    if not bpy.app.timers.is_registered(_apply):
-        bpy.app.timers.register(_apply, first_interval=0.1)
 
 
 def register():

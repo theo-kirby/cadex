@@ -106,6 +106,12 @@ DECLARED_ENGINE_MODULES = frozenset(
         "CadexBoards",
         "CadexMounts",
         "CadexCage",
+        # The parts library (ADR-181): the catalog data and the ``lib``
+        # generators. FreeCAD-free like the table modules above; in the
+        # closure because describe_api serves the catalog, and in the worker
+        # because the script calls the generators.
+        "CadexCatalog",
+        "cadex_library_api",
         # Which outputs are parts to print, and what an STL is named
         # (ADR-156). Pure Python beside the five table modules above, and the
         # one of the six whose specs the script never declares: the roster is
@@ -457,7 +463,7 @@ def test_the_shell_never_learns_about_mujoco() -> None:
     if not shell.is_dir():  # pragma: no cover - a source checkout always has it
         return
     offenders: list[str] = []
-    for path in sorted((shell / "scripts" / "addons_core" / "mesh_agent").rglob("*.py")):
+    for path in sorted((shell / "scripts" / "startup" / "mesh_agent").rglob("*.py")):
         roots = _import_roots(path)
         for forbidden in ("mujoco", "CadexDynamics"):
             if forbidden in roots:

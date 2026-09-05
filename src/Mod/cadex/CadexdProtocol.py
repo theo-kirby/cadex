@@ -326,6 +326,10 @@ OP_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
                 # table of rings, which is what the model was already writing
                 # by hand.
                 "cages",
+                # ...and the parts library (ADR-181): the lib API surface and
+                # its browsable catalog, so the agent shops standard hardware
+                # without a second tool.
+                "library",
                 "mutation_selection",
             }
         ),

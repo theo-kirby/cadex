@@ -50,7 +50,7 @@ SPDX_SCOPES = {
     "package": ("LGPL-2.1-or-later", {".py", ".sh"}),
     # tools/ is deliberately absent: it mixes our helpers with inherited
     # FreeCAD lint scripts (tools/lint/*) that carry no headers upstream.
-    "shell/scripts/addons_core/mesh_agent": ("GPL-2.0-or-later", {".py"}),
+    "shell/scripts/startup/mesh_agent": ("GPL-2.0-or-later", {".py"}),
     "shell/tests/eval/mesh_agent_cad": ("GPL-2.0-or-later", {".py"}),
 }
 
@@ -310,7 +310,7 @@ def test_the_shell_client_never_imports_engine_code():
     seam: it must stay a dependency-free NDJSON client with no cadex,
     FreeCAD or bpy import (docs/PROVENANCE.md §7)."""
     source = (
-        REPO / "shell" / "scripts" / "addons_core" / "mesh_agent" / "cadexd_client.py"
+        REPO / "shell" / "scripts" / "startup" / "mesh_agent" / "cadexd_client.py"
     ).read_text()
     forbidden = []
     for node in ast.walk(ast.parse(source)):

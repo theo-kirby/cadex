@@ -1227,6 +1227,15 @@ SpaceCadexLive *CTX_wm_space_cadex_live(const bContext *C)
   return nullptr;
 }
 
+SpaceCadexBlueprint *CTX_wm_space_cadex_blueprint(const bContext *C)
+{
+  ScrArea *area = CTX_wm_area(C);
+  if (area && area->spacetype == SPACE_CADEX_BLUEPRINT) {
+    return static_cast<SpaceCadexBlueprint *>(area->spacedata.first);
+  }
+  return nullptr;
+}
+
 void CTX_wm_manager_set(bContext *C, wmWindowManager *wm)
 {
   C->wm.manager = wm;

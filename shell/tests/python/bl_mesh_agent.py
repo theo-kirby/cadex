@@ -33,10 +33,21 @@ import time
 
 import bpy
 
-# Make the repo's add-on importable regardless of which Blender runs this.
+# mesh_agent is application code in scripts/startup (ADR-183), so the app
+# that runs this suite has already imported and registered its own bundled
+# copy. The suite tests the SOURCE tree: put the bundled copy down, purge
+# it, and import ours.
 _REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                       "..", ".."))
-sys.path.insert(0, os.path.join(_REPO, "scripts", "addons_core"))
+_SOURCE_STARTUP = os.path.join(_REPO, "scripts", "startup")
+_bundled = sys.modules.get("mesh_agent")
+if _bundled is not None and not os.path.abspath(
+        _bundled.__file__).startswith(_SOURCE_STARTUP + os.sep):
+    _bundled.unregister()
+    for _name in [n for n in sys.modules
+                  if n == "mesh_agent" or n.startswith("mesh_agent.")]:
+        del sys.modules[_name]
+sys.path.insert(0, _SOURCE_STARTUP)
 
 import mesh_agent  # noqa: E402
 from mesh_agent import agent as agent_module  # noqa: E402
@@ -180,6 +191,45 @@ def test_transcript_persistence():
         agent.shutdown()
 
 
+def test_tool_call_runs_collapse_in_the_transcript():
+    """Twenty tool calls in a row are one thing that happened.
+
+    The transcript panel groups consecutive "· tool" status rows before it
+    trims to the last 40 items, so a long run neither buries the
+    conversation nor eats the visible window. Ordinary status rows and
+    prose between tool calls break a run; the empty streaming placeholder
+    does not, and is dropped from display entirely.
+    """
+    print("test_tool_call_runs_collapse_in_the_transcript")
+    from mesh_agent import ui as mesh_ui
+
+    history = history_module.ChatHistory()
+    history.add("user", "make a bracket")
+    history.add("status", "· get_script")
+    history.add("status", "· write_script")
+    # The placeholder a streaming turn keeps between tool calls.
+    history.add("assistant", "")
+    history.add("status", "· viewport_screenshot")
+    history.add("assistant", "Done.")
+    history.add("status", "Rebuilt this file's engine project.")
+    history.add("status", "· scene_summary")
+
+    groups = mesh_ui._transcript_groups(history.messages)
+    kinds = [group[0] for group in groups]
+    check(kinds == ["message", "tools", "message", "message", "tools"],
+          "runs group, prose and plain status rows break them: " + str(kinds))
+    run = groups[1][1]
+    check([name for _index, name in run]
+          == ["get_script", "write_script", "viewport_screenshot"],
+          "the empty streaming placeholder does not split a run")
+    check(len(groups[4][1]) == 1, "a lone tool call stays a lone row")
+    # The copy button needs the true index into the history, not the
+    # position in the trimmed display list.
+    _kind, index, message = groups[2]
+    check(history.messages[index] is message and message.text == "Done.",
+          "display rows carry their history index for the copy button")
+
+
 def test_bridge_chunked_request():
     """The bridge must tolerate requests arriving in tiny TCP fragments."""
     print("test_bridge_chunked_request")
@@ -244,13 +294,262 @@ def test_the_mesh_tools_are_not_deferred_behind_a_disabled_tool():
           "the CLI keeps the environment it was launched with")
 
 
+def test_codex_backend_speaks_the_agent_event_contract():
+    """The Codex backend: its argv, and its translation to Claude frames.
+
+    The agent understands exactly three stream shapes (text deltas,
+    ``assistant`` tool_use frames, a final ``result``), so the Codex backend
+    must translate its own JSONL vocabulary onto them — and its argv must
+    carry the three load-bearing pieces: the MCP shim as ``-c`` overrides,
+    ``default_tools_approval_mode = "approve"`` (``codex exec`` auto-declines
+    approvals, which would silently disarm every Mesh tool), and the
+    read-only sandbox that keeps Codex's own shell tool from mutating
+    anything behind the bridge's back.
+    """
+    print("test_codex_backend_speaks_the_agent_event_contract")
+    from mesh_agent import tools as tools_module
+    from mesh_agent.backend import CodexBackend
+
+    tool_names = [tool["name"] for tool in tools_module.list_tools()]
+    backend = CodexBackend(
+        codex_path="/nonexistent/codex", model="gpt-5.5",
+        system_prompt="the system prompt", bridge_port=1, bridge_token="t",
+        tool_names=tool_names)
+
+    command = backend._command()
+    check(command[:2] == ["/nonexistent/codex", "exec"], "codex exec")
+    check("--json" in command and command[-1] == "-",
+          "JSONL out, prompt on stdin")
+    sandbox = command[command.index("--sandbox") + 1]
+    check(sandbox == "read-only", "codex's own tools cannot mutate")
+    overrides = " ".join(command)
+    check('mcp_servers.mesh.default_tools_approval_mode="approve"'
+          in overrides, "mesh tool calls are pre-approved in exec mode")
+    check("mcp_shim.py" in overrides, "the shim is wired in as the server")
+    check(json.dumps(tool_names) in overrides,
+          "the tool allow-list matches Claude's")
+    check("resume" not in command, "no resume without a session")
+
+    backend.session_id = "thread-1"
+    resumed = backend._command()
+    check(resumed[1:3] == ["exec", "resume"] and "thread-1" in resumed,
+          "a saved session resumes by thread id")
+    # ``exec resume`` accepts fewer flags than ``exec``; an unaccepted one
+    # is rejected outright, the turn produces nothing, and the fallback
+    # quietly downgrades every follow-up to a fresh conversation.
+    check("-C" not in resumed and "--sandbox" not in resumed
+          and "--color" not in resumed,
+          "resume carries only the flags it accepts")
+    check('sandbox_mode="read-only"' in " ".join(resumed),
+          "...with the sandbox riding in as a config override")
+
+    with open(os.path.join(backend._workdir, "AGENTS.md"),
+              encoding="utf-8") as file:
+        check(file.read() == "the system prompt",
+              "the system prompt travels as the workdir's AGENTS.md")
+
+    # Translation: the three shapes, and nothing invented.
+    backend.session_id = None
+    check(backend._translate(
+        {"type": "thread.started", "thread_id": "T"}) == []
+        and backend.session_id == "T",
+        "thread.started binds the session and emits nothing")
+    frames = backend._translate(
+        {"type": "item.completed",
+         "item": {"type": "agent_message", "text": "Hello"}})
+    check(frames[0]["event"]["delta"]["text"] == "Hello",
+          "an agent message becomes a text delta")
+    frames = backend._translate(
+        {"type": "item.completed",
+         "item": {"type": "agent_message", "text": "Again"}})
+    check(frames[0]["event"]["delta"]["text"] == "\n\nAgain",
+          "a second message gets its paragraph break")
+    frames = backend._translate(
+        {"type": "item.started",
+         "item": {"type": "mcp_tool_call", "server": "mesh",
+                  "tool": "write_script", "status": "in_progress"}})
+    check(frames[0]["type"] == "assistant"
+          and frames[0]["message"]["content"][0]["name"] == "write_script",
+          "a tool call surfaces as an assistant tool_use frame")
+    check(backend._translate({"type": "turn.completed", "usage": {}})
+          == [{"type": "result", "is_error": False}],
+          "turn.completed is the ok result")
+    failed = backend._translate(
+        {"type": "turn.failed", "error": {"message": json.dumps(
+            {"type": "error", "status": 400,
+             "error": {"message": "The model is not supported."}})}})
+    check(failed[0]["is_error"]
+          and failed[0]["result"] == "The model is not supported.",
+          "turn.failed unwraps the API envelope to a sentence")
+    check(backend._translate(
+        {"type": "item.completed",
+         "item": {"type": "reasoning", "text": "thinking"}}) == [],
+        "reasoning items stay out of the transcript")
+
+
+def test_pi_backend_speaks_the_agent_event_contract():
+    """The pi backend: its argv, its minted session, and its translation.
+
+    pi is the non-MCP seat (ADR-175): the Mesh tools reach it through
+    ``pi_tools.js``, a native pi extension relaying to the same TCP bridge.
+    The argv must carry the load-bearing pieces: ``--no-builtin-tools`` (the
+    ADR-163 posture — pi's own bash/edit/write are gone, every mutation
+    arrives through the bridge), the extension via ``-e``, the hermetic
+    flags that keep the user's own pi setup out of product turns, and a
+    ``--`` before the prompt so a leading dash can never parse as a flag.
+    Sessions are minted here because pi creates a missing ``--session-id``
+    fresh — which is also the stale-id degradation path.
+    """
+    print("test_pi_backend_speaks_the_agent_event_contract")
+    from mesh_agent.backend import PiBackend
+
+    backend = PiBackend(
+        pi_path="/nonexistent/pi", model="",
+        system_prompt="the system prompt", bridge_port=1, bridge_token="t",
+        tool_names=["write_script"])
+
+    command = backend._command("hello")
+    check(command[:2] == ["/nonexistent/pi", "-p"]
+          and command[command.index("--mode") + 1] == "json",
+          "non-interactive JSONL out")
+    check("--no-builtin-tools" in command,
+          "pi's own file and shell tools are disabled")
+    for flag in ("--no-extensions", "--no-skills", "--no-context-files",
+                 "--no-prompt-templates"):
+        check(flag in command, "hermetic: {:s}".format(flag))
+    extension = command[command.index("-e") + 1]
+    check(extension.endswith("pi_tools.js") and os.path.isfile(extension),
+          "the bridge-relay extension ships with the add-on")
+    check(command[-2:] == ["--", "hello"],
+          "the prompt rides behind an end-of-options marker")
+    check("--model" not in command,
+          "an empty model leaves pi's own default in force")
+    minted = backend.session_id
+    check(bool(minted) and len(minted.split("-")) == 5,
+          "a session id is minted on the first turn")
+    check(backend._command("again")[
+        backend._command("again").index("--session-id") + 1] == minted,
+        "...and the next turn resumes it")
+
+    backend.model = "openrouter/some/model"
+    with_model = backend._command("x")
+    check(with_model[with_model.index("--model") + 1]
+          == "openrouter/some/model",
+          "a set model pattern is passed through verbatim")
+
+    # Translation: the three shapes, and thinking stays out.
+    backend.session_id = None
+    check(backend._translate({"type": "session", "id": "S"}) == []
+          and backend.session_id == "S",
+          "the session header binds the id and emits nothing")
+    frames = backend._translate(
+        {"type": "message_update",
+         "assistantMessageEvent": {"type": "text_delta", "delta": "Hi"}})
+    check(frames[0]["event"]["delta"]["text"] == "Hi",
+          "a text delta streams through")
+    frames = backend._translate(
+        {"type": "message_update",
+         "assistantMessageEvent": {"type": "text_start", "contentIndex": 1}})
+    check(frames[0]["event"]["delta"]["text"] == "\n\n",
+          "a second text block gets its paragraph break")
+    check(backend._translate(
+        {"type": "message_update",
+         "assistantMessageEvent": {"type": "thinking_delta",
+                                   "delta": "hmm"}}) == [],
+        "thinking deltas stay out of the transcript")
+    frames = backend._translate(
+        {"type": "tool_execution_start", "toolCallId": "t1",
+         "toolName": "write_script", "args": {}})
+    check(frames[0]["type"] == "assistant"
+          and frames[0]["message"]["content"][0]["name"] == "write_script",
+          "a tool call surfaces as an assistant tool_use frame")
+    check(backend._translate(
+        {"type": "message_end",
+         "message": {"role": "assistant", "stopReason": "error",
+                     "errorMessage": "quota exhausted"}}) == [],
+        "an errored message is remembered, not emitted")
+    frames = backend._translate({"type": "agent_settled"})
+    check(frames == [{"type": "result", "is_error": True,
+                      "result": "quota exhausted"}],
+          "agent_settled carries the verdict, with the error's words")
+
+
+def test_a_session_resumes_only_into_the_cli_that_minted_it():
+    """Provider tagging: a Codex thread id never reaches ``claude --resume``.
+
+    A session id is meaningful only to the CLI that minted it. Saved
+    transcripts carry ``session_provider``; untagged saves predate providers
+    and were all Claude Code's. Switching the provider preference drops the
+    backend and its session — the visible transcript stays, the context does
+    not — and says so in the transcript.
+    """
+    print("test_a_session_resumes_only_into_the_cli_that_minted_it")
+    from mesh_agent import agent as agent_module
+
+    class _Backend:
+        def __init__(self, provider):
+            self.provider = provider
+            self.session_id = None
+
+        def cancel(self):
+            pass
+
+    class _Untyped:
+        session_id = None
+
+        def cancel(self):
+            pass
+
+    agent = agent_module.Agent()
+    agent.history.session_id = "sess"
+    agent.history.session_provider = "codex"
+    check(agent._saved_session_for(_Backend("codex")) == "sess",
+          "codex resumes its own session")
+    check(agent._saved_session_for(_Backend("claude")) is None,
+          "claude never sees a codex thread id")
+    agent.history.session_provider = "pi"
+    check(agent._saved_session_for(_Backend("pi")) == "sess"
+          and agent._saved_session_for(_Backend("codex")) is None,
+          "pi sessions follow the same rule")
+    agent.history.session_provider = ""
+    check(agent._saved_session_for(_Backend("claude")) == "sess",
+          "an untagged save is a Claude session")
+    check(agent._saved_session_for(_Backend("codex")) is None,
+          "...so codex does not try to resume it")
+    check(agent._saved_session_for(_Untyped()) == "sess",
+          "a backend without a provider (mock, fakes) adopts as before")
+
+    # The provider switch: backend dropped, session cleared, transcript told.
+    # (get_prefs is stubbed so the test pins the provider regardless of what
+    # the settings file on this machine says.)
+    class _Prefs:
+        provider = 'codex'
+
+    real_get_prefs = agent_module.get_prefs
+    agent_module.get_prefs = lambda: _Prefs()
+    try:
+        agent.backend = _Backend("claude")
+        agent.backend.session_id = "sess"
+        agent.history.session_id = "sess"
+        agent.history.session_provider = "claude"
+        agent._sync_provider()
+        check(agent.backend is None, "the old provider's backend is dropped")
+        check(agent.history.session_id == "",
+              "...and its session goes with it")
+        check(any(m.role == "status" and "Codex" in m.text
+                  for m in agent.history.messages),
+              "the transcript says which assistant answers next")
+    finally:
+        agent_module.get_prefs = real_get_prefs
+
+
 def test_mcp_shim_protocol():
     """Speak real MCP (JSON-RPC over stdio) to the shim subprocess."""
     print("test_mcp_shim_protocol")
     reset_scene()
     agent = agent_module.Agent()
     bridge = agent.ensure_bridge()
-    shim = os.path.join(_REPO, "scripts", "addons_core", "mesh_agent", "mcp_shim.py")
+    shim = os.path.join(_REPO, "scripts", "startup", "mesh_agent", "mcp_shim.py")
     process = subprocess.Popen(
         [sys.executable, shim, "--port", str(bridge.port), "--token", bridge.token],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
@@ -601,7 +900,7 @@ def test_prompt_carries_no_api_names():
     overlay = modes.CADEX_OVERLAY
     check("params(" not in overlay and "result =" not in overlay,
           "no script skeleton in CADEX_OVERLAY either")
-    check(len(overlay) < 3500,
+    check(len(overlay) < 3800,
           "CADEX_OVERLAY stays small ({:d} chars)".format(len(overlay)))
     check("describe_cad_api" in overlay,
           "the overlay points at describe_cad_api instead")
@@ -747,6 +1046,10 @@ KEPT_EDITORS = (
     # panel groups in one editor cannot be arranged, and arranging them is
     # most of what a person does with a workspace.
     'CADEX_ENV', 'CADEX_POLICY', 'CADEX_TRAINING', 'CADEX_LIVE',
+    # ...and the seventh (ADR-179): the Blueprint Editor, the drawing
+    # sheets in a window of their own so drawings and model can be
+    # arranged side by side, and two editors can show two sheets.
+    'CADEX_BLUEPRINT',
     'PROPERTIES', 'OUTLINER',
     'TEXT_EDITOR', 'CONSOLE', 'INFO', 'PREFERENCES', 'FILES',
     # The node editor is registered again, for exactly one tree type: the
@@ -808,20 +1111,22 @@ def _ui_type_accepted(area, identifier):
 
 
 def test_cadex_editors_are_registered():
-    """The six Cadex editors are editor types, not Properties areas told
+    """The seven Cadex editors are editor types, not Properties areas told
     apart by where they sit.
 
-    Two of them since ADR-036; the other four since ADR-108, which split
+    Two of them since ADR-036; four more since ADR-108, which split
     Environment, Policy, Training and Live out of Parameters so each can be
-    docked, split and closed on its own.
+    docked, split and closed on its own; and the Blueprint Editor since
+    ADR-179, so a drawing and the model can be arranged side by side.
     """
     print("test_cadex_editors_are_registered")
     space_types = bpy.types.Space.bl_rna.properties['type'].enum_items.keys()
     for name in ('CADEX_CHAT', 'CADEX_PARAMS', 'CADEX_ENV', 'CADEX_POLICY',
-                 'CADEX_TRAINING', 'CADEX_LIVE'):
+                 'CADEX_TRAINING', 'CADEX_LIVE', 'CADEX_BLUEPRINT'):
         check(name in space_types, "{:s} is a space type".format(name))
     for name in ('SpaceCadexChat', 'SpaceCadexParams', 'SpaceCadexEnv',
-                 'SpaceCadexPolicy', 'SpaceCadexTraining', 'SpaceCadexLive'):
+                 'SpaceCadexPolicy', 'SpaceCadexTraining', 'SpaceCadexLive',
+                 'SpaceCadexBlueprint'):
         check(hasattr(bpy.types, name),
               "bpy.types.{:s} exists".format(name))
         # Every Cadex space is a bare SpaceLink header: no space data of its
@@ -1150,7 +1455,7 @@ def test_landing_demo_payload_ships():
     try:
         import bpy
         installed = os.path.join(bpy.utils.resource_path('LOCAL'),
-                                 "scripts", "addons_core", "mesh_agent",
+                                 "scripts", "startup", "mesh_agent",
                                  "demo")
     except Exception:
         installed = None
@@ -1436,12 +1741,15 @@ def test_every_chat_action_is_in_one_row_under_the_message_box():
     check([e["idname"] for e in editing.drawn if "idname" in e] == idnames,
           "the same buttons draw in Edit Mode, in the same order")
 
-    # The header keeps status only: a model dropdown and a count, no actions.
+    # The header keeps status and settings chrome: a model dropdown, a
+    # count, and the one door to the preferences window. No *chat* action
+    # lives there -- those are all in the row this test walked above.
     header = _RecordingLayout()
     mesh_spaces.CADEX_CHAT_HT_header.draw(
         type("_H", (), {"layout": header})(), context)
-    check(not [e for e in header.drawn if "idname" in e],
-          "the chat header draws no operators any more")
+    check([e["idname"] for e in header.drawn if "idname" in e]
+          == ["screen.userpref_show"],
+          "the chat header draws settings chrome and no chat actions")
 
 
 def test_message_box_widget_is_available():
@@ -1827,7 +2135,8 @@ def test_blueprint_styles_the_viewport_from_one_table():
     from mesh_agent import cadex_blueprint, cadex_views, cadexd_client, tools
 
     # The themes are honest RGB: three channels in range, and the lines
-    # always contrast with the ground they are drawn on.
+    # always contrast with the ground they are drawn on -- in either
+    # direction, since `technical` is black lines on drawing-paper white.
     check(cadex_blueprint.DEFAULT_THEME in cadex_blueprint.THEMES,
           "the default theme exists")
     for name, theme in cadex_blueprint.THEMES.items():
@@ -1837,8 +2146,13 @@ def test_blueprint_styles_the_viewport_from_one_table():
             check(len(color) == 3 and all(0.0 <= c <= 1.0 for c in color),
                   "{:s}.{:s} is an RGB 3-tuple in range".format(name, key))
         contrast = sum(theme["line"]) - sum(theme["background"])
-        check(contrast > 1.0,
+        check(abs(contrast) > 1.0,
               "{:s}'s lines stand off its ground".format(name))
+    check("technical" in cadex_blueprint.THEMES
+          and cadex_blueprint.THEMES["technical"]["line"] == (0.0, 0.0, 0.0)
+          and cadex_blueprint.THEMES["technical"]["background"]
+          == (1.0, 1.0, 1.0),
+          "the technical theme is black lines on drawing-paper white")
 
     # The field table is the contract the gate asserts against the styled
     # viewport, so its invariants are pinned here: overlays ON (the Edges
@@ -1867,6 +2181,20 @@ def test_blueprint_styles_the_viewport_from_one_table():
     check(no_grid["overlay.show_floor"] is False
           and no_grid["overlay.show_ortho_grid"] is False,
           "grid=False switches both off")
+    # The wire channel follows the line colour's darkness: white-lined
+    # themes ride obj.color's white default; the black-lined technical
+    # theme takes the UI theme's wire colour, which the shipped defaults
+    # pin to black -- white wires on paper white would erase the edges.
+    check(values["shading.wireframe_color_type"] == 'OBJECT',
+          "white-lined themes draw wires through the OBJECT channel")
+    technical = cadex_blueprint.shading_values("technical", grid=True)
+    check(technical["shading.wireframe_color_type"] == 'THEME',
+          "the technical theme draws wires through the THEME channel")
+    check(technical["shading.object_outline_color"] == (0.0, 0.0, 0.0)
+          and technical["shading.background_color"] == (1.0, 1.0, 1.0),
+          "black outlines on a white ground")
+    check(set(technical) == set(values),
+          "every theme writes exactly the same field table")
     others = {field: value for field, value in values.items()
               if field.startswith("overlay.")
               and field not in ("overlay.show_overlays", "overlay.show_floor",
@@ -1889,13 +2217,19 @@ def test_blueprint_styles_the_viewport_from_one_table():
     # render_views and hooks nothing else.
     names = [view.name for view in cadex_views.registered()]
     check(names == ["collision", "section", "explode", "dimensions",
-                    "blueprint"],
-          "the view registry is the five views in order: {!r}".format(names))
+                    "blueprint", "drawings"],
+          "the view registry is the six views in order: {!r}".format(names))
     blueprint_view = next(view for view in cadex_views.registered()
                           if view.name == "blueprint")
     check(blueprint_view.suspend is not None
           and blueprint_view.on_hydrate is None,
           "blueprint suspends for renders and needs no hydrate hook")
+    drawings_view = next(view for view in cadex_views.registered()
+                         if view.name == "drawings")
+    check(drawings_view.on_hydrate is not None
+          and drawings_view.suspend is None,
+          "the draft re-renders on hydrate and never suspends -- offscreen "
+          "renders cannot see a POST_PIXEL handler anyway")
 
     # This suite runs --background, which is exactly where the sheet
     # renderer must refuse in the sentence the tool relays.
@@ -2660,9 +2994,10 @@ def test_blueprint_sheets_are_named_shaped_and_revisable():
     # -- the recipe round-trips ----------------------------------------------
     composed, error = cadex_sheet.normalize_views(
         [{"view": "front", "hide": ["housing"], "section": "z",
-          "section_offset_mm": 4, "section_flip": True, "aspect": "2:1"},
+          "section_offset_mm": 4, "section_flip": True, "aspect": "2:1",
+          "dimensions": False},
          {"view": "custom", "azimuth": 225, "elevation": 25, "explode": 1.0,
-          "callouts": False, "title": "exploded rear"},
+          "callouts": False, "title": "exploded rear", "dimensions": True},
          {"view": "top", "only": ["pin", "shaft"], "hero": True},
          {"view": "params"},
          {"view": "text", "text": "Bill of materials:\n2x M3 bolt"}],
@@ -2716,6 +3051,268 @@ def test_blueprint_sheets_are_named_shaped_and_revisable():
     check(all(word in entry["description"]
               for word in ("based_on", "text", "aspect")),
           "and the description tells the model the three new moves")
+
+
+def test_blueprint_sheets_carry_the_declared_dimensions():
+    """The technical-drawing half of the sheet: measurements project into
+    cells through the same fitted cameras the tiles render with."""
+
+    from mesh_agent import capture, cadex_sheet
+
+    outputs = ("plate", "housing")
+
+    # The rule: explicit wins; omitted, dimensions ride orthographic model
+    # cells -- the flat views are where a drafting dimension reads true.
+    specs, error = cadex_sheet.normalize_views(
+        [{"view": "front"}, {"view": "three-quarter"},
+         {"view": "three-quarter", "dimensions": True},
+         {"view": "front", "dimensions": False}, {"view": "params"}],
+        outputs)
+    check(error == "", "the dimensioned fixture normalizes: " + (error or ""))
+    active = [cadex_sheet.dimensions_active(spec) for spec in specs]
+    check(active == [True, False, True, False, False],
+          "ortho on by default, perspective off, explicit wins, panels "
+          "never: {!r}".format(active))
+
+    refused = cadex_sheet.normalize_views(
+        [{"view": "front", "dimensions": "yes"}], outputs)
+    check("dimensions must be true or false" in refused[1],
+          "a non-boolean dimensions flag is refused with the fix")
+    panel = cadex_sheet.normalize_views(
+        [{"view": "params", "dimensions": True}], outputs)
+    check("dimensions" in panel[1] and "panel" in panel[1],
+          "a panel cell refuses the dimensions flag by name")
+
+    # The projection: a front view of a 10 mm cube, a height measurement up
+    # its z axis -- the two anchors land in the cell, vertically separated,
+    # exactly as the callout anchors do.
+    fitted = capture.fit_view(specs[0], ((0.0, 0.0, 0.0),
+                                         (10.0, 10.0, 10.0)))
+    records = [
+        {"output": "height", "kind": "extent", "subject": "plate",
+         "text": "10.00 mm", "anchors_mm": [(5.0, 5.0, 0.0),
+                                            (5.0, 5.0, 10.0)]},
+        {"output": "hidden_gap", "kind": "distance", "subject": "housing",
+         "text": "2.00 mm", "anchors_mm": [(0.0, 0.0, 0.0),
+                                           (2.0, 0.0, 0.0)]},
+        {"output": "corner", "kind": "angle", "subject": "plate",
+         "text": "90.00°", "vertex_mm": (10.0, 5.0, 10.0),
+         "anchors_mm": [(0.0, 5.0, 10.0), (10.0, 5.0, 0.0)]},
+        {"output": "bore", "kind": "radius", "subject": "plate",
+         "text": "R3.00 mm",
+         "ring_mm": [(5.0 + 3.0 * _c, 5.0, 5.0 + 3.0 * _s)
+                     for _c, _s in ((1, 0), (0, 1), (-1, 0), (0, -1))]},
+    ]
+    jobs = cadex_sheet.dimension_jobs(records, fitted, 400, 400,
+                                      hidden=("housing",))
+    kinds = sorted(job["kind"] for job in jobs)
+    check(kinds == ["angle", "dimension", "radius"],
+          "each kind projects to its own drawing, and a dimension whose "
+          "subject is hidden is skipped: {!r}".format(kinds))
+    height = next(job for job in jobs if job["kind"] == "dimension")
+    (x1, y1), (x2, y2) = height["points"]
+    check(abs(x1 - x2) < 1e-6 and abs(y2 - y1) > 50.0,
+          "a vertical extent projects vertical in a front view")
+    check(all(0.0 <= v <= 400.0 for job in jobs
+              for point in job["points"] for v in point),
+          "every projected dimension point lands inside its cell")
+    angle = next(job for job in jobs if job["kind"] == "angle")
+    check(len(angle["points"]) == 3, "an angle carries vertex + two rays")
+
+    # The legend echoes only the explicit ask; the renderer's note carries
+    # the drawn count, so five default-on ortho cells stay quiet.
+    rects = [(0, 0, 100, 100)] * len(specs)
+    legend = cadex_sheet.cell_legend(specs, rects)
+    check("dimensions on" in legend and "dimensions off" in legend
+          and legend.count("dimensions") == 2,
+          "the legend echoes explicit asks and only those")
+
+    meta = cadex_sheet.spec_meta(specs[2])
+    check(meta.get("dimensions") is True,
+          "an explicit flag rides the stored meta")
+    check("dimensions" not in cadex_sheet.spec_meta(specs[0]),
+          "an omitted flag stays omitted, so the default can evolve")
+
+
+def test_drawing_draft_editor_from_pure_arithmetic():
+    """The Blueprint Editor (ADR-178, ADR-179): fit, hit-test, captions and
+    the selector are pure; a clicked cell queues a pin the next turn
+    drains, exactly like a face pin; the tools split into draft
+    (make_blueprint) and store (save_blueprint); the store list reads
+    straight off the disk; and the viewport blueprint settings are back to
+    the ADR-150 look alone."""
+
+    import bpy
+    from mesh_agent import cadex_blueprint, cadex_drawings, tools
+
+    x, y, w, h = cadex_drawings.fit_rect((1600, 900), (800, 450), margin=24.0)
+    check(abs(w / h - 1600.0 / 900.0) < 1e-9,
+          "the fit keeps the sheet's aspect")
+    check(w <= 800.0 - 48.0 + 1e-6 and h <= 450.0 - 48.0 + 1e-6,
+          "the margins hold")
+    check(abs(x + w / 2.0 - 400.0) < 1e-6
+          and abs(y + h / 2.0 - 225.0) < 1e-6,
+          "the sheet sits centred in the region")
+    degenerate = cadex_drawings.fit_rect((0, 0), (800, 450))
+    check(degenerate[2] > 0 and degenerate[3] > 0,
+          "a degenerate image never divides by zero")
+
+    # Hit-testing round-trips: field-relative rects gain the margin band
+    # once (cell_rects), a region click maps into sheet pixels
+    # (sheet_point), and the centre of every mapped cell hits that cell.
+    rects = [(0.0, 0.0, 400.0, 300.0), (400.0, 0.0, 400.0, 300.0),
+             (0.0, 300.0, 800.0, 200.0)]
+    margin = 25.0
+    size = (850.0, 550.0)      # field 800x500 plus the margin band
+    cells = cadex_drawings.cell_rects(rects, margin)
+    check(cells[0][:2] == (25.0, 25.0) and cells[2][:2] == (25.0, 325.0),
+          "cell_rects adds the margin band back exactly once")
+    drawn = cadex_drawings.fit_rect(size, (1200, 700), margin=24.0)
+    for index, cell in enumerate(cells):
+        centre_sheet = (cell[0] + cell[2] / 2.0, cell[1] + cell[3] / 2.0)
+        mapped = cadex_drawings.map_rect(cell, drawn, size)
+        centre_region = (mapped[0] + mapped[2] / 2.0,
+                         mapped[1] + mapped[3] / 2.0)
+        point = cadex_drawings.sheet_point(centre_region, drawn, size)
+        check(point is not None
+              and abs(point[0] - centre_sheet[0]) < 1e-6
+              and abs(point[1] - centre_sheet[1]) < 1e-6,
+              "a region click maps back to the sheet pixel it shows")
+        check(cadex_drawings.hit_cell(point, cells) == index,
+              "the centre of every mapped cell hits that cell")
+    check(cadex_drawings.sheet_point((1.0, 1.0), drawn, size) is None,
+          "a click off the sheet is a miss, not a cell")
+    check(cadex_drawings.hit_cell((1.0, 1.0), cells) is None,
+          "the margin band belongs to no cell")
+
+    caption = cadex_drawings.draft_caption("gearbox overview", 4, None)
+    check("gearbox overview" in caption and "4 cells" in caption
+          and "not saved" in caption,
+          "an unsaved draft says so in its caption")
+    caption = cadex_drawings.draft_caption(
+        "", 1, {"name": "gearbox overview", "version": 3})
+    check("untitled draft" in caption and "'gearbox overview' v3" in caption
+          and "not saved" not in caption,
+          "a saved draft captions the stored name and version")
+
+    note = cadex_drawings.section_note(2, {"view": "front", "label": "front"})
+    check("@cell-3" in note and "front" in note and "make_blueprint" in note,
+          "a tagged cell becomes a prompt line naming @cell-N and its spec")
+
+    caption = cadex_drawings.stored_caption(
+        {"label": "gearbox overview", "name": "gearbox overview",
+         "version": 3, "created_at": "2026-08-30T12:00:00Z"}, 2, 7)
+    check("gearbox overview v3" in caption and "2/7" in caption
+          and "2026-08-30" in caption,
+          "a named stored sheet captions its label, version, place and day")
+    check(cadex_drawings.wrap_index(-1, 5) == 4
+          and cadex_drawings.wrap_index(7, 5) == 2
+          and cadex_drawings.wrap_index(0, 0) == 0,
+          "the pager wraps at both ends and survives an empty store")
+
+    # The selector: the draft first when one exists, then the stored
+    # sheets NEWEST first, each row carrying the sheet's own caption.
+    entries = [{"ordinal": 1, "label": "old"}, {"ordinal": 2, "label": "new"}]
+    options = cadex_drawings.selection_options(True, entries)
+    check([ordinal for ordinal, _label in options] == [-1, 2, 1],
+          "the selector offers the draft, then the sheets newest first")
+    check(cadex_drawings.selection_options(False, [])
+          == (), "an empty project offers nothing to select")
+
+    # The store list reads straight off the disk, never the inspect pager
+    # (which stubs any value over 1 KiB — the ADR-177 lesson, kept).
+    import json
+    import os
+    import tempfile
+    with tempfile.TemporaryDirectory() as root:
+        check(cadex_drawings.read_index(root) == ((), ""),
+              "a store with no blueprints folder is empty, not an error")
+        store = os.path.join(root, cadex_drawings.STORE_DIR)
+        os.makedirs(store)
+        fat = [{"ordinal": index + 1,
+                "file": "{:04d}-x.png".format(index + 1),
+                "label": "sheet {:d}".format(index + 1),
+                "meta": {"recipe": {"views": ["x" * 200]}}}
+               for index in range(8)]
+        index_path = os.path.join(store, cadex_drawings.INDEX_NAME)
+        with open(index_path, "w", encoding="utf-8") as handle:
+            json.dump({"schema": cadex_drawings.INDEX_SCHEMA,
+                       "entries": fat}, handle)
+        check(os.path.getsize(index_path) > 1024,
+              "the fixture index is bigger than the inspect pager's stub "
+              "limit")
+        listed, error = cadex_drawings.read_index(root)
+        check(error == "" and len(listed) == 8
+              and listed[0]["label"] == "sheet 1",
+              "a full store lists in file order, however big the index is")
+        with open(index_path, "w", encoding="utf-8") as handle:
+            handle.write("{not json")
+        listed, error = cadex_drawings.read_index(root)
+        check(listed == () and "index" in error,
+              "a malformed index is an error, not an empty store")
+
+    # The queue is the cadex_pick idiom: inert with no draft, drained whole.
+    check(cadex_drawings.queue_section(0) == ""
+          and cadex_drawings.pending_section_count() == 0,
+          "clicks queue nothing while there is no draft")
+    cadex_drawings._draft = {
+        "path": "", "rects": rects, "margin": margin, "size": list(size),
+        "views": [{"view": "front", "label": "front"},
+                  {"view": "top", "label": "top"},
+                  {"view": "three-quarter", "label": "three-quarter"}],
+        "recipe": {}, "theme": "technical", "legend": "", "note": "",
+        "label": "t", "root": "", "saved": None}
+    try:
+        handle = cadex_drawings.queue_section(1)
+        check(handle == "@cell-2 (top)",
+              "a queued cell reports its own handle")
+        check(cadex_drawings.queue_section(9) == "",
+              "an index off the sheet queues nothing")
+        check(cadex_drawings.pending_section_count() == 1
+              and cadex_drawings.tagged_cells() == (1,),
+              "the pending count and the drawn tags agree")
+        notes = cadex_drawings.consume_section_notes()
+        check("@cell-2" in notes and cadex_drawings.pending_section_count() == 0,
+              "the turn drains the queue, like face pins")
+        check(cadex_drawings.consume_section_notes() == "",
+              "an empty queue adds nothing to the prompt")
+    finally:
+        cadex_drawings._draft = None
+        cadex_drawings._pending_sections.clear()
+
+    # The tool split (ADR-178): make_blueprint drafts, save_blueprint
+    # stores, and with nothing drafted the save refuses in a sentence
+    # before it can reach an engine.
+    names = [entry["name"] for entry in tools.TOOL_DEFS]
+    check("save_blueprint" in names, "save_blueprint is a tool")
+    check("save_blueprint" in tools._ENGINE_TOOLS
+          and "save_blueprint" not in tools.MUTATING_TOOLS,
+          "save_blueprint writes the store, never the undo stack")
+    entry = next(e for e in tools.TOOL_DEFS if e["name"] == "make_blueprint")
+    check("NOTHING IS STORED" in entry["description"]
+          and "save_blueprint" in entry["description"],
+          "make_blueprint teaches the draft-then-save loop")
+    check("@cell-N" in entry["description"],
+          "make_blueprint teaches the section tags")
+    payload, error = cadex_drawings.save_draft(bpy.context.scene)
+    check(payload is None and "no draft" in error
+          and "make_blueprint" in error,
+          "saving with no draft refuses with the fix in the sentence")
+
+    # ADR-179: the viewport blueprint settings are the ADR-150 look and
+    # nothing else — drawings live in the Blueprint Editor window, whose
+    # availability tracks the binary underneath (the wiring_ui shape).
+    scene = bpy.context.scene
+    group = cadex_blueprint.settings(scene)
+    check(group is not None and hasattr(group, "show")
+          and hasattr(group, "theme") and hasattr(group, "grid")
+          and not hasattr(group, "source") and not hasattr(group, "sheet"),
+          "the viewport blueprint settings are back to show/theme/grid")
+    check(cadex_drawings.EDITOR_AVAILABLE
+          == (getattr(bpy.types, "SpaceCadexBlueprint", None) is not None),
+          "EDITOR_AVAILABLE tells the truth about this binary")
+    check(cadex_drawings.SPACE_TYPE == 'CADEX_BLUEPRINT',
+          "the editor names its space type")
 
 
 def test_dimension_is_drawn_in_pixels_around_its_number():
@@ -2841,6 +3438,62 @@ def test_diameter_picks_the_widest_on_screen_and_survives_a_bore_down_z():
           "and a ring entirely behind the camera draws nothing")
 
 
+def test_radius_and_angle_draw_drafting_geometry():
+    from mesh_agent import cadex_dimension
+
+    # A radius runs centre-to-rim and never overshoots the material the way
+    # a diameter line would on a fillet: one line, one tick, R alongside.
+    drawing = cadex_dimension.radius_geometry((100.0, 100.0), (160.0, 100.0),
+                                              24.0)
+    check(drawing["kind"] == "radius", "a 60 px radius is a radius drawing")
+    check(len(drawing["segments"]) == 2, "one line and one tick at the rim")
+    check(drawing["segments"][0] == (100.0, 100.0, 160.0, 100.0),
+          "the line starts at the centre and ends on the rim")
+    check(abs(drawing["text_angle"]) < 1e-9,
+          "a horizontal radius has horizontal text")
+    check(cadex_dimension.radius_geometry((100.0, 100.0), (101.0, 100.0),
+                                          24.0)["kind"] == "leader",
+          "an edge-on circle becomes a leader, never a lost number")
+
+    # An angle is two rays from the vertex with an arc between them, and the
+    # number stays upright on the arc's bisector.
+    drawing = cadex_dimension.angle_geometry(
+        (100.0, 100.0), (160.0, 100.0), (100.0, 160.0), 20.0)
+    check(drawing["kind"] == "angle", "two 60 px rays draw an angle")
+    check(drawing["segments"][0] == (100.0, 100.0, 160.0, 100.0)
+          and drawing["segments"][1] == (100.0, 100.0, 100.0, 160.0),
+          "the two rays are drawn from the vertex to their endpoints")
+    arc = drawing["segments"][2:]
+    check(len(arc) >= 2, "the arc is drawn as chords on the same batch")
+    import math as _math
+    for x1, y1, x2, y2 in arc:
+        for x, y in ((x1, y1), (x2, y2)):
+            r = _math.hypot(x - 100.0, y - 100.0)
+            check(abs(r - cadex_dimension.ANGLE_ARC_PX) < 1e-6,
+                  "every arc chord endpoint sits on the arc radius")
+    # The bisector of a 90-degree opening from +X to +Y points at 45 deg.
+    tx, ty = drawing["text_at"]
+    check(ty > 100.0 and tx > 100.0 - 20.0,
+          "the number sits in the opening, on the bisector")
+    check(drawing["text_angle"] == 0.0, "an angle's number reads upright")
+    check(cadex_dimension.angle_geometry(
+              (100.0, 100.0), (104.0, 100.0), (100.0, 160.0), 20.0
+          )["kind"] == "leader",
+          "a ray collapsed by the projection becomes a leader")
+
+    # The sweep is the measured opening, never the long way round: from +X
+    # to a ray 135 deg away, the arc spans 135 deg, not 225.
+    wide = cadex_dimension.angle_geometry(
+        (0.0, 0.0), (60.0, 0.0), (-42.0, 42.0), 20.0)
+    ends = set()
+    for x1, y1, x2, y2 in wide["segments"][2:]:
+        ends.add((round(_math.degrees(_math.atan2(y1, x1))),))
+        ends.add((round(_math.degrees(_math.atan2(y2, x2))),))
+    check(max(angle for (angle,) in ends) <= 135 + 1
+          and min(angle for (angle,) in ends) >= -1,
+          "the arc stays inside the measured opening")
+
+
 def test_measurement_anchors_follow_the_placement_of_what_they_measure():
     from mesh_agent import cadex_dimension
 
@@ -2876,9 +3529,16 @@ def test_measurement_anchors_follow_the_placement_of_what_they_measure():
                                  "center_mm": [0.0, 0.0, 5.0],
                                  "radius_mm": 3.0,
                                  "normal": [0.0, 0.0, 1.0]}},
+        "corner": {"artifact_kind": None, "tessellation": None,
+                   "measurement": {"kind": "angle", "subject": "plate",
+                                   "label": "", "value_deg": 90.0,
+                                   "value_mm": None, "text": "90.00°",
+                                   "vertex_mm": [0.0, 0.0, 0.0],
+                                   "anchors_mm": [[10.0, 0.0, 0.0],
+                                                  [0.0, 0.0, 10.0]]}},
     }
     records = cadex_dimension.records_from_display(display)
-    check(len(records) == 2,
+    check(len(records) == 3,
           "only the outputs carrying a measurement are drawn")
     by_name = {record["output"]: record for record in records}
     check(by_name["height"]["anchors_mm"][0] == (5.0, 0.0, 0.0),
@@ -2890,6 +3550,10 @@ def test_measurement_anchors_follow_the_placement_of_what_they_measure():
           "placed centre")
     check(by_name["bore"]["text"] == "⌀6.00 mm",
           "the number is formatted engine-side and passed through verbatim")
+    check(by_name["corner"]["vertex_mm"] == (5.0, 0.0, 0.0),
+          "an angle's vertex is moved by its subject's placement too")
+    check(by_name["corner"]["anchors_mm"][0] == (15.0, 0.0, 0.0),
+          "...and so are its ray endpoints")
 
 
 def test_training_plot_layout_is_pure_arithmetic():
@@ -2978,6 +3642,7 @@ def main():
         test_image_attachment_roundtrip()
         test_tool_call_cap()
         test_transcript_persistence()
+        test_tool_call_runs_collapse_in_the_transcript()
         test_session_id_round_trips_and_is_per_file()
         test_new_conversation_starts_a_fresh_session()
         test_cadex_editors_are_registered()
@@ -2991,6 +3656,9 @@ def main():
         test_every_chat_action_is_in_one_row_under_the_message_box()
         test_message_box_widget_is_available()
         test_the_mesh_tools_are_not_deferred_behind_a_disabled_tool()
+        test_codex_backend_speaks_the_agent_event_contract()
+        test_pi_backend_speaks_the_agent_event_contract()
+        test_a_session_resumes_only_into_the_cli_that_minted_it()
         test_mcp_shim_protocol()
         test_cadex_engine_discovery()
         test_cadex_budgets_reach_open_project()
@@ -3005,9 +3673,12 @@ def main():
         test_blueprint_styles_the_viewport_from_one_table()
         test_blueprint_sheets_compose_from_pure_arithmetic()
         test_blueprint_sheets_are_named_shaped_and_revisable()
+        test_blueprint_sheets_carry_the_declared_dimensions()
+        test_drawing_draft_editor_from_pure_arithmetic()
         test_dimension_is_drawn_in_pixels_around_its_number()
         test_an_edge_on_dimension_becomes_a_leader()
         test_diameter_picks_the_widest_on_screen_and_survives_a_bore_down_z()
+        test_radius_and_angle_draw_drafting_geometry()
         test_measurement_anchors_follow_the_placement_of_what_they_measure()
         test_training_plot_layout_is_pure_arithmetic()
         if os.environ.get("MESH_AGENT_LIVE"):

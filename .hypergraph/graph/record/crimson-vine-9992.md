@@ -7,7 +7,7 @@ parents:
 - dawn-oak-0677
 summary: ''
 artifacts:
-- shell/scripts/addons_core/mesh_agent/demo/card.png
+- shell/scripts/startup/mesh_agent/demo/card.png
 ---
 ## What
 

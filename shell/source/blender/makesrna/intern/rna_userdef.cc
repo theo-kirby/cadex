@@ -1,6 +1,7 @@
 /* SPDX-FileCopyrightText: 2023 Blender Authors
  *
  * SPDX-License-Identifier: GPL-2.0-or-later */
+/* Modified by the Cadex project, 2026. See docs/BLENDER-TREE.md. */
 
 /** \file
  * \ingroup RNA
@@ -47,6 +48,10 @@ const EnumPropertyItem rna_enum_preference_section_items[] = {
     {USER_SECTION_LIGHT, "LIGHTS", 0, "Lights", ""},
     {USER_SECTION_EDITING, "EDITING", 0, "Editing", ""},
     {USER_SECTION_ANIMATION, "ANIMATION", 0, "Animation", ""},
+    RNA_ENUM_ITEM_SEPR,
+    /* Cadex: the AI assistant's settings; the panel is registered from the
+     * application scripts, this row only puts the section on the rail. */
+    {USER_SECTION_AI, "AI", 0, "AI", "Configure the AI assistant"},
     RNA_ENUM_ITEM_SEPR,
     {USER_SECTION_EXTENSIONS,
      "EXTENSIONS",

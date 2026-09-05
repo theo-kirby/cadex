@@ -62,3 +62,15 @@ roadmap item. Add freely, prune ruthlessly.
   `training/SETUP.md`, so it hands back guessed flags). Adding `put_asset`
   is small; the training leg wants either a dispatcher op or the trainer's
   invocation shape in the agent contract.
+
+- **A bridge CLI as a third tool transport, for bash-first agents.** The
+  Mesh tool seam is the TCP bridge, and it now has two transports: MCP
+  (`mcp_shim.py`) and a native pi extension (`pi_tools.js`, ADR-175). The
+  owner's instinct behind ADR-175 goes one step further: a tiny
+  `mesh-tool` CLI (stdlib-only, like the shim — `mesh-tool list`,
+  `mesh-tool call write_script --json '…'`) would let *any* agent with a
+  shell drive the product with no protocol integration at all, README
+  style, which is pi's own philosophy for tools. It would also be the
+  cheapest possible harness for scripting the bridge in tests. Costs a
+  hard look at authentication (the token would have to reach the shell)
+  and at losing per-tool argv validation.

@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-08-29
+Verified against source: 2026-08-31
 
 **This document is the contract between the two halves of the product.**
 They live in one repository (ADR-030) and in two processes, under two
@@ -89,7 +89,7 @@ A and D's interim state are now history, not plan.
   linking and derivation, not directory layout: the two halves are separate
   programs communicating over a documented protocol, exactly as before. The
   concrete rules that keep it that way — nothing under
-  `shell/scripts/addons_core/mesh_agent/` imports from `src/`,
+  `shell/scripts/startup/mesh_agent/` imports from `src/`,
   `cadexd_client.py` stays a plain NDJSON client with no cadex imports, and
   the payload is carried as data — are unchanged and are why they are worth
   keeping.
@@ -148,7 +148,7 @@ prose. Every response also carries `id` and `ok`.
 | Op | Response keys (success) |
 |---|---|
 | `open_project` | `schema`, `project_root`, `budgets`, `restore`, `script`, `manifest`? |
-| `describe_api` | `domain`, `domains`, `engine`, `instructions`, `program_schema`, `result_contract`, `revision_rule`, `source_globals`, `parameters`, `connections`, `boards`, `mounts`, `cages`, `mutation_selection` |
+| `describe_api` | `domain`, `domains`, `engine`, `instructions`, `program_schema`, `result_contract`, `revision_rule`, `source_globals`, `parameters`, `connections`, `boards`, `mounts`, `cages`, `library`, `mutation_selection` |
 | `write_script` / `edit_script` / `set_params` / `rebuild` | `tool`, `revision`, `accepted_revision`, `digest`, `model_state`, `outputs`, `live_outputs`, `removed`, `display`?, `stdout`? |
 | `put_asset` | `name`, `bytes`, `sha256`, `assets` |
 | `link_part` | `name`, `bytes`, `sha256`, `source_revision`, `source_digest`, `previous_revision`, `changed`, `assets` |
@@ -207,23 +207,31 @@ looks like nothing to draw, which is what made solved assemblies invisible.
 placement of its own: it is a declared *dimension*, and what it carries is
 what a client needs to draw one.
 
-- **`kind`** — `distance`, `diameter` or `extent`.
+- **`kind`** — `distance`, `diameter`, `radius`, `extent` or `angle`.
 - **`subject`** — the declared output whose frame the anchors are in, or the
   empty string when the measured shape was an undeclared intermediate.
 - **`label`** — what the script called it, or the empty string.
-- **`value_mm`** — the measured number.
-- **`text`** — that number *already formatted*, diameter sign and unit
-  included.
+- **`value_mm`** — the measured number; null for `angle`, which publishes
+  **`value_deg`** instead — degrees are not smuggled into a length field.
+- **`text`** — that number *already formatted*, diameter sign, `R` prefix,
+  degree sign and unit included.
 - **`places`** — the decimals `text` was formatted to.
-- **`anchors_mm`** — two points, for `distance` and `extent`; null for
-  `diameter`.
-- **`center_mm`**, **`radius_mm`**, **`normal`** — the circle, for `diameter`;
-  null otherwise.
+- **`anchors_mm`** — two points, for `distance` and `extent`; for `angle`,
+  the two ray endpoints; null for `diameter` and `radius`.
+- **`center_mm`**, **`radius_mm`**, **`normal`** — the circle, for `diameter`
+  and `radius`; null otherwise.
+- **`vertex_mm`** — the point an `angle`'s two rays open from; null
+  otherwise.
 
-A diameter publishes the circle rather than two points because a circle has
+A diameter (and a radius, which is the same circle in the drawing's other
+notation) publishes the circle rather than two points because a circle has
 infinitely many diameters and the legible one is whichever faces the camera —
 so its endpoints are the client's to choose, per frame, and only its
-endpoints. Everything else is settled here.
+endpoints. Everything else is settled here. An angle's rays are settled too:
+the engine chooses the vertex (the planes' intersection line, or the lines'
+closest approach) and points each ray into the face or edge it measures, so
+the published opening is the one a drawing would dimension, independent of
+how OCCT happened to orient anything.
 
 `text` is formatted engine-side so that a screenshot and a chat reply can
 never disagree about what a part measures. A client that reformats

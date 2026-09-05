@@ -281,6 +281,9 @@ static eSpace_Type rna_Space_refine_reverse(StructRNA *srna)
   if (srna == RNA_SpaceCadexLive) {
     return SPACE_CADEX_LIVE;
   }
+  if (srna == RNA_SpaceCadexBlueprint) {
+    return SPACE_CADEX_BLUEPRINT;
+  }
   return SPACE_EMPTY;
 }
 

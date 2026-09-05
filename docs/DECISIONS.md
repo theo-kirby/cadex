@@ -17479,3 +17479,620 @@ linked libraries and zero `/Users/` strings in any saved property.
 Verified: `bl_mesh_agent.py` landing tests green from source. Files:
 `mesh_agent/demo/` (new, git-LFS for .blend/.png),
 `cadex_landing.py`, `bl_mesh_agent.py`, `docs/BLENDER.md`.
+
+## ADR-174 — the assistant is a preference: Codex joins Claude Code behind one event contract (2026-08-30)
+
+User direction: the assistant should not require a Claude subscription
+specifically. The shell now has a **provider preference** — Claude Code
+(Anthropic, the default) or **Codex (OpenAI)** — with a per-provider model
+picker, in the add-on preferences and mirrored in the chat editor's header.
+This is not a provider stack returning: both choices are agent CLIs the
+user is already logged into, both drive the same Mesh tools over the same
+MCP shim and bridge, and no API key or model loop of ours exists on either
+path. pi was considered and declined: its author states it will not
+support MCP, and the Mesh tools reach the model only through MCP.
+
+The seam is the event contract, not an abstraction layer. `agent.py`
+understands exactly three stream shapes (text deltas, tool_use notices, a
+final result); `CodexBackend` translates `codex exec --json`'s JSONL onto
+them rather than teaching the agent a second vocabulary. Codex's
+mechanical differences, each verified live against codex-cli 0.142 and
+then test-pinned: the system prompt travels as `AGENTS.md` in a private
+`-C` workdir (no `--system-prompt` flag exists); the shim is wired in as
+`-c mcp_servers.mesh.*` overrides with
+`default_tools_approval_mode = "approve"`, because `codex exec` is
+non-interactive and auto-declines any tool call held for approval ("user
+cancelled MCP tool call"), which would silently disarm every Mesh tool;
+`enabled_tools` carries the same allow-list Claude gets via
+`--allowedTools`; Codex's own shell tool cannot be removed, so it runs
+under `--sandbox read-only` and every mutation still arrives through the
+bridge on Blender's main thread; and `exec resume <thread-id>` accepts
+fewer flags than `exec` — passing `-C` there is rejected outright, the
+turn produces nothing, and the resume fallback silently downgrades every
+follow-up to a fresh conversation, which is exactly how that flag
+difference was found. Models offered: gpt-5.5 (default), gpt-5.4,
+gpt-5.4-mini — each verified accepted on a ChatGPT-authenticated codex;
+gpt-5.3-codex and older are refused for that auth and are not offered.
+
+A session id resumes only into the CLI that minted it: the .blend's
+transcript now carries `session_provider` beside `session_id` (untagged
+saves predate providers and are Claude's), a freshly built backend adopts
+only a matching saved session, and switching the provider preference
+drops the backend and its session — the visible transcript stays, the
+context does not, and the chat says so. The `cli/` front end is
+unchanged and remains Claude-only.
+
+Verified: `pixi run gate` green (`ok: true`); `bl_mesh_agent.py` suite
+green from source, including the two new tests (the Codex argv/translation
+contract, the session-provider rules); live end-to-end runs of the real
+`CodexBackend` + `mcp_shim.py` against a scripted bridge — tool call
+round-trip, resume with context retained, stale-session fallback. Files:
+`mesh_agent/backend.py`, `agent.py`, `history.py`, `spaces.py`,
+`__init__.py`, `bl_mesh_agent.py`, `AGENTS.md`, `docs/BLENDER.md`.
+
+## ADR-175 — pi is the third assistant, and MCP becomes a transport rather than the architecture (2026-08-30)
+
+Owner direction, continuing ADR-174: MCP must not be the only way the
+Mesh tools reach a model, and pi — freshly installed on the dev machine —
+joins Claude Code and Codex as a third provider choice. ADR-174 declined
+pi because its author will not support MCP; this ADR takes that as the
+design prompt rather than the blocker. The tool seam was never MCP: it is
+the authenticated localhost TCP **bridge** (`bridge.py`), and MCP was just
+the only transport speaking to it. Now there are two: `mcp_shim.py` (MCP
+stdio — Claude and Codex) and **`pi_tools.js`** (a native pi extension,
+node built-ins only, loaded per turn with `pi -e`), which fetches the
+bridge's tool list, registers each tool with `pi.registerTool()` passing
+the bridge's JSON Schemas through raw, and relays every call over the same
+TCP protocol. The bridge address rides in `MESH_BRIDGE_PORT`/`_TOKEN`
+because pi has no per-extension argv. Image content is converted at the
+seam (MCP's `{data, mimeType}` to pi's Anthropic-style `source` block).
+
+`PiBackend` fills the same seat behind the same three-shape event
+contract, with pi's mechanics verified live against pi 0.84.4 and then
+test-pinned: `-p --mode json` streams JSONL (real `text_delta`s, so pi
+turns stream where Codex's arrive message-at-a-time; `thinking_delta`s
+are deliberately dropped); `--no-builtin-tools` removes pi's own
+read/bash/edit/write (the ADR-163 posture — every mutation arrives
+through the bridge on Blender's main thread); the hermetic flags
+(`--no-extensions`, `--no-skills`, `--no-context-files`,
+`--no-prompt-templates`) keep the user's own pi setup out of product
+turns; the prompt rides behind `--`; and `agent_settled` carries the
+verdict, with a failed assistant message's `errorMessage` as the error.
+Sessions inverted the ADR-174 problem: pi takes an explicit
+`--session-id` and *creates a missing one fresh*, so the backend mints a
+UUID (stored per-.blend under the ADR-174 `session_provider` tag, dir
+pinned to `~/.pi/agent/cadex-sessions`) and the stale-id case needs no
+fallback at all. pi is multi-provider with its own model catalog, so its
+model preference is a free pattern (`""` = pi's configured default) — a
+text field beside the enum pickers, in preferences and the chat header
+both. `find_pi` additionally globs `~/.nvm/versions/node/*/bin/pi`
+(newest first) and the subprocess PATH is prefixed with pi's own
+directory, because an npm-global `#!/usr/bin/env node` shebang resolves
+nowhere in a GUI app's environment.
+
+Verified: live end-to-end runs of the real `PiBackend` + `pi_tools.js`
+against a scripted bridge on the user's own pi (OpenRouter default) —
+tool round-trip, session resume across turns, bogus-model failure surfaced
+cleanly; `bl_mesh_agent.py` suite green from source including
+`test_pi_backend_speaks_the_agent_event_contract`; `pixi run gate` green.
+Files: `mesh_agent/pi_tools.js` (new), `backend.py`, `agent.py`,
+`spaces.py`, `__init__.py`, `bl_mesh_agent.py`, `AGENTS.md`,
+`docs/BLENDER.md`, `docs/IDEAS.md`. The `cli/` front end remains
+Claude-only.
+
+## ADR-176 — the blueprint becomes a technical drawing: a paper theme, and the declared dimensions drawn on the sheet (2026-08-30)
+
+User direction: the Blueprint system should be able to produce a
+*functional technical drawing* — white paper, black lines, and real
+measurements drawn the way a drawing office draws them — without being
+renamed or forked into a second system. It stays "Blueprint"; TechDraw is
+not imported; the sheet grows the two things it was missing.
+
+**One new theme, not a new renderer.** `technical` joins the theme table:
+black lines on drawing-paper white, the print look. It exposed the one
+theme-dependent field in the blueprint's contract: the true-BREP edge
+wires draw through `wireframe_color_type`, whose only two useful channels
+are `OBJECT` (reads `obj.color`, which nothing writes, so wires are white)
+and `THEME` (the UI theme's wire colour, which the shipped defaults pin to
+black). `shading_values` now picks the channel by the line colour's
+darkness, the pure suite pins both directions, and the contrast invariant
+became `abs(contrast)` — the first light-ground theme is why it had a
+sign.
+
+**Two new measurement kinds, engine-side.** `part.measurement` grows
+`kind="radius"` (the diameter's circle published as its half, text
+`R3.00 mm` — the drawing convention for fillets and arcs) and
+`kind="angle"` (two planar faces or two straight edges; the engine
+publishes a vertex, two rays and the degrees). An angle's frame is chosen
+orientation-free — the vertex sits on the planes' intersection line (or
+the lines' closest approach) and each ray points into the face or edge it
+measures — so the published opening is the one a drawing would dimension,
+whatever OCCT's face orientations happen to be. `value_mm` is **null**
+for an angle; the degrees travel as `value_deg`, because a length field
+that sometimes holds degrees is a lie waiting for a consumer.
+`docs/INTEGRATION.md`'s measurement record section documents both keys;
+the record's inner shape is (still) pinned by `test_measurement.py`
+against a live engine rather than by the protocol validator.
+
+**The sheet draws the dimensions.** Every `make_blueprint` model cell
+takes a `dimensions` flag; omitted, dimensions ride the orthographic
+cells (`dimensions_active`, `callouts_active`'s shape — the flat views
+are where a drafting dimension reads true, and a script that declares no
+measurements draws nothing either way). `cadex_sheet.dimension_jobs`
+projects the records through the SAME fitted matrices the cell's tile
+renders with — the callout-anchor rule — skipping records whose subject
+is hidden in that cell, and `_dress_sheet` builds the drafting geometry
+per job with the measured glyph widths: extension lines and the broken
+dimension line from `cadex_dimension.dimension_geometry`, the new
+`radius_geometry` (centre-to-rim, ticked at the rim) and
+`angle_geometry` (two rays, a chordal arc, the degrees upright on the
+bisector), all in the theme line colour above the dressing alphas, all
+degrading to the ADR-139 leader when a projection collapses. The same
+two pure functions serve the viewport overlay, so the sheet and the live
+view draw one geometry. Dimensioned cells render at a wider fit margin
+(`DIMENSION_FIT_MARGIN`) so the numbers land on ground; the recipe
+round-trip carries the flag, so a stored sheet revises without losing it;
+the legend echoes only explicit asks and the renderer's note reports the
+count actually drawn.
+
+The intended gesture is now two calls: declare the measurements in the
+script (`part.measurement(...)` — length, diameter, radius, angle), then
+`make_blueprint(theme="technical")`.
+
+Verified: `test_measurement.py` green against a live cadexd (radius and
+angle numbers checked by hand-arithmetic, the 90° plate corner's vertex
+and rays pinned); the full engine suite green; the shell pure halves
+exercised standalone (geometry, jobs, round-trip, themes, tool schemas)
+and the same assertions added to `bl_mesh_agent.py`. Files:
+`cadex_part_api.py`, `cadex_part_worker.py`, `test_measurement.py`,
+`mesh_agent/cadex_blueprint.py`, `cadex_dimension.py`, `cadex_sheet.py`,
+`capture.py`, `tools.py`, `bl_mesh_agent.py`, `docs/INTEGRATION.md`,
+`docs/BLENDER.md`.
+
+## ADR-177 — outliner hygiene for the exploded view, and the stored drawings become browsable (2026-08-30)
+
+Two owner asks, one session, both on the blueprint/exploded surface.
+
+**Components hydrate into an `Assembly` collection inside Model.** The
+exploded-view pattern the engine requires (ADR-149) publishes every part
+twice — the solid, and the `assembly.component` wrapping it whose output
+name is what `final_poses` keys — so a 17-part blowout put 34 rows plus
+wire children interleaved at the Model root, same-or-similar names,
+sitting at identical placements ("no regard for the hygiene of the rest
+of the project", verbatim). The fix is where the copies land, not what
+they are: `cadex_hydrate._hydrate_components` links every instance and
+its wire child into an `Assembly` collection that is a **child** of
+Model — one outliner row, one eye-icon to hide the lot. A child rather
+than a sibling deliberately, and the docstring says why: every walker
+(find-by-output, contract GC, explode posing, camera bounds) uses
+`all_objects`, which recurses, so the components stay visible to all of
+them — the opposite trade from `cadex_collision`'s sibling collection,
+which exists to be *outside* the GC's recursion. Objects that older
+sessions linked at the root migrate on their next hydrate
+(`_link_into`), and the collection follows its contents: created with
+the first component, removed by the GC with the last. The gate's two
+assembly tests now assert the routing, the migration target and the
+cleanup.
+
+**The blueprint view grows a second source: the stored sheets.** Every
+`make_blueprint` lands a PNG in the project's `blueprints/` store
+(ADR-150), and the only reader was the assistant. The blueprint
+settings now carry `source` — `viewport` (the ADR-150 styling,
+unchanged, the default) or `sheets` — plus a wrapping `sheet` ordinal;
+`cadex_drawings.py` (new) is the browser: a `POST_PIXEL` handler that
+paints the region in the theme's own ground colour and letterboxes the
+current stored sheet over it, captioned `label vN · i/n · date`, cycled
+by on-screen arrows, the parameters-panel pager, or the arrow keys
+(keymap items gated by `poll`, the landing screen's arrangement). The
+sheet list is read straight off the store —
+`<project>.cadex/blueprints/blueprints.json` beside the .blend,
+schema-checked, the tessellation-artifact precedent. The first cut read
+it over `inspect scope=blueprint` instead and showed a full folder as
+empty: the inspect pager stubs any value over 1 KiB, and a real store's
+entry list always is (owner-reported within the hour; a suite test now
+pins the disk read against an over-1-KiB index). That scope is still
+opened in the `inspect_model` tool for real — the description had
+promised it since ADR-157 while the executor's whitelist refused it —
+and the *assistant's* path is safe because it resolves stubs through
+`_inspect_full`. The list is cached per project root and never
+read from a draw callback (a stale root schedules a timer);
+`make_blueprint` invalidates the cache and jumps the browser to the
+sheet it just stored. Drawn sheets can never leak into the next render:
+`offscreen.draw_view3d` passes no `bContext`, so Python draw handlers
+do not run offscreen — checked in the fork's own
+`gpu_py_offscreen.cc`/`draw_context.cc` rather than assumed.
+
+Both features are views in the ADR-148 sense: no engine op added, no
+script written, no protocol change — the one engine-adjacent edit is the
+shell-side scope whitelist. The `shell/` diff stays entirely under
+`mesh_agent/` + `shell/tests/python/`.
+
+Verified: `bl_mesh_agent.py` green including the new
+`test_stored_drawings_browse_from_pure_arithmetic`; `pixi run gate`
+green including the new Assembly-collection assertions in
+`test_an_assembly_shows_its_solved_placements` and
+`test_two_components_share_one_mesh`. Files:
+`mesh_agent/cadex_hydrate.py`, `cadex_drawings.py` (new),
+`cadex_blueprint.py`, `ui.py`, `tools.py`, `__init__.py`,
+`bl_mesh_agent.py`, `bl_mesh_agent_cadex.py`, `docs/BLENDER.md`.
+
+## ADR-178 — the blueprint draft: make_blueprint stops storing, and the sheet becomes a live editor (2026-08-30)
+
+Owner direction, hours after ADR-177 shipped its browser: "change the
+blueprint system... a blueprint editor... it should live render what the
+blueprint will look like and then allow us to save or export it, so we
+work with the agent on the live preview... and get rid of this blueprint
+viewer... also tag sections of the blueprint in the editor, like tagging
+a vertex or a face." Two problems, one cause: every `make_blueprint`
+call **stored**, so iterating on a sheet filled `blueprints/` with
+near-duplicates, and the thing on screen was always a past render, never
+the working document.
+
+**The split.** `make_blueprint` keeps its whole composition surface
+(views, cells, sections, explosions, dimensions, `based_on`) and stops
+writing the store: it renders the sheet as the **draft** —
+`cadex_drawings.set_draft` puts it on screen (blueprint view, source
+`draft`, switched on so a live preview never has to be found) and the
+image still returns in the reply. The new `save_blueprint` tool is the
+decision: it stores the draft through the same `put_blueprint`, name =
+identity, ADR-157 versioning unchanged. One write path —
+`cadex_drawings.save_draft` — shared by the tool and the panel's Save
+button, so they cannot drift; Export beside it writes the PNG anywhere
+without touching the store. Rendering is the iteration; saving is the
+decision. Both tools stay in `_ENGINE_TOOLS` (`based_on` reads the
+store; save writes it) and out of `MUTATING_TOOLS`.
+
+**Live means live twice.** The draft re-renders on `make_blueprint`
+(the agent's iteration), and re-renders **itself** when the model
+rebuilds: `cadex_drawings` registers in the view registry (order 70)
+with an `on_hydrate` hook that debounces `RERENDER_DELAY = 0.9` s —
+a slider drag hydrates many times a second and a sheet render costs
+real time — and a draft hidden behind the viewport source catches up on
+next show (`_outdated`). It never registers `suspend`: a `POST_PIXEL`
+handler is invisible to `offscreen.draw_view3d` by construction
+(ADR-177's finding), so the draft cannot leak into its own render.
+
+**Tagging a section is the pin idiom, fourth queue.** The compose step
+already returns per-cell rects; they were field-relative while the
+sheet grew a margin band at dress time, so `render_blueprint` now
+returns `margin` (and `theme`) and the pure `cell_rects` adds the band
+back exactly once. A click maps region → sheet pixels (`sheet_point`,
+the inverse of the letterbox fit) → cell (`hit_cell`); the cell queues
+as a pin (`queue_section`), draws its outline and `@cell-N` handle on
+the sheet, counts in the chat header beside the face pins, and drains
+into the next turn as `[The user pinned @cell-N (front)... cell spec:
+{...}]` (`consume_section_notes`, called from `Agent.start_turn` after
+the other three queues). Hover gets the faint outline. Input is two
+add-on keymap items (`LEFTMOUSE`, `MOUSEMOVE`) gated by `poll`, the
+landing screen's arrangement; a click outside a cell passes through.
+
+**Where the editor lives, and why not a window of its own.** The ask
+was "a window". A new space type is the full §2b price
+(`docs/BLENDER-TREE.md`), and this one would cost more than ADR-108's
+four: the cloned Cadex editors are panels-only (`ED_KEYMAP_UI`, empty
+keymap fn), so an interactive canvas would need new inherited-tree
+input wiring — and the stock Image Editor is unregistered (ADR-036),
+so pointing it at the draft would resurrect a teardown. ADR-096's rule
+("an add-on line for a §2b line") holds: the editor is the viewport
+surface ADR-177 already built — blueprint view on, source `draft` —
+which also happens to be the surface the renderer needs alive anyway
+(`_find_view3d`). If a dockable drawing window proves worth the §2b
+price later, that is its own ADR.
+
+**The removal.** The ADR-177 stored-sheets browser (`source='sheets'`,
+the `sheet` pager, arrow-key cycling, `read_index`/`wrap_index`/
+`caption_for`) is deleted days old, under the normal protocol — the
+draft replaces it on the same surface, per the owner's direction. What
+survives it: the disk-store read lesson lives on in `cadex_backend.
+read_blueprint`'s `_inspect_full` path (which `based_on` uses), the
+letterbox/texture/keymap mechanics carry straight into the editor, and
+`inspect_model scope=blueprint` still lists the store. A stored sheet
+is *viewed* by loading it into the draft: `make_blueprint
+based_on=<name>`. Drafts are session state deliberately — the store
+holds the durable versions, and a draft of a model that was rebuilt
+differently is exactly what re-rendering is for.
+
+Views in the ADR-148 sense throughout: no engine change, no protocol
+change, no script write; the `shell/` diff stays entirely under
+`mesh_agent/` + `shell/tests/python/`, and the inherited tree is
+untouched.
+
+Verified: `bl_mesh_agent.py` green including
+`test_drawing_draft_editor_from_pure_arithmetic` (hit-test round-trip,
+queue drain, tool split, settings; replaces the browser test) and the
+six-view registry pin; `pixi run gate` green including the new
+`save_blueprint` no-draft refusal; windowed probe of draft render,
+click-tag and save. Files: `mesh_agent/cadex_drawings.py` (rewritten),
+`tools.py`, `capture.py`, `cadex_blueprint.py`, `ui.py`, `spaces.py`,
+`agent.py`, `modes.py`, `bl_mesh_agent.py`, `bl_mesh_agent_cadex.py`,
+`docs/BLENDER.md`, `docs/ROADMAP.md`.
+## ADR-179 — the Blueprint Editor window: the drawing becomes a peer of the viewport (2026-08-30)
+
+Owner direction, straight on ADR-178's heels: "instead of the Window just
+being the viewport... a dedicated blueprint viewer Window... we are gonna
+end up making a lot of new windows so might as well get good at it...
+open multiple and be viewing different blueprints at the same time...
+remove all the blueprint settings from the Parameters panel... the
+background matching whatever style the blueprint is." ADR-178 put the
+draft editor on the viewport surface because ADR-096's rule ("an add-on
+line for a §2b line") said to; it also said a dockable drawing window
+"is its own ADR" if wanted. This is that ADR, with the owner's sign-off
+that the §2b price is worth paying — and worth practising.
+
+**The space type.** `SPACE_CADEX_BLUEPRINT = 31`, "Blueprint Editor",
+the seventh Cadex editor and the first added by the §2b checklist alone
+— ADR-108's four-at-once run is what turned this into a recipe, and this
+run is the evidence the recipe works solo: two new files of ours
+(`space_cadex_blueprint/`, a `space_cadex_params.cc` clone), one
+additive row in each of the sixteen inherited touch points, every one an
+insertion beside the row the six existing editors already occupy. The
+DNA struct is a bare `SpaceLink` header like all seven — **no fields**,
+the gate check unchanged — which is what makes per-editor selection
+add-on session state (below) rather than versioned file format. All
+sixteen inherited files were already manifested and noticed, so
+`docs/inherited-modifications.json` is untouched and
+`test_licensing_compliance` passes unchanged.
+
+**One selection per editor.** Each Blueprint Editor area shows either
+the **live draft** (ADR-178, unchanged: `make_blueprint` renders it,
+nothing stored, `@cell-N` tagging, self-re-render on rebuild) or **any
+stored sheet**, selected from a header menu (draft first, then the
+store newest-first), a pager, or the arrow buttons. Selections key off
+the space pointer in the add-on — session state deliberately: a custom
+space registered in C cannot grow Python properties, the DNA must stay
+bare, and the durable thing is the store; a reopened file starts on the
+draft or the newest sheet. Two editors, two drawings, side by side —
+which is the point of a window. The window's ground and ink are the
+theme of the sheet it shows.
+
+**Controls live in the header**: the sheet menu, the pager, Save (the
+draft only — the same `save_draft` write path as the `save_blueprint`
+tool), and Export, which now exports whichever sheet the editor shows,
+stored ones included. The main region has no panels; the sheet is the
+content. Clicks reach the editor through two `poll`-gated add-on keymap
+items on the **Window** keymap — a params-clone space installs no
+keymap of its own, and unhandled clicks bubble to the window handlers —
+so the C++ stays exactly the mechanical clone, no new input wiring.
+
+**What the viewport keeps, and loses.** The ADR-150 blueprint restyle
+stays as the one viewport blueprint thing — a look, toggled from the
+view-toggle row, its theme/grid set by the agent's `blueprint_view`
+tool. The Parameters panel's blueprint settings box (source switch,
+theme row, grid toggle — grown over ADR-150/177/178) is removed per the
+owner's direction, and the ADR-178 in-viewport draft display is removed
+with it: `cadex_drawings` no longer touches `SpaceView3D` at all. No
+editor is auto-opened when a draft renders — ADR-165's rule that the
+tiling manager arranges the screen holds — but the `make_blueprint`
+reply tells the model whether an editor is open, and to suggest opening
+one when none is.
+
+**Old bundles degrade, not crash.** The add-on can load against a
+binary built before this space type existed; `cadex_drawings` registers
+its space-bound half under a guard and sets `EDITOR_AVAILABLE = False`
+(the `wiring_ui` arrangement), while the draft, the pin queue and both
+tools keep working.
+
+Verified: `bl_mesh_agent.py` green on the rebuilt bundle (seven-editor
+pins, selector/caption/hit-test pure tests, the disk-index regression
+kept); `pixi run gate` green including the new ADR-179 block (the space
+type exists, an area becomes the editor headless, selections are
+per-space); `test_licensing_compliance` unchanged except the
+pre-existing biped-demo header failure; windowed probe on a scratchpad
+copy of mgactu — draft in the editor, click-tag, save-once, and **two
+editors showing the draft and the stored sheet at the same time**.
+Files: ours — `editors/space_cadex_blueprint/` (new),
+`mesh_agent/cadex_drawings.py` (rewritten again), `cadex_blueprint.py`,
+`ui.py`, `tools.py`, `agent.py`, `modes.py`, both suites, docs;
+inherited, one row each — `DNA_space_enums.h`, `DNA_space_types.h`,
+`ED_space_api.hh`, `spacetypes.cc`, two editor CMake lists,
+`rna_space.cc`, `BKE_context.hh`, `context.cc`, `screen.cc`,
+`resources.cc`, `bpy_rna_callback.cc`, `wm_draw.cc`,
+`interface_template_search_menu.cc`, `anim_filter.cc`,
+`grease_pencil_convert_legacy.cc`.
+
+
+## ADR-180 — the per-turn tool-call limit is removed (2026-08-31)
+
+Owner direction: a hard turn is allowed to be long. The add-on capped
+each turn at 25 tool calls (`DEFAULT_TOOL_CAP`, adjustable via the
+"Tool Call Limit" preference); a difficult prompt would hit the cap
+mid-work and the assistant had to stop and ask the user to say
+"continue". That stop served no product purpose — the user can always
+press Stop, and the engine already has its own per-run time and memory
+budgets — so the cap and its preference are deleted.
+
+What stays is `tool_cap_override`, which was already documented as a
+test/injection hook: `bl_mesh_agent.py` (`test_tool_call_cap`),
+`bl_mesh_agent_cadex.py` and the eval harness set it to bound a runaway
+mock or benchmark turn, and `_handle_tool_request` enforces it only
+when set. In normal use there is no limit.
+
+Verified: `package/app/build_app.sh gate tests/python/bl_mesh_agent.py`
+green (the cap test now exercises the override path), and `pixi run
+gate` green against the built bundle. Files: `mesh_agent/agent.py`
+(cap constant, `_tool_cap()` and the unconditional check removed),
+`mesh_agent/__init__.py` (preference and its UI row removed).
+
+
+## ADR-181 — the parts library: catalogued hardware as script vocabulary (2026-08-31)
+
+Owner direction: the agent builds robots, so give it the hardware robots
+are built from — servos, fasteners, bearings, and later boards and motors
+— as a library it can compose like Lego, with real specs, rather than
+modelling an M3 nut from scratch in every project.
+
+The shape it landed in, and the three decisions that shaped it:
+
+- **Script vocabulary, not a new tool.** `lib` is a staged global beside
+  `part` and `assembly` (`cadex_library_api.py`), so the tool surface
+  stays exactly the four project ops (ADR-013) and every client — shell,
+  CLI, pi — gets the library for free. The browsable catalog rides
+  `describe_api` as a new `library` response key: `OP_RESPONSE_SPECS`,
+  the golden fixture, `docs/INTEGRATION.md`'s response table and the
+  shell's client moved in this same change, per the protocol rule.
+- **Parametric recipes from data, not asset files.** One generator per
+  family, one spec row per part number (`CadexCatalog.py` — FreeCAD-free,
+  like the five table modules). A library part is ordinary part-domain
+  recipe values, so digests, selectors, booleans and publication never
+  learn it exists. No STL is shipped; an M3 nut is six lines of data and
+  two kernel ops.
+- **Interface-exact, cosmetically simple.** Hole patterns, flange
+  heights, shaft positions, envelopes: the standard's or the datasheet's
+  numbers, pinned by tests with the source cited in the row's comment.
+  Threads, knurls and logos: deliberately not modelled —
+  `lib.clearance_hole`/`tap_drill`/`insert_hole` carry the hole data
+  instead. A number no datasheet dimensions is listed in the row's
+  `approximate` field rather than passed off as measured (the MG90S
+  mounting pattern is the SG90's measured one; the DS3218 case/spline
+  split is nominal).
+
+L0 (fasteners and bearings): ISO 4762 socket and DIN 7991 countersunk
+bolts, ISO 4032 hex and DIN 985 nyloc nuts, ISO 7089 washers,
+Ruthex-pattern heat-set inserts, the common ball bearings (shielded
+widths on the miniature series, which really do differ from open), and a
+parametric bushing. L1 (servos): SG90, MG90S, MG996R, DS3218 with
+datasheet interfaces, measured micro horns (`.horn(...)`, seated on the
+spline through the composed placement), an effective density computed
+from datasheet mass over modelled volume for `assembly.body`, and
+`.actuator(joint, control_deg=...)` — a position actuator whose
+`torque_limit_nmm` is the manufacturer's stall figure at a rated voltage
+(default the lowest; unrated voltages refused, nothing interpolated),
+converted from kg·cm exactly once, in the library. Stiffness defaults to
+stall-within-5°, damping to a twentieth of that; both stated in the
+docstring and overridable.
+
+**A spec correction is an engine change.** It moves geometry under an
+unchanged script revision, exactly as a kernel upgrade would; the
+accepted digest is what detects the drift, and the correction gets an
+ADR line like any other behaviour change.
+
+Verified: `test_library.py` (catalog pins, recipe trees, placement
+quaternions, actuator mapping, and an end-to-end kernel build of every
+generator through cadexd); the full engine suite green but for the
+pre-existing biped-demo licensing failure; the packaged gate green
+against the staged payload (`CADEX_ENGINE_ROOT` lifecycle run); `pixi
+run gate` against the rebuilt bundle. Files: engine —
+`CadexCatalog.py` (new), `cadex_library_api.py` (new),
+`cadex_project_worker.py` (staging), `CadexScriptedRuntime.py` +
+`CadexScriptedDomains.py` (describe_api), `CadexdProtocol.py` +
+`response_schemas/describe_api.json` + `docs/INTEGRATION.md` (the
+response contract), `CMakeLists.txt`, both guardrail pins; shell (ours
+only) — `mesh_agent/cadex_backend.py` (`lib` in the overview,
+`describe_cad_api domain="lib"`, catalog through `compact_domain`) and
+the gate suite. Next slices parked in `docs/ROADMAP.md`: boards with
+terminal pinouts (L2), motors and mechanisms (L3).
+
+
+## ADR-182 — the transcript grows a copy path, and tool runs collapse (2026-08-31)
+
+Owner direction, three chat usability asks and one default: text in the
+transcript must be copyable; a run of tool calls must not read as twenty
+rows; the assistant/model settings must be findable; and the default
+Claude model becomes Fable 5.
+
+- **Copy is a button, not selection.** Blender's label widget cannot be
+  text-selected — that is the widget, not a setting — and making it
+  selectable would be inherited-tree work no ask this size licenses. So
+  each user and assistant box carries a `COPYDOWN` button
+  (`mesh_agent.chat_copy`) that puts the whole message on the system
+  clipboard, embossless so twenty messages do not read as twenty buttons.
+  The message is the unit a person pastes; per-line copy was rejected.
+- **Tool runs group before the trim.** Consecutive `· tool` status rows
+  become one clickable row — `N tool calls — <last>`, the last being what
+  is running now mid-turn — expanding via one WindowManager flag
+  (`mesh_agent.chat_toggle_tools`), session state that deliberately never
+  saves into a file. Grouping happens before the last-40 display trim
+  (`_transcript_groups`), so a long run no longer scrolls the
+  conversation out of the window either. The empty streaming placeholder
+  is dropped from display and no longer splits a run; prose and ordinary
+  status rows still do. Pinned by
+  `test_tool_call_runs_collapse_in_the_transcript`.
+- **The settings get a door.** The assistant and model dropdowns were
+  already in the chat header and the rest (CLI paths, engine override,
+  budgets) in the add-on preferences, but nothing in the editor said so.
+  The header gains a gear (`screen.userpref_show`) — settings chrome, not
+  a chat action, so ADR-074's status-in-the-header rule stands; the
+  pinned header test now asserts exactly that one operator.
+- **Default model: `claude-fable-5`** (`DEFAULT_MODEL`, and the enum's
+  labels follow). A saved preference keeps whatever it stored; only a
+  fresh preference reads the new default.
+
+Verified: `pixi run gate` against the built bundle. Files (ours only):
+`mesh_agent/ui.py`, `mesh_agent/spaces.py`, `mesh_agent/agent.py`,
+`mesh_agent/__init__.py`, `shell/tests/python/bl_mesh_agent.py`,
+`docs/BLENDER.md`.
+
+
+## ADR-183 — the assistant is application code, and the settings get their own Preferences section (2026-08-31)
+
+Owner direction: Cadex is its own application, not "Blender plus an
+add-on". Two consequences, taken together because each makes the other
+honest:
+
+- **`mesh_agent` moves from `shell/scripts/addons_core/` to
+  `shell/scripts/startup/`.** The script loader imports it and calls
+  `register()` at every launch — background and `--factory-startup`
+  included — exactly as it does `bl_ui`. `bl_info` is deleted, nothing
+  appears in the Add-ons list, nothing can be disabled, and the Mesh app
+  template's deferred `addon_utils.enable` (with its timer) is deleted —
+  the template now carries the layout and the splash suppression only.
+  Two costs of registering that early, both paid in the package
+  `__init__`: `keyconfigs.addon` is created by `WM_keyconfig_init` *after*
+  the script loader runs, so the landing screen's and the drawings
+  editor's keymap items now install from a deferred timer
+  (`install_keymaps()` on each module, retried until the keyconfig
+  exists); and `register()`/`unregister()` are idempotent, because the
+  loader registers the bundled copy at launch and the suites then put it
+  down and register the source copy (each harness unregisters and purges
+  `sys.modules` before importing from `scripts/startup` — the old
+  harnesses' premise that nothing had registered yet is retired).
+- **The settings leave `AddonPreferences`** — which only exists for
+  add-ons — for `mesh_agent/prefs.py`: a JSON file
+  (`<config>/cadex_agent.json`) mirrored into a `PropertyGroup` on the
+  WindowManager, saved by each property's `update` callback, loaded once
+  per session, tolerant of stale enum values. `agent.get_prefs()` keeps
+  its name and its attribute surface, so every call site and the test
+  stubs are untouched. Old AddonPreferences values are not migrated: the
+  store they lived in only exists while the add-on does.
+- **The Preferences window grows a real "AI" rail entry.** One DNA enum
+  value (`USER_SECTION_AI = 20`, appended; the enum is `char`) and one
+  RNA row in `rna_enum_preference_section_items` — the nav bar, the
+  tab search and `screen.userpref_show(section='AI')` all read that one
+  array, so nothing else in C moves (no exhaustive switch exists over
+  this enum). Two panels register into it from `prefs.py`
+  (`bl_context = "ai"`): AI Assistant (assistant + per-provider model +
+  CLI path) and Engine (override, budgets, resolved-engine row). The
+  chat header's gear opens the window onto that section. Ledger:
+  `docs/BLENDER-TREE.md` §2b; manifest + notice on `rna_userdef.cc`
+  (`DNA_userdef_types.h` was already §2a-manifested).
+
+Ripples, all in the same change: the four Blender-side harnesses swap
+the bundled copy for the source copy before registering; the engine-side
+guardrails re-point their hard-coded paths
+(`test_engine_purity_guardrails.py`, `test_licensing_compliance.py` —
+the latter's `cadexd_client.py` seam read was the loud canary, the two
+`rglob`s would have gone quietly vacuous); the manifest's `ours` prefix
+moves; `build_app.sh` prunes the pre-move add-on copy out of existing
+build trees (CMake install copies and never deletes — two copies of the
+package in one bundle is a registration fight); engine-not-found
+remedies say "Settings > AI" instead of "the add-on preferences"; and
+the docs that named the old path or called the package an add-on
+(AGENTS.md, BLENDER.md, BLENDER-TREE.md, ARCHITECTURE.md, VISION.md,
+INTEGRATION.md, PROVENANCE.md, SECURITY.md, PRIVACY_POLICY.md,
+ROADMAP.md) now name the new one. `docs/DECISIONS.md` history is left
+as written. The internal package name `mesh_agent` is retained for now —
+renaming it touches the pinned `mcp__mesh__*` tool surface and every
+suite, and is its own decision if taken.
+
+The headless CLI's default model moves to `claude-fable-5` in the same
+change (`cli/cadex_cli/agent.py`, `docs/CLI.md`) — one product, one
+default, following ADR-182's shell-side change.
+
+Verified: `pixi run gate`, `build_app.sh gate tests/python/bl_mesh_agent.py`
+and the wiring suite against the rebuilt bundle; a headless smoke run of
+the bundle asserting auto-registration, no Add-ons entry, the AI rail
+entry, both panels, the defaults and the JSON round trip; `pixi run
+python -m pytest cli/tests` (83 passed); engine-side
+`test_licensing_compliance.py` and `test_engine_purity_guardrails.py`
+(manifest test green at commit — it diffs committed state; the
+biped-demo SPDX gap predates this change, ADR-181).

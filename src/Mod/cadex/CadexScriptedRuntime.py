@@ -2511,6 +2511,18 @@ def _capability_api_listing() -> dict[str, dict[str, Any]]:
     return listing
 
 
+def _library_listing() -> dict[str, Any]:
+    """The parts-library section of describe_api (ADR-181).
+
+    Generated from the same runtime class the worker stages as ``lib``, so
+    the browsable catalog and the callable surface cannot drift apart.
+    """
+
+    from cadex_library_api import library_listing
+
+    return library_listing()
+
+
 def describe_project_api() -> dict[str, Any]:
     """The exact authoring contract for THE project script.
 
@@ -2544,8 +2556,10 @@ def describe_project_api() -> dict[str, Any]:
             "cage",
             "section_cage",
             "ring",
+            "lib",
         ],
         "domains": _capability_api_listing(),
+        "library": _library_listing(),
         "connections": {
             "nets": (
                 "USE THIS for any harness of two or more wires. A harness "

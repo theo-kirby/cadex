@@ -38,9 +38,20 @@ import time
 import bpy
 from mathutils import Vector
 
+# mesh_agent is application code in scripts/startup (ADR-183): the app has
+# already registered its bundled copy. The suite tests the SOURCE tree, so
+# put that copy down, purge it, and import ours (bl_mesh_agent.py explains).
 _REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                       "..", ".."))
-sys.path.insert(0, os.path.join(_REPO, "scripts", "addons_core"))
+_SOURCE_STARTUP = os.path.join(_REPO, "scripts", "startup")
+_bundled = sys.modules.get("mesh_agent")
+if _bundled is not None and not os.path.abspath(
+        _bundled.__file__).startswith(_SOURCE_STARTUP + os.sep):
+    _bundled.unregister()
+    for _name in [n for n in sys.modules
+                  if n == "mesh_agent" or n.startswith("mesh_agent.")]:
+        del sys.modules[_name]
+sys.path.insert(0, _SOURCE_STARTUP)
 
 import mesh_agent  # noqa: E402
 from mesh_agent import cadex_backend  # noqa: E402
@@ -2658,6 +2669,23 @@ def test_an_assembly_shows_its_solved_placements(root):
     check(edges is not None and edges.parent is swing,
           "the component's wire child is parented to it")
 
+    # ADR-177: the placed copies are grouped, not interleaved with the
+    # solids they instance -- an "Assembly" collection INSIDE Model, so one
+    # outliner click hides the duplicates and every all_objects walker
+    # (find, GC, posing, bounds) still sees them.
+    from mesh_agent import model as model_module
+    home = bpy.data.collections.get(cadex_hydrate.COMPONENT_COLLECTION)
+    model_coll = bpy.data.collections.get(model_module.COLLECTION_NAME)
+    check(home is not None and model_coll is not None
+          and home.name in model_coll.children,
+          "components hydrate into an Assembly collection inside Model")
+    check(all(any(c is home for c in obj.users_collection)
+              for obj in (swing, base, edges)),
+          "the instances and their wire children are linked there")
+    check(arm is not None
+          and any(c is model_coll for c in arm.users_collection),
+          "the source solids stay at the Model root")
+
 
 def test_two_components_share_one_mesh(root):
     """Forty screws cost one mesh. Here, two components and one plate."""
@@ -2694,6 +2722,9 @@ def test_two_components_share_one_mesh(root):
     check(bpy.data.objects.get("base") is None
           and bpy.data.objects.get("top") is None,
           "components are collected when they leave the contract")
+    check(bpy.data.collections.get(cadex_hydrate.COMPONENT_COLLECTION)
+          is None,
+          "the Assembly collection leaves with its last component (ADR-177)")
     plate = bpy.data.objects.get("plate")
     check(plate is not None and not plate.hide_viewport,
           "and the source is unhidden once nothing instances it")
@@ -2858,10 +2889,10 @@ def test_describe_cad_api(root):
     check(ok, "describe_cad_api overview succeeds")
     overview = json.loads(text)
     domains = overview.get("domains") or {}
-    check(sorted(domains) == ["assembly", "mesh", "part", "partdesign",
-                              "sketcher"],
-          "overview lists the engine's real domains: {!r}".format(
-              sorted(domains)))
+    check(sorted(domains) == ["assembly", "lib", "mesh", "part",
+                              "partdesign", "sketcher"],
+          "overview lists the engine's real domains plus the parts library "
+          "(ADR-181): {!r}".format(sorted(domains)))
     check("instructions" in overview and "result_contract" in overview,
           "overview carries the authoring contract")
     functions = domains.get("part", {}).get("functions") or []
@@ -2909,6 +2940,22 @@ def test_describe_cad_api(root):
     check("from_shape" in exports, "the mesh domain's exports are served")
     check("signature" in exports.get("from_shape", {}),
           "exports carry full signatures")
+
+    # The parts library (ADR-181): surfaced in the overview, browsable as a
+    # domain, and the catalog rides the compact block.
+    lib_entry = domains.get("lib") or {}
+    check("servo" in (lib_entry.get("functions") or []),
+          "the overview lists the library and its generators")
+    check("m3" in (lib_entry.get("part_numbers") or {}).get("fasteners", []),
+          "the overview summarises the catalogued part numbers")
+    ok, text = run_tool("describe_cad_api", {"domain": "lib"})
+    check(ok, "describe_cad_api lib succeeds")
+    lib_block = json.loads(text)
+    lib_catalog = lib_block.get("catalog") or {}
+    check("sg90" in (lib_catalog.get("servos") or {}).get("skus", []),
+          "the servo catalog arrives with the library block")
+    check("608" in (lib_catalog.get("bearings") or {}).get("codes", []),
+          "the bearing catalog arrives with the library block")
 
     # The two big domains: the operations the wolf could not reach.
     ok, text = run_tool("describe_cad_api", {"domain": "part"})
@@ -4242,6 +4289,37 @@ def test_the_blueprint_view_restyles_and_restores(root):
           in str(message),
           "make_blueprint refuses under --background: {:s}".format(
               first_line_of(message)))
+
+    # ...so no draft can exist here, and the store side of the ADR-178
+    # split refuses in its own sentence before it reaches the engine.
+    ok, message = run_tool("save_blueprint", {})
+    check(not ok and "no draft" in str(message)
+          and "make_blueprint" in str(message),
+          "save_blueprint with nothing drafted refuses with the fix: "
+          "{:s}".format(first_line_of(message)))
+
+    # -- ADR-179: the drawing has a window of its own ------------------------
+    from mesh_agent import cadex_drawings
+    check(cadex_drawings.EDITOR_AVAILABLE
+          and getattr(bpy.types, "SpaceCadexBlueprint", None) is not None,
+          "this bundle carries the Blueprint Editor space type")
+    editor_area = bpy.context.window_manager.windows[0].screen.areas[-1]
+    previous_type = editor_area.type
+    try:
+        editor_area.type = 'CADEX_BLUEPRINT'
+        check(editor_area.type == 'CADEX_BLUEPRINT',
+              "an area becomes the Blueprint Editor, headless included")
+        editor_space = editor_area.spaces.active
+        check(cadex_drawings.selection(editor_space)["kind"] == "draft",
+              "a fresh editor opens on the draft")
+        cadex_drawings.select(editor_space, 7)
+        check(cadex_drawings.selection(editor_space)
+              == {"kind": "stored", "ordinal": 7},
+              "the selection is per-space state, so two editors can show "
+              "two sheets")
+    finally:
+        cadex_drawings._selections.clear()
+        editor_area.type = previous_type
 
     # -- off restores the pre-toggle look EXACTLY -----------------------------
     ok, message = run_tool("blueprint_view", {"show": False})

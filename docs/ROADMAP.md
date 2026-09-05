@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-08-29
+Verified against source: 2026-08-31
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -116,8 +116,9 @@ from facts instead of re-exploration.
       constant; refresh is the same call again.
 - [x] **Declared dimensions** — `part.measurement` (ADR-139), the first part
       output that carries no geometry at all: two exact anchor points and a
-      number, drawn by the viewport as an architectural dimension. Three
-      kinds — `distance`, `diameter`, `extent` — anchored by ADR-029 selector,
+      number, drawn by the viewport as an architectural dimension. Five
+      kinds — `distance`, `diameter`, `radius`, `extent`, `angle` (the last
+      two ADR-176) — anchored by ADR-029 selector,
       so a dimension follows the parameter that moves its part and fails
       loudly, naming the selector, when a change removes what it measured. No
       new op, no new artifact kind and no change to `compute_project_digest`.
@@ -469,6 +470,51 @@ depends on. Independent of Phase 8.
       words beside the model. One optional protocol arg (`name`); the
       recipe rides `meta` as ADR-151's specs already did.
 
+- [x] **The technical drawing** (ADR-176, 2026-08-30). The blueprint can
+      now be a functional technical drawing without changing its name:
+      theme `technical` is black lines on drawing-paper white (the fourth
+      theme, and the one that made the wire channel theme-dependent), and
+      the script's declared `part.measurement` dimensions draw on the
+      sheet drafting-style — extension lines, the number in the broken
+      dimension line, radius lines, angle arcs — on every orthographic
+      cell by default, a per-cell `dimensions` flag overriding. Two new
+      measurement kinds engine-side (`radius`, `angle` — the latter
+      publishing `value_deg`, a vertex and two rays, never degrees in a
+      length field); the sheet and the viewport overlay draw one geometry
+      from one pure module. No new op; the flag rides the recipe.
+
+- [x] **Exploded-view hygiene and the drawings browser** (ADR-177,
+      2026-08-30). Component instances hydrate into an `Assembly`
+      collection *inside* Model — one outliner row, one eye-icon hides
+      the exploded-view duplicates, and every `all_objects` walker still
+      sees them. And the blueprint view grows a `source` switch: beside
+      the live `viewport` styling, `sheets` pages through the PNGs the
+      project's blueprint store already holds, in the viewport, with
+      arrows on screen, in the panel and on the keyboard.
+      `inspect_model scope=blueprint` now actually works (the whitelist
+      had refused what the description promised since ADR-157).
+
+- [x] **The Blueprint Editor window** (ADR-179, 2026-08-30). The drawing
+      gets a window of its own: `CADEX_BLUEPRINT`, the seventh Cadex
+      space type, added by the §2b checklist's first single-editor run.
+      Each editor area selects its own sheet — the live draft or any
+      stored blueprint — so two windows show two drawings; the controls
+      (sheet menu, pager, Save, Export) live in the editor's header, and
+      the window's ground is the shown sheet's theme. The viewport keeps
+      only the ADR-150 restyle, its settings box retired.
+
+- [x] **The blueprint draft editor** (ADR-178, 2026-08-30). The sheet
+      becomes a live working document: `make_blueprint` renders the
+      **draft** — on screen in the viewport, re-rendering itself when
+      the model rebuilds — and stores nothing; the new `save_blueprint`
+      (and the panel's Save button, one shared write path) stores the
+      version the user approved, Export writes the PNG anywhere. The
+      user clicks a view cell to tag it and `@cell-N` arrives in the
+      next chat message with the cell's spec, the face-pin idiom on a
+      2D sheet. Replaces the day-old ADR-177 sheets browser on the same
+      surface; a stored sheet is viewed by `based_on`-loading it into
+      the draft.
+
 - [x] **Printable parts** (ADR-156, ADR-158, 2026-08-21). The model leaves
       for a slicer: tick which outputs are parts you mean to print, then
       **File → Export Printable Parts…**, and the engine writes one STL per
@@ -542,7 +588,7 @@ Three things the work turned up:
   while every source-tree gate stayed green. Now pinned by
   `test_every_engine_module_is_installed_by_cmake`.
 
-Still open on the shell side (`shell/scripts/addons_core/mesh_agent/`):
+Still open on the shell side (`shell/scripts/startup/mesh_agent/`):
 nothing yet *writes* a selector into a script from a click, so click →
 durable argument is half built. `resolve_pin` gives the shell the
 fingerprint; turning that into a selector argument in the script is the
@@ -1845,3 +1891,31 @@ owes a viewport an answer.
         nothing at all blends, which the shipped bracket does at
         `strut_scale = 1.0`. `blend_mm` stays a declared parameter, and the
         loop drops the blend and says so.
+
+## Phase 17 — The parts library `(L0/L1 landed 2026-08-31, ADR-181; L2/L3 open)`
+
+**Goal:** the hardware robots are built from — fasteners, bearings, servos,
+boards, motors — as catalogued, spec-pinned parametric parts the agent
+composes in the script (`lib`, `docs/XSCRIPT.md`). Interface-exact,
+cosmetically simple; real datasheet torque reaching `assembly.actuator`;
+a spec correction is an engine change (ADR-181).
+
+**Depends on nothing** and blocks nothing: no new tool, no new op — the
+catalog rides `describe_api`'s new `library` key, one additive response
+field, and every client gets it through the surface it already reads.
+
+- [x] **L0 — framework, fasteners, bearings.** `CadexCatalog.py` +
+      `cadex_library_api.py`; metric bolts/nuts/washers/inserts, clearance
+      and tap-drill data, the common ball bearings, parametric bushing.
+- [x] **L1 — servos.** SG90 / MG90S / MG996R / DS3218: datasheet mounting
+      interfaces, measured micro horns, effective density for
+      `assembly.body`, `.actuator(...)` bounded by real stall torque.
+      Gaps stated, not papered: fields no datasheet dimensions are listed
+      in `spec["approximate"]`; 25T horns and pigtail terminals absent
+      until a dimensioned source exists (dsservo.com STEP files are the
+      named next source).
+- [ ] **L2 — boards.** ESP32 DevKit, Pi Zero 2 W, PCA9685 with terminal
+      pinout rows, so the wiring system lands on library parts.
+- [ ] **L3 — motors and mechanisms.** Common BLDC sizes with kV/torque
+      data, N20 gearmotor, linear actuator, solenoid, joints; gears and
+      rack-and-pinion need involute profiles and are their own slice.

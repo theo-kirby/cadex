@@ -3046,6 +3046,7 @@ static void legacy_gpencil_sanitize_annotations(Main &bmain)
           case SPACE_CADEX_POLICY:
           case SPACE_CADEX_TRAINING:
           case SPACE_CADEX_LIVE:
+          case SPACE_CADEX_BLUEPRINT:
             break;
         }
       }

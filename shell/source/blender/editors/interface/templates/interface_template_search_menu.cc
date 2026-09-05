@@ -654,6 +654,7 @@ static MenuSearch_Data *menu_items_from_ui_create(bContext *C,
           SPACE_MENU_NOP(SPACE_CADEX_POLICY);
           SPACE_MENU_NOP(SPACE_CADEX_TRAINING);
           SPACE_MENU_NOP(SPACE_CADEX_LIVE);
+          SPACE_MENU_NOP(SPACE_CADEX_BLUEPRINT);
         }
       }
       for (int i = 0; i < idname_array_len; i++) {

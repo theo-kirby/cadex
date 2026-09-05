@@ -1190,9 +1190,12 @@ enum eSpace_Type : char {
   SPACE_CADEX_ENV = 27,
   SPACE_CADEX_POLICY = 28,
   SPACE_CADEX_TRAINING = 29,
-  SPACE_CADEX_LIVE = 30
+  SPACE_CADEX_LIVE = 30,
+  /** The Blueprint Editor (ADR-179): the drawing sheets in a window of
+   * their own. */
+  SPACE_CADEX_BLUEPRINT = 31
 
-#define SPACE_TYPE_NUM (SPACE_CADEX_LIVE + 1)
+#define SPACE_TYPE_NUM (SPACE_CADEX_BLUEPRINT + 1)
 };
 
 /* use for function args */

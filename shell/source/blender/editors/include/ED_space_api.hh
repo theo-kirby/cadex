@@ -49,6 +49,7 @@ void ED_spacetype_cadex_env();
 void ED_spacetype_cadex_policy();
 void ED_spacetype_cadex_training();
 void ED_spacetype_cadex_live();
+void ED_spacetype_cadex_blueprint();
 void ED_spacetype_statusbar();
 void ED_spacetype_topbar();
 

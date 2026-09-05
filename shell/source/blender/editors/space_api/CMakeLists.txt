@@ -30,6 +30,7 @@ set(LIB
   bf_editor_space_cadex_policy
   bf_editor_space_cadex_training
   bf_editor_space_cadex_live
+  bf_editor_space_cadex_blueprint
   bf_editor_space_clip
   bf_editor_space_console
   bf_editor_space_file

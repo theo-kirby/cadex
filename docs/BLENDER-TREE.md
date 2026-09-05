@@ -1,12 +1,12 @@
 # BLENDER-TREE.md — Inherited Shell Substrate Inventory
 
-Verified against source: 2026-08-29
+Verified against source: 2026-08-31
 
 `shell/` is a Blender fork. This is its ledger — what we keep, what is
 slated for removal, what is already gone — the peer of `docs/FREECAD.md`
 for the engine half, in the same format and under the same rules.
 
-The change policy is in `AGENTS.md`: `shell/scripts/addons_core/mesh_agent/`
+The change policy is in `AGENTS.md`: `shell/scripts/startup/mesh_agent/`
 is ours and subtractive changes there are encouraged; **everything else
 under `shell/` is inherited-Blender and conservative**. Removals execute
 under the two-commit protocol in `docs/FREECAD.md` §3 (disable, verify;
@@ -28,11 +28,11 @@ These files exist in no upstream Blender and cannot conflict with one.
 
 | Path | What | Lines |
 |---|---|---|
-| `shell/scripts/addons_core/mesh_agent/` | the add-on: chat, params, headers, the top bar, the cadexd protocol client, hydration, playback, picking, the collision overlay and the policy-output readout | 8,684 (21 files) |
+| `shell/scripts/startup/mesh_agent/` | the assistant, application code registered by the script loader (ADR-183 — lived in `addons_core` as an add-on until then): chat, params, headers, the top bar, the cadexd protocol client, hydration, playback, picking, the collision overlay and the policy-output readout | 8,684 (21 files) |
 | `shell/source/blender/editors/space_cadex_chat/` | the Cadex Chat editor: transcript, message box (dynamic-size execute region, ADR-164), header (ADR-035) | 220 |
 | `shell/source/blender/editors/space_cadex_params/` | the Cadex Parameters editor (ADR-035) | 170 |
-| `shell/source/blender/editors/space_cadex_{env,policy,training,live}/` | the four editors ADR-108 split out of Parameters: Environment, Policy, Training and Live. Structurally `space_cadex_params.cc` with the names changed, which is the point — see the checklist in §2b | ~200 each |
-| `shell/scripts/startup/bl_app_templates_system/Mesh/` | the app template: `startup.blend` carries the layout, `__init__.py` enables the add-on, installs the Cadex top bar and suppresses the splash (ADR-037, ADR-041, ADR-042) | 111 + a 267 KB `.blend` |
+| `shell/source/blender/editors/space_cadex_{env,policy,training,live,blueprint}/` | the four editors ADR-108 split out of Parameters — Environment, Policy, Training and Live — plus the Blueprint Editor (ADR-179), the checklist's first single-editor run. Structurally `space_cadex_params.cc` with the names changed, which is the point — see the checklist in §2b | ~200 each |
+| `shell/scripts/startup/bl_app_templates_system/Mesh/` | the app template: `startup.blend` carries the layout, `__init__.py` suppresses the splash (ADR-037, ADR-041, ADR-042). The add-on enable it used to carry is gone — the assistant registers from `scripts/startup` itself (ADR-183) | ~80 + a 267 KB `.blend` |
 | `shell/tests/python/bl_mesh_agent{,_cadex}.py` | the agent suites; `bl_mesh_agent_cadex.py` prints the `CADEX-BLENDER-GATE` evidence line | 4,210 (2 files) |
 | `shell/release/darwin/Blender.app/Contents/Resources/cadex_icon.icns` | the Dock icon. Generated from `cadex-logo-white.png` by `package/app/make_app_icon.py` — regenerate rather than edit (ADR-059) | a 249 KB binary |
 
@@ -49,7 +49,7 @@ lines across `cadex_backend.py`, `ui.py`, `tools.py` and `modes.py`, plus
 ~100 lines of `cadex_animate.py`, ~75 of `ui.py`, 27 of `__init__.py` and
 ~95 of gate suite. `git diff --stat <merge-base> -- shell/` is **8 files,
 +1,518/-4**, and every one of those files is under
-`shell/scripts/addons_core/mesh_agent/` or `shell/tests/python/`. **It is
+`shell/scripts/startup/mesh_agent/` or `shell/tests/python/`. **It is
 entirely inside code that is ours.** Nothing in §2 moved: the
 inherited-tree delta is unchanged, §2a is still eight files and must stay
 eight. Counted 2026-07-31 — treat these as of that date, not as a contract.
@@ -60,7 +60,7 @@ ADR-138 added linked parts: **+541/-5 across six files** — `topbar.py`
 fix that would otherwise have made Save-As drop a `.cxpart`), `tools.py`
 (+77: one tool and its executor), `cadexd_client.py` (one name into
 `MODELING_OPS`), and the two suites (+144). Every one of those six is under
-`shell/scripts/addons_core/mesh_agent/` or `shell/tests/python/`; **nothing
+`shell/scripts/startup/mesh_agent/` or `shell/tests/python/`; **nothing
 in §2 moved and §2a is still eight files.** Counted 2026-08-09.
 
 ADR-139 added dimensions: **one new file plus +331/-3 across six** —
@@ -71,7 +71,7 @@ wrapped call in `hydrate`), `__init__.py` (+5: teardown for the draw handler)
 and the two suites (+210). ADR-138 and ADR-139 share three of those files, so
 these are counted per hunk rather than off one `git diff --stat` — take them
 as an order of magnitude, not an audit. Again every file is under
-`shell/scripts/addons_core/mesh_agent/` or `shell/tests/python/`; **nothing in
+`shell/scripts/startup/mesh_agent/` or `shell/tests/python/`; **nothing in
 §2 moved and §2a is still eight files.** Counted 2026-08-09.
 
 **ADR-108 is the first time since the merge that §2 moved**, and it moved
@@ -152,19 +152,19 @@ conflict here is a one-line re-add per row.
 
 | File | Change | On conflict |
 |---|---|---|
-| `makesdna/DNA_space_enums.h` | `SPACE_CADEX_CHAT = 25` … `SPACE_CADEX_LIVE = 30`; `SPACE_TYPE_NUM` bumped | Append only — the header says so. Renumbering breaks every saved `.blend`. |
-| `makesdna/DNA_space_types.h` | six bare `SpaceLink`-header structs | Re-add. They have no fields and must not gain any: DNA is append-only forever, and a gate check asserts each carries no property `Space` does not. |
-| `editors/include/ED_space_api.hh` | six declarations | Re-add. |
-| `editors/space_api/spacetypes.cc` | six `ED_spacetype_cadex_*()` calls added; **eight removed** (ADR-036; `space_node` came back in ADR-066); six `ED_operatormacros_*` made conditional | The removals are the load-bearing half: this list *is* the editor menu. Take upstream's additions, then re-apply both edits. |
-| `editors/CMakeLists.txt`, `editors/space_api/CMakeLists.txt` | six `add_subdirectory` / six `LIB` entries | Re-add. The hidden editors keep theirs — see ADR-036 on why compiling them out does not work. |
-| `makesrna/intern/rna_space.cc` | six `rna_enum_space_type_items` rows, six `rna_Space_refine()` cases, `rna_def_space_cadex_*()` + calls | Rows go under the `General` heading, after `SPACE_VIEW3D`. |
+| `makesdna/DNA_space_enums.h` | `SPACE_CADEX_CHAT = 25` … `SPACE_CADEX_BLUEPRINT = 31`; `SPACE_TYPE_NUM` bumped | Append only — the header says so. Renumbering breaks every saved `.blend`. |
+| `makesdna/DNA_space_types.h` | seven bare `SpaceLink`-header structs | Re-add. They have no fields and must not gain any: DNA is append-only forever, and a gate check asserts each carries no property `Space` does not. |
+| `editors/include/ED_space_api.hh` | seven declarations | Re-add. |
+| `editors/space_api/spacetypes.cc` | seven `ED_spacetype_cadex_*()` calls added; **eight removed** (ADR-036; `space_node` came back in ADR-066); six `ED_operatormacros_*` made conditional | The removals are the load-bearing half: this list *is* the editor menu. Take upstream's additions, then re-apply both edits. |
+| `editors/CMakeLists.txt`, `editors/space_api/CMakeLists.txt` | seven `add_subdirectory` / seven `LIB` entries | Re-add. The hidden editors keep theirs — see ADR-036 on why compiling them out does not work. |
+| `makesrna/intern/rna_space.cc` | seven `rna_enum_space_type_items` rows, seven `rna_Space_refine()` cases, `rna_def_space_cadex_*()` + calls | Rows go under the `General` heading, after `SPACE_VIEW3D`. |
 | `makesrna/intern/rna_space.cc` | `rna_SpaceNodeEditor_tree_type_poll` filtered to `Cadex`-prefixed tree idnames (ADR-066) | The peer of the `space_file.cc` row below, and for the same reason: a node tree type is a *subtype* of `SPACE_NODE`, so not-registering cannot hide the stock four. Re-apply as the first statement of the poll; it keys on the identifier prefix, so a second Cadex tree needs no edit. |
 | `makesrna/intern/rna_screen.cc` | `rna_Area_ui_type_itemf`: skip unregistered space types, hold group headings back until something survives under them | The one behavioural edit in 2b. Re-apply inside the loop; the enum rows themselves must never be deleted (`ED_area_name` indexes them). |
-| `windowmanager/intern/wm_draw.cc`, `editors/interface/templates/interface_template_search_menu.cc`, `editors/animation/anim_filter.cc`, `blenkernel/intern/grease_pencil_convert_legacy.cc` | six cases each in exhaustive switches | `-Wswitch` fails the build if you forget. |
-| `editors/interface/resources.cc` | all six mapped to `btheme->space_properties` (two sites) | Re-add, else the `default:` branch hands them the viewport's grey. |
-| `blenkernel/BKE_context.hh`, `blenkernel/intern/context.cc` | six `CTX_wm_space_cadex_*()` + forward decls | Re-add. |
-| `python/intern/bpy_rna_callback.cc` | six RNA types → space id | Needed for `draw_handler_add`. |
-| `blenkernel/intern/screen.cc` | all six added to the header/footer alignment lists | Keeps their headers pinned to the top like the other panel-column editors. |
+| `windowmanager/intern/wm_draw.cc`, `editors/interface/templates/interface_template_search_menu.cc`, `editors/animation/anim_filter.cc`, `blenkernel/intern/grease_pencil_convert_legacy.cc` | seven cases each in exhaustive switches | `-Wswitch` fails the build if you forget. |
+| `editors/interface/resources.cc` | all seven mapped to `btheme->space_properties` (two sites) | Re-add, else the `default:` branch hands them the viewport's grey. |
+| `blenkernel/BKE_context.hh`, `blenkernel/intern/context.cc` | seven `CTX_wm_space_cadex_*()` + forward decls | Re-add. |
+| `python/intern/bpy_rna_callback.cc` | seven RNA types → space id | Needed for `draw_handler_add`. |
+| `blenkernel/intern/screen.cc` | all seven added to the header/footer alignment lists | Keeps their headers pinned to the top like the other panel-column editors. |
 | `editors/screen/area.cc`, `editors/screen/screen_edit.cc`, `blenloader/intern/versioning_280.cc` | null-guard three `SpaceType::create` paths, falling back to the viewport | **Required by ADR-036.** Inherited call sites still ask for `SPACE_IMAGE` (render result) and `SPACE_GRAPH` (drivers editor); without these it is a null deref. |
 | `editors/space_file/space_file.cc` | `file_space_subtype_item_extend` drops the asset-browser item | The asset browser is a `SpaceFile` subtype, not a space type, so not-registering cannot hide it. |
 | `scripts/startup/bl_ui/space_toolsystem_toolbar.py` | `classes` trimmed to the viewport's tool panel (ADR-036); `NODE_PT_tools_active` **added back** (ADR-066) | Registering a `ToolSelectPanelHelper` is what runs its `register()`, which is the only thing that sets `_tool_group_active`. Leaving it out was invisible while `SPACE_NODE` was unregistered; with the editor live, the first click into it raises `AttributeError` from `wm.tool_set_by_id`. Its `_defs_node_*` live in this same file, so it pulls in no `bl_ui.space_node`. |
@@ -173,6 +173,8 @@ conflict here is a one-line re-add per row.
 | `scripts/startup/bl_ui/__init__.py` | nine `space_*` modules leave `_modules` | They cross-import each other; remove as a group or not at all. |
 | `scripts/startup/bl_ui/space_toolsystem_toolbar.py` | image/node/sequencer tool panels no longer registered | Registering against a missing space type raises and **aborts bl_ui's whole registration loop**. |
 | `scripts/presets/keyconfig/keymap_data/blender_default.py` | four node keymap items pass `None` instead of macro sub-operator properties | Raises in `_init_properties_from_data` otherwise. The rest of the dead keymaps stay — see §4. |
+| `makesdna/DNA_userdef_types.h` | `USER_SECTION_AI = 20` appended to `eUserPref_Section` (ADR-183) | Append only, value < 128 (the enum is `char`); already a §2a file, so the notice was there. |
+| `makesrna/intern/rna_userdef.cc` | one row + one separator in `rna_enum_preference_section_items`: `{USER_SECTION_AI, "AI", …}` after the Animation group (ADR-183) | Re-add. Position in this array is the rail's visual order; the nav bar, tab search and `screen.userpref_show(section='AI')` all read this one array, and the settings panel itself is registered from the application scripts (`bl_context = "ai"`). |
 
 
 #### Adding the next Cadex editor — the checklist
@@ -225,7 +227,7 @@ earlier ones:
 Items 14–16 are exhaustive switches: **`-Wswitch` fails the build if you
 forget one**, so they cost a compile rather than a bug.
 
-**Add-on side** (`shell/scripts/addons_core/mesh_agent/`, ours, no conflict):
+**Add-on side** (`shell/scripts/startup/mesh_agent/`, ours, no conflict):
 a `*_HT_header` in `spaces.py` — without one the header region draws nothing
 at all, not even the editor-type dropdown, which is how a user changes an
 area back; the panels' `bl_space_type` in `ui.py`, renamed to match, keeping

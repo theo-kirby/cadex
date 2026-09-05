@@ -66,11 +66,13 @@ _BLEND_FAILURE_MODES = frozenset({"refuse", "skip", "reduce"})
 #: takes a ``suffixes`` argument at all.
 _LINKED_PART_SUFFIXES = frozenset({".cxpart"})
 
-#: What ``measurement`` can measure (ADR-139). Closed, and each member is a
-#: different *drawing* rather than a different formula: a distance is a line
-#: between two anchors, a diameter is a line whose ends are chosen per frame,
-#: and an extent is a distance whose anchors nothing had to name.
-_MEASUREMENT_KINDS = frozenset({"distance", "diameter", "extent"})
+#: What ``measurement`` can measure (ADR-139; radius and angle joined for the
+#: technical-drawing sheets). Closed, and each member is a different *drawing*
+#: rather than a different formula: a distance is a line between two anchors,
+#: a diameter is a line whose ends are chosen per frame, a radius is half of
+#: one drawn from the centre, an extent is a distance whose anchors nothing
+#: had to name, and an angle is two rays from a vertex with an arc between.
+_MEASUREMENT_KINDS = frozenset({"distance", "diameter", "radius", "extent", "angle"})
 #: Which topology a measurement's selectors resolve against. Faces and edges
 #: only: those are the two ``resolve_pin`` speaks and the two the viewport can
 #: put a number on. Applies to both ends of a distance — a face-to-edge
@@ -2628,7 +2630,7 @@ class PartDomainAPI:
 
             result = {"bored": bored, "height": height, "bore": bore}
 
-        Three kinds:
+        Five kinds:
 
         - ``"distance"`` — between the two subshapes ``start`` and ``end``
           name. The kernel's own closest-approach calculation supplies both
@@ -2636,10 +2638,21 @@ class PartDomainAPI:
           boss's height and the gap between two ribs are all the same call.
         - ``"diameter"`` — of the one circular edge or cylindrical face ``at``
           names.
+        - ``"radius"`` — the same circle ``at`` names, published as its
+          radius (``R3.00 mm``) and drawn from the centre to the rim — the
+          drawing convention for fillets and arcs, where a diameter would
+          overshoot the material.
         - ``"extent"`` — the shape's overall span along ``axis``. This is what
           "from the top of the part to the bottom" means on anything that is
           not a box: a dome has no pair of planar faces to name, and its
           height is a property of the whole solid.
+        - ``"angle"`` — between the two planar faces or straight edges
+          ``start`` and ``end`` name, published in degrees as the opening a
+          drawing would dimension: two rays from the common vertex (the
+          planes' intersection line, or the lines' closest approach), each
+          pointing into its own face or edge, with the arc between them.
+          Parallel faces or edges have no vertex to open from and are
+          refused — measure a distance instead.
 
         ``element_type`` says whether ``start``/``end``/``at`` resolve against
         faces or edges, exactly as ``fillet``'s ``edges=`` names its own kind.
@@ -2681,19 +2694,19 @@ class PartDomainAPI:
             "element_type": clean_elements,
             "places": _places(operation, places),
         }
-        if clean_kind == "distance":
+        if clean_kind in ("distance", "angle"):
             if start is None or end is None:
                 raise _error(
                     operation,
                     "start/end",
-                    "kind='distance' needs both start= and end= selectors",
+                    f"kind='{clean_kind}' needs both start= and end= selectors",
                 )
             properties["start"] = _selector(operation, "start", start, fixed_count=1)
             properties["end"] = _selector(operation, "end", end, fixed_count=1)
-        elif clean_kind == "diameter":
+        elif clean_kind in ("diameter", "radius"):
             if at is None:
                 raise _error(
-                    operation, "at", "kind='diameter' needs an at= selector"
+                    operation, "at", f"kind='{clean_kind}' needs an at= selector"
                 )
             properties["at"] = _selector(operation, "at", at, fixed_count=1)
         else:

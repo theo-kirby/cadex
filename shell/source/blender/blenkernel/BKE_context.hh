@@ -56,6 +56,7 @@ struct SpaceImage;
 struct SpaceCadexChat;
 struct SpaceCadexEnv;
 struct SpaceCadexLive;
+struct SpaceCadexBlueprint;
 struct SpaceCadexParams;
 struct SpaceCadexPolicy;
 struct SpaceCadexTraining;
@@ -252,6 +253,7 @@ SpaceCadexEnv *CTX_wm_space_cadex_env(const bContext *C);
 SpaceCadexPolicy *CTX_wm_space_cadex_policy(const bContext *C);
 SpaceCadexTraining *CTX_wm_space_cadex_training(const bContext *C);
 SpaceCadexLive *CTX_wm_space_cadex_live(const bContext *C);
+SpaceCadexBlueprint *CTX_wm_space_cadex_blueprint(const bContext *C);
 
 void CTX_wm_manager_set(bContext *C, wmWindowManager *wm);
 void CTX_wm_window_set(bContext *C, wmWindow *win);

@@ -15,6 +15,7 @@ set(Cadex_Scripts
     CadexSolder.py
     CadexStress.py
     CadexNets.py
+    CadexCatalog.py
     CadexBoards.py
     CadexMounts.py
     CadexCage.py
@@ -39,6 +40,7 @@ set(Cadex_Scripts
     cadex_domain_worker.py
     cadex_mesh_api.py
     cadex_mesh_worker.py
+    cadex_library_api.py
     cadex_part_api.py
     cadex_part_worker.py
     cadex_partdesign_api.py

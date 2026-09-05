@@ -131,6 +131,12 @@ const EnumPropertyItem rna_enum_space_type_items[] = {
      ICON_PLAY,
      "Cadex Live",
      "Run the mechanism live and push it while the policy answers"},
+    {SPACE_CADEX_BLUEPRINT,
+     "CADEX_BLUEPRINT",
+     ICON_IMAGE_DATA,
+     "Blueprint Editor",
+     "View and iterate on the model's drawing sheets -- the live draft and "
+     "the saved blueprints"},
     {SPACE_IMAGE,
      "IMAGE_EDITOR",
      ICON_IMAGE,
@@ -862,6 +868,8 @@ static StructRNA *rna_Space_refine(PointerRNA *ptr)
       return RNA_SpaceCadexTraining;
     case SPACE_CADEX_LIVE:
       return RNA_SpaceCadexLive;
+    case SPACE_CADEX_BLUEPRINT:
+      return RNA_SpaceCadexBlueprint;
 
       /* Currently no type info. */
     case SPACE_SCRIPT:
@@ -9729,6 +9737,17 @@ static void rna_def_space_cadex_live(BlenderRNA *brna)
   rna_def_space_generic_show_region_toggles(srna, (1 << RGN_TYPE_HEADER));
 }
 
+static void rna_def_space_cadex_blueprint(BlenderRNA *brna)
+{
+  StructRNA *srna;
+
+  srna = RNA_def_struct(brna, "SpaceCadexBlueprint", "Space");
+  RNA_def_struct_sdna(srna, "SpaceCadexBlueprint");
+  RNA_def_struct_ui_text(srna, "Space Cadex Blueprint", "Blueprint Editor space data");
+
+  rna_def_space_generic_show_region_toggles(srna, (1 << RGN_TYPE_HEADER));
+}
+
 void RNA_def_space(BlenderRNA *brna)
 {
   rna_def_space(brna);
@@ -9764,6 +9783,7 @@ void RNA_def_space(BlenderRNA *brna)
   rna_def_space_cadex_policy(brna);
   rna_def_space_cadex_training(brna);
   rna_def_space_cadex_live(brna);
+  rna_def_space_cadex_blueprint(brna);
 }
 
 }  // namespace blender

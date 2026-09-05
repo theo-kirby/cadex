@@ -141,6 +141,7 @@ const uchar *get_color_ptr(bTheme *btheme, int spacetype, int colorid)
         case SPACE_CADEX_POLICY:
         case SPACE_CADEX_TRAINING:
         case SPACE_CADEX_LIVE:
+        case SPACE_CADEX_BLUEPRINT:
           ts = &btheme->space_properties;
           break;
         case SPACE_VIEW3D:
@@ -249,7 +250,8 @@ const uchar *get_color_ptr(bTheme *btheme, int spacetype, int colorid)
                    SPACE_CADEX_ENV,
                    SPACE_CADEX_POLICY,
                    SPACE_CADEX_TRAINING,
-                   SPACE_CADEX_LIVE))
+                   SPACE_CADEX_LIVE,
+                   SPACE_CADEX_BLUEPRINT))
           {
             cp = btheme->tui.panel_text;
           }

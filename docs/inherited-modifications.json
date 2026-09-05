@@ -223,6 +223,7 @@
         "shell/"
       ],
       "ours": [
+        "shell/scripts/startup/mesh_agent/",
         "shell/scripts/addons_core/mesh_agent/",
         "shell/tests/python/",
         "shell/tests/eval/mesh_agent_cad/",
@@ -382,6 +383,10 @@
         },
         {
           "path": "shell/source/blender/makesrna/intern/rna_ui_api.cc",
+          "notice": "comment"
+        },
+        {
+          "path": "shell/source/blender/makesrna/intern/rna_userdef.cc",
           "notice": "comment"
         },
         {

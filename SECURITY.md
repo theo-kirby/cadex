@@ -26,7 +26,7 @@ program. Reports held hostage for payment will not be entertained.
 
 - The engine we wrote: `src/Mod/cadex/**`, including the xscript sandbox,
   the `cadexd` service, and the worker isolation described below.
-- The shell add-on we wrote: `shell/scripts/addons_core/mesh_agent/**`,
+- The shell assistant package we wrote: `shell/scripts/startup/mesh_agent/**`,
   including the tool bridge and the Claude Code integration.
 - The cadexd protocol itself (`docs/INTEGRATION.md`) — anything that lets
   one side of the process boundary compromise the other.

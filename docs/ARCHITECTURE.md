@@ -55,7 +55,7 @@ protocol. That is what keeps either half replaceable (ROADMAP Phases 11 and
   face/edge ID maps into the scene)
 ```
 
-The whole left-hand column lives under `shell/scripts/addons_core/`. What
+The whole left-hand column lives under `shell/scripts/startup/mesh_agent/`. What
 crosses the boundary is the protocol in `docs/INTEGRATION.md` and nothing
 else: no shared code, no shared process, no shared licence obligation — the
 shipped bundle is an aggregate of separate programs, each under its own
@@ -197,7 +197,7 @@ There is no shell under `src/`. `CadexGui`, `CadexSession`,
 `CadexTransactions`, `CadexEditState`, `CadexGrid`, `CadexParametersPanel`,
 `CadexScriptView`, the `tool_impl` package, `CadexdClient` and
 `CadexShellHydration` were all deleted in Phase 7 (ADR-021). The shell is
-`shell/scripts/addons_core/mesh_agent/`, and it speaks the protocol in
+`shell/scripts/startup/mesh_agent/`, and it speaks the protocol in
 `docs/INTEGRATION.md` — a different process, not a different import path.
 
 `test_engine_purity_guardrails.py` keeps it that way: nothing under

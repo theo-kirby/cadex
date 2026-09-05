@@ -88,6 +88,85 @@
  },
  "engine": "str",
  "instructions": "str",
+ "library": {
+  "api_global": "str",
+  "catalog": {
+   "bearings": {
+    "codes": [
+     "str"
+    ],
+    "notes": "str",
+    "rows": [
+     {
+      "bore_mm": "float",
+      "code": "str",
+      "od_mm": "float",
+      "width_mm": "float"
+     }
+    ]
+   },
+   "fasteners": {
+    "bolt_heads": [
+     "str"
+    ],
+    "notes": "str",
+    "nut_styles": [
+     "str"
+    ],
+    "sizes": [
+     "str"
+    ]
+   },
+   "heat_set_inserts": {
+    "rows": [
+     {
+      "hole_dia_mm": "float",
+      "length_mm": "float",
+      "od_mm": "float",
+      "short_length_mm": "float",
+      "size": "str"
+     }
+    ],
+    "sizes": [
+     "str"
+    ]
+   },
+   "servos": {
+    "notes": "str",
+    "rows": [
+     {
+      "family": "str",
+      "mass_g": "float",
+      "sku": "str",
+      "speed": [
+       {
+        "s_per_60_deg": "float",
+        "volts": "float"
+       }
+      ],
+      "stall_torque": [
+       {
+        "kg_cm": "float",
+        "volts": "float"
+       }
+      ],
+      "travel_degrees": "float"
+     }
+    ],
+    "skus": [
+     "str"
+    ]
+   }
+  },
+  "exports": [
+   {
+    "description": "str",
+    "name": "str",
+    "signature": "str"
+   }
+  ],
+  "notes": "str"
+ },
  "mounts": {
   "mate": "str",
   "mount": "str",

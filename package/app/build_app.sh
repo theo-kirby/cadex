@@ -166,6 +166,11 @@ cmd_shell() {
         "$@"
 
     scrubbed cmake --build "${build_dir}" --target install
+    # `cmake --install` copies, it never prunes: a build tree that predates
+    # ADR-183 still carries the assistant's old add-on copy, and two copies
+    # of mesh_agent in one bundle is a registration fight. Remove the old
+    # home explicitly; on a fresh tree this matches nothing.
+    rm -rf "${install_dir}/${app_name}.app/Contents/Resources/"*/scripts/addons_core/mesh_agent
     stamp_version
     echo "==> ${app_exe}"
 }

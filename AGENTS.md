@@ -1,6 +1,6 @@
 # AGENTS.md — Agent Entry Point
 
-Verified against source: 2026-08-11. **This is the single agent contract.**
+Verified against source: 2026-08-31. **This is the single agent contract.**
 `CLAUDE.md` exists only to import it (`@AGENTS.md`) and holds nothing of its
 own, so there is one file to read and one file to edit — which is what ADR-005
 asked for, reached from the other direction (ADR-137).
@@ -27,7 +27,8 @@ repository boundary:
   partdesign, sketcher, part, mesh, assembly — the assembly one also
   carrying dynamics, MJCF export, tasks, policies and rollouts.
 - **the shell**, under `shell/` — a Blender fork carrying the
-  `mesh_agent` add-on. It is the product UI, it speaks the protocol in
+  `mesh_agent` package as application code (`scripts/startup`, ADR-183 —
+  not an add-on). It is the product UI, it speaks the protocol in
   `docs/INTEGRATION.md`, and it ships the engine inside its own bundle. It
   knows nothing about dynamics and never will: a policy rollout reaches it
   as the simulation trace it already played.
@@ -54,7 +55,12 @@ with no model in the loop at all. It is peer to the shell, not part of it,
 and shares no code with it.
 
 There is no Qt shell, no provider stack, and no API-key model loop — the AI
-runs as the Claude Code CLI, inside the shell or driven by `cli/`.
+runs as an agent CLI the user is already logged into: the Claude Code CLI
+(the default, and the only one `cli/` drives), the OpenAI Codex CLI
+(ADR-174), or pi (ADR-175), as a shell preference. All three drive the same
+Mesh tools over the same TCP bridge — Claude and Codex through an MCP shim,
+pi through a native extension, so MCP is a transport rather than the
+architecture — and none brings an API key or a model loop of ours.
 `pixi run build-engine` produces `FreeCADCmd` and `CadexGeometryWorker` and
 no application; the application is what `pixi run build-shell` installs, with
 the engine inside it.
@@ -82,7 +88,7 @@ Read `docs/VISION.md` before designing anything.
 | `docs/VISION.md` | What the product is; principles; non-goals. **Authoritative.** |
 | `docs/ARCHITECTURE.md` | What exists today: pipeline, file map, project store, substrate. |
 | `docs/XSCRIPT.md` | The scripting model — today (per-domain programs) vs target (one project script). |
-| `docs/ROADMAP.md` | Phases 0–16, status checkboxes, exit criteria. Living status lives here. |
+| `docs/ROADMAP.md` | Phases 0–17, status checkboxes, exit criteria. Living status lives here. |
 | `docs/MUJOCO.md` | **This branch's vertical**: dynamics and control, slices M0–M9 (all closed), the hazards, and the measured facts. §7 is the **end-to-end walkthrough** — how to take a drawing to a trained policy, in the order that costs least. ROADMAP Phase 14 is its status line. |
 | `docs/ORGANIC.md` | **Phase 15's vertical**: organic modelling and the CAD/mesh interface, slices O0–O3. §1 is the measurement it is sized from — a robot wolf built entirely in `part`, and the three ways it failed to weld its own seams. §4 is the benchmark log. |
 | `docs/STRUCTURAL.md` | **Phase 16's vertical**: stress, topology optimisation and shape search, slices **S0–S4, all closed**. §3 is S0's measurements; §4 is the search loop and why it drives the CLI rather than importing it; §5 is SIMP and the marching-tetrahedra extraction; §6 is the in-engine half and what it deliberately did *not* build; §7 is the loop closed; **§8 is S4 — the fit that ends in a script rather than a mesh**, its spike-zero blend measurements, its coverage gate and the one premise that did not survive contact. S0–S2 and S4 are outside the engine by construction; S3 is one op on `mesh` and one on `part`, and costs no protocol op and no `shell/` diff. |
@@ -123,7 +129,8 @@ src/Gui                   present but NOT BUILT (BUILD_GUI=OFF, ADR-022);
                           deletion is Phase 8 — docs/FREECAD.md §3
 shell/                    the shell — a Blender fork (conservative zone;
                           ledger and upstream diff in docs/BLENDER-TREE.md)
-shell/scripts/addons_core/mesh_agent/   the add-on: ours, subtractive
+shell/scripts/startup/mesh_agent/   the assistant, as application code
+                          (ADR-183, not an add-on): ours, subtractive
                           changes encouraged (docs/BLENDER.md)
 shell/lib/<platform>      submodules, NEVER content (1.3 GB prebuilt each)
                           NOTE: shell/ also carries ~790 MB in git-LFS
@@ -229,7 +236,7 @@ before the shell's suites see them, and `pixi run stage-engine` before the
 
 The philosophy is **remove more than we add** (`docs/VISION.md`). Zones:
 
-- **`src/Mod/cadex/**`, `cli/**`, `shell/scripts/addons_core/mesh_agent/**`,
+- **`src/Mod/cadex/**`, `cli/**`, `shell/scripts/startup/mesh_agent/**`,
   `training/**`, `analysis/**` and `docs/**` — subtractive changes
   encouraged.** These are ours. Dead code, unreachable branches, stale docs:
   delete them. Every removal gets a `docs/DECISIONS.md` entry (one line in an
@@ -308,7 +315,7 @@ tests and logging the decision; don't commit secrets or machine paths.
    change: needs an ADR and owner sign-off.
 5. **Don't build UI in the engine.** No Coin3D rendering, no Qt, no
    workbench concepts under `src/`. If it has a widget in it, it belongs in
-   `shell/scripts/addons_core/mesh_agent/`.
+   `shell/scripts/startup/mesh_agent/`.
 6. **The protocol is a contract between two halves that must stay
    swappable.** It is no longer a contract across repositories, and it is
    more valuable for it: pinning requests (`OP_ARG_SPECS`) and responses
@@ -341,9 +348,9 @@ Working rules on top of the change policy above:
 
 - **The `shell/` diff is spent, and only where it is ours** (ADR-091). The
   collision overlay is `mesh_agent/cadex_collision.py` plus edits to four
-  add-on files and the gate suite. What holds — and is what the old
+  `mesh_agent` files and the gate suite. What holds — and is what the old
   empty-diff rule was always a proxy for — is that **every line of our
-  `shell/` diff is under `shell/scripts/addons_core/mesh_agent/` or
+  `shell/` diff is under `shell/scripts/startup/mesh_agent/` or
   `shell/tests/python/`, and the inherited Blender tree is untouched.**
   `docs/BLENDER-TREE.md` §2a is still eight files and **must stay eight**;
   §2b, §2c and §2d are unmoved. Adding to *those* is a decision, not a fix

@@ -351,7 +351,11 @@ PROJECT_PACK = XScriptWorkbenchPack(
         "for declaring slider parameters; assign every kept value to the "
         "result dictionary. Outputs may mix domains; assembly components take "
         "part or partdesign values created in the same script, and mesh "
-        "tessellation takes part values created in the same script."
+        "tessellation takes part values created in the same script. The lib "
+        "global is the parts library: catalogued fasteners, bearings and "
+        "hardware as parametric part values built from real specs — browse "
+        "it in describe_api's library section before modelling standard "
+        "hardware by hand."
     ),
     api_exports=(),
     production_ready=True,

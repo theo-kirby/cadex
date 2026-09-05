@@ -99,6 +99,7 @@ void ED_spacetypes_init()
   ED_spacetype_cadex_policy();
   ED_spacetype_cadex_training();
   ED_spacetype_cadex_live();
+  ED_spacetype_cadex_blueprint();
   ED_spacetype_statusbar();
   ED_spacetype_topbar();
 

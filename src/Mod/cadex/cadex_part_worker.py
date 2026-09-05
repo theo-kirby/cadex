@@ -667,6 +667,117 @@ def _axis_circle(operation, subshape):
     )
 
 
+def _angle_ray(operation, parameter, subshape):
+    """``(direction, point, centroid)`` of a planar face or a straight edge.
+
+    ``direction`` is the plane's normal or the line's direction — whichever
+    the subshape has — and ``point`` is a point on that plane or line. The
+    sign of the normal is deliberately not trusted: :func:`_angle_frame`
+    builds its rays toward the centroids, so the answer cannot depend on
+    which way OCCT happened to orient a face.
+    """
+
+    for attribute, direction_name, point_name in (
+        ("Surface", "Axis", "Position"),
+        ("Curve", "Direction", "Location"),
+    ):
+        if _topology_geometry_type(subshape, attribute) not in ("Plane", "Line"):
+            continue
+        geometry = getattr(subshape, attribute)
+        direction = getattr(geometry, direction_name, None)
+        point = getattr(geometry, point_name, None)
+        if direction is None or point is None:
+            continue
+        return direction, point, getattr(subshape, "CenterOfMass", point)
+    raise _error(
+        operation,
+        parameter,
+        (
+            f"is a {_geometry_type(subshape)} with no single direction; an "
+            "angle needs a planar face or a straight edge at each end"
+        ),
+    )
+
+
+#: Below this the two directions are parallel and there is no vertex for an
+#: angle to open from. The sine of about 0.006 degrees — anything a person
+#: would call parallel, and nothing a person would dimension as an angle.
+_ANGLE_PARALLEL_SIN = 1.0e-4
+
+
+def _angle_frame(operation, first, second, element_type):
+    """``(vertex, ends, degrees)`` — the drawing an angle publishes.
+
+    Two rays from a common vertex, each pointing into the subshape it
+    measures, and the angle between them. For faces the vertex sits on the
+    planes' intersection line, nearest the faces themselves; for edges it is
+    the lines' closest approach. Rays toward the centroids rather than along
+    stored directions, so the published angle is the opening a drawing would
+    dimension — orientation conventions never enter it.
+    """
+
+    d1, p1, c1 = _angle_ray(operation, "start", first)
+    d2, p2, c2 = _angle_ray(operation, "end", second)
+    axis = d1.cross(d2)
+    if axis.Length <= _ANGLE_PARALLEL_SIN * max(d1.Length * d2.Length, 1e-30):
+        raise _error(
+            operation,
+            "start/end",
+            "name parallel subshapes; there is no angle between them — "
+            "measure a distance instead",
+        )
+
+    if element_type == "face":
+        # The planes' intersection line: direction `axis`, one point solved
+        # from the two plane equations, then slid along the line to sit
+        # nearest the faces being measured.
+        line_point = (
+            d2.cross(axis) * d1.dot(p1) + axis.cross(d1) * d2.dot(p2)
+        ) * (1.0 / axis.dot(axis))
+        unit = axis * (1.0 / axis.Length)
+        middle = (c1 + c2) * 0.5
+        vertex = line_point + unit * (middle - line_point).dot(unit)
+        rays = []
+        for centroid in (c1, c2):
+            ray = centroid - vertex
+            ray = ray - unit * ray.dot(unit)   # into the face's own plane
+            rays.append(ray)
+    else:
+        # The lines' closest approach; the vertex is its midpoint, which for
+        # two edges meeting at a corner is the corner itself.
+        w = p1 - p2
+        a, b, c = d1.dot(d1), d1.dot(d2), d2.dot(d2)
+        d, e = d1.dot(w), d2.dot(w)
+        denominator = a * c - b * b
+        s = (b * e - c * d) / denominator
+        t = (a * e - b * d) / denominator
+        near1 = p1 + d1 * s
+        near2 = p2 + d2 * t
+        vertex = (near1 + near2) * 0.5
+        rays = []
+        for direction, centroid in ((d1, c1), (d2, c2)):
+            ray = direction * (1.0 if (centroid - vertex).dot(direction) >= 0.0
+                               else -1.0)
+            rays.append(ray)
+
+    for index, ray in enumerate(rays):
+        if ray.Length <= 1.0e-9:
+            raise _error(
+                operation,
+                ("start", "end")[index],
+                "sits on the angle's own vertex; its ray has no direction",
+            )
+    units = [ray * (1.0 / ray.Length) for ray in rays]
+    cosine = max(-1.0, min(1.0, units[0].dot(units[1])))
+    degrees = math.degrees(math.acos(cosine))
+
+    # The ray endpoints reach the material they measure, so the drawn rays
+    # end on the faces rather than at an arbitrary pixel length.
+    reach = max((c1 - vertex).Length, (c2 - vertex).Length, 1.0)
+    ends = [vertex + unit * reach for unit in units]
+    return vertex, ends, degrees
+
+
 def _extent_anchors(shape, axis):
     """The two ends of a bounding-box span, on the centre line of the part.
 
@@ -712,20 +823,41 @@ def measurement_record(shape, properties):
         "center_mm": None,
         "radius_mm": None,
         "normal": None,
+        "vertex_mm": None,
     }
 
-    if kind == "diameter":
+    if kind in ("diameter", "radius"):
         target = _measured_subshape(
             operation, "at", shape, properties.get("at"), element_type
         )
         center, axis, radius = _axis_circle(operation, target)
-        value = 2.0 * radius
         record["center_mm"] = _point_fact(center)
         record["radius_mm"] = radius
         record["normal"] = _point_fact(axis)
-        record["text"] = "{:s}{:.{places}f} mm".format(
-            _DIAMETER_SIGN, value, places=places
+        if kind == "radius":
+            value = radius
+            record["text"] = "R{:.{places}f} mm".format(value, places=places)
+        else:
+            value = 2.0 * radius
+            record["text"] = "{:s}{:.{places}f} mm".format(
+                _DIAMETER_SIGN, value, places=places
+            )
+    elif kind == "angle":
+        first = _measured_subshape(
+            operation, "start", shape, properties.get("start"), element_type
         )
+        second = _measured_subshape(
+            operation, "end", shape, properties.get("end"), element_type
+        )
+        vertex, ends, value = _angle_frame(operation, first, second, element_type)
+        record["vertex_mm"] = _point_fact(vertex)
+        record["anchors_mm"] = [_point_fact(ends[0]), _point_fact(ends[1])]
+        record["text"] = "{:.{places}f}\N{DEGREE SIGN}".format(value, places=places)
+        # Degrees, not millimetres: the number is honest about its unit and
+        # ``value_mm`` stays None rather than smuggling an angle into a length.
+        record["value_deg"] = float(value)
+        record["value_mm"] = None
+        return record
     elif kind == "extent":
         start, end, value = _extent_anchors(shape, str(properties.get("axis") or "z"))
         record["anchors_mm"] = [start, end]

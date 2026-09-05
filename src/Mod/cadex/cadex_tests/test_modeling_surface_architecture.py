@@ -183,6 +183,7 @@ def test_describe_project_api_is_json_safe_and_complete() -> None:
         "cage",
         "section_cage",
         "ring",
+        "lib",
     }
     assert "params" in payload["parameters"]
     assert "num" in payload["parameters"]

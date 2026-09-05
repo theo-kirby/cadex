@@ -1,0 +1,1385 @@
+{
+  "entries": [
+    {
+      "bytes": 97645,
+      "created_at": "2026-08-29T17:11:37Z",
+      "digest": "31c8ede08397e4c5bf7c05ed83784c9e9975c18b5aa68061e3faf972f712da7e",
+      "file": "0001-biped-overview.png",
+      "label": "biped overview",
+      "meta": {
+        "aspect": "16:9",
+        "layout": "hero",
+        "project": "biped",
+        "recipe": {
+          "aspect": "16:9",
+          "layout": "hero",
+          "max_size": 1024,
+          "theme": "blueprint",
+          "views": [
+            {
+              "hero": true,
+              "projection": "perspective",
+              "title": "MG90S biped, 10 DOF",
+              "view": "three-quarter"
+            },
+            {
+              "only": [
+                "c_foot_l",
+                "c_ankle_l",
+                "c_shin_l"
+              ],
+              "projection": "ortho",
+              "title": "lower leg, side",
+              "view": "left"
+            },
+            {
+              "only": [
+                "c_foot_l",
+                "c_ankle_l",
+                "c_shin_l"
+              ],
+              "projection": "ortho",
+              "title": "lower leg, front",
+              "view": "front"
+            },
+            {
+              "view": "params"
+            }
+          ]
+        },
+        "rects": [
+          [
+            341,
+            0,
+            683,
+            576
+          ],
+          [
+            0,
+            384,
+            341,
+            192
+          ],
+          [
+            0,
+            192,
+            341,
+            192
+          ],
+          [
+            0,
+            0,
+            341,
+            192
+          ]
+        ],
+        "size": [
+          1074,
+          626
+        ],
+        "theme": "blueprint",
+        "version": "0.0.0",
+        "views": [
+          {
+            "hero": true,
+            "label": "MG90S biped, 10 DOF",
+            "projection": "perspective",
+            "view": "three-quarter"
+          },
+          {
+            "label": "lower leg, side",
+            "only": [
+              "c_foot_l",
+              "c_ankle_l",
+              "c_shin_l"
+            ],
+            "projection": "ortho",
+            "view": "left"
+          },
+          {
+            "label": "lower leg, front",
+            "only": [
+              "c_foot_l",
+              "c_ankle_l",
+              "c_shin_l"
+            ],
+            "projection": "ortho",
+            "view": "front"
+          },
+          {
+            "label": "parameters",
+            "view": "params"
+          }
+        ]
+      },
+      "name": "biped overview",
+      "ordinal": 1,
+      "outputs": [
+        "ankle_l",
+        "ankle_pitch_l",
+        "ankle_pitch_r",
+        "ankle_r",
+        "ankle_roll_l",
+        "ankle_roll_r",
+        "biped",
+        "c_ankle_l",
+        "c_ankle_r",
+        "c_floor",
+        "c_foot_l",
+        "c_foot_r",
+        "c_hip_l",
+        "c_hip_r",
+        "c_shin_l",
+        "c_shin_r",
+        "c_thigh_l",
+        "c_thigh_r",
+        "c_torso",
+        "floor",
+        "foot_l",
+        "foot_r",
+        "hip_l",
+        "hip_pitch_l",
+        "hip_pitch_r",
+        "hip_r",
+        "hip_roll_l",
+        "hip_roll_r",
+        "knee_l",
+        "knee_r",
+        "shin_l",
+        "shin_r",
+        "solved",
+        "thigh_l",
+        "thigh_r",
+        "torso"
+      ],
+      "revision": "be282e40456c44f8bc1cdf678835fa965a10a3103b8e69411e12f486e437ccbe",
+      "sha256": "c00cf77cd8016595cff67cd9af15ebb6cc21dcc4edaca8a94e58c710a69856e3",
+      "version": 1
+    },
+    {
+      "bytes": 110622,
+      "created_at": "2026-08-29T18:39:14Z",
+      "digest": "71957eacf79bb07e66718e5640802f40fc36f4c82e1489702083ec59291113ad",
+      "file": "0002-biped-build-sheet.png",
+      "label": "biped build sheet",
+      "meta": {
+        "aspect": "16:9",
+        "layout": "hero",
+        "project": "biped",
+        "recipe": {
+          "aspect": "16:9",
+          "layout": "hero",
+          "max_size": 1024,
+          "theme": "blueprint",
+          "views": [
+            {
+              "hero": true,
+              "projection": "perspective",
+              "title": "MG90S biped - 10 DOF",
+              "view": "three-quarter"
+            },
+            {
+              "projection": "ortho",
+              "title": "front",
+              "view": "right"
+            },
+            {
+              "only": [
+                "c_foot_l",
+                "c_ankle_l",
+                "c_shin_l"
+              ],
+              "projection": "ortho",
+              "title": "ankle + knee stack",
+              "view": "left"
+            },
+            {
+              "text": "10 DOF: hip roll, hip pitch, knee, ankle pitch, ankle roll, per leg.\n10x MG90S on a PCA9685 16-ch driver, commanded by an ESP32-S3.\nHeight 267 mm, mass 326 g at 1300 kg/m3, stance width 105 mm.\nServo limit 216 N*mm. Standing ankle load about 96 N*mm.\nTask 'balance': 8 s episodes, 50 Hz, two random pushes up to 3 N.",
+              "title": "build notes",
+              "view": "text"
+            },
+            {
+              "view": "params"
+            }
+          ]
+        },
+        "rects": [
+          [
+            341,
+            0,
+            683,
+            576
+          ],
+          [
+            0,
+            432,
+            341,
+            144
+          ],
+          [
+            0,
+            288,
+            341,
+            144
+          ],
+          [
+            0,
+            144,
+            341,
+            144
+          ],
+          [
+            0,
+            0,
+            341,
+            144
+          ]
+        ],
+        "size": [
+          1074,
+          626
+        ],
+        "theme": "blueprint",
+        "version": "0.0.0",
+        "views": [
+          {
+            "hero": true,
+            "label": "MG90S biped - 10 DOF",
+            "projection": "perspective",
+            "view": "three-quarter"
+          },
+          {
+            "label": "front",
+            "projection": "ortho",
+            "view": "right"
+          },
+          {
+            "label": "ankle + knee stack",
+            "only": [
+              "c_foot_l",
+              "c_ankle_l",
+              "c_shin_l"
+            ],
+            "projection": "ortho",
+            "view": "left"
+          },
+          {
+            "chars": 316,
+            "label": "build notes",
+            "view": "text"
+          },
+          {
+            "label": "parameters",
+            "view": "params"
+          }
+        ]
+      },
+      "name": "biped build sheet",
+      "ordinal": 2,
+      "outputs": [
+        "ankle_l",
+        "ankle_pitch_l",
+        "ankle_pitch_r",
+        "ankle_r",
+        "ankle_roll_l",
+        "ankle_roll_r",
+        "balance",
+        "biped",
+        "biped_mjcf",
+        "c_ankle_l",
+        "c_ankle_r",
+        "c_floor",
+        "c_foot_l",
+        "c_foot_r",
+        "c_hip_l",
+        "c_hip_r",
+        "c_shin_l",
+        "c_shin_r",
+        "c_thigh_l",
+        "c_thigh_r",
+        "c_torso",
+        "floor",
+        "foot_l",
+        "foot_r",
+        "hip_l",
+        "hip_pitch_l",
+        "hip_pitch_r",
+        "hip_r",
+        "hip_roll_l",
+        "hip_roll_r",
+        "knee_l",
+        "knee_r",
+        "shin_l",
+        "shin_r",
+        "solved",
+        "thigh_l",
+        "thigh_r",
+        "torso"
+      ],
+      "revision": "2e441bc1d28188a3ef920233ae99a71a9ee3ec6ea3d5342c6c43e780c370891d",
+      "sha256": "9c21835e528e8eac91ac150aa0e34b6348e8a552b84d74200aaab5a496fc44ae",
+      "version": 1
+    },
+    {
+      "bytes": 77519,
+      "created_at": "2026-08-29T21:01:02Z",
+      "digest": "6e962f8c3708a35f967aeb7df21a7c65160cd8d44cbb223585bdf172ae853a81",
+      "file": "0003-leg-detail.png",
+      "label": "leg detail",
+      "meta": {
+        "aspect": "16:9",
+        "layout": "row",
+        "project": "biped",
+        "recipe": {
+          "aspect": "16:9",
+          "layout": "row",
+          "max_size": 1024,
+          "theme": "blueprint",
+          "views": [
+            {
+              "only": [
+                "c_thigh_l",
+                "c_shin_l"
+              ],
+              "projection": "ortho",
+              "title": "leg front",
+              "view": "front"
+            },
+            {
+              "only": [
+                "c_thigh_l",
+                "c_shin_l"
+              ],
+              "projection": "perspective",
+              "title": "leg 3/4",
+              "view": "three-quarter"
+            },
+            {
+              "only": [
+                "c_thigh_l",
+                "c_shin_l"
+              ],
+              "projection": "ortho",
+              "title": "leg top",
+              "view": "top"
+            }
+          ]
+        },
+        "rects": [
+          [
+            0,
+            0,
+            341,
+            576
+          ],
+          [
+            341,
+            0,
+            342,
+            576
+          ],
+          [
+            683,
+            0,
+            341,
+            576
+          ]
+        ],
+        "size": [
+          1074,
+          626
+        ],
+        "theme": "blueprint",
+        "version": "0.0.0",
+        "views": [
+          {
+            "label": "leg front",
+            "only": [
+              "c_thigh_l",
+              "c_shin_l"
+            ],
+            "projection": "ortho",
+            "view": "front"
+          },
+          {
+            "label": "leg 3/4",
+            "only": [
+              "c_thigh_l",
+              "c_shin_l"
+            ],
+            "projection": "perspective",
+            "view": "three-quarter"
+          },
+          {
+            "label": "leg top",
+            "only": [
+              "c_thigh_l",
+              "c_shin_l"
+            ],
+            "projection": "ortho",
+            "view": "top"
+          }
+        ]
+      },
+      "name": "leg detail",
+      "ordinal": 3,
+      "outputs": [
+        "ankle_l",
+        "ankle_pitch_l",
+        "ankle_pitch_r",
+        "ankle_r",
+        "ankle_roll_l",
+        "ankle_roll_r",
+        "balance",
+        "biped",
+        "biped_mjcf",
+        "c_ankle_l",
+        "c_ankle_r",
+        "c_floor",
+        "c_foot_l",
+        "c_foot_r",
+        "c_hip_l",
+        "c_hip_r",
+        "c_shin_l",
+        "c_shin_r",
+        "c_thigh_l",
+        "c_thigh_r",
+        "c_torso",
+        "floor",
+        "foot_l",
+        "foot_r",
+        "hip_l",
+        "hip_pitch_l",
+        "hip_pitch_r",
+        "hip_r",
+        "hip_roll_l",
+        "hip_roll_r",
+        "knee_l",
+        "knee_r",
+        "shin_l",
+        "shin_r",
+        "solved",
+        "thigh_l",
+        "thigh_r",
+        "torso"
+      ],
+      "revision": "c02539c5d48535581077037c73b239c88fd158cffb77250e433cea88f78e78e3",
+      "sha256": "74a34defa1f6d712e54a1fee2308ee8833834846afedbfb4eb5fb5997d878902",
+      "version": 1
+    },
+    {
+      "bytes": 45542,
+      "created_at": "2026-08-29T21:01:09Z",
+      "digest": "6e962f8c3708a35f967aeb7df21a7c65160cd8d44cbb223585bdf172ae853a81",
+      "file": "0004-leg-section.png",
+      "label": "leg section",
+      "meta": {
+        "aspect": "16:9",
+        "layout": "row",
+        "project": "biped",
+        "recipe": {
+          "aspect": "16:9",
+          "layout": "row",
+          "max_size": 1024,
+          "theme": "blueprint",
+          "views": [
+            {
+              "only": [
+                "c_shin_l"
+              ],
+              "projection": "ortho",
+              "section": "Z",
+              "section_offset_mm": 68.0,
+              "title": "shin section z=68",
+              "view": "top"
+            },
+            {
+              "only": [
+                "c_thigh_l"
+              ],
+              "projection": "ortho",
+              "section": "Z",
+              "section_offset_mm": 130.0,
+              "title": "thigh section z=130",
+              "view": "top"
+            }
+          ]
+        },
+        "rects": [
+          [
+            0,
+            0,
+            512,
+            576
+          ],
+          [
+            512,
+            0,
+            512,
+            576
+          ]
+        ],
+        "size": [
+          1074,
+          626
+        ],
+        "theme": "blueprint",
+        "version": "0.0.0",
+        "views": [
+          {
+            "label": "shin section z=68",
+            "only": [
+              "c_shin_l"
+            ],
+            "projection": "ortho",
+            "section": {
+              "axis": "Z",
+              "flip": false,
+              "offset_mm": 68.0
+            },
+            "view": "top"
+          },
+          {
+            "label": "thigh section z=130",
+            "only": [
+              "c_thigh_l"
+            ],
+            "projection": "ortho",
+            "section": {
+              "axis": "Z",
+              "flip": false,
+              "offset_mm": 130.0
+            },
+            "view": "top"
+          }
+        ]
+      },
+      "name": "leg section",
+      "ordinal": 4,
+      "outputs": [
+        "ankle_l",
+        "ankle_pitch_l",
+        "ankle_pitch_r",
+        "ankle_r",
+        "ankle_roll_l",
+        "ankle_roll_r",
+        "balance",
+        "biped",
+        "biped_mjcf",
+        "c_ankle_l",
+        "c_ankle_r",
+        "c_floor",
+        "c_foot_l",
+        "c_foot_r",
+        "c_hip_l",
+        "c_hip_r",
+        "c_shin_l",
+        "c_shin_r",
+        "c_thigh_l",
+        "c_thigh_r",
+        "c_torso",
+        "floor",
+        "foot_l",
+        "foot_r",
+        "hip_l",
+        "hip_pitch_l",
+        "hip_pitch_r",
+        "hip_r",
+        "hip_roll_l",
+        "hip_roll_r",
+        "knee_l",
+        "knee_r",
+        "shin_l",
+        "shin_r",
+        "solved",
+        "thigh_l",
+        "thigh_r",
+        "torso"
+      ],
+      "revision": "c02539c5d48535581077037c73b239c88fd158cffb77250e433cea88f78e78e3",
+      "sha256": "a84784aa098a9ee529e54915d2e1690729246a3007a6b7af9880c038ac444a1e",
+      "version": 1
+    },
+    {
+      "bytes": 48750,
+      "created_at": "2026-08-29T21:01:35Z",
+      "digest": "6e962f8c3708a35f967aeb7df21a7c65160cd8d44cbb223585bdf172ae853a81",
+      "file": "0005-thigh-section-check.png",
+      "label": "thigh section check",
+      "meta": {
+        "aspect": "16:9",
+        "layout": "row",
+        "project": "biped",
+        "recipe": {
+          "aspect": "16:9",
+          "layout": "row",
+          "max_size": 1024,
+          "theme": "blueprint",
+          "views": [
+            {
+              "only": [
+                "c_thigh_l"
+              ],
+              "projection": "ortho",
+              "section": "Z",
+              "section_offset_mm": 120.0,
+              "title": "thigh z=120",
+              "view": "top"
+            },
+            {
+              "only": [
+                "c_thigh_l"
+              ],
+              "projection": "ortho",
+              "section": "Z",
+              "section_offset_mm": 135.0,
+              "title": "thigh z=135",
+              "view": "top"
+            },
+            {
+              "only": [
+                "c_thigh_l"
+              ],
+              "projection": "ortho",
+              "section": "Z",
+              "section_offset_mm": 150.0,
+              "title": "thigh z=150",
+              "view": "top"
+            }
+          ]
+        },
+        "rects": [
+          [
+            0,
+            0,
+            341,
+            576
+          ],
+          [
+            341,
+            0,
+            342,
+            576
+          ],
+          [
+            683,
+            0,
+            341,
+            576
+          ]
+        ],
+        "size": [
+          1074,
+          626
+        ],
+        "theme": "blueprint",
+        "version": "0.0.0",
+        "views": [
+          {
+            "label": "thigh z=120",
+            "only": [
+              "c_thigh_l"
+            ],
+            "projection": "ortho",
+            "section": {
+              "axis": "Z",
+              "flip": false,
+              "offset_mm": 120.0
+            },
+            "view": "top"
+          },
+          {
+            "label": "thigh z=135",
+            "only": [
+              "c_thigh_l"
+            ],
+            "projection": "ortho",
+            "section": {
+              "axis": "Z",
+              "flip": false,
+              "offset_mm": 135.0
+            },
+            "view": "top"
+          },
+          {
+            "label": "thigh z=150",
+            "only": [
+              "c_thigh_l"
+            ],
+            "projection": "ortho",
+            "section": {
+              "axis": "Z",
+              "flip": false,
+              "offset_mm": 150.0
+            },
+            "view": "top"
+          }
+        ]
+      },
+      "name": "thigh section check",
+      "ordinal": 5,
+      "outputs": [
+        "ankle_l",
+        "ankle_pitch_l",
+        "ankle_pitch_r",
+        "ankle_r",
+        "ankle_roll_l",
+        "ankle_roll_r",
+        "balance",
+        "biped",
+        "biped_mjcf",
+        "c_ankle_l",
+        "c_ankle_r",
+        "c_floor",
+        "c_foot_l",
+        "c_foot_r",
+        "c_hip_l",
+        "c_hip_r",
+        "c_shin_l",
+        "c_shin_r",
+        "c_thigh_l",
+        "c_thigh_r",
+        "c_torso",
+        "floor",
+        "foot_l",
+        "foot_r",
+        "hip_l",
+        "hip_pitch_l",
+        "hip_pitch_r",
+        "hip_r",
+        "hip_roll_l",
+        "hip_roll_r",
+        "knee_l",
+        "knee_r",
+        "shin_l",
+        "shin_r",
+        "solved",
+        "thigh_l",
+        "thigh_r",
+        "torso"
+      ],
+      "revision": "c02539c5d48535581077037c73b239c88fd158cffb77250e433cea88f78e78e3",
+      "sha256": "03e35d8d5a01495e7e84506539edfe6e96dab6c8fda1743237f999387933bd22",
+      "version": 1
+    },
+    {
+      "bytes": 77547,
+      "created_at": "2026-08-29T21:10:00Z",
+      "digest": "00b7cc3271be1a77f928f210407a87d1c6c3f6ff410629758a3d92f1fe001141",
+      "file": "0006-leg-detail.png",
+      "label": "leg detail",
+      "meta": {
+        "aspect": "16:9",
+        "layout": "row",
+        "project": "biped",
+        "recipe": {
+          "aspect": "16:9",
+          "layout": "row",
+          "max_size": 1024,
+          "theme": "blueprint",
+          "views": [
+            {
+              "only": [
+                "c_thigh_l",
+                "c_shin_l"
+              ],
+              "projection": "ortho",
+              "title": "leg front",
+              "view": "front"
+            },
+            {
+              "only": [
+                "c_thigh_l",
+                "c_shin_l"
+              ],
+              "projection": "perspective",
+              "title": "leg 3/4",
+              "view": "three-quarter"
+            },
+            {
+              "only": [
+                "c_thigh_l",
+                "c_shin_l"
+              ],
+              "projection": "ortho",
+              "title": "leg top",
+              "view": "top"
+            }
+          ]
+        },
+        "rects": [
+          [
+            0,
+            0,
+            341,
+            576
+          ],
+          [
+            341,
+            0,
+            342,
+            576
+          ],
+          [
+            683,
+            0,
+            341,
+            576
+          ]
+        ],
+        "size": [
+          1074,
+          626
+        ],
+        "theme": "blueprint",
+        "version": "0.0.0",
+        "views": [
+          {
+            "label": "leg front",
+            "only": [
+              "c_thigh_l",
+              "c_shin_l"
+            ],
+            "projection": "ortho",
+            "view": "front"
+          },
+          {
+            "label": "leg 3/4",
+            "only": [
+              "c_thigh_l",
+              "c_shin_l"
+            ],
+            "projection": "perspective",
+            "view": "three-quarter"
+          },
+          {
+            "label": "leg top",
+            "only": [
+              "c_thigh_l",
+              "c_shin_l"
+            ],
+            "projection": "ortho",
+            "view": "top"
+          }
+        ]
+      },
+      "name": "leg detail",
+      "ordinal": 6,
+      "outputs": [
+        "ankle_l",
+        "ankle_pitch_l",
+        "ankle_pitch_r",
+        "ankle_r",
+        "ankle_roll_l",
+        "ankle_roll_r",
+        "balance",
+        "biped",
+        "biped_mjcf",
+        "c_ankle_l",
+        "c_ankle_r",
+        "c_floor",
+        "c_foot_l",
+        "c_foot_r",
+        "c_hip_l",
+        "c_hip_r",
+        "c_shin_l",
+        "c_shin_r",
+        "c_thigh_l",
+        "c_thigh_r",
+        "c_torso",
+        "floor",
+        "foot_l",
+        "foot_r",
+        "hip_l",
+        "hip_pitch_l",
+        "hip_pitch_r",
+        "hip_r",
+        "hip_roll_l",
+        "hip_roll_r",
+        "knee_l",
+        "knee_r",
+        "shin_l",
+        "shin_r",
+        "solved",
+        "thigh_l",
+        "thigh_r",
+        "torso"
+      ],
+      "revision": "95001310f0308c2f453f7b9533faf8c6a1af41dd857669dbc7ca09f00a483ede",
+      "sha256": "9d84291e376de29237a984002c4a3385428d1d6f6ab850f3cea65902dcf100dd",
+      "version": 2
+    },
+    {
+      "bytes": 79004,
+      "created_at": "2026-08-29T21:12:57Z",
+      "digest": "00b7cc3271be1a77f928f210407a87d1c6c3f6ff410629758a3d92f1fe001141",
+      "file": "0007-hip-check.png",
+      "label": "hip check",
+      "meta": {
+        "aspect": "16:9",
+        "layout": "grid",
+        "project": "biped",
+        "recipe": {
+          "aspect": "16:9",
+          "layout": "grid",
+          "max_size": 1024,
+          "theme": "blueprint",
+          "views": [
+            {
+              "only": [
+                "c_hip_l",
+                "c_thigh_l"
+              ],
+              "projection": "ortho",
+              "title": "hip+thigh from +X",
+              "view": "right"
+            },
+            {
+              "only": [
+                "c_hip_l",
+                "c_thigh_l"
+              ],
+              "projection": "ortho",
+              "title": "hip+thigh from -Y",
+              "view": "front"
+            },
+            {
+              "only": [
+                "c_hip_l",
+                "c_thigh_l"
+              ],
+              "projection": "perspective",
+              "title": "hip+thigh 3/4",
+              "view": "three-quarter"
+            },
+            {
+              "only": [
+                "c_hip_l",
+                "c_thigh_l"
+              ],
+              "projection": "ortho",
+              "title": "from above",
+              "view": "top"
+            }
+          ]
+        },
+        "rects": [
+          [
+            0,
+            288,
+            512,
+            288
+          ],
+          [
+            512,
+            288,
+            512,
+            288
+          ],
+          [
+            0,
+            0,
+            512,
+            288
+          ],
+          [
+            512,
+            0,
+            512,
+            288
+          ]
+        ],
+        "size": [
+          1074,
+          626
+        ],
+        "theme": "blueprint",
+        "version": "0.0.0",
+        "views": [
+          {
+            "label": "hip+thigh from +X",
+            "only": [
+              "c_hip_l",
+              "c_thigh_l"
+            ],
+            "projection": "ortho",
+            "view": "right"
+          },
+          {
+            "label": "hip+thigh from -Y",
+            "only": [
+              "c_hip_l",
+              "c_thigh_l"
+            ],
+            "projection": "ortho",
+            "view": "front"
+          },
+          {
+            "label": "hip+thigh 3/4",
+            "only": [
+              "c_hip_l",
+              "c_thigh_l"
+            ],
+            "projection": "perspective",
+            "view": "three-quarter"
+          },
+          {
+            "label": "from above",
+            "only": [
+              "c_hip_l",
+              "c_thigh_l"
+            ],
+            "projection": "ortho",
+            "view": "top"
+          }
+        ]
+      },
+      "name": "hip check",
+      "ordinal": 7,
+      "outputs": [
+        "ankle_l",
+        "ankle_pitch_l",
+        "ankle_pitch_r",
+        "ankle_r",
+        "ankle_roll_l",
+        "ankle_roll_r",
+        "balance",
+        "biped",
+        "biped_mjcf",
+        "c_ankle_l",
+        "c_ankle_r",
+        "c_floor",
+        "c_foot_l",
+        "c_foot_r",
+        "c_hip_l",
+        "c_hip_r",
+        "c_shin_l",
+        "c_shin_r",
+        "c_thigh_l",
+        "c_thigh_r",
+        "c_torso",
+        "floor",
+        "foot_l",
+        "foot_r",
+        "hip_l",
+        "hip_pitch_l",
+        "hip_pitch_r",
+        "hip_r",
+        "hip_roll_l",
+        "hip_roll_r",
+        "knee_l",
+        "knee_r",
+        "shin_l",
+        "shin_r",
+        "solved",
+        "thigh_l",
+        "thigh_r",
+        "torso"
+      ],
+      "revision": "95001310f0308c2f453f7b9533faf8c6a1af41dd857669dbc7ca09f00a483ede",
+      "sha256": "e4c4ff758da2bddc97d8889d63765e35dc468e1edab1dade5ce0f2c4867f57b0",
+      "version": 1
+    },
+    {
+      "bytes": 78180,
+      "created_at": "2026-08-29T21:19:33Z",
+      "digest": "d5b3910721d7fc7ca388f4c806de48156acd29ea1a083da804a65ebda04d904a",
+      "file": "0008-hip-check.png",
+      "label": "hip check",
+      "meta": {
+        "aspect": "16:9",
+        "layout": "grid",
+        "project": "biped",
+        "recipe": {
+          "aspect": "16:9",
+          "layout": "grid",
+          "max_size": 1024,
+          "theme": "blueprint",
+          "views": [
+            {
+              "only": [
+                "c_hip_l",
+                "c_thigh_l",
+                "c_torso"
+              ],
+              "projection": "ortho",
+              "title": "hip from +X",
+              "view": "right"
+            },
+            {
+              "only": [
+                "c_hip_l",
+                "c_thigh_l",
+                "c_torso"
+              ],
+              "projection": "ortho",
+              "title": "hip from -Y",
+              "view": "front"
+            },
+            {
+              "only": [
+                "c_hip_l",
+                "c_thigh_l"
+              ],
+              "projection": "perspective",
+              "title": "hip+thigh 3/4",
+              "view": "three-quarter"
+            },
+            {
+              "only": [
+                "c_hip_l",
+                "c_thigh_l",
+                "c_torso"
+              ],
+              "projection": "ortho",
+              "title": "from above",
+              "view": "top"
+            }
+          ]
+        },
+        "rects": [
+          [
+            0,
+            288,
+            512,
+            288
+          ],
+          [
+            512,
+            288,
+            512,
+            288
+          ],
+          [
+            0,
+            0,
+            512,
+            288
+          ],
+          [
+            512,
+            0,
+            512,
+            288
+          ]
+        ],
+        "size": [
+          1074,
+          626
+        ],
+        "theme": "blueprint",
+        "version": "0.0.0",
+        "views": [
+          {
+            "label": "hip from +X",
+            "only": [
+              "c_hip_l",
+              "c_thigh_l",
+              "c_torso"
+            ],
+            "projection": "ortho",
+            "view": "right"
+          },
+          {
+            "label": "hip from -Y",
+            "only": [
+              "c_hip_l",
+              "c_thigh_l",
+              "c_torso"
+            ],
+            "projection": "ortho",
+            "view": "front"
+          },
+          {
+            "label": "hip+thigh 3/4",
+            "only": [
+              "c_hip_l",
+              "c_thigh_l"
+            ],
+            "projection": "perspective",
+            "view": "three-quarter"
+          },
+          {
+            "label": "from above",
+            "only": [
+              "c_hip_l",
+              "c_thigh_l",
+              "c_torso"
+            ],
+            "projection": "ortho",
+            "view": "top"
+          }
+        ]
+      },
+      "name": "hip check",
+      "ordinal": 8,
+      "outputs": [
+        "ankle_l",
+        "ankle_pitch_l",
+        "ankle_pitch_r",
+        "ankle_r",
+        "ankle_roll_l",
+        "ankle_roll_r",
+        "balance",
+        "biped",
+        "biped_mjcf",
+        "c_ankle_l",
+        "c_ankle_r",
+        "c_floor",
+        "c_foot_l",
+        "c_foot_r",
+        "c_hip_l",
+        "c_hip_r",
+        "c_shin_l",
+        "c_shin_r",
+        "c_thigh_l",
+        "c_thigh_r",
+        "c_torso",
+        "floor",
+        "foot_l",
+        "foot_r",
+        "hip_l",
+        "hip_pitch_l",
+        "hip_pitch_r",
+        "hip_r",
+        "hip_roll_l",
+        "hip_roll_r",
+        "knee_l",
+        "knee_r",
+        "shin_l",
+        "shin_r",
+        "solved",
+        "thigh_l",
+        "thigh_r",
+        "torso"
+      ],
+      "revision": "a3b7e1963d02127ee7a8bd6d62189bbe522a2d1ee032571d16895f37509c7dd6",
+      "sha256": "e2c308807983b60394e91c1a0512cc05593160bd739a643254b556483a243534",
+      "version": 2
+    },
+    {
+      "bytes": 77401,
+      "created_at": "2026-08-29T21:28:24Z",
+      "digest": "ebbdca043d191737a1d2ef0f6413cb0650639c159aaa907ca11d5bfd3e2469f5",
+      "file": "0009-pelvis.png",
+      "label": "pelvis",
+      "meta": {
+        "aspect": "16:9",
+        "layout": "row",
+        "project": "biped",
+        "recipe": {
+          "aspect": "16:9",
+          "layout": "row",
+          "max_size": 1024,
+          "theme": "blueprint",
+          "views": [
+            {
+              "only": [
+                "c_torso"
+              ],
+              "projection": "ortho",
+              "title": "pelvis front",
+              "view": "front"
+            },
+            {
+              "only": [
+                "c_torso",
+                "c_hip_l",
+                "c_hip_r"
+              ],
+              "projection": "perspective",
+              "title": "pelvis + hips",
+              "view": "three-quarter"
+            }
+          ]
+        },
+        "rects": [
+          [
+            0,
+            0,
+            512,
+            576
+          ],
+          [
+            512,
+            0,
+            512,
+            576
+          ]
+        ],
+        "size": [
+          1074,
+          626
+        ],
+        "theme": "blueprint",
+        "version": "0.0.0",
+        "views": [
+          {
+            "label": "pelvis front",
+            "only": [
+              "c_torso"
+            ],
+            "projection": "ortho",
+            "view": "front"
+          },
+          {
+            "label": "pelvis + hips",
+            "only": [
+              "c_torso",
+              "c_hip_l",
+              "c_hip_r"
+            ],
+            "projection": "perspective",
+            "view": "three-quarter"
+          }
+        ]
+      },
+      "name": "pelvis",
+      "ordinal": 9,
+      "outputs": [
+        "ankle_l",
+        "ankle_pitch_l",
+        "ankle_pitch_r",
+        "ankle_r",
+        "ankle_roll_l",
+        "ankle_roll_r",
+        "balance",
+        "biped",
+        "biped_mjcf",
+        "c_ankle_l",
+        "c_ankle_r",
+        "c_floor",
+        "c_foot_l",
+        "c_foot_r",
+        "c_hip_l",
+        "c_hip_r",
+        "c_shin_l",
+        "c_shin_r",
+        "c_thigh_l",
+        "c_thigh_r",
+        "c_torso",
+        "floor",
+        "foot_l",
+        "foot_r",
+        "hip_l",
+        "hip_pitch_l",
+        "hip_pitch_r",
+        "hip_r",
+        "hip_roll_l",
+        "hip_roll_r",
+        "knee_l",
+        "knee_r",
+        "shin_l",
+        "shin_r",
+        "solved",
+        "thigh_l",
+        "thigh_r",
+        "torso"
+      ],
+      "revision": "81ad728348feae222581bfdd29ed47d8acc571006d6b1b7c93277f3b8f8905bf",
+      "sha256": "87a225b17c7cc5528041395af8f3082474b906bf4559d51c1de37949a63de012",
+      "version": 1
+    }
+  ],
+  "schema": "cadex-blueprint-v1"
+}

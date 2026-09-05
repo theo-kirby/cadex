@@ -29,9 +29,20 @@ import sys
 
 import bpy
 
+# mesh_agent is application code in scripts/startup (ADR-183): the app has
+# already registered its bundled copy. The suite tests the SOURCE tree, so
+# put that copy down, purge it, and import ours (bl_mesh_agent.py explains).
 _REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                       "..", ".."))
-sys.path.insert(0, os.path.join(_REPO, "scripts", "addons_core"))
+_SOURCE_STARTUP = os.path.join(_REPO, "scripts", "startup")
+_bundled = sys.modules.get("mesh_agent")
+if _bundled is not None and not os.path.abspath(
+        _bundled.__file__).startswith(_SOURCE_STARTUP + os.sep):
+    _bundled.unregister()
+    for _name in [n for n in sys.modules
+                  if n == "mesh_agent" or n.startswith("mesh_agent.")]:
+        del sys.modules[_name]
+sys.path.insert(0, _SOURCE_STARTUP)
 
 import mesh_agent  # noqa: E402
 from mesh_agent import cadex_backend  # noqa: E402

@@ -27,8 +27,8 @@ accounts and no servers; the project operates no infrastructure that could
 receive your data.
 
 This is checkable rather than asserted: no file under `src/Mod/cadex/` or
-`shell/scripts/addons_core/mesh_agent/` opens an outbound network
-connection. The only sockets either half creates are loopback — the add-on's
+`shell/scripts/startup/mesh_agent/` opens an outbound network
+connection. The only sockets either half creates are loopback — the shell package's
 tool bridge binds `127.0.0.1` on an ephemeral port (`mesh_agent/bridge.py`)
 and the MCP shim connects back to it on `127.0.0.1`
 (`mesh_agent/mcp_shim.py`). The engine (`cadexd`) speaks NDJSON over

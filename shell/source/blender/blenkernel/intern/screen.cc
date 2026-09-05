@@ -1255,7 +1255,8 @@ void BKE_screen_header_alignment_reset(bScreen *screen)
                  SPACE_CADEX_ENV,
                  SPACE_CADEX_POLICY,
                  SPACE_CADEX_TRAINING,
-                 SPACE_CADEX_LIVE))
+                 SPACE_CADEX_LIVE,
+                 SPACE_CADEX_BLUEPRINT))
         {
           region.alignment = RGN_ALIGN_TOP;
           continue;
@@ -1274,7 +1275,8 @@ void BKE_screen_header_alignment_reset(bScreen *screen)
                  SPACE_CADEX_ENV,
                  SPACE_CADEX_POLICY,
                  SPACE_CADEX_TRAINING,
-                 SPACE_CADEX_LIVE))
+                 SPACE_CADEX_LIVE,
+                 SPACE_CADEX_BLUEPRINT))
         {
           region.alignment = RGN_ALIGN_BOTTOM;
           continue;

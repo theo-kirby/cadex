@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-08-18
+Verified against source: 2026-08-31
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -119,10 +119,13 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   A snapshot, not a live link: the container changes only when `link_part`
   writes it again, so a rebuild never depends on another project's current
   state.
-- **`part.measurement(shape, kind=...)`** declares a **dimension** (ADR-139) —
-  the one part output that carries no geometry at all. `kind="distance"` takes
-  `start=`/`end=` selectors and measures between the two subshapes they name;
-  `kind="diameter"` takes one `at=` selector on a circular edge or a
+- **`part.measurement(shape, kind=...)`** declares a **dimension** (ADR-139;
+  radius and angle joined with ADR-176) — the one part output that carries no
+  geometry at all. `kind="distance"` takes `start=`/`end=` selectors and
+  measures between the two subshapes they name; `kind="angle"` takes the same
+  pair on planar faces or straight edges and publishes the opening in degrees
+  (a vertex and two rays, refused for parallel subshapes); `kind="diameter"`
+  and `kind="radius"` take one `at=` selector on a circular edge or a
   cylindrical face; `kind="extent"` takes `axis="x"|"y"|"z"` and measures the
   shape's overall span, which is what "the height of the part" means on
   anything that is not a box. `element_type="face"|"edge"` says which topology
@@ -407,6 +410,62 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
 - Outputs are evaluated per domain in fixed order sketcher → part →
   partdesign → mesh → assembly, reusing the per-domain evaluators and
   serializers.
+
+### The parts library: `lib` `[ADR-181]`
+
+Catalogued hardware as parametric part values, staged as the `lib` global
+(`cadex_library_api.py` over the spec tables in `CadexCatalog.py`):
+
+```python
+servo = lib.servo("mg90s", origin=(0, 30, 12), direction=(0, 0, 1))
+result["servo_l"] = servo.body
+result["horn_l"]  = servo.horn("single_arm").body
+knee_drive = servo.actuator(knee, control_deg="25*sin(2*pi*time)")
+
+result["nut"]  = lib.nut("m3").body
+result["bolt"] = lib.bolt("m3", 10, head="countersunk").body
+result["brg"]  = lib.bearing("608zz").body
+hole_dia       = lib.clearance_hole("m3")          # 3.4 — a number, not geometry
+```
+
+Every generator returns a `LibraryPart`: `.body` is an ordinary part-domain
+value (transform it, cut with it, hand it to `assembly.component`), `.spec`
+is the catalog row it was built from — density included, so
+`assembly.body(c, density_kg_m3=servo.spec["effective_density_kg_m3"])`
+carries the datasheet mass without a guess. Frames are uniform: the axis
+runs along `direction` (default +Z) and the datum sits at `origin` — a
+bolt's datum is its head-seat plane (shank along -direction), everything
+else stands on its base face, and a servo's datum is **the point where its
+output shaft meets the case top**, so swapping servo part numbers never
+moves the joint. `roll_degrees` spins a servo about its own shaft; the two
+rotations are composed into one `part.transform` in the library.
+
+Three rules the library holds itself to:
+
+- **Interface-exact, cosmetically simple.** Hole patterns, flange heights,
+  shaft positions and envelopes are the standard's or datasheet's numbers,
+  test-pinned with sources cited; threads and knurls are deliberately not
+  modelled — `lib.clearance_hole`/`tap_drill`/`insert_hole` carry the hole
+  data instead. A number no datasheet dimensions is named in the spec's
+  `approximate` list rather than passed off as measured.
+- **Real torque reaches the dynamics.** `servo.actuator(joint,
+  control_deg=...)` builds a position actuator whose `torque_limit_nmm` is
+  the manufacturer's stall figure at a rated voltage (default the lowest;
+  an unrated voltage is refused naming the rated ones — nothing is
+  interpolated), converted from kg·cm once, in the library.
+- **A spec correction is an engine change** (ADR-181): it moves geometry
+  under an unchanged script revision, the accepted digest detects the
+  drift, and the correction is logged like any behaviour change.
+
+Browse before modelling standard hardware by hand: `describe_api`'s
+`library` section lists the families, part numbers and deciding specs
+(`lib.catalog()` serves the same thing inside a script). Catalogued today:
+metric fasteners m2–m8 (socket/countersunk bolts, hex/nyloc nuts, flat
+washers), heat-set inserts m2–m5, the common ball bearings plus a
+parametric `lib.bushing`, and the four servo classes — SG90, MG90S,
+MG996R, DS3218 — with measured micro horns. The 25T horns and the servo
+pigtail terminals are deliberately absent until a dimensioned source
+exists.
 
 ### Naming geometry: selectors, not indices `[Phase 10b, ADR-029]`
 

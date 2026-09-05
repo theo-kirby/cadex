@@ -31,7 +31,7 @@ Cadex adds roughly **161,000 lines** of its own across both halves, or about
 | the engine, Python | 59,981 | `src/Mod/cadex/*.py` |
 | the engine's suites | 51,248 | `src/Mod/cadex/cadex_tests/` |
 | the engine, C++ | 1,031 | `CadexGeometryWorker.cpp` |
-| the shell add-on | 24,061 | `shell/scripts/addons_core/mesh_agent/` |
+| the shell assistant package | 24,061 | `shell/scripts/startup/mesh_agent/` |
 | the shell's Cadex suites | 10,321 | `shell/tests/python/bl_mesh_agent*.py` |
 | the headless CLI | 5,065 | `cli/` — a second front end, not a second engine (ADR-061) |
 | the offboard trainer | 2,643 | `training/` — **not part of the product** (§5) |
@@ -117,7 +117,7 @@ eight files were the *entire* delta; that was §2a's true claim, mis-scoped
 to the whole tree.
 
 **What we added.** Three things that exist in no upstream Blender and so can
-never conflict with one: the `mesh_agent` add-on (chat, the parameter panel,
+never conflict with one: the `mesh_agent` package (chat, the parameter panel,
 the cadexd protocol client, hydration, picking), the `Mesh` app template
 that suppresses Blender's default UI, and the Cadex test suites.
 
@@ -284,7 +284,7 @@ program linked together:
 
 - The engine is a set of processes (`cadexd`, and `FreeCADCmd` workers
   beneath it) that speak NDJSON over stdin/stdout.
-- The shell add-on speaks that protocol through a dependency-free client
+- The shell assistant package speaks that protocol through a dependency-free client
   (`cadexd_client.py`) which imports **no cadex code whatsoever**. That rule
   is enforced as a licence boundary, not as a style preference, and merging
   the two repositories into one did not relax it (see
@@ -356,6 +356,6 @@ replaced by our own binding (Phase 11) and the Blender shell by our own
 renderer (Phase 12), both behind the unchanged cadexd protocol.
 
 Neither is scheduled, and neither blocks anything. Until then this document
-describes the truth: Cadex is two forks, an add-on, and about forty thousand
+describes the truth: Cadex is two forks, an assistant package, and about forty thousand
 lines of our own, and the parts that are not ours are the parts that make it
 work.

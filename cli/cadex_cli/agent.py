@@ -37,7 +37,7 @@ from .tools import CLI_TOOL_OPS
 #: The shell's default, and it stays the shell's default: one model
 #: answers "what does Cadex run" wherever you ask. Override with
 #: ``--model``.
-DEFAULT_MODEL = "claude-opus-5"
+DEFAULT_MODEL = "claude-fable-5"
 
 MCP_SERVER_NAME = "cadex"
 

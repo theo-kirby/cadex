@@ -635,6 +635,14 @@ def _staged_globals(
             globals_by_name[domain] = create_domain_api(
                 domain, exports, output_types
             )
+    # The parts library (ADR-181) composes ordinary part recipes out of the
+    # catalog in CadexCatalog, so it is staged after the domain APIs and on
+    # top of the part one; nothing downstream learns it exists.
+    from cadex_library_api import create_library_api
+
+    globals_by_name["lib"] = create_library_api(
+        globals_by_name["part"], globals_by_name["assembly"]
+    )
     return globals_by_name, collector, nets, boards, mounts, cages
 
 

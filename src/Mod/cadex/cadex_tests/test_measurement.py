@@ -58,8 +58,18 @@ thickness = part.measurement(
 bore = part.measurement(
     bored, kind="diameter", at={"geometry_type": "Cylinder", "radius": 3.0}
 )
+bore_r = part.measurement(
+    bored, kind="radius", at={"geometry_type": "Cylinder", "radius": 3.0}
+)
+corner = part.measurement(
+    bored,
+    kind="angle",
+    start={"geometry_type": "Plane", "normal": [0, 0, 1]},
+    end={"geometry_type": "Plane", "normal": [1, 0, 0]},
+)
 result = {"bored": bored, "height": height, "span": span,
-          "thickness": thickness, "bore": bore}
+          "thickness": thickness, "bore": bore, "bore_r": bore_r,
+          "corner": corner}
 """
 
 
@@ -97,15 +107,25 @@ def test_a_measurement_names_what_is_wrong_rather_than_failing_generically() -> 
     with pytest.raises(ValueError) as bad_kind:
         part.measurement(plate, kind="gap")
     assert "kind" in str(bad_kind.value)
-    assert "['diameter', 'distance', 'extent']" in str(bad_kind.value)
+    assert "['angle', 'diameter', 'distance', 'extent', 'radius']" in str(
+        bad_kind.value
+    )
 
     with pytest.raises(ValueError) as half_a_distance:
         part.measurement(plate, kind="distance", start={"geometry_type": "Plane"})
     assert "start= and end=" in str(half_a_distance.value)
 
+    with pytest.raises(ValueError) as half_an_angle:
+        part.measurement(plate, kind="angle", end={"geometry_type": "Plane"})
+    assert "start= and end=" in str(half_an_angle.value)
+
     with pytest.raises(ValueError) as no_target:
         part.measurement(plate, kind="diameter")
     assert "at=" in str(no_target.value)
+
+    with pytest.raises(ValueError) as no_radius_target:
+        part.measurement(plate, kind="radius")
+    assert "at=" in str(no_radius_target.value)
 
     with pytest.raises(ValueError) as bad_axis:
         part.measurement(plate, kind="extent", axis="w")
@@ -253,6 +273,34 @@ def test_measurements_are_published_and_follow_the_part_they_measure() -> None:
         assert bore["center_mm"][0] == pytest.approx(15.0), bore
         assert bore["center_mm"][1] == pytest.approx(20.0), bore
         assert bore["normal"] == pytest.approx([0.0, 0.0, 1.0]), bore
+
+        # A radius is the same circle published as its half, in the drawing's
+        # own notation, and it still carries the ring for the shell to pick a
+        # legible rim point from.
+        bore_r = _measurement(built, "bore_r")
+        assert bore_r["kind"] == "radius"
+        assert bore_r["value_mm"] == pytest.approx(3.0), bore_r
+        assert bore_r["radius_mm"] == pytest.approx(3.0), bore_r
+        assert bore_r["text"] == "R3.00 mm", bore_r
+        assert bore_r["center_mm"][0] == pytest.approx(15.0), bore_r
+
+        # An angle publishes degrees, a vertex and two rays -- and value_mm
+        # stays None rather than smuggling degrees into a length.
+        corner = _measurement(built, "corner")
+        assert corner["kind"] == "angle"
+        assert corner["value_deg"] == pytest.approx(90.0), corner
+        assert corner["value_mm"] is None, corner
+        assert corner["text"] == "90.00\N{DEGREE SIGN}", corner
+        vertex = corner["vertex_mm"]
+        # The top and right faces meet along the x=width, z=thickness edge.
+        assert vertex[0] == pytest.approx(60.0), corner
+        assert vertex[2] == pytest.approx(10.0), corner
+        first_ray, second_ray = corner["anchors_mm"]
+        # Each ray points from the vertex into its own face.
+        assert first_ray[2] == pytest.approx(10.0), corner
+        assert first_ray[0] < 60.0, corner
+        assert second_ray[0] == pytest.approx(60.0), corner
+        assert second_ray[2] < 10.0, corner
 
         span = _measurement(built, "span")
         assert span["value_mm"] == pytest.approx(60.0), span
