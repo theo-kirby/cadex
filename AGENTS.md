@@ -1,6 +1,6 @@
 # AGENTS.md — Agent Entry Point
 
-Verified against source: 2026-08-31. **This is the single agent contract.**
+Verified against source: 2026-09-05. **This is the single agent contract.**
 `CLAUDE.md` exists only to import it (`@AGENTS.md`) and holds nothing of its
 own, so there is one file to read and one file to edit — which is what ADR-005
 asked for, reached from the other direction (ADR-137).
@@ -67,7 +67,7 @@ the engine inside it.
 
 **Where this is going (ADR-025, ADR-030).** The product becomes **one
 application we own** — a derivative of but not dependent on either FreeCAD
-or Blender. **OCCT stays** as the geometry kernel; the FreeCAD application
+or the Blender UI. **OCCT stays** as the geometry kernel; the FreeCAD application
 layer is to be replaced by our own pybind11 binding (Phase 11, engine stays
 Python) and the Blender shell by our own Rust + wgpu + egui shell
 (Phase 12), both behind the *unchanged* cadexd protocol. Neither is
@@ -76,6 +76,15 @@ pressure off them, and the test-pinned protocol is what keeps them
 available. What *is* live is Phase 13b — deleting from both inherited trees,
 in place, under the normal removal protocol. **Do not start writing a
 replacement engine or shell in this tree ahead of its phase.**
+
+**Native Blender geometry recipes are an explicit runtime exception
+(ADR-185).** `mesh.blender` keeps native bpy source inside the authoritative
+xscript and evaluates it in an OS-sandboxed subprocess. The live scene remains
+a cache. Projects using recipes retain a Blender geometry-runtime dependency
+even after a future UI replacement; ordinary headless projects do not.
+`docs/BLENDER-RECIPES.md` is the contract. The engine stages its independently
+authored adapters by filename, and only the Blender child imports bpy. Do not
+move recipe execution into the visible shell or enable an unsandboxed fallback.
 
 Read `docs/VISION.md` before designing anything.
 

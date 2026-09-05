@@ -1171,7 +1171,7 @@ def test_script_view_marks_hand_edits(root):
 
 # -- agent turn: one undo per turn through the real bridge -------------------
 
-def test_cadex_turn_single_undo(root):
+def test_cadex_turn_single_undo(root, source=REDUCED_SCRIPT, output="plate"):
     print("test_cadex_turn_single_undo")
     reset_scene(root)
     from mesh_agent import agent as agent_module
@@ -1179,7 +1179,7 @@ def test_cadex_turn_single_undo(root):
     agent.tool_cap_override = 10
     script = [[
         ("text", "Building the corpus.\n"),
-        ("tool", "write_script", {"content": REDUCED_SCRIPT}),
+        ("tool", "write_script", {"content": source}),
         ("text", "Done."),
         ("result", False, "Done."),
     ]]
@@ -1198,13 +1198,40 @@ def test_cadex_turn_single_undo(root):
             agent.drain()
             time.sleep(0.01)
         check(started and not agent.busy, "cadex turn completes")
-        check(bpy.data.objects.get("plate") is not None,
-              "turn hydrated the plate")
+        check(bpy.data.objects.get(output) is not None,
+              "turn hydrated " + output)
         check(len(undo_pushes) == 1,
               "exactly one undo push per turn (got {:d})".format(
                   len(undo_pushes)))
     finally:
         agent.shutdown()
+
+
+def test_native_blender_recipe(root):
+    print("test_native_blender_recipe")
+    with open(os.path.join(_REPO, "..", "examples", "blender_enclosure.py")) as stream:
+        source = stream.read()
+    # Real shell launch discovery, real nested Blender and the actual agent
+    # mutation/undo accounting; no CADEX_BLENDER_EXECUTABLE test override.
+    test_cadex_turn_single_undo(root, source=source, output="skin")
+    skin = bpy.data.objects.get("skin")
+    if skin is None:
+        return
+    check(skin.get(cadex_hydrate.KIND_PROP) == "mesh", "recipe output is an ordinary hydrated mesh")
+    original = store_state(root)["accepted_digest"]
+    width = skin.dimensions.x
+    ok, report = run_tool("set_params", {"params": {"mount_spacing": 56}})
+    check(ok, "recipe parameter rebuild: " + report[:120])
+    check(bpy.data.objects["skin"].dimensions.x > width, "skin follows CAD mount spacing")
+    ok, report = run_tool("set_params", {"params": {"mount_spacing": 42}})
+    check(ok and store_state(root)["accepted_digest"] == original,
+          "restoring the parameter restores recipe geometry identity")
+    ok, report = run_tool("write_script", {"content": source.replace(
+        "import bmesh", "raise RuntimeError('deliberate recipe failure')\nimport bmesh")})
+    check(not ok, "failed native recipe is refused")
+    check(store_state(root)["accepted_digest"] == original, "failed recipe retains accepted geometry")
+    GATE["blender_recipe"] = {"facets": len(bpy.data.objects["skin"].data.polygons),
+                              "width_mm": width, "runtime": bpy.app.version_string}
 
 
 # -- restart: reattach to the engine store ----------------------------------
@@ -5368,6 +5395,7 @@ def main():
     explode_root = tempfile.mkdtemp(prefix="mesh-cadex-explode-")
     blueprint_root = tempfile.mkdtemp(prefix="mesh-cadex-blueprint-")
     sheet_root = tempfile.mkdtemp(prefix="mesh-cadex-sheet-")
+    recipe_root = tempfile.mkdtemp(prefix="mesh-cadex-recipe-")
     try:
         test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
@@ -5392,6 +5420,7 @@ def main():
         test_an_agent_turn_supersedes_a_queued_drag(supersede_root)
         test_cancel_reaches_the_engine(cancel_root)
         test_cadex_turn_single_undo(turn_root)
+        test_native_blender_recipe(recipe_root)
         test_save_as_and_multi_file_lifecycle(saveas_root)
         test_duplicated_file_keeps_its_parameters(duplicate_root)
         test_save_as_carries_imported_geometry(carry_root)
@@ -5458,7 +5487,7 @@ def main():
                      shapes_root, isolate_root, readers_root, wiring_root,
                      cage_root, print_root, section_root,
                      explode_root, blueprint_root,
-                     sheet_root):
+                     sheet_root, recipe_root):
             shutil.rmtree(root, ignore_errors=True)
 
     GATE["ok"] = not FAILURES

@@ -440,10 +440,9 @@ def _obstacles(operation: str, parameter: str, values: Any) -> list[DomainValue]
                 raise _error(
                     operation,
                     name,
-                    "the obstacle was built with decimate, whose result is not "
-                    "reproducible, so the route around it would change on every "
-                    "rebuild; decimate the file offline and import the reduced "
-                    "mesh, or avoid the undecimated value",
+                    "the obstacle depends on decimate or a Blender recipe, "
+                    "which does not promise reproducible geometry; use exact "
+                    "CAD or a fixed imported mesh for routing obstacles",
                 )
             result.append(value)
             continue
@@ -2543,11 +2542,9 @@ class PartDomainAPI:
             raise _error(
                 operation,
                 "mesh",
-                "the mesh was built with decimate, whose result is not "
-                "reproducible, so a BREP built from it would change the "
-                "project digest on every rebuild; decimate the file offline "
-                "and import the reduced mesh, or publish the decimated value "
-                "as a mesh output",
+                "the mesh depends on decimate or a Blender recipe, which does "
+                "not promise reproducible BREP bytes for the project digest; publish it as a mesh "
+                "beside exact CAD parts, or import a fixed mesh asset",
             )
         return self._value(
             operation,

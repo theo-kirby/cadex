@@ -1,6 +1,19 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-08-29
+Verified against source: 2026-09-05
+
+**Native Blender geometry (ADR-185).** The mesh domain now includes
+`mesh.blender`: an xscript-owned recipe with named mesh inputs and JSON
+values, evaluated by a separate OS-sandboxed Blender subprocess. The new
+`cadex_blender_runner.py` and `cadex_blender_worker.py` are staged by filename
+with the project worker, never imported by cadexd. Only the Blender process
+imports `bpy`. The shell hands its executable to the engine using
+`CADEX_BLENDER_EXECUTABLE`; headless clients may set that variable themselves.
+The subprocess returns bounded triangles, independently validated before
+ordinary mesh publication. Recipe source, runtime identity and full topology
+join the output digest. Existing project acceptance, history, rollback and
+display hydration carry the result. No new protocol op, output kind or live
+scene authoring path. See `docs/BLENDER-RECIPES.md`. [Cadex-new]
 
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),

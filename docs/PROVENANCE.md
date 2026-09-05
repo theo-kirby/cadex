@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-08-29
+Verified against source: 2026-09-05
 
 Cadex is not written from scratch. It is a **derivative work of two large
 free-software projects**, carrying the design lessons of a third that we
@@ -89,6 +89,14 @@ Cadex are not FreeCAD's to answer for — see [`SECURITY.md`](../SECURITY.md)
 for where to report what.
 
 ## 3. Blender — the shell
+
+**Optional geometry runtime (ADR-185).** The same Blender binary can now
+evaluate native xscript mesh recipes in a separate OS-sandboxed process.
+`src/Mod/cadex/cadex_blender_runner.py` and `cadex_blender_worker.py` are newly,
+independently authored LGPL adapters; no shell implementation was copied into
+them. The latter imports bpy only when executed by Blender. No Blender
+library is imported into cadexd, the FreeCAD worker, or the headless CLI.
+The Blender binary retains its existing GPL attribution and licensing.
 
 **What it is here.** `shell/` is a Blender fork, and it is the product's
 user interface: the window manager, the editors, the GPU layer, DNA/RNA,

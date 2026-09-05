@@ -18140,3 +18140,54 @@ settings persistence, account rendering, stale-result rejection and login
 refresh), and `pixi run gate`; live read-only discovery against all three
 installed CLIs. Sandbox credential-store and localhost restrictions required
 unrestricted reruns. No live OAuth login or billable model turn was performed.
+
+## ADR-185 — Native Blender geometry recipes owned by xscript (2026-09-05)
+
+The owner approved implementing the proposed bridge after a review of the
+existing mesh domain and the retired local bpy path. Agent fluency in native
+Blender Python is useful capability that a growing wrapper API would hide.
+`mesh.blender(source, version=..., inputs=..., values=..., seed=...)` is one
+new mesh operation: source remains inside the authoritative project script,
+named inputs resolve through the existing recursive domain evaluator, and a
+separate Blender process builds one evaluated triangle mesh. Exact CAD
+interfaces, dimensions and clearances can drive organic geometry without
+claiming to recover analytic BREP from arbitrary triangles.
+
+This explicitly supersedes ADR-025/030's blanket exclusion of native bpy
+authoring. It retains their reason: the live scene is a cache, not a second
+authoritative document. Blender recipes establish an optional geometry-runtime
+dependency even after a future UI replacement; VISION is amended accordingly.
+No replacement shell/engine is started and no inherited Blender file changes.
+The owner approval in this conversation is the sign-off for this direction
+change; no second approval is required to restore a new script-owned surface.
+
+The new LGPL runner/evaluator are independently authored, staged by filename
+with the engine worker, and imported by neither cadexd nor the visible shell.
+Only the subprocess imports bpy. The shell sends its binary path through its
+cadexd launch environment; CLI users may configure the same variable. An
+ordinary engine-only project retains its no-Blender requirement.
+
+macOS sandbox-exec and Linux bubblewrap isolate runtime/input reads and
+scratch-only writes, with no network or user home. Missing sandboxes refuse;
+Python restrictions are not the security boundary. Time, resident memory,
+file size and output counts are bounded. The subprocess shares the candidate
+worker's process group; cancellation now kills surviving group descendants
+even if its leader has exited. Geometry is independently checked for finite
+coordinates, valid indices and nonzero triangle area before mesh publication.
+
+The numeric Blender version is explicit; Python/NumPy RNGs are seeded.
+Recipe-derived mesh identity hashes actual canonical connectivity and winding,
+recipe/inputs and executable/evaluator identity. Arbitrary recipes need not be
+deterministic: changed results refuse accepted-digest restoration, rather than
+silently passing under the existing decimate definition-only exception.
+`part.shape_from_mesh` and exact routing consumers refuse Blender-derived
+trees; their refusal wording now covers both Blender and decimation. Accepted
+artifacts, parameters, source rollback and scene undo use the existing paths.
+No protocol op or output kind was added. The first surface exports triangles;
+UV/material/animation interchange, live modifier persistence, and analytic
+surface reconstruction are outside it.
+
+The independent hybrid enclosure example exercises CAD rails, CAD clearance
+cutters, Blender bevel/solidify/boolean geometry and parameter regeneration.
+It does not claim a new measurement of the live wolf project. Validation
+results are recorded in the causally linked Hypergraph implementation record.

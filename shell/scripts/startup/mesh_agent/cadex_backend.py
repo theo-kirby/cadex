@@ -504,13 +504,14 @@ def resolved_engine():
 
 
 def _client(root):
+    import bpy
     freecadcmd, module_dir = cadexd_client.resolve_engine(
         _prefs_freecadcmd(), bundle_roots())
     if not freecadcmd or not module_dir:
         _ok, reason, remedy = preflight()
         raise RuntimeError(reason + " " + remedy)
     return cadexd_client.client_for(
-        root, cadexd_client.default_command(freecadcmd, module_dir),
+        root, cadexd_client.default_command(freecadcmd, module_dir, bpy.app.binary_path),
         budgets=engine_budgets())
 
 

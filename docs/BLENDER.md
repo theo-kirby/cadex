@@ -2,6 +2,14 @@
 
 Verified against source: 2026-09-05
 
+**Native geometry recipes (ADR-185).** `cadex_backend._client` passes
+`bpy.app.binary_path` to `cadexd_client.default_command`, which sets
+`CADEX_BLENDER_EXECUTABLE` in that child alone. An xscript `mesh.blender`
+operation can therefore run the same installed binary as an isolated geometry
+worker. The visible scene still only hydrates accepted engine output, and
+script/slider/history changes use the existing undo path. Recipe code never
+executes in the visible process. See `docs/BLENDER-RECIPES.md`. [Cadex-new]
+
 **The shell is the product, and since ADR-030 it is in this repository**, at
 `shell/` — a Blender fork whose `mesh_agent` package is the interface:
 application code registered by the script loader from `scripts/startup`,

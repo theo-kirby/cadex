@@ -186,6 +186,19 @@ def build_mesh(payload: dict[str, Any], root: Path):
     operation = str(payload.get("operation") or "")
     properties = dict(payload.get("properties") or {})
     try:
+        if operation == "blender":
+            import Mesh
+            from cadex_blender_runner import run_recipe
+
+            inputs = {}
+            for name, definition in properties.get("inputs", {}).items():
+                source = canonical_mesh(build_mesh(_nested_payload(definition), root))
+                points, facets = source.Topology
+                inputs[name] = {"vertices": [[p.x, p.y, p.z] for p in points],
+                                "triangles": [list(facet) for facet in facets]}
+            geometry = run_recipe(root, _argument(payload, 0, "source"), properties, inputs)
+            vertices = geometry["vertices"]
+            return Mesh.Mesh([[vertices[i] for i in triangle] for triangle in geometry["triangles"]])
         if operation == "from_shape":
             import MeshPart
 
@@ -427,6 +440,22 @@ def serialize_mesh_output(
             "facts": facts,
         },
     }
-    if payload_tree_is_deterministic(payload):
+    from cadex_mesh_api import contains_blender_recipe
+
+    if contains_blender_recipe(payload):
+        from cadex_blender_runner import runtime_identity
+        import json
+
+        # Unlike native decimation, a recipe never hides changed geometry
+        # behind a definition-only digest. Include connectivity, winding,
+        # recipe/inputs and runtime, not merely the vertex set (ADR-185).
+        points, facets = mesh.Topology
+        material = {"vertices": [[p.x, p.y, p.z] for p in points],
+                    "triangles": [list(facet) for facet in facets],
+                    "definition": payload, "runtime": runtime_identity()}
+        item["geometry_sha256"] = hashlib.sha256(json.dumps(
+            material, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode()).hexdigest()
+    elif payload_tree_is_deterministic(payload):
         item["geometry_sha256"] = mesh_geometry_fingerprint(mesh)
     return item

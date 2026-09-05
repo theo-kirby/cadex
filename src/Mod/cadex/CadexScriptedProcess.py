@@ -93,15 +93,22 @@ def _windows_process_memory_bytes(pid: int) -> int | None:
         kernel32.CloseHandle(handle)
 
 
-def _terminate(process: subprocess.Popen[str]) -> None:
+def _terminate(process: subprocess.Popen[str], *, own_process_group: bool = True) -> None:
     if process.poll() is not None:
         return
     try:
-        if sys.platform == "win32":
+        if sys.platform == "win32" or not own_process_group:
             process.terminate()
         else:
             os.killpg(process.pid, signal.SIGTERM)
         process.wait(timeout=3.0)
+        # The leader can exit before a nested geometry worker that ignores
+        # SIGTERM. Cancellation owns the entire group, including that child.
+        if own_process_group and sys.platform != "win32":
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
     except Exception:
         process.kill()
         process.wait(timeout=3.0)
@@ -123,6 +130,7 @@ def run_process(
     cancellation_check: Callable[[], bool] | None,
     timeout_seconds: float,
     memory_limit_bytes: int,
+    own_process_group: bool = True,
 ) -> dict[str, Any]:
     """Run one child process without a console window and enforce hard bounds."""
     creation_flags = (
@@ -142,7 +150,7 @@ def run_process(
                 stdin=subprocess.DEVNULL,
                 stdout=stdout_stream,
                 stderr=stderr_stream,
-                start_new_session=sys.platform != "win32",
+                start_new_session=sys.platform != "win32" and own_process_group,
                 creationflags=creation_flags,
             )
         except Exception as exc:
@@ -185,7 +193,7 @@ def run_process(
             time.sleep(poll_interval)
             poll_interval = min(0.05, poll_interval * 1.5)
         if cancelled or timed_out or memory_exceeded:
-            _terminate(process)
+            _terminate(process, own_process_group=own_process_group)
         process.wait()
         return {
             "started": True,

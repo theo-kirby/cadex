@@ -249,11 +249,14 @@ def resolve_engine(explicit="", bundle_roots=()):
     return freecadcmd, cadexd_module_dir(freecadcmd, bundle_roots)
 
 
-def default_command(freecadcmd, module_dir):
+def default_command(freecadcmd, module_dir, blender_executable=""):
     bootstrap = (
         "import sys; sys.path.insert(0, {!r}); "
         "import cadexd; raise SystemExit(cadexd.main())"
     ).format(module_dir)
+    if blender_executable:
+        bootstrap = ("import os; os.environ['CADEX_BLENDER_EXECUTABLE'] = {!r}; "
+                     .format(os.path.abspath(str(blender_executable)))) + bootstrap
     return [freecadcmd, "-c", bootstrap]
 
 

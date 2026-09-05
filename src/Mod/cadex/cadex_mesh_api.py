@@ -13,6 +13,9 @@ identify the exact operation and parameter before Mesh execution begins.
 from __future__ import annotations
 
 import math
+import ast
+import json
+import re
 from typing import Any, Iterable
 
 from CadexTerminals import TerminalError, TerminalSet, declared_layout
@@ -37,7 +40,18 @@ ASSET_SUFFIXES = frozenset({".stl", ".obj", ".ply"})
 #: it reads a mesh and returns counts, it mutates nothing, and it publishes
 #: no geometry at all — so there is nothing for a fingerprint to identify
 #: and its digest is the hash of its own declaration either way (ADR-144).
-APPROXIMATING_OPERATIONS = frozenset({"decimate"})
+APPROXIMATING_OPERATIONS = frozenset({"decimate", "blender"})
+
+
+def contains_blender_recipe(value: Any) -> bool:
+    """Whether a value depends on a native Blender build (ADR-185)."""
+    if isinstance(value, dict):
+        return value.get("operation") == "blender" or any(
+            contains_blender_recipe(item) for item in value.values()
+        )
+    return isinstance(value, (list, tuple)) and any(
+        contains_blender_recipe(item) for item in value
+    )
 
 #: What the Mesh pack may publish. ``mesh_check`` is the one member that is
 #: not a triangle mesh: it is a declared output carrying four integers and no
@@ -303,6 +317,68 @@ class MeshDomainAPI:
             label=label,
         )
 
+    def blender(
+        self,
+        source: str,
+        *,
+        version: str,
+        inputs: dict[str, DomainValue] | None = None,
+        values: dict[str, Any] | None = None,
+        seed: int = 0,
+        label: str = "",
+    ) -> DomainValue:
+        """Build one mesh with native bpy in an isolated Blender worker.
+
+        Assign a Blender mesh Object to ``result``. ``inputs`` maps names to
+        mesh values (use mesh.from_shape for CAD); the recipe receives those
+        names as Blender objects. ``values`` is finite JSON, for dimensions
+        and named attachment frames. One Blender unit is one millimetre;
+        object transforms and modifiers are evaluated on export. Imports of
+        bpy, bmesh, mathutils and Python libraries are supported in the recipe.
+        ``version`` pins bpy.app.version_string's numeric major.minor.patch
+        (for example "5.3.0"). ``seed`` seeds Python and NumPy; seed stochastic
+        modifiers/nodes explicitly as well. Runtime and actual topology join
+        the output digest, so a changed rebuild refuses restoration.
+
+        Needs CADEX_BLENDER_EXECUTABLE (the shell supplies its own binary),
+        macOS sandbox-exec or Linux bubblewrap. No network or user-file access.
+        Returns evaluated triangles, not CAD faces, UVs, materials, animation
+        or a live modifier stack. Keep the cage/modifier recipe in this source.
+        part.shape_from_mesh refuses Blender-derived trees; publish them as
+        meshes beside exact CAD parts. Missing runtimes and failed recipes
+        leave the previous accepted model intact.
+        """
+        operation = "blender"
+        if not isinstance(source, str) or not source.strip() or len(source.encode()) > 65536:
+            raise _error(operation, "source", "expected 1..65536 bytes of Python source")
+        try:
+            ast.parse(source, filename="<cadex-blender-recipe>")
+        except SyntaxError as exc:
+            raise _error(operation, "source", f"invalid Python: {exc}") from exc
+        if not isinstance(version, str) or re.fullmatch(r"\d+\.\d+\.\d+", version) is None:
+            raise _error(operation, "version", "pin an exact numeric version, e.g. 5.3.0")
+        if type(seed) is not int or not 0 <= seed <= 2**32 - 1:
+            raise _error(operation, "seed", "expected an integer in 0..4294967295")
+        meshes = {} if inputs is None else inputs
+        data = {} if values is None else values
+        if not isinstance(meshes, dict) or len(meshes) > 32:
+            raise _error(operation, "inputs", "expected a dictionary of at most 32 meshes")
+        for name, value in meshes.items():
+            if not isinstance(name, str) or not name.isidentifier() or name.startswith("_"):
+                raise _error(operation, "inputs", "input names must be public Python identifiers")
+            _mesh(operation, name, value)
+        if not isinstance(data, dict):
+            raise _error(operation, "values", "expected a JSON dictionary")
+        try:
+            encoded = json.dumps(data, allow_nan=False)
+            if len(encoded.encode()) > 65536:
+                raise ValueError("values exceed 65536 bytes")
+            data = json.loads(encoded)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise _error(operation, "values", f"expected bounded finite JSON: {exc}") from exc
+        return self._value(operation, source, version=version, inputs=dict(meshes),
+                           values=data, seed=seed, label=label)
+
     def union(self, left: DomainValue, right: DomainValue, *, label: str = "") -> DomainValue:
         """Unite two meshes with the native mesh set operation."""
 
@@ -488,6 +564,7 @@ class MeshDomainAPI:
         return (
             "from_shape",
             "import_file",
+            "blender",
             "union",
             "difference",
             "intersection",

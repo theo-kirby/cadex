@@ -94,6 +94,9 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         "cadex_partdesign_worker.py",
         "cadex_mesh_api.py",
         "cadex_mesh_worker.py",
+        "cadex_blender_runner.py",
+        "cadex_blender_worker.py",
+        "CadexScriptedProcess.py",
         "cadex_assembly_api.py",
         "cadex_assembly_worker.py",
         # The MuJoCo translator (ADR-077). Staged by filename for the same
@@ -868,6 +871,7 @@ def worker_environment(staging: str | Path) -> dict[str, str]:
         "PATHEXT",
         "SystemRoot",
         "WINDIR",
+        "CADEX_BLENDER_EXECUTABLE",
     )
     environment = {
         name: os.environ[name]

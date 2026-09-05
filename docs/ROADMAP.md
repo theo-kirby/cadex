@@ -1317,6 +1317,13 @@ lose by accident:
 
 ## Phase 15 — Organic modelling and the CAD/mesh interface `(O0–O3 closed 2026-08-05, ADR-124…127; O2b and O4 parked)`
 
+- [x] **Native Blender recipe bridge (ADR-185).** `mesh.blender` composes
+      script-owned native bpy recipes with named CAD-derived mesh inputs and
+      JSON dimensions/frames. OS-isolated evaluation, actual topology/runtime
+      identity, existing acceptance/rollback/reopen/undo, and a hybrid
+      enclosure example. `docs/BLENDER-RECIPES.md`. This does not close O4's
+      separate mesh-to-NURBS fitting work.
+
 **Goal:** make the shapes a person asks for — a body, a limb, a skin over a
 mechanism — buildable by the agent, and shapeable by the user without a chat
 turn. The measurement it is sized from, the slices, the hazards and the
