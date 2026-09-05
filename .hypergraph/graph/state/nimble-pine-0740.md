@@ -8,7 +8,7 @@ summary: ''
 ---
 Cadex is an AI-native CAD application: you describe the part, the AI authors a declarative **xscript** Python program, the program runs in a sandboxed headless worker, and only validated geometry reaches your model. The script *is* the model.
 
-One product built from two forks in one repository, separated by a process boundary rather than a repository boundary: the **engine** at the root (a FreeCAD fork, running as `cadexd` over NDJSON) and the **shell** under `shell/` (a Blender fork carrying the `mesh_agent` add-on, which ships the engine inside its own bundle). A third protocol client, `cli/`, has no display at all. **Dynamics and control are built in**: a mechanism falls, collides, is actuated, exports as MJCF with exact OCCT inertias, and plays back a policy trained offboard on MuJoCo.
+One product built from two forks in one repository, separated by a process boundary rather than a repository boundary: the **engine** at the root (a FreeCAD fork, running as `cadexd` over NDJSON) and the **shell** under `shell/` (a Blender fork carrying `mesh_agent` as startup application code, which ships the engine inside its own bundle [rec: curious-sail-8332]). A third protocol client, `cli/`, has no display at all. **Dynamics and control are built in**: a mechanism falls, collides, is actuated, exports as MJCF with exact OCCT inertias, and plays back a policy trained offboard on MuJoCo.
 
 Read `docs/VISION.md` before designing anything; `AGENTS.md` for the repo map, commands and change policy; `docs/DECISIONS.md` for why anything is the way it is.
 
@@ -16,5 +16,5 @@ Adopted the Hypergraph protocol on 2026-08-09 (mode B — no legacy graph existe
 
 ## Reconciliation
 
-- high_water_mark: tidy-banner-0293, shy-glade-0050, empty-light-4558, neat-tower-5715, careful-key-9041, weathered-falcon-4350, green-tree-7595, deep-branch-6721, sleepy-shade-1485, shady-lodge-6077
-- reconciled_at: 2026-08-29T22:05:00+00:00
+- high_water_mark: tidy-banner-0293, shy-glade-0050, empty-light-4558, neat-tower-5715, careful-key-9041, weathered-falcon-4350, deep-branch-6721, sleepy-shade-1485, shady-lodge-6077, wild-prairie-9912, quiet-creek-7756, idle-arrow-2946, candid-creek-2410
+- reconciled_at: 2026-09-05T21:42:01+00:00

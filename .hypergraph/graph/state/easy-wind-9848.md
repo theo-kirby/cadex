@@ -21,6 +21,8 @@ The repository's compliance and licensing posture after the ADR-171 audit (PR #1
 
 Open items, flagged in ADR-171 for the owner / counsel rather than resolved [rec: wild-sea-9905]: `libreadline` (GPL-3.0) in the conda runtime; `package/app/make_app_icon.py` declaring GPL-2.0-or-later in the LGPL tree (a relicensing decision, carried as a test exemption); LGPL §4 relinking stated structurally but not lawyered; the GPL-2-only audit across all 341 conda packages not exhaustive; Windows/Linux packaging paths unexamined (macOS-only today).
 
+The bundled biped working script and saved history snapshot now carry **GPL-2.0-or-later SPDX headers**, with revision references updated consistently. The licensing run passed (10 passed, one payload-only skip), a real-engine restore matched the accepted geometry digest, and the rebuilt demo matched source byte for byte [rec: quiet-creek-7756].
+
 ## Negative knowledge
 
 - [scope: pre-import fork deltas | confidence: high | evidence: wild-sea-9905] Modifications made to either fork before its squashed import commit cannot be enumerated from this repository. The 2026-dated notices cover this repo's own edits; both ledgers state the bound. Do not claim completeness past the import commits.
@@ -32,3 +34,4 @@ Open items, flagged in ADR-171 for the owner / counsel rather than resolved [rec
 - wild-sea-9905 — ADR-171: the audit, the notices, the license material that now ships
 - dawn-oak-0677 — ADR-173: the demo returns provenance-clean; the ADR-171 bar met by construction
 - sleepy-shade-1485 — the transcript in the .blend, the scrub, and the open-the-file check
+- quiet-creek-7756 — demo header repair, revision consistency and restore verification

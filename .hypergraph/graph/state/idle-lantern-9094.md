@@ -23,6 +23,8 @@ Making the shapes a person actually asks for — a body, a limb, a skin over a m
 
 **O4 (subD) is parked and unscheduled by decision** — and because the cage has been used in anger, what it still cannot do is known and is *not* subdivision: a **curved spine** (the wolf's neck and tail stayed hand-written) and **closing an end**. Both come first [rec: solemn-chart-6274].
 
+**Native organic recipes now compose with CAD**: `mesh.blender` consumes named CAD-derived mesh inputs and JSON dimensions/frames while preserving bpy source in the authoritative script. The hybrid enclosure demonstrates rebuild, parameter reversal, rollback, STL export and restore with a closed sound skin. It neither validates a wolf-quality improvement nor implements O4 NURBS fitting; the existing cage gaps remain [rec: simple-bramble-8616].
+
 ## Negative knowledge
 
 - [scope: an earlier mesh/constraint unification attempt | confidence: low | evidence: kind-ledge-5493] The author recalls trying to unify the two paradigms wholesale, possibly on a throwaway branch, and it did not land as a system. No commit range is identified and this is memory only — do not treat it as a bounded prior attempt.
@@ -33,3 +35,4 @@ Making the shapes a person actually asks for — a body, a limb, a skin over a m
 
 - solemn-chart-6274 — the whole O0-O3b arc, the wolf benchmark and what O4 is parked behind
 - kind-ledge-5493 — the standing one-paradigm goal and the earlier unification attempt that did not land
+- simple-bramble-8616 — script-owned Blender recipes and the verified hybrid enclosure

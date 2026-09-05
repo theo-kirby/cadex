@@ -27,6 +27,8 @@ Status: working
 - **`CADEX_GATE_LATENCY_BAR`** raises the gate's *enforced* latency ceiling (CI sets 2.6 s) without relabelling the bar: `parity_bar_seconds` and `median_within_bar` in the payload always report against the real 0.65 s [rec: weathered-sand-9705].
 
 
+- **Headless native recipe projects require `CADEX_BLENDER_EXECUTABLE`**; the visible shell supplies its own absolute binary path. Ordinary engine-only projects still need no Blender. Recipe execution was verified on macOS with Blender 5.3.0 Alpha; Linux bubblewrap is implemented but untested on a Linux host, and Windows refuses [rec: simple-bramble-8616].
+
 ## Negative knowledge
 
 - [scope: building the shell | confidence: high | evidence: merry-eagle-4093] Never route the shell build around package/app/build_app.sh. Conda on PATH during a shell configure silently resolves the wrong zlib, libpng, OpenSSL and Python, and fails at link time or misbehaves at runtime.
@@ -54,3 +56,4 @@ Status: working
 - twilight-sail-5604 — the two-halves tooling install, the `.*` ignore trap, and what 0.0.7's `hypergraph upgrade` overwrote
 - tidy-banner-0293 — 0.0.8 preserves an edited block; verified against the one 0.0.7 destroyed
 - weathered-sand-9705 — the three CI walls, and why a latency bar is not enforceable on a shared runner
+- simple-bramble-8616 — native geometry runtime setup and platform validation limits
