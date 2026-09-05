@@ -17,6 +17,7 @@
 !/.gitignore
 !/.gitmodules
 !/.hypergraph/
+!/.ouroboros/
 /.hypergraph/cache/
 !/.packit.yaml
 !/.pre-commit-config.yaml
@@ -108,3 +109,6 @@ build/engine/
 # dynamics test that deliberately diverges leaves one in the repo root. It
 # is a runtime artifact, never a source file (M4).
 MUJOCO_LOG.TXT
+
+# ouroboros run state
+.ouroboros/runs/

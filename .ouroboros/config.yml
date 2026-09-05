@@ -1,0 +1,40 @@
+run: nt1
+goal: .ouroboros/goal.md
+memory: auto            # -> hypergraph (config + CLI present)
+backend: headless
+mode: single
+overseer: agent
+idle_interval: 30m
+roles:
+  actor:
+    harness: claude
+    model: null           # your Claude Code default
+    timeout: 90m
+    resume_for: 1
+  overseer:
+    harness: claude
+    model: haiku
+    timeout: 5m
+    resume_for: 1
+  maintainer:
+    harness: claude
+    model: null
+    timeout: 30m
+    resume_for: 1
+git:
+  branch: null            # -> ouroboros/nt1
+  tag_on_accept: true
+  revert_on_reject: true
+  allow_dirty: false
+stop:
+  after: 15h
+  max_iterations: null
+  max_cost_usd: null      # subscription; no cap
+  until: null
+  on_done_accepted: null
+handoff:
+  recent: 3
+hypergraph:
+  reconcile_every: 5
+  pressure: 3
+  budget_units: 1
