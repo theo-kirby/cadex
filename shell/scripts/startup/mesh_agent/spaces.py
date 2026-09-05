@@ -35,12 +35,9 @@ class CADEX_CHAT_HT_header(Header):
         prefs = agent_module.get_prefs()
         if prefs is not None:
             layout.prop(prefs, "provider", text="")
-            model_prop = {"codex": "codex_model", "pi": "pi_model"}.get(
-                prefs.provider, "model")
-            layout.prop(prefs, model_prop,
-                        text="",
-                        placeholder="pi's default model"
-                        if model_prop == "pi_model" else "")
+            from . import prefs as prefs_module
+            prefs_module.draw_model(layout, prefs)
+            prefs_module.draw_account(layout, prefs, compact=True)
 
         # The door to the rest of the settings (CLI paths, engine override,
         # budgets): the AI section of the Preferences window (ADR-183). The

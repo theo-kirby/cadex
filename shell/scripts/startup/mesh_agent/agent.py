@@ -29,8 +29,8 @@ from . import tools
 from .bridge import BridgeServer
 
 DEFAULT_PROVIDER = "claude"
-DEFAULT_MODEL = "claude-fable-5"
-DEFAULT_CODEX_MODEL = "gpt-5.5"
+DEFAULT_MODEL = ""
+DEFAULT_CODEX_MODEL = ""
 #: "" = pi's own configured default; pi manages its own model catalog.
 DEFAULT_PI_MODEL = ""
 
@@ -409,6 +409,15 @@ class Agent:
             cadex_landing.dismiss()
         except Exception:
             pass
+
+        if self.backend_factory is None and not os.environ.get("MESH_AGENT_MOCK"):
+            from . import prefs as prefs_module
+            prefs = get_prefs()
+            if prefs is not None and prefs_module.model_unavailable(prefs):
+                self.history.add("status", "The selected model is no longer reported by this harness. "
+                                 "Choose a model from the header or use Harness default.")
+                _tag_redraw()
+                return False
 
         self.history.add("user", prompt)
         self._sync_provider()

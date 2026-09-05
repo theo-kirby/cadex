@@ -1582,6 +1582,12 @@ class _RecordingLayout:
     makes "drawn but greyed out" distinguishable from "drawn and live".
     """
 
+    def menu(self, menu_id, **kwargs):
+        self.drawn.append({"menu": menu_id, **kwargs})
+
+    def popover(self, **kwargs):
+        self.drawn.append({"popover": kwargs})
+
     def __init__(self, parent=None):
         self.parent = parent
         self.drawn = [] if parent is None else parent.drawn
@@ -1607,6 +1613,8 @@ class _RecordingLayout:
 
     def operator(self, idname, **kwargs):
         self.drawn.append({"idname": idname, "enabled": self.enabled, **kwargs})
+        from types import SimpleNamespace
+        return SimpleNamespace()
 
     def label(self, **kwargs):
         self.drawn.append({"label": kwargs.get("text", "")})
@@ -1745,11 +1753,89 @@ def test_every_chat_action_is_in_one_row_under_the_message_box():
     # count, and the one door to the preferences window. No *chat* action
     # lives there -- those are all in the row this test walked above.
     header = _RecordingLayout()
-    mesh_spaces.CADEX_CHAT_HT_header.draw(
-        type("_H", (), {"layout": header})(), context)
+    from unittest.mock import patch
+    from mesh_agent import prefs as prefs_module
+    with patch.object(prefs_module, 'snapshot', return_value=None):
+        mesh_spaces.CADEX_CHAT_HT_header.draw(
+            type("_H", (), {"layout": header})(), context)
     check([e["idname"] for e in header.drawn if "idname" in e]
           == ["screen.userpref_show"],
           "the chat header draws settings chrome and no chat actions")
+
+
+def test_harness_settings_and_account_refresh():
+    print("test_harness_settings_and_account_refresh")
+    from unittest.mock import patch
+    from mesh_agent import prefs as module
+    from mesh_agent import harness
+    prefs = module.get()
+    saved = {key: getattr(prefs, key) for key in module._KEYS}
+    snapshot = {'account': 'person@example.test · pro',
+                'models': [('new-model', 'New model', '')], 'error': '',
+                'checked': time.monotonic()}
+    try:
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+                module, 'settings_path', return_value=os.path.join(directory, 'settings.json')):
+            prefs.provider = 'codex'
+            prefs.codex_path = '/configured/codex'
+            key = module._key(prefs)
+            module._snapshots[key] = snapshot
+            check(bpy.ops.mesh_agent.harness_model(model='new-model', provider='codex',
+                                                   path='/configured/codex') == {'FINISHED'},
+                  'a discovered model can be selected')
+            prefs.provider = 'claude'
+            check(bpy.ops.mesh_agent.harness_model(model='new-model', provider='codex',
+                                                   path='/configured/codex') == {'CANCELLED'},
+                  'an old menu cannot write into a different harness')
+            prefs.model = 'claude-choice'
+            module.load()
+            check(prefs.codex_model == 'new-model' and prefs.model == 'claude-choice',
+                  'per-harness model IDs survive JSON reload without enum indices')
+            prefs.provider = 'codex'
+            prefs.codex_model = 'removed-model'
+            check(module.model_unavailable(prefs), 'a removed saved model is identified')
+            bpy.ops.mesh_agent.harness_model(model='', provider='codex', path='/configured/codex')
+            check(agent_module.model_from_prefs(prefs, 'codex') == '',
+                  'Harness default reaches the backend as no override')
+            with patch.object(module, 'snapshot', return_value=snapshot):
+                layout = _RecordingLayout()
+                module.USERPREF_PT_cadex_ai.draw(type('_Panel', (), {'layout': layout})(), bpy.context)
+                check(any(row.get('label') == 'person@example.test · pro' for row in layout.drawn),
+                      'AI settings display the account and subscription')
+                check(any(row.get('idname') == 'mesh_agent.harness_login' for row in layout.drawn),
+                      'AI settings expose harness sign-in')
+                check(any(row.get('menu') == 'CADEX_MT_harness_models' for row in layout.drawn),
+                      'AI settings use the live model menu')
+            # A late response from before sign-in cannot restore the old account.
+            stale, fresh = object(), object()
+            module._pending[key] = fresh
+            module._results.put((key, stale, dict(snapshot, account='old account')))
+            module._results.put((key, fresh, dict(snapshot, account='new account')))
+            module._pump()
+            check(module._snapshots[key]['account'] == 'new account',
+                  'late discovery results cannot overwrite the current account')
+            prefs.codex_path = '/different/codex'
+            check(module._key(prefs) not in module._snapshots,
+                  'changing executable invalidates account/model discovery')
+            prefs.codex_path = '/configured/codex'
+            login_directory = tempfile.TemporaryDirectory(dir=directory)
+            module._logins[key] = login_directory
+            with open(os.path.join(login_directory.name, 'done'), 'w') as handle:
+                handle.write('0')
+            with patch.object(module, '_refresh') as refresh:
+                module._pump()
+                refresh.assert_called_once_with(key)
+            check(key not in module._logins and key not in module._snapshots,
+                  'completing login clears stale state and refreshes the same harness')
+    finally:
+        module._loading = True
+        try:
+            for key, value in saved.items():
+                setattr(prefs, key, value)
+        finally:
+            module._loading = False
+        module._snapshots.clear()
+        module._pending.clear()
 
 
 def test_message_box_widget_is_available():
@@ -3654,6 +3740,7 @@ def main():
         test_landing_shows_dismisses_and_yields_to_chat()
         test_confirming_the_input_sends()
         test_every_chat_action_is_in_one_row_under_the_message_box()
+        test_harness_settings_and_account_refresh()
         test_message_box_widget_is_available()
         test_the_mesh_tools_are_not_deferred_behind_a_disabled_tool()
         test_codex_backend_speaks_the_agent_event_contract()

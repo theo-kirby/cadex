@@ -1,6 +1,6 @@
 # VISION.md — What Cadex Is Becoming
 
-Verified against source: 2026-08-29
+Verified against source: 2026-09-05
 
 This document is the product vision. It is authoritative: when a change
 conflicts with this document, the change is wrong or the vision needs an
@@ -188,18 +188,16 @@ returning it.
   and a cheap loop then sweeps it under an external simulator with no model
   in the loop at all. Interactive design and batch design are different
   jobs, and one program that did both would serve neither.
-- **A second provider stack.** The AI is the Claude Code CLI — in the shell
-  and in `cli/` alike. There is no API-key path, no model picker, no
-  provider abstraction (ADR-020).
+- **A second provider stack.** The shell delegates the model loop and
+  authentication to the user's installed agent CLI: Claude Code, Codex, or pi
+  (ADR-174/175). Cadex has no API-key entry or provider SDK stack. Its harness
+  and model selectors expose those CLIs' own account state and model catalogs;
+  sign-in runs through the chosen CLI (ADR-184). The headless `cli/` client
+  remains Claude-only.
 
-  What this does *not* forbid, since ADR-061, is a second **turn
-  orchestration**: the shell and the CLI each spawn `claude -p` from their
-  own code, because one is a chat window and the other is a process with an
-  exit code. That is a real duplication and the ADR says so plainly. What
-  keeps it from becoming drift is that neither of them states the xscript
-  API — both ask the engine through `describe_api` — and that the CLI's tool
-  schemas are generated from `OP_ARG_SPECS` rather than written. A third
-  front end would need the same discipline or it should not be built.
+  The shell and the headless CLI each orchestrate their own turns (ADR-061).
+  Neither states the xscript API: both ask the engine through `describe_api`,
+  and the headless CLI generates tool schemas from `OP_ARG_SPECS`.
 - **Dependence on FreeCAD or Blender.** OCCT stays as the geometry kernel,
   and so does **MuJoCo** as the dynamics kernel — a dependency in the OCCT
   category, kept upstream and unmodified rather than forked (ADR-075).

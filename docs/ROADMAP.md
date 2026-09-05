@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-08-31
+Verified against source: 2026-09-05
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -213,6 +213,10 @@ the evidence; the boundary was pinned by
 it guarded — that is the file to read today.
 
 ## Phase 6 — Blender shell `(landed 2026-07-25, ADR-019)`
+
+- [x] Harness/account settings and live model discovery for Claude Code, Codex,
+      and pi; native CLI sign-in, per-harness model IDs, and harness-owned
+      defaults (ADR-184).
 
 *(Built in `/Users/theo/mesh`; that tree is `shell/` in this repository
 since ADR-030, and the paths below now read relative to it.)*

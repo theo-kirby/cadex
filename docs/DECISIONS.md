@@ -18105,3 +18105,38 @@ python -m pytest cli/tests` (83 passed); engine-side
 `test_licensing_compliance.py` and `test_engine_purity_guardrails.py`
 (manifest test green at commit — it diffs committed state; the
 biped-demo SPDX gap predates this change, ADR-181).
+
+
+## ADR-184 — Harness-owned account state and model selectors (2026-09-05)
+
+The owner asked to select a harness, sign in, see the signed-in account, and
+choose models the harness offers. The static Claude/Codex enums and fixed
+shell default model IDs are removed. All three model choices persist as
+strings and are drawn from the installed CLI's live catalog; empty delegates
+to its default by omitting `--model`, including on resume. This supersedes
+ADR-182/183's shell default without changing the headless CLI's default.
+
+Discovery is a bounded worker subprocess, never a UI-thread request or model
+turn: Claude SDK initialization plus `auth status --json`, Codex app-server
+`account/read` and paginated `model/list`, and pi RPC
+`get_available_models` under the same extension exclusions as product turns.
+Model lists describe the harness's offered choices, not a new provider-side
+entitlement guarantee. Account identity comes from reported metadata; pi's
+credential file supplies only display fields, and API-key providers with no
+identity say so. No tokens enter settings, output, or the discovery cache.
+
+Settings > AI launches native login in Terminal and refreshes on completion;
+a completion button handles Terminal being closed without the script's marker.
+The chat header exposes an account popover and a searchable model menu. Discovery state
+is scoped to harness and CLI path; late pre-login responses cannot overwrite
+new state. Existing saved model IDs survive catalog changes, visibly marked
+unavailable, with a successful catalog preventing their use until changed.
+Failures show no fabricated models. Network-disabled sessions launch nothing.
+
+This fixes VISION's stale Claude-only/no-picker claim to reflect ADR-174/175
+and this flow; it adds no provider model loop and no inherited Blender diff.
+Validation: pure harness contract tests, the shell agent suite (including
+settings persistence, account rendering, stale-result rejection and login
+refresh), and `pixi run gate`; live read-only discovery against all three
+installed CLIs. Sandbox credential-store and localhost restrictions required
+unrestricted reruns. No live OAuth login or billable model turn was performed.

@@ -170,7 +170,6 @@ class ClaudeCodeBackend:
             "--output-format", "stream-json",
             "--verbose",
             "--include-partial-messages",
-            "--model", self.model,
             "--mcp-config", self._mcp_config_path,
             "--strict-mcp-config",
             # Disable Claude Code's built-in tools; the agent must go through
@@ -181,6 +180,8 @@ class ClaudeCodeBackend:
             "--allowedTools",
         ]
         command.extend("mcp__mesh__" + name for name in self.tool_names)
+        if self.model:
+            command.extend(["--model", self.model])
         if self.session_id:
             command.extend(["--resume", self.session_id])
         return command
@@ -380,7 +381,6 @@ class CodexBackend:
                 "--json",
                 "--skip-git-repo-check",
                 "-c", 'sandbox_mode="read-only"',
-                "--model", self.model,
             ]
         else:
             command = [
@@ -390,8 +390,9 @@ class CodexBackend:
                 "--color", "never",
                 "-C", self._workdir,
                 "--sandbox", "read-only",
-                "--model", self.model,
             ]
+        if self.model:
+            command.extend(["--model", self.model])
         command.extend(self._mcp_overrides())
         command.append("-")  # prompt on stdin
         return command
