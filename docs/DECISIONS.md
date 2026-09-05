@@ -18191,3 +18191,80 @@ The independent hybrid enclosure example exercises CAD rails, CAD clearance
 cutters, Blender bevel/solidify/boolean geometry and parameter regeneration.
 It does not claim a new measurement of the live wolf project. Validation
 results are recorded in the causally linked Hypergraph implementation record.
+
+---
+
+## ADR-186 — Opening a file hydrates the model (2026-09-06)
+
+**Decision.** Land the fix ADR-073 named and declined to take: opening a
+`.blend` beside an existing `.cadex` asks the engine for the display. The
+path is `load_post` → `_load_post_handler` → `on_file_changed` (unchanged:
+drop the previous file's sessions) → `cadex_backend.queue_open`. The open
+is **queued, not run**: a timer-driven pump — the drag and refine pumps'
+shape — runs the restore-verified `open_project` and then the display
+`rebuild` on a worker thread, and every `bpy` touch happens on the main
+thread inside the pump. Between the queue and the accept the viewport shows
+the mesh baked into the file, which is what it showed for good before.
+
+### 1. Why now, and why this shape
+
+ADR-073 §5 gave three reasons the one-line call was wrong. Each is answered
+rather than waved off:
+
+- **It spends the `shell/` diff.** Every line is under
+  `shell/scripts/startup/mesh_agent/` and `shell/tests/python/`, which is
+  where the ADR-091 rule says our diff lives. `docs/BLENDER-TREE.md` §2a is
+  still eight files.
+- **It wants the asynchronous lifecycle.** The `rebuild` half *is* a
+  `Lifecycle`, the same object `begin_rebuild_model` returns. The
+  `open_project` half could not be one — `Lifecycle` presumes an open
+  project — so the pump runs it on its own worker thread and adopts the
+  reply through `_adopt_open`, which `ensure_open` now shares. One meaning
+  of "opened", written once.
+- **A failed restore at load has no conversation to report into.** It now
+  has three places: the parameters panel's alert row (ADR-039's, with
+  Rebuild Model beside it), a status line in the chat history, and
+  `open_failure_code` on the per-root state. The last is the hook the
+  lockout re-accept box needs (the second open failure on the file-lifecycle
+  node); this ADR caches the code and stops there.
+
+### 2. The guards
+
+- **Only a saved file beside an existing project queues.** An unsaved
+  scene's temporary root is keyed by scene name and survives File > New;
+  without the `bpy.data.filepath` guard a fresh empty file would be
+  repainted with the previous model. A saved file whose project does not
+  exist is the orphan case, which `on_file_changed` already says out loud.
+- **Save-As does not queue.** `save_post` still only reports the change.
+  Saving model A over a `b.blend` that has a `b.cadex` beside it would
+  otherwise repaint the viewport with model B the moment the save landed;
+  that is the pre-existing semantics of the derived root, and it stays where
+  the next request finds it rather than being made eager here.
+- **The project must still be the scene's project at every step**, the drag
+  pump's rule: a second open or a Save-As in between drops the slot.
+- **A tool call racing the queue drains it.** `ensure_open` checks for a
+  queued open for its root and runs `open_now` first, so there is never a
+  second `open_project` on the same client. Its outcome is not consulted:
+  a failed queued open is exactly the case where the caller wants its own
+  report and, for `write_script`, its own `restore: False` reopen.
+- `close_all` clears the slots with everything else.
+
+### 3. Verification
+
+`test_opening_a_file_hydrates` in the gate: a model in an unsaved file, then
+File > New, does **not** queue; a saved file reopened in a fresh session
+queues (`pending_open`), holds no engine state until drained, and after
+`open_now` has `model_objects_on_open > 0` with the baked objects deleted
+first so only the engine's reply can satisfy it; the restore pass ran and
+matched; no failure code is cached; the sliders come from the engine's
+specs; `ensure_open` afterwards keeps the same child; and a `set_params`
+racing a fresh queue succeeds and drains it. Both numbers land in the gate
+report as `model_objects_on_open` and `hydrate_on_open_seconds`.
+
+### 4. Consequences
+
+- The first of the two open failures on the file-lifecycle state node is
+  closed. The second — the lockout with no button back — now has the code
+  it needs cached and is the next unit.
+- A1 is unchanged and still worth having: it would make this open one
+  script run instead of two.

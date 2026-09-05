@@ -1568,6 +1568,101 @@ def test_save_as_and_multi_file_lifecycle(workdir):
           "reopened file rehydrates its own geometry")
 
 
+def test_opening_a_file_hydrates(workdir):
+    """Opening a .blend beside its .cadex asks the engine for the display.
+
+    ADR-073 measured `model_objects_on_open = 0`: `load_post` closed the old
+    sessions and nothing queued a rebuild, so the viewport held only the mesh
+    baked into the file until a tool call, a drag or Rebuild Model provoked
+    the first request. ADR-186 queues the open from `load_post`; timers do
+    not fire under --background, so this drains it by hand like the drag and
+    refine pumps.
+    """
+    print("test_opening_a_file_hydrates")
+    from mesh_agent import cadexd_client
+
+    # An UNSAVED scene's temporary root survives File > New (it is keyed by
+    # scene name), so a new empty file must not queue an open against it.
+    bpy.ops.wm.read_homefile(use_empty=True)
+    ok, report = run_tool("write_script", {"content": REDUCED_SCRIPT,
+                                           "replace": True})
+    check(ok, "a model in an unsaved file ({:s})".format(report[:60]))
+    unsaved_root = cadex_backend.project_root(bpy.context.scene)
+    check(os.path.isdir(unsaved_root), "...whose temporary root exists")
+    bpy.ops.wm.read_homefile(use_empty=True)
+    check(not cadex_backend.pending_open(unsaved_root),
+          "File > New does not queue an open of the unsaved file's root")
+    check(cadex_backend.open_roots() == [],
+          "...and dropped its session")
+
+    blend = os.path.join(workdir, "model.blend")
+    bpy.ops.wm.save_as_mainfile(filepath=blend)
+    ok, report = run_tool("write_script", {"content": BASELINE_SCRIPT,
+                                           "replace": True})
+    check(ok, "model accepted in model.blend ({:s})".format(report[:60]))
+    root = cadex_backend.project_root(bpy.context.scene)
+    bpy.ops.wm.save_mainfile()
+
+    # A fresh session: no engine state, nothing in the viewport.
+    bpy.ops.wm.read_homefile(use_empty=True)
+    check(cadex_backend.open_roots() == [] and not cadexd_client._clients,
+          "the session starts with no engine state")
+    check(bpy.data.objects.get("plate") is None, "...and an empty viewport")
+
+    began = time.monotonic()
+    bpy.ops.wm.open_mainfile(filepath=blend)
+    scene = bpy.context.scene
+    check(cadex_backend.project_root(scene) == root,
+          "the reopened file names its own project")
+    check(cadex_backend.pending_open(root),
+          "load_post queued the open of the existing project")
+    check(cadex_backend.open_roots() == [],
+          "...queued, not run: no engine state on the main thread yet")
+    # What the viewport shows while the engine comes up is the mesh baked
+    # into the file. Take it away so the assertion below can only be met by
+    # the engine's own display reply.
+    for obj in list(bpy.data.objects):
+        bpy.data.objects.remove(obj)
+    ok, report = cadex_backend.open_now(scene)
+    open_seconds = time.monotonic() - began
+    check(ok, "the queued open hydrates ({:s})".format(
+        (report or "clean").splitlines()[0][:80]))
+    objects = brep_objects()
+    GATE["model_objects_on_open"] = len(objects)
+    GATE["hydrate_on_open_seconds"] = round(open_seconds, 3)
+    check(len(objects) > 0, "model_objects_on_open > 0 ({:d})".format(
+        len(objects)))
+    check(bpy.data.objects.get("plate") is not None,
+          "the engine's geometry is in the viewport")
+    check(not cadex_backend.pending_open(root), "the slot is retired")
+    check(cadex_backend.open_roots() == [root],
+          "exactly the file's own project is open")
+    state = cadex_backend._state_for(root)
+    check(state.restore.get("performed") is True
+          and state.restore.get("matches_accepted") is True,
+          "the open ran the restore pass and it matched")
+    check(state.open_failure_code == "", "no failure code cached")
+    specs = model_module.load_specs(scene)
+    check(any(spec["id"] == "hole" for spec in specs),
+          "the sliders are rebuilt from the engine's specs")
+    # A tool call after that finds the project open and does not reopen it.
+    before = cadexd_client._clients.get(root)
+    ok, report = cadex_backend.ensure_open(scene)
+    check(ok and report == "" and cadexd_client._clients.get(root) is before,
+          "ensure_open finds the project open and keeps the child")
+
+    # A second load with a tool call racing the queue: ensure_open drains
+    # the queued open rather than issuing a second open_project.
+    bpy.ops.wm.open_mainfile(filepath=blend)
+    scene = bpy.context.scene
+    check(cadex_backend.pending_open(root), "the reload queued again")
+    ok, report = run_tool("set_params", {"params": {"hole": 7.0}})
+    check(ok, "a tool call during the queued open succeeds ({:s})".format(
+        report[:60]))
+    check(not cadex_backend.pending_open(root),
+          "...and drained the queue on the way")
+
+
 def test_duplicated_file_keeps_its_parameters(workdir):
     """A copy names an empty project; that must not erase what the file holds.
 
@@ -5351,6 +5446,7 @@ def main():
     threading_root = tempfile.mkdtemp(prefix="mesh-cadex-thread-")
     cancel_root = tempfile.mkdtemp(prefix="mesh-cadex-cancel-")
     saveas_root = tempfile.mkdtemp(prefix="mesh-cadex-saveas-")
+    hydrate_root = tempfile.mkdtemp(prefix="mesh-cadex-hydrate-")
     duplicate_root = tempfile.mkdtemp(prefix="mesh-cadex-duplicate-")
     carry_root = tempfile.mkdtemp(prefix="mesh-cadex-carry-")
     linked_root = tempfile.mkdtemp(prefix="mesh-cadex-linked-")
@@ -5422,6 +5518,7 @@ def main():
         test_cadex_turn_single_undo(turn_root)
         test_native_blender_recipe(recipe_root)
         test_save_as_and_multi_file_lifecycle(saveas_root)
+        test_opening_a_file_hydrates(hydrate_root)
         test_duplicated_file_keeps_its_parameters(duplicate_root)
         test_save_as_carries_imported_geometry(carry_root)
         test_link_part_travels_between_two_models(linked_root)
@@ -5474,7 +5571,7 @@ def main():
         import shutil
         for root in (corpus_root, baseline_root, wide_root, turn_root,
                      reopen_root,
-                     threading_root, cancel_root, saveas_root,
+                     threading_root, cancel_root, saveas_root, hydrate_root,
                      duplicate_root, carry_root, linked_root,
                      dimension_root, measure_root,
                      restore_root, corrupt_root, describe_root, edit_root,

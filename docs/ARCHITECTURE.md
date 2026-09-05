@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-09-05
+Verified against source: 2026-09-06
 
 **Native Blender geometry (ADR-185).** The mesh domain now includes
 `mesh.blender`: an xscript-owned recipe with named mesh inputs and JSON
@@ -567,15 +567,15 @@ The steps:
   hydration rebuild into one script run; the measured cost of not having it
   is 0.49 s, paid on the first engine request against a project rather than
   on the file open. The shell's `ensure_open` is where both runs happen.
-- **Nothing hydrates on the file-open path** (ADR-073). `load_post` reaches
-  `cadex_backend.on_file_changed`, which drops the previous file's sessions
-  and returns early when the `.cadex` directory already exists; nothing
-  queues a rebuild, and the read-only panel state deliberately does not open
-  the project. So a `.blend` opened beside its project shows an empty
-  viewport — measured `model_objects_on_open = 0` — until something provokes
-  a request. Fixing it is a `shell/` change and a decision of its own, for
-  the three reasons in ADR-073 §5; A1 shortens the run but does not cause
-  one.
+- **The file-open path hydrates since ADR-186** (ADR-073 measured the gap:
+  `model_objects_on_open = 0`). `load_post` reaches
+  `cadex_backend.on_file_changed`, which drops the previous file's sessions,
+  and then `queue_open`, which — for a saved file beside an existing
+  `.cadex` — queues the open. A timer-driven pump runs `open_project`
+  (restore pass included) and the display `rebuild` on a worker thread and
+  hydrates on the main thread; `ensure_open` drains a queued open rather
+  than racing it. The read-only panel state still does not open the
+  project. A1 would shorten that open to one script run; it is unchanged.
 - Whether `CadexModelingSurface.py`'s surface resolution collapses further
   now that one global project surface exists and no provider consumes it.
 - What remains of `CadexProject.py` once the conversation store is gone —

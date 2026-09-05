@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-09-05
+Verified against source: 2026-09-06
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -1751,15 +1751,14 @@ What makes them experimental, and what would settle it:
 - **A1: `display` on `open_project`.** Would fold the restore pass and the
   hydration rebuild into one script run; measured cost of not having it is
   0.49 s on the first engine request against a project.
-- **Nothing hydrates when a file is opened** (ADR-073). Distinct from A1 and
-  larger than it: `load_post` → `on_file_changed` closes the old sessions and
-  returns, and no caller queues a rebuild, so opening a `.blend` beside an
-  existing `.cadex` leaves the viewport empty — measured
-  `model_objects_on_open = 0` in the shipped bundle — until an agent tool
-  call, a slider drag, or **Rebuild Model** provokes the first request. A1
-  makes that request cheaper; it does not cause one. Landing hydrate-on-load
-  is a `shell/` diff and wants the asynchronous lifecycle, so it is a
-  decision — ADR-073 §5.
+- [x] **Hydrate on file open** (ADR-073 measured it, ADR-186 landed it).
+  `load_post` → `on_file_changed` → `cadex_backend.queue_open`: a saved
+  `.blend` beside an existing `.cadex` queues the open, a timer runs the
+  restore-verified `open_project` and the display `rebuild` off the main
+  thread, and the accept hydrates. The gate's
+  `test_opening_a_file_hydrates` drains the queue by hand and asserts
+  `model_objects_on_open > 0`. A1 still stands: it would make that open one
+  script run instead of two.
 - **A digest-moving engine change locks a project out of the UI, with no
   visible way back in.** ADR-064 called a friendlier migration path "worth
   having and not built here"; ADR-074 is the first change to make a user hit

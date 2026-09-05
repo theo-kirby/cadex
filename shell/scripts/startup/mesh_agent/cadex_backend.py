@@ -264,6 +264,11 @@ class _State:
         #: (ADR-044). Rides on every tool result from such a project so the
         #: caller cannot mistake a rewrite-in-progress for a healthy model.
         self.restore_warning = ""
+        #: ``failure_code`` of the last ``open_project`` that failed, or "".
+        #: Set by the hydrate-on-open pump (ADR-186), where there is no
+        #: conversation to report into yet; cleared by any open that
+        #: succeeds. A panel can read it without opening anything.
+        self.open_failure_code = ""
         #: The last accepted response's ``display`` block and revision, so
         #: the collision overlay (ADR-091) can be switched on between
         #: rebuilds without asking for one. Just those two keys -- the whole
@@ -742,6 +747,12 @@ def ensure_open(scene, unrestored_ok=False):
     error. Everything that would build on an unproven model still refuses.
     """
     root = project_root(scene)
+    # A file open may have queued this very open (ADR-186). Finish that one
+    # rather than racing it with a second ``open_project`` on the same
+    # client; its outcome is not consulted, because a failed queued open is
+    # exactly the case where the caller wants its own report below.
+    if root in _opens:
+        open_now(scene)
     state = _state_for(root)
     client = _client(root)
     if state.opened and client.alive():
@@ -757,11 +768,7 @@ def ensure_open(scene, unrestored_ok=False):
                 return False, report
             return _open_unrestored(scene, root, state, client, report)
         return False, _failure_report("open_project", opened)
-    state.restore_warning = ""
-    state.opened = True
-    state.restore = dict(opened.get("restore") or {})
-    _adopt_script_state(scene, dict(opened.get("script") or {}),
-                        preserve_local=True)
+    _adopt_open(scene, state, opened)
     if state.script_present:
         # The restore pass proved the model; this second run is purely to
         # get the tessellation for the viewport. cadexd's open_project has
@@ -776,6 +783,21 @@ def ensure_open(scene, unrestored_ok=False):
         hydrate(rebuilt)
         _refresh_script_state(scene)
     return True, ""
+
+
+def _adopt_open(scene, state, opened):
+    """Main thread: take a successful ``open_project`` reply into the state.
+
+    One step for the two openers -- the synchronous :func:`ensure_open` and
+    the hydrate-on-open pump (ADR-186) -- so what an open means to the shell
+    is written once.
+    """
+    state.restore_warning = ""
+    state.open_failure_code = ""
+    state.opened = True
+    state.restore = dict(opened.get("restore") or {})
+    _adopt_script_state(scene, dict(opened.get("script") or {}),
+                        preserve_local=True)
 
 
 def _open_unrestored(scene, root, state, client, report):
@@ -2573,6 +2595,7 @@ def close_all():
     _states.clear()
     _refines.clear()
     _wirings.clear()
+    _opens.clear()
 
 
 def open_roots():
@@ -2878,6 +2901,189 @@ def on_file_changed(scene=None):
             "file into a new project; any geometry you imported comes across "
             "with it. The original's revision history stays where it is.".format(
                 os.path.basename(current), where))
+
+
+# -- hydrate on open (ADR-186) -----------------------------------------------
+
+# One slot per project root, holding the open a file load queued. The pump is
+# the same shape as the drag and refine pumps: the engine requests run on a
+# worker thread, every bpy touch happens on the main thread inside the pump,
+# and a timer drives it in the GUI while the gate drives it by hand.
+_opens = {}
+
+
+def queue_open(scene):
+    """Queue the open-and-hydrate of the current file's engine project.
+
+    Called from ``load_post`` once :func:`on_file_changed` has dropped the
+    previous file's sessions (ADR-186). Before this, nothing on the load path
+    asked the engine for the display, so a ``.blend`` opened beside its
+    ``.cadex`` showed whatever mesh was baked into the file and nothing
+    from the engine (ADR-073, ``model_objects_on_open = 0``).
+
+    Only a **saved** file beside an **existing** project qualifies. An
+    unsaved scene's temporary root is keyed by scene name and survives
+    File > New, so without the ``bpy.data.filepath`` guard a fresh empty
+    file would be repainted with the previous model. A saved file whose
+    project does not exist yet is the orphan case, which
+    :func:`on_file_changed` already says out loud.
+
+    Returns True when an open was queued. In the GUI a timer drains it; under
+    ``--background`` there is no timer and :func:`open_now` drains it.
+    """
+    import bpy
+    if not bpy.data.filepath:
+        return False
+    try:
+        root = project_root(scene)
+    except Exception:
+        return False
+    if not os.path.isdir(root):
+        return False
+    _opens[root] = {"phase": "queued", "thread": None, "result": {},
+                    "lifecycle": None}
+    if not bpy.app.background:
+        bpy.app.timers.register(lambda: _open_pump(root), first_interval=0.05)
+    return True
+
+
+def pending_open(root=None):
+    """Is an open queued or in flight for ``root``? Test-facing."""
+    import bpy
+    return (root or project_root(bpy.context.scene)) in _opens
+
+
+def open_now(scene):
+    """Drive the queued open to completion synchronously. ``(ok, report)``.
+
+    The peer of :func:`refine_now` and :func:`drag_now`: ``bpy.app.timers``
+    do not fire under ``--background``, so the gate drains the slot itself.
+    ``(True, "")`` when nothing was queued; a queued open dropped because
+    another file became current reports that as a failure.
+    """
+    root = project_root(scene)
+    slot = _opens.get(root)
+    if slot is None:
+        return True, ""
+    while _open_pump(root) is not None:
+        time.sleep(0.01)
+    return slot.get("outcome") or (
+        False, "The queued open was dropped: another file became current.")
+
+
+def _open_pump(root):
+    """Main thread. Advance the queued open one step; timer-shaped.
+
+    Three phases. ``queued``: hand ``open_project`` (with its restore pass)
+    to a worker. ``opening``: adopt the reply, then -- if the project holds a
+    script -- start the display ``rebuild`` as an ordinary :class:`Lifecycle`,
+    the same request :func:`ensure_open` makes synchronously. ``rebuilding``:
+    poll it; its accept hydrates. Between the queue and the accept the
+    viewport shows the mesh baked into the .blend, which is what it showed
+    for good before ADR-186.
+
+    Like the drag pump, the project the open belongs to must still be the
+    scene's project at every step: a Save-As or a second open in between
+    must not repaint the new file with the old file's geometry.
+    """
+    import bpy
+
+    slot = _opens.get(root)
+    if slot is None:
+        return None
+    scene = bpy.context.scene
+    if project_root(scene) != root:
+        _opens.pop(root, None)
+        return None
+    state = _state_for(root)
+    phase = slot["phase"]
+
+    if phase == "queued":
+        if state.opened:
+            # A tool call opened it first; nothing left to do.
+            _opens.pop(root, None)
+            return None
+        client = _client(root)
+        result = slot["result"]
+
+        def worker():
+            try:
+                result["payload"] = client.request(
+                    "open_project", {"project_root": root, "restore": True},
+                    progress_callback=_progress)
+            except Exception:
+                result["payload"] = {
+                    "ok": False,
+                    "failure_code": "MESH_CLIENT_ERROR",
+                    "error": traceback.format_exc(),
+                }
+
+        slot["thread"] = threading.Thread(target=worker, name="cadex-open",
+                                          daemon=True)
+        slot["thread"].start()
+        slot["phase"] = "opening"
+        return 0.02
+
+    if phase == "opening":
+        if slot["thread"].is_alive():
+            return 0.05
+        payload = slot["result"].get("payload") or {}
+        if payload.get("ok") is not True:
+            code = str(payload.get("failure_code") or "")
+            state.open_failure_code = code
+            if code == RESTORE_FAILED_CODE:
+                report = _restore_failure_report(root, payload)
+            else:
+                report = _failure_report("open_project", payload)
+            _finish_open(root, slot, False, report)
+            return None
+        _adopt_open(scene, state, payload)
+        if not state.script_present:
+            _finish_open(root, slot, True, "")
+            return None
+        slot["lifecycle"] = Lifecycle(scene, "rebuild", {},
+                                      display=DISPLAY_REQUEST, guarded=False)
+        slot["phase"] = "rebuilding"
+        return 0.02
+
+    outcome = slot["lifecycle"].poll()
+    if outcome is None:
+        return 0.05
+    ok, report = outcome
+    if ok:
+        _refresh_script_state(scene)
+    _finish_open(root, slot, ok, report)
+    return None
+
+
+def _finish_open(root, slot, ok, report):
+    """Main thread. Retire the slot and say how the open went.
+
+    A failure lands where the parameters panel already draws one (ADR-039's
+    alert row, with Rebuild Model beside it) and as a status line in the
+    chat, because at load time there is no tool result to carry it. The
+    failure code itself stays on the per-root state.
+    """
+    from . import agent as agent_module
+    from . import model
+
+    _opens.pop(root, None)
+    slot["outcome"] = (ok, report)
+    if ok:
+        model.clear_last_error()
+    else:
+        model.record_error(report)
+        print("mesh hydrate on open failed:\n" + report)
+        try:
+            agent_module.get_agent().history.add(
+                "status", "This file's model could not be restored on "
+                "open: " + (report.strip().splitlines() or [""])[0])
+        except Exception:
+            pass
+    try:
+        agent_module._tag_redraw()
+    except Exception:
+        pass
 
 
 # -- live mode (ADR-109) -----------------------------------------------------
