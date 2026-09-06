@@ -469,7 +469,7 @@ are incomplete. These values stay in explanatory notes, not numeric control
 limits. No torque rating or torque constant is inferred from kV. No
 manufacturer artwork, CAD, or code is redistributed; no new dependency.
 
-## 8d. L12 linear-actuator source audit — not yet a catalog family `[Cadex-new, ADR-207]`
+## 8d. L12 linear-actuator catalog geometry `[Cadex-new, ADR-207]`
 
 Accessed 2026-09-06: Actuonix's [L12 datasheet, revision F, November
 2019](https://www.actuonix.com/assets/images/datasheets/ActuonixL12Datasheet.pdf)
@@ -508,12 +508,12 @@ for path in sorted(glob.glob("l12_*mm_*.stp")):
     print(path, centres, centres[1] - centres[0])'
 ```
 
-For a first implementation, constrain selection to **L12-50-210-12-S**,
+The first implementation constrains selection to **L12-50-210-12-S**,
 with the supplied clevis end. Datasheet nominal geometry takes precedence
-over this older CAD's axial placement; preserve the discrepancy in `.spec`.
+over this older CAD's axial placement; `.spec` preserves the discrepancy.
 The drawing's 9 mm rear-end dimension must not be treated as a dimension
-to the hole centre. Housing transitions and clevis fit need explicit
-source-derived dimensions or named approximation limits before shipping.
+to the hole centre. Housing transitions and clevis fit are bounded by the named approximation
+limits below.
 
 For this selection the datasheet gives 12 V, 80 N maximum lifted force,
 6.5 mm/s unloaded speed, and a peak-power point of 62 N at 3.2 mm/s.
@@ -522,7 +522,8 @@ Duty cycle is at most 20%; operating temperature is -10 to +50 °C.
 Application life still needs testing. The S switches stop within 0.5 mm
 of a stroke end: geometric extension `[0, 50]` is not a promise that either
 endpoint is powered-reachable. Neither source supplies a validated dynamics
-model. No `lib.linear_actuator` implementation or fit guarantee exists yet.
+model. `lib.linear_actuator` now implements this bounded nominal exterior; no fit
+guarantee is established.
 
 ### Nominal geometry experiment (2026-09-06)
 
@@ -531,8 +532,8 @@ an independently authored primitive approximation with the existing OCCT
 engine. Its header gives the headless reproduction command; it imports no
 manufacturer file. Datum is the rear bore centre, travel is +Z, and both
 bores run along X. The newer drawing determines centre spacing and 4.25 mm
-bore diameter. This is a proof of a possible nominal construction, not a
-shipped library value or a tolerance model.
+bore diameter. This experiment established the construction now used by
+`lib.linear_actuator`; it does not establish a tolerance model.
 
 Additional measurements from the already identified `l12_50mm_in.stp`:
 the supplied clevis (zero-based solid 10) has planar bore-side flats at
@@ -579,3 +580,14 @@ Next: translate this bounded construction into the existing LibraryPart
 contract, retain these approximation limits in `.spec`, reject unsupported
 selection/extension, and verify the actual recipe through the worker and
 packaged gates. This experiment does not close L3 implementation.
+
+
+**Catalog implementation (2026-09-06, ADR-207).**
+`lib.linear_actuator("l12-50-210-12-s", extension=0)` uses the same nominal
+construction through ordinary part-domain recipes. Only this stroke, ratio,
+voltage and S-switch variant is accepted. Extension must be finite within
+[0,50] mm. `.spec` carries source links, the older-CAD discrepancy, distinct
+qualified operating points, switch limitations and the omitted details above.
+The library suite checks actual worker BREP bore surfaces, bounds and 180
+canonical/placed material probes, plus publishing through cadexd. No source
+CAD, artwork or code is redistributed; no dependency or dynamics API added.

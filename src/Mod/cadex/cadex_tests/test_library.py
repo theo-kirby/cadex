@@ -692,6 +692,9 @@ b = boards({"esp": board(esp.body, terminals=esp.terminals()),
             "pwm": board(pwm.body, terminals=pwm.terminals())})
 n = nets(ports=b, wires={})
 result = {
+    "linear_actuator": lib.linear_actuator("l12-50-210-12-s", extension=50).body,
+    "linear_actuator_placed": lib.linear_actuator("l12-50-210-12-s", extension=23.5,
+        origin=(100,30,20), direction=(1,0,0), roll_degrees=90).body,
     "bldc": lib.bldc("hobbywing-30415200").body,
     "bldc_placed": lib.bldc("hobbywing-30415200", origin=(100, 30, 20),
                              direction=(1, 0, 0), roll_degrees=90).body,
@@ -746,7 +749,7 @@ def test_the_library_builds_on_the_real_kernel() -> None:
         assert written["ok"] is True, written
         names = {output["name"] for output in written["outputs"]}
         assert names == {
-            "bldc", "bldc_placed",
+            "bldc", "bldc_placed", "linear_actuator", "linear_actuator_placed",
             "gearmotor", "gearmotor_placed",
             "esp_board", "pi_board", "pwm_board",
             "servo",
@@ -781,3 +784,99 @@ def test_worker_stages_lib() -> None:
     assert isinstance(globals_by_name["lib"], LibraryAPI)
     bolt = globals_by_name["lib"].bolt("m3", 12)
     assert bolt.body.domain == "part"
+
+
+def test_linear_actuator_spec_and_discovery():
+    actuator = _lib().linear_actuator(" L12-50-210-12-S ", extension=23.5)
+    assert (actuator.family, actuator.part_number) == ("linear_actuator", "l12-50-210-12-s")
+    spec = actuator.spec
+    assert spec["mount_centres_mm"] == [[0, 0, 0], [0, 0, 125.5]]
+    assert (spec["rated_voltage_v"], spec["gear_ratio"], spec["maximum_duty_percent"]) == (12, 210, 20)
+    assert (spec["maximum_lifted_force_n"], spec["unloaded_speed_mm_s"]) == (80, 6.5)
+    assert (spec["peak_power_force_n"], spec["peak_power_speed_mm_s"]) == (62, 3.2)
+    assert spec["temperature_range_c"] == [-10, 50]
+    assert spec["older_step_spacing_excess_mm"] == .5
+    assert "distinct operating points" in spec["rating_notes"]
+    assert "not guaranteed powered-reachable" in spec["switch_notes"]
+    assert len(spec["sources"]) == 2 and len(spec["approximate"]) == 3
+    spec["temperature_range_c"][0] = 99
+    assert catalog.linear_actuator_spec("l12-50-210-12-s")["temperature_range_c"][0] == -10
+    assert _lib().catalog()["linear_actuators"]["skus"] == ["l12-50-210-12-s"]
+    assert "linear_actuator" in {row["name"] for row in library_listing()["exports"]}
+    with pytest.raises(LibraryError):
+        _lib().linear_actuator("l12-50-210-12-s", direction=(0, 0, 0))
+
+
+@pytest.mark.parametrize("extension", [-.01, 50.01, float("nan"), float("inf"), True, "20", None])
+def test_linear_actuator_rejects_invalid_extension(extension):
+    with pytest.raises(LibraryError, match="extension"):
+        _lib().linear_actuator("l12-50-210-12-s", extension=extension)
+
+
+@pytest.mark.parametrize("sku", ["l12-50-210-12-p", "l12-100-210-12-s", "l12-50-100-12-s", "l12-50-210-6-s", "", None])
+def test_linear_actuator_rejects_unsupported_variants(sku):
+    with pytest.raises(CatalogError, match="Unknown linear actuator"):
+        _lib().linear_actuator(sku)
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle").FREECADCMD is None,
+    reason="No FreeCADCmd binary available for L12 interface checks.",
+)
+def test_linear_actuator_real_kernel_interfaces_and_placement(tmp_path):
+    import subprocess
+    from test_cadexd_lifecycle import CADEX_ROOT, FREECADCMD
+    driver = tmp_path / "l12_interfaces.py"
+    driver.write_text(L12_INTERFACE_DRIVER)
+    completed = subprocess.run(
+        [str(FREECADCMD), "-c",
+         f"import sys; sys.path.insert(0, {str(CADEX_ROOT)!r}); exec(open({str(driver)!r}).read())"],
+        capture_output=True, text=True, timeout=120,
+    )
+    assert "L12-INTERFACES-OK" in completed.stdout, completed.stdout + completed.stderr
+
+
+L12_INTERFACE_DRIVER = r'''
+import FreeCAD as App
+import Part
+from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
+from cadex_domain_api import create_domain_api
+from cadex_library_api import create_library_api
+from cadex_part_worker import build_part_shape
+pack = XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
+lib = create_library_api(create_domain_api(pack.domain, pack.api_exports, pack.output_types))
+
+for extension in (0, 23.5, 50):
+    shape = build_part_shape(lib.linear_actuator("l12-50-210-12-s", extension=extension).body.to_payload())
+    assert shape.isValid() and len(shape.Solids) == 1
+    # Read actual cylindrical surfaces, not returned metadata or recipe inputs.
+    centres = sorted({round(f.Surface.Center.z, 7) for f in shape.Faces
+                      if isinstance(f.Surface, Part.Cylinder)
+                      and abs(f.Surface.Radius - 2.125) < 1e-7
+                      and abs(abs(f.Surface.Axis.x) - 1) < 1e-7})
+    assert centres == [0, 102 + extension], centres
+    bb = shape.BoundBox
+    for actual, expected in zip((bb.XMin, bb.XMax, bb.YMin, bb.YMax, bb.ZMin, bb.ZMax),
+                                (-7.45, 7.45, -7.5, 10.5, -4.5, 106.5+extension)):
+        assert abs(actual-expected) < 1e-6, (actual, expected)
+    probes = []
+    for z, half_width in ((0, 4), (102 + extension, 3)):
+        # Axis and near bore wall: void through the full mounting width.
+        for x in (-half_width + .1, 0, half_width - .1):
+            probes.extend([((x, 0, z), False), ((x, 2.1, z), False),
+                           ((x, 2.2, z), True), ((x, 3, z), True)])
+        probes.append(((half_width + .1, 3, z), False))
+    probes.extend([((0, 0, 20), True), ((5.9, 5.9, 70), True),
+                   ((0, 0, 96 + extension), True),
+                   ((4.6, 0, 96 + extension), False)])
+    # Cyclic rotation + translation, mapping (x,y,z) to (100+z,30+x,20+y).
+    placed = build_part_shape(lib.linear_actuator("l12-50-210-12-s", extension=extension,
+        origin=(100,30,20), direction=(1,0,0), roll_degrees=90).body.to_payload())
+    assert placed.isValid() and len(placed.Solids) == 1
+    assert abs(placed.Volume - shape.Volume) < 1e-6
+    for point, occupied in probes:
+        assert shape.isInside(App.Vector(*point), 1e-7, True) == occupied, point
+        x, y, z = point
+        assert placed.isInside(App.Vector(100+z, 30+x, 20+y), 1e-7, True) == occupied, point
+print('L12-INTERFACES-OK')
+'''

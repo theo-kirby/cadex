@@ -540,6 +540,25 @@ by `rating_notes`. There is no continuous torque rating or actuator helper;
 choose control limits explicitly. Sources and conflicts: PROVENANCE §8b.
 Generic `n20` and other manufacturers/ratios are refused.
 
+#### L12 linear actuator `[ADR-207]`
+
+`lib.linear_actuator("l12-50-210-12-s", extension=0, origin=...,
+direction=..., roll_degrees=...)` returns a `LibraryPart` with the supplied
+clevis approximation. The rear bore centre is the datum, travel is +Z and
+both 4.25 mm bores run along X. Nominal centres are `102 + extension` mm;
+`.spec` coordinates remain canonical after placement. Only this variant is
+supported; extension must be finite within [0,50] mm. S switches stop within
+0.5 mm of stroke ends, so geometric endpoints need not be powered-reachable.
+
+At 12 V, 80 N maximum lifted force, 6.5 mm/s unloaded speed and the
+62 N at 3.2 mm/s peak-power point are separate operating conditions.
+Duty is at most 20%, temperature -10 to +50 °C; application life needs testing.
+`.spec` retains these qualifications, sources and the older STEP's 0.5 mm
+longer spacing. Primitive housing transitions and clevis geometry are named
+approximations (PROVENANCE §8d). This filled exterior omits installation
+hardware, leads and internals; it is not a fit, conservative collision,
+physical inertia or load guarantee, and creates no controller or feedback.
+
 #### BLDC rear-mount envelope `[ADR-206]`
 
 `lib.bldc("hobbywing-30415200", origin=..., direction=..., roll_degrees=...)`

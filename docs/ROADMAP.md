@@ -2036,9 +2036,10 @@ field, and every client gets it through the surface it already reads.
       bore spacing; 180 canonical/placed material probes pass. Explicit
       approximation limits and reproduction script in PROVENANCE §8d,
       ADR-207. No public family or physical fit guarantee yet.
-- [ ] **L3 linear-actuator implementation.** Begin with L12-50-210-12-S,
-      datasheet nominal centres, explicit CAD discrepancy and fit limits;
-      constrain extension and verify real-kernel placement and packaged gates.
+- [x] **L3 linear-actuator implementation.** `lib.linear_actuator` exposes
+      L12-50-210-12-S with bounded extension, nominal centres, qualified
+      ratings and explicit approximation limits; actual worker canonical/placed
+      interfaces and packaged publication verified (ADR-207).
 - [ ] **L3 — motors and mechanisms.** Common BLDC sizes with kV/torque
       data, N20 gearmotor, linear actuator, solenoid, joints; gears and
       rack-and-pinion need involute profiles and are their own slice.

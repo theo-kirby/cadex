@@ -44,6 +44,7 @@ __all__ = [
     "board_spec",
     "BLDC_MOTORS",
     "bldc_spec",
+    "linear_actuator_spec",
     "GEARMOTORS",
     "gearmotor_spec",
     "MICRO_HORNS",
@@ -737,6 +738,38 @@ def bldc_spec(sku: Any) -> dict[str, Any]:
     return deepcopy(BLDC_MOTORS[sku.strip().lower()])
 
 
+# Actuonix revision F drawing; older STEP discrepancy and local widths: PROVENANCE 8d.
+LINEAR_ACTUATORS = {
+    "l12-50-210-12-s": {
+        "manufacturer": "Actuonix", "manufacturer_part_number": "L12-50-210-12-S",
+        "stroke_mm": 50.0, "retracted_centres_mm": 102.0,
+        "mount_bore_dia_mm": 4.25, "rear_lug_width_mm": 8.0,
+        "clevis_width_mm": 6.0, "older_step_spacing_excess_mm": 0.5,
+        "rated_voltage_v": 12.0, "gear_ratio": 210,
+        "maximum_lifted_force_n": 80.0, "unloaded_speed_mm_s": 6.5,
+        "peak_power_force_n": 62.0, "peak_power_speed_mm_s": 3.2,
+        "maximum_duty_percent": 20.0, "temperature_range_c": [-10.0, 50.0],
+        "rating_notes": "At 12 V: maximum lifted force, unloaded speed and peak-power force/speed are distinct operating points. Duty at most 20%; application life requires testing. No physical inertia, load or dynamics guarantee.",
+        "switch_notes": "S limit switches stop within 0.5 mm of a stroke end; geometric endpoints are not guaranteed powered-reachable. No position controller or feedback is supplied by this recipe.",
+        "sources": ["https://www.actuonix.com/assets/images/datasheets/ActuonixL12Datasheet.pdf",
+                    "https://www.actuonix.com/assets/images/datasheets/L12_STP.zip"],
+        "approximate": [
+            "Datasheet nominal centres take precedence over older STEP spacing, 0.5 mm longer; not a tolerance or blanket surface correction.",
+            "Primitive housing, rear lug and sleeve transitions; flat-ended clipped cylindrical supplied clevis omits rounded tip and threaded neck. Axial extents in PROVENANCE 8d are approximations.",
+            "Filled fused exterior omits internals, shaft hollowing, threads, clamps, brackets, fasteners, cable and connector. No installation fit, conservative collision envelope, strength or physical inertia claim.",
+        ],
+    },
+}
+
+
+def linear_actuator_spec(sku: Any) -> dict[str, Any]:
+    """One sourced L12 stroke, ratio, voltage and switch variant."""
+    if not isinstance(sku, str) or sku.strip().lower() not in LINEAR_ACTUATORS:
+        raise CatalogError(f"Unknown linear actuator {sku!r}; catalogued linear actuators: "
+                           + ", ".join(sorted(LINEAR_ACTUATORS)))
+    return deepcopy(LINEAR_ACTUATORS[sku.strip().lower()])
+
+
 def catalog_families() -> dict[str, Any]:
     """The browsable catalog: every family, its part numbers, key specs.
 
@@ -778,6 +811,10 @@ def catalog_families() -> dict[str, Any]:
                 "the parametric plain bearing for everything the codes do "
                 "not cover."
             ),
+        },
+        "linear_actuators": {
+            "skus": sorted(LINEAR_ACTUATORS),
+            "notes": "lib.linear_actuator(sku, extension=0): nominal L12 mounting geometry with supplied clevis; bounded geometric extension, qualified operating points and approximation limits in spec. No installation or dynamics guarantee.",
         },
         "bldc_motors": {
             "skus": sorted(BLDC_MOTORS),

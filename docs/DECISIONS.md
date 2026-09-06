@@ -19543,3 +19543,22 @@ This supports a bounded exterior recipe with nominal mounting interfaces;
 it does not establish a conservative collision envelope, threaded fit or
 physical inertia. The family remains unimplemented; ship that separately
 with actual worker, source-suite and freshly staged packaged evidence.
+
+
+**Catalog implementation follow-up (2026-09-06).** Ship only
+`lib.linear_actuator("l12-50-210-12-s", extension=...)`, using the proven
+nominal construction through existing part recipes and LibraryPart. Reject
+unsupported variants and nonfinite/out-of-stroke extension. Spec preserves
+source discrepancy, distinct 12 V operating points, duty/temperature limits,
+S-switch reachability and housing/clevis approximations. No dynamics,
+installation fit or physical inertia claim follows from exterior geometry.
+Actual worker interface/placement tests and cadexd publication cover the
+recipe, with discovery golden updated. L3 remains open for solenoid/joints
+and broader motors; this closes only the narrow L12 implementation item.
+
+Verification: the first full source run had 2001 passed, 52 skipped and one
+publication failure from the stale installed LibraryAPI. After the single
+`pixi run build-engine`, the full engine suite passed (2002 passed,
+52 skipped). Completed `pixi run stage-engine` preceded the packaged
+lifecycle/library gate (76 passed, no skips); no staging overlapped tests.
+Staging is local and unrelocated, not a distributable release-bundle claim.

@@ -706,6 +706,43 @@ class LibraryAPI:
                            self._place("gearmotor", body, origin, direction, roll_degrees),
                            spec)
 
+    def linear_actuator(
+        self, sku: str, *, extension: float = 0.0,
+        origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> LibraryPart:
+        """Nominal L12-50-210-12-S exterior with supplied clevis.
+
+        Datum: rear bore centre; travel +Z, both bore axes X. Extension is
+        geometric millimetres in [0,50], not S-switch powered reachability.
+        Spec coordinates stay canonical after placement. Primitive housing
+        and clevis transitions are approximations: no installation fit,
+        conservative collision envelope or physical inertia guarantee.
+        """
+        spec = catalog.linear_actuator_spec(sku)
+        if (isinstance(extension, bool) or not isinstance(extension, (int, float))
+                or not math.isfinite(extension) or not 0 <= extension <= spec["stroke_mm"]):
+            raise LibraryError("lib.linear_actuator: extension must be finite in [0, 50] mm.")
+        extension = float(extension)
+        centre = spec["retracted_centres_mm"] + extension
+        spec.update(extension_mm=extension, mount_centres_mm=[[0, 0, 0], [0, 0, centre]])
+        part = self._part
+        housing = part.box(14.9, 18, 37, origin=(-7.45, -7.5, 4.5))
+        rear = part.box(spec["rear_lug_width_mm"], 9, 12.5, origin=(-4, -4.5, -4.5))
+        sleeve = part.box(12, 12, 60, origin=(-6, -6, 35.5))
+        shaft = part.cylinder(4.5, 8 + extension, origin=(0, 0, 90))
+        eye = part.common([part.cylinder(4.5, 9, origin=(0, 0, centre-4.5)),
+                          part.box(spec["clevis_width_mm"], 10, 9,
+                                   origin=(-3, -5, centre-4.5))])
+        holes = [part.cylinder(spec["mount_bore_dia_mm"]/2, 20,
+                               origin=(-10, 0, z), direction=(1, 0, 0))
+                 for z in (0, centre)]
+        body = part.cut(part.fuse([housing, rear, sleeve, shaft, eye]), holes, label=label)
+        return LibraryPart("linear_actuator", sku.strip().lower(),
+                           self._place("linear_actuator", body, origin, direction, roll_degrees),
+                           spec)
+
     def bldc(
         self, sku: str, *, origin: Sequence[float] = _DEFAULT_ORIGIN,
         direction: Sequence[float] = _DEFAULT_DIRECTION,
