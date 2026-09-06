@@ -778,10 +778,10 @@ Not a phase that "completes" — a standing mode of work.
 - [ ] Shell side (`docs/BLENDER-TREE.md` §4), where the disable commit is
       nearly free because these are already CMake options: `WITH_CYCLES`
       (`shell/intern/cycles`) — **disabled and deleted 2026-09-06,
-      ADR-196**, the first tree through both commits — then the VSE, grease
-      pencil, the compositor,
-      `shell/locale/` (80 MB), most of `shell/tests/files/` (784 MB), the
-      unused `shell/release/datafiles`.
+      ADR-196**, the first tree through both commits — `WITH_INTERNATIONAL`
+      (`shell/locale/`, 80 MB) — **disabled 2026-09-06, ADR-198**, delete
+      half pending — then the VSE, grease pencil, the compositor, most of
+      `shell/tests/files/` (784 MB), the unused `shell/release/datafiles`.
 - [ ] Engine side: Phase 8 (`src/Gui`, 66 MB) is unchanged and still
       pending (Phase 9's warm-standby worker landed as ADR-055). Two more
       found while

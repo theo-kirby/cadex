@@ -302,7 +302,7 @@ ADR-183 add-on move.
 | Tree / option | Size | Note |
 |---|---|---|
 | `shell/tests/files/` | 784 MB | Blender's own render/regression fixtures. The single biggest line item in the working tree. Nothing in the four gate suites reads it. |
-| `shell/locale/` | 80 MB | Translations for a UI the app template hides. |
+| `shell/locale/` | 80 MB | Translations for a UI the app template hides. **Disabled 2026-09-06 (ADR-198)**: `-DWITH_INTERNATIONAL=OFF` on the `build_app.sh` configure line, and `datafiles/locale` (77 MB, 49 `.mo` files plus `languages`) pruned from the bundle. Delete half pending: `shell/locale/` itself, with the option defaulted `OFF` in `shell/CMakeLists.txt` as Cycles was. |
 | the nine unregistered editors: `space_action`, `space_clip`, `space_graph`, `space_image`, `space_nla`, `space_node`, `space_script`, `space_sequencer`, `space_spreadsheet` | — | **Disabled 2026-07-26 (ADR-036)**: not registered, so not in the editor menu. Compiling them out is the delete half and needs real work — kept subsystems reference 252 symbols across them. Deleting them also retires ~3,000 lines of now-dead keymap data in `blender_default.py`, which is what still prints ~92 `property ... not found` warnings on a headed launch. |
 | grease pencil, the compositor | — | Whole editors the Cadex layout never opens. |
 | `shell/release/datafiles/` (unused parts) | — | Audit before touching: the matcap the viewport style asks for lives here. |

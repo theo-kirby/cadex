@@ -19067,3 +19067,53 @@ an inherited-tree edit with no engine benefit now that the worker does not
 import it. Owed and noticed here: ADR-196 (the Cycles disable commit,
 2026-09-06) is cited by `docs/BLENDER-TREE.md`, `docs/ROADMAP.md` and
 `package/app/build_app.sh` but has no entry in this log yet.
+
+## ADR-198 — The translation subsystem is disabled in the shell: the second Phase 13b disable commit (2026-09-06)
+
+**Context.** The second shell-side tree through the two-commit removal
+protocol (`docs/FREECAD.md` §3; `docs/BLENDER-TREE.md` §4), after Cycles
+(ADR-196). `WITH_INTERNATIONAL` compiles `shell/locale/po`'s 49 `.po`
+files with `msgfmt` on every build, installs them as 77 MB of
+`datafiles/locale` (49 `.mo` files plus `languages`) — 80 MB of source in
+the working tree — and builds `blentranslation` with the gettext path
+in. Cadex ships one UI language; the app template hides the Blender UI
+the catalogue translates; nothing under `mesh_agent/` or in the four
+gate suites calls `bpy.app.translations`. Upstream builds the `OFF`
+configuration itself (`build_files/cmake/config/blender_lite.cmake` and
+`bpy_module.cmake` both force it), so the shell is not the first tree
+to run this way. Fonts are not part of it: `datafiles/fonts` installs
+unconditionally and the option's description is older than that split.
+
+**Decision.** `-DWITH_INTERNATIONAL=OFF` on the configure line in
+`package/app/build_app.sh`, which is ours — the same shape as ADR-196:
+zero lines of inherited diff, no manifest row, no modification notice.
+Because `cmake --install` never prunes, the script also removes
+`datafiles/locale` from the bundle after install, so a build tree that
+predates the flip stops shipping the catalogue. The delete commit is the
+half that touches the inherited tree: `shell/locale/` goes, and
+`option(WITH_INTERNATIONAL ...)` in `shell/CMakeLists.txt` (§2a, already
+manifested) defaults to `OFF` so the `if(WITH_INTERNATIONAL)` install
+block in `source/creator/CMakeLists.txt` keeps skipping a directory that
+no longer exists, and the flag leaves the script.
+
+**Not taken.** Flipping the option in `shell/CMakeLists.txt` now — an
+inherited edit the delete commit will make anyway, for free. Deleting
+`shell/locale/` in the same commit — the protocol is two commits so the
+disable can be reverted alone. Removing `ui_translate` from
+`addons_core` — it is not in the default-enabled set and is a separate,
+later line item.
+
+**Evidence.** Built and gated 2026-09-06 (iteration #87, `/tmp/build-shell-87.log`,
+`/tmp/gate-87.log`): `pixi run build-shell` reconfigured the existing
+tree (1.0 s configure, 1.6 s generate), the cache now reads
+`WITH_INTERNATIONAL:BOOL=OFF`, 737 Ninja steps because the define
+reaches `makesrna` and everything generated from it, `libbf_blentranslation`
+relinked, 173 files installed, exit 0, stamped build 499. The bundle's
+`datafiles/` lists `assets colormanagement fonts icons studiolights` and
+no `locale`; `fonts` is still 15 MB, untouched. `pixi run gate` against
+that bundle: exit 0, 1,142 `ok:` lines (the same count as the Cycles
+gates), `CADEX-BLENDER-GATE` emitted with `"ok": true`,
+`model_objects_on_open` 1, `engine_from_bundle` true, the slider bar met,
+no line mentioning locale or translation, `OK` last. The stage-engine
+relocation audit prints its non-fatal stage-only report as in every log
+since #83.
