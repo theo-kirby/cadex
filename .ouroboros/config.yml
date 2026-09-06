@@ -8,35 +8,35 @@ idle_interval: 30m
 roles:
   actor:
     harness: claude
-    model: null           # your Claude Code default
+    model: claude-fable-5-1
     timeout: 90m
     resume_for: 1
     fallback:
-      - { harness: codex }   # while Claude is out of usage; back to Claude when it resets
+      - { harness: codex, model: gpt-6-astra }   # while Claude is out of usage; back to Claude when it resets
   critic:
     harness: codex
-    model: null
+    model: gpt-6-astra
     timeout: 15m
     fallback:
-      - { harness: claude, model: sonnet }
+      - { harness: claude, model: claude-opus-5 }
   overseer:
     harness: claude
-    model: haiku
+    model: claude-opus-5
     timeout: 5m
     fallback:
-      - { harness: codex }
+      - { harness: codex, model: gpt-6-astra }
   maintainer:
     harness: claude
-    model: null
+    model: claude-fable-5-1
     timeout: 30m
     fallback:
-      - { harness: codex }
+      - { harness: codex, model: gpt-6-astra }
   planner:
     harness: claude
-    model: null
+    model: claude-fable-5-1
     timeout: 20m
     fallback:
-      - { harness: codex }
+      - { harness: codex, model: gpt-6-astra }
 git:
   branch: null            # -> ouroboros/nt2
   tag_on_accept: true
