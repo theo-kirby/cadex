@@ -523,3 +523,59 @@ Application life still needs testing. The S switches stop within 0.5 mm
 of a stroke end: geometric extension `[0, 50]` is not a promise that either
 endpoint is powered-reachable. Neither source supplies a validated dynamics
 model. No `lib.linear_actuator` implementation or fit guarantee exists yet.
+
+### Nominal geometry experiment (2026-09-06)
+
+[`experiments/l12_nominal_probe.py`](experiments/l12_nominal_probe.py) builds
+an independently authored primitive approximation with the existing OCCT
+engine. Its header gives the headless reproduction command; it imports no
+manufacturer file. Datum is the rear bore centre, travel is +Z, and both
+bores run along X. The newer drawing determines centre spacing and 4.25 mm
+bore diameter. This is a proof of a possible nominal construction, not a
+shipped library value or a tolerance model.
+
+Additional measurements from the already identified `l12_50mm_in.stp`:
+the supplied clevis (zero-based solid 10) has planar bore-side flats at
+X = ±3 mm. At source Y = -67, Z = 3, material exists at X = 2.9 but not
+3.1 mm. The rear lug (solid 2 at this probe) has material at X = 3.9 but
+not 4.1 mm at source Y = 35.5, Z = 3. These establish nominal bore-region
+widths of 6 and 8 mm in that CAD, not fit tolerances. Reproduce with
+`Part.read` as above, then `shape.Solids[10].isInside(FreeCAD.Vector(x,-67,3),
+1e-7,True)` and `shape.Solids[2].isInside(FreeCAD.Vector(x,35.5,3),1e-7,True)`.
+The sleeve's CAD bounds are approximately X/Z ±6, Y -60 to 0.
+
+The experiment uses those bore widths and a 12 mm square sleeve. Its 9 mm
+shaft and clevis diameter, 37 mm housing length, and 14.9/18 mm housing
+dimensions follow the drawing. **Placement and transitions are explicit
+approximations:** housing Z 4.5–41.5, rear lug Z -4.5–8, sleeve Z 35.5–95.5,
+shaft Z 90–(98+extension), and clevis Z (97.5+extension)–(106.5+extension).
+The rear lug is a box; the clevis is a flat-ended cylinder clipped to its
+6 mm flats. This does not reproduce the rounded clevis tip, threaded neck,
+housing bumps, fillets or local seams. The 9 mm rear drawing dimension is
+**not** interpreted as a hole-centre offset. No blanket 0.5 mm correction
+is applied to the manufacturer's surfaces.
+
+The filled, fused solids omit internals, shaft hollowing, thread engagement,
+clamps, mounting brackets, fasteners, cable/connector and their clearance.
+They are neither a conservative overall collision envelope nor physical
+mass/inertia geometry. Assembly fit, installation clearance, strength,
+switch reachability and dynamics remain unverified.
+
+| Extension (mm) | Measured bore spacing (mm) | Approximation volume (mm³) | Material/void probes, canonical + placed |
+|---|---|---|---|
+| 0 | 102 | 18730.103513 | 60 passed |
+| 23.5 | 125.5 | 20225.108917 | 60 passed |
+| 50 | 152 | 21910.966075 | 60 passed |
+
+Each shape is valid with one solid. Bounds are X [-7.45,7.45], Y [-7.5,10.5],
+Z [-4.5,106.5+extension] mm. Probes check the full bore width, points just
+inside/outside the bore wall and lug flats, and sleeve/shaft material.
+A 120° rotation about (1,1,1) followed by translation (100,30,20) preserves
+volume and all probes, checked against the explicit coordinate mapping
+(x,y,z) → (100+z,30+x,20+y). The volume grows because the exterior model
+fills the exposed shaft; these numbers are kernel diagnostics only.
+
+Next: translate this bounded construction into the existing LibraryPart
+contract, retain these approximation limits in `.spec`, reject unsupported
+selection/extension, and verify the actual recipe through the worker and
+packaged gates. This experiment does not close L3 implementation.

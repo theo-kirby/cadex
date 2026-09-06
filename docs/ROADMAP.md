@@ -2031,6 +2031,11 @@ field, and every client gets it through the surface it already reads.
       models have mounting centres 0.5 mm longer than the nominal datasheet
       values (PROVENANCE §8d, ADR-207); stroke travel agrees. Measurement
       and source precedence recorded; this does not ship a catalog family.
+- [x] **L3 nominal linear-actuator geometry experiment.** Independent OCCT
+      construction at 0/23.5/50 mm extension measures 102/125.5/152 mm
+      bore spacing; 180 canonical/placed material probes pass. Explicit
+      approximation limits and reproduction script in PROVENANCE §8d,
+      ADR-207. No public family or physical fit guarantee yet.
 - [ ] **L3 linear-actuator implementation.** Begin with L12-50-210-12-S,
       datasheet nominal centres, explicit CAD discrepancy and fit limits;
       constrain extension and verify real-kernel placement and packaged gates.

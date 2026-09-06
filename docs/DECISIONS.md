@@ -19533,3 +19533,13 @@ verification. No actuator abstraction or manufacturer CAD redistribution.
 L3 and the linear-actuator family remain open. This audit changes docs only;
 the existing packaged lifecycle/library gate is baseline evidence, not
 verification of an actuator that has not been implemented.
+
+**Nominal construction follow-up (2026-09-06).** The independent OCCT probe
+in `docs/experiments/l12_nominal_probe.py` constructs valid single solids at
+0/23.5/50 mm extension with measured bore spacings 102/125.5/152 mm and
+180 passing canonical/placed material probes. PROVENANCE §8d records the
+CAD-derived 6/8 mm bore-region widths and every primitive approximation.
+This supports a bounded exterior recipe with nominal mounting interfaces;
+it does not establish a conservative collision envelope, threaded fit or
+physical inertia. The family remains unimplemented; ship that separately
+with actual worker, source-suite and freshly staged packaged evidence.
