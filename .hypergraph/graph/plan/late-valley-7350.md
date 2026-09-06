@@ -12,7 +12,7 @@ Status: open
 ## Current
 
 1. **Headless review (mission 6; damp-moon-9297).** One CLI capability per unit: named-angle render, named-plane section, assembly inventory with catalog IDs, and clearance/intersection reports naming pairs, with project-local outputs. Wire verified capabilities into the walk's review step; numeric policy review alone does not close geometric review. [rec: empty-wolf-3962] [rec: lone-wood-3732]
-2. **Broad real catalog, then compound mechanisms (mission 4; ancient-tide-5930, brave-stone-9609, idle-tower-1624).** At least five servos, ten actuators, bearings and M2–M5 nuts/bolts, each with provenance and real-kernel tests. Then parametric rack/pinion and planetary gearbox values composed from catalog parts, with mesh and clearance tests. L2 is evidenced working; N20 is the first L3 short unit and the full L3 gap remains explicit in medium. [rec: stormy-quill-5350] [rec: nimble-glade-6200] [rec: empty-wolf-3962] [rec: humble-bell-9017]
+2. **Broad real catalog, then compound mechanisms (mission 4; ancient-tide-5930, brave-stone-9609, idle-tower-1624).** At least five servos, ten actuators, bearings and M2–M5 nuts/bolts, each with provenance and real-kernel tests. Then parametric rack/pinion and planetary gearbox values composed from catalog parts, with mesh and clearance tests. L2 and the first N20 motor have packaged evidence; BLDC and linear actuator are the next short units and the full L3 gap remains explicit in medium. [rec: idle-dawn-5426] [rec: strong-grotto-8980] [rec: stormy-quill-5350] [rec: nimble-glade-6200] [rec: empty-wolf-3962] [rec: humble-bell-9017]
 3. **Manufacturer geometry (mission 4; red-loom-6298).** Obtain manufacturer STEP sources for 25T horns and servo pigtails with the required provenance; do not substitute an uncited approximation for this criterion. [rec: empty-wolf-3962]
 4. **Outside mechanism evidence (mission 7; spring-shore-5413).** Select a paper or real product, cite it in project DECISIONS.md, implement the idea within license boundaries and test/build it through the walk. Sources are read-only; no cross-boundary code copying. [rec: empty-wolf-3962]
 5. **Variant study and readable reports (mission 8; easy-bloom-3674, late-sky-8010).** Generate multiple joint variants through one script, evaluate under equal conditions, graph/rank them and use the winner in the walk; then render a human-readable research document headlessly from project PROGRESS.md numbers. Each report states why its comparison is valid. [rec: empty-wolf-3962] [rec: fond-mesa-1562]
@@ -33,3 +33,5 @@ None yet.
 - humble-bell-9017 — correct catalog horizon placement; retain standing directions
 
 - nimble-glade-6200 — correct obsolete L2 placement; no new direction and no charter-gap retirement
+
+- strong-grotto-8980 — acknowledge shipped N20 and next family units; preserve all long directions without invention
