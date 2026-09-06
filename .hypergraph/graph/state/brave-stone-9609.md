@@ -25,6 +25,8 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 
 **Solenoid evidence remains partial, with no catalog API:** PROVENANCE §8e and ADR-208/209 preserve source identities/hashes, conflicting travel claims, qualified force/duty points and exact missing interfaces. The 412 nominal exterior passes 72 canonical/placed OCCT probes; the mounting follow-up defers delivery after finding incompatible older TAU dimensions and incomplete Ledex B7 engagement/travel limits [rec: frosty-creek-6723] [rec: open-pine-9349]. Both audits pass the existing packaged lifecycle/library baseline (76 tests, no skips), with no new build, staging or full engine-suite run; this is no packaged solenoid implementation claim. Catalog breadth remains open [rec: frosty-creek-6723] [rec: open-pine-9349].
 
+**SKF GE 6 C joint shipped:** `lib.joint("skf-ge-6-c", tilt_degrees=...)` exposes the sourced nominal two-ring spherical plain bearing as a two-solid compound, with inner tilt about canonical Y before placement, bounded to [-13,13] degrees. PROVENANCE §8f pins manufacturer revision/hash, bore/OD/width/sphere datums, abutment limits and qualified ratings; unsupported variants and invalid tilt are refused, and metadata is copy-isolated [rec: first-wind-9707] [rec: morning-field-8202]. Independent qualification and actual-worker checks cover four tilts, analytic ring volumes, bore/OD/sphere surfaces, shaft clearance, limiting shoulders, non-overlap and 96 canonical/placed material/void probes; discovery and canonical/placed compound publication are tested. Final engine suite: 2016 passed/52 skipped; after build and staging, packaged lifecycle/library: 90 passed, no skips. Catalog breadth and broader L3 remain open [rec: morning-field-8202].
+
 ## Negative knowledge
 
 - [scope: Pololu #2367 dimensions and packaged verification | confidence: high | evidence: idle-dawn-5426] The envelope uses the drawing’s 25.6 mm rear maximum amid conflicting product-page lengths. Filled rear geometry, 1 mm bore depth and shaft-flat transition are approximate; bore depth is not screw engagement permission. The tested stage-only payload retains local dependencies and is not a portable release.
@@ -33,6 +35,8 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 
 - [scope: TAU0730TM-14 / Adafruit 412 partial exterior | confidence: high | evidence: frosty-creek-6723] Omitted mounting/coil/spring/wire geometry and approximate exterior details establish no hardware fit, collision clearance, physical inertia or performance. Gap is displacement from the drawing's held state, not a powered endpoint prediction.
 - [scope: examined older TAU and Ledex B7 mounting sources | confidence: high | evidence: open-pine-9349] Older TAU mounting separation is 20 mm versus current 412's 18.2 mm; its slot geometry cannot be transplanted. B7-212-B-4 has dimensioned M3x0.5 mounting-plane centres but the examined sources lack engagement depth and maximum mechanical travel; the force plot's 0.4-inch endpoint is not a mechanical stop. This bounded search does not disprove other variants.
+
+- [scope: SKF GE 6 C nominal catalog geometry and delivery payload | confidence: high | evidence: first-wind-9707, morning-field-8202] Omitted chamfers, liner and running clearance establish no fit, tolerance, physical inertia, load or dynamics guarantee. The tested 2.4 GB local development payload retains 248 external-path relocation violations and is not a portable release.
 
 ## Provenance
 
@@ -46,3 +50,5 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 
 - frosty-creek-6723 — ADR-208: sourced partial solenoid exterior passes 72 OCCT probes; missing mounting callouts prevent catalog delivery
 - open-pine-9349 — ADR-209: incompatible older TAU and incomplete B7 interfaces defer solenoid delivery; joints qualification is next, existing packaged baseline passes 76 tests
+- first-wind-9707 — ADR-210: manufacturer datums and nominal two-ring OCCT qualification support conditional joint delivery
+- morning-field-8202 — ADR-211: bounded joint catalog compound ships with actual-worker, discovery and fresh packaged verification; broader gaps remain open

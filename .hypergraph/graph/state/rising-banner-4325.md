@@ -21,7 +21,9 @@ Open charter criterion: **L3 motors and mechanisms families exist** over `CadexC
 
 **Solenoid delivery deferred:** the TAU0730TM-14 / Adafruit 412 source audit proves only a partial nominal exterior: 72 canonical/placed OCCT probes pass at 0/2.3/4.9 mm gap, with valid single solids; missing mounting callouts prevent the planned catalog contract. No solenoid API shipped [rec: frosty-creek-6723]. The follow-up finds incompatible older TAU dimensions and incomplete Ledex B7 engagement/travel evidence. ADR-209 selects joints source qualification as the next bounded L3 unit; solenoids remain open for new manufacturer evidence or a separately justified narrower contract [rec: open-pine-9349].
 
-Reconcile judgement: status remains `open`: N20, BLDC and bounded L12 delivery do not close full L3. Solenoids, joints and compound gearing remain outstanding; this source audit does not establish that other solenoid variants are unsuitable [rec: idle-dawn-5426] [rec: floral-stone-2866] [rec: frosty-snow-9642] [rec: open-pine-9349].
+**Qualified SKF GE 6 C joint shipped:** the manufacturer-source and independent nominal two-ring OCCT qualification now has catalog delivery through `lib.joint("skf-ge-6-c", tilt_degrees=...)`, bounded to [-13,13] degrees and published as a two-solid compound [rec: first-wind-9707] [rec: morning-field-8202]. Actual-worker checks at -13/0/6.5/13 degrees verify analytic volumes, mounting and spherical surfaces, shaft/shoulder clearance, non-overlap and 96 canonical/placed material/void probes. Final engine suite passed 2016 tests/52 skipped; one completed build/install and staging followed by fresh packaged lifecycle/library verification passed 90 tests, no skips [rec: morning-field-8202].
+
+Reconcile judgement: status remains `open`: the joint qualification/delivery pair is complete, but full L3, additional common BLDC scope, solenoid source/delivery gaps and compound mechanisms remain open. One nominal joint variant does not close those broader criteria [rec: morning-field-8202].
 
 ## Negative knowledge
 
@@ -35,6 +37,8 @@ Reconcile judgement: status remains `open`: N20, BLDC and bounded L12 delivery d
 - [scope: TAU0730TM-14 / Adafruit 412 partial exterior | confidence: high | evidence: frosty-creek-6723] Omitted mounting/coil/spring/wire geometry and approximate exterior details establish no hardware fit, collision clearance, physical inertia or performance. Gap is displacement from the drawing's held state, not a powered endpoint prediction.
 - [scope: examined older TAU and Ledex B7 mounting sources | confidence: high | evidence: open-pine-9349] Older TAU mounting separation is 20 mm versus current 412's 18.2 mm; its slot geometry cannot be transplanted. B7-212-B-4 has dimensioned M3x0.5 mounting-plane centres but the examined sources lack engagement depth and maximum mechanical travel; the force plot's 0.4-inch endpoint is not a mechanical stop. This bounded search does not disprove other variants.
 
+- [scope: SKF GE 6 C nominal catalog geometry and delivery payload | confidence: high | evidence: first-wind-9707, morning-field-8202] Omitted chamfers, liner and running clearance establish no fit, tolerance, physical inertia, load or dynamics guarantee. The tested 2.4 GB local development payload retains 248 external-path relocation violations and is not a portable release.
+
 ## Provenance
 
 - empty-wolf-3962 — operator-declared charter gap
@@ -46,3 +50,5 @@ Reconcile judgement: status remains `open`: N20, BLDC and bounded L12 delivery d
 
 - frosty-creek-6723 — ADR-208: sourced partial solenoid exterior passes 72 OCCT probes; missing mounting callouts prevent catalog delivery
 - open-pine-9349 — ADR-209: incompatible older TAU and incomplete B7 interfaces defer solenoid delivery; joints qualification is next, existing packaged baseline passes 76 tests
+- first-wind-9707 — ADR-210: manufacturer datums and nominal two-ring OCCT qualification support conditional joint delivery
+- morning-field-8202 — ADR-211: bounded joint catalog compound ships with actual-worker, discovery and fresh packaged verification; broader gaps remain open
