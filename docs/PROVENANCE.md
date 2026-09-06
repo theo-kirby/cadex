@@ -413,3 +413,30 @@ Neither is scheduled, and neither blocks anything. Until then this document
 describes the truth: Cadex is two forks, an assistant package, and about forty thousand
 lines of our own, and the parts that are not ours are the parts that make it
 work.
+
+
+## 8b. Catalog N20 gearmotor data `[Cadex-new, ADR-205]`
+
+Independently authored LGPL envelope for **Pololu #2367**, 100:1 MP 6 V,
+no encoder or extended rear shaft. Sources read 2026-09-06:
+
+- [Pololu specifications](https://www.pololu.com/product/2367/specs): 9.5 g;
+  at 6 V, 220 RPM (±20%) and 70 mA (±50%) no-load; extrapolated stall
+  0.67 A and 0.94 kg·cm, converted with 98.0665 N·mm per kg·cm. Stall is
+  not a continuous operating point and can damage the motor/gearbox.
+- [Product details](https://www.pololu.com/product/2367): exact reduction
+  (35×37×35×38)/(12×11×13×10). No continuous torque rating is inferred.
+- [Dimension drawing 0J949](https://www.pololu.com/file/0J949/micro-metal-gearmotors-dimensions.pdf),
+  page 4, dated 2024-04-03 (precious metal brushes, no encoder): 12×10 mm
+  cross section, gearbox L=9 mm, rear OL maximum 25.6 mm, shaft tip 10 mm
+  forward of face, diameter 3 mm, flat-to-opposite 2.5 mm, boss diameter
+  4 mm and height 0.7 mm; M1.6 centres at ±4.5 mm.
+
+The web table says 25 mm body length; its footnote says 26 mm. Use the
+more explicit drawing's 25.6 mm maximum for the rear envelope. The 9 mm
+usable D length comes from the product description; its start at Z=1 mm
+and sharp axial transition are simplifications. A solid rectangular rear
+box fills gears and terminals, and omits corner radii; this is an external
+space reservation, not internal geometry, density or inertia. Thread major
+diameter bores have an assumed 1 mm depth (not a screw engagement limit).
+No STEP, drawing artwork or third-party code is copied into the repository.

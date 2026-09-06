@@ -9,8 +9,8 @@ is a ``DomainValue`` like any other: it books, fillets, transforms,
 assembles and digests with machinery that never learns the library exists.
 
 Every generator returns a :class:`LibraryPart` — ``.body`` is the geometry,
-``.spec`` is the catalog row it was built from (mass-relevant density
-included), so a script can read the numbers it is designing around instead
+``.spec`` is the catalog row it was built from (including density where
+supported), so a script can read the numbers it is designing around instead
 of restating them.
 
 Frame conventions, uniform across the library and stated once here:
@@ -20,8 +20,10 @@ Frame conventions, uniform across the library and stated once here:
 - A bolt's datum is the **head-seat plane**: the head sits on +direction,
   the shank runs along -direction. Place it by naming the surface point the
   head lands on and the surface normal.
-- Everything else (nut, washer, insert, bearing, bushing) sits with its
-  **base face in the datum plane** and its body extending along +direction.
+- Nuts, washers, inserts, bearings and bushings sit with their
+  **base face in the datum plane** and bodies extending along +direction.
+- Servos and gearmotors use the shaft's intersection with the case/front
+  face as datum; the body extends backwards. Boards use a PCB corner.
 
 This module imports nothing from FreeCAD; generators run identically in
 the sandboxed worker and the stubbed test suite.
@@ -667,6 +669,42 @@ class LibraryAPI:
             spec,
         )
 
+    def gearmotor(
+        self, sku: str, *, origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> LibraryPart:
+        """Pololu N20 gearmotor envelope with D shaft and M1.6 mounting bores.
+
+        Datum: shaft axis at gearbox front face; body in -Z, shaft in +Z,
+        flat towards +Y, mounting centres along X. .spec coordinates stay
+        in this canonical frame. Rear envelope is filled, not internal
+        geometry; use mass_g separately, never infer density or inertia.
+        Stall ratings at 6 V are extrapolations, not continuous torque.
+        """
+        spec = catalog.gearmotor_spec(sku)
+        width, height, rear = (spec[k] for k in
+                               ("width_mm", "height_mm", "rear_envelope_mm"))
+        case = self._part.box(width, height, rear,
+                              origin=(-width/2, -height/2, -rear))
+        radius = spec["shaft_dia_mm"]/2
+        tip = spec["shaft_tip_z_mm"]
+        flat_start = spec["shaft_flat_start_z_mm"]
+        shaft = self._part.cut(self._part.cylinder(radius, tip), [
+            self._part.box(2*radius+2, 2*radius, tip-flat_start+1,
+                           origin=(-radius-1,
+                                   spec["shaft_flat_to_opposite_mm"]-radius,
+                                   flat_start))])
+        boss = self._part.cylinder(spec["boss_dia_mm"]/2, spec["boss_height_mm"])
+        depth = spec["mount_bore_depth_mm"]
+        holes = [self._part.cylinder(spec["mount_bore_dia_mm"]/2, depth+1,
+                                     origin=(x, y, -depth))
+                 for x, y in spec["mount_holes"]]
+        body = self._part.cut(self._part.fuse([case, shaft, boss]), holes, label=label)
+        return LibraryPart("gearmotor", sku.strip().lower(),
+                           self._place("gearmotor", body, origin, direction, roll_degrees),
+                           spec)
+
     # -- boards ------------------------------------------------------------
 
     def board(
@@ -996,11 +1034,12 @@ def library_listing() -> dict[str, Any]:
             "Catalogued hardware as parametric part values. Every generator "
             "returns a LibraryPart: .body is an ordinary part solid "
             "(transform it, cut with it, hand it to assembly.component), "
-            ".spec is the catalog row it was built from, density included. "
+            ".spec is the catalog row it was built from; density only where supported. "
             "Frames are uniform: the axis runs along direction (default +Z) "
             "and the datum sits at origin — a bolt's datum is its head-seat "
-            "plane with the shank along -direction; everything else stands "
-            "on its base face. Interface dimensions are the standard's; "
+            "plane with the shank along -direction. Servos/gearmotors use "
+            "the shaft at the case/front face; boards use a PCB corner; "
+            "other parts stand on their base face. Interface dimensions are the standard's; "
             "threads and knurls are deliberately not modelled, so cut "
             "mating holes with lib.clearance_hole/tap_drill/insert_hole "
             "rather than measuring the shank."

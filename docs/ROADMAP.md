@@ -2020,6 +2020,9 @@ field, and every client gets it through the surface it already reads.
       approximations in PROVENANCE §8a; connector envelopes and measured
       board masses are not modelled. Real-kernel library build and packaged
       lifecycle verification recorded with the unit.
+- [x] **L3 first motor — Pololu #2367 N20 MP 6 V.** `lib.gearmotor`,
+      manufacturer shaft/mounting dimensions and qualified ratings; explicit
+      envelope approximations (ADR-205). Real-kernel and packaged gates.
 - [ ] **L3 — motors and mechanisms.** Common BLDC sizes with kV/torque
       data, N20 gearmotor, linear actuator, solenoid, joints; gears and
       rack-and-pinion need involute profiles and are their own slice.

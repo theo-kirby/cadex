@@ -42,6 +42,8 @@ __all__ = [
     "SERVOS",
     "BOARDS",
     "board_spec",
+    "GEARMOTORS",
+    "gearmotor_spec",
     "MICRO_HORNS",
     "MICRO_HORN_HUB",
     "KG_CM_TO_NMM",
@@ -659,6 +661,43 @@ def heat_set_insert_spec(size: Any) -> dict[str, float]:
     return _family_lookup("heat-set insert", HEAT_SET_INSERTS, size)
 
 
+# Pololu drawing 0J949, 2024-04-03, page 4; #2367 specifications.
+# Independently authored envelope, not a manufacturer CAD model.
+GEARMOTORS = {
+    "pololu-2367": {
+        "manufacturer": "Pololu", "manufacturer_part_number": "2367",
+        "form_factor": "N20", "gear_ratio": (35*37*35*38)/(12*11*13*10),
+        "width_mm": 12.0, "height_mm": 10.0,
+        "rear_envelope_mm": 25.6, "gearbox_length_mm": 9.0,
+        "shaft_dia_mm": 3.0, "shaft_tip_z_mm": 10.0,
+        "shaft_flat_start_z_mm": 1.0, "shaft_flat_to_opposite_mm": 2.5,
+        "boss_dia_mm": 4.0, "boss_height_mm": 0.7,
+        "mount_thread": "M1.6", "mount_holes": [[-4.5, 0.0], [4.5, 0.0]],
+        "mount_bore_dia_mm": 1.6, "mount_bore_depth_mm": 1.0,
+        "mass_g": 9.5, "rated_voltage_v": 6.0,
+        "no_load_speed_rpm": 220.0, "no_load_speed_tolerance_percent": 20.0,
+        "no_load_current_a": 0.07, "no_load_current_tolerance_percent": 50.0,
+        "stall_current_a": 0.67, "stall_torque_nmm": 0.94 * KG_CM_TO_NMM,
+        "rating_notes": "At 6 V; stall current and torque are theoretical extrapolations, not continuous ratings. Stalls can damage the motor/gearbox. No continuous torque or thermal model supplied.",
+        "sources": ["https://www.pololu.com/product/2367/specs",
+                    "https://www.pololu.com/file/0J949/micro-metal-gearmotors-dimensions.pdf"],
+        "approximate": [
+            "Filled rectangular rear envelope replaces motor, exposed gears and terminals; not internal geometry or inertia.",
+            "M1.6 threads represented by major-diameter blind bores of assumed 1 mm depth; not a screw engagement limit.",
+            "Flat starts 1 mm from face (9 mm usable shaft); axial flat transition and shaft chamfer simplified.",
+        ],
+    },
+}
+
+
+def gearmotor_spec(sku: Any) -> dict[str, Any]:
+    """One manufacturer variant; no generic N20 ratings or shared nested rows."""
+    if not isinstance(sku, str) or sku.strip().lower() not in GEARMOTORS:
+        raise CatalogError(f"Unknown gearmotor {sku!r}; catalogued gearmotors: "
+                           + ", ".join(sorted(GEARMOTORS)))
+    return deepcopy(GEARMOTORS[sku.strip().lower()])
+
+
 def catalog_families() -> dict[str, Any]:
     """The browsable catalog: every family, its part numbers, key specs.
 
@@ -700,6 +739,10 @@ def catalog_families() -> dict[str, Any]:
                 "the parametric plain bearing for everything the codes do "
                 "not cover."
             ),
+        },
+        "gearmotors": {
+            "skus": sorted(GEARMOTORS),
+            "notes": "lib.gearmotor(sku): N20 envelope, D shaft and mounting bores; spec carries manufacturer dimensions, 6 V ratings and approximations. No continuous torque or inertia model.",
         },
         "boards": {
             "skus": sorted(BOARDS),

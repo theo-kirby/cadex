@@ -123,6 +123,12 @@
      "str"
     ]
    },
+   "gearmotors": {
+    "notes": "str",
+    "skus": [
+     "str"
+    ]
+   },
    "heat_set_inserts": {
     "rows": [
      {

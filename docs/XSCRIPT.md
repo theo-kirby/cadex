@@ -522,6 +522,24 @@ Use ordinary `part.cable` on the declared wire to publish its geometry, as
 in the wiring examples below. These rows declare geometry and pin labels;
 they do not simulate electrical behavior or validate voltage compatibility.
 
+#### N20 gearmotor `[ADR-205]`
+
+`lib.gearmotor("pololu-2367", origin=..., direction=..., roll_degrees=...)`
+returns a `LibraryPart` for Pololu's 100:1 MP 6 V variant, without encoder.
+The datum is the shaft axis at the gearbox front: body along -Z, output
+shaft along +Z, D flat facing +Y, mounting centres at X = ±4.5 mm.
+`.spec` coordinates remain in that local frame after placement.
+
+The recipe fills a 12 × 10 × 25.6 mm rear envelope, adds the boss and D
+shaft, and cuts nominal M1.6 bores. It omits exposed gears, terminal details,
+threads and chamfers. The bore depth (1 mm) and axial flat transition are
+approximations, not screw engagement limits. This envelope is not an inertia
+model; `.spec["mass_g"]` is manufacturer mass, with no inferred density.
+The 6 V speed/current and extrapolated stall torque in `.spec` are qualified
+by `rating_notes`. There is no continuous torque rating or actuator helper;
+choose control limits explicitly. Sources and conflicts: PROVENANCE §8b.
+Generic `n20` and other manufacturers/ratios are refused.
+
 ### Naming geometry: selectors, not indices `[Phase 10b, ADR-029]`
 
 Five part ops — `subshape`, `defeature`, `fillet`, `chamfer`, `thicken` —

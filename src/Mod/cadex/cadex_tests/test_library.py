@@ -518,6 +518,49 @@ def test_board_terminals_follow_placement_and_enter_wiring_table():
 # -- browsing and describe_api ----------------------------------------------
 
 
+def test_gearmotor_manufacturer_pins_and_isolation():
+    motor = _lib().gearmotor(" POLOLU-2367 ")
+    spec = motor.spec
+    assert (motor.family, motor.part_number) == ("gearmotor", "pololu-2367")
+    assert (spec["width_mm"], spec["height_mm"], spec["rear_envelope_mm"]) == (12, 10, 25.6)
+    assert (spec["shaft_dia_mm"], spec["shaft_tip_z_mm"], spec["shaft_flat_to_opposite_mm"]) == (3, 10, 2.5)
+    assert spec["mount_holes"] == [[-4.5, 0], [4.5, 0]]
+    assert spec["mount_thread"] == "M1.6"
+    assert spec["gear_ratio"] == pytest.approx(100.37004662004662)
+    assert spec["rated_voltage_v"] == 6
+    assert spec["no_load_speed_rpm"] == 220
+    assert spec["no_load_current_a"] == 0.07
+    assert spec["stall_current_a"] == 0.67
+    assert spec["stall_torque_nmm"] == pytest.approx(92.18251)
+    assert spec["mass_g"] == 9.5
+    assert "extrapolations" in spec["rating_notes"]
+    assert len(spec["approximate"]) == 3
+    spec["mount_holes"][0][0] = 999
+    assert catalog.gearmotor_spec("pololu-2367")["mount_holes"][0][0] == -4.5
+    bores = [op for op in _ops(motor.body, "cylinder") if op.arguments[0] == 0.8]
+    assert {tuple(op.properties["origin"]) for op in bores} == {(-4.5, 0, -1), (4.5, 0, -1)}
+    flat = [op for op in _ops(motor.body, "box") if op.arguments[0] == 5][0]
+    assert flat.properties["origin"] == (-2.5, 1.0, 1.0)
+
+
+@pytest.mark.parametrize("sku", ["n20", "pololu-992", "", None, 2367])
+def test_gearmotor_rejects_unsourced_variants(sku):
+    with pytest.raises(CatalogError, match="Unknown gearmotor"):
+        _lib().gearmotor(sku)
+
+
+def test_gearmotor_placement_and_listing():
+    motor = _lib().gearmotor("pololu-2367", origin=(10, 20, 30),
+                             direction=(1, 0, 0), roll_degrees=30)
+    assert motor.body.operation == "transform"
+    assert motor.body.properties["translation"] == (10, 20, 30)
+    assert motor.spec["mount_holes"] == [[-4.5, 0], [4.5, 0]]
+    assert _lib().catalog()["gearmotors"]["skus"] == ["pololu-2367"]
+    assert "gearmotor" in {row["name"] for row in library_listing()["exports"]}
+    with pytest.raises(LibraryError):
+        _lib().gearmotor("pololu-2367", direction=(0, 0, 0))
+
+
 def test_catalog_browse_shape() -> None:
     families = _lib().catalog()
     assert set(families) >= {"fasteners", "heat_set_inserts", "bearings"}
@@ -569,6 +612,9 @@ b = boards({"esp": board(esp.body, terminals=esp.terminals()),
             "pwm": board(pwm.body, terminals=pwm.terminals())})
 n = nets(ports=b, wires={})
 result = {
+    "gearmotor": lib.gearmotor("pololu-2367").body,
+    "gearmotor_placed": lib.gearmotor("pololu-2367", origin=(100, 30, 20),
+                                     direction=(1, 0, 0), roll_degrees=30).body,
     "esp_board": esp.body,
     "pi_board": pi_board.body,
     "pwm_board": pwm.body,
@@ -617,6 +663,7 @@ def test_the_library_builds_on_the_real_kernel() -> None:
         assert written["ok"] is True, written
         names = {output["name"] for output in written["outputs"]}
         assert names == {
+            "gearmotor", "gearmotor_placed",
             "esp_board", "pi_board", "pwm_board",
             "servo",
             "horn",

@@ -172,6 +172,10 @@ prose. Every response also carries `id` and `ok`.
 | `cancel` | `cancelled` |
 | `shutdown` | `shutting_down` |
 
+The `describe_api.library.catalog.gearmotors` family (ADR-205)
+adds `skus` and `notes`; `lib.gearmotor` is discovered through the existing
+library exports. Clients need no new dispatch or request op.
+
 The `describe_api.library.catalog.boards` family (ADR-202) adds `skus` and
 `notes` through the existing browsable catalog. Generator signatures remain
 in `library.exports`; board dimensions and pin rows are read from the

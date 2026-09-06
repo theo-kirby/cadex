@@ -19452,3 +19452,29 @@ and Rebuild Model permits a subsequent explicit edit. Run the headless shell
 gate and CLI suite; exact results are in the record. No inherited shell code,
 engine, protocol or payload changes. Simultaneous acceptance and concurrent
 rebuilds are not serialized; sequential use remains the documented contract.
+
+
+## ADR-205 — One sourced N20 gearmotor, with qualified ratings (2026-09-06)
+
+**Decision.** Add `lib.gearmotor("pololu-2367")` over CadexCatalog, using
+Pololu's dimension drawing and 6 V specifications (PROVENANCE §8b).
+Reject generic N20 identifiers: case size does not determine voltage,
+reduction or torque. Return the ordinary library body/spec value; no new
+protocol op, runtime dependency, actuator helper or shell implementation.
+The discoverable catalog family has the same skus/notes shape as L2.
+
+**Fidelity.** The envelope reserves the drawing's maximum rear length;
+it carries the D shaft and M1.6 mounting pattern with explicit bore-depth
+and flat-transition approximations. Filled internal space cannot supply
+physical inertia. Manufacturer mass is metadata, with no inferred density.
+Stall torque/current are extrapolations at 6 V, not continuous ratings.
+The drawing takes precedence over conflicting rounded web lengths. No
+manufacturer CAD or code is redistributed.
+
+**Verification.** Catalog pins, nested-row isolation, refusal of unsourced
+variants and placement tests; the real-kernel library test builds canonical
+and rotated gearmotors. Engine suite, one engine build, sequential staging
+and packaged lifecycle/library gates are reported in the work record.
+Only the first motor subitem closes; BLDC, linear actuators, solenoids,
+joints and compound mechanisms keep L3 open. Concurrent project writes
+remain subject to ADR-204's sequential-use limitation.
