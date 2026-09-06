@@ -21,11 +21,13 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 
 **BLDC joins the catalog:** `lib.bldc("hobbywing-30415200")` carries HOBBYWING 2820 SL 550KV rear-mount dimensions, conservative shaft/collar clearance reservation and qualified no-load data. Shaft coupling fit and torque remain unsupported. Real-kernel mounting and placement probes pass; stable engine suite 1987 passed/52 skipped, packaged lifecycle/library 61 passed with no skips [rec: floral-stone-2866].
 
-**L12 sources are audited, not implemented:** `docs/PROVENANCE.md` §8d pins source hashes, qualified ratings and reproducible OCCT measurements of eight official STEP files. All mounting spacings exceed revision F nominal by 0.5 mm while stroke travel agrees. ADR-207 chooses datasheet nominal centres for a future L12-50-210-12-S with explicit source/fit limits. No new linear-actuator family shipped; 61 packaged tests passed against the existing baseline [rec: southern-moss-9142].
+**L12 linear actuator shipped:** `lib.linear_actuator("l12-50-210-12-s", extension=...)` uses the existing LibraryPart recipe contract, with extension bounded to [0,50] mm, qualified operating specifications and unsupported-selection refusal. PROVENANCE §8d pins the manufacturer sources and omitted installation details; ADR-207 chooses revision F nominal bore centres over the older STEP models' 0.5 mm longer spacing [rec: southern-moss-9142] [rec: frosty-snow-9642]. The independent OCCT proof and actual library worker each pass 180 canonical/placed material/void probes at 0/23.5/50 mm extension, measuring 102/125.5/152 mm bore spacing in valid single solids [rec: long-heron-6915] [rec: frosty-snow-9642]. Post-build engine suite: 2002 passed/52 skipped; freshly staged packaged lifecycle/library gates: 76 passed, no skips. This local unrelocated payload is not a distributable-release claim. Broader L3 and catalog breadth remain open [rec: frosty-snow-9642].
 
 ## Negative knowledge
 
 - [scope: Pololu #2367 dimensions and packaged verification | confidence: high | evidence: idle-dawn-5426] The envelope uses the drawing’s 25.6 mm rear maximum amid conflicting product-page lengths. Filled rear geometry, 1 mm bore depth and shaft-flat transition are approximate; bore depth is not screw engagement permission. The tested stage-only payload retains local dependencies and is not a portable release.
+
+- [scope: Actuonix L12-50-210-12-S catalog geometry | confidence: high | evidence: frosty-snow-9642] Filled internals, simplified housing/clevis transitions and omitted installation details establish no conservative collision envelope, installation fit, physical inertia, load or dynamics guarantee. S switches stop within 0.5 mm of stroke ends; geometric endpoints do not promise powered reachability.
 
 ## Provenance
 
@@ -34,3 +36,5 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 - idle-dawn-5426 — ADR-205: catalog discovery gains sourced N20 geometry and qualified ratings; kernel and packaged checks pass
 - floral-stone-2866 — BLDC catalog envelope, qualified source data and real-kernel/packaged evidence
 - southern-moss-9142 — L12 source audit and nominal-centre precedence; no recipe or new implementation verification
+- long-heron-6915 — independent nominal L12 OCCT construction and canonical/placed geometry proof
+- frosty-snow-9642 — bounded L12 catalog variant ships with qualified specifications and full engine/packaged verification

@@ -17,9 +17,9 @@ Open charter criterion: **L3 motors and mechanisms families exist** over `CadexC
 
 **BLDC mounting envelope shipped:** `lib.bldc("hobbywing-30415200")` provides the HOBBYWING Skywalker 2820 SL 550KV rear-mount envelope with sourced mounting dimensions, a conservative shaft/collar reservation and qualified no-load data. Canonical and placed mounting interfaces pass real-kernel checks; the stable engine suite passed 1987 tests/52 skipped and packaged lifecycle/library passed 61 with no skips [rec: floral-stone-2866].
 
-**Linear actuator remains unimplemented.** All eight official Actuonix L12 STEP models have mounting-axis spacing 0.5 mm greater than revision F datasheet nominal; stroke travel agrees. ADR-207 selects nominal datasheet centres for the future L12-50-210-12-S with supplied clevis, retaining source disagreement and fit limits. The 61 passing packaged tests certify the existing baseline only [rec: southern-moss-9142].
+**Bounded L12 linear actuator shipped:** `lib.linear_actuator("l12-50-210-12-s", extension=...)` exposes nominal mounting geometry, supplied-clevis approximation, qualified specifications and refusal of unsupported selections or extension outside [0,50] mm. ADR-207 retains datasheet precedence over the older STEP models' 0.5 mm longer mounting spacing [rec: southern-moss-9142] [rec: frosty-snow-9642]. The independent OCCT construction and actual library worker pass 180 canonical/placed probes at 0/23.5/50 mm extension with measured bore spacing 102/125.5/152 mm; all outputs are valid single solids [rec: long-heron-6915] [rec: frosty-snow-9642]. After one build/install, the engine suite passed 2002 tests/52 skipped; completed staging followed by packaged lifecycle/library gates passed 76 tests with no skips [rec: frosty-snow-9642].
 
-Reconcile judgement: status remains `open`: N20 and one BLDC envelope do not close L3. Linear actuators, solenoids, joints and compound gearing remain outstanding; BLDC torque, shaft coupling fit and additional sizes remain unsupported [rec: idle-dawn-5426] [rec: floral-stone-2866] [rec: southern-moss-9142].
+Reconcile judgement: status remains `open`: the N20, BLDC and bounded L12 variants do not close full L3. Solenoids, joints and compound gearing remain outstanding; BLDC torque, shaft coupling fit and additional sizes remain unsupported [rec: idle-dawn-5426] [rec: floral-stone-2866] [rec: frosty-snow-9642].
 
 ## Negative knowledge
 
@@ -28,9 +28,13 @@ Reconcile judgement: status remains `open`: N20 and one BLDC envelope do not clo
 - [scope: HOBBYWING 30415200 catalog envelope | confidence: high | evidence: floral-stone-2866] The diameter-10.5 reservation covers the full 18 mm shaft/collar projection because collar length is undimensioned; the 5 mm shaft metadata does not establish coupling-fit length. Bore depth is an assumption, not engagement permission; filled geometry is not physical inertia. Manufacturer current/power entries are limited to 46 seconds, not continuous control limits; no torque rating is inferred.
 - [scope: Actuonix L12 source discrepancy | confidence: high | evidence: southern-moss-9142] The measured 0.5 mm mismatch is not established tolerance, switch allowance or a correction for all CAD surfaces. Datasheet nominal centres are the explicit ADR-207 implementation choice, not a demonstrated fit guarantee.
 
+- [scope: Actuonix L12-50-210-12-S catalog geometry | confidence: high | evidence: frosty-snow-9642] Filled internals, simplified housing/clevis transitions and omitted installation details establish no conservative collision envelope, installation fit, physical inertia, load or dynamics guarantee. S switches stop within 0.5 mm of stroke ends; geometric endpoints do not promise powered reachability.
+
 ## Provenance
 
 - empty-wolf-3962 — operator-declared charter gap
 - idle-dawn-5426 — ADR-205: sourced N20 motor with real-kernel and packaged verification; broader L3 remains open
 - floral-stone-2866 — ADR-206: sourced BLDC envelope with qualified interfaces and passing kernel/packaged verification
 - southern-moss-9142 — ADR-207: measured L12 mounting disagreement; source precedence selected, implementation still open
+- long-heron-6915 — independent nominal L12 OCCT construction and canonical/placed geometry proof
+- frosty-snow-9642 — bounded L12 catalog variant ships with qualified specifications and full engine/packaged verification
