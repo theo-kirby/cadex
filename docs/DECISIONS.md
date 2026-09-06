@@ -18545,3 +18545,96 @@ number in prose is a number to parse.
 - Not taken: a `--rebuild` flag on `asset`. The rebuild that makes a
   policy real is a script change naming it, and folding that into the
   store write would hide the digest the script has to carry.
+
+## ADR-191 — The training leg is one command: `cadex train`, the offboard trainer's dispatcher (2026-09-06)
+
+**Status:** accepted. **Zone:** `cli/` (LGPL), `training/SETUP.md` and
+`docs/`; no protocol op, no engine change, no `shell/` diff, nothing new
+in `pixi.toml` or any payload.
+
+### 1. Context
+
+The lifecycle audit (`docs/MUJOCO.md` §7c) left row 4 — training — as a
+person's leg: the trainer works, but the CLI agent has no shell, and
+twice when asked to retrain it handed back guessed flags (`--num-envs`
+for `--envs`, `--output` for `--out`). ADR-189 made the export a bundle
+and ADR-190 brought the policy home; between them stood the one command
+somebody still typed by hand, from a venv they had to know about. Item 3
+of the audit's ordered frontier asked for a *dispatcher*, not a trainer:
+training stays offboard (ADR-084) and the engine never produces a policy.
+
+The code landed in iteration 24 of the night run (commit `bb2513a0`) and
+the session ended before its ADR, docs and record node; this entry is
+written against that code, verified again today.
+
+### 2. Decision
+
+`cadex train --out DIR` is the leg as one command. It rebuilds, exports
+the accepted script's outputs into `--out`, finds the one exported
+training task (or the one `--task NAME` picks; none or more than one is
+exit 3 before the trainer runs), runs `training/cadex_train.py` on it as
+a **subprocess** under the training venv's interpreter, and puts the
+trainer's receipt — the JSON object on its last stdout line, as printed,
+never re-derived (ADR-093) — in the envelope as `training`. With
+`--put` it copies the policy into the store through `put_asset` and
+reports the `assets` row whose `sha256` is the digest `assembly.policy`
+names. The project lock is held for the rebuild and again for the store
+write, and released in between, because a fifteen-minute training run is
+not a modelling operation.
+
+- **The trainer's flags are pinned by name** in `cli/cadex_cli/train.py`
+  (`--iterations`, `--envs`, `--seed`, `--label`, `--init-from`, `--out`),
+  and `test_train.py` reads them back out of the trainer's own parser, so
+  a rename in `training/` fails in `cli/`. That is the answer to the
+  guessed flags: nobody, agent or person, has to know them.
+- **The interpreter is looked up, never made**: `--trainer-python`, then
+  `$CADEX_TRAIN_PYTHON`, then `<repo>/.venv/bin/python`, then
+  `~/cadex-train-venv/bin/python` — the two places `training/SETUP.md`
+  names — and none found is exit 1 listing them. A venv this silently
+  built would be a venv nobody knows the contents of, the rule
+  `remote_train.sh` already keeps (ADR-089).
+- **It never rebuilds after training**, as `asset` does not (ADR-190): the
+  policy is real when a script names it with the sha256 this run reports.
+- **The trainer's stderr passes through** to ours, where progress belongs;
+  its stdout is read only for the receipt. `--timeout SECONDS` bounds it,
+  and a trainer that exits non-zero or is stopped is exit 1 with the
+  reason.
+- The overlay now names `cadex train --out DIR --put` as the caller's one
+  command, or the three of ADR-189/190, and still says the agent cannot
+  train: it has no shell. A tool that spawns a fifteen-minute subprocess
+  from inside a model turn is **not taken** — the leg is the caller's or
+  a pipeline's, and that is what "agent-driven" costs least as.
+
+### 3. Evidence
+
+- `cli/tests/test_train.py`, eleven tests: the emitted flags are ones the
+  trainer's parser declares; the default script is the repo trainer; the
+  interpreter order explicit → env → venvs; the one-or-named task; the
+  receipt is the last JSON line and nothing else; a failing or hanging
+  trainer is exit 1 with the reason; usage errors before any engine or
+  trainer; the leg as one command with a fake trainer and the policy in
+  the store; `--name` honoured and nothing stored without `--put`; a
+  project with no task is a refusal, not a run; and the **real trainer**
+  on the toy task (1 it × 4 envs) with the engine's `put_asset` digesting
+  the result to the sha256 the trainer printed. `cli/tests`: **103
+  passed** in 46 s, engine present, nothing skipped.
+- On a scratch copy of the §7b rehearsal project, never the live one:
+  `cadex train --iterations 2 --envs 8 --put --timeout 600 --json` exited
+  0 in **18.5 s** wall; the trainer's own `wall_time_s` 3.7 s on `cpu`,
+  task digest `602d62c1…` equal to the audit's, 28 053 bytes stored as
+  `balance_task.cxpolicy` with sha256 `1e0801aa…` identical in the
+  receipt and the `assets` row; the exported `--out` held the bundle, the
+  policy and its `.best` checkpoint beside the STEP and STL.
+
+### 4. Consequences
+
+- §7c row 4 moves from "a person" to "the agent's caller, or a pipeline";
+  legs 3 → 7 are now one command plus `cadex script --set`. The iterate
+  shape (item 4) is next, and it is what decides whether a policy
+  parameter can be blanked for the sweep the retrain needs.
+- `training` is a new optional envelope field; `cadex-cli-v1` is unchanged
+  because every existing key means what it did.
+- `cli/` now depends on `training/cadex_train.py` **by path** and on its
+  flag names **by test**; the training tree is still in no payload, no
+  CMake rule and not in `pixi.toml` — the dispatcher runs it, it does not
+  import it, and `training/`'s three assertions stand.

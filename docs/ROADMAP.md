@@ -1790,6 +1790,12 @@ What makes them experimental, and what would settle it:
   envelope's `assets` rows carry the sha256 `assembly.policy` names. The
   lifecycle audit's row 5 (`docs/MUJOCO.md` §7c) closes; the `cadex train`
   dispatcher (item 3) is next.
+- [x] **The training leg is one command** (ADR-191). `cadex train --out
+  DIR --iterations N --envs N --put` rebuilds, exports the bundle, runs
+  `training/cadex_train.py` under the training venv with its real flags,
+  and stores the policy with its sha256 in the envelope. Training stays
+  offboard (ADR-084): a subprocess, and no venv is ever created. §7c row 4
+  closes; the iterate shape (item 4) is next.
 - **Linux and Windows shell bundles.** The engine payload builds for both;
   only macOS arm64 has shell CI. Moot once Phase 12 lands — revisit then.
 

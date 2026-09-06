@@ -54,6 +54,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex export` | Rebuild the accepted script and write its outputs. | no |
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
 | `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
+| `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. | no |
 
 Flags, valid on either side of the subcommand:
 
@@ -101,6 +102,33 @@ changes the suffix) is the engine's refusal, exit `3`, and nothing is
 written; a `--put` that does not exist is a usage error before the engine
 runs. With no `--put` it lists the store, which is how a pipeline learns a
 digest it did not store itself.
+
+`train` is the training leg as one command (ADR-191): it rebuilds, exports
+the accepted script's outputs into `--out` (required — the bundle and the
+policy land there), finds the one exported training task (or the one
+`--task NAME` picks), runs `training/cadex_train.py` on it under the
+training venv's interpreter, and puts the trainer's receipt in the
+envelope as `training`. Training stays offboard (ADR-084): the CLI spawns
+the trainer as a subprocess and the engine is never in the room while it
+runs — the project lock is held for the rebuild and, with `--put`, again
+for the store write, and released between them. The trainer's flags are
+carried by name so that nobody guesses them: `--iterations N` (200),
+`--envs N` (256 — drop it hard on CPU, `training/SETUP.md`), `--seed N`,
+`--label TEXT`, `--init-from POLICY` (warm start, same task digest),
+`--name NAME.cxpolicy` (the policy's filename in `--out`, default
+`<task>.cxpolicy`), `--timeout SECONDS` (stop the trainer; 0 is no
+limit). The interpreter is `--trainer-python PATH`, then
+`$CADEX_TRAIN_PYTHON`, then `<repo>/.venv/bin/python`, then
+`~/cadex-train-venv/bin/python` — the two places `training/SETUP.md`
+names — and **nothing creates a venv**: none found is exit 1 with the
+list of places tried. `--put` copies the policy into the store through
+`put_asset` and reports it as an `assets` row, whose `sha256` is the
+digest `assembly.policy` names. **It never rebuilds after training**, for
+the same reason `asset` does not: the policy is real when a script names
+it, which is `cadex script --set` or a turn's `edit_script`. A project
+whose accepted revision exports no training task is exit 3 before the
+trainer runs; a trainer that exits non-zero or hits `--timeout` is exit 1
+with its stderr already on ours.
 
 ### Exit codes
 
@@ -153,7 +181,14 @@ nothing else, so `cadex script > model.py` works.
 `error` is present instead of `notes` when `ok` is false. `outputs` entries
 that produced no file carry `skipped` with the reason. An `asset` run adds
 `assets`, the store's listing as `[{"name", "bytes", "sha256"}, …]`, sorted
-by name — the same rows `put_asset` and `inspect scope=assets` return.
+by name — the same rows `put_asset` and `inspect scope=assets` return. A
+`train` run adds `training`, the offboard trainer's receipt exactly as it
+printed it on its last stdout line — `out`, `bytes`, `sha256`,
+`reward_per_step`, `wall_time_s`, `device`, `task_sha256`, the witness
+margin — and, with `--put`, the `assets` row the stored policy makes. The
+receipt is not re-derived here: a number taken off a stream is a number
+something else can write into (ADR-093), so this is the one the trainer
+meant as data.
 
 **BREP outputs are converted; every other staged output is copied.** A
 BREP is written under the output's name in each `--format`. A mesh's
@@ -260,8 +295,10 @@ The overlay says three things the engine does not:
 - **You cannot train, and a file comes in by path.** `put_asset` is how a
   trained policy, its provenance or a mesh enters the project, and its
   reply's `sha256` is the digest the script names; asked to train, the
-  agent says so and names `cadex export` and `cadex asset --put` instead
-  of inventing flags (ADR-190 — the audit caught it doing exactly that).
+  agent says so and names the caller's one command, `cadex train --out
+  DIR --put` (ADR-191), or its three — `cadex export`, the trainer,
+  `cadex asset --put` — instead of inventing flags (ADR-190 — the audit
+  caught it doing exactly that).
 - **Revision guards are handled for you.**
 
 ## 5. Sessions, locks and state
@@ -364,6 +401,8 @@ about a payload (ADR-023).
   protocol op; promoting it to `export_model` is its own PR, and
   `export.py` is one seam so that it can be.
 - **The CLI does not ship in the engine payload.** It runs from the
-  repository.
+  repository — and so does `train`'s trainer, which it finds by path from
+  the repository root and runs under a venv the engine's environment
+  deliberately lacks (ADR-084). No venv, no `train`; it does not build one.
 - One `--set` per parameter, and parameters are numeric — that is what
   `num(...)` declares.

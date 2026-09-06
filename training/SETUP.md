@@ -1,6 +1,6 @@
 # Training a policy: the four ways
 
-Verified against source: 2026-08-29. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-09-06. Provenance: `[Cadex-new]`. See
 ADR-084 (training is offboard) and ADR-089
 (remote dispatch).
 
@@ -116,6 +116,12 @@ for cp312/cp313/cp314:
 
 `pytest` is a convenience for running the trainer's own gates from this
 venv, not a fifth pin — nothing about a training run needs it.
+
+From here `cadex train --project P --out ./run --iterations 300 --envs 32
+--put` (`docs/CLI.md` §2, ADR-191) does the export, this trainer invocation
+and the store write as one command; it finds this venv at `<repo>/.venv` or
+`~/cadex-train-venv`, or wherever `--trainer-python` / `$CADEX_TRAIN_PYTHON`
+points, and never builds one. The direct invocation below is what it runs.
 
 ```bash
 .venv/bin/python training/cadex_train.py <outputs>/walk-task.json \

@@ -3,7 +3,7 @@
 
 """``cadex`` — the command line.
 
-Six subcommands over one project, of which exactly one spends tokens::
+Seven subcommands over one project, of which exactly one spends tokens::
 
     cadex -p "a mounting bracket for a NEMA17, 4 mm wall" --out ./out
     cadex params --set fin_angle=12 --out ./sweep/12
@@ -11,6 +11,7 @@ Six subcommands over one project, of which exactly one spends tokens::
     cadex export --out ./out
     cadex link --from ../sensorA --output sensor
     cadex asset --put walk.cxpolicy --put walk-task.json
+    cadex train --out ./run --iterations 200 --envs 64 --put
 
 That asymmetry is the whole design. An expensive turn authors a *parametric*
 script once; after that a sweep is ``set_params`` and a re-export, with no
