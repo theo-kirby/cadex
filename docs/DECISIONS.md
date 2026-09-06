@@ -19603,3 +19603,24 @@ inspected; the 39-page manufacturer open-frame catalog has no B7 text match
 or B7 selection-table row. Existing packaged lifecycle/library baseline:
 76 passed, no skips, 16.12 s. Documentation-only; no new geometry probes,
 build, staging or full engine suite, and no packaged solenoid claim.
+
+## ADR-210 — Qualify a nominal SKF GE 6 C joint before catalog delivery (2026-09-07)
+
+**Decision.** Use the identified May 2013 SKF manufacturer dimension and
+abutment tables to qualify one small spherical plain bearing for linkage
+geometry. PROVENANCE §8f carries the source URL/hash, nominal mating datums,
+conditional tilt and rating qualifications. The independent OCCT probe uses
+two spherical-interface rings; no new solver, public API or dependency.
+Omit chamfers, liner detail and running clearance explicitly, retaining a
+nominal geometry contract without installation-fit or physical-load claims.
+This follows the conditional joint bet after the solenoid source dead end;
+it does not weaken the solenoid contract or close full L3.
+
+**Verification and next.** Four tilts (-13/0/6.5/13°) produce valid rings,
+analytically checked volumes, zero overlap, clear shaft and limiting nominal
+shoulders, and 96 canonical/placed material/void probes. Existing packaged
+lifecycle/library baseline: 76 passed, no skips, 16.23 s. Documentation and
+standalone experiment only: no build, staging or full engine suite. The
+source-qualification checkbox closes; public catalog delivery stays open
+for the same variant with explicit approximation metadata, real-worker
+interfaces, discovery and freshly staged packaged publication tests.

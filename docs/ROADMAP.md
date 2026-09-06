@@ -2051,6 +2051,12 @@ field, and every client gets it through the surface it already reads.
       qualification (PROVENANCE §8e, ADR-209); no new geometry or API.
 - [ ] **L3 solenoid implementation.** Requires complete sourced mounting
       interfaces, qualified ratings, actual worker probes and packaged gates.
+- [x] **L3 joint source/geometry qualification.** SKF GE 6 C, manufacturer
+      dimension and abutment tables; nominal spherical rings and bore pass
+      headless OCCT at neutral/intermediate/limit tilt and placed probes
+      (PROVENANCE §8f, ADR-210). No public joint API or fit guarantee.
+- [ ] **L3 joint implementation.** Deliver the qualified GE 6 C approximation
+      with source metadata, real-worker interfaces and packaged publication.
 - [ ] **L3 — motors and mechanisms.** Common BLDC sizes with kV/torque
       data, N20 gearmotor, linear actuator, solenoid, joints; gears and
       rack-and-pinion need involute profiles and are their own slice.

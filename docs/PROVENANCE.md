@@ -722,3 +722,62 @@ justified, explicitly narrower contract; no claim that other solenoids are
 unsupportable follows from this bounded search. No source assets, geometry,
 runtime code or dependencies were added; existing packaged gates verify
 the baseline only.
+
+### 8f. L3 joint qualification — SKF GE 6 C (2026-09-07)
+
+**Source identity.** SKF *Spherical plain bearings and rod ends*, publication
+BU/P1 06116/1 EN, May 2013, copyright SKF Group 2013,
+[manufacturer PDF](https://www.skf.com/binaries/pub12/Images/0901d19680154a05-06116_1-EN_tcm_12-122020.pdf),
+downloaded 2026-09-07, SHA-256
+`df51e55192dc9ce138e371e2f5047cfbceeba7f2ac6246f92e5bd3d7f24930cb`.
+Printed pages 132–133 (PDF pages 134–135) were rendered and visually checked:
+the GE 6 C row and its adjacent dimension/abutment row are the second rows.
+This qualifies that publication's variant, not a claim about current inventory
+or interchangeability with GE 6 E. No supplier CAD, PDF or code is vendored.
+
+**Nominal contract (mm).** Bore d=6, outside D=14, inner width B=6,
+outer width C=4, spherical diameter dk=10. Origin is the concentric sphere
+centre; neutral bore and housing axes are Z. Inner end faces are Z=±3,
+outer end faces Z=±2. These provide shaft and housing mating datums.
+Both ring chamfer dimensions r1/r2 are 0.3 minimum. Source abutment limits:
+shaft shoulder diameter da=7.4 minimum, 8 maximum; housing shoulder opening
+Da=9.5 minimum, 12.7 maximum; shaft/housing fillet radii ra/rb=0.3 maximum.
+The catalog's 13° tilt is conditional on the shaft shoulder not exceeding
+da max. Test-only cylinders check limiting nominal shoulders on both sides;
+no mating hardware is delivered.
+
+**Qualified ratings.** Steel/PTFE sintered-bronze maintenance-free radial
+spherical plain bearing. Catalog basic dynamic/static load ratings are
+3.6/9 kN, and listed mass is 0.004 kg. These are manufacturer rating inputs,
+not allowable robot working loads, axial ratings, fatigue life, torque,
+friction or an actuator model. Application load direction, duty, mounting,
+fit and operating conditions require separate selection. No dynamics or
+physical inertia can be inferred from the exterior volumes below.
+
+**Independent construction.** [ge6c_joint_probe.py](experiments/ge6c_joint_probe.py)
+uses OCCT sphere/cylinder intersection and subtraction. The outer ring is
+a Ø14 × 4 cylinder with a radius-5 spherical cavity; the inner ring is that
+sphere clipped to width 6 with a Ø6 through bore. Inner tilt is about Y
+through the common centre, bounded to ±13°; arbitrary assembly joint solving
+is not introduced. Chamfers, liner thickness, manufacturing seams and radial
+running clearance are omitted. The two ideal spherical surfaces coincide:
+this is nominal geometry, not a tolerance model, press-fit guarantee,
+conservative collision envelope or a manufacturing drawing. It supports
+one bounded catalog candidate using existing primitives, pending delivery
+tests; no public joint API ships in this audit.
+
+**Reproduce and result.** Run the FreeCADCmd command in the probe's header
+against the existing built headless engine. At -13/0/6.5/13°, each ring is
+a valid single solid, outer/inner volumes are 318.348056/245.044227 mm³,
+matching independent analytic integrals. Ring overlap is zero, a Ø5.98
+test shaft remains clear, actual bore/OD cylinders and spherical surfaces
+match nominal dimensions, and 96 material/void probes pass across canonical
+and obliquely rotated/translated placements. Nonfinite/out-of-range tilt is
+rejected. Ø8 shaft shoulders and Ø9.5 housing openings have zero interference
+with the opposing ring at all four tilts (16 nominal shoulder checks).
+Existing packaged lifecycle/library baseline: 76 passed, no skips, 16.23 s.
+No engine-source edits, build, staging or full engine suite were needed or run;
+the baseline is not packaged joint verification.
+This establishes the stated approximation only. Delivery must
+preserve these limits and add real-worker/publication tests and fresh
+packaged verification. Full L3 and the solenoid interface gaps remain open.
