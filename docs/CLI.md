@@ -298,21 +298,32 @@ and when:
   (each restores, each rebuilds, each writes `script.json`). The
   contract is therefore **sequential by convention**: do the design
   turns in the GUI, then run the walk while no rebuild is in flight —
-  the shell's engine is idle between operations, and every engine write
-  is guarded (next bullet). Making the shell hold the same lock is
-  runtime work in `shell/`, recorded as the criterion's one open leg,
-  not slipped in here.
-- **Overlap is caught on write, not on open.** The engine reads
-  `script.json` from disk on every guarded write and refuses a stale
-  `expected_revision` as `STALE_PROGRAM_REVISION`
-  (`CadexScriptedRuntime.prepare_project_candidate`), so a script the
-  walk accepted while the file was open cannot be overwritten by the
-  shell's next `write_script` or slider drag: the shell's lifecycle
-  reads the current revision off the refusal and retries **once**
-  against it (`Lifecycle.poll`), which is the ADR-039 self-heal doing
-  its job for a change that came from outside the window. What the
-  guard does not cover is two *rebuilds* of the same revision at once —
-  hence the convention above.
+  the shell's engine is idle between operations — and the write guard
+  is not a safety net for the walk's work (next bullet). Making the
+  shell hold the same lock is runtime work in `shell/`, recorded as an
+  open leg of the criterion, not slipped in here.
+- **Overlap is refused once, then retried — so the guard does not
+  protect the walk's script.** The engine reads `script.json` from disk
+  on every guarded write and refuses a stale `expected_revision` as
+  `STALE_PROGRAM_REVISION`
+  (`CadexScriptedRuntime.prepare_project_candidate`). The shell's
+  lifecycle then adopts the revision the refusal reports and retries
+  **once, with the same arguments** (`Lifecycle.poll` → `_start`: the
+  original `source` or slider values, re-guarded against the new
+  revision). That is the ADR-039 self-heal for a respawn or a
+  background refine, and for a change from outside the window it has
+  the opposite effect: a `write_script` the shell sent
+  while a `cadex` command was accepting a script **overwrites the
+  accepted script on its second attempt** if that retry succeeds; the
+  stale-revision refusal never reaches the person. A slider retry can
+  similarly overwrite accepted parameter values. The guard does not
+  keep the walk's work. So the convention above has a second half:
+  **after any `cadex` command has accepted a script, run Rebuild Model
+  or reopen the file before the next GUI edit**, so the shell's source
+  and revision are the store's. Two *rebuilds* of one revision at once
+  are not guarded at all. Carrying a foreign revision through the retry
+  as a refusal instead of a rewrite is runtime work in `shell/`, an open
+  leg beside the lock.
 - **How the shell observes an accepted run.** Three ways, all existing:
   **Rebuild Model** re-runs the script the store holds, read from disk,
   and adopts its source, specs and values into the scene
@@ -613,7 +624,11 @@ one process per project and a sweep will run several of these at once. The
 kernel releases it on process death, so there is no stale-lock heuristic to
 get wrong. A second run is refused with a readable message; `--wait` blocks
 instead. It is held for one command and released before the `PROGRESS.md` row
-and the commit. The shell does not take it (§2, *with the GUI attached*).
+and the commit. The shell does not take it, and its stale-revision retry
+re-sends its own arguments, so a GUI edit that crossed a headless command
+can silently overwrite the command's accepted script or parameter values
+(§2, *with the GUI attached*):
+run Rebuild Model or reopen the file before the next GUI edit.
 
 ## 6. Which engine
 

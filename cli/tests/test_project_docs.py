@@ -107,6 +107,12 @@ def test_the_scaffold_states_the_gui_mode_and_the_walk_doc_agrees(tmp_path) -> N
     assert "beside the open file" in architecture
     assert "next Rebuild Model or reopen" in architecture
     assert "file tools of its own" not in architecture
+    # The stale-revision retry keeps the shell's own arguments
+    # (``Lifecycle._start`` re-sends ``self._args``), so the guard does not
+    # keep a CLI-accepted script: the scaffold and the doc must say so, and
+    # neither may claim the opposite.
+    assert "before the next GUI edit" in architecture
+    assert "can silently overwrite the accepted script or parameter values" in architecture
 
     walk_doc = (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text()
     flat = " ".join(walk_doc.split())  # the doc wraps; the sentences do not
@@ -114,6 +120,11 @@ def test_the_scaffold_states_the_gui_mode_and_the_walk_doc_agrees(tmp_path) -> N
     assert "with the GUI attached the same commands run from a terminal beside the open file" in flat
     assert "**The shell takes no lock.**" in flat
     assert "file tools of its own" not in flat
+    assert "retries **once, with the same arguments**" in flat
+    assert "overwrites the accepted script on its second attempt" in flat
+    assert "before the next GUI edit" in flat
+    assert "cannot be overwritten" not in flat
+    assert "loud rather than silent" not in flat
 
 
 def test_a_train_row_names_the_mode_it_ran_in() -> None:

@@ -19288,8 +19288,11 @@ file becomes current (`on_file_changed` → `close_all`) or quit. (3) The
 engine guards every write against the **on-disk** `script.json`
 (`prepare_project_candidate` reads the store's state per request), so a
 script accepted by the CLI while the file is open refuses the shell's
-next write as `STALE_PROGRAM_REVISION`, and the shell's `Lifecycle.poll`
-retries once against the revision the refusal reports. (4) The shell
+next write as `STALE_PROGRAM_REVISION` — and the shell's `Lifecycle.poll`
+adopts the reported revision and retries once **with the same
+arguments**, so the shell's `write_script` or slider values land on the
+second attempt if the retry succeeds, without surfacing the stale-revision
+refusal to the person. (4) The shell
 observes an accepted run through **Rebuild Model** (re-runs the stored
 source from disk and adopts specs, values and source), through reopening
 (`load_post` → `queue_open`, the restore-verified open plus the display
@@ -19305,9 +19308,13 @@ name every time), with the same legs, the same three documents and
 domain docs, and the same project-relative artifacts — nothing a walk
 writes says whether a window was open. Ownership is **sequential by
 convention**: design turns in the window, the walk while no rebuild is
-in flight; the write guard makes an overlap loud rather than silent, but
-two rebuilds of one revision at once are not refused. The doc says so
-plainly. `docs/CLI.md` §2 gains the paragraph and §5 the two sentences
+in flight, and Rebuild Model or a reopen before the next GUI edit once
+a `cadex` command has accepted a script — because the write guard is
+not a safety net for that script: the shell's automatic retry keeps its
+own mutation and can silently overwrite the accepted script or parameter
+values, and two rebuilds of one revision at once are not refused at all.
+The doc says so plainly. `docs/CLI.md` §2 gains the paragraph and §5 the
+two sentences
 about scope; §7c row 11 is rewritten; the `ARCHITECTURE.md` scaffold's
 `## Training` section gains the one sentence the doc names, and
 `cli/tests/test_project_docs.py` holds the two together.
@@ -19320,13 +19327,25 @@ agent must go through the Mesh tools"). With the GUI attached the project
 docs are the CLI's and a person's, and the new test refuses the old
 sentence in both places.
 
-**Not taken, recorded.** The shell holding the same advisory lock while
-its engine session is open would make the convention a refusal. That is
-runtime work in `shell/` (under `mesh_agent/`, so within the spent diff),
-its own unit with the gate; it is the criterion's one open leg and is
-declared on the record node rather than started here. No GUI was
-launched and the mode is not exercised: the evidence is the client code,
-as the charter allows for this run.
+**Not taken, recorded.** Two runtime legs, both in `shell/` (under
+`mesh_agent/`, so within the spent diff), each its own unit with the
+gate, declared on the record nodes rather than started here: the shell
+holding the same advisory lock while its engine session is open, which
+would make the convention a refusal; and the stale-revision retry
+declining a revision it did not produce instead of rewriting over it.
+No GUI was launched and the mode is not exercised: the evidence is the
+client code, as the charter allows for this run.
+
+**Corrected on review (same day).** The first draft of this entry, of
+`docs/CLI.md` §2 and of the ROADMAP line said the write guard makes an
+overlap "loud rather than silent" and that an accepted script "cannot be
+overwritten" by the shell's next write. The critic read `Lifecycle.poll`
+and it does not say that: `_start` re-sends `self._args` unchanged with
+the newly adopted `expected_revision`, so the refusal is absorbed and
+the overwrite lands. The three places now describe the retry and its
+consequence, the scaffold's `## Training` sentence tells the person to
+Rebuild Model or reopen before the next GUI edit, and the pin test in
+`cli/tests/test_project_docs.py` refuses the old claim.
 
 **Evidence.** `cli/tests/test_project_docs.py` (the new test and the
 ADR-200 one beside it); the CLI suite green — counts in the commit and

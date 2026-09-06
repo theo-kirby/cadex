@@ -1816,14 +1816,17 @@ What makes them experimental, and what would settle it:
   code** (ADR-201, `docs/CLI.md` §2, `docs/MUJOCO.md` §7c row 11). It is
   the same `cadex` commands from a terminal beside the open `.blend`:
   the CLI's `flock` is per command and released before the `PROGRESS.md`
-  row and the commit, the shell takes no lock, an overlapping write is
-  refused off the on-disk `script.json` and retried once by the shell,
-  and the shell observes an accepted run on Rebuild Model or reopen. The
+  row and the commit, the shell takes no lock, an overlapping shell
+  write is refused off the on-disk `script.json` and then retried once
+  with the shell's own arguments — so it can silently overwrite the walk's accepted
+  script or parameter values, and the doc requires Rebuild Model or a reopen before the
+  next GUI edit (corrected on review, ADR-201). The
   in-app agent has no shell and no file tool, so the project docs stay
   the CLI's and a person's — the scaffold and `docs/CLI.md` said
   otherwise and now agree with `backend.py`. **Not exercised** (no GUI
-  under this run); the one runtime leg — the shell holding the same lock
-  — is recorded, not taken. *Three modes, one shape* is now headless
+  under this run); the two runtime legs — the shell holding the same
+  lock, and its retry refusing a foreign revision instead of rewriting
+  it — are recorded, not taken. *Three modes, one shape* is now headless
   exercised, remote scripted, GUI documented.
 - [x] **A trained policy comes home headlessly** (ADR-190). `cadex asset
   --put walk.cxpolicy` for a pipeline and `put_asset` in the CLI agent's

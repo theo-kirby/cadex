@@ -120,7 +120,10 @@ bundle and the model out and nothing else, so a warm start
 (`--init-from`) trains locally. With the GUI attached the same commands
 run from a terminal beside the open file, one at a time while no rebuild
 is in flight; the shell's own agent cannot run them, and it sees an
-accepted run on the next Rebuild Model or reopen.
+accepted run on the next Rebuild Model or reopen. Rebuild Model or
+reopen **before the next GUI edit** once a command has accepted a
+script: the shell retries a stale-revision refusal with its own source
+and can silently overwrite the accepted script or parameter values.
 
 ## Domain docs
 
