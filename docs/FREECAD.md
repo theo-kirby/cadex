@@ -1,6 +1,6 @@
 # FREECAD.md — Inherited Substrate Inventory
 
-Verified against source: 2026-09-06
+Verified against source: 2026-09-07
 
 Cadex's **engine** is a FreeCAD fork. This is the ledger of what we keep,
 what is slated for removal, and what is already gone. Its peer for the shell
@@ -160,18 +160,21 @@ live at the root: `NOTICE` and `THIRD_PARTY_LICENSES.md`.
 
 ### `src/Gui` (+ every `src/Mod/*/Gui`, `tests/src/Gui`) — Phase 8
 
-**Disable commit: Phase 7 C6b (ADR-022).** Release and package
+**Disable commit: `d2c8bcc5` — Phase 7 C6b (ADR-022).** Release and package
 configurations set `BUILD_GUI=OFF`; nothing the product ships compiles a
 line of it. Measured effect on this tree: `lib/` 43 MB → 8.3 MB, `Mod/`
 49 MB → 22 MB, files matching `*Gui*` 93 → 8, and `bin/` reduced to
 `FreeCADCmd` + `CadexGeometryWorker`.
 
-Not deleted yet because it is 66 MB across 729 files plus every
-`src/Mod/*/Gui`, and `BUILD_GUI=OFF` already captures 100% of the size and
-build-time benefit with a zero-line diff in the conservative zone. The
-delete commit is Phase 8 (`docs/ROADMAP.md`), and it must also remove the
-`BUILD_GUI` guards Phase 7 added to `tests/src/CMakeLists.txt` and
-`tests/src/Base/CMakeLists.txt` rather than leave them dangling.
+The 2026-09-07 [deletion-readiness audit](PHASE8-AUDIT.md) counts 1,960
+tracked files / 65,331,470 bytes in src/Gui and 3,731 files / 137,324,776
+bytes across all thirteen GUI directories. **Deletion is not yet safe:**
+headless Material code and tests include `Gui/MetaTypes.h`, confirmed in
+release object dependencies, and debug still enables GUI. Preserve that
+metatype contract in a retained location and complete the debug disable
+before a separate delete commit. The audit lists build/install/test references,
+retained Assembly dependencies, run-start delta metrics and exact gates
+(ADR-213). Remove deleted registrations and obsolete guards together.
 
 Until then: **do not add to it, do not fix it, do not partially delete it.**
 

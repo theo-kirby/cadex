@@ -19682,3 +19682,28 @@ nor physical inertia. No API, source contract or solenoid restart rule changes.
 **Verification.** Documentation-only audit of catalog, recipes, tests, provenance
 and delivery records. Existing packaged lifecycle/library baseline is rerun
 and reported in this unit's record; no full engine suite, build or staging.
+
+
+## ADR-213 — Phase 8 requires a retained metatype contract and debug disable (2026-09-07)
+
+**Decision.** The dependency audit in `docs/PHASE8-AUDIT.md` closes the audit
+item, not deletion. Historical disable `d2c8bcc5` covers release/package;
+ordinary debug still enables GUI. Twelve headless Material source files and
+six retained tests include `Gui/MetaTypes.h`; release Ninja dependencies confirm
+it is active. Move that QtCore/App declaration contract to a retained home
+before deleting, preserving upstream attribution, then complete debug disable
+and perform the separate coherent deletion with its build references.
+
+**Boundary.** Thirteen GUI directory trees contain 3,731 tracked files and
+137,324,776 bytes. Keep Assembly's mixed Python modules: the publisher still
+constructs CommandCreateView.ExplodedView and ExplodedViewStep, installed
+outside BUILD_GUI. Main GUI targets, orphan InventorBuilder, Doxygen paths and
+the five-file identity assertion need explicit treatment; deleting directories
+does not remove all GUI-lineage Python. No source is removed in this audit.
+
+**Evidence.** Debug configure succeeds with GUI ON; existing packaged lifecycle
+and licensing suites report 26 passed. The nt2 start (`7dd3d045`) and audit
+HEAD (`d031bde0`) have identical manifests and modified-file line metrics:
+47 FreeCAD entries and 44 Blender entries. Fork-delta reduction remains open,
+as does full L3. The audit supplies exact later release, ctest/baseline and
+packaged validation commands; no full build is claimed here.
