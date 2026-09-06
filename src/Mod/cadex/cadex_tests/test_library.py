@@ -518,6 +518,86 @@ def test_board_terminals_follow_placement_and_enter_wiring_table():
 # -- browsing and describe_api ----------------------------------------------
 
 
+def test_bldc_pins_qualified_ratings_and_isolation():
+    motor = _lib().bldc(" HOBBYWING-30415200 ")
+    spec = motor.spec
+    assert (motor.family, motor.part_number) == ("bldc", "hobbywing-30415200")
+    assert (spec["case_dia_mm"], spec["case_length_mm"]) == (35.1, 40)
+    assert (spec["rear_boss_dia_mm"], spec["rear_boss_height_mm"]) == (11, 2)
+    assert (spec["shaft_dia_mm"], spec["shaft_projection_mm"]) == (5, 18)
+    assert spec["shaft_collar_envelope_dia_mm"] == 10.5
+    assert spec["mount_holes"] == [[-9.5, 0], [9.5, 0], [0, -12.5], [0, 12.5]]
+    assert (spec["kv_rpm_per_v"], spec["supply_lipo_cells"]) == (550, 6)
+    assert (spec["no_load_current_a"], spec["no_load_test_voltage_v"]) == (1.38, 22.2)
+    assert spec["mass_g"] == 144.5
+    assert "46 s" in spec["rating_notes"]
+    assert "Not a shaft coupling fit model" in spec["approximate"][1]
+    assert not any("torque" in key or "inertia" in key for key in spec)
+    spec["mount_holes"][0][0] = 999
+    assert catalog.bldc_spec("hobbywing-30415200")["mount_holes"][0][0] == -9.5
+    assert _lib().catalog()["bldc_motors"]["skus"] == ["hobbywing-30415200"]
+    assert "bldc" in {row["name"] for row in library_listing()["exports"]}
+    with pytest.raises(LibraryError):
+        _lib().bldc("hobbywing-30415200", direction=(0, 0, 0))
+
+
+@pytest.mark.parametrize("sku", ["2820", "hobbywing-30415201", "", None, 30415200])
+def test_bldc_rejects_unsourced_windings(sku):
+    with pytest.raises(CatalogError, match="Unknown BLDC motor"):
+        _lib().bldc(sku)
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle", fromlist=["FREECADCMD"]).FREECADCMD is None,
+    reason="No FreeCADCmd binary available for BLDC interface checks.",
+)
+def test_bldc_real_kernel_interfaces_and_placement(tmp_path):
+    import subprocess
+    from test_cadexd_lifecycle import CADEX_ROOT, FREECADCMD
+
+    # Build the actual lib recipe through the worker from the selected source
+    # or payload. Probe solid material and empty mounting bores independently
+    # of recipe-tree assertions, including after a nontrivial rigid placement.
+    driver = tmp_path / "bldc_interfaces.py"
+    driver.write_text('''
+import FreeCAD as App
+from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
+from cadex_domain_api import create_domain_api
+from cadex_library_api import create_library_api
+from cadex_part_worker import build_part_shape
+pack = XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
+lib = create_library_api(create_domain_api(pack.domain, pack.api_exports, pack.output_types))
+canonical = build_part_shape(lib.bldc("hobbywing-30415200").body.to_payload())
+assert canonical.isValid() and len(canonical.Solids) == 1
+bb = canonical.BoundBox
+for actual, expected in zip((bb.XMin, bb.XMax, bb.YMin, bb.YMax, bb.ZMin, bb.ZMax),
+                            (-17.55, 17.55, -17.55, 17.55, -2, 58)):
+    assert abs(actual-expected) < 1e-6, (actual, expected)
+# In the bores, behind their assumed depth, and alongside their walls.
+probes = [((x,y,0.5), False) for x,y in ((-9.5,0),(9.5,0),(0,-12.5),(0,12.5))]
+probes += [((9.5,0,2), True), ((11.5,0,0.5), True),
+           ((0,0,-1), True), ((6,0,-1), False),
+           ((5,0,57), True), ((5.5,0,57), False)]
+placed = build_part_shape(lib.bldc("hobbywing-30415200", origin=(100,30,20),
+                                  direction=(1,0,0), roll_degrees=90).body.to_payload())
+assert placed.isValid() and len(placed.Solids) == 1
+assert abs(placed.Volume-canonical.Volume) < 1e-6
+# The placement maps Z to X; 90-degree roll maps local X to world Y
+# and local Y to world Z.
+for point, occupied in probes:
+    assert canonical.isInside(App.Vector(*point), 1e-7, True) == occupied, point
+    x,y,z = point
+    assert placed.isInside(App.Vector(100+z,30+x,20+y), 1e-7, True) == occupied, point
+print("BLDC-INTERFACES-OK")
+''')
+    completed = subprocess.run(
+        [str(FREECADCMD), "-c",
+         f"import sys; sys.path.insert(0, {str(CADEX_ROOT)!r}); exec(open({str(driver)!r}).read())"],
+        capture_output=True, text=True, timeout=120,
+    )
+    assert "BLDC-INTERFACES-OK" in completed.stdout, completed.stdout + completed.stderr
+
+
 def test_gearmotor_manufacturer_pins_and_isolation():
     motor = _lib().gearmotor(" POLOLU-2367 ")
     spec = motor.spec
@@ -612,6 +692,9 @@ b = boards({"esp": board(esp.body, terminals=esp.terminals()),
             "pwm": board(pwm.body, terminals=pwm.terminals())})
 n = nets(ports=b, wires={})
 result = {
+    "bldc": lib.bldc("hobbywing-30415200").body,
+    "bldc_placed": lib.bldc("hobbywing-30415200", origin=(100, 30, 20),
+                             direction=(1, 0, 0), roll_degrees=90).body,
     "gearmotor": lib.gearmotor("pololu-2367").body,
     "gearmotor_placed": lib.gearmotor("pololu-2367", origin=(100, 30, 20),
                                      direction=(1, 0, 0), roll_degrees=30).body,
@@ -663,6 +746,7 @@ def test_the_library_builds_on_the_real_kernel() -> None:
         assert written["ok"] is True, written
         names = {output["name"] for output in written["outputs"]}
         assert names == {
+            "bldc", "bldc_placed",
             "gearmotor", "gearmotor_placed",
             "esp_board", "pi_board", "pwm_board",
             "servo",

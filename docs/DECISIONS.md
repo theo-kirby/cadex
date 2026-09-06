@@ -19478,3 +19478,32 @@ and packaged lifecycle/library gates are reported in the work record.
 Only the first motor subitem closes; BLDC, linear actuators, solenoids,
 joints and compound mechanisms keep L3 open. Concurrent project writes
 remain subject to ADR-204's sequential-use limitation.
+
+
+## ADR-206 — Sourced BLDC mounting envelope with explicit fit limits (2026-09-06)
+
+**Decision.** Add `lib.bldc("hobbywing-30415200")` for HOBBYWING's Skywalker
+2820 SL 550KV through the existing LibraryPart/catalog contract. Sources:
+[manufacturer specifications](https://www.hobbywing.com/en/products/skywalker2814.html)
+and [2820SL drawing](https://www.hobbywing.com/en/uploads/file/20231121/6ce36297af7f04e8e0c41c3b28a36dbd.pdf),
+with transcription and limits in PROVENANCE §8c. This is the next bounded
+L3 family after N20; generic size identifiers and unsourced windings fail.
+No actuator helper, protocol op, shell code or runtime dependency is added.
+
+**Fidelity.** Preserve the rear mounting pattern and motor dimensions;
+reserve the undimensioned collar length across the entire shaft projection.
+This conservative choice explicitly excludes shaft coupling fit. Filled
+rotor/stator geometry cannot supply physical inertia; mounting bore depth
+is assumed, not screw engagement permission. Omitted wiring/accessories
+mean this is not a full installation clearance model. Published current and
+power are duration-limited with incomplete cooling conditions, so retain
+them as notes instead of control ratings. No continuous torque is inferred.
+
+**Verification.** Catalog pins, nested-copy isolation and invalid variants;
+real OCCT solid, bounds, material/void probes at mounting bores and shaft
+reservation, repeated after rotation/translation; the packaged library
+integration also accepts canonical and placed motor outputs. Engine suite,
+one engine build, sequential staging and packaged lifecycle/library results
+are reported in the record. Only this BLDC envelope subitem closes; torque,
+shaft fit, more sizes and the remaining L3 families stay open. The local
+staged payload retains development dependencies and is not a portable release.

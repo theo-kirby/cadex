@@ -440,3 +440,31 @@ box fills gears and terminals, and omits corner radii; this is an external
 space reservation, not internal geometry, density or inertia. Thread major
 diameter bores have an assumed 1 mm depth (not a screw engagement limit).
 No STEP, drawing artwork or third-party code is copied into the repository.
+
+
+## 8c. Catalog BLDC envelope data `[Cadex-new, ADR-206]`
+
+`lib.bldc("hobbywing-30415200")` is independently authored from HOBBYWING's
+Skywalker 2820 SL 550KV product data, accessed 2026-09-06:
+
+- [Manufacturer specifications](https://www.hobbywing.com/en/products/skywalker2814.html):
+  product 30415200, 550 rpm/V, 6S LiPo, 144.5 g, no-load 1.38 A at 22.2 V.
+- [2820SL dimension drawing](https://www.hobbywing.com/en/uploads/file/20231121/6ce36297af7f04e8e0c41c3b28a36dbd.pdf):
+  case diameter 35.1 mm, case length 40 mm, rear boss diameter 11 mm
+  projecting 2 mm (42 minus 40), shaft projection 18 mm, total length
+  60 mm. Shaft diameter 5 mm; collar diameter 10.5 mm. Rear M3 pairs
+  span 19 and 25 mm. The chosen local X/Y axes align with these pairs,
+  independent of cable clocking.
+
+The collar length is undimensioned: the model reserves the whole shaft
+projection at collar diameter, rather than guessing free shaft length.
+Shaft coupling fit remains unsupported. Nominal M3 bores use assumed 1 mm
+depth; threads and screw engagement are not modelled. The filled case
+unites rotor and stator; leads, connectors, prop adapter and cross mounting
+plate are absent. No installation clearance or physical inertia guarantee.
+
+The product table's current and power entries are 40.9 A and 910.2 W **for
+46 seconds**, despite the column's continuous wording. Cooling conditions
+are incomplete. These values stay in explanatory notes, not numeric control
+limits. No torque rating or torque constant is inferred from kV. No
+manufacturer artwork, CAD, or code is redistributed; no new dependency.

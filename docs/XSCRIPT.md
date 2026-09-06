@@ -540,6 +540,25 @@ by `rating_notes`. There is no continuous torque rating or actuator helper;
 choose control limits explicitly. Sources and conflicts: PROVENANCE §8b.
 Generic `n20` and other manufacturers/ratios are refused.
 
+#### BLDC rear-mount envelope `[ADR-206]`
+
+`lib.bldc("hobbywing-30415200", origin=..., direction=..., roll_degrees=...)`
+returns the HOBBYWING Skywalker 2820 SL 550KV `LibraryPart`. The datum is
+its rear mounting plane on axis: case and shaft point along +Z, rear boss
+along -Z. Local X/Y align with the 19/25 mm M3 mounting pairs; they do not
+specify cable clocking. `.spec` remains canonical after placement.
+
+The case is a filled cylinder, with the rear boss and nominal mounting
+bores. The drawing does not dimension the shaft collar's length, so the
+recipe conservatively reserves its diameter across the entire shaft
+projection. **This is not a shaft coupling fit model.** Bore depth is an
+assumed 1 mm, not screw engagement permission. Leads, connectors and supplied
+accessories are omitted. Neither installation clearance nor physical inertia
+is guaranteed. `.spec` carries kV, supply cell count and no-load current with
+its test voltage; torque is unknown and no actuator helper is supplied.
+Other windings and generic `2820` identifiers are refused. Sources, duration
+limits on published current/power, and approximations: PROVENANCE §8c.
+
 ### Naming geometry: selectors, not indices `[Phase 10b, ADR-029]`
 
 Five part ops — `subshape`, `defeature`, `fillet`, `chamfer`, `thicken` —

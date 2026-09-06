@@ -42,6 +42,8 @@ __all__ = [
     "SERVOS",
     "BOARDS",
     "board_spec",
+    "BLDC_MOTORS",
+    "bldc_spec",
     "GEARMOTORS",
     "gearmotor_spec",
     "MICRO_HORNS",
@@ -698,6 +700,43 @@ def gearmotor_spec(sku: Any) -> dict[str, Any]:
     return deepcopy(GEARMOTORS[sku.strip().lower()])
 
 
+# HOBBYWING Skywalker 2820 SL 550KV, product 30415200; drawing 2820SL.
+# Rear mounting plane at Z=0; local X/Y aligned to 19/25 mm hole pairs.
+BLDC_MOTORS = {
+    "hobbywing-30415200": {
+        "manufacturer": "HOBBYWING", "manufacturer_part_number": "30415200",
+        "model": "Skywalker 2820 SL 550KV",
+        "case_dia_mm": 35.1, "case_length_mm": 40.0,
+        "rear_boss_dia_mm": 11.0, "rear_boss_height_mm": 2.0,
+        "shaft_dia_mm": 5.0, "shaft_projection_mm": 18.0,
+        "shaft_collar_envelope_dia_mm": 10.5,
+        "mount_thread": "M3",
+        "mount_holes": [[-9.5, 0.0], [9.5, 0.0], [0.0, -12.5], [0.0, 12.5]],
+        "mount_bore_dia_mm": 3.0, "mount_bore_depth_mm": 1.0,
+        "kv_rpm_per_v": 550.0, "supply_lipo_cells": 6,
+        "no_load_current_a": 1.38, "no_load_test_voltage_v": 22.2,
+        "mass_g": 144.5,
+        "rating_notes": "No torque, thermal or physical inertia model. Manufacturer lists 40.9 A and 910.2 W for 46 s, without full cooling conditions; these are not continuous robot-joint ratings.",
+        "sources": ["https://www.hobbywing.com/en/products/skywalker2814.html",
+                    "https://www.hobbywing.com/en/uploads/file/20231121/6ce36297af7f04e8e0c41c3b28a36dbd.pdf"],
+        "approximate": [
+            "Filled case envelope unites rotating and stationary components; no vents, windings or physical inertia.",
+            "Collar axial length is undimensioned: reserve its 10.5 mm diameter over the whole 18 mm shaft projection. Not a shaft coupling fit model; the actual shaft diameter is 5 mm.",
+            "M3 threads represented by major-diameter blind bores of assumed 1 mm depth; not a screw engagement limit.",
+            "Leads, connectors, propeller adapter and cross mounting plate omitted; no full installation clearance guarantee. Local X/Y sets the hole pattern only, not cable clocking.",
+        ],
+    },
+}
+
+
+def bldc_spec(sku: Any) -> dict[str, Any]:
+    """A specific winding and manufacturer, with conservative shaft reservation."""
+    if not isinstance(sku, str) or sku.strip().lower() not in BLDC_MOTORS:
+        raise CatalogError(f"Unknown BLDC motor {sku!r}; catalogued BLDC motors: "
+                           + ", ".join(sorted(BLDC_MOTORS)))
+    return deepcopy(BLDC_MOTORS[sku.strip().lower()])
+
+
 def catalog_families() -> dict[str, Any]:
     """The browsable catalog: every family, its part numbers, key specs.
 
@@ -739,6 +778,10 @@ def catalog_families() -> dict[str, Any]:
                 "the parametric plain bearing for everything the codes do "
                 "not cover."
             ),
+        },
+        "bldc_motors": {
+            "skus": sorted(BLDC_MOTORS),
+            "notes": "lib.bldc(sku): sourced rear-mount case and conservative shaft/collar envelope; spec carries kV, qualified ratings and fit limitations. No torque or inertia model.",
         },
         "gearmotors": {
             "skus": sorted(GEARMOTORS),

@@ -23,7 +23,8 @@ Frame conventions, uniform across the library and stated once here:
 - Nuts, washers, inserts, bearings and bushings sit with their
   **base face in the datum plane** and bodies extending along +direction.
 - Servos and gearmotors use the shaft's intersection with the case/front
-  face as datum; the body extends backwards. Boards use a PCB corner.
+  face as datum; the body extends backwards. BLDC motors use the rear
+  mounting plane with the case forwards. Boards use a PCB corner.
 
 This module imports nothing from FreeCAD; generators run identically in
 the sandboxed worker and the stubbed test suite.
@@ -705,6 +706,39 @@ class LibraryAPI:
                            self._place("gearmotor", body, origin, direction, roll_degrees),
                            spec)
 
+    def bldc(
+        self, sku: str, *, origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> LibraryPart:
+        """HOBBYWING BLDC rear-mount envelope, not a shaft coupling fit model.
+
+        Datum: rear mounting plane on axis; case and shaft point along +Z,
+        rear boss along -Z. X/Y align with the 19/25 mm mounting pairs,
+        not cable clocking. The undimensioned collar reserves its maximum
+        diameter over the entire shaft projection. See .spec approximate
+        and rating_notes; no torque, screw engagement or inertia guarantee.
+        .spec coordinates remain canonical after placement.
+        """
+        spec = catalog.bldc_spec(sku)
+        length = spec["case_length_mm"]
+        rear = spec["rear_boss_height_mm"]
+        body = self._part.fuse([
+            self._part.cylinder(spec["case_dia_mm"]/2, length),
+            self._part.cylinder(spec["rear_boss_dia_mm"]/2, rear,
+                                origin=(0, 0, -rear)),
+            self._part.cylinder(spec["shaft_collar_envelope_dia_mm"]/2,
+                                spec["shaft_projection_mm"], origin=(0, 0, length)),
+        ])
+        depth = spec["mount_bore_depth_mm"]
+        holes = [self._part.cylinder(spec["mount_bore_dia_mm"]/2, depth+1,
+                                     origin=(x, y, -1))
+                 for x, y in spec["mount_holes"]]
+        body = self._part.cut(body, holes, label=label)
+        return LibraryPart("bldc", sku.strip().lower(),
+                           self._place("bldc", body, origin, direction, roll_degrees),
+                           spec)
+
     # -- boards ------------------------------------------------------------
 
     def board(
@@ -1038,7 +1072,8 @@ def library_listing() -> dict[str, Any]:
             "Frames are uniform: the axis runs along direction (default +Z) "
             "and the datum sits at origin — a bolt's datum is its head-seat "
             "plane with the shank along -direction. Servos/gearmotors use "
-            "the shaft at the case/front face; boards use a PCB corner; "
+            "the shaft at the case/front face; BLDC uses the rear mounting plane "
+            "with the case forwards; boards use a PCB corner; "
             "other parts stand on their base face. Interface dimensions are the standard's; "
             "threads and knurls are deliberately not modelled, so cut "
             "mating holes with lib.clearance_hole/tap_drill/insert_hole "

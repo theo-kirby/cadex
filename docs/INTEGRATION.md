@@ -172,6 +172,10 @@ prose. Every response also carries `id` and `ok`.
 | `cancel` | `cancelled` |
 | `shutdown` | `shutting_down` |
 
+The `describe_api.library.catalog.bldc_motors` family (ADR-206) adds
+`skus` and `notes`; `lib.bldc` uses existing library exports. No request
+op or client dispatch change is required.
+
 The `describe_api.library.catalog.gearmotors` family (ADR-205)
 adds `skus` and `notes`; `lib.gearmotor` is discovered through the existing
 library exports. Clients need no new dispatch or request op.

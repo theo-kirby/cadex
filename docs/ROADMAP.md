@@ -2023,6 +2023,10 @@ field, and every client gets it through the surface it already reads.
 - [x] **L3 first motor — Pololu #2367 N20 MP 6 V.** `lib.gearmotor`,
       manufacturer shaft/mounting dimensions and qualified ratings; explicit
       envelope approximations (ADR-205). Real-kernel and packaged gates.
+- [x] **L3 BLDC rear-mount envelope — HOBBYWING 30415200.** `lib.bldc`,
+      sourced mounting/size/kV and qualified no-load data (ADR-206).
+      Conservative collar reservation; shaft coupling fit and torque remain
+      unsupported. Real-kernel interface probes and packaged library gate.
 - [ ] **L3 — motors and mechanisms.** Common BLDC sizes with kV/torque
       data, N20 gearmotor, linear actuator, solenoid, joints; gears and
       rack-and-pinion need involute profiles and are their own slice.

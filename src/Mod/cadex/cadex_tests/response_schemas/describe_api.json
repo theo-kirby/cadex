@@ -105,6 +105,12 @@
      }
     ]
    },
+   "bldc_motors": {
+    "notes": "str",
+    "skus": [
+     "str"
+    ]
+   },
    "boards": {
     "notes": "str",
     "skus": [
