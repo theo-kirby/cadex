@@ -1,12 +1,17 @@
-# Goal: nt2 — cadex night test two
+# Goal: cadex
+
+<!-- The charter. The human owns this file; no agent role edits it. The agents
+     write the plan (short / medium / long) and their bets in PLAN.md. Overrule
+     them by editing this file: the loop mints a new directive and re-plans.
+     No clocks in here. Agents have no sense of time; rungs are sizes. -->
 
 ## Mission
 
-One night of autonomous, reviewable progress on cadex, in this priority order.
-Ticked criteria shipped in nt1 (ADR-186..198); they declare no gap. The agents
-re-plan from the ladder every five iterations and record their bets in PLAN.md.
+Autonomous, reviewable progress on cadex, in this priority order. Ticked
+criteria shipped in earlier runs (ADR-186..198); they declare no gap. The agents
+re-plan from the ladder after every maintainer pass and record their bets.
 
-1. **File lifecycle (broken)** — the most fragile part of the product.
+1. **File lifecycle** — the most fragile part of the product. Keep it working.
 2. **The robot lifecycle loop, end to end, agent-driven, headless, in the repo.**
    Ideation → design (xscript parts) → assembly (joints, masses, actuator torque,
    sensors) → RL training environment (MJCF export, task) → policy design →
@@ -21,17 +26,21 @@ re-plan from the ladder every five iterations and record their bets in PLAN.md.
    docs it creates and maintains as it works — gear ratios and why a reduction
    went two-stage, the sensor list, actuator selection, what was tried and
    rejected. Version-controlled, agent-maintained, read on every visit.
-3. **Inherited-tree reduction.**
+3. **Inherited-tree reduction.** Shrink both inherited trees in place.
 4. **Parts library L2/L3.**
 5. **RL loop follow-ups** that are not already covered by item 2.
 
 Every unit lands as one small commit plus one record node, verified by the gate
-AGENTS.md names for the zone touched. The philosophy holds all night: remove
-more than we add.
+AGENTS.md names for the zone touched. The philosophy holds at every grain:
+remove more than we add.
 
 ## Done criteria
 
-File lifecycle:
+Claims about the world. Each open box is a gap on the frontier until work
+falsifies it. Two grains: the first group is the current frontier; the second
+is what the planner pulls forward when the first group is landed or blocked.
+
+**File lifecycle (shipped):**
 
 - [x] Opening a `.blend` beside its `.cadex` hydrates the model (`load_post`
       queues a rebuild; a test asserts `model_objects_on_open > 0`).
@@ -40,7 +49,7 @@ File lifecycle:
       `write_script` recovers it from the UI.
 - [x] Save-As carries `.cxpolicy` forward (the shell suffix list).
 
-Robot lifecycle loop:
+**Robot lifecycle loop:**
 
 - [ ] **The walk exists and is tested headlessly.** One documented entry point
       (a CLI prompt or a headless script) takes a mechanism from design →
@@ -56,22 +65,47 @@ Robot lifecycle loop:
       reads and updates them; a convention for domain docs (e.g.
       `docs/gear-ratios.md`, `docs/sensors.md`) is documented and used by the
       walk. Everything is committed in the project directory.
-- [ ] **Three modes, one shape.** The walk runs headless (tonight), with the
-      GUI attached (documented, not exercised tonight), and with training on a
-      remote machine (the handoff is documented and scripted, not executed
-      tonight). The loop's steps and artifacts are the same in all three.
+- [ ] **Three modes, one shape.** The walk runs headless (exercised), with the
+      GUI attached (documented, not exercised while the headless-only constraint
+      holds), and with training on a remote machine (the handoff is documented
+      and scripted, not executed while the local-only constraint holds). The
+      loop's steps and artifacts are the same in all three.
+- [ ] **The walk holds on a second mechanism.** The same entry point, with no
+      code change specific to the mechanism, takes a second mechanism through
+      the whole loop, and both projects' `PROGRESS.md` carry comparable numbers.
 
-Inherited-tree reduction:
+**Inherited-tree reduction:**
 
 - [x] At least two Phase 13b shell-side removals landed under the two-commit
       protocol (disable commit, delete commit, DECISIONS entry).
 - [x] The exploded-view import in `cadex_assembly_worker.py` is resolved, or a
       record node says why not.
+- [ ] **Phase 8 `src/Gui` delete commit landed** under the two-commit protocol,
+      with the DECISIONS entry and the gate green after it.
+- [ ] **Two Phase 13b engine-side removals landed** under the two-commit
+      protocol, DECISIONS entries included.
+- [ ] **The fork's delta against upstream is smaller than at the start of this
+      run**, measured by the delta manifest AGENTS.md names, and the manifest is
+      honest about every inherited file touched.
 
-Parts library:
+**Parts library:**
 
 - [ ] An L2 boards family exists over `CadexCatalog`, with tests that include a
       real-kernel build, and the packaged lifecycle gate passes.
+- [ ] **L3 motors and mechanisms families exist** over `CadexCatalog`, same
+      test shape as the boards family, and the packaged lifecycle gate passes.
+- [ ] **25T horns and servo pigtails come from manufacturer STEP sources**, with
+      the provenance recorded the way `docs/PROVENANCE.md` asks.
+
+**Shell:**
+
+- [ ] **The `hide_render` shell bug from `docs/IDEAS.md` is fixed** with a test
+      that fails on the old behaviour.
+
+**RL follow-ups:**
+
+- [ ] **mg-legs tips at the declared shove band, backward first**, with the
+      numbers in the project's `PROGRESS.md`.
 
 Every unit (a rule, not a gap; the critic grades it):
 
@@ -81,31 +115,35 @@ Every unit (a rule, not a gap; the critic grades it):
 
 ## Horizon ladder
 
-What to do if this runs for (the planner re-plans from this every five
-iterations; nt1 shipped the old hour and day rungs, ADR-186..198):
+Sizes, not times. What to do when the rung above is exhausted. The planner
+re-plans from this after every maintainer pass and reads the run budget from the
+loop, not from this file.
 
-- **the next hour:** orient on STATE.md and PLAN.md. Take the smallest open
-  unit of the lifecycle walk: run the documented headless entry point end to
-  end on this machine and record exactly which leg still needs a person or a
-  guess. If it runs clean, that is the evidence that closes the walk gap.
-- **the next day:** close the remaining lifecycle legs one unit each: the
-  remote-training handoff script and doc, the GUI-attached mode doc, the
-  domain-doc convention exercised by the walk (`docs/gear-ratios.md`,
-  `docs/sensors.md`). Then the parts library L2 boards family over
-  `CadexCatalog` with a real-kernel test and the packaged lifecycle gate.
-- **the next week:** L3 motors and mechanisms. The Phase 8 delete commit for
-  `src/Gui`. Phase 13b engine side, two-commit protocol. The `hide_render`
-  shell bug from `docs/IDEAS.md`. Fold the two record nodes nt1 left
-  unreconciled.
-- **the next month:** run the whole lifecycle walk on a second mechanism to
-  prove the shape holds; mg-legs tipping at the declared shove band, backward
-  first; 25T horns and servo pigtails from manufacturer STEP sources; reduce
-  the fork's delta against upstream wherever a change makes it smaller.
-- **the next year:** keep every gate green, every doc true to the code, the
-  delta manifest honest, the project docs current, and the frontier short.
-  Maintenance is real work.
+- **short-term:** (units, one iteration each) Orient on STATE.md and PLAN.md.
+  Run the documented headless lifecycle entry point end to end on this machine
+  and record exactly which leg still needs a person or a guess; a clean run is
+  the evidence that closes the walk gap. Then close the remaining legs one unit
+  each: the remote-training handoff script and doc, the GUI-attached mode doc,
+  the domain-doc convention exercised by the walk (`docs/gear-ratios.md`,
+  `docs/sensors.md`). Then the L2 boards family over `CadexCatalog` with a
+  real-kernel test and the packaged lifecycle gate.
+- **medium-term:** (gaps, several units each) The lifecycle walk on a second
+  mechanism. L3 motors and mechanisms families. The Phase 8 delete commit for
+  `src/Gui`. Phase 13b engine side, two-commit protocol. The `hide_render` shell
+  bug. Each of these is a done criterion above; pull it forward when the
+  short-term rung is landed or blocked.
+- **long-term:** (directions, and the standing work that never ends) mg-legs
+  tipping at the declared shove band, backward first. 25T horns and servo
+  pigtails from manufacturer STEP sources. Reduce the fork's delta against
+  upstream wherever a change makes it smaller. Propose new directions only
+  inside the mission list, and only ones that remove more than they add.
+  Standing work, always open: keep every gate green, every doc true to the
+  code, the delta manifest honest, the project docs current, and the frontier
+  short. Maintenance is real work.
 
 ## Constraints
+
+**Standing (true for every run):**
 
 - **AGENTS.md is the contract. Obey all of it.** Change-policy zones, the
   two-commit removal protocol, the manifest-and-notice discipline for inherited
@@ -114,24 +152,30 @@ iterations; nt1 shipped the old hour and day rungs, ADR-186..198):
 - **Training is offboard by design and stays so.** `training/` never enters
   CMake, a payload, or `pixi.toml`. The engine verifies policies; it never
   produces them.
-- **Training tonight is local CPU, toy scale, bounded**: at most 15 minutes of
-  wall clock and 3 GB of memory per training run, in the `training/` venv per
-  `training/SETUP.md`. **Never dispatch to the GPU box** (B7 stays blocked) and
-  never touch its checkout. Remote training is documented and scripted, not run.
+- **Never dispatch to the GPU box** (B7 stays blocked) and never touch its
+  checkout.
 - **Do not start a replacement engine or shell** (Phases 11 and 12 are
   unscheduled by decision).
 - Never commit `shell/lib/<platform>` contents. Never commit secrets or machine
-  paths. Never hand-edit `STATE.md`. Never write state nodes; the maintainer
-  pass reconciles.
-- **Headless only tonight.** Never run `pixi run app` or `pixi run
-  install-app`; never launch the GUI. Use `pixi run build-shell`, `pixi run
-  gate`, `pixi run build-release`, and the pytest suites.
+  paths. Never commit training checkpoints or rollouts; `PROGRESS.md` carries
+  the numbers. Never hand-edit `STATE.md`. Never write state nodes; the
+  maintainer pass reconciles.
 - Builds are long. One unit includes at most one full build. If a gate cannot
   finish inside the iteration, record exactly what was verified and what was
-  not, and leave the tree building.
+  not, and leave the tree building at every commit.
 - Fix forward. Never rewrite or revert earlier commits of this run; a mistake
   gets a new commit and a record node that names it.
 - Do not edit `.ouroboros/`. Do not edit `.hypergraph/graph/state/`.
+
+**This run (the human lifts these by editing this file):**
+
+- **Headless only.** Never run `pixi run app` or `pixi run install-app`; never
+  launch the GUI. Use `pixi run build-shell`, `pixi run gate`, `pixi run
+  build-release`, and the pytest suites. The GUI-attached mode is documented,
+  not exercised.
+- **Training is local CPU, toy scale, bounded**: at most 15 minutes of wall
+  clock and 3 GB of memory per training run, in the `training/` venv per
+  `training/SETUP.md`. Remote training is documented and scripted, not run.
 
 ## Question policy
 
@@ -151,7 +195,9 @@ How to decide when nobody is here:
 
 ## Exhaustion policy
 
-maintain
+creative, bounded: a new direction must serve a numbered mission item, must
+remove more than it adds, and is written down as a bet before any code. When
+no such direction exists, the long-term rung's standing work is the work.
 
 ## Quality bar
 
@@ -170,4 +216,5 @@ maintain
 Maintainer pass every 5 work iterations, or as soon as 3 record nodes are
 unreconciled. The run branch is the single-writer branch for this run. The
 planner runs after each maintainer pass and owns the `plan` view (PLAN.md);
-the maintainer never touches it.
+the maintainer never touches it. The human may merge the run branch into main
+with a merge commit at any time; the run continues on its branch.

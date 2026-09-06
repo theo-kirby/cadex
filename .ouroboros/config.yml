@@ -59,8 +59,8 @@ limits:
   max_cooldown: 3h
   transient_strikes: 3
 plan:
-  enabled: true           # the plan view (now / soon / later) and the planner after each maintainer pass
+  enabled: true           # the plan view (short / medium / long) and the planner after each maintainer pass
   every: 5
   view: plan
   md: PLAN.md
-  max_new_directions: 3
+  max_new_directions: 1   # per planner pass; the charter bounds what counts as a direction
