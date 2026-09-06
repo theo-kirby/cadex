@@ -23,11 +23,16 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 
 **L12 linear actuator shipped:** `lib.linear_actuator("l12-50-210-12-s", extension=...)` uses the existing LibraryPart recipe contract, with extension bounded to [0,50] mm, qualified operating specifications and unsupported-selection refusal. PROVENANCE §8d pins the manufacturer sources and omitted installation details; ADR-207 chooses revision F nominal bore centres over the older STEP models' 0.5 mm longer spacing [rec: southern-moss-9142] [rec: frosty-snow-9642]. The independent OCCT proof and actual library worker each pass 180 canonical/placed material/void probes at 0/23.5/50 mm extension, measuring 102/125.5/152 mm bore spacing in valid single solids [rec: long-heron-6915] [rec: frosty-snow-9642]. Post-build engine suite: 2002 passed/52 skipped; freshly staged packaged lifecycle/library gates: 76 passed, no skips. This local unrelocated payload is not a distributable-release claim. Broader L3 and catalog breadth remain open [rec: frosty-snow-9642].
 
+**Solenoid evidence remains partial, with no catalog API:** PROVENANCE §8e and ADR-208/209 preserve source identities/hashes, conflicting travel claims, qualified force/duty points and exact missing interfaces. The 412 nominal exterior passes 72 canonical/placed OCCT probes; the mounting follow-up defers delivery after finding incompatible older TAU dimensions and incomplete Ledex B7 engagement/travel limits [rec: frosty-creek-6723] [rec: open-pine-9349]. Both audits pass the existing packaged lifecycle/library baseline (76 tests, no skips), with no new build, staging or full engine-suite run; this is no packaged solenoid implementation claim. Catalog breadth remains open [rec: frosty-creek-6723] [rec: open-pine-9349].
+
 ## Negative knowledge
 
 - [scope: Pololu #2367 dimensions and packaged verification | confidence: high | evidence: idle-dawn-5426] The envelope uses the drawing’s 25.6 mm rear maximum amid conflicting product-page lengths. Filled rear geometry, 1 mm bore depth and shaft-flat transition are approximate; bore depth is not screw engagement permission. The tested stage-only payload retains local dependencies and is not a portable release.
 
 - [scope: Actuonix L12-50-210-12-S catalog geometry | confidence: high | evidence: frosty-snow-9642] Filled internals, simplified housing/clevis transitions and omitted installation details establish no conservative collision envelope, installation fit, physical inertia, load or dynamics guarantee. S switches stop within 0.5 mm of stroke ends; geometric endpoints do not promise powered reachability.
+
+- [scope: TAU0730TM-14 / Adafruit 412 partial exterior | confidence: high | evidence: frosty-creek-6723] Omitted mounting/coil/spring/wire geometry and approximate exterior details establish no hardware fit, collision clearance, physical inertia or performance. Gap is displacement from the drawing's held state, not a powered endpoint prediction.
+- [scope: examined older TAU and Ledex B7 mounting sources | confidence: high | evidence: open-pine-9349] Older TAU mounting separation is 20 mm versus current 412's 18.2 mm; its slot geometry cannot be transplanted. B7-212-B-4 has dimensioned M3x0.5 mounting-plane centres but the examined sources lack engagement depth and maximum mechanical travel; the force plot's 0.4-inch endpoint is not a mechanical stop. This bounded search does not disprove other variants.
 
 ## Provenance
 
@@ -38,3 +43,6 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 - southern-moss-9142 — L12 source audit and nominal-centre precedence; no recipe or new implementation verification
 - long-heron-6915 — independent nominal L12 OCCT construction and canonical/placed geometry proof
 - frosty-snow-9642 — bounded L12 catalog variant ships with qualified specifications and full engine/packaged verification
+
+- frosty-creek-6723 — ADR-208: sourced partial solenoid exterior passes 72 OCCT probes; missing mounting callouts prevent catalog delivery
+- open-pine-9349 — ADR-209: incompatible older TAU and incomplete B7 interfaces defer solenoid delivery; joints qualification is next, existing packaged baseline passes 76 tests
