@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-09-05
+Verified against source: 2026-09-06
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -473,9 +473,54 @@ Browse before modelling standard hardware by hand: `describe_api`'s
 metric fasteners m2–m8 (socket/countersunk bolts, hex/nyloc nuts, flat
 washers), heat-set inserts m2–m5, the common ball bearings plus a
 parametric `lib.bushing`, and the four servo classes — SG90, MG90S,
-MG996R, DS3218 — with measured micro horns. The 25T horns and the servo
+MG996R, DS3218 — with measured micro horns; and the three board variants
+below. The 25T horns and the servo
 pigtail terminals are deliberately absent until a dimensioned source
 exists.
+
+#### Boards `[ADR-202]`
+
+`lib.board(sku, origin=..., direction=..., roll_degrees=...)` accepts
+`esp32-devkitc-v4` (WROOM-32E), `pi-zero-2-w` and
+`pca9685-adafruit-rev-c` (Adafruit 815 revision C). The datum is the PCB's
+lower-left corner on its bottom face, +X across the width, +Y along the
+length, +Z towards components. Dimensions are mm; holes in
+`.spec["mount_holes"]` are XY pairs in that canonical frame. The ESP32
+variant has **no mounting holes**. Its module extends beyond the PCB.
+
+The body is a rectangular PCB with mounting and terminal bores plus a
+simple module/chip marker. Rounded PCB corners, fitted connectors, USB/HDMI
+ports and pin-header bodies are omitted: this is **not a connector clearance
+envelope**. `density_kg_m3` is nominal FR4, not a measured populated-board
+mass. `spec["approximate"]` names assumed thickness, cosmetic dimensions,
+density and undimensioned interface fields. Pi terminal placement and hole
+diameters are nominal; its four mounting-hole centres are dimensioned.
+Sources and the exact approximation ledger are in `PROVENANCE.md` §8a.
+
+`.spec["terminals"]` carries physical pin ids, signal labels and canonical
+pad coordinates (38 ESP32, 40 Pi GPIO, 62 PCA9685). `.terminals()` returns
+fresh `term()` rows following the library placement, with the axis pointing
+into the PCB. They address solder pads, including the PCA9685 power-block
+footprint, not the mouths of installed connectors. Names are lower-case
+physical connector/pin ids (`j2_1`, `j8_3`, `jp3_3`) or channel ids
+(`pwm0_pwm`, `pwm0_vplus`, `pwm0_gnd`); `signal` labels remain separate.
+
+```python
+controller = lib.board("pi-zero-2-w")
+driver = lib.board("pca9685-adafruit-rev-c", origin=(80, 0, 0))
+b = boards({
+    "controller": board(controller.body, terminals=controller.terminals()),
+    "driver": board(driver.body, terminals=driver.terminals()),
+})
+harness = nets(ports=b, wires={
+    "sda": wire("controller.j8_3", "driver.jp3_3", gauge=0.5),
+})
+result = {"controller": controller.body, "driver": driver.body}
+```
+
+Use ordinary `part.cable` on the declared wire to publish its geometry, as
+in the wiring examples below. These rows declare geometry and pin labels;
+they do not simulate electrical behavior or validate voltage compatibility.
 
 ### Naming geometry: selectors, not indices `[Phase 10b, ADR-029]`
 

@@ -19350,3 +19350,42 @@ Rebuild Model or reopen before the next GUI edit, and the pin test in
 **Evidence.** `cli/tests/test_project_docs.py` (the new test and the
 ADR-200 one beside it); the CLI suite green — counts in the commit and
 the record node. No engine, protocol or `shell/` change.
+
+
+## ADR-202 — Catalog board variants and solder-pad terminals (2026-09-06)
+
+**Decision.** L2 uses one `lib.board(sku)` generator over `CadexCatalog`
+for ESP32-DevKitC V4 (WROOM-32E), Pi Zero 2 W and Adafruit 815 PCA9685
+revision C. `BoardPart.terminals()` turns the catalog pinout into the
+existing `term()` rows and follows the geometry's origin, direction and
+roll. The wiring table remains `boards(...)`; no new protocol op, board
+registry or shell code is needed. `describe_api` gains one catalog family
+through its existing `library` section and the shared response golden.
+
+**Why.** A board name must identify a physical variant. “ESP32 DevKit” and
+“PCA9685” alone name incompatible layouts in the wild. The ESP32 V4's
+header holes are not mounting holes, so its mounting pattern is empty.
+All three bodies are rectangular PCBs with drilled interfaces and a simple
+module/chip marker. Connector bodies and rounded corners are omitted;
+nominal FR4 density does not claim a measured populated-board mass.
+Pi terminal positions and hole diameters remain explicitly approximate.
+The full ledger is `docs/PROVENANCE.md` §8a. These are reversible catalog
+choices; a later dimension correction moves the accepted digest per ADR-181.
+
+**Sources read, not copied as implementation.**
+[Espressif dimensions](https://dl.espressif.com/dl/schematics/esp32_devkitc_v4_dimensions.pdf),
+[Espressif J2/J3 pinout](https://documentation.espressif.com/esp-dev-kits/en/latest/esp32/esp32-devkitc/user_guide.html),
+[Pi Zero 2 W mechanical drawing](https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-mechanical-drawing.pdf),
+[Pi standard GPIO header, figure 3](https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf),
+[Adafruit downloads](https://learn.adafruit.com/16-channel-pwm-servo-driver/downloads),
+and [Adafruit revision C PCB, commit 32578c83](https://github.com/adafruit/Adafruit-16-Channel-PWM-Servo-Driver-PCB/blob/32578c83a5ba2946249b80b1aa1fb18ae4e61e7d/Adafruit%20PCA9685%20rev%20C.brd).
+Only numerical facts and pin labels enter independently authored LGPL recipes.
+No vendor assets or code enter the repository.
+
+**Verification.** `test_library.py` pins interfaces and pin counts, copy
+isolation, rotated terminal positions, and the canonical wiring-row form.
+Its real-kernel script builds all three boards and their wiring tables,
+including translated and rotated variants. One engine build, source suite,
+staging and the packaged lifecycle/library gates supply the executable
+proof; counts and limitations are in the work record. This does not close
+the separate GUI stale-revision replay risk documented in ADR-201.

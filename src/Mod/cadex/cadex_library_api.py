@@ -239,6 +239,31 @@ class ServoPart(LibraryPart):
         )
 
 
+class BoardPart(LibraryPart):
+    """A board whose solder-pad rows can enter the existing wiring table."""
+
+    __slots__ = ("_frame_placement",)
+
+    def __init__(self, part_number, body, spec, frame_placement):
+        super().__init__("board", part_number, body, spec)
+        object.__setattr__(self, "_frame_placement", frame_placement)
+
+    def terminals(self) -> list[dict]:
+        """Fresh term() rows in the generated body's frame, for board().
+
+        Names are physical connector/pin ids; .spec['terminals'] maps them
+        to signals. Origins are solder pads, axes point into the PCB.
+        Optional fitted headers and connector bodies are not modelled.
+        """
+        from CadexBoards import term
+
+        origin, _unit, rotation = self._frame_placement
+        return [term(row["name"],
+                     origin=tuple(a+b for a, b in zip(origin, _rotate(rotation, row["origin"]))),
+                     axis=_rotate(rotation, row["axis"]), hole_dia=row["hole_dia"])
+                for row in self.spec["terminals"]]
+
+
 class LibraryAPI:
     """The ``lib`` global staged into every project script."""
 
@@ -641,6 +666,39 @@ class LibraryAPI:
             self._place(operation, body, origin, direction),
             spec,
         )
+
+    # -- boards ------------------------------------------------------------
+
+    def board(
+        self, sku: str, *, origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> BoardPart:
+        """A named PCB variant with mounting holes and solder-pad terminals.
+
+        Datum: lower-left PCB corner, bottom face; +Z is component side.
+        .terminals() supplies board(..., terminals=...) rows, following this
+        placement. .spec names signals, sources and approximate dimensions.
+        Geometry is a rectangular PCB plus a simple chip/module marker, not
+        a connector clearance envelope. Density is nominal FR4, not measured
+        board mass. ESP32 DevKitC V4 has no mounting holes.
+        """
+        spec = catalog.board_spec(sku)
+        frame = self._frame("board", origin, direction, roll_degrees)
+        thickness = spec["thickness_mm"]
+        pcb = self._part.box(spec["width_mm"], spec["length_mm"], thickness)
+        holes = [self._part.cylinder(spec["mount_hole_dia_mm"] / 2,
+                                    thickness+2, origin=(x, y, -1))
+                 for x, y in spec["mount_holes"]]
+        holes.extend(self._part.cylinder(row["hole_dia"] / 2, thickness+2,
+                                         origin=(*row["origin"][:2], -1))
+                     for row in spec["terminals"])
+        pcb = self._part.cut(pcb, holes)
+        marker = self._part.box(*spec["cosmetic_size"], origin=spec["cosmetic_origin"])
+        body = self._part.fuse([pcb, marker], label=label)
+        return BoardPart(sku.strip().lower(),
+                         self._place("board", body, origin, direction, roll_degrees),
+                         spec, frame)
 
     # -- servos ------------------------------------------------------------
 

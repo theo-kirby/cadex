@@ -357,6 +357,50 @@ not legal advice; if you are redistributing Cadex, read the licences.
   (LGPL-2.1); the derived `.qss` files say so in their headers, and NOTICE
   carries the entry.
 
+## 8a. Catalog board data `[Cadex-new, ADR-202]`
+
+The L2 recipes are independently authored LGPL Cadex code. Numerical
+interface facts and pin labels are transcribed from the sources below,
+checked 2026-09-06. No vendor PCB layout, artwork, STEP model, schematic or
+software is redistributed. PCB axes match XSCRIPT's lower-left datum.
+
+- **Espressif ESP32-DevKitC V4, WROOM-32E:** the manufacturer's
+  [dimension drawing](https://dl.espressif.com/dl/schematics/esp32_devkitc_v4_dimensions.pdf)
+  specifies the PCB and header pitch/offsets, including the module overhang;
+  the [V4 user guide's J2/J3 tables](https://documentation.espressif.com/esp-dev-kits/en/latest/esp32/esp32-devkitc/user_guide.html)
+  supply all 38 pin labels. The two 19-pin rows are electrical interfaces,
+  not mounting holes. Nominal 1 mm terminal bores, 1.6 mm PCB thickness,
+  module-marker dimensions/position and density are approximate. The guide
+  identifies flash-reserved pins and module-dependent GPIO16/17; a pin
+  label is not a promise that the pin is free for a peripheral.
+- **Raspberry Pi Zero 2 W:** the manufacturer's
+  [mechanical drawing](https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-mechanical-drawing.pdf)
+  supplies the PCB outline bounds and four mounting-hole centres. The
+  [official standard 40-pin header drawing, figure 3](https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-datasheet.pdf)
+  supplies the GPIO labels (including ID_SD/ID_SC, reserved for HAT EEPROM).
+  GPIO terminal positions are nominal: a 2.54 mm grid starting at
+  (8.37, 25.23), estimated from the Zero drawing, not dimensioned there.
+  Mounting bores of 2.75 mm, terminal bores of 1 mm, 1.6 mm thickness,
+  chip-marker dimensions/position and density are also approximate.
+- **Adafruit 815 PCA9685 revision C:** dimensions, mounting bores and
+  electrical pad coordinates come from the manufacturer's
+  [revision C board at commit 32578c83](https://github.com/adafruit/Adafruit-16-Channel-PWM-Servo-Driver-PCB/blob/32578c83a5ba2946249b80b1aa1fb18ae4e61e7d/Adafruit%20PCA9685%20rev%20C.brd),
+  reached via its [downloads page](https://learn.adafruit.com/16-channel-pwm-servo-driver/downloads).
+  Translate the board coordinates by (+1.905, +6.477) to reach the catalog
+  datum; mounting pads become a 55.88 by 19.05 mm pattern. JP3/JP4 are
+  the I2C/power headers, the four servo blocks carry all 16 channels, and
+  J1 is the power-input footprint. V+_IN precedes the reverse-polarity
+  protection; the other V+ pads are the protected rail. Nominal 1.6 mm
+  thickness, chip-marker dimensions/position and density are approximate.
+  The source hardware design is by Limor Fried/Ladyada for Adafruit
+  Industries, published under CC BY-SA; it remains upstream, not vendored.
+
+All three replace rounded board outlines with rectangular bounds and omit
+connector bodies, detailed components, traces and silkscreen. The body is
+an interface model, not an enclosure-clearance certification or a measured
+mass model. `spec["approximate"]` lists the numeric assumptions; this
+paragraph records the geometric omissions.
+
 ## 9. Where this goes
 
 ADR-025 and ADR-030 record the intended endpoint: **one application we

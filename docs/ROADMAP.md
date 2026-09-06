@@ -1986,7 +1986,7 @@ owes a viewport an answer.
         `strut_scale = 1.0`. `blend_mm` stays a declared parameter, and the
         loop drops the blend and says so.
 
-## Phase 17 — The parts library `(L0/L1 landed 2026-08-31, ADR-181; L2/L3 open)`
+## Phase 17 — The parts library `(L0/L1 landed 2026-08-31, ADR-181; L2 landed 2026-09-06, ADR-202; L3 open)`
 
 **Goal:** the hardware robots are built from — fasteners, bearings, servos,
 boards, motors — as catalogued, spec-pinned parametric parts the agent
@@ -2008,8 +2008,12 @@ field, and every client gets it through the surface it already reads.
       in `spec["approximate"]`; 25T horns and pigtail terminals absent
       until a dimensioned source exists (dsservo.com STEP files are the
       named next source).
-- [ ] **L2 — boards.** ESP32 DevKit, Pi Zero 2 W, PCA9685 with terminal
-      pinout rows, so the wiring system lands on library parts.
+- [x] **L2 — boards.** ESP32 DevKitC V4 (WROOM-32E), Pi Zero 2 W,
+      Adafruit PCA9685 rev C: `lib.board`, mounting-hole rows and placed
+      solder-pad terminal tables for `boards(...)` (ADR-202). Sources and
+      approximations in PROVENANCE §8a; connector envelopes and measured
+      board masses are not modelled. Real-kernel library build and packaged
+      lifecycle verification recorded with the unit.
 - [ ] **L3 — motors and mechanisms.** Common BLDC sizes with kV/torque
       data, N20 gearmotor, linear actuator, solenoid, joints; gears and
       rack-and-pinion need involute profiles and are their own slice.

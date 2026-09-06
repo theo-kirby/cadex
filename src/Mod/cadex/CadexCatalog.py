@@ -27,6 +27,7 @@ digest is what detects the drift (ADR-181).
 from __future__ import annotations
 
 from typing import Any, Mapping
+from copy import deepcopy
 
 __all__ = [
     "CatalogError",
@@ -39,6 +40,8 @@ __all__ = [
     "HEAT_SET_INSERTS",
     "BALL_BEARINGS",
     "SERVOS",
+    "BOARDS",
+    "board_spec",
     "MICRO_HORNS",
     "MICRO_HORN_HUB",
     "KG_CM_TO_NMM",
@@ -481,6 +484,91 @@ def normalise_servo_sku(sku: Any) -> str:
     return sku.strip().lower()
 
 
+
+# Board interfaces, independently transcribed from manufacturer drawings.
+# Full source/version and approximation ledger: docs/PROVENANCE.md §8a.
+# Local frame: PCB lower-left corner, bottom face z=0, component side +Z.
+# Terminals describe solder pads, not the free ends of optional pin headers.
+def _board_pin(name: str, signal: str, x: float, y: float, drill: float) -> dict:
+    return {"name": name.lower().replace("+", "plus"), "signal": signal, "origin": [x, y, 1.6],
+            "axis": [0.0, 0.0, -1.0], "hole_dia": drill}
+
+
+BOARDS = {
+    "esp32-devkitc-v4": {
+        "manufacturer": "Espressif", "variant": "ESP32-DevKitC V4, WROOM-32E",
+        "width_mm": 27.94, "length_mm": 48.26, "thickness_mm": 1.6,
+        "mount_holes": [], "mount_hole_dia_mm": 0.0,
+        "cosmetic_origin": [4.97, 23.0, 1.6],
+        "cosmetic_size": [18.0, 31.30, 3.0],
+        "density_kg_m3": 1850.0,
+        "approximate": ["thickness_mm", "cosmetic_origin", "cosmetic_size",
+                        "density_kg_m3", "terminal_hole_dia_mm"],
+        "source": "https://dl.espressif.com/dl/schematics/esp32_devkitc_v4_dimensions.pdf",
+        "terminals": [
+            _board_pin(f"{header}_{i+1}", signal, x, round(47.01-i*2.54, 4), 1.0)
+            for header, x, signals in [
+                ("J2", 1.24, "3V3 EN VP VN IO34 IO35 IO32 IO33 IO25 IO26 IO27 IO14 IO12 GND IO13 D2 D3 CMD 5V"),
+                ("J3", 26.64, "GND IO23 IO22 TX RX IO21 GND IO19 IO18 IO5 IO17 IO16 IO4 IO0 IO2 IO15 D1 D0 CLK"),
+            ] for i, signal in enumerate(signals.split())
+        ],
+    },
+    "pi-zero-2-w": {
+        "manufacturer": "Raspberry Pi", "variant": "Zero 2 W, unpopulated GPIO header",
+        "width_mm": 65.0, "length_mm": 30.0, "thickness_mm": 1.6,
+        "mount_holes": [[x, y] for x in (3.5, 61.5) for y in (3.5, 26.5)],
+        "mount_hole_dia_mm": 2.75,
+        "cosmetic_origin": [37.0, 8.0, 1.6], "cosmetic_size": [15.0, 15.0, 2.0],
+        "density_kg_m3": 1850.0,
+        "approximate": ["thickness_mm", "mount_hole_dia_mm", "cosmetic_origin",
+                        "cosmetic_size", "density_kg_m3", "terminal_origins",
+                        "terminal_hole_dia_mm"],
+        "source": "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-mechanical-drawing.pdf",
+        "terminals": [
+            _board_pin(f"J8_{i+1}", signal, round(8.37+(i//2)*2.54, 4),
+                       25.23+(i%2)*2.54, 1.0)
+            for i, signal in enumerate((
+                "3V3 5V GPIO2 5V GPIO3 GND GPIO4 GPIO14 GND GPIO15 "
+                "GPIO17 GPIO18 GPIO27 GND GPIO22 GPIO23 3V3 GPIO24 GPIO10 GND "
+                "GPIO9 GPIO25 GPIO11 GPIO8 GND GPIO7 ID_SD ID_SC GPIO5 GND "
+                "GPIO6 GPIO12 GPIO13 GND GPIO19 GPIO16 GPIO26 GPIO20 GND GPIO21"
+            ).split())
+        ],
+    },
+    "pca9685-adafruit-rev-c": {
+        "manufacturer": "Adafruit", "variant": "815 PCA9685 revision C",
+        "width_mm": 62.23, "length_mm": 25.4, "thickness_mm": 1.6,
+        "mount_holes": [[x, y] for x in (3.175, 59.055) for y in (3.175, 22.225)],
+        "mount_hole_dia_mm": 2.5,
+        "cosmetic_origin": [26.0, 10.0, 1.6], "cosmetic_size": [10.0, 6.0, 1.2],
+        "density_kg_m3": 1850.0,
+        "approximate": ["thickness_mm", "cosmetic_origin", "cosmetic_size", "density_kg_m3"],
+        "source": "https://github.com/adafruit/Adafruit-16-Channel-PWM-Servo-Driver-PCB/blob/32578c83a5ba2946249b80b1aa1fb18ae4e61e7d/Adafruit%20PCA9685%20rev%20C.brd",
+        "terminals": [
+            _board_pin(f"{header}_{i+1}", signal, x, round(6.477+i*2.54, 4), 1.016)
+            for header, x in (("JP3", 1.905), ("JP4", 60.325))
+            for i, signal in enumerate("V+ VCC SDA SCL OE GND".split())
+        ] + [
+            _board_pin(f"PWM{channel}_{signal}", signal if signal != "PWM" else f"PWM{channel}",
+                       round(x, 4), y, 1.0)
+            for channel, x in enumerate([
+                6.985, 9.525, 12.065, 14.605, 19.685, 22.225, 24.765, 27.305,
+                34.925, 37.465, 40.005, 42.545, 47.625, 50.165, 52.705, 55.245,
+            ]) for signal, y in (("PWM", 6.477), ("V+", 3.937), ("GND", 1.397))
+        ] + [_board_pin("J1_1", "V+_IN", 29.315, 21.59, 1.0),
+             _board_pin("J1_2", "GND", 32.815, 21.59, 1.0)],
+    },
+}
+
+
+def board_spec(sku: Any) -> dict[str, Any]:
+    """A named board variant; nested rows are independent of the catalog."""
+    if not isinstance(sku, str) or sku.strip().lower() not in BOARDS:
+        raise CatalogError(f"Unknown board {sku!r}; catalogued boards: "
+                           + ", ".join(sorted(BOARDS)) + ".")
+    return deepcopy(BOARDS[sku.strip().lower()])
+
+
 _BEARING_SUFFIXES = ("zz", "2rs", "rs", "z")
 
 
@@ -612,6 +700,10 @@ def catalog_families() -> dict[str, Any]:
                 "the parametric plain bearing for everything the codes do "
                 "not cover."
             ),
+        },
+        "boards": {
+            "skus": sorted(BOARDS),
+            "notes": "lib.board(sku): PCB and simple component marker; spec carries mounting holes, solder-pad pinout, sources and explicit approximations. No connector clearance envelope or measured assembly mass.",
         },
         "servos": {
             "skus": sorted(SERVOS),

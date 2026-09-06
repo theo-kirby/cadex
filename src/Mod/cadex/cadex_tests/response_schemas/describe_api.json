@@ -105,6 +105,12 @@
      }
     ]
    },
+   "boards": {
+    "notes": "str",
+    "skus": [
+     "str"
+    ]
+   },
    "fasteners": {
     "bolt_heads": [
      "str"

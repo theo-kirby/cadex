@@ -459,6 +459,62 @@ def test_servo_actuator_carries_the_datasheet_torque() -> None:
         unstaged.actuator(joint, control_deg="30")
 
 
+@pytest.mark.parametrize("sku,count", [("esp32-devkitc-v4", 38),
+                                       ("pi-zero-2-w", 40),
+                                       ("pca9685-adafruit-rev-c", 62)])
+def test_board_interfaces_and_terminal_rows(sku, count):
+    board = _lib().board(sku)
+    spec = board.spec
+    assert board.family == "board"
+    rows = board.terminals()
+    assert len(rows) == count
+    assert len({r["name"] for r in rows}) == count
+    assert all(r["axis"] == [0.0, 0.0, -1.0] for r in rows)
+    assert len(_ops(board.body, "cylinder")) == count + len(spec["mount_holes"])
+    assert all(0 < r["origin"][0] < spec["width_mm"] and
+               0 < r["origin"][1] < spec["length_mm"] for r in rows)
+    assert "https://" in spec["source"]
+    assert "density_kg_m3" in spec["approximate"]
+    # A script can mutate its copy without poisoning a later generation.
+    spec["terminals"][0]["origin"][0] = -999
+    assert catalog.board_spec(sku)["terminals"][0]["origin"][0] > 0
+
+
+def test_board_manufacturer_dimension_pins():
+    esp = catalog.board_spec(" ESP32-DEVKITC-V4 ")
+    assert (esp["width_mm"], esp["length_mm"]) == (27.94, 48.26)
+    assert esp["mount_holes"] == []
+    assert esp["terminals"][0]["signal"] == "3V3"
+    assert esp["terminals"][18]["origin"] == [1.24, 1.29, 1.6]
+    pi = catalog.board_spec("pi-zero-2-w")
+    assert pi["mount_holes"] == [[3.5, 3.5], [3.5, 26.5], [61.5, 3.5], [61.5, 26.5]]
+    assert pi["terminals"][2]["signal"] == "GPIO2"
+    assert "terminal_origins" in pi["approximate"]
+    pca = catalog.board_spec("pca9685-adafruit-rev-c")
+    assert (pca["width_mm"], pca["length_mm"], pca["mount_hole_dia_mm"]) == (62.23, 25.4, 2.5)
+    assert pca["mount_holes"] == [[3.175, 3.175], [3.175, 22.225], [59.055, 3.175], [59.055, 22.225]]
+    rows = {r["name"]: r for r in pca["terminals"]}
+    assert rows["jp3_3"]["signal"] == "SDA"
+    assert rows["pwm0_pwm"]["origin"] == [6.985, 6.477, 1.6]
+    assert rows["pwm15_gnd"]["origin"] == [55.245, 1.397, 1.6]
+    assert rows["j1_1"]["signal"] == "V+_IN"
+    with pytest.raises(CatalogError, match="Unknown board"):
+        _lib().board("generic-esp32")
+
+
+def test_board_terminals_follow_placement_and_enter_wiring_table():
+    from CadexBoards import board as declare_board
+    placed = _lib().board("pi-zero-2-w", origin=(10, 20, 30),
+                          direction=(1, 0, 0), roll_degrees=90)
+    first = placed.terminals()[0]
+    # Roll maps (x,y,z) to (-y,x,z); +Z-to-+X maps this to (z,x,y).
+    assert first["origin"] == pytest.approx((11.6, 28.37, 55.23))
+    assert first["axis"] == pytest.approx((-1, 0, 0))
+    assert placed.body.operation == "transform"
+    declaration = declare_board(placed.body, terminals=placed.terminals())
+    assert len(declaration["rows"]) == 40
+
+
 # -- browsing and describe_api ----------------------------------------------
 
 
@@ -480,6 +536,7 @@ def test_library_listing_serves_exports_and_catalog() -> None:
         "heat_insert",
         "bearing",
         "bushing",
+        "board",
         "clearance_hole",
         "tap_drill",
         "insert_hole",
@@ -504,7 +561,17 @@ _KERNEL_SCRIPT = """
 servo = lib.servo("mg90s", origin=(0, 30, 0), direction=(0, 0, 1))
 big = lib.servo("ds3218", origin=(60, 0, 0), direction=(1, 0, 0),
                 roll_degrees=30)
+esp = lib.board("esp32-devkitc-v4")
+pi_board = lib.board("pi-zero-2-w", origin=(80, 0, 0))
+pwm = lib.board("pca9685-adafruit-rev-c", direction=(1, 0, 0), roll_degrees=30)
+b = boards({"esp": board(esp.body, terminals=esp.terminals()),
+            "pi": board(pi_board.body, terminals=pi_board.terminals()),
+            "pwm": board(pwm.body, terminals=pwm.terminals())})
+n = nets(ports=b, wires={})
 result = {
+    "esp_board": esp.body,
+    "pi_board": pi_board.body,
+    "pwm_board": pwm.body,
     "servo": servo.body,
     "horn": servo.horn("double_arm").body,
     "big_servo": big.body,
@@ -550,6 +617,7 @@ def test_the_library_builds_on_the_real_kernel() -> None:
         assert written["ok"] is True, written
         names = {output["name"] for output in written["outputs"]}
         assert names == {
+            "esp_board", "pi_board", "pwm_board",
             "servo",
             "horn",
             "big_servo",

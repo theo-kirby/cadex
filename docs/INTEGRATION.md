@@ -172,6 +172,11 @@ prose. Every response also carries `id` and `ok`.
 | `cancel` | `cancelled` |
 | `shutdown` | `shutting_down` |
 
+The `describe_api.library.catalog.boards` family (ADR-202) adds `skus` and
+`notes` through the existing browsable catalog. Generator signatures remain
+in `library.exports`; board dimensions and pin rows are read from the
+returned library part's spec. No request op or client dispatch changes.
+
 `restore` reports what the open re-proved. A stored script that runs but
 produces a different digest is a **restore failure** — the user changed the
 script, and saying so is the point. A stored script that will not run at all
