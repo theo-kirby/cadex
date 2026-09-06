@@ -19760,3 +19760,29 @@ run-start manifest-scoped delta, debug/release configure, one release build,
 engine tests, inherited failure-name comparison and fresh install/staging
 checks. Broader no-GUI-source and fork-delta claims stay open: directory
 removal does not dispose of mixed Python modules or prove a smaller patch.
+
+
+## ADR-215 — Separate residual GUI install waste from headless publication (2026-09-07)
+
+**Decision.** The post-deletion consumer audit in PHASE8-AUDIT.md preserves
+Assembly's JointObject, CommandCreateView, Preferences and UtilsAssembly:
+the headless worker/publisher still uses their App proxies and calculations.
+GUI filenames and a passing binary gate do not establish removable modules.
+Material, Measure and MeshPart still install GUI scripts into the payload;
+Help/Start/Test retain build/install consumers despite payload pruning.
+
+**Next boundary.** Separately disable MassPropertiesGui.py in Measure_Scripts,
+verify build/install/staging with stale-file cleanup, then delete the shim in
+a later verified commit. Its only executable statement imports the deleted
+MeasureGui; its only retained code reference is an App view-provider-name
+string, which this sequence preserves. No removal or build-rule edit occurs
+in this audit. Other mixed helpers, test clusters and Main's shared Windows
+launcher need separate disposition. Keep the broad no-GUI-source and fork-delta
+claims open; tick only the bounded residual audit in ROADMAP.
+
+**Evidence.** Tracked consumer searches, source and generated install lists,
+and direct existing-payload inspection; packaged lifecycle/licensing at the
+committed deletion HEAD: 26 passed in 14.43 s, including manifest equality.
+No new build/stage, full engine suite or inherited ctest in this docs-only unit;
+previous deletion evidence remains separately attributed. Static searches do
+not prove arbitrary external imports or unexercised Windows behavior.

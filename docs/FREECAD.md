@@ -155,8 +155,14 @@ GUI-on requests are rejected.
 
 **Residual GUI lineage remains open.** Mixed Assembly publication modules,
 unconditional GUI Python install lists and other sources outside the audited
-directories require a separate dependency audit. This closes the directory
-boundary, not the broader ROADMAP exit claim that no GUI source exists.
+directories remain. ADR-215 and PHASE8-AUDIT.md trace the named consumers:
+Assembly App proxies are required; the smallest separate disable/delete candidate
+is Measure/MassPropertiesGui.py, an installed shim importing the deleted
+MeasureGui. Material/MeshPart GUI scripts also survive in the payload;
+Help/Start/Test are pruned from it but still have build/install consumers.
+The residual audit is complete at this bounded scope, not the broader ROADMAP
+exit claim that no GUI source exists. Mixed Part/PartDesign helpers and the
+shared Windows launcher need separate disposition.
 
 ### Phase 1 workbench trees — complete
 
@@ -170,7 +176,7 @@ in §1.
 
 The protocol (per tree, two commits, logged in `docs/DECISIONS.md`):
 **disable, verify; delete, verify.** The Phase 8 directory boundary has now
-passed through both commits; residual GUI-lineage source remains to audit.
+passed through both commits; residual GUI-lineage disposition follows ADR-215.
 
 ## 4. Already deleted (VibeCAD teardown) — do not resurrect
 

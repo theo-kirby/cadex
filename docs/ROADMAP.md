@@ -321,8 +321,11 @@ this phase.
       (ADR-214, 2026-09-07; validation in PHASE8-AUDIT.md).
 - [x] `docs/FREECAD.md` §1 row moves from "present, not built" to deleted;
       ADR-214 records the delete boundary.
-- [ ] Audit remaining GUI-lineage source and unconditional Python install
-      lists outside that boundary; preserve required headless Assembly publication.
+- [x] Audit remaining GUI-lineage source and unconditional Python install
+      lists outside that boundary; preserve required headless Assembly publication
+      (ADR-215, PHASE8-AUDIT.md). Consumer audit only; residual removal and
+      the broader exit criterion remain open. Next: separately disable, then
+      delete the Measure/MassPropertiesGui.py install shim.
 
 **Exit criteria:** the tree contains no GUI source, `pixi run configure`
 (debug) still configures, and both cadex ctests stay green.

@@ -9,7 +9,7 @@ and all eighteen retained includes migrated (ADR-213). All presets select
 headless builds and explicit GUI-on requests are rejected. **The thirteen
 audited GUI directories are now deleted** (ADR-214); historical findings below
 retain their audit-revision context. Broader GUI-lineage disposition and full
-L3 remain open. See the final section for the deletion's gates and limits.
+L3 remain open. See the final sections for deletion gates and the residual-source audit.
 
 ## Disable evidence and measured boundary
 
@@ -351,3 +351,66 @@ all lifecycle and payload-license checks pass, and import-to-working-tree
 equality passes. Repeat the unchanged packaged command against committed HEAD
 as the final check. Logs use `/tmp/cadex-delete-*.log`. Hypergraph export/check
 runs before commit; no state graph or generated STATE/PLAN file is edited.
+
+
+## Residual-source and install audit (2026-09-07, ADR-215)
+
+Audit baseline: deletion commit `9f7c3268`. This is a dependency audit, not
+another removal. The thirteen-directory criterion has build and staging evidence
+above; the broader ROADMAP “no GUI source” exit remains unmet. Installation,
+importability and execution are different claims: the release cache has
+BUILD_GUI=OFF but BUILD_HELP/START/TEST/MEASURE=ON. `FreeCADInit.py`'s
+`run_init` contract loads Init.py/init/__init__.py, not InitGui.py.
+
+| Residual boundary | Exact consumers and disposition |
+|---|---|
+| `Assembly/CommandCreateView.py`, `JointObject.py`, `Preferences.py`, `UtilsAssembly.py` | **Required headlessly.** `CadexScriptedDomainPublication.py` imports JointObject at joint/ground publication and CommandCreateView at `_configure_assembly_exploded_view`, constructing ExplodedView and ExplodedViewStep. `cadex_assembly_worker.py` imports JointObject for solving and UtilsAssembly for connector frames and exploded-view centre/size calculations. CommandCreateView imports UtilsAssembly and Preferences; JointObject separately imports Preferences for `solveIfAllowed`. Keep those imports independent of its optional pivy/SoSwitchMarker block (ADR-060). GUI classes in these modules are not permission to delete their App proxies. |
+| Assembly install/copy lists | `Assembly_Scripts` includes the four required modules plus command modules, AssemblyImport, SoSwitchMarker and TestAssemblyWorkbench; INSTALL and AssemblyTests/fc_copy_sources consume it unconditionally. AssemblyScripts separately copies the package and AssemblyTests files. SoSwitchMarker imports pivy directly; JointObject catches failure of that optional import. Command pruning needs a separate closure/test audit; no blanket removal of this list. |
+| `Measure/MassPropertiesGui.py` | **Smallest candidate.** The only executable statement is `import MeasureGui`, whose implementation directory was deleted. `Measure_Scripts` feeds MeasureScripts, fc_target_copy_resource and INSTALL without a GUI guard. Tracked source search finds only that list and `Measure/App/MassPropertiesObject.h`'s `getViewProviderName()` string `MassPropertiesGui::ViewProviderMassPropertiesResult`; no retained Python importer. The string is a residual view-provider identity, not an import on the headless path. Preserve the App class and the other four Measure scripts. |
+| Material scripts | `MaterialScripts_Files` unconditionally copies/installs InitGui.py, MaterialEditor.py and TestMaterialsGui.py beside Init.py/importFCMat.py/TestMaterialsApp.py. InitGui imports FreeCADGui, registers the MatGui workbench and appends TestMaterialsGui to the test list. MaterialEditor imports FreeCADGui/PySide and loads the retired materials-editor UI; tracked non-documentation references outside itself are its CMake registration. TestMaterialsGui imports `materialtests.TestMaterialDocument.DocumentTestCases`; its three tests guard their ViewObject assertions with GuiUp, so headless return is not GUI coverage. That test file has its own MaterialTest_Files install entry. Audit/remove the GUI registration cluster separately; retain App tests, materialtools, cards and model resources. |
+| `MeshPart/InitGui.py` | Unconditional INSTALL beside Init.py; registers MeshPartWorkbench and imports the deleted MeshPartGui only in Initialize. No headless startup consumer; a separate single-file install-disable/delete candidate. Keep MeshPart/App and Init.py. |
+| `Help/` | Parent `src/Mod/CMakeLists.txt` gates it on BUILD_HELP, **not** BUILD_GUI. Help_SRCS feeds Help ALL, fc_copy_sources and INSTALL for InitGui.py, Help.py, default.css and dlgPreferencesHelp.ui. Only resource compilation/copy is GUI-guarded. InitGui calls Help.add_preferences_page/add_language_path, which import FreeCADGui (the latter also Help_rc). Help.py has lazy Qt rendering paths. Tracked code import search finds InitGui and Help's own examples; no product-engine importer. Whole-tree disable still needs its own option/packaging audit; absence from payload is insufficient. |
+| `Start/`, `Test/` | Start still builds App and copies/installs Init.py; deleted GUI script registrations leave other source behind. Test_SRCS still copies/installs GUI tests (GuiDocument, TestGui, unittestgui, visual/selection tests) alongside App tests. MainCmd still depends on TestSources when BUILD_TEST; TestGui imports TestApp. Neither whole tree can be deleted merely because the payload excludes it. Separate Phase 13b audits must preserve headless testing obligations. |
+| Other retained workbench parents | Part still copies/installs AttachmentEditor (including its UI), BOPTools, CompoundTools and parttests; PartDesign still copies/installs Scripts, fcgear and fcsprocket (including fcsprocketdialog.py). Its WizardShaft list remains declared without a copy/install consumer. These mixed helper/test families need their own closure audits; headless geometry helpers are not GUI waste. Sketcher/Mesh/Import retain their App/script registrations. The deleted GUI-guarded registrations did not delete the source files they once listed. |
+| `Main/` and other native lineage | freecad.rc.cmake has no tracked build consumer after deletion; freecadCmd.rc.cmake and cadexPortableLauncher.rc.cmake are still configured. CadexPortableLauncher.cpp has four CADEX_GUI_LAUNCHER branches but no remaining build definition of that macro; the WIN32 CadexCmdPortableLauncher target still consumes its command-line branch. Preserve that launcher; branch/template cleanup requires a separate unit and honest Windows validation limits. App view-provider strings/export macros, residual resources and MacAppBundle/QuickLook are outside the deleted directory boundary, not evidence of a remaining FreeCADGui binary or permission to remove QtCore. |
+
+**Payload evidence.** The current stage contains Measure/MassPropertiesGui.py,
+Material/{InitGui,MaterialEditor,TestMaterialsGui}.py, MeshPart/InitGui.py and
+all four required Assembly modules. The release-generated
+`src/Mod/{Measure,Material,MeshPart}/cmake_install.cmake` lists those GUI scripts;
+this is active install evidence, not merely a stale source listing.
+`package/engine/build_engine_payload.sh`'s keep_mods retains all four module
+directories, pruning Help/Start/Test as whole directories. Those three are
+absent in the inspected stage. Passing binary/payload-license gates therefore
+does not imply absence of GUI Python.
+
+**Next separate sequence.** Disable only MassPropertiesGui.py's membership in
+Measure_Scripts, keeping its source until a later delete commit. Because all
+three copy/target/install consumers share that list, one inherited CMake edit
+covers them; it already has a manifest entry and modification notice. Verify
+both configurations, one release build, full engine suite and inherited gates
+with baseline comparison as prescribed above, then install/stage and run the
+packaged gate. Quarantine stale copied/installed shim files and assert absence
+in the fresh stage while retaining Measure App behavior and Assembly publication.
+After that evidence, delete the shim in a separate verified commit. Preserve
+MassPropertiesObject.h's App class/view-provider string in this bounded sequence;
+its eventual disposition is still part of the broader GUI-source frontier.
+Do not turn this into a Measure tree deletion or a publisher rewrite.
+
+**Reproduction and limits.** Read the named CMake lists and import sites; use
+`git grep -n MassPropertiesGui -- src tests cMake package` to reproduce the
+shim's complete tracked consumer set. Search MaterialEditor/TestMaterialsGui,
+`import Help`, freecad.rc.cmake and CADEX_GUI_LAUNCHER similarly, excluding
+translation catalogs and documentation when interpreting code consumers.
+Static searches do not prove absence of arbitrary external/dynamic imports;
+Cadex does not promise general FreeCAD workbench compatibility.
+
+Existing post-deletion packaged baseline rerun at committed HEAD:
+`CADEX_ENGINE_ROOT="$PWD/build/engine/cadex-engine-0.0.0-macos-arm64" pixi run python -m pytest -q src/Mod/cadex/cadex_tests/test_licensing_compliance.py src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py`
+— **26 passed in 14.43 s**, including the HEAD manifest comparison deferred
+by the previous record. Local log: `/tmp/cadex-residual-gates.log`.
+No build, configure, install/stage, full engine suite, inherited ctest or GUI
+run in this docs-only unit; this reuses the preceding deletion's staged payload.
+No runtime behavior, inherited source, manifest or protocol changes. The
+manifest-scoped fork-delta measurements above are unchanged and the broad
+fork-delta claim remains open. Hypergraph export/check is required before landing.
