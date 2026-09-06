@@ -19585,3 +19585,21 @@ material/void probes pass, including rotated/translated geometry. Packaged
 lifecycle/library baseline: 76 passed, no skips, 16.06 s. This docs/experiment
 unit changes no engine source and performs no build or staging; the full
 engine suite and packaged solenoid verification are not claimed.
+
+## ADR-209 — Defer solenoid delivery after the mounting-source follow-up (2026-09-07)
+
+**Decision.** Preserve the partial 412 experiment and advance the next L3
+source unit to joints. PROVENANCE §8e records the examined sources and hashes:
+the older TAU-0730TM drawing has incompatible mounting/body dimensions;
+manufacturer Ledex B7 specifies a mounting-plane layout but omits engagement
+depth and maximum mechanical travel. Neither establishes the planned complete
+interface contract. Do not invent those dimensions or expose a catalog API.
+This is a bounded search result, not a claim that no suitable solenoid exists.
+Revisit with new manufacturer evidence or an explicitly justified narrower
+contract; the implementation and full L3 checkboxes remain open.
+
+**Verification.** Both B7 pages and the older TAU drawing rendered and visually
+inspected; the 39-page manufacturer open-frame catalog has no B7 text match
+or B7 selection-table row. Existing packaged lifecycle/library baseline:
+76 passed, no skips, 16.12 s. Documentation-only; no new geometry probes,
+build, staging or full engine suite, and no packaged solenoid claim.

@@ -667,3 +667,58 @@ or select a different traceable solenoid with complete interfaces in a new
 bounded source unit. Do not repeat this partial construction, invent hole
 locations, or block all L3: joints and other documented solenoids remain
 available work. Full L3 stays open.
+
+### Follow-up: incompatible older drawing and Ledex B7 (ADR-209)
+
+Accessed 2026-09-07. This follow-up does **not** change the partial 412
+construction or authorize a solenoid catalog API.
+
+The [TAU-0730TM drawing](https://bc-robotics.com/datasheets/TAU-0730TM.pdf)
+linked by [BC Robotics](https://bc-robotics.com/shop/small-push-pull-solenoid/)
+is one page without a manufacturer title block, revision or date. SHA-256:
+`288d672ee2cecf9c0e97176a856af2bd0e9a1523d9c5f768bde619c171545c5e`.
+It depicts slots with R1.6 ends, 3.2 mm between arc centres, 20 mm
+transverse separation and 16 mm axial separation; the lower slot centre
+is 7 mm from the body end. Its body length is 30.5 mm and overall length
+53.4 mm. Those dimensions conflict with the current 412 drawing's
+18.2 mm transverse spacing, 29.7 mm body and 51.9 mm overall length.
+Its illustrated actuation state is not stated. This is a discovery lead,
+not manufacturer evidence for TAU0730TM-14: **do not transplant its slots**.
+The indexed [Jameco specification](https://www.jameco.com/Jameco/Products/ProdDS/2219330.pdf)
+could not be fetched (HTTP 403); it supplies no additional verified evidence.
+
+The manufacturer-hosted [Ledex B7 sheet](https://www.johnsonelectric.com/pub/media/image/tmp/metric-imperial/B7_20210611.pdf)
+offers a better mounting reference. Two pages; filename date 20210611,
+no printed revision; SHA-256
+`d699124bc39731bd25aa09d238fd538207459444f2d3ef760b55dedf8eab4864`.
+For B7-212-B-4 it lists 12 V continuous at 20°C, 47.67 ohms;
+18/24/38 V at 50/25/10% duty, with repeated-pulse on-time limits
+110/27/8 seconds. Data is typical, force testing horizontal, no heatsink;
+the listed holding force is 15.1 N, not a force law.
+
+The energized drawing gives body 29.40 by 19.20 by 16.00 mm,
+overall 36.47 mm, and two M3x0.5 mounting holes. One centre is 19 mm
+from the rear face; the second is 12 mm nearer that face, with 10 mm
+vertical separation (5 mm either side of the plunger axis).
+This supports a nominal mounting-plane layout. It does **not** specify
+tap depth, allowable screw penetration or frame thickness. Plunger end
+diameter 6 mm, neck diameter 3 mm and end/neck lengths 1.5/2.5 mm are
+dimensioned, but the intermediate shoulder is not. The force plot ends
+at 0.4 inches; no mechanical maximum stroke is stated. Do not turn that
+axis limit into a travel stop. No B7 geometry was constructed or tested.
+
+The manufacturer's [open-frame catalog](https://www.johnsonelectric.com/pub/media/image/tmp/metric-imperial/20200212_Open_Frame_DC_in_2_.pdf)
+(39 pages, filename date 20200212; SHA-256
+`9b681436726ff19465ea42820624b245dfcb25ba15ff6db50ef7dd3c86716226`) has no `B7` text hit, and its
+page-4 selection table has no B7 row to resolve the travel limit.
+The [older tubular catalog](https://www.relayspec.com/suppliers/j/johnson_electric/news/2018/09_20b/Tubular%20mm_v2.pdf)
+was located but no tubular variant was qualified in this unit.
+
+**Decision and next leg.** Neither examined variant meets the planned
+complete-interface contract. Keep solenoid implementation open and advance
+to the planned joints source unit, rather than repeating this audit.
+Resume B7 only with manufacturer engagement/travel evidence or a separately
+justified, explicitly narrower contract; no claim that other solenoids are
+unsupportable follows from this bounded search. No source assets, geometry,
+runtime code or dependencies were added; existing packaged gates verify
+the baseline only.

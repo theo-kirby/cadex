@@ -2045,6 +2045,10 @@ field, and every client gets it through the surface it already reads.
       partial exterior passes 0/2.3/4.9 mm gap and placement probes. Missing
       mounting callouts block this variant's sourced mounting contract
       (PROVENANCE §8e, ADR-208); no solenoid API shipped.
+- [x] **L3 solenoid mounting-source follow-up.** Older TAU-0730TM slots
+      conflict with 412; Ledex B7 supplies mounting centres but lacks depth
+      and maximum-travel evidence. Defer delivery and advance joints source
+      qualification (PROVENANCE §8e, ADR-209); no new geometry or API.
 - [ ] **L3 solenoid implementation.** Requires complete sourced mounting
       interfaces, qualified ratings, actual worker probes and packaged gates.
 - [ ] **L3 — motors and mechanisms.** Common BLDC sizes with kV/torque
