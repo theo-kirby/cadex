@@ -18979,6 +18979,21 @@ is the evidence step it owed. Built here, 2026-09-06: `pixi run build-shell` rec
 `pale-river-6583` is the record node that made the commit citable;
 `docs/BLENDER-TREE.md` §4 and the Phase 13b ROADMAP line carry the status.
 
+**Delete commit (`3aa6926b`, iteration #84).** `shell/intern/cycles` (936
+files) and `shell/scripts/presets/cycles` (12 files) are gone — 948 files
+deleted. The `-DWITH_CYCLES=OFF` line leaves `build_app.sh`, and instead
+the inherited `option(WITH_CYCLES ...)` in `shell/CMakeLists.txt` defaults
+to `OFF`: one token in a file already manifested under §2a, so the delete
+half earns **no new manifest row** — the manifest tracks modified files,
+and a deleted tree is not one. The `if(WITH_CYCLES)` guards elsewhere in
+the inherited tree stay as dead upstream text rather than becoming merge
+conflicts. The two bundle-prune lines stay, because a bundle installed
+before the deletion still carries the add-on copy. That commit, like the
+disable commit before it, landed under a session-limit banner, with the
+docs updated but this entry not, and — the same debt again — unbuilt and
+ungated. Iteration #86 is the evidence step it owed; its numbers follow.
+EVIDENCE_PLACEHOLDER
+
 ## ADR-197 — The worker computes an exploded view itself; `CommandCreateView` leaves the engine's authoring path (2026-09-06)
 
 **Context.** Phase 8's one non-mechanical item (ROADMAP, ADR-025,
