@@ -1,6 +1,6 @@
 # FREECAD.md — Inherited Substrate Inventory
 
-Verified against source: 2026-08-29
+Verified against source: 2026-09-06
 
 Cadex's **engine** is a FreeCAD fork. This is the ledger of what we keep,
 what is slated for removal, and what is already gone. Its peer for the shell
@@ -219,16 +219,17 @@ itself, in the Phase 7 Qt-shell deletion (ADR-021).
 - `src/Mod/Start`, `Test` and `Help` build but ship in nothing. They look
   like a cheap Phase 13b batch; the audit has not been done.
 - Which `tests/` subtrees cover removed workbenches and go with them?
-- `cadex_assembly_worker.py:2553` imports `CommandCreateView` — GUI-lineage
-  code used headlessly for exploded views, and the one import that makes
-  deleting `src/Gui` more than mechanical. Scheduled for Phase 8.
-  **Partly answered (ADR-047):** the import is no longer *broken* — the
-  module's unguarded `from PySide.QtCore import ...` made it unimportable
-  headless, so `assembly.exploded_view` failed outright, and it now carries
-  the same `try/except ImportError` guard as `JointObject.py`. What is left
-  for Phase 8 is the deletion question, not a correctness one: the
-  `ExplodedView` document object is pure App-level and wants to move out of
-  a `Command*` module rather than keep being imported from one.
+- `cadex_assembly_worker.py` imported `CommandCreateView` — GUI-lineage
+  code used headlessly for exploded views, and the one import that made
+  deleting `src/Gui` look more than mechanical. **Answered in two steps.**
+  ADR-047 made the module importable headless (the `PySide` guard;
+  ADR-149 added the `pivy` one). ADR-197 removed the worker's import: it
+  computes the exploded view itself, FreeCAD's rule ported, and the audit
+  found `src/Mod/Assembly/CMakeLists.txt` installs `CommandCreateView.py`
+  outside its `if(BUILD_GUI)` blocks, so Phase 8 never would have removed
+  it. The publisher (`CadexScriptedDomainPublication.py`) still imports it
+  to build the native `ExplodedView` document object — that is what a
+  published view *is* — and that import is not a Phase 8 obstacle.
 - The engines we test with are not the engine that ships. `.pixi/envs/default`
   carries a `FreeCADGui.so`; `build/release` (`BUILD_GUI=OFF`) does not.
   `test_cadexd_lifecycle.py` prefers the former, so a GUI-coupling break can

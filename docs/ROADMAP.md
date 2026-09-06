@@ -302,10 +302,13 @@ this phase.
 
 - [ ] Dependency audit: `src/Gui` (66 MB, 729 files) plus every
       `src/Mod/*/Gui`, `tests/src/Gui`, and the `setup_qt_test` helper.
-- [ ] **`cadex_assembly_worker.py:2553` imports `CommandCreateView`** —
+- [x] **`cadex_assembly_worker.py` imported `CommandCreateView`** —
       GUI-lineage code used headlessly for exploded views, and the one
-      import that makes this deletion more than mechanical. Resolve it
-      here, not in Phase 11 (ADR-025).
+      import that made this deletion look more than mechanical. **Resolved
+      2026-09-06 (ADR-197)**: the worker computes the exploded view itself
+      (FreeCAD's rule, ported), and the audit found the module installs
+      regardless of `BUILD_GUI` anyway — the publisher still builds the
+      native document object from it, which this deletion does not touch.
 - [ ] Delete, with the `BUILD_GUI` guards that Phase 7 added removed rather
       than left dangling.
 - [ ] `docs/FREECAD.md` §1 row moves from "present, not built" to deleted;

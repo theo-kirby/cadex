@@ -18939,3 +18939,59 @@ provokes the exception with an unknown captured kind and runs
 `test_failure_envelope_is_one_shape_for_every_op` now covers it too. No
 protocol op changed, no `shell/` diff. `docs/INTEGRATION.md` names the
 inspect refusal under the failure envelope; §7c item 5 closes.
+
+## ADR-197 — The worker computes an exploded view itself; `CommandCreateView` leaves the engine's authoring path (2026-09-06)
+
+**Context.** Phase 8's one non-mechanical item (ROADMAP, ADR-025,
+`docs/FREECAD.md` §5): `cadex_assembly_worker.py` imported
+`CommandCreateView` — the Assembly workbench's *command* module —
+instantiated its `ExplodedView` / `ExplodedViewStep` proxies on candidate
+document objects, and called the private `_calculateExplodedPlacements`
+on them once per move to read placements and leader lines back out. Two
+guards (ADR-047's PySide, ADR-149's pivy) kept that importable headless,
+and ADR-149 named the out: the calculation is forty lines and portable.
+Auditing the item found its premise softer than the ledger said:
+`src/Mod/Assembly/CMakeLists.txt` installs `CommandCreateView.py`
+unconditionally, outside its `if(BUILD_GUI)` blocks, so deleting `src/Gui`
+would never have removed it. What was real was the shape — the engine's
+authoring path depending on a `Command*` module for arithmetic — plus a
+`native_readback` block in the output data that reported the proxies'
+class names as if a client read them. None did.
+
+**Decision.** `_execute_native_exploded_view` becomes
+`_execute_exploded_view`: the worker computes FreeCAD's rule itself. A
+normal move left-multiplies its transform onto the component's current
+placement; a radial move pushes along assembly-centre → component-centre
+by four times the distance over the assembly diagonal
+(`UtilsAssembly.getComAndSize` for both centres, as native); moves are
+cumulative; each leader line runs from the component's *solved*
+bounding-box centre carried by the move's delta. That last is the native
+quirk, kept deliberately: the shell interpolates these lines, and a port
+that improved them would move every explosion it has ever drawn. No
+candidate view or step objects are created; the `native_readback` block
+is dropped from the `cadex-assembly-exploded-view-v1` data, and the schema
+tag stays, because the keys the publisher reads — `moves`,
+`movement_transform`, `component_outputs`, `assembly_output` — are
+unchanged. The publisher still instantiates the native proxies from that
+data: a published exploded view *is* the native document object, and the
+module ships in every build. The worker's import is gone; the publisher's
+stays, and is not a Phase 8 obstacle.
+
+**Evidence.** A probe against the unmodified engine (a normal move, a
+radial move on both components, a second normal move) and the same probe
+after the port produce identical display records to 1e-12 — stage poses,
+leader lines, bounds, final poses. A new real-kernel test,
+`test_cadexd_exploded_view_radial_move_is_freecads_arithmetic`, asserts
+the radial rule from wire data only; no radial move had ever run under a
+real kernel in a test. Gates: `pixi run test-engine` and `pixi run python
+-m pytest cli/tests`. No protocol op changed, no golden moved, no `shell/`
+diff, and no build: both suites resolve the engine from the source tree.
+
+**Consequences.** Phase 8's ROADMAP item ticks and `docs/FREECAD.md` §5's
+question closes. `CommandCreateView.py` keeps its two guards and its
+manifest entry, since the publisher still imports it. Not taken: moving
+`ExplodedView` out of the `Command*` module inside the inherited tree —
+an inherited-tree edit with no engine benefit now that the worker does not
+import it. Owed and noticed here: ADR-196 (the Cycles disable commit,
+2026-09-06) is cited by `docs/BLENDER-TREE.md`, `docs/ROADMAP.md` and
+`package/app/build_app.sh` but has no entry in this log yet.
