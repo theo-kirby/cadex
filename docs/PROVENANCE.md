@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-09-06
+Verified against source: 2026-09-07
 
 Cadex is not written from scratch. It is a **derivative work of two large
 free-software projects**, carrying the design lessons of a third that we
@@ -591,3 +591,79 @@ qualified operating points, switch limitations and the omitted details above.
 The library suite checks actual worker BREP bore surfaces, bounds and 180
 canonical/placed material probes, plus publishing through cadexd. No source
 CAD, artwork or code is redistributed; no dependency or dynamics API added.
+
+## 8e. Solenoid 412 source and partial geometry audit `[Cadex-new, ADR-208]`
+
+Accessed 2026-09-07. Adafruit's [product 412](https://www.adafruit.com/product/412)
+links the supplier Chaocheng TAU0730TM-14 documents below. The page identifies
+its 12 V replacement as dating from 2018-01-17, but advertises 5.5 mm throw;
+that is not the drawing's travel. This audit targets the documented supplier
+variant, not every unit historically sold as 412.
+
+| Source | Identity | SHA-256 of downloaded PDF |
+|---|---|---|
+| [Drawing](https://cdn-shop.adafruit.com/product-files/412/412_C514-B_diagram.PDF) | Part 10104-00073014, version 1, 2021-08-30 (filename says C514-B) | `adaa02703b1129b36f8a01174592ff464a68cc1a7ad1c7628bd83b9f47b44574` |
+| [Technical specification](https://cdn-shop.adafruit.com/product-files/412/C514-datasheet.pdf) | TAU0730TM-14, version A, design 21/07/12, three pages | `6fd2bac2a24fcabca3323469fcf3e8f76f449f0e073a1b01f2e041d73a2cf808` |
+
+**Electrical qualifications.** The specification gives 12 V, 40 ohms at
+20°C, nominal 0.3 A (±5%) and 3.6 W, with 50% duty. Force is approximately
+0.5 N at 4 mm and at least 5 N at zero gap; its standard test conditions
+are 60±2°C, 65±5% RH, 1013 mbar, empty load and a vertical armature.
+Temperature rise is at most 65°C at 12 V with one second on/one second off;
+operation is -5 to 60°C, 45–85% RH. These are supplier claims, not Cadex
+measurements. Neither point supplies a force curve or starting-force rating
+at full drawing travel. Duty percentage alone does not specify an arbitrary
+safe pulse length; no continuous-force, thermal or dynamics model is inferred.
+
+**Drawing facts and missing interfaces.** The drawing explicitly depicts
+energized holding position and lists 4.9 mm stroke. Body dimensions are
+29.7±0.1 by 17 (+0.25/-0.1) by 14±0.1 mm; overall axial length is
+51.9±0.1 mm. The push cap is diameter 5 by 10 mm, its tip projects
+15.4 (+0/-0.1) mm beyond the main body face, and the rear head diameter is
+6.9 mm. Mounting centres have an 18.2±0.05 mm transverse separation, but
+hole diameter, axial positions, tab profile and plate thickness are not
+specified. Do not scale pixels into manufacturing dimensions. The exposed
+neck diameter, cap attachment and rear head height also lack callouts.
+
+**Reproducible partial construction.** Run:
+
+```bash
+build/release/bin/FreeCADCmd -c 'exec(open("docs/experiments/solenoid_412_probe.py").read())'
+```
+
+The independently authored experiment fills a box and cylinders; no supplier
+CAD, drawing, code or artwork is redistributed. Z=0 is the main body's push
+face, +Z is the energized push direction. `gap=0` represents the drawing's
+held position; opening translates both plunger ends by `-gap`, within
+[0,4.9] mm. This is a geometric convention, not powered endpoint proof.
+The centered body occupies X ±8.5, Y ±7, Z [-29.7,0]. Its centering on the
+plunger is an explicit approximation. The push cap occupies Z
+[5.4-gap,15.4-gap]. The rear tip is inferred from the overall length as
+-36.5-gap. A diameter-3 neck and a 2 mm long rear head are **cosmetic
+choices**, not sourced dimensions. The omitted small face step is absorbed
+into the filled-body/neck approximation.
+
+Mounting tabs/holes, spring, retaining clip, leads, internal coil, armature
+steps, insulation, chamfers and threads are omitted. Thus this is a partial
+visual exterior, neither an installation/collision envelope nor physical
+mass/inertia geometry. In particular no nominal mounting interface is proved.
+
+| Gap (mm) | Measured Z bounds (mm) | Volume (mm³) | Canonical + placed probes |
+|---|---|---|---|
+| 0 | [-36.5,15.4] | 7411.834705 | 24 passed |
+| 2.3 | [-38.8,13.1] | 7411.834705 | 24 passed |
+| 4.9 | [-41.4,10.5] | 7411.834705 | 24 passed |
+
+All three are valid single solids, with measured cap diameter/axial extents
+and 51.9 mm total length. Placement maps (x,y,z) to (100+z,30+x,20+y),
+with volume preserved and material/void probes repeated. Negative, nonfinite
+and product-page 5.5 mm travel are refused by the experiment. The packaged
+lifecycle/library **baseline** passes 76 tests, no skips; it does not test
+an unimplemented solenoid API. No engine source, build or payload changed.
+
+**Remaining leg.** Catalog delivery with sourced mounting interfaces is not
+yet justified. Obtain a dimensioned mounting drawing for this exact revision,
+or select a different traceable solenoid with complete interfaces in a new
+bounded source unit. Do not repeat this partial construction, invent hole
+locations, or block all L3: joints and other documented solenoids remain
+available work. Full L3 stays open.

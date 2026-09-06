@@ -19562,3 +19562,26 @@ publication failure from the stale installed LibraryAPI. After the single
 52 skipped). Completed `pixi run stage-engine` preceded the packaged
 lifecycle/library gate (76 passed, no skips); no staging overlapped tests.
 Staging is local and unrelocated, not a distributable release-bundle claim.
+
+## ADR-208 — Keep solenoid mounting claims behind source evidence (2026-09-07)
+
+**Decision.** Audit the traceable Chaocheng TAU0730TM-14 sold through
+Adafruit 412 before exposing a solenoid catalog variant. PROVENANCE §8e
+records source identities/hashes, the travel discrepancy, qualified electrical
+claims and a reproducible partial OCCT construction. Use the supplier drawing
+as the nominal geometric reference; do not infer mounting dimensions from
+its illustration or turn the two specified force points into a force model.
+
+**Result and limit.** The partial exterior passes endpoint/intermediate and
+placed probes, but missing mounting callouts prevent the planned sourced
+mounting contract. This is useful negative evidence, not a shipped solenoid
+family. No public API, supplier asset or dependency is added. Next obtain
+complete interface evidence for this revision or qualify another sourced
+variant; do not repeat the same approximation or treat all L3 as blocked.
+The source/partial-geometry ROADMAP item closes; implementation stays open.
+
+**Verification.** Existing headless OCCT: three valid single solids and 72
+material/void probes pass, including rotated/translated geometry. Packaged
+lifecycle/library baseline: 76 passed, no skips, 16.06 s. This docs/experiment
+unit changes no engine source and performs no build or staging; the full
+engine suite and packaged solenoid verification are not claimed.

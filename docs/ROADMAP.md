@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-09-06
+Verified against source: 2026-09-07
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -2040,6 +2040,13 @@ field, and every client gets it through the surface it already reads.
       L12-50-210-12-S with bounded extension, nominal centres, qualified
       ratings and explicit approximation limits; actual worker canonical/placed
       interfaces and packaged publication verified (ADR-207).
+- [x] **L3 solenoid source/partial-geometry audit.** Chaocheng
+      TAU0730TM-14 (Adafruit 412) drawing and specification identified;
+      partial exterior passes 0/2.3/4.9 mm gap and placement probes. Missing
+      mounting callouts block this variant's sourced mounting contract
+      (PROVENANCE §8e, ADR-208); no solenoid API shipped.
+- [ ] **L3 solenoid implementation.** Requires complete sourced mounting
+      interfaces, qualified ratings, actual worker probes and packaged gates.
 - [ ] **L3 — motors and mechanisms.** Common BLDC sizes with kV/torque
       data, N20 gearmotor, linear actuator, solenoid, joints; gears and
       rack-and-pinion need involute profiles and are their own slice.
