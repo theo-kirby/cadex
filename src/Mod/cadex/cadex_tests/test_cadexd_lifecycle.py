@@ -160,6 +160,25 @@ result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
           "j": j, "asm": asm, "diag": diag, "boom": boom}
 """
 
+#: The same assembly with one radial move on both components. Neither
+#: bounding-box centre sits on the assembly centre, so both must move.
+RADIAL_EXPLODED_VIEW_SCRIPT = """
+plate = part.box(40, 20, 4)
+arm = part.box(30, 6, 6)
+base = assembly.component(plate, grounded=True)
+swing = assembly.component(arm, placement=[0, 0, 40])
+j = assembly.joint("revolute",
+                   assembly.connector(base, "origin", offset=[12, 0, 4]),
+                   assembly.connector(swing, "origin"))
+asm = assembly.assembly([base, swing], [j])
+diag = assembly.solve(asm)
+boom = assembly.exploded_view(asm, [
+    {"components": [base, swing], "radial_distance_mm": 10},
+])
+result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
+          "j": j, "asm": asm, "diag": diag, "boom": boom}
+"""
+
 #: The jointed assembly above, driven. Every script containing
 #: ``assembly.simulation(...)`` failed at publication until ADR-048, because
 #: the publisher read ``simulation_trace_preview`` and no code anywhere
@@ -781,6 +800,72 @@ def test_cadexd_serves_an_exploded_view_display_record() -> None:
             assert set(line) == {"component_output", "start_mm", "end_mm"}, line
             assert line["component_output"] == "swing", line
             assert len(line["start_mm"]) == 3 and len(line["end_mm"]) == 3, line
+
+        done = client.request("shutdown", timeout=60)
+        assert done["ok"] is True
+    finally:
+        _stop(client)
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@pytest.mark.skipif(
+    FREECADCMD is None, reason="No FreeCADCmd binary available for cadexd CI."
+)
+def test_cadexd_exploded_view_radial_move_is_freecads_arithmetic() -> None:
+    """A radial move is FreeCAD's own rule, computed by the worker (ADR-197).
+
+    The worker used to instantiate ``CommandCreateView``'s document objects
+    and read the placements back out of them; it now computes them itself
+    and no real-kernel test had ever exercised a radial move. The rule
+    (``ExplodedView._calculateExplodedPlacements``): each component moves
+    along assembly-centre -> component-centre by four times the radial
+    distance over the assembly diagonal. Asserted from wire data only --
+    the leader line starts at the component's solved bounding-box centre
+    and the bounds carry the centre and diagonal -- so a port that drifted
+    from the native arithmetic fails here without a hard-coded number.
+    """
+
+    root = Path(tempfile.mkdtemp(prefix="cadexd-exploded-radial-ci-"))
+    client = None
+    try:
+        client = _spawn_cadexd()
+        opened = client.request("open_project", {"project_root": str(root)})
+        assert opened["ok"] is True, opened
+        written = client.request(
+            "write_script",
+            {"source": RADIAL_EXPLODED_VIEW_SCRIPT, "expected_revision": ""},
+        )
+        assert written["ok"] is True, written
+        assert _validate_response("write_script", written) == []
+
+        display = written["display"]
+        record = display["boom"]["exploded_view"]
+        centre = record["bounds"]["center_mm"]
+        diagonal = record["bounds"]["diagonal_mm"]
+        factor = 4.0 * 10.0 / diagonal
+        (stage,) = record["stages"]
+        assert stage["kind"] == "radial", stage
+        assert stage["component_outputs"] == ["base", "swing"], stage
+        assert [line["component_output"] for line in record["lines"]] == [
+            "base", "swing",
+        ], record["lines"]
+        for name, line in zip(("base", "swing"), record["lines"]):
+            start = line["start_mm"]
+            push = [(start[i] - centre[i]) * factor for i in range(3)]
+            assert push != pytest.approx([0.0, 0.0, 0.0]), (name, start, centre)
+            # The leader line carries the solved centre by exactly the push...
+            assert line["end_mm"] == pytest.approx(
+                [start[i] + push[i] for i in range(3)]
+            ), (name, line, push)
+            # ...and so does the pose, from the solved placement, unrotated.
+            solved = [round(value, 6) for value in display[name]["placement"][3::4]][:3]
+            pose = stage["poses"][name]
+            assert pose["position_mm"] == pytest.approx(
+                [solved[i] + push[i] for i in range(3)]
+            ), (name, solved, pose, push)
+            assert record["final_poses"][name]["position_mm"] == pytest.approx(
+                pose["position_mm"]
+            )
 
         done = client.request("shutdown", timeout=60)
         assert done["ok"] is True

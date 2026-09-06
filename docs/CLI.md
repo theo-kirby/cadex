@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-09-05. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-09-06. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -53,6 +53,8 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex script --set FILE` | Replace the script from a file and rebuild. | no |
 | `cadex export` | Rebuild the accepted script and write its outputs. | no |
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
+| `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
+| `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. | no |
 
 Flags, valid on either side of the subcommand:
 
@@ -86,6 +88,144 @@ because a no-op that re-accepted the model would put a meaningless revision
 in the history every time somebody checked. A rebuild that then fails
 against the new shape exits `3` and says what broke.
 
+`asset` takes `--put FILE`, repeatable, and `--name NAME` for a single
+`--put` (same suffix; re-using a stored name replaces the file). It is the
+headless door for a trained policy (ADR-190): the offboard trainer's
+`.cxpolicy` and the task `.json` it travels with go in through `put_asset`
+— the path a mesh already travels, and the one write to the store that is
+not the script's — and the envelope's `assets` rows carry each stored
+file's `sha256`, which is the digest `assembly.policy(weights=…, sha256=…)`
+requires. **It never rebuilds**: a stored file changes nothing until a
+script names it, and that change is `cadex script --set` or a turn's
+`edit_script`. A file the store does not hold (`.txt`, a `--name` that
+changes the suffix) is the engine's refusal, exit `3`, and nothing is
+written; a `--put` that does not exist is a usage error before the engine
+runs. With no `--put` it lists the store, which is how a pipeline learns a
+digest it did not store itself.
+
+`train` is the training leg as one command (ADR-191): it rebuilds, exports
+the accepted script's outputs into `--out` (required — the bundle and the
+policy land there), finds the one exported training task (or the one
+`--task NAME` picks), runs `training/cadex_train.py` on it under the
+training venv's interpreter, and puts the trainer's receipt in the
+envelope as `training`. Training stays offboard (ADR-084): the CLI spawns
+the trainer as a subprocess and the engine is never in the room while it
+runs — the project lock is held for the rebuild and, with `--put`, again
+for the store write, and released between them. The trainer's flags are
+carried by name so that nobody guesses them: `--iterations N` (200),
+`--envs N` (256 — drop it hard on CPU, `training/SETUP.md`), `--seed N`,
+`--label TEXT`, `--init-from POLICY` (warm start, same task digest),
+`--init-from-parent-task BUNDLE` with `--init-from-task-change REASON`
+(warm start **across** a task change — the curriculum pair, ADR-161; the
+three travel together or it is a usage error, and the trainer owns the
+rule about which task keys may move), `--name NAME.cxpolicy` (the
+policy's filename in `--out`, default `<task>.cxpolicy`), `--timeout
+SECONDS` (stop the trainer; 0 is no limit). The interpreter is `--trainer-python PATH`, then
+`$CADEX_TRAIN_PYTHON`, then `<repo>/.venv/bin/python`, then
+`~/cadex-train-venv/bin/python` — the two places `training/SETUP.md`
+names — and **nothing creates a venv**: none found is exit 1 with the
+list of places tried. `--put` copies the policy into the store through
+`put_asset` and reports it as an `assets` row, whose `sha256` is the
+digest `assembly.policy` names. **It never rebuilds after training**, for
+the same reason `asset` does not: the policy is real when a script names
+it, which is `cadex script --set` or a turn's `edit_script`. A project
+whose accepted revision exports no training task is exit 3 before the
+trainer runs; a trainer that exits non-zero or hits `--timeout` is exit 1
+with its stderr already on ours.
+
+**Iterating — change the mechanism or the task, retrain, compare** is
+four commands and one digest edit, with no new flag on `params`
+(ADR-192). A sweep that moves the task digest is refused at exit 3 while
+a policy is declared against that task, correctly: the policy no longer
+fits, and the refusal writes nothing, so it cannot export the bundle a
+retrain would need. The convention is a **numeric switch parameter** in
+front of the policy:
+
+```python
+p = params(..., policy_on=num(1.0, min=0.0, max=1.0, step=1.0))
+...
+if p.policy_on >= 0.5:
+    policy = assembly.policy(task, weights="walk.cxpolicy", sha256="…")
+    run = assembly.rollout(policy, frames_per_second=50, seed=7)
+    result["policy"] = policy
+    result["run"] = run
+```
+
+```bash
+./cadex params --set policy_on=0 --set shove_n=0.20 --out ./sweep   # accepted: the bundle
+./cadex train --out ./run2 --put --name walk2.cxpolicy \
+    --init-from ./run1/walk.cxpolicy --init-from-parent-task ./run1/walk-task.json \
+    --init-from-task-change "shove band 0.12 N -> 0.20 N"          # warm, across the change
+# edit the script: weights="walk2.cxpolicy", sha256=<the envelope's>
+./cadex script --set ./script.py
+./cadex params --set policy_on=1 --out ./run2                       # verify + rollout
+```
+
+`set_params` never refuses a dropped output (only `write_script` does,
+ADR-045), so blanking the switch is an ordinary accepted revision that
+declares no policy and exports the task with its new digest. A stored
+parameter value outlives a script write, which is why the last step is a
+`params` call and not part of the `script --set`. The comparison is the
+`policy` block of the two exported traces (`total_reward` and the
+per-term `reward_totals`), and the CLI records it: the second run's
+`PROGRESS.md` row carries its `total_reward` **with the change against the
+last row that had one** (ADR-194, below).
+
+**The project is a codebase** (ADR-193). Every project root carries the
+documents an engineer keeps beside a model, created by the CLI on the
+first visit and never overwritten by it:
+
+| File | What it holds | Who writes it |
+|---|---|---|
+| `ARCHITECTURE.md` | What the project is, what the script declares and why, where the domain docs are. | the agent (through its caller) or a person |
+| `DECISIONS.md` | The project's own ADR log — what was chosen, over what, why. Newest last. | a turn's closing `DECISION:` lines, or a person |
+| `PROGRESS.md` | One row per accepted run: time, command, revision, digest, what, numbers. | **the CLI**, after every accepted run |
+| `docs/<subject>.md` | Longer notes, one file per subject: `docs/gear-ratios.md`, `docs/sensors.md`, `docs/actuators.md`, `docs/rejected.md`. | the agent's caller, or a person |
+
+The agent reads all three on every `cadex -p` turn — they are pasted into
+its system prompt, bounded (the head of the first two, the tail of the
+log) — and it has no file tool, so what it decides comes back by
+convention rather than by a new op: a line of its closing paragraph that
+starts `DECISION:` lands in `DECISIONS.md` as the next numbered entry, and
+the envelope's `notes` say so. `PROGRESS.md` is the CLI's, so it records
+what happened rather than what a model said would: `params`, `script
+--set`, `export`, `link`, `asset --put`, `train` and a turn each land one
+row, with the exported trace's `total_reward` and the trainer's
+`reward_per_step`, wall time and sha256 in the numbers column when the
+run produced them. Printing the script and listing the store change
+nothing and get no row. A shell-attached agent has file tools and edits
+the same three files directly; the files are what make the two modes one
+shape.
+
+**The comparison is one recorded row** (ADR-194). A number an earlier
+row also carried is written with its change against that row — the
+delta, the digest of the run compared against, and that run's value:
+
+```
+| … | script | 506bfc86 | 68530963 | script --set switch9.py | total_reward -293.4 (Δ -421.2 vs 2996fb73 at 127.8) |
+```
+
+`total_reward` and `reward/step` are compared; each against the last row
+that carried it, so a `train` row between two rollouts does not break the
+chain. The rows are read back from `PROGRESS.md` as written, which means
+a row a person adds by hand counts too.
+
+**The project owns a git repository** (ADR-194). The first visit runs
+`git init` in the project root and writes a `.gitignore` that keeps out
+what a rebuild recreates (`script_artifacts/`), what is bulk (`frames/`,
+renders) and what is transient (the lock, `.blend1` backups); the script,
+its history, the stored assets, the `.blend` and the three documents are
+the project. After every accepted run the CLI commits whatever changed,
+with the `PROGRESS.md` row's words as the message and `committed <sha>.`
+in the envelope's `notes`, so `git log` is the progress table and `git
+diff` between two commits is the change that produced the numbers. A
+project that already lies inside a work tree is somebody's repository
+and is left alone — no `init`, no commit, one note saying so — and a
+machine without `git` on `PATH` gets the same note and no history. Opening
+a project re-stages its accepted attempt under a new id, so a read-only
+visit (`cadex script` with no `--set`) leaves the engine's `script.json`
+modified until the next accepted run commits it.
+
 ### Exit codes
 
 | Code | Meaning |
@@ -118,7 +258,13 @@ nothing else, so `cadex script > model.py` works.
   "params": {"blade_angle": 12.0, "hub_diameter": 40.0},
   "outputs": [
     {"name": "impeller", "kind": "brep",
-     "files": {"step": "/…/impeller.step", "stl": "/…/impeller.stl"}}
+     "files": {"step": "/…/impeller.step", "stl": "/…/impeller.stl"}},
+    {"name": "balance_task", "kind": "assembly_training_task_json",
+     "files": {"json": "/…/balance_task-task.json"}},
+    {"name": "model", "kind": "assembly_mjcf_xml",
+     "files": {"xml": "/…/model-model.xml"}},
+    {"name": "hinge", "kind": "none", "files": {},
+     "skipped": "no staged artifact"}
   ],
   "session_id": "96e5d6ce-…",
   "model": "claude-fable-5",
@@ -129,7 +275,30 @@ nothing else, so `cadex script > model.py` works.
 ```
 
 `error` is present instead of `notes` when `ok` is false. `outputs` entries
-that produced no file carry `skipped` with the reason.
+that produced no file carry `skipped` with the reason. An `asset` run adds
+`assets`, the store's listing as `[{"name", "bytes", "sha256"}, …]`, sorted
+by name — the same rows `put_asset` and `inspect scope=assets` return. A
+`train` run adds `training`, the offboard trainer's receipt exactly as it
+printed it on its last stdout line — `out`, `bytes`, `sha256`,
+`reward_per_step`, `wall_time_s`, `device`, `task_sha256`, the witness
+margin — and, with `--put`, the `assets` row the stored policy makes. The
+receipt is not re-derived here: a number taken off a stream is a number
+something else can write into (ADR-093), so this is the one the trainer
+meant as data.
+
+**BREP outputs are converted; every other staged output is copied.** A
+BREP is written under the output's name in each `--format`. A mesh's
+`.ply`, an MJCF model's `.xml`, a training task's, a policy receipt's and a
+rollout trace's `.json` are copied **under the filename the engine staged
+them with** (`model-model.xml`, `balance_task-task.json`,
+`assembly-simulation-trace.json`) and named in `files` under their suffix.
+The staged name is kept because the task bundle references its model by
+it and `training/cadex_train.py` resolves the model beside the task by it:
+the `--out` directory *is* the training bundle, and the trace's `policy`
+block *is* the rollout review, with no staging path read by anyone
+(`docs/MUJOCO.md` §7c, rows 3 and 7). Only an output with nothing staged —
+an assembly component placing another output's geometry, a solve
+diagnostic — is `skipped`.
 
 **Compare `digest`, never the files.** `digest` is the engine's content hash
 of the model: same script and same parameters, same digest, on any machine.
@@ -152,7 +321,7 @@ cli/cadex_cli/
   bridge.py            unix-socket server in the parent, in front of cadexd
   mcp.py               the MCP stdio server `claude` spawns
   agent.py             one `claude -p` turn; the system prompt
-  export.py            STEP/STL/BREP out of the display block
+  export.py            STEP/STL/BREP out of the display block; the rest copied
   report.py            the envelope and the prose
 cli/tests/             the suite (§7)
 ```
@@ -195,7 +364,7 @@ fail on it.
 ### Tool names are op names
 
 `describe_api`, `write_script`, `edit_script`, `set_params`, `rebuild`,
-`inspect`. The shell invented friendlier names because it had Blender's
+`inspect`, `link_part`, `put_asset`. The shell invented friendlier names because it had Blender's
 vocabulary to reconcile; a third vocabulary would be a third thing to keep
 in sync. The input schemas are **generated from `OP_ARG_SPECS`**, so they
 cannot drift from the protocol — only the prose is hand-written.
@@ -219,6 +388,18 @@ The overlay says three things the engine does not:
   pin — the agent verifies through `inspect scope=output` facts and the
   script's own `stdout`, and is told so rather than discovering it by
   failing.
+- **You cannot train, and a file comes in by path.** `put_asset` is how a
+  trained policy, its provenance or a mesh enters the project, and its
+  reply's `sha256` is the digest the script names; asked to train, the
+  agent says so and names the caller's one command, `cadex train --out
+  DIR --put` (ADR-191), or its three — `cadex export`, the trainer,
+  `cadex asset --put` — instead of inventing flags (ADR-190 — the audit
+  caught it doing exactly that).
+- **The project is a codebase.** Its `ARCHITECTURE.md`, `DECISIONS.md`
+  and `PROGRESS.md` are pasted in after the overlay, bounded, on every
+  turn (ADR-193); the agent is told to read them before acting and to
+  end with `DECISION:` lines for what it decided, which the CLI lands
+  in `DECISIONS.md`.
 - **Revision guards are handled for you.**
 
 ## 5. Sessions, locks and state
@@ -313,12 +494,17 @@ about a payload (ADR-023).
   `inspect scope=blueprint` lists them and `export --blueprints` copies
   them out — because a stored deliverable is not a render. Making one
   (`put_blueprint`) stays shell-only.
-- **Export is BREP-only.** Mesh outputs (`.ply`), assembly components and
-  solve diagnostics are reported as `skipped` with a reason rather than
+- **Export converts BREP and copies the rest.** Only BREP outputs are
+  converted (STEP, STL, BREP); every other staged artifact is copied as
+  staged (§3), and outputs with nothing staged — assembly components and
+  solve diagnostics — are reported as `skipped` with a reason rather than
   silently dropped. Export runs as a short `FreeCADCmd` job rather than a
   protocol op; promoting it to `export_model` is its own PR, and
   `export.py` is one seam so that it can be.
 - **The CLI does not ship in the engine payload.** It runs from the
-  repository.
+  repository — and so does `train`'s trainer, which it finds by path from
+  the repository root and runs under a venv the engine's environment
+  deliberately lacks (ADR-084). No venv, no `train`; it does not build one.
 - One `--set` per parameter, and parameters are numeric — that is what
-  `num(...)` declares.
+  `num(...)` declares. A switch is a `num` with `min=0, max=1, step=1`
+  and a `>= 0.5` test in the script (ADR-192).

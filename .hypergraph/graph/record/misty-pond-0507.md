@@ -1,3 +1,22 @@
+---
+node_id: 5e26d0e6-dfce-5ecd-aafb-89fae66d2643
+slug: misty-pond-0507
+title: 'Ouroboros run: nt1 [c4f946c1] — operator directive'
+created_at: '2026-09-05T22:02:08+00:00'
+parents:
+- damp-wolf-0705
+summary: ''
+---
+## What
+
+Operator directive: an Ouroboros loop starts on this repo. Every work node of the run descends from this node.
+
+This directive supersedes `damp-wolf-0705`: the operator edited the goal and restarted the run.
+
+## Why
+
+The goal document, verbatim:
+
 # Goal: nt1 — cadex night test one
 
 ## Mission
@@ -169,3 +188,21 @@ maintain
 
 Maintainer pass every 5 work iterations, or as soon as 3 record nodes are
 unreconciled. The run branch is the single-writer branch for this run.
+
+## Method
+
+Ouroboros iterations on branch `ouroboros/nt1`: orient, one dispatched unit, record, commit; a maintainer pass reconciles on pressure.
+
+## Result
+
+Directive recorded. Work follows as child nodes.
+
+## Repo
+
+- repo: git@github.com:theo-kirby/cadex.git
+- branch: ouroboros/nt1
+- commit: e6732c4f929c63ad50df04372acb463f9f08b56d
+
+## State Impact
+
+none: operator directive; impacts are declared by the work nodes that follow

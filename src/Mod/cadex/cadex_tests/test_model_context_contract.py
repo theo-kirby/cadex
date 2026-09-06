@@ -108,6 +108,34 @@ def test_document_inspection_is_explicit_and_paged() -> None:
     assert result["result_json_bytes"] <= MAX_INSPECT_RESULT_BYTES
 
 
+def test_an_inspection_exception_is_a_contract_failure_frame() -> None:
+    """An inspect that throws refuses in the one tool-failure envelope.
+
+    Found by the lifecycle audit (ADR-195): the frame built here carried
+    ``scope``, ``target`` and ``result_json_bytes`` at the top level and
+    lacked the eight keys every other refusal has, so the CLI's strict
+    validator turned every inspect exception into a hard ``CadexdError``.
+    The shell never validates replies, which is how it survived.
+    """
+
+    from CadexdProtocol import validate_response
+
+    # A captured core no completer knows is the path that threw in the
+    # audit's turn; it is also the cheapest exception to provoke here.
+    captured = {"kind": "no-such-kind", "scope": "document", "target": "", "path": "/x"}
+    result = complete_inspection(captured)
+
+    assert result["ok"] is False
+    assert result["tool"] == "core.inspect"
+    assert result["failure_code"] == "INSPECTION_FAILED"
+    assert result["failure_stage"] == "precondition"
+    assert result["requested"] == {"scope": "document", "target": "", "path": "/x"}
+    assert result["observed"] == {"kind": "no-such-kind"}
+    assert "result_json_bytes" not in result
+    problems = validate_response("inspect", {"id": "t", **result})
+    assert not problems, "; ".join(problems)
+
+
 def test_assets_inspection_lists_what_import_file_can_name(tmp_path) -> None:
     """scope=assets is how the agent discovers importable geometry (ADR-043)."""
 

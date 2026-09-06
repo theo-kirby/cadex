@@ -1568,6 +1568,210 @@ def test_save_as_and_multi_file_lifecycle(workdir):
           "reopened file rehydrates its own geometry")
 
 
+def test_opening_a_file_hydrates(workdir):
+    """Opening a .blend beside its .cadex asks the engine for the display.
+
+    ADR-073 measured `model_objects_on_open = 0`: `load_post` closed the old
+    sessions and nothing queued a rebuild, so the viewport held only the mesh
+    baked into the file until a tool call, a drag or Rebuild Model provoked
+    the first request. ADR-186 queues the open from `load_post`; timers do
+    not fire under --background, so this drains it by hand like the drag and
+    refine pumps.
+    """
+    print("test_opening_a_file_hydrates")
+    from mesh_agent import cadexd_client
+
+    # An UNSAVED scene's temporary root survives File > New (it is keyed by
+    # scene name), so a new empty file must not queue an open against it.
+    bpy.ops.wm.read_homefile(use_empty=True)
+    ok, report = run_tool("write_script", {"content": REDUCED_SCRIPT,
+                                           "replace": True})
+    check(ok, "a model in an unsaved file ({:s})".format(report[:60]))
+    unsaved_root = cadex_backend.project_root(bpy.context.scene)
+    check(os.path.isdir(unsaved_root), "...whose temporary root exists")
+    bpy.ops.wm.read_homefile(use_empty=True)
+    check(not cadex_backend.pending_open(unsaved_root),
+          "File > New does not queue an open of the unsaved file's root")
+    check(cadex_backend.open_roots() == [],
+          "...and dropped its session")
+
+    blend = os.path.join(workdir, "model.blend")
+    bpy.ops.wm.save_as_mainfile(filepath=blend)
+    ok, report = run_tool("write_script", {"content": BASELINE_SCRIPT,
+                                           "replace": True})
+    check(ok, "model accepted in model.blend ({:s})".format(report[:60]))
+    root = cadex_backend.project_root(bpy.context.scene)
+    bpy.ops.wm.save_mainfile()
+
+    # A fresh session: no engine state, nothing in the viewport.
+    bpy.ops.wm.read_homefile(use_empty=True)
+    check(cadex_backend.open_roots() == [] and not cadexd_client._clients,
+          "the session starts with no engine state")
+    check(bpy.data.objects.get("plate") is None, "...and an empty viewport")
+
+    began = time.monotonic()
+    bpy.ops.wm.open_mainfile(filepath=blend)
+    scene = bpy.context.scene
+    check(cadex_backend.project_root(scene) == root,
+          "the reopened file names its own project")
+    check(cadex_backend.pending_open(root),
+          "load_post queued the open of the existing project")
+    check(cadex_backend.open_roots() == [],
+          "...queued, not run: no engine state on the main thread yet")
+    # What the viewport shows while the engine comes up is the mesh baked
+    # into the file. Take it away so the assertion below can only be met by
+    # the engine's own display reply.
+    for obj in list(bpy.data.objects):
+        bpy.data.objects.remove(obj)
+    ok, report = cadex_backend.open_now(scene)
+    open_seconds = time.monotonic() - began
+    check(ok, "the queued open hydrates ({:s})".format(
+        (report or "clean").splitlines()[0][:80]))
+    objects = brep_objects()
+    GATE["model_objects_on_open"] = len(objects)
+    GATE["hydrate_on_open_seconds"] = round(open_seconds, 3)
+    check(len(objects) > 0, "model_objects_on_open > 0 ({:d})".format(
+        len(objects)))
+    check(bpy.data.objects.get("plate") is not None,
+          "the engine's geometry is in the viewport")
+    check(not cadex_backend.pending_open(root), "the slot is retired")
+    check(cadex_backend.open_roots() == [root],
+          "exactly the file's own project is open")
+    state = cadex_backend._state_for(root)
+    check(state.restore.get("performed") is True
+          and state.restore.get("matches_accepted") is True,
+          "the open ran the restore pass and it matched")
+    check(state.open_failure_code == "", "no failure code cached")
+    specs = model_module.load_specs(scene)
+    check(any(spec["id"] == "hole" for spec in specs),
+          "the sliders are rebuilt from the engine's specs")
+    # A tool call after that finds the project open and does not reopen it.
+    before = cadexd_client._clients.get(root)
+    ok, report = cadex_backend.ensure_open(scene)
+    check(ok and report == "" and cadexd_client._clients.get(root) is before,
+          "ensure_open finds the project open and keeps the child")
+
+    # A second load with a tool call racing the queue: ensure_open drains
+    # the queued open rather than issuing a second open_project.
+    bpy.ops.wm.open_mainfile(filepath=blend)
+    scene = bpy.context.scene
+    check(cadex_backend.pending_open(root), "the reload queued again")
+    ok, report = run_tool("set_params", {"params": {"hole": 7.0}})
+    check(ok, "a tool call during the queued open succeeds ({:s})".format(
+        report[:60]))
+    check(not cadex_backend.pending_open(root),
+          "...and drained the queue on the way")
+
+
+def test_a_locked_out_project_is_reaccepted_from_the_chat(workdir):
+    """A restore failure at open has a button back in (ADR-187).
+
+    A digest-moving engine change -- a solver bump, a sweep-frame fix --
+    leaves the stored script unchanged and the accepted digest wrong, so the
+    restore pass fails at the next open and every tool that could repair it
+    opens the project first. Rebuild Model refuses, correctly. The remedy
+    is `open_project restore=false` then `write_script`, by hand until now;
+    the chat panel's re-accept box is that, as one operator, drawn off the
+    failure code the open cached.
+    """
+    print("test_a_locked_out_project_is_reaccepted_from_the_chat")
+    from mesh_agent import cadexd_client
+
+    bpy.ops.wm.read_homefile(use_empty=True)
+    blend = os.path.join(workdir, "locked.blend")
+    bpy.ops.wm.save_as_mainfile(filepath=blend)
+    ok, report = run_tool("write_script", {"content": BASELINE_SCRIPT,
+                                           "replace": True})
+    check(ok, "model accepted in locked.blend ({:s})".format(report[:60]))
+    root = cadex_backend.project_root(bpy.context.scene)
+    bpy.ops.wm.save_mainfile()
+    true_digest = store_state(root)["accepted_digest"]
+    cadex_backend.close_all()
+
+    # The engine moved under the model: the script is untouched and the
+    # digest it was accepted at is no longer the one it builds. Written
+    # straight into the store, which is the only way to move the digest
+    # without changing the script or rebuilding the engine.
+    state_path = os.path.join(root, "script.json")
+    with open(state_path, encoding="utf-8") as handle:
+        stored = json.load(handle)
+    stored["accepted_digest"] = "0" * len(true_digest)
+    with open(state_path, "w", encoding="utf-8") as handle:
+        json.dump(stored, handle, indent=2)
+
+    # Opened the way a user opens it: through load_post's queued open.
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.wm.open_mainfile(filepath=blend)
+    scene = bpy.context.scene
+    check(cadex_backend.pending_open(root), "load_post queued the open")
+    check(not cadex_backend.locked_out_project(scene),
+          "nothing is locked out before the open runs")
+    ok, report = cadex_backend.open_now(scene)
+    check(not ok, "the queued open refuses the moved digest")
+    check("could not restore this model" in report,
+          "...as a restore failure, said plainly")
+    state = cadex_backend._state_for(root)
+    check(state.open_failure_code == cadex_backend.RESTORE_FAILED_CODE,
+          "the failure code is cached on the per-root state")
+    check(cadex_backend.locked_out_project(scene),
+          "the chat panel has a lockout to draw")
+    check(not cadex_backend.orphaned_project(scene),
+          "...and it is not the orphan box: the project is not empty")
+    check(bool(model_module.last_error()),
+          "the parameters panel has the failure to draw")
+
+    # Rebuild Model is the wrong button, and says so rather than adopting.
+    check(bpy.ops.mesh_agent.rebuild_model.poll()
+          and bpy.ops.mesh_agent.rebuild_model() == {'CANCELLED'},
+          "Rebuild Model refuses a project whose restore failed")
+    check(cadex_backend.locked_out_project(scene),
+          "...and the lockout stands")
+    check(store_state(root)["accepted_digest"] == "0" * len(true_digest),
+          "...with the accepted digest untouched")
+
+    # The way back in. Through poll() first: an operator whose poll fails
+    # raises out of bpy.ops and would abort the suite.
+    check(bpy.ops.mesh_agent.reaccept_script.poll()
+          and bpy.ops.mesh_agent.reaccept_script() == {'FINISHED'},
+          "Re-accept Stored Script runs from the locked-out state")
+    check(not cadex_backend.locked_out_project(scene),
+          "the lockout is over")
+    check(state.open_failure_code == "" and state.restore_warning == "",
+          "the failure code and the unrestored warning are both cleared")
+    check(not model_module.last_error(), "the panel's failure row is gone")
+    check(store_state(root)["accepted_digest"] == true_digest,
+          "the accepted digest is what this engine builds from the script")
+    check(bpy.data.objects.get("plate") is not None,
+          "the re-accepted model is in the viewport")
+    ok, text = run_tool("get_script", {})
+    check(ok and "WITHOUT restoring" not in text,
+          "get_script no longer carries the unrestored warning")
+    check(sorted(cadexd_client._clients) == [root],
+          "one child, for the file's own project")
+
+    # And the store is consistent again: a fresh restoring open passes.
+    cadex_backend.close_all()
+    ok, report = cadex_backend.ensure_open(scene)
+    check(ok, "the re-accepted project opens clean ({:s})".format(
+        (report or "clean").splitlines()[0][:80]))
+    restore = cadex_backend._state_for(root).restore
+    check(restore.get("performed") is True
+          and restore.get("matches_accepted") is True,
+          "...and its restore pass matches: {!r}".format(restore))
+
+    # The button is not a way to make an empty project do anything: on a
+    # project that stores no script it refuses. A *saved* empty file, not
+    # File > New: the unsaved scene's temporary root is keyed by scene name
+    # and survives across files, so an earlier test's model would be found
+    # there and rewritten (the ADR-186 guard exists for the same reason).
+    bpy.ops.wm.read_homefile(use_empty=True)
+    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(workdir, "empty.blend"))
+    ok, report = cadex_backend.reaccept_stored_script(bpy.context.scene)
+    check(not ok and "no script to re-accept" in report,
+          "re-accept refuses a project that stores no script ({:s})".format(
+              report[:60]))
+
+
 def test_duplicated_file_keeps_its_parameters(workdir):
     """A copy names an empty project; that must not erase what the file holds.
 
@@ -1651,6 +1855,16 @@ def test_save_as_carries_imported_geometry(workdir):
     first would have passed; and it adopted the copy without ever saving it
     again, so it never exercised the ordinary Ctrl-S that was overwriting
     the pointer back to the original.
+
+    The policy triple is ADR-188's. A trained ``.cxpolicy`` and the task
+    bundle and MJCF it travels with (ADR-135) were in the engine's store and
+    absent from the shell's carry list, so a Save-As of a project that
+    replayed a policy dropped the one asset nothing can rebuild. The three
+    are fabricated bytes here: the store validates suffix, not content, and
+    the carry is about bytes; a script that bound them would be the engine's
+    business and is not what this test is for. The ``.txt`` beside them is
+    the negative -- a file in ``assets/`` the store would never accept is
+    never offered to it.
     """
     print("test_save_as_carries_imported_geometry")
 
@@ -1660,6 +1874,14 @@ def test_save_as_carries_imported_geometry(workdir):
     second_supplied = os.path.join(workdir, "bracket.stl")
     with open(second_supplied, "w", encoding="utf-8") as handle:
         handle.write(TETRAHEDRON_STL)
+    policy_triple = {
+        "stand.cxpolicy": b"CXPOLICY-BYTES",
+        "stand-task.json": b'{"task": "stand"}',
+        "stand.xml": b"<mujoco/>",
+    }
+    for name, payload_bytes in policy_triple.items():
+        with open(os.path.join(workdir, name), "wb") as handle:
+            handle.write(payload_bytes)
 
     first = os.path.join(workdir, "asset-orig.blend")
     second = os.path.join(workdir, "asset-copy.blend")
@@ -1674,6 +1896,20 @@ def test_save_as_carries_imported_geometry(workdir):
     payload = cadex_backend.put_asset(scene, second_supplied)
     check(payload.get("ok") is True,
           "...and so does the second one")
+    for name in policy_triple:
+        payload = cadex_backend.put_asset(scene, os.path.join(workdir, name))
+        check(payload.get("ok") is True,
+              "a trained policy's {:s} lands in the store the same way".format(
+                  os.path.splitext(name)[1]))
+    origin_assets = os.path.join(workdir, "asset-orig.cadex", "assets")
+    with open(os.path.join(origin_assets, "notes.txt"), "w",
+              encoding="utf-8") as handle:
+        handle.write("not an asset\n")
+    offered = {os.path.basename(path) for path in cadex_backend._assets_in(
+        os.path.join(workdir, "asset-orig.cadex"))}
+    check(offered == {"widget.stl", "bracket.stl"} | set(policy_triple),
+          "the carry offers the geometry and the policy triple, and never a "
+          "file the store would refuse ({!r})".format(sorted(offered)))
     ok, report = run_tool("write_script", {"content": IMPORTED_GEOMETRY_SCRIPT})
     check(ok, "a model built on the imported file is accepted ({:s})".format(
         report[:80]))
@@ -1715,15 +1951,23 @@ def test_save_as_carries_imported_geometry(workdir):
     check("widget.stl" in (report or "") and "bracket.stl" in (report or ""),
           "the report names BOTH components it carried across ({:s})".format(
               (report or "")[:120]))
+    check(all(name in (report or "") for name in policy_triple),
+          "...and the policy with its task bundle and MJCF (ADR-188) "
+          "({:s})".format((report or "")[:200]))
     check(bpy.data.objects.get("widget") is not None,
           "the imported component is back in the new file's viewport")
     check(bpy.data.objects.get("bracket") is not None,
           "...and so is the second one")
     check(not cadex_backend.orphaned_project(scene),
           "the adopted project is no longer orphaned")
-    check(cadex_backend.stored_asset_names(scene) == {"widget.stl",
-                                                      "bracket.stl"},
-          "the new project holds both components in its own store")
+    check(cadex_backend.stored_asset_names(scene) == {
+              "widget.stl", "bracket.stl"} | set(policy_triple),
+          "the new project holds both components and the policy triple in "
+          "its own store, and nothing else")
+    with open(os.path.join(workdir, "asset-copy.cadex", "assets",
+                           "stand.cxpolicy"), "rb") as handle:
+        check(handle.read() == policy_triple["stand.cxpolicy"],
+              "the carried policy is byte-identical to the original")
     check(os.path.isfile(os.path.join(workdir, "asset-orig.cadex",
                                       "assets", "widget.stl")),
           "the original project keeps its own copy")
@@ -5351,6 +5595,8 @@ def main():
     threading_root = tempfile.mkdtemp(prefix="mesh-cadex-thread-")
     cancel_root = tempfile.mkdtemp(prefix="mesh-cadex-cancel-")
     saveas_root = tempfile.mkdtemp(prefix="mesh-cadex-saveas-")
+    hydrate_root = tempfile.mkdtemp(prefix="mesh-cadex-hydrate-")
+    lockout_root = tempfile.mkdtemp(prefix="mesh-cadex-lockout-")
     duplicate_root = tempfile.mkdtemp(prefix="mesh-cadex-duplicate-")
     carry_root = tempfile.mkdtemp(prefix="mesh-cadex-carry-")
     linked_root = tempfile.mkdtemp(prefix="mesh-cadex-linked-")
@@ -5422,6 +5668,8 @@ def main():
         test_cadex_turn_single_undo(turn_root)
         test_native_blender_recipe(recipe_root)
         test_save_as_and_multi_file_lifecycle(saveas_root)
+        test_opening_a_file_hydrates(hydrate_root)
+        test_a_locked_out_project_is_reaccepted_from_the_chat(lockout_root)
         test_duplicated_file_keeps_its_parameters(duplicate_root)
         test_save_as_carries_imported_geometry(carry_root)
         test_link_part_travels_between_two_models(linked_root)
@@ -5474,7 +5722,8 @@ def main():
         import shutil
         for root in (corpus_root, baseline_root, wide_root, turn_root,
                      reopen_root,
-                     threading_root, cancel_root, saveas_root,
+                     threading_root, cancel_root, saveas_root, hydrate_root,
+                     lockout_root,
                      duplicate_root, carry_root, linked_root,
                      dimension_root, measure_root,
                      restore_root, corrupt_root, describe_root, edit_root,

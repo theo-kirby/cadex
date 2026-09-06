@@ -45,6 +45,12 @@ CLI_TOOL_OPS = (
     # from ../sensorA" cannot otherwise do it: nothing else in the surface
     # reaches outside this project.
     "link_part",
+    # A file the caller hands over (ADR-190): a trained `.cxpolicy` and the
+    # receipt it travels with, or a mesh. Here because the lifecycle audit
+    # (docs/MUJOCO.md §7c, row 5) found the agent inventing a "put_asset
+    # command" it did not have: nothing else in the surface writes the
+    # project store from outside the script.
+    "put_asset",
 )
 
 #: Filled in by the bridge from the last reply, so never asked of the model.
@@ -103,6 +109,17 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "arguments to refresh: the reply's `changed` says whether the other "
         "project moved, and a rebuild is what makes a change take effect "
         "here. Omit `output` to be told what that project declares."
+    ),
+    "put_asset": (
+        "Copy ONE file from disk into this project's assets/ so a script can "
+        "name it: a trained control policy (.cxpolicy) with the .json task "
+        "and .xml model it travels with, a mesh (.stl/.obj/.ply) for "
+        "mesh.import_file, or a .cxpart. A path, not bytes. The reply "
+        "carries the stored name, its size and its sha256 — which is the "
+        "digest assembly.policy(weights=..., sha256=...) requires; never "
+        "guess it. Storing under a name that already exists replaces it. "
+        "This changes no geometry by itself: a rebuild or a script change "
+        "is what makes the file take effect."
     ),
 }
 
@@ -177,6 +194,14 @@ ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
     ("inspect", "path"): (
         'A JSON-pointer-ish path into the scope\'s value, e.g. "/facts" or '
         '"/facts/volume" under output scope. Omit for the whole value.'
+    ),
+    ("put_asset", "source_path"): (
+        "Absolute or project-relative path of the file to copy in. It must "
+        "already exist on this machine; the engine reads it, never you."
+    ),
+    ("put_asset", "name"): (
+        "The name to store it under, keeping the source file's suffix. "
+        "Defaults to the source file's own name."
     ),
     ("inspect", "offset"): "Page offset for a paged scope; 0-based.",
     ("inspect", "limit"): "Page size for a paged scope; 1 to 50.",

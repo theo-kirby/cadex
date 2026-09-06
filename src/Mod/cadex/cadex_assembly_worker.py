@@ -2566,9 +2566,8 @@ def _vector_fact(value: Any) -> list[float]:
     return [float(value.x), float(value.y), float(value.z)]
 
 
-def _execute_native_exploded_view(
+def _execute_exploded_view(
     *,
-    document: Any,
     assembly: Any,
     assembly_output: str,
     output_name: str,
@@ -2576,25 +2575,53 @@ def _execute_native_exploded_view(
     component_outputs: Mapping[int, str],
     components: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Create and independently read FreeCAD's native exploded-view graph."""
+    """Compute an exploded view's staged placements and leader lines.
+
+    The arithmetic is FreeCAD's own -- ``ExplodedView._calculateExplodedPlacements``
+    in ``src/Mod/Assembly/CommandCreateView.py`` -- ported here (ADR-197) so
+    the worker no longer instantiates a ``Command*`` module's document
+    objects in order to read a forty-line calculation back out of them. A
+    *normal* move left-multiplies its transform onto the component's current
+    placement; a *radial* move pushes the component along the
+    assembly-centre -> component-centre direction by four times the distance
+    over the assembly diagonal. Moves are cumulative and the solved state is
+    never touched. Each leader line runs from the component's bounding-box
+    centre to that centre carried by the move's delta -- and the start is
+    the *solved* centre for every move a component appears in, because the
+    native calculation reads it off a document an exploded view never moves.
+    That quirk is kept: the shell interpolates these lines, and a port that
+    quietly improved them would move every explosion it has ever drawn.
+
+    The publication side (``CadexScriptedDomainPublication``) still builds
+    the native ``ExplodedView`` document object from this data -- that is
+    what a native view *is*, and the module ships in every build, GUI or not.
+    """
 
     import FreeCAD as App
-    import CommandCreateView
     import UtilsAssembly
 
     properties = _properties(value, "exploded_view")
     moves = list(properties.get("moves") or [])
-    view_group = UtilsAssembly.getViewGroup(assembly)
-    view = view_group.newObject("App::FeaturePython", f"CandidateView{output_name}")
-    CommandCreateView.ExplodedView(view)
-    native_steps: list[Any] = []
+    centre, size = UtilsAssembly.getComAndSize(assembly)
+    if not math.isfinite(float(size)) or float(size) <= 1.0e-12:
+        raise AssemblyCandidateError(
+            f"Exploded-view output {output_name!r} has no finite assembly bounds.",
+            details={"stage": "exploded_view_bounds"},
+        )
+    current_placements = {
+        name: component.Placement.copy() for name, component in components.items()
+    }
+    solved_centres = {
+        name: component.Shape.BoundBox.Center for name, component in components.items()
+    }
     move_records: list[dict[str, Any]] = []
+    line_count = 0
     for move_index, move in enumerate(moves):
         kind = str(move.get("kind") or "")
         component_values = list(move.get("components") or [])
         component_names = [component_outputs[id(item)] for item in component_values]
-        step = assembly.newObject("App::FeaturePython", f"CandidateMove{move_index}")
-        CommandCreateView.ExplodedViewStep(step, 1 if kind == "radial" else 0)
+        transform: Any = None
+        factor = 0.0
         if kind == "normal":
             transform = _native_placement(
                 move.get("transform"),
@@ -2602,7 +2629,6 @@ def _execute_native_exploded_view(
                     f"exploded-view output {output_name!r} move {move_index} transform"
                 ),
             )
-            step.MovementTransform = transform
             record: dict[str, Any] = {
                 "move_index": move_index,
                 "kind": "normal",
@@ -2612,15 +2638,17 @@ def _execute_native_exploded_view(
             }
         elif kind == "radial":
             distance = float(move.get("radial_distance_mm"))
-            step.MovementTransform = App.Placement(
+            movement = App.Placement(
                 App.Vector(distance, 0.0, 0.0), App.Rotation()
             )
+            # Native reads the distance back as the movement's base length.
+            factor = 4.0 * float(movement.Base.Length) / float(size)
             record = {
                 "move_index": move_index,
                 "kind": "radial",
                 "component_outputs": component_names,
                 "radial_distance_mm": distance,
-                "movement_transform": _placement_fact(step.MovementTransform),
+                "movement_transform": _placement_fact(movement),
             }
         else:
             raise AssemblyCandidateError(
@@ -2628,30 +2656,35 @@ def _execute_native_exploded_view(
                 f"unsupported kind {kind!r}.",
                 details={"stage": "exploded_view_graph"},
             )
-        step.References = [
-            assembly,
-            [f"{components[name].Name}." for name in component_names],
-        ]
-        native_steps.append(step)
-        move_records.append(record)
-
-    solved_placements = {
-        name: component.Placement.copy() for name, component in components.items()
-    }
-    previous_placements = dict(solved_placements)
-    all_lines: list[tuple[Any, Any]] = []
-    for move_index, (step, record) in enumerate(zip(native_steps, move_records)):
-        view.Group = native_steps[: move_index + 1]
-        final_placements, line_positions = view.Proxy._calculateExplodedPlacements(view)
-        component_names = list(record["component_outputs"])
-        current_placements: dict[str, Any] = {}
-        changed_components: list[str] = []
+        before = dict(current_placements)
+        segments: list[dict[str, Any]] = []
         for name in component_names:
-            component = components[name]
-            placement = final_placements.get(component, previous_placements[name])
-            current_placements[name] = placement
-            if _placement_matrix(placement) != _placement_matrix(previous_placements[name]):
-                changed_components.append(name)
+            current = current_placements[name]
+            if kind == "radial":
+                component_centre, _ = UtilsAssembly.getComAndSize(components[name])
+                new_placement = App.Placement(
+                    current.Base + (component_centre - centre) * factor,
+                    current.Rotation,
+                )
+            else:
+                new_placement = transform * current
+            current_placements[name] = new_placement
+            delta = new_placement * current.inverse()
+            start_values = _vector_fact(solved_centres[name])
+            end_values = _vector_fact(delta.multVec(solved_centres[name]))
+            segments.append(
+                {
+                    "component_output": name,
+                    "start_mm": start_values,
+                    "end_mm": end_values,
+                    "length_mm": math.dist(start_values, end_values),
+                }
+            )
+        changed_components = [
+            name
+            for name in component_names
+            if _placement_matrix(current_placements[name]) != _placement_matrix(before[name])
+        ]
         unchanged_components = [
             name for name in component_names if name not in changed_components
         ]
@@ -2675,59 +2708,15 @@ def _execute_native_exploded_view(
                     ),
                 },
             )
-        expected_line_count = sum(
-            len(item["component_outputs"]) for item in move_records[: move_index + 1]
-        )
-        if len(line_positions) != expected_line_count:
-            raise AssemblyCandidateError(
-                f"Native exploded-view output {output_name!r} returned "
-                f"{len(line_positions)} line positions after move {move_index}; "
-                f"expected {expected_line_count}.",
-                details={"stage": "exploded_view_native_readback"},
-            )
-        new_lines = line_positions[len(all_lines) :]
-        if len(new_lines) != len(component_names):
-            raise AssemblyCandidateError(
-                f"Native exploded-view output {output_name!r} move {move_index} "
-                "returned misaligned line positions.",
-                details={"stage": "exploded_view_native_readback"},
-            )
         record["changed_component_outputs"] = changed_components
         record["final_placements"] = {
             name: _placement_fact(current_placements[name]) for name in component_names
         }
-        for name, (start, end) in zip(component_names, new_lines):
-            start_values = _vector_fact(start)
-            end_values = _vector_fact(end)
-            record.setdefault("line_segments", []).append(
-                {
-                    "component_output": name,
-                    "start_mm": start_values,
-                    "end_mm": end_values,
-                    "length_mm": math.dist(start_values, end_values),
-                }
-            )
-        all_lines.extend(new_lines)
-        previous_placements.update(current_placements)
+        record["line_segments"] = segments
+        line_count += len(segments)
+        move_records.append(record)
 
-    view.Group = native_steps
-    final_placements, final_lines = view.Proxy._calculateExplodedPlacements(view)
-    if len(final_lines) != len(all_lines):
-        raise AssemblyCandidateError(
-            f"Native exploded-view output {output_name!r} final line count changed.",
-            details={"stage": "exploded_view_native_readback"},
-        )
-    complete_final = {
-        name: _placement_fact(final_placements.get(component, solved_placements[name]))
-        for name, component in components.items()
-    }
-    centre, size = UtilsAssembly.getComAndSize(assembly)
-    if not math.isfinite(float(size)) or float(size) <= 1.0e-12:
-        raise AssemblyCandidateError(
-            f"Exploded-view output {output_name!r} has no finite assembly bounds.",
-            details={"stage": "exploded_view_native_readback"},
-        )
-    data = {
+    return {
         "schema": _EXPLODED_VIEW_SCHEMA,
         "assembly_output": assembly_output,
         "moves": move_records,
@@ -2735,23 +2724,17 @@ def _execute_native_exploded_view(
             "center_mm": _vector_fact(centre),
             "diagonal_mm": float(size),
         },
-        "final_component_placements": complete_final,
-        "line_count": len(final_lines),
-        "native_readback": {
-            "view_group_type": str(view_group.TypeId),
-            "view_proxy_class": type(view.Proxy).__name__,
-            "step_proxy_classes": [type(step.Proxy).__name__ for step in native_steps],
-            "move_types": [str(step.MoveType) for step in native_steps],
-            "reference_paths": [list(step.References[1]) for step in native_steps],
+        "final_component_placements": {
+            name: _placement_fact(current_placements[name]) for name in components
         },
+        "line_count": line_count,
     }
-    return data
 
 
 def _exploded_display_record(exploded_view_data: Mapping[str, Any]) -> dict[str, Any]:
     """The compact display record an exploded-view output publishes.
 
-    A pure dict-to-dict projection of ``_execute_native_exploded_view``'s
+    A pure dict-to-dict projection of ``_execute_exploded_view``'s
     data: the per-move cumulative poses become interpolation stages, the
     final placements become endpoints, and the leader-line segments are
     flattened into one list. This is the whole wire payload -- one optional
@@ -6006,8 +5989,7 @@ def validate_and_solve_assembly(
                     ),
                 },
             )
-        exploded_view_data = _execute_native_exploded_view(
-            document=document,
+        exploded_view_data = _execute_exploded_view(
             assembly=assembly,
             assembly_output=assembly_output,
             output_name=exploded_view_output,

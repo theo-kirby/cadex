@@ -3,13 +3,15 @@
 
 """``cadex`` — the command line.
 
-Five subcommands over one project, of which exactly one spends tokens::
+Seven subcommands over one project, of which exactly one spends tokens::
 
     cadex -p "a mounting bracket for a NEMA17, 4 mm wall" --out ./out
     cadex params --set fin_angle=12 --out ./sweep/12
     cadex script --set bracket.py --out ./out
     cadex export --out ./out
     cadex link --from ../sensorA --output sensor
+    cadex asset --put walk.cxpolicy --put walk-task.json
+    cadex train --out ./run --iterations 200 --envs 64 --put
 
 That asymmetry is the whole design. An expensive turn authors a *parametric*
 script once; after that a sweep is ``set_params`` and a re-export, with no
@@ -44,6 +46,16 @@ from .bridge import Bridge, ToolCall
 from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine
 from .export import ExportError, export_blueprints, export_outputs, parse_formats
+from .project_docs import (
+    append_progress_row,
+    commit_project,
+    ensure_project_repo,
+    previous_numbers,
+    progress_numbers,
+    read_project_docs,
+    record_decisions,
+    scaffold_project_docs,
+)
 from .report import (
     EXIT_FAILURE,
     EXIT_OK,
@@ -58,10 +70,18 @@ from .session import (
     ProjectBusy,
     project_lock,
     read_agent_state,
+    read_project_assets,
     read_script_source,
     read_script_state,
     read_working_revision,
     write_agent_state,
+)
+from .train import (
+    TrainError,
+    find_task,
+    resolve_trainer_python,
+    run_trainer,
+    trainer_command,
 )
 
 #: Where a run works when ``--project`` is not given. Hidden, and beside
@@ -174,6 +194,110 @@ def build_parser() -> argparse.ArgumentParser:
         help="Store it under this name. Defaults to <output>.cxpart; re-using "
         "a name is how a part is refreshed.",
     )
+
+    asset_parser = subparsers.add_parser(
+        "asset",
+        help="Copy a file into the project store, or list what is there. "
+        "No AI, no tokens.",
+    )
+    _common(asset_parser, inherit=True)
+    asset_parser.add_argument(
+        "--put",
+        dest="put_files",
+        action="append",
+        default=[],
+        metavar="FILE",
+        help="Repeatable. A .cxpolicy, its .json/.xml provenance, a mesh "
+        "(.stl/.obj/.ply) or a .cxpart. Re-using a stored name replaces it.",
+    )
+    asset_parser.add_argument(
+        "--name",
+        dest="asset_name",
+        default="",
+        metavar="NAME",
+        help="Store the one --put file under this name (same suffix). "
+        "Defaults to the file's own name.",
+    )
+
+    train_parser = subparsers.add_parser(
+        "train",
+        help="Export the accepted script's training bundle into --out and "
+        "run the offboard trainer on it. No AI, no tokens; needs the "
+        "training venv (training/SETUP.md).",
+    )
+    _common(train_parser, inherit=True)
+    train_parser.add_argument(
+        "--iterations", type=int, default=200, help="PPO iterations (200)."
+    )
+    train_parser.add_argument(
+        "--envs", type=int, default=256, help="Parallel environments (256)."
+    )
+    train_parser.add_argument("--seed", type=int, default=0, help="RNG seed (0).")
+    train_parser.add_argument(
+        "--label", default="", help="A label written into the policy header."
+    )
+    train_parser.add_argument(
+        "--init-from",
+        dest="init_from",
+        default="",
+        metavar="POLICY",
+        help="Warm-start the actor from this .cxpolicy (same task digest).",
+    )
+    train_parser.add_argument(
+        "--init-from-parent-task",
+        dest="init_from_parent_task",
+        default="",
+        metavar="BUNDLE",
+        help="The task .json --init-from's policy was trained on; needed "
+        "beside --init-from-task-change.",
+    )
+    train_parser.add_argument(
+        "--init-from-task-change",
+        dest="init_from_task_change",
+        default="",
+        metavar="REASON",
+        help="Warm-start across a task change (a curriculum step: reward, "
+        "disturbance, episode length...) and say why in one line. Needs "
+        "--init-from and --init-from-parent-task.",
+    )
+    train_parser.add_argument(
+        "--task",
+        dest="task_name",
+        default="",
+        metavar="NAME",
+        help="Which declared training task, when the script exports more "
+        "than one.",
+    )
+    train_parser.add_argument(
+        "--name",
+        dest="policy_name",
+        default="",
+        metavar="NAME.cxpolicy",
+        help="The policy's filename in --out, and its stored name with "
+        "--put. Defaults to <task>.cxpolicy.",
+    )
+    train_parser.add_argument(
+        "--put",
+        action="store_true",
+        default=False,
+        help="After training, copy the policy into the project store and "
+        "report its sha256 (the digest assembly.policy names).",
+    )
+    train_parser.add_argument(
+        "--timeout",
+        type=float,
+        default=0.0,
+        metavar="SECONDS",
+        help="Stop the trainer after this long; 0 is no limit.",
+    )
+    train_parser.add_argument(
+        "--trainer-python",
+        dest="trainer_python",
+        default="",
+        metavar="PATH",
+        help="The training venv's interpreter. Default: $CADEX_TRAIN_PYTHON, "
+        "then <repo>/.venv, then ~/cadex-train-venv.",
+    )
     return parser
 
 
@@ -243,6 +367,19 @@ def _engine_session(
             client.start()
             opened = open_project(client, project_root)
             report.params = params_from_script(opened.get("script"))
+            # The project as a codebase (ADR-193): its three documents
+            # exist from the first visit on. Plain files beside
+            # script.json, like agent.json; the engine never reads them.
+            created = scaffold_project_docs(project_root)
+            if created:
+                report.notes.append(
+                    "scaffolded " + ", ".join(created) + " in the project root."
+                )
+            # ...and a git repository it owns (ADR-194): one commit per
+            # accepted run, made in main() after the PROGRESS.md row.
+            repo_note = ensure_project_repo(project_root)
+            if repo_note:
+                report.notes.append(repo_note)
             _install_cancel(client)
             yield engine, client
         finally:
@@ -340,7 +477,9 @@ def command_prompt(
             turn = turn_factory(
                 claude_path=claude_path,
                 model=args.model,
-                system_prompt_text=system_prompt(api),
+                system_prompt_text=system_prompt(
+                    api, project_docs=read_project_docs(report.project_root)
+                ),
                 socket_path=str(bridge.socket_path),
                 token=bridge.token,
                 session_id=session_id,
@@ -368,6 +507,14 @@ def command_prompt(
             )
         if result.text.strip():
             report.notes.append(result.text.strip())
+        # What the agent decided lands in the project's own ADR log
+        # (ADR-193): a closing line that starts `DECISION:`. A convention,
+        # not a tool, because the agent has no file access here.
+        landed = record_decisions(report.project_root, result.text)
+        if landed:
+            report.notes.append(
+                "recorded " + ", ".join(landed) + " in DECISIONS.md."
+            )
 
         accepted = bridge.state.last_accepted
         report.revision = bridge.state.revision or report.revision
@@ -592,6 +739,180 @@ def command_link(args: argparse.Namespace, report: RunReport) -> int:
         return EXIT_OK
 
 
+def command_asset(args: argparse.Namespace, report: RunReport) -> int:
+    """Bring a file into the project store, or list the store. No model.
+
+    This is how a trained policy comes home headlessly (ADR-190): the
+    trainer's ``.cxpolicy`` and the receipt it travels with go in through
+    ``put_asset`` — the path a mesh already travels, and the one write to
+    the store that is not the script's — and the envelope's ``assets`` row
+    carries the sha256 ``assembly.policy(sha256=...)`` then requires. It
+    never rebuilds: a stored file changes nothing until a script names it,
+    and that change is ``cadex script --set`` or a turn's ``edit_script``.
+
+    With no ``--put`` it lists the store, which is what a pipeline reads to
+    learn a digest it did not store itself.
+    """
+
+    files = [str(item) for item in args.put_files]
+    if args.asset_name and len(files) != 1:
+        report.error = "--name applies to exactly one --put FILE."
+        return EXIT_USAGE
+    paths: list[Path] = []
+    for item in files:
+        path = Path(item).expanduser()
+        if not path.is_file():
+            report.error = f"no such file: {path}"
+            return EXIT_USAGE
+        paths.append(path.resolve())
+
+    with _engine_session(args, report) as (_engine, client):
+        if not paths:
+            report.assets = read_project_assets(client)
+            if not report.assets:
+                report.notes.append("the project store holds no assets.")
+            report.ok = True
+            return EXIT_OK
+
+        for path in paths:
+            request: dict[str, Any] = {"source_path": str(path)}
+            if args.asset_name:
+                request["name"] = args.asset_name
+            _progress(f" · put_asset  {path.name}")
+            reply = client.request("put_asset", request)
+            if reply.get("ok") is not True:
+                report.error = str(
+                    reply.get("error") or reply.get("failure_code") or "put_asset failed"
+                )
+                report.assets = [
+                    dict(item)
+                    for item in (reply.get("observed") or {}).get("assets") or []
+                ]
+                return EXIT_REJECTED
+            report.notes.append(
+                "stored {:s} ({:d} bytes, sha256 {:s}).".format(
+                    str(reply.get("name") or ""),
+                    int(reply.get("bytes") or 0),
+                    str(reply.get("sha256") or ""),
+                )
+            )
+            report.assets = [dict(item) for item in reply.get("assets") or []]
+        report.ok = True
+        return EXIT_OK
+
+
+def command_train(args: argparse.Namespace, report: RunReport) -> int:
+    """Rebuild, export the bundle, train offboard, and bring the policy home.
+
+    The training leg of the lifecycle walk (ADR-191, ``docs/MUJOCO.md``
+    §7c row 4), as one command instead of a person's three: ``cadex
+    export`` for the bundle, the venv's trainer with flags looked up by
+    hand, ``cadex asset --put`` for the result. Training itself stays
+    offboard (ADR-084) — this spawns ``training/cadex_train.py`` under the
+    venv's interpreter and reads its receipt; the engine is never in the
+    room while it runs. The project lock is held for the rebuild and again
+    for the ``put``, and released in between, because a fifteen-minute
+    training run is not a modelling operation.
+
+    It never rebuilds *after* training: the policy is real when a script
+    names it with the sha256 this run reports, which is ``cadex script
+    --set`` or a turn's ``edit_script``, the same as ``cadex asset``.
+    """
+
+    if not args.out:
+        report.error = "train needs --out: the bundle and the policy land there."
+        return EXIT_USAGE
+    if args.iterations < 1 or args.envs < 1:
+        report.error = "--iterations and --envs must be at least 1."
+        return EXIT_USAGE
+    policy_name = str(args.policy_name or "")
+    if policy_name and not policy_name.endswith(".cxpolicy"):
+        report.error = "--name must end in .cxpolicy."
+        return EXIT_USAGE
+    if (args.init_from_task_change or args.init_from_parent_task) and not (
+        args.init_from and args.init_from_parent_task and args.init_from_task_change
+    ):
+        # The trainer refuses these apart too, but after the rebuild and
+        # the export; a usage error costs nothing.
+        report.error = (
+            "--init-from-task-change needs --init-from POLICY and "
+            "--init-from-parent-task BUNDLE beside it (the bundle that "
+            "policy was trained on)."
+        )
+        return EXIT_USAGE
+    python = resolve_trainer_python(args.trainer_python or None)
+
+    with _engine_session(args, report) as (engine, client):
+        _progress(" · rebuild")
+        reply = client.request("rebuild")
+        apply_modeling_reply(report, reply)
+        if reply.get("ok") is not True:
+            report.error = str(
+                reply.get("error") or reply.get("failure_code") or "rebuild failed"
+            )
+            return EXIT_REJECTED
+        _finish(args, report, engine, reply.get("display"))
+        _refresh_script_state(client, report)
+    try:
+        task = find_task(report.outputs, args.task_name)
+    except TrainError as exc:
+        report.error = str(exc)
+        return EXIT_REJECTED
+
+    out_dir = Path(report.out_dir)
+    policy_path = out_dir / (policy_name or f"{task.name}.cxpolicy")
+    command = trainer_command(
+        python,
+        task.files["json"],
+        policy_path,
+        iterations=args.iterations,
+        envs=args.envs,
+        seed=args.seed,
+        label=args.label,
+        init_from=args.init_from,
+        init_from_parent_task=args.init_from_parent_task,
+        init_from_task_change=args.init_from_task_change,
+    )
+    _progress(
+        f" · train  {task.name}  {args.iterations} it × {args.envs} envs"
+        f"  ({python})"
+    )
+    report.training = run_trainer(command, timeout=args.timeout)
+    report.training.setdefault("out", str(policy_path))
+    report.notes.append(
+        "trained {:s}: {:s} ({:s} bytes, sha256 {:s}) in {:.1f} s on {:s}.".format(
+            task.name,
+            str(report.training.get("out") or policy_path),
+            str(report.training.get("bytes") or "?"),
+            str(report.training.get("sha256") or ""),
+            float(report.training.get("wall_time_s") or 0.0),
+            str(report.training.get("device") or "?"),
+        )
+    )
+    if not args.put:
+        report.ok = True
+        return EXIT_OK
+
+    with _engine_session(args, report) as (_engine, client):
+        _progress(f" · put_asset  {policy_path.name}")
+        reply = client.request("put_asset", {"source_path": str(policy_path)})
+        if reply.get("ok") is not True:
+            report.error = str(
+                reply.get("error") or reply.get("failure_code") or "put_asset failed"
+            )
+            return EXIT_REJECTED
+        report.assets = [dict(item) for item in reply.get("assets") or []]
+        report.notes.append(
+            "stored {:s} ({:d} bytes, sha256 {:s}).".format(
+                str(reply.get("name") or ""),
+                int(reply.get("bytes") or 0),
+                str(reply.get("sha256") or ""),
+            )
+        )
+    report.ok = True
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -614,9 +935,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_script(args, report)
         elif command == "link":
             code = command_link(args, report)
+        elif command == "asset":
+            code = command_asset(args, report)
+        elif command == "train":
+            code = command_train(args, report)
         else:  # argparse already refuses anything else
             return EXIT_USAGE
-    except (ValueError, ExportError) as exc:
+    except (ValueError, ExportError, TrainError) as exc:
         report.error = str(exc)
         code = EXIT_USAGE if isinstance(exc, ValueError) else EXIT_FAILURE
     except (EngineError, ClaudeUnavailable, ProjectBusy, CadexdError) as exc:
@@ -626,9 +951,113 @@ def main(argv: Sequence[str] | None = None) -> int:
         report.error = "cancelled."
         code = EXIT_FAILURE
 
+    if code == EXIT_OK and report.ok and not quiet:
+        _record_progress(command, args, report)
+        _commit_run(command, args, report)
     if not (quiet and code == EXIT_OK):
         emit(report, as_json=bool(args.json))
     return code
+
+
+#: Notes the CLI adds about the project's own housekeeping (ADR-193,
+#: ADR-194), never what a turn said it did.
+_HOUSEKEEPING_NOTES = (
+    "scaffolded ",
+    "recorded ",
+    "nothing to",
+    "initialised ",
+    "inside an existing",
+    "no git on",
+    "git init",
+    "committed ",
+)
+
+
+def _progress_what(command: str, args: argparse.Namespace, report: RunReport) -> str:
+    """What this run did, in the words a person would use for the row."""
+
+    if command == "prompt":
+        said = ""
+        for note in report.notes:
+            if note and not note.startswith(_HOUSEKEEPING_NOTES):
+                said = note.strip().splitlines()[0]
+                break
+        return f"prompt: {args.prompt}" + (f" → {said}" if said else "")
+    if command == "params":
+        return "params " + ", ".join(
+            f"{name}={value}" for name, value in sorted(
+                _parse_assignments(args.assignments).items()
+            )
+        )
+    if command == "script":
+        return f"script --set {Path(args.source_file).name}"
+    if command == "export":
+        return f"export → {args.out}"
+    if command == "link":
+        return "link {:s} from {:s}".format(
+            str(getattr(args, "output", "") or "?"), str(args.source_project)
+        )
+    if command == "asset":
+        return "asset --put " + ", ".join(
+            Path(str(item)).name for item in args.put_files
+        )
+    if command == "train":
+        return "train {:d} it × {:d} envs → {:s}{:s}".format(
+            int(args.iterations),
+            int(args.envs),
+            str(Path(str(report.training.get("out") or args.out)).name),
+            " (stored)" if args.put else "",
+        )
+    return command
+
+
+def _record_progress(command: str, args: argparse.Namespace, report: RunReport) -> None:
+    """One `PROGRESS.md` row per accepted run (ADR-193).
+
+    Written after the command, from the report, so the row says what
+    actually happened. A store listing (`asset` with no `--put`) changes
+    nothing and gets no row. Never fatal: a row that cannot be written is a
+    note, not a failed run.
+    """
+
+    if command == "asset" and not getattr(args, "put_files", None):
+        return
+    try:
+        append_progress_row(
+            report.project_root,
+            run=command,
+            what=_progress_what(command, args, report),
+            revision=report.accepted_revision,
+            digest=report.digest,
+            numbers=progress_numbers(
+                training=report.training,
+                outputs=report.outputs,
+                previous=previous_numbers(report.project_root),
+            ),
+        )
+    except OSError as exc:
+        report.notes.append(f"PROGRESS.md not written: {exc}")
+
+
+def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> None:
+    """One commit per accepted run in the project's own repository (ADR-194).
+
+    After the row, so the row is in the commit; the message is the row's
+    words. A listing changes nothing and commits nothing; a project that
+    is not its own repository (inside another work tree, or no git) gets
+    no commit and said so on its first visit. Never fatal.
+    """
+
+    if command == "asset" and not getattr(args, "put_files", None):
+        return
+    try:
+        sha = commit_project(
+            report.project_root, f"cadex {_progress_what(command, args, report)}"
+        )
+    except OSError:
+        return
+    if sha:
+        report.notes.append(f"committed {sha}.")
 
 
 if __name__ == "__main__":

@@ -688,7 +688,6 @@ def test_exploded_display_record_is_a_pure_projection_of_the_native_data() -> No
                 "right": fact([15, 0, 0], [0, 0, 1], 0.0),
             },
             "line_count": 3,
-            "native_readback": {"view_proxy_class": "ExplodedView"},
         }
     )
     assert set(record) == {

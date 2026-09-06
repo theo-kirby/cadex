@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-09-05
+Verified against source: 2026-09-06
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -302,10 +302,13 @@ this phase.
 
 - [ ] Dependency audit: `src/Gui` (66 MB, 729 files) plus every
       `src/Mod/*/Gui`, `tests/src/Gui`, and the `setup_qt_test` helper.
-- [ ] **`cadex_assembly_worker.py:2553` imports `CommandCreateView`** —
+- [x] **`cadex_assembly_worker.py` imported `CommandCreateView`** —
       GUI-lineage code used headlessly for exploded views, and the one
-      import that makes this deletion more than mechanical. Resolve it
-      here, not in Phase 11 (ADR-025).
+      import that made this deletion look more than mechanical. **Resolved
+      2026-09-06 (ADR-197)**: the worker computes the exploded view itself
+      (FreeCAD's rule, ported), and the audit found the module installs
+      regardless of `BUILD_GUI` anyway — the publisher still builds the
+      native document object from it, which this deletion does not touch.
 - [ ] Delete, with the `BUILD_GUI` guards that Phase 7 added removed rather
       than left dangling.
 - [ ] `docs/FREECAD.md` §1 row moves from "present, not built" to deleted;
@@ -774,9 +777,11 @@ Not a phase that "completes" — a standing mode of work.
 
 - [ ] Shell side (`docs/BLENDER-TREE.md` §4), where the disable commit is
       nearly free because these are already CMake options: `WITH_CYCLES`
-      (`shell/intern/cycles`), the VSE, grease pencil, the compositor,
-      `shell/locale/` (80 MB), most of `shell/tests/files/` (784 MB), the
-      unused `shell/release/datafiles`.
+      (`shell/intern/cycles`) — **disabled and deleted 2026-09-06,
+      ADR-196**, the first tree through both commits — `WITH_INTERNATIONAL`
+      (`shell/locale/`, 80 MB) — **disabled 2026-09-06, ADR-198**, delete
+      half pending — then the VSE, grease pencil, the compositor, most of
+      `shell/tests/files/` (784 MB), the unused `shell/release/datafiles`.
 - [ ] Engine side: Phase 8 (`src/Gui`, 66 MB) is unchanged and still
       pending (Phase 9's warm-standby worker landed as ADR-055). Two more
       found while
@@ -1751,40 +1756,79 @@ What makes them experimental, and what would settle it:
 - **A1: `display` on `open_project`.** Would fold the restore pass and the
   hydration rebuild into one script run; measured cost of not having it is
   0.49 s on the first engine request against a project.
-- **Nothing hydrates when a file is opened** (ADR-073). Distinct from A1 and
-  larger than it: `load_post` → `on_file_changed` closes the old sessions and
-  returns, and no caller queues a rebuild, so opening a `.blend` beside an
-  existing `.cadex` leaves the viewport empty — measured
-  `model_objects_on_open = 0` in the shipped bundle — until an agent tool
-  call, a slider drag, or **Rebuild Model** provokes the first request. A1
-  makes that request cheaper; it does not cause one. Landing hydrate-on-load
-  is a `shell/` diff and wants the asynchronous lifecycle, so it is a
-  decision — ADR-073 §5.
-- **A digest-moving engine change locks a project out of the UI, with no
-  visible way back in.** ADR-064 called a friendlier migration path "worth
-  having and not built here"; ADR-074 is the first change to make a user hit
-  it, and it is worse than that note reads. The failure is at *open*, not at
-  the next edit: `ensure_open` runs the restore pass, `CADEXD_RESTORE_FAILED`
-  comes back, and every operation that would fix it is behind the same call.
-  **Rebuild Model cannot be the remedy** — `begin_rebuild_model` passes
-  `unrestored_ok=False`, correctly, because re-running a model whose script
-  no longer reproduces it is exactly what the guard exists to stop. The
-  operation that *is* the remedy is `write_script`, which already passes
-  `unrestored_ok=True` and re-accepts on success; what is missing is a
-  **button that reaches it in this state**. `adopt_script` is drawn only when
-  the engine project is *empty* (`orphaned_project`) or the script buffer is
-  *dirty* — and a project that opened fine yesterday under a different engine
-  build is neither, so nothing is drawn at all.
-
+- [x] **Hydrate on file open** (ADR-073 measured it, ADR-186 landed it).
+  `load_post` → `on_file_changed` → `cadex_backend.queue_open`: a saved
+  `.blend` beside an existing `.cadex` queues the open, a timer runs the
+  restore-verified `open_project` and the display `rebuild` off the main
+  thread, and the accept hydrates. The gate's
+  `test_opening_a_file_hydrates` drains the queue by hand and asserts
+  `model_objects_on_open > 0`. A1 still stands: it would make that open one
+  script run instead of two.
+- [x] **A digest-moving engine change locked a project out of the UI, with
+  no visible way back in** (measured after ADR-074, ADR-187 landed the way
+  back). The failure is at *open*: `ensure_open` runs the restore pass,
+  `CADEXD_RESTORE_FAILED` comes back, and every operation that would fix it
+  is behind the same call. **Rebuild Model cannot be the remedy** — it
+  passes `unrestored_ok=False`, correctly. The remedy is `write_script`,
+  which re-accepts on success, and `adopt_script` was drawn only for an
+  *empty* project or a *dirty* buffer, so nothing was drawn at all.
   Measured on `wiring-demo/harness.cadex` after ADR-074: accepted
-  `7e073ae6…`, restored `25fdf64f…`, four cables. Recovered by hand with
-  `open_project restore=false` then `write_script`, which is precisely what
-  the missing button would do. The shape of the fix: cache the failure code
-  from the last open on the per-root state, and let the chat panel draw the
-  re-accept box it already draws for an orphan, saying the model was accepted
-  under a different engine build. That is a `shell/` diff and a decision, so
-  it wants its own ADR. Until it lands, **every digest-moving change ships
-  with a manual recovery** — a solver bump, a sweep-frame fix, the next one.
+  `7e073ae6…`, restored `25fdf64f…`, four cables; recovered by hand with
+  `open_project restore=false` then `write_script`. That is now
+  `MESH_AGENT_OT_reaccept_script` ("Re-accept Stored Script"), drawn in the
+  chat panel off the failure code both open paths cache on the per-root
+  state, and offered in place of Rebuild Model in the parameters panel's
+  alert row. The gate's `test_a_locked_out_project_is_reaccepted_from_the_chat`
+  moves the accepted digest with the script untouched and drives the
+  operator from the locked-out state.
+- [x] **Save-As dropped a trained policy** (named in ADR-138, ADR-188 landed
+  the carry). The shell's `CARRIED_ASSET_SUFFIXES` filtered the carry-forward
+  to meshes and `.cxpart`, so a project that replayed a `.cxpolicy` Saved-As
+  into a script that could not bind its weights — the one asset that cannot
+  be rebuilt from the script. `POLICY_SUFFIXES` (`.cxpolicy`, `.json`,
+  `.xml`) joins the list, which is now the engine's whole stored union; the
+  gate's `test_save_as_carries_imported_geometry` carries the triple and
+  refuses a file the store would not accept.
+- [x] **A trained policy comes home headlessly** (ADR-190). `cadex asset
+  --put walk.cxpolicy` for a pipeline and `put_asset` in the CLI agent's
+  tool surface, both on the op the shell has had since ADR-043; the
+  envelope's `assets` rows carry the sha256 `assembly.policy` names. The
+  lifecycle audit's row 5 (`docs/MUJOCO.md` §7c) closes; the `cadex train`
+  dispatcher (item 3) is next.
+- [x] **The training leg is one command** (ADR-191). `cadex train --out
+  DIR --iterations N --envs N --put` rebuilds, exports the bundle, runs
+  `training/cadex_train.py` under the training venv with its real flags,
+  and stores the policy with its sha256 in the envelope. Training stays
+  offboard (ADR-084): a subprocess, and no venv is ever created. §7c row 4
+  closes; the iterate shape (item 4) is next.
+- [x] **Iterate is a script convention, not a flag** (ADR-192). The
+  policy is declared behind a numeric switch parameter; `cadex params
+  --set policy_on=0 --set <change>` is accepted and exports the bundle
+  at its new digest, `cadex train` carries the ADR-161 curriculum pair
+  for the warm retrain, and `cadex script --set` plus `params --set
+  policy_on=1` re-declare. Run headlessly on the §7b toy and pinned by a
+  real-trainer test. §7c row 8 closes; compare-and-record (row 9) and
+  the project scaffold (row 10) are next.
+- [x] **The project is a codebase** (ADR-193). The CLI scaffolds
+  `ARCHITECTURE.md`, `DECISIONS.md` and `PROGRESS.md` on the first visit,
+  pastes them into every turn's prompt, lands one `PROGRESS.md` row per
+  accepted run with the numbers, and turns a turn's closing `DECISION:`
+  lines into numbered `DECISIONS.md` entries; `docs/<subject>.md` is the
+  domain-doc convention. No engine change, no file tool for the agent.
+  §7c row 10 closes.
+- [x] **Compare and record, in a repository the project owns** (ADR-194).
+  A `PROGRESS.md` number an earlier row carried is written with its
+  change against that row (delta, digest, value), so the comparison is
+  one recorded row; the project root is `git init`ed on the first visit
+  with a CLI-written `.gitignore`, and every accepted run is one commit
+  whose message is the row's words. Measured on the §7b toy's scratch
+  copy; pinned by `cli/tests/test_project_docs.py`. §7c row 9 closes.
+- [x] **The `INSPECTION_FAILED` frame is the one tool-failure envelope**
+  (ADR-195). `complete_inspection`'s refusal is built by `tool_failure`,
+  validated by a test and pinned by an `inspect.failure` golden, so an
+  inspect exception reaches the validating CLI as a refusal rather than a
+  hard client error. §7c item 5 closes; the lifecycle frontier is empty
+  on the engine side.
 - **Linux and Windows shell bundles.** The engine payload builds for both;
   only macOS arm64 has shell CI. Moot once Phase 12 lands — revisit then.
 

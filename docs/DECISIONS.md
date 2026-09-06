@@ -18191,3 +18191,929 @@ The independent hybrid enclosure example exercises CAD rails, CAD clearance
 cutters, Blender bevel/solidify/boolean geometry and parameter regeneration.
 It does not claim a new measurement of the live wolf project. Validation
 results are recorded in the causally linked Hypergraph implementation record.
+
+---
+
+## ADR-186 — Opening a file hydrates the model (2026-09-06)
+
+**Decision.** Land the fix ADR-073 named and declined to take: opening a
+`.blend` beside an existing `.cadex` asks the engine for the display. The
+path is `load_post` → `_load_post_handler` → `on_file_changed` (unchanged:
+drop the previous file's sessions) → `cadex_backend.queue_open`. The open
+is **queued, not run**: a timer-driven pump — the drag and refine pumps'
+shape — runs the restore-verified `open_project` and then the display
+`rebuild` on a worker thread, and every `bpy` touch happens on the main
+thread inside the pump. Between the queue and the accept the viewport shows
+the mesh baked into the file, which is what it showed for good before.
+
+### 1. Why now, and why this shape
+
+ADR-073 §5 gave three reasons the one-line call was wrong. Each is answered
+rather than waved off:
+
+- **It spends the `shell/` diff.** Every line is under
+  `shell/scripts/startup/mesh_agent/` and `shell/tests/python/`, which is
+  where the ADR-091 rule says our diff lives. `docs/BLENDER-TREE.md` §2a is
+  still eight files.
+- **It wants the asynchronous lifecycle.** The `rebuild` half *is* a
+  `Lifecycle`, the same object `begin_rebuild_model` returns. The
+  `open_project` half could not be one — `Lifecycle` presumes an open
+  project — so the pump runs it on its own worker thread and adopts the
+  reply through `_adopt_open`, which `ensure_open` now shares. One meaning
+  of "opened", written once.
+- **A failed restore at load has no conversation to report into.** It now
+  has three places: the parameters panel's alert row (ADR-039's, with
+  Rebuild Model beside it), a status line in the chat history, and
+  `open_failure_code` on the per-root state. The last is the hook the
+  lockout re-accept box needs (the second open failure on the file-lifecycle
+  node); this ADR caches the code and stops there.
+
+### 2. The guards
+
+- **Only a saved file beside an existing project queues.** An unsaved
+  scene's temporary root is keyed by scene name and survives File > New;
+  without the `bpy.data.filepath` guard a fresh empty file would be
+  repainted with the previous model. A saved file whose project does not
+  exist is the orphan case, which `on_file_changed` already says out loud.
+- **Save-As does not queue.** `save_post` still only reports the change.
+  Saving model A over a `b.blend` that has a `b.cadex` beside it would
+  otherwise repaint the viewport with model B the moment the save landed;
+  that is the pre-existing semantics of the derived root, and it stays where
+  the next request finds it rather than being made eager here.
+- **The project must still be the scene's project at every step**, the drag
+  pump's rule: a second open or a Save-As in between drops the slot.
+- **A tool call racing the queue drains it.** `ensure_open` checks for a
+  queued open for its root and runs `open_now` first, so there is never a
+  second `open_project` on the same client. Its outcome is not consulted:
+  a failed queued open is exactly the case where the caller wants its own
+  report and, for `write_script`, its own `restore: False` reopen.
+- `close_all` clears the slots with everything else.
+
+### 3. Verification
+
+`test_opening_a_file_hydrates` in the gate: a model in an unsaved file, then
+File > New, does **not** queue; a saved file reopened in a fresh session
+queues (`pending_open`), holds no engine state until drained, and after
+`open_now` has `model_objects_on_open > 0` with the baked objects deleted
+first so only the engine's reply can satisfy it; the restore pass ran and
+matched; no failure code is cached; the sliders come from the engine's
+specs; `ensure_open` afterwards keeps the same child; and a `set_params`
+racing a fresh queue succeeds and drains it. Both numbers land in the gate
+report as `model_objects_on_open` and `hydrate_on_open_seconds`.
+
+### 4. Consequences
+
+- The first of the two open failures on the file-lifecycle state node is
+  closed. The second — the lockout with no button back — now has the code
+  it needs cached and is the next unit.
+- A1 is unchanged and still worth having: it would make this open one
+  script run instead of two.
+
+## ADR-187 — A locked-out project has a button back in (2026-09-06)
+
+**Decision.** A project whose restore pass fails at open gets a **re-accept
+box** in the chat panel, wired to `write_script`. The box is drawn off
+`open_failure_code` on the per-root state (the hook ADR-186 cached and
+stopped at), and the one operator behind it —
+`MESH_AGENT_OT_reaccept_script`, "Re-accept Stored Script" →
+`cadex_backend.reaccept_stored_script` — is the manual recovery ROADMAP
+recorded (`open_project restore=false`, then `write_script`) as one button.
+The parameters panel's alert row offers the same operator in place of
+Rebuild Model while the project is locked out, because Rebuild Model
+refuses there, correctly, and the user was back at the alert row with
+nothing else to press.
+
+### 1. The failure
+
+A digest-moving engine change — a solver bump, a sweep-frame fix, the next
+one — leaves the stored script unchanged and the accepted digest wrong. The
+next open runs the restore pass, `CADEXD_RESTORE_FAILED` comes back, and
+every operation that would fix it opens the project first. `adopt_script`
+is drawn only for an *empty* project or a *dirty* buffer, and a project
+that opened fine yesterday under a different engine build is neither, so
+nothing was drawn at all. Measured on `wiring-demo/harness.cadex` after
+ADR-074 and recovered by hand; every digest-moving change since has shipped
+with that manual recovery.
+
+### 2. What the button does, and what it does not
+
+- **It sends the engine's stored source, not the `.blend`'s mirror.** For
+  the engine-moved case the two are the same script. For a script edited
+  outside Mesh they are not, and the edit is accepted **as edited** — the
+  operator's description says so. Reverting a hand edit is what a backup of
+  the `.cadex` directory is for, and the failure report still says that.
+- **`ensure_open(unrestored_ok=True)` first**, so the reopen is the same
+  `restore: False` open every `write_script` already takes (ADR-044);
+  nothing new crosses the protocol.
+- **The failure code is now cached on both open paths.** ADR-186 cached it
+  from the hydrate-on-open pump only; the synchronous `ensure_open` — a tool
+  call or Rebuild Model on a file that was not queued — now caches it too,
+  and `_open_unrestored` keeps it, since that open did not restore. It is
+  cleared by an open whose restore pass passes and by the accept of a
+  `write_script`, which is the moment the store is consistent again.
+- **The blocking `write_script` now runs through `begin_write_script`.**
+  It used to take its own `_lifecycle` route with `unrestored_ok=False` and
+  no accept hook, so a rewrite that ended a lockout cleared the warning on
+  the tool path and not on the button path. One code path, one meaning of
+  an accepted rewrite; `adopt_saved_script` and `apply_slider_defaults`
+  ride on it unchanged.
+- **`locked_out_project` is read-only**, off `cached_script_state`; a panel
+  draw opens nothing, exactly as `orphaned_project`.
+- **Not taken:** a diff between the accepted and restored digests in the
+  box (the report has them, and the box is two lines), and a route that
+  re-accepts from the `.blend`'s mirror (that is `adopt_script`, for a
+  different failure).
+
+### 3. Verification
+
+`test_a_locked_out_project_is_reaccepted_from_the_chat` in the gate moves
+the accepted digest in `script.json` with the script untouched — the only
+way to reproduce an engine move without rebuilding the engine — reopens the
+file through `load_post`'s queued open, and checks: the queued open refuses
+as a restore failure; the code is cached; `locked_out_project` is true and
+`orphaned_project` false; the parameters panel has a failure to draw;
+Rebuild Model refuses and the digest stays where it was; the operator runs
+`{'FINISHED'}` from the locked-out state; the code, the unrestored warning
+and the panel's failure are all cleared; the accepted digest is the true
+one again; the geometry is in the viewport; `get_script` no longer carries
+"WITHOUT restoring"; a fresh restoring open passes; and the operator
+refuses a project that stores no script.
+
+### 4. Consequences
+
+- The second of the two open failures on the file-lifecycle state node is
+  closed. What remains there is the `.cxpolicy` Save-As suffix.
+- A digest-moving change no longer ships with a manual recovery. It still
+  moves digests, and the box says so rather than hiding it.
+
+## ADR-188 — Save-As carries a trained policy with its provenance (2026-09-06)
+
+**Status:** accepted. **Zone:** `shell/scripts/startup/mesh_agent/` and
+`shell/tests/python/` — the inherited Blender tree untouched, `docs/BLENDER-TREE.md`
+§2a still eight files.
+
+### 1. Context
+
+ADR-046 made Save-As carry the origin project's `assets/` into the new
+project through `put_asset`, filtered by the shell's own suffix list;
+ADR-138 found that list dropping `.cxpart` and fixed it with a separate
+`CARRIED_ASSET_SUFFIXES`, and **named the same gap for `.cxpolicy` and its
+provenance pair without taking it** — one authorised feature does not
+license unrelated edits (ADR-086 §4), and carrying trained weights on every
+Save-As was called its own decision. This is that decision.
+
+What was lost was the worst asset to lose. A `.cxpolicy` is hours of
+stochastic GPU compute that VISION principle 3 exempts from "rebuildable from
+the script" precisely because it cannot be (ADR-084); the script binds it by
+digest and names its task bundle by name (ADR-135), and the engine refuses
+the bundle without the MJCF it references. A Save-As of the shipped biped
+demo — whose only asset is the policy it replays — would rebuild into a
+project whose script could not bind its weights, with the original the only
+surviving copy and nothing saying so.
+
+### 2. Decision
+
+`POLICY_SUFFIXES = (".cxpolicy", ".json", ".xml")` in `cadex_backend.py`, a
+third name beside the mirrored three and `.cxpart` for the reason there is a
+second — the engine keeps these apart as four constants and one union, and
+the shell mirrors that shape — and `CARRIED_ASSET_SUFFIXES` becomes the union
+of all three. That union is now exactly the engine's `_STORED_ASSET_SUFFIXES`:
+every file the origin store holds is a file the copy's store accepts, so the
+carry can no longer drop a suffix the engine grew. Nothing else changes:
+`_assets_in` still walks flat, skips symlinks, and hands paths to `put_asset`,
+which still re-validates every one and stays the store's sole writer.
+
+Carried on every Save-As, deliberately. A policy of 88 KB (the biped's) is
+nothing against the 128 MB asset budget, and the alternative — carry on
+demand, or ask — is a question at a moment the user is saving a file. The
+provenance pair travels with it because a policy without its bundle is
+unbindable, and the engine's rule that an asset nothing names is bytes in a
+directory means a stray `.json` costs nothing.
+
+Not taken: reading the script to carry only what it names. The carry has
+never been selective — an imported STL the script does not currently name
+comes across too — and making it so would be a second reader of the store
+in the shell.
+
+### 3. Verification
+
+`test_save_as_carries_imported_geometry` in the gate now stores a
+fabricated `.cxpolicy`, `.json` and `.xml` beside the two STLs before the
+Save-As, writes a `notes.txt` straight into the origin's `assets/` as the
+negative, and checks: the carry offers exactly the five and never the
+`.txt`; the adoption report names all three; the new store holds exactly the
+five; and the carried policy is byte-identical. Fabricated bytes because the
+store validates suffix, not content, and the carry is about bytes.
+
+### 4. Consequences
+
+- The last open item on the file-lifecycle state node is closed. The three
+  measured failures and the adjacent gap are all fixed.
+- `CARRIED_ASSET_SUFFIXES` no longer names a known omission. A future asset
+  suffix added to the engine's union must be added here too; the constant's
+  comment now says the two are equal, so a test asserting that equality is
+  the obvious next guard and is not taken here because the shell test suite
+  cannot import the engine module by design.
+
+## ADR-189 — `cadex export` hands over every staged output, under its staged name (2026-09-06)
+
+**Status:** accepted. **Zone:** `cli/` (LGPL) and `docs/`; no protocol op,
+no engine change, no `shell/` diff.
+
+### 1. Context
+
+The lifecycle audit (`docs/MUJOCO.md` §7c, 2026-09-06) found that `cadex
+export` wrote only BREP outputs. The training task JSON, the MJCF model
+XML, the policy receipt and the rollout trace — the training bundle and
+the rollout review — came back `"skipped": "not a BREP output"`, so a
+pipeline had to dig them out of `script_artifacts/<revision>/attempt-<id>/
+outputs/` by reading `script.json`. That was the first item of the audit's
+ordered frontier, and the one that unblocks `put_asset` and a training
+dispatcher behind it.
+
+### 2. Decision
+
+`export_plan` now copies every non-BREP output that has a staged artifact
+into `--out`, **under the filename the engine staged it with**, and names
+it in the `--json` envelope's `files` under its suffix. BREP outputs are
+still converted under the output's name; only an output with nothing
+staged (an assembly component, a solve diagnostic) is `skipped`, with the
+reason now `no staged artifact`.
+
+The staged name is kept rather than the output's because the task bundle
+references its model by relative path and `training/cadex_train.py`'s
+`load_bundle` resolves the model by that basename beside the task. Kept,
+the exported directory *is* a bundle the trainer accepts unchanged;
+renamed to the output's name, it would not be, and the trainer would have
+needed a change to read a file the CLI had just renamed.
+
+### 3. Evidence
+
+- `cli/tests/test_export.py`: the plan test now distinguishes copy from
+  skip; a no-engine test copies the four dynamics kinds under their
+  staged names and proves the engine binary is never run; a missing
+  staged copy is an error naming the output; the real-engine mixed-model
+  test asserts the `.ply` is the staged bytes. `cli/tests`: 85 passed.
+- On a scratch copy of the §7b rehearsal project: `cadex export --json`
+  in 2.0 s wrote two STEP/STL pairs and the four dynamics files; the
+  trainer, pointed at the exported folder alone, ran 2 iterations × 8
+  environments to exit 0 with the audit's task digest `602d62c1…`.
+- `training/README.md`'s claim that a flat copy of the two files does
+  not work was wrong against the code's fallback; fixed in the same
+  commit. Code wins.
+
+### 4. Consequences
+
+- A pipeline reads the bundle and the rollout numbers from `--out`, never
+  from a staging path. §7c rows 3 and 7 move from "a person, or a guess"
+  to "the agent, or a pipeline".
+- Every `cadex export` still leaves a fresh attempt directory for the
+  same accepted revision (three now on the audit's copy); harmless, still
+  not chased.
+- Next on the audit's order: `put_asset` in the CLI tool surface and a
+  no-model `cadex asset`, then a `cadex train` dispatcher.
+
+## ADR-190 — A file comes home headlessly: `cadex asset` and `put_asset` in the CLI surface (2026-09-06)
+
+**Status:** accepted. **Zone:** `cli/` (LGPL) and `docs/`; no protocol op,
+no engine change, no `shell/` diff.
+
+### 1. Context
+
+The lifecycle audit (`docs/MUJOCO.md` §7c, 2026-09-06) found row 5 — a
+trained policy coming home — reachable only over raw NDJSON with a scratch
+driver, and found the CLI agent, asked to bring one home, inventing a
+"`put_asset` CLI command" that did not exist. `put_asset` is the one write
+to the project store that is not the script's; the shell has had it since
+ADR-043 and the CLI, a third client of the same protocol, did not offer it
+to its agent or to a pipeline. It was the second item of the audit's
+ordered frontier, and the one ADR-189's export was upstream of.
+
+### 2. Decision
+
+Two doors on the op that already exists, and no new op:
+
+- **`put_asset` joins `CLI_TOOL_OPS`**, last, with prose that names the
+  four things it carries (`.cxpolicy`, its `.json`/`.xml` provenance, a
+  mesh, a `.cxpart`) and says the reply's `sha256` is the digest
+  `assembly.policy` requires, never guessed. The overlay gains one
+  paragraph: a file comes in by path, and the agent **cannot train** — it
+  says so and names `cadex export --out` and `cadex asset --put` rather
+  than inventing trainer flags.
+- **`cadex asset --put FILE`** (repeatable, `--name` for one) is the
+  no-model subcommand beside `params`. It calls `put_asset` per file and
+  reports the store's listing as `assets` rows in the envelope; with no
+  `--put` it lists the store through `inspect scope=assets`, following
+  the page chain like `cadex script` does. It **never rebuilds**: a
+  stored file changes nothing until a script names it, which is `cadex
+  script --set` or a turn's `edit_script`. A file the store refuses is
+  exit 3 with nothing written; a missing `--put` is exit 2 before the
+  engine runs.
+
+The listing rides in the envelope as a field rather than a note because
+the sha256 is the thing a pipeline pipes into the next command, and a
+number in prose is a number to parse.
+
+### 3. Evidence
+
+- `cli/tests/test_asset.py`, seven tests: a policy and its receipt land
+  with the engine's own digests and the listing is the same command;
+  `--name` keeps the suffix and replaces what it names; a `.txt` and a
+  suffix-changing `--name` are the engine's refusal at exit 3; a missing
+  file and a `--name` over two files are usage errors; the tool surface
+  offers `put_asset` with `source_path` required and `name` optional; the
+  overlay says it cannot train. `cli/tests`: 92 passed (85 before).
+- On a scratch copy of the §7b rehearsal project, the chain 3 → 4 → 5 →
+  6 → 7 with no NDJSON driver and no staging path: `cadex export` wrote
+  the bundle; `training/cadex_train.py` from the repo's untracked `.venv`
+  ran 2 iterations × 8 envs to exit 0 in 16.2 s; `cadex asset --put
+  walk.cxpolicy` stored 28 053 bytes and returned sha256 `170ac841…`;
+  `cadex script --set` with `weights="walk.cxpolicy"` and that digest
+  was accepted at `758ef975…`; the exported trace's `policy` block scored
+  the untrained policy at −297.4 total reward against the rehearsal
+  policy's 1729.9. The one thing typed by hand was the trainer command —
+  §7c item 3.
+
+### 4. Consequences
+
+- §7c row 5 moves from "a person" to "the agent, or a pipeline". The
+  agent's refusal on row 4 now names the caller's two commands instead of
+  guessing flags; the `cadex train` dispatcher is still what makes that
+  leg the agent's.
+- `assets` is a new optional envelope field; `cadex-cli-v1` is unchanged
+  because every existing key means what it did.
+- Not taken: a `--rebuild` flag on `asset`. The rebuild that makes a
+  policy real is a script change naming it, and folding that into the
+  store write would hide the digest the script has to carry.
+
+## ADR-191 — The training leg is one command: `cadex train`, the offboard trainer's dispatcher (2026-09-06)
+
+**Status:** accepted. **Zone:** `cli/` (LGPL), `training/SETUP.md` and
+`docs/`; no protocol op, no engine change, no `shell/` diff, nothing new
+in `pixi.toml` or any payload.
+
+### 1. Context
+
+The lifecycle audit (`docs/MUJOCO.md` §7c) left row 4 — training — as a
+person's leg: the trainer works, but the CLI agent has no shell, and
+twice when asked to retrain it handed back guessed flags (`--num-envs`
+for `--envs`, `--output` for `--out`). ADR-189 made the export a bundle
+and ADR-190 brought the policy home; between them stood the one command
+somebody still typed by hand, from a venv they had to know about. Item 3
+of the audit's ordered frontier asked for a *dispatcher*, not a trainer:
+training stays offboard (ADR-084) and the engine never produces a policy.
+
+The code landed in iteration 24 of the night run (commit `bb2513a0`) and
+the session ended before its ADR, docs and record node; this entry is
+written against that code, verified again today.
+
+### 2. Decision
+
+`cadex train --out DIR` is the leg as one command. It rebuilds, exports
+the accepted script's outputs into `--out`, finds the one exported
+training task (or the one `--task NAME` picks; none or more than one is
+exit 3 before the trainer runs), runs `training/cadex_train.py` on it as
+a **subprocess** under the training venv's interpreter, and puts the
+trainer's receipt — the JSON object on its last stdout line, as printed,
+never re-derived (ADR-093) — in the envelope as `training`. With
+`--put` it copies the policy into the store through `put_asset` and
+reports the `assets` row whose `sha256` is the digest `assembly.policy`
+names. The project lock is held for the rebuild and again for the store
+write, and released in between, because a fifteen-minute training run is
+not a modelling operation.
+
+- **The trainer's flags are pinned by name** in `cli/cadex_cli/train.py`
+  (`--iterations`, `--envs`, `--seed`, `--label`, `--init-from`, `--out`),
+  and `test_train.py` reads them back out of the trainer's own parser, so
+  a rename in `training/` fails in `cli/`. That is the answer to the
+  guessed flags: nobody, agent or person, has to know them.
+- **The interpreter is looked up, never made**: `--trainer-python`, then
+  `$CADEX_TRAIN_PYTHON`, then `<repo>/.venv/bin/python`, then
+  `~/cadex-train-venv/bin/python` — the two places `training/SETUP.md`
+  names — and none found is exit 1 listing them. A venv this silently
+  built would be a venv nobody knows the contents of, the rule
+  `remote_train.sh` already keeps (ADR-089).
+- **It never rebuilds after training**, as `asset` does not (ADR-190): the
+  policy is real when a script names it with the sha256 this run reports.
+- **The trainer's stderr passes through** to ours, where progress belongs;
+  its stdout is read only for the receipt. `--timeout SECONDS` bounds it,
+  and a trainer that exits non-zero or is stopped is exit 1 with the
+  reason.
+- The overlay now names `cadex train --out DIR --put` as the caller's one
+  command, or the three of ADR-189/190, and still says the agent cannot
+  train: it has no shell. A tool that spawns a fifteen-minute subprocess
+  from inside a model turn is **not taken** — the leg is the caller's or
+  a pipeline's, and that is what "agent-driven" costs least as.
+
+### 3. Evidence
+
+- `cli/tests/test_train.py`, eleven tests: the emitted flags are ones the
+  trainer's parser declares; the default script is the repo trainer; the
+  interpreter order explicit → env → venvs; the one-or-named task; the
+  receipt is the last JSON line and nothing else; a failing or hanging
+  trainer is exit 1 with the reason; usage errors before any engine or
+  trainer; the leg as one command with a fake trainer and the policy in
+  the store; `--name` honoured and nothing stored without `--put`; a
+  project with no task is a refusal, not a run; and the **real trainer**
+  on the toy task (1 it × 4 envs) with the engine's `put_asset` digesting
+  the result to the sha256 the trainer printed. `cli/tests`: **103
+  passed** in 46 s, engine present, nothing skipped.
+- On a scratch copy of the §7b rehearsal project, never the live one:
+  `cadex train --iterations 2 --envs 8 --put --timeout 600 --json` exited
+  0 in **18.5 s** wall; the trainer's own `wall_time_s` 3.7 s on `cpu`,
+  task digest `602d62c1…` equal to the audit's, 28 053 bytes stored as
+  `balance_task.cxpolicy` with sha256 `1e0801aa…` identical in the
+  receipt and the `assets` row; the exported `--out` held the bundle, the
+  policy and its `.best` checkpoint beside the STEP and STL.
+
+### 4. Consequences
+
+- §7c row 4 moves from "a person" to "the agent's caller, or a pipeline";
+  legs 3 → 7 are now one command plus `cadex script --set`. The iterate
+  shape (item 4) is next, and it is what decides whether a policy
+  parameter can be blanked for the sweep the retrain needs.
+- `training` is a new optional envelope field; `cadex-cli-v1` is unchanged
+  because every existing key means what it did.
+- `cli/` now depends on `training/cadex_train.py` **by path** and on its
+  flag names **by test**; the training tree is still in no payload, no
+  CMake rule and not in `pixi.toml` — the dispatcher runs it, it does not
+  import it, and `training/`'s three assertions stand.
+
+## ADR-192 — Iterate is a script convention: the policy behind a switch, and the curriculum pair on `cadex train` (2026-09-06)
+
+**Status:** accepted. **Zone:** `cli/` (LGPL) and `docs/`; no protocol
+op, no engine change, no `shell/` diff, nothing new in `pixi.toml` or any
+payload. `training/` unchanged — the two flags carried here are the ones
+ADR-161 already gave it.
+
+### 1. Context
+
+The lifecycle audit (`docs/MUJOCO.md` §7c) measured row 8, iterate, as
+**blocked by design**: `cadex params --set shove_n=0.20` on the §7b toy
+with its policy declared is refused at exit 3, because the task digest
+moved (`602d62c1…` → `369a0dd5…`) and the declared policy no longer fits
+the task it is declared against. The refusal is right (ADR-088: a policy
+is bound to one exact bundle). What is wrong is its consequence: the
+refusal writes nothing, so a sweep with a policy declared can never
+produce the bundle a retrain would need, and iterating was six legs, three
+of them a person's. The audit's frontier item 4 asked for an iterate
+shape, "a script convention first — the policy declared behind one
+parameter the sweep can blank — and only if that proves clumsy, a CLI
+flag", to be decided when ADR-189, ADR-190 and ADR-191 existed. They do.
+
+### 2. Decision
+
+**The convention, not the flag.** A script that declares a policy declares
+it behind a numeric switch parameter:
+
+```python
+p = params(..., policy_on=num(1.0, min=0.0, max=1.0, step=1.0))
+...
+if p.policy_on >= 0.5:
+    policy = assembly.policy(task, weights="walk.cxpolicy", sha256="…")
+    run = assembly.rollout(policy, frames_per_second=50, seed=7)
+    result["policy"] = policy
+    result["run"] = run
+```
+
+Iterate is then four commands and one digest edit, no human step:
+
+1. `cadex params --set policy_on=0 --set shove_n=0.20 --out sweep` — the
+   change *and* the blanked switch in one accepted revision, which
+   exports the task bundle at its new digest. This works because
+   `set_params` never refuses a dropped output: only `write_script` is
+   checked (ADR-045), since only a whole-script replacement can lose an
+   output by accident.
+2. `cadex train --out run2 --put --name walk2.cxpolicy --init-from
+   run1/walk.cxpolicy --init-from-parent-task run1/walk-task.json
+   --init-from-task-change "shove band 0.12 N -> 0.20 N"` — the retrain,
+   warm across the change. **`cadex train` now carries the ADR-161
+   curriculum pair** (`--init-from-parent-task BUNDLE`,
+   `--init-from-task-change REASON`) by name, like every other trainer
+   flag it emits; the three travel together or it is a usage error
+   before the engine runs; the trainer keeps the rule about which task
+   keys may move and refuses the rest itself.
+3. The digest edit and `cadex script --set` (or a turn's `edit_script`):
+   `weights` and `sha256` from the envelope's `training` receipt.
+4. `cadex params --set policy_on=1 --out run2` — verify and rollout. A
+   stored parameter value outlives a script write, so the switch stays
+   at 0 until this call; that is why step 3 does not do it.
+
+The comparison is the `policy` block of the two exported traces
+(`total_reward`, `reward_totals`). Recording it is row 9's work.
+
+### 3. Measured, 2026-09-06, headlessly, on a scratch copy of `~/cadex-balance-ns`
+
+- The switch script accepted with `policy_on=1`, the policy verified,
+  digest `a4dd5c31…`; `cadex export` wrote the parent bundle at
+  `602d62c1…` and the trace at **1729.9** total reward (0.12 N).
+- `params --set shove_n=0.20` alone: **exit 3**, the audit's refusal
+  verbatim, both digests named.
+- `params --set policy_on=0 --set shove_n=0.20 --out sweep`: exit 0,
+  outputs `arm`, `stand`, `balance_task`, `model` — no policy, no run —
+  and the bundle at `369a0dd5…`.
+- `train … --init-from … --init-from-parent-task … --init-from-task-change
+  …`, 2 it × 8 envs: exit 0, **17.8 s** wall (trainer 3.6 s on cpu),
+  iteration 0 at **+1.52** reward/step where ADR-191's cold run sat at
+  −0.95, so the warm start took; witness 2.2e-08; 28 506 bytes stored as
+  `balance2.cxpolicy`, sha256 `4f2d62b1…` equal in receipt and store.
+  The policy header's `training.init_from` records the parent (400
+  iterations, `e6c38581…`) and `task_change` with `keys: ["disturbance"]`,
+  the reason, and both task digests.
+- The digest edit, `script --set`: accepted, `policy_on` still 0.0.
+- `params --set policy_on=1 --out run2`: exit 0; outputs include `policy`
+  and `run`; the trace's `policy_sha256` is `4f2d62b1…`, **127.8** total
+  reward over the full horizon at 0.20 N. Against 1729.9 at 0.12 N for
+  the 400-iteration policy this is the toy after one warm step, not a
+  result; it is the comparison the walk needed to be able to make.
+
+### 4. Consequences
+
+- §7c row 8 closes; the walk's legs 1–8 are agent-authored scripts and
+  CLI commands with no human step. Rows 9 (compare and record) and 10
+  (project as a codebase) are the frontier.
+- The CLI agent's overlay names the convention, so a script it authors
+  with a policy carries the switch from the start.
+- **Not taken**: a `params --drop-policy` flag or an engine op. The
+  refusal is the engine's and the switch is the script's; a convention
+  the agent can author is cheaper than an op it must be told about, and
+  it keeps `set_params` meaning what it did. Also not taken: folding step
+  4 into step 3 by having `write_script` reset stored parameter values —
+  that a stored value outlives a script write is a property other users
+  rely on.
+- **Noted, not chased**: the trainer prints its `init-from` and
+  `curriculum` lines on stdout, which the dispatcher reads only for the
+  receipt, so they never reach the terminal; the header carries the same
+  facts. And the receipt itself has no warm-start field — the header
+  does.
+- Verified by `cli/tests/test_train.py`: the curriculum pair pinned
+  against the trainer's parser, refused apart as a usage error, passed
+  through to a fake trainer as given, and the whole chain run on the toy
+  with the real trainer (two runs at 1 it × 4 envs), including the exit-3
+  refusal with the digest named.
+
+## ADR-193 — The project is a codebase: three documents scaffolded by the CLI, read on every turn, appended by convention (2026-09-06)
+
+**Status:** accepted. **Zone:** `cli/` (LGPL) and `docs/`; no protocol
+op, no engine change, no `shell/` diff, nothing in any payload.
+
+### 1. Context
+
+The lifecycle audit (`docs/MUJOCO.md` §7c) measured row 10, the project
+as a codebase, as **missing**: a project directory held the engine's
+store and the CLI's `agent.json` and nothing a person or an agent could
+read to learn what the project was, what had been decided about it, or
+what had been tried. The goal for the night asked that each project
+directory carry what a good agent keeps for a codebase —
+`ARCHITECTURE.md`, `DECISIONS.md`, `PROGRESS.md` and domain docs — be
+read on every visit, and be updated as the work goes.
+
+Two facts shaped the answer. The CLI's agent runs with **no built-in
+tools** (`agent.py`, `--tools ""`): its whole world is the engine, on
+purpose, so that a model cannot edit the store behind the engine's back.
+So it cannot open a file, and "the agent reads the docs" has to mean the
+CLI shows them to it. And the question policy for the night prefers a
+doc convention before a new tool.
+
+### 2. Decision
+
+- **The CLI scaffolds.** `_engine_session` creates whichever of the
+  three are missing after `open_project`, on every command that opens
+  the project, and never overwrites one that exists. A first visit says
+  so in the envelope's `notes`. The engine knows nothing about them:
+  plain files beside `script.json`, like `agent.json`, ignored by the
+  store's restore pass like every file it did not write.
+- **The agent reads them on every turn.** `system_prompt` takes the three
+  as one bounded section (`PROMPT_DOC_LIMIT`, 8 000 characters each; the
+  head of `ARCHITECTURE.md` and `DECISIONS.md`, the **tail** of
+  `PROGRESS.md`, because the latest rows are the ones that matter) and
+  places it between the overlay and the engine's contract. The overlay
+  says what they are and not to repeat work a row records.
+- **The CLI writes `PROGRESS.md`.** One row per accepted run — time,
+  command, accepted revision, digest, what was done, numbers — appended
+  in `main()` after the command returns, so the row says what happened
+  rather than what a model said would. The numbers are what the run
+  produced and nothing inferred: the exported trace's `total_reward`
+  (row 7's number), the trainer's `reward_per_step`, wall time and the
+  policy's sha256. `script` with no `--set` and `asset` with no `--put`
+  change nothing and get no row.
+- **The agent writes `DECISIONS.md` by convention.** A line of the
+  turn's closing text that starts `DECISION:` becomes the next numbered
+  `## ADR-NNN — <title> (<date>)` entry, and the envelope's `notes` say
+  which. The scaffold's `ADR-001` is the project's creation.
+- **Domain docs are a convention, documented and not enforced:**
+  `docs/<subject>.md`, one file per subject (`gear-ratios`, `sensors`,
+  `actuators`, `rejected`), linked from `ARCHITECTURE.md`. The overlay
+  tells the agent to ask its caller to write them, naming the file.
+
+### 3. Not taken
+
+- **A file tool for the agent.** It would be the first thing in the
+  surface that is not an engine op, and it would reopen the reason the
+  agent has no tools. If reading proves insufficient — the agent needs
+  to *restructure* `ARCHITECTURE.md`, say — a bounded `note_project`
+  op is the next reversible step, and this ADR is where to say so.
+- **A git repository in the project.** Row 9's work, with the commit per
+  accepted run and the `.gitignore` the store needs (frames, renders,
+  the `.blend`), because a decision about what a project commits is a
+  decision about the store's layout and deserves its own entry.
+- **The shell.** A shell-attached agent has file tools and edits the
+  same three files directly; nothing in `shell/` changes, and the files
+  are what make the two modes one shape.
+
+### 4. Evidence
+
+`cli/tests/test_project_docs.py`: the scaffold, the bounded read, the
+row's shape, the numbers from a trace and a receipt, the `DECISION:`
+parser and the numbering, the overlay and the prompt section; and with
+the engine, a first visit that scaffolds and a `script --set` then
+`params` that land two rows and a print that lands none, and a scripted
+turn whose prompt carries the project's `ARCHITECTURE.md` and whose
+closing `DECISION:` lands as `ADR-002`. `docs/CLI.md` §2 and §4,
+`docs/MUJOCO.md` §7c row 10 and item 6, `docs/ROADMAP.md` Phase 14.
+
+## ADR-194 — Compare and record: the delta in the row, and a git repository the project owns (2026-09-06)
+
+**Status:** accepted. **Zone:** `cli/` (LGPL) and `docs/`; no protocol
+op, no engine change, no `shell/` diff, nothing in any payload.
+
+### 1. Context
+
+Row 9 of the lifecycle audit (`docs/MUJOCO.md` §7c) was the last leg
+still marked **missing** after ADR-193: a comparison between two runs
+was two `PROGRESS.md` rows a reader lined up by eye, and the project
+directory was not a git repository, so "every artifact under version
+control" — the goal's words — was not true of any project. The night's
+priority list put this in the robot lifecycle loop, after the scaffold
+it builds on.
+
+### 2. Decision
+
+**The comparison is one recorded row.** When the CLI writes a
+`PROGRESS.md` row, a number an earlier row also carried is written with
+its change against that row: `total_reward -293.4 (Δ -421.2 vs 2996fb73
+at 127.8)` — the delta, the digest of the run compared against, and that
+run's value. `total_reward` (the exported trace) and `reward/step` (the
+trainer's receipt) are compared, each against the last row that carried
+it, read back from the file as written. A row without the number leaves
+the last one in force, so a `train` row between two rollouts does not
+break the chain. A row's own delta text is never mistaken for its value.
+
+**The project owns a git repository.** The first visit runs `git init`
+in the project root and writes a `.gitignore` that keeps out what a
+rebuild recreates (`script_artifacts/`), what is bulk (`frames/`,
+renders) and what is transient (the lock, `.blend1` backups). After every
+accepted run — the same runs that land a row — the CLI commits whatever
+changed, with the row's words as the message, `--no-verify`, signing off,
+and a fallback identity when the machine has none. `committed <sha>.`
+lands in the envelope's `notes`. `git log` is the progress table; `git
+diff` between two commits is the change that produced the numbers.
+
+**What it refuses.** A project root that already lies inside a work tree
+is somebody's repository: no `init`, no commit, one note saying so. A
+machine without `git` on `PATH` gets the same note and no history. Neither
+fails a run: history is the record of a success, not a condition of it.
+
+### 3. Not taken
+
+A `--parent` flag naming the run to compare against: the last row that
+carried the number is the right default for a loop that iterates in
+order, and a person can add a row by hand. A commit hash in the row: the
+row is in its own commit, so the hash cannot be. Committing the `.blend`
+is left as the default (it is the document a shell user opens); the
+frames and the staged artifacts are not committed, because a rebuild
+recreates the one and the other is 214 MB on the §7b toy. The
+read-only-visit churn — opening a project re-stages the accepted attempt
+under a new id, so `cadex script` with no `--set` leaves `script.json`
+modified — is the engine's and is documented, not hidden by a commit.
+
+### 4. Evidence
+
+`cli/tests/test_project_docs.py`: three pure tests (the delta per number
+against the last row that carried it, and the delta text not read back as
+a value; `git init`, the ignore list, one commit per change and none for
+no change; a nested work tree left alone) and the engine test extended to
+assert one commit per accepted run with the row inside it and no
+artifact tracked. `pixi run python -m pytest cli/tests`: **117 passed**
+(114 before) with the built engine and the training venv. Measured on the
+ADR-192 scratch copy of the §7b toy: `cadex train --put` initialised the
+repository and committed; `cadex script --set` re-declaring the fresh
+policy landed `total_reward -293.4 (Δ -421.2 vs 2996fb73 at 127.8)` and a
+commit of exactly the row, the script, its state and the history entry.
+`docs/CLI.md` §2, `docs/MUJOCO.md` §7c row 9 and item 6, `docs/ROADMAP.md`
+Phase 14.
+
+## ADR-195 — The `INSPECTION_FAILED` frame is the one tool-failure envelope (2026-09-06)
+
+**Context.** `FAILURE_RESPONSE_SPEC` says a refused tool call is one
+envelope for every op, because the agent reads `failure_code`, `observed`
+and `retry` and acts on them. `CadexInspection.complete_inspection` built
+its own frame on the exception path — `tool`, `failure_code`,
+`failure_stage`, `error`, plus `scope`, `target` and a size-accounted
+`result_json_bytes` copied from the success page — so it lacked eight
+required keys and carried three the spec forbids. The lifecycle audit
+found it (`docs/MUJOCO.md` §7c): an `inspect scope=document` call threw
+inside the engine during the agent's turn, and the CLI, which validates
+every reply, turned the refusal into a hard `CadexdError`. The shell never
+validates replies, so it had never seen the frame. The engine's state node
+was marked broken on this one frame.
+
+**Decision.** The exception path calls `CadexTools.tool_failure(
+"core.inspect", "INSPECTION_FAILED", "precondition", error, ...)` like
+every other refusal. What was asked for — `scope`, `target`, `path` —
+rides under `requested`; the captured `kind` rides under `observed`.
+`result_json_bytes` is dropped from the failure: it is a property of a
+page, and a refusal has no page. The error text stays bounded at 4096
+bytes. `failure_stage` stays `precondition`, as before.
+
+**Not taken.** Adding `result_json_bytes` (or `scope`/`target`) to the
+failure spec's optional set — that would be a per-op failure shape by
+another name, which is the thing the spec exists to forbid. Making the
+shell validate replies — out of scope, and a decision of its own.
+
+**Evidence.** `test_an_inspection_exception_is_a_contract_failure_frame`
+provokes the exception with an unknown captured kind and runs
+`validate_response("inspect", …)` over the result; a recorded golden
+`response_schemas/inspect.failure.json` pins the shape beside
+`resolve_pin.failure` and `write_script.failure`, so
+`test_failure_envelope_is_one_shape_for_every_op` now covers it too. No
+protocol op changed, no `shell/` diff. `docs/INTEGRATION.md` names the
+inspect refusal under the failure envelope; §7c item 5 closes.
+
+## ADR-196 — Cycles is disabled in the shell: the first Phase 13b disable commit, flipped from our own build script (2026-09-06)
+
+**Context.** Phase 13b's shell side (`docs/BLENDER-TREE.md` §4) lists the
+inherited subsystems that are already `WITH_*` CMake options, which makes
+the *disable* half of the two-commit removal protocol (`docs/FREECAD.md`
+§3) nearly free. Cycles is the first taken: a path tracer under
+`shell/intern/cycles` — 9.7 MB of source and 181 object files in the build
+tree, plus a 7 MB `addons_core/cycles` copy and four preset folders in the
+bundle. Cadex draws solid-shaded BREP tessellation in the viewport and
+never asks for a render engine; nothing in `mesh_agent` or the four gate
+suites names Cycles, and its add-on had already left the default-enabled
+set (the `addon_utils.py` row in §2b) because it raised on every launch.
+
+**Decision.** `-DWITH_CYCLES=OFF` goes on the configure line in
+`package/app/build_app.sh`, which is ours, rather than into the inherited
+`shell/CMakeLists.txt`. A `-D` on the configure line is zero lines of
+inherited diff: the disable commit touches no manifest entry and writes no
+modification notice. Because `cmake --install` never prunes, the same
+script removes `addons_core/cycles` and `presets/cycles` from the bundle
+after install — a build tree that predates the flip still carries an add-on
+copy whose `_cycles` C module is gone, and every startup would print its
+import traceback. That is the rule the script already applies to the
+ADR-183 add-on move. The delete commit removes `shell/intern/cycles`,
+`shell/scripts/presets/cycles` and the flag together; it is the half that
+touches the inherited tree and earns the manifest rows.
+
+**Not taken.** Flipping the option inside `shell/CMakeLists.txt` — an
+inherited-tree edit and a manifest row for something a build script can
+say. Deleting the tree in the same commit — the protocol is two commits so
+the disable can be reverted by itself.
+
+**Evidence.** The disable commit (`70591c1e`, iteration #55) landed under
+a session-limit banner in place of a message, and — found while writing
+this entry — was never built or gated: the shell build tree still had
+`WITH_CYCLES=ON` and the bundle still carried the add-on copy. This entry
+is the evidence step it owed. Built here, 2026-09-06: `pixi run build-shell` reconfigured the existing tree with `WITH_CYCLES:BOOL=OFF` (732 Ninja steps, exit 0), the installed bundle's `addons_core/` no longer lists `cycles` and `presets/cycles` is gone; `pixi run gate` against that bundle exits 0 (1,142 `ok:` lines, no Cycles import traceback, `CADEX-BLENDER-GATE` emitted). No `shell/` diff, no manifest change.
+`pale-river-6583` is the record node that made the commit citable;
+`docs/BLENDER-TREE.md` §4 and the Phase 13b ROADMAP line carry the status.
+
+**Delete commit (`3aa6926b`, iteration #84).** `shell/intern/cycles` (936
+files) and `shell/scripts/presets/cycles` (12 files) are gone — 948 files
+deleted. The `-DWITH_CYCLES=OFF` line leaves `build_app.sh`, and instead
+the inherited `option(WITH_CYCLES ...)` in `shell/CMakeLists.txt` defaults
+to `OFF`: one token in a file already manifested under §2a, so the delete
+half earns **no new manifest row** — the manifest tracks modified files,
+and a deleted tree is not one. The `if(WITH_CYCLES)` guards elsewhere in
+the inherited tree stay as dead upstream text rather than becoming merge
+conflicts. The two bundle-prune lines stay, because a bundle installed
+before the deletion still carries the add-on copy. That commit, like the
+disable commit before it, landed under a session-limit banner, with the
+docs updated but this entry not, and — the same debt again — unbuilt and
+ungated. Iteration #86 is the evidence step it owed; its numbers follow.
+Built and gated at that tree by iteration #86, 2026-09-06 (the numbers
+verified and written here by #87 from `/tmp/build-shell-86.log` and
+`/tmp/gate-86.log`): `pixi run build-shell` reconfigured the existing
+build tree with the source directory gone — CMake configured in 1.0 s and
+generated in 1.5 s, six Ninja steps (`[5/6] Install the project`), 173
+files reinstalled, exit 0, stamped build 497 — the tree at `6674bc48`,
+one docs-only commit behind the ADR text. Six steps rather than 732
+because the 181 Cycles objects had already left the build in the disable
+half; the delete half proves the tree configures, links and installs with
+`shell/intern/cycles` absent. The bundle's `addons_core/` lists twelve
+add-ons and no `cycles`; `presets/` has no `cycles`. `pixi run gate`
+against that bundle: 1,142 `ok:` lines, `CADEX-BLENDER-GATE` emitted
+with `"ok": true`, `OK` on the last line. One caveat stated rather than
+hidden: the build tree's cache already held `WITH_CYCLES:BOOL=OFF` from
+the disable half, so the `option()` default flipped in
+`shell/CMakeLists.txt` is exercised only by a fresh configure, which
+tonight's one-build-per-iteration budget did not allow. The stage-engine
+step's relocation-audit `RuntimeError` in the same log is the stage-only
+mode's non-fatal report and appears identically in the #83 log.
+
+## ADR-197 — The worker computes an exploded view itself; `CommandCreateView` leaves the engine's authoring path (2026-09-06)
+
+**Context.** Phase 8's one non-mechanical item (ROADMAP, ADR-025,
+`docs/FREECAD.md` §5): `cadex_assembly_worker.py` imported
+`CommandCreateView` — the Assembly workbench's *command* module —
+instantiated its `ExplodedView` / `ExplodedViewStep` proxies on candidate
+document objects, and called the private `_calculateExplodedPlacements`
+on them once per move to read placements and leader lines back out. Two
+guards (ADR-047's PySide, ADR-149's pivy) kept that importable headless,
+and ADR-149 named the out: the calculation is forty lines and portable.
+Auditing the item found its premise softer than the ledger said:
+`src/Mod/Assembly/CMakeLists.txt` installs `CommandCreateView.py`
+unconditionally, outside its `if(BUILD_GUI)` blocks, so deleting `src/Gui`
+would never have removed it. What was real was the shape — the engine's
+authoring path depending on a `Command*` module for arithmetic — plus a
+`native_readback` block in the output data that reported the proxies'
+class names as if a client read them. None did.
+
+**Decision.** `_execute_native_exploded_view` becomes
+`_execute_exploded_view`: the worker computes FreeCAD's rule itself. A
+normal move left-multiplies its transform onto the component's current
+placement; a radial move pushes along assembly-centre → component-centre
+by four times the distance over the assembly diagonal
+(`UtilsAssembly.getComAndSize` for both centres, as native); moves are
+cumulative; each leader line runs from the component's *solved*
+bounding-box centre carried by the move's delta. That last is the native
+quirk, kept deliberately: the shell interpolates these lines, and a port
+that improved them would move every explosion it has ever drawn. No
+candidate view or step objects are created; the `native_readback` block
+is dropped from the `cadex-assembly-exploded-view-v1` data, and the schema
+tag stays, because the keys the publisher reads — `moves`,
+`movement_transform`, `component_outputs`, `assembly_output` — are
+unchanged. The publisher still instantiates the native proxies from that
+data: a published exploded view *is* the native document object, and the
+module ships in every build. The worker's import is gone; the publisher's
+stays, and is not a Phase 8 obstacle.
+
+**Evidence.** A probe against the unmodified engine (a normal move, a
+radial move on both components, a second normal move) and the same probe
+after the port produce identical display records to 1e-12 — stage poses,
+leader lines, bounds, final poses. A new real-kernel test,
+`test_cadexd_exploded_view_radial_move_is_freecads_arithmetic`, asserts
+the radial rule from wire data only; no radial move had ever run under a
+real kernel in a test. Gates: `pixi run test-engine` and `pixi run python
+-m pytest cli/tests`. No protocol op changed, no golden moved, no `shell/`
+diff, and no build: both suites resolve the engine from the source tree.
+
+**Consequences.** Phase 8's ROADMAP item ticks and `docs/FREECAD.md` §5's
+question closes. `CommandCreateView.py` keeps its two guards and its
+manifest entry, since the publisher still imports it. Not taken: moving
+`ExplodedView` out of the `Command*` module inside the inherited tree —
+an inherited-tree edit with no engine benefit now that the worker does not
+import it. Owed and noticed here: ADR-196 (the Cycles disable commit,
+2026-09-06) is cited by `docs/BLENDER-TREE.md`, `docs/ROADMAP.md` and
+`package/app/build_app.sh` but has no entry in this log yet.
+
+## ADR-198 — The translation subsystem is disabled in the shell: the second Phase 13b disable commit (2026-09-06)
+
+**Context.** The second shell-side tree through the two-commit removal
+protocol (`docs/FREECAD.md` §3; `docs/BLENDER-TREE.md` §4), after Cycles
+(ADR-196). `WITH_INTERNATIONAL` compiles `shell/locale/po`'s 49 `.po`
+files with `msgfmt` on every build, installs them as 77 MB of
+`datafiles/locale` (49 `.mo` files plus `languages`) — 80 MB of source in
+the working tree — and builds `blentranslation` with the gettext path
+in. Cadex ships one UI language; the app template hides the Blender UI
+the catalogue translates; nothing under `mesh_agent/` or in the four
+gate suites calls `bpy.app.translations`. Upstream builds the `OFF`
+configuration itself (`build_files/cmake/config/blender_lite.cmake` and
+`bpy_module.cmake` both force it), so the shell is not the first tree
+to run this way. Fonts are not part of it: `datafiles/fonts` installs
+unconditionally and the option's description is older than that split.
+
+**Decision.** `-DWITH_INTERNATIONAL=OFF` on the configure line in
+`package/app/build_app.sh`, which is ours — the same shape as ADR-196:
+zero lines of inherited diff, no manifest row, no modification notice.
+Because `cmake --install` never prunes, the script also removes
+`datafiles/locale` from the bundle after install, so a build tree that
+predates the flip stops shipping the catalogue. The delete commit is the
+half that touches the inherited tree: `shell/locale/` goes, and
+`option(WITH_INTERNATIONAL ...)` in `shell/CMakeLists.txt` (§2a, already
+manifested) defaults to `OFF` so the `if(WITH_INTERNATIONAL)` install
+block in `source/creator/CMakeLists.txt` keeps skipping a directory that
+no longer exists, and the flag leaves the script.
+
+**Not taken.** Flipping the option in `shell/CMakeLists.txt` now — an
+inherited edit the delete commit will make anyway, for free. Deleting
+`shell/locale/` in the same commit — the protocol is two commits so the
+disable can be reverted alone. Removing `ui_translate` from
+`addons_core` — it is not in the default-enabled set and is a separate,
+later line item.
+
+**Evidence.** Built and gated 2026-09-06 (iteration #87, `/tmp/build-shell-87.log`,
+`/tmp/gate-87.log`): `pixi run build-shell` reconfigured the existing
+tree (1.0 s configure, 1.6 s generate), the cache now reads
+`WITH_INTERNATIONAL:BOOL=OFF`, 737 Ninja steps because the define
+reaches `makesrna` and everything generated from it, `libbf_blentranslation`
+relinked, 173 files installed, exit 0, stamped build 499. The bundle's
+`datafiles/` lists `assets colormanagement fonts icons studiolights` and
+no `locale`; `fonts` is still 15 MB, untouched. `pixi run gate` against
+that bundle: exit 0, 1,142 `ok:` lines (the same count as the Cycles
+gates), `CADEX-BLENDER-GATE` emitted with `"ok": true`,
+`model_objects_on_open` 1, `engine_from_bundle` true, the slider bar met,
+no line mentioning locale or translation, `OK` last. The stage-engine
+relocation audit prints its non-fatal stage-only report as in every log
+since #83.

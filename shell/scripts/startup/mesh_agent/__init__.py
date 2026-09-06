@@ -87,6 +87,15 @@ def _load_post_handler(_filepath):
     # Without this, opening a second .blend leaks the first file's cadexd
     # child and can answer from the wrong project store.
     _report_file_change()
+    # ...and then, for a saved file beside an existing project, ask the
+    # engine for the display (ADR-186). Queued, not run: the open and the
+    # hydrating rebuild take a second or more and belong off the main
+    # thread, so a timer drives them and the viewport shows the mesh baked
+    # into the file until they land. Save-As does not come through here.
+    try:
+        cadex_backend_module.queue_open(bpy.context.scene)
+    except Exception:
+        pass
     # A real file replacing the startup scene takes the landing screen down
     # (ADR-167); the startup file itself leaves it alone.
     cadex_landing_module.on_file_loaded()

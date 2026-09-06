@@ -197,6 +197,35 @@ def _paged(client: Any, path: str) -> list[Any]:
         offset = next_offset
 
 
+def read_project_assets(client: Any) -> list[dict[str, Any]]:
+    """The project store's whole asset listing, however many pages it is.
+
+    ``inspect scope=assets`` pages the list like everything else; the store
+    holds at most 64 files, so this is one or two pages, but the chain is
+    followed rather than assumed.
+    """
+
+    entries: list[dict[str, Any]] = []
+    offset = 0
+    while True:
+        reply = client.request(
+            "inspect",
+            {"scope": "assets", "path": "/assets", "offset": offset, "limit": _PAGE_LIMIT},
+        )
+        if reply.get("ok") is not True:
+            raise RuntimeError(
+                "inspect scope=assets failed: "
+                f"{reply.get('error') or reply.get('failure_code')}"
+            )
+        value = reply.get("value")
+        if isinstance(value, list):
+            entries.extend(dict(item) for item in value if isinstance(item, dict))
+        next_offset = (reply.get("page") or {}).get("next_offset")
+        if not isinstance(next_offset, int) or next_offset <= offset:
+            return entries
+        offset = next_offset
+
+
 def read_script_source(client: Any) -> str:
     """The whole project script, however long it is."""
 

@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-09-05
+Verified against source: 2026-09-06
 
 **Optional Blender recipe runtime (ADR-185).** A shell-owned cadexd child
 receives `CADEX_BLENDER_EXECUTABLE` naming the shell's own binary. The engine
@@ -352,7 +352,13 @@ caller the walk.
 acts on it: `tool`, `error`, `failure_code`, `failure_stage`, `observed`,
 `normalized`, `requested`, `retry`, `candidates`, `allowed_values`,
 `native_diagnostics`, `state_change`, and `model_state` when the op has
-one.
+one. That includes `inspect`: an exception while completing a read is an
+`INSPECTION_FAILED` frame of exactly this shape, with the `scope`,
+`target` and `path` that were asked for under `requested` and no
+`result_json_bytes` (a refusal has no page). Until ADR-195 that frame had
+a shape of its own, and the CLI's validator turned every inspect
+exception into a hard client error; the shell never validates replies and
+never saw it.
 
 Server failure codes: `CADEXD_PROTOCOL_ERROR`, `CADEXD_BUSY` (one modeling
 request in flight; read-only requests queue), `CADEXD_NOT_OPEN`,

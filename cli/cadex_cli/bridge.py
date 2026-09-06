@@ -269,6 +269,11 @@ def _summarize(tool: str, reply: dict[str, Any]) -> str:
         return "authoring contract"
     if tool == "inspect":
         return str(reply.get("scope") or "")
+    if tool == "put_asset":
+        return (
+            f"{reply.get('name')}  {reply.get('bytes')} B  "
+            f"sha256 {str(reply.get('sha256') or '')[:12]}"
+        )
     names = ", ".join(_output_names(reply.get("outputs")))
     digest = str(reply.get("digest") or "")[:12]
     return f"{names} ({digest})" if names else digest

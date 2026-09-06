@@ -62,6 +62,8 @@ roadmap item. Add freely, prune ruthlessly.
   `training/SETUP.md`, so it hands back guessed flags). Adding `put_asset`
   is small; the training leg wants either a dispatcher op or the trainer's
   invocation shape in the agent contract.
+  Re-measured and ordered, with the iterate step and the project-as-codebase
+  gaps beside them, in `docs/MUJOCO.md` §7c (2026-09-06).
 
 - **A bridge CLI as a third tool transport, for bash-first agents.** The
   Mesh tool seam is the TCP bridge, and it now has two transports: MCP

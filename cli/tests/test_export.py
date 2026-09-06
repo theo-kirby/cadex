@@ -34,8 +34,8 @@ result = {"bracket": part.cut(plate, [bore])}
 """
 BRACKET_VOLUME_MM3 = 40.0 * 25.0 * 15.0 - math.pi * 9.0 * 15.0
 
-#: A part, a mesh skin of it, and a solve diagnostic — three artifact kinds,
-#: exactly one of which this exports.
+#: A part and a mesh skin of it — two artifact kinds, one converted and one
+#: copied as the ``.ply`` the engine staged.
 MIXED = """
 plate = part.box(20.0, 10.0, 4.0)
 skin = mesh.from_shape(plate, linear_deflection=0.5)
@@ -63,12 +63,20 @@ def test_output_names_become_filenames_without_inventing_paths() -> None:
     assert safe_stem("///") == "output"
 
 
-def test_outputs_with_no_brep_are_reported_skipped_not_dropped(tmp_path) -> None:
-    """Three outputs and one file should say which two, and why."""
+def test_outputs_with_nothing_staged_are_reported_skipped_not_dropped(tmp_path) -> None:
+    """Four outputs and three files should say which one, and why.
+
+    Only the BREP is *converted* under the output's name; a staged mesh or
+    model file is copied under the filename the engine staged it with, and
+    only an output with nothing staged (a component placing another
+    output's geometry) is skipped.
+    """
 
     display = {
         "plate": {"artifact_kind": "brep", "artifact_path": "/staged/p.brep"},
         "skin": {"artifact_kind": "mesh", "artifact_path": "/staged/s.ply"},
+        "model": {"artifact_kind": "assembly_mjcf_xml",
+                  "artifact_path": "/staged/outputs/output-002.xml"},
         "base": {"artifact_kind": None, "artifact_path": None, "placement": [1.0]},
     }
 
@@ -76,10 +84,81 @@ def test_outputs_with_no_brep_are_reported_skipped_not_dropped(tmp_path) -> None
 
     assert [job["name"] for job in plan] == ["plate"]
     by_name = {row.name: row for row in rows}
-    assert by_name["skin"].skipped == "not a BREP output"
-    assert by_name["base"].skipped == "not a BREP output"
+    assert by_name["base"].skipped == "no staged artifact"
+    assert by_name["base"].copy is None
     assert by_name["plate"].skipped == ""
+    assert by_name["skin"].skipped == ""
+    assert by_name["skin"].copy == ("/staged/s.ply", str(tmp_path / "s.ply"))
+    assert by_name["model"].copy == (
+        "/staged/outputs/output-002.xml", str(tmp_path / "output-002.xml"))
     assert plan[0]["targets"][0]["path"] == str(tmp_path / "plate.step")
+    # The copy plan is not part of the report: the envelope says what was
+    # written, and nothing has been yet.
+    assert "copy" not in by_name["skin"].to_json()
+
+
+def test_staged_non_brep_outputs_are_copied_without_an_engine(tmp_path) -> None:
+    """The training bundle and the rollout numbers, without reading staging.
+
+    No engine is needed to copy a file, so this half is checked directly
+    with the four kinds the dynamics surface stages (MUJOCO.md §7c row 3):
+    the model XML, the task JSON, the policy receipt and the rollout trace,
+    under the basenames the engine gives them. The names are kept because
+    the task references its model by that name: ``training/cadex_train.py``
+    looks for ``<task>.parent / <model basename>``, so the exported folder
+    is a bundle the trainer accepts without reading a staging path.
+    """
+
+    from cadex_cli.engine import Engine
+
+    staged = tmp_path / "staged" / "outputs"
+    staged.mkdir(parents=True)
+    kinds = {
+        "model": ("assembly_mjcf_xml", "model-model.xml", b"<mujoco/>"),
+        "task": ("assembly_training_task_json", "task-task.json",
+                 b'{"model": {"path": "outputs/model-model.xml"}}'),
+        "policy": ("assembly_policy_receipt_json", "policy-policy.json",
+                   b'{"sha256": "x"}'),
+        "rollout": ("assembly_simulation_json",
+                    "assembly-simulation-trace.json", b'{"policy": {}}'),
+    }
+    display = {}
+    for name, (kind, basename, payload) in kinds.items():
+        source = staged / basename
+        source.write_bytes(payload)
+        display[name] = {"artifact_kind": kind, "artifact_path": str(source)}
+    display["base"] = {"artifact_kind": None, "artifact_path": None}
+
+    # No BREP in the plan, so the engine is never run: a bogus one proves it.
+    engine = Engine(source="test", freecadcmd=tmp_path / "no-such-binary",
+                    module_dir=tmp_path)
+    out = tmp_path / "out"
+    rows = export_outputs(engine, display, out, ["step"])
+
+    by_name = {row.name: row for row in rows}
+    for name, (kind, basename, payload) in kinds.items():
+        row = by_name[name]
+        assert row.kind == kind and row.skipped == ""
+        (written,) = row.files.values()
+        assert list(row.files) == [Path(basename).suffix.lstrip(".")]
+        assert Path(written) == out / basename
+        assert Path(written).read_bytes() == payload
+    assert by_name["base"].skipped == "no staged artifact"
+    assert by_name["base"].files == {}
+
+
+def test_a_missing_staged_copy_is_an_error_not_a_silent_zero(tmp_path) -> None:
+    from cadex_cli.engine import Engine
+
+    engine = Engine(source="test", freecadcmd=tmp_path / "no-such-binary",
+                    module_dir=tmp_path)
+    display = {
+        "task": {"artifact_kind": "assembly_training_task_json",
+                 "artifact_path": str(tmp_path / "gone.json")}
+    }
+    with pytest.raises(ExportError) as caught:
+        export_outputs(engine, display, tmp_path / "out", ["step"])
+    assert "task" in str(caught.value)
 
 
 # -- the conversion ------------------------------------------------------
@@ -136,7 +215,9 @@ def test_a_brep_output_exports_to_step_and_stl(engine, built, tmp_path) -> None:
     assert built["facts"]["faces"] == 7
 
 
-def test_only_the_brep_half_of_a_mixed_model_is_written(engine, tmp_path) -> None:
+def test_the_brep_half_of_a_mixed_model_is_converted_and_the_mesh_copied(
+    engine, tmp_path
+) -> None:
     client = CadexdClient(engine)
     client.start()
     try:
@@ -152,8 +233,14 @@ def test_only_the_brep_half_of_a_mixed_model_is_written(engine, tmp_path) -> Non
 
     by_name = {row.name: row for row in rows}
     assert Path(by_name["plate"].files["step"]).is_file()
-    assert by_name["skin"].files == {}
-    assert by_name["skin"].skipped == "not a BREP output"
+    assert by_name["skin"].skipped == ""
+    ply = Path(by_name["skin"].files["ply"])
+    assert ply.parent == tmp_path / "out"
+    assert ply.name == Path(written["display"]["skin"]["artifact_path"]).name
+    # The copy is the staged file, byte for byte, not a re-tessellation.
+    assert ply.read_bytes() == Path(
+        written["display"]["skin"]["artifact_path"]).read_bytes()
+    assert ply.read_bytes()[:3] == b"ply"
 
 
 def test_a_missing_source_artifact_is_an_error_not_a_silent_zero(

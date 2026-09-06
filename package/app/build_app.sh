@@ -158,11 +158,21 @@ cmd_shell() {
     echo "==> engine payload: ${engine_dir}"
     echo "==> shell build:    ${build_dir}"
 
+    # Phase 13b, shell side: the disable half of each removal is a CMake
+    # option flipped *here*, in our own script, so the inherited
+    # shell/CMakeLists.txt is untouched (docs/BLENDER-TREE.md section 4).
+    # Cycles was the first: disabled here, then deleted with its option
+    # defaulted OFF in shell/CMakeLists.txt (ADR-196), so no flag remains.
+    # The translation subsystem is the second (ADR-198): WITH_INTERNATIONAL
+    # compiles shell/locale's 49 .po files and installs them as 77 MB of
+    # datafiles/locale for a UI the app template hides. Off here until the
+    # delete commit removes shell/locale and defaults the option.
     scrubbed cmake -S "${shell_src}" -B "${build_dir}" -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX="${install_dir}" \
         -DWITH_CADEX_ENGINE=ON \
         -DCADEX_ENGINE_DIR="${engine_dir}" \
+        -DWITH_INTERNATIONAL=OFF \
         "$@"
 
     scrubbed cmake --build "${build_dir}" --target install
@@ -171,6 +181,14 @@ cmd_shell() {
     # of mesh_agent in one bundle is a registration fight. Remove the old
     # home explicitly; on a fresh tree this matches nothing.
     rm -rf "${install_dir}/${app_name}.app/Contents/Resources/"*/scripts/addons_core/mesh_agent
+    # Same rule for the Cycles add-on (ADR-196): the tree is deleted, but a
+    # bundle installed before 2026-09-06 still carries a copy whose `_cycles`
+    # C module is gone, and every startup would print its import traceback.
+    rm -rf "${install_dir}/${app_name}.app/Contents/Resources/"*/scripts/addons_core/cycles
+    rm -rf "${install_dir}/${app_name}.app/Contents/Resources/"*/scripts/presets/cycles
+    # And for the translations (ADR-198): a bundle installed before the
+    # WITH_INTERNATIONAL=OFF flip still carries datafiles/locale.
+    rm -rf "${install_dir}/${app_name}.app/Contents/Resources/"*/datafiles/locale
     stamp_version
     echo "==> ${app_exe}"
 }

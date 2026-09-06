@@ -1,6 +1,6 @@
 # BLENDER.md — The Shell
 
-Verified against source: 2026-09-05
+Verified against source: 2026-09-06
 
 **Native geometry recipes (ADR-185).** `cadex_backend._client` passes
 `bpy.app.binary_path` to `cadexd_client.default_command`, which sets
@@ -109,7 +109,7 @@ from source after putting down the bundled copy, so `register()` and
 | `modes.py` | The Cadex system-prompt overlay and `system_prompt()`. What remains of a three-mode registry after ADR-030 collapsed it to one. |
 | `mock_backend.py` | Test harness that replays scripted turns through the real bridge without spawning Claude. |
 | `cadexd_client.py` | **Phase 6 (ADR-019).** Dependency-free NDJSON stdio client for cadexd; spawns `FreeCADCmd` (add-on preference / `MESH_FREECADCMD` / bundled manifest / PATH), ready banner, serialized requests, cancel, crash envelopes. No `bpy`, **no cadex imports** — that last part is a licence boundary, not a style choice, and one repository does not relax it. `engine_version(bundle_roots)` (ADR-151) reads the manifest's `version` for the blueprint sheet's title block — a separate reader because `read_engine_manifest`'s signature is pinned, and deliberately tolerant where the launcher is strict. |
-| `cadex_backend.py` | Per-scene cadexd session: project root beside the .blend (`<stem>.cadex/`), revision-guarded `write_script`/`set_params` with stale-revision self-heal, engine params bridged into `scene.mesh_params`, draft-while-dragging + background standard refine. |
+| `cadex_backend.py` | Per-scene cadexd session: project root beside the .blend (`<stem>.cadex/`), revision-guarded `write_script`/`set_params` with stale-revision self-heal, engine params bridged into `scene.mesh_params`, draft-while-dragging + background standard refine. **Hydrate on open** (ADR-186): `load_post` calls `queue_open`, and a timer-driven pump — the drag pump's shape — runs the restore-verified `open_project` and the display `rebuild` off the main thread and hydrates on it; under `--background` the gate drains it with `open_now`. A failed open lands in the parameters panel's alert row, as a chat status line, and as `open_failure_code` on the per-root state — which both open paths cache, and which `locked_out_project()` reads to draw the **Re-accept Stored Script** box (ADR-187): `reaccept_stored_script()` reopens without restoring and sends the engine's own stored source back through `write_script`. |
 | `cadex_animate.py` | an accepted simulation trace → F-Curves on the component instances: time-keyed (not frame-index-keyed), wxyz quaternions walked into one hemisphere, bulk `foreach_set` onto slotted actions, cleared and re-baked per revision. A sibling of `cadex_hydrate.py`, so a bad trace never costs you the geometry. **The trace may come from kinematics, from rigid-body dynamics, or from a learned policy rollout** — `_simulation_entries` selects on `artifact_kind == "assembly_simulation_json"` and all three produce it, so this file plays a trained gait without one line of it knowing that policies exist (ADR-077, ADR-085). That is not luck: it is why a rollout deliberately reuses the output type instead of inventing one. Selecting on a *kind* rather than trying to enumerate producers is the property to preserve — the same code must ignore, never fail on, the MJCF / task / policy-receipt kinds it will also be shown. It also holds the pure half of the Policy Outputs readout: `commands_table` turns a rollout's `actuator_commands` into a flat frame-indexed table on the scene, and `commands_at` returns the row **at or before** a frame — a zero-order hold, because a command is a decision taken at a control step and held, not a continuous quantity to interpolate (ADR-096). A trace with no `actuator_channels` yields no table, which is what keeps the panel off kinematics and plain dynamics runs. |
 | `cadex_hydrate.py` | `cadex-tessellation-v1` buffers → Model-collection mesh objects: `cadex_face` INT face attribute (1-based BREP ids), `cadex_edge` wire children, placements, contract-driven GC by `cadex_output` property. **ADR-177**: component instances (and their wire children) link into an `Assembly` collection **inside** Model rather than at its root — the exploded-view pattern publishes every part twice (the solid and its component), and the copies grouped under one toggleable outliner row is what keeps a 17-part blowout readable. A *child* of Model deliberately: every walker here uses `all_objects`, which recurses, so find, GC, posing and bounds see the components exactly as before (the opposite trade from `cadex_collision`'s sibling collection, which exists to be outside that recursion). The collection follows its contents — created on the first component, removed by the GC with the last. |
 | `cadex_cage.py` | **ADR-127.** The section cage's rings, drawn as an edge-only overlay so they can be dragged. A **sibling** collection of Model at the scene root and never tagged `cadex_output`, both for `cadex_collision`'s reasons: the hydrate GC walks `all_objects` and hunts that property, so either would have the overlay swept on the next rebuild. The pure half — the superellipse profile, the cage frame, and `row_from_placement`, which turns a dragged transform back into a row — imports no `bpy`. **Apply, not auto-push** (ADR-122): a ring drag is a stream of transform events, so edits accumulate in the viewport and one button sends the whole table through `set_params(cages=…)`. Two gestures are deliberately ignored: movement *across* the spine (a cage is straight by construction; a curved one is `part.sweep(scale_law=…)`) and rotation (roll and exponent stay editable as numbers, because inventing them from a gesture is the quiet reinterpretation a declared table exists to prevent). |
@@ -222,11 +222,22 @@ from source after putting down the bundled copy, so `register()` and
   `cadex_backend.orphaned_project()` drives the **Rebuild From Saved Script**
   offer in the chat panel (ADR-033). That offer is reachable *before* any
   open — the root simply not existing is enough — because Save-As closes
-  every session a moment after the new name takes effect (ADR-046).
+  every session a moment after the new name takes effect (ADR-046). Its
+  sibling for the other way a file stops opening is the **Re-accept Stored
+  Script** box (ADR-187): a project whose stored script no longer
+  reproduces its accepted digest — accepted under a different engine build,
+  or edited outside Mesh — refuses to open, `locked_out_project()` reads
+  the cached failure code, and the operator sends the *engine's* stored
+  source back through `write_script`, which is the one op that runs on an
+  unrestored project (ADR-044). A hand edit is accepted as edited.
   **Imported geometry is the one thing that does come across**: assets are
   inputs, not derived state, and a script that names one cannot re-run
   without it, so `migrate_assets()` carries `assets/` into the new project
-  through `put_asset` when the script is adopted. `save_pre` is what records
+  through `put_asset` when the script is adopted — the imported meshes, the
+  linked `.cxpart`s (ADR-138) and, since ADR-188, a trained `.cxpolicy` with
+  the `.json` task bundle and `.xml` MJCF it travels with, which is the one
+  input nothing can rebuild. `CARRIED_ASSET_SUFFIXES` is the list, and it is
+  now the engine's whole stored union. `save_pre` is what records
   *which* project to carry from (`SOURCE_PROP` — `bpy.data.filepath` still
   names the old file there, and the value saves into the new one) — but
   **only when the root actually moves** (ADR-155). `save_pre` fires on every
@@ -504,7 +515,8 @@ browser is a `SpaceFile` *subtype* and is filtered in
 `ToolSelectPanelHelper` is the only thing that initialises its
 `_tool_group_active` and the first click into a live node editor reads it; and three bundled add-ons (`cycles`,
 `pose_library`, `io_mesh_uv_layout`) are no longer enabled by default because
-each registers against an editor that no longer exists.
+each registers against an editor that no longer exists — and `cycles` has since
+been deleted from the tree altogether (ADR-196).
 
 ### The window chrome (ADR-166)
 
