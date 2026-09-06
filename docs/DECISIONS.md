@@ -19424,3 +19424,31 @@ that asserts the carriage exports a slide joint and verifies the trained
 policy digest in the rollout. The existing arm/iterate test still runs.
 No engine, protocol, payload or shell behavior changed; no build, GUI launch
 or remote dispatch was needed. Exact gate output is in this unit's record.
+
+
+## ADR-204 — Stale shell mutations require explicit refresh (2026-09-06)
+
+**Decision.** Remove `Lifecycle.poll`'s automatic retry after a stale revision
+refusal. Return `STALE_PROGRAM_REVISION` with Rebuild Model/reopen guidance,
+without adopting the response's revision. Repeated edits therefore cannot
+silently become authorized against a revision the caller has not reviewed.
+Ordinary success and non-stale failure state adoption are unchanged.
+
+**Correction to ADR-201.** Its source-only claim of a foreign accepted script
+being overwritten was too strong. Real two-engine probes, including a rebuild
+of the shell engine before the stale edit, both refused without replay on the
+old implementation. `capture_project_state` raises the stale precondition
+before a candidate exists; the failure omits `model_state`, the field the
+shell retry needed to change its guard. The dormant branch is still unsafe
+if that optional field arrives: a synthetic stale payload with a newer guard
+reproduces replay for both write_script and set_params. Remove that branch
+rather than relying on the omission. This is defensive hardening and a
+correction of evidence, not a reproduced current-engine data-loss incident.
+
+**Evidence and limits.** The synthetic regression fails on the old shell.
+The real integration uses two engine processes against one project: foreign
+source/default edits survive repeated stale script and parameter mutations,
+and Rebuild Model permits a subsequent explicit edit. Run the headless shell
+gate and CLI suite; exact results are in the record. No inherited shell code,
+engine, protocol or payload changes. Simultaneous acceptance and concurrent
+rebuilds are not serialized; sequential use remains the documented contract.

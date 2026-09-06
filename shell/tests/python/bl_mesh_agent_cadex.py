@@ -1264,6 +1264,78 @@ result = {"blob": part.fuse(blobs)}
 """
 
 
+def test_stale_payload_never_authorizes_replay():
+    """Even a refusal carrying a newer model_state cannot authorize a write.
+
+    Current engine precondition failures omit model_state; inject that optional
+    field to pin the shell's dormant replay branch independently of the engine.
+    """
+    print("test_stale_payload_never_authorizes_replay")
+    scene = bpy.context.scene
+    state = cadex_backend._state_for(cadex_backend.project_root(scene))
+    for op in ("write_script", "set_params"):
+        state.revision = "old"
+        replayed = []
+        lifecycle = cadex_backend.Lifecycle.__new__(cadex_backend.Lifecycle)
+        lifecycle._scene = scene
+        lifecycle._state = state
+        lifecycle._op = op
+        lifecycle._attempt = 0  # exercise the pre-ADR-204 implementation too
+        lifecycle._thread = types.SimpleNamespace(is_alive=lambda: False)
+        lifecycle._start = lambda: replayed.append(True)
+        lifecycle._result = {"payload": {
+            "ok": False, "failure_code": "STALE_PROGRAM_REVISION",
+            "model_state": {"next_write_expected_revision": "foreign"}}}
+        outcome = lifecycle.poll()
+        check(outcome is not None and not outcome[0], op + " returns stale refusal")
+        check(not replayed, op + " never replays against a foreign revision")
+        check(state.revision == "old", op + " keeps guard until explicit refresh")
+
+
+def test_foreign_revision_mutations_require_refresh():
+    """A second engine's accepted work survives stale writes and repeat clicks."""
+    print("test_foreign_revision_mutations_require_refresh")
+    source = 'p = params(size=num(10, min=1, max=30))\nresult = {"box": part.box(p.size, 8, 6)}\n'
+    for op, args in (("write_script", {"source": source + "# stale edit\n"}),
+                     ("set_params", {"values": {"size": 12}})):
+        with tempfile.TemporaryDirectory(prefix="mesh-cadex-foreign-") as root:
+            reset_scene(root)
+            scene = bpy.context.scene
+            ok, report = run_tool("write_script", {"content": source})
+            check(ok, "same-revision baseline succeeds: " + report)
+            state = cadex_backend._state_for(root)
+            old_revision = state.revision
+            client = cadex_backend._client(root)
+            foreign = cadexd_client.CadexdClient(root, client.command)
+            try:
+                opened = foreign.request("open_project", {"project_root": root})
+                check(opened.get("ok"), "second engine opens accepted project")
+                changed = foreign.request("write_script", {
+                    "source": source.replace("num(10,", "num(18,") + "# foreign edit\n",
+                    "expected_revision": old_revision})
+                check(changed.get("ok"), "second engine accepts foreign script")
+                before = open(os.path.join(root, "script.json"), "rb").read()
+                for attempt in range(2):
+                    result = cadex_backend.begin_lifecycle(scene, op, args)
+                    ok, report = result.wait() if isinstance(result, cadex_backend.Lifecycle) else result
+                    check(not ok and "STALE_PROGRAM_REVISION" in report,
+                          op + " refuses stale mutation, attempt " + str(attempt))
+                    check(state.revision == old_revision,
+                          "refusal does not authorize a second stale edit")
+                    check(open(os.path.join(root, "script.json"), "rb").read() == before,
+                          op + " preserves foreign script, values and accepted metadata")
+                ok, report = cadex_backend.rebuild_model(scene)
+                check(ok, "explicit Rebuild Model refresh succeeds: " + report)
+                check("# foreign edit" in state.source,
+                      "refresh adopts the foreign source")
+                result = cadex_backend.begin_lifecycle(scene, op, args)
+                ok, report = result.wait() if isinstance(result, cadex_backend.Lifecycle) else result
+                check(ok, op + " succeeds after explicit refresh: " + report)
+            finally:
+                foreign.close()
+                client.close()
+
+
 def test_main_thread_free_during_rebuild(root):
     """A modeling request must not block Blender's main thread.
 
@@ -5643,6 +5715,8 @@ def main():
     sheet_root = tempfile.mkdtemp(prefix="mesh-cadex-sheet-")
     recipe_root = tempfile.mkdtemp(prefix="mesh-cadex-recipe-")
     try:
+        test_stale_payload_never_authorizes_replay()
+        test_foreign_revision_mutations_require_refresh()
         test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
         scene = bpy.context.scene

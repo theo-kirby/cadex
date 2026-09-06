@@ -1822,18 +1822,18 @@ What makes them experimental, and what would settle it:
   code** (ADR-201, `docs/CLI.md` §2, `docs/MUJOCO.md` §7c row 11). It is
   the same `cadex` commands from a terminal beside the open `.blend`:
   the CLI's `flock` is per command and released before the `PROGRESS.md`
-  row and the commit, the shell takes no lock, an overlapping shell
-  write is refused off the on-disk `script.json` and then retried once
-  with the shell's own arguments — so it can silently overwrite the walk's accepted
-  script or parameter values, and the doc requires Rebuild Model or a reopen before the
-  next GUI edit (corrected on review, ADR-201). The
-  in-app agent has no shell and no file tool, so the project docs stay
-  the CLI's and a person's — the scaffold and `docs/CLI.md` said
-  otherwise and now agree with `backend.py`. **Not exercised** (no GUI
-  under this run); the two runtime legs — the shell holding the same
-  lock, and its retry refusing a foreign revision instead of rewriting
-  it — are recorded, not taken. *Three modes, one shape* is now headless
-  exercised, remote scripted, GUI documented.
+  row and the commit, and the shell takes no lock. Rebuild Model or reopen
+  before the next GUI edit. The in-app agent has no shell or file tool;
+  project docs stay the CLI's and a person's. **GUI not exercised.**
+  *Three modes, one shape* is headless exercised, remote scripted, GUI documented.
+- [x] **Stale shell mutations preserve accepted work** (ADR-204).
+  Remove automatic revision adoption/replay after `STALE_PROGRAM_REVISION`.
+  Script and parameter edits remain refused until explicit refresh; headless
+  regression covers a foreign accepted script, repeated refusal, successful
+  editing after Rebuild Model, and a synthetic refusal with a newer guard.
+  Current engine stale responses omit that guard; the prior claimed overwrite
+  was not reproduced. The dormant retry is removed defensively.
+  Shared locking and simultaneous acceptance remain outside this fix.
 - [x] **A trained policy comes home headlessly** (ADR-190). `cadex asset
   --put walk.cxpolicy` for a pipeline and `put_asset` in the CLI agent's
   tool surface, both on the op the shell has had since ADR-043; the

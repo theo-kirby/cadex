@@ -122,8 +122,9 @@ run from a terminal beside the open file, one at a time while no rebuild
 is in flight; the shell's own agent cannot run them, and it sees an
 accepted run on the next Rebuild Model or reopen. Rebuild Model or
 reopen **before the next GUI edit** once a command has accepted a
-script: the shell retries a stale-revision refusal with its own source
-and can silently overwrite the accepted script or parameter values.
+script: stale mutations are refused without replay or revision adoption.
+Review the refreshed source and values before retrying. Simultaneous
+acceptance and concurrent rebuilds still require sequential use.
 
 ## Domain docs
 

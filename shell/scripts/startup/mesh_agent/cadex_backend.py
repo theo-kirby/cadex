@@ -922,9 +922,8 @@ class Lifecycle:
     predicate; when it turns true the client forwards a ``cancel`` frame
     and the engine answers ``RUN_CANCELLED``.
 
-    A ``STALE_PROGRAM_REVISION`` refusal (the engine's guard after a
-    respawn or a background refine) is retried once with the engine's
-    declared expectation.
+    A ``STALE_PROGRAM_REVISION`` refusal requires explicit refresh. Neither
+    adopting its guard nor replaying old arguments is safe (ADR-204).
     """
 
     def __init__(self, scene, op, args, display=None, guarded=True,
@@ -940,7 +939,6 @@ class Lifecycle:
         self._root = project_root(scene)
         self._state = _state_for(self._root)
         self._client = _client(self._root)
-        self._attempt = 0
         self._thread = None
         self._result = {}
         self._start()
@@ -977,14 +975,13 @@ class Lifecycle:
             return None
         payload = self._result.get("payload") or {}
         if payload.get("ok") is not True:
-            previous = self._state.revision
+            if str(payload.get("failure_code") or "") == STALE_REVISION_CODE:
+                # Keep the old guard: another click must not authorize the
+                # same stale source/values against unseen accepted work.
+                return False, (_failure_report(self._op, payload) +
+                               "\nRun Rebuild Model or reopen the file, review "
+                               "the refreshed script and values, then retry.")
             _revision_from_payload(self._scene, payload)
-            stale = str(payload.get("failure_code") or "") == STALE_REVISION_CODE
-            if (stale and self._attempt == 0
-                    and self._state.revision != previous):
-                self._attempt += 1
-                self._start()
-                return None
             return False, _failure_report(self._op, payload)
         _revision_from_payload(self._scene, payload)
         try:
@@ -1537,7 +1534,7 @@ def note_drag(scene, on_finish=None):
 
     # Defer while the agent is mid-turn: otherwise the drag's
     # expected_revision snapshot goes stale behind the agent's write and
-    # burns the one-shot retry on every single drag.
+    # causes a stale-revision refusal on every single drag.
     if agent_module.get_agent().busy:
         slot["queued"] = True
         return
