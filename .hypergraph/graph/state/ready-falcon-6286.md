@@ -7,18 +7,19 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
+Status: working
 
 ## Current
 
-Open charter criterion: An L2 boards family exists over `CadexCatalog`, with tests that include a real-kernel build, and the packaged lifecycle gate passes. [rec: empty-wolf-3962]
+L2 boards exist over `CadexCatalog` through `lib.board`: ESP32-DevKitC V4 (WROOM-32E), Pi Zero 2 W and Adafruit 815 PCA9685 revision C. Sourced mounting interfaces and 38/40/62 solder-pad terminals follow origin/direction/roll and feed the existing `boards(...)` declarations. ADR-202 records the approximation ledger; ROADMAP marks L2 complete. [rec: stormy-quill-5350]
 
-Declared target: `gap-l2-boards-family-exists-over`. This node tracks the criterion as a gap; it becomes working only with evidence that the criterion is met. Truncated impact wording is resolved from the full charter in the same record [rec: empty-wolf-3962].
+Real-kernel coverage builds all three boards and their transformed wiring tables. The completed staged payload passed 47 lifecycle/library tests; the final engine suite passed 1973 tests with 52 skips after staging finished. This satisfies the declared L2 criterion. [rec: stormy-quill-5350]
 
 ## Negative knowledge
 
-None yet.
+- [scope: L2 board geometry | confidence: high | evidence: stormy-quill-5350] These are simple PCB/chip models with nominal interfaces, not exact populated boards. Connector bodies, rounded corners and measured populated-board mass remain outside the slice; Pi terminal origins and hole diameters remain nominal. The local stage-only payload is not evidence of a relocatable release.
 
 ## Provenance
 
 - empty-wolf-3962 — operator-declared charter gap
+- stormy-quill-5350 — L2 sourced board interfaces, real-kernel builds and completed-payload verification satisfy the criterion

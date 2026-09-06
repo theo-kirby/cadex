@@ -26,10 +26,11 @@ Status: working
 - **CI is green again as of 2026-08-24, after three walls each hiding the next** (ADR-163). The macOS job had failed every scheduled and push run for weeks, always at *Build the shell*: (1) `actions/checkout` does not fetch Git LFS and all 6713 LFS paths here are under `shell/`, so `startup.blend` was a pointer file the shell's own CMake refuses; (2) `platform_apple_xcode.cmake` requires **Xcode 16.0** and the `macos-14` image tops out at 15.4, so the job runs on **`macos-15`**; (3) the gate's 0.65 s slider-drag parity bar cannot be met on a shared runner. The Linux engine job was green throughout [rec: weathered-sand-9705].
 - **`CADEX_GATE_LATENCY_BAR`** raises the gate's *enforced* latency ceiling (CI sets 2.6 s) without relabelling the bar: `parity_bar_seconds` and `median_within_bar` in the payload always report against the real 0.65 s [rec: weathered-sand-9705].
 
-
 - **Headless native recipe projects require `CADEX_BLENDER_EXECUTABLE`**; the visible shell supplies its own absolute binary path. Ordinary engine-only projects still need no Blender. Recipe execution was verified on macOS with Blender 5.3.0 Alpha; Linux bubblewrap is implemented but untested on a Linux host, and Windows refuses [rec: simple-bramble-8616].
 
 ## Negative knowledge
+
+- [scope: stage-engine concurrent with payload-inspecting engine tests | confidence: high | evidence: stormy-quill-5350] Finish staging before running these suites. The environment copy temporarily exposed `bin/ccx` before the normal prune and caused an analysis-exclusion failure. After staging completed, ccx was absent, the targeted test passed, and the sequential final engine suite passed 1973 tests with 52 skips.
 
 - [scope: building the shell | confidence: high | evidence: merry-eagle-4093] Never route the shell build around package/app/build_app.sh. Conda on PATH during a shell configure silently resolves the wrong zlib, libpng, OpenSSL and Python, and fails at link time or misbehaves at runtime.
 - [scope: verifying engine changes | confidence: high | evidence: simple-hollow-8675, merry-eagle-4093] A green source tree proves nothing about a payload. Anything touching the protocol or the payload must run the packaged gate with CADEX_ENGINE_ROOT pointed at a staged payload.
@@ -42,7 +43,6 @@ Status: working
 - [scope: a build that aborts early | confidence: high | evidence: weathered-sand-9705] It tells you about exactly one problem. A job red for weeks has been accumulating them silently: three separate walls stood behind one another here, and each was invisible until the one in front was removed. Budget for "fix, re-run, find the next" rather than for one diagnosis.
 - [scope: a CI job that has failed for weeks | confidence: high | evidence: weathered-sand-9705] It stops being read. This one failed on reconcile commits whose entire diff was markdown, and ADR-159 recorded it as "standing state" — a true sentence that functioned as a reason not to look. The actual first cause took one `gh run view --log-failed` to find.
 - [scope: an absolute wall-clock bar in CI | confidence: high | evidence: weathered-sand-9705] It cannot be enforced on a machine you do not control. Every timing in the gate is uniformly 2.2–2.5× slower on a GitHub macOS runner than on the developer Mac (open 2.005 → 5.102 s, refine 1.358 → 3.021 s, drag 0.520 → 1.268 s), so the drag is not slow — the runner is. Raise the enforced ceiling, and keep reporting the real bar, or the uploaded artifact becomes evidence for a parity claim that was never met.
-
 
 ## Provenance
 
@@ -57,3 +57,4 @@ Status: working
 - tidy-banner-0293 — 0.0.8 preserves an edited block; verified against the one 0.0.7 destroyed
 - weathered-sand-9705 — the three CI walls, and why a latency bar is not enforceable on a shared runner
 - simple-bramble-8616 — native geometry runtime setup and platform validation limits
+- stormy-quill-5350 — concurrent staging caused a transient exclusion failure; completed-payload and sequential suite passed
