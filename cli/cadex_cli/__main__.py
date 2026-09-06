@@ -83,6 +83,17 @@ from .train import (
     run_trainer,
     trainer_command,
 )
+from .walk import (
+    POLICY_SWITCH,
+    ROLLOUT_DIRNAME,
+    SCRIPT_FILENAME,
+    SWEEP_DIRNAME,
+    TRAIN_DIRNAME,
+    WalkError,
+    declare_policy,
+    review_from_outputs,
+    run_leg,
+)
 
 #: Where a run works when ``--project`` is not given. Hidden, and beside
 #: whatever the caller is doing, so `cadex -p ... --out ./out` in an empty
@@ -297,6 +308,85 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="The training venv's interpreter. Default: $CADEX_TRAIN_PYTHON, "
         "then <repo>/.venv, then ~/cadex-train-venv.",
+    )
+    walk_parser = subparsers.add_parser(
+        "walk",
+        help="The lifecycle walk as one command: optional design turns, an "
+        "optional parameter change, train, re-declare the policy, verify "
+        "and roll out, review. Each leg is a child cadex command. Spends "
+        "tokens only for --prompt.",
+    )
+    _common(walk_parser, inherit=True)
+    walk_parser.add_argument(
+        "--prompt",
+        dest="prompts",
+        action="append",
+        default=[],
+        metavar="TEXT",
+        help="Repeatable, in order: design turns before training. The first "
+        "starts a conversation (or continues one with --resume); the rest "
+        "continue it.",
+    )
+    walk_parser.add_argument(
+        "--resume",
+        action="store_true",
+        default=False,
+        help="Continue the project's stored conversation for the first --prompt.",
+    )
+    walk_parser.add_argument("--model", default=DEFAULT_MODEL, help="Model for the turns.")
+    walk_parser.add_argument(
+        "--claude", default="", help="Path to the claude CLI, if it is not on PATH."
+    )
+    walk_parser.add_argument(
+        "--set",
+        dest="assignments",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="Repeatable: the iterate step. Blanks the policy switch, applies "
+        "the change, and exports the new bundle before training.",
+    )
+    walk_parser.add_argument(
+        "--iterations", type=int, default=200, help="PPO iterations (200)."
+    )
+    walk_parser.add_argument(
+        "--envs", type=int, default=256, help="Parallel environments (256)."
+    )
+    walk_parser.add_argument("--seed", type=int, default=0, help="RNG seed (0).")
+    walk_parser.add_argument(
+        "--label", default="", help="A label written into the policy header."
+    )
+    walk_parser.add_argument(
+        "--init-from", dest="init_from", default="", metavar="POLICY",
+        help="Warm-start the actor from this .cxpolicy (same task digest).",
+    )
+    walk_parser.add_argument(
+        "--init-from-parent-task", dest="init_from_parent_task", default="",
+        metavar="BUNDLE",
+        help="The task .json --init-from's policy was trained on; needed "
+        "beside --init-from-task-change.",
+    )
+    walk_parser.add_argument(
+        "--init-from-task-change", dest="init_from_task_change", default="",
+        metavar="REASON",
+        help="Warm-start across a task change, and say why in one line.",
+    )
+    walk_parser.add_argument(
+        "--task", dest="task_name", default="", metavar="NAME",
+        help="Which exported training task, if the script declares more than one.",
+    )
+    walk_parser.add_argument(
+        "--name", dest="policy_name", default="", metavar="NAME.cxpolicy",
+        help="The policy's filename (default <task>.cxpolicy).",
+    )
+    walk_parser.add_argument(
+        "--timeout", type=float, default=0.0,
+        help="Stop the trainer after this many seconds (0: no limit).",
+    )
+    walk_parser.add_argument(
+        "--trainer-python", dest="trainer_python", default="", metavar="PATH",
+        help="The training venv's interpreter, if not where training/SETUP.md "
+        "puts it.",
     )
     return parser
 
@@ -913,6 +1003,175 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
     return EXIT_OK
 
 
+def _walk_common(args: argparse.Namespace) -> list[str]:
+    common = ["--project", str(Path(args.project).expanduser())]
+    if getattr(args, "engine", ""):
+        common += ["--engine", str(args.engine)]
+    if getattr(args, "wait", False):
+        common.append("--wait")
+    return common
+
+
+def command_walk(args: argparse.Namespace, report: RunReport) -> int:
+    """The lifecycle walk as one command (ADR-199).
+
+    Design turns (``--prompt``, repeatable), the iterate change (``--set``,
+    which blanks the policy switch and exports the bundle at the new
+    digest), ``cadex train --put``, the digest edit — the one leg that was
+    a person's — as a rewrite of the script's one ``assembly.policy``
+    call followed by ``cadex script --set``, ``cadex params --set
+    policy_on=1`` for the verified rollout, and the review read off the
+    exported trace. Every leg is a child ``cadex`` command, so each lands
+    its own ``PROGRESS.md`` row and commit; this command lands none of its
+    own, because the legs are the record.
+    """
+
+    if not args.out:
+        report.error = "walk needs --out: the bundle, the policy and the rollout land there."
+        return EXIT_USAGE
+    if args.iterations < 1 or args.envs < 1:
+        report.error = "--iterations and --envs must be at least 1."
+        return EXIT_USAGE
+    if args.policy_name and not str(args.policy_name).endswith(".cxpolicy"):
+        report.error = "--name must end in .cxpolicy."
+        return EXIT_USAGE
+    if (args.init_from_task_change or args.init_from_parent_task) and not (
+        args.init_from and args.init_from_parent_task and args.init_from_task_change
+    ):
+        report.error = (
+            "--init-from-task-change needs --init-from POLICY and "
+            "--init-from-parent-task BUNDLE beside it."
+        )
+        return EXIT_USAGE
+    assignments = _parse_assignments(args.assignments) if args.assignments else {}
+    if POLICY_SWITCH in assignments:
+        report.error = f"--set {POLICY_SWITCH}: the walk owns the switch; set the change only."
+        return EXIT_USAGE
+
+    out_dir = Path(args.out).expanduser()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    report.out_dir = str(out_dir)
+    common = _walk_common(args)
+    legs: list[dict[str, Any]] = []
+    report.walk = {"legs": legs, "review": {}}
+
+    def failed(leg: Any, what: str) -> int:
+        legs.append(leg.to_json())
+        report.error = "{:s} (leg {:s}, exit {:d}): {:s}".format(
+            what, leg.name, leg.code, str(leg.envelope.get("error") or "no envelope")
+        )
+        return leg.code if leg.code in (EXIT_USAGE, EXIT_REJECTED) else EXIT_FAILURE
+
+    # Design: the model turns, in order.
+    for index, prompt in enumerate(args.prompts):
+        argv = [*common, "-p", prompt, "--json", "--model", args.model]
+        if index > 0 or args.resume:
+            argv.append("--resume")
+        if args.claude:
+            argv += ["--claude", args.claude]
+        _progress(f" · walk  design turn {index + 1}/{len(args.prompts)}")
+        leg = run_leg("design", argv)
+        if leg.code != EXIT_OK:
+            return failed(leg, "the design turn was not accepted")
+        legs.append(leg.to_json())
+
+    # Iterate: blank the switch and apply the change; the bundle is exported
+    # at its new digest (ADR-192).
+    if assignments:
+        argv = [*common, "params", "--set", f"{POLICY_SWITCH}=0"]
+        for name, value in sorted(assignments.items()):
+            argv += ["--set", f"{name}={value}"]
+        argv += ["--out", str(out_dir / SWEEP_DIRNAME), "--json"]
+        _progress(" · walk  sweep")
+        leg = run_leg("sweep", argv)
+        if leg.code != EXIT_OK:
+            return failed(leg, "the change was refused")
+        legs.append(leg.to_json())
+
+    # Train, and bring the policy home.
+    argv = [
+        *common, "train", "--out", str(out_dir / TRAIN_DIRNAME), "--put",
+        "--iterations", str(int(args.iterations)), "--envs", str(int(args.envs)),
+        "--seed", str(int(args.seed)), "--timeout", str(float(args.timeout)),
+        "--json",
+    ]
+    for flag, value in (
+        ("--label", args.label), ("--name", args.policy_name),
+        ("--task", args.task_name), ("--trainer-python", args.trainer_python),
+        ("--init-from", args.init_from),
+        ("--init-from-parent-task", args.init_from_parent_task),
+        ("--init-from-task-change", args.init_from_task_change),
+    ):
+        if value:
+            argv += [flag, str(value)]
+    _progress(" · walk  train")
+    leg = run_leg("train", argv)
+    if leg.code != EXIT_OK:
+        return failed(leg, "training did not produce a policy")
+    legs.append(leg.to_json())
+    training = leg.envelope.get("training") or {}
+    stored = [row for row in leg.envelope.get("assets") or []
+              if row.get("sha256") == training.get("sha256")]
+    if not training.get("sha256") or not stored:
+        report.error = "train reported no stored policy sha256; nothing to declare."
+        return EXIT_FAILURE
+    report.training = dict(training)
+    report.assets = [dict(row) for row in leg.envelope.get("assets") or []]
+    weights = str(stored[0].get("name") or Path(str(training.get("out"))).name)
+    sha256 = str(training["sha256"])
+
+    # Declare: the digest edit, then the script write.
+    _progress(" · walk  declare")
+    leg = run_leg("script", [*common, "script"], capture=False)
+    if leg.code != EXIT_OK:
+        return failed(leg, "the script could not be read")
+    try:
+        source = declare_policy(str(leg.envelope.get("text") or ""), weights, sha256)
+    except WalkError as exc:
+        legs.append(leg.to_json())
+        report.error = str(exc)
+        return EXIT_REJECTED
+    script_path = out_dir / SCRIPT_FILENAME
+    script_path.write_text(source, encoding="utf-8")
+    leg = run_leg("declare", [*common, "script", "--set", str(script_path), "--json"])
+    if leg.code != EXIT_OK:
+        return failed(leg, "the re-declared script was refused")
+    legs.append(leg.to_json())
+
+    # Verify and roll out: the switch on, the trace exported.
+    _progress(" · walk  rollout")
+    leg = run_leg("rollout", [
+        *common, "params", "--set", f"{POLICY_SWITCH}=1",
+        "--out", str(out_dir / ROLLOUT_DIRNAME), "--json",
+    ])
+    if leg.code != EXIT_OK:
+        return failed(leg, "the policy did not verify")
+    legs.append(leg.to_json())
+    report.params = dict(leg.envelope.get("params") or {})
+    report.accepted_revision = str(leg.envelope.get("accepted_revision") or "")
+    report.digest = str(leg.envelope.get("digest") or "")
+    report.revision = str(leg.envelope.get("revision") or "")
+
+    # Review: the trace's numbers.
+    review = review_from_outputs(leg.envelope.get("outputs") or [])
+    review["weights"] = weights
+    review["sha256"] = sha256
+    report.walk["review"] = review
+    if review.get("total_reward") is None:
+        report.notes.append(
+            "the rollout exported no trace with a policy block; the walk "
+            "verified the policy but has no number to review."
+        )
+    else:
+        report.notes.append(
+            "walk: {:s} ({:s}) verified; total_reward {:.6g} over {:d} legs.".format(
+                weights, sha256[:12], float(review["total_reward"]), len(legs)
+            )
+        )
+    report.ok = True
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -939,9 +1198,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_asset(args, report)
         elif command == "train":
             code = command_train(args, report)
+        elif command == "walk":
+            code = command_walk(args, report)
         else:  # argparse already refuses anything else
             return EXIT_USAGE
-    except (ValueError, ExportError, TrainError) as exc:
+    except (ValueError, ExportError, TrainError, WalkError) as exc:
         report.error = str(exc)
         code = EXIT_USAGE if isinstance(exc, ValueError) else EXIT_FAILURE
     except (EngineError, ClaudeUnavailable, ProjectBusy, CadexdError) as exc:
@@ -1001,6 +1262,10 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
         return "asset --put " + ", ".join(
             Path(str(item)).name for item in args.put_files
         )
+    if command == "walk":
+        return "walk {:d} it × {:d} envs → {:s}".format(
+            int(args.iterations), int(args.envs), str(args.out)
+        )
     if command == "train":
         return "train {:d} it × {:d} envs → {:s}{:s}".format(
             int(args.iterations),
@@ -1022,6 +1287,8 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
+    if command == "walk":
+        return  # its legs landed their rows; a row on top would repeat their numbers
     try:
         append_progress_row(
             report.project_root,
@@ -1050,6 +1317,8 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
+    if command == "walk":
+        return  # the legs committed; nothing of the walk's own is in the project
     try:
         sha = commit_project(
             report.project_root, f"cadex {_progress_what(command, args, report)}"

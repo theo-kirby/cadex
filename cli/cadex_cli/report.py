@@ -60,6 +60,9 @@ class RunReport:
     #: from a stream is a receipt something else can write into (ADR-093),
     #: so this is the one the trainer meant as data.
     training: dict[str, Any] = field(default_factory=dict)
+    #: ``cadex walk``: the legs it ran, in order, and the review it read
+    #: off the verified rollout's trace (ADR-199).
+    walk: dict[str, Any] = field(default_factory=dict)
     error: str = ""
     #: Free-form notes worth printing but not worth a field of their own.
     notes: list[str] = field(default_factory=list)
@@ -86,6 +89,8 @@ class RunReport:
             payload["assets"] = [dict(item) for item in self.assets]
         if self.training:
             payload["training"] = dict(self.training)
+        if self.walk:
+            payload["walk"] = dict(self.walk)
         if self.notes:
             payload["notes"] = list(self.notes)
         if self.error:
@@ -180,6 +185,21 @@ def human_lines(report: RunReport) -> list[str]:
                 "-" if reward is None else f"{float(reward):.4g}",
                 float(report.training.get("wall_time_s") or 0.0),
                 str(report.training.get("sha256") or ""),
+            )
+        )
+    for leg in report.walk.get("legs") or []:
+        lines.append(
+            "leg    {:<8s} exit {:d}  {:.1f} s".format(
+                str(leg.get("leg") or ""), int(leg.get("exit") or 0),
+                float(leg.get("seconds") or 0.0),
+            )
+        )
+    review = report.walk.get("review") or {}
+    if review.get("total_reward") is not None:
+        lines.append(
+            "review total_reward {:.6g}  sha256 {:s}".format(
+                float(review["total_reward"]),
+                str(review.get("policy_sha256") or ""),
             )
         )
     for note in report.notes:
