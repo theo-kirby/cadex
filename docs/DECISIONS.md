@@ -19624,3 +19624,40 @@ standalone experiment only: no build, staging or full engine suite. The
 source-qualification checkbox closes; public catalog delivery stays open
 for the same variant with explicit approximation metadata, real-worker
 interfaces, discovery and freshly staged packaged publication tests.
+
+
+## ADR-211 — Deliver the qualified SKF GE 6 C joint value (2026-09-07)
+
+**Decision.** Expose only `lib.joint("skf-ge-6-c", tilt_degrees=...)` over
+CadexCatalog and LibraryPart, reusing sphere, common, cut, compound and
+transform recipes. Preserve the two nominal rings rather than fusing their
+coincident spherical faces. Canonical origin is the common sphere centre,
+housing axis +Z, inner tilt about +Y before placement; finite tilt is bounded
+to ±13° under the source's shoulder condition. Unsupported variants are refused.
+PROVENANCE §8f remains the source contract, including revision/hash, shoulder
+limits and basic radial ratings qualified as selection inputs.
+
+**Risk and scope.** No clearance, chamfers, liner, tolerances, installed motion,
+load capacity or physical inertia are inferred from the nominal geometry.
+No assembly solver, dynamics, protocol op or shell change. Discovery adds the
+joints family and its existing describe_api shape golden. Full L3, additional
+BLDC scope and solenoid delivery remain open.
+
+**Verification.** Canonical and placed real-worker checks cover actual bore,
+OD and spherical surfaces, independently integrated ring volumes, material
+and void, shaft and limiting shoulders at -13/0/6.5/13°. Tests also pin
+metadata copy isolation, unsupported input refusal, API discovery and cadexd
+publication. Full suite and fresh packaged gate results recorded below.
+
+Final engine suite: **2016 passed, 52 skipped**, 259.29 s. One
+`pixi run build-engine`: exit 0 (CMake policy warning and duplicate-rpath
+install messages retained). Completed `pixi run stage-engine`: exit 0,
+2.4 GB local payload; the same 248 external-path audit violations as ADR-205
+catalog staging, not a portable release. Then
+`CADEX_ENGINE_ROOT=build/engine/cadex-engine-0.0.0-macos-arm64 pixi run python
+-m pytest src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py
+src/Mod/cadex/cadex_tests/test_library.py`: **90 passed, no skips**, 16.30 s.
+The first suite saw the pre-build installed worker missing `joint`; the
+first packaged run exposed the old test's single-solid assumption. Corrected
+the assertion to require compound for joint outputs, with no runtime change
+or second build, then reran both gates successfully.

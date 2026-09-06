@@ -45,6 +45,7 @@ __all__ = [
     "BLDC_MOTORS",
     "bldc_spec",
     "linear_actuator_spec",
+    "joint_spec",
     "GEARMOTORS",
     "gearmotor_spec",
     "MICRO_HORNS",
@@ -770,6 +771,42 @@ def linear_actuator_spec(sku: Any) -> dict[str, Any]:
     return deepcopy(LINEAR_ACTUATORS[sku.strip().lower()])
 
 
+# SKF BU/P1 06116/1 EN, May 2013, pp. 132–133; PROVENANCE §8f.
+JOINTS = {
+    "skf-ge-6-c": {
+        "manufacturer": "SKF", "manufacturer_part_number": "GE 6 C",
+        "bore_dia_mm": 6.0, "outside_dia_mm": 14.0,
+        "inner_width_mm": 6.0, "outer_width_mm": 4.0, "sphere_dia_mm": 10.0,
+        "maximum_tilt_degrees": 13.0,
+        "shaft_shoulder_dia_range_mm": [7.4, 8.0],
+        "housing_opening_dia_range_mm": [9.5, 12.7],
+        "ring_chamfer_min_mm": 0.3, "abutment_fillet_max_mm": 0.3,
+        "basic_dynamic_load_n": 3600.0, "basic_static_load_n": 9000.0,
+        "mass_g": 4.0,
+        "sliding_contact": "Steel/PTFE sintered bronze; maintenance-free radial spherical plain bearing.",
+        "rating_notes": "Basic catalog radial ratings, not allowable robot working loads, axial ratings, life, torque or friction. Application duty, fit and operating conditions require separate selection; no dynamics or physical inertia model.",
+        "datum_notes": "Common sphere centre at origin; neutral bore and housing axes +Z; inner faces Z=±3, outer faces Z=±2 mm. Inner tilt about canonical +Y before placement; spec coordinates stay canonical.",
+        "tilt_notes": "Nominal ±13 degrees conditional on shaft shoulder diameter at most 8 mm; no assembly solver or installed motion guarantee.",
+        "source_revision": "BU/P1 06116/1 EN, May 2013, printed pages 132–133",
+        "source_sha256": "df51e55192dc9ce138e371e2f5047cfbceeba7f2ac6246f92e5bd3d7f24930cb",
+        "sources": ["https://www.skf.com/binaries/pub12/Images/0901d19680154a05-06116_1-EN_tcm_12-122020.pdf"],
+        "approximate": [
+            "Two nominal rings with coincident spherical surfaces; no radial running clearance.",
+            "Chamfers, liner thickness and manufacturing seams omitted; no mating hardware.",
+            "Not a tolerance, press-fit, conservative collision envelope, manufacturing drawing or physical inertia model.",
+        ],
+    },
+}
+
+
+def joint_spec(sku: Any) -> dict[str, Any]:
+    """Only the qualified SKF GE 6 C publication variant."""
+    if not isinstance(sku, str) or sku.strip().lower() not in JOINTS:
+        raise CatalogError(f"Unknown joint {sku!r}; catalogued joints: "
+                           + ", ".join(sorted(JOINTS)))
+    return deepcopy(JOINTS[sku.strip().lower()])
+
+
 def catalog_families() -> dict[str, Any]:
     """The browsable catalog: every family, its part numbers, key specs.
 
@@ -811,6 +848,10 @@ def catalog_families() -> dict[str, Any]:
                 "the parametric plain bearing for everything the codes do "
                 "not cover."
             ),
+        },
+        "joints": {
+            "skus": sorted(JOINTS),
+            "notes": "lib.joint(sku, tilt_degrees=0): SKF GE 6 C nominal two-ring geometry; spec carries source, datums, conditional tilt, qualified ratings and approximation limits. No fit or dynamics guarantee.",
         },
         "linear_actuators": {
             "skus": sorted(LINEAR_ACTUATORS),

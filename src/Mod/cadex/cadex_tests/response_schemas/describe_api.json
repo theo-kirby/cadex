@@ -149,6 +149,12 @@
      "str"
     ]
    },
+   "joints": {
+    "notes": "str",
+    "skus": [
+     "str"
+    ]
+   },
    "linear_actuators": {
     "notes": "str",
     "skus": [

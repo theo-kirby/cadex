@@ -706,6 +706,43 @@ class LibraryAPI:
                            self._place("gearmotor", body, origin, direction, roll_degrees),
                            spec)
 
+    def joint(
+        self, sku: str, *, tilt_degrees: float = 0.0,
+        origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> LibraryPart:
+        """SKF GE 6 C nominal spherical plain bearing, as a two-solid compound.
+
+        Datum: common sphere centre, housing axis +Z; inner tilt about +Y
+        before placement, bounded to ±13 degrees conditional on shaft shoulder
+        diameter at most 8 mm. Spec stays canonical. Coincident spherical
+        surfaces omit clearance, chamfers and liner: no fit, installed motion,
+        conservative collision envelope, load or physical inertia guarantee.
+        """
+        spec = catalog.joint_spec(sku)
+        if (isinstance(tilt_degrees, bool) or not isinstance(tilt_degrees, (int, float))
+                or not math.isfinite(tilt_degrees)
+                or abs(tilt_degrees) > spec["maximum_tilt_degrees"]):
+            raise LibraryError("lib.joint: tilt_degrees must be finite in [-13, 13].")
+        spec["tilt_degrees"] = float(tilt_degrees)
+        part = self._part
+        sphere = part.sphere(spec["sphere_dia_mm"]/2)
+        outer_width, inner_width = spec["outer_width_mm"], spec["inner_width_mm"]
+        outer = part.cut(part.cylinder(spec["outside_dia_mm"]/2, outer_width,
+                                       origin=(0, 0, -outer_width/2)), sphere)
+        inner = part.cut(part.common([sphere,
+            part.cylinder(spec["sphere_dia_mm"]/2+1, inner_width,
+                          origin=(0, 0, -inner_width/2))]),
+            part.cylinder(spec["bore_dia_mm"]/2, inner_width+2,
+                          origin=(0, 0, -inner_width/2-1)))
+        inner = part.transform(inner, rotation_axis=(0, 1, 0),
+                               rotation_degrees=tilt_degrees)
+        body = part.compound([outer, inner], label=label)
+        return LibraryPart("joint", sku.strip().lower(),
+                           self._place("joint", body, origin, direction, roll_degrees),
+                           spec)
+
     def linear_actuator(
         self, sku: str, *, extension: float = 0.0,
         origin: Sequence[float] = _DEFAULT_ORIGIN,

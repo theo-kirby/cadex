@@ -692,6 +692,9 @@ b = boards({"esp": board(esp.body, terminals=esp.terminals()),
             "pwm": board(pwm.body, terminals=pwm.terminals())})
 n = nets(ports=b, wires={})
 result = {
+    "joint": lib.joint("skf-ge-6-c").body,
+    "joint_placed": lib.joint("skf-ge-6-c", tilt_degrees=13,
+        origin=(100,30,20), direction=(1,0,0), roll_degrees=90).body,
     "linear_actuator": lib.linear_actuator("l12-50-210-12-s", extension=50).body,
     "linear_actuator_placed": lib.linear_actuator("l12-50-210-12-s", extension=23.5,
         origin=(100,30,20), direction=(1,0,0), roll_degrees=90).body,
@@ -729,7 +732,7 @@ def test_the_library_builds_on_the_real_kernel() -> None:
 
     The recipe tests prove the tree the generators compose; only the kernel
     proves a hex prism cuts cleanly, a cone fuses onto a shank, and every
-    result is a closed solid the worker can serialize.
+    result has the solid or compound type the worker can serialize.
     """
 
     from test_cadexd_lifecycle import _spawn_cadexd, _stop
@@ -749,7 +752,7 @@ def test_the_library_builds_on_the_real_kernel() -> None:
         assert written["ok"] is True, written
         names = {output["name"] for output in written["outputs"]}
         assert names == {
-            "bldc", "bldc_placed", "linear_actuator", "linear_actuator_placed",
+            "joint", "joint_placed", "bldc", "bldc_placed", "linear_actuator", "linear_actuator_placed",
             "gearmotor", "gearmotor_placed",
             "esp_board", "pi_board", "pwm_board",
             "servo",
@@ -765,7 +768,8 @@ def test_the_library_builds_on_the_real_kernel() -> None:
             "bushing",
         }
         for output in written["outputs"]:
-            assert output["type"] == "solid", output
+            expected_type = "compound" if output["name"] in {"joint", "joint_placed"} else "solid"
+            assert output["type"] == expected_type, output
     finally:
         if client is not None:
             _stop(client)
@@ -879,4 +883,163 @@ for extension in (0, 23.5, 50):
         x, y, z = point
         assert placed.isInside(App.Vector(100+z, 30+x, 20+y), 1e-7, True) == occupied, point
 print('L12-INTERFACES-OK')
+'''
+
+
+def test_joint_spec_and_discovery():
+    joint = _lib().joint(" SKF-GE-6-C ", tilt_degrees=6.5)
+    assert (joint.family, joint.part_number) == ("joint", "skf-ge-6-c")
+    spec = joint.spec
+    assert [spec[k] for k in ("bore_dia_mm", "outside_dia_mm", "inner_width_mm",
+                              "outer_width_mm", "sphere_dia_mm")] == [6,14,6,4,10]
+    assert (spec["basic_dynamic_load_n"], spec["basic_static_load_n"], spec["mass_g"]) == (3600,9000,4)
+    assert spec["shaft_shoulder_dia_range_mm"] == [7.4,8]
+    assert spec["housing_opening_dia_range_mm"] == [9.5,12.7]
+    assert spec["tilt_degrees"] == 6.5 and spec["maximum_tilt_degrees"] == 13
+    assert "conditional" in spec["tilt_notes"] and "not allowable" in spec["rating_notes"]
+    assert spec["source_revision"] == "BU/P1 06116/1 EN, May 2013, printed pages 132–133"
+    assert len(spec["source_sha256"]) == 64 and len(spec["approximate"]) == 3
+    spec["shaft_shoulder_dia_range_mm"][0] = 99
+    assert catalog.joint_spec("skf-ge-6-c")["shaft_shoulder_dia_range_mm"] == [7.4,8]
+    assert _lib().catalog()["joints"]["skus"] == ["skf-ge-6-c"]
+    entry = next(row for row in library_listing()["exports"] if row["name"] == "joint")
+    assert "tilt_degrees" in entry["signature"] and "two-solid compound" in entry["description"]
+    with pytest.raises(LibraryError):
+        _lib().joint("skf-ge-6-c", direction=(0,0,0))
+
+
+@pytest.mark.parametrize("tilt", [-13.01,13.01,float("nan"),float("inf"),True,"0",None])
+def test_joint_rejects_invalid_tilt(tilt):
+    with pytest.raises(LibraryError, match="tilt_degrees"):
+        _lib().joint("skf-ge-6-c", tilt_degrees=tilt)
+
+
+@pytest.mark.parametrize("sku", ["ge-6-c","skf-ge-6-e","skf-ge-8-c","",None])
+def test_joint_rejects_unsupported_variants(sku):
+    with pytest.raises(CatalogError, match="Unknown joint"):
+        _lib().joint(sku)
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle").FREECADCMD is None,
+    reason="No FreeCADCmd binary available for joint interface checks.",
+)
+def test_joint_real_worker_interfaces_and_placement(tmp_path):
+    import subprocess
+    from test_cadexd_lifecycle import CADEX_ROOT, FREECADCMD
+    driver = tmp_path / "joint_interfaces.py"
+    driver.write_text(JOINT_INTERFACE_DRIVER)
+    completed = subprocess.run(
+        [str(FREECADCMD), "-c",
+         f"import sys; sys.path.insert(0, {str(CADEX_ROOT)!r}); exec(open({str(driver)!r}).read())"],
+        capture_output=True, text=True, timeout=120,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "GE6C-NOMINAL-OK" in completed.stdout, completed.stdout + completed.stderr
+
+
+JOINT_INTERFACE_DRIVER = r'''
+import json
+import math
+import FreeCAD as App
+import Part
+
+
+def cylinder(radius, length):
+    return Part.makeCylinder(radius, length, App.Vector(0, 0, -length / 2))
+
+
+from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
+from cadex_domain_api import create_domain_api
+from cadex_library_api import create_library_api
+from cadex_part_worker import build_part_shape
+pack = XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
+lib = create_library_api(create_domain_api(pack.domain, pack.api_exports, pack.output_types))
+
+
+def construct(tilt, **placement):
+    shape = build_part_shape(lib.joint("skf-ge-6-c", tilt_degrees=tilt,
+                                      **placement).body.to_payload())
+    assert shape.isValid() and len(shape.Solids) == 2
+    return sorted(shape.Solids, key=lambda solid: -solid.Volume)
+
+
+for invalid in (-13.01, 13.01, float('nan'), float('inf')):
+    try:
+        construct(invalid)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError(invalid)
+
+for tilt in (-13, 0, 6.5, 13):
+    outer, inner = construct(tilt)
+    rotation = App.Rotation(App.Vector(0, 1, 0), tilt)
+    # Independently integrated spherical slabs minus the cylindrical bore.
+    expected_volumes = (math.pi * (196 - (100 - 16/3)), 78 * math.pi)
+    for shape, volume in zip((outer, inner), expected_volumes):
+        assert shape.isValid() and len(shape.Solids) == 1
+        assert abs(shape.Volume - volume) < 1e-6
+    assert outer.common(inner).Volume < 1e-7
+    assert abs(outer.BoundBox.XLength - 14) < 1e-7
+    assert abs(outer.BoundBox.ZLength - 4) < 1e-7
+    # Read actual mating surfaces, independently of construction metadata.
+    for shape, radius, axis in ((outer, 7, App.Vector(0, 0, 1)),
+                                (inner, 3, rotation.multVec(App.Vector(0, 0, 1)))):
+        faces = [f for f in shape.Faces if isinstance(f.Surface, Part.Cylinder)]
+        assert len(faces) == 1
+        surface = faces[0].Surface
+        assert abs(surface.Radius - radius) < 1e-7
+        assert abs(abs(surface.Axis.dot(axis)) - 1) < 1e-7
+        spheres = [f.Surface for f in shape.Faces if isinstance(f.Surface, Part.Sphere)]
+        assert len(spheres) == 1 and abs(spheres[0].Radius - 5) < 1e-7
+    # Full nominal bore remains open along the tilted shaft axis.
+    shaft = cylinder(2.99, 20)
+    shaft.rotate(App.Vector(), App.Vector(0, 1, 0), tilt)
+    assert outer.common(shaft).Volume < 1e-7
+    assert inner.common(shaft).Volume < 1e-7
+    # Source limiting shoulders: shaft da max=8; housing Da min=9.5.
+    # No fillets or fit tolerances; test both sides of the nominal faces.
+    for side in (-1, 1):
+        shoulder = Part.makeCylinder(4, 2, App.Vector(0, 0, side * 3),
+                                     App.Vector(0, 0, side))
+        shoulder.rotate(App.Vector(), App.Vector(0, 1, 0), tilt)
+        assert outer.common(shoulder).Volume < 1e-7
+        housing = Part.makeCylinder(7, 2, App.Vector(0, 0, side * 2),
+                                    App.Vector(0, 0, side))
+        opening = Part.makeCylinder(4.75, 2, App.Vector(0, 0, side * 2),
+                                    App.Vector(0, 0, side))
+        assert inner.common(housing.cut(opening)).Volume < 1e-7
+    probes = [((6.9, 0, 0), True), ((7.1, 0, 0), False),
+              ((5.1, 0, 0), True), ((4.9, 0, 0), False),
+              ((6, 0, 1.9), True), ((6, 0, 2.1), False)]
+    inner_probes = [((2.9, 0, 0), False), ((3.1, 0, 0), True),
+                    ((4.9, 0, 0), True), ((5.1, 0, 0), False),
+                    ((3.5, 0, 2.9), True), ((3.5, 0, 3.1), False)]
+    placed_rings = construct(tilt, origin=(100,30,20), direction=(1,0,0), roll_degrees=90)
+    placement = App.Placement(App.Vector(100,30,20),
+                              App.Rotation(App.Vector(1,1,1), 120))
+    for shape, points, local in ((outer, probes, App.Rotation()),
+                                 (inner, inner_probes, rotation)):
+        placed = placed_rings[0 if shape is outer else 1]
+        assert placed.isValid() and abs(placed.Volume - shape.Volume) < 1e-6
+        surface = next(f.Surface for f in placed.Faces
+                       if isinstance(f.Surface, Part.Cylinder))
+        assert abs(surface.Radius - (7 if shape is outer else 3)) < 1e-7
+        axis = placement.Rotation.multVec(local.multVec(App.Vector(0,0,1)))
+        assert abs(abs(surface.Axis.dot(axis)) - 1) < 1e-7
+        sphere = next(f.Surface for f in placed.Faces
+                      if isinstance(f.Surface, Part.Sphere))
+        assert abs(sphere.Radius - 5) < 1e-7
+        assert (sphere.Center - placement.Base).Length < 1e-7
+        for point, occupied in points:
+            point = local.multVec(App.Vector(*point))
+            assert shape.isInside(point, 1e-7, True) == occupied
+            assert placed.isInside(placement.multVec(point), 1e-7, True) == occupied
+    print('GE6C ' + json.dumps({'tilt_deg': tilt,
+          'outer_volume_mm3': round(outer.Volume, 6),
+          'inner_volume_mm3': round(inner.Volume, 6),
+          'overlap_mm3': outer.common(inner).Volume,
+          'canonical_and_placed_probes': 24}))
+print('GE6C-NOMINAL-OK')
 '''

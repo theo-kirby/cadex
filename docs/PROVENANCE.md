@@ -763,8 +763,9 @@ is not introduced. Chamfers, liner thickness, manufacturing seams and radial
 running clearance are omitted. The two ideal spherical surfaces coincide:
 this is nominal geometry, not a tolerance model, press-fit guarantee,
 conservative collision envelope or a manufacturing drawing. It supports
-one bounded catalog candidate using existing primitives, pending delivery
-tests; no public joint API ships in this audit.
+the bounded `lib.joint("skf-ge-6-c", tilt_degrees=...)` value using existing
+primitives (ADR-211). The body retains two solids; metadata preserves the
+source revision/hash, shoulder limits and qualified ratings.
 
 **Reproduce and result.** Run the FreeCADCmd command in the probe's header
 against the existing built headless engine. At -13/0/6.5/13°, each ring is
@@ -775,9 +776,14 @@ match nominal dimensions, and 96 material/void probes pass across canonical
 and obliquely rotated/translated placements. Nonfinite/out-of-range tilt is
 rejected. Ø8 shaft shoulders and Ø9.5 housing openings have zero interference
 with the opposing ring at all four tilts (16 nominal shoulder checks).
-Existing packaged lifecycle/library baseline: 76 passed, no skips, 16.23 s.
-No engine-source edits, build, staging or full engine suite were needed or run;
+Qualification-stage packaged lifecycle/library baseline: 76 passed, no skips, 16.23 s.
+That audit needed no engine-source edits, build, staging or full engine suite;
 the baseline is not packaged joint verification.
-This establishes the stated approximation only. Delivery must
-preserve these limits and add real-worker/publication tests and fresh
-packaged verification. Full L3 and the solenoid interface gaps remain open.
+This establishes the stated approximation only. Delivery tests in
+`test_library.py` exercise the recipe through the actual part worker, including
+canonical/placed interfaces, analytic volumes, shoulder clearances and
+material/void probes at four tilts, plus cadexd publication and discovery.
+The commands for delivery verification are the full engine suite,
+`pixi run build-engine`, completed `pixi run stage-engine`, then the packaged
+lifecycle/library gate; ADR-211 records the result. Full L3 and the solenoid
+interface gaps remain open.

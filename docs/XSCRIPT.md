@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-09-06
+Verified against source: 2026-09-07
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -539,6 +539,24 @@ The 6 V speed/current and extrapolated stall torque in `.spec` are qualified
 by `rating_notes`. There is no continuous torque rating or actuator helper;
 choose control limits explicitly. Sources and conflicts: PROVENANCE §8b.
 Generic `n20` and other manufacturers/ratios are refused.
+
+#### Spherical plain joint `[ADR-211]`
+
+`lib.joint("skf-ge-6-c", tilt_degrees=0, origin=..., direction=...,
+roll_degrees=...)` returns a `LibraryPart` whose `.body` is a two-solid
+compound. Only SKF GE 6 C from the qualified catalog revision is supported.
+The common sphere centre is the datum; housing and neutral bore axes are +Z,
+with inner faces at ±3 mm and outer faces at ±2 mm. Inner tilt about local
++Y is applied before placement; `.spec` stays canonical. Finite tilt is
+bounded to ±13°, conditional on a shaft shoulder diameter no greater than
+8 mm. This authors hardware geometry, not an assembly joint or actuator.
+
+`.spec` carries the source revision/hash, mounting and shoulder dimensions,
+3.6/9 kN basic dynamic/static radial ratings and 4 g catalog mass. These
+are selection inputs, not allowable robot loads or physical inertia.
+Coincident nominal spherical surfaces omit running clearance, chamfers,
+liner and seams. No fit, installed motion, manufacturing or conservative
+collision guarantee follows. See PROVENANCE §8f.
 
 #### L12 linear actuator `[ADR-207]`
 
