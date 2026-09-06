@@ -515,7 +515,8 @@ browser is a `SpaceFile` *subtype* and is filtered in
 `ToolSelectPanelHelper` is the only thing that initialises its
 `_tool_group_active` and the first click into a live node editor reads it; and three bundled add-ons (`cycles`,
 `pose_library`, `io_mesh_uv_layout`) are no longer enabled by default because
-each registers against an editor that no longer exists.
+each registers against an editor that no longer exists — and `cycles` has since
+been deleted from the tree altogether (ADR-196).
 
 ### The window chrome (ADR-166)
 

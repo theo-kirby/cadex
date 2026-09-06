@@ -132,7 +132,7 @@ retires the Blender shell wholesale, which is the horizon on all of it.
 |---|---|---|---|
 | `source/blender/makesdna/DNA_userdef_types.h` | `app_template` default `""` → `"Mesh"` | A new user meets the chat-driven layout without finding it in a menu (ADR-024). `--app-template default` still escapes to stock Blender. | Keep `"Mesh"`, take upstream's changes to the surrounding struct. The literal is the whole change. |
 | `source/blender/blenloader/intern/readfile.cc` | `read_userdef` resets `app_template` to the DNA default rather than to `'\0'` | Upstream's comment says *use the default one* but the code hardcodes upstream's default, so the row above only ever reached a profile with no `userpref.blend` at all — every existing profile started as stock Blender, and a double-clicked bundle cannot pass `--app-template` (ADR-058). | Two-line re-apply at the end of `read_userdef`. Take the literal from the DNA member initializer, never restate `"Mesh"` here. |
-| `CMakeLists.txt` | `WITH_CADEX_ENGINE` option + `CADEX_ENGINE_DIR` cache path | Declares the option that bundles the engine. Additive: one `option()`, one `set(... CACHE PATH ...)`. | Re-add the block; it depends on nothing around it. |
+| `CMakeLists.txt` | `WITH_CADEX_ENGINE` option + `CADEX_ENGINE_DIR` cache path; `WITH_CYCLES` defaults `OFF` (ADR-196) | Declares the option that bundles the engine. Additive: one `option()`, one `set(... CACHE PATH ...)`. The Cycles default is one token, because `intern/cycles` is gone and the inherited guards must keep skipping it. | Re-add the block; it depends on nothing around it. Re-flip the default. |
 | `source/creator/CMakeLists.txt` | `install()` rules for the engine payload under `WITH_CADEX_ENGINE`; `Blender.app` → `${CADEX_APP_NAME}.app` in the install destinations and `OUTPUT_NAME` | The engine block is additive, one guarded block beside the existing `scripts` install (ADR-023, ADR-030). The rename is six string literals routed through one variable so the product is `Cadex.app` (ADR-030). | Re-add the engine block after upstream's install rules; re-apply the variable wherever upstream reintroduces a `Blender.app` literal. |
 | `build_files/cmake/testing.cmake`, `build_files/cmake/platform/platform_apple.cmake` | one `Blender.app` literal each → `${CADEX_APP_NAME}.app` | Same rename; these two hold the test-install and `DYLD_LIBRARY_PATH` paths that would otherwise point at a bundle that is not built. | One-line re-apply. |
 | `source/blender/windowmanager/intern/wm_window.cc` | two string literals: `"Blender"` → `"Cadex"`, and `" - Blender {version}"` → `" - Cadex"` — plus, since ADR-166, the *product* version appended from the bundle's `cadex_version.txt`, and the `GHOST_kEventNativeMenu` case (see §2d) | The window title is the most visible instance of the product name (ADR-030). The upstream version string is dropped rather than relabelled — "Cadex 5.3.0 Alpha" would be a lie about which version of what; the product version (repo-root `VERSION`, stamped by `build_app.sh`) is what the title carries now that the status bar is gone. | Re-apply inside `wm_window_title_text()`; the menu case re-adds beside `GHOST_kEventOpenMainFile`. |
@@ -168,7 +168,7 @@ conflict here is a one-line re-add per row.
 | `editors/screen/area.cc`, `editors/screen/screen_edit.cc`, `blenloader/intern/versioning_280.cc` | null-guard three `SpaceType::create` paths, falling back to the viewport | **Required by ADR-036.** Inherited call sites still ask for `SPACE_IMAGE` (render result) and `SPACE_GRAPH` (drivers editor); without these it is a null deref. |
 | `editors/space_file/space_file.cc` | `file_space_subtype_item_extend` drops the asset-browser item | The asset browser is a `SpaceFile` subtype, not a space type, so not-registering cannot hide it. |
 | `scripts/startup/bl_ui/space_toolsystem_toolbar.py` | `classes` trimmed to the viewport's tool panel (ADR-036); `NODE_PT_tools_active` **added back** (ADR-066) | Registering a `ToolSelectPanelHelper` is what runs its `register()`, which is the only thing that sets `_tool_group_active`. Leaving it out was invisible while `SPACE_NODE` was unregistered; with the editor live, the first click into it raises `AttributeError` from `wm.tool_set_by_id`. Its `_defs_node_*` live in this same file, so it pulls in no `bl_ui.space_node`. |
-| `blenkernel/intern/blendfile.cc`, `scripts/modules/addon_utils.py` | `cycles`, `pose_library`, `io_mesh_uv_layout` no longer enabled by default | Each registers against an editor we do not build and raised on every launch. Still installed. |
+| `blenkernel/intern/blendfile.cc`, `scripts/modules/addon_utils.py` | `cycles`, `pose_library`, `io_mesh_uv_layout` no longer enabled by default | Each registers against an editor we do not build and raised on every launch. The latter two are still installed; `cycles` has since been deleted outright (ADR-196, §6). |
 | `windowmanager/intern/wm_operators.cc` | 24 `WM_modalkeymap_assign` calls for missing operators removed | Each was a `CLOG_ERROR` per launch. |
 | `scripts/startup/bl_ui/__init__.py` | nine `space_*` modules leave `_modules` | They cross-import each other; remove as a group or not at all. |
 | `scripts/startup/bl_ui/space_toolsystem_toolbar.py` | image/node/sequencer tool panels no longer registered | Registering against a missing space type raises and **aborts bl_ui's whole registration loop**. |
@@ -289,13 +289,18 @@ tessellated BREP on screen.
 inherited `shell/CMakeLists.txt`. That keeps the disable commit out of the
 delta manifest and the §2 tables entirely: a `-D` on the configure line is
 zero lines of inherited diff. The delete commit is what touches the tree,
-and it removes the flag with it. Because `cmake --install` never prunes,
-the same script also removes what an older build tree left in the bundle
-for each disabled subsystem, as it already did for the ADR-183 add-on move.
+and it removes the flag with it — for Cycles that meant defaulting the
+inherited `option()` to `OFF` in `shell/CMakeLists.txt` (§2a, already a
+manifested file) so the guards that name the tree keep skipping it, and
+deleting nothing else: the manifest tracks *modified* files, so a deleted
+tree earns no row, and every other `WITH_CYCLES` guard stays as dead
+upstream text rather than as a merge conflict. Because `cmake --install`
+never prunes, the same script also removes what an older build tree left
+in the bundle for each disabled subsystem, as it already did for the
+ADR-183 add-on move.
 
 | Tree / option | Size | Note |
 |---|---|---|
-| `WITH_CYCLES` → `shell/intern/cycles` | 9.7 MB source (181 object files in the build tree; the earlier "~48 MB" was never measured), a 7 MB add-on copy and four preset folders in the bundle | A path tracer. Cadex renders solid-shaded BREP tessellation. **Disabled 2026-09-06 (ADR-196)**: `-DWITH_CYCLES=OFF` on the configure line, the stale `addons_core/cycles` and `presets/cycles` pruned from the bundle after install. The delete half removes `shell/intern/cycles`, `shell/scripts/presets/cycles` and the flag. |
 | `shell/tests/files/` | 784 MB | Blender's own render/regression fixtures. The single biggest line item in the working tree. Nothing in the four gate suites reads it. |
 | `shell/locale/` | 80 MB | Translations for a UI the app template hides. |
 | the nine unregistered editors: `space_action`, `space_clip`, `space_graph`, `space_image`, `space_nla`, `space_node`, `space_script`, `space_sequencer`, `space_spreadsheet` | — | **Disabled 2026-07-26 (ADR-036)**: not registered, so not in the editor menu. Compiling them out is the delete half and needs real work — kept subsystems reference 252 symbols across them. Deleting them also retires ~3,000 lines of now-dead keymap data in `blender_default.py`, which is what still prints ~92 `property ... not found` warnings on a headed launch. |
@@ -320,6 +325,13 @@ section carried, **landed 2026-07-26** — see §6.
 
 ## 6. Already deleted
 
+- **Cycles** (ADR-196, Phase 13b — the first shell-side tree through the
+  whole two-commit protocol): `shell/intern/cycles` (936 files, 9.7 MB of
+  source; 181 object files in the build tree; a 7 MB `addons_core/cycles`
+  copy in the bundle) and `shell/scripts/presets/cycles` (12 files).
+  Disabled 2026-09-06 from `build_app.sh`, deleted 2026-09-06 with
+  `WITH_CYCLES` defaulted `OFF` in `shell/CMakeLists.txt`. A path tracer;
+  Cadex draws solid-shaded BREP tessellation and never asked for it.
 - **The app template's layout machinery** (ADR-037, ROADMAP Phase 9):
   `_apply_simple_ui` and its 40-attempt retry loop, `_remove_other_workspaces`,
   `_collapse_to_viewport`, `_empty_scene`, `_hide_foreign_tool_panels`,

@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-09-05
+Verified against source: 2026-09-06
 
 Cadex is not written from scratch. It is a **derivative work of two large
 free-software projects**, carrying the design lessons of a third that we
@@ -129,9 +129,11 @@ never conflict with one: the `mesh_agent` package (chat, the parameter panel,
 the cadexd protocol client, hydration, picking), the `Mesh` app template
 that suppresses Blender's default UI, and the Cadex test suites.
 
-**What we plan to remove.** Phase 13b: Cycles and other subsystems that a
-CAD shell does not need, each behind a `WITH_*` option that makes the
-disable half of the removal protocol nearly free.
+**What we remove.** Phase 13b: subsystems a CAD shell does not need, each
+behind a `WITH_*` option that makes the disable half of the removal
+protocol nearly free. Cycles was the first through both halves
+(ADR-196, 2026-09-06): `shell/intern/cycles` is gone from the tree, and
+its licence material with it — nothing of ours derived from it.
 
 **Licence.** GPL-2.0-or-later. Blender's own `shell/COPYING` is present and
 unchanged; every file we wrote under `mesh_agent/` carries

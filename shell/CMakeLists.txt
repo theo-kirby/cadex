@@ -624,7 +624,8 @@ option(WITH_COMPILER_SIMD "Add the recommended Blender default SIMD flags to the
 mark_as_advanced(WITH_COMPILER_SIMD)
 
 # Cycles
-option(WITH_CYCLES "Enable Cycles Render Engine" ON)
+# Cadex: intern/cycles is deleted (ADR-196); the option stays so the guards below hold, default OFF.
+option(WITH_CYCLES "Enable Cycles Render Engine" OFF)
 option(WITH_CYCLES_OSL "Build Cycles with OpenShadingLanguage support" ON)
 option(WITH_CYCLES_PATH_GUIDING "Build Cycles with path guiding support" ON)
 option(WITH_CYCLES_EMBREE "Build Cycles with Embree support" ON)
