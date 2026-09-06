@@ -2992,10 +2992,21 @@ times were 1.28 s and 1.24 s; the whole suite took 86.26 s under an external
 uncommitted walk edits; the built engine and training venv were reused.
 No agent turn, GUI, remote run, build, or packaged gate was performed.
 
-Next evidence needed: a documented entry point with a repo-owned starting
-mechanism, automatic policy declaration, project-local outputs and domain
-docs, followed by the same entry point on a second mechanism. GUI attachment
-and remote training remain documentation-only under the current constraints.
+**The entry point, 2026-09-06 (ADR-199).** `cadex walk --out
+<project>/runs/<name>` is the one command: the legs above as child `cadex`
+commands, the digest edit as a rewrite of the script's one
+`assembly.policy` call, and the review as `review.json` in the project.
+Run twice on a fresh scratch copy of the same toy before the change
+landed — 1 it × 4 envs, 15.5 s and 16 s wall, exit 0 both times — it
+reproduced the audit's numbers exactly (**−27.1094**, then **−55.3480** with
+`Δ -28.2` in `PROGRESS.md` across the doubled reward weight), and showed
+the two things the ADR fixed: the review lived only on stdout, and the
+legs' commits carried the policy twice over plus its `.best` checkpoint.
+`cli/tests/test_walk.py` now runs both walks with the real engine and
+trainer (31.8 s), the review committed and no checkpoint or trace tracked.
+What remains, as the charter's own items: the same entry point on a second
+mechanism; GUI attachment and remote training, documentation-only under
+the current constraints.
 
 ## 8. Live mode: watching it, rather than reading about it
 

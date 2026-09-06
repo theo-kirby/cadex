@@ -41,11 +41,14 @@ POLICY_SWITCH = "policy_on"
 
 #: Where the walk's own files go under ``--out``: the sweep's bundle (only
 #: with ``--set``), the training bundle and policy, the rewritten script,
-#: and the verified rollout.
+#: the verified rollout, and the review — the numbers, as one file beside
+#: the artifacts they were read from, so a walk run under the project
+#: (``--out <project>/runs/<name>``) leaves its review in the project.
 SWEEP_DIRNAME = "sweep"
 TRAIN_DIRNAME = "train"
 ROLLOUT_DIRNAME = "rollout"
 SCRIPT_FILENAME = "script.py"
+REVIEW_FILENAME = "review.json"
 
 _CLI_DIR = Path(__file__).resolve().parents[1]
 
@@ -229,3 +232,51 @@ def review_from_outputs(outputs: Sequence[dict[str, Any]]) -> dict[str, Any]:
                     review[key] = policy[key]
             return review
     return {}
+
+
+def write_review(
+    out_dir: Path,
+    *,
+    review: dict[str, Any],
+    legs: Sequence[dict[str, Any]],
+    training: dict[str, Any],
+    params: dict[str, Any],
+) -> Path:
+    """Land the walk's review as ``review.json`` under ``--out``.
+
+    What a reader of the project needs without the envelope: the policy
+    that was verified, the trace's numbers, the trainer's receipt figures,
+    the parameters the rollout ran at, and the legs in order with their
+    exit codes and timings. Paths are written relative to ``out_dir``
+    where they fall under it, so the file reads the same from any clone.
+    """
+
+    def relative(value: Any) -> Any:
+        try:
+            return str(Path(str(value)).resolve().relative_to(out_dir.resolve()))
+        except (ValueError, OSError):
+            return value
+
+    payload: dict[str, Any] = {
+        "schema": "cadex-walk-review-v1",
+        "weights": review.get("weights"),
+        "sha256": review.get("sha256"),
+        "total_reward": review.get("total_reward"),
+        "reward_totals": review.get("reward_totals"),
+        "trace": relative(review["trace"]) if review.get("trace") else None,
+        "params": dict(params),
+        "training": {
+            key: training.get(key)
+            for key in ("reward_per_step", "wall_time_s", "device", "task_sha256",
+                        "witness_error", "parameters")
+            if training.get(key) is not None
+        },
+        "legs": [
+            {key: value for key, value in leg.items() if key != "argv"}
+            for leg in legs
+        ],
+    }
+    path = out_dir / REVIEW_FILENAME
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8")
+    return path

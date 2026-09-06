@@ -55,6 +55,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
 | `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
 | `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. | no |
+| `cadex walk --out DIR` | The lifecycle walk as one command: optional design turns (`--prompt`, repeatable), an optional change (`--set`), train and store, re-declare the policy in the script, verify and roll out, review. Every leg is a child `cadex` command; `review.json` lands in `--out`. Spends tokens only for `--prompt`. | only with `--prompt` |
 
 Flags, valid on either side of the subcommand:
 
@@ -135,7 +136,8 @@ with its stderr already on ours.
 
 **Iterating — change the mechanism or the task, retrain, compare** is
 four commands and one digest edit, with no new flag on `params`
-(ADR-192). A sweep that moves the task digest is refused at exit 3 while
+(ADR-192) — and since ADR-199 the four and the edit are one command,
+`cadex walk`, below. A sweep that moves the task digest is refused at exit 3 while
 a policy is declared against that task, correctly: the policy no longer
 fits, and the refusal writes nothing, so it cannot export the bundle a
 retrain would need. The convention is a **numeric switch parameter** in
@@ -170,6 +172,55 @@ parameter value outlives a script write, which is why the last step is a
 per-term `reward_totals`), and the CLI records it: the second run's
 `PROGRESS.md` row carries its `total_reward` **with the change against the
 last row that had one** (ADR-194, below).
+
+**The walk is one command** (ADR-199). `cadex walk --out DIR` runs the
+legs above in order, each as a **child `cadex` command** — so each lands
+the `PROGRESS.md` row and the project commit it always lands, writes the
+artifacts the documented command writes, and the walk adds no second way
+of doing any of them:
+
+1. `cadex -p PROMPT` for each `--prompt`, in order (the first starts or,
+   with `--resume`, continues the conversation; the rest continue it) —
+   the design turns, and the only leg that spends tokens. None is fine:
+   a project whose script already declares its task walks from there.
+2. With `--set NAME=VALUE`: `cadex params --set policy_on=0 --set …
+   --out DIR/sweep` — the iterate step, the switch blanked so the change
+   is accepted and the bundle exported at its new digest.
+3. `cadex train --out DIR/train --put` with the trainer's flags carried by
+   name (`--iterations`, `--envs`, `--seed`, `--label`, `--name`,
+   `--task`, `--timeout`, `--trainer-python`, and the warm-start triple
+   `--init-from`, `--init-from-parent-task`, `--init-from-task-change`).
+4. **The digest edit**, which was the one leg that was a person's: the
+   walk reads the script (`cadex script`), rewrites the two string
+   literals of its one `assembly.policy(task, weights="…", sha256="…")`
+   call to the stored policy's name and sha256 — nothing else in the
+   script changes — writes it to `DIR/script.py` and lands it with
+   `cadex script --set`. A script without the iterate convention (no
+   `policy_on=num(...)`, or not exactly one `assembly.policy` call) is
+   refused at exit 3 with the convention named; the walk does not guess
+   where a policy belongs in a script it did not write.
+5. `cadex params --set policy_on=1 --out DIR/rollout` — the verify and
+   the rollout, the trace exported.
+6. The review: the trace's `policy` block — `total_reward`, the per-term
+   `reward_totals`, the policy's sha256 — in the envelope under
+   `walk.review`, and as **`DIR/review.json`** (`cadex-walk-review-v1`:
+   the same numbers, the trainer's receipt figures, the parameters the
+   rollout ran at, and the legs with their exit codes and timings, paths
+   relative to `DIR`). Run the walk **under the project** — `--out
+   <project>/runs/<name>` — and the review is in the project: the walk's
+   own commit is that file, after the legs' commits.
+
+A leg that fails stops the walk there, with the leg's name and its error
+in `error` and the legs that ran under `walk.legs`; the exit code is the
+leg's for a usage error or a refusal, `1` otherwise. The walk lands no
+`PROGRESS.md` row of its own — its legs' rows are the record, and the
+last one carries the rollout's `total_reward` with its delta against the
+previous walk (ADR-194). `--set policy_on=…` is a usage error: the walk
+owns the switch. `cli/tests/test_walk.py` pins the leg order and the flags
+against a fake `cadex`, and runs the repository's plate-and-arm toy through
+two real walks — a placeholder digest to a verified rollout, then a reward
+change with a warm start — with the real engine and trainer at 1 it × 4
+envs, about 30 s in all.
 
 **The project is a codebase** (ADR-193). Every project root carries the
 documents an engineer keeps beside a model, created by the CLI on the
@@ -213,7 +264,11 @@ a row a person adds by hand counts too.
 **The project owns a git repository** (ADR-194). The first visit runs
 `git init` in the project root and writes a `.gitignore` that keeps out
 what a rebuild recreates (`script_artifacts/`), what is bulk (`frames/`,
-renders) and what is transient (the lock, `.blend1` backups); the script,
+renders), what is transient (the lock, `.blend1` backups) and, since
+ADR-199, what a walk re-makes — `.cxpolicy` files outside `assets/`
+(the trainer's checkpoints and the copies in a run's `train/`) and the
+`*-trace.json` rollouts, because the store keeps the policy a script
+names and `review.json` and `PROGRESS.md` keep the numbers; the script,
 its history, the stored assets, the `.blend` and the three documents are
 the project. After every accepted run the CLI commits whatever changed,
 with the `PROGRESS.md` row's words as the message and `committed <sha>.`
@@ -464,6 +519,7 @@ Fast, and honest about what it did not run.
 | `test_export.py` | Plan-building directly; conversion against a real engine. |
 | `test_turn_loop.py` | `mock_backend.py` + a real engine. |
 | `test_commands.py` | `main()` end to end against a real engine. |
+| `test_walk.py` | `cadex walk` against a fake `cadex` (leg order, flags, refusals; no engine), and the toy through two real walks with the real engine and trainer — **skips** the latter without the training venv. |
 
 `tests/fake_cadexd.py` is a scripted engine, not a loose mock: its replies
 go through the same `validate_response` path production uses, so a fixture

@@ -19122,3 +19122,68 @@ gates), `CADEX-BLENDER-GATE` emitted with `"ok": true`,
 no line mentioning locale or translation, `OK` last. The stage-engine
 relocation audit prints its non-fatal stage-only report as in every log
 since #83.
+
+## ADR-199 — The lifecycle walk is one command: `cadex walk` (2026-09-06)
+
+**Context.** After ADR-189 to ADR-195 the walk — design, assembly, MJCF
+and task, toy-scale local training, policy verify, rollout, review,
+iterate — existed leg by leg, and `docs/CLI.md` §2 documented iterating
+as "four commands and one digest edit". The edit was the one leg still a
+person's or a `sed`'s: after `cadex train --put` reports the stored
+policy's sha256, somebody writes it into the script's
+`assembly.policy(weights=…, sha256=…)` call before the engine verifies
+and rolls the policy out. The fresh-toy audit (`docs/MUJOCO.md` §7c,
+record `fond-mesa-1562`) re-proved every leg and recorded that the
+charter's single documented entry point was still open: its test helper
+supplied the digest edit, its outputs were siblings of the project, and
+no review artifact landed in the project. An uncommitted `walk.py` and
+its CLI wiring were carried into d34c3cab unqualified — no test, no doc,
+no ADR — and the plan (`lone-wood-3732`) asked for them to be inspected
+and fixed forward on one repository-owned toy.
+
+**Decision.** `cadex walk --out DIR` is the entry point. It runs each leg
+as a **child `cadex` command** — `-p` per `--prompt`, `params` with the
+switch blanked for `--set`, `train --put`, `script` / `script --set` for
+the digest edit, `params --set policy_on=1` for the verified rollout —
+rather than calling the engine itself, on purpose: every leg then lands
+the `PROGRESS.md` row and the project commit it always lands (ADR-193,
+ADR-194), the artifacts are the ones the documented commands write, and
+the walk adds no second way of doing any of them. The digest edit is a
+rewrite of exactly two string literals in the script's one
+`assembly.policy` call; a script without the ADR-192 convention is
+refused with the convention named. The walk's own artifact is
+`DIR/review.json` — the trace's numbers, the trainer's receipt figures,
+the parameters and the legs with exit codes and timings — so a walk run
+under the project (`--out <project>/runs/<name>`) leaves its review in
+the project, and the walk's own commit is that file. The scaffolded
+`.gitignore` now keeps a walk's re-makeable bulk out of the project's
+history: `.cxpolicy` files outside `assets/` (checkpoints, and the copies
+in a run's `train/`) and `*-trace.json` rollouts, because the store keeps
+the policy a script names and `review.json` and `PROGRESS.md` keep the
+numbers. Existing projects are untouched — the scaffold never overwrites
+— and the file says "edit freely".
+
+**Not taken.** A `PROGRESS.md` row for the walk itself (it would repeat
+its legs' numbers; the last leg's row already carries the delta). A file
+tool or a generated `docs/sensors.md`: the domain-doc convention is the
+caller's or a person's, and the qualification exercises it that way — the
+real test writes `docs/sensors.md` beside the toy and the walk's legs
+commit it. A design turn in the qualification: it would spend tokens on
+a mechanism the repository already owns, so the toy starts from `cadex
+script --set` and `--prompt` is pinned against the fake only.
+
+**Evidence.** Two real walks on a fresh scratch copy of the toy,
+2026-09-06, before any change: `cadex walk --iterations 1 --envs 4`
+from a placeholder digest — train 11.8 s, declare 1.3 s, rollout 1.4 s,
+exit 0, `total_reward -27.1094`, four project commits — and `cadex walk
+--set lift_weight=2e-4 --init-from … --init-from-parent-task …
+--init-from-task-change …` — sweep, train, declare, rollout, exit 0,
+`total_reward -55.348 (Δ -28.2 vs 2c1ad3fb at -27.1)` in `PROGRESS.md`,
+eight commits. The same numbers the audit measured leg by leg. What the
+run showed and this ADR fixed: the review lived only on stdout, and the
+run's `train/` committed the policy twice over plus its `.best`
+checkpoint. `cli/tests/test_walk.py` (13 tests, 31.8 s with the real
+engine and trainer) pins the digest edit, the review reader, the leg
+order and flags against a fake `cadex`, the refusals, and the toy through
+both real walks with the review committed and no checkpoint or trace
+tracked. The full CLI suite is the gate; see the commit.

@@ -454,6 +454,11 @@ script_artifacts/
 frames/
 *.mp4
 *.png
+# What a walk re-makes (ADR-199): the store keeps the policy a script names,
+# review.json and PROGRESS.md keep the numbers; checkpoints and traces stay out.
+*.cxpolicy
+!assets/*.cxpolicy
+*-trace.json
 # What is transient:
 .cadex-cli.lock
 *.blend1

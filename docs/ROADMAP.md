@@ -1789,11 +1789,18 @@ What makes them experimental, and what would settle it:
   `.xml`) joins the list, which is now the engine's whole stored union; the
   gate's `test_save_as_carries_imported_geometry` carries the triple and
   refuses a file the store would not accept.
-- [ ] **One reproducible lifecycle entry point** (`docs/MUJOCO.md` §7c,
-  reproducibility audit). The committed CLI legs and the fixed-toy integration
-  test work; a repo-owned starting mechanism, automatic policy declaration,
-  project-local review and domain docs still need one documented entry point.
-  Prove that same entry point on a second mechanism before claiming generality.
+- [x] **One reproducible lifecycle entry point** (ADR-199, `docs/CLI.md`
+  §2). `cadex walk --out <project>/runs/<name>` runs the legs as child
+  `cadex` commands — design turns, the blanked sweep, `train --put`, the
+  digest edit as a two-literal rewrite of the script's one
+  `assembly.policy` call, the verified rollout — and lands `review.json`
+  in the project as its own commit; checkpoints and traces stay out of the
+  project's history. Qualified on the repository's plate-and-arm toy, twice
+  (a placeholder digest to a verified rollout, then a reward change with a
+  warm start), by `cli/tests/test_walk.py` with the real engine and trainer.
+  The domain-doc convention is exercised by the caller (`docs/sensors.md`),
+  not generated. Still open, as the charter's own items: the same entry
+  point on a second mechanism, and the GUI-attached and remote modes.
 - [x] **A trained policy comes home headlessly** (ADR-190). `cadex asset
   --put walk.cxpolicy` for a pipeline and `put_asset` in the CLI agent's
   tool surface, both on the op the shell has had since ADR-043; the

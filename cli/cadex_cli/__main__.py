@@ -93,6 +93,7 @@ from .walk import (
     declare_policy,
     review_from_outputs,
     run_leg,
+    write_review,
 )
 
 #: Where a run works when ``--project`` is not given. Hidden, and beside
@@ -1152,11 +1153,17 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     report.digest = str(leg.envelope.get("digest") or "")
     report.revision = str(leg.envelope.get("revision") or "")
 
-    # Review: the trace's numbers.
+    # Review: the trace's numbers, in the envelope and as a file beside the
+    # rollout — the one artifact of the walk's own, and what its commit is.
     review = review_from_outputs(leg.envelope.get("outputs") or [])
     review["weights"] = weights
     review["sha256"] = sha256
     report.walk["review"] = review
+    review_path = write_review(
+        out_dir, review=review, legs=legs, training=report.training,
+        params=report.params,
+    )
+    report.walk["review_file"] = str(review_path)
     if review.get("total_reward") is None:
         report.notes.append(
             "the rollout exported no trace with a policy block; the walk "
@@ -1317,8 +1324,8 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command == "walk":
-        return  # the legs committed; nothing of the walk's own is in the project
+    # A walk's legs each committed; what is left is its review.json, when
+    # --out lies under the project. Outside it, nothing changed, no commit.
     try:
         sha = commit_project(
             report.project_root, f"cadex {_progress_what(command, args, report)}"
