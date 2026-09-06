@@ -3004,9 +3004,16 @@ the two things the ADR fixed: the review lived only on stdout, and the
 legs' commits carried the policy twice over plus its `.best` checkpoint.
 `cli/tests/test_walk.py` now runs both walks with the real engine and
 trainer (31.8 s), the review committed and no checkpoint or trace tracked.
-What remains, as the charter's own items: the same entry point on a second
-mechanism; GUI attachment, documentation-only under the current
-constraints. **Remote training is scripted, not run** (ADR-200, the same
+The same entry point now also passes on a vertical linear carriage
+(ADR-203, `examples/lifecycle/`): 1 iteration × 4 CPU environments,
+13.52 s wall, a verified 50-step rollout and total reward −24159.1953563.
+The repeated arm baseline was −27.1093842209 in 15.22 s. Both projects'
+`PROGRESS.md` explain the identical height term, different force/torque
+units, training versus rollout means, and sub-1-GB sampled memory peaks.
+The carriage does not hold height after one iteration; this closes pipeline
+generality at toy scale, not control performance. GUI attachment remains
+documented and unexercised (ADR-201). **Remote training is scripted, not run**
+(ADR-200, the same
 day): `--remote` on `train` and `walk` puts the one leg on the box through
 `remote_train.sh` and leaves every artifact where the local walk puts it;
 the dispatch itself stays a person's decision, and the box was not touched.

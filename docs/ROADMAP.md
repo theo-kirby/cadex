@@ -1799,9 +1799,15 @@ What makes them experimental, and what would settle it:
   (a placeholder digest to a verified rollout, then a reward change with a
   warm start), by `cli/tests/test_walk.py` with the real engine and trainer.
   The domain-doc convention is exercised by the caller (`docs/sensors.md`),
-  not generated. Still open, as the charter's own item: the same entry
-  point on a second mechanism (the GUI-attached mode is documented,
-  ADR-201, below).
+  not generated. The second mechanism is qualified below; the GUI-attached
+  mode is documented in ADR-201, below.
+- [x] **The same walk on a second mechanism** (ADR-203).
+  `examples/lifecycle/linear-carriage` uses a slider and force motor through
+  the unchanged entry point, at the arm's 1 iteration × 4 environments.
+  Both projects' `PROGRESS.md` carry matched metric definitions and measured
+  numbers. The carriage reaches a verified 50-step rollout but does not learn
+  to hold height in one iteration. `cli/tests/test_walk.py` pins the slide
+  joint, policy digest and review with the real engine and trainer.
 - [x] **The walk's remote-training handoff is scripted** (ADR-200,
   `docs/CLI.md` §2). `cadex train --remote` and `cadex walk --remote` run
   the train leg through `training/remote_train.sh train <bundle> <out> --

@@ -223,6 +223,14 @@ two real walks — a placeholder digest to a verified rollout, then a reward
 change with a warm start — with the real engine and trainer at 1 it × 4
 envs, about 30 s in all.
 
+The same entry point also runs the vertical linear carriage in
+`examples/lifecycle/` (ADR-203), with a real slide joint and a force motor.
+That directory gives reproduction commands and both projects' `PROGRESS.md`
+numbers at 1 iteration × 4 environments. Rollout reward/step is the verified
+trace's `total_reward / step_count`; the trainer's final batch mean is a
+separate metric. Force and torque effort penalties have different units,
+so these baselines prove coverage, not a ranking of mechanism quality.
+
 **Training on a remote machine is the same walk with one flag** (ADR-200).
 `cadex train --remote` and `cadex walk --remote` run the train leg through
 `training/remote_train.sh train` (ADR-089, `training/SETUP.md` §d) instead

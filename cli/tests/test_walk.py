@@ -342,6 +342,37 @@ def test_usage_errors_are_refused_before_any_leg_runs(
 # -- the real thing: the toy, twice ------------------------------------------
 
 
+@pytest.mark.skipif(
+    REAL_TRAINER_PYTHON is None,
+    reason="No training venv with jax and mujoco (training/SETUP.md).",
+)
+def test_the_same_walk_handles_a_linear_carriage(engine, tmp_path, capsys) -> None:
+    """Exercise a translational DOF through the unchanged public entry point."""
+    import math
+    import xml.etree.ElementTree as ET
+
+    source = Path(__file__).resolve().parents[2] / "examples/lifecycle/linear-carriage/script.py"
+    root = tmp_path / "carriage"
+    code, envelope = _run(capsys, "script", "--set", str(source), "--project", str(root))
+    assert code == EXIT_OK, envelope
+    out = root / "runs/baseline"
+    code, envelope = _run(
+        capsys, "walk", "--project", str(root), "--out", str(out),
+        "--iterations", "1", "--envs", "4", "--seed", "0", "--timeout", "600",
+    )
+    assert code == EXIT_OK, envelope
+    assert [leg["leg"] for leg in envelope["walk"]["legs"]] == ["train", "declare", "rollout"]
+    assert all(leg["exit"] == 0 for leg in envelope["walk"]["legs"])
+    model = ET.parse(next((out / "train").glob("*-model.xml")))
+    assert [j.get("type") for j in model.findall(".//worldbody//joint")] == ["slide"]
+    review = json.loads((out / REVIEW_FILENAME).read_text())
+    assert review["sha256"] == envelope["walk"]["review"]["policy_sha256"]
+    assert math.isfinite(review["total_reward"])
+    assert {row["label"] for row in review["reward_totals"]} == {"lift", "control_cost"}
+    progress = (root / "PROGRESS.md").read_text()
+    assert "train 1 it × 4 envs" in progress and "total_reward" in progress
+
+
 def _git(root: Path, *argv: str) -> str:
     return subprocess.run(
         ["git", "-C", str(root), *argv], capture_output=True, text=True, check=True

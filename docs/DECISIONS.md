@@ -19389,3 +19389,38 @@ including translated and rotated variants. One engine build, source suite,
 staging and the packaged lifecycle/library gates supply the executable
 proof; counts and limitations are in the work record. This does not close
 the separate GUI stale-revision replay risk documented in ADR-201.
+
+## ADR-203 — The unchanged lifecycle walk on a linear carriage (2026-09-06)
+
+**Decision.** Qualify the second mechanism with an ideal vertical slider and
+force motor, alongside the existing revolute arm and torque motor. Both are
+repository-authored xscript projects under `examples/lifecycle/`; both use
+`cadex walk --iterations 1 --envs 4 --seed 0 --timeout 600` with the local
+training venv. No dispatcher branch, new option or mechanism-specific
+workaround is needed. The project-document scaffold now distinguishes the
+trainer's batch mean from the verified rollout mean and asks for matching
+reward expressions, weights, units and episode lengths before ranking runs.
+
+**Evidence and limits.** Both train/declaration/rollout sequences exit 0;
+policy witnesses verify and both rollouts reach 50 steps. Arm total reward
+is −27.1093842209; carriage is −24159.1953563. Their `PROGRESS.md` files retain
+both sets of numbers, digest identities, resource measurements and metric
+definitions. The height term is identical; effort is N·mm versus N, so the
+score difference is not evidence that one mechanism is better. The carriage
+has no contact or travel stops and fails to hold its target after one
+iteration. This is generality coverage, not learned control or hardware
+validation. Walk wall times are 15.22/13.52 s, with sampled process-tree RSS
+986218496/979582976 bytes under an external 2.9 GB/850 s watchdog.
+
+**Versioning.** These projects are inside the parent repository, which the
+existing CLI deliberately does not nest or auto-commit. Commit source,
+project docs and numbers once with this experiment; ignore every policy,
+checkpoint, trace and accepted cache. Recipes retain disabled policy
+placeholders for fresh training. This uses the existing parent-worktree
+contract rather than changing runtime asset retention.
+
+**Verification.** The CLI suite includes a new real-engine/real-trainer walk
+that asserts the carriage exports a slide joint and verifies the trained
+policy digest in the rollout. The existing arm/iterate test still runs.
+No engine, protocol, payload or shell behavior changed; no build, GUI launch
+or remote dispatch was needed. Exact gate output is in this unit's record.

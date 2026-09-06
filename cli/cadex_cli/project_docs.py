@@ -159,6 +159,13 @@ as `total_reward 127.8 (Δ -1602.1 vs 2996fb73 at 1729.9)`: the delta,
 the digest of the run compared against, and that run's value. Each row
 is one commit in the project's own repository (`git log` is this table).
 
+For lifecycle comparisons, record iterations, environment count and seeds.
+`total_reward` sums rewards over the verified rollout's `step_count`;
+divide by that count for rollout reward per step. The trainer's
+`reward/step` is its final training-batch mean, a different measurement.
+Compare objectives only when reward expressions, weights, units and
+episode lengths match; a larger reward after changing them is not progress.
+
 {header}
 {rule}
 """
