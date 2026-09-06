@@ -1,3 +1,4 @@
+# Modified by the Cadex project, 2026. See docs/FREECAD.md.
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # /****************************************************************************
 #  *                                                                          *
@@ -38,10 +39,6 @@ set(Start_Scripts
         Init.py
         )
 
-if (BUILD_GUI)
-    add_subdirectory(Gui)
-    list(APPEND Start_Scripts InitGui.py StartMigrator.py)
-endif (BUILD_GUI)
 
 add_custom_target(StartScripts ALL
         SOURCES ${Start_Scripts}

@@ -1,3 +1,4 @@
+# Modified by the Cadex project, 2026. See docs/FREECAD.md.
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 configure_file(ThirdPartyLibraries.html.cmake
@@ -42,8 +43,6 @@ if(DOXYGEN_FOUND)
                            ${CMAKE_BINARY_DIR}/src/Base
                            ${CMAKE_SOURCE_DIR}/src/App
                            ${CMAKE_BINARY_DIR}/src/App
-                           ${CMAKE_SOURCE_DIR}/src/Gui
-                           ${CMAKE_BINARY_DIR}/src/Gui
                            ${CMAKE_SOURCE_DIR}/src/Mod
                            ${CMAKE_BINARY_DIR}/src/Mod
                            ${CMAKE_SOURCE_DIR}/src/Main #nothing to document there ATM...
@@ -62,7 +61,6 @@ if(DOXYGEN_FOUND)
     STRING(REGEX REPLACE ";" " " DOXYGEN_EXCLUDE_LIST "${DOXYGEN_EXCLUDE_DIR}")
 
     SET(DOXYGEN_OUTPUT_DIR ${CMAKE_BINARY_DIR}/doc/SourceDocu)
-    SET(DOXYGEN_IMAGE_PATH ${CMAKE_SOURCE_DIR}/src/Gui/Icons)
     SET(DOXYGEN_LAYOUT_FILE ${CMAKE_SOURCE_DIR}/src/Doc/FreecadDoxygenLayout.xml)
 
     find_package(Coin3DDoc)

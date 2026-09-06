@@ -18,8 +18,8 @@ Everything in this file is `[FreeCAD-inherited]` unless noted.
 |---|---|
 | `src/App` | `App::Document`, `DocumentObject`, properties, expressions, **transactions** — the substrate `publish_project_candidate` applies one candidate under, as a single transaction. (The Qt shell's `CadexTransactions.py` wrapper is gone with it, ADR-021; the publisher uses `App` directly.) |
 | `src/Base` | Units, vectors, matrices, persistence primitives, Python bindings glue. |
-| `src/Gui` | Qt6 main window + Coin3D/Quarter viewport. **Present but not built** — release and package configs set `BUILD_GUI=OFF` (ADR-022). Debug builds still compile it, so the tree stays healthy until Phase 8 deletes it. See §3. |
-| `src/Main` | `FreeCAD` / `FreeCADCmd` entry points. `FreeCADCmd` is load-bearing: every xscript worker is a `FreeCADCmd --safe-mode` subprocess. |
+| `src/Gui` | **Deleted** with all eleven workbench Gui directories and tests/src/Gui (Phase 8, ADR-214). Retained headless metatypes live in App/MetaTypes.h. |
+| `src/Main` | Headless Python module / `FreeCADCmd` entry points. `FreeCADCmd` is load-bearing: every xscript worker is a `FreeCADCmd --safe-mode` subprocess. |
 
 ### Capability workbenches (the product's four areas)
 
@@ -88,62 +88,34 @@ fork delta and was wrong — `Part.BRepOffsetAPI.MakePipeShell` already had
 
 §2a is the *additions*; this is the ledger of every inherited FreeCAD file
 this repository has **modified** since its import
-(`c2ccddfb3bbcbcff8cecd859968a8750d95832db`, 2026-07-23) — 66 files, 51
-under `src/` and 15 in the build substrate (`CMakeLists.txt`, `cMake/`,
-`tests/`). This ledger existed only as git history until 2026-08-29
-(ADR-171); the machine-readable list is `docs/inherited-modifications.json`,
-kept equal to the git diff by `cadex_tests/test_licensing_compliance.py`,
-and every file carries a one-line modification notice in its header
-(`Modified by the Cadex project, 2026. See docs/FREECAD.md.`), as LGPL-2.1
-§2(a) asks — except nine flagged `ledger-only` in the manifest
-(`Interpreter.cpp`, `Application.cpp`, `MainWindow.cpp`,
-`DlgSettingsGeneral.cpp`, `JointObject.py`,
-`BRepOffsetAPI_MakePipeShellPyImp.cpp`, `TopoShapePyImp.cpp`,
-`StartView.cpp`, `ThemeSelectorWidget.cpp`), where inserting even a
-comment line triggers a whole-file reformat under pre-commit; **this
-listing is their notice**, which is what `ledger-only` means. Grouped by
-why:
+(`c2ccddfb3bbcbcff8cecd859968a8750d95832db`, 2026-07-23) — 56 files,
+40 under `src/` and 16 in the build substrate. The machine-readable list
+is `docs/inherited-modifications.json`, pinned to git by the licensing suite.
+Every modified file carries a Cadex modification notice except the four
+`ledger-only` entries: `Interpreter.cpp`, `JointObject.py`,
+`BRepOffsetAPI_MakePipeShellPyImp.cpp` and `TopoShapePyImp.cpp`. Inserting a
+comment there triggers whole-file formatting; this listing is their notice.
 
-- **Headless metatypes** (ADR-213): `src/Gui/MetaTypes.h` now forwards to
-  `src/App/MetaTypes.h`, a relocated FreeCAD-derived header with its original
-  attribution. Twelve `src/Mod/Material/App` files and six retained Material
-  tests now include the App header; the manifest enumerates all nineteen
-  modified inherited files. The new path is a derived addition, not an
-  independently authored header or an extra modified-file manifest row.
-
-- **Workbench-removal and GUI-off build edits** (Phases 1 and 7 — ADR-007,
-  ADR-009, ADR-022): the root `CMakeLists.txt`, five `cMake/` helper
-  modules, `src/Mod/CMakeLists.txt`, the kept workbenches'
-  `CMakeLists.txt` (`Part`, `PartDesign`, `Assembly` ×3), and the
-  `tests/` CMake tree (`tests/CMakeLists.txt`, `tests/src/*/CMakeLists.txt`,
-  `tests/src/Gui/DockLayoutState.cpp`) — deletion of removed-workbench
-  references and the `BUILD_GUI` guards.
-- **The VibeCAD → Cadex rebrand and its revert to stock** (Stage C,
-  Phase 7 C6a): `src/App/ApplicationDirectories.cpp`,
-  `src/Base/Interpreter.cpp`, `src/Gui/Application.cpp`,
-  `src/Gui/MainWindow.{cpp,h}`, `src/Gui/DockWindowManager.cpp`,
-  `src/Gui/OverlayWidgets.cpp`, `src/Gui/ToolBarManager.cpp`,
-  `src/Gui/StartupProcess.cpp` — product identity strings and versioned
-  config discovery, most of it later reverted toward stock, leaving small
-  residual diffs.
-- **Themes and preference packs**: `src/Gui/Stylesheets/CMakeLists.txt`
-  (installs the Cadex themes), `src/Gui/PreferencePacks/CMakeLists.txt` +
-  `package.xml`, `src/Gui/PreferencePages/DlgSettingsGeneral.cpp`.
-- **The Start view's landing edits** (Phase 1.0):
-  `src/Mod/Start/Gui/{AppStartGui,StartView,ThemeSelectorWidget}.cpp`,
-  `StartView.h` — removed tiles for removed workbenches. The tree itself
-  ships in nothing (§1).
-- **Headless-Assembly fixes** (ADR-047, ADR-060):
-  `src/Mod/Assembly/{JointObject,CommandCreateView,Preferences,
-  UtilsAssembly,InitGui}.py`, `App/AppAssembly.cpp`, and the `Gui/` files
-  (`AppAssemblyGui.cpp`, `ViewProviderAssembly.cpp`, `Assembly.qrc`,
-  CMake) — import guards so App-level code survives without PySide, and
-  GUI-list trims.
-- **The ADR-128 kernel features**: `src/Mod/Part/App/` binding files —
-  §2a's table is their itemised story; they appear in the manifest like
-  every other modified file.
-- **Test residue**: `src/Mod/Part/TestPartApp.py` (removed-feature test
-  trims).
+- **Headless metatypes** (ADR-213): twelve Material App files and six retained
+  tests include `App/MetaTypes.h`. That relocated, attributed FreeCAD header
+  is a derived addition. Its temporary Gui forwarding header is now deleted.
+- **Build and directory removal** (ADR-007, ADR-009, ADR-022, ADR-214): root
+  CMake, five helper modules, `src/CMakeLists.txt`, `src/Doc/CMakeLists.txt`,
+  `src/Main/CMakeLists.txt`, `src/Mod/CMakeLists.txt`, the eleven retained
+  workbench parent CMake files and the retained tests CMake tree. Phase 8
+  removes retired Gui registrations, GUI-only script/resource registrations,
+  Main GUI targets and their resource configuration, the Qt test helper and
+  dead Doxygen paths. App registrations and unconditional install lists stay.
+- **Product configuration**: `src/App/ApplicationDirectories.cpp` and
+  `src/Base/Interpreter.cpp` preserve the engine's config discovery. The
+  modified GUI identity, theme, preference-pack and Start-view files were
+  deleted with their directories; they are no longer manifest entries.
+- **Headless Assembly** (ADR-047, ADR-060): retained
+  `src/Mod/Assembly/{JointObject,CommandCreateView,Preferences,UtilsAssembly,
+  InitGui}.py`, `App/AppAssembly.cpp` and its CMake registration preserve
+  headless imports and native publication. Modified Gui files are deleted.
+- **Kernel features** (ADR-128): `src/Mod/Part/App` bindings listed in §2a.
+- **Test residue**: `src/Mod/Part/TestPartApp.py` trims retired-feature tests.
 
 **The pre-import bound, stated rather than hidden**: the import commit is
 a squashed snapshot of VibeCAD's `cadex-teardown` branch, itself a FreeCAD
@@ -163,7 +135,7 @@ one-line notice *after* its header, applied and checked by
 `tools/apply_modification_notices.py`. Attribution and the component map
 live at the root: `NOTICE` and `THIRD_PARTY_LICENSES.md`.
 
-## 3. Disabled, awaiting removal
+## 3. Removal protocol and remaining boundaries
 
 ### `src/Gui` (+ every `src/Mod/*/Gui`, `tests/src/Gui`) — Phase 8
 
@@ -173,22 +145,18 @@ line of it. Measured effect on this tree: `lib/` 43 MB → 8.3 MB, `Mod/`
 49 MB → 22 MB, files matching `*Gui*` 93 → 8, and `bin/` reduced to
 `FreeCADCmd` + `CadexGeometryWorker`.
 
-The 2026-09-07 [deletion-readiness audit](PHASE8-AUDIT.md) counts 1,960
-tracked files / 65,331,470 bytes in src/Gui and 3,731 files / 137,324,776
-bytes across all thirteen GUI directories. **Disable is now complete** (ADR-213):
-all presets select `BUILD_GUI=OFF`, and the shared build-options initializer
-rejects `BUILD_GUI=ON`, including stale ON caches outside the presets.
-The metatype prerequisite now lives in retained
-`App/MetaTypes.h`; all eighteen retained Material includes have migrated and
-`Gui/MetaTypes.h` forwards for remaining GUI consumers. Deletion remains a
-separate gated commit. The audit lists build/install/test references,
-retained Assembly dependencies, run-start delta metrics and exact gates
-(ADR-213). The initializer already has a modification notice and manifest
-entry; this disable keeps the manifest at 66 files (51 src, 15 build/tests).
-QtCore, QtConcurrent and LinguistTools remain required. Remove deleted
-registrations and obsolete guards together.
+**Directory delete: 2026-09-07 (ADR-214).** Following the retained metatype
+move and complete GUI disable (ADR-213), delete all thirteen audited directory
+trees, MainGui.cpp, FreeCADGuiPy.cpp and the orphan InventorBuilder test.
+The exact removed volume and gate evidence are in [PHASE8-AUDIT.md](PHASE8-AUDIT.md).
+`App/MetaTypes.h`, all eighteen migrated Material includes, QtCore,
+QtConcurrent and LinguistTools remain. All presets stay headless and explicit
+GUI-on requests are rejected.
 
-Until then: **do not add to it, do not fix it, do not partially delete it.**
+**Residual GUI lineage remains open.** Mixed Assembly publication modules,
+unconditional GUI Python install lists and other sources outside the audited
+directories require a separate dependency audit. This closes the directory
+boundary, not the broader ROADMAP exit claim that no GUI source exists.
 
 ### Phase 1 workbench trees — complete
 
@@ -201,8 +169,8 @@ assembly BOM was dropped (ADR-008). Every tree under `src/Mod/` is now
 in §1.
 
 The protocol (per tree, two commits, logged in `docs/DECISIONS.md`):
-**disable, verify; delete, verify.** `src/Gui` is mid-protocol — disabled
-in Phase 7, delete scheduled for Phase 8.
+**disable, verify; delete, verify.** The Phase 8 directory boundary has now
+passed through both commits; residual GUI-lineage source remains to audit.
 
 ## 4. Already deleted (VibeCAD teardown) — do not resurrect
 

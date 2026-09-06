@@ -1,3 +1,4 @@
+# Modified by the Cadex project, 2026. See docs/FREECAD.md.
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # SPDX-FileCopyrightText: 2026 Joao Matos
 # SPDX-FileNotice: Part of the FreeCAD project.
@@ -43,10 +44,6 @@ SET(TestData_SRCS
 
 SOURCE_GROUP("" FILES ${Test_SRCS} ${TestData_SRCS})
 
-if(BUILD_GUI)
-    add_subdirectory(Gui)
-    list (APPEND Test_SRCS InitGui.py)
-endif(BUILD_GUI)
 
 set(Test_COPY_OUTPUTS)
 foreach(test_src ${Test_SRCS})

@@ -11,43 +11,6 @@ include_directories(
 
 set(CMAKE_AUTOMOC ON)
 
-function(setup_qt_test)
-    foreach(_testname ${ARGN})
-        add_executable(${_testname}_Tests_run ${_testname}.cpp)
-        add_test(NAME ${_testname}_Tests_run COMMAND ${_testname}_Tests_run)
-
-        if(NOT BUILD_DYNAMIC_LINK_PYTHON)
-            list(APPEND ${_testname}_LIBS
-                ${Python3_LIBRARIES}
-            )
-        endif()
-
-        target_include_directories(${_testname}_Tests_run PUBLIC
-            SYSTEM
-            ${QtTest_INCLUDE_DIRS})
-        target_link_libraries(${_testname}_Tests_run
-            FreeCADApp
-            FreeCADGui
-            ${QtTest_LIBRARIES}
-            ${${_testname}_LIBS})
-
-        if(WIN32)
-            set_target_properties(${_testname}_Tests_run PROPERTIES
-                RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-            set_tests_properties(${_testname}_Tests_run PROPERTIES
-                LABELS "Qt"
-                ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
-                ENVIRONMENT_MODIFICATION "${_test_env_mod}")
-        else()
-            set_target_properties(${_testname}_Tests_run PROPERTIES
-                RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests)
-            set_tests_properties(${_testname}_Tests_run PROPERTIES
-                LABELS "Qt"
-                ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
-        endif()
-    endforeach()
-endfunction()
-
 set(TestExecutables
     App_tests_run
     Base_tests_run
@@ -57,9 +20,6 @@ set(TestExecutables
 # NOTE: The following tests don't yet run on Windows because they can't find the *.pyd files needed by each FreeCAD
 # module.
 
-if(BUILD_GUI)
-    list (APPEND TestExecutables Gui_tests_run)
-endif()
 if(BUILD_ASSEMBLY)
     list (APPEND TestExecutables Assembly_tests_run)
 endif(BUILD_ASSEMBLY)

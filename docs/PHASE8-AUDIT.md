@@ -3,14 +3,13 @@
 Verified against source: 2026-09-07
 
 [Cadex-new] Audit of [FreeCAD-inherited] source at
-`d031bde033aca73242fa7a668f657fa15b16935f`. **Deletion requires its own verified unit.**
-The original audit found release code consuming `src/Gui/MetaTypes.h` and
-debug enabling GUI. The metatype prerequisite has since moved the declarations
-to `src/App/MetaTypes.h`, preserving a forwarding Gui header and migrating all
-18 retained includes (ADR-213). Debug disable is now complete: all presets
-select OFF and the shared initializer rejects GUI-on requests. Deletion is
-still a separate unit. Tables below retain the audit-revision findings and
-measurements. Full L3 remains open.
+`d031bde033aca73242fa7a668f657fa15b16935f`, followed by the prerequisite and
+deletion evidence below. The metatype contract now lives in `src/App/MetaTypes.h`
+and all eighteen retained includes migrated (ADR-213). All presets select
+headless builds and explicit GUI-on requests are rejected. **The thirteen
+audited GUI directories are now deleted** (ADR-214); historical findings below
+retain their audit-revision context. Broader GUI-lineage disposition and full
+L3 remain open. See the final section for the deletion's gates and limits.
 
 ## Disable evidence and measured boundary
 
@@ -175,7 +174,9 @@ pixi run test-release > /tmp/cadex-phase8-ctest-full.log 2>&1
 Compare failure **names**, not test numbers, to
 `build/ctest_baseline_failures.txt`; report new failures, removed tests and
 changed skip/disabled cases separately. Extract lines matching
-`^\s*\d+ - (.*?) \(` from each report and compare the sets. Do not overwrite
+`^\s*\d+ - (.*?) \(` **only after `The following tests FAILED:`** in
+each report and compare the sets; the earlier “did not run” list contains
+skips and disabled cases, not failures. Do not overwrite
 the baseline. Both cadex ctests choose .pixi's FreeCADCmd first, so even a
 release-directory ctest pass alone does not establish GUI independence.
 
@@ -267,3 +268,86 @@ rule changed; no installation, staging or fresh packaged gate was required.
 Local logs use `/tmp/cadex-disable-*.log`. No GUI launched or shell files
 changed. Next is the separately verified directory deletion; mixed Assembly
 modules remain retained, and broad Phase 8/fork-delta completion stays open.
+
+## Directory deletion verification (2026-09-07, ADR-214)
+
+The separate deletion removes **3,731 files / 137,324,213 bytes** under the
+thirteen audited directories. `src/Gui` accounts for 1,960 files / 65,330,907
+bytes; its forwarding metatype header explains the difference from the original
+audit. MainGui.cpp, FreeCADGuiPy.cpp and tests/src/Base/InventorBuilder.cpp add
+three files / 51,916 bytes: **3,734 files / 137,376,129 bytes total**. Sizes are
+tracked working-file bytes immediately before deletion, not filesystem allocation.
+
+Retired registrations are removed from the eleven workbench parents, src/Main,
+src, tests and Doxygen inputs. GUI-only script/resource lists in those parents
+are removed with their guards, but their source files and all unconditional
+install lists remain for the residual audit. Main's GUI resource configuration
+and Windows GUI launcher target are retired; the shared command-line launcher
+source remains. No Qt component or App tree is removed. Identity tests preserve
+MainCmd/MainPy and lowercase preferences, replacing retired-source reads with
+absence assertions. No shell source changes or GUI launches.
+
+The modified-file metric, computed by the audit's import/scopes/ours method
+with `--no-renames`, is distinct from removed volume:
+
+| Metric | nt2 start 7dd3d045 | Deletion working tree |
+|---|---:|---:|
+| FreeCAD manifest entries / modified files | 47 / 47 | 56 / 56 |
+| FreeCAD M-file inserted / deleted lines | 1,804 / 1,907 | 1,633 / 1,795 |
+| Blender manifest entries / modified files | 44 / 44 | 44 / 44 |
+| Blender M-file inserted / deleted lines | 1,046 / 129 | 1,046 / 129 |
+
+FreeCAD's M-file line footprint falls by 283 lines, but file count rises by
+nine; deleted upstream volume is not included in that metric. All 56 FreeCAD
+files (40 src, 16 build/tests) have notices or the four retained ledger-only
+entries. Working-tree equality and the notice checker pass. The broad
+fork-delta claim remains open rather than choosing one favorable measure.
+
+Debug/release configure and the **single release build** exit 0. Both caches
+are GUI OFF. Release Ninja dependencies contain zero paths under the deleted
+GUI boundary. Full engine suite: **2,021 passed, 52 skipped, one failure in
+263.29 s**. The sole failure is the licensing manifest's import-to-HEAD check:
+it cannot see this uncommitted deletion. Working-tree equality passes; the
+committed check must be repeated after landing. Both cadex ctests pass in
+16.74 s, still using their installed-engine preference.
+
+Initial concurrent CTest discovery produced a malformed generated Start test
+file and duplicate registrations. Removed the generated `*_tests.cmake` files
+and regenerated serially: all **1,544 registrations and their properties are
+identical** to the pre-deletion inventory, with no duplicates. The completed
+inherited run reports **162 failures / 1,537 enabled tests**, exit 8, 128.33 s:
+no new failure names against the 164-failure baseline. Baseline-only
+DlgVersionMigrator_Tests_run and SpreadsheetRenameProperty.renameProperty
+remain absent. The same three skips and seven disabled cases remain unchanged;
+all 35 Material registrations pass. A summary initially counted those ten
+non-runs as failures; the corrected failure-section extraction above avoids
+that error. No baseline file was overwritten.
+
+The residual-source audit is next. Main's retired resource template and shared
+launcher GUI branch, mixed Assembly modules and the unconditional Material,
+Measure, MeshPart, Test and Help Python lists are outside this deletion's source
+boundary. Their presence prevents a literal “no GUI source” exit claim; this
+unit does not weaken that exit criterion or assume these sources are removable.
+
+A final serial inherited rerun confirms the same **162 failures / 1,537 enabled
+tests in 123.54 s**, exit 8, with no new failure names. Before installation,
+quarantined 38 stale local paths: the thirteen debug GUI build directories,
+two generated Main GUI resources, 22 obsolete FreeCAD GUI libraries/bindings
+and the old GUI executable. Release contained no GUI directory or live GUI
+compiler dependency. `pixi run install-release` exits 0 without another build.
+
+`pixi run stage-engine` exits 0 after the fresh install. This is the documented
+2.4 GB local **stage-only** payload, with external library paths; it is not a
+relocated distributable. The stage's rpath audit reports those external paths
+as expected for this mode. Post-stage inspection finds no `*Gui.so`,
+`*Gui.dylib`, MainGui.cpp, FreeCADGuiPy.cpp or InventorBuilder.cpp in the
+payload; retained Assembly CommandCreateView, JointObject, Preferences and
+UtilsAssembly are present. The release dependency database still contains
+190 references to retained App/MetaTypes.h and zero deleted GUI paths.
+
+Fresh packaged lifecycle/licensing run before commit: **25 passed, one failure
+in 19.78 s**. Only the expected import-to-HEAD manifest comparison fails;
+all lifecycle and payload-license checks pass, and import-to-working-tree
+equality passes. Repeat the unchanged packaged command against committed HEAD
+as the final check. Logs use `/tmp/cadex-delete-*.log`. Hypergraph export/check
+runs before commit; no state graph or generated STATE/PLAN file is edited.

@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-09-06
+Verified against source: 2026-09-07
 
 **Native Blender geometry (ADR-185).** The mesh domain now includes
 `mesh.blender`: an xscript-owned recipe with named mesh inputs and JSON
@@ -451,18 +451,17 @@ What the engine stands on (details and the removal ledger in
 
 - `src/App` — `App::Document`, properties, expressions, **transactions** —
   the persistence and undo model the publisher relies on.
-- `src/Gui` — Qt6 main window, Coin3D/Quarter viewport. **Present but not
-  built**: release and package configs set `BUILD_GUI=OFF` (ADR-022), which
-  is the disable commit for this tree under `docs/FREECAD.md` §3. Deleting
-  it is Phase 8. Debug builds still build it, so the tree stays compilable.
+- `src/Gui`, eleven workbench Gui directories and their tests are deleted
+  (Phase 8, ADR-214). Retained headless metatypes live in `App/MetaTypes.h`;
+  all presets are headless and explicit GUI-on requests are rejected.
 - `src/Base` — units, vectors, persistence primitives.
 - `src/Mod/{Part,PartDesign,Sketcher,Assembly}` — the original capability
   areas; `src/Mod/{Mesh,MeshPart}` — the Phase 4 mesh domain substrate.
 - Support trees: `Import`, `Material`, `Measure`, `Show`, `Start`, `Test`,
   `Help`.
 - The 17 unused workbench trees were removed in Phase 1 (ADR-007..010).
-  `docs/FREECAD.md` §3 now carries one entry: `src/Gui`, disabled and
-  awaiting deletion.
+  `docs/FREECAD.md` §3 records the Phase 8 directory deletion and the
+  remaining GUI-lineage sources outside that boundary, still to audit.
 
 ### 4.2 MuJoCo `[Cadex-new dependency, upstream and unmodified]`
 

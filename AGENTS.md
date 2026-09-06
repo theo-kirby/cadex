@@ -134,8 +134,8 @@ src/Mod/cadex/cadex_tests/  pytest suite (headless; FreeCAD stubbed in conftest.
 src/Mod/{Part,PartDesign,Sketcher,Assembly}   the four capability workbenches
 src/Mod/{Mesh,MeshPart}   the mesh domain substrate
 src/{App,Base,Main}       inherited FreeCAD core (conservative zone)
-src/Gui                   present but NOT BUILT (BUILD_GUI=OFF, ADR-022);
-                          deletion is Phase 8 — docs/FREECAD.md §3
+src/Gui                   deleted in Phase 8 (ADR-214); residual GUI lineage
+                          outside that boundary — docs/FREECAD.md §3
 shell/                    the shell — a Blender fork (conservative zone;
                           ledger and upstream diff in docs/BLENDER-TREE.md)
 shell/scripts/startup/mesh_agent/   the assistant, as application code
@@ -289,8 +289,8 @@ The philosophy is **remove more than we add** (`docs/VISION.md`). Zones:
   the two-commit protocol in `docs/FREECAD.md` §3 — and on this side the
   disable commit is often a `WITH_*` CMake option or simply not registering a
   space type, so it is nearly free.
-- **`src/Gui` is not built.** Don't add to it, don't fix it, don't delete it
-  outside the Phase 8 protocol.
+- **`src/Gui` is deleted (ADR-214).** Do not resurrect it. Remaining GUI-lineage
+  source outside that boundary needs its own dependency audit and removal protocol.
 - **`shell/lib/<platform>` are submodules, not content.** Never commit their
   contents; never vendor a prebuilt library into the tree.
 - **`src/Mod/<unused trees>`** — removed only via the Phase 1 protocol

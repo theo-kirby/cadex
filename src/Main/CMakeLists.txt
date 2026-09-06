@@ -1,16 +1,10 @@
+# Modified by the Cadex project, 2026. See docs/FREECAD.md.
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-configure_file(freecad.rc.cmake ${CMAKE_CURRENT_BINARY_DIR}/freecad.rc)
 configure_file(freecadCmd.rc.cmake ${CMAKE_CURRENT_BINARY_DIR}/freecadCmd.rc)
 file(COPY cadex.ico DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
 if(WIN32)
-    set(CADEX_LAUNCHER_DESCRIPTION "Cadex portable launcher")
-    set(CADEX_LAUNCHER_FILENAME "Cadex.exe")
-    configure_file(
-        cadexPortableLauncher.rc.cmake
-        ${CMAKE_CURRENT_BINARY_DIR}/cadexPortableLauncher.rc
-    )
     set(CADEX_LAUNCHER_DESCRIPTION "Cadex command-line portable launcher")
     set(CADEX_LAUNCHER_FILENAME "FreeCADCmd.exe")
     configure_file(
@@ -19,55 +13,6 @@ if(WIN32)
     )
 endif()
 
-######################## FreeCADMain ########################
-if(BUILD_GUI)
-
-    SET(FreeCAD_SRCS
-        ${CMAKE_CURRENT_BINARY_DIR}/freecad.rc
-        cadex.ico
-        MainGui.cpp
-    )
-
-    SET(FreeCAD_LIBS
-        FreeCADGui
-    )
-
-    if(NOT BUILD_DYNAMIC_LINK_PYTHON)
-        # executables have to be linked against python libraries,
-        # because extension modules are not.
-        list(APPEND FreeCAD_LIBS
-            ${Python3_LIBRARIES}
-        )
-    endif(NOT BUILD_DYNAMIC_LINK_PYTHON)
-
-    add_executable(FreeCADMain WIN32 ${FreeCAD_SRCS})
-    target_link_libraries(FreeCADMain ${FreeCAD_LIBS})
-    if(BUILD_TEST)
-        add_dependencies(FreeCADMain TestSources)
-        add_dependencies(FreeCADMain TestGuiSources)
-    endif()
-    if (FREECAD_WARN_ERROR)
-        target_compile_warn_error(FreeCADMain)
-    endif()
-
-    SET_BIN_DIR(FreeCADMain FreeCAD)
-
-    if(WIN32)
-        INSTALL(TARGETS FreeCADMain
-            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        )
-    elseif(APPLE AND NOT BUILD_WITH_CONDA)
-        INSTALL(TARGETS FreeCADMain
-        RUNTIME DESTINATION MacOS
-            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        )
-    else()
-        INSTALL(TARGETS FreeCADMain
-            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-        )
-    endif()
-endif(BUILD_GUI)
 ######################## FreeCADMainCmd ########################
 
 SET(FreeCADMainCmd_SRCS
@@ -122,20 +67,6 @@ endif()
 
 ######################## Cadex portable launchers ########################
 if(WIN32)
-    if(BUILD_GUI)
-        add_executable(CadexPortableLauncher WIN32
-            CadexPortableLauncher.cpp
-            ${CMAKE_CURRENT_BINARY_DIR}/cadexPortableLauncher.rc
-            cadex.ico
-        )
-        target_compile_definitions(CadexPortableLauncher PRIVATE CADEX_GUI_LAUNCHER)
-        target_link_libraries(CadexPortableLauncher PRIVATE user32)
-        if(FREECAD_WARN_ERROR)
-            target_compile_warn_error(CadexPortableLauncher)
-        endif()
-        SET_BIN_DIR(CadexPortableLauncher CadexPortableLauncher)
-        INSTALL(TARGETS CadexPortableLauncher RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-    endif()
 
     add_executable(CadexCmdPortableLauncher
         CadexPortableLauncher.cpp
@@ -175,38 +106,3 @@ else(WIN32)
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     )
 endif(WIN32)
-
-######################## FreeCADGuiPy ########################
-if(BUILD_GUI)
-
-    SET(FreeCADGuiPy_SRCS
-        FreeCADGuiPy.cpp
-    )
-
-    add_library(FreeCADGuiPy SHARED ${FreeCADGuiPy_SRCS})
-
-    target_link_libraries(FreeCADGuiPy FreeCADGui)
-    if (FREECAD_WARN_ERROR)
-        target_compile_warn_error(FreeCADGuiPy)
-    endif()
-
-    SET_BIN_DIR(FreeCADGuiPy FreeCADGui)
-    SET_PYTHON_PREFIX_SUFFIX(FreeCADGuiPy)
-    if(WIN32)
-        # Name clash with target "FreeCADGui"
-        # Must be called "FreeCADGuiPy_d" and "FreeCADGuiPy" to work so override default
-        set_target_properties(FreeCADGuiPy PROPERTIES PDB_NAME_DEBUG "FreeCADGuiPy_d")
-        set_target_properties(FreeCADGuiPy PROPERTIES PDB_NAME_RELEASE "FreeCADGuiPy")
-    endif(WIN32)
-
-    if(WIN32)
-        INSTALL(TARGETS FreeCADGuiPy
-            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        )
-    else(WIN32)
-        INSTALL(TARGETS FreeCADGuiPy
-            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        )
-    endif(WIN32)
-endif(BUILD_GUI)

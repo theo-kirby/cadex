@@ -51,54 +51,15 @@
           "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
         },
         {
-          "path": "src/Gui/Application.cpp",
-          "notice": "ledger-only",
-          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
-        },
-        {
-          "path": "src/Gui/DockWindowManager.cpp",
+          "path": "src/CMakeLists.txt",
           "notice": "comment"
         },
         {
-          "path": "src/Gui/MainWindow.cpp",
-          "notice": "ledger-only",
-          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
-        },
-        {
-          "path": "src/Gui/MainWindow.h",
+          "path": "src/Doc/CMakeLists.txt",
           "notice": "comment"
         },
         {
-          "path": "src/Gui/MetaTypes.h",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Gui/OverlayWidgets.cpp",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Gui/PreferencePacks/CMakeLists.txt",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Gui/PreferencePacks/package.xml",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Gui/PreferencePages/DlgSettingsGeneral.cpp",
-          "notice": "ledger-only",
-          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
-        },
-        {
-          "path": "src/Gui/StartupProcess.cpp",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Gui/Stylesheets/CMakeLists.txt",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Gui/ToolBarManager.cpp",
+          "path": "src/Main/CMakeLists.txt",
           "notice": "comment"
         },
         {
@@ -115,22 +76,6 @@
         },
         {
           "path": "src/Mod/Assembly/CommandCreateView.py",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Mod/Assembly/Gui/AppAssemblyGui.cpp",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Mod/Assembly/Gui/CMakeLists.txt",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Mod/Assembly/Gui/Resources/Assembly.qrc",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Mod/Assembly/Gui/ViewProviderAssembly.cpp",
           "notice": "comment"
         },
         {
@@ -152,6 +97,10 @@
         },
         {
           "path": "src/Mod/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Import/CMakeLists.txt",
           "notice": "comment"
         },
         {
@@ -203,6 +152,22 @@
           "notice": "comment"
         },
         {
+          "path": "src/Mod/Material/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Measure/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Mesh/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/MeshPart/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
           "path": "src/Mod/Part/App/BRepOffsetAPI_MakePipeShell.pyi",
           "notice": "comment"
         },
@@ -229,22 +194,16 @@
           "notice": "comment"
         },
         {
-          "path": "src/Mod/Start/Gui/AppStartGui.cpp",
+          "path": "src/Mod/Sketcher/CMakeLists.txt",
           "notice": "comment"
         },
         {
-          "path": "src/Mod/Start/Gui/StartView.cpp",
-          "notice": "ledger-only",
-          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
-        },
-        {
-          "path": "src/Mod/Start/Gui/StartView.h",
+          "path": "src/Mod/Start/CMakeLists.txt",
           "notice": "comment"
         },
         {
-          "path": "src/Mod/Start/Gui/ThemeSelectorWidget.cpp",
-          "notice": "ledger-only",
-          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
+          "path": "src/Mod/Test/CMakeLists.txt",
+          "notice": "comment"
         },
         {
           "path": "tests/CMakeLists.txt",
@@ -256,10 +215,6 @@
         },
         {
           "path": "tests/src/CMakeLists.txt",
-          "notice": "comment"
-        },
-        {
-          "path": "tests/src/Gui/DockLayoutState.cpp",
           "notice": "comment"
         },
         {

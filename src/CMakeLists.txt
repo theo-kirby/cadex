@@ -1,3 +1,4 @@
+# Modified by the Cadex project, 2026. See docs/FREECAD.md.
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 add_subdirectory(Build)
@@ -9,12 +10,6 @@ add_subdirectory(Mod)
 add_subdirectory(Ext)
 add_subdirectory(Doc)
 
-if(BUILD_GUI)
-    add_subdirectory(Gui)
-    if(UNIX AND NOT APPLE)
-        add_subdirectory(XDGData)
-    endif()
-endif(BUILD_GUI)
 
 if(BUILD_TEMPLATE)
     add_subdirectory(Tools/_TEMPLATE_)

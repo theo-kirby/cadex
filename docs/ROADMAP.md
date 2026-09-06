@@ -308,7 +308,7 @@ this phase.
       (ADR-213, 2026-09-07).
 - [x] Complete the debug GUI disable: all presets select headless builds,
       and the shared initializer rejects explicit GUI-on requests
-      (ADR-213, 2026-09-07). GUI sources remain for the separate delete commit.
+      (ADR-213, 2026-09-07); directory deletion follows in ADR-214.
 - [x] **`cadex_assembly_worker.py` imported `CommandCreateView`** —
       GUI-lineage code used headlessly for exploded views, and the one
       import that made this deletion look more than mechanical. **Resolved
@@ -316,10 +316,13 @@ this phase.
       (FreeCAD's rule, ported), and the audit found the module installs
       regardless of `BUILD_GUI` anyway — the publisher still builds the
       native document object from it, which this deletion does not touch.
-- [ ] Delete, with the `BUILD_GUI` guards that Phase 7 added removed rather
-      than left dangling.
-- [ ] `docs/FREECAD.md` §1 row moves from "present, not built" to deleted;
-      DECISIONS entry.
+- [x] Delete the thirteen audited Gui directories and retired Main GUI sources,
+      InventorBuilder test and registrations, removing obsolete GUI guards
+      (ADR-214, 2026-09-07; validation in PHASE8-AUDIT.md).
+- [x] `docs/FREECAD.md` §1 row moves from "present, not built" to deleted;
+      ADR-214 records the delete boundary.
+- [ ] Audit remaining GUI-lineage source and unconditional Python install
+      lists outside that boundary; preserve required headless Assembly publication.
 
 **Exit criteria:** the tree contains no GUI source, `pixi run configure`
 (debug) still configures, and both cadex ctests stay green.
@@ -789,10 +792,9 @@ Not a phase that "completes" — a standing mode of work.
       (`shell/locale/`, 80 MB) — **disabled 2026-09-06, ADR-198**, delete
       half pending — then the VSE, grease pencil, the compositor, most of
       `shell/tests/files/` (784 MB), the unused `shell/release/datafiles`.
-- [ ] Engine side: Phase 8 (`src/Gui`, 66 MB) is unchanged and still
-      pending (Phase 9's warm-standby worker landed as ADR-055). Two more
-      found while
-      documenting: `src/Mod/{Start,Test,Help}` build but are in no shipped
+- [ ] Engine side: Phase 8's audited GUI directory boundary is deleted
+      (ADR-214); broader residual GUI-lineage source remains open. Further
+      candidates requiring their own disable/delete audit: `src/Mod/{Start,Test,Help}` build but are in no shipped
       payload (`docs/FREECAD.md` §1), and the staged payload is **2.3 GB**
       of which ~2.1 GB is development environment — two copies of LLVM,
       node, clang, CMake's docs (`docs/cadex-release-packaging.md`). The

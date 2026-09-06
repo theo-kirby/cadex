@@ -19735,3 +19735,28 @@ A CMake execution regression covers unset, OFF and three truthy requests;
 real debug/release configuration, one release build and audit gates are
 reported in PHASE8-AUDIT.md and the unit's record. No fork-delta reduction
 or Phase 8 deletion is claimed.
+
+
+## ADR-214 — Delete the audited Phase 8 GUI directory boundary (2026-09-07)
+
+**Decision.** After release disable d2c8bcc5 and ADR-213's metatype move and
+complete configuration disable, perform the separate delete commit for all
+thirteen audited GUI directories, MainGui.cpp, FreeCADGuiPy.cpp and the orphan
+InventorBuilder test. Remove their CMake registrations, GUI-only script and
+resource registrations in the eleven parents, Main GUI executable/module and
+portable-launcher target, Qt test helper and dead Doxygen paths. Retain the
+shared command-line launcher source, App trees, Qt components and all
+unconditional Python install lists, including Assembly's native publisher.
+
+**Scope and risk.** Conservative inherited edits are limited to build/test/doc
+registrations. The engine config identity tests now assert retired source
+absence while continuing to verify MainCmd/MainPy and lowercase preferences.
+No shell, protocol or replacement engine work. The manifest and per-file
+notices describe every inherited edit; deleted manifested files leave it.
+Unexercised platform-specific launch/build paths remain a limit of macOS gates.
+
+**Evidence.** PHASE8-AUDIT.md records removed volume separately from the
+run-start manifest-scoped delta, debug/release configure, one release build,
+engine tests, inherited failure-name comparison and fresh install/staging
+checks. Broader no-GUI-source and fork-delta claims stay open: directory
+removal does not dispose of mixed Python modules or prove a smaller patch.

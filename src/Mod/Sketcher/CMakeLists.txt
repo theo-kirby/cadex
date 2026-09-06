@@ -1,9 +1,7 @@
+# Modified by the Cadex project, 2026. See docs/FREECAD.md.
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 add_subdirectory(App)
-if(BUILD_GUI)
-    add_subdirectory(Gui)
-endif(BUILD_GUI)
 
 set(Sketcher_Scripts
     Init.py
@@ -23,19 +21,6 @@ set(Sketcher_TestScripts
     SketcherTests/TestSketchInternalFaces.py
 )
 
-if(BUILD_GUI)
-    list (APPEND Sketcher_Scripts
-          InitGui.py
-          TestSketcherGui.py
-    )
-    list (APPEND Sketcher_TestScripts
-          SketcherTests/TestConstraintPreselectionGui.py
-          SketcherTests/GuiTestCase.py
-          SketcherTests/TestPlacementUpdate.py
-          SketcherTests/TestOnViewParameterGui.py
-          SketcherTests/TestExternalFacePreselection.py
-    )
-endif(BUILD_GUI)
 
 set(Sketcher_Profiles
     ProfileLib/Hexagon.py
