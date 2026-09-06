@@ -1352,11 +1352,14 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
             int(args.iterations), int(args.envs), str(args.out)
         )
     if command == "train":
-        return "train {:d} it × {:d} envs → {:s}{:s}".format(
+        # The mode is part of what happened: a row trained on the box says
+        # so, and the project's ARCHITECTURE.md scaffold names the marker.
+        return "train {:d} it × {:d} envs → {:s}{:s}{:s}".format(
             int(args.iterations),
             int(args.envs),
             str(Path(str(report.training.get("out") or args.out)).name),
             " (stored)" if args.put else "",
+            " (remote)" if getattr(args, "remote", False) else "",
         )
     return command
 

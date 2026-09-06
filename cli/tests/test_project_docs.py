@@ -11,12 +11,13 @@ accepted run lands a row, and a turn's decision lands an ADR entry.
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
 import pytest
 
-from cadex_cli.__main__ import command_prompt, main
+from cadex_cli.__main__ import _progress_what, command_prompt, main
 from cadex_cli.agent import CLI_OVERLAY, system_prompt
 from cadex_cli.export import ExportedOutput
 from cadex_cli.project_docs import (
@@ -64,6 +65,49 @@ def test_scaffold_creates_the_three_and_never_overwrites(tmp_path) -> None:
     (root / ARCHITECTURE_NAME).write_text("# mine\n")
     assert scaffold_project_docs(root) == []
     assert (root / ARCHITECTURE_NAME).read_text() == "# mine\n"
+
+
+def test_the_scaffold_states_the_training_mode_and_the_walk_doc_agrees(tmp_path) -> None:
+    """ADR-200's three facts reach the project's own docs: which mode trains
+    (the venv here, or ``--remote`` on the box), that the artifacts land at
+    the same project-relative paths either way, and that a remote run is a
+    cold run. The walk's doc and the scaffold are one ticket: `docs/CLI.md`
+    must say the scaffold carries the section, so neither moves alone."""
+
+    scaffold_project_docs(tmp_path)
+    architecture = (tmp_path / ARCHITECTURE_NAME).read_text()
+    assert "## Training" in architecture
+    for fact in (
+        "`cadex train --remote`",
+        "training/remote_train.sh",
+        "same project-relative paths in both modes",
+        "runs/<name>/train/",
+        "runs/<name>/review.json",
+        "cold runs only",
+        "`--init-from`",
+        "(remote)",
+    ):
+        assert fact in architecture, fact
+
+    walk_doc = (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text()
+    assert "`ARCHITECTURE.md` scaffold carries a `## Training` section" in walk_doc
+    assert "Cold runs only" in walk_doc
+
+
+def test_a_train_row_names_the_mode_it_ran_in() -> None:
+    """`PROGRESS.md`'s What column says `(remote)` for a run on the box and
+    nothing extra for the venv, so the rows the scaffold promises are
+    comparable also say where each number came from."""
+
+    report = RunReport(training={"out": "/p/runs/r/train/r.cxpolicy"})
+    local = _progress_what(
+        "train", argparse.Namespace(iterations=2, envs=4, out="x", put=True, remote=False), report
+    )
+    remote = _progress_what(
+        "train", argparse.Namespace(iterations=2, envs=4, out="x", put=True, remote=True), report
+    )
+    assert local == "train 2 it × 4 envs → r.cxpolicy (stored)"
+    assert remote == local + " (remote)"
 
 
 def test_read_is_bounded_and_keeps_the_tail_of_progress(tmp_path) -> None:

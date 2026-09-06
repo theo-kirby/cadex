@@ -19254,3 +19254,12 @@ the policy home under the same name with the receipt's digest.
 `cli/tests/test_walk.py`: `--remote` and `--allow-cpu` reach the train
 leg only, and the warm start is refused before any leg. Full CLI suite
 green; see the commit and record node for the counts.
+
+**Follow-up (2026-09-06).** The project-doc scaffold did not move with
+the walk in the commits above, which the quality bar asks for. Fixed
+forward, one commit later: `ARCHITECTURE.md`'s scaffold gained a `##
+Training` section — the mode (venv or `--remote`), the same
+project-relative artifacts in both, cold runs only when remote — and a
+`train --remote` row in `PROGRESS.md` ends in `(remote)`;
+`cli/tests/test_project_docs.py` pins the section against `docs/CLI.md`'s
+remote paragraph so the pair stays together.

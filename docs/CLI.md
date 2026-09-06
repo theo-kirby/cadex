@@ -259,6 +259,13 @@ local walk's line for line. What the flag changes and what it refuses:
   run; a long run belongs to `remote_train.sh train --detach` and
   `pull`, outside the walk, which then continues from `cadex asset --put`
   and `cadex script --set` (§2 above).
+- **The project's docs say which mode it trains in.** The
+  `ARCHITECTURE.md` scaffold carries a `## Training` section for the
+  agent to fill in — local venv or `--remote`, and why — that states the
+  shared artifact paths and the cold-run limit above, and every `train
+  --remote` run's `PROGRESS.md` row ends in `(remote)`, so a reader of the
+  numbers knows where each came from. `cli/tests/test_project_docs.py`
+  holds this paragraph and that section together.
 - **Nothing here dispatches in a test.** `cli/tests/test_train.py` pins
   the command against `remote_train.sh`'s own usage line and runs the leg
   end to end — real engine, real export, real store — against a stand-in
@@ -272,7 +279,7 @@ first visit and never overwritten by it:
 
 | File | What it holds | Who writes it |
 |---|---|---|
-| `ARCHITECTURE.md` | What the project is, what the script declares and why, where the domain docs are. | the agent (through its caller) or a person |
+| `ARCHITECTURE.md` | What the project is, what the script declares and why, how it trains, where the domain docs are. | the agent (through its caller) or a person |
 | `DECISIONS.md` | The project's own ADR log — what was chosen, over what, why. Newest last. | a turn's closing `DECISION:` lines, or a person |
 | `PROGRESS.md` | One row per accepted run: time, command, revision, digest, what, numbers. | **the CLI**, after every accepted run |
 | `docs/<subject>.md` | Longer notes, one file per subject: `docs/gear-ratios.md`, `docs/sensors.md`, `docs/actuators.md`, `docs/rejected.md`. | the agent's caller, or a person |

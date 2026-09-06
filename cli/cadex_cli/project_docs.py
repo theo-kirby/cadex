@@ -8,8 +8,10 @@ codebase (ADR-193, the lifecycle audit's row 10 in ``docs/MUJOCO.md`` §7c).
 It carries the documents an engineer would keep beside the model, and they
 are read on every visit and updated as the work goes:
 
-- ``ARCHITECTURE.md`` — what the project is, what its script declares, and
-  where the domain docs are.
+- ``ARCHITECTURE.md`` — what the project is, what its script declares,
+  how it trains (locally from the venv or ``--remote`` on the box, the
+  same project-relative artifacts either way, cold runs only when remote —
+  ADR-200), and where the domain docs are.
 - ``DECISIONS.md`` — the project's own ADR log: what was chosen, over what,
   and why. Newest last.
 - ``PROGRESS.md`` — one row per run the CLI accepted, with the numbers.
@@ -100,6 +102,21 @@ parameters it declares and why each exists:
 
 | Output | Kind | Who consumes it |
 |---|---|---|
+
+## Training
+
+**Mode:** (`local` — the trainer runs from its venv on this machine, or
+`remote` — `cadex train --remote` / `cadex walk --remote` run the same
+leg on the box `training/remote_train.sh` names.) Fill in which, and
+why; `{progress}` marks each remote row `(remote)`.
+
+The artifacts are the same project-relative paths in both modes: the
+bundle and the policy under `runs/<name>/train/`, the verified rollout
+under `runs/<name>/rollout/`, the numbers in `runs/<name>/review.json`
+and as a `{progress}` row, so rows from either mode compare line for
+line. **Remote runs are cold runs only:** the dispatcher carries the
+bundle and the model out and nothing else, so a warm start
+(`--init-from`) trains locally.
 
 ## Domain docs
 
