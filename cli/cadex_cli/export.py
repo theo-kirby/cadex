@@ -17,6 +17,21 @@ how a file gets written. When ``export_model`` becomes a protocol op — it
 should, and it is not this PR — :func:`export_outputs` becomes a request
 instead of a subprocess and nothing above it changes.
 
+**Every other staged output is copied, not converted.** The engine also
+stages the non-geometry outputs of an accepted rebuild — a mesh's ``.ply``,
+an MJCF model's ``.xml``, a training task's, a policy receipt's and a rollout
+trace's ``.json`` — and names each one in the same ``display`` block. Those
+are the training bundle and the review numbers a pipeline needs
+(``docs/MUJOCO.md`` §7c), and there is nothing to convert: they land beside
+the STEP and STL **under the filename the engine staged them with**
+(``balance_task-task.json``, ``model-model.xml``), and the envelope names
+each under its suffix. The staged name is kept on purpose: the task bundle
+references its model by that name and ``training/cadex_train.py`` resolves
+the model beside the task by it, so the exported directory *is* the
+training bundle. Only an output with nothing staged — an assembly component
+that places another output's geometry, a solve diagnostic — is reported as
+skipped.
+
 **STEP files are not reproducible and must not be hashed.** AP214 embeds a
 generation timestamp, so two exports of an identical model differ byte for
 byte. A pipeline that wants to know whether the geometry moved compares the
@@ -62,6 +77,9 @@ class ExportedOutput:
     kind: str
     files: dict[str, str] = field(default_factory=dict)
     skipped: str = ""
+    #: A staged non-BREP artifact to copy verbatim, and where to. Not part
+    #: of the report: the report says what was written, not what was read.
+    copy: tuple[str, str] | None = field(default=None, repr=False)
 
     def to_json(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -165,11 +183,15 @@ def export_plan(
 ) -> tuple[list[dict[str, Any]], list[ExportedOutput]]:
     """Turn a ``display`` block into a conversion plan and its report rows.
 
-    Outputs with no BREP artifact are reported as skipped rather than
-    silently dropped: an assembly component places another output's geometry
-    and has none of its own, a mesh output is a ``.ply``, and a solve
-    diagnostic is not geometry at all. A caller who sees three outputs and
-    two files should be told which one and why.
+    BREP outputs are converted under the output's name; every other output
+    with a staged artifact is copied under the filename the engine staged
+    (``output-001.ply``, ``model-model.xml``, ``balance_task-task.json``),
+    because the training bundle references its model by that name and the
+    trainer finds it beside the task by it. Outputs with nothing staged
+    are reported as skipped rather than silently dropped: an assembly
+    component places another output's geometry and has none of its own,
+    and a solve diagnostic is not a file at all. A caller who sees three
+    outputs and two files should be told which one and why.
     """
 
     plan: list[dict[str, Any]] = []
@@ -180,20 +202,21 @@ def export_plan(
             continue
         kind = str(entry.get("artifact_kind") or "") or "none"
         source = str(entry.get("artifact_path") or "")
-        if kind != "brep" or not source:
+        stem = safe_stem(name)
+        if not source:
+            rows.append(
+                ExportedOutput(name=name, kind=kind, skipped="no staged artifact")
+            )
+            continue
+        if kind != "brep":
             rows.append(
                 ExportedOutput(
                     name=name,
                     kind=kind,
-                    skipped=(
-                        "not a BREP output"
-                        if kind != "brep"
-                        else "no staged artifact"
-                    ),
+                    copy=(source, str(Path(out_dir) / Path(source).name)),
                 )
             )
             continue
-        stem = safe_stem(name)
         targets = [
             {
                 "format": fmt,
@@ -214,12 +237,30 @@ def export_outputs(
     *,
     timeout: float = 600.0,
 ) -> list[ExportedOutput]:
-    """Write every BREP output in ``display`` into ``out_dir``."""
+    """Write every staged output in ``display`` into ``out_dir``.
+
+    BREP outputs are converted by the engine into ``formats``; the rest are
+    copied as staged. A staged file that is missing is an error naming the
+    output, for the copies exactly as for the conversions: a report that
+    lists a file that is not there is worse than no report.
+    """
 
     chosen = formats or ["step", "stl"]
     destination = Path(out_dir).expanduser()
     destination.mkdir(parents=True, exist_ok=True)
     plan, rows = export_plan(display, destination, chosen)
+    for row in rows:
+        if row.copy is None:
+            continue
+        source, target = row.copy
+        try:
+            shutil.copyfile(source, target)
+        except OSError as exc:
+            raise ExportError(
+                f"The engine could not export: {row.name}: staged artifact "
+                f"{source} could not be copied ({exc})"
+            ) from exc
+        row.files[Path(target).suffix.lstrip(".") or "file"] = target
     if not plan:
         return rows
 

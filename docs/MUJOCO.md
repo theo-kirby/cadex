@@ -2845,11 +2845,11 @@ row below was actually run, and the numbers are this run's.
 |---|---|---|---|---|
 | 1 | Ideation → design (parts as xscript) | `./cadex -p` | Works: §7b's rehearsal, three turns | the agent |
 | 2 | Assembly: joints, masses, actuator torque, sensors | the same script | Works | the agent |
-| 3 | MJCF export + task | any accepted rebuild | Works: `cadex export` rebuilt in **2.6 s** including verify and rollout. But `cadex export` writes only BREP outputs; the task JSON, the model XML, the policy receipt and the rollout trace all come back `"skipped": "not a BREP output"`, so the training bundle has to be dug out of `script_artifacts/<revision>/attempt-<id>/outputs/` by reading `script.json` | **a person, or a guess** |
+| 3 | MJCF export + task | any accepted rebuild | Works: `cadex export` rebuilt in **2.6 s** including verify and rollout. On 2026-09-06 it wrote only BREP outputs and the task JSON, model XML, policy receipt and rollout trace came back `"skipped": "not a BREP output"`, so the bundle had to be dug out of `script_artifacts/<revision>/attempt-<id>/outputs/`. **Closed the same day**: `cadex export` now copies every staged non-BREP output into `--out` under its staged filename and names it in the `--json` envelope; the trainer accepted the exported folder as its bundle unchanged (2 it × 8 envs, exit 0, task digest `602d62c1…`, 16 s wall). `docs/CLI.md` §3 | the agent, or a pipeline |
 | 4 | Training | `.venv/bin/python training/cadex_train.py <bundle> --out … --iterations 200 --envs 64 --progress …` | Works: 200 it × 64 envs in **22.5 s**, reward/step 5.24, witness error 3.2e-08 | **a person** — the CLI agent has no shell |
 | 5 | Policy home | `put_asset` over raw NDJSON (a 40-line scratch driver on the `cadexd_latency_integration.py` client) | Works: 54 577 bytes, listing returns both policies | **a person** — not in the CLI tool surface |
 | 6 | Verify + rollout | `cadex script --set` with the new `weights=` name and `sha256=` | Works: **1719.2** total reward, full 300-step horizon, against §7b's 1729.9 from a 400-iteration run | a person edits two lines; the agent could, through `edit_script` |
-| 7 | Review | the agent: `inspect scope=output`; a pipeline: the `policy` block of `assembly-simulation-trace.json` in the staged attempt | Works for the agent — asked to report the rollout, it read total reward 1719.23 and the five per-term totals through `inspect` unaided. A pipeline gets nothing from the CLI (row 3): the numbers are only in the staging directory | the agent; **a guess** for a pipeline |
+| 7 | Review | the agent: `inspect scope=output`; a pipeline: the `policy` block of `assembly-simulation-trace.json`, which `cadex export` now copies into `--out` (row 3) | Works for the agent — asked to report the rollout, it read total reward 1719.23 and the five per-term totals through `inspect` unaided. A pipeline reads the same numbers from the exported trace: `total_reward` 1729.95 and the five `reward_totals` on the scratch copy, no staging path read | the agent, or a pipeline |
 | 8 | **Iterate** | `cadex params --set shove_n=0.20` | **Refused, exit 3**: the task digest moved (`602d62c1…` → `369a0dd5…`) and the declared policy no longer fits. Correct by ADR-088 — and it means the refusal also never writes the new bundle, so there is nothing to retrain against. Iterating today is six legs: edit the script to drop or re-point the policy → rebuild → dig out the bundle → train (`--init-from … --init-from-task-change`) → `put_asset` → re-declare. Three of the six are the person's | **blocked** |
 | 9 | Compare and record | — | Nothing exists: no comparison, no `PROGRESS.md`, and the project directory is not a git repository | **missing** |
 | 10 | Project as a codebase | — | No `ARCHITECTURE.md`, `DECISIONS.md` or `PROGRESS.md`; nothing scaffolds them; nothing reads them on a visit | **missing** |
@@ -2887,15 +2887,17 @@ Two smaller things the run turned up. `training/SETUP.md` names the venv
 Python 3.13.12 with the four pins — either is fine, the doc just should not
 be read as the only place to look. And one `cadex export` left **two**
 attempt directories for the one accepted revision, 1.5 s apart, both
-complete; harmless, unexplained, not chased.
+complete; harmless, unexplained, not chased (the export that closed row 3
+left a third, so it is every export, not one).
 
 **What this orders.** The frontier, in the order that unblocks the most:
 
-1. **Outputs the CLI can hand over** (rows 3 and 7). `cadex export` already
-   holds the accepted attempt's `outputs/`; copying the non-BREP files
-   beside the STEP and STL, and naming them in the `--json` envelope, is a
-   `cli/` change and no protocol op. Without it, both the bundle and the
-   review are guesswork about staging paths.
+1. ~~**Outputs the CLI can hand over** (rows 3 and 7).~~ **Done, 2026-09-06**
+   (`cli/cadex_cli/export.py`, no protocol op): the non-BREP files are
+   copied beside the STEP and STL under their staged names and named in
+   the `--json` envelope, and the trainer takes the exported folder as its
+   bundle. The staged name is the whole trick — the task references the
+   model by it, so the copy needed no rename and the trainer no change.
 2. **`put_asset` in the CLI tool surface** (row 5), and a no-model
    `cadex asset` subcommand beside `params` so a pipeline can bring a
    policy home without a model turn either.

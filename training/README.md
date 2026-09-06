@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-08-29. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-09-06. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -47,11 +47,15 @@ than at the project root:
 ```
 
 The two must stay **side by side**, because the bundle references the model
-by *relative* path and sha256 — which is the whole reason copying the
-`outputs/` directory works and copying two files out of it into a flat
-folder does not. `inspect scope="output"` is the supported way to find the
-accepted attempt's directory without guessing at the revision and attempt
-ids.
+by *relative* path and sha256. `load_bundle` looks for the model at that
+path relative to the project root first, and then by its basename beside
+the task, so both the staged `outputs/` directory and a flat folder holding
+the two files under their staged names are bundles. The flat folder is what
+`./cadex export --out DIR` writes (`docs/CLI.md` §3): the task JSON, the
+model XML, the policy receipt and the rollout trace land beside the STEP
+and STL under their staged names, so a pipeline never reads a staging
+path. `inspect scope="output"` remains the supported way to find the
+accepted attempt's directory from the agent's side.
 
 Writes one self-contained file:
 

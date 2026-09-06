@@ -18414,3 +18414,61 @@ store validates suffix, not content, and the carry is about bytes.
   comment now says the two are equal, so a test asserting that equality is
   the obvious next guard and is not taken here because the shell test suite
   cannot import the engine module by design.
+
+## ADR-189 — `cadex export` hands over every staged output, under its staged name (2026-09-06)
+
+**Status:** accepted. **Zone:** `cli/` (LGPL) and `docs/`; no protocol op,
+no engine change, no `shell/` diff.
+
+### 1. Context
+
+The lifecycle audit (`docs/MUJOCO.md` §7c, 2026-09-06) found that `cadex
+export` wrote only BREP outputs. The training task JSON, the MJCF model
+XML, the policy receipt and the rollout trace — the training bundle and
+the rollout review — came back `"skipped": "not a BREP output"`, so a
+pipeline had to dig them out of `script_artifacts/<revision>/attempt-<id>/
+outputs/` by reading `script.json`. That was the first item of the audit's
+ordered frontier, and the one that unblocks `put_asset` and a training
+dispatcher behind it.
+
+### 2. Decision
+
+`export_plan` now copies every non-BREP output that has a staged artifact
+into `--out`, **under the filename the engine staged it with**, and names
+it in the `--json` envelope's `files` under its suffix. BREP outputs are
+still converted under the output's name; only an output with nothing
+staged (an assembly component, a solve diagnostic) is `skipped`, with the
+reason now `no staged artifact`.
+
+The staged name is kept rather than the output's because the task bundle
+references its model by relative path and `training/cadex_train.py`'s
+`load_bundle` resolves the model by that basename beside the task. Kept,
+the exported directory *is* a bundle the trainer accepts unchanged;
+renamed to the output's name, it would not be, and the trainer would have
+needed a change to read a file the CLI had just renamed.
+
+### 3. Evidence
+
+- `cli/tests/test_export.py`: the plan test now distinguishes copy from
+  skip; a no-engine test copies the four dynamics kinds under their
+  staged names and proves the engine binary is never run; a missing
+  staged copy is an error naming the output; the real-engine mixed-model
+  test asserts the `.ply` is the staged bytes. `cli/tests`: 85 passed.
+- On a scratch copy of the §7b rehearsal project: `cadex export --json`
+  in 2.0 s wrote two STEP/STL pairs and the four dynamics files; the
+  trainer, pointed at the exported folder alone, ran 2 iterations × 8
+  environments to exit 0 with the audit's task digest `602d62c1…`.
+- `training/README.md`'s claim that a flat copy of the two files does
+  not work was wrong against the code's fallback; fixed in the same
+  commit. Code wins.
+
+### 4. Consequences
+
+- A pipeline reads the bundle and the rollout numbers from `--out`, never
+  from a staging path. §7c rows 3 and 7 move from "a person, or a guess"
+  to "the agent, or a pipeline".
+- Every `cadex export` still leaves a fresh attempt directory for the
+  same accepted revision (three now on the audit's copy); harmless, still
+  not chased.
+- Next on the audit's order: `put_asset` in the CLI tool surface and a
+  no-model `cadex asset`, then a `cadex train` dispatcher.

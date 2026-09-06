@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-09-05. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-09-06. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -118,7 +118,13 @@ nothing else, so `cadex script > model.py` works.
   "params": {"blade_angle": 12.0, "hub_diameter": 40.0},
   "outputs": [
     {"name": "impeller", "kind": "brep",
-     "files": {"step": "/…/impeller.step", "stl": "/…/impeller.stl"}}
+     "files": {"step": "/…/impeller.step", "stl": "/…/impeller.stl"}},
+    {"name": "balance_task", "kind": "assembly_training_task_json",
+     "files": {"json": "/…/balance_task-task.json"}},
+    {"name": "model", "kind": "assembly_mjcf_xml",
+     "files": {"xml": "/…/model-model.xml"}},
+    {"name": "hinge", "kind": "none", "files": {},
+     "skipped": "no staged artifact"}
   ],
   "session_id": "96e5d6ce-…",
   "model": "claude-fable-5",
@@ -130,6 +136,20 @@ nothing else, so `cadex script > model.py` works.
 
 `error` is present instead of `notes` when `ok` is false. `outputs` entries
 that produced no file carry `skipped` with the reason.
+
+**BREP outputs are converted; every other staged output is copied.** A
+BREP is written under the output's name in each `--format`. A mesh's
+`.ply`, an MJCF model's `.xml`, a training task's, a policy receipt's and a
+rollout trace's `.json` are copied **under the filename the engine staged
+them with** (`model-model.xml`, `balance_task-task.json`,
+`assembly-simulation-trace.json`) and named in `files` under their suffix.
+The staged name is kept because the task bundle references its model by
+it and `training/cadex_train.py` resolves the model beside the task by it:
+the `--out` directory *is* the training bundle, and the trace's `policy`
+block *is* the rollout review, with no staging path read by anyone
+(`docs/MUJOCO.md` §7c, rows 3 and 7). Only an output with nothing staged —
+an assembly component placing another output's geometry, a solve
+diagnostic — is `skipped`.
 
 **Compare `digest`, never the files.** `digest` is the engine's content hash
 of the model: same script and same parameters, same digest, on any machine.
@@ -152,7 +172,7 @@ cli/cadex_cli/
   bridge.py            unix-socket server in the parent, in front of cadexd
   mcp.py               the MCP stdio server `claude` spawns
   agent.py             one `claude -p` turn; the system prompt
-  export.py            STEP/STL/BREP out of the display block
+  export.py            STEP/STL/BREP out of the display block; the rest copied
   report.py            the envelope and the prose
 cli/tests/             the suite (§7)
 ```
@@ -313,8 +333,10 @@ about a payload (ADR-023).
   `inspect scope=blueprint` lists them and `export --blueprints` copies
   them out — because a stored deliverable is not a render. Making one
   (`put_blueprint`) stays shell-only.
-- **Export is BREP-only.** Mesh outputs (`.ply`), assembly components and
-  solve diagnostics are reported as `skipped` with a reason rather than
+- **Export converts BREP and copies the rest.** Only BREP outputs are
+  converted (STEP, STL, BREP); every other staged artifact is copied as
+  staged (§3), and outputs with nothing staged — assembly components and
+  solve diagnostics — are reported as `skipped` with a reason rather than
   silently dropped. Export runs as a short `FreeCADCmd` job rather than a
   protocol op; promoting it to `export_model` is its own PR, and
   `export.py` is one seam so that it can be.
