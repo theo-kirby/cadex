@@ -2880,7 +2880,12 @@ and the refusal frame `CadexInspection.py` builds on that path
 shell does not validate replies, so it never saw this. A bare
 `inspect scope=document` over raw NDJSON succeeds (668 bytes), so the
 trigger is the argument shape the agent used, not the scope. The frame
-shape is the bug either way, and it is one function.
+shape is the bug either way, and it is one function. **Fixed 2026-09-06**
+(ADR-195): the frame is built by `CadexTools.tool_failure`, so it is the
+one tool-level envelope, with `scope`, `target` and `path` under
+`requested` and the captured `kind` under `observed`; a test runs
+`validate_response` over it and a recorded `inspect.failure` golden pins
+the shape beside the other two tool-level failures.
 
 Two smaller things the run turned up. `training/SETUP.md` names the venv
 `~/cadex-train-venv`; the one on this machine is `<repo>/.venv`, untracked,
@@ -2932,9 +2937,11 @@ left a third, so it is every export, not one).
    told about. What the convention cannot do is hide that a stored
    parameter value outlives a script write: the switch stays at 0 until
    a `params` call turns it back on, which is why the last step exists.
-5. **The `INSPECTION_FAILED` frame** (above): make it a `FAILURE_RESPONSE_SPEC`
-   frame, with a test that runs the validator over it, so an inspect
-   exception is a refusal the agent reads rather than a client crash.
+5. **The `INSPECTION_FAILED` frame** (above). **Done, 2026-09-06**
+   (ADR-195): a `FAILURE_RESPONSE_SPEC` frame built by `tool_failure`,
+   a test that runs the validator over it, and a recorded golden — so an
+   inspect exception is a refusal the agent reads rather than a client
+   crash. No protocol op and no `shell/` diff.
 6. **The project as a codebase** (rows 9 and 10). Row 10 **done,
    2026-09-06** (ADR-193, `cli/cadex_cli/project_docs.py`, no protocol
    op, no engine change): `ARCHITECTURE.md`, `DECISIONS.md` and

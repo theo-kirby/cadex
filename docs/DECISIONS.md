@@ -18902,3 +18902,40 @@ policy landed `total_reward -293.4 (Δ -421.2 vs 2996fb73 at 127.8)` and a
 commit of exactly the row, the script, its state and the history entry.
 `docs/CLI.md` §2, `docs/MUJOCO.md` §7c row 9 and item 6, `docs/ROADMAP.md`
 Phase 14.
+
+## ADR-195 — The `INSPECTION_FAILED` frame is the one tool-failure envelope (2026-09-06)
+
+**Context.** `FAILURE_RESPONSE_SPEC` says a refused tool call is one
+envelope for every op, because the agent reads `failure_code`, `observed`
+and `retry` and acts on them. `CadexInspection.complete_inspection` built
+its own frame on the exception path — `tool`, `failure_code`,
+`failure_stage`, `error`, plus `scope`, `target` and a size-accounted
+`result_json_bytes` copied from the success page — so it lacked eight
+required keys and carried three the spec forbids. The lifecycle audit
+found it (`docs/MUJOCO.md` §7c): an `inspect scope=document` call threw
+inside the engine during the agent's turn, and the CLI, which validates
+every reply, turned the refusal into a hard `CadexdError`. The shell never
+validates replies, so it had never seen the frame. The engine's state node
+was marked broken on this one frame.
+
+**Decision.** The exception path calls `CadexTools.tool_failure(
+"core.inspect", "INSPECTION_FAILED", "precondition", error, ...)` like
+every other refusal. What was asked for — `scope`, `target`, `path` —
+rides under `requested`; the captured `kind` rides under `observed`.
+`result_json_bytes` is dropped from the failure: it is a property of a
+page, and a refusal has no page. The error text stays bounded at 4096
+bytes. `failure_stage` stays `precondition`, as before.
+
+**Not taken.** Adding `result_json_bytes` (or `scope`/`target`) to the
+failure spec's optional set — that would be a per-op failure shape by
+another name, which is the thing the spec exists to forbid. Making the
+shell validate replies — out of scope, and a decision of its own.
+
+**Evidence.** `test_an_inspection_exception_is_a_contract_failure_frame`
+provokes the exception with an unknown captured kind and runs
+`validate_response("inspect", …)` over the result; a recorded golden
+`response_schemas/inspect.failure.json` pins the shape beside
+`resolve_pin.failure` and `write_script.failure`, so
+`test_failure_envelope_is_one_shape_for_every_op` now covers it too. No
+protocol op changed, no `shell/` diff. `docs/INTEGRATION.md` names the
+inspect refusal under the failure envelope; §7c item 5 closes.

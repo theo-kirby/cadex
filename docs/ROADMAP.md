@@ -1817,8 +1817,13 @@ What makes them experimental, and what would settle it:
   one recorded row; the project root is `git init`ed on the first visit
   with a CLI-written `.gitignore`, and every accepted run is one commit
   whose message is the row's words. Measured on the §7b toy's scratch
-  copy; pinned by `cli/tests/test_project_docs.py`. §7c row 9 closes;
-  the `INSPECTION_FAILED` frame (item 5) is the lifecycle frontier.
+  copy; pinned by `cli/tests/test_project_docs.py`. §7c row 9 closes.
+- [x] **The `INSPECTION_FAILED` frame is the one tool-failure envelope**
+  (ADR-195). `complete_inspection`'s refusal is built by `tool_failure`,
+  validated by a test and pinned by an `inspect.failure` golden, so an
+  inspect exception reaches the validating CLI as a refusal rather than a
+  hard client error. §7c item 5 closes; the lifecycle frontier is empty
+  on the engine side.
 - **Linux and Windows shell bundles.** The engine payload builds for both;
   only macOS arm64 has shell CI. Moot once Phase 12 lands — revisit then.
 

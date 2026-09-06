@@ -1262,21 +1262,25 @@ def complete_inspection(captured: Mapping[str, Any]) -> dict[str, Any]:
             result["_cadex_image_attachment"] = attachment
         return result
     except Exception as exc:
+        # One envelope for every refused tool call (FAILURE_RESPONSE_SPEC,
+        # ADR-195): the CLI validates every reply, and a frame of its own
+        # shape here was a hard client error rather than a refusal the agent
+        # could read. `scope`, `target` and `path` are what was asked for, so
+        # they ride in `requested`; a failure has no page, so no size field.
+        from CadexTools import tool_failure
+
         error = str(exc)
         if len(error) > 4096:
             error = error[:4093] + "..."
-        result = {
-            "ok": False,
-            "tool": "core.inspect",
-            "failure_code": "INSPECTION_FAILED",
-            "failure_stage": "precondition",
-            "error": error,
-            "scope": str(captured.get("scope") or ""),
-            "target": str(captured.get("target") or ""),
-        }
-        result["result_json_bytes"] = 0
-        size = _encoded_bytes(result)
-        while result["result_json_bytes"] != size:
-            result["result_json_bytes"] = size
-            size = _encoded_bytes(result)
-        return result
+        return tool_failure(
+            "core.inspect",
+            "INSPECTION_FAILED",
+            "precondition",
+            error,
+            requested={
+                "scope": str(captured.get("scope") or ""),
+                "target": str(captured.get("target") or ""),
+                "path": str(captured.get("path") or ""),
+            },
+            observed={"kind": str(captured.get("kind") or "")},
+        )
