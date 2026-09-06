@@ -1,8 +1,8 @@
-run: nt1
+run: nt2
 goal: .ouroboros/goal.md
 memory: auto            # -> hypergraph (config + CLI present)
-backend: headless
-mode: single
+backend: headless       # tmux: one streaming window per harness call in the run session
+mode: actor-critic      # a Codex critic grades every changed iteration; a reject reverts it
 overseer: agent
 idle_interval: 30m
 roles:
@@ -11,25 +11,41 @@ roles:
     model: null           # your Claude Code default
     timeout: 90m
     resume_for: 1
+    fallback:
+      - { harness: codex }   # while Claude is out of usage; back to Claude when it resets
+  critic:
+    harness: codex
+    model: null
+    timeout: 15m
+    fallback:
+      - { harness: claude, model: sonnet }
   overseer:
     harness: claude
     model: haiku
     timeout: 5m
-    resume_for: 1
+    fallback:
+      - { harness: codex }
   maintainer:
     harness: claude
     model: null
     timeout: 30m
-    resume_for: 1
+    fallback:
+      - { harness: codex }
+  planner:
+    harness: claude
+    model: null
+    timeout: 20m
+    fallback:
+      - { harness: codex }
 git:
-  branch: null            # -> ouroboros/nt1
+  branch: null            # -> ouroboros/nt2
   tag_on_accept: true
   revert_on_reject: true
   allow_dirty: false
 stop:
   after: 15h
   max_iterations: null
-  max_cost_usd: null      # subscription; no cap
+  max_cost_usd: null      # subscription; the number is API-equivalent, not a bill
   until: null
   on_done_accepted: null
 handoff:
@@ -38,3 +54,13 @@ hypergraph:
   reconcile_every: 5
   pressure: 3
   budget_units: 1
+limits:
+  cooldown: 30m           # block a limited harness this long when it does not say when it resets; doubles
+  max_cooldown: 3h
+  transient_strikes: 3
+plan:
+  enabled: true           # the plan view (now / soon / later) and the planner after each maintainer pass
+  every: 5
+  view: plan
+  md: PLAN.md
+  max_new_directions: 3

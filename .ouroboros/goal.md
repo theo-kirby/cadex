@@ -1,8 +1,10 @@
-# Goal: nt1 — cadex night test one
+# Goal: nt2 — cadex night test two
 
 ## Mission
 
-One night of autonomous, reviewable progress on cadex, in this priority order:
+One night of autonomous, reviewable progress on cadex, in this priority order.
+Ticked criteria shipped in nt1 (ADR-186..198); they declare no gap. The agents
+re-plan from the ladder every five iterations and record their bets in PLAN.md.
 
 1. **File lifecycle (broken)** — the most fragile part of the product.
 2. **The robot lifecycle loop, end to end, agent-driven, headless, in the repo.**
@@ -31,12 +33,12 @@ more than we add.
 
 File lifecycle:
 
-- [ ] Opening a `.blend` beside its `.cadex` hydrates the model (`load_post`
+- [x] Opening a `.blend` beside its `.cadex` hydrates the model (`load_post`
       queues a rebuild; a test asserts `model_objects_on_open > 0`).
-- [ ] A project locked out by a digest-moving change shows the re-accept box in
+- [x] A project locked out by a digest-moving change shows the re-accept box in
       the chat panel (failure code cached on the per-root state) and
       `write_script` recovers it from the UI.
-- [ ] Save-As carries `.cxpolicy` forward (the shell suffix list).
+- [x] Save-As carries `.cxpolicy` forward (the shell suffix list).
 
 Robot lifecycle loop:
 
@@ -46,10 +48,10 @@ Robot lifecycle loop:
       rollout → review, on this machine, with no human step. The rehearsal in
       `gilded-trail-2519` named the gaps; they are closed or recorded as the
       lifecycle frontier.
-- [ ] **Iterate works.** Change a part or a policy parameter, retrain, compare
+- [x] **Iterate works.** Change a part or a policy parameter, retrain, compare
       against the previous run, and the comparison lands in the project's
       `PROGRESS.md` with the numbers.
-- [ ] **Project as codebase.** Creating or first visiting a project scaffolds
+- [x] **Project as codebase.** Creating or first visiting a project scaffolds
       `ARCHITECTURE.md`, `DECISIONS.md`, `PROGRESS.md`; the agent tool surface
       reads and updates them; a convention for domain docs (e.g.
       `docs/gear-ratios.md`, `docs/sensors.md`) is documented and used by the
@@ -61,9 +63,9 @@ Robot lifecycle loop:
 
 Inherited-tree reduction:
 
-- [ ] At least two Phase 13b shell-side removals landed under the two-commit
+- [x] At least two Phase 13b shell-side removals landed under the two-commit
       protocol (disable commit, delete commit, DECISIONS entry).
-- [ ] The exploded-view import in `cadex_assembly_worker.py` is resolved, or a
+- [x] The exploded-view import in `cadex_assembly_worker.py` is resolved, or a
       record node says why not.
 
 Parts library:
@@ -71,32 +73,30 @@ Parts library:
 - [ ] An L2 boards family exists over `CadexCatalog`, with tests that include a
       real-kernel build, and the packaged lifecycle gate passes.
 
-Every unit:
+Every unit (a rule, not a gap; the critic grades it):
 
-- [ ] The zone's gate ran and the output is reported honestly; a record node
-      with real `## State Impact` targets; ROADMAP checkbox and ADR line where
-      AGENTS.md asks for them.
+- The zone's gate ran and the output is reported honestly; a record node with
+  real `## State Impact` targets; ROADMAP checkbox and ADR line where AGENTS.md
+  asks for them.
 
 ## Horizon ladder
 
-What to do if this runs for:
+What to do if this runs for (the planner re-plans from this every five
+iterations; nt1 shipped the old hour and day rungs, ADR-186..198):
 
-- **the next hour:** orient on STATE.md. Take file lifecycle first: hydrate on
-  open (`load_post` -> `on_file_changed` -> queue a rebuild), with a test.
-- **the next day:** the lockout re-accept box; the `.cxpolicy` Save-As suffix.
-  Then the **lifecycle audit**: run the existing rehearsal path headlessly,
-  list every step that still needs a human or a guess, and record the result
-  as the lifecycle frontier (a decision node with `NEW` impacts). Then the
-  **project-as-codebase scaffold**: `ARCHITECTURE.md`, `DECISIONS.md`,
-  `PROGRESS.md` created with the project, read by the agent on every visit,
-  with a test. Then the first two Phase 13b shell-side disable commits.
-- **the next week:** close the lifecycle gaps one unit each — the CLI's shell
-  access for the trainer, `put_asset` to bring a policy home, the iterate step
-  with a recorded comparison, domain-doc conventions, the remote-training
-  handoff script and doc, the GUI-attached mode doc. Resolve the exploded-view
-  import, then the Phase 8 delete commit for `src/Gui`. Phase 13b engine side.
-  Parts library L2 boards, then L3 motors and mechanisms. The `hide_render`
-  shell bug from `docs/IDEAS.md`.
+- **the next hour:** orient on STATE.md and PLAN.md. Take the smallest open
+  unit of the lifecycle walk: run the documented headless entry point end to
+  end on this machine and record exactly which leg still needs a person or a
+  guess. If it runs clean, that is the evidence that closes the walk gap.
+- **the next day:** close the remaining lifecycle legs one unit each: the
+  remote-training handoff script and doc, the GUI-attached mode doc, the
+  domain-doc convention exercised by the walk (`docs/gear-ratios.md`,
+  `docs/sensors.md`). Then the parts library L2 boards family over
+  `CadexCatalog` with a real-kernel test and the packaged lifecycle gate.
+- **the next week:** L3 motors and mechanisms. The Phase 8 delete commit for
+  `src/Gui`. Phase 13b engine side, two-commit protocol. The `hide_render`
+  shell bug from `docs/IDEAS.md`. Fold the two record nodes nt1 left
+  unreconciled.
 - **the next month:** run the whole lifecycle walk on a second mechanism to
   prove the shape holds; mg-legs tipping at the declared shove band, backward
   first; 25T horns and servo pigtails from manufacturer STEP sources; reduce
@@ -168,4 +168,6 @@ maintain
 ## Reconcile
 
 Maintainer pass every 5 work iterations, or as soon as 3 record nodes are
-unreconciled. The run branch is the single-writer branch for this run.
+unreconciled. The run branch is the single-writer branch for this run. The
+planner runs after each maintainer pass and owns the `plan` view (PLAN.md);
+the maintainer never touches it.
