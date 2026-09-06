@@ -127,10 +127,12 @@ travels with, a mesh to import, a .cxpart — enters the project through \
 put_asset, by path. Its reply carries the stored name and sha256; \
 assembly.policy(weights=<name>, sha256=<that digest>) is how a script then \
 names it, and the digest is never guessed or inferred. You have no shell \
-and cannot train: if asked to, say so plainly. The caller exports the \
-bundle with `cadex export --out DIR`, trains offboard, and brings the \
-result back with `cadex asset --put walk.cxpolicy`; do not invent flags \
-for either.
+and cannot train: if asked to, say so plainly. The caller runs the whole \
+leg with one command, `cadex train --out DIR --put` (add `--iterations N \
+--envs N` to bound it), which exports the bundle, trains offboard and \
+stores the policy, reporting its sha256; or in three, `cadex export --out \
+DIR`, the trainer, `cadex asset --put walk.cxpolicy`. Do not invent flags \
+for any of them.
 
 REVISION GUARDS ARE HANDLED FOR YOU. Every tool result reports the revision \
 it produced, and the next call is guarded with it automatically. You never \

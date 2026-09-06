@@ -53,6 +53,13 @@ class RunReport:
     #: `assembly.policy(sha256=...)` needs, so it is here rather than in a
     #: note a pipeline would have to parse.
     assets: list[dict[str, Any]] = field(default_factory=list)
+    #: The offboard trainer's receipt after a `train` run (ADR-191): the
+    #: JSON object `training/cadex_train.py` prints on its last line, as
+    #: printed — `out`, `bytes`, `sha256`, `reward_per_step`, `wall_time_s`,
+    #: `device`, the witness margin. Not re-derived here: a receipt taken
+    #: from a stream is a receipt something else can write into (ADR-093),
+    #: so this is the one the trainer meant as data.
+    training: dict[str, Any] = field(default_factory=dict)
     error: str = ""
     #: Free-form notes worth printing but not worth a field of their own.
     notes: list[str] = field(default_factory=list)
@@ -77,6 +84,8 @@ class RunReport:
             payload["out_dir"] = self.out_dir
         if self.assets:
             payload["assets"] = [dict(item) for item in self.assets]
+        if self.training:
+            payload["training"] = dict(self.training)
         if self.notes:
             payload["notes"] = list(self.notes)
         if self.error:
@@ -161,6 +170,16 @@ def human_lines(report: RunReport) -> list[str]:
                 str(item.get("name") or ""),
                 int(item.get("bytes") or 0),
                 str(item.get("sha256") or ""),
+            )
+        )
+    if report.training:
+        reward = report.training.get("reward_per_step")
+        lines.append(
+            "train  {:s}  reward/step {:s}  {:.1f} s  sha256 {:s}".format(
+                str(report.training.get("out") or ""),
+                "-" if reward is None else f"{float(reward):.4g}",
+                float(report.training.get("wall_time_s") or 0.0),
+                str(report.training.get("sha256") or ""),
             )
         )
     for note in report.notes:
