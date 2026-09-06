@@ -29,9 +29,10 @@ pasted into its system prompt instead, bounded, and what it decides comes
 back through one convention rather than a new tool: a line of its closing
 text that starts ``DECISION:`` lands in ``DECISIONS.md``. ``PROGRESS.md``
 is written by the CLI after every accepted run, so it holds what actually
-happened rather than what a model said would. A shell-attached agent has
-file tools of its own and edits the same three files directly; the shape is
-the same in both modes because the files are.
+happened rather than what a model said would. The shell's own agent has
+neither a file tool nor a shell (the Mesh tools are its whole world), so
+with the GUI attached the three files are still the CLI's and a person's;
+the shape is the same in every mode because the files are (ADR-201).
 
 **The project owns a git repository** (ADR-194). The first visit runs
 ``git init`` in the project root — unless the root already lies inside a
@@ -116,7 +117,10 @@ under `runs/<name>/rollout/`, the numbers in `runs/<name>/review.json`
 and as a `{progress}` row, so rows from either mode compare line for
 line. **Remote runs are cold runs only:** the dispatcher carries the
 bundle and the model out and nothing else, so a warm start
-(`--init-from`) trains locally.
+(`--init-from`) trains locally. With the GUI attached the same commands
+run from a terminal beside the open file, one at a time while no rebuild
+is in flight; the shell's own agent cannot run them, and it sees an
+accepted run on the next Rebuild Model or reopen.
 
 ## Domain docs
 

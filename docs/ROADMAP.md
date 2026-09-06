@@ -1799,8 +1799,9 @@ What makes them experimental, and what would settle it:
   (a placeholder digest to a verified rollout, then a reward change with a
   warm start), by `cli/tests/test_walk.py` with the real engine and trainer.
   The domain-doc convention is exercised by the caller (`docs/sensors.md`),
-  not generated. Still open, as the charter's own items: the same entry
-  point on a second mechanism, and the GUI-attached mode.
+  not generated. Still open, as the charter's own item: the same entry
+  point on a second mechanism (the GUI-attached mode is documented,
+  ADR-201, below).
 - [x] **The walk's remote-training handoff is scripted** (ADR-200,
   `docs/CLI.md` §2). `cadex train --remote` and `cadex walk --remote` run
   the train leg through `training/remote_train.sh train <bundle> <out> --
@@ -1811,6 +1812,19 @@ What makes them experimental, and what would settle it:
   usage line, the leg end to end against a stand-in dispatcher with the
   real engine. **Not executed**: no dispatch, and a warm start does not
   travel (`--remote` with `--init-from` is a usage error).
+- [x] **The walk with the GUI attached is documented against the client
+  code** (ADR-201, `docs/CLI.md` §2, `docs/MUJOCO.md` §7c row 11). It is
+  the same `cadex` commands from a terminal beside the open `.blend`:
+  the CLI's `flock` is per command and released before the `PROGRESS.md`
+  row and the commit, the shell takes no lock, an overlapping write is
+  refused off the on-disk `script.json` and retried once by the shell,
+  and the shell observes an accepted run on Rebuild Model or reopen. The
+  in-app agent has no shell and no file tool, so the project docs stay
+  the CLI's and a person's — the scaffold and `docs/CLI.md` said
+  otherwise and now agree with `backend.py`. **Not exercised** (no GUI
+  under this run); the one runtime leg — the shell holding the same lock
+  — is recorded, not taken. *Three modes, one shape* is now headless
+  exercised, remote scripted, GUI documented.
 - [x] **A trained policy comes home headlessly** (ADR-190). `cadex asset
   --put walk.cxpolicy` for a pipeline and `put_asset` in the CLI agent's
   tool surface, both on the op the shell has had since ADR-043; the

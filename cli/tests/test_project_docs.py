@@ -94,6 +94,28 @@ def test_the_scaffold_states_the_training_mode_and_the_walk_doc_agrees(tmp_path)
     assert "Cold runs only" in walk_doc
 
 
+def test_the_scaffold_states_the_gui_mode_and_the_walk_doc_agrees(tmp_path) -> None:
+    """ADR-201: the GUI-attached walk is the same commands from a terminal
+    beside the open file. The scaffold says so in one sentence, and the
+    walk's doc says which sentence, so neither can move alone -- and
+    neither may claim the shell's agent has a file tool, which it has not
+    (``--tools ""`` in the shell's ``backend.py``)."""
+
+    scaffold_project_docs(tmp_path)
+    architecture = (tmp_path / ARCHITECTURE_NAME).read_text()
+    assert "With the GUI attached the same commands" in architecture
+    assert "beside the open file" in architecture
+    assert "next Rebuild Model or reopen" in architecture
+    assert "file tools of its own" not in architecture
+
+    walk_doc = (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text()
+    flat = " ".join(walk_doc.split())  # the doc wraps; the sentences do not
+    assert "**With the GUI attached, it is the same walk from a terminal" in flat
+    assert "with the GUI attached the same commands run from a terminal beside the open file" in flat
+    assert "**The shell takes no lock.**" in flat
+    assert "file tools of its own" not in flat
+
+
 def test_a_train_row_names_the_mode_it_ran_in() -> None:
     """`PROGRESS.md`'s What column says `(remote)` for a run on the box and
     nothing extra for the venv, so the rows the scaffold promises are

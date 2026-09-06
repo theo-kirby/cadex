@@ -273,6 +273,85 @@ local walk's line for line. What the flag changes and what it refuses:
   (`warp` noise before the receipt, `==>` trailer after), including the
   three refusals: wrong bytes, nothing returned, CPU fallback.
 
+**With the GUI attached, it is the same walk from a terminal beside the
+open file** (ADR-201). The shell is a client of the same store: a saved
+`.blend` names `<dir>/<stem>.cadex/` as its engine project — derived from
+the file name on every call, never cached (`cadex_backend.project_root`)
+— and that directory is the `--project` every command above takes. No
+GUI was launched to write this; every sentence is the client code, and
+the doc yields to the code where they differ. What the two clients own,
+and when:
+
+- **Ownership is by time, and the lock is the CLI's.** A headless run
+  takes the advisory `flock` on `.cadex-cli.lock` for **one command**
+  (`_engine_session`: lock, spawn, open, unwind) and releases it when the
+  engine session ends — *before* the `PROGRESS.md` row and the project
+  commit, which guard nothing and need no engine. `cadex walk` takes no
+  lock of its own: each leg is a child `cadex` command that takes and
+  releases it, so between legs the project is nobody's. **The shell takes
+  no lock.** Its `cadexd` child is spawned on the first engine request
+  after a file opens and lives until a different file becomes current
+  (`on_file_changed` → `close_all`, on open and on Save-As) or the
+  application quits. So a person with the file open and a walk in a
+  terminal are two engines on one store, and nothing today refuses
+  that; `session.py`'s own docstring says what two engines do to a store
+  (each restores, each rebuilds, each writes `script.json`). The
+  contract is therefore **sequential by convention**: do the design
+  turns in the GUI, then run the walk while no rebuild is in flight —
+  the shell's engine is idle between operations, and every engine write
+  is guarded (next bullet). Making the shell hold the same lock is
+  runtime work in `shell/`, recorded as the criterion's one open leg,
+  not slipped in here.
+- **Overlap is caught on write, not on open.** The engine reads
+  `script.json` from disk on every guarded write and refuses a stale
+  `expected_revision` as `STALE_PROGRAM_REVISION`
+  (`CadexScriptedRuntime.prepare_project_candidate`), so a script the
+  walk accepted while the file was open cannot be overwritten by the
+  shell's next `write_script` or slider drag: the shell's lifecycle
+  reads the current revision off the refusal and retries **once**
+  against it (`Lifecycle.poll`), which is the ADR-039 self-heal doing
+  its job for a change that came from outside the window. What the
+  guard does not cover is two *rebuilds* of the same revision at once —
+  hence the convention above.
+- **How the shell observes an accepted run.** Three ways, all existing:
+  **Rebuild Model** re-runs the script the store holds, read from disk,
+  and adopts its source, specs and values into the scene
+  (`begin_rebuild_model` → `_refresh_script_state`), so the sliders and
+  the script mirror follow the walk's digest edit without reopening.
+  **Reopening the file** (File > Open, or Revert) runs `load_post` →
+  `queue_open`: the restore-verified `open_project` and the display
+  `rebuild`, hydrating the viewport from the engine (ADR-186); a walk's
+  accepted revisions restore cleanly, because the CLI accepted them
+  through the same ops. The **re-accept box** (ADR-187) appears only
+  when the stored script no longer reproduces the accepted digest —
+  a hand-edited `script.py`, or a different engine build — and its one
+  button sends the store's own source back through `write_script`; a
+  walk never puts a project there. Until one of the three happens, the
+  viewport shows what the `.blend` baked at its last save.
+- **The in-app agent cannot run the walk, and cannot edit the project's
+  docs.** The shell starts its CLI with every built-in tool off
+  (`--tools ""`) and `--allowedTools` limited to the Mesh tools, from a
+  temporary working directory, so it has no shell and no file tool — on
+  purpose, so every mutation runs on Blender's main thread. The legs are
+  the person's or a pipeline's, at the terminal; `cadex -p` turns run
+  their own conversation (`agent.json`, a sibling of the shell's
+  transcript in the `.blend`, which carries the shell's own session id)
+  and are the one leg that can be done in either window.
+- **Same steps, same docs, same artifacts.** The legs, their order and
+  their refusals are the list above unchanged; `ARCHITECTURE.md`,
+  `DECISIONS.md` and `PROGRESS.md` are scaffolded by the first CLI
+  visit whichever window came first and written only by the CLI and a
+  person; the domain docs are the same `docs/<subject>.md`; and
+  `runs/<name>/train/`, `runs/<name>/rollout/`, `review.json` and the
+  `PROGRESS.md` row are the same project-relative paths. Nothing a
+  walk writes says whether a window was open — which is the point, and
+  what makes a GUI walk's `PROGRESS.md` comparable with a headless
+  one's line for line. The `ARCHITECTURE.md` scaffold says so in one
+  sentence under `## Training` — *with the GUI attached the same
+  commands run from a terminal beside the open file* — and
+  `cli/tests/test_project_docs.py` holds that sentence and this
+  paragraph together.
+
 **The project is a codebase** (ADR-193). Every project root carries the
 documents an engineer keeps beside a model, created by the CLI on the
 first visit and never overwritten by it:
@@ -295,9 +374,10 @@ what happened rather than what a model said would: `params`, `script
 row, with the exported trace's `total_reward` and the trainer's
 `reward_per_step`, wall time and sha256 in the numbers column when the
 run produced them. Printing the script and listing the store change
-nothing and get no row. A shell-attached agent has file tools and edits
-the same three files directly; the files are what make the two modes one
-shape.
+nothing and get no row. The shell's own agent has neither a file tool
+nor a shell (the Mesh tools are its whole world), so with the GUI
+attached the three files are still the CLI's and a person's; the files
+are what make the modes one shape.
 
 **The comparison is one recorded row** (ADR-194). A number an earlier
 row also carried is written with its change against that row — the
@@ -532,7 +612,8 @@ every `--resume` look like an expired session.
 one process per project and a sweep will run several of these at once. The
 kernel releases it on process death, so there is no stale-lock heuristic to
 get wrong. A second run is refused with a readable message; `--wait` blocks
-instead.
+instead. It is held for one command and released before the `PROGRESS.md` row
+and the commit. The shell does not take it (§2, *with the GUI attached*).
 
 ## 6. Which engine
 

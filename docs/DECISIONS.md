@@ -19263,3 +19263,71 @@ project-relative artifacts in both, cold runs only when remote — and a
 `train --remote` row in `PROGRESS.md` ends in `(remote)`;
 `cli/tests/test_project_docs.py` pins the section against `docs/CLI.md`'s
 remote paragraph so the pair stays together.
+
+## ADR-201 — The GUI-attached walk is the same commands beside the open file, documented from the client code (2026-09-06)
+
+**Context.** *Three modes, one shape* had two modes closed — headless
+exercised (ADR-199), remote scripted (ADR-200) — and one open:
+`docs/MUJOCO.md` §7c row 11 said the GUI-attached walk was "the in-app
+agent, which has a shell", not exercised, doc only. The run's constraint
+forbids launching the GUI, so the plan's short unit (record
+`golden-mist-0498`) asked for the mode documented against the actual
+client behaviour — ownership and locking, when the headless caller
+releases the project, how the shell observes accepted changes — with the
+code winning over the doc wherever they differed.
+
+**What the code says.** Read, not run: `cli/cadex_cli/session.py` and
+`__main__.py`, `shell/scripts/startup/mesh_agent/cadex_backend.py`,
+`backend.py` and `__init__.py`, `src/Mod/cadex/CadexScriptedRuntime.py`.
+(1) The CLI's `flock` on `.cadex-cli.lock` is held for **one command** and
+released when `_engine_session` unwinds — before the `PROGRESS.md` row
+and the project commit; `cadex walk` holds none itself, each leg does.
+(2) **The shell takes no lock**: nothing under `shell/` names the file.
+Its `cadexd` child lives from the first engine request until a different
+file becomes current (`on_file_changed` → `close_all`) or quit. (3) The
+engine guards every write against the **on-disk** `script.json`
+(`prepare_project_candidate` reads the store's state per request), so a
+script accepted by the CLI while the file is open refuses the shell's
+next write as `STALE_PROGRAM_REVISION`, and the shell's `Lifecycle.poll`
+retries once against the revision the refusal reports. (4) The shell
+observes an accepted run through **Rebuild Model** (re-runs the stored
+source from disk and adopts specs, values and source), through reopening
+(`load_post` → `queue_open`, the restore-verified open plus the display
+rebuild, ADR-186), and never through the re-accept box, which is for a
+store whose script no longer reproduces its digest (ADR-187). (5) The
+in-app agent runs with `--tools ""` and `--allowedTools` limited to the
+Mesh tools, from a temporary directory: **no shell, no file tool**.
+
+**Decision.** Document it as it is: with the GUI attached, the walk is
+the same `cadex` commands from a terminal beside the open `.blend`,
+against the same `--project` (`<stem>.cadex/`, derived from the file
+name every time), with the same legs, the same three documents and
+domain docs, and the same project-relative artifacts — nothing a walk
+writes says whether a window was open. Ownership is **sequential by
+convention**: design turns in the window, the walk while no rebuild is
+in flight; the write guard makes an overlap loud rather than silent, but
+two rebuilds of one revision at once are not refused. The doc says so
+plainly. `docs/CLI.md` §2 gains the paragraph and §5 the two sentences
+about scope; §7c row 11 is rewritten; the `ARCHITECTURE.md` scaffold's
+`## Training` section gains the one sentence the doc names, and
+`cli/tests/test_project_docs.py` holds the two together.
+
+**Corrected, because the code won.** `docs/CLI.md` and the scaffold's
+module docstring both said *a shell-attached agent has file tools of its
+own and edits the same three files directly*. It has not, by
+`backend.py`'s own comment ("Disable Claude Code's built-in tools; the
+agent must go through the Mesh tools"). With the GUI attached the project
+docs are the CLI's and a person's, and the new test refuses the old
+sentence in both places.
+
+**Not taken, recorded.** The shell holding the same advisory lock while
+its engine session is open would make the convention a refusal. That is
+runtime work in `shell/` (under `mesh_agent/`, so within the spent diff),
+its own unit with the gate; it is the criterion's one open leg and is
+declared on the record node rather than started here. No GUI was
+launched and the mode is not exercised: the evidence is the client code,
+as the charter allows for this run.
+
+**Evidence.** `cli/tests/test_project_docs.py` (the new test and the
+ADR-200 one beside it); the CLI suite green — counts in the commit and
+the record node. No engine, protocol or `shell/` change.
