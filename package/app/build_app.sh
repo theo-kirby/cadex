@@ -158,11 +158,18 @@ cmd_shell() {
     echo "==> engine payload: ${engine_dir}"
     echo "==> shell build:    ${build_dir}"
 
+    # Phase 13b, shell side: the disable half of each removal is a CMake
+    # option flipped *here*, in our own script, so the inherited
+    # shell/CMakeLists.txt is untouched (docs/BLENDER-TREE.md section 4).
+    # Cycles is a path tracer; Cadex draws solid-shaded BREP tessellation
+    # and never asks for it (ADR-196). The delete commit removes
+    # shell/intern/cycles and this line together.
     scrubbed cmake -S "${shell_src}" -B "${build_dir}" -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX="${install_dir}" \
         -DWITH_CADEX_ENGINE=ON \
         -DCADEX_ENGINE_DIR="${engine_dir}" \
+        -DWITH_CYCLES=OFF \
         "$@"
 
     scrubbed cmake --build "${build_dir}" --target install
@@ -171,6 +178,12 @@ cmd_shell() {
     # of mesh_agent in one bundle is a registration fight. Remove the old
     # home explicitly; on a fresh tree this matches nothing.
     rm -rf "${install_dir}/${app_name}.app/Contents/Resources/"*/scripts/addons_core/mesh_agent
+    # Same rule for the Cycles add-on (ADR-196): with WITH_CYCLES=OFF the
+    # install no longer writes it, but a tree that predates the flip still
+    # carries a copy whose `_cycles` C module is gone, and every startup
+    # would print its import traceback.
+    rm -rf "${install_dir}/${app_name}.app/Contents/Resources/"*/scripts/addons_core/cycles
+    rm -rf "${install_dir}/${app_name}.app/Contents/Resources/"*/scripts/presets/cycles
     stamp_version
     echo "==> ${app_exe}"
 }

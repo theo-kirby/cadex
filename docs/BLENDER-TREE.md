@@ -1,6 +1,6 @@
 # BLENDER-TREE.md — Inherited Shell Substrate Inventory
 
-Verified against source: 2026-08-31
+Verified against source: 2026-09-06
 
 `shell/` is a Blender fork. This is its ledger — what we keep, what is
 slated for removal, what is already gone — the peer of `docs/FREECAD.md`
@@ -277,16 +277,25 @@ with its §2a row; `screen_edit.cc` already appears in §2b for the null-guards.
 | `shell/build_files/` | the CMake platform layer the shell configures through. |
 | `shell/release/darwin/` | the `.app` skeleton, `Info.plist`, icons. Keeps its inherited directory name (`Blender.app`) deliberately — renaming it would churn every file underneath for no product benefit; only what is *installed* is renamed. |
 
-## 4. Removal candidates — Phase 13b, not yet started
+## 4. Removal candidates — Phase 13b, started 2026-09-06
 
 Each is a `WITH_*` CMake option, which makes the *disable* half of the
 protocol nearly free: flip it off, verify the gate, commit; delete the tree
 and verify again, commit. None of them is on the path from a chat message to
 tessellated BREP on screen.
 
+**Where the disable lives.** The flag is passed from
+`package/app/build_app.sh`, which is ours, rather than flipped in the
+inherited `shell/CMakeLists.txt`. That keeps the disable commit out of the
+delta manifest and the §2 tables entirely: a `-D` on the configure line is
+zero lines of inherited diff. The delete commit is what touches the tree,
+and it removes the flag with it. Because `cmake --install` never prunes,
+the same script also removes what an older build tree left in the bundle
+for each disabled subsystem, as it already did for the ADR-183 add-on move.
+
 | Tree / option | Size | Note |
 |---|---|---|
-| `WITH_CYCLES` → `shell/intern/cycles` | ~48 MB source, and by inspection the single largest block of build time | A path tracer. Cadex renders solid-shaded BREP tessellation. |
+| `WITH_CYCLES` → `shell/intern/cycles` | 9.7 MB source (181 object files in the build tree; the earlier "~48 MB" was never measured), a 7 MB add-on copy and four preset folders in the bundle | A path tracer. Cadex renders solid-shaded BREP tessellation. **Disabled 2026-09-06 (ADR-196)**: `-DWITH_CYCLES=OFF` on the configure line, the stale `addons_core/cycles` and `presets/cycles` pruned from the bundle after install. The delete half removes `shell/intern/cycles`, `shell/scripts/presets/cycles` and the flag. |
 | `shell/tests/files/` | 784 MB | Blender's own render/regression fixtures. The single biggest line item in the working tree. Nothing in the four gate suites reads it. |
 | `shell/locale/` | 80 MB | Translations for a UI the app template hides. |
 | the nine unregistered editors: `space_action`, `space_clip`, `space_graph`, `space_image`, `space_nla`, `space_node`, `space_script`, `space_sequencer`, `space_spreadsheet` | — | **Disabled 2026-07-26 (ADR-036)**: not registered, so not in the editor menu. Compiling them out is the delete half and needs real work — kept subsystems reference 252 symbols across them. Deleting them also retires ~3,000 lines of now-dead keymap data in `blender_default.py`, which is what still prints ~92 `property ... not found` warnings on a headed launch. |
