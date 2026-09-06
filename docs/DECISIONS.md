@@ -18992,7 +18992,25 @@ before the deletion still carries the add-on copy. That commit, like the
 disable commit before it, landed under a session-limit banner, with the
 docs updated but this entry not, and — the same debt again — unbuilt and
 ungated. Iteration #86 is the evidence step it owed; its numbers follow.
-EVIDENCE_PLACEHOLDER
+Built and gated at that tree by iteration #86, 2026-09-06 (the numbers
+verified and written here by #87 from `/tmp/build-shell-86.log` and
+`/tmp/gate-86.log`): `pixi run build-shell` reconfigured the existing
+build tree with the source directory gone — CMake configured in 1.0 s and
+generated in 1.5 s, six Ninja steps (`[5/6] Install the project`), 173
+files reinstalled, exit 0, stamped build 497 — the tree at `6674bc48`,
+one docs-only commit behind the ADR text. Six steps rather than 732
+because the 181 Cycles objects had already left the build in the disable
+half; the delete half proves the tree configures, links and installs with
+`shell/intern/cycles` absent. The bundle's `addons_core/` lists twelve
+add-ons and no `cycles`; `presets/` has no `cycles`. `pixi run gate`
+against that bundle: 1,142 `ok:` lines, `CADEX-BLENDER-GATE` emitted
+with `"ok": true`, `OK` on the last line. One caveat stated rather than
+hidden: the build tree's cache already held `WITH_CYCLES:BOOL=OFF` from
+the disable half, so the `option()` default flipped in
+`shell/CMakeLists.txt` is exercised only by a fresh configure, which
+tonight's one-build-per-iteration budget did not allow. The stage-engine
+step's relocation-audit `RuntimeError` in the same log is the stage-only
+mode's non-fatal report and appears identically in the #83 log.
 
 ## ADR-197 — The worker computes an exploded view itself; `CommandCreateView` leaves the engine's authoring path (2026-09-06)
 
