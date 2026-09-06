@@ -19707,3 +19707,14 @@ HEAD (`d031bde0`) have identical manifests and modified-file line metrics:
 47 FreeCAD entries and 44 Blender entries. Fork-delta reduction remains open,
 as does full L3. The audit supplies exact later release, ctest/baseline and
 packaged validation commands; no full build is claimed here.
+
+**Metatype prerequisite (2026-09-07).** Preserve the declarations unchanged in
+`src/App/MetaTypes.h`, with Werner Mayer's original FreeCAD license header and
+a Cadex move notice. Replace the Gui declaration body with a forwarding include
+so retained and GUI consumers share one definition; migrate all twelve Material
+source and six retained test includes. This justified conservative App edit
+removes the active headless dependency on the deletion boundary. No CMake,
+install list, Qt component, GUI configuration or runtime behavior changes.
+The nineteen inherited edits are manifested and noticed; the relocated header
+is a FreeCAD-derived addition. Debug disable and directory deletion remain
+separate future units. Verification is recorded with this unit's graph node.

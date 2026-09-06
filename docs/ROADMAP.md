@@ -303,9 +303,11 @@ this phase.
 - [x] Dependency audit: `src/Gui`, every `src/Mod/*/Gui`, `tests/src/Gui`
       and `setup_qt_test` — [measured boundary and gates](PHASE8-AUDIT.md),
       2026-09-07 (ADR-213). 3,731 tracked files across thirteen directories.
-- [ ] Prerequisites: preserve Material's headless `Gui/MetaTypes.h` contract
-      outside the deletion boundary; complete the debug GUI disable. The
-      historical release disable alone does not make deletion safe.
+- [x] Preserve Material's headless metatype contract in `App/MetaTypes.h`,
+      with a forwarding Gui header and all 18 retained includes migrated
+      (ADR-213, 2026-09-07).
+- [ ] Complete the debug GUI disable. The historical release disable alone
+      does not make deletion safe.
 - [x] **`cadex_assembly_worker.py` imported `CommandCreateView`** —
       GUI-lineage code used headlessly for exploded views, and the one
       import that made this deletion look more than mechanical. **Resolved

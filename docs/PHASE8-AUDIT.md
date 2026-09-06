@@ -4,8 +4,11 @@ Verified against source: 2026-09-07
 
 [Cadex-new] Audit of [FreeCAD-inherited] source at
 `d031bde033aca73242fa7a668f657fa15b16935f`. **Do not delete yet.**
-Release code still consumes `src/Gui/MetaTypes.h`; debug still enables GUI.
-This audit changes no build or runtime behavior. Full L3 remains open.
+The original audit found release code consuming `src/Gui/MetaTypes.h` and
+debug enabling GUI. The metatype prerequisite has since moved the declarations
+to `src/App/MetaTypes.h`, preserving a forwarding Gui header and migrating all
+18 retained includes (ADR-213). Debug disable remains next. Tables below
+retain the audit-revision findings and measurements. Full L3 remains open.
 
 ## Disable evidence and measured boundary
 
@@ -187,3 +190,35 @@ Ninja dependencies again: no deleted source path may remain a live dependency.
 Shell source is untouched; `pixi run gate` becomes mandatory if a later unit
 touches shell. Export/check the hypergraph before each commit. No full L3,
 Phase 8 deletion, or fork-delta completion is claimed by this audit.
+
+## Metatype prerequisite verification (2026-09-07)
+
+The declaration body in `App/MetaTypes.h` is byte-identical to the original
+Gui header below `#pragma once`. All 18 retained direct includes migrated;
+remaining GUI consumers use the forwarding header. No build/install rules
+changed. The working-tree manifest comparison finds exactly 66 modified
+inherited FreeCAD files, including all 19 edits in this unit.
+
+- Debug configure, release configure and the single release build: exit 0.
+  Debug remains GUI ON; release remains OFF.
+- Retained Material/Model name-filter ctest: 30/30 passed in 7.22 s. The full
+  inherited run below covers **all 35** Material executable registrations,
+  all passed, including the five `TestModel` cases outside that narrow filter.
+- Both cadex ctests: 2/2 passed in 17.09 s. As above, these prefer the installed
+  engine and are not fresh-payload proof.
+- Full inherited ctest: 162 failures / 1,537 enabled tests, 127.69 s, exit 8.
+  Every failure name occurs in the 164-failure baseline. Baseline-only
+  `DlgVersionMigrator_Tests_run` and `SpreadsheetRenameProperty.renameProperty`
+  are absent from the current inventory; this unit changes no registrations.
+  Three skipped and seven disabled tests are reported separately from failures;
+  the historical failure-only baseline does not establish prior skip status.
+- Full engine suite before commit: 2,015 passed, 52 skipped, one failure in
+  316.58 s. The sole failure is `test_the_manifest_matches_git_reality`, whose
+  import-to-HEAD comparison cannot see uncommitted source edits. The equivalent
+  import-to-working-tree equality passes; rerun licensing after commit.
+- Release Ninja dependency inspection: zero paths under the audited GUI
+  directories; 190 occurrences of retained `src/App/MetaTypes.h`.
+
+No installation or staging ran, since this unit changes neither contract.
+No shell changes, GUI launch, second build, directory deletion or claim of
+fork-delta reduction. Debug disable is the next separate unit.

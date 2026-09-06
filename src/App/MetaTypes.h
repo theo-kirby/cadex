@@ -19,9 +19,31 @@
  *   Suite 330, Boston, MA  02111-1307, USA                                *
  *                                                                         *
  ***************************************************************************/
-/* Modified by the Cadex project, 2026. See docs/FREECAD.md. */
 
+/* Modified by the Cadex project, 2026. See docs/FREECAD.md. */
+// Retained QtCore declarations moved from Gui/MetaTypes.h (ADR-213).
 
 #pragma once
 
-#include <App/MetaTypes.h>
+#include <Base/Vector3D.h>
+#include <Base/Matrix.h>
+#include <Base/Placement.h>
+#include <Base/Quantity.h>
+#include <App/DocumentObject.h>
+#include <App/DocumentObserver.h>
+#include <QMetaType>
+#include <QList>
+
+// NOLINTBEGIN
+Q_DECLARE_METATYPE(Base::Vector3f)
+Q_DECLARE_METATYPE(Base::Vector3d)
+Q_DECLARE_METATYPE(QList<Base::Vector3d>)
+Q_DECLARE_METATYPE(Base::Matrix4D)
+Q_DECLARE_METATYPE(Base::Placement)
+Q_DECLARE_METATYPE(Base::Rotation)
+Q_DECLARE_METATYPE(Base::Quantity)
+Q_DECLARE_METATYPE(QList<Base::Quantity>)
+Q_DECLARE_METATYPE(App::SubObjectT)
+Q_DECLARE_METATYPE(QList<App::SubObjectT>)
+Q_DECLARE_METATYPE(App::DocumentObject*)
+// NOLINTEND

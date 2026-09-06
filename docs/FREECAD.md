@@ -88,8 +88,8 @@ fork delta and was wrong — `Part.BRepOffsetAPI.MakePipeShell` already had
 
 §2a is the *additions*; this is the ledger of every inherited FreeCAD file
 this repository has **modified** since its import
-(`c2ccddfb3bbcbcff8cecd859968a8750d95832db`, 2026-07-23) — 47 files, 38
-under `src/` and 9 in the build substrate (`CMakeLists.txt`, `cMake/`,
+(`c2ccddfb3bbcbcff8cecd859968a8750d95832db`, 2026-07-23) — 66 files, 51
+under `src/` and 15 in the build substrate (`CMakeLists.txt`, `cMake/`,
 `tests/`). This ledger existed only as git history until 2026-08-29
 (ADR-171); the machine-readable list is `docs/inherited-modifications.json`,
 kept equal to the git diff by `cadex_tests/test_licensing_compliance.py`,
@@ -103,6 +103,13 @@ and every file carries a one-line modification notice in its header
 comment line triggers a whole-file reformat under pre-commit; **this
 listing is their notice**, which is what `ledger-only` means. Grouped by
 why:
+
+- **Headless metatypes** (ADR-213): `src/Gui/MetaTypes.h` now forwards to
+  `src/App/MetaTypes.h`, a relocated FreeCAD-derived header with its original
+  attribution. Twelve `src/Mod/Material/App` files and six retained Material
+  tests now include the App header; the manifest enumerates all nineteen
+  modified inherited files. The new path is a derived addition, not an
+  independently authored header or an extra modified-file manifest row.
 
 - **Workbench-removal and GUI-off build edits** (Phases 1 and 7 — ADR-007,
   ADR-009, ADR-022): the root `CMakeLists.txt`, five `cMake/` helper
@@ -169,10 +176,10 @@ line of it. Measured effect on this tree: `lib/` 43 MB → 8.3 MB, `Mod/`
 The 2026-09-07 [deletion-readiness audit](PHASE8-AUDIT.md) counts 1,960
 tracked files / 65,331,470 bytes in src/Gui and 3,731 files / 137,324,776
 bytes across all thirteen GUI directories. **Deletion is not yet safe:**
-headless Material code and tests include `Gui/MetaTypes.h`, confirmed in
-release object dependencies, and debug still enables GUI. Preserve that
-metatype contract in a retained location and complete the debug disable
-before a separate delete commit. The audit lists build/install/test references,
+debug still enables GUI. The metatype prerequisite now lives in retained
+`App/MetaTypes.h`; all eighteen retained Material includes have migrated and
+`Gui/MetaTypes.h` forwards for remaining GUI consumers. Complete the debug
+disable before a separate delete commit. The audit lists build/install/test references,
 retained Assembly dependencies, run-start delta metrics and exact gates
 (ADR-213). Remove deleted registrations and obsolete guards together.
 

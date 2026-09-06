@@ -69,6 +69,10 @@
           "notice": "comment"
         },
         {
+          "path": "src/Gui/MetaTypes.h",
+          "notice": "comment"
+        },
+        {
           "path": "src/Gui/OverlayWidgets.cpp",
           "notice": "comment"
         },
@@ -151,6 +155,54 @@
           "notice": "comment"
         },
         {
+          "path": "src/Mod/Material/App/Array2DPyImp.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/Array3DPyImp.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/MaterialFilterOptionsPyImp.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/MaterialFilterPyImp.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/MaterialLibraryPyImp.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/MaterialLoader.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/MaterialPyImp.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/MaterialValue.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/MaterialValue.h",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/Materials.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/PropertyMaterial.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/PyVariants.h",
+          "notice": "comment"
+        },
+        {
           "path": "src/Mod/Part/App/BRepOffsetAPI_MakePipeShell.pyi",
           "notice": "comment"
         },
@@ -212,6 +264,30 @@
         },
         {
           "path": "tests/src/Mod/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "tests/src/Mod/Material/App/TestMaterialCards.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "tests/src/Mod/Material/App/TestMaterialFilter.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "tests/src/Mod/Material/App/TestMaterialProperties.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "tests/src/Mod/Material/App/TestMaterialValue.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "tests/src/Mod/Material/App/TestMaterials.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "tests/src/Mod/Material/App/TestModelProperties.cpp",
           "notice": "comment"
         }
       ]
