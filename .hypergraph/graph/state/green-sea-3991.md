@@ -15,7 +15,9 @@ Open charter criterion: **The fork's delta against upstream is smaller than at t
 
 Declared target: `gap-fork-s-delta-against-upstream`. This node tracks the criterion as a gap; it becomes working only with evidence that the criterion is met. Truncated impact wording is resolved from the full charter in the same record [rec: empty-wolf-3962].
 
-**nt2 baseline measured, no reduction:** the audit uses explicit run-start commit `7dd3d0458c61d300100177955267eca074d6865b` and audited HEAD `d031bde0`. Both have identical inherited manifests and modified-file numstat: FreeCAD 47 M files, 1,804 inserted / 1,907 deleted lines; Blender 44 M files, 1,046 inserted / 129 deleted lines, including one premodified entry. Reconcile judgement: retain `open`; this is the scoped manifest/M-file metric documented in `docs/PHASE8-AUDIT.md`, and it supplies no evidence of reduction [rec: wise-isle-1725].
+**Scoped line reduction measured; broad criterion remains open.** Against nt2 run-start `7dd3d045`, the post-deletion FreeCAD manifest/M-file comparison changes from 47 files and 1,804 inserted / 1,907 deleted lines to 56 files and 1,633 inserted / 1,795 deleted lines. Blender stays 44 files and 1,046 inserted / 129 deleted lines. The 3,734 removed files / 137,376,129 bytes are reported separately from modified-file delta [rec: terse-ridge-1619].
+
+The documentation-only residual audit leaves those metrics unchanged and confirms committed-HEAD manifest equality in the 26-test packaged lifecycle/licensing pass. Reconcile judgement: fewer changed lines alongside more modified FreeCAD files establishes only the stated scoped reduction; retain the broader criterion as open, as both records declare [rec: terse-ridge-1619] [rec: humble-shore-1680].
 
 ## Negative knowledge
 
@@ -25,3 +27,6 @@ None yet.
 
 - empty-wolf-3962 — operator-declared charter gap
 - wise-isle-1725 — nt2 run-start and audited HEAD manifest/M-file comparison is unchanged; criterion remains open
+
+- terse-ridge-1619 — ADR-214: verified directory deletion, fresh install/stage and scoped delta measurements
+- humble-shore-1680 — ADR-215: 26 packaged tests resolve HEAD verification; residual consumers and narrow Measure boundary

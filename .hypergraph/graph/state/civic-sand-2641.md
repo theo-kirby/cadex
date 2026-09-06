@@ -7,19 +7,17 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
+Status: working
 
 ## Current
 
-Open charter criterion: **Phase 8 `src/Gui` delete commit landed** under the two-commit protocol, with the DECISIONS entry and the gate green after it. [rec: empty-wolf-3962]
+**The Phase 8 `src/Gui` directory-delete criterion is met (ADR-214).** After separate metatype and disable prerequisites, thirteen GUI directories and three retired Main/InventorBuilder sources were deleted: 3,734 files / 137,376,129 bytes. App metatypes, Qt components and headless Assembly publication remain [rec: terse-ridge-1619].
 
-Declared target: `gap-phase-8-src-gui-delete`. This node tracks the criterion as a gap; it becomes working only with evidence that the criterion is met. Truncated impact wording is resolved from the full charter in the same record [rec: empty-wolf-3962].
+Debug/release configuration and one release build pass. The engine suite reports 2,021 passed / 52 skipped plus the expected precommit manifest-vs-HEAD failure; working-tree manifest equality passes. Both cadex ctests pass. After serial discovery repair, inherited ctest retains the exact 1,544-test inventory and 162 baseline failures / 1,537 enabled cases, unchanged skips and disabled cases; all 35 Material tests pass [rec: terse-ridge-1619].
 
-**Audit and prerequisites complete; directory deletion remains open (ADR-213).** The audited coherent boundary is thirteen trees, 3,731 tracked files / 137,324,776 bytes; `src/Gui` alone is 1,960 files / 65,331,470 bytes. Residual registrations, identity tests, Doxygen paths, Main GUI-only targets and InventorBuilder still require the audit's explicit delete/install/stage treatment [rec: wise-isle-1725].
+Stale local GUI artifacts were quarantined before fresh install and staging. The follow-up packaged lifecycle/licensing run passes all 26 tests, including the committed-HEAD manifest equality deferred at deletion. It reuses that stage; it is not another build. The payload is a local 2.4 GB stage-only build with external rpath warnings, not a relocated release [rec: terse-ridge-1619] [rec: humble-shore-1680].
 
-The metatype contract now lives in `App/MetaTypes.h`, with the old Gui header forwarding and all twelve Material sources plus six retained tests migrated. Release dependencies contain zero audited GUI paths; release build and all 35 Material tests pass [rec: sharp-pond-0087]. All nine public presets now select `BUILD_GUI=OFF`; the shared initializer defaults OFF and rejects truthy requests. Debug/release configure and release build pass; real GUI-on requests and a stale ON cache fail as intended. QtCore, QtConcurrent, LinguistTools and GUI sources remain [rec: fair-cabin-5280].
-
-Verification: the disable record reports 2021 engine tests passed / 52 skipped, then 6/6 focused tests after the final rpm preset correction; the full suite and build were not repeated after that correction. Linux/Windows/rpm toolchains were not configured. Both cadex ctests pass with their installed-engine preference; inherited ctest has 162 baseline failures / 1537 enabled tests, unchanged inventory, skips and disabled cases, and all 35 Material tests passing. No fresh staging or packaged gate was run for these prerequisites. Reconcile judgement: this establishes prerequisites only; retain the separate deletion criterion and its packaging gates as open [rec: fair-cabin-5280].
+Reconcile judgement: mark this narrow directory criterion working because deletion and the deferred packaged check are now evidenced. The broader no-GUI-source exit remains open under inherited-tree reduction: residual installed GUI scripts and required mixed Assembly modules remain. Neither this status nor static consumer searches establish arbitrary external-import safety or Windows behavior [rec: humble-shore-1680].
 
 ## Negative knowledge
 
@@ -31,3 +29,6 @@ Verification: the disable record reports 2021 engine tests passed / 52 skipped, 
 - wise-isle-1725 — ADR-213: dependency audit and exact deletion boundary/gates; active metatype and debug GUI prerequisites keep criterion open
 - sharp-pond-0087 — preserved metatypes and migrated retained includes; release dependency/build/Material evidence
 - fair-cabin-5280 — completed GUI disable, verified rejection and baseline gates; deletion and packaged verification remain open
+
+- terse-ridge-1619 — ADR-214: verified directory deletion, fresh install/stage and scoped delta measurements
+- humble-shore-1680 — ADR-215: 26 packaged tests resolve HEAD verification; residual consumers and narrow Measure boundary
