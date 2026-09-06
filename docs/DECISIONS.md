@@ -18751,3 +18751,83 @@ The comparison is the `policy` block of the two exported traces
   through to a fake trainer as given, and the whole chain run on the toy
   with the real trainer (two runs at 1 it × 4 envs), including the exit-3
   refusal with the digest named.
+
+## ADR-193 — The project is a codebase: three documents scaffolded by the CLI, read on every turn, appended by convention (2026-09-06)
+
+**Status:** accepted. **Zone:** `cli/` (LGPL) and `docs/`; no protocol
+op, no engine change, no `shell/` diff, nothing in any payload.
+
+### 1. Context
+
+The lifecycle audit (`docs/MUJOCO.md` §7c) measured row 10, the project
+as a codebase, as **missing**: a project directory held the engine's
+store and the CLI's `agent.json` and nothing a person or an agent could
+read to learn what the project was, what had been decided about it, or
+what had been tried. The goal for the night asked that each project
+directory carry what a good agent keeps for a codebase —
+`ARCHITECTURE.md`, `DECISIONS.md`, `PROGRESS.md` and domain docs — be
+read on every visit, and be updated as the work goes.
+
+Two facts shaped the answer. The CLI's agent runs with **no built-in
+tools** (`agent.py`, `--tools ""`): its whole world is the engine, on
+purpose, so that a model cannot edit the store behind the engine's back.
+So it cannot open a file, and "the agent reads the docs" has to mean the
+CLI shows them to it. And the question policy for the night prefers a
+doc convention before a new tool.
+
+### 2. Decision
+
+- **The CLI scaffolds.** `_engine_session` creates whichever of the
+  three are missing after `open_project`, on every command that opens
+  the project, and never overwrites one that exists. A first visit says
+  so in the envelope's `notes`. The engine knows nothing about them:
+  plain files beside `script.json`, like `agent.json`, ignored by the
+  store's restore pass like every file it did not write.
+- **The agent reads them on every turn.** `system_prompt` takes the three
+  as one bounded section (`PROMPT_DOC_LIMIT`, 8 000 characters each; the
+  head of `ARCHITECTURE.md` and `DECISIONS.md`, the **tail** of
+  `PROGRESS.md`, because the latest rows are the ones that matter) and
+  places it between the overlay and the engine's contract. The overlay
+  says what they are and not to repeat work a row records.
+- **The CLI writes `PROGRESS.md`.** One row per accepted run — time,
+  command, accepted revision, digest, what was done, numbers — appended
+  in `main()` after the command returns, so the row says what happened
+  rather than what a model said would. The numbers are what the run
+  produced and nothing inferred: the exported trace's `total_reward`
+  (row 7's number), the trainer's `reward_per_step`, wall time and the
+  policy's sha256. `script` with no `--set` and `asset` with no `--put`
+  change nothing and get no row.
+- **The agent writes `DECISIONS.md` by convention.** A line of the
+  turn's closing text that starts `DECISION:` becomes the next numbered
+  `## ADR-NNN — <title> (<date>)` entry, and the envelope's `notes` say
+  which. The scaffold's `ADR-001` is the project's creation.
+- **Domain docs are a convention, documented and not enforced:**
+  `docs/<subject>.md`, one file per subject (`gear-ratios`, `sensors`,
+  `actuators`, `rejected`), linked from `ARCHITECTURE.md`. The overlay
+  tells the agent to ask its caller to write them, naming the file.
+
+### 3. Not taken
+
+- **A file tool for the agent.** It would be the first thing in the
+  surface that is not an engine op, and it would reopen the reason the
+  agent has no tools. If reading proves insufficient — the agent needs
+  to *restructure* `ARCHITECTURE.md`, say — a bounded `note_project`
+  op is the next reversible step, and this ADR is where to say so.
+- **A git repository in the project.** Row 9's work, with the commit per
+  accepted run and the `.gitignore` the store needs (frames, renders,
+  the `.blend`), because a decision about what a project commits is a
+  decision about the store's layout and deserves its own entry.
+- **The shell.** A shell-attached agent has file tools and edits the
+  same three files directly; nothing in `shell/` changes, and the files
+  are what make the two modes one shape.
+
+### 4. Evidence
+
+`cli/tests/test_project_docs.py`: the scaffold, the bounded read, the
+row's shape, the numbers from a trace and a receipt, the `DECISION:`
+parser and the numbering, the overlay and the prompt section; and with
+the engine, a first visit that scaffolds and a `script --set` then
+`params` that land two rows and a print that lands none, and a scripted
+turn whose prompt carries the project's `ARCHITECTURE.md` and whose
+closing `DECISION:` lands as `ADR-002`. `docs/CLI.md` §2 and §4,
+`docs/MUJOCO.md` §7c row 10 and item 6, `docs/ROADMAP.md` Phase 14.

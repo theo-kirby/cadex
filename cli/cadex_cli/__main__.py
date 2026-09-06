@@ -46,6 +46,13 @@ from .bridge import Bridge, ToolCall
 from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine
 from .export import ExportError, export_blueprints, export_outputs, parse_formats
+from .project_docs import (
+    append_progress_row,
+    progress_numbers,
+    read_project_docs,
+    record_decisions,
+    scaffold_project_docs,
+)
 from .report import (
     EXIT_FAILURE,
     EXIT_OK,
@@ -357,6 +364,14 @@ def _engine_session(
             client.start()
             opened = open_project(client, project_root)
             report.params = params_from_script(opened.get("script"))
+            # The project as a codebase (ADR-193): its three documents
+            # exist from the first visit on. Plain files beside
+            # script.json, like agent.json; the engine never reads them.
+            created = scaffold_project_docs(project_root)
+            if created:
+                report.notes.append(
+                    "scaffolded " + ", ".join(created) + " in the project root."
+                )
             _install_cancel(client)
             yield engine, client
         finally:
@@ -454,7 +469,9 @@ def command_prompt(
             turn = turn_factory(
                 claude_path=claude_path,
                 model=args.model,
-                system_prompt_text=system_prompt(api),
+                system_prompt_text=system_prompt(
+                    api, project_docs=read_project_docs(report.project_root)
+                ),
                 socket_path=str(bridge.socket_path),
                 token=bridge.token,
                 session_id=session_id,
@@ -482,6 +499,14 @@ def command_prompt(
             )
         if result.text.strip():
             report.notes.append(result.text.strip())
+        # What the agent decided lands in the project's own ADR log
+        # (ADR-193): a closing line that starts `DECISION:`. A convention,
+        # not a tool, because the agent has no file access here.
+        landed = record_decisions(report.project_root, result.text)
+        if landed:
+            report.notes.append(
+                "recorded " + ", ".join(landed) + " in DECISIONS.md."
+            )
 
         accepted = bridge.state.last_accepted
         report.revision = bridge.state.revision or report.revision
@@ -918,9 +943,73 @@ def main(argv: Sequence[str] | None = None) -> int:
         report.error = "cancelled."
         code = EXIT_FAILURE
 
+    if code == EXIT_OK and report.ok and not quiet:
+        _record_progress(command, args, report)
     if not (quiet and code == EXIT_OK):
         emit(report, as_json=bool(args.json))
     return code
+
+
+def _progress_what(command: str, args: argparse.Namespace, report: RunReport) -> str:
+    """What this run did, in the words a person would use for the row."""
+
+    if command == "prompt":
+        said = ""
+        for note in report.notes:
+            if note and not note.startswith(("scaffolded ", "recorded ", "nothing to")):
+                said = note.strip().splitlines()[0]
+                break
+        return f"prompt: {args.prompt}" + (f" → {said}" if said else "")
+    if command == "params":
+        return "params " + ", ".join(
+            f"{name}={value}" for name, value in sorted(
+                _parse_assignments(args.assignments).items()
+            )
+        )
+    if command == "script":
+        return f"script --set {Path(args.source_file).name}"
+    if command == "export":
+        return f"export → {args.out}"
+    if command == "link":
+        return "link {:s} from {:s}".format(
+            str(getattr(args, "output", "") or "?"), str(args.source_project)
+        )
+    if command == "asset":
+        return "asset --put " + ", ".join(
+            Path(str(item)).name for item in args.put_files
+        )
+    if command == "train":
+        return "train {:d} it × {:d} envs → {:s}{:s}".format(
+            int(args.iterations),
+            int(args.envs),
+            str(Path(str(report.training.get("out") or args.out)).name),
+            " (stored)" if args.put else "",
+        )
+    return command
+
+
+def _record_progress(command: str, args: argparse.Namespace, report: RunReport) -> None:
+    """One `PROGRESS.md` row per accepted run (ADR-193).
+
+    Written after the command, from the report, so the row says what
+    actually happened. A store listing (`asset` with no `--put`) changes
+    nothing and gets no row. Never fatal: a row that cannot be written is a
+    note, not a failed run.
+    """
+
+    if command == "asset" and not getattr(args, "put_files", None):
+        return
+    try:
+        append_progress_row(
+            report.project_root,
+            run=command,
+            what=_progress_what(command, args, report),
+            revision=report.accepted_revision,
+            digest=report.digest,
+            numbers=progress_numbers(training=report.training, outputs=report.outputs),
+        )
+    except OSError as exc:
+        report.notes.append(f"PROGRESS.md not written: {exc}")
 
 
 if __name__ == "__main__":

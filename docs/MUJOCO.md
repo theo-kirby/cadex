@@ -2852,7 +2852,7 @@ row below was actually run, and the numbers are this run's.
 | 7 | Review | the agent: `inspect scope=output`; a pipeline: the `policy` block of `assembly-simulation-trace.json`, which `cadex export` now copies into `--out` (row 3) | Works for the agent — asked to report the rollout, it read total reward 1719.23 and the five per-term totals through `inspect` unaided. A pipeline reads the same numbers from the exported trace: `total_reward` 1729.95 and the five `reward_totals` on the scratch copy, no staging path read | the agent, or a pipeline |
 | 8 | **Iterate** | `cadex params --set shove_n=0.20` | **Refused, exit 3**: the task digest moved (`602d62c1…` → `369a0dd5…`) and the declared policy no longer fits. Correct by ADR-088 — and it means the refusal also never writes the new bundle, so there is nothing to retrain against. Iterating that morning was six legs: edit the script to drop or re-point the policy → rebuild → dig out the bundle → train (`--init-from … --init-from-task-change`) → `put_asset` → re-declare. Three of the six were the person's. **Closed the same day** (ADR-192) with a script convention and no new `params` flag: the policy is declared behind a numeric switch (`policy_on`), so `cadex params --set policy_on=0 --set shove_n=0.20 --out sweep` is accepted (`set_params` never refuses a dropped output) and exports the bundle at `369a0dd5…`; `cadex train --put --init-from … --init-from-parent-task … --init-from-task-change "…"` retrains warm across the change (the ADR-161 pair, now carried by the dispatcher) — 2 it × 8 envs in **17.8 s** wall, iteration 0 already at +1.52 reward/step where a cold network sits near −0.95; the digest edit and `cadex script --set`; `cadex params --set policy_on=1 --out run2` verifies and rolls out. Trace: **127.8** total reward at 0.20 N after one warm toy step, against 1729.9 at 0.12 N for the 400-iteration policy — the comparison exists; row 9 is where it gets recorded. `cli/tests/test_train.py` runs the whole chain on the toy with the real trainer | the agent for the script, a pipeline for the four commands |
 | 9 | Compare and record | — | Nothing exists: no comparison, no `PROGRESS.md`, and the project directory is not a git repository | **missing** |
-| 10 | Project as a codebase | — | No `ARCHITECTURE.md`, `DECISIONS.md` or `PROGRESS.md`; nothing scaffolds them; nothing reads them on a visit | **missing** |
+| 10 | Project as a codebase | On 2026-09-06 (morning): nothing — no `ARCHITECTURE.md`, `DECISIONS.md` or `PROGRESS.md`, nothing scaffolds them, nothing reads them on a visit. **Closed the same day** (ADR-193): the CLI scaffolds the three on the first visit (idempotent, never overwrites), pastes them into every turn's system prompt (bounded: head of the first two, tail of the log), lands a `PROGRESS.md` row after every accepted run with the revision, digest, what was done and the numbers the run produced (the trace's `total_reward`, the trainer's `reward_per_step`, wall time, sha256), and turns a turn's closing `DECISION:` lines into numbered `DECISIONS.md` entries. Domain docs are a documented convention (`docs/<subject>.md`). `cli/tests/test_project_docs.py` drives it against the engine and a scripted turn. `docs/CLI.md` §2 | the CLI for the scaffold and the log; the agent for the decisions, by convention rather than by tool |
 | 11 | The same walk with the GUI attached | the in-app agent, which has a shell | Not exercised; the shape is the same and row 4's gap does not apply | doc only |
 | 12 | The same walk with training on a remote machine | `training/remote_train.sh` (ADR-089) | Not exercised; B7 stays blocked on the box's stale checkout | doc only |
 
@@ -2935,10 +2935,19 @@ left a third, so it is every export, not one).
 5. **The `INSPECTION_FAILED` frame** (above): make it a `FAILURE_RESPONSE_SPEC`
    frame, with a test that runs the validator over it, so an inspect
    exception is a refusal the agent reads rather than a client crash.
-6. **The project as a codebase** (rows 9 and 10): scaffold
-   `ARCHITECTURE.md`, `DECISIONS.md`, `PROGRESS.md` on first visit, read
-   them on every visit, and land every comparison as a `PROGRESS.md` row
-   with the numbers, in a git repository the project owns.
+6. **The project as a codebase** (rows 9 and 10). Row 10 **done,
+   2026-09-06** (ADR-193, `cli/cadex_cli/project_docs.py`, no protocol
+   op, no engine change): `ARCHITECTURE.md`, `DECISIONS.md` and
+   `PROGRESS.md` scaffolded on the first visit and pasted into every
+   turn's prompt; one `PROGRESS.md` row per accepted run, written by
+   the CLI with the numbers; a turn's `DECISION:` lines as numbered
+   entries in `DECISIONS.md`; `docs/<subject>.md` for domain notes, by
+   convention. What row 10 deliberately did not take: a file tool for
+   the agent (a convention first, a tool only if reading proves
+   insufficient) and a git repository. **Row 9 remains**: the
+   comparison between two runs as one recorded row — today it is two
+   rows a reader compares by eye — and the git repository the project
+   owns, with the commit per accepted run.
 
 ## 8. Live mode: watching it, rather than reading about it
 

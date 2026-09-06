@@ -139,6 +139,18 @@ their result entries -- so a later parameter change that moves the task \
 can be accepted with the switch at 0 and retrained against, instead of \
 being refused because the old policy no longer fits.
 
+THE PROJECT IS A CODEBASE. Beside the script it keeps ARCHITECTURE.md \
+(what it is, what the script declares, where the domain docs are), \
+DECISIONS.md (its own ADR log: what was chosen, over what, why) and \
+PROGRESS.md (one row per accepted run, with the numbers). They are pasted \
+in below when they exist; read them before you act, and do not repeat work \
+a row says was already tried. You cannot open files here, so to record a \
+decision end your closing paragraph with one line per decision starting \
+`DECISION:` -- the CLI lands each one in DECISIONS.md -- and it writes the \
+PROGRESS.md row for this run itself. Longer notes belong under docs/, one \
+file per subject (docs/gear-ratios.md, docs/sensors.md, docs/rejected.md); \
+ask the caller to write those, naming the file.
+
 REVISION GUARDS ARE HANDLED FOR YOU. Every tool result reports the revision \
 it produced, and the next call is guarded with it automatically. You never \
 need to pass expected_revision, and you should not try.
@@ -149,16 +161,24 @@ progress narration, no offer to continue.
 """
 
 
-def system_prompt(api: dict[str, Any]) -> str:
+def system_prompt(api: dict[str, Any], *, project_docs: str = "") -> str:
     """The overlay plus the engine's own authoring contract.
 
     ``api`` is a ``describe_api`` reply. The engine's ``instructions``,
     ``program_schema``, ``source_globals``, ``result_contract`` and
     ``parameters`` prose are pasted in rather than restated, so this file
     never becomes a second, staler copy of the xscript API.
+
+    ``project_docs`` is the project's own ``ARCHITECTURE.md``,
+    ``DECISIONS.md`` and ``PROGRESS.md`` as one bounded section
+    (:func:`cadex_cli.project_docs.read_project_docs`), so the agent reads
+    them on every visit without a file tool (ADR-193).
     """
 
-    sections = [CLI_OVERLAY, "THE ENGINE'S OWN AUTHORING CONTRACT", ""]
+    sections = [CLI_OVERLAY]
+    if project_docs.strip():
+        sections += ["THIS PROJECT'S OWN DOCS", project_docs.strip()]
+    sections += ["THE ENGINE'S OWN AUTHORING CONTRACT", ""]
     schema = str(api.get("program_schema") or "")
     if schema:
         sections.append(f"Program schema: {schema}")

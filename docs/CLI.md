@@ -170,6 +170,33 @@ parameter value outlives a script write, which is why the last step is a
 per-term `reward_totals`); recording it is the lifecycle walk's next leg
 (`docs/MUJOCO.md` §7c, row 9).
 
+**The project is a codebase** (ADR-193). Every project root carries the
+documents an engineer keeps beside a model, created by the CLI on the
+first visit and never overwritten by it:
+
+| File | What it holds | Who writes it |
+|---|---|---|
+| `ARCHITECTURE.md` | What the project is, what the script declares and why, where the domain docs are. | the agent (through its caller) or a person |
+| `DECISIONS.md` | The project's own ADR log — what was chosen, over what, why. Newest last. | a turn's closing `DECISION:` lines, or a person |
+| `PROGRESS.md` | One row per accepted run: time, command, revision, digest, what, numbers. | **the CLI**, after every accepted run |
+| `docs/<subject>.md` | Longer notes, one file per subject: `docs/gear-ratios.md`, `docs/sensors.md`, `docs/actuators.md`, `docs/rejected.md`. | the agent's caller, or a person |
+
+The agent reads all three on every `cadex -p` turn — they are pasted into
+its system prompt, bounded (the head of the first two, the tail of the
+log) — and it has no file tool, so what it decides comes back by
+convention rather than by a new op: a line of its closing paragraph that
+starts `DECISION:` lands in `DECISIONS.md` as the next numbered entry, and
+the envelope's `notes` say so. `PROGRESS.md` is the CLI's, so it records
+what happened rather than what a model said would: `params`, `script
+--set`, `export`, `link`, `asset --put`, `train` and a turn each land one
+row, with the exported trace's `total_reward` and the trainer's
+`reward_per_step`, wall time and sha256 in the numbers column when the
+run produced them. Printing the script and listing the store change
+nothing and get no row. A shell-attached agent has file tools and edits
+the same three files directly; the files are what make the two modes one
+shape. Committing them in a git repository the project owns is row 9's
+work (`docs/MUJOCO.md` §7c).
+
 ### Exit codes
 
 | Code | Meaning |
@@ -339,6 +366,11 @@ The overlay says three things the engine does not:
   DIR --put` (ADR-191), or its three — `cadex export`, the trainer,
   `cadex asset --put` — instead of inventing flags (ADR-190 — the audit
   caught it doing exactly that).
+- **The project is a codebase.** Its `ARCHITECTURE.md`, `DECISIONS.md`
+  and `PROGRESS.md` are pasted in after the overlay, bounded, on every
+  turn (ADR-193); the agent is told to read them before acting and to
+  end with `DECISION:` lines for what it decided, which the CLI lands
+  in `DECISIONS.md`.
 - **Revision guards are handled for you.**
 
 ## 5. Sessions, locks and state

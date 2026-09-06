@@ -1804,6 +1804,14 @@ What makes them experimental, and what would settle it:
   policy_on=1` re-declare. Run headlessly on the §7b toy and pinned by a
   real-trainer test. §7c row 8 closes; compare-and-record (row 9) and
   the project scaffold (row 10) are next.
+- [x] **The project is a codebase** (ADR-193). The CLI scaffolds
+  `ARCHITECTURE.md`, `DECISIONS.md` and `PROGRESS.md` on the first visit,
+  pastes them into every turn's prompt, lands one `PROGRESS.md` row per
+  accepted run with the numbers, and turns a turn's closing `DECISION:`
+  lines into numbered `DECISIONS.md` entries; `docs/<subject>.md` is the
+  domain-doc convention. No engine change, no file tool for the agent.
+  §7c row 10 closes; compare-and-record with a git repository the
+  project owns (row 9) is next.
 - **Linux and Windows shell bundles.** The engine payload builds for both;
   only macOS arm64 has shell CI. Moot once Phase 12 lands — revisit then.
 
