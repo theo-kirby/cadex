@@ -23,7 +23,7 @@ Open charter criterion: **L3 motors and mechanisms families exist** over `CadexC
 
 **Qualified SKF GE 6 C joint shipped:** the manufacturer-source and independent nominal two-ring OCCT qualification now has catalog delivery through `lib.joint("skf-ge-6-c", tilt_degrees=...)`, bounded to [-13,13] degrees and published as a two-solid compound [rec: first-wind-9707] [rec: morning-field-8202]. Actual-worker checks at -13/0/6.5/13 degrees verify analytic volumes, mounting and spherical surfaces, shaft/shoulder clearance, non-overlap and 96 canonical/placed material/void probes. Final engine suite passed 2016 tests/52 skipped; one completed build/install and staging followed by fresh packaged lifecycle/library verification passed 90 tests, no skips [rec: morning-field-8202].
 
-Reconcile judgement: status remains `open`: the joint qualification/delivery pair is complete, but full L3, additional common BLDC scope, solenoid source/delivery gaps and compound mechanisms remain open. One nominal joint variant does not close those broader criteria [rec: morning-field-8202].
+**Residual coverage audited (ADR-212):** `docs/L3-COVERAGE.md` distinguishes four delivered single-SKU families from the remaining promise. Full L3 stays open: one BLDC winding has kV but no torque contract or plural common-size coverage; the acceptance set still needs definition. Solenoid mounting/travel prerequisites and ADR-209 restart conditions remain unchanged. The existing plan places Phase 8 readiness next; the audit does not authorize another unspecified catalog expansion or close compound-mechanism gaps [rec: steady-rain-3009].
 
 ## Negative knowledge
 
@@ -52,3 +52,4 @@ Reconcile judgement: status remains `open`: the joint qualification/delivery pai
 - open-pine-9349 — ADR-209: incompatible older TAU and incomplete B7 interfaces defer solenoid delivery; joints qualification is next, existing packaged baseline passes 76 tests
 - first-wind-9707 — ADR-210: manufacturer datums and nominal two-ring OCCT qualification support conditional joint delivery
 - morning-field-8202 — ADR-211: bounded joint catalog compound ships with actual-worker, discovery and fresh packaged verification; broader gaps remain open
+- steady-rain-3009 — ADR-212: four-family coverage/evidence audit preserves residual BLDC scope and deferred solenoid delivery
