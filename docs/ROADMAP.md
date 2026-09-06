@@ -2058,6 +2058,10 @@ field, and every client gets it through the surface it already reads.
 - [x] **L3 joint implementation.** `lib.joint("skf-ge-6-c")` delivers the
       qualified two-ring approximation with bounded tilt, source metadata,
       real-worker interfaces and packaged publication (ADR-211). No fit guarantee.
+- [x] **L3 remaining-coverage audit.** [Coverage/evidence matrix](L3-COVERAGE.md)
+      distinguishes four delivered SKUs from missing BLDC size/torque scope,
+      deferred solenoid interfaces and separate compound gearing (ADR-212).
+      Full L3 stays open; Phase 8 readiness audit is next.
 - [ ] **L3 — motors and mechanisms.** Common BLDC sizes with kV/torque
       data, N20 gearmotor, linear actuator, solenoid, joints; gears and
       rack-and-pinion need involute profiles and are their own slice.

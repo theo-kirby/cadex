@@ -19661,3 +19661,24 @@ The first suite saw the pre-build installed worker missing `joint`; the
 first packaged run exposed the old test's single-solid assumption. Corrected
 the assertion to require compound for joint outputs, with no runtime change
 or second build, then reran both gates successfully.
+
+
+## ADR-212 — Keep remaining L3 promises distinct from delivered envelopes (2026-09-07)
+
+**Decision.** Record the source/worker/publication coverage matrix in
+`docs/L3-COVERAGE.md` against the existing Phase 17 promise. Four single-SKU
+families have delivered evidence; common BLDC sizes and torque data remain
+incomplete, solenoid delivery remains deferred under ADR-209, and compound
+gearing remains a separate slice. The N20 real-kernel publication test does
+not independently probe its shaft and mounting surfaces; name that evidence
+improvement without reopening its delivered narrow family.
+
+**Consequence.** Preserve the current plan's Phase 8 readiness audit next.
+Future BLDC qualification must identify a named size/winding and qualified
+torque evidence; the undefined common-size acceptance set must be made explicit
+before full closure. Improved geometry supplies neither powered reachability
+nor physical inertia. No API, source contract or solenoid restart rule changes.
+
+**Verification.** Documentation-only audit of catalog, recipes, tests, provenance
+and delivery records. Existing packaged lifecycle/library baseline is rerun
+and reported in this unit's record; no full engine suite, build or staging.
