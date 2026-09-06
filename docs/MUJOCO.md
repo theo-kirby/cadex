@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-08-29
+Verified against source: 2026-09-06
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -2830,6 +2830,92 @@ sign-changing, not pinned. What the rehearsal measured:
   agent has a shell and does not share the first gap.
 - **It would not claim success without the engine.** "I will not claim it
   holds inverted until the engine's own trace says so" — and it didn't.
+
+## 7c. The lifecycle audit: which legs still need a person
+
+Measured 2026-09-06, headless, on this machine, on a scratch copy of the
+§7b rehearsal project (`~/cadex-balance-ns`, copied out first — a live
+project is never built in place). The question was not "does the arc
+work" — §7b answered that — but **which of its legs the product agent can
+drive from the CLI today, which still need a person or a guess, and what
+the iterate step needs before it can run at all.** No code changed; every
+row below was actually run, and the numbers are this run's.
+
+| # | Leg | Entry point today | Result | Who does it |
+|---|---|---|---|---|
+| 1 | Ideation → design (parts as xscript) | `./cadex -p` | Works: §7b's rehearsal, three turns | the agent |
+| 2 | Assembly: joints, masses, actuator torque, sensors | the same script | Works | the agent |
+| 3 | MJCF export + task | any accepted rebuild | Works: `cadex export` rebuilt in **2.6 s** including verify and rollout. But `cadex export` writes only BREP outputs; the task JSON, the model XML, the policy receipt and the rollout trace all come back `"skipped": "not a BREP output"`, so the training bundle has to be dug out of `script_artifacts/<revision>/attempt-<id>/outputs/` by reading `script.json` | **a person, or a guess** |
+| 4 | Training | `.venv/bin/python training/cadex_train.py <bundle> --out … --iterations 200 --envs 64 --progress …` | Works: 200 it × 64 envs in **22.5 s**, reward/step 5.24, witness error 3.2e-08 | **a person** — the CLI agent has no shell |
+| 5 | Policy home | `put_asset` over raw NDJSON (a 40-line scratch driver on the `cadexd_latency_integration.py` client) | Works: 54 577 bytes, listing returns both policies | **a person** — not in the CLI tool surface |
+| 6 | Verify + rollout | `cadex script --set` with the new `weights=` name and `sha256=` | Works: **1719.2** total reward, full 300-step horizon, against §7b's 1729.9 from a 400-iteration run | a person edits two lines; the agent could, through `edit_script` |
+| 7 | Review | the agent: `inspect scope=output`; a pipeline: the `policy` block of `assembly-simulation-trace.json` in the staged attempt | Works for the agent — asked to report the rollout, it read total reward 1719.23 and the five per-term totals through `inspect` unaided. A pipeline gets nothing from the CLI (row 3): the numbers are only in the staging directory | the agent; **a guess** for a pipeline |
+| 8 | **Iterate** | `cadex params --set shove_n=0.20` | **Refused, exit 3**: the task digest moved (`602d62c1…` → `369a0dd5…`) and the declared policy no longer fits. Correct by ADR-088 — and it means the refusal also never writes the new bundle, so there is nothing to retrain against. Iterating today is six legs: edit the script to drop or re-point the policy → rebuild → dig out the bundle → train (`--init-from … --init-from-task-change`) → `put_asset` → re-declare. Three of the six are the person's | **blocked** |
+| 9 | Compare and record | — | Nothing exists: no comparison, no `PROGRESS.md`, and the project directory is not a git repository | **missing** |
+| 10 | Project as a codebase | — | No `ARCHITECTURE.md`, `DECISIONS.md` or `PROGRESS.md`; nothing scaffolds them; nothing reads them on a visit | **missing** |
+| 11 | The same walk with the GUI attached | the in-app agent, which has a shell | Not exercised; the shape is the same and row 4's gap does not apply | doc only |
+| 12 | The same walk with training on a remote machine | `training/remote_train.sh` (ADR-089) | Not exercised; B7 stays blocked on the box's stale checkout | doc only |
+
+**One agent turn on top, to see the refusals today.** The same scratch
+project was given one `./cadex -p` turn asking it to retrain at toy scale,
+bring the policy home and report the rollout. It did rows 6–7 itself
+(rebuilt, reported 1719.23 and the per-term totals) and refused rows 4
+and 5 cleanly and resumably — but the command it handed back for row 4
+still guesses: `--num-envs` and `--output` where the trainer takes
+`--envs` and `--out`, exactly §7b's finding, and it invented a
+"`put_asset` CLI command" that does not exist. The contract has to carry
+the trainer's real flags, or a dispatcher has to make guessing
+unnecessary.
+
+**And one defect, engine-side, found because the CLI checks every reply.**
+That turn's first `inspect scope=document` call threw inside the engine,
+and the refusal frame `CadexInspection.py` builds on that path
+(`failure_code: INSPECTION_FAILED`, with `scope`, `target` and
+`result_json_bytes` riding along) does not match
+`FAILURE_RESPONSE_SPEC`: it lacks `observed`, `normalized`, `requested`,
+`retry`, `candidates`, `allowed_values`, `native_diagnostics` and
+`state_change`, and carries three keys the spec forbids. The CLI's
+`validate_response` therefore turns every inspect *exception* into a hard
+`CadexdError` instead of the clean refusal the agent could act on; the
+shell does not validate replies, so it never saw this. A bare
+`inspect scope=document` over raw NDJSON succeeds (668 bytes), so the
+trigger is the argument shape the agent used, not the scope. The frame
+shape is the bug either way, and it is one function.
+
+Two smaller things the run turned up. `training/SETUP.md` names the venv
+`~/cadex-train-venv`; the one on this machine is `<repo>/.venv`, untracked,
+Python 3.13.12 with the four pins — either is fine, the doc just should not
+be read as the only place to look. And one `cadex export` left **two**
+attempt directories for the one accepted revision, 1.5 s apart, both
+complete; harmless, unexplained, not chased.
+
+**What this orders.** The frontier, in the order that unblocks the most:
+
+1. **Outputs the CLI can hand over** (rows 3 and 7). `cadex export` already
+   holds the accepted attempt's `outputs/`; copying the non-BREP files
+   beside the STEP and STL, and naming them in the `--json` envelope, is a
+   `cli/` change and no protocol op. Without it, both the bundle and the
+   review are guesswork about staging paths.
+2. **`put_asset` in the CLI tool surface** (row 5), and a no-model
+   `cadex asset` subcommand beside `params` so a pipeline can bring a
+   policy home without a model turn either.
+3. **A training leg the agent can drive** (row 4). Training stays offboard
+   (ADR-084): what is missing is a *dispatcher* — a `cadex train`
+   subcommand in `cli/` that runs the venv's trainer against the accepted
+   bundle and writes the receipt — plus the trainer's invocation shape in
+   the agent's contract, so a refusal at least hands back correct flags.
+4. **An iterate shape** (row 8). The refusal is right; what is wrong is
+   that a parameter sweep with a policy declared can never produce the
+   bundle it needs. The smallest reversible answer is a script convention
+   — the policy declared behind one parameter the sweep can blank — and
+   only if that proves clumsy, a CLI flag. Decide when 1–3 exist.
+5. **The `INSPECTION_FAILED` frame** (above): make it a `FAILURE_RESPONSE_SPEC`
+   frame, with a test that runs the validator over it, so an inspect
+   exception is a refusal the agent reads rather than a client crash.
+6. **The project as a codebase** (rows 9 and 10): scaffold
+   `ARCHITECTURE.md`, `DECISIONS.md`, `PROGRESS.md` on first visit, read
+   them on every visit, and land every comparison as a `PROGRESS.md` row
+   with the numbers, in a git repository the project owns.
 
 ## 8. Live mode: watching it, rather than reading about it
 
