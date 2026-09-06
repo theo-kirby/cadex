@@ -19718,3 +19718,20 @@ install list, Qt component, GUI configuration or runtime behavior changes.
 The nineteen inherited edits are manifested and noticed; the relocated header
 is a FreeCAD-derived addition. Debug disable and directory deletion remain
 separate future units. Verification is recorded with this unit's graph node.
+
+
+**Complete GUI disable (2026-09-07).** Following the successful metatype
+prerequisite and historical release disable `d2c8bcc5`, make BUILD_GUI default
+OFF in the shared initializer and in the common preset; switch the standalone
+inherited rpm preset from TRUE to OFF as well. The preset migrates
+an existing debug ON cache; a command-line ON override (or an ON cache used
+without a preset) fails immediately in the initializer, before GUI dependency
+setup or target registration. This removes the debug GUI engineering
+convenience consistently across configurations, retaining the sources until
+the separate delete commit. Keep QtCore, QtConcurrent and LinguistTools and
+all release/package install rules unchanged. The one inherited file was
+already manifested and noticed; the manifest remains 66 FreeCAD files.
+A CMake execution regression covers unset, OFF and three truthy requests;
+real debug/release configuration, one release build and audit gates are
+reported in PHASE8-AUDIT.md and the unit's record. No fork-delta reduction
+or Phase 8 deletion is claimed.

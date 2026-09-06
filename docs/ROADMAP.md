@@ -306,8 +306,9 @@ this phase.
 - [x] Preserve Material's headless metatype contract in `App/MetaTypes.h`,
       with a forwarding Gui header and all 18 retained includes migrated
       (ADR-213, 2026-09-07).
-- [ ] Complete the debug GUI disable. The historical release disable alone
-      does not make deletion safe.
+- [x] Complete the debug GUI disable: all presets select headless builds,
+      and the shared initializer rejects explicit GUI-on requests
+      (ADR-213, 2026-09-07). GUI sources remain for the separate delete commit.
 - [x] **`cadex_assembly_worker.py` imported `CommandCreateView`** —
       GUI-lineage code used headlessly for exploded views, and the one
       import that made this deletion look more than mechanical. **Resolved

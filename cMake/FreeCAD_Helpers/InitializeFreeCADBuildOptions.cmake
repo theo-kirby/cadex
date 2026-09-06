@@ -5,7 +5,10 @@ macro(InitializeFreeCADBuildOptions)
     # ==============================================================================
 
     option(BUILD_FORCE_DIRECTORY "The build directory must be different to the source directory." OFF)
-    option(BUILD_GUI "Build FreeCAD Gui. Otherwise you have only the command line and the Python import module." ON)
+    option(BUILD_GUI "Build the retired FreeCAD GUI (unsupported by Cadex)." OFF)
+    if(BUILD_GUI)
+        message(FATAL_ERROR "Cadex no longer supports BUILD_GUI=ON. Configure with -DBUILD_GUI=OFF; the application is the shell. See docs/PHASE8-AUDIT.md.")
+    endif()
     option(FREECAD_USE_EXTERNAL_ZIPIOS "Use system installed zipios++ instead of the bundled." OFF)
     option(FREECAD_USE_EXTERNAL_SMESH "Use system installed smesh instead of the bundled." OFF)
     option(FREECAD_USE_EXTERNAL_KDL "Use system installed orocos-kdl instead of the bundled." OFF)

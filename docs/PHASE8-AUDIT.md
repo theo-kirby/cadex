@@ -3,12 +3,14 @@
 Verified against source: 2026-09-07
 
 [Cadex-new] Audit of [FreeCAD-inherited] source at
-`d031bde033aca73242fa7a668f657fa15b16935f`. **Do not delete yet.**
+`d031bde033aca73242fa7a668f657fa15b16935f`. **Deletion requires its own verified unit.**
 The original audit found release code consuming `src/Gui/MetaTypes.h` and
 debug enabling GUI. The metatype prerequisite has since moved the declarations
 to `src/App/MetaTypes.h`, preserving a forwarding Gui header and migrating all
-18 retained includes (ADR-213). Debug disable remains next. Tables below
-retain the audit-revision findings and measurements. Full L3 remains open.
+18 retained includes (ADR-213). Debug disable is now complete: all presets
+select OFF and the shared initializer rejects GUI-on requests. Deletion is
+still a separate unit. Tables below retain the audit-revision findings and
+measurements. Full L3 remains open.
 
 ## Disable evidence and measured boundary
 
@@ -222,3 +224,46 @@ inherited FreeCAD files, including all 19 edits in this unit.
 No installation or staging ran, since this unit changes neither contract.
 No shell changes, GUI launch, second build, directory deletion or claim of
 fork-delta reduction. Debug disable is the next separate unit.
+
+## Complete disable verification (2026-09-07)
+
+The common preset now supplies BUILD_GUI=OFF, migrating the existing debug
+ON cache. The standalone rpm preset also selects OFF. A regression resolves
+all nine public presets, including that non-inheriting rpm preset. The shared initializer defaults OFF and rejects truthy GUI requests
+before dependency setup and target registration. GUI sources and build guards
+remain for the separate deletion unit. QtCore, QtConcurrent and LinguistTools
+remain configured in debug and release. No release install, payload or protocol
+rule changed; no installation, staging or fresh packaged gate was required.
+
+- `pixi run configure`, `pixi run configure-release` and the single
+  `pixi run build-release`: exit 0. Caches confirm Debug/OFF and Release/OFF.
+  Debug Ninja targets have no FreeCADGui library or Gui_tests_run target;
+  release Ninja dependencies have zero audited GUI paths.
+- `pixi run cmake --preset conda-macos-debug -B /tmp/cadex-disable-explicit-debug
+  -DBUILD_GUI=ON` and the equivalent release command: expected exit 1 with
+  `Cadex no longer supports BUILD_GUI=ON`. Reconfiguring that debug directory
+  without a preset or override also rejects its stale ON cache, exit 1.
+- The five CMake execution regressions cover unset/OFF and ON/TRUE/1. All
+  pass. Executing the previous initializer with ON returns 0, confirming
+  that the new rejection regression fails on the old behavior.
+- Both cadex ctests: 2/2 passed in 22.18 s. Their installed-engine preference
+  still applies; these do not establish fresh-payload independence.
+- Working-tree manifest equality passes: 66 FreeCAD and 44 Blender files.
+  The initializer already carries its notice and manifest entry; no manifest
+  membership changed. No directory deletion or fork-delta reduction claimed.
+- Full engine suite: **2,021 passed, 52 skipped in 261.86 s**. The subsequent
+  standalone rpm preset correction and added preset regression were verified
+  by the focused suite: **6 passed in 0.11 s**. The full run included the
+  five CMake execution cases; the sixth test was added afterward. Linux,
+  Windows and rpm toolchains were not configured on this macOS machine.
+- Full inherited ctest: exit 8, **162 failures / 1,537 enabled tests** in
+  128.98 s. No new failure names against the 164-failure baseline; the same
+  baseline-only DlgVersionMigrator_Tests_run and
+  SpreadsheetRenameProperty.renameProperty remain absent. Test inventory is
+  unchanged from the metatype prerequisite. All 35 Material registrations
+  pass. The three skipped and seven disabled cases listed in the prerequisite
+  record are unchanged by name; no baseline file was overwritten.
+
+Local logs use `/tmp/cadex-disable-*.log`. No GUI launched or shell files
+changed. Next is the separately verified directory deletion; mixed Assembly
+modules remain retained, and broad Phase 8/fork-delta completion stays open.

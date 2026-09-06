@@ -1,6 +1,6 @@
 # AGENTS.md — Agent Entry Point
 
-Verified against source: 2026-09-05. **This is the single agent contract.**
+Verified against source: 2026-09-07. **This is the single agent contract.**
 `CLAUDE.md` exists only to import it (`@AGENTS.md`) and holds nothing of its
 own, so there is one file to read and one file to edit — which is what ADR-005
 asked for, reached from the other direction (ADR-137).
@@ -212,7 +212,7 @@ pixi run python analysis/skeleton.py carve.json --run ./run --out ./fit
                               # which rebuilds for real and needs an engine.
 
 pixi run test-engine          # THE engine suite (1757 tests), no build needed
-pixi run configure            # CMake configure (debug, GUI ON)
+pixi run configure            # CMake configure (debug, GUI OFF)
 pixi run build                # build debug        | pixi run build-release (GUI OFF)
 pixi run test                 # inherited FreeCAD ctest, NOT the above
                               #                    | pixi run test-release
@@ -234,9 +234,10 @@ the environment before it touches `shell/`; that is why `build-shell` is a
 script and not a `cmd = ["cmake", ...]` task. Don't route the shell build
 around it.
 
-**Release builds have no GUI** (ADR-022): `pixi run freecad-release` no
-longer launches an application — only the debug build does, and only as an
-engineering convenience. The application you launch is the shell.
+**Engine builds have no GUI** (ADR-022, ADR-213): debug and release both
+configure headlessly; explicit `BUILD_GUI=ON` requests are rejected.
+`pixi run freecad-release` does not launch an application. The application
+you launch is the shell.
 Python-only changes under `src/Mod/cadex/` need `pixi run build-engine`
 before the shell's suites see them, and `pixi run stage-engine` before the
 *bundled* engine does.

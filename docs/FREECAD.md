@@ -175,13 +175,18 @@ line of it. Measured effect on this tree: `lib/` 43 MB → 8.3 MB, `Mod/`
 
 The 2026-09-07 [deletion-readiness audit](PHASE8-AUDIT.md) counts 1,960
 tracked files / 65,331,470 bytes in src/Gui and 3,731 files / 137,324,776
-bytes across all thirteen GUI directories. **Deletion is not yet safe:**
-debug still enables GUI. The metatype prerequisite now lives in retained
+bytes across all thirteen GUI directories. **Disable is now complete** (ADR-213):
+all presets select `BUILD_GUI=OFF`, and the shared build-options initializer
+rejects `BUILD_GUI=ON`, including stale ON caches outside the presets.
+The metatype prerequisite now lives in retained
 `App/MetaTypes.h`; all eighteen retained Material includes have migrated and
-`Gui/MetaTypes.h` forwards for remaining GUI consumers. Complete the debug
-disable before a separate delete commit. The audit lists build/install/test references,
+`Gui/MetaTypes.h` forwards for remaining GUI consumers. Deletion remains a
+separate gated commit. The audit lists build/install/test references,
 retained Assembly dependencies, run-start delta metrics and exact gates
-(ADR-213). Remove deleted registrations and obsolete guards together.
+(ADR-213). The initializer already has a modification notice and manifest
+entry; this disable keeps the manifest at 66 files (51 src, 15 build/tests).
+QtCore, QtConcurrent and LinguistTools remain required. Remove deleted
+registrations and obsolete guards together.
 
 Until then: **do not add to it, do not fix it, do not partially delete it.**
 
