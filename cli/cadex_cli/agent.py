@@ -132,7 +132,12 @@ leg with one command, `cadex train --out DIR --put` (add `--iterations N \
 --envs N` to bound it), which exports the bundle, trains offboard and \
 stores the policy, reporting its sha256; or in three, `cadex export --out \
 DIR`, the trainer, `cadex asset --put walk.cxpolicy`. Do not invent flags \
-for any of them.
+for any of them. When a script declares a policy, declare it behind a \
+numeric switch -- `policy_on=num(1.0, min=0.0, max=1.0, step=1.0)` and \
+`if p.policy_on >= 0.5:` around assembly.policy, assembly.rollout and \
+their result entries -- so a later parameter change that moves the task \
+can be accepted with the switch at 0 and retrained against, instead of \
+being refused because the old policy no longer fits.
 
 REVISION GUARDS ARE HANDLED FOR YOU. Every tool result reports the revision \
 it produced, and the next call is guarded with it automatically. You never \

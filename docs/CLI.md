@@ -115,9 +115,12 @@ for the store write, and released between them. The trainer's flags are
 carried by name so that nobody guesses them: `--iterations N` (200),
 `--envs N` (256 — drop it hard on CPU, `training/SETUP.md`), `--seed N`,
 `--label TEXT`, `--init-from POLICY` (warm start, same task digest),
-`--name NAME.cxpolicy` (the policy's filename in `--out`, default
-`<task>.cxpolicy`), `--timeout SECONDS` (stop the trainer; 0 is no
-limit). The interpreter is `--trainer-python PATH`, then
+`--init-from-parent-task BUNDLE` with `--init-from-task-change REASON`
+(warm start **across** a task change — the curriculum pair, ADR-161; the
+three travel together or it is a usage error, and the trainer owns the
+rule about which task keys may move), `--name NAME.cxpolicy` (the
+policy's filename in `--out`, default `<task>.cxpolicy`), `--timeout
+SECONDS` (stop the trainer; 0 is no limit). The interpreter is `--trainer-python PATH`, then
 `$CADEX_TRAIN_PYTHON`, then `<repo>/.venv/bin/python`, then
 `~/cadex-train-venv/bin/python` — the two places `training/SETUP.md`
 names — and **nothing creates a venv**: none found is exit 1 with the
@@ -129,6 +132,43 @@ it, which is `cadex script --set` or a turn's `edit_script`. A project
 whose accepted revision exports no training task is exit 3 before the
 trainer runs; a trainer that exits non-zero or hits `--timeout` is exit 1
 with its stderr already on ours.
+
+**Iterating — change the mechanism or the task, retrain, compare** is
+four commands and one digest edit, with no new flag on `params`
+(ADR-192). A sweep that moves the task digest is refused at exit 3 while
+a policy is declared against that task, correctly: the policy no longer
+fits, and the refusal writes nothing, so it cannot export the bundle a
+retrain would need. The convention is a **numeric switch parameter** in
+front of the policy:
+
+```python
+p = params(..., policy_on=num(1.0, min=0.0, max=1.0, step=1.0))
+...
+if p.policy_on >= 0.5:
+    policy = assembly.policy(task, weights="walk.cxpolicy", sha256="…")
+    run = assembly.rollout(policy, frames_per_second=50, seed=7)
+    result["policy"] = policy
+    result["run"] = run
+```
+
+```bash
+./cadex params --set policy_on=0 --set shove_n=0.20 --out ./sweep   # accepted: the bundle
+./cadex train --out ./run2 --put --name walk2.cxpolicy \
+    --init-from ./run1/walk.cxpolicy --init-from-parent-task ./run1/walk-task.json \
+    --init-from-task-change "shove band 0.12 N -> 0.20 N"          # warm, across the change
+# edit the script: weights="walk2.cxpolicy", sha256=<the envelope's>
+./cadex script --set ./script.py
+./cadex params --set policy_on=1 --out ./run2                       # verify + rollout
+```
+
+`set_params` never refuses a dropped output (only `write_script` does,
+ADR-045), so blanking the switch is an ordinary accepted revision that
+declares no policy and exports the task with its new digest. A stored
+parameter value outlives a script write, which is why the last step is a
+`params` call and not part of the `script --set`. The comparison is the
+`policy` block of the two exported traces (`total_reward` and the
+per-term `reward_totals`); recording it is the lifecycle walk's next leg
+(`docs/MUJOCO.md` §7c, row 9).
 
 ### Exit codes
 
@@ -405,4 +445,5 @@ about a payload (ADR-023).
   the repository root and runs under a venv the engine's environment
   deliberately lacks (ADR-084). No venv, no `train`; it does not build one.
 - One `--set` per parameter, and parameters are numeric — that is what
-  `num(...)` declares.
+  `num(...)` declares. A switch is a `num` with `min=0, max=1, step=1`
+  and a `>= 0.5` test in the script (ADR-192).

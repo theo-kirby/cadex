@@ -1796,6 +1796,14 @@ What makes them experimental, and what would settle it:
   and stores the policy with its sha256 in the envelope. Training stays
   offboard (ADR-084): a subprocess, and no venv is ever created. §7c row 4
   closes; the iterate shape (item 4) is next.
+- [x] **Iterate is a script convention, not a flag** (ADR-192). The
+  policy is declared behind a numeric switch parameter; `cadex params
+  --set policy_on=0 --set <change>` is accepted and exports the bundle
+  at its new digest, `cadex train` carries the ADR-161 curriculum pair
+  for the warm retrain, and `cadex script --set` plus `params --set
+  policy_on=1` re-declare. Run headlessly on the §7b toy and pinned by a
+  real-trainer test. §7c row 8 closes; compare-and-record (row 9) and
+  the project scaffold (row 10) are next.
 - **Linux and Windows shell bundles.** The engine payload builds for both;
   only macOS arm64 has shell CI. Moot once Phase 12 lands — revisit then.
 

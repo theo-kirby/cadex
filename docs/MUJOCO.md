@@ -2850,7 +2850,7 @@ row below was actually run, and the numbers are this run's.
 | 5 | Policy home | On 2026-09-06 (morning): `put_asset` over raw NDJSON (a 40-line scratch driver on the `cadexd_latency_integration.py` client) — works, 54 577 bytes, but not in the CLI tool surface. **Closed the same day** (ADR-190): `cadex asset --put walk.cxpolicy` for a pipeline, `put_asset` in the agent's tool surface for a turn. On a fresh scratch copy: `cadex export` → 2 it × 8 envs in **16.2 s** → `cadex asset --put` stored 28 053 bytes and returned the sha256 → `cadex script --set` with `weights="walk.cxpolicy"` and that digest accepted at `758ef975…` → the exported trace scored the untrained policy at **−297.4** total reward against the rehearsal policy's 1729.9. No staging path, no NDJSON driver, no human step. `docs/CLI.md` §2 | the agent, or a pipeline |
 | 6 | Verify + rollout | `cadex script --set` with the new `weights=` name and `sha256=` | Works: **1719.2** total reward, full 300-step horizon, against §7b's 1729.9 from a 400-iteration run | a person edits two lines; the agent could, through `edit_script` |
 | 7 | Review | the agent: `inspect scope=output`; a pipeline: the `policy` block of `assembly-simulation-trace.json`, which `cadex export` now copies into `--out` (row 3) | Works for the agent — asked to report the rollout, it read total reward 1719.23 and the five per-term totals through `inspect` unaided. A pipeline reads the same numbers from the exported trace: `total_reward` 1729.95 and the five `reward_totals` on the scratch copy, no staging path read | the agent, or a pipeline |
-| 8 | **Iterate** | `cadex params --set shove_n=0.20` | **Refused, exit 3**: the task digest moved (`602d62c1…` → `369a0dd5…`) and the declared policy no longer fits. Correct by ADR-088 — and it means the refusal also never writes the new bundle, so there is nothing to retrain against. Iterating today is six legs: edit the script to drop or re-point the policy → rebuild → dig out the bundle → train (`--init-from … --init-from-task-change`) → `put_asset` → re-declare. Three of the six are the person's | **blocked** |
+| 8 | **Iterate** | `cadex params --set shove_n=0.20` | **Refused, exit 3**: the task digest moved (`602d62c1…` → `369a0dd5…`) and the declared policy no longer fits. Correct by ADR-088 — and it means the refusal also never writes the new bundle, so there is nothing to retrain against. Iterating that morning was six legs: edit the script to drop or re-point the policy → rebuild → dig out the bundle → train (`--init-from … --init-from-task-change`) → `put_asset` → re-declare. Three of the six were the person's. **Closed the same day** (ADR-192) with a script convention and no new `params` flag: the policy is declared behind a numeric switch (`policy_on`), so `cadex params --set policy_on=0 --set shove_n=0.20 --out sweep` is accepted (`set_params` never refuses a dropped output) and exports the bundle at `369a0dd5…`; `cadex train --put --init-from … --init-from-parent-task … --init-from-task-change "…"` retrains warm across the change (the ADR-161 pair, now carried by the dispatcher) — 2 it × 8 envs in **17.8 s** wall, iteration 0 already at +1.52 reward/step where a cold network sits near −0.95; the digest edit and `cadex script --set`; `cadex params --set policy_on=1 --out run2` verifies and rolls out. Trace: **127.8** total reward at 0.20 N after one warm toy step, against 1729.9 at 0.12 N for the 400-iteration policy — the comparison exists; row 9 is where it gets recorded. `cli/tests/test_train.py` runs the whole chain on the toy with the real trainer | the agent for the script, a pipeline for the four commands |
 | 9 | Compare and record | — | Nothing exists: no comparison, no `PROGRESS.md`, and the project directory is not a git repository | **missing** |
 | 10 | Project as a codebase | — | No `ARCHITECTURE.md`, `DECISIONS.md` or `PROGRESS.md`; nothing scaffolds them; nothing reads them on a visit | **missing** |
 | 11 | The same walk with the GUI attached | the in-app agent, which has a shell | Not exercised; the shape is the same and row 4's gap does not apply | doc only |
@@ -2918,11 +2918,20 @@ left a third, so it is every export, not one).
    command. The agent itself still cannot run it — it has no shell — so
    the leg is the caller's or a pipeline's; making it the agent's is a
    tool that spawns a fifteen-minute subprocess, which is not taken here.
-4. **An iterate shape** (row 8). The refusal is right; what is wrong is
-   that a parameter sweep with a policy declared can never produce the
-   bundle it needs. The smallest reversible answer is a script convention
-   — the policy declared behind one parameter the sweep can blank — and
-   only if that proves clumsy, a CLI flag. Decide when 1–3 exist.
+4. ~~**An iterate shape** (row 8).~~ **Done, 2026-09-06** (ADR-192): the
+   script convention, not the flag. The policy sits behind a numeric
+   switch parameter the sweep blanks; a blanked sweep is an ordinary
+   accepted revision that exports the task at its new digest; `cadex
+   train` carries the curriculum pair (`--init-from-parent-task`,
+   `--init-from-task-change`) so the retrain is warm across the change;
+   the digest edit, `cadex script --set` and `cadex params --set
+   policy_on=1` close it. Measured on the scratch copy above and pinned
+   by a real-trainer test. Not taken: a `params --drop-policy` flag —
+   the refusal is the engine's and the switch is the script's, and a
+   convention the agent can author is cheaper than an op it must be
+   told about. What the convention cannot do is hide that a stored
+   parameter value outlives a script write: the switch stays at 0 until
+   a `params` call turns it back on, which is why the last step exists.
 5. **The `INSPECTION_FAILED` frame** (above): make it a `FAILURE_RESPONSE_SPEC`
    frame, with a test that runs the validator over it, so an inspect
    exception is a refusal the agent reads rather than a client crash.

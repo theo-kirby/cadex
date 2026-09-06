@@ -234,6 +234,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Warm-start the actor from this .cxpolicy (same task digest).",
     )
     train_parser.add_argument(
+        "--init-from-parent-task",
+        dest="init_from_parent_task",
+        default="",
+        metavar="BUNDLE",
+        help="The task .json --init-from's policy was trained on; needed "
+        "beside --init-from-task-change.",
+    )
+    train_parser.add_argument(
+        "--init-from-task-change",
+        dest="init_from_task_change",
+        default="",
+        metavar="REASON",
+        help="Warm-start across a task change (a curriculum step: reward, "
+        "disturbance, episode length...) and say why in one line. Needs "
+        "--init-from and --init-from-parent-task.",
+    )
+    train_parser.add_argument(
         "--task",
         dest="task_name",
         default="",
@@ -779,6 +796,17 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
     if policy_name and not policy_name.endswith(".cxpolicy"):
         report.error = "--name must end in .cxpolicy."
         return EXIT_USAGE
+    if (args.init_from_task_change or args.init_from_parent_task) and not (
+        args.init_from and args.init_from_parent_task and args.init_from_task_change
+    ):
+        # The trainer refuses these apart too, but after the rebuild and
+        # the export; a usage error costs nothing.
+        report.error = (
+            "--init-from-task-change needs --init-from POLICY and "
+            "--init-from-parent-task BUNDLE beside it (the bundle that "
+            "policy was trained on)."
+        )
+        return EXIT_USAGE
     python = resolve_trainer_python(args.trainer_python or None)
 
     with _engine_session(args, report) as (engine, client):
@@ -809,6 +837,8 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
         seed=args.seed,
         label=args.label,
         init_from=args.init_from,
+        init_from_parent_task=args.init_from_parent_task,
+        init_from_task_change=args.init_from_task_change,
     )
     _progress(
         f" · train  {task.name}  {args.iterations} it × {args.envs} envs"

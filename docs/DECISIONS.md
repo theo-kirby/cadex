@@ -18638,3 +18638,116 @@ not a modelling operation.
   flag names **by test**; the training tree is still in no payload, no
   CMake rule and not in `pixi.toml` — the dispatcher runs it, it does not
   import it, and `training/`'s three assertions stand.
+
+## ADR-192 — Iterate is a script convention: the policy behind a switch, and the curriculum pair on `cadex train` (2026-09-06)
+
+**Status:** accepted. **Zone:** `cli/` (LGPL) and `docs/`; no protocol
+op, no engine change, no `shell/` diff, nothing new in `pixi.toml` or any
+payload. `training/` unchanged — the two flags carried here are the ones
+ADR-161 already gave it.
+
+### 1. Context
+
+The lifecycle audit (`docs/MUJOCO.md` §7c) measured row 8, iterate, as
+**blocked by design**: `cadex params --set shove_n=0.20` on the §7b toy
+with its policy declared is refused at exit 3, because the task digest
+moved (`602d62c1…` → `369a0dd5…`) and the declared policy no longer fits
+the task it is declared against. The refusal is right (ADR-088: a policy
+is bound to one exact bundle). What is wrong is its consequence: the
+refusal writes nothing, so a sweep with a policy declared can never
+produce the bundle a retrain would need, and iterating was six legs, three
+of them a person's. The audit's frontier item 4 asked for an iterate
+shape, "a script convention first — the policy declared behind one
+parameter the sweep can blank — and only if that proves clumsy, a CLI
+flag", to be decided when ADR-189, ADR-190 and ADR-191 existed. They do.
+
+### 2. Decision
+
+**The convention, not the flag.** A script that declares a policy declares
+it behind a numeric switch parameter:
+
+```python
+p = params(..., policy_on=num(1.0, min=0.0, max=1.0, step=1.0))
+...
+if p.policy_on >= 0.5:
+    policy = assembly.policy(task, weights="walk.cxpolicy", sha256="…")
+    run = assembly.rollout(policy, frames_per_second=50, seed=7)
+    result["policy"] = policy
+    result["run"] = run
+```
+
+Iterate is then four commands and one digest edit, no human step:
+
+1. `cadex params --set policy_on=0 --set shove_n=0.20 --out sweep` — the
+   change *and* the blanked switch in one accepted revision, which
+   exports the task bundle at its new digest. This works because
+   `set_params` never refuses a dropped output: only `write_script` is
+   checked (ADR-045), since only a whole-script replacement can lose an
+   output by accident.
+2. `cadex train --out run2 --put --name walk2.cxpolicy --init-from
+   run1/walk.cxpolicy --init-from-parent-task run1/walk-task.json
+   --init-from-task-change "shove band 0.12 N -> 0.20 N"` — the retrain,
+   warm across the change. **`cadex train` now carries the ADR-161
+   curriculum pair** (`--init-from-parent-task BUNDLE`,
+   `--init-from-task-change REASON`) by name, like every other trainer
+   flag it emits; the three travel together or it is a usage error
+   before the engine runs; the trainer keeps the rule about which task
+   keys may move and refuses the rest itself.
+3. The digest edit and `cadex script --set` (or a turn's `edit_script`):
+   `weights` and `sha256` from the envelope's `training` receipt.
+4. `cadex params --set policy_on=1 --out run2` — verify and rollout. A
+   stored parameter value outlives a script write, so the switch stays
+   at 0 until this call; that is why step 3 does not do it.
+
+The comparison is the `policy` block of the two exported traces
+(`total_reward`, `reward_totals`). Recording it is row 9's work.
+
+### 3. Measured, 2026-09-06, headlessly, on a scratch copy of `~/cadex-balance-ns`
+
+- The switch script accepted with `policy_on=1`, the policy verified,
+  digest `a4dd5c31…`; `cadex export` wrote the parent bundle at
+  `602d62c1…` and the trace at **1729.9** total reward (0.12 N).
+- `params --set shove_n=0.20` alone: **exit 3**, the audit's refusal
+  verbatim, both digests named.
+- `params --set policy_on=0 --set shove_n=0.20 --out sweep`: exit 0,
+  outputs `arm`, `stand`, `balance_task`, `model` — no policy, no run —
+  and the bundle at `369a0dd5…`.
+- `train … --init-from … --init-from-parent-task … --init-from-task-change
+  …`, 2 it × 8 envs: exit 0, **17.8 s** wall (trainer 3.6 s on cpu),
+  iteration 0 at **+1.52** reward/step where ADR-191's cold run sat at
+  −0.95, so the warm start took; witness 2.2e-08; 28 506 bytes stored as
+  `balance2.cxpolicy`, sha256 `4f2d62b1…` equal in receipt and store.
+  The policy header's `training.init_from` records the parent (400
+  iterations, `e6c38581…`) and `task_change` with `keys: ["disturbance"]`,
+  the reason, and both task digests.
+- The digest edit, `script --set`: accepted, `policy_on` still 0.0.
+- `params --set policy_on=1 --out run2`: exit 0; outputs include `policy`
+  and `run`; the trace's `policy_sha256` is `4f2d62b1…`, **127.8** total
+  reward over the full horizon at 0.20 N. Against 1729.9 at 0.12 N for
+  the 400-iteration policy this is the toy after one warm step, not a
+  result; it is the comparison the walk needed to be able to make.
+
+### 4. Consequences
+
+- §7c row 8 closes; the walk's legs 1–8 are agent-authored scripts and
+  CLI commands with no human step. Rows 9 (compare and record) and 10
+  (project as a codebase) are the frontier.
+- The CLI agent's overlay names the convention, so a script it authors
+  with a policy carries the switch from the start.
+- **Not taken**: a `params --drop-policy` flag or an engine op. The
+  refusal is the engine's and the switch is the script's; a convention
+  the agent can author is cheaper than an op it must be told about, and
+  it keeps `set_params` meaning what it did. Also not taken: folding step
+  4 into step 3 by having `write_script` reset stored parameter values —
+  that a stored value outlives a script write is a property other users
+  rely on.
+- **Noted, not chased**: the trainer prints its `init-from` and
+  `curriculum` lines on stdout, which the dispatcher reads only for the
+  receipt, so they never reach the terminal; the header carries the same
+  facts. And the receipt itself has no warm-start field — the header
+  does.
+- Verified by `cli/tests/test_train.py`: the curriculum pair pinned
+  against the trainer's parser, refused apart as a usage error, passed
+  through to a fake trainer as given, and the whole chain run on the toy
+  with the real trainer (two runs at 1 it × 4 envs), including the exit-3
+  refusal with the digest named.

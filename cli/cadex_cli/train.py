@@ -128,9 +128,19 @@ def trainer_command(
     seed: int = 0,
     label: str = "",
     init_from: str = "",
+    init_from_parent_task: str = "",
+    init_from_task_change: str = "",
     script: Path | str | None = None,
 ) -> list[str]:
-    """The trainer's invocation, with its real flag names."""
+    """The trainer's invocation, with its real flag names.
+
+    ``init_from_parent_task`` and ``init_from_task_change`` are the
+    curriculum pair (ADR-161): together with ``init_from`` they warm-start
+    across a task change, which is what the iterate leg of the lifecycle
+    walk does after a parameter sweep moved the task digest (ADR-192).
+    They are passed through as given; the trainer owns the rule about
+    which keys may move, and refuses the rest itself.
+    """
 
     command = [
         str(python),
@@ -145,6 +155,13 @@ def trainer_command(
         command += ["--label", label]
     if init_from:
         command += ["--init-from", str(Path(init_from).expanduser())]
+    if init_from_parent_task:
+        command += [
+            "--init-from-parent-task",
+            str(Path(init_from_parent_task).expanduser()),
+        ]
+    if init_from_task_change:
+        command += ["--init-from-task-change", init_from_task_change]
     return command
 
 
