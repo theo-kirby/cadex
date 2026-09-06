@@ -30,7 +30,7 @@ Status: working
 
 ## Negative knowledge
 
-- [scope: stage-engine concurrent with payload-inspecting engine tests | confidence: high | evidence: stormy-quill-5350] Finish staging before running these suites. The environment copy temporarily exposed `bin/ccx` before the normal prune and caused an analysis-exclusion failure. After staging completed, ccx was absent, the targeted test passed, and the sequential final engine suite passed 1973 tests with 52 skips.
+- [scope: stage-engine concurrent with payload-inspecting engine tests | confidence: high | evidence: stormy-quill-5350, floral-stone-2866] Finish staging before running the engine suite: isolation tests can observe transient `bin/ccx` before pruning. This scheduling failure recurred during BLDC verification; after staging completed the targeted check passed and the stable full rerun passed 1987 tests with 52 skips. Packaged lifecycle/library passed 61 tests with no skips. The local development payload still reports 248 external-path relocation violations and is not a portable release. [rec: floral-stone-2866]
 
 - [scope: building the shell | confidence: high | evidence: merry-eagle-4093] Never route the shell build around package/app/build_app.sh. Conda on PATH during a shell configure silently resolves the wrong zlib, libpng, OpenSSL and Python, and fails at link time or misbehaves at runtime.
 - [scope: verifying engine changes | confidence: high | evidence: simple-hollow-8675, merry-eagle-4093] A green source tree proves nothing about a payload. Anything touching the protocol or the payload must run the packaged gate with CADEX_ENGINE_ROOT pointed at a staged payload.
@@ -58,3 +58,4 @@ Status: working
 - weathered-sand-9705 — the three CI walls, and why a latency bar is not enforceable on a shared runner
 - simple-bramble-8616 — native geometry runtime setup and platform validation limits
 - stormy-quill-5350 — concurrent staging caused a transient exclusion failure; completed-payload and sequential suite passed
+- floral-stone-2866 — staging overlap reproduced the transient exclusion failure; stable rerun passed, development payload remains nonportable
