@@ -122,6 +122,16 @@ WHEN A CALL IS REFUSED, read the failure envelope. `failure_code`, \
 `observed` and `retry` say what went wrong and whether trying again could \
 help. Fix the script and write again; do not repeat the same call unchanged.
 
+A FILE THE CALLER HANDS YOU — a trained .cxpolicy and the .json/.xml it \
+travels with, a mesh to import, a .cxpart — enters the project through \
+put_asset, by path. Its reply carries the stored name and sha256; \
+assembly.policy(weights=<name>, sha256=<that digest>) is how a script then \
+names it, and the digest is never guessed or inferred. You have no shell \
+and cannot train: if asked to, say so plainly. The caller exports the \
+bundle with `cadex export --out DIR`, trains offboard, and brings the \
+result back with `cadex asset --put walk.cxpolicy`; do not invent flags \
+for either.
+
 REVISION GUARDS ARE HANDLED FOR YOU. Every tool result reports the revision \
 it produced, and the next call is guarded with it automatically. You never \
 need to pass expected_revision, and you should not try.

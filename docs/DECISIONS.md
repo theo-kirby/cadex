@@ -18472,3 +18472,76 @@ needed a change to read a file the CLI had just renamed.
   not chased.
 - Next on the audit's order: `put_asset` in the CLI tool surface and a
   no-model `cadex asset`, then a `cadex train` dispatcher.
+
+## ADR-190 — A file comes home headlessly: `cadex asset` and `put_asset` in the CLI surface (2026-09-06)
+
+**Status:** accepted. **Zone:** `cli/` (LGPL) and `docs/`; no protocol op,
+no engine change, no `shell/` diff.
+
+### 1. Context
+
+The lifecycle audit (`docs/MUJOCO.md` §7c, 2026-09-06) found row 5 — a
+trained policy coming home — reachable only over raw NDJSON with a scratch
+driver, and found the CLI agent, asked to bring one home, inventing a
+"`put_asset` CLI command" that did not exist. `put_asset` is the one write
+to the project store that is not the script's; the shell has had it since
+ADR-043 and the CLI, a third client of the same protocol, did not offer it
+to its agent or to a pipeline. It was the second item of the audit's
+ordered frontier, and the one ADR-189's export was upstream of.
+
+### 2. Decision
+
+Two doors on the op that already exists, and no new op:
+
+- **`put_asset` joins `CLI_TOOL_OPS`**, last, with prose that names the
+  four things it carries (`.cxpolicy`, its `.json`/`.xml` provenance, a
+  mesh, a `.cxpart`) and says the reply's `sha256` is the digest
+  `assembly.policy` requires, never guessed. The overlay gains one
+  paragraph: a file comes in by path, and the agent **cannot train** — it
+  says so and names `cadex export --out` and `cadex asset --put` rather
+  than inventing trainer flags.
+- **`cadex asset --put FILE`** (repeatable, `--name` for one) is the
+  no-model subcommand beside `params`. It calls `put_asset` per file and
+  reports the store's listing as `assets` rows in the envelope; with no
+  `--put` it lists the store through `inspect scope=assets`, following
+  the page chain like `cadex script` does. It **never rebuilds**: a
+  stored file changes nothing until a script names it, which is `cadex
+  script --set` or a turn's `edit_script`. A file the store refuses is
+  exit 3 with nothing written; a missing `--put` is exit 2 before the
+  engine runs.
+
+The listing rides in the envelope as a field rather than a note because
+the sha256 is the thing a pipeline pipes into the next command, and a
+number in prose is a number to parse.
+
+### 3. Evidence
+
+- `cli/tests/test_asset.py`, seven tests: a policy and its receipt land
+  with the engine's own digests and the listing is the same command;
+  `--name` keeps the suffix and replaces what it names; a `.txt` and a
+  suffix-changing `--name` are the engine's refusal at exit 3; a missing
+  file and a `--name` over two files are usage errors; the tool surface
+  offers `put_asset` with `source_path` required and `name` optional; the
+  overlay says it cannot train. `cli/tests`: 92 passed (85 before).
+- On a scratch copy of the §7b rehearsal project, the chain 3 → 4 → 5 →
+  6 → 7 with no NDJSON driver and no staging path: `cadex export` wrote
+  the bundle; `training/cadex_train.py` from the repo's untracked `.venv`
+  ran 2 iterations × 8 envs to exit 0 in 16.2 s; `cadex asset --put
+  walk.cxpolicy` stored 28 053 bytes and returned sha256 `170ac841…`;
+  `cadex script --set` with `weights="walk.cxpolicy"` and that digest
+  was accepted at `758ef975…`; the exported trace's `policy` block scored
+  the untrained policy at −297.4 total reward against the rehearsal
+  policy's 1729.9. The one thing typed by hand was the trainer command —
+  §7c item 3.
+
+### 4. Consequences
+
+- §7c row 5 moves from "a person" to "the agent, or a pipeline". The
+  agent's refusal on row 4 now names the caller's two commands instead of
+  guessing flags; the `cadex train` dispatcher is still what makes that
+  leg the agent's.
+- `assets` is a new optional envelope field; `cadex-cli-v1` is unchanged
+  because every existing key means what it did.
+- Not taken: a `--rebuild` flag on `asset`. The rebuild that makes a
+  policy real is a script change naming it, and folding that into the
+  store write would hide the digest the script has to carry.

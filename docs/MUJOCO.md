@@ -2847,7 +2847,7 @@ row below was actually run, and the numbers are this run's.
 | 2 | Assembly: joints, masses, actuator torque, sensors | the same script | Works | the agent |
 | 3 | MJCF export + task | any accepted rebuild | Works: `cadex export` rebuilt in **2.6 s** including verify and rollout. On 2026-09-06 it wrote only BREP outputs and the task JSON, model XML, policy receipt and rollout trace came back `"skipped": "not a BREP output"`, so the bundle had to be dug out of `script_artifacts/<revision>/attempt-<id>/outputs/`. **Closed the same day**: `cadex export` now copies every staged non-BREP output into `--out` under its staged filename and names it in the `--json` envelope; the trainer accepted the exported folder as its bundle unchanged (2 it × 8 envs, exit 0, task digest `602d62c1…`, 16 s wall). `docs/CLI.md` §3 | the agent, or a pipeline |
 | 4 | Training | `.venv/bin/python training/cadex_train.py <bundle> --out … --iterations 200 --envs 64 --progress …` | Works: 200 it × 64 envs in **22.5 s**, reward/step 5.24, witness error 3.2e-08 | **a person** — the CLI agent has no shell |
-| 5 | Policy home | `put_asset` over raw NDJSON (a 40-line scratch driver on the `cadexd_latency_integration.py` client) | Works: 54 577 bytes, listing returns both policies | **a person** — not in the CLI tool surface |
+| 5 | Policy home | On 2026-09-06 (morning): `put_asset` over raw NDJSON (a 40-line scratch driver on the `cadexd_latency_integration.py` client) — works, 54 577 bytes, but not in the CLI tool surface. **Closed the same day** (ADR-190): `cadex asset --put walk.cxpolicy` for a pipeline, `put_asset` in the agent's tool surface for a turn. On a fresh scratch copy: `cadex export` → 2 it × 8 envs in **16.2 s** → `cadex asset --put` stored 28 053 bytes and returned the sha256 → `cadex script --set` with `weights="walk.cxpolicy"` and that digest accepted at `758ef975…` → the exported trace scored the untrained policy at **−297.4** total reward against the rehearsal policy's 1729.9. No staging path, no NDJSON driver, no human step. `docs/CLI.md` §2 | the agent, or a pipeline |
 | 6 | Verify + rollout | `cadex script --set` with the new `weights=` name and `sha256=` | Works: **1719.2** total reward, full 300-step horizon, against §7b's 1729.9 from a 400-iteration run | a person edits two lines; the agent could, through `edit_script` |
 | 7 | Review | the agent: `inspect scope=output`; a pipeline: the `policy` block of `assembly-simulation-trace.json`, which `cadex export` now copies into `--out` (row 3) | Works for the agent — asked to report the rollout, it read total reward 1719.23 and the five per-term totals through `inspect` unaided. A pipeline reads the same numbers from the exported trace: `total_reward` 1729.95 and the five `reward_totals` on the scratch copy, no staging path read | the agent, or a pipeline |
 | 8 | **Iterate** | `cadex params --set shove_n=0.20` | **Refused, exit 3**: the task digest moved (`602d62c1…` → `369a0dd5…`) and the declared policy no longer fits. Correct by ADR-088 — and it means the refusal also never writes the new bundle, so there is nothing to retrain against. Iterating today is six legs: edit the script to drop or re-point the policy → rebuild → dig out the bundle → train (`--init-from … --init-from-task-change`) → `put_asset` → re-declare. Three of the six are the person's | **blocked** |
@@ -2898,14 +2898,23 @@ left a third, so it is every export, not one).
    the `--json` envelope, and the trainer takes the exported folder as its
    bundle. The staged name is the whole trick — the task references the
    model by it, so the copy needed no rename and the trainer no change.
-2. **`put_asset` in the CLI tool surface** (row 5), and a no-model
-   `cadex asset` subcommand beside `params` so a pipeline can bring a
-   policy home without a model turn either.
+2. ~~**`put_asset` in the CLI tool surface** (row 5), and a no-model
+   `cadex asset` subcommand.~~ **Done, 2026-09-06** (ADR-190,
+   `cli/cadex_cli/tools.py` and `__main__.py`, no protocol op): the
+   agent is offered `put_asset` and told it cannot train, and
+   `cadex asset --put FILE` brings a file home with its sha256 in the
+   envelope. Row 5's evidence is the whole chain 3 → 4 → 5 → 6 → 7 run
+   on a scratch copy with only the trainer command typed by hand — which
+   is item 3.
 3. **A training leg the agent can drive** (row 4). Training stays offboard
    (ADR-084): what is missing is a *dispatcher* — a `cadex train`
    subcommand in `cli/` that runs the venv's trainer against the accepted
    bundle and writes the receipt — plus the trainer's invocation shape in
    the agent's contract, so a refusal at least hands back correct flags.
+   Since ADR-190 the overlay tells the agent it cannot train and names
+   `cadex export` and `cadex asset --put` as the caller's two ends of the
+   leg, so a refusal no longer invents flags; the dispatcher is still the
+   thing that makes the leg the agent's.
 4. **An iterate shape** (row 8). The refusal is right; what is wrong is
    that a parameter sweep with a policy declared can never produce the
    bundle it needs. The smallest reversible answer is a script convention

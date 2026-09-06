@@ -3,13 +3,14 @@
 
 """``cadex`` — the command line.
 
-Five subcommands over one project, of which exactly one spends tokens::
+Six subcommands over one project, of which exactly one spends tokens::
 
     cadex -p "a mounting bracket for a NEMA17, 4 mm wall" --out ./out
     cadex params --set fin_angle=12 --out ./sweep/12
     cadex script --set bracket.py --out ./out
     cadex export --out ./out
     cadex link --from ../sensorA --output sensor
+    cadex asset --put walk.cxpolicy --put walk-task.json
 
 That asymmetry is the whole design. An expensive turn authors a *parametric*
 script once; after that a sweep is ``set_params`` and a re-export, with no
@@ -58,6 +59,7 @@ from .session import (
     ProjectBusy,
     project_lock,
     read_agent_state,
+    read_project_assets,
     read_script_source,
     read_script_state,
     read_working_revision,
@@ -173,6 +175,30 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FILE",
         help="Store it under this name. Defaults to <output>.cxpart; re-using "
         "a name is how a part is refreshed.",
+    )
+
+    asset_parser = subparsers.add_parser(
+        "asset",
+        help="Copy a file into the project store, or list what is there. "
+        "No AI, no tokens.",
+    )
+    _common(asset_parser, inherit=True)
+    asset_parser.add_argument(
+        "--put",
+        dest="put_files",
+        action="append",
+        default=[],
+        metavar="FILE",
+        help="Repeatable. A .cxpolicy, its .json/.xml provenance, a mesh "
+        "(.stl/.obj/.ply) or a .cxpart. Re-using a stored name replaces it.",
+    )
+    asset_parser.add_argument(
+        "--name",
+        dest="asset_name",
+        default="",
+        metavar="NAME",
+        help="Store the one --put file under this name (same suffix). "
+        "Defaults to the file's own name.",
     )
     return parser
 
@@ -592,6 +618,68 @@ def command_link(args: argparse.Namespace, report: RunReport) -> int:
         return EXIT_OK
 
 
+def command_asset(args: argparse.Namespace, report: RunReport) -> int:
+    """Bring a file into the project store, or list the store. No model.
+
+    This is how a trained policy comes home headlessly (ADR-190): the
+    trainer's ``.cxpolicy`` and the receipt it travels with go in through
+    ``put_asset`` — the path a mesh already travels, and the one write to
+    the store that is not the script's — and the envelope's ``assets`` row
+    carries the sha256 ``assembly.policy(sha256=...)`` then requires. It
+    never rebuilds: a stored file changes nothing until a script names it,
+    and that change is ``cadex script --set`` or a turn's ``edit_script``.
+
+    With no ``--put`` it lists the store, which is what a pipeline reads to
+    learn a digest it did not store itself.
+    """
+
+    files = [str(item) for item in args.put_files]
+    if args.asset_name and len(files) != 1:
+        report.error = "--name applies to exactly one --put FILE."
+        return EXIT_USAGE
+    paths: list[Path] = []
+    for item in files:
+        path = Path(item).expanduser()
+        if not path.is_file():
+            report.error = f"no such file: {path}"
+            return EXIT_USAGE
+        paths.append(path.resolve())
+
+    with _engine_session(args, report) as (_engine, client):
+        if not paths:
+            report.assets = read_project_assets(client)
+            if not report.assets:
+                report.notes.append("the project store holds no assets.")
+            report.ok = True
+            return EXIT_OK
+
+        for path in paths:
+            request: dict[str, Any] = {"source_path": str(path)}
+            if args.asset_name:
+                request["name"] = args.asset_name
+            _progress(f" · put_asset  {path.name}")
+            reply = client.request("put_asset", request)
+            if reply.get("ok") is not True:
+                report.error = str(
+                    reply.get("error") or reply.get("failure_code") or "put_asset failed"
+                )
+                report.assets = [
+                    dict(item)
+                    for item in (reply.get("observed") or {}).get("assets") or []
+                ]
+                return EXIT_REJECTED
+            report.notes.append(
+                "stored {:s} ({:d} bytes, sha256 {:s}).".format(
+                    str(reply.get("name") or ""),
+                    int(reply.get("bytes") or 0),
+                    str(reply.get("sha256") or ""),
+                )
+            )
+            report.assets = [dict(item) for item in reply.get("assets") or []]
+        report.ok = True
+        return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -614,6 +702,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_script(args, report)
         elif command == "link":
             code = command_link(args, report)
+        elif command == "asset":
+            code = command_asset(args, report)
         else:  # argparse already refuses anything else
             return EXIT_USAGE
     except (ValueError, ExportError) as exc:

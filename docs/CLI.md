@@ -53,6 +53,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex script --set FILE` | Replace the script from a file and rebuild. | no |
 | `cadex export` | Rebuild the accepted script and write its outputs. | no |
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
+| `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
 
 Flags, valid on either side of the subcommand:
 
@@ -85,6 +86,21 @@ accepted revision — and a run that finds nothing moved rebuilds nothing,
 because a no-op that re-accepted the model would put a meaningless revision
 in the history every time somebody checked. A rebuild that then fails
 against the new shape exits `3` and says what broke.
+
+`asset` takes `--put FILE`, repeatable, and `--name NAME` for a single
+`--put` (same suffix; re-using a stored name replaces the file). It is the
+headless door for a trained policy (ADR-190): the offboard trainer's
+`.cxpolicy` and the task `.json` it travels with go in through `put_asset`
+— the path a mesh already travels, and the one write to the store that is
+not the script's — and the envelope's `assets` rows carry each stored
+file's `sha256`, which is the digest `assembly.policy(weights=…, sha256=…)`
+requires. **It never rebuilds**: a stored file changes nothing until a
+script names it, and that change is `cadex script --set` or a turn's
+`edit_script`. A file the store does not hold (`.txt`, a `--name` that
+changes the suffix) is the engine's refusal, exit `3`, and nothing is
+written; a `--put` that does not exist is a usage error before the engine
+runs. With no `--put` it lists the store, which is how a pipeline learns a
+digest it did not store itself.
 
 ### Exit codes
 
@@ -135,7 +151,9 @@ nothing else, so `cadex script > model.py` works.
 ```
 
 `error` is present instead of `notes` when `ok` is false. `outputs` entries
-that produced no file carry `skipped` with the reason.
+that produced no file carry `skipped` with the reason. An `asset` run adds
+`assets`, the store's listing as `[{"name", "bytes", "sha256"}, …]`, sorted
+by name — the same rows `put_asset` and `inspect scope=assets` return.
 
 **BREP outputs are converted; every other staged output is copied.** A
 BREP is written under the output's name in each `--format`. A mesh's
@@ -215,7 +233,7 @@ fail on it.
 ### Tool names are op names
 
 `describe_api`, `write_script`, `edit_script`, `set_params`, `rebuild`,
-`inspect`. The shell invented friendlier names because it had Blender's
+`inspect`, `link_part`, `put_asset`. The shell invented friendlier names because it had Blender's
 vocabulary to reconcile; a third vocabulary would be a third thing to keep
 in sync. The input schemas are **generated from `OP_ARG_SPECS`**, so they
 cannot drift from the protocol — only the prose is hand-written.
@@ -239,6 +257,11 @@ The overlay says three things the engine does not:
   pin — the agent verifies through `inspect scope=output` facts and the
   script's own `stdout`, and is told so rather than discovering it by
   failing.
+- **You cannot train, and a file comes in by path.** `put_asset` is how a
+  trained policy, its provenance or a mesh enters the project, and its
+  reply's `sha256` is the digest the script names; asked to train, the
+  agent says so and names `cadex export` and `cadex asset --put` instead
+  of inventing flags (ADR-190 — the audit caught it doing exactly that).
 - **Revision guards are handled for you.**
 
 ## 5. Sessions, locks and state

@@ -48,6 +48,11 @@ class RunReport:
     model: str = ""
     engine: dict[str, str] = field(default_factory=dict)
     out_dir: str = ""
+    #: The project store's asset listing — every stored file with its size
+    #: and sha256 — after an `asset` run (ADR-190). The sha256 is the one
+    #: `assembly.policy(sha256=...)` needs, so it is here rather than in a
+    #: note a pipeline would have to parse.
+    assets: list[dict[str, Any]] = field(default_factory=list)
     error: str = ""
     #: Free-form notes worth printing but not worth a field of their own.
     notes: list[str] = field(default_factory=list)
@@ -70,6 +75,8 @@ class RunReport:
             payload["engine"] = self.engine
         if self.out_dir:
             payload["out_dir"] = self.out_dir
+        if self.assets:
+            payload["assets"] = [dict(item) for item in self.assets]
         if self.notes:
             payload["notes"] = list(self.notes)
         if self.error:
@@ -148,6 +155,14 @@ def human_lines(report: RunReport) -> list[str]:
     skipped = [output for output in report.outputs if output.skipped]
     for output in skipped:
         lines.append(f"  --   {output.name}: {output.skipped}")
+    for item in report.assets:
+        lines.append(
+            "asset  {:s}  {:d} B  sha256 {:s}".format(
+                str(item.get("name") or ""),
+                int(item.get("bytes") or 0),
+                str(item.get("sha256") or ""),
+            )
+        )
     for note in report.notes:
         lines.append(f"note   {note}")
     if report.revision:
