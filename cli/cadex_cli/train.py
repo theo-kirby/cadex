@@ -19,10 +19,22 @@ own flags are pinned here by name because the audit twice caught the agent
 guessing them (``--num-envs`` for ``--envs``, ``--output`` for ``--out``);
 ``test_train.py`` reads them back out of the trainer's source so a rename
 there fails here.
+
+**Remote training is the same leg with one word changed** (ADR-200). With
+``--remote`` the command is ``training/remote_train.sh train <bundle>
+<out> -- <the same trainer flags>`` (ADR-089) instead of the venv's
+interpreter: the bundle and the model go out from ``--out``, the policy
+comes back to the very path the local trainer would have written, and
+the receipt is read off the same last JSON line. Everything after the
+receipt — the store, the digest edit, the verified rollout — never learns
+where the trainer ran. What this module adds for both is the check the
+remote script already makes and the local path never needed: the file at
+``--out`` hashes to the sha256 the receipt claims, or the leg fails.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -36,6 +48,11 @@ from .export import ExportedOutput
 #: repository (``docs/CLI.md`` §8), and so does the trainer: neither is in
 #: a payload, and this is the one place the two meet.
 TRAINER_SCRIPT = REPO_ROOT / "training" / "cadex_train.py"
+
+#: The remote dispatcher (ADR-089), by the same rule. It is a bash script
+#: configured by ``training/.remote.env``; the CLI adds no configuration of
+#: its own and never reads that file.
+REMOTE_SCRIPT = REPO_ROOT / "training" / "remote_train.sh"
 
 #: The interpreters tried, in order, after ``--trainer-python``: the
 #: environment variable, then the two places ``training/SETUP.md`` names —
@@ -118,10 +135,7 @@ def find_task(
     return tasks[0]
 
 
-def trainer_command(
-    python: Path | str,
-    bundle: Path | str,
-    out: Path | str,
+def trainer_flags(
     *,
     iterations: int,
     envs: int,
@@ -130,9 +144,10 @@ def trainer_command(
     init_from: str = "",
     init_from_parent_task: str = "",
     init_from_task_change: str = "",
-    script: Path | str | None = None,
 ) -> list[str]:
-    """The trainer's invocation, with its real flag names.
+    """The trainer's flags, by their real names, without the bundle or
+    ``--out`` — the part of the command that is the same wherever the
+    trainer runs.
 
     ``init_from_parent_task`` and ``init_from_task_change`` are the
     curriculum pair (ADR-161): together with ``init_from`` they warm-start
@@ -142,27 +157,116 @@ def trainer_command(
     which keys may move, and refuses the rest itself.
     """
 
-    command = [
-        str(python),
-        str(script if script is not None else TRAINER_SCRIPT),
-        str(bundle),
-        "--out", str(out),
+    flags = [
         "--iterations", str(int(iterations)),
         "--envs", str(int(envs)),
         "--seed", str(int(seed)),
     ]
     if label:
-        command += ["--label", label]
+        flags += ["--label", label]
     if init_from:
-        command += ["--init-from", str(Path(init_from).expanduser())]
+        flags += ["--init-from", str(Path(init_from).expanduser())]
     if init_from_parent_task:
-        command += [
+        flags += [
             "--init-from-parent-task",
             str(Path(init_from_parent_task).expanduser()),
         ]
     if init_from_task_change:
-        command += ["--init-from-task-change", init_from_task_change]
-    return command
+        flags += ["--init-from-task-change", init_from_task_change]
+    return flags
+
+
+def trainer_command(
+    python: Path | str,
+    bundle: Path | str,
+    out: Path | str,
+    *,
+    script: Path | str | None = None,
+    **flags: Any,
+) -> list[str]:
+    """The local trainer's invocation: the venv's interpreter, the trainer,
+    the bundle, ``--out``, then :func:`trainer_flags`."""
+
+    return [
+        str(python),
+        str(script if script is not None else TRAINER_SCRIPT),
+        str(bundle),
+        "--out", str(out),
+        *trainer_flags(**flags),
+    ]
+
+
+def remote_trainer_command(
+    bundle: Path | str,
+    out: Path | str,
+    *,
+    allow_cpu: bool = False,
+    script: Path | str | None = None,
+    **flags: Any,
+) -> list[str]:
+    """The remote dispatcher's invocation (ADR-089, ADR-200).
+
+    ``remote_train.sh train <bundle> <out> [--allow-cpu] -- <trainer
+    flags>``: the script copies the bundle and the model it names out of
+    ``out``'s directory, runs the box's own trainer, copies the policy back
+    to ``out`` and verifies its sha256 against the receipt; after ``--``
+    the flags are :func:`trainer_flags`, untouched. It refuses a run that
+    fell back to CPU unless ``allow_cpu`` — a policy from a silent CPU run
+    is real and costs hours it did not need to.
+
+    A warm start is refused here rather than on the box: the script carries
+    two files out, the bundle and the model, and the ``--init-from`` policy
+    and its parent bundle are local paths the box has never seen. Carrying
+    them is a change to the dispatcher, its own unit; until then the remote
+    leg trains cold.
+    """
+
+    if flags.get("init_from") or flags.get("init_from_parent_task") or (
+        flags.get("init_from_task_change")
+    ):
+        raise TrainError(
+            "--remote trains cold: remote_train.sh carries the bundle and the "
+            "model and nothing else, so --init-from's policy would not be on "
+            "the box. Drop the warm start, or train locally."
+        )
+    command = [str(script if script is not None else REMOTE_SCRIPT),
+               "train", str(bundle), str(out)]
+    if allow_cpu:
+        command.append("--allow-cpu")
+    return [*command, "--", *trainer_flags(**flags)]
+
+
+def verify_returned_policy(out: Path | str, receipt: dict[str, Any]) -> None:
+    """The policy at ``out`` is the one the receipt describes, or the leg
+    fails — and the receipt's ``out`` becomes that local path.
+
+    The local trainer writes the file it hashes, so for it this is a check
+    that cannot fail. The remote dispatcher hashes what came back, and so
+    does this, because the sha256 in the receipt is the digest the script
+    will name (``assembly.policy(sha256=…)``) and a wrong file at the right
+    path is otherwise a policy refusal with no obvious cause. The remote
+    receipt's ``out`` is a path on the box; it is kept under
+    ``trainer_out`` and ``out`` is where the file is *here*, which is what
+    every later leg reads.
+    """
+
+    path = Path(out)
+    claimed = str(receipt.get("sha256") or "")
+    if not path.is_file():
+        raise TrainError(
+            f"the trainer reported sha256 {claimed[:12]}… but no policy is at "
+            f"{path}; nothing came back."
+        )
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    if claimed and actual != claimed:
+        raise TrainError(
+            f"{path} hashes {actual[:12]}…; the trainer wrote {claimed[:12]}…. "
+            "The transfer is wrong. Do not paste either digest into a script."
+        )
+    reported = str(receipt.get("out") or "")
+    if reported and reported != str(path):
+        receipt["trainer_out"] = reported
+    receipt["out"] = str(path)
 
 
 def run_trainer(
@@ -192,8 +296,13 @@ def run_trainer(
             f"the trainer was stopped after {timeout:g}s (--timeout)."
         ) from exc
     if completed.returncode != 0:
+        # The remote dispatcher explains its refusals on stdout (``FAIL:
+        # ...``), which nobody sees once it is captured; the last lines go
+        # into the error instead of the bin.
+        tail = [line for line in completed.stdout.splitlines() if line.strip()][-4:]
         raise TrainError(
             f"the trainer exited {completed.returncode}; its stderr is above."
+            + ("".join("\n  " + line for line in tail) if tail else "")
         )
     receipt = _last_json_line(completed.stdout)
     if receipt is None:

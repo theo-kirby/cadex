@@ -1800,7 +1800,17 @@ What makes them experimental, and what would settle it:
   warm start), by `cli/tests/test_walk.py` with the real engine and trainer.
   The domain-doc convention is exercised by the caller (`docs/sensors.md`),
   not generated. Still open, as the charter's own items: the same entry
-  point on a second mechanism, and the GUI-attached and remote modes.
+  point on a second mechanism, and the GUI-attached mode.
+- [x] **The walk's remote-training handoff is scripted** (ADR-200,
+  `docs/CLI.md` §2). `cadex train --remote` and `cadex walk --remote` run
+  the train leg through `training/remote_train.sh train <bundle> <out> --
+  <the same trainer flags>` (ADR-089), verify the returned policy against
+  the receipt's sha256, and leave every artifact where the local walk puts
+  it — `DIR/train`, the store, `review.json` — so the three modes share
+  one shape. Offline evidence: the command pinned against the script's
+  usage line, the leg end to end against a stand-in dispatcher with the
+  real engine. **Not executed**: no dispatch, and a warm start does not
+  travel (`--remote` with `--init-from` is a usage error).
 - [x] **A trained policy comes home headlessly** (ADR-190). `cadex asset
   --put walk.cxpolicy` for a pipeline and `put_asset` in the CLI agent's
   tool surface, both on the op the shell has had since ADR-043; the

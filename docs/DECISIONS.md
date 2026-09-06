@@ -19187,3 +19187,70 @@ engine and trainer) pins the digest edit, the review reader, the leg
 order and flags against a fake `cadex`, the refusals, and the toy through
 both real walks with the review committed and no checkpoint or trace
 tracked. The full CLI suite is the gate; see the commit.
+
+## ADR-200 — Remote training is the same leg with one flag: `cadex train --remote` (2026-09-06)
+
+**Context.** The charter's *three modes, one shape* asks that the lifecycle
+walk run headless, with the GUI attached, and with training on a remote
+machine, with the same steps and artifacts in all three. After ADR-199
+the headless walk was one command and remote training was `docs/MUJOCO.md`
+§7c row 12: `training/remote_train.sh` (ADR-089) existed, and a person ran
+it — exported the bundle by hand, typed the trainer's flags after `--`,
+pasted the printed digest into the script. The plan's short unit 2
+(record `lone-wood-3732`) asked for the handoff scripted around that
+script, tested offline, and never dispatched; the run's constraints forbid
+touching the GPU box.
+
+**Decision.** `--remote` on `cadex train` and `cadex walk`. With it, the
+train leg's command is `training/remote_train.sh train <bundle> <out>
+[--allow-cpu] -- <trainer flags>` in place of the venv's interpreter, and
+**nothing else moves**: the bundle and the model are exported into
+`DIR/train` as before (which is where the script looks — beside the
+bundle, by name, the documented flat fallback), the policy comes back to
+`DIR/train/<name>.cxpolicy`, the path the local trainer would have
+written, and the receipt is read off the same last JSON line. The flags
+after `--` are the local trainer's, produced by the one function
+(`trainer_flags`) both commands call, so the two legs cannot drift. New
+for both paths, and the one thing the local path never needed: the CLI
+**verifies the returned file against the receipt's sha256** and fails the
+leg on a mismatch or an absent file — the digest is what the script will
+name, and a wrong file at the right path is otherwise a policy refusal
+with no cause. The box's path is kept under `training.trainer_out`;
+`training.out` is the local file. A dispatcher refusal (`FAIL:` on stdout,
+where the script puts it) now reaches the envelope's `error` with the
+script's last lines rather than the bin. The walk passes `--remote` and
+`--allow-cpu` to its train leg and to nothing else, so the store, the
+digest edit, the verified rollout and `review.json` cannot tell the modes
+apart, and two projects' `PROGRESS.md` rows compare line for line.
+
+**Refused, on purpose.** `--remote` with the warm-start triple: the
+script carries two files out and the `--init-from` policy is not one of
+them, so it is a usage error before any leg runs rather than a failure on
+the box after a design turn spent tokens; carrying the pair is a change to
+the dispatcher and its own unit, and the iterate walk trains locally
+until then. `--trainer-python` with `--remote` (the box's venv is
+`CADEX_TRAIN_VENV`) and `--allow-cpu` without `--remote` (the
+dispatcher's flag). `--detach` is not passed through: a walk waits for
+its leg, and a run too long to hold an ssh open for is dispatched by
+hand and continued from `cadex asset --put`, as `training/SETUP.md` §d
+says. No configuration in the CLI: it reads none of `.remote.env`.
+
+**Boundaries kept.** `training/` is still in no CMake rule, no payload
+and not in `pixi.toml`; the CLI reaches the script by path from the
+repository root exactly as it reaches the trainer (ADR-191). Nothing was
+dispatched, the box's checkout was not touched, and no GPU run happened:
+the evidence is offline by the run's constraint, and this ADR says so.
+
+**Evidence.** `cli/tests/test_train.py`: the remote command pinned
+against `remote_train.sh`'s own usage line and against the local command
+(the tail after `--` is byte-for-byte the local flags); the returned
+policy verified through a stand-in dispatcher with the same argv contract
+and the same printed shape (`warp` noise ahead of the receipt, `==>`
+trailer after it) across the three refusals — wrong bytes, nothing
+returned, CPU fallback with and without `--allow-cpu`; the usage errors
+before any engine; and `cadex train --remote --put` end to end against
+the real engine — bundle and model exported where the dispatcher looks,
+the policy home under the same name with the receipt's digest.
+`cli/tests/test_walk.py`: `--remote` and `--allow-cpu` reach the train
+leg only, and the warm start is refused before any leg. Full CLI suite
+green; see the commit and record node for the counts.

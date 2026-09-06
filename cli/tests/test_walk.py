@@ -260,6 +260,38 @@ def test_the_iterate_walk_sweeps_first_and_carries_the_warm_start(
     assert json.loads((out / REVIEW_FILENAME).read_text())["weights"] == "job2.cxpolicy"
 
 
+def test_the_remote_walk_carries_the_flags_to_the_train_leg_only(
+    fake_cadex, toy_root, capsys
+) -> None:
+    """``cadex walk --remote`` (ADR-200) is the same walk with ``--remote``
+    (and ``--allow-cpu``) on the train leg and nowhere else; the artifacts
+    under ``--out`` and the legs after training do not know."""
+
+    out = toy_root / "runs" / "walk-remote"
+    code, envelope = _run(
+        capsys, "--project", str(toy_root), "walk", "--out", str(out),
+        "--remote", "--allow-cpu", "--iterations", "1", "--envs", "2",
+    )
+    assert code == EXIT_OK, envelope
+    train, read, declare, rollout = _legs(fake_cadex)
+    assert "--remote" in train and "--allow-cpu" in train
+    assert train[train.index("--out") + 1] == str(out / "train")
+    for other in (read, declare, rollout):
+        assert "--remote" not in other and "--allow-cpu" not in other
+    assert [leg["leg"] for leg in envelope["walk"]["legs"]] == ["train", "declare", "rollout"]
+    assert (out / REVIEW_FILENAME).is_file()
+
+    # A warm start with --remote is a usage error before any leg runs.
+    fake_cadex.unlink()
+    code, envelope = _run(
+        capsys, "--project", str(toy_root), "walk", "--out", str(out), "--remote",
+        "--init-from", "p.cxpolicy", "--init-from-parent-task", "t.json",
+        "--init-from-task-change", "why",
+    )
+    assert code == EXIT_USAGE and "trains cold" in envelope["error"], envelope
+    assert not fake_cadex.exists()
+
+
 def test_a_leg_that_refuses_stops_the_walk_there_with_its_name(
     fake_cadex, toy_root, capsys, monkeypatch
 ) -> None:

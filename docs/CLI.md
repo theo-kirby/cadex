@@ -54,8 +54,8 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex export` | Rebuild the accepted script and write its outputs. | no |
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
 | `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
-| `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. | no |
-| `cadex walk --out DIR` | The lifecycle walk as one command: optional design turns (`--prompt`, repeatable), an optional change (`--set`), train and store, re-declare the policy in the script, verify and roll out, review. Every leg is a child `cadex` command; `review.json` lands in `--out`. Spends tokens only for `--prompt`. | only with `--prompt` |
+| `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. With `--remote`, the trainer runs on the box through `training/remote_train.sh`; the artifacts do not move. | no |
+| `cadex walk --out DIR` | The lifecycle walk as one command: optional design turns (`--prompt`, repeatable), an optional change (`--set`), train and store (locally, or on the box with `--remote`), re-declare the policy in the script, verify and roll out, review. Every leg is a child `cadex` command; `review.json` lands in `--out`. Spends tokens only for `--prompt`. | only with `--prompt` |
 
 Flags, valid on either side of the subcommand:
 
@@ -189,7 +189,8 @@ of doing any of them:
 3. `cadex train --out DIR/train --put` with the trainer's flags carried by
    name (`--iterations`, `--envs`, `--seed`, `--label`, `--name`,
    `--task`, `--timeout`, `--trainer-python`, and the warm-start triple
-   `--init-from`, `--init-from-parent-task`, `--init-from-task-change`).
+   `--init-from`, `--init-from-parent-task`, `--init-from-task-change`) —
+   and `--remote` / `--allow-cpu`, which go to this leg and nowhere else.
 4. **The digest edit**, which was the one leg that was a person's: the
    walk reads the script (`cadex script`), rewrites the two string
    literals of its one `assembly.policy(task, weights="…", sha256="…")`
@@ -221,6 +222,49 @@ against a fake `cadex`, and runs the repository's plate-and-arm toy through
 two real walks — a placeholder digest to a verified rollout, then a reward
 change with a warm start — with the real engine and trainer at 1 it × 4
 envs, about 30 s in all.
+
+**Training on a remote machine is the same walk with one flag** (ADR-200).
+`cadex train --remote` and `cadex walk --remote` run the train leg through
+`training/remote_train.sh train` (ADR-089, `training/SETUP.md` §d) instead
+of the venv's interpreter on this machine, and *nothing else changes*: the
+bundle and the model are exported into `DIR/train` as before, the script
+copies them to the box named by `training/.remote.env`, runs the box's own
+trainer with **the same flags after `--`** (`--iterations`, `--envs`,
+`--seed`, `--label` — pinned byte-for-byte against the local command), and
+copies the policy back to `DIR/train/<name>.cxpolicy`, the very path the
+local trainer would have written. The receipt is the same last JSON line;
+the CLI then **verifies the returned file hashes to the receipt's sha256**
+(a wrong file at the right path is otherwise a policy refusal with no
+obvious cause), records the box's path under `training.trainer_out` and
+puts the local path in `training.out`. The store, the digest edit, the
+verified rollout and `review.json` never learn where the trainer ran, so
+a remote walk's `PROGRESS.md` rows and `review.json` are comparable with a
+local walk's line for line. What the flag changes and what it refuses:
+
+- **Run `training/remote_train.sh check` first.** The CLI adds no
+  configuration and reads no `.remote.env`; an unreachable or stale box
+  is the script's `FAIL:` line, which reaches the envelope's `error`
+  (exit 1) together with the last lines the script printed.
+- **A run the box reports as `device: cpu` fails** — the dispatcher's own
+  rule — unless `--allow-cpu` is given. `--allow-cpu` without `--remote`
+  is a usage error: it is the dispatcher's flag.
+- **Cold runs only.** `remote_train.sh` carries two files out, the bundle
+  and the model; `--init-from`'s policy and its parent bundle are local
+  paths the box has never seen, so `--remote` with the warm-start triple
+  is a usage error before any leg runs, and the iterate walk (`--set`
+  with a warm start) trains locally until the dispatcher carries them —
+  its own unit. `--trainer-python` with `--remote` is a usage error too:
+  the box's venv is `CADEX_TRAIN_VENV`.
+- **`--timeout` is local.** It ends the ssh that holds the run, not the
+  run; a long run belongs to `remote_train.sh train --detach` and
+  `pull`, outside the walk, which then continues from `cadex asset --put`
+  and `cadex script --set` (§2 above).
+- **Nothing here dispatches in a test.** `cli/tests/test_train.py` pins
+  the command against `remote_train.sh`'s own usage line and runs the leg
+  end to end — real engine, real export, real store — against a stand-in
+  dispatcher with the same argv contract and the same printed shape
+  (`warp` noise before the receipt, `==>` trailer after), including the
+  three refusals: wrong bytes, nothing returned, CPU fallback.
 
 **The project is a codebase** (ADR-193). Every project root carries the
 documents an engineer keeps beside a model, created by the CLI on the
@@ -561,6 +605,9 @@ about a payload (ADR-023).
   repository — and so does `train`'s trainer, which it finds by path from
   the repository root and runs under a venv the engine's environment
   deliberately lacks (ADR-084). No venv, no `train`; it does not build one.
+  `--remote` finds `training/remote_train.sh` the same way and configures
+  nothing: the box, its venv and its scratch directory are
+  `training/.remote.env`'s (ADR-089), and a warm start does not travel.
 - One `--set` per parameter, and parameters are numeric — that is what
   `num(...)` declares. A switch is a `num` with `min=0, max=1, step=1`
   and a `>= 0.5` test in the script (ADR-192).

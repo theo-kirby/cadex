@@ -35,13 +35,16 @@ from cadex_cli.report import EXIT_FAILURE, EXIT_OK, EXIT_REJECTED, EXIT_USAGE
 from cadex_cli.train import (
     TrainError,
     find_task,
+    remote_trainer_command,
     resolve_trainer_python,
     run_trainer,
     trainer_command,
+    verify_returned_policy,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TRAINER_SOURCE = REPO_ROOT / "training" / "cadex_train.py"
+REMOTE_SOURCE = REPO_ROOT / "training" / "remote_train.sh"
 
 #: The smallest script that exports a training task: one revolute joint,
 #: one motor, three observations. Lifted from the engine's lifecycle gate.
@@ -115,6 +118,75 @@ def fake_trainer(tmp_path, monkeypatch) -> Path:
     return script
 
 
+#: A stand-in for ``training/remote_train.sh train`` (ADR-200): the same
+#: argv contract — ``train <bundle> <out> [--allow-cpu] -- <trainer flags>``
+#: — and the same three steps with no box: it resolves the model the way
+#: the real script does (beside the bundle, by name) and fails if it is
+#: not there, writes the policy to ``out``, and prints what the real one
+#: prints — the trainer's stdout with MuJoCo's ``warp`` noise ahead of the
+#: receipt, then its own ``==>`` trailer lines after it. ``FAKE_REMOTE_MODE``
+#: picks the failure: ``mismatch`` returns the wrong bytes, ``nofile``
+#: returns nothing, ``cpu`` is the device refusal, exit 1 with the reason
+#: on stdout, which is where the real script puts it.
+FAKE_REMOTE = textwrap.dedent(
+    """\
+    #!/usr/bin/env bash
+    set -eu
+    exec "@PYTHON@" - "$@" <<'PY'
+    import hashlib, json, os, pathlib, sys
+    argv = sys.argv[1:]
+    with open(os.environ["FAKE_REMOTE_LOG"], "a") as log:
+        log.write(json.dumps(argv) + "\\n")
+    assert argv[0] == "train", argv
+    positional = [a for a in argv[1:argv.index("--")] if not a.startswith("--")]
+    bundle, out = map(pathlib.Path, positional)
+    allow_cpu = "--allow-cpu" in argv[:argv.index("--")]
+    flags = argv[argv.index("--") + 1:]
+    if not bundle.is_file():
+        print(f"FAIL: {bundle} does not exist."); sys.exit(1)
+    task = json.loads(bundle.read_text())
+    relative = pathlib.Path(str(task["model"]["path"]))
+    if not any(c.exists() for c in (bundle.parent.parent / relative, bundle.parent / relative.name)):
+        print("FAIL: the model this bundle references is beside neither."); sys.exit(1)
+    mode = os.environ.get("FAKE_REMOTE_MODE", "ok")
+    device = "cpu" if mode == "cpu" else "gpu"
+    blob = b"remote policy for " + bundle.read_bytes()
+    sha = hashlib.sha256(blob).hexdigest()
+    if mode == "mismatch":
+        blob = b"something else"
+    if mode != "nofile":
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(blob)
+    print("Failed to import warp: No module named 'warp'")
+    print(json.dumps({"out": "/work/" + bundle.stem + "-run/" + out.name, "bytes": len(blob),
+                      "sha256": sha, "reward_per_step": 2.5, "wall_time_s": 0.02,
+                      "device": device, "task_sha256": task.get("sha256", ""),
+                      "argv": flags}, sort_keys=True))
+    if device != "gpu" and not allow_cpu:
+        print("FAIL: the run reports device 'cpu', not 'gpu'.")
+        print("      A silent CPU fallback is the failure this exists to make loud.")
+        sys.exit(1)
+    print(f"==> {out}")
+    print(f"==> sha256 {sha}   (device {device})")
+    PY
+    """
+)
+
+
+@pytest.fixture
+def fake_remote(tmp_path, monkeypatch) -> Path:
+    """``REMOTE_SCRIPT`` answered by :data:`FAKE_REMOTE`; returns its argv log."""
+
+    script = tmp_path / "fake_remote_train.sh"
+    script.write_text(FAKE_REMOTE.replace("@PYTHON@", sys.executable), encoding="utf-8")
+    script.chmod(0o755)
+    log = tmp_path / "remote.log"
+    monkeypatch.setenv("FAKE_REMOTE_LOG", str(log))
+    monkeypatch.delenv("FAKE_REMOTE_MODE", raising=False)
+    monkeypatch.setattr(train_module, "REMOTE_SCRIPT", script)
+    return log
+
+
 def _run(capsys, *argv: str) -> tuple[int, dict]:
     code = main([*argv, "--json"])
     return code, json.loads(capsys.readouterr().out)
@@ -150,6 +222,97 @@ def test_the_dispatcher_emits_flags_the_trainer_declares() -> None:
 def test_the_default_script_is_the_repo_trainer() -> None:
     assert train_module.TRAINER_SCRIPT == TRAINER_SOURCE
     assert TRAINER_SOURCE.is_file()
+
+
+# -- the remote leg (ADR-200) ----------------------------------------------
+
+
+def test_the_remote_command_is_the_dispatcher_with_the_same_flags_after_the_dash() -> None:
+    """``remote_train.sh train <bundle> <out> [--allow-cpu] -- <flags>``: the
+    flags after ``--`` are byte-for-byte the local trainer's, so the two
+    legs cannot drift apart; and the usage line is read back out of the
+    script so a change to its contract fails here."""
+
+    kwargs = dict(iterations=3, envs=4, seed=7, label="x")
+    command = remote_trainer_command(
+        "b/t-task.json", "b/t.cxpolicy", allow_cpu=True, script="remote.sh", **kwargs
+    )
+    assert command[:5] == ["remote.sh", "train", "b/t-task.json", "b/t.cxpolicy",
+                           "--allow-cpu"]
+    assert command[5] == "--"
+    local = trainer_command("python", "b/t-task.json", "b/t.cxpolicy",
+                            script="train.py", **kwargs)
+    assert command[6:] == local[5:] == [
+        "--iterations", "3", "--envs", "4", "--seed", "7", "--label", "x",
+    ]
+    cold = remote_trainer_command("b/t-task.json", "b/t.cxpolicy", script="r", **kwargs)
+    assert "--allow-cpu" not in cold and cold[4] == "--"
+
+    # The default is the repository's dispatcher, and its own usage line
+    # is the contract this builds against.
+    assert train_module.REMOTE_SCRIPT == REMOTE_SOURCE and REMOTE_SOURCE.is_file()
+    source = REMOTE_SOURCE.read_text(encoding="utf-8")
+    assert "train <bundle.json> <out.cxpolicy> [--allow-cpu] [--detach] [-- trainer args]" in source
+    assert 'seen_dashdash' in source and '--allow-cpu) allow_cpu=1' in source
+
+    # A warm start is refused here: the script carries two files out and
+    # the --init-from policy is not one of them.
+    with pytest.raises(TrainError, match="trains cold"):
+        remote_trainer_command(
+            "b/t-task.json", "b/t.cxpolicy", script="r", init_from="p.cxpolicy", **kwargs
+        )
+
+
+def test_a_returned_policy_is_verified_against_the_receipt(
+    fake_remote, tmp_path, monkeypatch
+) -> None:
+    """The receipt is read past the dispatcher's trailer lines; the file
+    that came back must hash to what the receipt claims; ``out`` becomes
+    the local path and the box's path is kept beside it."""
+
+    bundle = tmp_path / "run" / "job-task.json"
+    bundle.parent.mkdir()
+    bundle.write_text(json.dumps({"sha256": "abc", "model": {"path": "x/model-model.xml"}}))
+    (tmp_path / "run" / "model-model.xml").write_text("<mujoco/>")
+    out = tmp_path / "run" / "job.cxpolicy"
+    command = remote_trainer_command(bundle, out, iterations=1, envs=2)
+
+    receipt = run_trainer(command)
+    assert receipt["device"] == "gpu"
+    assert receipt["out"].startswith("/work/job-task-run/")
+    verify_returned_policy(out, receipt)
+    assert receipt["out"] == str(out)
+    assert receipt["trainer_out"].startswith("/work/")
+    assert receipt["sha256"] == hashlib.sha256(out.read_bytes()).hexdigest()
+    (argv,) = [json.loads(line) for line in fake_remote.read_text().splitlines()]
+    assert argv == ["train", str(bundle), str(out), "--", "--iterations", "1",
+                    "--envs", "2", "--seed", "0"]
+
+    # The wrong bytes at the right path: a refusal naming both digests.
+    monkeypatch.setenv("FAKE_REMOTE_MODE", "mismatch")
+    receipt = run_trainer(command)
+    with pytest.raises(TrainError, match="hashes .*the trainer wrote"):
+        verify_returned_policy(out, receipt)
+
+    # Nothing came back at all.
+    monkeypatch.setenv("FAKE_REMOTE_MODE", "nofile")
+    out.unlink()
+    receipt = run_trainer(command)
+    with pytest.raises(TrainError, match="nothing came back"):
+        verify_returned_policy(out, receipt)
+
+    # The device refusal: the dispatcher exits 1 with its reason on stdout,
+    # and the reason reaches the error rather than the bin.
+    monkeypatch.setenv("FAKE_REMOTE_MODE", "cpu")
+    with pytest.raises(TrainError, match=r"(?s)exited 1.*device 'cpu'") as caught:
+        run_trainer(command)
+    assert "silent CPU fallback" in str(caught.value)
+    # ...and --allow-cpu is what accepts it.
+    receipt = run_trainer(
+        remote_trainer_command(bundle, out, allow_cpu=True, iterations=1, envs=2)
+    )
+    assert receipt["device"] == "cpu"
+    verify_returned_policy(out, receipt)
 
 
 # -- which interpreter ---------------------------------------------------
@@ -272,6 +435,20 @@ def test_usage_errors_come_before_any_engine_or_trainer(tmp_path, capsys) -> Non
         )
         assert code == EXIT_USAGE, (apart, envelope)
         assert "--init-from-parent-task" in envelope["error"], envelope
+    # --remote's company (ADR-200): the box has its own venv, --allow-cpu
+    # is the dispatcher's flag, and a warm start is not carried out.
+    for wrong, word in (
+        (["--remote", "--trainer-python", sys.executable], "CADEX_TRAIN_VENV"),
+        (["--allow-cpu"], "--remote"),
+        (["--remote", "--init-from", "p.cxpolicy", "--init-from-parent-task", "t.json",
+          "--init-from-task-change", "why"], "trains cold"),
+    ):
+        code, envelope = _run(
+            capsys, "train", "--project", str(project), "--out",
+            str(tmp_path / "o"), *wrong,
+        )
+        assert code == EXIT_USAGE, (wrong, envelope)
+        assert word in envelope["error"], envelope
     assert not project.exists()
 
 
@@ -313,6 +490,42 @@ def test_the_leg_runs_as_one_command_and_the_policy_comes_home(
         out / "job.cxpolicy"
     ).read_bytes()
     assert envelope["digest"], envelope
+    assert any("trained job" in note for note in envelope["notes"]), envelope
+
+
+def test_the_remote_leg_lands_the_same_artifacts_as_the_local_one(
+    task_project, fake_remote, tmp_path, capsys
+) -> None:
+    """``cadex train --remote --put`` (ADR-200) against the real engine and
+    the fake dispatcher: the bundle and the model are exported where the
+    dispatcher looks for them, the policy comes back to the path the local
+    trainer would have written, and the store gets it under the same name
+    with the receipt's digest — the project cannot tell the two apart."""
+
+    out = tmp_path / "run-remote"
+    code, envelope = _run(
+        capsys, "train", "--project", str(task_project), "--out", str(out),
+        "--remote", "--allow-cpu", "--iterations", "2", "--envs", "4",
+        "--label", "toy", "--put",
+    )
+    assert code == EXIT_OK, envelope
+    assert (out / "job-task.json").is_file() and (out / "model-model.xml").is_file()
+    assert (out / "job.cxpolicy").is_file()
+    receipt = envelope["training"]
+    assert receipt["out"] == str(out / "job.cxpolicy")
+    assert receipt["trainer_out"] == "/work/job-task-run/job.cxpolicy"
+    assert receipt["device"] == "gpu"
+    (argv,) = [json.loads(line) for line in fake_remote.read_text().splitlines()]
+    assert argv[:4] == ["train", str(out / "job-task.json"), str(out / "job.cxpolicy"),
+                        "--allow-cpu"]
+    assert argv[4] == "--" and argv[5:] == [
+        "--iterations", "2", "--envs", "4", "--seed", "0", "--label", "toy",
+    ]
+    (stored,) = envelope["assets"]
+    assert stored["name"] == "job.cxpolicy" and stored["sha256"] == receipt["sha256"]
+    assert (task_project / "assets" / "job.cxpolicy").read_bytes() == (
+        out / "job.cxpolicy"
+    ).read_bytes()
     assert any("trained job" in note for note in envelope["notes"]), envelope
 
 

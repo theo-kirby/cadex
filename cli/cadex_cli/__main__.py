@@ -79,7 +79,9 @@ from .session import (
 from .train import (
     TrainError,
     find_task,
+    remote_trainer_command,
     resolve_trainer_python,
+    verify_returned_policy,
     run_trainer,
     trainer_command,
 )
@@ -310,6 +312,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="The training venv's interpreter. Default: $CADEX_TRAIN_PYTHON, "
         "then <repo>/.venv, then ~/cadex-train-venv.",
     )
+    _remote_flags(train_parser)
     walk_parser = subparsers.add_parser(
         "walk",
         help="The lifecycle walk as one command: optional design turns, an "
@@ -389,7 +392,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="The training venv's interpreter, if not where training/SETUP.md "
         "puts it.",
     )
+    _remote_flags(walk_parser)
     return parser
+
+
+def _remote_flags(parser: argparse.ArgumentParser) -> None:
+    """``--remote`` and ``--allow-cpu``, the same on ``train`` and ``walk``
+    (ADR-200): the trainer runs on the box ``training/.remote.env`` names,
+    through ``training/remote_train.sh``; the artifacts do not move."""
+
+    parser.add_argument(
+        "--remote",
+        action="store_true",
+        default=False,
+        help="Train on the remote box through training/remote_train.sh "
+        "(configured by training/.remote.env; run its `check` first). The "
+        "bundle goes out from --out and the policy comes back to it; every "
+        "later step is unchanged. Cold runs only: no --init-from.",
+    )
+    parser.add_argument(
+        "--allow-cpu",
+        dest="allow_cpu",
+        action="store_true",
+        default=False,
+        help="With --remote: accept a run the box reports as device 'cpu' "
+        "instead of failing it (remote_train.sh --allow-cpu).",
+    )
 
 
 def _common(parser: argparse.ArgumentParser, *, inherit: bool = False) -> None:
@@ -931,7 +959,11 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
             "policy was trained on)."
         )
         return EXIT_USAGE
-    python = resolve_trainer_python(args.trainer_python or None)
+    remote_error = _remote_usage_error(args)
+    if remote_error:
+        report.error = remote_error
+        return EXIT_USAGE
+    python = None if args.remote else resolve_trainer_python(args.trainer_python or None)
 
     with _engine_session(args, report) as (engine, client):
         _progress(" · rebuild")
@@ -952,10 +984,7 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
 
     out_dir = Path(report.out_dir)
     policy_path = out_dir / (policy_name or f"{task.name}.cxpolicy")
-    command = trainer_command(
-        python,
-        task.files["json"],
-        policy_path,
+    flags = dict(
         iterations=args.iterations,
         envs=args.envs,
         seed=args.seed,
@@ -964,12 +993,24 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
         init_from_parent_task=args.init_from_parent_task,
         init_from_task_change=args.init_from_task_change,
     )
+    if args.remote:
+        # The same leg on the box (ADR-200): the bundle and the model go
+        # out from --out, the policy comes back to policy_path, and the
+        # receipt is the same last JSON line. Nothing after this branch
+        # knows where the trainer ran.
+        command = remote_trainer_command(
+            task.files["json"], policy_path, allow_cpu=args.allow_cpu, **flags
+        )
+        where = f"remote, {Path(command[0]).name}"
+    else:
+        command = trainer_command(python, task.files["json"], policy_path, **flags)
+        where = str(python)
     _progress(
         f" · train  {task.name}  {args.iterations} it × {args.envs} envs"
-        f"  ({python})"
+        f"  ({where})"
     )
     report.training = run_trainer(command, timeout=args.timeout)
-    report.training.setdefault("out", str(policy_path))
+    verify_returned_policy(policy_path, report.training)
     report.notes.append(
         "trained {:s}: {:s} ({:s} bytes, sha256 {:s}) in {:.1f} s on {:s}.".format(
             task.name,
@@ -1004,6 +1045,34 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
     return EXIT_OK
 
 
+def _remote_usage_error(args: argparse.Namespace) -> str:
+    """What is wrong with ``--remote``'s company, or nothing (ADR-200).
+
+    Shared by ``train`` and ``walk`` so the walk refuses before its first
+    leg rather than after a design turn spent tokens. ``--trainer-python``
+    names a venv on this machine and the box has its own
+    (``CADEX_TRAIN_VENV``); ``--allow-cpu`` is the dispatcher's flag and
+    means nothing locally; a warm start's files are not carried out.
+    """
+
+    if not args.remote:
+        if args.allow_cpu:
+            return "--allow-cpu is remote_train.sh's flag; it needs --remote."
+        return ""
+    if args.trainer_python:
+        return (
+            "--trainer-python names a venv on this machine; with --remote the "
+            "box's CADEX_TRAIN_VENV trains (training/remote.env.example)."
+        )
+    if args.init_from or args.init_from_parent_task or args.init_from_task_change:
+        return (
+            "--remote trains cold: remote_train.sh carries the bundle and the "
+            "model and nothing else, so --init-from's policy would not be on "
+            "the box. Drop the warm start, or train locally."
+        )
+    return ""
+
+
 def _walk_common(args: argparse.Namespace) -> list[str]:
     common = ["--project", str(Path(args.project).expanduser())]
     if getattr(args, "engine", ""):
@@ -1024,7 +1093,9 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     policy_on=1`` for the verified rollout, and the review read off the
     exported trace. Every leg is a child ``cadex`` command, so each lands
     its own ``PROGRESS.md`` row and commit; this command lands none of its
-    own, because the legs are the record.
+    own, because the legs are the record. ``--remote`` (ADR-200) goes to
+    the train leg and nowhere else: the trainer runs on the box, the
+    artifacts and every later leg are unchanged.
     """
 
     if not args.out:
@@ -1043,6 +1114,10 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             "--init-from-task-change needs --init-from POLICY and "
             "--init-from-parent-task BUNDLE beside it."
         )
+        return EXIT_USAGE
+    remote_error = _remote_usage_error(args)
+    if remote_error:
+        report.error = remote_error
         return EXIT_USAGE
     assignments = _parse_assignments(args.assignments) if args.assignments else {}
     if POLICY_SWITCH in assignments:
@@ -1105,7 +1180,10 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     ):
         if value:
             argv += [flag, str(value)]
-    _progress(" · walk  train")
+    for flag, on in (("--remote", args.remote), ("--allow-cpu", args.allow_cpu)):
+        if on:
+            argv.append(flag)
+    _progress(" · walk  train" + (" (remote)" if args.remote else ""))
     leg = run_leg("train", argv)
     if leg.code != EXIT_OK:
         return failed(leg, "training did not produce a policy")
