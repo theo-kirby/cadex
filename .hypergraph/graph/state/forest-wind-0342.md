@@ -7,7 +7,7 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: working
+Status: broken
 
 ## Current
 
@@ -26,6 +26,8 @@ The engine is a FreeCAD fork at the repository root, stripped to one AI-native m
 - Parameter changes are served two ways: a resident read-only preview worker answers a **pose-only** change in 33 ms, and everything else pays the ~0.42 s accepting path [rec: open-dew-7293].
 - The latest recorded full source engine suite is **1969 passed, 47 skipped** on 2026-09-05 with native recipe tests enabled through `CADEX_BLENDER_EXECUTABLE`; the staged-payload lifecycle plus recipe suite is **35 passed**. These are measured runs, not a claim that every gated platform was exercised [rec: simple-bramble-8616].
 - The engine carries VibeCAD-era code under its own provenance tags, and the licence boundary that follows from it is one-way and hard: the engine side is LGPL, `shell/` is GPL [rec: lone-haven-0640].
+
+**Broken: one refusal frame violates the response contract** [rec: sweet-light-3396]. `CadexInspection.py` builds its `INSPECTION_FAILED` frame with `tool`, `failure_code`, `failure_stage`, `error`, `scope`, `target` and `result_json_bytes`; checked with `validate_response` it is **missing eight `FAILURE_RESPONSE_SPEC` keys and carries three forbidden ones**. Found when an `inspect scope=document` call threw inside the engine during the lifecycle audit's agent turn: the shell never validates replies so it has never seen this, and the CLI's strict validator turns the frame into a hard `CadexdError`. Reconcile judgement: the record declared the flip and the flip is taken, scoped to this one frame — everything else measured on this node still holds, and the status returns to `working` when the frame is fixed with a validator test (item 5 of the lifecycle frontier on `calm-peak-5247`) [rec: sweet-light-3396].
 
 **Gap, unbuilt.** The ADR-027 response fixtures are asserted **engine-side only**. Asserting the same fixtures from the shell side is a ROADMAP Phase 9 item that has never been checked off, and it is more valuable since the merge, not less: one repository removed the distance that used to enforce the boundary [rec: simple-hollow-8675] [rec: merry-eagle-4093].
 
@@ -50,6 +52,7 @@ The engine is a FreeCAD fork at the repository root, stripped to one AI-native m
 
 - [scope: bare imports in GUI-lineage code the worker reaches | confidence: high | evidence: zesty-cove-4881] The pixi environment passing proves nothing about the payload. `CommandCreateView.py` imported `pivy` bare at module scope; pivy exists in the pixi env and is pruned from the payload, so the source tree was green and the staged engine failed on the first exploded-view script. The packaged lifecycle gate is the only thing that catches this class (ADR-023's lesson, hit again); the fix is the `JointObject.py` guard shape, `coin = None`.
 
+- [scope: a hand-built refusal frame in a domain module | confidence: high | evidence: sweet-light-3396] A frame assembled outside the common failure builder can violate `FAILURE_RESPONSE_SPEC` for months unseen, because the shell does not validate replies and the engine suite only pins the goldens it was given. Run every refusal frame through `validate_response` in a test; the CLI is the only client that will complain at runtime.
 - [scope: native Blender recipe output | confidence: high | evidence: simple-bramble-8616] Output is evaluated triangles, not a live modifier stack, UV/material/animation interchange or analytic BREP reconstruction. Blender-derived trees are refused by BREP conversion and exact routing consumers. Arbitrary nondeterministic recipes are not promised reproducible; digest mismatch refuses restore.
 
 ## Provenance
@@ -73,3 +76,4 @@ The engine is a FreeCAD fork at the repository root, stripped to one AI-native m
 - happy-valley-9134 — radius and angle measurement records
 - twilight-lake-8164 — lib vocabulary, catalog response and datasheet actuator values
 - simple-bramble-8616 — sandboxed native recipes, acceptance semantics and measured source/payload validation
+- sweet-light-3396 — the INSPECTION_FAILED refusal frame violates FAILURE_RESPONSE_SPEC (eight keys missing, three forbidden), confirmed with validate_response; only the validating CLI sees it
