@@ -19507,3 +19507,29 @@ one engine build, sequential staging and packaged lifecycle/library results
 are reported in the record. Only this BLDC envelope subitem closes; torque,
 shaft fit, more sizes and the remaining L3 families stay open. The local
 staged payload retains development dependencies and is not a portable release.
+
+## ADR-207 — Measure and distinguish L12 drawing and CAD interfaces (2026-09-06)
+
+**Decision.** The first linear-actuator implementation should target Actuonix
+L12-50-210-12-S with the supplied clevis. Use the revision F datasheet's
+nominal mounting spacing, and disclose the older STEP archive's 0.5 mm
+offset instead of silently mixing their coordinate systems. Source links,
+hashes, operating qualifications and the reproducible OCCT measurement
+are in PROVENANCE §8d. This is a source-audit decision, not a shipped family.
+
+**Evidence.** All eight manufacturer STEP models load as valid shapes with
+12 solids. The two 4.25 mm bore axes are parallel to X; their Y separation
+exceeds the datasheet's closed spacing by 0.5 mm for every stroke. Extended
+minus retracted spacing equals the named stroke. No evidence establishes
+that the discrepancy is a hardware tolerance, switch allowance or a datum
+correction, so none is inferred. The undimensioned housing transitions
+must not be filled in as if the drawing specified them.
+
+**Next implementation.** Keep geometric extension within the chosen stroke;
+separate geometric endpoints from limit-switch reachability. Document any
+approximated housing/clevis interface, preserve qualified ratings, and run
+real-kernel bore/material and placed-geometry tests followed by packaged
+verification. No actuator abstraction or manufacturer CAD redistribution.
+L3 and the linear-actuator family remain open. This audit changes docs only;
+the existing packaged lifecycle/library gate is baseline evidence, not
+verification of an actuator that has not been implemented.

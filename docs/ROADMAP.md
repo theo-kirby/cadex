@@ -2027,6 +2027,13 @@ field, and every client gets it through the surface it already reads.
       sourced mounting/size/kV and qualified no-load data (ADR-206).
       Conservative collar reservation; shaft coupling fit and torque remain
       unsupported. Real-kernel interface probes and packaged library gate.
+- [x] **L3 linear-actuator source audit.** All eight Actuonix L12 STEP
+      models have mounting centres 0.5 mm longer than the nominal datasheet
+      values (PROVENANCE §8d, ADR-207); stroke travel agrees. Measurement
+      and source precedence recorded; this does not ship a catalog family.
+- [ ] **L3 linear-actuator implementation.** Begin with L12-50-210-12-S,
+      datasheet nominal centres, explicit CAD discrepancy and fit limits;
+      constrain extension and verify real-kernel placement and packaged gates.
 - [ ] **L3 — motors and mechanisms.** Common BLDC sizes with kV/torque
       data, N20 gearmotor, linear actuator, solenoid, joints; gears and
       rack-and-pinion need involute profiles and are their own slice.

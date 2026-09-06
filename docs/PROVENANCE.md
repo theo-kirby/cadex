@@ -468,3 +468,58 @@ The product table's current and power entries are 40.9 A and 910.2 W **for
 are incomplete. These values stay in explanatory notes, not numeric control
 limits. No torque rating or torque constant is inferred from kV. No
 manufacturer artwork, CAD, or code is redistributed; no new dependency.
+
+## 8d. L12 linear-actuator source audit — not yet a catalog family `[Cadex-new, ADR-207]`
+
+Accessed 2026-09-06: Actuonix's [L12 datasheet, revision F, November
+2019](https://www.actuonix.com/assets/images/datasheets/ActuonixL12Datasheet.pdf)
+and [L12 STEP archive](https://www.actuonix.com/assets/images/datasheets/L12_STP.zip),
+linked by its [documentation index](https://www.actuonix.com/datasheets).
+No downloaded files are redistributed. SHA-256 identities:
+
+- PDF: `461dc22b85db497409182ac3cc02a5171fa0ea7817ed0f419b2c37708bcfeee3`
+- ZIP: `5797939e2ebad2b5a4e9207e26b81ff2ec268a745e3703e743bcd44fa6a08f42`
+
+The drawing specifies 4.25 mm mounting bores and retracted centre spacing
+`52 + stroke` mm. The archive (member timestamps 2016-10-05) disagrees:
+OCCT measurements of its bore cylinder axes give **0.5 mm more** in all eight
+files. Extension travel itself agrees. These are CAD measurements, not
+measurements of hardware or manufacturing tolerances.
+
+| Stroke (mm) | Datasheet closed (mm) | STEP closed (mm) | STEP extended (mm) |
+|---|---|---|---|
+| 10 | 62 | 62.5 | 72.5 |
+| 30 | 82 | 82.5 | 112.5 |
+| 50 | 102 | 102.5 | 152.5 |
+| 100 | 152 | 152.5 | 252.5 |
+
+Reproduce after extracting the archive into the current directory, using
+the existing headless engine (no GUI or imported manufacturer Python):
+
+```sh
+build/release/bin/FreeCADCmd -c 'import glob, Part
+for path in sorted(glob.glob("l12_*mm_*.stp")):
+    shape = Part.read(path)
+    centres = sorted({round(face.Surface.Center.y, 6)
+        for solid in shape.Solids for face in solid.Faces
+        if isinstance(face.Surface, Part.Cylinder)
+        and abs(face.Surface.Radius - 2.125) < 1e-6})
+    assert len(centres) == 2 and shape.isValid(), path
+    print(path, centres, centres[1] - centres[0])'
+```
+
+For a first implementation, constrain selection to **L12-50-210-12-S**,
+with the supplied clevis end. Datasheet nominal geometry takes precedence
+over this older CAD's axial placement; preserve the discrepancy in `.spec`.
+The drawing's 9 mm rear-end dimension must not be treated as a dimension
+to the hole centre. Housing transitions and clevis fit need explicit
+source-derived dimensions or named approximation limits before shipping.
+
+For this selection the datasheet gives 12 V, 80 N maximum lifted force,
+6.5 mm/s unloaded speed, and a peak-power point of 62 N at 3.2 mm/s.
+These are distinct operating points, not simultaneous force/speed limits.
+Duty cycle is at most 20%; operating temperature is -10 to +50 °C.
+Application life still needs testing. The S switches stop within 0.5 mm
+of a stroke end: geometric extension `[0, 50]` is not a promise that either
+endpoint is powered-reachable. Neither source supplies a validated dynamics
+model. No `lib.linear_actuator` implementation or fit guarantee exists yet.
