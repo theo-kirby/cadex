@@ -18940,6 +18940,45 @@ provokes the exception with an unknown captured kind and runs
 protocol op changed, no `shell/` diff. `docs/INTEGRATION.md` names the
 inspect refusal under the failure envelope; §7c item 5 closes.
 
+## ADR-196 — Cycles is disabled in the shell: the first Phase 13b disable commit, flipped from our own build script (2026-09-06)
+
+**Context.** Phase 13b's shell side (`docs/BLENDER-TREE.md` §4) lists the
+inherited subsystems that are already `WITH_*` CMake options, which makes
+the *disable* half of the two-commit removal protocol (`docs/FREECAD.md`
+§3) nearly free. Cycles is the first taken: a path tracer under
+`shell/intern/cycles` — 9.7 MB of source and 181 object files in the build
+tree, plus a 7 MB `addons_core/cycles` copy and four preset folders in the
+bundle. Cadex draws solid-shaded BREP tessellation in the viewport and
+never asks for a render engine; nothing in `mesh_agent` or the four gate
+suites names Cycles, and its add-on had already left the default-enabled
+set (the `addon_utils.py` row in §2b) because it raised on every launch.
+
+**Decision.** `-DWITH_CYCLES=OFF` goes on the configure line in
+`package/app/build_app.sh`, which is ours, rather than into the inherited
+`shell/CMakeLists.txt`. A `-D` on the configure line is zero lines of
+inherited diff: the disable commit touches no manifest entry and writes no
+modification notice. Because `cmake --install` never prunes, the same
+script removes `addons_core/cycles` and `presets/cycles` from the bundle
+after install — a build tree that predates the flip still carries an add-on
+copy whose `_cycles` C module is gone, and every startup would print its
+import traceback. That is the rule the script already applies to the
+ADR-183 add-on move. The delete commit removes `shell/intern/cycles`,
+`shell/scripts/presets/cycles` and the flag together; it is the half that
+touches the inherited tree and earns the manifest rows.
+
+**Not taken.** Flipping the option inside `shell/CMakeLists.txt` — an
+inherited-tree edit and a manifest row for something a build script can
+say. Deleting the tree in the same commit — the protocol is two commits so
+the disable can be reverted by itself.
+
+**Evidence.** The disable commit (`70591c1e`, iteration #55) landed under
+a session-limit banner in place of a message, and — found while writing
+this entry — was never built or gated: the shell build tree still had
+`WITH_CYCLES=ON` and the bundle still carried the add-on copy. This entry
+is the evidence step it owed. Built here, 2026-09-06: `pixi run build-shell` reconfigured the existing tree with `WITH_CYCLES:BOOL=OFF` (732 Ninja steps, exit 0), the installed bundle's `addons_core/` no longer lists `cycles` and `presets/cycles` is gone; `pixi run gate` against that bundle exits 0 (1,142 `ok:` lines, no Cycles import traceback, `CADEX-BLENDER-GATE` emitted). No `shell/` diff, no manifest change.
+`pale-river-6583` is the record node that made the commit citable;
+`docs/BLENDER-TREE.md` §4 and the Phase 13b ROADMAP line carry the status.
+
 ## ADR-197 — The worker computes an exploded view itself; `CommandCreateView` leaves the engine's authoring path (2026-09-06)
 
 **Context.** Phase 8's one non-mechanical item (ROADMAP, ADR-025,
