@@ -21,3 +21,12 @@ graph_dir: .hypergraph/graph
 # before this marker are legacy history, exempt from I2 in `check`.
 epoch:
   marker: winter-rain-7897
+
+# Named views (SPEC: Views): extra derived graphs over the record graph,
+# each reconciled independently. Appended by `hypergraph views add`.
+views:
+  plan:
+    root:
+      node_id: 27ca0eeb-32fc-5f3a-9fc4-a58509761fa4
+      slug: fond-ember-4937
+    md: PLAN.md
