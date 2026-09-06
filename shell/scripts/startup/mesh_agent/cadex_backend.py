@@ -63,17 +63,27 @@ ASSET_SUFFIXES = (".stl", ".obj", ".ply")
 #: these apart for the same reason (four constants, one union).
 LINKED_PART_SUFFIX = ".cxpart"
 
+#: A trained policy and what it travels with (cadex ADR-084, ADR-135): the
+#: ``.cxpolicy`` a script binds through ``assembly.policy(weights=...)``, the
+#: task bundle it names as ``trained_task`` and the MJCF that bundle
+#: references. Three suffixes, one input: the script cannot bind the policy
+#: without the bundle, and the engine refuses the bundle without its MJCF.
+#:
+#: A third name rather than more members above, for the reason there is a
+#: second: the engine keeps these apart (four constants, one union) and the
+#: shell mirrors that shape so each tuple keeps meaning one thing.
+POLICY_SUFFIXES = (".cxpolicy", ".json", ".xml")
+
 #: What a Save-As must carry into the new project. Assets are *inputs* — the
 #: script names them and cannot run without them — so a file built on any of
 #: them has no recovery path if they are left behind (ADR-046). A linked part
-#: is an input on exactly those terms, so it is here.
-#:
-#: Not the engine's whole stored union: a ``.cxpolicy`` and its provenance
-#: pair are not carried today, which is a real gap and a pre-existing one
-#: (ADR-084 shipped before ADR-046's carry-forward existed). Naming it here
-#: rather than widening this silently, because carrying trained weights on
-#: every Save-As is its own decision.
-CARRIED_ASSET_SUFFIXES = ASSET_SUFFIXES + (LINKED_PART_SUFFIX,)
+#: is an input on exactly those terms, so it is here; so is a trained policy
+#: with its provenance pair (ADR-188) — hours of GPU compute the script names
+#: by digest and that nothing can rebuild, which is the strongest case of all
+#: for carrying. This is now the engine's whole stored union
+#: (``_STORED_ASSET_SUFFIXES``), so a file the origin's store holds is a file
+#: the copy's store accepts.
+CARRIED_ASSET_SUFFIXES = ASSET_SUFFIXES + (LINKED_PART_SUFFIX,) + POLICY_SUFFIXES
 
 #: Progressive display (cadex INTEGRATION.md): slider drags request a
 #: coarse, edge-free tessellation to stay under the latency parity bar;
@@ -441,7 +451,10 @@ def _assets_in(root):
     ``.cxpart`` is in the set the same way and for the same reason: a script
     that says ``part.import_part("sensor.cxpart")`` cannot run without it,
     so a Save-As that left it behind would break exactly the recovery ADR-046
-    exists to keep (ADR-138).
+    exists to keep (ADR-138). A ``.cxpolicy`` with its ``.json`` task bundle
+    and ``.xml`` MJCF is in it on the same terms (ADR-188): ``assembly.policy``
+    names the weights by digest and the bundle by name, and neither can be
+    rebuilt from the script.
     """
     directory = os.path.join(root, "assets")
     if not os.path.isdir(directory):

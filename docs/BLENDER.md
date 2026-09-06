@@ -233,7 +233,11 @@ from source after putting down the bundled copy, so `register()` and
   **Imported geometry is the one thing that does come across**: assets are
   inputs, not derived state, and a script that names one cannot re-run
   without it, so `migrate_assets()` carries `assets/` into the new project
-  through `put_asset` when the script is adopted. `save_pre` is what records
+  through `put_asset` when the script is adopted — the imported meshes, the
+  linked `.cxpart`s (ADR-138) and, since ADR-188, a trained `.cxpolicy` with
+  the `.json` task bundle and `.xml` MJCF it travels with, which is the one
+  input nothing can rebuild. `CARRIED_ASSET_SUFFIXES` is the list, and it is
+  now the engine's whole stored union. `save_pre` is what records
   *which* project to carry from (`SOURCE_PROP` — `bpy.data.filepath` still
   names the old file there, and the value saves into the new one) — but
   **only when the root actually moves** (ADR-155). `save_pre` fires on every

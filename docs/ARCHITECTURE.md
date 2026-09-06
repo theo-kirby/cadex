@@ -326,7 +326,10 @@ are in one tree.
 The shell reads exactly one directory of it, and only ever to hand the paths
 straight back: on Save-As it lists `assets/` in the root it is *leaving*, so
 that `put_asset` can carry the user's imported geometry — and, since ADR-138,
-the linked parts — into the new project (ADR-046). Assets are the one thing
+the linked parts, and since ADR-188 the trained policies with their task
+bundles and MJCF — into the new project (ADR-046). The shell's carry list is
+now the engine's whole stored union, so nothing the origin holds is dropped
+on the way across. Assets are the one thing
 in the store the shell supplied in the
 first place, and the shell already chooses where the store lives (below).
 Nothing else in the store is read by the shell, and nothing at all is

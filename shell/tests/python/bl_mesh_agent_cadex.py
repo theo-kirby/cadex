@@ -1855,6 +1855,16 @@ def test_save_as_carries_imported_geometry(workdir):
     first would have passed; and it adopted the copy without ever saving it
     again, so it never exercised the ordinary Ctrl-S that was overwriting
     the pointer back to the original.
+
+    The policy triple is ADR-188's. A trained ``.cxpolicy`` and the task
+    bundle and MJCF it travels with (ADR-135) were in the engine's store and
+    absent from the shell's carry list, so a Save-As of a project that
+    replayed a policy dropped the one asset nothing can rebuild. The three
+    are fabricated bytes here: the store validates suffix, not content, and
+    the carry is about bytes; a script that bound them would be the engine's
+    business and is not what this test is for. The ``.txt`` beside them is
+    the negative -- a file in ``assets/`` the store would never accept is
+    never offered to it.
     """
     print("test_save_as_carries_imported_geometry")
 
@@ -1864,6 +1874,14 @@ def test_save_as_carries_imported_geometry(workdir):
     second_supplied = os.path.join(workdir, "bracket.stl")
     with open(second_supplied, "w", encoding="utf-8") as handle:
         handle.write(TETRAHEDRON_STL)
+    policy_triple = {
+        "stand.cxpolicy": b"CXPOLICY-BYTES",
+        "stand-task.json": b'{"task": "stand"}',
+        "stand.xml": b"<mujoco/>",
+    }
+    for name, payload_bytes in policy_triple.items():
+        with open(os.path.join(workdir, name), "wb") as handle:
+            handle.write(payload_bytes)
 
     first = os.path.join(workdir, "asset-orig.blend")
     second = os.path.join(workdir, "asset-copy.blend")
@@ -1878,6 +1896,20 @@ def test_save_as_carries_imported_geometry(workdir):
     payload = cadex_backend.put_asset(scene, second_supplied)
     check(payload.get("ok") is True,
           "...and so does the second one")
+    for name in policy_triple:
+        payload = cadex_backend.put_asset(scene, os.path.join(workdir, name))
+        check(payload.get("ok") is True,
+              "a trained policy's {:s} lands in the store the same way".format(
+                  os.path.splitext(name)[1]))
+    origin_assets = os.path.join(workdir, "asset-orig.cadex", "assets")
+    with open(os.path.join(origin_assets, "notes.txt"), "w",
+              encoding="utf-8") as handle:
+        handle.write("not an asset\n")
+    offered = {os.path.basename(path) for path in cadex_backend._assets_in(
+        os.path.join(workdir, "asset-orig.cadex"))}
+    check(offered == {"widget.stl", "bracket.stl"} | set(policy_triple),
+          "the carry offers the geometry and the policy triple, and never a "
+          "file the store would refuse ({!r})".format(sorted(offered)))
     ok, report = run_tool("write_script", {"content": IMPORTED_GEOMETRY_SCRIPT})
     check(ok, "a model built on the imported file is accepted ({:s})".format(
         report[:80]))
@@ -1919,15 +1951,23 @@ def test_save_as_carries_imported_geometry(workdir):
     check("widget.stl" in (report or "") and "bracket.stl" in (report or ""),
           "the report names BOTH components it carried across ({:s})".format(
               (report or "")[:120]))
+    check(all(name in (report or "") for name in policy_triple),
+          "...and the policy with its task bundle and MJCF (ADR-188) "
+          "({:s})".format((report or "")[:200]))
     check(bpy.data.objects.get("widget") is not None,
           "the imported component is back in the new file's viewport")
     check(bpy.data.objects.get("bracket") is not None,
           "...and so is the second one")
     check(not cadex_backend.orphaned_project(scene),
           "the adopted project is no longer orphaned")
-    check(cadex_backend.stored_asset_names(scene) == {"widget.stl",
-                                                      "bracket.stl"},
-          "the new project holds both components in its own store")
+    check(cadex_backend.stored_asset_names(scene) == {
+              "widget.stl", "bracket.stl"} | set(policy_triple),
+          "the new project holds both components and the policy triple in "
+          "its own store, and nothing else")
+    with open(os.path.join(workdir, "asset-copy.cadex", "assets",
+                           "stand.cxpolicy"), "rb") as handle:
+        check(handle.read() == policy_triple["stand.cxpolicy"],
+              "the carried policy is byte-identical to the original")
     check(os.path.isfile(os.path.join(workdir, "asset-orig.cadex",
                                       "assets", "widget.stl")),
           "the original project keeps its own copy")

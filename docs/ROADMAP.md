@@ -1776,6 +1776,14 @@ What makes them experimental, and what would settle it:
   alert row. The gate's `test_a_locked_out_project_is_reaccepted_from_the_chat`
   moves the accepted digest with the script untouched and drives the
   operator from the locked-out state.
+- [x] **Save-As dropped a trained policy** (named in ADR-138, ADR-188 landed
+  the carry). The shell's `CARRIED_ASSET_SUFFIXES` filtered the carry-forward
+  to meshes and `.cxpart`, so a project that replayed a `.cxpolicy` Saved-As
+  into a script that could not bind its weights — the one asset that cannot
+  be rebuilt from the script. `POLICY_SUFFIXES` (`.cxpolicy`, `.json`,
+  `.xml`) joins the list, which is now the engine's whole stored union; the
+  gate's `test_save_as_carries_imported_geometry` carries the triple and
+  refuses a file the store would not accept.
 - **Linux and Windows shell bundles.** The engine payload builds for both;
   only macOS arm64 has shell CI. Moot once Phase 12 lands — revisit then.
 

@@ -18345,3 +18345,72 @@ refuses a project that stores no script.
   closed. What remains there is the `.cxpolicy` Save-As suffix.
 - A digest-moving change no longer ships with a manual recovery. It still
   moves digests, and the box says so rather than hiding it.
+
+## ADR-188 — Save-As carries a trained policy with its provenance (2026-09-06)
+
+**Status:** accepted. **Zone:** `shell/scripts/startup/mesh_agent/` and
+`shell/tests/python/` — the inherited Blender tree untouched, `docs/BLENDER-TREE.md`
+§2a still eight files.
+
+### 1. Context
+
+ADR-046 made Save-As carry the origin project's `assets/` into the new
+project through `put_asset`, filtered by the shell's own suffix list;
+ADR-138 found that list dropping `.cxpart` and fixed it with a separate
+`CARRIED_ASSET_SUFFIXES`, and **named the same gap for `.cxpolicy` and its
+provenance pair without taking it** — one authorised feature does not
+license unrelated edits (ADR-086 §4), and carrying trained weights on every
+Save-As was called its own decision. This is that decision.
+
+What was lost was the worst asset to lose. A `.cxpolicy` is hours of
+stochastic GPU compute that VISION principle 3 exempts from "rebuildable from
+the script" precisely because it cannot be (ADR-084); the script binds it by
+digest and names its task bundle by name (ADR-135), and the engine refuses
+the bundle without the MJCF it references. A Save-As of the shipped biped
+demo — whose only asset is the policy it replays — would rebuild into a
+project whose script could not bind its weights, with the original the only
+surviving copy and nothing saying so.
+
+### 2. Decision
+
+`POLICY_SUFFIXES = (".cxpolicy", ".json", ".xml")` in `cadex_backend.py`, a
+third name beside the mirrored three and `.cxpart` for the reason there is a
+second — the engine keeps these apart as four constants and one union, and
+the shell mirrors that shape — and `CARRIED_ASSET_SUFFIXES` becomes the union
+of all three. That union is now exactly the engine's `_STORED_ASSET_SUFFIXES`:
+every file the origin store holds is a file the copy's store accepts, so the
+carry can no longer drop a suffix the engine grew. Nothing else changes:
+`_assets_in` still walks flat, skips symlinks, and hands paths to `put_asset`,
+which still re-validates every one and stays the store's sole writer.
+
+Carried on every Save-As, deliberately. A policy of 88 KB (the biped's) is
+nothing against the 128 MB asset budget, and the alternative — carry on
+demand, or ask — is a question at a moment the user is saving a file. The
+provenance pair travels with it because a policy without its bundle is
+unbindable, and the engine's rule that an asset nothing names is bytes in a
+directory means a stray `.json` costs nothing.
+
+Not taken: reading the script to carry only what it names. The carry has
+never been selective — an imported STL the script does not currently name
+comes across too — and making it so would be a second reader of the store
+in the shell.
+
+### 3. Verification
+
+`test_save_as_carries_imported_geometry` in the gate now stores a
+fabricated `.cxpolicy`, `.json` and `.xml` beside the two STLs before the
+Save-As, writes a `notes.txt` straight into the origin's `assets/` as the
+negative, and checks: the carry offers exactly the five and never the
+`.txt`; the adoption report names all three; the new store holds exactly the
+five; and the carried policy is byte-identical. Fabricated bytes because the
+store validates suffix, not content, and the carry is about bytes.
+
+### 4. Consequences
+
+- The last open item on the file-lifecycle state node is closed. The three
+  measured failures and the adjacent gap are all fixed.
+- `CARRIED_ASSET_SUFFIXES` no longer names a known omission. A future asset
+  suffix added to the engine's union must be added here too; the constant's
+  comment now says the two are equal, so a test asserting that equality is
+  the obvious next guard and is not taken here because the shell test suite
+  cannot import the engine module by design.
