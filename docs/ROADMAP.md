@@ -1789,6 +1789,11 @@ What makes them experimental, and what would settle it:
   `.xml`) joins the list, which is now the engine's whole stored union; the
   gate's `test_save_as_carries_imported_geometry` carries the triple and
   refuses a file the store would not accept.
+- [ ] **One reproducible lifecycle entry point** (`docs/MUJOCO.md` §7c,
+  reproducibility audit). The committed CLI legs and the fixed-toy integration
+  test work; a repo-owned starting mechanism, automatic policy declaration,
+  project-local review and domain docs still need one documented entry point.
+  Prove that same entry point on a second mechanism before claiming generality.
 - [x] **A trained policy comes home headlessly** (ADR-190). `cadex asset
   --put walk.cxpolicy` for a pipeline and `put_asset` in the CLI agent's
   tool surface, both on the op the shell has had since ADR-043; the

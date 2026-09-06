@@ -2962,6 +2962,41 @@ left a third, so it is every export, not one).
    or the frames (rebuildable and bulk; `.gitignore`d). All twelve rows
    are now the agent's, the CLI's, or doc-only; item 5 is the frontier.
 
+### Reproducibility boundary of the audit (2026-09-06)
+
+The twelve leg owners above establish a working sequence, but do not yet
+establish the unattended, single-entry-point walk required by the current
+charter. At committed revision `7dd3d045`, `docs/CLI.md` §2 still has a
+caller edit the policy filename and digest between commands. The original
+§7b design also lives outside the repository. Neither is a reproducible
+starting point for a fresh machine by itself.
+
+The repo does carry a headless rehearsal in
+`cli/tests/test_train.py::test_iterate_blanks_the_policy_retrains_across_the_change_and_redeclares`:
+it builds a fresh plate-and-arm mechanism with the real kernel, exports the
+task, trains on CPU, installs and verifies the policy, exports a rollout,
+changes the reward weight, retrains and reviews both traces. Its test helper
+supplies the script and rewrites the policy declaration. This proves the
+legs, including the refusal of an incompatible incumbent policy; it does
+not exercise an agent design turn or a mechanism-independent walk command.
+
+Re-run against the committed CLI at `7dd3d045`: **117 passed in 85.76 s**,
+no skips, including the real trainer (1 iteration × 4 environments per run,
+CPU). The two rollouts completed 50 steps each, scoring **−27.1094** and
+**−55.3480**, with eight project commits and the rounded delta **−28.2** in
+`PROGRESS.md`. The reward weight doubled between tasks, so that delta is
+bookkeeping evidence, not a claim that one policy is better. Trainer-reported
+times were 1.28 s and 1.24 s; the whole suite took 86.26 s under an external
+850 s watchdog, with sampled process-group peak RSS **1.05 GB** under a
+3 GB stop limit. An isolated copy of committed `cli/` excluded pre-existing,
+uncommitted walk edits; the built engine and training venv were reused.
+No agent turn, GUI, remote run, build, or packaged gate was performed.
+
+Next evidence needed: a documented entry point with a repo-owned starting
+mechanism, automatic policy declaration, project-local outputs and domain
+docs, followed by the same entry point on a second mechanism. GUI attachment
+and remote training remain documentation-only under the current constraints.
+
 ## 8. Live mode: watching it, rather than reading about it
 
 **ADR-109.** Everything above produces a *recording*: six seconds, one drawn

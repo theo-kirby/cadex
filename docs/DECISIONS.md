@@ -18752,6 +18752,11 @@ The comparison is the `policy` block of the two exported traces
   with the real trainer (two runs at 1 it × 4 envs), including the exit-3
   refusal with the digest named.
 
+Follow-up audit (2026-09-06, `docs/MUJOCO.md` §7c): the committed CLI's
+117 tests pass, including fresh-toy training and warm retraining, but the
+test helper still owns the policy digest edit. This verifies ADR-192's
+sequence; a general, documented lifecycle entry point remains open.
+
 ## ADR-193 — The project is a codebase: three documents scaffolded by the CLI, read on every turn, appended by convention (2026-09-06)
 
 **Status:** accepted. **Zone:** `cli/` (LGPL) and `docs/`; no protocol
