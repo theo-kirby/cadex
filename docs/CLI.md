@@ -167,8 +167,9 @@ declares no policy and exports the task with its new digest. A stored
 parameter value outlives a script write, which is why the last step is a
 `params` call and not part of the `script --set`. The comparison is the
 `policy` block of the two exported traces (`total_reward` and the
-per-term `reward_totals`); recording it is the lifecycle walk's next leg
-(`docs/MUJOCO.md` §7c, row 9).
+per-term `reward_totals`), and the CLI records it: the second run's
+`PROGRESS.md` row carries its `total_reward` **with the change against the
+last row that had one** (ADR-194, below).
 
 **The project is a codebase** (ADR-193). Every project root carries the
 documents an engineer keeps beside a model, created by the CLI on the
@@ -194,8 +195,36 @@ row, with the exported trace's `total_reward` and the trainer's
 run produced them. Printing the script and listing the store change
 nothing and get no row. A shell-attached agent has file tools and edits
 the same three files directly; the files are what make the two modes one
-shape. Committing them in a git repository the project owns is row 9's
-work (`docs/MUJOCO.md` §7c).
+shape.
+
+**The comparison is one recorded row** (ADR-194). A number an earlier
+row also carried is written with its change against that row — the
+delta, the digest of the run compared against, and that run's value:
+
+```
+| … | script | 506bfc86 | 68530963 | script --set switch9.py | total_reward -293.4 (Δ -421.2 vs 2996fb73 at 127.8) |
+```
+
+`total_reward` and `reward/step` are compared; each against the last row
+that carried it, so a `train` row between two rollouts does not break the
+chain. The rows are read back from `PROGRESS.md` as written, which means
+a row a person adds by hand counts too.
+
+**The project owns a git repository** (ADR-194). The first visit runs
+`git init` in the project root and writes a `.gitignore` that keeps out
+what a rebuild recreates (`script_artifacts/`), what is bulk (`frames/`,
+renders) and what is transient (the lock, `.blend1` backups); the script,
+its history, the stored assets, the `.blend` and the three documents are
+the project. After every accepted run the CLI commits whatever changed,
+with the `PROGRESS.md` row's words as the message and `committed <sha>.`
+in the envelope's `notes`, so `git log` is the progress table and `git
+diff` between two commits is the change that produced the numbers. A
+project that already lies inside a work tree is somebody's repository
+and is left alone — no `init`, no commit, one note saying so — and a
+machine without `git` on `PATH` gets the same note and no history. Opening
+a project re-stages its accepted attempt under a new id, so a read-only
+visit (`cadex script` with no `--set`) leaves the engine's `script.json`
+modified until the next accepted run commits it.
 
 ### Exit codes
 

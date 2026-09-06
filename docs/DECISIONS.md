@@ -18831,3 +18831,74 @@ the engine, a first visit that scaffolds and a `script --set` then
 turn whose prompt carries the project's `ARCHITECTURE.md` and whose
 closing `DECISION:` lands as `ADR-002`. `docs/CLI.md` §2 and §4,
 `docs/MUJOCO.md` §7c row 10 and item 6, `docs/ROADMAP.md` Phase 14.
+
+## ADR-194 — Compare and record: the delta in the row, and a git repository the project owns (2026-09-06)
+
+**Status:** accepted. **Zone:** `cli/` (LGPL) and `docs/`; no protocol
+op, no engine change, no `shell/` diff, nothing in any payload.
+
+### 1. Context
+
+Row 9 of the lifecycle audit (`docs/MUJOCO.md` §7c) was the last leg
+still marked **missing** after ADR-193: a comparison between two runs
+was two `PROGRESS.md` rows a reader lined up by eye, and the project
+directory was not a git repository, so "every artifact under version
+control" — the goal's words — was not true of any project. The night's
+priority list put this in the robot lifecycle loop, after the scaffold
+it builds on.
+
+### 2. Decision
+
+**The comparison is one recorded row.** When the CLI writes a
+`PROGRESS.md` row, a number an earlier row also carried is written with
+its change against that row: `total_reward -293.4 (Δ -421.2 vs 2996fb73
+at 127.8)` — the delta, the digest of the run compared against, and that
+run's value. `total_reward` (the exported trace) and `reward/step` (the
+trainer's receipt) are compared, each against the last row that carried
+it, read back from the file as written. A row without the number leaves
+the last one in force, so a `train` row between two rollouts does not
+break the chain. A row's own delta text is never mistaken for its value.
+
+**The project owns a git repository.** The first visit runs `git init`
+in the project root and writes a `.gitignore` that keeps out what a
+rebuild recreates (`script_artifacts/`), what is bulk (`frames/`,
+renders) and what is transient (the lock, `.blend1` backups). After every
+accepted run — the same runs that land a row — the CLI commits whatever
+changed, with the row's words as the message, `--no-verify`, signing off,
+and a fallback identity when the machine has none. `committed <sha>.`
+lands in the envelope's `notes`. `git log` is the progress table; `git
+diff` between two commits is the change that produced the numbers.
+
+**What it refuses.** A project root that already lies inside a work tree
+is somebody's repository: no `init`, no commit, one note saying so. A
+machine without `git` on `PATH` gets the same note and no history. Neither
+fails a run: history is the record of a success, not a condition of it.
+
+### 3. Not taken
+
+A `--parent` flag naming the run to compare against: the last row that
+carried the number is the right default for a loop that iterates in
+order, and a person can add a row by hand. A commit hash in the row: the
+row is in its own commit, so the hash cannot be. Committing the `.blend`
+is left as the default (it is the document a shell user opens); the
+frames and the staged artifacts are not committed, because a rebuild
+recreates the one and the other is 214 MB on the §7b toy. The
+read-only-visit churn — opening a project re-stages the accepted attempt
+under a new id, so `cadex script` with no `--set` leaves `script.json`
+modified — is the engine's and is documented, not hidden by a commit.
+
+### 4. Evidence
+
+`cli/tests/test_project_docs.py`: three pure tests (the delta per number
+against the last row that carried it, and the delta text not read back as
+a value; `git init`, the ignore list, one commit per change and none for
+no change; a nested work tree left alone) and the engine test extended to
+assert one commit per accepted run with the row inside it and no
+artifact tracked. `pixi run python -m pytest cli/tests`: **117 passed**
+(114 before) with the built engine and the training venv. Measured on the
+ADR-192 scratch copy of the §7b toy: `cadex train --put` initialised the
+repository and committed; `cadex script --set` re-declaring the fresh
+policy landed `total_reward -293.4 (Δ -421.2 vs 2996fb73 at 127.8)` and a
+commit of exactly the row, the script, its state and the history entry.
+`docs/CLI.md` §2, `docs/MUJOCO.md` §7c row 9 and item 6, `docs/ROADMAP.md`
+Phase 14.

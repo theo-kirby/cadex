@@ -13,7 +13,9 @@ are read on every visit and updated as the work goes:
 - ``DECISIONS.md`` — the project's own ADR log: what was chosen, over what,
   and why. Newest last.
 - ``PROGRESS.md`` — one row per run the CLI accepted, with the numbers.
-  Newest last.
+  Newest last. A number a previous row also carried is written **with its
+  change against that row** — the comparison is one recorded row, not two
+  a reader lines up by eye (ADR-194, row 9).
 
 Longer notes go under ``docs/``, one file per subject, named by the subject
 (``docs/gear-ratios.md``, ``docs/sensors.md``, ``docs/rejected.md``).
@@ -29,6 +31,17 @@ happened rather than what a model said would. A shell-attached agent has
 file tools of its own and edits the same three files directly; the shape is
 the same in both modes because the files are.
 
+**The project owns a git repository** (ADR-194). The first visit runs
+``git init`` in the project root — unless the root already lies inside a
+work tree, which is somebody's repository and is left alone — and writes a
+``.gitignore`` that keeps the rebuildable and the bulky out: the staged
+artifacts, the frames, the renders, the lock, the ``.blend1`` backups. After
+every accepted run the CLI commits whatever changed, with the
+``PROGRESS.md`` row's words as the message, so a project's history is its
+run log and ``git diff`` between two runs is the change that produced the
+numbers. Without ``git`` on ``PATH`` the project simply has no history and
+the envelope says so once.
+
 The engine knows nothing about any of this: these are plain files beside
 ``script.json``, like ``agent.json``, and the store's restore pass ignores
 them the way it ignores every file it did not write.
@@ -40,6 +53,8 @@ import datetime as _datetime
 import json
 from pathlib import Path
 import re
+import shutil
+import subprocess
 from typing import Any, Iterable, Mapping
 
 from .export import ExportedOutput
@@ -103,7 +118,11 @@ that ends with a line starting `{prefix}` lands here as the next entry.
 ## ADR-001 — Project scaffolded ({date})
 
 Created by the `cadex` CLI on first visit, with `{architecture}` and
-`{progress}` beside it.
+`{progress}` beside it, and a git repository the project owns: the CLI
+commits after every accepted run. `.gitignore` keeps out what a rebuild
+recreates (`script_artifacts/`), what is bulk (`frames/`, renders) and
+what is transient (the lock, `.blend1` backups); the script, its history,
+the stored assets and these documents are the project.
 """
 
 _PROGRESS_TEMPLATE = """\
@@ -111,7 +130,10 @@ _PROGRESS_TEMPLATE = """\
 
 One row per run the `cadex` CLI accepted, newest last. Written by the
 CLI from what actually happened; read by the agent on every visit. A
-comparison between two runs is two rows with their numbers.
+number a previous row also carried shows its change against that row,
+as `total_reward 127.8 (Δ -1602.1 vs 2996fb73 at 1729.9)`: the delta,
+the digest of the run compared against, and that run's value. Each row
+is one commit in the project's own repository (`git log` is this table).
 
 {header}
 {rule}
@@ -233,20 +255,93 @@ def trace_total_reward(outputs: Iterable[ExportedOutput]) -> float | None:
     return None
 
 
-def progress_numbers(
-    *, training: Mapping[str, Any] | None, outputs: Iterable[ExportedOutput]
+#: The numbers a row carries that a later row is compared against, as
+#: they are spelled in the column: the label, then the value.
+COMPARED_NUMBERS = ("total_reward", "reward/step")
+
+_NUMBER_RE = {
+    label: re.compile(re.escape(label) + r" (-?\d+(?:\.\d+)?(?:e[-+]?\d+)?)")
+    for label in COMPARED_NUMBERS
+}
+_ROW_RE = re.compile(r"^\| (\S+) \| (\S+) \| (\S+) \| (\S+) \| (.*) \| (.*) \|$")
+
+
+def previous_numbers(root: Path | str) -> dict[str, tuple[float, str]]:
+    """For each compared number, the last row that carried it: value and digest.
+
+    Read from ``PROGRESS.md`` as written, so a person's hand-added row
+    counts too. A row's own delta text (``at 1729.9``) is not a value; the
+    first match on each row is the run's own. Empty when there is nothing
+    to compare against.
+    """
+
+    path = Path(root) / PROGRESS_NAME
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {}
+    found: dict[str, tuple[float, str]] = {}
+    for line in lines:
+        match = _ROW_RE.match(line.strip())
+        if not match or match.group(1).startswith(("When", "---")):
+            continue
+        digest, numbers = match.group(4), match.group(6)
+        for label, pattern in _NUMBER_RE.items():
+            hit = pattern.search(numbers)
+            if hit:
+                try:
+                    found[label] = (float(hit.group(1)), digest)
+                except ValueError:
+                    pass
+    return found
+
+
+def _compared(
+    label: str,
+    value: float,
+    spelled: str,
+    previous: Mapping[str, tuple[float, str]],
 ) -> str:
-    """The numbers column: what this run measured, nothing inferred."""
+    before = previous.get(label)
+    if before is None:
+        return f"{label} {spelled}"
+    was, digest = before
+    delta = value - was
+    was_spelled = f"{was:.4g}" if label == "reward/step" else f"{was:.1f}"
+    delta_spelled = f"{abs(delta):.4g}" if label == "reward/step" else f"{abs(delta):.1f}"
+    # The sign of what is shown, not of the float: a change that rounds
+    # to nothing is "±0.0", never "-0.0".
+    if float(delta_spelled) == 0.0:
+        sign = "±"
+    else:
+        sign = "+" if delta > 0 else "-"
+    return f"{label} {spelled} (Δ {sign}{delta_spelled} vs {digest} at {was_spelled})"
+
+
+def progress_numbers(
+    *,
+    training: Mapping[str, Any] | None,
+    outputs: Iterable[ExportedOutput],
+    previous: Mapping[str, tuple[float, str]] | None = None,
+) -> str:
+    """The numbers column: what this run measured, nothing inferred.
+
+    With ``previous`` (from :func:`previous_numbers`), a number an earlier
+    row also carried is written with its change against that row — the
+    comparison as one recorded row (ADR-194).
+    """
 
     items: list[str] = []
+    previous = previous or {}
     reward = trace_total_reward(outputs)
     if reward is not None:
-        items.append(f"total_reward {reward:.1f}")
+        items.append(_compared("total_reward", reward, f"{reward:.1f}", previous))
     if training:
         per_step = training.get("reward_per_step")
         if per_step is not None:
             try:
-                items.append(f"reward/step {float(per_step):.4g}")
+                value = float(per_step)
+                items.append(_compared("reward/step", value, f"{value:.4g}", previous))
             except (TypeError, ValueError):
                 pass
         wall = training.get("wall_time_s")
@@ -345,3 +440,103 @@ def record_decisions(root: Path | str, text: str) -> list[str]:
         existing += "\n"
     path.write_text(existing + "".join(chunks), encoding="utf-8")
     return entries
+
+
+# -- the repository the project owns (ADR-194) ----------------------------
+
+GITIGNORE_NAME = ".gitignore"
+
+_GITIGNORE_TEMPLATE = """\
+# Written by the cadex CLI on the project's first visit (ADR-194). Edit freely.
+# What a rebuild recreates:
+script_artifacts/
+# What is bulk — frames and renders are outputs of the model, not the model:
+frames/
+*.mp4
+*.png
+# What is transient:
+.cadex-cli.lock
+*.blend1
+*.blend@
+__pycache__/
+"""
+
+_GIT_IDENTITY = ("-c", "user.name=cadex", "-c", "user.email=cadex@localhost")
+
+
+def _git(root: Path, *argv: str, identity: bool = False) -> subprocess.CompletedProcess[str]:
+    command = ["git", "-C", str(root)]
+    if identity:
+        command += list(_GIT_IDENTITY)
+    command += ["-c", "commit.gpgsign=false", *argv]
+    return subprocess.run(command, capture_output=True, text=True, check=False)
+
+
+def _inside_a_work_tree(root: Path) -> bool:
+    result = _git(root, "rev-parse", "--show-toplevel")
+    if result.returncode != 0:
+        return False
+    try:
+        return Path(result.stdout.strip()).resolve() != root.resolve()
+    except OSError:
+        return False
+
+
+def ensure_project_repo(root: Path | str) -> str:
+    """Make the project root its own git repository; say what happened.
+
+    Returns a note for the envelope on the first visit (``"initialised …"``
+    or why not), and ``""`` when there is nothing to say: the repository
+    already exists. Never initialises inside somebody else's work tree —
+    a project checked into a larger repository is that repository's — and
+    never fails a run: no ``git`` means no history, not no build.
+    """
+
+    base = Path(root)
+    if (base / ".git").exists():
+        return ""
+    if shutil.which("git") is None:
+        return "no git on PATH: the project keeps no history."
+    if _inside_a_work_tree(base):
+        return "inside an existing git work tree: not initialised, not committed."
+    result = _git(base, "init", "-q")
+    if result.returncode != 0:
+        return f"git init failed: {result.stderr.strip() or result.returncode}"
+    ignore = base / GITIGNORE_NAME
+    if not ignore.exists():
+        ignore.write_text(_GITIGNORE_TEMPLATE, encoding="utf-8")
+    return "initialised a git repository in the project root."
+
+
+def _has_identity(root: Path) -> bool:
+    return bool(_git(root, "config", "--get", "user.email").stdout.strip())
+
+
+def commit_project(root: Path | str, message: str) -> str:
+    """Commit everything that changed; return the short sha, or ``""``.
+
+    Only for a root that is its own repository (see
+    :func:`ensure_project_repo`); an empty string means nothing to commit,
+    no repository, or a commit that failed — the run has already
+    succeeded and this is its record, so none of those is an error.
+    """
+
+    base = Path(root)
+    if not (base / ".git").exists() or shutil.which("git") is None:
+        return ""
+    if _git(base, "add", "-A").returncode != 0:
+        return ""
+    if not _git(base, "status", "--porcelain").stdout.strip():
+        return ""
+    result = _git(
+        base,
+        "commit",
+        "-q",
+        "--no-verify",
+        "-m",
+        message or "cadex run",
+        identity=not _has_identity(base),
+    )
+    if result.returncode != 0:
+        return ""
+    return _git(base, "rev-parse", "--short", "HEAD").stdout.strip()

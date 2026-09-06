@@ -1810,8 +1810,15 @@ What makes them experimental, and what would settle it:
   accepted run with the numbers, and turns a turn's closing `DECISION:`
   lines into numbered `DECISIONS.md` entries; `docs/<subject>.md` is the
   domain-doc convention. No engine change, no file tool for the agent.
-  §7c row 10 closes; compare-and-record with a git repository the
-  project owns (row 9) is next.
+  §7c row 10 closes.
+- [x] **Compare and record, in a repository the project owns** (ADR-194).
+  A `PROGRESS.md` number an earlier row carried is written with its
+  change against that row (delta, digest, value), so the comparison is
+  one recorded row; the project root is `git init`ed on the first visit
+  with a CLI-written `.gitignore`, and every accepted run is one commit
+  whose message is the row's words. Measured on the §7b toy's scratch
+  copy; pinned by `cli/tests/test_project_docs.py`. §7c row 9 closes;
+  the `INSPECTION_FAILED` frame (item 5) is the lifecycle frontier.
 - **Linux and Windows shell bundles.** The engine payload builds for both;
   only macOS arm64 has shell CI. Moot once Phase 12 lands — revisit then.
 

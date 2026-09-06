@@ -48,6 +48,9 @@ from .engine import Engine, EngineError, resolve_engine
 from .export import ExportError, export_blueprints, export_outputs, parse_formats
 from .project_docs import (
     append_progress_row,
+    commit_project,
+    ensure_project_repo,
+    previous_numbers,
     progress_numbers,
     read_project_docs,
     record_decisions,
@@ -372,6 +375,11 @@ def _engine_session(
                 report.notes.append(
                     "scaffolded " + ", ".join(created) + " in the project root."
                 )
+            # ...and a git repository it owns (ADR-194): one commit per
+            # accepted run, made in main() after the PROGRESS.md row.
+            repo_note = ensure_project_repo(project_root)
+            if repo_note:
+                report.notes.append(repo_note)
             _install_cancel(client)
             yield engine, client
         finally:
@@ -945,9 +953,24 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if code == EXIT_OK and report.ok and not quiet:
         _record_progress(command, args, report)
+        _commit_run(command, args, report)
     if not (quiet and code == EXIT_OK):
         emit(report, as_json=bool(args.json))
     return code
+
+
+#: Notes the CLI adds about the project's own housekeeping (ADR-193,
+#: ADR-194), never what a turn said it did.
+_HOUSEKEEPING_NOTES = (
+    "scaffolded ",
+    "recorded ",
+    "nothing to",
+    "initialised ",
+    "inside an existing",
+    "no git on",
+    "git init",
+    "committed ",
+)
 
 
 def _progress_what(command: str, args: argparse.Namespace, report: RunReport) -> str:
@@ -956,7 +979,7 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
     if command == "prompt":
         said = ""
         for note in report.notes:
-            if note and not note.startswith(("scaffolded ", "recorded ", "nothing to")):
+            if note and not note.startswith(_HOUSEKEEPING_NOTES):
                 said = note.strip().splitlines()[0]
                 break
         return f"prompt: {args.prompt}" + (f" → {said}" if said else "")
@@ -1006,10 +1029,35 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
             what=_progress_what(command, args, report),
             revision=report.accepted_revision,
             digest=report.digest,
-            numbers=progress_numbers(training=report.training, outputs=report.outputs),
+            numbers=progress_numbers(
+                training=report.training,
+                outputs=report.outputs,
+                previous=previous_numbers(report.project_root),
+            ),
         )
     except OSError as exc:
         report.notes.append(f"PROGRESS.md not written: {exc}")
+
+
+def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> None:
+    """One commit per accepted run in the project's own repository (ADR-194).
+
+    After the row, so the row is in the commit; the message is the row's
+    words. A listing changes nothing and commits nothing; a project that
+    is not its own repository (inside another work tree, or no git) gets
+    no commit and said so on its first visit. Never fatal.
+    """
+
+    if command == "asset" and not getattr(args, "put_files", None):
+        return
+    try:
+        sha = commit_project(
+            report.project_root, f"cadex {_progress_what(command, args, report)}"
+        )
+    except OSError:
+        return
+    if sha:
+        report.notes.append(f"committed {sha}.")
 
 
 if __name__ == "__main__":
