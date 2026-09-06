@@ -19786,3 +19786,13 @@ committed deletion HEAD: 26 passed in 14.43 s, including manifest equality.
 No new build/stage, full engine suite or inherited ctest in this docs-only unit;
 previous deletion evidence remains separately attributed. Static searches do
 not prove arbitrary external imports or unexercised Windows behavior.
+
+
+**Disable follow-through (2026-09-07).** Removed only MassPropertiesGui.py from
+Measure_Scripts, disabling all three target/copy/install consumers. Its source
+is retained for the later delete commit. Preserve MassPropertiesObject.h's
+view-provider identity, Measure App and the four remaining scripts, and all
+required Assembly publishers. This edits one already-manifested inherited
+CMake file with its existing notice; no manifest membership changes. Validation
+and stale-copy quarantine evidence are in PHASE8-AUDIT.md. This is one shim
+disable, not a whole-tree removal or closure of the broader GUI-source gap.

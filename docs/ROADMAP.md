@@ -324,8 +324,11 @@ this phase.
 - [x] Audit remaining GUI-lineage source and unconditional Python install
       lists outside that boundary; preserve required headless Assembly publication
       (ADR-215, PHASE8-AUDIT.md). Consumer audit only; residual removal and
-      the broader exit criterion remain open. Next: separately disable, then
-      delete the Measure/MassPropertiesGui.py install shim.
+      the broader exit criterion remain open.
+- [x] Disable Measure/MassPropertiesGui.py in its shared copy/install list
+      (ADR-215); preserve the source and headless Measure/Assembly consumers.
+- [ ] Delete the disabled Measure/MassPropertiesGui.py shim in a separate
+      verified commit.
 
 **Exit criteria:** the tree contains no GUI source, `pixi run configure`
 (debug) still configures, and both cadex ctests stay green.

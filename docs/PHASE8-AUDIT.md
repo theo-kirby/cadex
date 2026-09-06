@@ -414,3 +414,54 @@ run in this docs-only unit; this reuses the preceding deletion's staged payload.
 No runtime behavior, inherited source, manifest or protocol changes. The
 manifest-scoped fork-delta measurements above are unchanged and the broad
 fork-delta claim remains open. Hypergraph export/check is required before landing.
+
+
+## Measure shim install disabled (2026-09-07, ADR-215)
+
+Removed only MassPropertiesGui.py from Measure_Scripts; the source remains for
+its separate delete commit. Generated debug/release build.ninja and Measure
+cmake_install.cmake no longer name it. The tracked consumer search now finds
+only MassPropertiesObject.h's retained view-provider identity string. The four
+other Measure scripts, App class and required Assembly modules are unchanged.
+The CMake file already has its modification notice and manifest entry, so the
+manifest membership remains 56 FreeCAD files and 44 Blender files; both
+import-to-working-tree equality checks pass. Import-to-HEAD checks before
+commit cannot see the changed CMake line, though membership is unchanged.
+
+Verification (local logs `/tmp/cadex-measure-*.log`):
+
+- `pixi run configure`, `configure-release`, and the single `build-release`
+  all exit 0. Serial CTest discovery before/after gives identical 1,544 names
+  and properties, with no duplicates. Compiler dependency inspection finds
+  zero deleted GUI paths and 190 retained App/MetaTypes.h references.
+- Full engine suite: **2,022 passed, 52 skipped in 273.31 s**, exit 0.
+- Serial inherited CTest: **162 failures / 1,537 enabled tests in 140.29 s**,
+  exit 8; no new failure names against the 164-failure baseline. Baseline-only
+  DlgVersionMigrator_Tests_run and SpreadsheetRenameProperty.renameProperty
+  remain absent. Three skips and seven disabled cases match the prior run.
+  CadexProjectRebuildDigest, CadexdLifecycle, CadexSubshapeEnumeration and
+  CadexResponseSchemas all pass (2.24, 15.71, 0.77 and 0.19 s). The initial
+  lowercase `-R cadex` filter selected no tests; this full run supplies evidence.
+- Quarantined three stale MassPropertiesGui.py copies from release/Mod,
+  the installed pixi environment and the previous stage, then installed and
+  completed staging (both exit 0). None remains in debug/release copies,
+  the installed Measure directory or the fresh payload. All four Measure
+  scripts and JointObject/CommandCreateView/Preferences/UtilsAssembly remain.
+- Fresh packaged lifecycle/licensing: **26 passed in 17.46 s**. This is the
+  2.4 GB local stage-only payload, with expected external rpath diagnostics,
+  not a relocated distribution. A direct installed-engine script imports
+  Measure/MassProperties and creates Measure::Result with GuiUp false
+  (`MEASURE-APP-OK`). The same script in the stage also prints that marker,
+  but reports a startup `No module named freecad` diagnostic; the native probe
+  is not evidence of diagnostic-free standalone startup. An earlier one-line
+  installed probe terminated without details; executing the explicit script
+  passes. Packaged protocol tests above pass through their supported launch path.
+
+No source file was deleted in this disable unit. Relative to nt2 start
+7dd3d045, manifest-scoped FreeCAD M totals are now 56 files / 1,633 inserted /
+1,796 deleted lines versus 47 / 1,804 / 1,907; Blender remains 44 / 1,046 / 129.
+This does not close the broad fork-delta or two engine-tree-removals criteria.
+Next is the separately verified shim source deletion. Other residual GUI
+sources, external/dynamic import compatibility and unexercised platforms stay
+outside this boundary. Repeat the packaged manifest comparison after commit;
+no second build is required for that check.
