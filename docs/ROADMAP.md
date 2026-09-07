@@ -2213,6 +2213,10 @@ field, and every client gets it through the surface it already reads.
       phases, three configurations), root clearance 0.25 m plus shift both
       ways, flank gap equal to the backlash's normal gap, and two negative
       controls (ADR-234). The planetary gearbox is the remaining unit.
+- [ ] **Planetary mesh qualification.** First m1 sun18/planet18/ring54
+      phase fails the 1e-6 mm³ overlap bound (0.000354806 mm³); reproducible
+      probe in `docs/experiments/planetary_mesh_probe.py` (ADR-235).
+      Publication and multi-phase qualification remain open.
 - [ ] **L3 — motors and mechanisms.** Common BLDC sizes with kV/torque
       data, N20 gearmotor, linear actuator, solenoid, joints; involute gear
       and rack values exist (ADR-233) and the rack and pinion is composed

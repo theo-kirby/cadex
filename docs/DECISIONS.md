@@ -20559,3 +20559,44 @@ packaged lifecycle/library gate with `CADEX_ENGINE_ROOT` on that payload:
 and no ctest (no C++ changed). The planetary gearbox (rank 3) is the next
 unit and needs an internal ring from the same generator; nothing here
 claims it.
+
+## ADR-235 — Planetary mesh qualification fails before publication (2026-09-07)
+
+[Cadex-new] The short plan requested a planetary composed from ADR-233's
+sampled involute generator. Three uncommitted files already contained a
+proposed catalog spec, ring/planetary recipes and unit tests on arrival at
+iteration 67. They are preserved as found; this decision does not publish
+those APIs or claim the compound-mechanisms criterion is met.
+
+**Experiment.** `docs/experiments/planetary_mesh_probe.py` reproduces the
+first mesh using only the committed spur generator and ordinary part ops:
+m1, sun 18 teeth, planet 18 teeth, ring 54 teeth, width 6 mm, centre distance
+18 mm. Three planets satisfy (sun + ring) divisible by planet count. At sun
+phase zero the first planet rolls 170 degrees and the ring's tooth-space
+phase is 180·17/54 degrees. The ring cutout uses the same base circle and
+involute function, with virtual root radius 26 mm and tip radius 28.25 mm.
+
+**Result and decision.** The proposed recipe's first sun–planet pair has
+zero common volume; its planet–ring pair has 0.000354806 mm³ common volume,
+exceeding the 1e-6 mm³ acceptance bound. Stop at this first failing phase,
+as the overseer instructed. The standalone probe reproduces the overlap
+to 1.5e-14 mm³; all four root-circle clearances measure 0.25 mm. Its
+half-pitch negative controls collide at 23.461758 mm³ (sun–planet) and
+41.859438 mm³ (planet–ring). The sun–planet minimum gap is 0.002413755 mm;
+the ring contact gap is zero. Running the probe against engine source
+exported from HEAD produces identical JSON without the uncommitted patch.
+Do not increase the tolerance, publish the
+planetary, or claim a multi-phase mesh gate. A chordal ring cutout is a
+candidate explanation, not a demonstrated cause. The next plan should
+move to headless assembly inventory; further ring-profile work needs a
+separate bounded qualification unit.
+
+The targeted pre-existing tests ran with `pixi run python -m pytest
+src/Mod/cadex/cadex_tests/test_library.py -k 'planetary or internal_gear or
+ring_gear' -q`: 12 passed, 1 failed. `test_planetary_spec_numbers` expects
+one warning containing "radial line", but receives three (both external
+undercut warnings also contain it). This failure predates this iteration's
+edits and remains in the uncommitted proposal. No engine source is changed
+by this commit. No full build, full engine suite, stage, packaged gate or
+shell gate was run for this failed qualification; no published behavior
+is claimed.

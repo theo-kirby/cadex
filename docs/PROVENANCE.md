@@ -865,3 +865,11 @@ rejects a generic cable listing without manufacturer CAD. Neither category
 qualifies: asset permissions and exact horn compatibility remain unresolved;
 DS download access fails; no small script-owned STEP import path is established.
 No vendor bytes or catalog identities were added. Replan before delivery.
+
+**Planetary experiment (ADR-235; not qualified).** The proposal reuses the
+independently authored sampled involute above for a virtual external gear
+cutting an internal ring's tooth spaces. It introduces no outside source
+or copied geometry. `docs/experiments/planetary_mesh_probe.py` tests m1,
+sun18/planet18/ring54; the first planet–ring mesh overlaps by 0.000354806
+mm³, above the 1e-6 bound. This is negative evidence, not a new catalog
+part or a qualified internal-gear profile.
