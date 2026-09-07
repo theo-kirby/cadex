@@ -32,6 +32,8 @@ Status: working
 
 The CLI remains **Claude-only**, independent of the shell's three-harness selector [rec: merry-water-7647]. Its default is `claude-fable-5` since ADR-183, whose CLI validation recorded 83 passed [rec: curious-sail-8332].
 
+**Inventory paging is complete across nested inspection previews.** The reader recursively expands and pages mappings, lists and strings instead of paging only components, preserving catalog totals, uncatalogued names and oversized rows. Real inspection-pager regressions pass; the CLI gate recorded 147 passed with no skips [rec: lawful-ivy-4474].
+
 ## Negative knowledge
 
 - [scope: cli/ on macOS | confidence: medium | evidence: jolly-walrus-3692] Nothing in the CLI is macOS-hostile, but it has never been run there by hand and 'should work' is not evidence. Expect the macOS CI job to be the thing that finds anything.
@@ -65,3 +67,4 @@ The CLI remains **Claude-only**, independent of the shell's three-harness select
 - grand-fjord-0624 — corrects ADR-201: retry can silently overwrite CLI acceptance; refresh required before GUI edits; 137 CLI tests and 15 final scaffold tests passed
 - placid-sky-7374 — the second clean prompt walk on an unchanged tree; CLI suite 142 passed, engine-backed walks included
 - fair-rose-5950 — ADR-236: the `inventory` subcommand, `inspect scope="inventory"` read through its page chain, docs/inventory.md in the project; suite at 145, no protocol change, no shell/ diff
+- lawful-ivy-4474 — recursive inventory preview expansion and complete rendering; CLI gate 147 passed, no skips

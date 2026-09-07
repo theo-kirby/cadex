@@ -7,7 +7,7 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
+Status: working
 
 ## Current
 
@@ -19,7 +19,9 @@ Charter criterion: **Three modes, one shape.** The walk runs headless (exercised
 - **GUI attached, documented only** (ADR-201) [rec: red-comet-9710]: the same terminal `cadex` commands run beside the open `.blend`, with the same project documents and artifact paths. `_engine_session` holds `.cadex-cli.lock` for one command and releases it before the `PROGRESS.md` row and project commit; the shell takes no lock, so ownership is sequential by convention. Rebuild Model or reopening refreshes source, specs and values from the accepted project. The in-app agent has Mesh tools only, so the walk and project-doc maintenance remain the CLI's or a person's.
 - **Refresh before the next GUI edit is required** (ADR-204) [rec: still-badger-2386]: real two-engine probes did not reproduce the earlier overwrite claim; dormant revision adoption and replay are removed defensively, stale script/parameter mutations keep their guard and return Rebuild Model/reopen guidance. 138 CLI tests, the shell build and the final headless bundle gate pass.
 
-Reconcile judgement: held at `open`. The headless mode's own gap that the earlier judgement named — the walk not completing from `--prompt` — is closed [rec: placid-sky-7374], so what keeps this node open is now exactly the criterion's other two modes: GUI-attached and remote remain documented-not-exercised, unchanged by any nt3 unit [rec: placid-sky-7374]. The node returns to `working` when the human ticks the criterion or a record verifiably closes it. Shared locking and serialization of concurrent acceptance/rebuilds remain absent, so sequential use remains required [rec: still-badger-2386].
+**Whole-walk artifact parity is verified offline.** Independent local and `--remote --allow-cpu` toy walks use the real engine and CPU trainer, with a test-only dispatcher standing in for remote transport. They produce identical relative output file sets, verified stored policy bytes and digests, rollout traces, committed review and project documents, and comparable numeric PROGRESS rows with the remote marker only on remote training. The shared mode-artifact table is linked and pinned to the project scaffold. Targeted parity test: 1 passed; full CLI gate: 148 passed, no skips [rec: gilded-basin-9946].
+
+Reconcile judgement: `working`, folding the explicit MET verdict against the criterion's exact wording. Headless prompt walks are exercised; GUI attachment is documented and unexercised; remote handoff is scripted and documented, with no actual dispatch. The offline parity audit supplies the missing whole-walk evidence, so the stated criterion has no remaining gap. This does not establish remote transport reliability or concurrent GUI mutation safety [rec: gilded-basin-9946]. Sequential use and refresh before GUI edits remain required [rec: still-badger-2386].
 
 ## Negative knowledge
 
@@ -40,3 +42,4 @@ Reconcile judgement: held at `open`. The headless mode's own gap that the earlie
 - modest-summit-8554 — nt3 operator directive re-seeds the criterion unticked; remote handoff stays on the medium rung
 - misty-rain-9048 — headless mode exercised again on this machine under the charter's guards; GUI and remote modes stay documented-not-exercised
 - placid-sky-7374 — headless mode exercised from a prompt under the guards (1.115 GB peak, 189.4 s wall); GUI-attached and remote modes unchanged, documented-not-exercised
+- gilded-basin-9946 — criterion MET under its stated limits; whole-walk local/remote-flag CPU stand-in artifact parity and scaffold table verified; CLI gate 148 passed
