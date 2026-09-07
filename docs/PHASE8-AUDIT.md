@@ -607,3 +607,54 @@ Start test discovery is not a MeshPart regression; no test source changes here.
 Full engine suite: **2,023 passed, 52 skipped in 265.63 s**, exit 0.
 `git diff --check` passes. No shell changes, GUI launch or second full build.
 Next: separately delete the retained initializer and repeat the required gates.
+
+
+## MeshPart initializer source deleted (2026-09-07, ADR-224)
+
+Following the verified install-disable commit `01e85a4e`, deleted only
+`src/Mod/MeshPart/InitGui.py`: 73 lines / 3,083 bytes. App, Init.py,
+meshFromShape and the MeshPartExport/MeshPartGuiExport definitions remain.
+Source/test/package consumer searches find only the retained export macro
+and its two Doxygen definitions. Generated MeshPart install instructions do
+not name InitGui.py. Debug/release Mod, the install prefix and fresh stage
+contain no initializer or bytecode. Debug has no built App; release, install
+and stage retain Init.py and MeshPart.so.
+
+Exactly one `pixi run build-release` completed with Release/BUILD_GUI=OFF;
+`pixi run install-release` and `pixi run stage-engine` also exit 0. This is a
+2.4 GB local stage-only payload, with expected external rpath diagnostics,
+not a relocated distribution. An explicit installed FreeCADCmd script
+imports FreeCAD, Part and MeshPart, asserts GuiUp=false, and tessellates a
+10×20×30 box: `MESHPART-APP-OK facets=12`.
+
+Fresh packaged lifecycle/licensing, with CADEX_ENGINE_ROOT set to the newly
+completed stage: **26 passed in 18.15 s**, exit 0. Serial `pixi run test-release`:
+**162 failures / 1,526 enabled tests in 142.70 s**, exit 8. Failure names are
+all in the recorded 164-name baseline; the two absent names remain
+DlgVersionMigrator_Tests_run and SpreadsheetRenameProperty.renameProperty.
+Three skipped and seven disabled tests remain; all four Cadex tests pass
+(2.41/15.60/0.72/0.19 s). An initial comparison incorrectly included skipped
+and disabled summary entries as ten extra failures; filtering actual Failed
+and SEGFAULT statuses confirms no additions. No baseline was overwritten.
+
+Manifest equality remains 56 FreeCAD / 44 Blender files. Surviving-file
+manifest-scoped M totals remain 1,637 inserted / 1,816 deleted (FreeCAD) and
+1,046 / 129 (Blender). The initializer was unmodified against import and had
+no manifest row; this deletion changes neither membership nor those M totals.
+Report its 73 removed lines separately, not as surviving-file delta savings.
+The existing parent CMake modification notice remains. Broader GUI-source,
+whole-tree and full fork-delta claims remain open.
+
+Logs are local `/tmp/cadex-meshpart-delete-{build,install,stage,engine,ctest,packaged,probe}.log`.
+No shell changes, GUI launch or second full build.
+
+The first full engine run overlapped staging: **2,022 passed, 52 skipped,
+1 failed in 267.49 s**. The analysis payload guard saw `bin/ccx` during the
+initial environment copy, before staging pruned binaries. The completed stage
+contains no ccx. This was verification interference, not accepted payload
+content: repeat the full suite after staging, and serialize these operations
+in future units because the engine suite reads build/engine implicitly.
+
+Full engine rerun after completed staging: **2,023 passed, 52 skipped in
+251.30 s**, exit 0. `git diff --check` passes. Committed-HEAD manifest
+equality is checked again after the source-delete commit.

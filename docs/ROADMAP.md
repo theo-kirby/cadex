@@ -335,8 +335,8 @@ this phase.
       (ADR-224, PHASE8-AUDIT.md, 2026-09-07).
 - [x] Disable MeshPart/InitGui.py installation with stale-copy cleanup;
       preserve its source, MeshPart App and Init.py (ADR-224, 2026-09-07).
-- [ ] Delete the disabled MeshPart/InitGui.py source in a separate verified
-      commit (ADR-224).
+- [x] Delete the disabled MeshPart/InitGui.py source in a separate verified
+      commit; preserve App, Init.py and export macros (ADR-224, 2026-09-07).
 
 **Exit criteria:** the tree contains no GUI source, `pixi run configure`
 (debug) still configures, and both cadex ctests stay green.

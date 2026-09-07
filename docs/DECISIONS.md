@@ -20140,3 +20140,18 @@ FreeCAD manifest-scoped M totals move from 1,637 inserted / 1,815 deleted to
 not establish the broad fork-delta or no-GUI-source criteria.
 Full engine pytest: **2,023 passed, 52 skipped in 265.63 s**; no shell change,
 GUI launch or second build. Source deletion remains the next separate unit.
+
+**Source-delete follow-through (2026-09-07).** After the verified disable in
+`01e85a4e`, deleted only the 73-line / 3,083-byte InitGui.py. MeshPart App,
+Init.py, meshFromShape and both export macros remain. No live initializer
+consumer or generated install reference remains. PHASE8-AUDIT.md records the
+fresh release/install/stage and gate evidence. Manifest membership and
+surviving-file M totals are unchanged: 56 FreeCAD files (1,637 inserted /
+1,816 deleted), 44 Blender files (1,046 / 129). This is one whole-file deletion,
+not surviving-file delta savings or a whole-tree removal. Broader GUI-source
+and fork-delta criteria remain open; unsupported external GUI users remain the
+only identified compatibility risk.
+Full engine rerun after staging: **2,023 passed, 52 skipped in 251.30 s**;
+packaged gates 26 passed, CTest 162 baseline failures with no additions. The
+first engine run overlapped staging and saw ccx before pruning; its failure
+and the required serialization are recorded in PHASE8-AUDIT.md.
