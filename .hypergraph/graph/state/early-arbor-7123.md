@@ -28,6 +28,8 @@ Status: working
 
 - **Headless native recipe projects require `CADEX_BLENDER_EXECUTABLE`**; the visible shell supplies its own absolute binary path. Ordinary engine-only projects still need no Blender. Recipe execution was verified on macOS with Blender 5.3.0 Alpha; Linux bubblewrap is implemented but untested on a Linux host, and Windows refuses [rec: simple-bramble-8616].
 
+**The local bundle remains unverified after the named-angle probe.** Its ordinary launch failed importing `library_catalog_identity` from the stale bundled `cadex_library_api.py`. The supported `MESH_CADEX_ENGINE` override to the fresh staged payload restored and hydrated the accepted model, enabling the separate background-render refusal measurement. No bundle refresh was attempted; this override result does not qualify ordinary bundled lifecycle operation. Reconcile judgement: retain this orientation node as `working` while preserving the local bundle verification limitation [rec: zesty-aspen-6846].
+
 ## Negative knowledge
 
 - [scope: stage-engine concurrent with payload-inspecting engine tests | confidence: high | evidence: stormy-quill-5350, floral-stone-2866] Finish staging before running the engine suite: isolation tests can observe transient `bin/ccx` before pruning. This scheduling failure recurred during BLDC verification; after staging completed the targeted check passed and the stable full rerun passed 1987 tests with 52 skips. Packaged lifecycle/library passed 61 tests with no skips. The local development payload still reports 248 external-path relocation violations and is not a portable release. [rec: floral-stone-2866]
@@ -59,3 +61,4 @@ Status: working
 - simple-bramble-8616 — native geometry runtime setup and platform validation limits
 - stormy-quill-5350 — concurrent staging caused a transient exclusion failure; completed-payload and sequential suite passed
 - floral-stone-2866 — staging overlap reproduced the transient exclusion failure; stable rerun passed, development payload remains nonportable
+- zesty-aspen-6846 — stale local bundled engine import observed; fresh-stage override restores correctly, ordinary bundle verification awaits refresh
