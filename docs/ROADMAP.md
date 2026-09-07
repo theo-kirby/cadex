@@ -1872,8 +1872,9 @@ What makes them experimental, and what would settle it:
 - [x] **Qualify assembly camera visibility** (2026-09-07, ADR-228):
       actual hydration and EEVEE render reproduce unposed source leakage;
       `ASSEMBLY-VISIBILITY-AUDIT.md` defines ownership and regression gates.
-- [ ] **Hide instanced sources from camera renders** with independent render
-      ownership and a regression failing on old source (ADR-228).
+- [x] **Hide instanced sources from camera renders** (2026-09-07) with
+      independent render ownership and a hydration/EEVEE regression failing
+      on old source (ADR-228). Pre-hidden sources retain their render flags.
 - [x] **Save-As dropped a trained policy** (named in ADR-138, ADR-188 landed
   the carry). The shell's `CARRIED_ASSET_SUFFIXES` filtered the carry-forward
   to meshes and `.cxpart`, so a project that replayed a `.cxpolicy` Saved-As

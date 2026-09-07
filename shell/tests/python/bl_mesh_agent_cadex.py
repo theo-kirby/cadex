@@ -5641,6 +5641,122 @@ def _draw_panel(panel):
     return layout.sink
 
 
+def test_instanced_sources_stay_out_of_camera_renders():
+    """Actual hydration and EEVEE catch unposed source leakage (ADR-228)."""
+    import numpy as np
+    from mathutils import Matrix
+
+    h = cadex_hydrate
+    with tempfile.TemporaryDirectory(prefix="cadex-render-visibility-") as root:
+        reset_scene(root)
+        vertices = np.array([[-.5, -.5, 0], [.5, -.5, 0],
+                             [.5, .5, 0], [-.5, .5, 0]], dtype="<f4")
+        triangles = np.array([[0, 1, 2], [0, 2, 3]], dtype="<u4")
+        edges = vertices[[0, 1, 2, 3, 0]]
+        with open(os.path.join(root, "mesh.bin"), "wb") as handle:
+            handle.write(vertices.tobytes() + triangles.tobytes() + edges.tobytes())
+        sidecar = os.path.join(root, "mesh.json")
+        with open(sidecar, "w") as handle:
+            json.dump({
+                "schema": h.TESSELLATION_SCHEMA, "artifact_path": "mesh.bin",
+                "source_sha256": "visibility-fixture", "quality": "standard",
+                "deflection": .1, "counts": {"edge_vertices": 5},
+                "layout": {
+                    "vertices": {"offset": 0, "bytes": vertices.nbytes},
+                    "triangles": {"offset": vertices.nbytes, "bytes": triangles.nbytes},
+                    "edge_vertices": {"offset": vertices.nbytes + triangles.nbytes,
+                                      "bytes": edges.nbytes}},
+                "face_ranges": [[0, 2]], "edge_polylines": [[0, 5]],
+            }, handle)
+
+        def placement(x):
+            return [value for row in Matrix.Translation((x, 0, 0)) for value in row]
+
+        def geometry(x):
+            return {"artifact_kind": "brep", "tessellation": {"sidecar_path": sidecar},
+                    "placement": placement(x)}
+
+        plain = {"source": geometry(-2), "ordinary": geometry(0)}
+        assembled = dict(plain, posed={"source_output": "source", "placement": placement(2)})
+        h.hydrate_display(assembled, "1")
+        collection = h._model_collection()
+
+        def pair(name):
+            return [h._find(collection, name, edges=edges) for edges in (False, True)]
+
+        scene = bpy.context.scene
+        camera = bpy.data.objects.new("Camera", bpy.data.cameras.new("Camera"))
+        scene.collection.objects.link(camera)
+        camera.location = (0, 0, 10)
+        camera.data.type = 'ORTHO'
+        camera.data.ortho_scale = 8
+        scene.camera = camera
+        scene.render.engine = 'BLENDER_EEVEE'
+        scene.render.resolution_x, scene.render.resolution_y = 256, 128
+        scene.render.resolution_percentage = 100
+        scene.render.film_transparent = True
+        scene.render.image_settings.file_format = 'PNG'
+        scene.render.image_settings.color_mode = 'RGBA'
+        material = bpy.data.materials.new("visibility emission")
+        material.use_nodes = True
+        nodes = material.node_tree.nodes
+        nodes.clear()
+        output = nodes.new('ShaderNodeOutputMaterial')
+        emission = nodes.new('ShaderNodeEmission')
+        material.node_tree.links.new(emission.outputs[0], output.inputs[0])
+        for name in ("source", "ordinary"):
+            pair(name)[0].data.materials.append(material)
+
+        def render_counts(label):
+            scene.render.filepath = os.path.join(root, label + ".png")
+            bpy.ops.render.render(write_still=True)
+            image = bpy.data.images.load(scene.render.filepath, check_existing=False)
+            try:
+                alpha = np.array(image.pixels[:]).reshape(128, 256, 4)[:, :, 3]
+                return [int((alpha[:, lo:hi] > .5).sum())
+                        for lo, hi in ((32, 96), (96, 160), (160, 224))]
+            finally:
+                bpy.data.images.remove(image)
+
+        counts = render_counts("assembled")
+        GATE["assembly_render_pixels"] = counts
+        check(counts == [0, 1024, 1024],
+              "camera excludes raw source and retains ordinary/posed outputs: " + str(counts))
+        check(all(o.hide_viewport and o.hide_render for o in pair("source")),
+              "instanced source solid and edges are hidden in both channels")
+        check(all(not o.hide_render for o in pair("posed")),
+              "posed solid and edges remain renderable")
+        for obj in pair("ordinary"):
+            obj.hide_viewport = True
+            obj.hide_render = True
+            obj.hide_set(True)
+        h.hydrate_display(assembled, "2")
+        check(all(o.hide_render for o in pair("source")), "repeat hydration retains source render hide")
+        check(all(not o.hide_render for o in pair("posed")), "repeat retains renderable components")
+        h.hydrate_display(plain, "3")
+        check(all(not o.hide_render for o in pair("source")),
+              "formerly instanced solid and edges recover render visibility")
+        check(pair("posed") == [None, None], "removed component solid and edges are collected")
+        check(all(o.hide_viewport and o.hide_render and o.hide_get() for o in pair("ordinary")),
+              "unrelated explicit viewport/render/hide_set choices survive repeat and removal")
+        counts = render_counts("uninstanced")
+        GATE["uninstanced_render_pixels"] = counts
+        check(counts == [1024, 0, 0], "camera sees restored source only: " + str(counts))
+
+        # Pre-hidden sources, including an old viewport marker, grant no render ownership.
+        for legacy in (False, True):
+            for obj in pair("source"):
+                obj.hide_render = True
+                obj.hide_set(True)
+                if legacy:
+                    obj[h.HIDDEN_SOURCE_PROP] = True
+            h.hydrate_display(assembled, "4")
+            h.hydrate_display(assembled, "5")
+            h.hydrate_display(plain, "6")
+            check(all(o.hide_render and o.hide_get() for o in pair("source")),
+                  "pre-hidden source solid/edges remain hidden; legacy=" + str(legacy))
+
+
 def main():
     registered = False
     # Resolve the engine exactly as the add-on does -- explicit preference,
@@ -5783,6 +5899,7 @@ def main():
         test_the_blueprint_view_restyles_and_restores(blueprint_root)
         test_sheet_state_applies_and_restores(sheet_root)
         test_live_mode_is_wired_and_refuses_cleanly(live_root)
+        test_instanced_sources_stay_out_of_camera_renders()
     finally:
         try:
             cadex_backend.close_all()

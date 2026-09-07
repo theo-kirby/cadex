@@ -20281,3 +20281,21 @@ ownership from it. `docs/ASSEMBLY-VISIBILITY-AUDIT.md` records transitions,
 reproduction recipe and regression obligations. Audit only; the defect and
 broader headless review criteria remain open. Cycles is absent; EEVEE works
 headlessly. No inherited tree change or general renderer is authorized.
+
+
+**Implementation (2026-09-07).** Hide instanced source solids and edge
+companions from renders, tracking only false-to-true changes with independent
+`cadex_render_hidden_source` ownership. Release that change when instancing
+ends; preserve pre-hidden sources, legacy-marker sources and unrelated
+explicit visibility. Remove the misleading function-level implication that
+viewport ownership saves prior flags; its runtime behavior is unchanged.
+Posed components remain renderable. The permanent hydration/EEVEE regression
+fails on old code and passes after the fix (source/ordinary/posed pixels:
+1024/1024/1024 before, 0/1024/1024 after; restored source: 1024/0/0).
+Repeat hydration and source/edge restoration are covered. Risk: manual
+render hides made while the hydrator already owns a true flag cannot be
+distinguished; no new override UI is introduced. Broader review/video
+criteria stay open; no inherited files, protocol or payload changed.
+Full headless `pixi run gate`: exit 0, `ok: true`, bundled engine, 372/372
+picks, slider median 0.527 s (bar 0.65), one object on reopen. Source startup
+code was reloaded by the suite; no build or installed-copy refresh is claimed.

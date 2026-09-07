@@ -52,10 +52,11 @@ EDGE_SUFFIX = " Edges"
 #: On a component instance: the declared output whose geometry it places
 #: (the response's ``source_output``, ADR-049).
 SOURCE_PROP = "cadex_source"
-#: On a source object we hid because something instances it. A marker, so a
-#: later pass can unhide exactly what it hid and never touch an object the
-#: user hid themselves.
+#: Legacy viewport marker on instanced sources; does not save prior flags.
 HIDDEN_SOURCE_PROP = "cadex_hidden_source"
+#: Independent ownership of a render flag changed from visible to hidden.
+#: Pre-hidden sources (including legacy viewport-marked objects) stay hidden.
+RENDER_HIDDEN_SOURCE_PROP = "cadex_render_hidden_source"
 #: ``KIND_PROP`` value for a component instance.
 COMPONENT_KIND = "component"
 
@@ -335,9 +336,9 @@ def _hydrate_components(collection, display_map, revision, keep,
 def _hide_instanced_sources(collection, instanced):
     """Hide a source that is drawn through its instances; unhide when not.
 
-    A source is a declared output, so it is hidden and never deleted. The
-    marker property is what keeps this from stomping visibility the user
-    set: only objects this function hid are ever unhidden by it.
+    A source is a declared output, so it is hidden and never deleted.
+    Render ownership is acquired only when changing the flag; viewport
+    ownership retains its existing marker policy (ADR-228).
     """
 
     for obj in _cadex_objects(collection):
@@ -350,6 +351,13 @@ def _hide_instanced_sources(collection, instanced):
         elif obj.get(HIDDEN_SOURCE_PROP):
             obj.hide_viewport = False
             del obj[HIDDEN_SOURCE_PROP]
+        if output in instanced:
+            if not obj.hide_render:
+                obj.hide_render = True
+                obj[RENDER_HIDDEN_SOURCE_PROP] = True
+        elif obj.get(RENDER_HIDDEN_SOURCE_PROP):
+            obj.hide_render = False
+            del obj[RENDER_HIDDEN_SOURCE_PROP]
 
 
 def apply_placements(placements):

@@ -2,8 +2,8 @@
 
 Verified against source: 2026-09-07
 
-[Cadex-new] ADR-228; audit only. The `hide_render` gap is reproduced and
-qualified for the next implementation unit. No application code changed.
+[Cadex-new] ADR-228. The original audit below qualified the `hide_render`
+fix; the implementation and permanent regression have now landed.
 
 ## Experiment
 
@@ -100,3 +100,32 @@ are qualified here.
 Baseline `pixi run gate` exited 0 with `ok: true`: bundled engine discovered,
 372/372 picks, median slider latency 0.523 s against the 0.65 s bar, and one
 model object on reopen. The temporary EEVEE probe exited 0. No build ran.
+
+## Implementation follow-through (2026-09-07)
+
+`cadex_hydrate` acquires `cadex_render_hidden_source` only when it changes
+an instanced source object's render flag from false to true. Repeated
+hydration retains ownership; removing instancing releases only that flag.
+The viewport marker is not used to infer render ownership. Posed component
+solids and edges, unrelated visibility and `hide_set` are unchanged.
+Pre-hidden source solids and edges stay render-hidden after instancing ends,
+including sources carrying only the legacy viewport marker. The existing
+viewport restoration limitation and mid-hide manual override limitation
+above remain.
+
+The permanent `test_instanced_sources_stay_out_of_camera_renders` in
+`bl_mesh_agent_cadex.py` runs last in `pixi run gate`, using an empty scene,
+real sidecar buffers and EEVEE. Its isolated invocation exited 1 against the
+old hydrator: camera bands were 1024/1024/1024 and source render-hide checks
+failed. With the fix it exits 0: assembled bands are 0/1024/1024; after
+component removal and explicit ordinary hiding, bands are 1024/0/0.
+Both solid and edge flags, repeat hydration, pre-hidden sources with and
+without legacy markers, and unrelated explicit visibility pass. PNGs are
+temporary; pixel counts enter the gate JSON. Edge flags are tested, not
+edge rasterization. The fixture does not deliver review tools or video.
+
+Full `pixi run gate` exits 0 with `ok: true`, `engine_from_bundle: true`,
+372/372 picks, slider median 0.527 s against the 0.65 s bar and
+`model_objects_on_open: 1`. Both new render pixel fields match the counts
+above. This verifies source startup application code with the built bundle's
+engine; no build ran and the installed startup copy was not updated.
