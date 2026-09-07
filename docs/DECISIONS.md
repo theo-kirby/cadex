@@ -20311,3 +20311,18 @@ conditional independent-worker/publication checks. Do not invent interface
 values or add a public row. Replan before proof/delivery; four servos remain.
 Existing local packaged lifecycle/library baseline: 91 passed, no skips;
 no build, candidate geometry, portable-release or physical-fit claim.
+
+## ADR-230 — Qualify only Test's standalone Tk runner for removal (2026-09-07)
+
+[Cadex-new] After the two-candidate servo stop, take the standing inherited-tree
+frontier: audit Test without disabling MainCmd's TestSources dependency. Only
+`unittestgui.py` qualifies here: its sole tracked reference is the shared
+copy/install list, while TestApp runs the native text tests without it.
+`docs/TEST-TK-AUDIT.md` records the 399-line / 15,021-byte boundary, stale-copy
+inventory and separate disable/delete gates. Leave every other Test source
+and resource in place. Unsupported direct/external Tk-runner usage is the
+compatibility risk. Audit evidence: 12 installed native UnitTests pass with
+Tk/unittestgui/FreeCADGui imports denied; existing packaged lifecycle/licensing
+baseline 26 passed. No build or removal is claimed; manifest and fork deltas
+are unchanged. Servo qualification remains stopped under ADR-229; no catalog
+counts or evidence requirements change.

@@ -868,11 +868,17 @@ Not a phase that "completes" — a standing mode of work.
       and separate surviving-diff measures: `SURVIVING-DIFF-AUDIT.md`.
 - [ ] Remove that qualified guard and run fresh implementation gates;
       expected saving is three inserted lines, with no file-count change.
+- [x] Audit Test's standalone Tk runner (2026-09-07, ADR-230,
+      `docs/TEST-TK-AUDIT.md`); qualify only unittestgui.py and preserve the
+      MainCmd/TestSources text-runner dependency. Disable/delete remain pending.
+- [ ] Disable, then separately delete the qualified Test Tk runner, with fresh
+      build/install/stage and retained headless-test evidence (ADR-230).
 - [ ] Engine side: Phase 8's audited GUI directory boundary is deleted
       (ADR-214); broader residual GUI-lineage source remains open. Further
       candidates: Help is deleted (ADR-217, ADR-218);
-      Start is deleted (ADR-220, ADR-221); Test still
-      needs its own dependency audit. Test builds and installs, with `Mod/Test`
+      Start is deleted (ADR-220, ADR-221); Test has one qualified Tk-runner
+      boundary (ADR-230), with the rest still needing dependency audits.
+      Test builds and installs, with `Mod/Test`
       pruned from the payload. Start no longer installs or stages
       (`docs/START-AUDIT.md`), and the staged payload is **2.4 GB**
       of which ~2.1 GB is development environment — two copies of LLVM,
