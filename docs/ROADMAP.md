@@ -873,8 +873,9 @@ Not a phase that "completes" — a standing mode of work.
       MainCmd/TestSources text-runner dependency.
 - [x] Disable the qualified Test Tk runner copy/install row (2026-09-07),
       retaining its source and the headless Test harness (ADR-230).
-- [ ] Separately delete the disabled Test Tk runner after verified disable
-      evidence; repeat build/install/stage and retained headless tests (ADR-230).
+- [x] Separately delete the disabled Test Tk runner after verified disable
+      evidence (2026-09-07); repeat build/install/stage and retained headless
+      tests (ADR-230).
 - [ ] Engine side: Phase 8's audited GUI directory boundary is deleted
       (ADR-214); broader residual GUI-lineage source remains open. Further
       candidates: Help is deleted (ADR-217, ADR-218);

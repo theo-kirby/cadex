@@ -4,19 +4,20 @@ Verified against source: 2026-09-07
 
 [Cadex-new] ADR-230, source baseline `c8d99e61`. This audit qualifies only
 `src/Mod/Test/unittestgui.py` for a separate copy/install-disable commit,
-then a source-delete commit. The copy/install disable is now implemented;
-its fresh verification is recorded below. The source is retained.
+then a source-delete commit. Both steps are now implemented separately;
+their fresh verification is recorded below.
 
 ## Boundary and dependency evidence
 
-The 38-file Test tree is not a whole-tree removal candidate. With
+The audited 38-file Test tree was not a whole-tree removal candidate;
+37 files remain after the bounded deletion. With
 `BUILD_TEST=ON`, `src/Main/CMakeLists.txt` makes FreeCADMainCmd depend on
 TestSources. `src/App/FreeCADTest.py` imports TestApp and calls
 RunConfiguredTextTest; Application.cpp selects TestApp.All/PrintAll.
 Init.py registers eight headless test modules. Keep all of these, Test data,
 TestSources, and the remaining GUI test files/resources outside this audit.
 
-The selected file is a standalone 399-line / 15,021-byte Python-licensed
+The selected file was a standalone 399-line / 15,021-byte Python-licensed
 PyUnit Tk runner. It imports tkinter, defines GUI runners and starts tk.Tk()
 only through main. Its SHA-256 is
 `958cb529f117594a43ecf874791751d902518a698509f57a5db4d29b938afc91`.
@@ -131,3 +132,49 @@ configure-release, build, install, stage, engine, packaged, probe, cadex-ctest
 and ctest suffixes. No shell, GUI, Windows or portable-release gate ran.
 The next unit may delete only the retained runner after this disable is
 committed; repeat the audit's fresh gates and stale-copy checks.
+
+## Separate source deletion (2026-09-07)
+
+After verified disable commit `bd755c50`, delete only
+`src/Mod/Test/unittestgui.py`. All 37 other Test files, TestSources,
+MainCmd dependencies, headless registrations and resources remain unchanged.
+The unsupported direct source runner is now unavailable; its Python licence
+and original bytes remain in git history. No new inherited modification
+notice or manifest member is required for deleting this unmodified import.
+
+Fresh debug/release configure, one release build, install and completed stage
+all exit 0. Neither generated build.ninja nor Test/cmake_install.cmake
+mentions the runner; the complete CTest JSON inventory is identical before
+and after at 1,533 entries. All four audited Mod/Test output roots have no
+runner source or bytecode, with no further stale files to quarantine.
+Source/stage cadexd.py retain the audit hash above, and Test/CMakeLists.txt
+retains the disable hash. Source parent is `bd755c50`; these identities do
+not assert whole-payload identity. The 2.4 GB stage still uses local external
+libraries and is not a relocatable release.
+
+Full source engine pytest: **2,023 passed, 52 skipped in 262.72 s**, exit 0.
+Fresh packaged lifecycle/licensing: **26 passed in 19.02 s**, exit 0.
+Installed GUI-denied TestApp probe: **12 UnitTests passed**, exit 0.
+Cadex CTests: **4/4 passed in 22.85 s**. Full inherited CTest exits 8:
+**162 failures out of 1,526 run in 130.46 s**. All failure names equal the
+previous disable run and occur in the 164-name baseline; the two absent
+names remain DlgVersionMigrator and SpreadsheetRenameProperty. The seven
+disabled and three skipped names also equal the disable run. No unexplained
+failure or inventory change blocks this deletion.
+
+Whole-file savings: **one file, 399 lines, 15,021 bytes**. Manifest-scoped
+inherited remaining paths fall from 3,434 to **3,433**, versus **7,277** at
+nt2 start `7dd3d045`. Count tracked import/current path intersections with
+manifest scopes and ours exclusions; do not follow tracked symlinks.
+Surviving FreeCAD modified-file totals are **56 / 1,634 / 1,820**
+(files / inserted / deleted), unchanged by this deletion, versus start
+**47 / 1,804 / 1,907**. The separate disable accounts for the one additional
+deleted line since the Preferences measurement. Blender remains
+**44 / 1,046 / 129**, with **19,052** inherited paths, at both revisions.
+Manifest membership is unchanged; whole-file savings are not surviving-file
+line changes, and neither whole-Test nor broad fork-delta closure follows.
+
+Local logs use `/tmp/cadex-57-` with configure-debug, configure-release,
+build, install, stage, engine, packaged, probe, cadex-ctest, ctest, inventory
+and metrics suffixes; CTest inventories use before/after JSON files.
+No shell, GUI, Windows, remote or portable-release gate ran.

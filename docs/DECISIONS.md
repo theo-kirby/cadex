@@ -20341,3 +20341,21 @@ manifest membership/notice remain appropriate. Unsupported installed Tk
 runner usage loses its entry point; source deletion remains a separate
 commit. Local-stage external-library limitations remain; no GUI or portable
 release claim. Full evidence is in TEST-TK-AUDIT.md.
+
+
+**Separate source deletion (2026-09-07).** After disable commit `bd755c50`,
+delete only the audited unittestgui.py: one file, 399 lines, 15,021 bytes.
+Preserve every other Test consumer/resource and upstream licence history.
+Fresh debug/release configure, one release build, install and completed stage
+pass; generated rules and four output roots contain no runner source/bytecode.
+Full engine: 2,023 passed / 52 skipped; packaged lifecycle/licensing: 26 passed;
+GUI-denied installed text runner: 12 passed; Cadex CTests: 4/4. Inherited
+CTest: the same 162 baseline failures, seven disabled and three skipped,
+with unchanged 1,533-entry inventory. Inherited FreeCAD files fall to 3,433
+from 3,434; surviving M totals stay 56/1,634/1,820, versus nt2 start
+47/1,804/1,907 and 7,277 inherited files. Blender remains unchanged.
+Manifest membership remains accurate; verify committed HEAD at close.
+Unsupported direct source execution is removed. Local relocation limitations
+remain; this closes only the qualified Tk pair, not whole-Test or broad
+fork-delta obligations. Replan after the pair. TEST-TK-AUDIT.md carries
+commands, identities, metrics and gate output.
