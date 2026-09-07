@@ -31,6 +31,8 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 
 **N20 interfaces independently verified:** source and staged actual workers measure shaft diameter 3 mm, flat-to-opposite 2.5 mm, flat axial extent Z=1..10 mm, and mounting bores of radius 0.8 mm at X=±4.5, Y=0, Z=-1..0 mm. Canonical and rotated/translated instances pass 160 material/void probes, valid-single-solid and equal-volume checks. Full engine: 2023 passed / 52 skipped; fresh packaged lifecycle/library: 91 passed, no skips. The assumed 1 mm blind-bore depth and sharp flat transition remain approximations, with no installed-fit or screw-engagement claim. No new SKU or runtime behavior changed. The local 2.4 GB stage has 144 relocation violations and is not shippable [rec: windy-lily-2895].
 
+**RI50 qualification parked (ADR-223):** the manufacturer source audit and fixture follow-up add evidence in `docs/L3-COVERAGE.md`, with source URLs and hashes, but no catalog entry. Inspected ratings, fixture BOM/STEP headers and support text establish neither RI50-specific cooling, winding temperature and test duration/duty nor linkage between the rating sheet and no-Hall drawing revision. Geometry proof and delivery remain gated; full L3 stays open [rec: slender-harbor-9625] [rec: shy-hill-8139]. The fixture's populated sheet lists a pivot, rear cover, two MR148 bearings and six M2.5x4 screws; the other two sheets are empty. These documentation-only audits add no common-size completion or fresh runtime/payload verification [rec: slender-harbor-9625] [rec: shy-hill-8139].
+
 ## Negative knowledge
 
 - [scope: Pololu #2367 dimensions and packaged verification | confidence: high | evidence: idle-dawn-5426] The envelope uses the drawing’s 25.6 mm rear maximum amid conflicting product-page lengths. Filled rear geometry, 1 mm bore depth and shaft-flat transition are approximate; bore depth is not screw engagement permission. The tested stage-only payload retains local dependencies and is not a portable release.
@@ -41,6 +43,8 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 - [scope: examined older TAU and Ledex B7 mounting sources | confidence: high | evidence: open-pine-9349] Older TAU mounting separation is 20 mm versus current 412's 18.2 mm; its slot geometry cannot be transplanted. B7-212-B-4 has dimensioned M3x0.5 mounting-plane centres but the examined sources lack engagement depth and maximum mechanical travel; the force plot's 0.4-inch endpoint is not a mechanical stop. This bounded search does not disprove other variants.
 
 - [scope: SKF GE 6 C nominal catalog geometry and delivery payload | confidence: high | evidence: first-wind-9707, morning-field-8202] Omitted chamfers, liner and running clearance establish no fit, tolerance, physical inertia, load or dynamics guarantee. The tested 2.4 GB local development payload retains 248 external-path relocation violations and is not a portable release.
+
+- [scope: inspected CubeMars RI50 KV100 no-Hall sources and fixture | confidence: high | evidence: slender-harbor-9625, shy-hill-8139] Ambient limits and STEP export dates do not establish torque-test conditions or rating/drawing revision equivalence. The fixture BOM contains mechanical items only; DWG annotations and the installation video remain unverified, so the audit does not exhaust all possible evidence. The frameless rotor/stator cannot use the existing shaft/collar recipe; no geometry, fit, physical-inertia or powered-behavior claim follows.
 
 ## Provenance
 
@@ -58,3 +62,5 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 - morning-field-8202 — ADR-211: bounded joint catalog compound ships with actual-worker, discovery and fresh packaged verification; broader gaps remain open
 - steady-rain-3009 — ADR-212: 90-test existing packaged baseline and explicit per-family evidence limits
 - windy-lily-2895 — independent N20 interface measurements and probes in source/staged workers; passing suites and local relocation limits
+- slender-harbor-9625 — BLDC set A and hashed RI50 source audit; thermal/revision qualification blocks delivery
+- shy-hill-8139 — bounded fixture/support follow-up leaves qualification gaps; RI50 parked with unread-source limits
