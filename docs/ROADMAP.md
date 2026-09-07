@@ -2125,7 +2125,11 @@ field, and every client gets it through the surface it already reads.
       revision evidence (ADR-223, `docs/L3-COVERAGE.md`). No delivery claimed.
 - [x] **RI50 fixture evidence follow-up.** BOM/STEP-header and new support-page
       inspection closes neither qualification gap; candidate parked (ADR-223).
-      Next is a shafted set-A source audit, not RI50 geometry/delivery.
+      Followed by the shafted set-A source audit below.
+- [x] **Shafted BLDC alternative source audit.** AT2814 Long Shaft KV900
+      bench report and V2.0 drawing inspected; current definition, thermal
+      conditions and revision linkage still block qualification (ADR-223).
+      Stop motor searches and replan toward bounded residual GUI work.
 - [ ] **L3 — motors and mechanisms.** Common BLDC sizes with kV/torque
       data, N20 gearmotor, linear actuator, solenoid, joints; gears and
       rack-and-pinion need involute profiles and are their own slice.

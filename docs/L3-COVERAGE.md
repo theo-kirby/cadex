@@ -217,3 +217,42 @@ alternative is qualified here. Do not repeat the RI50 page/fixture searches,
 relax the torque gate, or infer usable torque from kV. The planner owns the
 plan update; this contributor changes no state or plan nodes. No runtime,
 geometry, payload or relocation result changes.
+
+### Shafted alternative — AT2814 Long Shaft KV900 (2026-09-07)
+
+**Qualification blocked; stop the motor-search sequence.** This is the one
+alternative audit authorized by `vast-oak-7458`, against unchanged set A.
+Sources inspected on 2026-09-07:
+
+- [T-MOTOR bench report and specifications](https://uav-en.tmotor.com/2019/Motors_0226/214.html):
+  KV900, 3–4S, 5 mm shaft; APC 12×6 at full throttle gives 11.05 V,
+  27.02 A, 7601 rpm and 0.291 N·m. The associated 68°C is motor **surface**
+  temperature after three minutes at full throttle; ambient is blank (`/`).
+  Current is labelled only A, with no bus/phase or RMS/peak definition.
+  Cooling airflow, fixture heat sinking and repeat duty are unspecified.
+  Propeller airflow is plausible, not a documented cooling condition.
+  Peak 45 A and maximum 650 W are separately marked 180 s; neither supplies
+  a continuous torque rating. No test revision ties these rows to V2.0.
+- [Manufacturer store](https://store.tmotor.com/product/at2814-long-shaft-fixed-wing-motor.html)
+  repeats the bench table and surface-temperature note; it does not resolve
+  the missing conditions. No torque was inferred from kV.
+- [Download index](https://uav-en.tmotor.com/download/33.html) lists the
+  [AT2814 drawing](https://cn.tmotor.com/uploadfile/downloads/tmotor-at2814-motor-2d-drawings.pdf)
+  dated 2026-06-25. Its single raster page, visually rendered at 2× with
+  PyMuPDF because Poppler was unavailable, is labelled **AT2814 V2.0**:
+  diameter 35.2, overall length 54.5 and shaft diameter 5 mm; rear four M3
+  holes have opposed spacings 19 and 25 mm; front four M3 holes lie on a
+  15 mm circle. A separate collar shows 5 mm bore, 11 mm outside diameter,
+  5.5 mm width and M3 screw. Motor thread depths are absent. The drawing
+  names no winding or test revision. SHA256:
+  `4aa8603a19baf1c8f0c36b1c0a4e294b4d598329f1a2ecfa404bee45ba11e747`.
+  The web PDF screenshot failed (cache miss); direct PDF download succeeded.
+  The product-page JPEG download returned HTTP 403 and was not inspected.
+
+**Decision:** these are useful measured bench data and nominal interfaces,
+but they do not establish set A's qualified operating point or rating/drawing
+revision linkage. No geometry proof or catalog delivery is authorized by this
+result. Keep RI50 parked. The next planner pass should move to medium's
+bounded residual GUI obligation before further BLDC searches. Full L3 and
+all three set-A qualification obligations remain open. This audit changes
+documentation only; it establishes no installed fit or powered behavior.

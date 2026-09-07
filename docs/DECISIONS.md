@@ -20091,3 +20091,17 @@ is established. Park RI50; the next source unit should qualify a shafted
 28xx alternative within set A before any geometry proof. DWG annotations and
 the installation video remain unverified; this is a bounded evidence result,
 not a claim that evidence cannot exist. No API or coverage-gate relaxation.
+
+ADR-223 shafted-alternative follow-up (2026-09-07): the
+[AT2814 Long Shaft KV900 audit](L3-COVERAGE.md#shafted-alternative--at2814-long-shaft-kv900-2026-09-07)
+inspects T-MOTOR's [bench report](https://uav-en.tmotor.com/2019/Motors_0226/214.html),
+[store](https://store.tmotor.com/product/at2814-long-shaft-fixed-wing-motor.html),
+[download index](https://uav-en.tmotor.com/download/33.html) and
+[V2.0 drawing](https://cn.tmotor.com/uploadfile/downloads/tmotor-at2814-motor-2d-drawings.pdf).
+Measured torque and a three-minute surface-temperature result improve the
+evidence, but current definition, thermal conditions and rating/drawing
+revision linkage remain unresolved. Stop the authorized motor-search sequence;
+the planner should pull forward bounded residual GUI work. RI50 stays parked,
+set A stays unchanged, and geometry/delivery remain gated. Risk: this bounded
+audit can miss unpublished manufacturer evidence. Documentation and graph
+checks apply; no runtime change or build is needed.
