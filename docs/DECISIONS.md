@@ -20359,3 +20359,20 @@ Unsupported direct source execution is removed. Local relocation limitations
 remain; this closes only the qualified Tk pair, not whole-Test or broad
 fork-delta obligations. Replan after the pair. TEST-TK-AUDIT.md carries
 commands, identities, metrics and gate output.
+
+
+## ADR-231 — Stop manufacturer horn/pigtail delivery at qualification gaps (2026-09-07)
+
+[Cadex-new] Execute the bounded source bet in `narrow-pebble-8020`; retain
+neither candidate as qualified. `HORN-PIGTAIL-AUDIT.md` records manufacturer
+and seller source URLs, acquired STEP hashes, real-kernel hole-spacing and
+topology measurements, and the limits of each claim. goBILDA's horn imports,
+but exact mating compatibility and redistribution evidence remain unresolved.
+The DS3218 archive is inaccessible to the downloader; Pololu #780 is generic
+and offers no CAD resource. Existing script imports accept meshes or linked
+project parts, not raw STEP. Replan rather than add an importer or approximate
+the missing interfaces under a delivery bet. No vendor geometry, public SKU,
+product code or inherited diff added. Documentation-only validation uses the
+licensing suite, diff check and hypergraph check; the installed Part.read probe
+is not a packaged lifecycle or offline project-rebuild gate. Both category
+criteria remain open.

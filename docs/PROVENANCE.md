@@ -795,3 +795,12 @@ manufacturer sheets by URL, revision and SHA-256. Neither HS-311 nor HS-422
 qualifies for the unchanged recipe: mounting-slot and output-datum evidence
 must be resolved before delivery. No source assets or public SKU were added;
 the four existing servo identities remain the catalog's coverage.
+
+### Manufacturer horn and pigtail STEP qualification (2026-09-07; ADR-231)
+
+[Cadex-new] [The bounded audit](HORN-PIGTAIL-AUDIT.md) pins and probes
+goBILDA 1900-0025-0104 STEP, checks the named DS3218 archive lead and
+rejects a generic cable listing without manufacturer CAD. Neither category
+qualifies: asset permissions and exact horn compatibility remain unresolved;
+DS download access fails; no small script-owned STEP import path is established.
+No vendor bytes or catalog identities were added. Replan before delivery.

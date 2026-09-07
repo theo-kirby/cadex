@@ -2118,8 +2118,12 @@ field, and every client gets it through the surface it already reads.
       `assembly.body`, `.actuator(...)` bounded by real stall torque.
       Gaps stated, not papered: fields no datasheet dimensions are listed
       in `spec["approximate"]`; 25T horns and pigtail terminals absent
-      until a dimensioned source exists (dsservo.com STEP files are the
-      named next source).
+      pending source/interface and redistribution qualification; the bounded
+      STEP audit below supersedes the unverified dsservo.com lead.
+- [x] **Manufacturer horn/pigtail bounded STEP audit.** One horn imported and
+      measured; neither category qualifies for delivery. Source hashes,
+      interface/rights/access blockers and import-path limit are recorded in
+      `HORN-PIGTAIL-AUDIT.md` (ADR-231). No horn or pigtail shipped.
 - [x] **L2 — boards.** ESP32 DevKitC V4 (WROOM-32E), Pi Zero 2 W,
       Adafruit PCA9685 rev C: `lib.board`, mounting-hole rows and placed
       solder-pad terminal tables for `boards(...)` (ADR-202). Sources and
