@@ -37,7 +37,7 @@ in the delivery nodes; counts describe the suites at those revisions:
 | `floral-stone-2866` (BLDC) | Stable rerun: 1987 passed, 52 skipped | 61 passed, no skips |
 | `frosty-snow-9642` (L12) | Post-build: 2002 passed, 52 skipped | 76 passed, no skips |
 | `morning-field-8202` (joint) | Final: 2016 passed, 52 skipped | 90 passed, no skips |
-| gear values (ADR-233) | ENGINE_RESULT | PACKAGED_RESULT |
+| gear values (ADR-233) | Pre-build: 2050 passed, 52 skipped | 107 passed, no skips |
 
 `test_the_library_builds_on_the_real_kernel` publishes canonical and placed
 outputs for all four through cadexd, requiring solids except the joint compounds.

@@ -20489,8 +20489,15 @@ radius m(z−2.5)/2 within 1e-7, volume between the root and tip cylinders,
 the bore as the only cylindrical surface, pitch-circle probes bracketing
 π·m/2, rack pitch π·m, tooth height 2.25 m and the exact trapezoid volume;
 placed instances keep their volume; cadexd publishes canonical and placed
-outputs of both. Full engine suite: ENGINE_RESULT. One `pixi run
-build-engine`, completed `pixi run stage-engine`, fresh packaged
-lifecycle/library gate: PACKAGED_RESULT. The next two units compose the
-rack-and-pinion and the planetary with mesh and clearance tests; this one
-claims standalone values only.
+outputs of both. The code landed in `0f0e3e17` with this paragraph holding
+placeholders and no record node; the critic rejected that, and the
+verification was run and written in the following commit (fix forward, no
+amend). Full engine suite, source tree before the build: 2050 passed, 52
+skipped, 260.41 s. One `pixi run build-engine` (exit 0), `pixi run
+stage-engine` run to completion (exit 0, 2.4 GB payload, the usual
+pre-existing LC_RPATH warnings), then the fresh packaged lifecycle/library
+gate with `CADEX_ENGINE_ROOT` on that payload: 107 passed, no skips,
+25.79 s, the staged `cadex_library_api.py` carrying `spur_gear`. Not
+verified: no shell gate (no `shell/` line changed) and no ctest (no C++
+changed). The next two units compose the rack-and-pinion and the planetary
+with mesh and clearance tests; this one claims standalone values only.
