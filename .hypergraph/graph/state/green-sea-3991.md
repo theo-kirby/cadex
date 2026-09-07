@@ -15,11 +15,11 @@ Open charter criterion: **The fork's delta against upstream is smaller than at t
 
 Declared target: `gap-fork-s-delta-against-upstream`. This node tracks the criterion as a gap; it becomes working only with evidence that the criterion is met. Truncated impact wording is resolved from the full charter in the same record [rec: empty-wolf-3962].
 
-FreeCAD manifest-scoped M totals (files / inserted / deleted) are **56 / 1,637 / 1,815 at Start deletion**, versus 57 / 1,639 / 1,804 after its disable and 47 / 1,804 / 1,907 at nt2 run start. Inherited files remaining at Start deletion were **3,440**, versus 3,467 before deletion and **7,277 at run start**; the earlier 3,468 / 7,287 figures included added files and are superseded. Whole-file deletions do not count as M-line reduction. Blender remains 44 / 1,046 / 129 and 19,052 inherited files. FreeCAD's two line totals and inherited remaining count are lower than run start, but its modified-file count is higher [rec: southern-wood-6367] [rec: rustic-spire-7084].
+FreeCAD manifest-scoped M totals (files / inserted / deleted) are now **56 / 1,634 / 1,819**, versus **56 / 1,637 / 1,819** before the Preferences guard removal and **47 / 1,804 / 1,907** at nt2 start `7dd3d045`. Inherited files remaining stay **3,434**, versus **7,277** at run start. Blender remains **44 / 1,046 / 129** and **19,052** inherited files. The finite audit qualified only the redundant JointObject Preferences guard; its removal saves three inserted lines (JointObject **42 / 5 → 39 / 5**) and removes no inherited file. Manifest membership and notices remain accurate [rec: proud-branch-1079] [rec: proud-moon-9023].
 
-MeshPart's separately verified initializer deletion removes one unmodified inherited file, **73 lines / 3,083 bytes**. The current manifest remains **56 FreeCAD / 44 Blender**, with surviving-file M totals **1,637 inserted / 1,816 deleted** and **1,046 / 129** respectively; deleting the initializer itself leaves those totals unchanged. Fresh packaged lifecycle/licensing passed 26 tests, and the working-tree manifest matched both imports [rec: light-peak-0510].
+Reconcile judgement: retain **open**. FreeCAD's line totals and inherited remaining count are below run start, but its modified-file count is higher. The bounded surviving-diff saving establishes neither the broad fork-delta criterion nor the broader GUI-source exit; whole-file deletions and M-line savings remain separate measures [rec: proud-branch-1079] [rec: proud-moon-9023].
 
-Reconcile judgement: retain **open**. The whole-file deletion is recorded independently of M-line savings; mixed scoped measures do not establish the broad criterion. This unit closes neither a whole-tree removal nor the broader GUI-source exit [rec: light-peak-0510].
+The completed implementation passed both source and staged GUI-denied import/solver-dispatch probes, release build/install/stage, **2,023 source tests / 52 skips**, and **26 fresh packaged lifecycle/licensing tests**, including a jointed assembly. Inherited CTest exited 8 with **162 failures / 1,526 run**, zero new names against the 164-name baseline. Local stage evidence does not prove a relocatable release, Windows or GUI behavior; these fresh gates supersede the audit's existing-payload-only result [rec: proud-moon-9023].
 
 ## Negative knowledge
 
@@ -40,3 +40,6 @@ Reconcile judgement: retain **open**. The whole-file deletion is recorded indepe
 - rustic-spire-7084 — ADR-221: Start deletion, baseline-matched runtime gates and updated metrics; post-commit HEAD manifest check reserved
 
 - light-peak-0510 — MeshPart whole-file deletion and fresh packaged verification; current manifest/M totals and broad criterion retained open
+
+- proud-branch-1079 — ADR-227: finite audit of 56 surviving FreeCAD modifications and GUI-denied qualification of the Preferences guard
+- proud-moon-9023 — ADR-227: exact guard removal, three inserted lines saved, fresh source/build/stage/packaged verification and unchanged inherited failure baseline
