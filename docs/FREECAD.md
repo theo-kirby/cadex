@@ -164,7 +164,9 @@ unconditional GUI Python install lists and other sources outside the audited
 directories remain. ADR-215 and PHASE8-AUDIT.md trace the named consumers:
 Assembly App proxies are required. Measure/MassPropertiesGui.py was disabled
 in the shared copy/install list, then deleted separately (ADR-215). The other four Measure scripts and App identity are retained.
-Material/MeshPart GUI scripts also survive in the payload;
+Material/MeshPart GUI scripts also survive in the payload; MeshPart/InitGui.py
+is qualified for an install-only disable with stale-copy cleanup, followed by
+a separately verified source deletion (ADR-224, PHASE8-AUDIT.md);
 Help is deleted (ADR-217, ADR-218). Start is deleted after its separate disable (ADR-220, ADR-221); neither `Mod/Start` nor `lib/Start.so` installs or stages. Test still builds and installs; its `Mod/` directory is pruned from the payload.
 The residual audit is complete at this bounded scope, not the broader ROADMAP
 exit claim that no GUI source exists. Mixed Part/PartDesign helpers and the

@@ -510,3 +510,59 @@ probe imports Measure/MassProperties and creates Measure::Result with GuiUp
 false (`MEASURE-APP-OK`). The stage is 2.4 GB, local stage-only, with expected
 external rpath diagnostics; this is not a relocated distribution claim.
 No shell change, GUI launch or second build.
+
+## MeshPart initializer disable boundary (2026-09-07, ADR-224)
+
+[Cadex-new] This follow-up qualifies the single-file candidate from ADR-215
+for a separate install-disable commit; it does not disable or delete it.
+
+- `src/Mod/MeshPart/CMakeLists.txt` unconditionally installs `InitGui.py`
+  beside `Init.py`. Its `add_subdirectory(App)` remains required.
+- `App/CMakeLists.txt` builds MeshPart against Part and Mesh (and selected
+  SMESH libraries), copies only `../Init.py` through `MeshPart_Scripts`, and
+  installs the shared library separately. The generated release Ninja file
+  has zero `MeshPart/InitGui.py` references; the generated parent install file
+  still lists it. This is an install-only disable, unlike Measure's shared
+  target/copy/install list.
+- `InitGui.py` defines MeshPartWorkbench, uses GUI-injected Workbench/Gui,
+  imports MeshPartGui and MeshPart in Initialize, and registers the workbench.
+  No App functionality is defined there. `FreeCADInit.py` sets GuiUp to zero
+  and its directory-module loader selects `Init.py`, not this initializer.
+- Tracked source searches for MeshPartGui/MeshPartWorkbench find the shim,
+  the unused export-macro definitions in MeshPartGlobal.h and two Doxygen
+  macro lists. None is a headless importer of this initializer. Keep the
+  header/macros outside this boundary. The engine's `cadex_mesh_worker.py`
+  imports MeshPart and calls meshFromShape: preserve App, Init.py and the
+  MeshPart payload directory, which the payload keep list explicitly retains.
+- The source is 73 lines / 3,083 bytes, SHA256
+  `841cc70796eb4fc598c26dc7eef66a51831355ee013f7acd350f935a27984903`.
+  Both the configured install prefix's `Mod/MeshPart/InitGui.py` and the
+  current staged payload's copy match that hash. Release/Mod has no copy.
+  A future disable must quarantine the installed copy before staging; merely
+  removing INSTALL does not remove files already installed. Inspect all active
+  build/install/stage locations for stale copies rather than assuming these
+  observations apply to another checkout.
+
+**Next unit:** remove only the parent INSTALL list's InitGui.py entry, retain
+its source, configure/build once with `pixi run build-release`, complete
+install and stage after stale-copy cleanup, then verify generated install and
+fresh payload absence while preserving Init.py and MeshPart's shared library.
+Run the full engine suite, inherited ctest against its baseline and packaged
+lifecycle/licensing gates. The parent CMake file already has its modification
+notice and manifest entry; verify equality rather than adding membership.
+Delete the 73-line source only in a later separately verified commit. That
+source has no manifest entry today. Do not count this as a whole-tree removal
+or closure of the broad no-GUI-source/fork-delta claims.
+
+**Audit verification:** repository consumer searches, direct CMake/loader/worker
+inspection, generated Ninja/install inspection and installed/staged byte hashes.
+No source, build rule, install or staged payload changed; no full build or
+runtime implementation gate is claimed. A packaged lifecycle/licensing baseline
+was rerun against the existing payload; its result is recorded below. Static
+searches do not prove arbitrary external imports; general FreeCAD GUI/workbench
+compatibility is outside the product contract.
+
+Existing-payload baseline command:
+`CADEX_ENGINE_ROOT="$PWD/build/engine/cadex-engine-0.0.0-macos-arm64" pixi run python -m pytest -q src/Mod/cadex/cadex_tests/test_licensing_compliance.py src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py`
+— **26 passed in 13.30 s**, exit 0. No configure, build, install/stage, full
+engine suite, inherited ctest or GUI launch in this audit-only unit.

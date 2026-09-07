@@ -330,6 +330,12 @@ this phase.
 - [x] Delete the disabled Measure/MassPropertiesGui.py shim in a separate
       verified commit (ADR-215, 2026-09-07).
 
+- [x] Qualify MeshPart/InitGui.py for a separate install-only disable, with
+      loader/worker consumers and stale installed copies audited
+      (ADR-224, PHASE8-AUDIT.md, 2026-09-07).
+- [ ] Disable MeshPart/InitGui.py installation, then delete its source in a
+      separate verified commit; preserve MeshPart App and Init.py (ADR-224).
+
 **Exit criteria:** the tree contains no GUI source, `pixi run configure`
 (debug) still configures, and both cadex ctests stay green.
 

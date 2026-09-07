@@ -20105,3 +20105,20 @@ the planner should pull forward bounded residual GUI work. RI50 stays parked,
 set A stays unchanged, and geometry/delivery remain gated. Risk: this bounded
 audit can miss unpublished manufacturer evidence. Documentation and graph
 checks apply; no runtime change or build is needed.
+
+## ADR-224 — Qualify the MeshPart GUI initializer for install disable (2026-09-07)
+
+[Cadex-new] **Decision.** After the bounded BLDC search blocked, advance the
+residual GUI frontier by qualifying only MeshPart/InitGui.py for the existing
+two-commit removal protocol. PHASE8-AUDIT.md records its consumers, generated
+install-only registration and identical installed/staged bytes. Keep MeshPart
+App, Init.py and meshFromShape; remove the initializer's INSTALL entry in the
+next unit, clean stale installed copies before staging, and delete its source
+only after that disable is verified. This audit changes no implementation.
+
+**Risk and verification.** Static consumer searches cannot rule out arbitrary
+external GUI imports, which Cadex does not promise to support. The existing
+payload's lifecycle/licensing baseline and documentation/graph checks validate
+this audit; they do not substitute for the later disable's release build,
+engine suite, inherited baseline comparison and fresh packaged gate. Broader
+GUI source and fork-delta claims remain open. BLDC qualification stays blocked.
