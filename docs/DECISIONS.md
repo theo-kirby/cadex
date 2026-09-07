@@ -20190,3 +20190,19 @@ Fresh packaged lifecycle/licensing: **26 passed in 17.03 s**. Inherited CTest:
 **162 baseline failures in 128.24 s**, no added failure names, all four Cadex
 ctests passed; three skipped/seven disabled unchanged. Broader validation
 limits and the final committed-HEAD licensing check are recorded in the audit.
+
+
+## ADR-226 — Bound the residual Main launcher cleanup (2026-09-07)
+
+[Cadex-new] PHASE8-AUDIT.md qualifies only the four inactive
+CADEX_GUI_LAUNCHER arms and the unused freecad.rc.cmake template for a later
+explicitly planned removal. Commit 9f7c3268 already removed their build
+consumers/definition. Preserve the active Windows command-line launcher,
+its shared helpers, resources and install behavior. A later source edit
+requires a new inherited-modification manifest entry and notice; template
+whole-file deletion is a separate metric. Stale debug autogen metadata needs
+cleanup in that later unit. This audit changes no implementation. Existing
+packaged lifecycle/licensing baseline: 26 passed; no fresh build or Windows
+execution. Windows behavior remains an explicit validation obligation and
+external custom GUI builds are the compatibility risk. Material deletion
+awaits the separately requested replan; no contributor reconciliation occurs.

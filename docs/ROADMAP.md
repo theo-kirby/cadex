@@ -346,6 +346,12 @@ this phase.
 - [ ] Separately delete the qualified Material sources after verified disable
       and replan; retain TestMaterialDocument.py (ADR-225).
 
+- [x] Audit the four inactive Main GUI launcher branches and unused resource
+      template; retain Windows command-line behavior and state Windows
+      validation limits (ADR-226, PHASE8-AUDIT.md, 2026-09-07).
+- [ ] Separately plan and gate the qualified Main branch/template removal;
+      preserve command-line resources and manifest/notice discipline (ADR-226).
+
 **Exit criteria:** the tree contains no GUI source, `pixi run configure`
 (debug) still configures, and both cadex ctests stay green.
 

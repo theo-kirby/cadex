@@ -787,3 +787,77 @@ Committed-HEAD licensing is repeated as the final post-commit check; this
 pre-commit evidence separately verifies working-tree manifest equality.
 All **35 retained Material C++ tests** in CTest passed (matched test fixtures
 from tests/src/Mod/Material against the per-test results).
+
+
+## Main portable-launcher residual audit (2026-09-07, ADR-226)
+
+Documentation-only audit at `b0d5c95a`; no source, build rules or generated
+artifacts changed. Material deletion is deferred: the dispatch's overseer
+requests reconciliation/replanning first, while the work-role rules explicitly
+forbid reconciliation. The existing short-plan Main audit is independent and
+is the reversible unit taken here. The actual supplied checkpoint already
+includes the Material disable; the supplied tail contains one planning record,
+not the three unreconciled records asserted by the overseer.
+
+**Disable evidence.** Commit `9f7c3268` removed the `FreeCADMain` GUI target,
+`configure_file(freecad.rc.cmake ...)`, GUI portable resource configuration,
+and the WIN32/BUILD_GUI `CadexPortableLauncher` target with its private
+`CADEX_GUI_LAUNCHER` definition and user32 link. Explicit BUILD_GUI=ON is
+already rejected (ADR-213). No further in-repository disable prerequisite was
+found for these four branches or this unused template. This is a bounded
+source audit, not proof of arbitrary external build flags or Windows execution.
+
+| Candidate | Exact later removal boundary | Retained behavior |
+|---|---|---|
+| `src/Main/CadexPortableLauncher.cpp` | Four `#ifdef CADEX_GUI_LAUNCHER` arms and their conditional scaffolding: GUI executable path, MessageBoxW reporting, immediate process-handle close/success return, wWinMain entry. Keep each current `#else` body verbatim. | `bin\\freecadcmd.exe`, stderr reporting, wait/GetExitCodeProcess, wmain. Keep original argument-tail quoting, inherited handles, executable-relative working directory, missing-target/error handling and all shared helpers. |
+| `src/Main/freecad.rc.cmake` | Entire unconsumed GUI executable resource template. | `freecadCmd.rc.cmake`, `cadexPortableLauncher.rc.cmake`, cadex.ico and their command-line configuration/install rules. |
+
+The WIN32 `CadexCmdPortableLauncher` still compiles the shared C++ source
+and `cadexCmdPortableLauncher.rc`, sets its binary name and installs into
+CMAKE_INSTALL_BINDIR. Its resource uses description "Cadex command-line
+portable launcher" and filename "FreeCADCmd.exe". Non-Windows builds do not
+compile this source. FreeCADMainCmd, MainPy, GeometryWorker, Qt components,
+Material consumers/resources and Assembly publishers are outside this boundary.
+
+**Search and generated-state evidence.** Enumerated tracked text files outside
+shell/docs/graph/run metadata (files over 2 MB and binary files excluded),
+and searched src, cMake, package, tests, tools and .github for the macro,
+launcher names and template. Only the four source conditionals mention the
+macro; only Main/CMakeLists.txt consumes the shared launcher and its retained
+portable resource template. No tracked build consumer of freecad.rc.cmake was
+found. Current debug/release build.ninja, CMakeCache.txt and Main install rules
+have none of the retired names or macro. Main output directories and installed/
+staged bin directories contain neither retired generated resource nor Windows
+launcher executable on this macOS checkout. **Stale debug metadata remains:**
+FreeCADMain_autogen.dir/AutogenInfo.json and
+FreeCADGuiPy_autogen.dir/AutogenInfo.json still cite freecad.rc.cmake. They are
+not referenced by active Ninja rules; a later deletion should quarantine these
+retired target metadata directories and repeat the active-rule checks. No
+metadata cleanup was performed in this audit.
+
+**Manifest impact.** Both candidates exist in the FreeCAD import `c2ccddfb`
+and neither is currently a manifested modified file. A later launcher edit
+therefore needs a new manifest entry and in-file modification notice despite
+its Cadex name. Deleting the template is a whole-file D, counted separately
+from surviving-file M totals; the new launcher M entry must be measured, not
+called a reduction in manifest membership. This audit changes neither manifest
+nor inherited source and closes neither broader GUI-source nor fork-delta claims.
+
+**Baseline and prospective gates.** Existing payload only:
+`CADEX_ENGINE_ROOT=build/engine/cadex-engine-0.0.0-macos-arm64 pixi run python
+-m pytest src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py
+src/Mod/cadex/cadex_tests/test_licensing_compliance.py -q`:
+**26 passed in 15.32 s**. No build, configure, install, stage, full engine suite
+or CTest was run for this documentation audit. No GUI or Windows execution.
+
+Implementation requires a subsequent explicit bet. Its gates should include
+`pixi run configure`, at most one `pixi run build-release`, install and completed
+`pixi run stage-engine` before payload readers; full engine pytest, inherited
+CTest with failure-name comparison to build/ctest_baseline_failures.txt,
+fresh packaged lifecycle/licensing, retained Material probes, generated-rule/
+artifact absence checks and committed-HEAD manifest/notices verification.
+On Windows, build CadexCmdPortableLauncher and verify a target under a path
+with spaces receives quoted arguments, runs in bin, reports missing targets
+on stderr, waits for completion and forwards a nonzero exit status; inspect
+its retained command-line version/icon resource. A macOS pass cannot satisfy
+that Windows behavior gate. Preserve that limitation if Windows is unavailable.
