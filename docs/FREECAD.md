@@ -47,7 +47,7 @@ the product installs contains them:
 
 | Tree | Status |
 |---|---|
-| `src/Mod/Start` | The launch screen. It was shown by the Qt shell's Experimental Mode, which was deleted in Phase 7 (ADR-021) — nothing displays it now. A removal candidate with no dependency story left. |
+| `src/Mod/Start` | The launch screen. It was shown by the Qt shell's Experimental Mode, which was deleted in Phase 7 (ADR-021) — nothing displays it now. **Audited 2026-09-07 (ADR-219, [START-AUDIT.md](START-AUDIT.md)): qualifies for a separate disable.** Its App target `Start.so` is linked only by its own gtest; the payload prunes `Mod/Start` but still carries `lib/Start.so`. |
 | `src/Mod/Test` | FreeCAD's own Python test harness. Nothing in `cadex_tests/` uses it. |
 | `src/Mod/Help` | In-app help plumbing for a UI that no longer exists here. **Disabled (ADR-217), then deleted 2026-09-07 (ADR-218)**: the 85 tracked files, the `BUILD_HELP` option, its parent gate and report line, and its crowdin row are gone. The first engine-side whole-tree removal under the two-commit protocol; [HELP-AUDIT.md](HELP-AUDIT.md) holds both halves' gates. |
 
@@ -159,7 +159,7 @@ directories remain. ADR-215 and PHASE8-AUDIT.md trace the named consumers:
 Assembly App proxies are required. Measure/MassPropertiesGui.py was disabled
 in the shared copy/install list, then deleted separately (ADR-215). The other four Measure scripts and App identity are retained.
 Material/MeshPart GUI scripts also survive in the payload;
-Help is disabled (ADR-217); Start/Test are pruned from the payload but still have build/install consumers.
+Help is deleted (ADR-217, ADR-218). Start and Test have their `Mod/` directories pruned from the payload but still build and install; Start's `lib/Start.so` is not pruned and ships (START-AUDIT.md), and both trees keep build/install consumers.
 The residual audit is complete at this bounded scope, not the broader ROADMAP
 exit claim that no GUI source exists. Mixed Part/PartDesign helpers and the
 shared Windows launcher need separate disposition.
@@ -207,8 +207,10 @@ itself, in the Phase 7 Qt-shell deletion (ADR-021).
   touch, or stay whole?
 - `src/Mod/Help` is gone (ADR-217 disable, ADR-218 delete,
   [HELP-AUDIT.md](HELP-AUDIT.md)): one whole-tree removal, counted once.
-  `Start` and `Test` remain unaudited whole-tree candidates with required
-  App/MainCmd dependencies; payload exclusion alone does not qualify them.
+  `Start` is audited and qualifies for a separate disable (ADR-219,
+  [START-AUDIT.md](START-AUDIT.md)); it has no App or MainCmd dependant.
+  `Test` remains unaudited: `MainCmd` depends on `TestSources` and Test
+  installs the App tests. Payload exclusion alone qualifies neither.
 - Which `tests/` subtrees cover removed workbenches and go with them?
 - `cadex_assembly_worker.py` imported `CommandCreateView` — GUI-lineage
   code used headlessly for exploded views, and the one import that made

@@ -815,11 +815,19 @@ Not a phase that "completes" — a standing mode of work.
       set reran on the delete commit in the same unit; evidence is in
       `docs/HELP-AUDIT.md` §"Delete landed". Help is the **first** engine-side
       whole-tree removal; the second still needs Start or Test to qualify.
+- [x] Audit the Start whole-tree candidate (2026-09-07, ADR-219,
+      `docs/START-AUDIT.md`). Qualifies for a separate disable at the same
+      forced-OFF boundary Help used; documentation only, no build. The audit
+      found `lib/Start.so` still in the staged payload and Start as the sole
+      GSL-submodule consumer, and records how whole-tree deletions should
+      count against the fork-delta criterion. Test remains unaudited.
 - [ ] Engine side: Phase 8's audited GUI directory boundary is deleted
       (ADR-214); broader residual GUI-lineage source remains open. Further
       candidates: Help is deleted (ADR-217, ADR-218);
-      Start and Test need their own dependency audits. Start and Test build but are in no shipped
-      payload (`docs/FREECAD.md` §1), and the staged payload is **2.3 GB**
+      Start is audited (ADR-219) and Test still needs its own dependency
+      audit. Both build and install; the payload prunes their `Mod/`
+      directories but still carries `lib/Start.so`
+      (`docs/START-AUDIT.md`), and the staged payload is **2.3 GB**
       of which ~2.1 GB is development environment — two copies of LLVM,
       node, clang, CMake's docs (`docs/cadex-release-packaging.md`). The
       payload's "no GUI" gate also has a hole: it greps `Mod/` for

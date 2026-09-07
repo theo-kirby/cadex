@@ -19922,3 +19922,42 @@ Manifest-scoped FreeCAD M totals move from 56 / 1,638 / 1,797 to
 files are not counted — so this removal does not advance the fork-delta
 criterion by that measure. **One** engine-side whole-tree removal is now
 complete; the second needs Start or Test to qualify through its own audit.
+
+## ADR-219 — Qualify Start for a separate whole-tree disable (2026-09-07)
+
+[Cadex-new] **Decision.** The bounded audit in [START-AUDIT.md](START-AUDIT.md)
+qualifies `src/Mod/Start` (with `tests/src/Mod/Start`) for the disable half of
+the two-commit removal protocol. Start has a native App target, `Start.so`,
+linking only `FreeCADApp`; its sole link consumer is its own gtest executable,
+`Start_tests_run`, and no tracked source outside the two directories names a
+Start symbol. Its `Init.py` registers a `Start.py` workbench module that does
+not exist and that nothing reads; `InitGui.py` and `StartMigrator.py` have
+been orphans since ADR-214. `MainCmd`'s dependency is on Test, not Start. No
+runtime or build rule changes in this audit.
+
+**Boundary.** Force `BUILD_START` OFF in its existing cache declaration during
+the separate disable, retaining all sources and the three gates; the tests
+gates read the same variable, so `Start_tests_run` and its **11 passing
+`FileUtilitiesTest` registrations** (1,544 → 1,533, none in the baseline)
+leave with it and are the expected CTest delta, to be compared by name. Two
+corrections the audit forced, code over doc: the staged payload prunes
+`Mod/Start` but **carries `lib/Start.so` (266 KB)**, because the target
+installs to `lib/`, so the disable removes a shipped binary; and Start is the
+only consumer of the `src/3rdParty/GSL` submodule, which becomes a separate
+follow-on candidate after the delete, not part of this sequence. Quarantine
+the shared install's stale GUI-era `InitGui.py`/`StartMigrator.py`/bytecode
+and `lib/Start.so` before verification. At deletion, remove the three gates,
+the report line, the `StartPage` crowdin row and the two developer-config
+entries, all in files already manifested; no new manifest entry. Test,
+Assembly, Measure and retained QtCore are not touched.
+
+**Fork delta.** The audit records how whole-tree deletions should count:
+credit them only against inherited files remaining (7,287 at run start,
+3,468 now), never against the manifest M metric, which measures the surviving
+conflict surface (47 / 1,804 / 1,907 → 57 / 1,637 / 1,803: fewer lines, more
+files). No criterion text or test changes here.
+
+**Evidence.** Source, generated-Ninja, install-script and 1,544-registration
+CTest-discovery inspection, plus the existing Help-delete payload and both
+caches. No build, install, stage or test execution; the disable's gate list
+is in the audit and is entirely future.
