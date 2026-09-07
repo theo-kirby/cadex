@@ -19915,7 +19915,7 @@ PartDesign, Sketcher, Mesh, MeshPart and cadexd import; the full engine suite
 fails until the manifest change is committed); the four Cadex ctests (4/4);
 serial inherited CTest (162 failed of 1,537 run, 0 names outside the
 baseline, 3 skipped and 7 disabled unchanged); and the packaged
-lifecycle/licensing gate rerun against this commit (run once this commit landed; result written by the same unit's record commit).
+lifecycle/licensing gate rerun against this commit (26 passed in 13.6 s against `b24761b4`, including committed-HEAD manifest equality).
 Not run: a fresh-cache configure, a from-scratch build, other platforms.
 Manifest-scoped FreeCAD M totals move from 56 / 1,638 / 1,797 to
 57 / 1,637 / 1,803 — `updatecrowdin.py` is newly modified, and whole deleted
