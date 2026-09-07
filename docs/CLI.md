@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-09-06. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-09-07. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -196,10 +196,18 @@ of doing any of them:
    literals of its one `assembly.policy(task, weights="…", sha256="…")`
    call to the stored policy's name and sha256 — nothing else in the
    script changes — writes it to `DIR/script.py` and lands it with
-   `cadex script --set`. A script without the iterate convention (no
-   `policy_on=num(...)`, or not exactly one `assembly.policy` call) is
-   refused at exit 3 with the convention named; the walk does not guess
-   where a policy belongs in a script it did not write.
+   `cadex script --set`. A script without the iterate convention is
+   refused at exit 3 with the convention named, on any of **three**
+   counts — no `policy_on=num(...)` parameter, not exactly one
+   `assembly.policy` call, or that call not carrying `weights=` **and**
+   `sha256=` as inline string literals. The third is the one an
+   agent-authored script fails by accident: factoring the two strings out
+   into module constants (`weights=POLICY_WEIGHTS`) reads better and is
+   refused, because the edit is a literal rewrite and the walk does not
+   guess where a policy belongs in a script it did not write. Measured on
+   nt3 against a script the design turn wrote unprompted; the authoring
+   contract in `cli/cadex_cli/agent.py` teaches the switch but not yet the
+   literals.
 5. `cadex params --set policy_on=1 --out DIR/rollout` — the verify and
    the rollout, the trace exported.
 6. The review: the trace's `policy` block — `total_reward`, the per-term
