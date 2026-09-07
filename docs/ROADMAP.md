@@ -801,10 +801,14 @@ Not a phase that "completes" — a standing mode of work.
 - [x] Audit the Help whole-tree candidate (2026-09-07, ADR-216,
       `docs/HELP-AUDIT.md`). Qualified for a separate disable; no source or
       build-rule change yet. Start/Test qualification remains open.
+- [x] Disable Help at the audited boundary (2026-09-07, ADR-217): `BUILD_HELP`
+      forced OFF over stale ON caches, fresh caches and explicit ON requests;
+      source retained; validation in `docs/HELP-AUDIT.md`. The delete commit
+      is a separate unit and is still open.
 - [ ] Engine side: Phase 8's audited GUI directory boundary is deleted
       (ADR-214); broader residual GUI-lineage source remains open. Further
-      candidates: Help is audited but still needs separate disable/delete commits;
-      Start and Test need their own dependency audits. All three build but are in no shipped
+      candidates: Help is disabled (ADR-217) and still needs its separate delete commit;
+      Start and Test need their own dependency audits. Start and Test build but are in no shipped
       payload (`docs/FREECAD.md` §1), and the staged payload is **2.3 GB**
       of which ~2.1 GB is development environment — two copies of LLVM,
       node, clang, CMake's docs (`docs/cadex-release-packaging.md`). The

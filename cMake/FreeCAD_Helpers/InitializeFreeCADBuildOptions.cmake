@@ -148,7 +148,11 @@ macro(InitializeFreeCADBuildOptions)
     endif(APPLE)
 
     option(BUILD_TEMPLATE "Build the FreeCAD template module which is only for testing purposes" OFF)
-    option(BUILD_HELP "Build the FreeCAD help module" ON)
+    # Cadex (ADR-217): the retired FreeCAD help module is disabled at the
+    # option, not merely defaulted OFF, so existing ON caches and explicit ON
+    # requests both normalise to OFF. Source stays until its separate delete
+    # commit; the parent gate in src/Mod/CMakeLists.txt is unchanged.
+    set(BUILD_HELP OFF CACHE BOOL "Build the retired FreeCAD help module (disabled by Cadex, ADR-217)" FORCE)
     option(BUILD_IMPORT "Build the FreeCAD import module" ON)
     option(BUILD_JTREADER "Build the FreeCAD jt reader module" OFF)
     option(BUILD_MATERIAL "Build the FreeCAD material module" ON)

@@ -49,7 +49,7 @@ the product installs contains them:
 |---|---|
 | `src/Mod/Start` | The launch screen. It was shown by the Qt shell's Experimental Mode, which was deleted in Phase 7 (ADR-021) — nothing displays it now. A removal candidate with no dependency story left. |
 | `src/Mod/Test` | FreeCAD's own Python test harness. Nothing in `cadex_tests/` uses it. |
-| `src/Mod/Help` | In-app help plumbing for a UI that no longer exists here. |
+| `src/Mod/Help` | In-app help plumbing for a UI that no longer exists here. **Disabled 2026-09-07 (ADR-217)**: `BUILD_HELP` is forced OFF in the option initializer, so no cache or explicit request builds, copies or installs it. Source retained for its separate delete commit. |
 
 ## 2. Kept elsewhere
 
@@ -159,7 +159,7 @@ directories remain. ADR-215 and PHASE8-AUDIT.md trace the named consumers:
 Assembly App proxies are required. Measure/MassPropertiesGui.py was disabled
 in the shared copy/install list, then deleted separately (ADR-215). The other four Measure scripts and App identity are retained.
 Material/MeshPart GUI scripts also survive in the payload;
-Help/Start/Test are pruned from it but still have build/install consumers.
+Help is disabled (ADR-217); Start/Test are pruned from the payload but still have build/install consumers.
 The residual audit is complete at this bounded scope, not the broader ROADMAP
 exit claim that no GUI source exists. Mixed Part/PartDesign helpers and the
 shared Windows launcher need separate disposition.
@@ -205,8 +205,9 @@ itself, in the Phase 7 Qt-shell deletion (ADR-021).
 
 - Does `src/Mod/Material` reduce to just the property types the five domains
   touch, or stay whole?
-- `src/Mod/Help` qualifies for a separate durable disable, then deletion
-  (ADR-216, [HELP-AUDIT.md](HELP-AUDIT.md)); it still builds/installs today.
+- `src/Mod/Help` is disabled (ADR-217, [HELP-AUDIT.md](HELP-AUDIT.md)):
+  `BUILD_HELP` is forced OFF, nothing copies or installs it, and the source
+  waits for its separate delete commit.
   `Start` and `Test` remain unaudited whole-tree candidates with required
   App/MainCmd dependencies; payload exclusion alone does not qualify them.
 - Which `tests/` subtrees cover removed workbenches and go with them?
