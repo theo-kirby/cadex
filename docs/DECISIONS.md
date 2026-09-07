@@ -19876,3 +19876,49 @@ Manifest-scoped FreeCAD M totals are 56 files / 1,638 inserted / 1,797 deleted
 against nt2 start 47 / 1,804 / 1,907; this disable adds six lines, so the
 fork-delta criterion is not advanced by it. One whole-tree removal is complete
 only when the delete commit lands.
+
+## ADR-218 — Delete the disabled Help module (2026-09-07)
+
+[Cadex-new] **Decision.** `src/Mod/Help` is deleted: the 85 tracked files
+(CMake, Help.py, InitGui.py, default.css, dlgPreferencesHelp.ui, Help.qrc and
+79 translation files), its `if(BUILD_HELP)` gate in `src/Mod/CMakeLists.txt`,
+the forced-OFF `BUILD_HELP` cache entry ADR-217 introduced (now a two-line
+comment in the initializer), the `value(BUILD_HELP)` final-report line, the
+Help row in `src/Tools/updatecrowdin.py`, and the `src/Mod/Help` path entries
+in `.pre-commit-config.yaml` and `contrib/.vscode/settings.json`. This is the
+delete half of the two-commit protocol that ADR-216 qualified and ADR-217
+disabled; together they are **one** engine-side whole-tree removal, counted
+once. `BUILD_HELP` no longer exists as an option; an explicit `-DBUILD_HELP=ON`
+now leaves only an unread cache variable.
+
+**Boundary.** Measure App and MassProperties, the Assembly publishers, the
+retained App translations and QtCore/QtXml are untouched. Start and Test are
+not touched: both still build and install, and the payload prunes them as
+before. The other already-deleted trees still listed in the two developer
+config files and in `updatecrowdin.py` are left alone; this commit removes
+only Help's rows, as the audit asked. `updatecrowdin.py` becomes a manifest
+entry with its per-file notice, because this is its first modification;
+whole deleted files are not manifest entries. The `Help.show` non-GUI branch
+that printed retrieved Markdown is retired with the tree; nothing in the
+engine, the CLI or `mesh_agent` called it.
+
+**Evidence.** All in `docs/HELP-AUDIT.md` §"Delete landed", run in this unit
+on macOS before the commit: an explicit `-DBUILD_HELP=ON` reconfigure over
+each existing Release and Debug cache (exit 0, no Help rule, no Help install
+include, only an unread cache variable, cleared with `cmake -U`); an
+incremental release build (37 Ninja steps), `install-release` and
+`stage-engine`, with no `Mod/Help` installed or staged; an installed
+`FreeCADCmd` probe in which `import Help` and `import Help_rc` fail while
+Measure, Assembly, MassProperties, JointObject, UtilsAssembly, Part,
+PartDesign, Sketcher, Mesh, MeshPart and cadexd import; the full engine suite
+(2,021 passed, 52 skipped, plus the manifest-equality test which by design
+fails until the manifest change is committed); the four Cadex ctests (4/4);
+serial inherited CTest (162 failed of 1,537 run, 0 names outside the
+baseline, 3 skipped and 7 disabled unchanged); and the packaged
+lifecycle/licensing gate rerun against this commit (run once this commit landed; result written by the same unit's record commit).
+Not run: a fresh-cache configure, a from-scratch build, other platforms.
+Manifest-scoped FreeCAD M totals move from 56 / 1,638 / 1,797 to
+57 / 1,637 / 1,803 — `updatecrowdin.py` is newly modified, and whole deleted
+files are not counted — so this removal does not advance the fork-delta
+criterion by that measure. **One** engine-side whole-tree removal is now
+complete; the second needs Start or Test to qualify through its own audit.

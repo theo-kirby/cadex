@@ -3,10 +3,6 @@ if(BUILD_ASSEMBLY)
   add_subdirectory(Assembly)
 endif(BUILD_ASSEMBLY)
 
-if(BUILD_HELP)
-  add_subdirectory(Help)
-endif(BUILD_HELP)
-
 if(BUILD_IMPORT)
   add_subdirectory(Import)
 endif(BUILD_IMPORT)

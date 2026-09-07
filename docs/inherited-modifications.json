@@ -206,6 +206,10 @@
           "notice": "comment"
         },
         {
+          "path": "src/Tools/updatecrowdin.py",
+          "notice": "comment"
+        },
+        {
           "path": "tests/CMakeLists.txt",
           "notice": "comment"
         },

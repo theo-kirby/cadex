@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Modified by the Cadex project, 2026. See docs/FREECAD.md.
 
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # ***************************************************************************
@@ -137,7 +138,6 @@ locations = [
         "../Mod/Fem/Gui/Resources/Fem.qrc",
     ],
     ["FreeCAD", "../Gui/Language", "../Gui/Language/translation.qrc"],
-    ["Help", "../Mod/Help/Resources/translations", "../Mod/Help/Resources/Help.qrc"],
     [
         "Inspection",
         "../Mod/Inspection/Gui/Resources/translations",

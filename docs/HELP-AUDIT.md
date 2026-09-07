@@ -116,6 +116,41 @@ are FreeCAD 56 / 1,638 / 1,797 and Blender 44 / 1,046 / 129 — the disable
 adds six lines to an already-manifested file and reduces nothing yet. The
 delete commit remains a separate unit under "Separate disable, then delete".
 
+## Delete landed
+
+The delete commit removes the 85 tracked `src/Mod/Help` files, the Help gate
+in `src/Mod/CMakeLists.txt`, the forced-OFF `BUILD_HELP` cache entry (replaced
+by a two-line comment, so the initializer's existing notice still covers it),
+the `value(BUILD_HELP)` report line, the Help row in
+`src/Tools/updatecrowdin.py` (a new manifest entry with its notice, because
+that file had not been modified before), and the `src/Mod/Help` path entries
+in `.pre-commit-config.yaml` and `contrib/.vscode/settings.json`, both outside
+the manifest's scopes. The consumer reaudit with the search basis above found
+nothing else outside `docs/` and the graph. No stale `Mod/Help` output existed
+in either build tree, the shared install or the payload when this unit began,
+so there was nothing to quarantine. ADR-218 is the entry. macOS only.
+
+| Gate | Command | Result |
+|---|---|---|
+| Explicit ON over the Release cache | `pixi run sh -c 'CFLAGS= CXXFLAGS= cmake -S . -B build/release -DBUILD_HELP=ON'` | exit 0; the only trace is an unread `BUILD_HELP:UNINITIALIZED=ON` cache entry (no option declares it any more), removed afterwards with `cmake -U BUILD_HELP`; 0 `Mod/Help` rules in `build.ninja`; no Help include in `src/Mod/cmake_install.cmake`; no `build/release/src/Mod/Help`; the final report no longer lists BUILD_HELP |
+| Explicit ON over the Debug cache | same with `-B build/debug` | same |
+| Release build | `pixi run build-release` | exit 0, **37 Ninja steps** — an incremental relink after the reconfigure, not a from-scratch build |
+| Install and stage | `pixi run install-release`; `pixi run stage-engine` | both exit 0; installed `Mod/` is Assembly, cadex, Import, Material, Measure, Mesh, MeshPart, Part, PartDesign, Show, Sketcher, Start, Test; the staged payload `Mod/` is the same minus Start and Test, as before |
+| Installed headless probe | `.pixi/envs/default/bin/FreeCADCmd /tmp/cadex-help-delete-probe.py` | `import Help` and `import Help_rc` → `No module named`; Measure, Assembly, MassProperties, JointObject, UtilsAssembly, Part, PartDesign, Sketcher, Mesh, MeshPart and cadexd import; a 10 mm box has volume 1000. (The same probe passed as a `-c` string crashed with "Application unexpectedly terminated" — an invocation limit, not an engine one.) |
+| Full engine suite | `pixi run test-engine` | **2,021 passed, 1 failed, 52 skipped** in 253.5 s before the commit; the one failure is `test_the_manifest_matches_git_reality`, which compares the manifest against committed HEAD and so cannot pass while the new `updatecrowdin.py` entry is uncommitted. Rerun against the commit: see the last row |
+| Cadex ctests | `pixi run ctest --test-dir build/release -R '^Cadex' --output-on-failure` | **4/4 passed**, 21.3 s |
+| Serial inherited CTest | `pixi run ctest --test-dir build/release -j 1` | 162 failed of 1,537 run (1,544 registered, 3 skipped, 7 disabled — all unchanged from the disable run); 160 Failed + 2 SEGFAULT. By name: **0 failures outside `build/ctest_baseline_failures.txt`**; the same 2 baseline names absent (`SpreadsheetRenameProperty.renameProperty`, `DlgVersionMigrator_Tests_run`, binaries deleted under ADR-214) |
+| Packaged lifecycle and licensing, against the commit | `CADEX_ENGINE_ROOT=$PWD/build/engine/cadex-engine-0.0.0-macos-arm64 pixi run python -m pytest -q src/Mod/cadex/cadex_tests/test_licensing_compliance.py src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py` | run against this commit once it landed; the result is written by the same unit's record commit |
+
+Logs are local under `/tmp/cadex-help-delete-*.log`. Not run: a fresh-cache
+configure, a from-scratch release build, and any Linux or Windows
+configuration. Manifest-scoped M metrics after the delete are FreeCAD
+**57 / 1,637 / 1,803** and Blender 44 / 1,046 / 129, against 56 / 1,638 /
+1,797 at the disable and 47 / 1,804 / 1,907 at nt2 start: one more modified
+inherited file (`updatecrowdin.py`), one fewer inserted line, six more deleted
+lines. The 85 deleted Help files are not M entries and do not move these
+numbers; the fork-delta criterion remains open by this measure.
+
 ## Evidence and limits
 
 Existing-payload check, after Measure deletion was committed:

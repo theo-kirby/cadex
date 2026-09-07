@@ -26,7 +26,6 @@
   "${workspaceFolder}/src/Mod/Cloud",
   "${workspaceFolder}/src/Mod/Draft",
   "${workspaceFolder}/src/Mod/Fem",
-  "${workspaceFolder}/src/Mod/Help",
   "${workspaceFolder}/src/Mod/Import",
   "${workspaceFolder}/src/Mod/Inspection",
   "${workspaceFolder}/src/Mod/JtReader",

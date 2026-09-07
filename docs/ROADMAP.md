@@ -808,11 +808,16 @@ Not a phase that "completes" — a standing mode of work.
       (iteration 31) and are in `docs/HELP-AUDIT.md` §"Disable landed": full
       engine suite, one release build, install, stage, the four Cadex ctests,
       serial inherited CTest against the baseline, and the packaged
-      lifecycle/licensing gate. The delete commit is a separate unit and is
-      still open.
+      lifecycle/licensing gate.
+- [x] Delete Help at the audited boundary (2026-09-07, ADR-218): `src/Mod/Help`
+      (85 files), its parent gate, the `BUILD_HELP` option and report line,
+      the crowdin row and two developer-config path entries. The same gate
+      set reran on the delete commit in the same unit; evidence is in
+      `docs/HELP-AUDIT.md` §"Delete landed". Help is the **first** engine-side
+      whole-tree removal; the second still needs Start or Test to qualify.
 - [ ] Engine side: Phase 8's audited GUI directory boundary is deleted
       (ADR-214); broader residual GUI-lineage source remains open. Further
-      candidates: Help is disabled (ADR-217) and still needs its separate delete commit;
+      candidates: Help is deleted (ADR-217, ADR-218);
       Start and Test need their own dependency audits. Start and Test build but are in no shipped
       payload (`docs/FREECAD.md` §1), and the staged payload is **2.3 GB**
       of which ~2.1 GB is development environment — two copies of LLVM,
