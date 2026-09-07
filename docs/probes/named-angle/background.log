@@ -1,0 +1,31 @@
+cadexd: cadex_domain_worker_started
+cadexd: xscript_domain_publication_completed
+cadexd: cadex_domain_worker_started
+cadexd: xscript_domain_publication_completed
+ACCEPTED {"revision": "de0dae7f91cb701274254132f3855ae23b2e3d40085165c946233fad4e847cc6", "display": ["arm", "asm", "base", "diag", "j", "job", "model", "plate", "swing"], "bbox": [[0.0, 0.0, 0.0], [92.0, 60.0, 14.0]]}
+PROBE {"view": "front", "result": null, "error": "Blueprint rendering is unavailable in background mode; use scene_summary instead."}
+PROBE {"view": "top", "result": null, "error": "Blueprint rendering is unavailable in background mode; use scene_summary instead."}
+PROBE {"view": "right", "result": null, "error": "Blueprint rendering is unavailable in background mode; use scene_summary instead."}
+PROBE {"view": "iso", "result": null, "error": "Blueprint rendering is unavailable in background mode; use scene_summary instead."}
+MULTIVIEW (None, 'Multi-view rendering is unavailable in background mode; use scene_summary instead.')
+Blender 5.3.0 Alpha (hash unknown built 2026-09-06 20:54:22)
+
+Blender quit
+        1.62 real         1.00 user         0.24 sys
+           206602240  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+               57333  page reclaims
+                2354  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                 967  voluntary context switches
+                3925  involuntary context switches
+          4568579948  instructions retired
+          1317097359  cycles elapsed
+           108430320  peak memory footprint

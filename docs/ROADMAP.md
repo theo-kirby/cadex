@@ -1970,6 +1970,10 @@ What makes them experimental, and what would settle it:
   measurements remain unknown. Initial solved pose only. Recipe rebuild
   medians remain within the 2 s / 20 percent budget; digests are unchanged.
   Walk wiring is the next unit; rendering and section views remain open.
+- [x] **Named-angle headless rendering route probed** (ADR-239). Valid
+  background blueprint calls refuse after accepted hydration; independent CPU
+  tessellation projection produced and inspected front/top/right/iso SVGs.
+  Product rendering, section views and walk integration remain open.
 - [x] **The agent can name what it assembled, headlessly** (ADR-236,
   `docs/CLI.md` §2). `cadex inventory` writes `docs/inventory.md` in the
   project: one row per component with the output it places, its catalog

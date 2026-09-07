@@ -20797,3 +20797,29 @@ Both had zero unknown pairs, two inventory components and clean project trees
 with the reports, review and progress tracked in HEAD. Combined recipe monitor:
 29.66 s, peak RSS 1.07 GB; no resource cutoff. Local/remote-flag parity uses a
 local CPU dispatcher stand-in only. No engine/protocol or shell code changed.
+
+## ADR-239 — Headless rendering will consume accepted tessellation (2026-09-08)
+
+**Decision, before implementation.** Use independently authored CPU rendering
+of the protocol's accepted tessellation for the headless review call. The
+existing GPL blueprint renderer refuses background mode even after successful
+accepted-revision hydration; an engine-only project should not acquire a
+Blender rendering dependency. No product renderer or section integration ships
+in this decision. The evidence-only projection removes that prospective
+subprocess/hydration requirement, not any existing product surface.
+
+[The measured probe](probes/named-angle/README.md) records four valid background
+refusals, a stale bundled-engine import failure isolated with the supported
+payload override, and front/top/right/iso SVGs from two correctly placed
+components. Background hydration/refusal took 1.62 s; CPU projection 0.20 s,
+51,609,600 bytes maximum RSS including interpreter startup. The prototype uses
+centroid ordering and shows triangle diagonals; production needs depth-correct
+visibility, bounded input validation and revision-safe snapshots. Sections can
+reuse world-space triangles and projection but need separate clipping/cap tests
+and approximate-section labelling. No GPL implementation crosses into the CLI.
+
+Verification is the executed probe, numeric placement assertions, parsed and
+visually inspected SVGs, and graph export/check. No product code changed and no
+zone suite/full build ran. Rendering, section views and their walk integration
+remain open; the stale local bundle remains a packaging observation to resolve
+before claiming an ordinary bundled run.
