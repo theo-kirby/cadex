@@ -465,3 +465,48 @@ Next is the separately verified shim source deletion. Other residual GUI
 sources, external/dynamic import compatibility and unexercised platforms stay
 outside this boundary. Repeat the packaged manifest comparison after commit;
 no second build is required for that check.
+
+
+## Disabled Measure shim deleted (2026-09-07, ADR-215)
+
+Following disable commit `68b4bbf4` (postcommit packaged gate: 26 passed in
+14.16 s), removed only MassPropertiesGui.py: **one file, 22 lines, 1,477 bytes**.
+Its only executable statement imported the deleted MeasureGui. The retained
+MassPropertiesObject.h view-provider identity, Measure App, four other Measure
+scripts and four required Assembly publication modules are unchanged. No new
+code or build rule is needed. This unmodified inherited file was not a manifest
+entry; working-tree equality still holds at 56 FreeCAD and 44 Blender files.
+
+Verification logs are local `/tmp/cadex-measure-delete-*`:
+
+- Debug/release configurations and the single release build: exit 0; caches
+  confirm Debug/OFF and Release/OFF. Generated build/install consumers do not
+  name the shim. Ninja dependencies contain zero deleted GUI paths and 190
+  retained App/MetaTypes.h references.
+- Full engine pytest: **2,022 passed, 52 skipped in 259.65 s**.
+- Both cadex ctests: **2/2 passed in 16.78 s** (digest 1.67 s, lifecycle
+  15.09 s). These still prefer the installed engine.
+- Serial inherited CTest: **162 failures / 1,537 enabled tests in 130.52 s**,
+  exit 8. No new failure names against the 164-failure baseline. Baseline-only
+  DlgVersionMigrator_Tests_run and SpreadsheetRenameProperty.renameProperty
+  remain absent. Serial before/after discovery has identical 1,544 names,
+  commands and properties, no duplicates; three skipped and seven disabled
+  cases are unchanged from the disable run.
+
+Manifest-scoped FreeCAD M totals remain **56 / 1,633 inserted / 1,796 deleted**
+versus nt2 start `7dd3d045` **47 / 1,804 / 1,907**; Blender remains
+**44 / 1,046 / 129**. The deleted file volume above is a separate metric.
+The precommit HEAD-based check cannot see this deletion, so the committed
+comparison must be rerun. No broad fork-delta reduction, two engine-tree
+removals, whole Measure removal or no-GUI-source completion is claimed.
+
+Fresh payload follow-through: `pixi run install-release` and completed
+`pixi run stage-engine` both exit 0. No stale shim or bytecode remains in
+release/Mod, the installed Measure directory or fresh stage; no quarantine
+was needed after the preceding disable cleanup. All four Measure scripts and
+JointObject/CommandCreateView/Preferences/UtilsAssembly remain. Fresh packaged
+lifecycle/licensing: **26 passed in 19.44 s**. The native installed-engine
+probe imports Measure/MassProperties and creates Measure::Result with GuiUp
+false (`MEASURE-APP-OK`). The stage is 2.4 GB, local stage-only, with expected
+external rpath diagnostics; this is not a relocated distribution claim.
+No shell change, GUI launch or second build.

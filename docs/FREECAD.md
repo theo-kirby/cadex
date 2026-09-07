@@ -156,9 +156,8 @@ GUI-on requests are rejected.
 **Residual GUI lineage remains open.** Mixed Assembly publication modules,
 unconditional GUI Python install lists and other sources outside the audited
 directories remain. ADR-215 and PHASE8-AUDIT.md trace the named consumers:
-Assembly App proxies are required. Measure/MassPropertiesGui.py is now disabled
-in the shared copy/install list (ADR-215); its source remains for the separate
-delete commit. The other four Measure scripts and App identity are retained.
+Assembly App proxies are required. Measure/MassPropertiesGui.py was disabled
+in the shared copy/install list, then deleted separately (ADR-215). The other four Measure scripts and App identity are retained.
 Material/MeshPart GUI scripts also survive in the payload;
 Help/Start/Test are pruned from it but still have build/install consumers.
 The residual audit is complete at this bounded scope, not the broader ROADMAP

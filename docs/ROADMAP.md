@@ -327,8 +327,8 @@ this phase.
       the broader exit criterion remain open.
 - [x] Disable Measure/MassPropertiesGui.py in its shared copy/install list
       (ADR-215); preserve the source and headless Measure/Assembly consumers.
-- [ ] Delete the disabled Measure/MassPropertiesGui.py shim in a separate
-      verified commit.
+- [x] Delete the disabled Measure/MassPropertiesGui.py shim in a separate
+      verified commit (ADR-215, 2026-09-07).
 
 **Exit criteria:** the tree contains no GUI source, `pixi run configure`
 (debug) still configures, and both cadex ctests stay green.

@@ -19796,3 +19796,14 @@ required Assembly publishers. This edits one already-manifested inherited
 CMake file with its existing notice; no manifest membership changes. Validation
 and stale-copy quarantine evidence are in PHASE8-AUDIT.md. This is one shim
 disable, not a whole-tree removal or closure of the broader GUI-source gap.
+
+
+**Delete follow-through (2026-09-07).** After disable commit `68b4bbf4` and
+its passing postcommit packaged gate (26 tests), deleted only the 22-line,
+1,477-byte MassPropertiesGui.py shim. Measure App, its view-provider identity,
+the other four Measure scripts and required Assembly publication modules are
+unchanged. This previously unmodified inherited file had no manifest entry;
+no manifest or modification-notice edit is necessary. The separately repeated
+build, install/stage and gate evidence is in PHASE8-AUDIT.md. This completes
+the bounded shim sequence, not a whole Measure-tree removal, two engine-tree
+removals, or the broad GUI-source/fork-delta criteria.
