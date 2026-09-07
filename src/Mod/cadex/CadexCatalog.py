@@ -50,7 +50,6 @@ __all__ = [
     "GEAR_STANDARD",
     "gear_spec",
     "rack_and_pinion_spec",
-    "planetary_spec",
     "GEARMOTORS",
     "gearmotor_spec",
     "MICRO_HORNS",
@@ -835,16 +834,13 @@ GEAR_STANDARD = {
 }
 
 
-def gear_spec(module: Any, teeth: Any, *, rack: bool = False,
-              internal: bool = False) -> dict[str, Any]:
+def gear_spec(module: Any, teeth: Any, *, rack: bool = False) -> dict[str, Any]:
     """ISO 53 tooth numbers for one module and tooth count.
 
     ``module`` must be an ISO 54 series I value; ``teeth`` an integer within
     the generator's documented bounds (a rack needs at least one tooth). The
     returned row carries the pitch-circle numbers a design reads and the
-    ``approximate`` list every gear recipe inherits. ``internal`` swaps the
-    addendum and dedendum for a ring gear: the tip circle is inside the
-    pitch circle at m(z - 2) and the root outside it at m(z + 2.5).
+    ``approximate`` list every gear recipe inherits.
     """
     std = GEAR_STANDARD
     if (isinstance(module, bool) or not isinstance(module, (int, float))
@@ -878,19 +874,13 @@ def gear_spec(module: Any, teeth: Any, *, rack: bool = False,
         spec["length_mm"] = teeth * math.pi * m
         return spec
     pitch = m * teeth
-    base = pitch * math.cos(math.radians(std["pressure_angle_degrees"]))
     spec.update({
         "pitch_diameter_mm": pitch,
-        "base_diameter_mm": base,
-        "tip_diameter_mm": m * (teeth - 2) if internal else m * (teeth + 2),
-        "root_diameter_mm": m * (teeth + 2.5) if internal else m * (teeth - 2.5),
+        "base_diameter_mm": pitch * math.cos(math.radians(std["pressure_angle_degrees"])),
+        "tip_diameter_mm": m * (teeth + 2),
+        "root_diameter_mm": m * (teeth - 2.5),
     })
-    if internal:
-        spec["internal"] = True
-        if spec["tip_diameter_mm"] < base:
-            spec["approximate"].append(
-                f"The {teeth}-tooth ring's tip circle lies inside its base circle; the tooth tip below the base circle is a radial line, not a trimmed involute.")
-    elif teeth < std["undercut_teeth"]:
+    if teeth < std["undercut_teeth"]:
         spec["approximate"].append(
             f"{teeth} teeth is below the {std['undercut_teeth']}-tooth undercut limit for an unshifted 20 degree gear; the profile below the base circle is a radial line, not a generated undercut.")
     return spec
@@ -933,64 +923,6 @@ def rack_and_pinion_spec(module: Any, pinion_teeth: Any, rack_teeth: Any, *,
         "approximate": list(pinion["approximate"]) + [
             "Backlash is a radial shift of the rack by backlash / (2 tan 20 degrees); teeth are not thinned.",
             "No contact ratio, load sharing, stiffness or efficiency; the mesh is geometric only.",
-        ],
-    }
-    return spec
-
-
-def planetary_spec(module: Any, sun_teeth: Any, planet_teeth: Any, planets: Any) -> dict[str, Any]:
-    """The meshing numbers for a simple planetary stage on ISO 53 teeth.
-
-    The sun and every planet come from ``gear_spec`` on the same module and
-    the ring from ``gear_spec(..., internal=True)`` with sun + 2 planet
-    teeth, so the standard centre distance m(sun + planet)/2 serves both
-    meshes. ``planets`` is the number of equally spaced planets; the stage
-    is refused when (sun + ring) is not a multiple of it (the planets could
-    not all engage the same ring) or when neighbouring planet tip circles
-    would overlap. The three classic ratios are carried: fixed ring
-    (sun in, carrier out), fixed carrier (sun in, ring out) and fixed sun
-    (ring in, carrier out).
-    """
-    sun = gear_spec(module, sun_teeth)
-    planet = gear_spec(module, planet_teeth)
-    ring_teeth = sun_teeth + 2 * planet_teeth
-    if ring_teeth > GEAR_STANDARD["maximum_teeth"]:
-        raise CatalogError(f"Planetary ring would need {ring_teeth} teeth; the generator stops at "
-                           f"{GEAR_STANDARD['maximum_teeth']}.")
-    ring = gear_spec(module, ring_teeth, internal=True)
-    if isinstance(planets, bool) or not isinstance(planets, int) or planets < 2:
-        raise CatalogError(f"Planetary planets must be an integer of at least 2, not {planets!r}.")
-    if (sun_teeth + ring_teeth) % planets:
-        raise CatalogError(
-            f"Planetary with {planets} planets cannot assemble: sun {sun_teeth} + ring {ring_teeth} "
-            f"= {sun_teeth + ring_teeth} teeth is not a multiple of {planets}; "
-            f"the planets would not all engage the ring at the same phase.")
-    m = sun["module_mm"]
-    centre_distance = m * (sun_teeth + planet_teeth) / 2.0
-    neighbour_gap = 2.0 * centre_distance * math.sin(math.pi / planets) - planet["tip_diameter_mm"]
-    if neighbour_gap <= 0.0:
-        raise CatalogError(
-            f"Planetary with {planets} planets of {planet_teeth} teeth: neighbouring planet tip "
-            f"circles overlap by {-neighbour_gap:g} mm at the {centre_distance:g} mm centre distance.")
-    spec: dict[str, Any] = {
-        "module_mm": m, "sun_teeth": sun_teeth, "planet_teeth": planet_teeth,
-        "ring_teeth": ring_teeth, "planets": planets,
-        "pressure_angle_degrees": sun["pressure_angle_degrees"],
-        "centre_distance_mm": centre_distance,
-        "planet_angles_degrees": [360.0 * index / planets for index in range(planets)],
-        "planet_neighbour_gap_mm": neighbour_gap,
-        "root_clearance_mm": sun["root_clearance_mm"],
-        "ratio_fixed_ring": 1.0 + ring_teeth / sun_teeth,
-        "ratio_fixed_carrier": -ring_teeth / sun_teeth,
-        "ratio_fixed_sun": 1.0 + sun_teeth / ring_teeth,
-        "ring_tip_diameter_mm": ring["tip_diameter_mm"],
-        "ring_root_diameter_mm": ring["root_diameter_mm"],
-        "sun": sun, "planet": planet, "ring": ring,
-        "standard": sun["standard"],
-        "sources": list(sun["sources"]),
-        "approximate": list(sun["approximate"]) + [
-            note for note in planet["approximate"][2:] + ring["approximate"][2:]] + [
-            "Zero backlash at the standard centre distance; no load sharing, contact ratio, stiffness or efficiency; the meshes are geometric only.",
         ],
     }
     return spec
@@ -1058,7 +990,7 @@ def catalog_families() -> dict[str, Any]:
             "preferred_modules_mm": list(GEAR_STANDARD["preferred_modules_mm"]),
             "pressure_angle_degrees": GEAR_STANDARD["pressure_angle_degrees"],
             "teeth_range": [GEAR_STANDARD["minimum_teeth"], GEAR_STANDARD["maximum_teeth"]],
-            "notes": "lib.spur_gear(module, teeth, face_width, bore=None) and lib.rack(module, teeth, face_width, height): ISO 53 type A profile on ISO 54 series I modules, one sampled-involute polygon extruded; spec carries the pitch, base, root and tip diameters and the undercut warning below 17 teeth. No fillets, backlash, strength rating or density. lib.rack_and_pinion(module, pinion_teeth, rack_teeth, face_width, backlash=0, bore=None, rack_height=None, rotation_degrees=0) composes both at the standard centre distance as one compound; spec carries centre distance, travel per revolution and the datums. lib.ring_gear(module, teeth, face_width, outer_diameter=None) is the internal gear (tip at m(z-2), root at m(z+2.5), tooth space 0 on +X), and lib.planetary(module, sun_teeth, planet_teeth, planets, face_width, sun_bore=None, planet_bore=None, ring_outer_diameter=None, carrier_thickness=None, rotation_degrees=0) composes sun, planets, ring and a plain carrier plate as one compound; spec carries the ring teeth (sun + 2 planet), the fixed-ring ratio 1 + ring/sun and the planet angles, and refuses (sun + ring) not divisible by the planet count.",
+            "notes": "lib.spur_gear(module, teeth, face_width, bore=None) and lib.rack(module, teeth, face_width, height): ISO 53 type A profile on ISO 54 series I modules, one sampled-involute polygon extruded; spec carries the pitch, base, root and tip diameters and the undercut warning below 17 teeth. No fillets, backlash, strength rating or density. lib.rack_and_pinion(module, pinion_teeth, rack_teeth, face_width, backlash=0, bore=None, rack_height=None, rotation_degrees=0) composes both at the standard centre distance as one compound; spec carries centre distance, travel per revolution and the datums.",
         },
         "boards": {
             "skus": sorted(BOARDS),

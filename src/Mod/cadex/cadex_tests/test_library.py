@@ -786,10 +786,6 @@ result = {
     "rack_and_pinion": lib.rack_and_pinion(2, 20, 10, 8, rotation_degrees=7).body,
     "rack_and_pinion_placed": lib.rack_and_pinion(1, 24, 12, 5, backlash=0.05, bore=4,
         origin=(100, 30, 20), direction=(1, 0, 0), roll_degrees=30).body,
-    "ring_gear": lib.ring_gear(2, 33, 5).body,
-    "planetary": lib.planetary(1, 18, 18, 3, 6, rotation_degrees=7).body,
-    "planetary_placed": lib.planetary(1.5, 17, 17, 4, 5, sun_bore=5, planet_bore=4,
-        origin=(100, 30, 20), direction=(1, 0, 0), roll_degrees=30).body,
     "joint": lib.joint("skf-ge-6-c").body,
     "joint_placed": lib.joint("skf-ge-6-c", tilt_degrees=13,
         origin=(100,30,20), direction=(1,0,0), roll_degrees=90).body,
@@ -852,7 +848,6 @@ def test_the_library_builds_on_the_real_kernel() -> None:
         assert names == {
             "spur_gear", "spur_gear_placed", "rack", "rack_placed",
             "rack_and_pinion", "rack_and_pinion_placed",
-            "ring_gear", "planetary", "planetary_placed",
             "joint", "joint_placed", "bldc", "bldc_placed", "linear_actuator", "linear_actuator_placed",
             "gearmotor", "gearmotor_placed",
             "esp_board", "pi_board", "pwm_board",
@@ -870,8 +865,7 @@ def test_the_library_builds_on_the_real_kernel() -> None:
         }
         for output in written["outputs"]:
             expected_type = "compound" if output["name"] in {
-                "joint", "joint_placed", "rack_and_pinion", "rack_and_pinion_placed",
-                "planetary", "planetary_placed"} else "solid"
+                "joint", "joint_placed", "rack_and_pinion", "rack_and_pinion_placed"} else "solid"
             assert output["type"] == expected_type, output
     finally:
         if client is not None:
@@ -1429,130 +1423,6 @@ assert len(placed.Solids) == 2 and abs(placed.Volume - canonical.Volume) < 1e-6
 assert abs(placed.BoundBox.XMin - 100) < 1e-6 and abs(placed.BoundBox.XLength - 5) < 1e-6
 print("RACK-AND-PINION-OK")
 """
-
-
-# -- ring gear and planetary (ADR-235) ---------------------------------------
-
-
-def test_internal_gear_spec_swaps_addendum_and_dedendum():
-    ring = catalog.gear_spec(1, 54, internal=True)
-    assert ring["internal"] is True
-    assert (ring["tip_diameter_mm"], ring["root_diameter_mm"], ring["pitch_diameter_mm"]) == (52, 56.5, 54)
-    assert ring["base_diameter_mm"] == pytest.approx(54 * math.cos(math.radians(20)))
-    assert len(ring["approximate"]) == 2
-    small = catalog.gear_spec(2, 33, internal=True)
-    assert small["tip_diameter_mm"] < small["base_diameter_mm"]
-    assert "radial line" in small["approximate"][2] and "undercut" not in small["approximate"][2]
-
-
-def test_planetary_spec_numbers():
-    spec = catalog.planetary_spec(1, 18, 18, 3)
-    assert (spec["ring_teeth"], spec["planets"], spec["centre_distance_mm"]) == (54, 3, 18)
-    assert (spec["ratio_fixed_ring"], spec["ratio_fixed_carrier"]) == (4, -3)
-    assert spec["ratio_fixed_sun"] == pytest.approx(1 + 18 / 54)
-    assert spec["planet_angles_degrees"] == [0, 120, 240]
-    assert spec["planet_neighbour_gap_mm"] == pytest.approx(2 * 18 * math.sin(math.pi / 3) - 20)
-    assert (spec["ring_tip_diameter_mm"], spec["ring_root_diameter_mm"], spec["root_clearance_mm"]) == (52, 56.5, 0.25)
-    assert spec["ring"]["internal"] is True and spec["planet"]["tip_diameter_mm"] == 20
-    assert "ISO 53" in spec["standard"] and len(spec["approximate"]) == 3
-    # The undercut note of a small sun and the radial-line note of a small
-    # ring both reach the composed spec.
-    small = catalog.planetary_spec(2, 9, 12, 3)
-    assert small["ring_teeth"] == 33 and small["ratio_fixed_ring"] == pytest.approx(1 + 33 / 9)
-    assert sum("undercut" in note for note in small["approximate"]) == 2
-    assert sum("radial line" in note for note in small["approximate"]) == 1
-
-
-@pytest.mark.parametrize("module,sun,planet,planets,message", [
-    (1, 18, 18, 5, "not a multiple of 5"), (1, 20, 30, 3, "not a multiple of 3"),
-    (1, 18, 18, 1, "at least 2"), (1, 18, 18, True, "at least 2"), (1, 18, 18, 3.0, "at least 2"),
-    (1, 6, 60, 6, "tip circles overlap"), (1, 100, 60, 3, "would need 220 teeth"),
-    (7, 18, 18, 3, "Unknown gear module"), (1, 5, 18, 3, "teeth must be in")])
-def test_planetary_spec_refusals(module, sun, planet, planets, message):
-    with pytest.raises(CatalogError, match=message):
-        catalog.planetary_spec(module, sun, planet, planets)
-
-
-def test_ring_gear_recipe_and_spec():
-    lib = _lib()
-    ring = lib.ring_gear(1, 54, 6)
-    assert (ring.family, ring.part_number) == ("ring_gear", "m1z54")
-    assert ring.spec["outer_diameter_mm"] == 60.5 and ring.spec["face_width_mm"] == 6
-    # A disc cut by the extruded spaces, whose outline is the ADR-233 polygon
-    # with the ring's root as its tip and the ring's tip as its root.
-    assert ring.body.operation == "cut"
-    disc = ring.body.arguments[0]
-    assert disc.operation == "cylinder" and disc.arguments[:2] == (30.25, 6)
-    spaces = ring.body.arguments[1][0]
-    assert spaces.operation == "extrude" and list(spaces.arguments[1]) == [0, 0, 8]
-    points = _ops(spaces, "wire")[0].arguments[0]
-    radii = sorted({round(math.hypot(x, y), 6) for x, y, _ in points})
-    assert radii[0] == 26 and radii[-1] == 28.25 and all(z == -1 for _, _, z in points)
-    # Tooth space 0 is centred on +X: the outline starts at the ring tip circle
-    # and its point on the +X axis is at the ring root.
-    on_axis = [(x, y) for x, y, _ in points if abs(y) < 1e-9 and x > 0]
-    assert on_axis == [(28.25, 0.0)]
-    assert len(points) == 54 * 20
-    custom = lib.ring_gear(2, 33, 5, outer_diameter=80, origin=(10, 0, 0))
-    assert custom.spec["outer_diameter_mm"] == 80 and custom.body.operation == "transform"
-    with pytest.raises(LibraryError, match="outer_diameter"):
-        lib.ring_gear(1, 54, 6, outer_diameter=56.5)
-    with pytest.raises(LibraryError, match="face_width"):
-        lib.ring_gear(1, 54, 0)
-
-
-def test_planetary_recipe_and_spec():
-    lib = _lib()
-    stage = lib.planetary(1, 18, 18, 3, 6)
-    assert (stage.family, stage.part_number) == ("planetary", "m1s18p18x3")
-    assert stage.body.operation == "compound" and len(stage.body.arguments[0]) == 6
-    sun, p0, p1, p2, ring, carrier = stage.body.arguments[0]
-    assert stage.spec["sun_bore_mm"] is None and stage.spec["planet_bore_mm"] is None
-    assert stage.spec["carrier_thickness_mm"] == 2 and stage.spec["carrier_radius_mm"] == 25.75
-    assert stage.spec["ring_outer_diameter_mm"] == 60.5 and stage.spec["carrier_rotation_degrees"] == 0
-    assert stage.spec["ring_roll_degrees"] == pytest.approx(180 * 17 / 54)
-    # Sun tooth 0 on +X; planet 0 on +X with tooth 0 rolled so a space faces
-    # the sun; the ring rolled so its teeth meet the planets' spaces.
-    assert not _ops(sun, "transform")
-    for index, planet in enumerate((p0, p1, p2)):
-        placement = stage.spec["planet_placements"][index]
-        assert placement["angle_degrees"] == 120 * index
-        transform = _ops(planet, "transform")[0]
-        assert list(transform.properties["translation"]) == pytest.approx(placement["centre_mm"])
-        assert math.hypot(*placement["centre_mm"][:2]) == pytest.approx(18)
-        expected_roll = (120 * index * 36 / 18 + 180 * 17 / 18) % 360
-        assert placement["roll_degrees"] == pytest.approx(expected_roll)
-    assert _ops(ring, "transform")[0].properties["rotation_degrees"] == pytest.approx(180 * 17 / 54)
-    # A plain carrier: a disc under the datum plane with the sun's hole only.
-    assert carrier.operation == "cut" and carrier.arguments[0].operation == "cylinder"
-    assert carrier.arguments[0].arguments[:2] == (25.75, 2)
-    assert list(carrier.arguments[0].properties["origin"]) == [0, 0, -2]
-    assert len(carrier.arguments[1]) == 1 and carrier.arguments[1][0].arguments[0] == 10.25
-    # A phase turns the sun, the carrier by 1/ratio, and every planet.
-    turned = lib.planetary(1, 18, 18, 3, 6, sun_bore=4, planet_bore=3, rotation_degrees=10,
-                           carrier_thickness=3, ring_outer_diameter=70)
-    assert turned.spec["carrier_rotation_degrees"] == pytest.approx(2.5)
-    assert turned.spec["planet_placements"][0]["angle_degrees"] == pytest.approx(2.5)
-    assert turned.spec["planet_placements"][0]["roll_degrees"] == pytest.approx((2.5 * 2 - 10 + 170) % 360)
-    assert _ops(turned.body.arguments[0][0], "transform")[0].properties["rotation_degrees"] == pytest.approx(10)
-    assert (turned.spec["sun_bore_mm"], turned.spec["planet_bore_mm"]) == (4, 3)
-    assert (turned.spec["carrier_thickness_mm"], turned.spec["ring_outer_diameter_mm"]) == (3, 70)
-    carrier = turned.body.arguments[0][-1]
-    assert len(carrier.arguments[1]) == 4 and carrier.arguments[1][1].arguments[0] == 1.5
-    assert len(_ops(turned.body, "cut")) == 6
-    placed = lib.planetary(1, 18, 18, 3, 6, origin=(100, 30, 20), direction=(1, 0, 0))
-    assert placed.body.operation == "transform"
-    with pytest.raises(LibraryError, match="rotation_degrees"):
-        lib.planetary(1, 18, 18, 3, 6, rotation_degrees=float("inf"))
-    with pytest.raises(LibraryError, match="root diameter"):
-        lib.planetary(1, 18, 18, 3, 6, sun_bore=16)
-    with pytest.raises(LibraryError, match="carrier_thickness"):
-        lib.planetary(1, 18, 18, 3, 6, carrier_thickness=0)
-    with pytest.raises(CatalogError, match="not a multiple"):
-        lib.planetary(1, 18, 18, 5, 6)
-    names = {entry["name"] for entry in library_listing()["exports"]}
-    assert {"ring_gear", "planetary"} <= names
-    assert "lib.planetary" in _lib().catalog()["gears"]["notes"]
 
 
 @pytest.mark.skipif(
