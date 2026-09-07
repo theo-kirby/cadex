@@ -19475,6 +19475,14 @@ manufacturer CAD or code is redistributed.
 variants and placement tests; the real-kernel library test builds canonical
 and rotated gearmotors. Engine suite, one engine build, sequential staging
 and packaged lifecycle/library gates are reported in the work record.
+
+**Verification follow-up (2026-09-07).** Independent actual-worker BREP
+surface measurements and 160 canonical/placed material probes now pin the
+Ø3 shaft, 2.5 mm flat-to-opposite, Z=1–10 flat, and two Ø1.6 bores
+at X=±4.5, Z=−1–0. The blind depth and sharp transition stay assumptions;
+this adds no screw-engagement, physical-inertia or installed-fit claim.
+No runtime implementation or API changed.
+
 Only the first motor subitem closes; BLDC, linear actuators, solenoids,
 joints and compound mechanisms keep L3 open. Concurrent project writes
 remain subject to ADR-204's sequential-use limitation.

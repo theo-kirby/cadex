@@ -13,7 +13,7 @@ solenoids expose none. A catalog value is not a powered assembly.
 
 | ROADMAP promise | Delivered value and recorded ratings | Geometry and coupling limit | Evidence and exact residual gap |
 |---|---|---|---|
-| N20 gearmotor | `lib.gearmotor("pololu-2367")`: MP 6 V, nominal 100:1; 220 RPM ±20%, 70 mA ±50% no-load; extrapolated 0.94 kg·cm stall torque and 0.67 A (PROVENANCE §8b, ADR-205). | 12×10 mm rear envelope, 3 mm D shaft, 2.5 mm flat-to-opposite, M1.6 centres ±4.5 mm. Flat transition and 1 mm blind-bore depth are assumptions; no screw-engagement permission or physical inertia. | Canonical/placed recipes publish as solids in the real-kernel integration. Metadata/recipe tests pin dimensions, but no dedicated worker measurement of the N20 D shaft or bores exists. Narrow N20 delivery is supported; continuous torque, thermal behaviour and actuator coupling are absent. |
+| N20 gearmotor | `lib.gearmotor("pololu-2367")`: MP 6 V, nominal 100:1; 220 RPM ±20%, 70 mA ±50% no-load; extrapolated 0.94 kg·cm stall torque and 0.67 A (PROVENANCE §8b, ADR-205). | 12×10 mm rear envelope, 3 mm D shaft, 2.5 mm flat-to-opposite, M1.6 centres ±4.5 mm. Flat transition and 1 mm blind-bore depth are assumptions; no screw-engagement permission or physical inertia. | Canonical/placed recipes publish as solids in the real-kernel integration. Dedicated actual-worker surface measurements and 160 canonical/placed material probes verify the D shaft and both bores (2026-09-07); the assumed depth/transition remain unqualified for hardware fit. Narrow N20 delivery is supported; continuous torque, thermal behaviour and actuator coupling are absent. |
 | Common BLDC sizes with kV/torque data | `lib.bldc("hobbywing-30415200")`: Skywalker 2820 SL 550KV; 550 rpm/V, 1.38 A no-load at 22.2 V, 6S, 144.5 g (PROVENANCE §8c, ADR-206). 40.9 A / 910.2 W are notes qualified to 46 s, not control limits. | Ø35.1×40 mm case, rear M3 pattern 19/25 mm. Ø10.5 mm collar reservation spans all 18 mm shaft projection; actual Ø5 mm shaft is metadata only. Free shaft length, screw engagement, wiring clearance and coupling fit are unsupported. | Dedicated actual-worker bounds/material/void and placement probes plus cadexd publication. Exactly one size/winding; no torque rating or constant. Neither plural common-size coverage nor torque promise is met. No kV-to-usable-torque inference is justified by the recorded evidence. |
 | Linear actuator | `lib.linear_actuator("l12-50-210-12-s", extension=...)`: 12 V, ratio 210, 50 mm stroke; 80 N maximum lifted load, 6.5 mm/s unloaded, 62 N at 3.2 mm/s peak power are distinct points; ≤20% duty, −10 to 50°C (PROVENANCE §8d, ADR-207). | Nominal centres 102+extension mm, Ø4.25 mm bores, 8/6 mm rear-lug/clevis widths. Older STEP spacing is +0.5 mm, explicitly not a tolerance. Simplified filled exterior is not a conservative installation envelope. | Actual-worker surfaces and 180 canonical/placed material probes at 0/23.5/50 mm; packaged publication at 50 and placed 23.5 mm. Narrow geometry delivered. S switches stop within 0.5 mm of ends: geometric endpoints do not prove powered reachability, feedback or closed-loop motion. |
 | Solenoid | None. TAU0730TM-14/Adafruit 412 partial experiment; Ledex B7 source follow-up only (PROVENANCE §8e, ADR-208/209). | Current 412 mounting callouts incomplete; older TAU slots conflict. B7 planar M3 centres are known, engagement depth and maximum mechanical travel are not. A force-plot axis is not a travel stop. | 412 standalone approximation: 72 probes at gaps 0/2.3/4.9 mm. No public recipe, worker delivery or packaged solenoid verification. Reopen only with new interface/travel evidence or an explicitly justified narrower contract; do not repeat the searches or silently weaken delivery. |
@@ -39,9 +39,13 @@ in the delivery nodes; counts describe the suites at those revisions:
 
 `test_the_library_builds_on_the_real_kernel` publishes canonical and placed
 outputs for all four through cadexd, requiring solids except the joint compounds.
-Dedicated interface tests exist for BLDC, L12 and joint; they select the payload
-worker when `CADEX_ENGINE_ROOT` is set. This distinction matters for N20:
-successful publication alone does not independently measure its mounting fit.
+Dedicated interface tests now exist for N20, BLDC, L12 and joint; they select
+the payload worker when `CADEX_ENGINE_ROOT` is set. The N20 test measures
+OCCT cylindrical and planar surfaces: shaft Ø3 mm, flat-to-opposite 2.5 mm,
+flat Z=1–10 mm, and bore radii 0.8 mm at (±4.5, 0), Z=−1–0 mm. Eighty
+material/void probes per instance straddle bore walls/bottoms, shaft edges,
+flat transition and tip. A cyclic rotation plus translation is verified
+independently. These prove the declared simplified geometry, not installed fit.
 
 Reproduction of this audit's existing-payload baseline:
 
@@ -54,21 +58,28 @@ CADEX_ENGINE_ROOT=build/engine/cadex-engine-0.0.0-macos-arm64 \
 
 Audit baseline result: **90 passed, no skips, 15.85 s**, exit 0.
 
-No build, staging, full engine suite or new hardware experiment is required
-by this documentation-only audit. The local payload's recorded 248 external-path
-relocation violations remain a portability limitation; passing these tests is
-not release-bundle verification. Do not overlap a future suite with staging.
+The original documentation-only audit required no build, staging, full engine
+suite or new hardware experiment. Its payload recorded 248 external-path
+relocation violations; this is historical evidence, not release-bundle
+verification. Do not overlap a future suite with staging.
+
+N20 follow-up (2026-09-07): full engine **2023 passed, 52 skipped,
+254.80 s**; after completed `pixi run stage-engine`, the lifecycle/library
+command above reports **91 passed, no skips, 19.44 s**, including all four
+actual-worker interface tests. Catalog, library API and part-worker bytes
+match source in the payload. No runtime edit or build was needed. The new
+2.4 GB local staging reports **144 external-path relocation violations**;
+staging exits 0 in stage-only mode, but this is not a shippable bundle.
 
 ## Bounded follow-ups for the planner
 
-1. **Next dispatch remains the planned Phase 8 dependency/readiness audit.**
-   This L3 audit resolves the current short unit; catalog expansion should not
-   displace mission 3's inherited reduction. No source deletion is authorized
-   by this document.
-2. **Smallest evidence-only L3 improvement:** add actual-worker N20 D-shaft and
-   bore probes from the existing §8b contract, including placement. No new
-   source or API is needed; retain assumed bore depth and transition limits.
-   This improves verification, not the remaining common-BLDC/solenoid coverage.
+1. **Inherited reduction preceded the N20 follow-up.** Phase 8 and the
+   Help/Start removals have since landed; current dispatch order lives in
+   PLAN.md. No source deletion is authorized by this document.
+2. **N20 evidence-only improvement landed (2026-09-07):** actual-worker D-shaft
+   and bore measurements/probes include placement and retain the §8b assumed
+   bore depth and transition limits. No source refresh or API change. This
+   improves verification, not the remaining common-BLDC/solenoid coverage.
 3. **Smallest missing BLDC delivery candidate:** qualify one additional named
    size/winding with manufacturer mounting geometry, kV and a torque operating
    point with voltage/current/duration/cooling qualifications. Select the SKU

@@ -2078,6 +2078,9 @@ field, and every client gets it through the surface it already reads.
 - [x] **L3 first motor — Pololu #2367 N20 MP 6 V.** `lib.gearmotor`,
       manufacturer shaft/mounting dimensions and qualified ratings; explicit
       envelope approximations (ADR-205). Real-kernel and packaged gates.
+- [x] **N20 independent interface verification.** Actual-worker shaft/flat and
+      bore surface measurements plus 160 material/void probes, canonical and
+      placed (ADR-205). Assumed depth/transition remain explicit; full L3 open.
 - [x] **L3 BLDC rear-mount envelope — HOBBYWING 30415200.** `lib.bldc`,
       sourced mounting/size/kV and qualified no-load data (ADR-206).
       Conservative collar reservation; shaft coupling fit and torque remain

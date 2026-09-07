@@ -641,6 +641,91 @@ def test_gearmotor_placement_and_listing():
         _lib().gearmotor("pololu-2367", direction=(0, 0, 0))
 
 
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle").FREECADCMD is None,
+    reason="No FreeCADCmd binary available for N20 interface checks.",
+)
+def test_gearmotor_real_worker_interfaces_and_placement(tmp_path):
+    import subprocess
+    from test_cadexd_lifecycle import CADEX_ROOT, FREECADCMD
+
+    driver = tmp_path / "n20_interfaces.py"
+    driver.write_text(N20_INTERFACE_DRIVER)
+    completed = subprocess.run(
+        [str(FREECADCMD), "-c",
+         f"import sys; sys.path.insert(0, {str(CADEX_ROOT)!r}); exec(open({str(driver)!r}).read())"],
+        capture_output=True, text=True, timeout=120,
+    )
+    assert "N20-INTERFACES-OK" in completed.stdout, completed.stdout + completed.stderr
+    print(completed.stdout)
+
+
+N20_INTERFACE_DRIVER = r'''
+import FreeCAD as App
+import Part
+from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
+from cadex_domain_api import create_domain_api
+from cadex_library_api import create_library_api
+from cadex_part_worker import build_part_shape
+pack = XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
+lib = create_library_api(create_domain_api(pack.domain, pack.api_exports, pack.output_types))
+canonical = build_part_shape(lib.gearmotor("pololu-2367").body.to_payload())
+placed = build_part_shape(lib.gearmotor("pololu-2367", origin=(100,30,20),
+    direction=(1,0,0), roll_degrees=90).body.to_payload())
+# Expected dimensions come from PROVENANCE 8b, never catalog/recipe metadata.
+# Inverse of the independently specified cyclic placement, for surface measures.
+for name, shape in (("canonical", canonical), ("placed", placed)):
+    assert shape.isValid() and len(shape.Solids) == 1
+    measured = shape.copy()
+    if name == "placed":
+        measured.translate(App.Vector(-100,-30,-20))
+        measured.rotate(App.Vector(), App.Vector(1,1,1), -120)
+    bores = sorted((round(f.Surface.Center.x, 6), round(f.Surface.Center.y, 6),
+                    round(f.Surface.Radius, 6), round(f.BoundBox.ZMin, 6),
+                    round(f.BoundBox.ZMax, 6)) for f in measured.Faces
+                   if isinstance(f.Surface, Part.Cylinder)
+                   and abs(f.Surface.Radius - .8) < 1e-7)
+    assert bores == [(-4.5,0,.8,-1,0), (4.5,0,.8,-1,0)], bores
+    shafts = [f for f in measured.Faces if isinstance(f.Surface, Part.Cylinder)
+              and abs(f.Surface.Radius - 1.5) < 1e-7]
+    assert shafts
+    assert all(abs(f.Surface.Center.x) < 1e-7 and abs(f.Surface.Center.y) < 1e-7
+               and abs(abs(f.Surface.Axis.z)-1) < 1e-7 for f in shafts)
+    flat = [f for f in measured.Faces if isinstance(f.Surface, Part.Plane)
+            and abs(f.BoundBox.YMin-1) < 1e-7 and abs(f.BoundBox.YMax-1) < 1e-7
+            and f.BoundBox.ZLength > 8]
+    assert len(flat) == 1
+    assert abs(flat[0].BoundBox.ZMin-1) < 1e-7
+    assert abs(flat[0].BoundBox.ZMax-10) < 1e-7
+    assert abs(min(f.BoundBox.YMin for f in shafts) + 1.5) < 1e-7
+    # Both sides of each bore wall, both sides of the assumed blind bottom.
+    probes = []
+    for x in (-4.5,4.5):
+        for z in (-.95,-.5,-.05):
+            probes.append(((x,0,z), False))
+            for dx,dy in ((.79,0),(-.79,0),(0,.79),(0,-.79)):
+                probes.append(((x+dx,dy,z), False))
+            for dx,dy in ((.81,0),(-.81,0),(0,.81),(0,-.81)):
+                probes.append(((x+dx,dy,z), True))
+        probes.extend([((x,0,-1.05), True), ((x,0,.05), False)])
+    for z in (1.05,5,9.95):
+        probes.extend([((0,.99,z), True), ((0,1.01,z), False),
+                       ((0,-1.49,z), True), ((0,-1.51,z), False),
+                       ((1.49,0,z), True), ((1.51,0,z), False)])
+    # Sharp flat transition at 1 mm is assumed, not measured hardware fidelity.
+    probes.extend([((0,1.25,.95), True), ((0,1.25,1.05), False),
+                   ((0,0,9.95), True), ((0,0,10.05), False)])
+    for point, occupied in probes:
+        x,y,z = point
+        world = point if name == "canonical" else (100+z,30+x,20+y)
+        assert shape.isInside(App.Vector(*world), 1e-7, True) == occupied, (name, point)
+    print(name, "bores(x,y,r,zmin,zmax)=", bores,
+          "shaft_dia=3 flat_to_opposite=2.5 flat_z=1..10 probes=", len(probes))
+assert abs(placed.Volume-canonical.Volume) < 1e-6
+print("N20-INTERFACES-OK")
+'''
+
+
 def test_catalog_browse_shape() -> None:
     families = _lib().catalog()
     assert set(families) >= {"fasteners", "heat_set_inserts", "bearings"}
