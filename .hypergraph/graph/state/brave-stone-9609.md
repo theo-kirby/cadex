@@ -37,6 +37,8 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 
 **Fifth-servo source audit stopped (ADR-229):** `docs/FIFTH-SERVO-AUDIT.md` pins manufacturer documents, hashes and interface blockers for HS-311 and HS-422. Neither qualifies for unchanged ServoPart: open mounting mouths cannot be reproduced by the stated circular drills; output-stack qualification is incomplete and HS-422 dimension labels conflict. Four servo rows remain; no candidate kernel proof or runtime delivery followed. Existing local-stage lifecycle/library tests pass **91, no skips**; matching catalog/API hashes do not establish whole-payload equivalence or a portable release. Replanning is required before proof or delivery [rec: hidden-ridge-7342].
 
+**Manufacturer STEP accessory audit stopped (ADR-231):** no catalog identities or vendor assets were added. Neither horn nor pigtail qualified; source, fit and rights blockers are tracked in the manufacturer-source gap. The inspected mesh and linked-part imports do not establish the assumed script-owned raw STEP delivery path, and a raw kernel read supplies no project reopen/rebuild proof [rec: steady-reef-0162].
+
 ## Negative knowledge
 
 - [scope: Pololu #2367 dimensions and packaged verification | confidence: high | evidence: idle-dawn-5426] The envelope uses the drawing’s 25.6 mm rear maximum amid conflicting product-page lengths. Filled rear geometry, 1 mm bore depth and shaft-flat transition are approximate; bore depth is not screw engagement permission. The tested stage-only payload retains local dependencies and is not a portable release.
@@ -70,3 +72,4 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 - shy-hill-8139 — bounded fixture/support follow-up leaves qualification gaps; RI50 parked with unread-source limits
 - mild-harvest-8460 — AT2814 source audit leaves current/thermal/revision gaps; no qualified winding or catalog delivery, bounded motor searches stopped
 - hidden-ridge-7342 — ADR-229 source/interface blockers stop fifth-servo delivery; existing packaged baseline passes 91 tests
+- steady-reef-0162 — no accessory identities added; existing imports do not establish script-owned raw STEP delivery
