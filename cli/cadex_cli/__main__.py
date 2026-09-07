@@ -487,7 +487,7 @@ def _common(parser: argparse.ArgumentParser, *, inherit: bool = False) -> None:
 
 @contextmanager
 def _engine_session(
-    args: argparse.Namespace, report: RunReport
+    args: argparse.Namespace, report: RunReport, *, restore: bool = True
 ) -> Iterator[tuple[Engine, CadexdClient]]:
     """Resolve, lock, spawn, open — and unwind all four in order."""
 
@@ -500,7 +500,7 @@ def _engine_session(
         client = CadexdClient(engine)
         try:
             client.start()
-            opened = open_project(client, project_root)
+            opened = open_project(client, project_root, restore=restore)
             report.params = params_from_script(opened.get("script"))
             # The project as a codebase (ADR-193): its three documents
             # exist from the first visit on. Plain files beside
@@ -1174,9 +1174,9 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     a person's — as a rewrite of the script's one ``assembly.policy``
     call followed by ``cadex script --set``, ``cadex params --set
     policy_on=1`` for the verified rollout, and the review read off the
-    exported trace. Every leg is a child ``cadex`` command, so each lands
-    its own ``PROGRESS.md`` row and commit; this command lands none of its
-    own, because the legs are the record. ``--remote`` (ADR-200) goes to
+    exported trace and accepted inventory. Each child ``cadex`` leg lands
+    its own ``PROGRESS.md`` row and commit; the walk commits the review
+    and inventory report together. ``--remote`` (ADR-200) goes to
     the train leg and nowhere else: the trainer runs on the box, the
     artifacts and every later leg are unchanged.
     """
@@ -1315,10 +1315,18 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     report.revision = str(leg.envelope.get("revision") or "")
 
     # Review: the trace's numbers, in the envelope and as a file beside the
-    # rollout — the one artifact of the walk's own, and what its commit is.
+    # rollout, plus the accepted assembly inventory in the project docs.
     review = review_from_outputs(leg.envelope.get("outputs") or [])
     review["weights"] = weights
     review["sha256"] = sha256
+    with _engine_session(args, RunReport(), restore=False) as (_engine, client):
+        path, inventory = write_inventory(client, report.project_root)
+    review["inventory"] = {
+        "available": bool(inventory.get("assembly")),
+        "component_count": inventory["component_count"],
+        "catalogued_count": sum(inventory.get("catalog_counts", {}).values()),
+        "path": path.relative_to(Path(report.project_root)).as_posix(),
+    }
     report.walk["review"] = review
     review_path = write_review(
         out_dir, review=review, legs=legs, training=report.training,

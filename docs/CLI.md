@@ -220,7 +220,13 @@ of doing any of them:
    rollout ran at, and the legs with their exit codes and timings, paths
    relative to `DIR`). Run the walk **under the project** — `--out
    <project>/runs/<name>` — and the review is in the project: the walk's
-   own commit is that file, after the legs' commits.
+   own commit includes that file and `docs/inventory.md`, after the legs' commits.
+   Inventory reads the accepted assembly without a rebuild or tokens. The
+   `inventory` block carries `available`, `component_count`, `catalogued_count`
+   and `path` (relative to the **project**, always `docs/inventory.md`).
+   No published assembly yields an explicit unavailable report with zero
+   components; inspection failures still fail the command. This does not
+   relax the walk's existing task, policy and training prerequisites.
 
 **Shared mode artifacts** (paths relative to the project, with
 `DIR = runs/<name>`). This table applies to headless local training,
@@ -233,7 +239,7 @@ The scaffold's `## Training` section carries this same path convention.
 | MJCF / task / training | `runs/<name>/train/` (model, task bundle, returned policy) |
 | Store / declare | `assets/<name>.cxpolicy`, `runs/<name>/script.py` |
 | Verify / rollout | `runs/<name>/rollout/` (including the simulation trace) |
-| Review | `runs/<name>/review.json`, `PROGRESS.md` (numbers; remote training rows marked `(remote)`) |
+| Review | `docs/inventory.md`, `runs/<name>/review.json` (including inventory counts and document path), `PROGRESS.md` (numbers; remote training rows marked `(remote)`) |
 
 `cli/tests/test_walk.py` checks local/remote artifact parity through policy
 verification and rollout using a local CPU stand-in for the dispatcher.

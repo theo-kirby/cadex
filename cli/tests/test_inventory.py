@@ -201,3 +201,16 @@ def test_inventory_expands_real_inspection_previews(monkeypatch, tmp_path, large
         assert value[key] == raw[key]
         assert any(call.get("path") == f"/{key}" and call.get("offset", 0) > 0
                    for call in calls)
+
+
+def test_part_only_inventory_is_explicitly_unavailable(engine, tmp_path, capsys):
+    root = tmp_path / "part-only"
+    source = tmp_path / "part.py"
+    source.write_text("plate = part.box(10, 20, 3)\nresult = {'plate': plate}\n")
+    code, envelope = _run(capsys, "script", "--set", str(source), "--project", str(root))
+    assert code == EXIT_OK, envelope
+    code, envelope = _run(capsys, "inventory", "--project", str(root))
+    assert code == EXIT_OK, envelope
+    text = (root / "docs/inventory.md").read_text()
+    assert "0 component(s)" in text
+    assert "Inventory unavailable: no published assembly." in text

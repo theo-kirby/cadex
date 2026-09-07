@@ -115,8 +115,9 @@ The shared mode artifacts table in `docs/CLI.md` is the walk contract.
 The artifacts are the same project-relative paths in both modes: the
 bundle and the policy under `runs/<name>/train/`, the verified rollout
 under `runs/<name>/rollout/`, the numbers in `runs/<name>/review.json`
-and as a `{progress}` row, so rows from either mode compare line for
-line. **Remote runs are cold runs only:** the dispatcher carries the
+and the generated `{docs}/inventory.md` component report (also summarized
+in the review's `inventory` block), and as a `{progress}` row, so rows
+from either mode compare line for line. **Remote runs are cold runs only:** the dispatcher carries the
 bundle and the model out and nothing else, so a warm start
 (`--init-from`) trains locally. With the GUI attached the same commands
 run from a terminal beside the open file, one at a time while no rebuild

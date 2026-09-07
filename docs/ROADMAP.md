@@ -1927,6 +1927,11 @@ What makes them experimental, and what would settle it:
   numbers. The carriage reaches a verified 50-step rollout but does not learn
   to hold height in one iteration. `cli/tests/test_walk.py` pins the slide
   joint, policy digest and review with the real engine and trainer.
+- [x] **Inventory is part of the walk review** (ADR-236 follow-up).
+  After rollout, write `docs/inventory.md` and the `review.json` inventory
+  counts and project-relative path, committed together in every mode.
+  No published assembly yields an explicit unavailable report; the walk
+  retains its dynamics prerequisites. Real toy and carriage walks test it.
 - [x] **The walk's remote-training handoff is scripted** (ADR-200,
   `docs/CLI.md` §2). `cadex train --remote` and `cadex walk --remote` run
   the train leg through `training/remote_train.sh train <bundle> <out> --

@@ -189,7 +189,7 @@ FAKE_CADEX = textwrap.dedent(
 
 
 @pytest.fixture
-def fake_cadex(tmp_path, monkeypatch) -> Path:
+def fake_cadex(tmp_path, monkeypatch, request) -> Path:
     """The walk's legs answered by :data:`FAKE_CADEX`; returns the argv log."""
 
     script = tmp_path / "fake_cadex.py"
@@ -198,6 +198,21 @@ def fake_cadex(tmp_path, monkeypatch) -> Path:
     monkeypatch.setenv("FAKE_CADEX_LOG", str(log))
     monkeypatch.delenv("FAKE_CADEX_FAIL", raising=False)
     monkeypatch.setattr(walk_module, "cadex_command", lambda: [sys.executable, str(script)])
+    from contextlib import contextmanager
+    from cadex_cli import __main__ as main_module
+
+    class InventoryClient:
+        def request(self, op, args):
+            assert op == "inspect" and args["scope"] == "inventory"
+            return {"ok": True, "value": {"assembly": getattr(request, "param", "asm"), "components": [],
+                                          "catalog_counts": {}}}
+
+    @contextmanager
+    def inventory_session(args, report, *, restore=True):
+        assert restore is False
+        yield None, InventoryClient()
+
+    monkeypatch.setattr(main_module, "_engine_session", inventory_session)
     return log
 
 
@@ -399,6 +414,7 @@ def test_the_same_walk_handles_a_linear_carriage(engine, tmp_path, capsys) -> No
     assert [j.get("type") for j in model.findall(".//worldbody//joint")] == ["slide"]
     review = json.loads((out / REVIEW_FILENAME).read_text())
     assert review["sha256"] == envelope["walk"]["review"]["policy_sha256"]
+    _assert_inventory(root, review)
     assert math.isfinite(review["total_reward"])
     assert {row["label"] for row in review["reward_totals"]} == {"lift", "control_cost"}
     progress = (root / "PROGRESS.md").read_text()
@@ -454,6 +470,7 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     sha1 = envelope["training"]["sha256"]
     review1 = json.loads((out1 / REVIEW_FILENAME).read_text())
     assert review1["sha256"] == sha1 == envelope["walk"]["review"]["policy_sha256"]
+    _assert_inventory(root, review1)
     reward1 = float(review1["total_reward"])
     assert reward1 == reward1  # not NaN
     assert {row["label"] for row in review1["reward_totals"]} == {"lift", "control_cost"}
@@ -576,7 +593,8 @@ def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
         assert (out / "train/job.cxpolicy").read_bytes() == (root / "assets/job.cxpolicy").read_bytes()
         assert (out / review["trace"]).is_file()
         tracked = set(_git(root, "ls-files").splitlines())
-        expected = {"assets/job.cxpolicy", "runs/baseline/review.json",
+        _assert_inventory(root, review)
+        expected = {"docs/inventory.md", "assets/job.cxpolicy", "runs/baseline/review.json",
                     "runs/baseline/train/job-task.json", "runs/baseline/script.py",
                     "ARCHITECTURE.md", "DECISIONS.md", "PROGRESS.md"}
         assert expected <= tracked
@@ -589,6 +607,7 @@ def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
         paths.append({str(p.relative_to(out)) for p in out.rglob("*") if p.is_file()})
         reviews.append(review)
     assert paths[0] == paths[1]
+    assert reviews[0]["inventory"] == reviews[1]["inventory"]
     assert reviews[0]["trace"] == reviews[1]["trace"]
     assert reviews[0]["training"].keys() == reviews[1]["training"].keys()
     argv = json.loads(dispatch_log.read_text())
@@ -596,3 +615,26 @@ def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
                        str(tmp_path / "remote/runs/baseline/train/job.cxpolicy"),
                        "--allow-cpu", "--"]
     assert argv[5:] == ["--iterations", "1", "--envs", "4", "--seed", "0"]
+
+
+def _assert_inventory(root, review):
+    assert review["inventory"] == {
+        "available": True, "component_count": 2, "catalogued_count": 0,
+        "path": "docs/inventory.md",
+    }
+    text = (root / review["inventory"]["path"]).read_text()
+    assert "2 component(s)" in text
+    assert "docs/inventory.md" in _git(root, "ls-files").splitlines()
+
+
+@pytest.mark.parametrize("fake_cadex", [""], indirect=True)
+def test_walk_review_without_published_assembly(fake_cadex, toy_root, capsys):
+    out = toy_root / "runs/empty-inventory"
+    code, report = _run(capsys, "walk", "--project", str(toy_root), "--out", str(out))
+    assert code == EXIT_OK, report
+    review = json.loads((out / REVIEW_FILENAME).read_text())
+    assert review["inventory"] == {
+        "available": False, "component_count": 0, "catalogued_count": 0,
+        "path": "docs/inventory.md",
+    }
+    assert "Inventory unavailable" in (toy_root / "docs/inventory.md").read_text()

@@ -20693,3 +20693,21 @@ payload change; the lifecycle walk and its scaffold are unchanged.
 
 Verification: inventory tests 5 passed (including real-engine checks); full
 CLI gate 147 passed, no skips or failures.
+
+
+**2026-09-08 follow-up — inventory in lifecycle review.** After rollout the
+walk reads the existing complete inventory with restore disabled, writes
+`docs/inventory.md`, and includes availability, component/catalogued counts
+and the project-relative document path in `review.json`. Both reports join
+the walk's project commit. No rebuild, protocol or shell change. A project
+without a published assembly gets an explicit unavailable report; actual
+inspection failures remain errors and training prerequisites are unchanged.
+The scaffold and shared mode-artifact table carry the same paths. Real toy,
+carriage and local/remote-flag CPU stand-in tests assert the report and its
+commit; a real part-only inventory test covers the empty report.
+
+Verification: full built-engine CLI suite **150 passed**, no skips or failures
+(162.93 s; monitored process-tree peak RSS 1.14 GB). The documented hinged-arm
+recipe walk at one iteration × four local CPU environments passed in 14.39 s,
+peak RSS 1.06 GB: two components, zero catalogued; total reward -27.109384,
+witness error 1.384e-09. Neither run reached the 2.9 GB external cutoff.

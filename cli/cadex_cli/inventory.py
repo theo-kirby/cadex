@@ -43,7 +43,7 @@ Accepted revision `{revision}`{assembly}. {count} component(s).
 
 
 class InventoryError(RuntimeError):
-    """The engine could not answer, or answered with no assembly."""
+    """The engine could not answer with an accepted inventory."""
 
 
 def _cell(text: Any) -> str:
@@ -89,6 +89,8 @@ def render_inventory(value: Mapping[str, Any], *, name: str) -> str:
         assembly=f", assembly `{assembly}`" if assembly else "",
         count=len(components),
     )
+    if not assembly:
+        text += "\nInventory unavailable: no published assembly.\n"
     for row in components:
         text += "| `{:s}` | `{:s}` | {:s} | {:s} | {:s} |\n".format(
             _cell(row.get("component")),

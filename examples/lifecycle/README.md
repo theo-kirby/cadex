@@ -1,11 +1,13 @@
 # Two mechanisms through the same lifecycle walk
 
-Verified against source: 2026-09-06. [Cadex-new]. ADR-203.
+Verified against source: 2026-09-08. [Cadex-new]. ADR-203.
 
 The hinged arm and vertical linear carriage are synthetic mechanisms with
 different joint and actuator types. Both passed the unchanged headless
 entry point from xscript geometry through assembly, MJCF/task export,
 local CPU training, policy verification, rollout and numerical review.
+The walk also writes `docs/inventory.md`; `runs/baseline/review.json`
+includes its project-relative path and component/catalogued counts.
 The projects' `PROGRESS.md` files preserve the same metric definitions and
 both sets of measured numbers. The carriage's poor height score is recorded,
 not a claim of learned control or printable hardware.
