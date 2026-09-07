@@ -510,3 +510,89 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     assert {"assets/job2.cxpolicy", "runs/walk-2/review.json"} <= set(
         _git(root, "ls-files").splitlines()
     )
+
+
+@pytest.mark.skipif(
+    REAL_TRAINER_PYTHON is None,
+    reason="No training venv with jax and mujoco (training/SETUP.md).",
+)
+def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
+    engine, tmp_path, capsys, monkeypatch
+) -> None:
+    """Real legs and witness verification; only the dispatcher is replaced.
+
+    Its argv is the remote_train.sh contract pinned in test_train.py. It
+    trains locally at toy scale and never invokes the remote script or ssh.
+    """
+    from test_train import TRAINER_SOURCE
+
+    monkeypatch.setenv("JAX_PLATFORMS", "cpu")
+    dispatcher = tmp_path / "dispatch.py"
+    dispatch_log = tmp_path / "dispatch.json"
+    dispatcher.write_text(
+        f"#!{sys.executable}\n"
+        "import json, subprocess, sys\n"
+        "from pathlib import Path\n"
+        "args = sys.argv[1:]\n"
+        "assert args[0] == 'train' and args[3:5] == ['--allow-cpu', '--'], args\n"
+        f"Path({str(dispatch_log)!r}).write_text(json.dumps(args))\n"
+        f"result = subprocess.run([{str(REAL_TRAINER_PYTHON)!r}, "
+        f"{str(TRAINER_SOURCE)!r}, args[1], '--out', args[2], *args[5:]])\n"
+        "if result.returncode: sys.exit(result.returncode)\n"
+        "print('==> ' + args[2])\n",
+        encoding="utf-8",
+    )
+    dispatcher.chmod(0o755)
+    # Each leg is a fresh CLI process, so inject the stand-in there too.
+    bootstrap = (
+        "from pathlib import Path; from cadex_cli import train; "
+        f"train.REMOTE_SCRIPT = Path({str(dispatcher)!r}); "
+        "from cadex_cli.__main__ import main; raise SystemExit(main())"
+    )
+    monkeypatch.setattr(walk_module, "cadex_command",
+                        lambda: [sys.executable, "-c", bootstrap])
+    source = tmp_path / "toy.py"
+    source.write_text(TOY, encoding="utf-8")
+    paths = []
+    reviews = []
+    for mode in ("local", "remote"):
+        root = tmp_path / mode
+        code, report = _run(capsys, "script", "--set", str(source), "--project", str(root))
+        assert code == EXIT_OK, report
+        out = root / "runs/baseline"
+        flags = ["--remote", "--allow-cpu"] if mode == "remote" else []
+        code, report = _run(
+            capsys, "walk", "--project", str(root), "--out", str(out),
+            "--iterations", "1", "--envs", "4", "--seed", "0", "--timeout", "600",
+            *flags,
+        )
+        assert code == EXIT_OK, report
+        review = json.loads((out / REVIEW_FILENAME).read_text())
+        assert [leg["leg"] for leg in review["legs"]] == ["train", "declare", "rollout"]
+        assert all(leg["exit"] == 0 for leg in review["legs"])
+        assert review["sha256"] == report["walk"]["review"]["policy_sha256"]
+        assert review["sha256"] == hashlib.sha256(
+            (root / "assets/job.cxpolicy").read_bytes()).hexdigest()
+        assert (out / "train/job.cxpolicy").read_bytes() == (root / "assets/job.cxpolicy").read_bytes()
+        assert (out / review["trace"]).is_file()
+        tracked = set(_git(root, "ls-files").splitlines())
+        expected = {"assets/job.cxpolicy", "runs/baseline/review.json",
+                    "runs/baseline/train/job-task.json", "runs/baseline/script.py",
+                    "ARCHITECTURE.md", "DECISIONS.md", "PROGRESS.md"}
+        assert expected <= tracked
+        assert _git(root, "status", "--porcelain") == ""
+        progress = (root / "PROGRESS.md").read_text()
+        row = next(line for line in progress.splitlines()
+                   if "train 1 it × 4 envs" in line)
+        assert ("(remote)" in row) == (mode == "remote")
+        assert f'total_reward {review["total_reward"]:.1f}' in progress
+        paths.append({str(p.relative_to(out)) for p in out.rglob("*") if p.is_file()})
+        reviews.append(review)
+    assert paths[0] == paths[1]
+    assert reviews[0]["trace"] == reviews[1]["trace"]
+    assert reviews[0]["training"].keys() == reviews[1]["training"].keys()
+    argv = json.loads(dispatch_log.read_text())
+    assert argv[:5] == ["train", str(tmp_path / "remote/runs/baseline/train/job-task.json"),
+                       str(tmp_path / "remote/runs/baseline/train/job.cxpolicy"),
+                       "--allow-cpu", "--"]
+    assert argv[5:] == ["--iterations", "1", "--envs", "4", "--seed", "0"]

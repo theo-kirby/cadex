@@ -19264,6 +19264,18 @@ project-relative artifacts in both, cold runs only when remote — and a
 `cli/tests/test_project_docs.py` pins the section against `docs/CLI.md`'s
 remote paragraph so the pair stays together.
 
+**Artifact-parity audit (2026-09-08).** Added the missing whole-walk
+comparison: local and `--remote --allow-cpu` walks on the same toy,
+with real CPU training, engine witness verification and rollout. Only the
+remote dispatcher is a local stand-in using the real script's argv contract;
+no remote dispatch occurs. The test compares output paths, policy storage,
+committed review and progress rows, including the `(remote)` marker.
+`docs/CLI.md` now gives one shared mode-artifact table, referenced by the
+project scaffold and pinned by its test. Together with the two clean prompt
+walks and ADR-201's GUI documentation (corrected by ADR-204), this meets
+*Three modes, one shape* under the charter's documented-only GUI and remote
+limits. It does not claim remote transport or concurrent GUI use was tested.
+
 ## ADR-201 — The GUI-attached walk is the same commands beside the open file, documented from the client code (2026-09-06)
 
 **Context.** *Three modes, one shape* had two modes closed — headless

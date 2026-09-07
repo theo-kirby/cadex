@@ -111,6 +111,7 @@ parameters it declares and why each exists:
 leg on the box `training/remote_train.sh` names.) Fill in which, and
 why; `{progress}` marks each remote row `(remote)`.
 
+The shared mode artifacts table in `docs/CLI.md` is the walk contract.
 The artifacts are the same project-relative paths in both modes: the
 bundle and the policy under `runs/<name>/train/`, the verified rollout
 under `runs/<name>/rollout/`, the numbers in `runs/<name>/review.json`

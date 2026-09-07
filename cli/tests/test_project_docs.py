@@ -92,6 +92,12 @@ def test_the_scaffold_states_the_training_mode_and_the_walk_doc_agrees(tmp_path)
     walk_doc = (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text()
     assert "`ARCHITECTURE.md` scaffold carries a `## Training` section" in walk_doc
     assert "Cold runs only" in walk_doc
+    assert "shared mode artifacts table in `docs/CLI.md`" in architecture
+    assert "**Shared mode artifacts**" in walk_doc
+    for path in ("runs/<name>/train/", "runs/<name>/rollout/",
+                 "runs/<name>/review.json", "assets/<name>.cxpolicy", "PROGRESS.md"):
+        assert path in walk_doc.split("**Shared mode artifacts**", 1)[1].split(
+            "A leg that fails", 1)[0]
 
 
 def test_the_scaffold_states_the_gui_mode_and_the_walk_doc_agrees(tmp_path) -> None:

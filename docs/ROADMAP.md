@@ -1937,6 +1937,12 @@ What makes them experimental, and what would settle it:
   usage line, the leg end to end against a stand-in dispatcher with the
   real engine. **Not executed**: no dispatch, and a warm start does not
   travel (`--remote` with `--init-from` is a usage error).
+- [x] **Three-mode artifact parity is tested through the whole walk**
+  (ADR-200 audit). Local and remote-flag walks use real CPU training and
+  engine verification with a local stand-in dispatcher; both land the same
+  project-relative paths, committed review and comparable progress rows.
+  The shared table in `docs/CLI.md` is pinned to the project scaffold.
+  Remote transport and GUI attachment remain unexercised by constraint.
 - [x] **The walk with the GUI attached is documented against the client
   code** (ADR-201, `docs/CLI.md` §2, `docs/MUJOCO.md` §7c row 11). It is
   the same `cadex` commands from a terminal beside the open `.blend`:

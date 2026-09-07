@@ -222,6 +222,24 @@ of doing any of them:
    <project>/runs/<name>` — and the review is in the project: the walk's
    own commit is that file, after the legs' commits.
 
+**Shared mode artifacts** (paths relative to the project, with
+`DIR = runs/<name>`). This table applies to headless local training,
+GUI-attached terminal use, and `--remote`; only the training location changes.
+The scaffold's `## Training` section carries this same path convention.
+
+| Leg | Artifact in every mode |
+|---|---|
+| Design / assembly | `script.py`, `ARCHITECTURE.md`, `DECISIONS.md`, `docs/<subject>.md` |
+| MJCF / task / training | `runs/<name>/train/` (model, task bundle, returned policy) |
+| Store / declare | `assets/<name>.cxpolicy`, `runs/<name>/script.py` |
+| Verify / rollout | `runs/<name>/rollout/` (including the simulation trace) |
+| Review | `runs/<name>/review.json`, `PROGRESS.md` (numbers; remote training rows marked `(remote)`) |
+
+`cli/tests/test_walk.py` checks local/remote artifact parity through policy
+verification and rollout using a local CPU stand-in for the dispatcher.
+It runs no remote command. GUI attachment remains documented, not exercised;
+its sequential-use and refresh requirements are below.
+
 A leg that fails stops the walk there, with the leg's name and its error
 in `error` and the legs that ran under `walk.legs`; the exit code is the
 leg's for a usage error or a refusal, `1` otherwise. A **design** leg that
