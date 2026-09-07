@@ -20267,3 +20267,17 @@ including the real jointed assembly. CTest reports 162 failures, all in the
 cases are absent). Full source-suite evidence is in SURVIVING-DIFF-AUDIT.md.
 Broader reduction claims stay open; no GUI, Windows or relocatable-release
 verification is claimed.
+
+## ADR-228 — Qualify assembly source hiding for camera renders (2026-09-07)
+
+[Cadex-new] Actual source hydration and headless EEVEE camera rendering
+reproduce raw assembly sources at their authoring positions: source,
+ordinary output and posed instance occupy 1024/1024/1024 pixels; temporarily
+hiding marked sources from renders yields 0/1024/1024. Qualify only an
+owned `cadex_hydrate` fix with independent render-hide ownership, preserving
+pre-hidden render sources and unrelated visibility. The existing viewport
+marker does not save a source's prior viewport flag; do not infer render
+ownership from it. `docs/ASSEMBLY-VISIBILITY-AUDIT.md` records transitions,
+reproduction recipe and regression obligations. Audit only; the defect and
+broader headless review criteria remain open. Cycles is absent; EEVEE works
+headlessly. No inherited tree change or general renderer is authorized.

@@ -1,6 +1,6 @@
 # IDEAS.md — Parking Lot
 
-Verified against source: 2026-07-31 (paths only; the ideas are uncommitted)
+Verified against source: 2026-09-07 (assembly visibility audit; other ideas retain their original scope)
 
 Uncommitted ideas surfaced during exploration. Nothing here is planned or
 approved — promoting an idea means writing a `docs/DECISIONS.md` entry and a
@@ -52,9 +52,11 @@ roadmap item. Add freely, prune ruthlessly.
   while rendering the ADR-170 rehearsal video: the raw part outputs are
   hidden in the viewport but not for renders, so a camera render of an
   assembly project shows every un-posed part at its authoring position
-  (a stray arm on the floor, in that case). One loop in `cadex_hydrate`
-  mirroring viewport visibility onto `hide_render` would fix it; until
-  then a probe has to do it by hand.
+  (a stray arm on the floor, in that case). The headless EEVEE probe in
+  `ASSEMBLY-VISIBILITY-AUDIT.md` reproduces it (ADR-228). The qualified fix
+  needs independent render-hide ownership in `cadex_hydrate`, preserving
+  pre-hidden sources; globally mirroring viewport flags is too broad.
+  Implementation and its permanent regression remain open.
 
 - **The CLI agent's two missing legs for the North Star** (ADR-170
   rehearsal): no `put_asset` in its tool surface (cannot bring a policy

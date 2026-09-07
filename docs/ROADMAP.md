@@ -1869,6 +1869,11 @@ What makes them experimental, and what would settle it:
   alert row. The gate's `test_a_locked_out_project_is_reaccepted_from_the_chat`
   moves the accepted digest with the script untouched and drives the
   operator from the locked-out state.
+- [x] **Qualify assembly camera visibility** (2026-09-07, ADR-228):
+      actual hydration and EEVEE render reproduce unposed source leakage;
+      `ASSEMBLY-VISIBILITY-AUDIT.md` defines ownership and regression gates.
+- [ ] **Hide instanced sources from camera renders** with independent render
+      ownership and a regression failing on old source (ADR-228).
 - [x] **Save-As dropped a trained policy** (named in ADR-138, ADR-188 landed
   the carry). The shell's `CARRIED_ASSET_SUFFIXES` filtered the carry-forward
   to meshes and `.cxpart`, so a project that replayed a `.cxpolicy` Saved-As
