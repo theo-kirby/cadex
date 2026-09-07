@@ -861,3 +861,59 @@ with spaces receives quoted arguments, runs in bin, reports missing targets
 on stderr, waits for completion and forwards a nonzero exit status; inspect
 its retained command-line version/icon resource. A macOS pass cannot satisfy
 that Windows behavior gate. Preserve that limitation if Windows is unavailable.
+
+## Material GUI sources deleted (2026-09-07, ADR-225)
+
+Following the separate disable commit `d7e2b59c` and the resumed deletion bet
+`amber-tower-7307`, deleted only Material/InitGui.py, MaterialEditor.py and
+TestMaterialsGui.py: **3 files, 1,093 lines, 43,917 bytes**. The separate
+maintainer/planner passes already landed at 3a474e7d/bcac7e7a and 8d524a90;
+no repeat dispatch handoff or contributor reconciliation was needed.
+Repository-wide non-documentation consumer search found only the deleted
+scripts' own references before removal and none afterward. Material App,
+Init.py, importFCMat.py, TestMaterialsApp.py, MaterialTest_Files (including
+TestMaterialDocument.py), materialtools, cards/model resources, retained Qt
+and Assembly proxies are unchanged.
+
+Committed-HEAD licensing before deletion: **10 passed, 1 skipped in 0.25 s**
+(the payload-dependent test skips without CADEX_ENGINE_ROOT). Active debug,
+release, install and stage paths already lacked these scripts and matching
+bytecode; no further quarantine was needed. `pixi run configure`, one
+`pixi run build-release`, `pixi run install-release`, then `pixi run stage-engine`
+all exited 0. Staging completed before payload readers or the engine suite.
+Generated debug/release build.ninja and Material cmake_install.cmake have no
+references to these scripts. Release/install/stage retain source-identical
+Init.py, importFCMat.py, TestMaterialsApp.py, Templatematerial.yml,
+materialtests/TestMaterialDocument.py and materialtools/cardutils.py, with
+Materials.so, Default.FCMat and Density.yml present. Debug is configured only.
+The 2.4 GB stage-only payload retains external rpath diagnostics; this is local
+validation, not proof of a relocatable distribution or Windows execution.
+
+Working-tree manifest equality remains **56 FreeCAD / 44 Blender** with the
+existing notices. Surviving M-file added/deleted totals remain **1,637 / 1,819**
+and **1,046 / 129**, respectively. Inherited files remaining (import paths
+intersected with tracked paths, same manifest scopes/ours exclusions) fall
+**3,438 → 3,435** for FreeCAD; Blender remains **19,052**. Whole-file deletions
+are separate from surviving modified-file line savings. This does not close
+the broad no-GUI-source or fork-delta criterion. Unsupported external GUI
+imports remain the compatibility risk; no shell source or protocol changed.
+
+Local evidence: `/tmp/cadex-material-delete-{head-before,configure,build,install,stage,engine,ctest,packaged,probe}.log`;
+`/tmp/cadex-material-delete-check.py` checks active paths, retained bytes and
+manifest metrics. Gate results follow below.
+
+Final gates: full engine pytest **2,023 passed, 52 skipped in 258.78 s**;
+fresh packaged lifecycle/licensing **26 passed in 18.07 s**; installed
+Material App **15 passed, zero failures/errors/skips in 0.176 s**, with explicit
+MATERIAL-STARTUP-OK, GuiUp false, App suite registered, GUI suite absent and
+no FreeCADGui import. TestMaterialDocument's retained bytes do not demonstrate
+its GUI-guarded appearance assertions. Serial `pixi run test-release` exited 8:
+**162 failures / 1,526 enabled tests in 128.19 s**, 3 skipped, 7 disabled.
+Failure-name comparison against the unchanged 164-name baseline found no
+additions; baseline-only names are DlgVersionMigrator_Tests_run and
+SpreadsheetRenameProperty.renameProperty. All **35 Material C++ tests** and
+**four Cadex ctests** passed. The ad-hoc result checker initially expected
+CTest dashboard XML, which ordinary test-release does not generate; parsing
+its actual per-test log verifies these counts without a rerun. No test or
+baseline was changed. Repeat committed-HEAD licensing after the commit as the
+final check; no second build, shell gate, GUI launch or training was performed.

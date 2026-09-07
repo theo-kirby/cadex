@@ -343,8 +343,8 @@ this phase.
       (ADR-225, PHASE8-AUDIT.md, 2026-09-07).
 - [x] Disable those three Material registrations, retaining source and App/
       tests/resources, with stale-copy cleanup and fresh gates (ADR-225).
-- [ ] Separately delete the qualified Material sources after verified disable
-      and replan; retain TestMaterialDocument.py (ADR-225).
+- [x] Separately delete the qualified Material sources after verified disable
+      and replan; retain TestMaterialDocument.py (ADR-225, 2026-09-07).
 
 - [x] Audit the four inactive Main GUI launcher branches and unused resource
       template; retain Windows command-line behavior and state Windows

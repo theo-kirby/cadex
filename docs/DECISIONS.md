@@ -20192,6 +20192,23 @@ ctests passed; three skipped/seven disabled unchanged. Broader validation
 limits and the final committed-HEAD licensing check are recorded in the audit.
 
 
+**Source-delete follow-through (2026-09-07).** After disable `d7e2b59c` and
+replan, deleted exactly InitGui.py, MaterialEditor.py and TestMaterialsGui.py
+(1,093 lines / 43,917 bytes). All protected Material App/tests/resources,
+TestMaterialDocument.py, Qt and Assembly consumers remain unchanged. One
+release build/install/completed stage passes; active paths and generated rules
+lack the scripts and bytecode, while retained files match source. Fresh
+packaged lifecycle/licensing: 26 passed; installed Material App: 15 passed,
+GuiUp false. PHASE8-AUDIT.md carries full gate evidence and limits. Manifest
+membership and surviving M totals are unchanged (FreeCAD 56 / 1,637 / 1,819;
+Blender 44 / 1,046 / 129); inherited FreeCAD files remaining decrease by three
+to 3,435. Risk remains unsupported external GUI imports. This is a whole-file
+subset deletion, not closure of broad GUI-source or fork-delta obligations.
+Full engine: **2,023 passed, 52 skipped**; retained Material C++: **35 passed**.
+CTest: **162 baseline failures**, no new failure names, four Cadex tests passed
+(three skipped/seven disabled unchanged).
+
+
 ## ADR-226 — Bound the residual Main launcher cleanup (2026-09-07)
 
 [Cadex-new] PHASE8-AUDIT.md qualifies only the four inactive
