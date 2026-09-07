@@ -43,9 +43,6 @@ if(BUILD_SKETCHER)
     endif(EIGEN3_FOUND)
 endif(BUILD_SKETCHER)
 
-if(BUILD_START)
-    add_subdirectory(Start)
-endif(BUILD_START)
 
 if(BUILD_MEASURE)
     add_subdirectory(Measure)

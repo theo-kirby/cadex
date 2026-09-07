@@ -30,7 +30,6 @@ files: |
         src/Mod/Show|
         src/Mod/Sketcher|
         src/Mod/Spreadsheet|
-        src/Mod/Start|
         src/Mod/Surface|
         src/Mod/Test|
         src/Mod/Tux|

@@ -198,10 +198,6 @@
           "notice": "comment"
         },
         {
-          "path": "src/Mod/Start/CMakeLists.txt",
-          "notice": "comment"
-        },
-        {
           "path": "src/Mod/Test/CMakeLists.txt",
           "notice": "comment"
         },

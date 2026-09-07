@@ -6,9 +6,8 @@ Verified against source: 2026-09-07
 ADR-218, [HELP-AUDIT.md](HELP-AUDIT.md)) completed the first engine-side
 whole-tree removal. **Start qualifies for a separate disable commit under
 ADR-219.** The original audit was documentation only: no build, configure,
-install, stage or test execution was performed for it. **Start is now disabled
-under ADR-220; see the disable verification below.** Deletion is conditional on the disable
-commit's verification; the later disable evidence is recorded below. Test is not qualified by this audit; Assembly, Measure
+install, stage or test execution was performed for it. **Start was disabled
+under ADR-220, then deleted under ADR-221; both verification sections are below.** Test is not qualified by this audit; Assembly, Measure
 and retained Qt are outside it.
 
 ## What the tree is
@@ -231,3 +230,63 @@ Local detailed logs and before/after CTest JSON use `/tmp/cadex-start-*`;
 the quarantine is `/tmp/cadex-start-disable-quarantine`. These are ephemeral
 reproduction aids, not committed artifacts. Fresh-cache configuration,
 from-scratch builds, other platforms and the GUI were not exercised.
+
+## Delete verification (ADR-221)
+
+2026-09-07, macOS arm64 only, after the separate verified disable commit
+`449b8e09` ([rec: southern-wood-6367]). Repeated the audit's tracked consumer
+and symbol searches, including shell separately: no new consumer. Deleted
+23 module files and 4 test files, the three gates, option and report line,
+the StartPage crowdin row and two developer-config exclusions. All six
+surviving inherited files already carry the current Cadex modification notice;
+the deleted Start CMake file leaves the manifest. Test, GSL, Assembly,
+Measure, Branding's StartWorkbench key filter and retained Qt are unchanged.
+
+- Both existing configurations regenerate successfully with
+  `pixi run cmake --preset conda-macos-{release,debug} -U BUILD_START`.
+  Unlike disable verification, the option is now removed, so clearing its
+  stale cache entry replaces asserting forced OFF. No Start option, Ninja
+  rule or parent install include remains; FreeCADApp, Assembly and
+  TestSources targets remain. The exact audited stale-output inventory is
+  empty; nothing needed quarantine.
+- One `pixi run build-release` (35 scheduled steps), `install-release` and
+  `stage-engine`: all exit 0. Installed/staged Mod/Start and lib/Start.so are
+  absent; installed Mod/Test/Init.py remains. Stage is 2.4 GB with the known
+  local external library references; this is not a relocated distribution.
+- Installed script-file FreeCADCmd probe with fresh user/system configs:
+  Start import and parameter group absent, all eleven retained modules
+  import, box volume 999.9999999999998 (within 1e-9 of 1000), explicit pass
+  marker observed.
+- Cadex CTests: **4/4 passed**, 24.61 s. Discovery has **1,533** registrations,
+  identical to disable: no addition or removal. The eleven FileUtilitiesTest
+  registrations removed by disable remain absent.
+
+Fork delta, using the same imports/scopes/ours exclusions: FreeCAD surviving
+M files / inserted / deleted **56 / 1,637 / 1,815**, inherited files remaining
+**3,440** (9,309 whole files deleted from import). Before this delete:
+**57 / 1,639 / 1,804**, remaining **3,467**. Run start: **47 / 1,804 / 1,907**,
+remaining **7,277**. Thus the delete removes 27 inherited files and one M
+entry, while increasing the M deleted-line count by 11. Against run start,
+both M line totals and inherited remaining are lower, but M file count is
+higher. Blender remains **44 / 1,046 / 129**, inherited remaining **19,052**.
+Whole-file deletions are not credited as M-line reductions.
+
+Logs and discovery JSON use `/tmp/cadex-start-delete-*` (ephemeral, not
+committed artifacts). Fresh-cache/from-scratch builds, other platforms and
+GUI were not exercised. The GSL follow-on remains a separate unit.
+
+Serial inherited CTest: **162 failed of 1,526 run**, 133.12 s, **zero names
+outside the 164-name baseline**; the same two absent baseline names
+(DlgVersionMigrator_Tests_run and SpreadsheetRenameProperty.renameProperty),
+**3 skipped, 7 disabled**. The comparison includes SEGFAULT labels; an
+initial parser counting only Failed labels was corrected. Packaged
+lifecycle/licensing tests: **25 passed, 1 deselected**, 17.80 s. The single
+committed-HEAD manifest check is reserved for after commit; the working-tree
+manifest already equals both import diffs. Staging completed before either
+pytest run, avoiding the disable iteration's transient payload failure.
+
+Engine suite: **2,021 passed, 52 skipped, 1 deselected**, 256.74 s. The
+one deselection is the same committed-HEAD manifest test reserved above;
+no runtime test is excluded. The separate post-commit check completes that
+coverage. Help and Start are now the two audited whole-tree removals, each
+with a separate disable and delete; no broader engine-reduction closure.

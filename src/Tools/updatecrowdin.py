@@ -209,11 +209,6 @@ locations = [
         "../Mod/Spreadsheet/Gui/Resources/Spreadsheet.qrc",
     ],
     [
-        "StartPage",
-        "../Mod/Start/Gui/Resources/translations",
-        "../Mod/Start/Gui/Resources/Start.qrc",
-    ],
-    [
         "Surface",
         "../Mod/Surface/Gui/Resources/translations",
         "../Mod/Surface/Gui/Resources/Surface.qrc",

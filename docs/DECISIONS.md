@@ -19995,3 +19995,30 @@ remaining-file counts: its 7,287 at run start and 3,468 at audit included
 run-start M metric remains **47 / 1,804 / 1,907**. Blender remains
 **44 / 1,046 / 129**, with **19,052** inherited files. Whole-file deletions
 and surviving-file modifications stay separate measures.
+
+## ADR-221 — Delete Start after its verified disable (2026-09-07)
+
+[Cadex-new] **Decision.** After ADR-220's separate disable (`449b8e09`),
+remove the audited 23 Start module files and four test files, three build
+and test gates, retired option and report line, crowdin row and two
+configuration exclusions. Consumer re-audit finds no retained caller.
+All six surviving inherited edits are already manifested and noticed;
+the deleted Start CMake file leaves the manifest. No App/Base core change,
+no Test, GSL, Assembly, Measure or retained Qt change. Risk is limited to
+external FreeCAD Start consumers, already unsupported by the disable.
+
+**Evidence.** `docs/START-AUDIT.md` §"Delete verification (ADR-221)" records
+both existing-cache regenerations, one release build, install/stage,
+installed import/geometry probe, engine tests, Cadex and baseline-compared
+inherited CTests, and packaged lifecycle/licensing verification. This is
+macOS-only evidence; no GUI or fresh-machine build. Help (ADR-217/218) and
+Start (ADR-220/221) are two whole-tree removals, each counted once.
+
+**Fork delta.** FreeCAD surviving M files / inserted / deleted:
+**56 / 1,637 / 1,815**, inherited remaining **3,440**; before delete
+**57 / 1,639 / 1,804**, remaining **3,467**. Run start was
+**47 / 1,804 / 1,907**, remaining **7,277**. M file count is higher than
+run start even though both line totals and inherited remaining are lower.
+Blender is unchanged at **44 / 1,046 / 129**, remaining **19,052**.
+The 27 whole-file deletions do not count as M-line reductions. GSL is the
+next separately audited candidate, not part of this removal.

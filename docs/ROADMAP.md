@@ -814,7 +814,7 @@ Not a phase that "completes" — a standing mode of work.
       the crowdin row and two developer-config path entries. The same gate
       set reran on the delete commit in the same unit; evidence is in
       `docs/HELP-AUDIT.md` §"Delete landed". Help is the **first** engine-side
-      whole-tree removal; the second still needs Start or Test to qualify.
+      whole-tree removal; Start subsequently follows under ADR-220/221.
 - [x] Audit the Start whole-tree candidate (2026-09-07, ADR-219,
       `docs/START-AUDIT.md`). Qualifies for a separate disable at the same
       forced-OFF boundary Help used; documentation only, no build. The audit
@@ -825,11 +825,16 @@ Not a phase that "completes" — a standing mode of work.
       cache entry, all 27 source files and three gates retained. Both existing
       configurations reject explicit ON; installed and staged Start module
       and library are absent. Verification: `docs/START-AUDIT.md`
-      §"Disable verification (ADR-220)". The separate delete remains open.
+      §"Disable verification (ADR-220)". The separate delete follows below.
+- [x] Delete Start after its separate disable (2026-09-07, ADR-221): all 27
+      module/test files and the audited build/config references removed.
+      `docs/START-AUDIT.md` §"Delete verification (ADR-221)" records the gates
+      and both fork-delta measures. With Help, two engine-side whole-tree
+      removals have landed under the two-commit protocol.
 - [ ] Engine side: Phase 8's audited GUI directory boundary is deleted
       (ADR-214); broader residual GUI-lineage source remains open. Further
       candidates: Help is deleted (ADR-217, ADR-218);
-      Start is disabled (ADR-220) and awaits its separate delete; Test still
+      Start is deleted (ADR-220, ADR-221); Test still
       needs its own dependency audit. Test builds and installs, with `Mod/Test`
       pruned from the payload. Start no longer installs or stages
       (`docs/START-AUDIT.md`), and the staged payload is **2.4 GB**

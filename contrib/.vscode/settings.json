@@ -44,7 +44,6 @@
   "${workspaceFolder}/src/Mod/Show",
   "${workspaceFolder}/src/Mod/Sketcher",
   "${workspaceFolder}/src/Mod/Spreadsheet",
-  "${workspaceFolder}/src/Mod/Start",
   "${workspaceFolder}/src/Mod/Surface",
   "${workspaceFolder}/src/Mod/TechDraw",
   "${workspaceFolder}/src/Mod/TemplatePyMod",

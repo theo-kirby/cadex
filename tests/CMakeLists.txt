@@ -44,9 +44,6 @@ endif(BUILD_PART_DESIGN)
 if(BUILD_SKETCHER)
     list (APPEND TestExecutables Sketcher_tests_run)
 endif(BUILD_SKETCHER)
-if(BUILD_START)
-    list (APPEND TestExecutables Start_tests_run)
-endif()
 
 # -------------------------
 
