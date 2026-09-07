@@ -1945,6 +1945,18 @@ What makes them experimental, and what would settle it:
   before the next GUI edit. The in-app agent has no shell or file tool;
   project docs stay the CLI's and a person's. **GUI not exercised.**
   *Three modes, one shape* is headless exercised, remote scripted, GUI documented.
+- [x] **The agent can name what it assembled, headlessly** (ADR-236,
+  `docs/CLI.md` §2). `cadex inventory` writes `docs/inventory.md` in the
+  project: one row per component with the output it places, its catalog
+  family and part number where a `lib.*` generator built it, the solved
+  pose and its volume, plus a roll-up and the hand-modelled outputs that
+  have no catalogue row. Behind it, `inspect scope="inventory"` joins the
+  ADR-049 `source_output` stamp to a new `catalog` stamp on library-value
+  outputs — written beside the definition, so the content digest cannot
+  move. No protocol change and no `shell/` diff. Qualified against a real
+  engine building a plate with two catalogued M3 bolts. **The first of the
+  four headless review calls**; render-from-angles, section view and
+  clearance/intersection remain open.
 - [x] **Stale shell mutations preserve accepted work** (ADR-204).
   Remove automatic revision adoption/replay after `STALE_PROGRAM_REVISION`.
   Script and parameter edits remain refused until explicit refresh; headless

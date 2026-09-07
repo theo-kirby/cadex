@@ -3,12 +3,13 @@
 
 """``cadex`` — the command line.
 
-Seven subcommands over one project, of which exactly one spends tokens::
+Nine subcommands over one project, of which exactly two spend tokens::
 
     cadex -p "a mounting bracket for a NEMA17, 4 mm wall" --out ./out
     cadex params --set fin_angle=12 --out ./sweep/12
     cadex script --set bracket.py --out ./out
     cadex export --out ./out
+    cadex inventory
     cadex link --from ../sensorA --output sensor
     cadex asset --put walk.cxpolicy --put walk-task.json
     cadex train --out ./run --iterations 200 --envs 64 --put
@@ -46,6 +47,7 @@ from .bridge import Bridge, ToolCall
 from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine
 from .export import ExportError, export_blueprints, export_outputs, parse_formats
+from .inventory import InventoryError, write_inventory
 from .project_docs import (
     append_progress_row,
     commit_project,
@@ -161,6 +163,20 @@ def build_parser() -> argparse.ArgumentParser:
         "(the shell renders them; this only reads the store).",
     )
     _common(export_parser, inherit=True)
+
+    inventory_parser = subparsers.add_parser(
+        "inventory",
+        help="List the parts of the accepted assembly with catalog ids. "
+        "No AI, no tokens.",
+    )
+    _common(inventory_parser, inherit=True)
+    inventory_parser.add_argument(
+        "--assembly",
+        default="",
+        metavar="OUTPUT",
+        help="The assembly output to inventory. A project publishes at most "
+        "one, so this is only ever a check that you are looking at it.",
+    )
 
     script_parser = subparsers.add_parser(
         "script", help="Print the project script, or replace it from a file."
@@ -770,6 +786,31 @@ def command_export(args: argparse.Namespace, report: RunReport) -> int:
         return EXIT_OK
 
 
+def command_inventory(args: argparse.Namespace, report: RunReport) -> int:
+    """What the accepted assembly is made of, as a file in the project.
+
+    The first headless review call (ADR-233): no rebuild, no tokens, no
+    geometry recomputed — it reads the pinned accepted attempt through
+    ``inspect scope="inventory"`` and lands ``docs/inventory.md`` in the
+    project, where the next visit's agent will read it.
+    """
+
+    with _engine_session(args, report) as (_engine, client):
+        _progress(" · inspect scope=inventory")
+        path, value = write_inventory(
+            client, report.project_root, target=str(args.assembly or "")
+        )
+        report.notes.append(
+            "inventory: {:d} component(s), {:d} catalogued, written to {:s}.".format(
+                int(value.get("component_count") or 0),
+                sum(int(count) for count in dict(value.get("catalog_counts") or {}).values()),
+                str(path),
+            )
+        )
+        report.ok = True
+        return EXIT_OK
+
+
 def command_script(args: argparse.Namespace, report: RunReport) -> int:
     """Print the project script, or replace it wholesale from a file."""
 
@@ -1317,6 +1358,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_params(args, report)
         elif command == "export":
             code = command_export(args, report)
+        elif command == "inventory":
+            code = command_inventory(args, report)
         elif command == "script":
             code = command_script(args, report)
         elif command == "link":
@@ -1329,7 +1372,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_walk(args, report)
         else:  # argparse already refuses anything else
             return EXIT_USAGE
-    except (ValueError, ExportError, TrainError, WalkError) as exc:
+    except (ValueError, ExportError, InventoryError, TrainError, WalkError) as exc:
         report.error = str(exc)
         code = EXIT_USAGE if isinstance(exc, ValueError) else EXIT_FAILURE
     except (EngineError, ClaudeUnavailable, ProjectBusy, CadexdError) as exc:
@@ -1381,6 +1424,8 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
         return f"script --set {Path(args.source_file).name}"
     if command == "export":
         return f"export → {args.out}"
+    if command == "inventory":
+        return "inventory → docs/inventory.md"
     if command == "link":
         return "link {:s} from {:s}".format(
             str(getattr(args, "output", "") or "?"), str(args.source_project)

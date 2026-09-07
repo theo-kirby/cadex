@@ -20600,3 +20600,70 @@ edits and remains in the uncommitted proposal. No engine source is changed
 by this commit. No full build, full engine suite, stage, packaged gate or
 shell gate was run for this failed qualification; no published behavior
 is claimed.
+
+## ADR-236 — Assembly inventory: catalog identity, and the scope that joins it (2026-09-07)
+
+[Cadex-new] The first of the charter's headless review calls: **list the
+parts of an assembly with catalog ids**, one CLI call, output landing in the
+project directory. The agent's review step could measure a shape but could
+not say *what* it was.
+
+**Two halves, and neither works alone.**
+
+The **stamp**. `lib.bolt("M3", 12)` returns a `LibraryPart` that knows its
+family and part number, but `.body` is an ordinary part solid, so a script
+returning it published an anonymous solid and the identity died at the
+result contract. `cadex_library_api` now records `{canonical definition:
+{family, part_number}}` for every body a generator hands back during a run,
+and `cadex_project_worker._stamp_catalog_identity` writes it onto the
+matching output as a top-level `catalog` key.
+
+**Beside the definition, never inside it.** Putting the identity in the
+value's `properties` was the obvious move and is the wrong one:
+`compute_project_digest` hashes `definition`, so a catalog key there would
+move every existing `lib.*` project's digest and lock it out — the class of change ADR-064 had to force a re-accept for. The
+definition is instead the *join key*, exactly as `artifact_by_definition`
+already joins a component source to its output, and a test asserts the
+canonical definition is byte-identical before and after the stamp.
+
+The **join**. `inspect scope="inventory"` walks the pinned accepted
+attempt's `result.json`: one row per `component_link` output, carrying the
+`source_output` whose geometry it places (the ADR-049 stamp), that output's
+`catalog` where there is one, the solved placement, and a six-key
+`source_facts` block. Plus a `catalog_counts` roll-up and the
+`uncatalogued_sources` a hand-modelled output lands in. Nothing is computed
+and no artifact is read — same footing as `scope="output"` and
+`scope="wiring"`. `target` is optional because the assembly worker refuses a
+second assembly; given, it must name the one there is.
+
+**No protocol change.** `inspect` already takes `{"scope": str}` and already
+answers a generic `value`, so `OP_ARG_SPECS` and `OP_RESPONSE_SPECS` are
+untouched, the ADR-027 goldens are untouched, and `shell/` gets no diff.
+`docs/INTEGRATION.md`'s `inspect` row documents the new scope anyway, since
+that row is what a client reads. The shell's `inspect_model` tool does not
+offer it, on the precedent `wiring` set: a scope a canvas has no picture for
+is not worth eight files of merge conflict.
+
+**`cadex inventory`** is the CLI call. No AI, no tokens, no rebuild: it pages
+`/components` (the summary hands back a preview pointer the moment the list
+outgrows the per-key budget, which is the ordinary `inspect` contract) and
+renders `docs/inventory.md` in the project. A **generated** doc, the only one
+under a project's `docs/` that is, and it says so in its own first line — the
+review step is read by an agent on its *next* visit, and what an agent reads
+on a visit is the project's documents (ADR-193). One file, not two: the
+machine-readable form is one `inspect` call away.
+
+**Evidence.** `pixi run build-engine`; `pixi run test-engine` 2070 passed,
+52 skipped; `pixi run python -m pytest cli/tests` 145 passed; `pixi run
+stage-engine` then the packaged lifecycle gate against that payload, 15
+passed. `cadex_tests/test_inventory_scope.py` (8) pins the stamp, the
+digest-stillness, the join, the roll-up and both refusals against a
+fabricated store; `cli/tests/test_inventory.py` (3) pins the whole call
+against a **real engine** building a plate with two catalogued M3 bolts on
+it, and asserts the rendered doc names `bolt m3x12-socket`,
+`bolt m3x16-socket` and the hand-modelled `plate` as uncatalogued.
+
+**What this does not close.** The charter's headless-review criterion also
+asks for render-from-named-angles, a section view and a clearance and
+intersection check. Those are three more units; this is the one that had a
+join already waiting to be made.
