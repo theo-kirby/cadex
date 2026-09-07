@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -25,6 +26,7 @@ import textwrap
 
 import pytest
 
+from cadex_cli.agent import CLI_OVERLAY
 from cadex_cli import walk as walk_module
 from cadex_cli.report import EXIT_OK, EXIT_REJECTED, EXIT_USAGE
 from cadex_cli.walk import (
@@ -63,6 +65,36 @@ def test_declare_refuses_a_script_without_the_iterate_convention() -> None:
     no_sha = TOY.replace(f', sha256="{PLACEHOLDER}"', "")
     with pytest.raises(WalkError, match="sha256"):
         declare_policy(no_sha, "job.cxpolicy", "ab" * 32)
+
+
+def test_declare_refuses_the_constant_factored_script_and_takes_the_taught_one(
+) -> None:
+    """The refusal nt3's first walk from a prompt actually hit.
+
+    The design turn wrote ``WEIGHTS = "…"`` above the call and passed the
+    name by reference, which reads better and is refused: the edit is a
+    literal rewrite. The overlay in ``cadex_cli.agent`` now teaches the
+    inline form, so the example it teaches is rewritten here to prove the
+    two halves agree.
+    """
+
+    factored = 'POLICY_WEIGHTS = "job.cxpolicy"\n' + TOY.replace(
+        'weights="job.cxpolicy"', "weights=POLICY_WEIGHTS")
+    with pytest.raises(WalkError, match="no weights="):
+        declare_policy(factored, "job2.cxpolicy", "ab" * 32)
+    factored_sha = f'POLICY_SHA = "{PLACEHOLDER}"\n' + TOY.replace(
+        f'sha256="{PLACEHOLDER}"', "sha256=POLICY_SHA")
+    with pytest.raises(WalkError, match="no sha256="):
+        declare_policy(factored_sha, "job2.cxpolicy", "ab" * 32)
+
+    # The example the authoring contract teaches is one this rewrite takes.
+    call = re.search(r"assembly\.policy\(task,[^)]*\)", CLI_OVERLAY)
+    assert call is not None, "the overlay no longer shows the policy call"
+    taught = call.group(0)
+    taught = walk_module._replace_keyword(taught, "weights", "job2.cxpolicy")
+    taught = walk_module._replace_keyword(taught, "sha256", "ab" * 32)
+    assert taught == 'assembly.policy(task, weights="job2.cxpolicy", ' \
+        f'sha256="{"ab" * 32}")'
 
 
 def test_the_review_is_the_trace_s_policy_block_or_nothing(tmp_path) -> None:

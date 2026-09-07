@@ -206,8 +206,9 @@ of doing any of them:
    refused, because the edit is a literal rewrite and the walk does not
    guess where a policy belongs in a script it did not write. Measured on
    nt3 against a script the design turn wrote unprompted; the authoring
-   contract in `cli/cadex_cli/agent.py` teaches the switch but not yet the
-   literals.
+   contract in `cli/cadex_cli/agent.py` now teaches both the switch and
+   the two inline literals, and `test_walk.py` rewrites the example it
+   teaches to keep the two halves agreeing.
 5. `cadex params --set policy_on=1 --out DIR/rollout` — the verify and
    the rollout, the trace exported.
 6. The review: the trace's `policy` block — `total_reward`, the per-term

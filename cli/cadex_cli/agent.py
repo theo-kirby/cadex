@@ -139,6 +139,16 @@ their result entries -- so a later parameter change that moves the task \
 can be accepted with the switch at 0 and retrained against, instead of \
 being refused because the old policy no longer fits.
 
+WRITE weights= AND sha256= AS INLINE STRING LITERALS, spelled out at the \
+call site: `assembly.policy(task, weights="walk.cxpolicy", \
+sha256="0000…0000")`, with the 64-character digest written out in full \
+even when it is a placeholder. Factoring either string into a module \
+constant (`WEIGHTS = "walk.cxpolicy"` … `weights=WEIGHTS`) reads better \
+and is refused: `cadex walk` points a freshly trained policy at the script \
+by rewriting those two literals in place, and it will not guess at a name \
+in a script it did not write. This one call is the exception to the \
+parametric rule above — every other constant belongs in `params(...)`.
+
 THE PROJECT IS A CODEBASE. Beside the script it keeps ARCHITECTURE.md \
 (what it is, what the script declares, where the domain docs are), \
 DECISIONS.md (its own ADR log: what was chosen, over what, why) and \

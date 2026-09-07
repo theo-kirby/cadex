@@ -111,6 +111,22 @@ def test_the_prompt_pushes_for_a_parametric_script() -> None:
     assert "cadex params --set" in CLI_OVERLAY
 
 
+def test_the_prompt_teaches_the_two_policy_strings_as_inline_literals() -> None:
+    """The one exception to the parametric rule, taught before it is hit.
+
+    nt3's first walk from a prompt stopped at exit 3 because the design
+    turn factored ``weights`` and ``sha256`` into module constants, which
+    ``cadex walk``'s literal rewrite refuses (docs/CLI.md §2, leg 4). The
+    overlay taught the ``policy_on`` switch and said nothing about the
+    literals; it now says both.
+    """
+
+    assert 'weights="walk.cxpolicy"' in CLI_OVERLAY
+    assert "INLINE STRING LITERALS" in CLI_OVERLAY
+    # ...and names the mistake, so the model can recognise its own habit.
+    assert "weights=WEIGHTS" in CLI_OVERLAY
+
+
 # -- the turn ------------------------------------------------------------
 
 
