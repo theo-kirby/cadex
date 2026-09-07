@@ -6,11 +6,8 @@ add_subdirectory(App)
 
 SET(MaterialScripts_Files
     Init.py
-    InitGui.py
     importFCMat.py
-    MaterialEditor.py
     TestMaterialsApp.py
-    TestMaterialsGui.py
     Templatematerial.yml
 )
 

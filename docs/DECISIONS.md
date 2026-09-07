@@ -20172,3 +20172,21 @@ searches cannot prove those absent. Existing-payload baseline: 26 lifecycle/
 licensing tests passed; installed Material App: 15 passed, GuiUp false. No
 implementation changed or fresh-build proof claimed. Broader GUI-source and
 fork-delta criteria remain open; BLDC searches remain stopped.
+
+**Copy/install-disable follow-through (2026-09-07).** Removed only the three
+qualified MaterialScripts_Files entries; all three sources remain unchanged.
+Quarantined nine stale copies, regenerated debug and release rules, completed
+one release build, install and stage, and verified active-path absence with
+retained App/tests/resources intact. Installed Material App: 15 tests passed,
+GuiUp false; full engine suite: **2,023 passed, 52 skipped in 261.29 s**.
+PHASE8-AUDIT.md carries the gate commands, baseline comparison and limitations.
+Manifest membership remains 56 FreeCAD / 44 Blender with the existing notice;
+surviving modified-file FreeCAD totals are 1,637 inserted / 1,819 deleted
+(three additional CMake deletions), Blender 1,046 / 129 unchanged. Risk remains
+unsupported external GUI consumers. This is a disable, not source deletion or
+completion of broader GUI-source/fork-delta claims; deletion awaits replan.
+
+Fresh packaged lifecycle/licensing: **26 passed in 17.03 s**. Inherited CTest:
+**162 baseline failures in 128.24 s**, no added failure names, all four Cadex
+ctests passed; three skipped/seven disabled unchanged. Broader validation
+limits and the final committed-HEAD licensing check are recorded in the audit.

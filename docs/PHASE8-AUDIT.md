@@ -730,3 +730,60 @@ result marker, not launcher exit alone. Local logs:
 `/tmp/cadex-material-audit-probe.py`. No configure/build/install/stage, full
 engine suite, inherited CTest or GUI launch in this audit-only unit. Broader
 GUI-source and fork-delta claims remain open; BLDC searches remain stopped.
+
+## Material GUI registrations disabled (2026-09-07, ADR-225)
+
+Removed exactly the three audited MaterialScripts_Files entries: InitGui.py,
+MaterialEditor.py and TestMaterialsGui.py. Their sources are retained unchanged.
+The shared target now neither copies nor installs them. No App, test, resource,
+Qt or Assembly dependency was removed; TestMaterialDocument.py still has its
+separate copy/install registrations.
+
+Quarantined nine stale release/install/stage copies outside all active roots
+before building. No debug copies or matching bytecode existed. `pixi run
+configure` regenerated debug without a build; one `pixi run build-release`
+regenerated release and passed, followed serially by `pixi run install-release`
+and `pixi run stage-engine` (all exit 0). Debug/release build.ninja and Material
+cmake_install.cmake contain no paths to the three scripts. All four active
+Mod/Material roots lack them and matching bytecode. Release/install/stage retain
+source-identical Init.py, importFCMat.py, TestMaterialsApp.py,
+Templatematerial.yml, materialtests/TestMaterialDocument.py and
+materialtools/cardutils.py, plus Materials.so, Default.FCMat and Density.yml.
+Debug is configured only; no debug runtime proof is claimed.
+
+The completed stage is 2.4 GB, local stage-only with the expected external
+rpath diagnostics, not a relocatable distribution. Staging finished before
+the full engine suite or any fresh-payload tests began. Installed probe:
+`pixi run FreeCADCmd /tmp/cadex-material-audit-probe.py` (script documented
+above), explicit MATERIAL-STARTUP-OK and MATERIAL-APP-RESULT markers:
+**15 tests, zero failures/errors/skips in 0.188 s**, GuiUp false, App suite
+registered, GUI suite unregistered and no FreeCADGui import. The retained
+TestMaterialDocument is checked for source equality, not credited as exercising
+its GUI-guarded appearance assertions.
+
+Working-tree manifest equality: **56 FreeCAD / 44 Blender** entries with
+existing notices. Surviving modified-file totals against the import commits
+are **1,637 inserted / 1,819 deleted** for FreeCAD and **1,046 / 129** for
+Blender: precisely three extra removed CMake lines. The first ad-hoc manifest
+check incorrectly excluded a premodified Blender entry; correcting it to the
+suite's rule (premodified documents history, not an exemption) passes without
+any manifest edit. This bounded disable does not close the broad no-GUI-source
+or fork-delta criterion. Unsupported external GUI consumers remain the risk.
+Local logs: `/tmp/cadex-material-disable-{configure,build,install,stage,engine,ctest,packaged,probe}.log`.
+Source deletion requires a later unit and replan; no shell gate or GUI launch
+is required or performed for this engine-only CMake change.
+
+Final fresh gates: full engine **2,023 passed, 52 skipped in 261.29 s**, exit 0;
+packaged lifecycle/licensing **26 passed in 17.03 s**, exit 0, using the audit's
+CADEX_ENGINE_ROOT command. Serial `pixi run test-release`: **162 failures /
+1,526 enabled tests in 128.24 s**, exit 8, with 3 skipped and 7 disabled.
+Failure-name comparison against the unchanged 164-name baseline has no additions;
+baseline-only names remain DlgVersionMigrator_Tests_run and
+SpreadsheetRenameProperty.renameProperty. The initial broad regex also matched
+the skipped/disabled summary; filtering actual failure statuses corrects that
+comparison without rerunning or changing any test. All four Cadex ctests passed
+(digest 1.91 s, lifecycle 14.95 s, subshape 0.71 s, schemas 0.18 s).
+Committed-HEAD licensing is repeated as the final post-commit check; this
+pre-commit evidence separately verifies working-tree manifest equality.
+All **35 retained Material C++ tests** in CTest passed (matched test fixtures
+from tests/src/Mod/Material against the per-test results).
