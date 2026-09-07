@@ -7,8 +7,7 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
-
+Status: superseded
 ## Current
 
 Open charter criterion: **mg-legs tips at the declared shove band, backward first**, with the numbers in the project's `PROGRESS.md`. [rec: empty-wolf-3962]
@@ -22,3 +21,8 @@ None yet.
 ## Provenance
 
 - empty-wolf-3962 — operator-declared charter gap
+
+
+## Superseded
+
+Parked by the operator before nt3 (2026-09-07). The criterion moved to `## Later criteria` in the charter, where it seeds no gap. It is not abandoned: the human promotes it back into `## Done criteria` when the nt3 frontier — the lifecycle walk and the headless review calls — lands or blocks. No evidence about the criterion itself changed.

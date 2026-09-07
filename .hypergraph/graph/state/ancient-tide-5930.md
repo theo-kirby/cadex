@@ -7,8 +7,7 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
-
+Status: superseded
 ## Current
 
 Open charter criterion: **The catalog is broad enough for a robot prompt**: at least five servos, ten actuators, a bearings family, and M2 to M5 nuts and bolts, each with provenance and a real-kernel test. [rec: empty-wolf-3962]
@@ -25,3 +24,8 @@ Declared target: `gap-catalog-broad-enough-robot-prompt`. This node tracks the c
 
 - empty-wolf-3962 — operator-declared charter gap
 - hidden-ridge-7342 — two manufacturer-source candidates fail unchanged-recipe qualification; breadth remains open
+
+
+## Superseded
+
+Parked by the operator before nt3 (2026-09-07). The criterion moved to `## Later criteria` in the charter, where it seeds no gap. It is not abandoned: the human promotes it back into `## Done criteria` when the nt3 frontier — the lifecycle walk and the headless review calls — lands or blocks. No evidence about the criterion itself changed.

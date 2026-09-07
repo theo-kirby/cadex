@@ -7,8 +7,7 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
-
+Status: superseded
 ## Current
 
 Open charter criterion: **The fork's delta against upstream is smaller than at the start of this run**, measured by the delta manifest AGENTS.md names, and the manifest is honest about every inherited file touched. [rec: empty-wolf-3962]
@@ -53,3 +52,8 @@ The translation-updater pair (ADR-232) is now implemented, not documentation onl
 - cold-clover-8123 — documentation-only disposition claims no fork-delta saving and requires a later implementation bet
 - green-stone-3882 — ADR-232 disable: updater-only edit moves FreeCAD M totals to 56/1,635/1,832; fresh build/engine/CTest gates, no whole-file saving
 - autumn-arrow-3125 — ADR-232 delete: 49 inherited lines removed, totals 56/1,635/1,881; same gates green, Blender unchanged, criterion kept open
+
+
+## Superseded
+
+Parked by the operator before nt3 (2026-09-07). The criterion moved to `## Later criteria` in the charter, where it seeds no gap. It is not abandoned: the human promotes it back into `## Done criteria` when the nt3 frontier — the lifecycle walk and the headless review calls — lands or blocks. No evidence about the criterion itself changed.

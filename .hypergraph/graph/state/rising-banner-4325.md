@@ -7,8 +7,7 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
-
+Status: superseded
 ## Current
 
 Open charter criterion: **L3 motors and mechanisms families exist** over `CadexCatalog`, same test shape as the boards family, and the packaged lifecycle gate passes. [rec: empty-wolf-3962]
@@ -67,3 +66,8 @@ Open charter criterion: **L3 motors and mechanisms families exist** over `CadexC
 - slender-harbor-9625 — BLDC set A and hashed RI50 source audit; thermal/revision qualification blocks delivery
 - shy-hill-8139 — bounded fixture/support follow-up leaves qualification gaps; RI50 parked with unread-source limits
 - mild-harvest-8460 — AT2814 source audit leaves current/thermal/revision gaps; no qualified winding or catalog delivery, bounded motor searches stopped
+
+
+## Superseded
+
+Parked by the operator before nt3 (2026-09-07). The criterion moved to `## Later criteria` in the charter, where it seeds no gap. It is not abandoned: the human promotes it back into `## Done criteria` when the nt3 frontier — the lifecycle walk and the headless review calls — lands or blocks. No evidence about the criterion itself changed.

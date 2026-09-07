@@ -7,8 +7,7 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
-
+Status: superseded
 ## Current
 
 Open charter criterion: **Compound mechanisms exist as parametric library values** built from catalog parts: a rack and pinion and a planetary gearbox at least, each with a mesh and clearance test. Declared target `gap-compound-mechanisms-exist-as-parametric`; the node becomes working only with evidence that the whole criterion is met [rec: empty-wolf-3962].
@@ -28,3 +27,8 @@ Open charter criterion: **Compound mechanisms exist as parametric library values
 - empty-wolf-3962 — operator-declared charter gap
 - wild-beacon-4213 — ADR-233 gear and rack slice verified on the full suite, real kernel and fresh payload (2050/52, 107/0)
 - mellow-garden-0940 — ADR-234 rack and pinion composed with real-kernel mesh and clearance evidence (2061/52, 119/0); planetary remains open
+
+
+## Superseded
+
+Parked by the operator before nt3 (2026-09-07). The criterion moved to `## Later criteria` in the charter, where it seeds no gap. It is not abandoned: the human promotes it back into `## Done criteria` when the nt3 frontier — the lifecycle walk and the headless review calls — lands or blocks. No evidence about the criterion itself changed.

@@ -7,8 +7,7 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
-
+Status: superseded
 ## Current
 
 Open charter criterion: **25T horns and servo pigtails come from manufacturer STEP sources**, with the provenance recorded the way `docs/PROVENANCE.md` asks. [rec: empty-wolf-3962]
@@ -26,3 +25,8 @@ Open charter criterion: **25T horns and servo pigtails come from manufacturer ST
 - empty-wolf-3962 — operator-declared charter gap
 - steady-reef-0162 — bounded manufacturer audit leaves fit, rights, source and script-owned delivery blockers
 - noble-clover-4083 — ADR-232 closes conditional delivery without closing the charter gap
+
+
+## Superseded
+
+Parked by the operator before nt3 (2026-09-07). The criterion moved to `## Later criteria` in the charter, where it seeds no gap. It is not abandoned: the human promotes it back into `## Done criteria` when the nt3 frontier — the lifecycle walk and the headless review calls — lands or blocks. No evidence about the criterion itself changed.
