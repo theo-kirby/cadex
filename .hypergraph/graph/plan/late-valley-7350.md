@@ -12,11 +12,11 @@ Status: open
 ## Current
 
 1. **Toward the north star (mission 2, and the north-star criterion, parked).** The robot prompt unattended: from a prompt naming servos, bearings and hardware, the loop produces a printable mesh export, a trained policy and a rollout video with no human step. Then print-ready export, then G-code, then the rollout video — each is one more leg of the same walk, and each arrives by closing the frontier above, not by a direction of its own. [rec: empty-wolf-3962]
-2. **Standing work, always open.** Keep every gate green, every doc true to the code, the delta manifest honest, the project docs current, and the frontier short. Maintenance is real work and counts as a unit.
+2. **Standing work, always open.** Keep every gate green, every doc true to the code, the delta manifest honest, the project docs current, and the frontier short. Maintenance is real work and counts as a unit. The walk's measured baseline on this machine is the maintenance bar: both example recipes under 16 s wall and 1.1 GB peak at 1 iteration × 4 environments, and the full CLI suite green with the engine built [rec: misty-rain-9048]. A unit that moves either number reports it. [rec: glad-snow-3838]
 3. **Inherited-tree reduction, standing only (mission 3; round-glacier-2865).** nt2 removed 2.79M lines and landed Phase 8 plus six engine-side removals under the two-commit protocol. It is done enough. Take a removal only when a change in flight makes it obvious and cheap; never make one the unit of an iteration, and never open an audit for its own sake.
 4. **Parked criteria (mission 4, 7, 8, 9).** Catalog breadth, manufacturer geometry, compound mechanisms, L3 motors, the outside-source mechanism, the variant study, the report renderer and the fresh-machine script are real and unfinished, and they are parked under `## Later criteria` in the charter. The planner may not target them. When the frontier lands or blocks, the loop says so in a record and the human promotes one; that edit mints a new directive.
 
-Operator re-plan before nt3 (2026-09-07).
+Operator re-plan before nt3 (2026-09-07) [rec: modest-summit-8554].
 
 ## Negative knowledge
 
@@ -86,3 +86,5 @@ Operator re-plan before nt3 (2026-09-07).
 - placid-delta-6677 — mark compound gearing dispatched and mission 6 next; refresh delta totals; retain every direction
 
 - flat-river-8853 — record compound mechanisms one unit from closure and mission 6 dispatched; retain every direction
+
+- glad-snow-3838 — record the walk's measured baseline as the standing-work bar; directions unchanged
