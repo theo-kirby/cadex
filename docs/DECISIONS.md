@@ -20711,3 +20711,60 @@ Verification: full built-engine CLI suite **150 passed**, no skips or failures
 recipe walk at one iteration × four local CPU environments passed in 14.39 s,
 peak RSS 1.06 GB: two components, zero catalogued; total reward -27.109384,
 witness error 1.384e-09. Neither run reached the 2.9 GB external cutoff.
+
+## ADR-237 — Headless pair clearance is published at the solved pose (2026-09-08)
+
+**Decision.** `cadex clearance` reads `inspect scope="clearance"` and writes
+`docs/clearance.md`. Each assembly-worker rebuild measures every component
+pair before simulation moves the components: exact shape distance in mm and
+common solid volume in mm³. Bounding-box separation prunes only the common
+operation; separated pairs still receive distance queries. Labels and catalog
+ids join the accepted inventory. No new protocol op or argument schema, no
+shell change, and no training dependency. The complete inventory pager is
+reused, including nested previews; its error message now names either scope.
+
+The report classifies intersection above `--max-common-volume-mm3` (default
+1e-6), then distance below `--min-clearance-mm` (default 0.1), then clear.
+Thresholds are finite, nonnegative and applied at read time without a rebuild.
+Missing geometry, unsolved assemblies, failed queries and legacy attempts
+without the side table remain **unknown**; an empty project is unavailable.
+The CLI exits successfully when it writes the report, even if it names
+intersections. It is an initial-pose check, not a swept-motion qualification;
+the existing simulation clearance API is unchanged. Walk wiring is a separate
+unit, followed by rendering and section views.
+
+The side table rides beside the definition, so accepted content digests stay
+unchanged. Pair identity is unordered: output-publication order need not match
+assembly-component order. Real-engine coverage uses three placed boxes with
+100 mm³ overlap, a disjoint 1 mm gap and a clear 10 mm gap, plus reversed
+publication order. Reader coverage exercises 60 rows with large nested labels,
+legacy and absent assemblies, invalid thresholds and unknown measurements.
+
+**Cost gate.** On both lifecycle recipes, time six `write_script` rebuilds in
+one ready service (unique trailing comments force execution), discard the
+first, compare the remaining five's medians. Hinged arm: 0.458872 → 0.444663 s
+(-3.10%); linear carriage: 0.446007 → 0.449866 s (+0.87%, +0.003859 s).
+After the full engine build, final warm medians are 0.462742 s (+0.84%,
++0.003870 s) and 0.443270 s (-0.61%), respectively. The arm's first request
+after that build took 2.219 s versus 1.071 s before: first-request latency
+is not covered by the predeclared warm-median comparison. All six timings
+are retained in the local benchmark logs; this is not a cold-latency claim.
+A quiet repeat after the CLI suite did not reproduce that spike: first
+requests 0.649 / 0.660 s and warm medians 0.446437 / 0.451253 s
+(arm / carriage), with unchanged digests.
+Both stay below either stop condition (+2 seconds or +20%). Full recipe
+content digests match before/after. These are rebuild measurements, separate
+from the existing under-16-second toy whole-walk baseline. The cost remains
+quadratic in component count; this evidence qualifies these two recipes,
+not a large-assembly performance claim.
+
+Verification: full engine suite **2074 passed, 52 skipped** (320.44 s);
+final focused engine/CLI regressions **14 passed**, including the unsolved-pose
+case added after full-suite collection. One `pixi run build-engine` passed.
+Full CLI suite **159 passed**, no skips (165.32 s; monitored process-tree peak
+RSS 1.13 GB, no 2.9 GB / 850 s cutoff). `pixi run stage-engine` passed with
+its expected local-stage external-link warnings; the completed 2.4 GB payload
+passed **24 packaged lifecycle/clearance tests**, no skips (17.12 s).
+This is local staging evidence, not a relocatable release claim. Remove the
+obsolete inventory-only generated-document wording now that clearance also
+writes a generated report.

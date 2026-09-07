@@ -10,6 +10,7 @@ Nine subcommands over one project, of which exactly two spend tokens::
     cadex script --set bracket.py --out ./out
     cadex export --out ./out
     cadex inventory
+    cadex clearance
     cadex link --from ../sensorA --output sensor
     cadex asset --put walk.cxpolicy --put walk-task.json
     cadex train --out ./run --iterations 200 --envs 64 --put
@@ -48,6 +49,7 @@ from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine
 from .export import ExportError, export_blueprints, export_outputs, parse_formats
 from .inventory import InventoryError, write_inventory
+from .clearance import write_clearance
 from .project_docs import (
     append_progress_row,
     commit_project,
@@ -177,6 +179,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="The assembly output to inventory. A project publishes at most "
         "one, so this is only ever a check that you are looking at it.",
     )
+
+    clearance_parser = subparsers.add_parser(
+        "clearance", help="Check accepted assembly pairs; write docs/clearance.md.",
+    )
+    _common(clearance_parser, inherit=True)
+    clearance_parser.add_argument("--assembly", default="", metavar="OUTPUT")
+    clearance_parser.add_argument("--min-clearance-mm", type=float, default=0.1)
+    clearance_parser.add_argument("--max-common-volume-mm3", type=float, default=1.0e-6)
 
     script_parser = subparsers.add_parser(
         "script", help="Print the project script, or replace it from a file."
@@ -786,6 +796,17 @@ def command_export(args: argparse.Namespace, report: RunReport) -> int:
         return EXIT_OK
 
 
+def command_clearance(args: argparse.Namespace, report: RunReport) -> int:
+    with _engine_session(args, report, restore=False) as (_engine, client):
+        path, value = write_clearance(
+            client, report.project_root, target=args.assembly,
+            minimum=args.min_clearance_mm, maximum_volume=args.max_common_volume_mm3,
+        )
+        report.notes.append(f"clearance: {len(value['pairs'])} pair(s), written to {path}.")
+        report.ok = True
+        return EXIT_OK
+
+
 def command_inventory(args: argparse.Namespace, report: RunReport) -> int:
     """What the accepted assembly is made of, as a file in the project.
 
@@ -1366,6 +1387,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_params(args, report)
         elif command == "export":
             code = command_export(args, report)
+        elif command == "clearance":
+            code = command_clearance(args, report)
         elif command == "inventory":
             code = command_inventory(args, report)
         elif command == "script":
@@ -1432,6 +1455,8 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
         return f"script --set {Path(args.source_file).name}"
     if command == "export":
         return f"export → {args.out}"
+    if command == "clearance":
+        return "clearance → docs/clearance.md"
     if command == "inventory":
         return "inventory → docs/inventory.md"
     if command == "link":

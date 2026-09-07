@@ -1960,6 +1960,12 @@ What makes them experimental, and what would settle it:
   Page catalog totals and uncatalogued outputs as well as components; expand
   previewed rows and their fields before rendering. Regression uses the real
   inspection pager with 60 catalog entries and names over the 1 KiB budget.
+- [x] **Headless clearance and intersection name every pair** (ADR-237).
+  `cadex clearance` writes `docs/clearance.md`, with read-time distance and
+  common-volume thresholds. Every separated pair is measured too; missing
+  measurements remain unknown. Initial solved pose only. Recipe rebuild
+  medians remain within the 2 s / 20 percent budget; digests are unchanged.
+  Walk wiring is the next unit; rendering and section views remain open.
 - [x] **The agent can name what it assembled, headlessly** (ADR-236,
   `docs/CLI.md` §2). `cadex inventory` writes `docs/inventory.md` in the
   project: one row per component with the output it places, its catalog
@@ -1971,7 +1977,7 @@ What makes them experimental, and what would settle it:
   move. No protocol change and no `shell/` diff. Qualified against a real
   engine building a plate with two catalogued M3 bolts. **The first of the
   four headless review calls**; render-from-angles, section view and
-  clearance/intersection remain open.
+  clearance/intersection walk wiring remain open.
 - [x] **Stale shell mutations preserve accepted work** (ADR-204).
   Remove automatic revision adoption/replay after `STALE_PROGRAM_REVISION`.
   Script and parameter edits remain refused until explicit refresh; headless

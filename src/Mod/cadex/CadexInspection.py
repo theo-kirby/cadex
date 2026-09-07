@@ -264,7 +264,7 @@ def capture_inspection(service: Any, arguments: Mapping[str, Any]) -> dict[str, 
             "kind": "wiring",
             "project_root": str(service.project_scope_snapshot().get("root") or ""),
         }
-    if scope == "inventory":
+    if scope in {"inventory", "clearance"}:
         # What the assembly is MADE OF: every component of the accepted
         # revision joined back to the output it places, that output's catalog
         # identity, and the pose the solver put it at (ADR-233). Store-backed
@@ -272,7 +272,7 @@ def capture_inspection(service: Any, arguments: Mapping[str, Any]) -> dict[str, 
         # complete_inspection rather than on the document thread.
         return {
             **common,
-            "kind": "inventory",
+            "kind": scope,
             "project_root": str(service.project_scope_snapshot().get("root") or ""),
         }
     if scope == "history":
@@ -1168,6 +1168,32 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
                 key: facts[key] for key in _INVENTORY_FACT_KEYS if key in facts
             }
         components.append(row)
+    if captured.get("kind") == "clearance":
+        measurements = by_name.get(assembly, {}).get("clearance")
+        measured = {
+            tuple(sorted((row["first"], row["second"]))): row
+            for row in (measurements or [])
+        }
+        pairs = []
+        for index, first in enumerate(components):
+            for second in components[index + 1:]:
+                key = (first["component"], second["component"])
+                row = dict(measured.get(tuple(sorted(key))) or {
+                    "first": key[0], "second": key[1],
+                    "distance_mm": None, "common_volume_mm3": None,
+                    "error": "No published measurement; rebuild the project.",
+                })
+                row["first"], row["second"] = key
+                for side, component in (("first", first), ("second", second)):
+                    row[side + "_label"] = component["label"]
+                    row[side + "_catalog"] = component.get("catalog")
+                pairs.append(row)
+        return {
+            "revision": revision, "assembly": assembly,
+            "available": bool(assembly) and measurements is not None,
+            "pose": "initial solved pose (not swept motion)",
+            "pairs": pairs,
+        }
     return {
         "revision": revision,
         "assembly": assembly,
@@ -1397,7 +1423,7 @@ def complete_inspection(captured: Mapping[str, Any]) -> dict[str, Any]:
             raw = _complete_blueprint(captured)
         elif kind == "wiring":
             raw = _complete_wiring(captured)
-        elif kind == "inventory":
+        elif kind in {"inventory", "clearance"}:
             raw = _complete_inventory(captured)
         else:
             raise ValueError("Invalid captured core.inspect operation.")

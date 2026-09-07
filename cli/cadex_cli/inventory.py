@@ -16,9 +16,9 @@ repository outlives the run that produced it; a JSON blob on stdout does not.
 The machine-readable form is one ``inspect`` call away for anyone who wants
 it, so this writes one file rather than two.
 
-The file is **generated and overwritten** — the only doc under ``docs/`` that
-is, which is why it says so in its own first line. Everything else there is
-written by hand or by a turn, and this must never quietly eat one of those.
+The file is **generated and overwritten**, like the clearance report, which
+is why it says so in its own first line. Other domain docs are written by
+hand or by a turn, and this must never quietly eat one of those.
 """
 
 from __future__ import annotations
@@ -125,7 +125,7 @@ def _ask(client: Any, arguments: Mapping[str, Any]) -> dict[str, Any]:
     reply = client.request("inspect", dict(arguments))
     if reply.get("ok") is not True:
         raise InventoryError(
-            "inspect scope=inventory failed: "
+            f"inspect scope={arguments.get('scope')} failed: "
             + str(reply.get("error") or reply.get("failure_code") or reply)
         )
     return dict(reply)

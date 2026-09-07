@@ -5311,6 +5311,43 @@ def _component_local_shape(component: Any, *, context: str) -> Any:
     return shape
 
 
+def _measure_clearance(
+    components: Mapping[str, Any], *, solved: bool = True
+) -> list[dict[str, Any]]:
+    """All pairs at the initial solved pose; failures remain unmeasured.
+
+    Distance includes disjoint boxes. Only common-volume work is pruned by
+    box separation. These derived facts live beside the hashed definition.
+    """
+    names = list(components)
+    rows = []
+    for index, first in enumerate(names):
+        for second in names[index + 1:]:
+            row = {"first": first, "second": second,
+                   "distance_mm": None, "common_volume_mm3": None}
+            try:
+                if not solved:
+                    raise ValueError("Assembly solver did not produce a solved pose")
+                a, b = components[first].Shape, components[second].Shape
+                if a.isNull() or b.isNull():
+                    raise ValueError("Component has no measurable shape")
+                distance = float(a.distToShape(b)[0])
+                if not math.isfinite(distance) or distance < 0:
+                    raise ValueError("Invalid minimum distance")
+                row["distance_mm"] = distance
+                # Surface-only geometry does not establish solid intersection.
+                if not a.Solids or not b.Solids:
+                    raise ValueError("Common volume requires solid components")
+                volume = float(a.common(b).Volume) if a.BoundBox.intersect(b.BoundBox) else 0.0
+                if not math.isfinite(volume) or volume < 0:
+                    raise ValueError("Invalid common volume")
+                row["common_volume_mm3"] = volume
+            except Exception as exc:
+                row["error"] = str(exc)
+            rows.append(row)
+    return rows
+
+
 def validate_and_solve_assembly(
     document: Any,
     raw_result: Mapping[str, Any],
@@ -5774,6 +5811,7 @@ def validate_and_solve_assembly(
             details={"stage": "native_solver", **diagnostics},
         )
 
+    clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved")
     by_name = {str(item.get("name") or ""): item for item in outputs}
     simulation_summary = None
     if simulation_contract is not None:
@@ -6027,6 +6065,7 @@ def validate_and_solve_assembly(
         )
     if exploded_view_summaries:
         diagnostics["exploded_views"] = exploded_view_summaries
+    by_name[assembly_output]["clearance"] = clearance
     by_name[assembly_output]["assembly_data"] = {
         "component_outputs": [component_outputs[id(value)] for value in component_values],
         "joint_outputs": [joint_outputs[id(value)] for value in joint_values],
