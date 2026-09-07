@@ -231,6 +231,48 @@ def test_a_turn_that_never_accepts_a_script_exits_rejected(tmp_path) -> None:
     assert code == EXIT_REJECTED
     assert report.ok is False
     assert "without the engine accepting" in report.error
+    # The reason, not just the outcome: what the engine last refused, and
+    # what the agent said on its way out. A `cadex walk` design leg copies
+    # this string into its own envelope, so it is the only place a run with
+    # no human watching can learn why the script never landed.
+    assert "the engine last refused write_script" in report.error
+    assert "the agent's closing words: I could not." in report.error
+
+
+@pytest.mark.usefixtures("engine")
+def test_a_turn_that_offers_no_script_says_the_engine_refused_nothing(
+    tmp_path,
+) -> None:
+    """The other way to reach exit 3, and it used to read the same.
+
+    Seen inside `cadex walk --prompt`: the design turn read the authoring
+    contract, said nothing more, and the envelope claimed the engine had
+    not accepted a script — with no hint that the engine had never been
+    offered one.
+    """
+
+    factory = turn_factory([[("tool", "describe_api", {}),
+                             ("done", "I need more information.")]])
+    report = RunReport()
+
+    code = command_prompt(_args(tmp_path), report, turn_factory=factory)
+
+    assert code == EXIT_REJECTED
+    assert "the engine refused nothing" in report.error
+    assert "describe_api" in report.error
+    assert "never offered a script" in report.error
+    assert "the agent's closing words: I need more information." in report.error
+
+
+def test_a_rejection_reason_survives_a_silent_turn_with_no_calls() -> None:
+    """No calls and no closing words is still a distinguishable reason."""
+
+    from cadex_cli.__main__ import _rejection_reason
+
+    reason = _rejection_reason("", [])
+
+    assert "no tool call" in reason
+    assert "closing words" not in reason
 
 
 @pytest.mark.usefixtures("engine")

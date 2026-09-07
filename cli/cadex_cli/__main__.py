@@ -550,6 +550,50 @@ def _refresh_script_state(client: CadexdClient, report: RunReport) -> None:
     report.params = params_from_script(read_script_state(client))
 
 
+#: How much of the agent's closing words and of an engine refusal reach the
+#: envelope. Long enough to name a cause, short enough that a walk's
+#: ``error`` line stays one readable paragraph.
+REASON_CHARS = 400
+
+
+def _clip(text: str, limit: int = REASON_CHARS) -> str:
+    text = " ".join(str(text).split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _rejection_reason(text: str, calls: Sequence[ToolCall]) -> str:
+    """Why a turn ended with no accepted script, in one line.
+
+    The bare sentence — "the turn finished without the engine accepting a
+    script" — is true of two quite different runs, and only the parent can
+    tell them apart: a turn that *offered* a script and had it refused, and
+    a turn that never offered one at all. Both were seen inside ``cadex
+    walk`` in one afternoon, and the envelope said the same thing for each,
+    so the record could not name the cause. So carry the two facts the
+    parent already has: the last thing the engine refused, and the agent's
+    own closing words. Nothing here retries and nothing here guesses — this
+    is the reason, written down.
+    """
+
+    parts = ["the turn finished without the engine accepting a script."]
+    refused = next((call for call in reversed(calls) if not call.ok), None)
+    if refused is not None:
+        detail = _clip(refused.summary) or refused.failure_code or "failed"
+        code = f" [{refused.failure_code}]" if refused.failure_code else ""
+        parts.append(f"the engine last refused {refused.op}{code}: {detail}")
+    else:
+        offered = ", ".join(dict.fromkeys(call.op for call in calls))
+        parts.append(
+            "the engine refused nothing: the agent made "
+            + (f"{len(calls)} tool call(s) ({_clip(offered, 120)})" if calls
+               else "no tool call")
+            + " and never offered a script."
+        )
+    if text.strip():
+        parts.append(f"the agent's closing words: {_clip(text)}")
+    return " ".join(parts)
+
+
 # -- commands ------------------------------------------------------------
 
 
@@ -645,9 +689,7 @@ def command_prompt(
             report.error = result.error or "the agent turn failed."
             return EXIT_FAILURE
         if accepted is None:
-            report.error = (
-                "the turn finished without the engine accepting a script."
-            )
+            report.error = _rejection_reason(result.text, bridge.state.calls)
             return EXIT_REJECTED
 
         _finish(args, report, engine, accepted.get("display"))

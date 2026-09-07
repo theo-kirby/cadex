@@ -222,7 +222,14 @@ of doing any of them:
 
 A leg that fails stops the walk there, with the leg's name and its error
 in `error` and the legs that ran under `walk.legs`; the exit code is the
-leg's for a usage error or a refusal, `1` otherwise. The walk lands no
+leg's for a usage error or a refusal, `1` otherwise. A **design** leg that
+ends at exit 3 says which of the two exit-3 turns it was: either the last
+thing the engine refused (the op, its failure code and its message) or
+`the engine refused nothing` with the tool calls the agent did make, and
+in both cases the agent's own closing words, clipped. The walk copies that
+string verbatim, so a run with nobody watching records the cause rather
+than "the turn finished without the engine accepting a script" — which was
+true of both and told nt3 nothing. The walk lands no
 `PROGRESS.md` row of its own — its legs' rows are the record, and the
 last one carries the rollout's `total_reward` with its delta against the
 previous walk (ADR-194). `--set policy_on=…` is a usage error: the walk
