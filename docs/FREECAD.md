@@ -205,8 +205,10 @@ itself, in the Phase 7 Qt-shell deletion (ADR-021).
 
 - Does `src/Mod/Material` reduce to just the property types the five domains
   touch, or stay whole?
-- `src/Mod/Start`, `Test` and `Help` build but ship in nothing. They look
-  like a cheap Phase 13b batch; the audit has not been done.
+- `src/Mod/Help` qualifies for a separate durable disable, then deletion
+  (ADR-216, [HELP-AUDIT.md](HELP-AUDIT.md)); it still builds/installs today.
+  `Start` and `Test` remain unaudited whole-tree candidates with required
+  App/MainCmd dependencies; payload exclusion alone does not qualify them.
 - Which `tests/` subtrees cover removed workbenches and go with them?
 - `cadex_assembly_worker.py` imported `CommandCreateView` — GUI-lineage
   code used headlessly for exploded views, and the one import that made

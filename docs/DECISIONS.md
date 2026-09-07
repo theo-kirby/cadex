@@ -19807,3 +19807,28 @@ no manifest or modification-notice edit is necessary. The separately repeated
 build, install/stage and gate evidence is in PHASE8-AUDIT.md. This completes
 the bounded shim sequence, not a whole Measure-tree removal, two engine-tree
 removals, or the broad GUI-source/fork-delta criteria.
+
+
+## ADR-216 — Qualify Help for a separate whole-tree disable (2026-09-07)
+
+[Cadex-new] **Decision.** The bounded audit in [HELP-AUDIT.md](HELP-AUDIT.md)
+qualifies src/Mod/Help for the disable half of the two-commit removal protocol.
+It has no tracked product importer or required App target, although Help.show
+has an inherited console API. Retiring that unused API is within the product
+non-goal of FreeCAD compatibility. No runtime/build rules change in this audit.
+
+**Boundary.** Force BUILD_HELP OFF in its existing cache declaration during
+the separate disable, retaining source and the parent gate. Defaults alone
+leave existing ON caches enabled. Quarantine stale installed Help_rc.py and
+bytecode as well as the four currently installed sources before verification.
+At later deletion, remove the Help translation-updater row and developer
+configuration references too, with manifest/notices on surviving inherited
+files. Preserve attribution, retained Qt and required App/Assembly consumers.
+Start/Test are not qualified; Measure's completed shim sequence is not two
+whole-tree removals.
+
+**Evidence.** Source/generated consumer audit and 1,544-test CTest discovery;
+26 existing-payload lifecycle/licensing tests pass in 14.48 s, including the
+preceding deletion's committed manifest comparison. No new build/stage or full
+engine/CTest execution. HELP-AUDIT records future gates, cache handling and
+unchanged import-relative metrics; broad fork-delta reduction remains open.

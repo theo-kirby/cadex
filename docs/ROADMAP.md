@@ -798,9 +798,13 @@ Not a phase that "completes" — a standing mode of work.
       (`shell/locale/`, 80 MB) — **disabled 2026-09-06, ADR-198**, delete
       half pending — then the VSE, grease pencil, the compositor, most of
       `shell/tests/files/` (784 MB), the unused `shell/release/datafiles`.
+- [x] Audit the Help whole-tree candidate (2026-09-07, ADR-216,
+      `docs/HELP-AUDIT.md`). Qualified for a separate disable; no source or
+      build-rule change yet. Start/Test qualification remains open.
 - [ ] Engine side: Phase 8's audited GUI directory boundary is deleted
       (ADR-214); broader residual GUI-lineage source remains open. Further
-      candidates requiring their own disable/delete audit: `src/Mod/{Start,Test,Help}` build but are in no shipped
+      candidates: Help is audited but still needs separate disable/delete commits;
+      Start and Test need their own dependency audits. All three build but are in no shipped
       payload (`docs/FREECAD.md` §1), and the staged payload is **2.3 GB**
       of which ~2.1 GB is development environment — two copies of LLVM,
       node, clang, CMake's docs (`docs/cadex-release-packaging.md`). The
