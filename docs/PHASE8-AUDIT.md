@@ -566,3 +566,44 @@ Existing-payload baseline command:
 `CADEX_ENGINE_ROOT="$PWD/build/engine/cadex-engine-0.0.0-macos-arm64" pixi run python -m pytest -q src/Mod/cadex/cadex_tests/test_licensing_compliance.py src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py`
 — **26 passed in 13.30 s**, exit 0. No configure, build, install/stage, full
 engine suite, inherited ctest or GUI launch in this audit-only unit.
+
+
+## MeshPart initializer install disabled (2026-09-07, ADR-224)
+
+Removed only InitGui.py from the parent INSTALL list; the 73-line source,
+App subdirectory, Init.py, meshFromShape and export macros remain. The release
+build regenerated its install script without the initializer. Quarantined the
+two old installed/staged copies before installing and staging. No initializer
+or bytecode remains under debug/release Mod/MeshPart, the installed environment
+or fresh payload. Debug has no built App; release, install and stage retain
+Init.py and MeshPart.so (installed libraries live under lib/).
+
+One `pixi run build-release`, `install-release` and completed `stage-engine`
+all exit 0. The build reports Release and BUILD_GUI=OFF. The payload is 2.4 GB,
+local stage-only, with expected external rpath diagnostics. An explicit
+installed FreeCADCmd script confirms GuiUp=false and tessellates a 10×20×30 box
+through MeshPart.meshFromShape: `MESHPART-APP-OK facets=12`. A one-line `-c`
+probe instead printed `Application unexpectedly terminated` despite exit 0;
+this matches the prior Measure probe limitation and is not counted as passing.
+Fresh packaged lifecycle/licensing: **26 passed in 18.07 s**, exit 0.
+
+The inherited CMake file already carries its notice and manifest membership.
+Working-tree manifest equality remains 56 FreeCAD and 44 Blender files after
+applying the manifest's `ours` exclusions. No source deletion, whole-tree
+removal, broad GUI-source completion or aggregate fork-delta reduction is claimed.
+Local verification logs: `/tmp/cadex-meshpart-disable-*.log`.
+
+Serial inherited CTest: **162 failures / 1,526 enabled tests in 141.81 s**,
+exit 8, with no new failure names against the 164-failure baseline. The two
+baseline-only names remain DlgVersionMigrator_Tests_run and
+SpreadsheetRenameProperty.renameProperty. Three skipped and seven disabled
+cases are unchanged. All four Cadex ctests pass: digest 2.02 s, lifecycle
+15.33 s, subshape enumeration 0.75 s and response schemas 0.19 s.
+Discovery now has 1,533 names, eleven fewer than the prior Measure log's
+1,544: precisely FileUtilitiesTest.humanReadableSize* from the Start test source
+already deleted by `14d47c31`. No names were added. The prior run's stale
+Start test discovery is not a MeshPart regression; no test source changes here.
+
+Full engine suite: **2,023 passed, 52 skipped in 265.63 s**, exit 0.
+`git diff --check` passes. No shell changes, GUI launch or second full build.
+Next: separately delete the retained initializer and repeat the required gates.

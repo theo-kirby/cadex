@@ -20122,3 +20122,21 @@ payload's lifecycle/licensing baseline and documentation/graph checks validate
 this audit; they do not substitute for the later disable's release build,
 engine suite, inherited baseline comparison and fresh packaged gate. Broader
 GUI source and fork-delta claims remain open. BLDC qualification stays blocked.
+
+**Install-disable follow-through (2026-09-07).** Removed only MeshPart's
+InitGui.py INSTALL entry; retained its source for the separate delete commit,
+App, Init.py, meshFromShape and export macros. Quarantined the two stale
+installed/staged copies. One release build, install and completed stage pass;
+fresh build/install/payload absence checks retain the headless library and
+initializer. An installed script tessellates a box to 12 facets with GuiUp
+false. Fresh packaged lifecycle/licensing: 26 passed in 18.07 s. Serial CTest:
+162 baseline failures, no new failures, four Cadex tests passed; eleven stale
+Start test names disappeared after regeneration (source deleted by 14d47c31).
+PHASE8-AUDIT.md records exact commands, counts and the one-line launcher
+probe limitation. Risk remains limited to unsupported external GUI users.
+Manifest membership stays 56 FreeCAD / 44 Blender, with existing notices;
+FreeCAD manifest-scoped M totals move from 1,637 inserted / 1,815 deleted to
+1,637 / 1,816, while Blender remains 1,046 / 129. This one-line disable does
+not establish the broad fork-delta or no-GUI-source criteria.
+Full engine pytest: **2,023 passed, 52 skipped in 265.63 s**; no shell change,
+GUI launch or second build. Source deletion remains the next separate unit.
