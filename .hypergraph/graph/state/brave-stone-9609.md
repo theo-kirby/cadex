@@ -39,6 +39,8 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 
 **Manufacturer STEP accessory audit stopped (ADR-231):** no catalog identities or vendor assets were added. Neither horn nor pigtail qualified; source, fit and rights blockers are tracked in the manufacturer-source gap. The inspected mesh and linked-part imports do not establish the assumed script-owned raw STEP delivery path, and a raw kernel read supplies no project reopen/rebuild proof [rec: steady-reef-0162].
 
+**Gears family shipped (ADR-233, ADR-234):** `lib.spur_gear` and `lib.rack` over `CadexCatalog.gear_spec` (ISO 53 profile constants, ISO 54 series 1 modules) share one involute generator, verified on the source suite, a rebuilt engine and a fresh staged payload (2050 passed / 52 skipped; packaged lifecycle/library 107, no skips) [rec: wild-beacon-4213]. `lib.rack_and_pinion` composes them over `CadexCatalog.rack_and_pinion_spec` (centre distance, backlash as a radial shift, root clearance, travel per revolution and per degree, rack length, nested member specs) as a two-solid compound placed like every other library value, with `bore`, `rack_height` and `rotation_degrees` keywords; the composition lives in the `gears` family notes, so the `describe_api` golden did not move. Fresh packaged lifecycle/library gate: 119 passed, no skips. Compound-mechanism progress is tracked on idle-tower-1624 [rec: mellow-garden-0940].
+
 ## Negative knowledge
 
 - [scope: Pololu #2367 dimensions and packaged verification | confidence: high | evidence: idle-dawn-5426] The envelope uses the drawing’s 25.6 mm rear maximum amid conflicting product-page lengths. Filled rear geometry, 1 mm bore depth and shaft-flat transition are approximate; bore depth is not screw engagement permission. The tested stage-only payload retains local dependencies and is not a portable release.
@@ -51,6 +53,8 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 - [scope: SKF GE 6 C nominal catalog geometry and delivery payload | confidence: high | evidence: first-wind-9707, morning-field-8202] Omitted chamfers, liner and running clearance establish no fit, tolerance, physical inertia, load or dynamics guarantee. The tested 2.4 GB local development payload retains 248 external-path relocation violations and is not a portable release.
 
 - [scope: inspected CubeMars RI50 KV100 no-Hall sources and fixture | confidence: high | evidence: slender-harbor-9625, shy-hill-8139] Ambient limits and STEP export dates do not establish torque-test conditions or rating/drawing revision equivalence. The fixture BOM contains mechanical items only; DWG annotations and the installation video remain unverified, so the audit does not exhaust all possible evidence. The frameless rotor/stator cannot use the existing shaft/collar recipe; no geometry, fit, physical-inertia or powered-behavior claim follows.
+
+- [scope: ADR-233/234 gears family | confidence: high | evidence: wild-beacon-4213, mellow-garden-0940] Standalone values and a geometric mesh only: no strength, torque, load, stiffness or efficiency rating. Tooth counts below 17 undercut and are only warned.
 
 ## Provenance
 
@@ -73,3 +77,5 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 - mild-harvest-8460 — AT2814 source audit leaves current/thermal/revision gaps; no qualified winding or catalog delivery, bounded motor searches stopped
 - hidden-ridge-7342 — ADR-229 source/interface blockers stop fifth-servo delivery; existing packaged baseline passes 91 tests
 - steady-reef-0162 — no accessory identities added; existing imports do not establish script-owned raw STEP delivery
+- wild-beacon-4213 — ADR-233 gears family (spur gear, rack) verified on the staged payload; standalone values, no rating
+- mellow-garden-0940 — ADR-234 rack_and_pinion composition over rack_and_pinion_spec, verified on the fresh payload; geometric mesh only
