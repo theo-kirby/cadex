@@ -87,19 +87,10 @@ def test_module_directory_and_preference_group_are_lowercase_cadex() -> None:
     assert "User parameter:BaseApp/Preferences/Mod/cadex" in source
     assert "Mod/VibeCAD" not in source
 
-    # And the inherited GUI core reads nothing of ours. Phase 6 asserted the
-    # opposite -- that MainWindow.cpp read the cadex group -- because
-    # isVibeExperimentalModeSession lived there. C6a reverted that hook to
-    # stock (ADR-022), so the fork's delta against upstream FreeCAD in this
-    # file is now zero, and this assertion is what keeps it there.
-    for inherited in ("src/Gui/MainWindow.cpp", "src/Gui/MainWindow.h",
-                      "src/Gui/ToolBarManager.cpp",
-                      "src/Gui/DockWindowManager.cpp",
-                      "src/Gui/OverlayWidgets.cpp"):
-        text = _source(inherited)
-        assert "Preferences/Mod/cadex" not in text, inherited
-        assert "Vibe" not in text, inherited
-
+    # Phase 8 removes the retired GUI core; the engine preference check stays.
+    assert not (ROOT / "src/Gui").exists()
+    assert not (ROOT / "src/Main/MainGui.cpp").exists()
+    assert not (ROOT / "src/Main/FreeCADGuiPy.cpp").exists()
 
 
 def test_every_runtime_entry_point_uses_only_the_cadex_config_namespace() -> None:
@@ -113,7 +104,6 @@ def test_every_runtime_entry_point_uses_only_the_cadex_config_namespace() -> Non
     """
     for relative_path in (
         "src/Main/MainCmd.cpp",   # the engine entry point; load-bearing
-        "src/Main/MainGui.cpp",
         "src/Main/MainPy.cpp",
     ):
         source = _source(relative_path)

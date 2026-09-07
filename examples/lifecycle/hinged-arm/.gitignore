@@ -1,0 +1,5 @@
+*
+!.gitignore
+!*.md
+!script.py
+!docs/

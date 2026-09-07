@@ -6,9 +6,6 @@ if(BUILD_TRACY_FRAME_PROFILER)
 endif()
 
 add_subdirectory(App)
-if(BUILD_GUI)
-    add_subdirectory(Gui)
-endif(BUILD_GUI)
 
 set(Part_Scripts
     Init.py
@@ -18,12 +15,6 @@ set(Part_Scripts
     TestPartApp.py
 )
 
-if(BUILD_GUI)
-    list (APPEND Part_Scripts
-          InitGui.py
-          TestPartGui.py
-    )
-endif(BUILD_GUI)
 
 set(AttachmentEditor_Scripts
     AttachmentEditor/__init__.py
@@ -39,14 +30,6 @@ set(BasicShapes_Scripts
     BasicShapes/Utils.py
 )
 
-if(BUILD_GUI)
-    list (APPEND BasicShapes_Scripts
-          BasicShapes/ShapeContent.py
-          BasicShapes/CommandShapes.py
-          BasicShapes/ViewProviderShapes.py
-          BasicShapes/TaskTube.ui
-    )
-endif(BUILD_GUI)
 
 set(BOPTools_Scripts
     BOPTools/__init__.py

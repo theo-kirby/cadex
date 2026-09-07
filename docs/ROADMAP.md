@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-09-06
+Verified against source: 2026-09-07
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -300,8 +300,15 @@ cancellation answered `RUN_CANCELLED`, and 120 main-thread ticks during a
 `docs/FREECAD.md` §3's removal protocol (ADR-022). The delete commit is
 this phase.
 
-- [ ] Dependency audit: `src/Gui` (66 MB, 729 files) plus every
-      `src/Mod/*/Gui`, `tests/src/Gui`, and the `setup_qt_test` helper.
+- [x] Dependency audit: `src/Gui`, every `src/Mod/*/Gui`, `tests/src/Gui`
+      and `setup_qt_test` — [measured boundary and gates](PHASE8-AUDIT.md),
+      2026-09-07 (ADR-213). 3,731 tracked files across thirteen directories.
+- [x] Preserve Material's headless metatype contract in `App/MetaTypes.h`,
+      with a forwarding Gui header and all 18 retained includes migrated
+      (ADR-213, 2026-09-07).
+- [x] Complete the debug GUI disable: all presets select headless builds,
+      and the shared initializer rejects explicit GUI-on requests
+      (ADR-213, 2026-09-07); directory deletion follows in ADR-214.
 - [x] **`cadex_assembly_worker.py` imported `CommandCreateView`** —
       GUI-lineage code used headlessly for exploded views, and the one
       import that made this deletion look more than mechanical. **Resolved
@@ -309,10 +316,44 @@ this phase.
       (FreeCAD's rule, ported), and the audit found the module installs
       regardless of `BUILD_GUI` anyway — the publisher still builds the
       native document object from it, which this deletion does not touch.
-- [ ] Delete, with the `BUILD_GUI` guards that Phase 7 added removed rather
-      than left dangling.
-- [ ] `docs/FREECAD.md` §1 row moves from "present, not built" to deleted;
-      DECISIONS entry.
+- [x] Delete the thirteen audited Gui directories and retired Main GUI sources,
+      InventorBuilder test and registrations, removing obsolete GUI guards
+      (ADR-214, 2026-09-07; validation in PHASE8-AUDIT.md).
+- [x] `docs/FREECAD.md` §1 row moves from "present, not built" to deleted;
+      ADR-214 records the delete boundary.
+- [x] Audit remaining GUI-lineage source and unconditional Python install
+      lists outside that boundary; preserve required headless Assembly publication
+      (ADR-215, PHASE8-AUDIT.md). Consumer audit only; residual removal and
+      the broader exit criterion remain open.
+- [x] Disable Measure/MassPropertiesGui.py in its shared copy/install list
+      (ADR-215); preserve the source and headless Measure/Assembly consumers.
+- [x] Delete the disabled Measure/MassPropertiesGui.py shim in a separate
+      verified commit (ADR-215, 2026-09-07).
+
+- [x] Qualify MeshPart/InitGui.py for a separate install-only disable, with
+      loader/worker consumers and stale installed copies audited
+      (ADR-224, PHASE8-AUDIT.md, 2026-09-07).
+- [x] Disable MeshPart/InitGui.py installation with stale-copy cleanup;
+      preserve its source, MeshPart App and Init.py (ADR-224, 2026-09-07).
+- [x] Delete the disabled MeshPart/InitGui.py source in a separate verified
+      commit; preserve App, Init.py and export macros (ADR-224, 2026-09-07).
+
+- [x] Audit Material's GUI copy/install registrations and retained consumers;
+      qualify only InitGui.py, MaterialEditor.py and TestMaterialsGui.py
+      (ADR-225, PHASE8-AUDIT.md, 2026-09-07).
+- [x] Disable those three Material registrations, retaining source and App/
+      tests/resources, with stale-copy cleanup and fresh gates (ADR-225).
+- [x] Separately delete the qualified Material sources after verified disable
+      and replan; retain TestMaterialDocument.py (ADR-225, 2026-09-07).
+
+- [x] Audit the four inactive Main GUI launcher branches and unused resource
+      template; retain Windows command-line behavior and state Windows
+      validation limits (ADR-226, PHASE8-AUDIT.md, 2026-09-07).
+- [x] Delete only the previously disabled Main freecad.rc.cmake template;
+      retain command-line resources (ADR-226, 2026-09-07).
+- [ ] Separately plan and gate removal of the four inactive shared Main launcher
+      arms; preserve command-line behavior and manifest/notice discipline,
+      with a Windows validation path (ADR-226).
 
 **Exit criteria:** the tree contains no GUI source, `pixi run configure`
 (debug) still configures, and both cadex ctests stay green.
@@ -782,11 +823,83 @@ Not a phase that "completes" — a standing mode of work.
       (`shell/locale/`, 80 MB) — **disabled 2026-09-06, ADR-198**, delete
       half pending — then the VSE, grease pencil, the compositor, most of
       `shell/tests/files/` (784 MB), the unused `shell/release/datafiles`.
-- [ ] Engine side: Phase 8 (`src/Gui`, 66 MB) is unchanged and still
-      pending (Phase 9's warm-standby worker landed as ADR-055). Two more
-      found while
-      documenting: `src/Mod/{Start,Test,Help}` build but are in no shipped
-      payload (`docs/FREECAD.md` §1), and the staged payload is **2.3 GB**
+- [x] Audit the Help whole-tree candidate (2026-09-07, ADR-216,
+      `docs/HELP-AUDIT.md`). Qualified for a separate disable; no source or
+      build-rule change yet. Start/Test qualification remains open.
+- [x] Disable Help at the audited boundary (2026-09-07, ADR-217): `BUILD_HELP`
+      forced OFF over stale ON caches, fresh caches and explicit ON requests;
+      source retained. The code landed in `a04ca822` and the ADR in
+      `504b46bc`, both unrecorded and ungated; the gates ran two units later
+      (iteration 31) and are in `docs/HELP-AUDIT.md` §"Disable landed": full
+      engine suite, one release build, install, stage, the four Cadex ctests,
+      serial inherited CTest against the baseline, and the packaged
+      lifecycle/licensing gate.
+- [x] Delete Help at the audited boundary (2026-09-07, ADR-218): `src/Mod/Help`
+      (85 files), its parent gate, the `BUILD_HELP` option and report line,
+      the crowdin row and two developer-config path entries. The same gate
+      set reran on the delete commit in the same unit; evidence is in
+      `docs/HELP-AUDIT.md` §"Delete landed". Help is the **first** engine-side
+      whole-tree removal; Start subsequently follows under ADR-220/221.
+- [x] Audit the Start whole-tree candidate (2026-09-07, ADR-219,
+      `docs/START-AUDIT.md`). Qualifies for a separate disable at the same
+      forced-OFF boundary Help used; documentation only, no build. The audit
+      found `lib/Start.so` still in the staged payload and Start as the sole
+      GSL-submodule consumer, and records how whole-tree deletions should
+      count against the fork-delta criterion. Test remains unaudited.
+- [x] Disable Start at the audited boundary (2026-09-07, ADR-220): forced-OFF
+      cache entry, all 27 source files and three gates retained. Both existing
+      configurations reject explicit ON; installed and staged Start module
+      and library are absent. Verification: `docs/START-AUDIT.md`
+      §"Disable verification (ADR-220)". The separate delete follows below.
+- [x] Delete Start after its separate disable (2026-09-07, ADR-221): all 27
+      module/test files and the audited build/config references removed.
+      `docs/START-AUDIT.md` §"Delete verification (ADR-221)" records the gates
+      and both fork-delta measures. With Help, two engine-side whole-tree
+      removals have landed under the two-commit protocol.
+- [x] Remove the unused Microsoft GSL submodule after Start (2026-09-07,
+      ADR-222): no retained consumer or CMake reference; engine and app setup
+      plus the legacy build helper no longer request its checkout. Setup,
+      release configure/build and licensing/purity verification pass.
+- [x] Audit all 56 surviving FreeCAD modifications (2026-09-07, ADR-227,
+      `docs/SURVIVING-DIFF-AUDIT.md`); qualify only the redundant JointObject
+      Preferences import guard with a GUI-denied retained-behavior probe.
+- [x] Remove only the qualified Preferences guard (2026-09-07, ADR-227);
+      retain headless solver dispatch and all Qt/Coin guards. Verification
+      and separate surviving-diff measures: `SURVIVING-DIFF-AUDIT.md`.
+- [ ] Remove that qualified guard and run fresh implementation gates;
+      expected saving is three inserted lines, with no file-count change.
+- [x] Audit Test's standalone Tk runner (2026-09-07, ADR-230,
+      `docs/TEST-TK-AUDIT.md`); qualify only unittestgui.py and preserve the
+      MainCmd/TestSources text-runner dependency.
+- [x] Disable the qualified Test Tk runner copy/install row (2026-09-07),
+      retaining its source and the headless Test harness (ADR-230).
+- [x] Separately delete the disabled Test Tk runner after verified disable
+      evidence (2026-09-07); repeat build/install/stage and retained headless
+      tests (ADR-230).
+- [x] Audit only the inherited translation updater offline (ADR-232,
+      2026-09-07): qualify at most one subtractive boundary with retained App
+      translation consumers and removal gates explicit; no network execution
+      or implementation is authorized by the planning evidence alone.
+      Evidence: TRANSLATION-UPDATER-AUDIT.md; only the deleted GUI translator
+      writer qualifies, pending a later bet and separate disable/delete commits.
+- [x] Dispose of the updater audit as evidence only (2026-09-07, ADR-232):
+      only the deleted GUI writer qualifies; exact files, retained behavior,
+      compatibility cost and separate disable/delete gates are recorded in
+      TRANSLATION-UPDATER-AUDIT.md. Maintainer reconciliation and a later
+      planner bet are required before either implementation stage.
+- [x] Disable only the translation updater's deleted GUI writer dispatch
+      (2026-09-07, ADR-232); preserve App/Base installation and retain the
+      helper/PySide import for the separate delete stage.
+- [x] Separately delete updateTranslatorCpp and its exclusive PySide import
+      after committed disable evidence passes (2026-09-07, ADR-232).
+- [ ] Engine side: Phase 8's audited GUI directory boundary is deleted
+      (ADR-214); broader residual GUI-lineage source remains open. Further
+      candidates: Help is deleted (ADR-217, ADR-218);
+      Start is deleted (ADR-220, ADR-221); Test has one qualified Tk-runner
+      boundary (ADR-230), with the rest still needing dependency audits.
+      Test builds and installs, with `Mod/Test`
+      pruned from the payload. Start no longer installs or stages
+      (`docs/START-AUDIT.md`), and the staged payload is **2.4 GB**
       of which ~2.1 GB is development environment — two copies of LLVM,
       node, clang, CMake's docs (`docs/cadex-release-packaging.md`). The
       payload's "no GUI" gate also has a hole: it greps `Mod/` for
@@ -1781,6 +1894,12 @@ What makes them experimental, and what would settle it:
   alert row. The gate's `test_a_locked_out_project_is_reaccepted_from_the_chat`
   moves the accepted digest with the script untouched and drives the
   operator from the locked-out state.
+- [x] **Qualify assembly camera visibility** (2026-09-07, ADR-228):
+      actual hydration and EEVEE render reproduce unposed source leakage;
+      `ASSEMBLY-VISIBILITY-AUDIT.md` defines ownership and regression gates.
+- [x] **Hide instanced sources from camera renders** (2026-09-07) with
+      independent render ownership and a hydration/EEVEE regression failing
+      on old source (ADR-228). Pre-hidden sources retain their render flags.
 - [x] **Save-As dropped a trained policy** (named in ADR-138, ADR-188 landed
   the carry). The shell's `CARRIED_ASSET_SUFFIXES` filtered the carry-forward
   to meshes and `.cxpart`, so a project that replayed a `.cxpolicy` Saved-As
@@ -1789,6 +1908,51 @@ What makes them experimental, and what would settle it:
   `.xml`) joins the list, which is now the engine's whole stored union; the
   gate's `test_save_as_carries_imported_geometry` carries the triple and
   refuses a file the store would not accept.
+- [x] **One reproducible lifecycle entry point** (ADR-199, `docs/CLI.md`
+  §2). `cadex walk --out <project>/runs/<name>` runs the legs as child
+  `cadex` commands — design turns, the blanked sweep, `train --put`, the
+  digest edit as a two-literal rewrite of the script's one
+  `assembly.policy` call, the verified rollout — and lands `review.json`
+  in the project as its own commit; checkpoints and traces stay out of the
+  project's history. Qualified on the repository's plate-and-arm toy, twice
+  (a placeholder digest to a verified rollout, then a reward change with a
+  warm start), by `cli/tests/test_walk.py` with the real engine and trainer.
+  The domain-doc convention is exercised by the caller (`docs/sensors.md`),
+  not generated. The second mechanism is qualified below; the GUI-attached
+  mode is documented in ADR-201, below.
+- [x] **The same walk on a second mechanism** (ADR-203).
+  `examples/lifecycle/linear-carriage` uses a slider and force motor through
+  the unchanged entry point, at the arm's 1 iteration × 4 environments.
+  Both projects' `PROGRESS.md` carry matched metric definitions and measured
+  numbers. The carriage reaches a verified 50-step rollout but does not learn
+  to hold height in one iteration. `cli/tests/test_walk.py` pins the slide
+  joint, policy digest and review with the real engine and trainer.
+- [x] **The walk's remote-training handoff is scripted** (ADR-200,
+  `docs/CLI.md` §2). `cadex train --remote` and `cadex walk --remote` run
+  the train leg through `training/remote_train.sh train <bundle> <out> --
+  <the same trainer flags>` (ADR-089), verify the returned policy against
+  the receipt's sha256, and leave every artifact where the local walk puts
+  it — `DIR/train`, the store, `review.json` — so the three modes share
+  one shape. Offline evidence: the command pinned against the script's
+  usage line, the leg end to end against a stand-in dispatcher with the
+  real engine. **Not executed**: no dispatch, and a warm start does not
+  travel (`--remote` with `--init-from` is a usage error).
+- [x] **The walk with the GUI attached is documented against the client
+  code** (ADR-201, `docs/CLI.md` §2, `docs/MUJOCO.md` §7c row 11). It is
+  the same `cadex` commands from a terminal beside the open `.blend`:
+  the CLI's `flock` is per command and released before the `PROGRESS.md`
+  row and the commit, and the shell takes no lock. Rebuild Model or reopen
+  before the next GUI edit. The in-app agent has no shell or file tool;
+  project docs stay the CLI's and a person's. **GUI not exercised.**
+  *Three modes, one shape* is headless exercised, remote scripted, GUI documented.
+- [x] **Stale shell mutations preserve accepted work** (ADR-204).
+  Remove automatic revision adoption/replay after `STALE_PROGRAM_REVISION`.
+  Script and parameter edits remain refused until explicit refresh; headless
+  regression covers a foreign accepted script, repeated refusal, successful
+  editing after Rebuild Model, and a synthetic refusal with a newer guard.
+  Current engine stale responses omit that guard; the prior claimed overwrite
+  was not reproduced. The dormant retry is removed defensively.
+  Shared locking and simultaneous acceptance remain outside this fix.
 - [x] **A trained policy comes home headlessly** (ADR-190). `cadex asset
   --put walk.cxpolicy` for a pipeline and `put_asset` in the CLI agent's
   tool surface, both on the op the shell has had since ADR-043; the
@@ -1947,7 +2111,7 @@ owes a viewport an answer.
         `strut_scale = 1.0`. `blend_mm` stays a declared parameter, and the
         loop drops the blend and says so.
 
-## Phase 17 — The parts library `(L0/L1 landed 2026-08-31, ADR-181; L2/L3 open)`
+## Phase 17 — The parts library `(L0/L1 landed 2026-08-31, ADR-181; L2 landed 2026-09-06, ADR-202; L3 open)`
 
 **Goal:** the hardware robots are built from — fasteners, bearings, servos,
 boards, motors — as catalogued, spec-pinned parametric parts the agent
@@ -1962,15 +2126,99 @@ field, and every client gets it through the surface it already reads.
 - [x] **L0 — framework, fasteners, bearings.** `CadexCatalog.py` +
       `cadex_library_api.py`; metric bolts/nuts/washers/inserts, clearance
       and tap-drill data, the common ball bearings, parametric bushing.
+- [x] **Fifth-servo bounded source audit.** Two Hitec candidates inspected;
+      neither qualifies for unchanged ServoPart. Interface blockers and next
+      acceptance checks in `FIFTH-SERVO-AUDIT.md` (ADR-229); no fifth SKU delivered.
 - [x] **L1 — servos.** SG90 / MG90S / MG996R / DS3218: datasheet mounting
       interfaces, measured micro horns, effective density for
       `assembly.body`, `.actuator(...)` bounded by real stall torque.
       Gaps stated, not papered: fields no datasheet dimensions are listed
       in `spec["approximate"]`; 25T horns and pigtail terminals absent
-      until a dimensioned source exists (dsservo.com STEP files are the
-      named next source).
-- [ ] **L2 — boards.** ESP32 DevKit, Pi Zero 2 W, PCA9685 with terminal
-      pinout rows, so the wiring system lands on library parts.
+      pending source/interface and redistribution qualification; the bounded
+      STEP audit below supersedes the unverified dsservo.com lead.
+- [x] **Manufacturer horn/pigtail bounded STEP audit.** One horn imported and
+      measured; neither category qualifies for delivery. Source hashes,
+      interface/rights/access blockers and import-path limit are recorded in
+      `HORN-PIGTAIL-AUDIT.md` (ADR-231). No horn or pigtail shipped.
+- [x] **L2 — boards.** ESP32 DevKitC V4 (WROOM-32E), Pi Zero 2 W,
+      Adafruit PCA9685 rev C: `lib.board`, mounting-hole rows and placed
+      solder-pad terminal tables for `boards(...)` (ADR-202). Sources and
+      approximations in PROVENANCE §8a; connector envelopes and measured
+      board masses are not modelled. Real-kernel library build and packaged
+      lifecycle verification recorded with the unit.
+- [x] **L3 first motor — Pololu #2367 N20 MP 6 V.** `lib.gearmotor`,
+      manufacturer shaft/mounting dimensions and qualified ratings; explicit
+      envelope approximations (ADR-205). Real-kernel and packaged gates.
+- [x] **N20 independent interface verification.** Actual-worker shaft/flat and
+      bore surface measurements plus 160 material/void probes, canonical and
+      placed (ADR-205). Assumed depth/transition remain explicit; full L3 open.
+- [x] **L3 BLDC rear-mount envelope — HOBBYWING 30415200.** `lib.bldc`,
+      sourced mounting/size/kV and qualified no-load data (ADR-206).
+      Conservative collar reservation; shaft coupling fit and torque remain
+      unsupported. Real-kernel interface probes and packaged library gate.
+- [x] **L3 linear-actuator source audit.** All eight Actuonix L12 STEP
+      models have mounting centres 0.5 mm longer than the nominal datasheet
+      values (PROVENANCE §8d, ADR-207); stroke travel agrees. Measurement
+      and source precedence recorded; this does not ship a catalog family.
+- [x] **L3 nominal linear-actuator geometry experiment.** Independent OCCT
+      construction at 0/23.5/50 mm extension measures 102/125.5/152 mm
+      bore spacing; 180 canonical/placed material probes pass. Explicit
+      approximation limits and reproduction script in PROVENANCE §8d,
+      ADR-207. No public family or physical fit guarantee yet.
+- [x] **L3 linear-actuator implementation.** `lib.linear_actuator` exposes
+      L12-50-210-12-S with bounded extension, nominal centres, qualified
+      ratings and explicit approximation limits; actual worker canonical/placed
+      interfaces and packaged publication verified (ADR-207).
+- [x] **L3 solenoid source/partial-geometry audit.** Chaocheng
+      TAU0730TM-14 (Adafruit 412) drawing and specification identified;
+      partial exterior passes 0/2.3/4.9 mm gap and placement probes. Missing
+      mounting callouts block this variant's sourced mounting contract
+      (PROVENANCE §8e, ADR-208); no solenoid API shipped.
+- [x] **L3 solenoid mounting-source follow-up.** Older TAU-0730TM slots
+      conflict with 412; Ledex B7 supplies mounting centres but lacks depth
+      and maximum-travel evidence. Defer delivery and advance joints source
+      qualification (PROVENANCE §8e, ADR-209); no new geometry or API.
+- [ ] **L3 solenoid implementation.** Requires complete sourced mounting
+      interfaces, qualified ratings, actual worker probes and packaged gates.
+- [x] **L3 joint source/geometry qualification.** SKF GE 6 C, manufacturer
+      dimension and abutment tables; nominal spherical rings and bore pass
+      headless OCCT at neutral/intermediate/limit tilt and placed probes
+      (PROVENANCE §8f, ADR-210). Qualification alone supplied no public API.
+- [x] **L3 joint implementation.** `lib.joint("skf-ge-6-c")` delivers the
+      qualified two-ring approximation with bounded tilt, source metadata,
+      real-worker interfaces and packaged publication (ADR-211). No fit guarantee.
+- [x] **L3 remaining-coverage audit.** [Coverage/evidence matrix](L3-COVERAGE.md)
+      distinguishes four delivered SKUs from missing BLDC size/torque scope,
+      deferred solenoid interfaces and separate compound gearing (ADR-212).
+      Full L3 stays open; Phase 8 deletion has since landed.
+- [x] **L3 additional BLDC source audit.** Set A defines three required
+      classes; RI50 KV100 no-Hall qualification is blocked on thermal and
+      revision evidence (ADR-223, `docs/L3-COVERAGE.md`). No delivery claimed.
+- [x] **RI50 fixture evidence follow-up.** BOM/STEP-header and new support-page
+      inspection closes neither qualification gap; candidate parked (ADR-223).
+      Followed by the shafted set-A source audit below.
+- [x] **Shafted BLDC alternative source audit.** AT2814 Long Shaft KV900
+      bench report and V2.0 drawing inspected; current definition, thermal
+      conditions and revision linkage still block qualification (ADR-223).
+      Stop motor searches and replan toward bounded residual GUI work.
+- [x] **L3 involute spur gear and rack.** `lib.spur_gear` and `lib.rack`
+      over `CadexCatalog.GEAR_STANDARD` (ISO 53 type A, ISO 54 series I),
+      one sampled-involute generator, real-kernel diameter/volume/probe
+      tests and packaged publication (PROVENANCE §8g, ADR-233). Standalone
+      values: rack-and-pinion and planetary composition are the next units.
+- [x] **L3 rack and pinion composed.** `lib.rack_and_pinion` over
+      `CadexCatalog.rack_and_pinion_spec`: a two-solid compound at the
+      standard centre distance, backlash as a radial shift, any phase by
+      `rotation_degrees`; real-kernel mesh test (zero common volume at nine
+      phases, three configurations), root clearance 0.25 m plus shift both
+      ways, flank gap equal to the backlash's normal gap, and two negative
+      controls (ADR-234). The planetary gearbox is the remaining unit.
+- [ ] **Planetary mesh qualification.** First m1 sun18/planet18/ring54
+      phase fails the 1e-6 mm³ overlap bound (0.000354806 mm³); reproducible
+      probe in `docs/experiments/planetary_mesh_probe.py` (ADR-235).
+      Publication and multi-phase qualification remain open.
 - [ ] **L3 — motors and mechanisms.** Common BLDC sizes with kV/torque
-      data, N20 gearmotor, linear actuator, solenoid, joints; gears and
-      rack-and-pinion need involute profiles and are their own slice.
+      data, N20 gearmotor, linear actuator, solenoid, joints; involute gear
+      and rack values exist (ADR-233) and the rack and pinion is composed
+      with mesh and clearance evidence (ADR-234); the planetary gearbox is
+      still its own slice.

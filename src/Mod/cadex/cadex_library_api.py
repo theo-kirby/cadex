@@ -9,8 +9,8 @@ is a ``DomainValue`` like any other: it books, fillets, transforms,
 assembles and digests with machinery that never learns the library exists.
 
 Every generator returns a :class:`LibraryPart` — ``.body`` is the geometry,
-``.spec`` is the catalog row it was built from (mass-relevant density
-included), so a script can read the numbers it is designing around instead
+``.spec`` is the catalog row it was built from (including density where
+supported), so a script can read the numbers it is designing around instead
 of restating them.
 
 Frame conventions, uniform across the library and stated once here:
@@ -20,8 +20,11 @@ Frame conventions, uniform across the library and stated once here:
 - A bolt's datum is the **head-seat plane**: the head sits on +direction,
   the shank runs along -direction. Place it by naming the surface point the
   head lands on and the surface normal.
-- Everything else (nut, washer, insert, bearing, bushing) sits with its
-  **base face in the datum plane** and its body extending along +direction.
+- Nuts, washers, inserts, bearings and bushings sit with their
+  **base face in the datum plane** and bodies extending along +direction.
+- Servos and gearmotors use the shaft's intersection with the case/front
+  face as datum; the body extends backwards. BLDC motors use the rear
+  mounting plane with the case forwards. Boards use a PCB corner.
 
 This module imports nothing from FreeCAD; generators run identically in
 the sandboxed worker and the stubbed test suite.
@@ -237,6 +240,120 @@ class ServoPart(LibraryPart):
             command_limits_degrees=command_limits_degrees,
             label=label,
         )
+
+
+class BoardPart(LibraryPart):
+    """A board whose solder-pad rows can enter the existing wiring table."""
+
+    __slots__ = ("_frame_placement",)
+
+    def __init__(self, part_number, body, spec, frame_placement):
+        super().__init__("board", part_number, body, spec)
+        object.__setattr__(self, "_frame_placement", frame_placement)
+
+    def terminals(self) -> list[dict]:
+        """Fresh term() rows in the generated body's frame, for board().
+
+        Names are physical connector/pin ids; .spec['terminals'] maps them
+        to signals. Origins are solder pads, axes point into the PCB.
+        Optional fitted headers and connector bodies are not modelled.
+        """
+        from CadexBoards import term
+
+        origin, _unit, rotation = self._frame_placement
+        return [term(row["name"],
+                     origin=tuple(a+b for a, b in zip(origin, _rotate(rotation, row["origin"]))),
+                     axis=_rotate(rotation, row["axis"]), hole_dia=row["hole_dia"])
+                for row in self.spec["terminals"]]
+
+
+
+# -- involute gearing ----------------------------------------------------------
+
+_FLANK_SAMPLES = 8
+
+
+def _involute_function(angle: float) -> float:
+    return math.tan(angle) - angle
+
+
+def _spur_gear_outline(spec: Mapping[str, Any]) -> list[tuple[float, float, float]]:
+    """One counter-clockwise polygon around an ISO 53 spur gear, in the XY plane.
+
+    Each tooth is: root arc, rising flank, tip arc, falling flank, root arc.
+    The flank is the involute of the base circle sampled ``_FLANK_SAMPLES``
+    times between the base (or root, when that is larger) and tip circles;
+    below the base circle it is a radial line down to the root circle. Tip
+    and root vertices lie exactly on their circles, so a bound or a vertex
+    radius measures the standard's diameters directly.
+    """
+
+    teeth = spec["teeth"]
+    base_radius = spec["base_diameter_mm"] / 2.0
+    tip_radius = spec["tip_diameter_mm"] / 2.0
+    root_radius = spec["root_diameter_mm"] / 2.0
+    pressure = math.radians(spec["pressure_angle_degrees"])
+    half_pitch_angle = math.pi / (2.0 * teeth)
+
+    def half_angle(radius: float) -> float:
+        # Half the tooth's angular thickness at ``radius`` on the involute.
+        pressure_at_radius = math.acos(base_radius / radius) if radius > base_radius else 0.0
+        return half_pitch_angle + _involute_function(pressure) - _involute_function(pressure_at_radius)
+
+    flank_start = max(base_radius, root_radius)
+    radii = [flank_start + (tip_radius - flank_start) * index / (_FLANK_SAMPLES - 1)
+             for index in range(_FLANK_SAMPLES)]
+    if root_radius < base_radius:
+        radii.insert(0, root_radius)
+    half_at_root = half_angle(radii[0])
+    half_at_tip = half_angle(tip_radius)
+    if half_at_tip <= 0.0 or half_at_root >= math.pi / teeth:
+        raise LibraryError(
+            f"lib.spur_gear: {teeth} teeth on module {spec['module_mm']:g} leaves no tip land or no root space."
+        )
+
+    def polar(radius: float, angle: float) -> tuple[float, float, float]:
+        return (radius * math.cos(angle), radius * math.sin(angle), 0.0)
+
+    points: list[tuple[float, float, float]] = []
+    for tooth in range(teeth):
+        centre = 2.0 * math.pi * tooth / teeth
+        space_edge = centre - math.pi / teeth
+        points.append(polar(root_radius, space_edge))
+        points.append(polar(root_radius, (space_edge + centre - half_at_root) / 2.0))
+        for radius in radii:
+            points.append(polar(radius, centre - half_angle(radius)))
+        points.append(polar(tip_radius, centre))
+        for radius in reversed(radii):
+            points.append(polar(radius, centre + half_angle(radius)))
+        points.append(polar(root_radius, (centre + half_at_root + centre + math.pi / teeth) / 2.0))
+    return points
+
+
+def _rack_outline(spec: Mapping[str, Any], height: float) -> list[tuple[float, float, float]]:
+    """One counter-clockwise polygon around an ISO 53 rack, pitch line on Y=0.
+
+    Teeth point along +Y with tips at ``addendum`` and roots at
+    ``-dedendum``; the back face sits ``height`` below the tips. Tooth ``i``
+    is centred on ``(i + 1/2)`` pitches from X=0.
+    """
+
+    pitch = spec["circular_pitch_mm"]
+    tip_y = spec["addendum_mm"]
+    root_y = -spec["dedendum_mm"]
+    tangent = math.tan(math.radians(spec["pressure_angle_degrees"]))
+    half_at_tip = pitch / 4.0 - tip_y * tangent
+    half_at_root = pitch / 4.0 - root_y * tangent
+    length = spec["length_mm"]
+    points = [(0.0, tip_y - height, 0.0), (length, tip_y - height, 0.0), (length, root_y, 0.0)]
+    for tooth in reversed(range(spec["teeth"])):
+        centre = (tooth + 0.5) * pitch
+        points.append((centre + half_at_root, root_y, 0.0))
+        points.append((centre + half_at_tip, tip_y, 0.0))
+        points.append((centre - half_at_tip, tip_y, 0.0))
+        points.append((centre - half_at_root, root_y, 0.0))
+    points.append((0.0, root_y, 0.0))
+    return points
 
 
 class LibraryAPI:
@@ -642,6 +759,182 @@ class LibraryAPI:
             spec,
         )
 
+    def gearmotor(
+        self, sku: str, *, origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> LibraryPart:
+        """Pololu N20 gearmotor envelope with D shaft and M1.6 mounting bores.
+
+        Datum: shaft axis at gearbox front face; body in -Z, shaft in +Z,
+        flat towards +Y, mounting centres along X. .spec coordinates stay
+        in this canonical frame. Rear envelope is filled, not internal
+        geometry; use mass_g separately, never infer density or inertia.
+        Stall ratings at 6 V are extrapolations, not continuous torque.
+        """
+        spec = catalog.gearmotor_spec(sku)
+        width, height, rear = (spec[k] for k in
+                               ("width_mm", "height_mm", "rear_envelope_mm"))
+        case = self._part.box(width, height, rear,
+                              origin=(-width/2, -height/2, -rear))
+        radius = spec["shaft_dia_mm"]/2
+        tip = spec["shaft_tip_z_mm"]
+        flat_start = spec["shaft_flat_start_z_mm"]
+        shaft = self._part.cut(self._part.cylinder(radius, tip), [
+            self._part.box(2*radius+2, 2*radius, tip-flat_start+1,
+                           origin=(-radius-1,
+                                   spec["shaft_flat_to_opposite_mm"]-radius,
+                                   flat_start))])
+        boss = self._part.cylinder(spec["boss_dia_mm"]/2, spec["boss_height_mm"])
+        depth = spec["mount_bore_depth_mm"]
+        holes = [self._part.cylinder(spec["mount_bore_dia_mm"]/2, depth+1,
+                                     origin=(x, y, -depth))
+                 for x, y in spec["mount_holes"]]
+        body = self._part.cut(self._part.fuse([case, shaft, boss]), holes, label=label)
+        return LibraryPart("gearmotor", sku.strip().lower(),
+                           self._place("gearmotor", body, origin, direction, roll_degrees),
+                           spec)
+
+    def joint(
+        self, sku: str, *, tilt_degrees: float = 0.0,
+        origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> LibraryPart:
+        """SKF GE 6 C nominal spherical plain bearing, as a two-solid compound.
+
+        Datum: common sphere centre, housing axis +Z; inner tilt about +Y
+        before placement, bounded to ±13 degrees conditional on shaft shoulder
+        diameter at most 8 mm. Spec stays canonical. Coincident spherical
+        surfaces omit clearance, chamfers and liner: no fit, installed motion,
+        conservative collision envelope, load or physical inertia guarantee.
+        """
+        spec = catalog.joint_spec(sku)
+        if (isinstance(tilt_degrees, bool) or not isinstance(tilt_degrees, (int, float))
+                or not math.isfinite(tilt_degrees)
+                or abs(tilt_degrees) > spec["maximum_tilt_degrees"]):
+            raise LibraryError("lib.joint: tilt_degrees must be finite in [-13, 13].")
+        spec["tilt_degrees"] = float(tilt_degrees)
+        part = self._part
+        sphere = part.sphere(spec["sphere_dia_mm"]/2)
+        outer_width, inner_width = spec["outer_width_mm"], spec["inner_width_mm"]
+        outer = part.cut(part.cylinder(spec["outside_dia_mm"]/2, outer_width,
+                                       origin=(0, 0, -outer_width/2)), sphere)
+        inner = part.cut(part.common([sphere,
+            part.cylinder(spec["sphere_dia_mm"]/2+1, inner_width,
+                          origin=(0, 0, -inner_width/2))]),
+            part.cylinder(spec["bore_dia_mm"]/2, inner_width+2,
+                          origin=(0, 0, -inner_width/2-1)))
+        inner = part.transform(inner, rotation_axis=(0, 1, 0),
+                               rotation_degrees=tilt_degrees)
+        body = part.compound([outer, inner], label=label)
+        return LibraryPart("joint", sku.strip().lower(),
+                           self._place("joint", body, origin, direction, roll_degrees),
+                           spec)
+
+    def linear_actuator(
+        self, sku: str, *, extension: float = 0.0,
+        origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> LibraryPart:
+        """Nominal L12-50-210-12-S exterior with supplied clevis.
+
+        Datum: rear bore centre; travel +Z, both bore axes X. Extension is
+        geometric millimetres in [0,50], not S-switch powered reachability.
+        Spec coordinates stay canonical after placement. Primitive housing
+        and clevis transitions are approximations: no installation fit,
+        conservative collision envelope or physical inertia guarantee.
+        """
+        spec = catalog.linear_actuator_spec(sku)
+        if (isinstance(extension, bool) or not isinstance(extension, (int, float))
+                or not math.isfinite(extension) or not 0 <= extension <= spec["stroke_mm"]):
+            raise LibraryError("lib.linear_actuator: extension must be finite in [0, 50] mm.")
+        extension = float(extension)
+        centre = spec["retracted_centres_mm"] + extension
+        spec.update(extension_mm=extension, mount_centres_mm=[[0, 0, 0], [0, 0, centre]])
+        part = self._part
+        housing = part.box(14.9, 18, 37, origin=(-7.45, -7.5, 4.5))
+        rear = part.box(spec["rear_lug_width_mm"], 9, 12.5, origin=(-4, -4.5, -4.5))
+        sleeve = part.box(12, 12, 60, origin=(-6, -6, 35.5))
+        shaft = part.cylinder(4.5, 8 + extension, origin=(0, 0, 90))
+        eye = part.common([part.cylinder(4.5, 9, origin=(0, 0, centre-4.5)),
+                          part.box(spec["clevis_width_mm"], 10, 9,
+                                   origin=(-3, -5, centre-4.5))])
+        holes = [part.cylinder(spec["mount_bore_dia_mm"]/2, 20,
+                               origin=(-10, 0, z), direction=(1, 0, 0))
+                 for z in (0, centre)]
+        body = part.cut(part.fuse([housing, rear, sleeve, shaft, eye]), holes, label=label)
+        return LibraryPart("linear_actuator", sku.strip().lower(),
+                           self._place("linear_actuator", body, origin, direction, roll_degrees),
+                           spec)
+
+    def bldc(
+        self, sku: str, *, origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> LibraryPart:
+        """HOBBYWING BLDC rear-mount envelope, not a shaft coupling fit model.
+
+        Datum: rear mounting plane on axis; case and shaft point along +Z,
+        rear boss along -Z. X/Y align with the 19/25 mm mounting pairs,
+        not cable clocking. The undimensioned collar reserves its maximum
+        diameter over the entire shaft projection. See .spec approximate
+        and rating_notes; no torque, screw engagement or inertia guarantee.
+        .spec coordinates remain canonical after placement.
+        """
+        spec = catalog.bldc_spec(sku)
+        length = spec["case_length_mm"]
+        rear = spec["rear_boss_height_mm"]
+        body = self._part.fuse([
+            self._part.cylinder(spec["case_dia_mm"]/2, length),
+            self._part.cylinder(spec["rear_boss_dia_mm"]/2, rear,
+                                origin=(0, 0, -rear)),
+            self._part.cylinder(spec["shaft_collar_envelope_dia_mm"]/2,
+                                spec["shaft_projection_mm"], origin=(0, 0, length)),
+        ])
+        depth = spec["mount_bore_depth_mm"]
+        holes = [self._part.cylinder(spec["mount_bore_dia_mm"]/2, depth+1,
+                                     origin=(x, y, -1))
+                 for x, y in spec["mount_holes"]]
+        body = self._part.cut(body, holes, label=label)
+        return LibraryPart("bldc", sku.strip().lower(),
+                           self._place("bldc", body, origin, direction, roll_degrees),
+                           spec)
+
+    # -- boards ------------------------------------------------------------
+
+    def board(
+        self, sku: str, *, origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> BoardPart:
+        """A named PCB variant with mounting holes and solder-pad terminals.
+
+        Datum: lower-left PCB corner, bottom face; +Z is component side.
+        .terminals() supplies board(..., terminals=...) rows, following this
+        placement. .spec names signals, sources and approximate dimensions.
+        Geometry is a rectangular PCB plus a simple chip/module marker, not
+        a connector clearance envelope. Density is nominal FR4, not measured
+        board mass. ESP32 DevKitC V4 has no mounting holes.
+        """
+        spec = catalog.board_spec(sku)
+        frame = self._frame("board", origin, direction, roll_degrees)
+        thickness = spec["thickness_mm"]
+        pcb = self._part.box(spec["width_mm"], spec["length_mm"], thickness)
+        holes = [self._part.cylinder(spec["mount_hole_dia_mm"] / 2,
+                                    thickness+2, origin=(x, y, -1))
+                 for x, y in spec["mount_holes"]]
+        holes.extend(self._part.cylinder(row["hole_dia"] / 2, thickness+2,
+                                         origin=(*row["origin"][:2], -1))
+                     for row in spec["terminals"])
+        pcb = self._part.cut(pcb, holes)
+        marker = self._part.box(*spec["cosmetic_size"], origin=spec["cosmetic_origin"])
+        body = self._part.fuse([pcb, marker], label=label)
+        return BoardPart(sku.strip().lower(),
+                         self._place("board", body, origin, direction, roll_degrees),
+                         spec, frame)
+
     # -- servos ------------------------------------------------------------
 
     def servo(
@@ -884,6 +1177,127 @@ class LibraryAPI:
             **extra,
         )
 
+    def spur_gear(
+        self, module: float, teeth: int, face_width: float, *,
+        bore: float | None = None,
+        origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> LibraryPart:
+        """ISO 53 involute spur gear on an ISO 54 series I module.
+
+        Datum: gear axis +Z with the base face in the datum plane and the
+        body extending face_width along +Z; tooth 0 is centred on +X. Bore
+        (optional) must stay inside the root circle. .spec carries pitch,
+        base, root and tip diameters, tooth thickness at the pitch circle
+        and the undercut warning below 17 teeth. Sampled involute polygon:
+        no fillets, backlash, strength rating or density.
+        """
+        operation = "spur_gear"
+        spec = catalog.gear_spec(module, teeth)
+        width = _positive(operation, "face_width", face_width)
+        spec["face_width_mm"] = width
+        spec["bore_mm"] = None
+        outline = self._part.wire(_spur_gear_outline(spec), closed=True)
+        blank = self._part.face(outline)
+        if bore is None:
+            body = self._part.extrude(blank, (0.0, 0.0, width), label=label)
+        else:
+            clean_bore = _positive(operation, "bore", bore)
+            if clean_bore >= spec["root_diameter_mm"]:
+                raise LibraryError("lib.spur_gear: bore must be smaller than the root diameter.")
+            spec["bore_mm"] = clean_bore
+            hole = self._part.cylinder(clean_bore / 2.0, width + 2.0, origin=(0.0, 0.0, -1.0))
+            body = self._part.cut(self._part.extrude(blank, (0.0, 0.0, width)), hole, label=label)
+        part_number = f"m{spec['module_mm']:g}z{teeth}"
+        return LibraryPart("gear", part_number,
+                           self._place(operation, body, origin, direction, roll_degrees),
+                           spec)
+
+    def rack(
+        self, module: float, teeth: int, face_width: float, height: float, *,
+        origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> LibraryPart:
+        """ISO 53 basic rack on an ISO 54 series I module, teeth counted.
+
+        Datum: pitch line along +X on Y=0 from X=0 to teeth*pi*module, teeth
+        pointing +Y (tips at +module, roots at -1.25 module), back face
+        height below the tips, face in the datum plane extending face_width
+        along +Z. height must exceed the 2.25 module whole depth. Straight
+        20 degree flanks: no fillets, backlash, strength rating or density.
+        """
+        operation = "rack"
+        spec = catalog.gear_spec(module, teeth, rack=True)
+        width = _positive(operation, "face_width", face_width)
+        clean_height = _positive(operation, "height", height)
+        if clean_height <= spec["whole_depth_mm"]:
+            raise LibraryError(
+                f"lib.rack: height must exceed the whole depth {spec['whole_depth_mm']:g} mm."
+            )
+        spec["face_width_mm"] = width
+        spec["height_mm"] = clean_height
+        outline = self._part.wire(_rack_outline(spec, clean_height), closed=True)
+        body = self._part.extrude(self._part.face(outline), (0.0, 0.0, width), label=label)
+        part_number = f"m{spec['module_mm']:g}z{teeth}"
+        return LibraryPart("rack", part_number,
+                           self._place(operation, body, origin, direction, roll_degrees),
+                           spec)
+
+    def rack_and_pinion(
+        self, module: float, pinion_teeth: int, rack_teeth: int, face_width: float, *,
+        backlash: float = 0.0, bore: float | None = None,
+        rack_height: float | None = None, rotation_degrees: float = 0.0,
+        origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> LibraryPart:
+        """An ISO 53 pinion meshed with an ISO 53 rack, as a two-solid compound.
+
+        Datum: the pinion axis is +Z through the origin with its base face
+        in the datum plane; the rack runs along X with its pitch line at
+        Y = -centre_distance (pitch radius plus the backlash shift) and a
+        tooth space under the axis; pinion tooth 0 points at that space.
+        rotation_degrees turns the pinion counter-clockwise about +Z and
+        slides the rack +X by the matching travel, so one value can be
+        published at any phase. rack_height defaults to 3.5 module. .spec
+        carries centre distance, travel per revolution, root clearance, the
+        rack X range and both members' specs. Geometric mesh only: no
+        contact ratio, load, stiffness or efficiency.
+        """
+        operation = "rack_and_pinion"
+        spec = catalog.rack_and_pinion_spec(module, pinion_teeth, rack_teeth, backlash=backlash)
+        if isinstance(rotation_degrees, bool) or not isinstance(rotation_degrees, (int, float)) \
+                or not math.isfinite(rotation_degrees):
+            raise LibraryError("lib.rack_and_pinion: rotation_degrees must be a finite number.")
+        m = spec["module_mm"]
+        height = 3.5 * m if rack_height is None else rack_height
+        pitch = spec["pinion"]["circular_pitch_mm"]
+        travel = spec["travel_per_degree_mm"] * float(rotation_degrees)
+        rack_x0 = -(rack_teeth // 2) * pitch + travel
+        pinion = self.spur_gear(m, pinion_teeth, face_width, bore=bore,
+                                roll_degrees=-90.0 + float(rotation_degrees))
+        rack = self.rack(m, rack_teeth, face_width, height,
+                         origin=(rack_x0, -spec["centre_distance_mm"], 0.0))
+        spec.update({
+            "face_width_mm": pinion.spec["face_width_mm"],
+            "bore_mm": pinion.spec["bore_mm"],
+            "rack_height_mm": rack.spec["height_mm"],
+            "rotation_degrees": float(rotation_degrees),
+            "rack_travel_mm": travel,
+            "rack_x_range_mm": [rack_x0, rack_x0 + spec["rack_length_mm"]],
+            "datums": {
+                "pinion_axis": "+Z through the origin, base face in the datum plane",
+                "rack_pitch_line": f"Y = {-spec['centre_distance_mm']:g}, along X",
+                "rack_travel_direction": "+X for counter-clockwise pinion rotation about +Z",
+            },
+        })
+        body = self._part.compound([pinion.body, rack.body], label=label)
+        return LibraryPart("rack_and_pinion", f"m{m:g}z{pinion_teeth}r{rack_teeth}",
+                           self._place(operation, body, origin, direction, roll_degrees),
+                           spec)
+
     # -- browsing ----------------------------------------------------------
 
     def catalog(self) -> dict[str, Any]:
@@ -938,11 +1352,13 @@ def library_listing() -> dict[str, Any]:
             "Catalogued hardware as parametric part values. Every generator "
             "returns a LibraryPart: .body is an ordinary part solid "
             "(transform it, cut with it, hand it to assembly.component), "
-            ".spec is the catalog row it was built from, density included. "
+            ".spec is the catalog row it was built from; density only where supported. "
             "Frames are uniform: the axis runs along direction (default +Z) "
             "and the datum sits at origin — a bolt's datum is its head-seat "
-            "plane with the shank along -direction; everything else stands "
-            "on its base face. Interface dimensions are the standard's; "
+            "plane with the shank along -direction. Servos/gearmotors use "
+            "the shaft at the case/front face; BLDC uses the rear mounting plane "
+            "with the case forwards; boards use a PCB corner; "
+            "other parts stand on their base face. Interface dimensions are the standard's; "
             "threads and knurls are deliberately not modelled, so cut "
             "mating holes with lib.clearance_hole/tap_drill/insert_hole "
             "rather than measuring the shank."

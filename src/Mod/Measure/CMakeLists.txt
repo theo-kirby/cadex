@@ -1,3 +1,4 @@
+# Modified by the Cadex project, 2026. See docs/FREECAD.md.
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 add_subdirectory(App)
@@ -5,15 +6,10 @@ add_subdirectory(App)
 set(Measure_Scripts
     Init.py
     MassProperties.py
-    MassPropertiesGui.py
     UtilsMeasure.py
     MeasureCOM.py
 )
 
-if(BUILD_GUI)
-    list(APPEND Measure_Scripts InitGui.py)
-    add_subdirectory(Gui)
-endif(BUILD_GUI)
 
 add_custom_target(MeasureScripts ALL
     SOURCES ${Measure_Scripts}

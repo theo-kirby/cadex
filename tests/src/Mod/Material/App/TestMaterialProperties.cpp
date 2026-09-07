@@ -19,6 +19,7 @@
  *   <https://www.gnu.org/licenses/>.                                      *
  *                                                                         *
  **************************************************************************/
+/* Modified by the Cadex project, 2026. See docs/FREECAD.md. */
 
 #include <gtest/gtest.h>
 
@@ -28,7 +29,7 @@
 #include <QString>
 
 #include <App/Application.h>
-#include <Gui/MetaTypes.h>
+#include <App/MetaTypes.h>
 
 #include <Mod/Material/App/MaterialManager.h>
 #include <Mod/Material/App/Model.h>

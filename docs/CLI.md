@@ -54,7 +54,8 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex export` | Rebuild the accepted script and write its outputs. | no |
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
 | `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
-| `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. | no |
+| `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. With `--remote`, the trainer runs on the box through `training/remote_train.sh`; the artifacts do not move. | no |
+| `cadex walk --out DIR` | The lifecycle walk as one command: optional design turns (`--prompt`, repeatable), an optional change (`--set`), train and store (locally, or on the box with `--remote`), re-declare the policy in the script, verify and roll out, review. Every leg is a child `cadex` command; `review.json` lands in `--out`. Spends tokens only for `--prompt`. | only with `--prompt` |
 
 Flags, valid on either side of the subcommand:
 
@@ -135,7 +136,8 @@ with its stderr already on ours.
 
 **Iterating — change the mechanism or the task, retrain, compare** is
 four commands and one digest edit, with no new flag on `params`
-(ADR-192). A sweep that moves the task digest is refused at exit 3 while
+(ADR-192) — and since ADR-199 the four and the edit are one command,
+`cadex walk`, below. A sweep that moves the task digest is refused at exit 3 while
 a policy is declared against that task, correctly: the policy no longer
 fits, and the refusal writes nothing, so it cannot export the bundle a
 retrain would need. The convention is a **numeric switch parameter** in
@@ -171,13 +173,199 @@ per-term `reward_totals`), and the CLI records it: the second run's
 `PROGRESS.md` row carries its `total_reward` **with the change against the
 last row that had one** (ADR-194, below).
 
+**The walk is one command** (ADR-199). `cadex walk --out DIR` runs the
+legs above in order, each as a **child `cadex` command** — so each lands
+the `PROGRESS.md` row and the project commit it always lands, writes the
+artifacts the documented command writes, and the walk adds no second way
+of doing any of them:
+
+1. `cadex -p PROMPT` for each `--prompt`, in order (the first starts or,
+   with `--resume`, continues the conversation; the rest continue it) —
+   the design turns, and the only leg that spends tokens. None is fine:
+   a project whose script already declares its task walks from there.
+2. With `--set NAME=VALUE`: `cadex params --set policy_on=0 --set …
+   --out DIR/sweep` — the iterate step, the switch blanked so the change
+   is accepted and the bundle exported at its new digest.
+3. `cadex train --out DIR/train --put` with the trainer's flags carried by
+   name (`--iterations`, `--envs`, `--seed`, `--label`, `--name`,
+   `--task`, `--timeout`, `--trainer-python`, and the warm-start triple
+   `--init-from`, `--init-from-parent-task`, `--init-from-task-change`) —
+   and `--remote` / `--allow-cpu`, which go to this leg and nowhere else.
+4. **The digest edit**, which was the one leg that was a person's: the
+   walk reads the script (`cadex script`), rewrites the two string
+   literals of its one `assembly.policy(task, weights="…", sha256="…")`
+   call to the stored policy's name and sha256 — nothing else in the
+   script changes — writes it to `DIR/script.py` and lands it with
+   `cadex script --set`. A script without the iterate convention (no
+   `policy_on=num(...)`, or not exactly one `assembly.policy` call) is
+   refused at exit 3 with the convention named; the walk does not guess
+   where a policy belongs in a script it did not write.
+5. `cadex params --set policy_on=1 --out DIR/rollout` — the verify and
+   the rollout, the trace exported.
+6. The review: the trace's `policy` block — `total_reward`, the per-term
+   `reward_totals`, the policy's sha256 — in the envelope under
+   `walk.review`, and as **`DIR/review.json`** (`cadex-walk-review-v1`:
+   the same numbers, the trainer's receipt figures, the parameters the
+   rollout ran at, and the legs with their exit codes and timings, paths
+   relative to `DIR`). Run the walk **under the project** — `--out
+   <project>/runs/<name>` — and the review is in the project: the walk's
+   own commit is that file, after the legs' commits.
+
+A leg that fails stops the walk there, with the leg's name and its error
+in `error` and the legs that ran under `walk.legs`; the exit code is the
+leg's for a usage error or a refusal, `1` otherwise. The walk lands no
+`PROGRESS.md` row of its own — its legs' rows are the record, and the
+last one carries the rollout's `total_reward` with its delta against the
+previous walk (ADR-194). `--set policy_on=…` is a usage error: the walk
+owns the switch. `cli/tests/test_walk.py` pins the leg order and the flags
+against a fake `cadex`, and runs the repository's plate-and-arm toy through
+two real walks — a placeholder digest to a verified rollout, then a reward
+change with a warm start — with the real engine and trainer at 1 it × 4
+envs, about 30 s in all.
+
+The same entry point also runs the vertical linear carriage in
+`examples/lifecycle/` (ADR-203), with a real slide joint and a force motor.
+That directory gives reproduction commands and both projects' `PROGRESS.md`
+numbers at 1 iteration × 4 environments. Rollout reward/step is the verified
+trace's `total_reward / step_count`; the trainer's final batch mean is a
+separate metric. Force and torque effort penalties have different units,
+so these baselines prove coverage, not a ranking of mechanism quality.
+
+**Training on a remote machine is the same walk with one flag** (ADR-200).
+`cadex train --remote` and `cadex walk --remote` run the train leg through
+`training/remote_train.sh train` (ADR-089, `training/SETUP.md` §d) instead
+of the venv's interpreter on this machine, and *nothing else changes*: the
+bundle and the model are exported into `DIR/train` as before, the script
+copies them to the box named by `training/.remote.env`, runs the box's own
+trainer with **the same flags after `--`** (`--iterations`, `--envs`,
+`--seed`, `--label` — pinned byte-for-byte against the local command), and
+copies the policy back to `DIR/train/<name>.cxpolicy`, the very path the
+local trainer would have written. The receipt is the same last JSON line;
+the CLI then **verifies the returned file hashes to the receipt's sha256**
+(a wrong file at the right path is otherwise a policy refusal with no
+obvious cause), records the box's path under `training.trainer_out` and
+puts the local path in `training.out`. The store, the digest edit, the
+verified rollout and `review.json` never learn where the trainer ran, so
+a remote walk's `PROGRESS.md` rows and `review.json` are comparable with a
+local walk's line for line. What the flag changes and what it refuses:
+
+- **Run `training/remote_train.sh check` first.** The CLI adds no
+  configuration and reads no `.remote.env`; an unreachable or stale box
+  is the script's `FAIL:` line, which reaches the envelope's `error`
+  (exit 1) together with the last lines the script printed.
+- **A run the box reports as `device: cpu` fails** — the dispatcher's own
+  rule — unless `--allow-cpu` is given. `--allow-cpu` without `--remote`
+  is a usage error: it is the dispatcher's flag.
+- **Cold runs only.** `remote_train.sh` carries two files out, the bundle
+  and the model; `--init-from`'s policy and its parent bundle are local
+  paths the box has never seen, so `--remote` with the warm-start triple
+  is a usage error before any leg runs, and the iterate walk (`--set`
+  with a warm start) trains locally until the dispatcher carries them —
+  its own unit. `--trainer-python` with `--remote` is a usage error too:
+  the box's venv is `CADEX_TRAIN_VENV`.
+- **`--timeout` is local.** It ends the ssh that holds the run, not the
+  run; a long run belongs to `remote_train.sh train --detach` and
+  `pull`, outside the walk, which then continues from `cadex asset --put`
+  and `cadex script --set` (§2 above).
+- **The project's docs say which mode it trains in.** The
+  `ARCHITECTURE.md` scaffold carries a `## Training` section for the
+  agent to fill in — local venv or `--remote`, and why — that states the
+  shared artifact paths and the cold-run limit above, and every `train
+  --remote` run's `PROGRESS.md` row ends in `(remote)`, so a reader of the
+  numbers knows where each came from. `cli/tests/test_project_docs.py`
+  holds this paragraph and that section together.
+- **Nothing here dispatches in a test.** `cli/tests/test_train.py` pins
+  the command against `remote_train.sh`'s own usage line and runs the leg
+  end to end — real engine, real export, real store — against a stand-in
+  dispatcher with the same argv contract and the same printed shape
+  (`warp` noise before the receipt, `==>` trailer after), including the
+  three refusals: wrong bytes, nothing returned, CPU fallback.
+
+**With the GUI attached, it is the same walk from a terminal beside the
+open file** (ADR-201). The shell is a client of the same store: a saved
+`.blend` names `<dir>/<stem>.cadex/` as its engine project — derived from
+the file name on every call, never cached (`cadex_backend.project_root`)
+— and that directory is the `--project` every command above takes. No
+GUI was launched to write this; every sentence is the client code, and
+the doc yields to the code where they differ. What the two clients own,
+and when:
+
+- **Ownership is by time, and the lock is the CLI's.** A headless run
+  takes the advisory `flock` on `.cadex-cli.lock` for **one command**
+  (`_engine_session`: lock, spawn, open, unwind) and releases it when the
+  engine session ends — *before* the `PROGRESS.md` row and the project
+  commit, which guard nothing and need no engine. `cadex walk` takes no
+  lock of its own: each leg is a child `cadex` command that takes and
+  releases it, so between legs the project is nobody's. **The shell takes
+  no lock.** Its `cadexd` child is spawned on the first engine request
+  after a file opens and lives until a different file becomes current
+  (`on_file_changed` → `close_all`, on open and on Save-As) or the
+  application quits. So a person with the file open and a walk in a
+  terminal are two engines on one store, and nothing today refuses
+  that; `session.py`'s own docstring says what two engines do to a store
+  (each restores, each rebuilds, each writes `script.json`). The
+  contract is therefore **sequential by convention**: do the design
+  turns in the GUI, then run the walk while no rebuild is in flight —
+  the shell's engine is idle between operations. Shared session locking
+  remains unimplemented; concurrent rebuilds are not guarded.
+- **Stale mutations require an explicit refresh (ADR-204).** The engine
+  reads `script.json` on guarded writes and refuses a stale
+  `expected_revision` as `STALE_PROGRAM_REVISION`. The shell returns that
+  refusal without adopting its revision or replaying the source or values.
+  Repeating the edit remains refused. Run **Rebuild Model or reopen before
+  the next GUI edit**, review the refreshed script and values, then retry.
+  Current engine stale precondition failures omit `model_state`, so the
+  old shell retry did not activate in the two-engine regression. ADR-201's
+  claimed silent overwrite was not reproduced and is corrected here.
+  The dormant branch would replay if a stale response carried a newer
+  `model_state`; ADR-204 removes it and tests that response synthetically.
+  This guards stale mutations, not simultaneous acceptance by two engines.
+- **How the shell observes an accepted run.** Three ways, all existing:
+  **Rebuild Model** re-runs the script the store holds, read from disk,
+  and adopts its source, specs and values into the scene
+  (`begin_rebuild_model` → `_refresh_script_state`), so the sliders and
+  the script mirror follow the walk's digest edit without reopening.
+  **Reopening the file** (File > Open, or Revert) runs `load_post` →
+  `queue_open`: the restore-verified `open_project` and the display
+  `rebuild`, hydrating the viewport from the engine (ADR-186); a walk's
+  accepted revisions restore cleanly, because the CLI accepted them
+  through the same ops. The **re-accept box** (ADR-187) appears only
+  when the stored script no longer reproduces the accepted digest —
+  a hand-edited `script.py`, or a different engine build — and its one
+  button sends the store's own source back through `write_script`; a
+  walk never puts a project there. Until one of the three happens, the
+  viewport shows what the `.blend` baked at its last save.
+- **The in-app agent cannot run the walk, and cannot edit the project's
+  docs.** The shell starts its CLI with every built-in tool off
+  (`--tools ""`) and `--allowedTools` limited to the Mesh tools, from a
+  temporary working directory, so it has no shell and no file tool — on
+  purpose, so every mutation runs on Blender's main thread. The legs are
+  the person's or a pipeline's, at the terminal; `cadex -p` turns run
+  their own conversation (`agent.json`, a sibling of the shell's
+  transcript in the `.blend`, which carries the shell's own session id)
+  and are the one leg that can be done in either window.
+- **Same steps, same docs, same artifacts.** The legs, their order and
+  their refusals are the list above unchanged; `ARCHITECTURE.md`,
+  `DECISIONS.md` and `PROGRESS.md` are scaffolded by the first CLI
+  visit whichever window came first and written only by the CLI and a
+  person; the domain docs are the same `docs/<subject>.md`; and
+  `runs/<name>/train/`, `runs/<name>/rollout/`, `review.json` and the
+  `PROGRESS.md` row are the same project-relative paths. Nothing a
+  walk writes says whether a window was open — which is the point, and
+  what makes a GUI walk's `PROGRESS.md` comparable with a headless
+  one's line for line. The `ARCHITECTURE.md` scaffold says so in one
+  sentence under `## Training` — *with the GUI attached the same
+  commands run from a terminal beside the open file* — and
+  `cli/tests/test_project_docs.py` holds that sentence and this
+  paragraph together.
+
 **The project is a codebase** (ADR-193). Every project root carries the
 documents an engineer keeps beside a model, created by the CLI on the
 first visit and never overwritten by it:
 
 | File | What it holds | Who writes it |
 |---|---|---|
-| `ARCHITECTURE.md` | What the project is, what the script declares and why, where the domain docs are. | the agent (through its caller) or a person |
+| `ARCHITECTURE.md` | What the project is, what the script declares and why, how it trains, where the domain docs are. | the agent (through its caller) or a person |
 | `DECISIONS.md` | The project's own ADR log — what was chosen, over what, why. Newest last. | a turn's closing `DECISION:` lines, or a person |
 | `PROGRESS.md` | One row per accepted run: time, command, revision, digest, what, numbers. | **the CLI**, after every accepted run |
 | `docs/<subject>.md` | Longer notes, one file per subject: `docs/gear-ratios.md`, `docs/sensors.md`, `docs/actuators.md`, `docs/rejected.md`. | the agent's caller, or a person |
@@ -193,9 +381,10 @@ what happened rather than what a model said would: `params`, `script
 row, with the exported trace's `total_reward` and the trainer's
 `reward_per_step`, wall time and sha256 in the numbers column when the
 run produced them. Printing the script and listing the store change
-nothing and get no row. A shell-attached agent has file tools and edits
-the same three files directly; the files are what make the two modes one
-shape.
+nothing and get no row. The shell's own agent has neither a file tool
+nor a shell (the Mesh tools are its whole world), so with the GUI
+attached the three files are still the CLI's and a person's; the files
+are what make the modes one shape.
 
 **The comparison is one recorded row** (ADR-194). A number an earlier
 row also carried is written with its change against that row — the
@@ -213,7 +402,11 @@ a row a person adds by hand counts too.
 **The project owns a git repository** (ADR-194). The first visit runs
 `git init` in the project root and writes a `.gitignore` that keeps out
 what a rebuild recreates (`script_artifacts/`), what is bulk (`frames/`,
-renders) and what is transient (the lock, `.blend1` backups); the script,
+renders), what is transient (the lock, `.blend1` backups) and, since
+ADR-199, what a walk re-makes — `.cxpolicy` files outside `assets/`
+(the trainer's checkpoints and the copies in a run's `train/`) and the
+`*-trace.json` rollouts, because the store keeps the policy a script
+names and `review.json` and `PROGRESS.md` keep the numbers; the script,
 its history, the stored assets, the `.blend` and the three documents are
 the project. After every accepted run the CLI commits whatever changed,
 with the `PROGRESS.md` row's words as the message and `committed <sha>.`
@@ -426,7 +619,11 @@ every `--resume` look like an expired session.
 one process per project and a sweep will run several of these at once. The
 kernel releases it on process death, so there is no stale-lock heuristic to
 get wrong. A second run is refused with a readable message; `--wait` blocks
-instead.
+instead. It is held for one command and released before the `PROGRESS.md` row
+and the commit. The shell does not take it. Stale shell mutations are
+refused without automatic replay (ADR-204); run Rebuild Model or reopen
+before the next GUI edit and review the refreshed state. Concurrent
+rebuilds and simultaneous acceptance still require sequential use (§2).
 
 ## 6. Which engine
 
@@ -464,6 +661,7 @@ Fast, and honest about what it did not run.
 | `test_export.py` | Plan-building directly; conversion against a real engine. |
 | `test_turn_loop.py` | `mock_backend.py` + a real engine. |
 | `test_commands.py` | `main()` end to end against a real engine. |
+| `test_walk.py` | `cadex walk` against a fake `cadex` (leg order, flags, refusals; no engine), and the toy through two real walks with the real engine and trainer — **skips** the latter without the training venv. |
 
 `tests/fake_cadexd.py` is a scripted engine, not a loose mock: its replies
 go through the same `validate_response` path production uses, so a fixture
@@ -505,6 +703,9 @@ about a payload (ADR-023).
   repository — and so does `train`'s trainer, which it finds by path from
   the repository root and runs under a venv the engine's environment
   deliberately lacks (ADR-084). No venv, no `train`; it does not build one.
+  `--remote` finds `training/remote_train.sh` the same way and configures
+  nothing: the box, its venv and its scratch directory are
+  `training/.remote.env`'s (ADR-089), and a warm start does not travel.
 - One `--set` per parameter, and parameters are numeric — that is what
   `num(...)` declares. A switch is a `num` with `min=0, max=1, step=1`
   and a `>= 0.5` test in the script (ADR-192).

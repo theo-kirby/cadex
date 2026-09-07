@@ -88,7 +88,6 @@ elif [[ -f "${build_dir}/CMakeCache.txt" ]]; then
 fi
 
 git -C "${repo_root}" submodule update --init --recursive \
-    src/3rdParty/GSL \
     src/3rdParty/OndselSolver \
     src/Mod/AddonManager
 

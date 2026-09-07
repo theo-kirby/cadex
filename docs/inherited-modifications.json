@@ -51,50 +51,15 @@
           "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
         },
         {
-          "path": "src/Gui/Application.cpp",
-          "notice": "ledger-only",
-          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
-        },
-        {
-          "path": "src/Gui/DockWindowManager.cpp",
+          "path": "src/CMakeLists.txt",
           "notice": "comment"
         },
         {
-          "path": "src/Gui/MainWindow.cpp",
-          "notice": "ledger-only",
-          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
-        },
-        {
-          "path": "src/Gui/MainWindow.h",
+          "path": "src/Doc/CMakeLists.txt",
           "notice": "comment"
         },
         {
-          "path": "src/Gui/OverlayWidgets.cpp",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Gui/PreferencePacks/CMakeLists.txt",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Gui/PreferencePacks/package.xml",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Gui/PreferencePages/DlgSettingsGeneral.cpp",
-          "notice": "ledger-only",
-          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
-        },
-        {
-          "path": "src/Gui/StartupProcess.cpp",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Gui/Stylesheets/CMakeLists.txt",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Gui/ToolBarManager.cpp",
+          "path": "src/Main/CMakeLists.txt",
           "notice": "comment"
         },
         {
@@ -111,22 +76,6 @@
         },
         {
           "path": "src/Mod/Assembly/CommandCreateView.py",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Mod/Assembly/Gui/AppAssemblyGui.cpp",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Mod/Assembly/Gui/CMakeLists.txt",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Mod/Assembly/Gui/Resources/Assembly.qrc",
-          "notice": "comment"
-        },
-        {
-          "path": "src/Mod/Assembly/Gui/ViewProviderAssembly.cpp",
           "notice": "comment"
         },
         {
@@ -148,6 +97,74 @@
         },
         {
           "path": "src/Mod/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Import/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/Array2DPyImp.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/Array3DPyImp.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/MaterialFilterOptionsPyImp.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/MaterialFilterPyImp.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/MaterialLibraryPyImp.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/MaterialLoader.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/MaterialPyImp.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/MaterialValue.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/MaterialValue.h",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/Materials.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/PropertyMaterial.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/App/PyVariants.h",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Material/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Measure/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/Mesh/CMakeLists.txt",
+          "notice": "comment"
+        },
+        {
+          "path": "src/Mod/MeshPart/CMakeLists.txt",
           "notice": "comment"
         },
         {
@@ -177,22 +194,16 @@
           "notice": "comment"
         },
         {
-          "path": "src/Mod/Start/Gui/AppStartGui.cpp",
+          "path": "src/Mod/Sketcher/CMakeLists.txt",
           "notice": "comment"
         },
         {
-          "path": "src/Mod/Start/Gui/StartView.cpp",
-          "notice": "ledger-only",
-          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
-        },
-        {
-          "path": "src/Mod/Start/Gui/StartView.h",
+          "path": "src/Mod/Test/CMakeLists.txt",
           "notice": "comment"
         },
         {
-          "path": "src/Mod/Start/Gui/ThemeSelectorWidget.cpp",
-          "notice": "ledger-only",
-          "reason": "formatter fight: inserting the notice triggers a whole-file reformat under pre-commit"
+          "path": "src/Tools/updatecrowdin.py",
+          "notice": "comment"
         },
         {
           "path": "tests/CMakeLists.txt",
@@ -207,11 +218,31 @@
           "notice": "comment"
         },
         {
-          "path": "tests/src/Gui/DockLayoutState.cpp",
+          "path": "tests/src/Mod/CMakeLists.txt",
           "notice": "comment"
         },
         {
-          "path": "tests/src/Mod/CMakeLists.txt",
+          "path": "tests/src/Mod/Material/App/TestMaterialCards.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "tests/src/Mod/Material/App/TestMaterialFilter.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "tests/src/Mod/Material/App/TestMaterialProperties.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "tests/src/Mod/Material/App/TestMaterialValue.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "tests/src/Mod/Material/App/TestMaterials.cpp",
+          "notice": "comment"
+        },
+        {
+          "path": "tests/src/Mod/Material/App/TestModelProperties.cpp",
           "notice": "comment"
         }
       ]

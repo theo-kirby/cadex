@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
+/* Modified by the Cadex project, 2026. See docs/FREECAD.md. */
 
 /***************************************************************************
  *   Copyright (c) 2023 David Carter <dcarter@david.carter.ca>             *
@@ -29,7 +30,7 @@
 #include <QMetaType>
 #include <QVariant>
 
-#include <Gui/MetaTypes.h>
+#include <App/MetaTypes.h>
 
 #include <Mod/Material/MaterialGlobal.h>
 

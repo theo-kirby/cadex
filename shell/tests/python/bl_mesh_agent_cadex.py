@@ -1264,6 +1264,78 @@ result = {"blob": part.fuse(blobs)}
 """
 
 
+def test_stale_payload_never_authorizes_replay():
+    """Even a refusal carrying a newer model_state cannot authorize a write.
+
+    Current engine precondition failures omit model_state; inject that optional
+    field to pin the shell's dormant replay branch independently of the engine.
+    """
+    print("test_stale_payload_never_authorizes_replay")
+    scene = bpy.context.scene
+    state = cadex_backend._state_for(cadex_backend.project_root(scene))
+    for op in ("write_script", "set_params"):
+        state.revision = "old"
+        replayed = []
+        lifecycle = cadex_backend.Lifecycle.__new__(cadex_backend.Lifecycle)
+        lifecycle._scene = scene
+        lifecycle._state = state
+        lifecycle._op = op
+        lifecycle._attempt = 0  # exercise the pre-ADR-204 implementation too
+        lifecycle._thread = types.SimpleNamespace(is_alive=lambda: False)
+        lifecycle._start = lambda: replayed.append(True)
+        lifecycle._result = {"payload": {
+            "ok": False, "failure_code": "STALE_PROGRAM_REVISION",
+            "model_state": {"next_write_expected_revision": "foreign"}}}
+        outcome = lifecycle.poll()
+        check(outcome is not None and not outcome[0], op + " returns stale refusal")
+        check(not replayed, op + " never replays against a foreign revision")
+        check(state.revision == "old", op + " keeps guard until explicit refresh")
+
+
+def test_foreign_revision_mutations_require_refresh():
+    """A second engine's accepted work survives stale writes and repeat clicks."""
+    print("test_foreign_revision_mutations_require_refresh")
+    source = 'p = params(size=num(10, min=1, max=30))\nresult = {"box": part.box(p.size, 8, 6)}\n'
+    for op, args in (("write_script", {"source": source + "# stale edit\n"}),
+                     ("set_params", {"values": {"size": 12}})):
+        with tempfile.TemporaryDirectory(prefix="mesh-cadex-foreign-") as root:
+            reset_scene(root)
+            scene = bpy.context.scene
+            ok, report = run_tool("write_script", {"content": source})
+            check(ok, "same-revision baseline succeeds: " + report)
+            state = cadex_backend._state_for(root)
+            old_revision = state.revision
+            client = cadex_backend._client(root)
+            foreign = cadexd_client.CadexdClient(root, client.command)
+            try:
+                opened = foreign.request("open_project", {"project_root": root})
+                check(opened.get("ok"), "second engine opens accepted project")
+                changed = foreign.request("write_script", {
+                    "source": source.replace("num(10,", "num(18,") + "# foreign edit\n",
+                    "expected_revision": old_revision})
+                check(changed.get("ok"), "second engine accepts foreign script")
+                before = open(os.path.join(root, "script.json"), "rb").read()
+                for attempt in range(2):
+                    result = cadex_backend.begin_lifecycle(scene, op, args)
+                    ok, report = result.wait() if isinstance(result, cadex_backend.Lifecycle) else result
+                    check(not ok and "STALE_PROGRAM_REVISION" in report,
+                          op + " refuses stale mutation, attempt " + str(attempt))
+                    check(state.revision == old_revision,
+                          "refusal does not authorize a second stale edit")
+                    check(open(os.path.join(root, "script.json"), "rb").read() == before,
+                          op + " preserves foreign script, values and accepted metadata")
+                ok, report = cadex_backend.rebuild_model(scene)
+                check(ok, "explicit Rebuild Model refresh succeeds: " + report)
+                check("# foreign edit" in state.source,
+                      "refresh adopts the foreign source")
+                result = cadex_backend.begin_lifecycle(scene, op, args)
+                ok, report = result.wait() if isinstance(result, cadex_backend.Lifecycle) else result
+                check(ok, op + " succeeds after explicit refresh: " + report)
+            finally:
+                foreign.close()
+                client.close()
+
+
 def test_main_thread_free_during_rebuild(root):
     """A modeling request must not block Blender's main thread.
 
@@ -5569,6 +5641,122 @@ def _draw_panel(panel):
     return layout.sink
 
 
+def test_instanced_sources_stay_out_of_camera_renders():
+    """Actual hydration and EEVEE catch unposed source leakage (ADR-228)."""
+    import numpy as np
+    from mathutils import Matrix
+
+    h = cadex_hydrate
+    with tempfile.TemporaryDirectory(prefix="cadex-render-visibility-") as root:
+        reset_scene(root)
+        vertices = np.array([[-.5, -.5, 0], [.5, -.5, 0],
+                             [.5, .5, 0], [-.5, .5, 0]], dtype="<f4")
+        triangles = np.array([[0, 1, 2], [0, 2, 3]], dtype="<u4")
+        edges = vertices[[0, 1, 2, 3, 0]]
+        with open(os.path.join(root, "mesh.bin"), "wb") as handle:
+            handle.write(vertices.tobytes() + triangles.tobytes() + edges.tobytes())
+        sidecar = os.path.join(root, "mesh.json")
+        with open(sidecar, "w") as handle:
+            json.dump({
+                "schema": h.TESSELLATION_SCHEMA, "artifact_path": "mesh.bin",
+                "source_sha256": "visibility-fixture", "quality": "standard",
+                "deflection": .1, "counts": {"edge_vertices": 5},
+                "layout": {
+                    "vertices": {"offset": 0, "bytes": vertices.nbytes},
+                    "triangles": {"offset": vertices.nbytes, "bytes": triangles.nbytes},
+                    "edge_vertices": {"offset": vertices.nbytes + triangles.nbytes,
+                                      "bytes": edges.nbytes}},
+                "face_ranges": [[0, 2]], "edge_polylines": [[0, 5]],
+            }, handle)
+
+        def placement(x):
+            return [value for row in Matrix.Translation((x, 0, 0)) for value in row]
+
+        def geometry(x):
+            return {"artifact_kind": "brep", "tessellation": {"sidecar_path": sidecar},
+                    "placement": placement(x)}
+
+        plain = {"source": geometry(-2), "ordinary": geometry(0)}
+        assembled = dict(plain, posed={"source_output": "source", "placement": placement(2)})
+        h.hydrate_display(assembled, "1")
+        collection = h._model_collection()
+
+        def pair(name):
+            return [h._find(collection, name, edges=edges) for edges in (False, True)]
+
+        scene = bpy.context.scene
+        camera = bpy.data.objects.new("Camera", bpy.data.cameras.new("Camera"))
+        scene.collection.objects.link(camera)
+        camera.location = (0, 0, 10)
+        camera.data.type = 'ORTHO'
+        camera.data.ortho_scale = 8
+        scene.camera = camera
+        scene.render.engine = 'BLENDER_EEVEE'
+        scene.render.resolution_x, scene.render.resolution_y = 256, 128
+        scene.render.resolution_percentage = 100
+        scene.render.film_transparent = True
+        scene.render.image_settings.file_format = 'PNG'
+        scene.render.image_settings.color_mode = 'RGBA'
+        material = bpy.data.materials.new("visibility emission")
+        material.use_nodes = True
+        nodes = material.node_tree.nodes
+        nodes.clear()
+        output = nodes.new('ShaderNodeOutputMaterial')
+        emission = nodes.new('ShaderNodeEmission')
+        material.node_tree.links.new(emission.outputs[0], output.inputs[0])
+        for name in ("source", "ordinary"):
+            pair(name)[0].data.materials.append(material)
+
+        def render_counts(label):
+            scene.render.filepath = os.path.join(root, label + ".png")
+            bpy.ops.render.render(write_still=True)
+            image = bpy.data.images.load(scene.render.filepath, check_existing=False)
+            try:
+                alpha = np.array(image.pixels[:]).reshape(128, 256, 4)[:, :, 3]
+                return [int((alpha[:, lo:hi] > .5).sum())
+                        for lo, hi in ((32, 96), (96, 160), (160, 224))]
+            finally:
+                bpy.data.images.remove(image)
+
+        counts = render_counts("assembled")
+        GATE["assembly_render_pixels"] = counts
+        check(counts == [0, 1024, 1024],
+              "camera excludes raw source and retains ordinary/posed outputs: " + str(counts))
+        check(all(o.hide_viewport and o.hide_render for o in pair("source")),
+              "instanced source solid and edges are hidden in both channels")
+        check(all(not o.hide_render for o in pair("posed")),
+              "posed solid and edges remain renderable")
+        for obj in pair("ordinary"):
+            obj.hide_viewport = True
+            obj.hide_render = True
+            obj.hide_set(True)
+        h.hydrate_display(assembled, "2")
+        check(all(o.hide_render for o in pair("source")), "repeat hydration retains source render hide")
+        check(all(not o.hide_render for o in pair("posed")), "repeat retains renderable components")
+        h.hydrate_display(plain, "3")
+        check(all(not o.hide_render for o in pair("source")),
+              "formerly instanced solid and edges recover render visibility")
+        check(pair("posed") == [None, None], "removed component solid and edges are collected")
+        check(all(o.hide_viewport and o.hide_render and o.hide_get() for o in pair("ordinary")),
+              "unrelated explicit viewport/render/hide_set choices survive repeat and removal")
+        counts = render_counts("uninstanced")
+        GATE["uninstanced_render_pixels"] = counts
+        check(counts == [1024, 0, 0], "camera sees restored source only: " + str(counts))
+
+        # Pre-hidden sources, including an old viewport marker, grant no render ownership.
+        for legacy in (False, True):
+            for obj in pair("source"):
+                obj.hide_render = True
+                obj.hide_set(True)
+                if legacy:
+                    obj[h.HIDDEN_SOURCE_PROP] = True
+            h.hydrate_display(assembled, "4")
+            h.hydrate_display(assembled, "5")
+            h.hydrate_display(plain, "6")
+            check(all(o.hide_render and o.hide_get() for o in pair("source")),
+                  "pre-hidden source solid/edges remain hidden; legacy=" + str(legacy))
+
+
 def main():
     registered = False
     # Resolve the engine exactly as the add-on does -- explicit preference,
@@ -5643,6 +5831,8 @@ def main():
     sheet_root = tempfile.mkdtemp(prefix="mesh-cadex-sheet-")
     recipe_root = tempfile.mkdtemp(prefix="mesh-cadex-recipe-")
     try:
+        test_stale_payload_never_authorizes_replay()
+        test_foreign_revision_mutations_require_refresh()
         test_startup_layout_is_the_shipped_file()
         test_write_script_hydrates(corpus_root)
         scene = bpy.context.scene
@@ -5709,6 +5899,7 @@ def main():
         test_the_blueprint_view_restyles_and_restores(blueprint_root)
         test_sheet_state_applies_and_restores(sheet_root)
         test_live_mode_is_wired_and_refuses_cleanly(live_root)
+        test_instanced_sources_stay_out_of_camera_renders()
     finally:
         try:
             cadex_backend.close_all()

@@ -105,6 +105,18 @@
      }
     ]
    },
+   "bldc_motors": {
+    "notes": "str",
+    "skus": [
+     "str"
+    ]
+   },
+   "boards": {
+    "notes": "str",
+    "skus": [
+     "str"
+    ]
+   },
    "fasteners": {
     "bolt_heads": [
      "str"
@@ -115,6 +127,22 @@
     ],
     "sizes": [
      "str"
+    ]
+   },
+   "gearmotors": {
+    "notes": "str",
+    "skus": [
+     "str"
+    ]
+   },
+   "gears": {
+    "notes": "str",
+    "preferred_modules_mm": [
+     "float"
+    ],
+    "pressure_angle_degrees": "float",
+    "teeth_range": [
+     "int"
     ]
    },
    "heat_set_inserts": {
@@ -128,6 +156,18 @@
      }
     ],
     "sizes": [
+     "str"
+    ]
+   },
+   "joints": {
+    "notes": "str",
+    "skus": [
+     "str"
+    ]
+   },
+   "linear_actuators": {
+    "notes": "str",
+    "skus": [
      "str"
     ]
    },

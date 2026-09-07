@@ -8,8 +8,10 @@ codebase (ADR-193, the lifecycle audit's row 10 in ``docs/MUJOCO.md`` §7c).
 It carries the documents an engineer would keep beside the model, and they
 are read on every visit and updated as the work goes:
 
-- ``ARCHITECTURE.md`` — what the project is, what its script declares, and
-  where the domain docs are.
+- ``ARCHITECTURE.md`` — what the project is, what its script declares,
+  how it trains (locally from the venv or ``--remote`` on the box, the
+  same project-relative artifacts either way, cold runs only when remote —
+  ADR-200), and where the domain docs are.
 - ``DECISIONS.md`` — the project's own ADR log: what was chosen, over what,
   and why. Newest last.
 - ``PROGRESS.md`` — one row per run the CLI accepted, with the numbers.
@@ -27,9 +29,10 @@ pasted into its system prompt instead, bounded, and what it decides comes
 back through one convention rather than a new tool: a line of its closing
 text that starts ``DECISION:`` lands in ``DECISIONS.md``. ``PROGRESS.md``
 is written by the CLI after every accepted run, so it holds what actually
-happened rather than what a model said would. A shell-attached agent has
-file tools of its own and edits the same three files directly; the shape is
-the same in both modes because the files are.
+happened rather than what a model said would. The shell's own agent has
+neither a file tool nor a shell (the Mesh tools are its whole world), so
+with the GUI attached the three files are still the CLI's and a person's;
+the shape is the same in every mode because the files are (ADR-201).
 
 **The project owns a git repository** (ADR-194). The first visit runs
 ``git init`` in the project root — unless the root already lies inside a
@@ -101,6 +104,28 @@ parameters it declares and why each exists:
 | Output | Kind | Who consumes it |
 |---|---|---|
 
+## Training
+
+**Mode:** (`local` — the trainer runs from its venv on this machine, or
+`remote` — `cadex train --remote` / `cadex walk --remote` run the same
+leg on the box `training/remote_train.sh` names.) Fill in which, and
+why; `{progress}` marks each remote row `(remote)`.
+
+The artifacts are the same project-relative paths in both modes: the
+bundle and the policy under `runs/<name>/train/`, the verified rollout
+under `runs/<name>/rollout/`, the numbers in `runs/<name>/review.json`
+and as a `{progress}` row, so rows from either mode compare line for
+line. **Remote runs are cold runs only:** the dispatcher carries the
+bundle and the model out and nothing else, so a warm start
+(`--init-from`) trains locally. With the GUI attached the same commands
+run from a terminal beside the open file, one at a time while no rebuild
+is in flight; the shell's own agent cannot run them, and it sees an
+accepted run on the next Rebuild Model or reopen. Rebuild Model or
+reopen **before the next GUI edit** once a command has accepted a
+script: stale mutations are refused without replay or revision adoption.
+Review the refreshed source and values before retrying. Simultaneous
+acceptance and concurrent rebuilds still require sequential use.
+
 ## Domain docs
 
 Longer notes go under `{docs}/`, one file per subject, named by the
@@ -134,6 +159,13 @@ number a previous row also carried shows its change against that row,
 as `total_reward 127.8 (Δ -1602.1 vs 2996fb73 at 1729.9)`: the delta,
 the digest of the run compared against, and that run's value. Each row
 is one commit in the project's own repository (`git log` is this table).
+
+For lifecycle comparisons, record iterations, environment count and seeds.
+`total_reward` sums rewards over the verified rollout's `step_count`;
+divide by that count for rollout reward per step. The trainer's
+`reward/step` is its final training-batch mean, a different measurement.
+Compare objectives only when reward expressions, weights, units and
+episode lengths match; a larger reward after changing them is not progress.
 
 {header}
 {rule}
@@ -454,6 +486,11 @@ script_artifacts/
 frames/
 *.mp4
 *.png
+# What a walk re-makes (ADR-199): the store keeps the policy a script names,
+# review.json and PROGRESS.md keep the numbers; checkpoints and traces stay out.
+*.cxpolicy
+!assets/*.cxpolicy
+*-trace.json
 # What is transient:
 .cadex-cli.lock
 *.blend1

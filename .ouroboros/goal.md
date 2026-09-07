@@ -63,9 +63,15 @@ remove more than we add.
 
 ## Done criteria
 
-Claims about the world. Each open box is a gap on the frontier until work
-falsifies it. Two grains: the first group is the current frontier; the second
-is what the planner pulls forward when the first group is landed or blocked.
+Claims about the world. Each open box here becomes one gap node on the frontier
+at run start, so this section is deliberately short: it is *this run's* frontier,
+not the whole backlog. The backlog lives under `## Later criteria` below, where
+nothing is seeded. Promote a criterion by moving it up when the frontier lands
+or blocks; that is a human edit, and it mints a new directive.
+
+**This run's frontier is the lifecycle walk and the eyes it reviews itself
+with.** Inherited-tree reduction is done enough — nt2 removed 2.79M lines — so
+it is standing work on the long rung now, not a target.
 
 **File lifecycle (shipped):**
 
@@ -107,10 +113,39 @@ is what the planner pulls forward when the first group is landed or blocked.
       protocol (disable commit, delete commit, DECISIONS entry).
 - [x] The exploded-view import in `cadex_assembly_worker.py` is resolved, or a
       record node says why not.
-- [ ] **Phase 8 `src/Gui` delete commit landed** under the two-commit protocol,
-      with the DECISIONS entry and the gate green after it.
-- [ ] **Two Phase 13b engine-side removals landed** under the two-commit
-      protocol, DECISIONS entries included.
+- [x] **Phase 8 `src/Gui` delete commit landed** under the two-commit protocol,
+      with the DECISIONS entry and the gate green after it (ADR-214/215, nt2:
+      thirteen Gui directories and three retired sources, 3,734 files; release
+      build, install and stage fresh, 2,021 engine tests passed / 52 skipped,
+      inherited CTest baseline unchanged).
+- [x] **Two Phase 13b engine-side removals landed** under the two-commit
+      protocol, DECISIONS entries included (nt2 landed six: Help ADR-216/217/218,
+      Start ADR-219/220/221 with the GSL submodule, Material ADR-225, the Main
+      resource template ADR-226, the Test Tk runner ADR-230/231, and the
+      translation updater ADR-232).
+
+**Headless review:**
+
+- [ ] **The agent can see its work without a screen.** One CLI call each, with
+      outputs landing in the project directory: render from named angles,
+      section view through a named plane, list the parts of an assembly with
+      catalog ids, and a clearance and intersection check that names the
+      offending pairs. The lifecycle walk's review step uses them.
+
+Every unit (a rule, not a gap; the critic grades it):
+
+- The zone's gate ran and the output is reported honestly; a record node with
+  real `## State Impact` targets; ROADMAP checkbox and ADR line where AGENTS.md
+  asks for them.
+
+## Later criteria
+
+Real criteria, not seeded as gaps. The planner may not target these; the human
+promotes one into `## Done criteria` above when the frontier lands or blocks.
+They are here so that a short frontier does not mean a forgotten backlog.
+
+**Inherited-tree reduction:**
+
 - [ ] **The fork's delta against upstream is smaller than at the start of this
       run**, measured by the delta manifest AGENTS.md names, and the manifest is
       honest about every inherited file touched.
@@ -129,14 +164,6 @@ is what the planner pulls forward when the first group is landed or blocked.
 - [ ] **Compound mechanisms exist as parametric library values** built from
       catalog parts: a rack and pinion and a planetary gearbox at least, each
       with a mesh and clearance test.
-
-**Headless review:**
-
-- [ ] **The agent can see its work without a screen.** One CLI call each, with
-      outputs landing in the project directory: render from named angles,
-      section view through a named plane, list the parts of an assembly with
-      catalog ids, and a clearance and intersection check that names the
-      offending pairs. The lifecycle walk's review step uses them.
 
 **Outside knowledge:**
 
@@ -173,45 +200,43 @@ is what the planner pulls forward when the first group is landed or blocked.
 - [ ] **mg-legs tips at the declared shove band, backward first**, with the
       numbers in the project's `PROGRESS.md`.
 
-Every unit (a rule, not a gap; the critic grades it):
-
-- The zone's gate ran and the output is reported honestly; a record node with
-  real `## State Impact` targets; ROADMAP checkbox and ADR line where AGENTS.md
-  asks for them.
-
 ## Horizon ladder
 
 Sizes, not times. What to do when the rung above is exhausted. The planner
 re-plans from this after every maintainer pass and reads the run budget from the
 loop, not from this file.
 
-- **short-term:** (units, one iteration each) Orient on STATE.md and PLAN.md.
-  Run the documented headless lifecycle entry point end to end on this machine
-  and record exactly which leg still needs a person or a guess; a clean run is
-  the evidence that closes the walk gap. Then close the remaining legs one unit
-  each: the remote-training handoff script and doc, the GUI-attached mode doc,
-  the domain-doc convention exercised by the walk (`docs/gear-ratios.md`,
-  `docs/sensors.md`). Then the L2 boards family over `CadexCatalog` with a
-  real-kernel test and the packaged lifecycle gate.
-- **medium-term:** (gaps, several units each) The lifecycle walk on a second
-  mechanism. L3 motors and mechanisms families. The Phase 8 delete commit for
-  `src/Gui`. Phase 13b engine side, two-commit protocol. The `hide_render` shell
-  bug. Each of these is a done criterion above; pull it forward when the
-  short-term rung is landed or blocked.
-- **long-term:** (directions, and the standing work that never ends) The
-  headless review tools, one call at a time, then wire them into the walk's
-  review step. Catalog breadth: servos, actuators, bearings, nuts and bolts,
-  then the compound mechanisms. A mechanism taken from a paper or a real
-  product, cited and tested. The variant study and the report renderer. The
-  fresh-machine install script. mg-legs tipping at the declared shove band,
-  backward first. 25T horns and servo pigtails from manufacturer STEP sources.
-  Reduce the fork's delta against upstream wherever a change makes it smaller.
-  Toward the north star: print-ready export, then G-code, then the rollout
-  video, each as one more leg of the same walk. Propose new directions only
-  inside the mission list, and only ones that remove more than they add.
-  Standing work, always open: keep every gate green, every doc true to the
-  code, the delta manifest honest, the project docs current, and the frontier
-  short. Maintenance is real work.
+**One thing leads this run: the lifecycle walk, run end to end on this machine.**
+nt2 never ran it. It spent 40+ iterations on inherited-tree reduction instead,
+ticked 58 ROADMAP boxes, and closed no criterion. Reduction is finished as a
+target; it is standing work on the long rung and nothing more.
+
+- **short-term:** (units, one iteration each) **Run the documented headless
+  lifecycle entry point end to end, on this machine, and record exactly which
+  leg still needs a person or a guess.** That run is the unit. A clean run is
+  the evidence that closes the walk gap; a failed run names the next unit. Do
+  this before anything else, every time the short rung is empty. Then close the
+  named legs one unit each: the remote-training handoff script and doc, the
+  GUI-attached mode doc, the domain-doc convention the walk exercises
+  (`docs/gear-ratios.md`, `docs/sensors.md`).
+- **medium-term:** (gaps, several units each) The headless review calls, one CLI
+  call at a time — render from named angles, section through a named plane,
+  assembly inventory, clearance and intersection — then wire each into the
+  walk's review step as it lands. Then the walk's third mode: the remote
+  handoff, scripted and documented, not executed. nt2 left the second-mechanism
+  walk close to done (`sage-peak-2689`: the linear carriage ran through the same
+  entry point with no dispatch change, and both projects carry comparable
+  baseline numbers); finish and evidence it rather than restarting it.
+- **long-term:** (directions, and the standing work that never ends) Toward the
+  north star: the robot prompt unattended, print-ready export, then G-code, then
+  the rollout video, each as one more leg of the same walk. Pull a criterion up
+  from `## Later criteria` only by asking the human — the planner may not target
+  a parked criterion on its own.
+  Standing work, always open: keep every gate green, every doc true to the code,
+  the delta manifest honest, the project docs current, and the frontier short.
+  Inherited-tree reduction lives here now: take a removal only when a change
+  makes it obvious and cheap, never as the unit of an iteration. Maintenance is
+  real work.
 
 ## Constraints
 
@@ -241,7 +266,11 @@ loop, not from this file.
   finish inside the iteration, record exactly what was verified and what was
   not, and leave the tree building at every commit.
 - Fix forward. Never rewrite or revert earlier commits of this run; a mistake
-  gets a new commit and a record node that names it.
+  gets a new commit and a record node that names it. **A critic rejection is a
+  must-fix for the next iteration, not a lost iteration:** the loop no longer
+  reverts on reject, so read the must-fix, close it in a new commit, and say in
+  the record which rejection it answers. Every one of nt2's six rejections was
+  closed this way.
 - Do not edit `.ouroboros/`. Do not edit `.hypergraph/graph/state/`.
 
 **This run (the human lifts these by editing this file):**
@@ -291,6 +320,10 @@ no such direction exists, the long-term rung's standing work is the work.
   `docs/ROADMAP.md` checkbox.
 - A change to the lifecycle walk updates its doc and the project-doc scaffold
   in the same commit.
+- **The record node names the charter criterion the unit advances, and says what
+  is still missing before that criterion can be ticked.** A unit that advances
+  no criterion on the frontier is not a unit of work: ticking a ROADMAP box is
+  not progress by itself. nt2 ticked 58 of them and closed no criterion.
 
 ## Reconcile
 

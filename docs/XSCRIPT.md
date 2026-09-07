@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-09-05
+Verified against source: 2026-09-07
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -473,9 +473,185 @@ Browse before modelling standard hardware by hand: `describe_api`'s
 metric fasteners m2–m8 (socket/countersunk bolts, hex/nyloc nuts, flat
 washers), heat-set inserts m2–m5, the common ball bearings plus a
 parametric `lib.bushing`, and the four servo classes — SG90, MG90S,
-MG996R, DS3218 — with measured micro horns. The 25T horns and the servo
+MG996R, DS3218 — with measured micro horns; and the three board variants
+below. The 25T horns and the servo
 pigtail terminals are deliberately absent until a dimensioned source
 exists.
+
+#### Boards `[ADR-202]`
+
+`lib.board(sku, origin=..., direction=..., roll_degrees=...)` accepts
+`esp32-devkitc-v4` (WROOM-32E), `pi-zero-2-w` and
+`pca9685-adafruit-rev-c` (Adafruit 815 revision C). The datum is the PCB's
+lower-left corner on its bottom face, +X across the width, +Y along the
+length, +Z towards components. Dimensions are mm; holes in
+`.spec["mount_holes"]` are XY pairs in that canonical frame. The ESP32
+variant has **no mounting holes**. Its module extends beyond the PCB.
+
+The body is a rectangular PCB with mounting and terminal bores plus a
+simple module/chip marker. Rounded PCB corners, fitted connectors, USB/HDMI
+ports and pin-header bodies are omitted: this is **not a connector clearance
+envelope**. `density_kg_m3` is nominal FR4, not a measured populated-board
+mass. `spec["approximate"]` names assumed thickness, cosmetic dimensions,
+density and undimensioned interface fields. Pi terminal placement and hole
+diameters are nominal; its four mounting-hole centres are dimensioned.
+Sources and the exact approximation ledger are in `PROVENANCE.md` §8a.
+
+`.spec["terminals"]` carries physical pin ids, signal labels and canonical
+pad coordinates (38 ESP32, 40 Pi GPIO, 62 PCA9685). `.terminals()` returns
+fresh `term()` rows following the library placement, with the axis pointing
+into the PCB. They address solder pads, including the PCA9685 power-block
+footprint, not the mouths of installed connectors. Names are lower-case
+physical connector/pin ids (`j2_1`, `j8_3`, `jp3_3`) or channel ids
+(`pwm0_pwm`, `pwm0_vplus`, `pwm0_gnd`); `signal` labels remain separate.
+
+```python
+controller = lib.board("pi-zero-2-w")
+driver = lib.board("pca9685-adafruit-rev-c", origin=(80, 0, 0))
+b = boards({
+    "controller": board(controller.body, terminals=controller.terminals()),
+    "driver": board(driver.body, terminals=driver.terminals()),
+})
+harness = nets(ports=b, wires={
+    "sda": wire("controller.j8_3", "driver.jp3_3", gauge=0.5),
+})
+result = {"controller": controller.body, "driver": driver.body}
+```
+
+Use ordinary `part.cable` on the declared wire to publish its geometry, as
+in the wiring examples below. These rows declare geometry and pin labels;
+they do not simulate electrical behavior or validate voltage compatibility.
+
+#### N20 gearmotor `[ADR-205]`
+
+`lib.gearmotor("pololu-2367", origin=..., direction=..., roll_degrees=...)`
+returns a `LibraryPart` for Pololu's 100:1 MP 6 V variant, without encoder.
+The datum is the shaft axis at the gearbox front: body along -Z, output
+shaft along +Z, D flat facing +Y, mounting centres at X = ±4.5 mm.
+`.spec` coordinates remain in that local frame after placement.
+
+The recipe fills a 12 × 10 × 25.6 mm rear envelope, adds the boss and D
+shaft, and cuts nominal M1.6 bores. It omits exposed gears, terminal details,
+threads and chamfers. The bore depth (1 mm) and axial flat transition are
+approximations, not screw engagement limits. This envelope is not an inertia
+model; `.spec["mass_g"]` is manufacturer mass, with no inferred density.
+The 6 V speed/current and extrapolated stall torque in `.spec` are qualified
+by `rating_notes`. There is no continuous torque rating or actuator helper;
+choose control limits explicitly. Sources and conflicts: PROVENANCE §8b.
+Generic `n20` and other manufacturers/ratios are refused.
+
+#### Spherical plain joint `[ADR-211]`
+
+`lib.joint("skf-ge-6-c", tilt_degrees=0, origin=..., direction=...,
+roll_degrees=...)` returns a `LibraryPart` whose `.body` is a two-solid
+compound. Only SKF GE 6 C from the qualified catalog revision is supported.
+The common sphere centre is the datum; housing and neutral bore axes are +Z,
+with inner faces at ±3 mm and outer faces at ±2 mm. Inner tilt about local
++Y is applied before placement; `.spec` stays canonical. Finite tilt is
+bounded to ±13°, conditional on a shaft shoulder diameter no greater than
+8 mm. This authors hardware geometry, not an assembly joint or actuator.
+
+`.spec` carries the source revision/hash, mounting and shoulder dimensions,
+3.6/9 kN basic dynamic/static radial ratings and 4 g catalog mass. These
+are selection inputs, not allowable robot loads or physical inertia.
+Coincident nominal spherical surfaces omit running clearance, chamfers,
+liner and seams. No fit, installed motion, manufacturing or conservative
+collision guarantee follows. See PROVENANCE §8f.
+
+#### Involute spur gear and rack `[ADR-233]`
+
+`lib.spur_gear(module, teeth, face_width, bore=None, origin=..., direction=...,
+roll_degrees=...)` and `lib.rack(module, teeth, face_width, height, ...)`
+return `LibraryPart` values cut to the ISO 53 type A basic rack (20°,
+addendum 1.0 m, dedendum 1.25 m) on an ISO 54 series I module; any other
+module is refused with the accepted list. A gear stands on its base face
+with its axis along +Z and tooth 0 centred on +X; `bore` must stay inside
+the root circle. A rack runs along +X from X=0 for `teeth · π · module`,
+pitch line on Y=0, tips at Y=+m, roots at Y=−1.25 m, back face `height`
+below the tips, so a pinion meshes with its centre one pitch radius above
+the rack's Y=0 plane.
+
+`.spec` carries module, tooth count, pressure angle, the pitch, base, root
+and tip diameters, circular pitch, pitch-circle tooth thickness, the
+standard citation and `approximate`: the flanks are sampled involutes (or
+straight rack flanks) in one polygon with no root fillet, tip relief,
+backlash, profile shift or helix, and a gear under 17 teeth is warned that
+its undercut is not generated. No density, strength or torque follows.
+`lib.catalog()["gears"]` lists the accepted modules and tooth range.
+See PROVENANCE §8g.
+
+```python
+pinion = lib.spur_gear(1, 12, 5, bore=3)
+rack = lib.rack(1, 30, 5, 4, origin=(0, -pinion.spec["pitch_diameter_mm"] / 2, 0))
+result = {"pinion": pinion.body, "rack": rack.body}
+```
+
+#### Rack and pinion `[ADR-234]`
+
+`lib.rack_and_pinion(module, pinion_teeth, rack_teeth, face_width,
+backlash=0, bore=None, rack_height=None, rotation_degrees=0, origin=...,
+direction=..., roll_degrees=...)` composes the two values above as one
+two-solid compound that meshes. The pinion axis is +Z through the origin
+with its base face in the datum plane; the rack runs along X with its pitch
+line at `Y = -centre_distance` and a tooth space under the axis, and pinion
+tooth 0 points at that space. `rotation_degrees` turns the pinion
+counter-clockwise about +Z and slides the rack +X by
+`travel_per_degree_mm` times the angle, so the same value publishes at any
+phase. `backlash` (mm, at most 0.1 module) is realised as a radial shift of
+the rack by `backlash / (2 tan 20°)`; `rack_height` defaults to 3.5 module.
+
+`.spec` carries `centre_distance_mm`, `radial_shift_mm`,
+`root_clearance_mm`, `travel_per_revolution_mm`, `travel_per_degree_mm`,
+`rack_travel_mm`, `rack_x_range_mm`, `datums`, and the nested `pinion` and
+`rack` specs. The mesh is geometric only: no contact ratio, load sharing,
+stiffness or efficiency, and a pinion under 17 teeth interferes with the
+rack tip below its base circle (the undercut ADR-233 warns about, measured
+in ADR-234). The real-kernel test holds the common volume at zero over nine
+phases and the root clearance at 0.25 module plus the shift.
+
+```python
+drive = lib.rack_and_pinion(1, 24, 30, 5, bore=3, rotation_degrees=45)
+result = {"drive": drive.body}
+# drive.spec["rack_travel_mm"] is the rack's slide at 45 degrees.
+```
+
+#### L12 linear actuator `[ADR-207]`
+
+`lib.linear_actuator("l12-50-210-12-s", extension=0, origin=...,
+direction=..., roll_degrees=...)` returns a `LibraryPart` with the supplied
+clevis approximation. The rear bore centre is the datum, travel is +Z and
+both 4.25 mm bores run along X. Nominal centres are `102 + extension` mm;
+`.spec` coordinates remain canonical after placement. Only this variant is
+supported; extension must be finite within [0,50] mm. S switches stop within
+0.5 mm of stroke ends, so geometric endpoints need not be powered-reachable.
+
+At 12 V, 80 N maximum lifted force, 6.5 mm/s unloaded speed and the
+62 N at 3.2 mm/s peak-power point are separate operating conditions.
+Duty is at most 20%, temperature -10 to +50 °C; application life needs testing.
+`.spec` retains these qualifications, sources and the older STEP's 0.5 mm
+longer spacing. Primitive housing transitions and clevis geometry are named
+approximations (PROVENANCE §8d). This filled exterior omits installation
+hardware, leads and internals; it is not a fit, conservative collision,
+physical inertia or load guarantee, and creates no controller or feedback.
+
+#### BLDC rear-mount envelope `[ADR-206]`
+
+`lib.bldc("hobbywing-30415200", origin=..., direction=..., roll_degrees=...)`
+returns the HOBBYWING Skywalker 2820 SL 550KV `LibraryPart`. The datum is
+its rear mounting plane on axis: case and shaft point along +Z, rear boss
+along -Z. Local X/Y align with the 19/25 mm M3 mounting pairs; they do not
+specify cable clocking. `.spec` remains canonical after placement.
+
+The case is a filled cylinder, with the rear boss and nominal mounting
+bores. The drawing does not dimension the shaft collar's length, so the
+recipe conservatively reserves its diameter across the entire shaft
+projection. **This is not a shaft coupling fit model.** Bore depth is an
+assumed 1 mm, not screw engagement permission. Leads, connectors and supplied
+accessories are omitted. Neither installation clearance nor physical inertia
+is guaranteed. `.spec` carries kV, supply cell count and no-load current with
+its test voltage; torque is unknown and no actuator helper is supplied.
+Other windings and generic `2820` identifiers are refused. Sources, duration
+limits on published current/power, and approximations: PROVENANCE §8c.
 
 ### Naming geometry: selectors, not indices `[Phase 10b, ADR-029]`
 

@@ -25,6 +25,8 @@ Three failures here were measured rather than suspected [rec: western-badger-302
 
 **One adjacent feature was checked against the lockout and cleared, at the engine level only.** Refreshing a linked part moves the consuming project's digest by design, but refresh goes through the ordinary rebuild-and-accept path rather than swapping bytes under an accepted model, and a live test closes the project after a refresh, reopens it, and asserts the restore pass **performed and matched** [rec: ancient-current-9419].
 
+**Stale shell mutations require explicit refresh** (ADR-204). Script and parameter mutations retain their old revision guard and return Rebuild Model/reopen guidance. Dormant guard adoption and replay are removed: a synthetic stale response carrying a newer guard cannot trigger replay, while real two-engine repeat attempts preserve accepted source, values and metadata, then recover after Rebuild Model. Real-engine overwrite was not reproduced; current stale precondition failures omit the model_state needed by the old retry. The shell build and full headless bundle gate pass; simultaneous acceptance/rebuilds still require sequential use [rec: still-badger-2386].
+
 ## Negative knowledge
 
 - [scope: Save-As, and an unsaved scene's temporary root | confidence: high | evidence: twilight-isle-0370] Do not assume a file open hydrates the model in these two cases. Hydrate-on-open (ADR-186) queues only for a saved `.blend` whose `.cadex` directory exists; Save-As is deliberately not queued (it would repaint the viewport with the other model on the spot) and the unsaved temp root is guarded out. The former blanket rule from western-badger-3023 is retired for the ordinary open.
@@ -43,3 +45,4 @@ Three failures here were measured rather than suspected [rec: western-badger-302
 - twilight-isle-0370 — hydrate on open fixed (ADR-186): the queued open and its pump, the gate test measuring model_objects_on_open = 1, the two deliberate exclusions, and the open failure code cached on the per-root state for the lockout box
 - small-hawk-3973 — the lockout re-accept box (ADR-187): drawn off the cached failure code, wired to write_script through one accept path, the gate test that drives the operator from the locked-out state (1136 checks, 0 FAIL), and the unsaved-scene test-isolation trap
 - wild-grotto-5497 — Save-As carries a trained policy (ADR-188), verified and recorded: the shell's carry list equals the engine's seven stored suffixes, the gate at 1142 checks and 0 FAIL, and the equality test deliberately not taken across the licence boundary
+- still-badger-2386 — ADR-204: dormant stale replay removed, repeat-refusal and refresh recovery verified with synthetic and real-engine tests; shell build and gate pass

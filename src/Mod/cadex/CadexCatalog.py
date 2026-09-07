@@ -26,7 +26,9 @@ digest is what detects the drift (ADR-181).
 
 from __future__ import annotations
 
+import math
 from typing import Any, Mapping
+from copy import deepcopy
 
 __all__ = [
     "CatalogError",
@@ -39,6 +41,17 @@ __all__ = [
     "HEAT_SET_INSERTS",
     "BALL_BEARINGS",
     "SERVOS",
+    "BOARDS",
+    "board_spec",
+    "BLDC_MOTORS",
+    "bldc_spec",
+    "linear_actuator_spec",
+    "joint_spec",
+    "GEAR_STANDARD",
+    "gear_spec",
+    "rack_and_pinion_spec",
+    "GEARMOTORS",
+    "gearmotor_spec",
     "MICRO_HORNS",
     "MICRO_HORN_HUB",
     "KG_CM_TO_NMM",
@@ -481,6 +494,91 @@ def normalise_servo_sku(sku: Any) -> str:
     return sku.strip().lower()
 
 
+
+# Board interfaces, independently transcribed from manufacturer drawings.
+# Full source/version and approximation ledger: docs/PROVENANCE.md §8a.
+# Local frame: PCB lower-left corner, bottom face z=0, component side +Z.
+# Terminals describe solder pads, not the free ends of optional pin headers.
+def _board_pin(name: str, signal: str, x: float, y: float, drill: float) -> dict:
+    return {"name": name.lower().replace("+", "plus"), "signal": signal, "origin": [x, y, 1.6],
+            "axis": [0.0, 0.0, -1.0], "hole_dia": drill}
+
+
+BOARDS = {
+    "esp32-devkitc-v4": {
+        "manufacturer": "Espressif", "variant": "ESP32-DevKitC V4, WROOM-32E",
+        "width_mm": 27.94, "length_mm": 48.26, "thickness_mm": 1.6,
+        "mount_holes": [], "mount_hole_dia_mm": 0.0,
+        "cosmetic_origin": [4.97, 23.0, 1.6],
+        "cosmetic_size": [18.0, 31.30, 3.0],
+        "density_kg_m3": 1850.0,
+        "approximate": ["thickness_mm", "cosmetic_origin", "cosmetic_size",
+                        "density_kg_m3", "terminal_hole_dia_mm"],
+        "source": "https://dl.espressif.com/dl/schematics/esp32_devkitc_v4_dimensions.pdf",
+        "terminals": [
+            _board_pin(f"{header}_{i+1}", signal, x, round(47.01-i*2.54, 4), 1.0)
+            for header, x, signals in [
+                ("J2", 1.24, "3V3 EN VP VN IO34 IO35 IO32 IO33 IO25 IO26 IO27 IO14 IO12 GND IO13 D2 D3 CMD 5V"),
+                ("J3", 26.64, "GND IO23 IO22 TX RX IO21 GND IO19 IO18 IO5 IO17 IO16 IO4 IO0 IO2 IO15 D1 D0 CLK"),
+            ] for i, signal in enumerate(signals.split())
+        ],
+    },
+    "pi-zero-2-w": {
+        "manufacturer": "Raspberry Pi", "variant": "Zero 2 W, unpopulated GPIO header",
+        "width_mm": 65.0, "length_mm": 30.0, "thickness_mm": 1.6,
+        "mount_holes": [[x, y] for x in (3.5, 61.5) for y in (3.5, 26.5)],
+        "mount_hole_dia_mm": 2.75,
+        "cosmetic_origin": [37.0, 8.0, 1.6], "cosmetic_size": [15.0, 15.0, 2.0],
+        "density_kg_m3": 1850.0,
+        "approximate": ["thickness_mm", "mount_hole_dia_mm", "cosmetic_origin",
+                        "cosmetic_size", "density_kg_m3", "terminal_origins",
+                        "terminal_hole_dia_mm"],
+        "source": "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-mechanical-drawing.pdf",
+        "terminals": [
+            _board_pin(f"J8_{i+1}", signal, round(8.37+(i//2)*2.54, 4),
+                       25.23+(i%2)*2.54, 1.0)
+            for i, signal in enumerate((
+                "3V3 5V GPIO2 5V GPIO3 GND GPIO4 GPIO14 GND GPIO15 "
+                "GPIO17 GPIO18 GPIO27 GND GPIO22 GPIO23 3V3 GPIO24 GPIO10 GND "
+                "GPIO9 GPIO25 GPIO11 GPIO8 GND GPIO7 ID_SD ID_SC GPIO5 GND "
+                "GPIO6 GPIO12 GPIO13 GND GPIO19 GPIO16 GPIO26 GPIO20 GND GPIO21"
+            ).split())
+        ],
+    },
+    "pca9685-adafruit-rev-c": {
+        "manufacturer": "Adafruit", "variant": "815 PCA9685 revision C",
+        "width_mm": 62.23, "length_mm": 25.4, "thickness_mm": 1.6,
+        "mount_holes": [[x, y] for x in (3.175, 59.055) for y in (3.175, 22.225)],
+        "mount_hole_dia_mm": 2.5,
+        "cosmetic_origin": [26.0, 10.0, 1.6], "cosmetic_size": [10.0, 6.0, 1.2],
+        "density_kg_m3": 1850.0,
+        "approximate": ["thickness_mm", "cosmetic_origin", "cosmetic_size", "density_kg_m3"],
+        "source": "https://github.com/adafruit/Adafruit-16-Channel-PWM-Servo-Driver-PCB/blob/32578c83a5ba2946249b80b1aa1fb18ae4e61e7d/Adafruit%20PCA9685%20rev%20C.brd",
+        "terminals": [
+            _board_pin(f"{header}_{i+1}", signal, x, round(6.477+i*2.54, 4), 1.016)
+            for header, x in (("JP3", 1.905), ("JP4", 60.325))
+            for i, signal in enumerate("V+ VCC SDA SCL OE GND".split())
+        ] + [
+            _board_pin(f"PWM{channel}_{signal}", signal if signal != "PWM" else f"PWM{channel}",
+                       round(x, 4), y, 1.0)
+            for channel, x in enumerate([
+                6.985, 9.525, 12.065, 14.605, 19.685, 22.225, 24.765, 27.305,
+                34.925, 37.465, 40.005, 42.545, 47.625, 50.165, 52.705, 55.245,
+            ]) for signal, y in (("PWM", 6.477), ("V+", 3.937), ("GND", 1.397))
+        ] + [_board_pin("J1_1", "V+_IN", 29.315, 21.59, 1.0),
+             _board_pin("J1_2", "GND", 32.815, 21.59, 1.0)],
+    },
+}
+
+
+def board_spec(sku: Any) -> dict[str, Any]:
+    """A named board variant; nested rows are independent of the catalog."""
+    if not isinstance(sku, str) or sku.strip().lower() not in BOARDS:
+        raise CatalogError(f"Unknown board {sku!r}; catalogued boards: "
+                           + ", ".join(sorted(BOARDS)) + ".")
+    return deepcopy(BOARDS[sku.strip().lower()])
+
+
 _BEARING_SUFFIXES = ("zz", "2rs", "rs", "z")
 
 
@@ -571,6 +669,265 @@ def heat_set_insert_spec(size: Any) -> dict[str, float]:
     return _family_lookup("heat-set insert", HEAT_SET_INSERTS, size)
 
 
+# Pololu drawing 0J949, 2024-04-03, page 4; #2367 specifications.
+# Independently authored envelope, not a manufacturer CAD model.
+GEARMOTORS = {
+    "pololu-2367": {
+        "manufacturer": "Pololu", "manufacturer_part_number": "2367",
+        "form_factor": "N20", "gear_ratio": (35*37*35*38)/(12*11*13*10),
+        "width_mm": 12.0, "height_mm": 10.0,
+        "rear_envelope_mm": 25.6, "gearbox_length_mm": 9.0,
+        "shaft_dia_mm": 3.0, "shaft_tip_z_mm": 10.0,
+        "shaft_flat_start_z_mm": 1.0, "shaft_flat_to_opposite_mm": 2.5,
+        "boss_dia_mm": 4.0, "boss_height_mm": 0.7,
+        "mount_thread": "M1.6", "mount_holes": [[-4.5, 0.0], [4.5, 0.0]],
+        "mount_bore_dia_mm": 1.6, "mount_bore_depth_mm": 1.0,
+        "mass_g": 9.5, "rated_voltage_v": 6.0,
+        "no_load_speed_rpm": 220.0, "no_load_speed_tolerance_percent": 20.0,
+        "no_load_current_a": 0.07, "no_load_current_tolerance_percent": 50.0,
+        "stall_current_a": 0.67, "stall_torque_nmm": 0.94 * KG_CM_TO_NMM,
+        "rating_notes": "At 6 V; stall current and torque are theoretical extrapolations, not continuous ratings. Stalls can damage the motor/gearbox. No continuous torque or thermal model supplied.",
+        "sources": ["https://www.pololu.com/product/2367/specs",
+                    "https://www.pololu.com/file/0J949/micro-metal-gearmotors-dimensions.pdf"],
+        "approximate": [
+            "Filled rectangular rear envelope replaces motor, exposed gears and terminals; not internal geometry or inertia.",
+            "M1.6 threads represented by major-diameter blind bores of assumed 1 mm depth; not a screw engagement limit.",
+            "Flat starts 1 mm from face (9 mm usable shaft); axial flat transition and shaft chamfer simplified.",
+        ],
+    },
+}
+
+
+def gearmotor_spec(sku: Any) -> dict[str, Any]:
+    """One manufacturer variant; no generic N20 ratings or shared nested rows."""
+    if not isinstance(sku, str) or sku.strip().lower() not in GEARMOTORS:
+        raise CatalogError(f"Unknown gearmotor {sku!r}; catalogued gearmotors: "
+                           + ", ".join(sorted(GEARMOTORS)))
+    return deepcopy(GEARMOTORS[sku.strip().lower()])
+
+
+# HOBBYWING Skywalker 2820 SL 550KV, product 30415200; drawing 2820SL.
+# Rear mounting plane at Z=0; local X/Y aligned to 19/25 mm hole pairs.
+BLDC_MOTORS = {
+    "hobbywing-30415200": {
+        "manufacturer": "HOBBYWING", "manufacturer_part_number": "30415200",
+        "model": "Skywalker 2820 SL 550KV",
+        "case_dia_mm": 35.1, "case_length_mm": 40.0,
+        "rear_boss_dia_mm": 11.0, "rear_boss_height_mm": 2.0,
+        "shaft_dia_mm": 5.0, "shaft_projection_mm": 18.0,
+        "shaft_collar_envelope_dia_mm": 10.5,
+        "mount_thread": "M3",
+        "mount_holes": [[-9.5, 0.0], [9.5, 0.0], [0.0, -12.5], [0.0, 12.5]],
+        "mount_bore_dia_mm": 3.0, "mount_bore_depth_mm": 1.0,
+        "kv_rpm_per_v": 550.0, "supply_lipo_cells": 6,
+        "no_load_current_a": 1.38, "no_load_test_voltage_v": 22.2,
+        "mass_g": 144.5,
+        "rating_notes": "No torque, thermal or physical inertia model. Manufacturer lists 40.9 A and 910.2 W for 46 s, without full cooling conditions; these are not continuous robot-joint ratings.",
+        "sources": ["https://www.hobbywing.com/en/products/skywalker2814.html",
+                    "https://www.hobbywing.com/en/uploads/file/20231121/6ce36297af7f04e8e0c41c3b28a36dbd.pdf"],
+        "approximate": [
+            "Filled case envelope unites rotating and stationary components; no vents, windings or physical inertia.",
+            "Collar axial length is undimensioned: reserve its 10.5 mm diameter over the whole 18 mm shaft projection. Not a shaft coupling fit model; the actual shaft diameter is 5 mm.",
+            "M3 threads represented by major-diameter blind bores of assumed 1 mm depth; not a screw engagement limit.",
+            "Leads, connectors, propeller adapter and cross mounting plate omitted; no full installation clearance guarantee. Local X/Y sets the hole pattern only, not cable clocking.",
+        ],
+    },
+}
+
+
+def bldc_spec(sku: Any) -> dict[str, Any]:
+    """A specific winding and manufacturer, with conservative shaft reservation."""
+    if not isinstance(sku, str) or sku.strip().lower() not in BLDC_MOTORS:
+        raise CatalogError(f"Unknown BLDC motor {sku!r}; catalogued BLDC motors: "
+                           + ", ".join(sorted(BLDC_MOTORS)))
+    return deepcopy(BLDC_MOTORS[sku.strip().lower()])
+
+
+# Actuonix revision F drawing; older STEP discrepancy and local widths: PROVENANCE 8d.
+LINEAR_ACTUATORS = {
+    "l12-50-210-12-s": {
+        "manufacturer": "Actuonix", "manufacturer_part_number": "L12-50-210-12-S",
+        "stroke_mm": 50.0, "retracted_centres_mm": 102.0,
+        "mount_bore_dia_mm": 4.25, "rear_lug_width_mm": 8.0,
+        "clevis_width_mm": 6.0, "older_step_spacing_excess_mm": 0.5,
+        "rated_voltage_v": 12.0, "gear_ratio": 210,
+        "maximum_lifted_force_n": 80.0, "unloaded_speed_mm_s": 6.5,
+        "peak_power_force_n": 62.0, "peak_power_speed_mm_s": 3.2,
+        "maximum_duty_percent": 20.0, "temperature_range_c": [-10.0, 50.0],
+        "rating_notes": "At 12 V: maximum lifted force, unloaded speed and peak-power force/speed are distinct operating points. Duty at most 20%; application life requires testing. No physical inertia, load or dynamics guarantee.",
+        "switch_notes": "S limit switches stop within 0.5 mm of a stroke end; geometric endpoints are not guaranteed powered-reachable. No position controller or feedback is supplied by this recipe.",
+        "sources": ["https://www.actuonix.com/assets/images/datasheets/ActuonixL12Datasheet.pdf",
+                    "https://www.actuonix.com/assets/images/datasheets/L12_STP.zip"],
+        "approximate": [
+            "Datasheet nominal centres take precedence over older STEP spacing, 0.5 mm longer; not a tolerance or blanket surface correction.",
+            "Primitive housing, rear lug and sleeve transitions; flat-ended clipped cylindrical supplied clevis omits rounded tip and threaded neck. Axial extents in PROVENANCE 8d are approximations.",
+            "Filled fused exterior omits internals, shaft hollowing, threads, clamps, brackets, fasteners, cable and connector. No installation fit, conservative collision envelope, strength or physical inertia claim.",
+        ],
+    },
+}
+
+
+def linear_actuator_spec(sku: Any) -> dict[str, Any]:
+    """One sourced L12 stroke, ratio, voltage and switch variant."""
+    if not isinstance(sku, str) or sku.strip().lower() not in LINEAR_ACTUATORS:
+        raise CatalogError(f"Unknown linear actuator {sku!r}; catalogued linear actuators: "
+                           + ", ".join(sorted(LINEAR_ACTUATORS)))
+    return deepcopy(LINEAR_ACTUATORS[sku.strip().lower()])
+
+
+# SKF BU/P1 06116/1 EN, May 2013, pp. 132–133; PROVENANCE §8f.
+JOINTS = {
+    "skf-ge-6-c": {
+        "manufacturer": "SKF", "manufacturer_part_number": "GE 6 C",
+        "bore_dia_mm": 6.0, "outside_dia_mm": 14.0,
+        "inner_width_mm": 6.0, "outer_width_mm": 4.0, "sphere_dia_mm": 10.0,
+        "maximum_tilt_degrees": 13.0,
+        "shaft_shoulder_dia_range_mm": [7.4, 8.0],
+        "housing_opening_dia_range_mm": [9.5, 12.7],
+        "ring_chamfer_min_mm": 0.3, "abutment_fillet_max_mm": 0.3,
+        "basic_dynamic_load_n": 3600.0, "basic_static_load_n": 9000.0,
+        "mass_g": 4.0,
+        "sliding_contact": "Steel/PTFE sintered bronze; maintenance-free radial spherical plain bearing.",
+        "rating_notes": "Basic catalog radial ratings, not allowable robot working loads, axial ratings, life, torque or friction. Application duty, fit and operating conditions require separate selection; no dynamics or physical inertia model.",
+        "datum_notes": "Common sphere centre at origin; neutral bore and housing axes +Z; inner faces Z=±3, outer faces Z=±2 mm. Inner tilt about canonical +Y before placement; spec coordinates stay canonical.",
+        "tilt_notes": "Nominal ±13 degrees conditional on shaft shoulder diameter at most 8 mm; no assembly solver or installed motion guarantee.",
+        "source_revision": "BU/P1 06116/1 EN, May 2013, printed pages 132–133",
+        "source_sha256": "df51e55192dc9ce138e371e2f5047cfbceeba7f2ac6246f92e5bd3d7f24930cb",
+        "sources": ["https://www.skf.com/binaries/pub12/Images/0901d19680154a05-06116_1-EN_tcm_12-122020.pdf"],
+        "approximate": [
+            "Two nominal rings with coincident spherical surfaces; no radial running clearance.",
+            "Chamfers, liner thickness and manufacturing seams omitted; no mating hardware.",
+            "Not a tolerance, press-fit, conservative collision envelope, manufacturing drawing or physical inertia model.",
+        ],
+    },
+}
+
+
+def joint_spec(sku: Any) -> dict[str, Any]:
+    """Only the qualified SKF GE 6 C publication variant."""
+    if not isinstance(sku, str) or sku.strip().lower() not in JOINTS:
+        raise CatalogError(f"Unknown joint {sku!r}; catalogued joints: "
+                           + ", ".join(sorted(JOINTS)))
+    return deepcopy(JOINTS[sku.strip().lower()])
+
+
+GEAR_STANDARD = {
+    # ISO 53:1998 basic rack, type A, and the ISO 54:1996 series I modules.
+    # Values are the standard's coefficients of the module; nothing here is
+    # a vendor dimension, so no download, hash or revision applies.
+    "basic_rack": "ISO 53:1998 type A",
+    "module_series": "ISO 54:1996 series I",
+    "pressure_angle_degrees": 20.0,
+    "addendum_coefficient": 1.0,
+    "dedendum_coefficient": 1.25,
+    "root_clearance_coefficient": 0.25,
+    "whole_depth_coefficient": 2.25,
+    "preferred_modules_mm": [1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0,
+                             8.0, 10.0, 12.0, 16.0, 20.0, 25.0, 32.0, 40.0, 50.0],
+    "minimum_teeth": 6,
+    "maximum_teeth": 200,
+    "undercut_teeth": 17,
+    "sources": [
+        "https://cdn.standards.iteh.ai/samples/22643/1587e6ac15ea488b913773116bac2dad/ISO-53-1998.pdf",
+        "https://cdn.standards.iteh.ai/samples/3691/837505f27cd8409f92ab7d0ff304eee5/ISO-54-1977.pdf",
+    ],
+}
+
+
+def gear_spec(module: Any, teeth: Any, *, rack: bool = False) -> dict[str, Any]:
+    """ISO 53 tooth numbers for one module and tooth count.
+
+    ``module`` must be an ISO 54 series I value; ``teeth`` an integer within
+    the generator's documented bounds (a rack needs at least one tooth). The
+    returned row carries the pitch-circle numbers a design reads and the
+    ``approximate`` list every gear recipe inherits.
+    """
+    std = GEAR_STANDARD
+    if (isinstance(module, bool) or not isinstance(module, (int, float))
+            or not math.isfinite(module)
+            or not any(abs(module - m) < 1.0e-9 for m in std["preferred_modules_mm"])):
+        raise CatalogError(f"Unknown gear module {module!r}; ISO 54 series I modules: "
+                           + ", ".join(f"{m:g}" for m in std["preferred_modules_mm"]))
+    if isinstance(teeth, bool) or not isinstance(teeth, int):
+        raise CatalogError(f"Gear teeth must be an integer, not {teeth!r}.")
+    low = 1 if rack else std["minimum_teeth"]
+    if not low <= teeth <= std["maximum_teeth"]:
+        raise CatalogError(f"Gear teeth must be in [{low}, {std['maximum_teeth']}], not {teeth}.")
+    m = float(module)
+    spec: dict[str, Any] = {
+        "module_mm": m, "teeth": teeth,
+        "pressure_angle_degrees": std["pressure_angle_degrees"],
+        "addendum_mm": std["addendum_coefficient"] * m,
+        "dedendum_mm": std["dedendum_coefficient"] * m,
+        "root_clearance_mm": std["root_clearance_coefficient"] * m,
+        "whole_depth_mm": std["whole_depth_coefficient"] * m,
+        "circular_pitch_mm": math.pi * m,
+        "tooth_thickness_mm": math.pi * m / 2.0,
+        "standard": f"{std['basic_rack']}; modules {std['module_series']}",
+        "sources": list(std["sources"]),
+        "approximate": [
+            "Flanks are sampled involutes (or straight 20 degree rack flanks) joined into one polygon; no root fillet, tip relief or backlash.",
+            "No material, strength, wear or torque rating; density is not supplied.",
+        ],
+    }
+    if rack:
+        spec["length_mm"] = teeth * math.pi * m
+        return spec
+    pitch = m * teeth
+    spec.update({
+        "pitch_diameter_mm": pitch,
+        "base_diameter_mm": pitch * math.cos(math.radians(std["pressure_angle_degrees"])),
+        "tip_diameter_mm": m * (teeth + 2),
+        "root_diameter_mm": m * (teeth - 2.5),
+    })
+    if teeth < std["undercut_teeth"]:
+        spec["approximate"].append(
+            f"{teeth} teeth is below the {std['undercut_teeth']}-tooth undercut limit for an unshifted 20 degree gear; the profile below the base circle is a radial line, not a generated undercut.")
+    return spec
+
+
+def rack_and_pinion_spec(module: Any, pinion_teeth: Any, rack_teeth: Any, *,
+                         backlash: Any = 0.0) -> dict[str, Any]:
+    """The meshing numbers for an ISO 53 pinion on an ISO 53 rack.
+
+    Both members come from ``gear_spec`` on the same module. ``backlash``
+    is the circumferential play at the pitch line in mm, in
+    [0, 0.1 module]; it is realised as a radial shift of the rack away
+    from the pinion by ``backlash / (2 tan alpha)`` (no tooth thinning),
+    which the centre distance and both root clearances carry.
+    """
+    pinion = gear_spec(module, pinion_teeth)
+    rack = gear_spec(module, rack_teeth, rack=True)
+    m = pinion["module_mm"]
+    if (isinstance(backlash, bool) or not isinstance(backlash, (int, float))
+            or not math.isfinite(backlash) or not 0.0 <= backlash <= 0.1 * m):
+        raise CatalogError(f"Rack-and-pinion backlash must be in [0, {0.1 * m:g}] mm "
+                           f"(0.1 module), not {backlash!r}.")
+    tangent = math.tan(math.radians(pinion["pressure_angle_degrees"]))
+    radial_shift = float(backlash) / (2.0 * tangent)
+    pitch_radius = pinion["pitch_diameter_mm"] / 2.0
+    spec: dict[str, Any] = {
+        "module_mm": m, "pinion_teeth": pinion_teeth, "rack_teeth": rack_teeth,
+        "pressure_angle_degrees": pinion["pressure_angle_degrees"],
+        "pitch_radius_mm": pitch_radius,
+        "backlash_mm": float(backlash),
+        "radial_shift_mm": radial_shift,
+        "centre_distance_mm": pitch_radius + radial_shift,
+        "root_clearance_mm": pinion["root_clearance_mm"] + radial_shift,
+        "travel_per_revolution_mm": math.pi * m * pinion_teeth,
+        "travel_per_degree_mm": math.pi * m * pinion_teeth / 360.0,
+        "rack_length_mm": rack["length_mm"],
+        "pinion": pinion, "rack": rack,
+        "standard": pinion["standard"],
+        "sources": list(pinion["sources"]),
+        "approximate": list(pinion["approximate"]) + [
+            "Backlash is a radial shift of the rack by backlash / (2 tan 20 degrees); teeth are not thinned.",
+            "No contact ratio, load sharing, stiffness or efficiency; the mesh is geometric only.",
+        ],
+    }
+    return spec
+
+
 def catalog_families() -> dict[str, Any]:
     """The browsable catalog: every family, its part numbers, key specs.
 
@@ -612,6 +969,32 @@ def catalog_families() -> dict[str, Any]:
                 "the parametric plain bearing for everything the codes do "
                 "not cover."
             ),
+        },
+        "joints": {
+            "skus": sorted(JOINTS),
+            "notes": "lib.joint(sku, tilt_degrees=0): SKF GE 6 C nominal two-ring geometry; spec carries source, datums, conditional tilt, qualified ratings and approximation limits. No fit or dynamics guarantee.",
+        },
+        "linear_actuators": {
+            "skus": sorted(LINEAR_ACTUATORS),
+            "notes": "lib.linear_actuator(sku, extension=0): nominal L12 mounting geometry with supplied clevis; bounded geometric extension, qualified operating points and approximation limits in spec. No installation or dynamics guarantee.",
+        },
+        "bldc_motors": {
+            "skus": sorted(BLDC_MOTORS),
+            "notes": "lib.bldc(sku): sourced rear-mount case and conservative shaft/collar envelope; spec carries kV, qualified ratings and fit limitations. No torque or inertia model.",
+        },
+        "gearmotors": {
+            "skus": sorted(GEARMOTORS),
+            "notes": "lib.gearmotor(sku): N20 envelope, D shaft and mounting bores; spec carries manufacturer dimensions, 6 V ratings and approximations. No continuous torque or inertia model.",
+        },
+        "gears": {
+            "preferred_modules_mm": list(GEAR_STANDARD["preferred_modules_mm"]),
+            "pressure_angle_degrees": GEAR_STANDARD["pressure_angle_degrees"],
+            "teeth_range": [GEAR_STANDARD["minimum_teeth"], GEAR_STANDARD["maximum_teeth"]],
+            "notes": "lib.spur_gear(module, teeth, face_width, bore=None) and lib.rack(module, teeth, face_width, height): ISO 53 type A profile on ISO 54 series I modules, one sampled-involute polygon extruded; spec carries the pitch, base, root and tip diameters and the undercut warning below 17 teeth. No fillets, backlash, strength rating or density. lib.rack_and_pinion(module, pinion_teeth, rack_teeth, face_width, backlash=0, bore=None, rack_height=None, rotation_degrees=0) composes both at the standard centre distance as one compound; spec carries centre distance, travel per revolution and the datums.",
+        },
+        "boards": {
+            "skus": sorted(BOARDS),
+            "notes": "lib.board(sku): PCB and simple component marker; spec carries mounting holes, solder-pad pinout, sources and explicit approximations. No connector clearance envelope or measured assembly mass.",
         },
         "servos": {
             "skus": sorted(SERVOS),

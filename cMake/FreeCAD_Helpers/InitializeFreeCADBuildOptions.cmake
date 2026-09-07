@@ -5,7 +5,10 @@ macro(InitializeFreeCADBuildOptions)
     # ==============================================================================
 
     option(BUILD_FORCE_DIRECTORY "The build directory must be different to the source directory." OFF)
-    option(BUILD_GUI "Build FreeCAD Gui. Otherwise you have only the command line and the Python import module." ON)
+    option(BUILD_GUI "Build the retired FreeCAD GUI (unsupported by Cadex)." OFF)
+    if(BUILD_GUI)
+        message(FATAL_ERROR "Cadex no longer supports BUILD_GUI=ON. Configure with -DBUILD_GUI=OFF; the application is the shell. See docs/PHASE8-AUDIT.md.")
+    endif()
     option(FREECAD_USE_EXTERNAL_ZIPIOS "Use system installed zipios++ instead of the bundled." OFF)
     option(FREECAD_USE_EXTERNAL_SMESH "Use system installed smesh instead of the bundled." OFF)
     option(FREECAD_USE_EXTERNAL_KDL "Use system installed orocos-kdl instead of the bundled." OFF)
@@ -145,7 +148,9 @@ macro(InitializeFreeCADBuildOptions)
     endif(APPLE)
 
     option(BUILD_TEMPLATE "Build the FreeCAD template module which is only for testing purposes" OFF)
-    option(BUILD_HELP "Build the FreeCAD help module" ON)
+    # Cadex (ADR-217, ADR-218): the FreeCAD help module was disabled, then
+    # deleted. BUILD_HELP no longer exists; src/Mod/CMakeLists.txt has no
+    # Help gate to consult it.
     option(BUILD_IMPORT "Build the FreeCAD import module" ON)
     option(BUILD_JTREADER "Build the FreeCAD jt reader module" OFF)
     option(BUILD_MATERIAL "Build the FreeCAD material module" ON)
@@ -158,7 +163,7 @@ macro(InitializeFreeCADBuildOptions)
     option(BUILD_ASSEMBLY "Build the FreeCAD Assembly module" ON)
     option(BUILD_SHOW "Build the FreeCAD Show module (helper module for visibility automation)" ON)
     option(BUILD_SKETCHER "Build the FreeCAD sketcher module" ON)
-    option(BUILD_START "Build the FreeCAD start module" ON)
+    # Start was deleted after its separate disable (ADR-220, ADR-221).
     option(BUILD_TEST "Build the FreeCAD test module" ON)
     option(BUILD_MEASURE "Build the FreeCAD Measure module" ON)
     option(BUILD_VR "Build the FreeCAD Oculus Rift support (need Oculus SDK 4.x or higher)" OFF)

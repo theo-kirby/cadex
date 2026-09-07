@@ -1,0 +1,379 @@
+---
+node_id: d1cc838c-c148-5c56-8b1c-d209f5785d08
+slug: empty-wolf-3962
+title: 'Ouroboros run: nt2 [35a0c1be] — operator directive'
+created_at: '2026-09-06T19:03:50+00:00'
+parents:
+- odd-banner-6071
+summary: ''
+---
+## What
+
+Operator directive: an Ouroboros loop starts on this repo. Every work node of the run descends from this node.
+
+## Why
+
+The charter (the operator's goal document), verbatim:
+
+# Goal: cadex
+
+<!-- The charter. The human owns this file; no agent role edits it. The agents
+     write the plan (short / medium / long) and their bets in PLAN.md. Overrule
+     them by editing this file: the loop mints a new directive and re-plans.
+     No clocks in here. Agents have no sense of time; rungs are sizes. -->
+
+## Mission
+
+**The north star.** cadex is the best early-stage prototyping tool for robots.
+A person writes one prompt: "a 3D-printable walking robot with four MG90S, two
+larger servos, these bearings, M3 hardware; it must walk and jump." They come
+back later, hours or weeks, and find a printable export, a trained policy, a
+video of the policy working, and a report with graphs that says what was tried
+and why the winner won. A hardware team runs many cadex machines in parallel,
+each testing one idea, and reads the reports. Ouroboros, hypergraph, and cadex
+each carry part of that. Everything below serves it.
+
+Autonomous, reviewable progress on cadex, in this priority order. Ticked
+criteria shipped in earlier runs (ADR-186..198); they declare no gap. The agents
+re-plan from the ladder after every maintainer pass and record their bets.
+
+1. **File lifecycle** — the most fragile part of the product. Keep it working.
+2. **The robot lifecycle loop, end to end, agent-driven, headless, in the repo.**
+   Ideation → design (xscript parts) → assembly (joints, masses, actuator torque,
+   sensors) → RL training environment (MJCF export, task) → policy design →
+   training → experiment and rollout review → **iterate**: change what did not
+   work, update the policy, retrain, compare. Every step must work with no human
+   in the loop, driven by the product agent, with every artifact landing in the
+   project directory under version control. It must also work with the GUI up
+   and with training on a remote machine, without the loop changing shape.
+   Part of this: **treat each cadex project directory as its own codebase.** A
+   project (say, an actuator) carries the documents a good agent keeps for a
+   codebase: `ARCHITECTURE.md`, `DECISIONS.md` (ADRs), `PROGRESS.md`, and domain
+   docs it creates and maintains as it works — gear ratios and why a reduction
+   went two-stage, the sensor list, actuator selection, what was tried and
+   rejected. Version-controlled, agent-maintained, read on every visit.
+3. **Inherited-tree reduction.** Shrink both inherited trees in place.
+4. **The parts library, broad and real.** Many servos, many actuators, bearing
+   families, metric nuts and bolts, and compound mechanisms built from those
+   parts: rack and pinion, planetary gearbox, linkages. Every part has
+   provenance and a real-kernel test. A robot prompt should never fail because
+   a common part is missing.
+5. **RL loop follow-ups** that are not already covered by item 2.
+6. **The harness's own eyes, headless.** The agent must review what it built
+   without a screen: render a model from named angles, produce section views,
+   identify the parts of an assembly, run clearance and intersection checks,
+   and land the outputs in the project directory. The loop is only as good as
+   its review step.
+7. **Knowledge from outside.** Web search, papers, and real mechanisms are
+   sources. The agent reads them, implements the idea, cites the source in
+   the project's `DECISIONS.md`, and tests it against what the repo already had.
+8. **Experiments and reports.** Make several variants of one thing (five ankle
+   joints), test them all the same way, rank them, pick one, and use it in the
+   walk. Every study ends in a report with numbers and graphs a person can read.
+9. **The fleet.** A fresh machine becomes a working headless cadex from one
+   documented script, so a team can run one experiment per machine. Documented
+   and scripted; never provisioned by the loop.
+
+Every unit lands as one small commit plus one record node, verified by the gate
+AGENTS.md names for the zone touched. The philosophy holds at every grain:
+remove more than we add.
+
+## Done criteria
+
+Claims about the world. Each open box is a gap on the frontier until work
+falsifies it. Two grains: the first group is the current frontier; the second
+is what the planner pulls forward when the first group is landed or blocked.
+
+**File lifecycle (shipped):**
+
+- [x] Opening a `.blend` beside its `.cadex` hydrates the model (`load_post`
+      queues a rebuild; a test asserts `model_objects_on_open > 0`).
+- [x] A project locked out by a digest-moving change shows the re-accept box in
+      the chat panel (failure code cached on the per-root state) and
+      `write_script` recovers it from the UI.
+- [x] Save-As carries `.cxpolicy` forward (the shell suffix list).
+
+**Robot lifecycle loop:**
+
+- [ ] **The walk exists and is tested headlessly.** One documented entry point
+      (a CLI prompt or a headless script) takes a mechanism from design →
+      assembly → MJCF → task → toy-scale local CPU training → policy verify →
+      rollout → review, on this machine, with no human step. The rehearsal in
+      `gilded-trail-2519` named the gaps; they are closed or recorded as the
+      lifecycle frontier.
+- [x] **Iterate works.** Change a part or a policy parameter, retrain, compare
+      against the previous run, and the comparison lands in the project's
+      `PROGRESS.md` with the numbers.
+- [x] **Project as codebase.** Creating or first visiting a project scaffolds
+      `ARCHITECTURE.md`, `DECISIONS.md`, `PROGRESS.md`; the agent tool surface
+      reads and updates them; a convention for domain docs (e.g.
+      `docs/gear-ratios.md`, `docs/sensors.md`) is documented and used by the
+      walk. Everything is committed in the project directory.
+- [ ] **Three modes, one shape.** The walk runs headless (exercised), with the
+      GUI attached (documented, not exercised while the headless-only constraint
+      holds), and with training on a remote machine (the handoff is documented
+      and scripted, not executed while the local-only constraint holds). The
+      loop's steps and artifacts are the same in all three.
+- [ ] **The walk holds on a second mechanism.** The same entry point, with no
+      code change specific to the mechanism, takes a second mechanism through
+      the whole loop, and both projects' `PROGRESS.md` carry comparable numbers.
+
+**Inherited-tree reduction:**
+
+- [x] At least two Phase 13b shell-side removals landed under the two-commit
+      protocol (disable commit, delete commit, DECISIONS entry).
+- [x] The exploded-view import in `cadex_assembly_worker.py` is resolved, or a
+      record node says why not.
+- [ ] **Phase 8 `src/Gui` delete commit landed** under the two-commit protocol,
+      with the DECISIONS entry and the gate green after it.
+- [ ] **Two Phase 13b engine-side removals landed** under the two-commit
+      protocol, DECISIONS entries included.
+- [ ] **The fork's delta against upstream is smaller than at the start of this
+      run**, measured by the delta manifest AGENTS.md names, and the manifest is
+      honest about every inherited file touched.
+
+**Parts library:**
+
+- [ ] An L2 boards family exists over `CadexCatalog`, with tests that include a
+      real-kernel build, and the packaged lifecycle gate passes.
+- [ ] **L3 motors and mechanisms families exist** over `CadexCatalog`, same
+      test shape as the boards family, and the packaged lifecycle gate passes.
+- [ ] **25T horns and servo pigtails come from manufacturer STEP sources**, with
+      the provenance recorded the way `docs/PROVENANCE.md` asks.
+- [ ] **The catalog is broad enough for a robot prompt**: at least five servos,
+      ten actuators, a bearings family, and M2 to M5 nuts and bolts, each with
+      provenance and a real-kernel test.
+- [ ] **Compound mechanisms exist as parametric library values** built from
+      catalog parts: a rack and pinion and a planetary gearbox at least, each
+      with a mesh and clearance test.
+
+**Headless review:**
+
+- [ ] **The agent can see its work without a screen.** One CLI call each, with
+      outputs landing in the project directory: render from named angles,
+      section view through a named plane, list the parts of an assembly with
+      catalog ids, and a clearance and intersection check that names the
+      offending pairs. The lifecycle walk's review step uses them.
+
+**Outside knowledge:**
+
+- [ ] **One mechanism in the repo came from a paper or a real product**: the
+      source is cited in the project's `DECISIONS.md`, the implementation is
+      tested, and the walk built it.
+
+**Experiments and reports:**
+
+- [ ] **A variant study exists**: several variants of one joint generated by
+      one script, tested the same way, ranked in a report with a graph, and the
+      winner used by the walk.
+- [ ] **A research report renders headlessly** from a project's `PROGRESS.md`
+      numbers into a document with graphs a person can read.
+
+**Fleet:**
+
+- [ ] **A fresh machine runs the walk** after one documented install script,
+      headlessly, with no step that needs a person.
+
+**North star:**
+
+- [ ] **The robot prompt works unattended**: from a prompt naming the servos,
+      bearings, and hardware, the loop produces a printable mesh export, a
+      trained policy, and a rollout video, with no human step.
+
+**Shell:**
+
+- [ ] **The `hide_render` shell bug from `docs/IDEAS.md` is fixed** with a test
+      that fails on the old behaviour.
+
+**RL follow-ups:**
+
+- [ ] **mg-legs tips at the declared shove band, backward first**, with the
+      numbers in the project's `PROGRESS.md`.
+
+Every unit (a rule, not a gap; the critic grades it):
+
+- The zone's gate ran and the output is reported honestly; a record node with
+  real `## State Impact` targets; ROADMAP checkbox and ADR line where AGENTS.md
+  asks for them.
+
+## Horizon ladder
+
+Sizes, not times. What to do when the rung above is exhausted. The planner
+re-plans from this after every maintainer pass and reads the run budget from the
+loop, not from this file.
+
+- **short-term:** (units, one iteration each) Orient on STATE.md and PLAN.md.
+  Run the documented headless lifecycle entry point end to end on this machine
+  and record exactly which leg still needs a person or a guess; a clean run is
+  the evidence that closes the walk gap. Then close the remaining legs one unit
+  each: the remote-training handoff script and doc, the GUI-attached mode doc,
+  the domain-doc convention exercised by the walk (`docs/gear-ratios.md`,
+  `docs/sensors.md`). Then the L2 boards family over `CadexCatalog` with a
+  real-kernel test and the packaged lifecycle gate.
+- **medium-term:** (gaps, several units each) The lifecycle walk on a second
+  mechanism. L3 motors and mechanisms families. The Phase 8 delete commit for
+  `src/Gui`. Phase 13b engine side, two-commit protocol. The `hide_render` shell
+  bug. Each of these is a done criterion above; pull it forward when the
+  short-term rung is landed or blocked.
+- **long-term:** (directions, and the standing work that never ends) The
+  headless review tools, one call at a time, then wire them into the walk's
+  review step. Catalog breadth: servos, actuators, bearings, nuts and bolts,
+  then the compound mechanisms. A mechanism taken from a paper or a real
+  product, cited and tested. The variant study and the report renderer. The
+  fresh-machine install script. mg-legs tipping at the declared shove band,
+  backward first. 25T horns and servo pigtails from manufacturer STEP sources.
+  Reduce the fork's delta against upstream wherever a change makes it smaller.
+  Toward the north star: print-ready export, then G-code, then the rollout
+  video, each as one more leg of the same walk. Propose new directions only
+  inside the mission list, and only ones that remove more than they add.
+  Standing work, always open: keep every gate green, every doc true to the
+  code, the delta manifest honest, the project docs current, and the frontier
+  short. Maintenance is real work.
+
+## Constraints
+
+**Standing (true for every run):**
+
+- **AGENTS.md is the contract. Obey all of it.** Change-policy zones, the
+  two-commit removal protocol, the manifest-and-notice discipline for inherited
+  files, the LGPL/GPL one-way boundary, no UI in the engine, protocol changes
+  update `docs/INTEGRATION.md` and the shell client in the same commit.
+- **Training is offboard by design and stays so.** `training/` never enters
+  CMake, a payload, or `pixi.toml`. The engine verifies policies; it never
+  produces them.
+- **Never dispatch to the GPU box** (B7 stays blocked) and never touch its
+  checkout.
+- **Do not start a replacement engine or shell** (Phases 11 and 12 are
+  unscheduled by decision).
+- **Never provision cloud machines or spend money.** The fleet is a script and
+  a doc until the human runs it.
+- **Outside sources are for reading.** Cite every paper, product, or page used
+  in the project's `DECISIONS.md`. Never copy code whose license crosses the
+  LGPL/GPL boundary AGENTS.md draws; reimplement the idea.
+- Never commit `shell/lib/<platform>` contents. Never commit secrets or machine
+  paths. Never commit training checkpoints or rollouts; `PROGRESS.md` carries
+  the numbers. Never hand-edit `STATE.md`. Never write state nodes; the
+  maintainer pass reconciles.
+- Builds are long. One unit includes at most one full build. If a gate cannot
+  finish inside the iteration, record exactly what was verified and what was
+  not, and leave the tree building at every commit.
+- Fix forward. Never rewrite or revert earlier commits of this run; a mistake
+  gets a new commit and a record node that names it.
+- Do not edit `.ouroboros/`. Do not edit `.hypergraph/graph/state/`.
+
+**This run (the human lifts these by editing this file):**
+
+- **Headless only.** Never run `pixi run app` or `pixi run install-app`; never
+  launch the GUI. Use `pixi run build-shell`, `pixi run gate`, `pixi run
+  build-release`, and the pytest suites. The GUI-attached mode is documented,
+  not exercised.
+- **Training is local CPU, toy scale, bounded**: at most 15 minutes of wall
+  clock and 3 GB of memory per training run, in the `training/` venv per
+  `training/SETUP.md`. Remote training is documented and scripted, not run.
+
+## Question policy
+
+How to decide when nobody is here:
+
+- Prefer the reversible option: disable before delete, a CMake option before a
+  deletion, a test before a refactor, a doc convention before a new tool.
+- When code and doc disagree, the code wins; fix the doc in the same commit.
+- When unsure whether something is in scope, pick the smallest open unit in the
+  highest-ranked mission item that still has open work.
+- When the lifecycle walk needs a decision about a project's structure, choose
+  what a careful engineer keeps for a codebase and write the reason in the
+  project's `DECISIONS.md`.
+- When a gate has pre-existing failures, diff against the recorded baseline and
+  say so; do not chase failures that predate the run.
+- When a paper and the repo disagree, build the smallest experiment that
+  decides, and put the numbers in the report.
+- When a review tool would help and does not exist, build the tool as its own
+  unit first; do not guess at what the model looks like.
+- Never wait for a human. Write the assumption in the record node's `## Why`.
+
+## Exhaustion policy
+
+creative, bounded: a new direction must serve a numbered mission item, must
+remove more than it adds, and is written down as a bet before any code. When
+no such direction exists, the long-term rung's standing work is the work.
+
+## Quality bar
+
+- The gate for the touched zone passes, or the difference from the pre-existing
+  baseline is explained with output.
+- One logical change per commit. The message states the user-visible outcome,
+  the risk, and the test evidence.
+- The record node declares real `## State Impact` targets taken from STATE.md.
+- Removals carry a `docs/DECISIONS.md` entry. Landed work items tick their
+  `docs/ROADMAP.md` checkbox.
+- A change to the lifecycle walk updates its doc and the project-doc scaffold
+  in the same commit.
+
+## Reconcile
+
+Maintainer pass every 5 work iterations, or as soon as 3 record nodes are
+unreconciled. The run branch is the single-writer branch for this run. The
+planner runs after each maintainer pass and owns the `plan` view (PLAN.md);
+the maintainer never touches it. The human may merge the run branch into main
+with a merge commit at any time; the run continues on its branch.
+
+**Done criteria as gaps** (one open state node each; work closes them through declared impacts):
+
+- [gap] gap-walk-exists-tested-headlessly-one: **The walk exists and is tested headlessly.** One documented entry point (a CLI prompt or a headless script) takes a mechanism from design → assembly → MJCF → task → toy-scale local CPU training → policy verify → rollout → review, on this machine, with no human step. The rehearsal in `gilded-trail-2519` named the gaps; they are closed or recorded as the lifecycle frontier.
+- [gap] gap-three-modes-one-shape-walk: **Three modes, one shape.** The walk runs headless (exercised), with the GUI attached (documented, not exercised while the headless-only constraint holds), and with training on a remote machine (the handoff is documented and scripted, not executed while the local-only constraint holds). The loop's steps and artifacts are the same in all three.
+- [gap] gap-walk-holds-second-mechanism-same: **The walk holds on a second mechanism.** The same entry point, with no code change specific to the mechanism, takes a second mechanism through the whole loop, and both projects' `PROGRESS.md` carry comparable numbers.
+- [gap] gap-phase-8-src-gui-delete: **Phase 8 `src/Gui` delete commit landed** under the two-commit protocol, with the DECISIONS entry and the gate green after it.
+- [gap] gap-two-phase-13b-engine-side: **Two Phase 13b engine-side removals landed** under the two-commit protocol, DECISIONS entries included.
+- [gap] gap-fork-s-delta-against-upstream: **The fork's delta against upstream is smaller than at the start of this run**, measured by the delta manifest AGENTS.md names, and the manifest is honest about every inherited file touched.
+- [gap] gap-l2-boards-family-exists-over: An L2 boards family exists over `CadexCatalog`, with tests that include a real-kernel build, and the packaged lifecycle gate passes.
+- [gap] gap-l3-motors-mechanisms-families-exist: **L3 motors and mechanisms families exist** over `CadexCatalog`, same test shape as the boards family, and the packaged lifecycle gate passes.
+- [gap] gap-25t-horns-servo-pigtails-come: **25T horns and servo pigtails come from manufacturer STEP sources**, with the provenance recorded the way `docs/PROVENANCE.md` asks.
+- [gap] gap-catalog-broad-enough-robot-prompt: **The catalog is broad enough for a robot prompt**: at least five servos, ten actuators, a bearings family, and M2 to M5 nuts and bolts, each with provenance and a real-kernel test.
+- [gap] gap-compound-mechanisms-exist-as-parametric: **Compound mechanisms exist as parametric library values** built from catalog parts: a rack and pinion and a planetary gearbox at least, each with a mesh and clearance test.
+- [gap] gap-agent-can-see-work-without: **The agent can see its work without a screen.** One CLI call each, with outputs landing in the project directory: render from named angles, section view through a named plane, list the parts of an assembly with catalog ids, and a clearance and intersection check that names the offending pairs. The lifecycle walk's review step uses them.
+- [gap] gap-one-mechanism-repo-came-from: **One mechanism in the repo came from a paper or a real product**: the source is cited in the project's `DECISIONS.md`, the implementation is tested, and the walk built it.
+- [gap] gap-variant-study-exists-several-variants: **A variant study exists**: several variants of one joint generated by one script, tested the same way, ranked in a report with a graph, and the winner used by the walk.
+- [gap] gap-research-report-renders-headlessly-from: **A research report renders headlessly** from a project's `PROGRESS.md` numbers into a document with graphs a person can read.
+- [gap] gap-fresh-machine-runs-walk-after: **A fresh machine runs the walk** after one documented install script, headlessly, with no step that needs a person.
+- [gap] gap-robot-prompt-works-unattended-from: **The robot prompt works unattended**: from a prompt naming the servos, bearings, and hardware, the loop produces a printable mesh export, a trained policy, and a rollout video, with no human step.
+- [gap] gap-hide-render-shell-bug-from: **The `hide_render` shell bug from `docs/IDEAS.md` is fixed** with a test that fails on the old behaviour.
+- [gap] gap-mg-legs-tips-declared-shove: **mg-legs tips at the declared shove band, backward first**, with the numbers in the project's `PROGRESS.md`. real `## State Impact` targets; ROADMAP checkbox and ADR line where AGENTS.md asks for them.
+
+## Method
+
+Ouroboros iterations on branch `ouroboros/nt2`: orient, one dispatched unit, record, commit; a maintainer pass reconciles on pressure; a planner pass writes bets after each reconcile.
+
+## Result
+
+Directive recorded. Work follows as child nodes.
+
+## Repo
+
+- repo: git@github.com:theo-kirby/cadex.git
+- branch: ouroboros/nt2
+- commit: 45d39087ba1da631d95b838a2df89d603fab2b64
+
+## State Impact
+
+- target: NEW gap-walk-exists-tested-headlessly-one — Charter gap, status open: **The walk exists and is tested headlessly.** One documented entry point (a CLI prompt or a headless script) takes a mechanism from design → assembly → MJCF → task → toy-scale local CPU training → policy verify → rollout → review, on this machine, with no human step. The rehearsal in `gilded-trail-2. Flip to working only when the criterion is verifiably met.
+- target: NEW gap-three-modes-one-shape-walk — Charter gap, status open: **Three modes, one shape.** The walk runs headless (exercised), with the GUI attached (documented, not exercised while the headless-only constraint holds), and with training on a remote machine (the handoff is documented and scripted, not executed while the local-only constraint holds). The loop's s. Flip to working only when the criterion is verifiably met.
+- target: NEW gap-walk-holds-second-mechanism-same — Charter gap, status open: **The walk holds on a second mechanism.** The same entry point, with no code change specific to the mechanism, takes a second mechanism through the whole loop, and both projects' `PROGRESS.md` carry comparable numbers.. Flip to working only when the criterion is verifiably met.
+- target: NEW gap-phase-8-src-gui-delete — Charter gap, status open: **Phase 8 `src/Gui` delete commit landed** under the two-commit protocol, with the DECISIONS entry and the gate green after it.. Flip to working only when the criterion is verifiably met.
+- target: NEW gap-two-phase-13b-engine-side — Charter gap, status open: **Two Phase 13b engine-side removals landed** under the two-commit protocol, DECISIONS entries included.. Flip to working only when the criterion is verifiably met.
+- target: NEW gap-fork-s-delta-against-upstream — Charter gap, status open: **The fork's delta against upstream is smaller than at the start of this run**, measured by the delta manifest AGENTS.md names, and the manifest is honest about every inherited file touched.. Flip to working only when the criterion is verifiably met.
+- target: NEW gap-l2-boards-family-exists-over — Charter gap, status open: An L2 boards family exists over `CadexCatalog`, with tests that include a real-kernel build, and the packaged lifecycle gate passes.. Flip to working only when the criterion is verifiably met.
+- target: NEW gap-l3-motors-mechanisms-families-exist — Charter gap, status open: **L3 motors and mechanisms families exist** over `CadexCatalog`, same test shape as the boards family, and the packaged lifecycle gate passes.. Flip to working only when the criterion is verifiably met.
+- target: NEW gap-25t-horns-servo-pigtails-come — Charter gap, status open: **25T horns and servo pigtails come from manufacturer STEP sources**, with the provenance recorded the way `docs/PROVENANCE.md` asks.. Flip to working only when the criterion is verifiably met.
+- target: NEW gap-catalog-broad-enough-robot-prompt — Charter gap, status open: **The catalog is broad enough for a robot prompt**: at least five servos, ten actuators, a bearings family, and M2 to M5 nuts and bolts, each with provenance and a real-kernel test.. Flip to working only when the criterion is verifiably met.
+- target: NEW gap-compound-mechanisms-exist-as-parametric — Charter gap, status open: **Compound mechanisms exist as parametric library values** built from catalog parts: a rack and pinion and a planetary gearbox at least, each with a mesh and clearance test.. Flip to working only when the criterion is verifiably met.
+- target: NEW gap-agent-can-see-work-without — Charter gap, status open: **The agent can see its work without a screen.** One CLI call each, with outputs landing in the project directory: render from named angles, section view through a named plane, list the parts of an assembly with catalog ids, and a clearance and intersection check that names the offending pairs. The . Flip to working only when the criterion is verifiably met.
+- target: NEW gap-one-mechanism-repo-came-from — Charter gap, status open: **One mechanism in the repo came from a paper or a real product**: the source is cited in the project's `DECISIONS.md`, the implementation is tested, and the walk built it.. Flip to working only when the criterion is verifiably met.
+- target: NEW gap-variant-study-exists-several-variants — Charter gap, status open: **A variant study exists**: several variants of one joint generated by one script, tested the same way, ranked in a report with a graph, and the winner used by the walk.. Flip to working only when the criterion is verifiably met.
+- target: NEW gap-research-report-renders-headlessly-from — Charter gap, status open: **A research report renders headlessly** from a project's `PROGRESS.md` numbers into a document with graphs a person can read.. Flip to working only when the criterion is verifiably met.
+- target: NEW gap-fresh-machine-runs-walk-after — Charter gap, status open: **A fresh machine runs the walk** after one documented install script, headlessly, with no step that needs a person.. Flip to working only when the criterion is verifiably met.
+- target: NEW gap-robot-prompt-works-unattended-from — Charter gap, status open: **The robot prompt works unattended**: from a prompt naming the servos, bearings, and hardware, the loop produces a printable mesh export, a trained policy, and a rollout video, with no human step.. Flip to working only when the criterion is verifiably met.
+- target: NEW gap-hide-render-shell-bug-from — Charter gap, status open: **The `hide_render` shell bug from `docs/IDEAS.md` is fixed** with a test that fails on the old behaviour.. Flip to working only when the criterion is verifiably met.
+- target: NEW gap-mg-legs-tips-declared-shove — Charter gap, status open: **mg-legs tips at the declared shove band, backward first**, with the numbers in the project's `PROGRESS.md`. real `## State Impact` targets; ROADMAP checkbox and ADR line where AGENTS.md asks for them.. Flip to working only when the criterion is verifiably met.
+- target: plan/NEW short — Seeded from the charter's horizon ladder; the planner re-plans after each maintainer pass. Next units, one iteration each: (units, one iteration each) Orient on STATE.md and PLAN.md. Run the documented headless lifecycle entry point end to end on this machine and record exactly which leg still needs a person or a guess; a clean run is the evidence that closes the walk gap. Then close the remaining legs one unit each: the remote-training handoff script and doc, the GUI-attached mode doc, the domain-doc convention exerc
+- target: plan/NEW medium — Seeded from the charter's horizon ladder; the planner re-plans after each maintainer pass. Open gaps in order, several units each: (gaps, several units each) The lifecycle walk on a second mechanism. L3 motors and mechanisms families. The Phase 8 delete commit for `src/Gui`. Phase 13b engine side, two-commit protocol. The `hide_render` shell bug. Each of these is a done criterion above; pull it forward when the short-term rung is landed or blocked.
+- target: plan/NEW long — Seeded from the charter's horizon ladder; the planner re-plans after each maintainer pass. Directions and standing work: (directions, and the standing work that never ends) The headless review tools, one call at a time, then wire them into the walk's review step. Catalog breadth: servos, actuators, bearings, nuts and bolts, then the compound mechanisms. A mechanism taken from a paper or a real product, cited and tested. The variant study and the report renderer. The fresh-machine install script. mg-legs tipping at t

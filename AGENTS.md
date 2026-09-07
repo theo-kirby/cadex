@@ -1,6 +1,6 @@
 # AGENTS.md — Agent Entry Point
 
-Verified against source: 2026-09-05. **This is the single agent contract.**
+Verified against source: 2026-09-07. **This is the single agent contract.**
 `CLAUDE.md` exists only to import it (`@AGENTS.md`) and holds nothing of its
 own, so there is one file to read and one file to edit — which is what ADR-005
 asked for, reached from the other direction (ADR-137).
@@ -134,8 +134,8 @@ src/Mod/cadex/cadex_tests/  pytest suite (headless; FreeCAD stubbed in conftest.
 src/Mod/{Part,PartDesign,Sketcher,Assembly}   the four capability workbenches
 src/Mod/{Mesh,MeshPart}   the mesh domain substrate
 src/{App,Base,Main}       inherited FreeCAD core (conservative zone)
-src/Gui                   present but NOT BUILT (BUILD_GUI=OFF, ADR-022);
-                          deletion is Phase 8 — docs/FREECAD.md §3
+src/Gui                   deleted in Phase 8 (ADR-214); residual GUI lineage
+                          outside that boundary — docs/FREECAD.md §3
 shell/                    the shell — a Blender fork (conservative zone;
                           ledger and upstream diff in docs/BLENDER-TREE.md)
 shell/scripts/startup/mesh_agent/   the assistant, as application code
@@ -183,7 +183,7 @@ pixi run app                  # build engine + payload + shell, then launch
 # Engine only -- no shell, no git-lfs, no 1.3 GB of prebuilt libraries. This
 # is the whole setup on a headless box (ADR-060); the shell is macOS-only so
 # far, but the engine is not.
-pixi run setup-engine         # just src/3rdParty/{OndselSolver,GSL}
+pixi run setup-engine         # just src/3rdParty/OndselSolver
 pixi run build-engine
 
 # The headless CLI (docs/CLI.md, ADR-061). Needs a built engine and nothing
@@ -212,7 +212,7 @@ pixi run python analysis/skeleton.py carve.json --run ./run --out ./fit
                               # which rebuilds for real and needs an engine.
 
 pixi run test-engine          # THE engine suite (1757 tests), no build needed
-pixi run configure            # CMake configure (debug, GUI ON)
+pixi run configure            # CMake configure (debug, GUI OFF)
 pixi run build                # build debug        | pixi run build-release (GUI OFF)
 pixi run test                 # inherited FreeCAD ctest, NOT the above
                               #                    | pixi run test-release
@@ -234,9 +234,10 @@ the environment before it touches `shell/`; that is why `build-shell` is a
 script and not a `cmd = ["cmake", ...]` task. Don't route the shell build
 around it.
 
-**Release builds have no GUI** (ADR-022): `pixi run freecad-release` no
-longer launches an application — only the debug build does, and only as an
-engineering convenience. The application you launch is the shell.
+**Engine builds have no GUI** (ADR-022, ADR-213): debug and release both
+configure headlessly; explicit `BUILD_GUI=ON` requests are rejected.
+`pixi run freecad-release` does not launch an application. The application
+you launch is the shell.
 Python-only changes under `src/Mod/cadex/` need `pixi run build-engine`
 before the shell's suites see them, and `pixi run stage-engine` before the
 *bundled* engine does.
@@ -288,8 +289,8 @@ The philosophy is **remove more than we add** (`docs/VISION.md`). Zones:
   the two-commit protocol in `docs/FREECAD.md` §3 — and on this side the
   disable commit is often a `WITH_*` CMake option or simply not registering a
   space type, so it is nearly free.
-- **`src/Gui` is not built.** Don't add to it, don't fix it, don't delete it
-  outside the Phase 8 protocol.
+- **`src/Gui` is deleted (ADR-214).** Do not resurrect it. Remaining GUI-lineage
+  source outside that boundary needs its own dependency audit and removal protocol.
 - **`shell/lib/<platform>` are submodules, not content.** Never commit their
   contents; never vendor a prebuilt library into the tree.
 - **`src/Mod/<unused trees>`** — removed only via the Phase 1 protocol

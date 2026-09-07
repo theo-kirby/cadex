@@ -15,7 +15,6 @@ files: |
         src/Mod/Cloud|
         src/Mod/Draft|
         src/Mod/Fem|
-        src/Mod/Help|
         src/Mod/Import|
         src/Mod/Inspection|
         src/Mod/JtReader|
@@ -31,7 +30,6 @@ files: |
         src/Mod/Show|
         src/Mod/Sketcher|
         src/Mod/Spreadsheet|
-        src/Mod/Start|
         src/Mod/Surface|
         src/Mod/Test|
         src/Mod/Tux|

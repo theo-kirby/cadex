@@ -1,9 +1,7 @@
+# Modified by the Cadex project, 2026. See docs/FREECAD.md.
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 add_subdirectory(App)
-if(BUILD_GUI)
-    add_subdirectory(Gui)
-endif(BUILD_GUI)
 
 set(Mesh_Scripts
     Init.py
@@ -19,12 +17,6 @@ set(MeshTestDataFiles
     App/TestData/NASTRAN_Test_GRID_CTRIA3.bdf
 )
 
-if(BUILD_GUI)
-    list (APPEND Mesh_Scripts
-          InitGui.py
-          MeshTestsGui.py
-    )
-endif(BUILD_GUI)
 
 add_custom_target(MeshScripts ALL
     SOURCES ${Mesh_Scripts}

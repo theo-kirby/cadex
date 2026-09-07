@@ -1,9 +1,7 @@
+# Modified by the Cadex project, 2026. See docs/FREECAD.md.
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
 add_subdirectory(App)
-if(BUILD_GUI)
-    add_subdirectory(Gui)
-endif(BUILD_GUI)
 
 #IF (BUILD_GUI)
 #    PYSIDE_WRAP_RC(Import_QRC_SRCS Resources/Import.qrc)
@@ -46,10 +44,6 @@ set(Import_Scripts
     stepZ.py
 )
 
-if(BUILD_GUI)
-    list (APPEND Import_Scripts InitGui.py)
-    list (APPEND Import_Scripts TestImportGui.py)
-endif(BUILD_GUI)
 
 add_custom_target(ImportScripts ALL
     SOURCES ${Import_Scripts} ${DXF_Plate}

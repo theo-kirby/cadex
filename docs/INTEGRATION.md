@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-09-06
+Verified against source: 2026-09-07
 
 **Optional Blender recipe runtime (ADR-185).** A shell-owned cadexd child
 receives `CADEX_BLENDER_EXECUTABLE` naming the shell's own binary. The engine
@@ -171,6 +171,26 @@ prose. Every response also carries `id` and `ok`.
 | `live_close` | `live`, `closed` |
 | `cancel` | `cancelled` |
 | `shutdown` | `shutting_down` |
+
+The `describe_api.library.catalog.bldc_motors` family (ADR-206) adds
+`skus` and `notes`; `lib.bldc` uses existing library exports. No request
+op or client dispatch change is required.
+
+The `describe_api.library.catalog.gearmotors` family (ADR-205)
+adds `skus` and `notes`; `lib.gearmotor` is discovered through the existing
+library exports. Clients need no new dispatch or request op.
+
+The `describe_api.library.catalog.boards` family (ADR-202) adds `skus` and
+`notes` through the existing browsable catalog. Generator signatures remain
+in `library.exports`; board dimensions and pin rows are read from the
+returned library part's spec. No request op or client dispatch changes.
+
+The `describe_api.library.catalog.gears` family (ADR-233) adds
+`preferred_modules_mm`, `pressure_angle_degrees`, `teeth_range` and `notes`;
+`lib.spur_gear` and `lib.rack` are discovered through the existing library
+exports. No request op or client dispatch changes. ADR-234 adds
+`lib.rack_and_pinion` to those exports and names it in the `gears` notes
+string; the family's shape and the golden are unchanged.
 
 `restore` reports what the open re-proved. A stored script that runs but
 produces a different digest is a **restore failure** — the user changed the

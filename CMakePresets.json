@@ -10,6 +10,10 @@
       "name": "common",
       "hidden": true,
       "cacheVariables": {
+        "BUILD_GUI": {
+          "type": "BOOL",
+          "value": "OFF"
+        },
         "CMAKE_EXPORT_COMPILE_COMMANDS": {
           "type": "BOOL",
           "value": "ON"
@@ -427,7 +431,7 @@
         },
         "BUILD_GUI": {
           "type": "BOOL",
-          "value": "TRUE"
+          "value": "OFF"
         }
       },
       "environment": {

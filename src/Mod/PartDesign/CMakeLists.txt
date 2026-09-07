@@ -2,9 +2,6 @@
 # Modified by the Cadex project, 2026. See docs/FREECAD.md.
 
 add_subdirectory(App)
-if(BUILD_GUI)
-    add_subdirectory(Gui)
-endif(BUILD_GUI)
 
 set(PartDesign_Scripts
     __init__.py
@@ -12,16 +9,6 @@ set(PartDesign_Scripts
     TestPartDesignApp.py
 )
 
-if(BUILD_GUI)
-    list (APPEND PartDesign_Scripts
-          InitGui.py
-          TestPartDesignGui.py
-          InvoluteGearFeature.py
-          InvoluteGearFeature.ui
-          SprocketFeature.py
-          SprocketFeature.ui
-    )
-endif(BUILD_GUI)
 
 set(PartDesign_OtherScripts
     Scripts/__init__.py
@@ -60,12 +47,6 @@ set(PartDesign_TestScripts
     PartDesignTests/TestSketch.py
 )
 
-if(BUILD_GUI)
-    list(APPEND PartDesign_TestScripts
-        PartDesignTests/TestMaterial.py
-        PartDesignTests/TestSuppressed.py
-    )
-endif(BUILD_GUI)
 
 set(PartDesign_TestFixtures
     PartDesignTests/Fixtures/InvoluteGear_v0-20.FCStd

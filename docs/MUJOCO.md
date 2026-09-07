@@ -2853,8 +2853,8 @@ row below was actually run, and the numbers are this run's.
 | 8 | **Iterate** | `cadex params --set shove_n=0.20` | **Refused, exit 3**: the task digest moved (`602d62c1…` → `369a0dd5…`) and the declared policy no longer fits. Correct by ADR-088 — and it means the refusal also never writes the new bundle, so there is nothing to retrain against. Iterating that morning was six legs: edit the script to drop or re-point the policy → rebuild → dig out the bundle → train (`--init-from … --init-from-task-change`) → `put_asset` → re-declare. Three of the six were the person's. **Closed the same day** (ADR-192) with a script convention and no new `params` flag: the policy is declared behind a numeric switch (`policy_on`), so `cadex params --set policy_on=0 --set shove_n=0.20 --out sweep` is accepted (`set_params` never refuses a dropped output) and exports the bundle at `369a0dd5…`; `cadex train --put --init-from … --init-from-parent-task … --init-from-task-change "…"` retrains warm across the change (the ADR-161 pair, now carried by the dispatcher) — 2 it × 8 envs in **17.8 s** wall, iteration 0 already at +1.52 reward/step where a cold network sits near −0.95; the digest edit and `cadex script --set`; `cadex params --set policy_on=1 --out run2` verifies and rolls out. Trace: **127.8** total reward at 0.20 N after one warm toy step, against 1729.9 at 0.12 N for the 400-iteration policy — the comparison exists; row 9 is where it gets recorded. `cli/tests/test_train.py` runs the whole chain on the toy with the real trainer | the agent for the script, a pipeline for the four commands |
 | 9 | Compare and record | On 2026-09-06 (morning): nothing — no comparison, no `PROGRESS.md`, and the project directory was not a git repository. **Closed the same day** (ADR-194, on row 10's `PROGRESS.md`): a run's `total_reward` or `reward/step` is written **with its change against the last row that carried it** — delta, that run's digest, that run's value — so the comparison is one recorded row a reader does not assemble by eye; and the project root is its own git repository from the first visit, with a `.gitignore` the CLI writes and **one commit per accepted run** whose message is the row's words. Measured on the scratch copy: `cadex train --put` (2 it × 8 envs, 4.6 s of training, 20.9 s wall) initialised the repository and landed its row and commit; `cadex script --set` re-declaring the new policy landed `total_reward -293.4 (Δ -421.2 vs 2996fb73 at 127.8)` — a fresh 2-iteration policy against the ADR-192 warm one, on the same task — and a commit of exactly `PROGRESS.md`, `script.py`, `script.json` and the history entry (`git show --stat`). Two runs, two rows, two commits. `cli/tests/test_project_docs.py` pins the delta, the repository and the nested-work-tree refusal | the CLI |
 | 10 | Project as a codebase | On 2026-09-06 (morning): nothing — no `ARCHITECTURE.md`, `DECISIONS.md` or `PROGRESS.md`, nothing scaffolds them, nothing reads them on a visit. **Closed the same day** (ADR-193): the CLI scaffolds the three on the first visit (idempotent, never overwrites), pastes them into every turn's system prompt (bounded: head of the first two, tail of the log), lands a `PROGRESS.md` row after every accepted run with the revision, digest, what was done and the numbers the run produced (the trace's `total_reward`, the trainer's `reward_per_step`, wall time, sha256), and turns a turn's closing `DECISION:` lines into numbered `DECISIONS.md` entries. Domain docs are a documented convention (`docs/<subject>.md`). `cli/tests/test_project_docs.py` drives it against the engine and a scripted turn. `docs/CLI.md` §2 | the CLI for the scaffold and the log; the agent for the decisions, by convention rather than by tool |
-| 11 | The same walk with the GUI attached | the in-app agent, which has a shell | Not exercised; the shape is the same and row 4's gap does not apply | doc only |
-| 12 | The same walk with training on a remote machine | `training/remote_train.sh` (ADR-089) | Not exercised; B7 stays blocked on the box's stale checkout | doc only |
+| 11 | The same walk with the GUI attached | the same `cadex` commands from a terminal beside the open `.blend` — **not** the in-app agent, which has only the Mesh tools (`--tools ""`, no shell, no file tool) | **Documented 2026-09-06** (ADR-201, `docs/CLI.md` §2) from the client code, no GUI launched: the CLI's `flock` is per command and released before the `PROGRESS.md` row and the commit; the shell takes no lock, so ownership is sequential by convention; stale shell mutations return `STALE_PROGRAM_REVISION` without adopting the new guard or replaying arguments (ADR-204); Rebuild Model or reopen (`load_post` → `queue_open`), review the refreshed source/values, then retry, never through the re-accept box. Same legs, same docs, same project-relative artifacts. Concurrent rebuilds and simultaneous acceptance are not serialized; sequential use remains required. The headless shell gate covers stale refusal and refresh recovery; no GUI was launched | a person or a pipeline at the terminal; the in-app agent for design turns |
+| 12 | The same walk with training on a remote machine | `training/remote_train.sh` (ADR-089) | **Scripted 2026-09-06** (ADR-200): `cadex train --remote` / `cadex walk --remote` run the train leg through `remote_train.sh train <bundle> <out> -- <the same flags>`, verify the returned policy against the receipt, and change nothing else — same `DIR/train` artifacts, same store, same `review.json`. Offline evidence only: `cli/tests/test_train.py` pins the command against the script's usage line and runs the leg end to end against a stand-in dispatcher (real engine, real store, three refusals). **Not executed**: no dispatch, the box's checkout untouched; B7 stays blocked. Cold runs only — the warm start does not travel | none for a cold run; a person for `check` and the box's config |
 
 **One agent turn on top, to see the refusals today.** The same scratch
 project was given one `./cadex -p` turn asking it to retrain at toy scale,
@@ -2961,6 +2961,62 @@ left a third, so it is every export, not one).
    tree (left alone, with a note), and committing the staged artifacts
    or the frames (rebuildable and bulk; `.gitignore`d). All twelve rows
    are now the agent's, the CLI's, or doc-only; item 5 is the frontier.
+
+### Reproducibility boundary of the audit (2026-09-06)
+
+The twelve leg owners above establish a working sequence, but do not yet
+establish the unattended, single-entry-point walk required by the current
+charter. At committed revision `7dd3d045`, `docs/CLI.md` §2 still has a
+caller edit the policy filename and digest between commands. The original
+§7b design also lives outside the repository. Neither is a reproducible
+starting point for a fresh machine by itself.
+
+The repo does carry a headless rehearsal in
+`cli/tests/test_train.py::test_iterate_blanks_the_policy_retrains_across_the_change_and_redeclares`:
+it builds a fresh plate-and-arm mechanism with the real kernel, exports the
+task, trains on CPU, installs and verifies the policy, exports a rollout,
+changes the reward weight, retrains and reviews both traces. Its test helper
+supplies the script and rewrites the policy declaration. This proves the
+legs, including the refusal of an incompatible incumbent policy; it does
+not exercise an agent design turn or a mechanism-independent walk command.
+
+Re-run against the committed CLI at `7dd3d045`: **117 passed in 85.76 s**,
+no skips, including the real trainer (1 iteration × 4 environments per run,
+CPU). The two rollouts completed 50 steps each, scoring **−27.1094** and
+**−55.3480**, with eight project commits and the rounded delta **−28.2** in
+`PROGRESS.md`. The reward weight doubled between tasks, so that delta is
+bookkeeping evidence, not a claim that one policy is better. Trainer-reported
+times were 1.28 s and 1.24 s; the whole suite took 86.26 s under an external
+850 s watchdog, with sampled process-group peak RSS **1.05 GB** under a
+3 GB stop limit. An isolated copy of committed `cli/` excluded pre-existing,
+uncommitted walk edits; the built engine and training venv were reused.
+No agent turn, GUI, remote run, build, or packaged gate was performed.
+
+**The entry point, 2026-09-06 (ADR-199).** `cadex walk --out
+<project>/runs/<name>` is the one command: the legs above as child `cadex`
+commands, the digest edit as a rewrite of the script's one
+`assembly.policy` call, and the review as `review.json` in the project.
+Run twice on a fresh scratch copy of the same toy before the change
+landed — 1 it × 4 envs, 15.5 s and 16 s wall, exit 0 both times — it
+reproduced the audit's numbers exactly (**−27.1094**, then **−55.3480** with
+`Δ -28.2` in `PROGRESS.md` across the doubled reward weight), and showed
+the two things the ADR fixed: the review lived only on stdout, and the
+legs' commits carried the policy twice over plus its `.best` checkpoint.
+`cli/tests/test_walk.py` now runs both walks with the real engine and
+trainer (31.8 s), the review committed and no checkpoint or trace tracked.
+The same entry point now also passes on a vertical linear carriage
+(ADR-203, `examples/lifecycle/`): 1 iteration × 4 CPU environments,
+13.52 s wall, a verified 50-step rollout and total reward −24159.1953563.
+The repeated arm baseline was −27.1093842209 in 15.22 s. Both projects'
+`PROGRESS.md` explain the identical height term, different force/torque
+units, training versus rollout means, and sub-1-GB sampled memory peaks.
+The carriage does not hold height after one iteration; this closes pipeline
+generality at toy scale, not control performance. GUI attachment remains
+documented and unexercised (ADR-201). **Remote training is scripted, not run**
+(ADR-200, the same
+day): `--remote` on `train` and `walk` puts the one leg on the box through
+`remote_train.sh` and leaves every artifact where the local walk puts it;
+the dispatch itself stays a person's decision, and the box was not touched.
 
 ## 8. Live mode: watching it, rather than reading about it
 

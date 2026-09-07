@@ -240,6 +240,30 @@ exists: a silent CPU fallback produces a perfectly valid policy and real
 numbers, and costs hours, and is otherwise visible only to someone who
 thinks to read `device` out of the artifact afterwards.
 
+**From the CLI, as the walk's training leg (ADR-200):**
+
+```bash
+./cadex train --project ./b --out ./b/runs/r1/train --remote --put \
+    --iterations 400 --envs 4096
+./cadex walk  --project ./b --out ./b/runs/r1 --remote --iterations 400 --envs 4096
+```
+
+`cadex train --remote` is `cadex train` with this script in place of the
+venv's interpreter: the CLI rebuilds, exports the bundle and the model into
+`--out`, runs `remote_train.sh train <bundle> <out.cxpolicy> -- <the same
+trainer flags>`, verifies the returned file against the receipt's sha256
+and, with `--put`, stores it — so the policy lands at the path the local
+trainer would have written and every later step (`cadex script --set`,
+the verified rollout, `review.json`) is unchanged. `cadex walk --remote`
+is the whole walk with that one leg on the box. `--allow-cpu` passes
+through; `--detach` does not (a walk waits for its leg — a run too long
+to hold an ssh open for is dispatched by hand, above, and continued with
+`cadex asset --put`). The CLI carries no warm start to the box
+(`--init-from` with `--remote` is a usage error), because this script
+copies two files and the parent policy is not one of them. Run `check`
+first: the CLI reads none of `.remote.env` and repairs nothing.
+`docs/CLI.md` §2 is the contract.
+
 `training/remote_train.sh shell` opens an interactive session with the same
 configuration — use it once to accept the host key, since `check` and
 `train` run under `BatchMode` where any prompt reads as a connection

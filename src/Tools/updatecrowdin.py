@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Modified by the Cadex project, 2026. See docs/FREECAD.md.
 
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # ***************************************************************************
@@ -84,11 +85,6 @@ from urllib.request import Request
 from urllib.request import urlopen
 from urllib.request import urlretrieve
 
-try:
-    from PySide6 import QtCore
-except ImportError:
-    from PySide2 import QtCore
-
 TsFile = namedtuple("TsFile", ["filename", "src_path"])
 
 LEGACY_NAMING_MAP = {"Draft.ts": "draft.ts"}
@@ -137,7 +133,6 @@ locations = [
         "../Mod/Fem/Gui/Resources/Fem.qrc",
     ],
     ["FreeCAD", "../Gui/Language", "../Gui/Language/translation.qrc"],
-    ["Help", "../Mod/Help/Resources/translations", "../Mod/Help/Resources/Help.qrc"],
     [
         "Inspection",
         "../Mod/Inspection/Gui/Resources/translations",
@@ -207,11 +202,6 @@ locations = [
         "Spreadsheet",
         "../Mod/Spreadsheet/Gui/Resources/translations",
         "../Mod/Spreadsheet/Gui/Resources/Spreadsheet.qrc",
-    ],
-    [
-        "StartPage",
-        "../Mod/Start/Gui/Resources/translations",
-        "../Mod/Start/Gui/Resources/Start.qrc",
     ],
     [
         "Surface",
@@ -413,50 +403,6 @@ def updateqrc(qrcpath, lncode):
     print("successfully updated ", qrcpath)
 
 
-def updateTranslatorCpp(lncode):
-    "updates the Translator.cpp file with the given translation entry"
-
-    cppfile = os.path.join(os.path.dirname(__file__), "..", "Gui", "Language", "Translator.cpp")
-    l = QtCore.QLocale(lncode)
-    lnname = QtCore.QLocale.languageToString(l.language())
-
-    # read file contents
-    f = open(cppfile, "r")
-    cppcode = []
-    for l in f.readlines():
-        cppcode.append(l)
-    f.close()
-
-    # checking for existing entry
-    lastentry = 0
-    for i, l in enumerate(cppcode):
-        if l.startswith("    d->mapLanguageTopLevelDomain[QT_TR_NOOP("):
-            lastentry = i
-            _filecode = LANGUAGE_CODE_MAP.get(lncode, lncode)
-            if '"' + lncode + '"' in l or '"' + _filecode + '"' in l:
-                # print(lnname+" ("+lncode+") already exists in Translator.cpp")
-                return
-
-    # find the position to insert
-    pos = lastentry + 1
-    if pos == 1:
-        print("ERROR: couldn't update Translator.cpp")
-        sys.exit()
-
-    # inserting new entry just before the above line
-    # Use mapped language code for the domain (e.g. sv-SE -> sv)
-    filecode = LANGUAGE_CODE_MAP.get(lncode, lncode)
-    line = '    d->mapLanguageTopLevelDomain[QT_TR_NOOP("' + lnname + '")] = "' + filecode + '";\n'
-    cppcode.insert(pos, line)
-    print(lnname + " (" + filecode + ") added Translator.cpp")
-
-    # writing the file
-    f = open(cppfile, "w")
-    for r in cppcode:
-        f.write(r)
-    f.close()
-
-
 def doFile(tsfilepath, targetpath, lncode, qrcpath):
     "updates a single ts file, and creates a corresponding qm file"
 
@@ -644,20 +590,9 @@ if __name__ == "__main__":
             item["languageId"] for item in status if item["translationProgress"] > THRESHOLD
         ]
         applyTranslations(languages)
-        print("Updating Translator.cpp...")
-        for ln in languages:
-            updateTranslatorCpp(ln)
 
     elif command == "updateTranslator":
-        print("retrieving list of languages...")
-        status = updater.status()
-        status = sorted(status, key=lambda item: item["translationProgress"], reverse=True)
-        languages = [
-            item["languageId"] for item in status if item["translationProgress"] > THRESHOLD
-        ]
-        print("Updating Translator.cpp...")
-        for ln in languages:
-            updateTranslatorCpp(ln)
+        print("updateTranslator is retired: the GUI Translator.cpp was removed.")
 
     elif command == "gather":
         import updatets
