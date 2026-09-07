@@ -15,11 +15,11 @@ Open charter criterion: **The fork's delta against upstream is smaller than at t
 
 Declared target: `gap-fork-s-delta-against-upstream`. This node tracks the criterion as a gap; it becomes working only with evidence that the criterion is met. Truncated impact wording is resolved from the full charter in the same record [rec: empty-wolf-3962].
 
-FreeCAD manifest-scoped M totals (files / inserted / deleted) are **56 / 1,637 / 1,815 after Start deletion**, versus 57 / 1,639 / 1,804 after its disable and 47 / 1,804 / 1,907 at nt2 run start. Inherited files remaining are **3,440**, versus 3,467 before deletion and **7,277 at run start**; the earlier 3,468 / 7,287 figures included added files and are superseded. Whole-file deletions do not count as M-line reduction. Blender remains 44 / 1,046 / 129 and 19,052 inherited files. FreeCAD's two line totals and inherited remaining count are lower than run start, but its modified-file count is higher [rec: southern-wood-6367] [rec: rustic-spire-7084].
+FreeCAD manifest-scoped M totals (files / inserted / deleted) are **56 / 1,637 / 1,815 at Start deletion**, versus 57 / 1,639 / 1,804 after its disable and 47 / 1,804 / 1,907 at nt2 run start. Inherited files remaining at Start deletion were **3,440**, versus 3,467 before deletion and **7,277 at run start**; the earlier 3,468 / 7,287 figures included added files and are superseded. Whole-file deletions do not count as M-line reduction. Blender remains 44 / 1,046 / 129 and 19,052 inherited files. FreeCAD's two line totals and inherited remaining count are lower than run start, but its modified-file count is higher [rec: southern-wood-6367] [rec: rustic-spire-7084].
 
-The Start disable's packaged lifecycle/licensing suite passed all 26 tests. At deletion, the working-tree manifest matched both imports, but the committed-HEAD manifest check was reserved until after commit; this record supplies no subsequent result [rec: southern-wood-6367] [rec: rustic-spire-7084].
+MeshPart's separately verified initializer deletion removes one unmodified inherited file, **73 lines / 3,083 bytes**. The current manifest remains **56 FreeCAD / 44 Blender**, with surviving-file M totals **1,637 inserted / 1,816 deleted** and **1,046 / 129** respectively; deleting the initializer itself leaves those totals unchanged. Fresh packaged lifecycle/licensing passed 26 tests, and the working-tree manifest matched both imports [rec: light-peak-0510].
 
-Reconcile judgement: retain **open**. The scoped line and whole-tree measures improved while modified-file count rose; the broad criterion is not established by those mixed measures, and the latest HEAD manifest evidence remains pending [rec: rustic-spire-7084].
+Reconcile judgement: retain **open**. The whole-file deletion is recorded independently of M-line savings; mixed scoped measures do not establish the broad criterion. This unit closes neither a whole-tree removal nor the broader GUI-source exit [rec: light-peak-0510].
 
 ## Negative knowledge
 
@@ -38,3 +38,5 @@ Reconcile judgement: retain **open**. The scoped line and whole-tree measures im
 
 - southern-wood-6367 — ADR-220: verified Start disable, stable-stage gates and corrected inherited-file counts
 - rustic-spire-7084 — ADR-221: Start deletion, baseline-matched runtime gates and updated metrics; post-commit HEAD manifest check reserved
+
+- light-peak-0510 — MeshPart whole-file deletion and fresh packaged verification; current manifest/M totals and broad criterion retained open
