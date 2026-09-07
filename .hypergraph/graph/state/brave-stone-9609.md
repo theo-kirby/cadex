@@ -35,6 +35,8 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 
 **AT2814 alternative qualification blocked (ADR-223):** the T-MOTOR AT2814 Long Shaft KV900 manufacturer bench report and V2.0 drawing were audited in `docs/L3-COVERAGE.md`. The selected row reports 0.291 N m at 7601 rpm, 11.05 V and 27.02 A, with 68 C surface temperature after three minutes; ambient, current definition, cooling and test-to-drawing revision linkage remain unresolved. No winding qualified and no geometry proof or catalog delivery followed. Set A remains unchanged, RI50 stays parked, and full L3 remains open. The bounded motor-search sequence stops; the recorded recommendation is to replan toward residual GUI work. This documentation audit supplies no fresh runtime or payload verification [rec: mild-harvest-8460].
 
+**Fifth-servo source audit stopped (ADR-229):** `docs/FIFTH-SERVO-AUDIT.md` pins manufacturer documents, hashes and interface blockers for HS-311 and HS-422. Neither qualifies for unchanged ServoPart: open mounting mouths cannot be reproduced by the stated circular drills; output-stack qualification is incomplete and HS-422 dimension labels conflict. Four servo rows remain; no candidate kernel proof or runtime delivery followed. Existing local-stage lifecycle/library tests pass **91, no skips**; matching catalog/API hashes do not establish whole-payload equivalence or a portable release. Replanning is required before proof or delivery [rec: hidden-ridge-7342].
+
 ## Negative knowledge
 
 - [scope: Pololu #2367 dimensions and packaged verification | confidence: high | evidence: idle-dawn-5426] The envelope uses the drawing’s 25.6 mm rear maximum amid conflicting product-page lengths. Filled rear geometry, 1 mm bore depth and shaft-flat transition are approximate; bore depth is not screw engagement permission. The tested stage-only payload retains local dependencies and is not a portable release.
@@ -67,3 +69,4 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 - slender-harbor-9625 — BLDC set A and hashed RI50 source audit; thermal/revision qualification blocks delivery
 - shy-hill-8139 — bounded fixture/support follow-up leaves qualification gaps; RI50 parked with unread-source limits
 - mild-harvest-8460 — AT2814 source audit leaves current/thermal/revision gaps; no qualified winding or catalog delivery, bounded motor searches stopped
+- hidden-ridge-7342 — ADR-229 source/interface blockers stop fifth-servo delivery; existing packaged baseline passes 91 tests
