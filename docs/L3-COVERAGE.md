@@ -172,10 +172,48 @@ sheet. A frameless motor has no supplied output shaft/collar or rear M3 mount;
 forcing it through the present shafted BLDC recipe would invent interfaces.
 Retention method, customer housing/bearings and installed fit are unqualified.
 
-**Do not dispatch short item 2 or 3 for this candidate.** A bounded next source
-unit may inspect the already-downloaded fixture/BOM and manufacturer test
-instructions for a winding/variant-linked thermal setup and duration. Proceed
-only if that new evidence exists; otherwise park RI50 and audit one shafted
-alternative for set A's first row. Do not repeat the same product-page search
-or silently relax torque qualification. Full L3 and fresh-machine portability
-remain open; this docs-only audit changes no local payload relocation result.
+**Do not dispatch short item 2 or 3 for this candidate.** The fixture
+follow-up below exhausts the authorized repeat; RI50 is parked until genuinely
+new manufacturer test evidence closes both gaps. Full L3 remains open.
+
+### Fixture follow-up — RI50 parked (2026-09-07)
+
+Inspected the previously listed archive's BOM cells and STEP headers, not
+fixture geometry or DWG annotations. The ZIP hash matches the audit above.
+`RI50 Pivot BOM.xlsx` has SHA256
+`ce7d7fd26fe670d9760e6c8c9fb8318696deb06b03bdfeeae8ca2228d9d317fa`.
+Read all three worksheet XML files and shared strings without modifying the
+workbook: Sheet1 A1:C6 lists a pivot fixture, rear cover, two MR148 bearings
+and six M2.5×4 screws; Sheets2/3 have no populated cells. No thermal procedure,
+winding identifier or rating/drawing revision link appears in these cells.
+The archive contains only this workbook and two DWG/STEP pairs; no separate
+test report or instructions.
+
+The Hall-base STEP header exports at `2025-02-24T08:29:09`; the pivot at
+`2025-04-01T06:32:11`. Their SHA256 values are respectively
+`9eea2e2ad01d494428cf005f9d1ca17f2b675712b6f0cae4aafe37962ea4f722` and
+`8e1d7b06a5a5718d220582c6a42e085167aabfc65f3b5fcfa2b2a6fe6a919357`.
+Export timestamps establish neither test dates nor rating revision linkage.
+No housing material, thermal resistance or cooling boundary is inferred from
+these mechanical files. Unread DWG annotations remain unverified.
+
+Two targeted manufacturer test/thermal searches found no new RI50 test report.
+The Japanese installation-guide search result could not be opened; its video
+was not inspected. The accessible English
+[technical-support index](https://www.cubemars.com/article-261-Technical%2BSupport%2Band%2BDownload.html)
+lists other families' manuals, software and a catalog, without a visible RI50
+thermal-test procedure. The July 10, 2026
+[frameless-joint article](https://store.cubemars.com/blogs/news/cubemars-frameless-motor-for-robot-joint)
+discusses potting and heat transfer generally; it does not tie cooling,
+temperature, duration or a drawing revision to the RI50 KV100 rating. This is
+a bounded negative result about inspected evidence, not proof that no such
+manufacturer document exists.
+
+**Next decision:** park RI50; replace the conditional RI50 proof/delivery
+sequence with one source audit of a shafted 28xx winding in set A's first row.
+Choose using a manufacturer dynamometer report with explicit test conditions
+and matching mounting drawing; qualify before any worker experiment. No
+alternative is qualified here. Do not repeat the RI50 page/fixture searches,
+relax the torque gate, or infer usable torque from kV. The planner owns the
+plan update; this contributor changes no state or plan nodes. No runtime,
+geometry, payload or relocation result changes.

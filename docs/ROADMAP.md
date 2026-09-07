@@ -2123,6 +2123,9 @@ field, and every client gets it through the surface it already reads.
 - [x] **L3 additional BLDC source audit.** Set A defines three required
       classes; RI50 KV100 no-Hall qualification is blocked on thermal and
       revision evidence (ADR-223, `docs/L3-COVERAGE.md`). No delivery claimed.
+- [x] **RI50 fixture evidence follow-up.** BOM/STEP-header and new support-page
+      inspection closes neither qualification gap; candidate parked (ADR-223).
+      Next is a shafted set-A source audit, not RI50 geometry/delivery.
 - [ ] **L3 — motors and mechanisms.** Common BLDC sizes with kV/torque
       data, N20 gearmotor, linear actuator, solenoid, joints; gears and
       rack-and-pinion need involute profiles and are their own slice.

@@ -20081,3 +20081,13 @@ new fixture/test evidence once, or park it and qualify a shafted alternative.
 No API, runtime, asset or charter change. Risk: this proposed sampling set
 may need revision with better robot requirements. Documentation checks and
 hypergraph validation are the gates; no build or runtime suite is required.
+
+
+ADR-223 follow-up (2026-09-07): the
+[fixture/BOM audit](L3-COVERAGE.md#fixture-follow-up--ri50-parked-2026-09-07)
+inspects new archive contents and cites the manufacturer support index and
+thermal-design article. Neither rating thermal conditions nor revision linkage
+is established. Park RI50; the next source unit should qualify a shafted
+28xx alternative within set A before any geometry proof. DWG annotations and
+the installation video remain unverified; this is a bounded evidence result,
+not a claim that evidence cannot exist. No API or coverage-gate relaxation.
