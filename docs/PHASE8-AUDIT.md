@@ -917,3 +917,55 @@ CTest dashboard XML, which ordinary test-release does not generate; parsing
 its actual per-test log verifies these counts without a rerun. No test or
 baseline was changed. Repeat committed-HEAD licensing after the commit as the
 final check; no second build, shell gate, GUI launch or training was performed.
+
+
+## Main GUI resource template deletion (2026-09-07, ADR-226)
+
+The amber-tower-7307 template-only bet follows the completed Material deletion.
+Confirmed ancestor 9f7c3268 removed configure_file(freecad.rc.cmake), its GUI
+executable consumer and the GUI portable target. Tracked non-documentation
+search found no new consumer. Deleted only src/Main/freecad.rc.cmake:
+**one inherited file, 47 lines, 1,641 bytes**. Main/CMakeLists.txt,
+CadexPortableLauncher.cpp, freecadCmd.rc.cmake, cadexPortableLauncher.rc.cmake
+and cadex.ico remain byte-identical to the preceding commit. The four inactive
+shared launcher arms remain deferred pending a separate bet and Windows
+validation path; command-line target, resource configuration and install rules
+are unchanged. Unsupported external GUI build consumers are the residual risk.
+
+Quarantined only the two audited retired debug target metadata directories,
+src/Main/CMakeFiles/{FreeCADMain,FreeCADGuiPy}_autogen.dir, outside the repo.
+Regenerated debug with `pixi run configure`; ran one `pixi run build-release`,
+then `pixi run install-release` and completed `pixi run stage-engine` before
+payload readers. All exited 0. Active debug/release Ninja/cache/Main install
+rules and Main outputs lack the retired template/resource. Debug was only
+configured; macOS does not compile the Windows launcher. Static inspection
+of retained command-line configuration is not Windows execution evidence.
+The local stage-only payload retains external rpath diagnostics and is not
+proof of a relocatable distribution.
+
+Local evidence: `/tmp/cadex-main-delete-{head-before,configure,build,install,stage,engine,ctest,packaged,probe}.log`;
+`/tmp/cadex-main-delete-check.py` verifies retained Material bytes/resources,
+retired Main resource absence and manifest metrics;
+`/tmp/cadex-main-delete-ctest-check.py` compares failure names and retained probes.
+
+Pre-deletion committed-HEAD licensing: **10 passed, 1 skipped in 0.23 s**
+(payload variable absent). Fresh packaged lifecycle/licensing: **26 passed in
+22.28 s**. Installed Material App probe: **15 passed, no errors/failures/skips
+in 0.202 s**, GuiUp false, GUI suite absent and no FreeCADGui import. All
+**35 Material C++ and four Cadex ctests pass**. Inherited CTest exits 8 with
+**162 failures**, no additions to the 164-name baseline; baseline-only names
+are DlgVersionMigrator_Tests_run and SpreadsheetRenameProperty.renameProperty.
+Retained Material source/resource equality and active/staged resource absence
+checks pass. Retaining TestMaterialDocument does not exercise its GUI-guarded
+appearance assertions.
+
+Manifest equality/notices remain **56 FreeCAD / 44 Blender**; surviving M-file
+inserted/deleted totals remain **1,637 / 1,819** and **1,046 / 129**. Inherited
+tracked files remaining fall **3,435 to 3,434** for FreeCAD; Blender stays
+**19,052**. Count tracked paths minus pending deletions (not filesystem exists,
+which undercounts dangling Blender symlinks). This whole-file deletion closes
+neither the broad no-GUI-source claim nor the fork-delta criterion.
+
+Full engine pytest: **2,023 passed, 52 skipped in 264.42 s**. CTest covered
+1,526 enabled tests in 141.51 s with three skipped/seven disabled. Repeat
+licensing against committed HEAD after the single deletion commit.

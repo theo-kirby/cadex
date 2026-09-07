@@ -172,10 +172,12 @@ meshFromShape and export macros remain (ADR-224, PHASE8-AUDIT.md);
 Help is deleted (ADR-217, ADR-218). Start is deleted after its separate disable (ADR-220, ADR-221); neither `Mod/Start` nor `lib/Start.so` installs or stages. Test still builds and installs; its `Mod/` directory is pruned from the payload.
 The residual audit is complete at this bounded scope, not the broader ROADMAP
 exit claim that no GUI source exists. Mixed Part/PartDesign helpers and the
-shared Windows launcher need separate disposition. ADR-226 qualifies only
-its four inactive GUI branches and the unused freecad.rc.cmake template for a
-later planned removal; command-line behavior/resources remain, and Windows
-execution has not been verified (PHASE8-AUDIT.md).
+shared Windows launcher need separate disposition. ADR-226 deleted only the
+previously disabled freecad.rc.cmake template
+(2026-09-07). The shared launcher is unchanged; its four inactive GUI arms
+remain deferred pending a separate bet and Windows validation path.
+Command-line behavior/resources remain; Windows execution has not been
+verified (PHASE8-AUDIT.md).
 
 ### Phase 1 workbench trees — complete
 

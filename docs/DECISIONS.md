@@ -20223,3 +20223,17 @@ packaged lifecycle/licensing baseline: 26 passed; no fresh build or Windows
 execution. Windows behavior remains an explicit validation obligation and
 external custom GUI builds are the compatibility risk. Material deletion
 awaits the separately requested replan; no contributor reconciliation occurs.
+
+
+**Template-only deletion (2026-09-07).** Following the explicit replan and
+Material deletion, remove only src/Main/freecad.rc.cmake (47 lines / 1,641
+bytes). The ancestor disable is 9f7c3268; no new consumer exists. Preserve the
+shared launcher verbatim and defer its four inactive arms pending a Windows
+validation path and separate bet. Quarantine only the two audited retired
+debug autogen metadata directories. Debug configure, one release build,
+install and completed local staging pass; PHASE8-AUDIT.md records fresh gates
+and limits. Manifest/notices and surviving M totals remain FreeCAD
+56 / 1,637 / 1,819 and Blender 44 / 1,046 / 129. Inherited FreeCAD files
+remaining fall 3,435 to 3,434; Blender stays 19,052. Whole-file deletion is a
+separate measure, not surviving-file delta savings. Windows execution,
+relocatable packaging and broader GUI-source/fork-delta closure remain unproved.

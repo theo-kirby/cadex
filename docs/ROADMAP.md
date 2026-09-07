@@ -349,8 +349,11 @@ this phase.
 - [x] Audit the four inactive Main GUI launcher branches and unused resource
       template; retain Windows command-line behavior and state Windows
       validation limits (ADR-226, PHASE8-AUDIT.md, 2026-09-07).
-- [ ] Separately plan and gate the qualified Main branch/template removal;
-      preserve command-line resources and manifest/notice discipline (ADR-226).
+- [x] Delete only the previously disabled Main freecad.rc.cmake template;
+      retain command-line resources (ADR-226, 2026-09-07).
+- [ ] Separately plan and gate removal of the four inactive shared Main launcher
+      arms; preserve command-line behavior and manifest/notice discipline,
+      with a Windows validation path (ADR-226).
 
 **Exit criteria:** the tree contains no GUI source, `pixi run configure`
 (debug) still configures, and both cadex ctests stay green.
