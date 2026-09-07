@@ -20399,3 +20399,17 @@ none qualifies. Preserve App resources and Qt; no replacement translation
 tool, shell change, broad cleanup or runtime compatibility claim. This decision
 changes no code or manifest membership. A contributor records the bet; separate
 maintainer/planner passes project it into state and plan.
+
+
+**Offline audit outcome (2026-09-07).** TRANSLATION-UPDATER-AUDIT.md inventories
+every command, local/remote writer, tracked entry point and retained consumer.
+App and Base each retain 39 TS files; Base remains an apply target despite
+its missing QRC, because it does not use the updater's QM-generation branch.
+Qualify only updateTranslatorCpp, its two dispatch call sites and exclusive
+PySide import: its sole output is the deleted GUI Translator.cpp, with no
+retained build consumer. External maintenance use remains unknown; removing
+GUI registration breaks that unsupported side effect. A later bet must select
+the separate disable/delete stages and retained-translation checks before
+implementation. Whole-tool deletion, resource/Qt removal, gather repairs and
+location cleanup are not qualified. Documentation-only audit; no source,
+manifest, translation-resource or fork-delta change and no runtime/build claim.

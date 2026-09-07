@@ -226,6 +226,12 @@ itself, in the Phase 7 Qt-shell deletion (ADR-021).
 
 ## 5. Open questions
 
+- The offline translation-updater audit qualifies only its deleted GUI
+  translator writer, pending a later bet and separate disable/delete commits
+  (ADR-232, [TRANSLATION-UPDATER-AUDIT.md](TRANSLATION-UPDATER-AUDIT.md)).
+  App and Base translations and their headless Qt consumers remain live;
+  no whole-tool removal is qualified.
+
 - Does `src/Mod/Material` reduce to just the property types the five domains
   touch, or stay whole?
 - `src/Mod/Help` is gone (ADR-217 disable, ADR-218 delete,
