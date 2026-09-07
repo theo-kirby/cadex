@@ -19961,3 +19961,37 @@ files). No criterion text or test changes here.
 CTest-discovery inspection, plus the existing Help-delete payload and both
 caches. No build, install, stage or test execution; the disable's gate list
 is in the audit and is entirely future.
+
+## ADR-220 — Disable Start, retaining its source for the separate delete (2026-09-07)
+
+[Cadex-new] **Decision.** Force `BUILD_START` OFF in the existing cache
+initializer, including explicit ON requests and both existing caches. The
+launch-screen extension no longer builds, installs or stages. Retain all 27
+module/test source files, the three gates and the report line for the separate
+delete required by ADR-219. This changes one already-manifested inherited
+file with its existing modification notice. Test, GSL, Assembly and Measure
+are untouched. Removing support for external `import Start` is intentional;
+no tracked product caller exists. No whole-tree removal is credited yet.
+
+**Evidence.** `docs/START-AUDIT.md` §"Disable verification (ADR-220)": explicit
+ON over Release and Debug yields OFF and no Start rules; one release build,
+install and stage pass after stale-output quarantine. Both `Mod/Start` and
+`lib/Start.so` are absent from install and payload; Test still installs.
+The installed script-file probe confirms Start import/group absence, all
+retained imports and box volume within 1e-9 of 1000. Four Cadex CTests pass;
+serial inherited CTest has 162 failures, all baseline names, 3 skipped and
+7 disabled. Registrations drop exactly 1,544 → 1,533: the eleven passing
+`FileUtilitiesTest` cases, no other changes. The fresh packaged
+lifecycle/licensing gate passes 26 tests. The full engine suite against the
+stable stage passes **2,022 tests, 52 skipped** (249.42 s). An initial run
+overlapping staging saw transient `bin/ccx` before pruning (one failure);
+the audit records that verification-order error and the clean rerun.
+Verification is macOS-only.
+
+**Fork delta.** FreeCAD M files / inserted / deleted: **57 / 1,639 / 1,804**;
+inherited remaining: **3,467**, unchanged by disable. Correct ADR-219's
+remaining-file counts: its 7,287 at run start and 3,468 at audit included
+10 and 1 additions; true inherited counts are **7,277 → 3,467**. The
+run-start M metric remains **47 / 1,804 / 1,907**. Blender remains
+**44 / 1,046 / 129**, with **19,052** inherited files. Whole-file deletions
+and surviving-file modifications stay separate measures.

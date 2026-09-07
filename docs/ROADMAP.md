@@ -821,13 +821,18 @@ Not a phase that "completes" — a standing mode of work.
       found `lib/Start.so` still in the staged payload and Start as the sole
       GSL-submodule consumer, and records how whole-tree deletions should
       count against the fork-delta criterion. Test remains unaudited.
+- [x] Disable Start at the audited boundary (2026-09-07, ADR-220): forced-OFF
+      cache entry, all 27 source files and three gates retained. Both existing
+      configurations reject explicit ON; installed and staged Start module
+      and library are absent. Verification: `docs/START-AUDIT.md`
+      §"Disable verification (ADR-220)". The separate delete remains open.
 - [ ] Engine side: Phase 8's audited GUI directory boundary is deleted
       (ADR-214); broader residual GUI-lineage source remains open. Further
       candidates: Help is deleted (ADR-217, ADR-218);
-      Start is audited (ADR-219) and Test still needs its own dependency
-      audit. Both build and install; the payload prunes their `Mod/`
-      directories but still carries `lib/Start.so`
-      (`docs/START-AUDIT.md`), and the staged payload is **2.3 GB**
+      Start is disabled (ADR-220) and awaits its separate delete; Test still
+      needs its own dependency audit. Test builds and installs, with `Mod/Test`
+      pruned from the payload. Start no longer installs or stages
+      (`docs/START-AUDIT.md`), and the staged payload is **2.4 GB**
       of which ~2.1 GB is development environment — two copies of LLVM,
       node, clang, CMake's docs (`docs/cadex-release-packaging.md`). The
       payload's "no GUI" gate also has a hole: it greps `Mod/` for

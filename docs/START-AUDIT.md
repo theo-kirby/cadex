@@ -5,9 +5,10 @@ Verified against source: 2026-09-07
 [Cadex-new] Audit at `6761304e`, after the Help sequence (ADR-216, ADR-217,
 ADR-218, [HELP-AUDIT.md](HELP-AUDIT.md)) completed the first engine-side
 whole-tree removal. **Start qualifies for a separate disable commit under
-ADR-219.** Documentation only: no build, configure, install, stage or test
-execution was performed for this audit. Deletion is conditional on the disable
-commit's verification. Test is not qualified by this audit; Assembly, Measure
+ADR-219.** The original audit was documentation only: no build, configure,
+install, stage or test execution was performed for it. **Start is now disabled
+under ADR-220; see the disable verification below.** Deletion is conditional on the disable
+commit's verification; the later disable evidence is recorded below. Test is not qualified by this audit; Assembly, Measure
 and retained Qt are outside it.
 
 ## What the tree is
@@ -146,8 +147,13 @@ Recomputed at this audit for the FreeCAD tree:
 | Rev | M files / inserted / deleted | D (whole files deleted) | A (added) | Inherited files remaining |
 |---|---|---|---|---|
 | import `c2ccddfb` | — | — | — | 12,749 |
-| nt2 start `7dd3d045` | 47 / 1,804 / 1,907 | 5,472 | 10 | 7,287 |
-| this audit `HEAD` | 57 / 1,637 / 1,803 | 9,282 | 1 | 3,468 |
+| nt2 start `7dd3d045` | 47 / 1,804 / 1,907 | 5,472 | 10 | 7,277 |
+| audit tree before disable | 57 / 1,637 / 1,803 | 9,282 | 1 | 3,467 |
+
+**Count correction during disable (ADR-220):** the original 7,287 and 3,468
+were total scoped files, including 10 and 1 additions respectively. Inherited
+files remaining excludes those additions: 7,277 and 3,467. This disable
+retains every source file, so changes neither count.
 
 (`git diff --no-renames --name-only --diff-filter=D|A c2ccddfb REV -- src/
 cMake/ tests/ CMakeLists.txt` and `git ls-tree -r --name-only REV -- …`, each
@@ -157,17 +163,71 @@ Proposed convention, for the criterion to stay honest: report both numbers
 every time. **Credit a whole-tree deletion only against "inherited files
 remaining"**, one file each, never against the M metric; book the gate edits
 it needs as their real line delta in the M metric. Read "smaller than at the
-start of the run" as: inherited files remaining is down (7,287 → 3,468, met)
+start of the run" as: inherited files remaining is down (7,277 → 3,467, met)
 *and* the M metric's line totals are not up (1,804 / 1,907 → 1,637 / 1,803,
 met), while the M file count is reported as is (47 → 57, not met by itself).
 Deleting Start would move M to 56 files (its `CMakeLists.txt` entry leaves)
-and inherited-remaining to 3,441. This is a proposal recorded here and in the
+and inherited-remaining to 3,440. This is a proposal recorded here and in the
 record node; it changes no test and no criterion text.
 
-## Evidence and limits
+## Original audit evidence and limits
 
 Existing-payload and existing-build evidence only: the Help-delete staging's
 `lib/Start.so`, the Help-audit CTest discovery JSON, the two `CMakeCache.txt`
 files, both `build.ninja` files and the generated install scripts. No fresh
 configure, build, install, stage, engine suite, CTest or packaged gate was
 run for this audit; the disable's gates above are all future. macOS only.
+
+## Disable verification (ADR-220)
+
+2026-09-07, macOS arm64 only. `BUILD_START` is now forced OFF in the
+already-manifested initializer; its existing modification notice remains.
+All 27 sources, three gates and the report line remain. No Test or GSL edit.
+
+- `pixi run cmake --preset conda-macos-{release,debug} -DBUILD_START=ON`
+  over the existing caches: both exit 0, cache and final report OFF, no
+  `Mod/Start`, `Start.so` or `Start_tests_run` Ninja rules or parent install
+  includes. FreeCADApp, Assembly and TestSources targets remain. The first
+  inspection mistakenly looked for `TestScripts`; correcting that probe to
+  the audited `TestSources` confirmed the retained target.
+- Quarantined the shared install's `Mod/Start` (including stale GUI scripts
+  and bytecode) and `lib/Start.so`; both configurations' generated
+  `Mod/Start`, `src/Mod/Start`, `tests/src/Mod/Start` and exact
+  `Start_tests_run*` executable/discovery paths where present. Other
+  Start-named files were untouched.
+- One `pixi run build-release` (35 scheduled Ninja steps), then
+  `pixi run install-release` and `pixi run stage-engine`: all exit 0.
+  Neither the install nor fresh stage contains `Mod/Start` or `lib/Start.so`;
+  installed `Mod/Test/Init.py` remains. Stage-only payload: 2.4 GB, retaining
+  the documented local external library references rather than relocating.
+- Installed `FreeCADCmd` script-file probe with fresh `--user-cfg` and
+  `--system-cfg`: `import Start` fails with `No module named 'Start'`, no
+  Start parameter group, all eleven retained modules listed above import.
+  Box volume **999.9999999999998**, within 1e-9 of 1000. An initial exact
+  float equality failed; the corrected probe prints its explicit pass marker
+  (FreeCADCmd can return zero despite a script exception).
+- Cadex CTests: **4/4 passed**, 20.48 s. Serial inherited CTest: **162 failed
+  of 1,526 run**, 134.02 s; **zero names outside the 164-name baseline**.
+  The same two baseline names are absent (`DlgVersionMigrator_Tests_run`,
+  `SpreadsheetRenameProperty.renameProperty`). **3 skipped, 7 disabled**.
+  JSON discovery comparison: **1,544 → 1,533 registrations**, exactly the
+  eleven `FileUtilitiesTest.humanReadableSize*` cases removed, zero additions
+  and no other removal. Those eleven passing registrations leaving is expected.
+- The first full engine suite overlapped staging and saw temporary `bin/ccx`
+  before payload pruning: **1 failed, 2,021 passed, 52 skipped**, 269.46 s.
+  The affected payload-isolation test passed alone after staging (1.26 s).
+  Verification must serialize staging before any suite that scans the payload.
+  The full rerun against the completed stage passed: **2,022 passed, 52
+  skipped**, 249.42 s.
+- Fresh-payload lifecycle/licensing suite: **26 passed**, 19.16 s. The
+  manifest path set is unchanged; the sole inherited edit was already listed.
+
+Fork delta after disable, same imports/scopes/exclusions: FreeCAD surviving
+M files / insertions / deletions **57 / 1,639 / 1,804**, inherited remaining
+**3,467** (unchanged by disable); run start **47 / 1,804 / 1,907**, inherited
+remaining **7,277**. Blender **44 / 1,046 / 129**, inherited remaining
+**19,052**, unchanged. No whole-tree deletion is credited to this unit.
+Local detailed logs and before/after CTest JSON use `/tmp/cadex-start-*`;
+the quarantine is `/tmp/cadex-start-disable-quarantine`. These are ephemeral
+reproduction aids, not committed artifacts. Fresh-cache configuration,
+from-scratch builds, other platforms and the GUI were not exercised.
