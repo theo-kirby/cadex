@@ -19832,3 +19832,36 @@ whole-tree removals.
 preceding deletion's committed manifest comparison. No new build/stage or full
 engine/CTest execution. HELP-AUDIT records future gates, cache handling and
 unchanged import-relative metrics; broad fork-delta reduction remains open.
+
+
+## ADR-217 — Disable the retired Help module at its option (2026-09-07)
+
+[Cadex-new] **Decision.** `src/Mod/Help` is disabled, not deleted: the ON
+`option(BUILD_HELP …)` declaration in
+`cMake/FreeCAD_Helpers/InitializeFreeCADBuildOptions.cmake` is replaced by a
+forced OFF cache entry. A default change alone would have left the existing
+Debug and Release caches, both ON since import, still building and installing
+Help; the forced entry normalises stale ON caches, fresh caches and explicit
+`-DBUILD_HELP=ON` requests to OFF. The parent gate in `src/Mod/CMakeLists.txt`,
+the final-report line and all 85 tracked Help sources stay until the separate
+delete commit. This is the disable half of the two-commit protocol for one
+whole-tree candidate, qualified by ADR-216 and `docs/HELP-AUDIT.md`.
+
+**Boundary.** Only the already-manifested initializer changes; its existing
+modification notice covers the edit and manifest membership is unchanged.
+Measure App, the required Assembly publishers, retained App translations and
+QtCore/QtXml are untouched. Start and Test are not disabled by this commit.
+
+**Evidence.** The code landed in `a04ca822` without this entry; the gate
+evidence was completed and recorded in the following unit and is in
+`docs/HELP-AUDIT.md` §"Disable landed": OFF in both regenerated caches and a
+fresh explicit-ON configure; one release build; stale Help copies, generated
+install scripts and the shared install's Help sources, `Help_rc.py` and
+bytecode quarantined; install and stage with no `Mod/Help`; an installed
+headless probe with Help absent and Measure/Assembly intact; the full engine
+suite; the four cadex ctests; serial inherited CTest against the 164-failure
+baseline; and the fresh packaged lifecycle/licensing gate. Manifest-scoped
+FreeCAD M totals are 56 files / 1,638 inserted / 1,797 deleted against nt2
+start 47 / 1,804 / 1,907; this disable adds six lines, so the fork-delta
+criterion is not advanced by it. One whole-tree removal is complete only when
+the delete commit lands.

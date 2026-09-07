@@ -803,8 +803,9 @@ Not a phase that "completes" — a standing mode of work.
       build-rule change yet. Start/Test qualification remains open.
 - [x] Disable Help at the audited boundary (2026-09-07, ADR-217): `BUILD_HELP`
       forced OFF over stale ON caches, fresh caches and explicit ON requests;
-      source retained; validation in `docs/HELP-AUDIT.md`. The delete commit
-      is a separate unit and is still open.
+      source retained. The code landed in `a04ca822` ahead of its evidence;
+      the gates ran in the following unit and are in `docs/HELP-AUDIT.md`
+      §"Disable landed". The delete commit is a separate unit and is still open.
 - [ ] Engine side: Phase 8's audited GUI directory boundary is deleted
       (ADR-214); broader residual GUI-lineage source remains open. Further
       candidates: Help is disabled (ADR-217) and still needs its separate delete commit;
