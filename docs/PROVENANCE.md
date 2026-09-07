@@ -74,8 +74,8 @@ Manager, Web, Start, Test, and Help modules are not on it.
 **Version.** A snapshot of the FreeCAD 1.2 development line. `version.json`
 was re-versioned to Cadex's own `0.0.1` and no longer states a FreeCAD
 version; the inherited `SECURITY.md` we replaced named `1.2dev` as the then
-current development series. The `OndselSolver` and `GSL` submodules still
-point at their upstream repositories.
+current development series. The `OndselSolver` submodule still points at its upstream repository.
+The unused Microsoft GSL submodule was removed after Start (ADR-222).
 
 **Licence.** LGPL-2.1-or-later. The root [`LICENSE`](../LICENSE) is
 FreeCAD's, unchanged, and every file we wrote under `src/Mod/cadex/` carries
@@ -332,7 +332,7 @@ not legal advice; if you are redistributing Cadex, read the licences.
 ## 8. Everything else
 
 - **Bundled third-party code** lives in `src/3rdParty/` (Clipper2, PyCXX,
-  salomesmesh, libE57Format, OndselSolver, GSL and others) and in Blender's
+  salomesmesh, libE57Format, OndselSolver and others) and in Blender's
   `shell/extern/`. Most keep their own licence file in-tree; the ones that
   do not are named, with their licences, in
   [`THIRD_PARTY_LICENSES.md`](../THIRD_PARTY_LICENSES.md) §2. The licence

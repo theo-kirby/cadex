@@ -183,7 +183,7 @@ pixi run app                  # build engine + payload + shell, then launch
 # Engine only -- no shell, no git-lfs, no 1.3 GB of prebuilt libraries. This
 # is the whole setup on a headless box (ADR-060); the shell is macOS-only so
 # far, but the engine is not.
-pixi run setup-engine         # just src/3rdParty/{OndselSolver,GSL}
+pixi run setup-engine         # just src/3rdParty/OndselSolver
 pixi run build-engine
 
 # The headless CLI (docs/CLI.md, ADR-061). Needs a built engine and nothing

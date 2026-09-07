@@ -257,7 +257,7 @@ setup = { cmd = ["bash", "package/app/build_app.sh", "setup"]}
 # uses and which hard-fails when git-lfs is not installed. Use this when you
 # want cadexd and no application (ADR-060).
 setup-engine = { cmd = ["git", "submodule", "update", "--init", "--recursive",
-                        "src/3rdParty/OndselSolver", "src/3rdParty/GSL"]}
+                        "src/3rdParty/OndselSolver"]}
 build-engine = { depends-on = ["configure-release", "build-release", "install-release"]}
 stage-engine = { cmd = ["bash", "package/engine/build_engine_payload.sh"], env = { CADEX_ENGINE_STAGE_ONLY = "1" }}
 stage-engine-release = { cmd = ["bash", "package/engine/build_engine_payload.sh"]}

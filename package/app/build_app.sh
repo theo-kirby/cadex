@@ -134,9 +134,9 @@ cmd_setup() {
     else
         echo "==> shell/${lib_dir} already present"
     fi
-    # The engine's own submodules (OndselSolver, GSL).
+    # The engine's own submodule (OndselSolver).
     git -C "${repo}" submodule update --init --recursive \
-        src/3rdParty/OndselSolver src/3rdParty/GSL
+        src/3rdParty/OndselSolver
     echo "==> setup complete"
 }
 

@@ -831,6 +831,10 @@ Not a phase that "completes" — a standing mode of work.
       `docs/START-AUDIT.md` §"Delete verification (ADR-221)" records the gates
       and both fork-delta measures. With Help, two engine-side whole-tree
       removals have landed under the two-commit protocol.
+- [x] Remove the unused Microsoft GSL submodule after Start (2026-09-07,
+      ADR-222): no retained consumer or CMake reference; engine and app setup
+      plus the legacy build helper no longer request its checkout. Setup,
+      release configure/build and licensing/purity verification pass.
 - [ ] Engine side: Phase 8's audited GUI directory boundary is deleted
       (ADR-214); broader residual GUI-lineage source remains open. Further
       candidates: Help is deleted (ADR-217, ADR-218);

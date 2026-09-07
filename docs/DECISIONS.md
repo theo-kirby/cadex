@@ -20022,3 +20022,34 @@ run start even though both line totals and inherited remaining are lower.
 Blender is unchanged at **44 / 1,046 / 129**, remaining **19,052**.
 The 27 whole-file deletions do not count as M-line reductions. GSL is the
 next separately audited candidate, not part of this removal.
+
+
+## ADR-222 — Remove the unused Microsoft GSL checkout after Start (2026-09-07)
+
+[Cadex-new] Start was the only compiled consumer of the Microsoft Guidelines
+Support Library submodule (ADR-219). Its separately verified disable and
+source deletion (ADR-220/221) removed that consumer. A post-delete tracked
+search for `Microsoft.GSL`, `gsl/`, `gsl::` and `3rdParty/GSL`, including the
+shell separately, finds no retained consumer or CMake reference. The DXF
+header mention is an unimplemented ownership TODO, not an include or use.
+
+Delete only the GSL gitlink and `.gitmodules` entry; stop requesting it in
+`setup-engine`, app setup and the legacy build helper. Update the setup and
+license inventories. No submodule content is vendored, no inherited source
+or CMake file changes, and the modification manifest remains accurate.
+OndselSolver, shell libraries, Test, Assembly and retained Qt are untouched.
+The legacy helper's existing AddonManager checkout is a separate stale
+reference, left for its own unit. Risk is limited to an overlooked checkout
+consumer; tracked searches, successful setup and release configure/build
+check that boundary. No payload rule changed, so install/staging and the
+packaged gate were not rerun for this checkout-only change.
+
+Verification: `pixi run setup-engine`, `pixi run configure-release`, one
+`pixi run build-release`, and Bash syntax checks pass. Licensing plus engine
+purity: 22 passed, 1 payload-only skip (2.48 s). Before editing, committed-HEAD
+licensing passed 10 tests with 1 payload-only skip (0.30 s), resolving
+ADR-221's reserved manifest condition: Help and Start qualify as the two
+whole-tree engine removals. This GSL tail is not a third module removal.
+The four Cadex CTests also pass (17.47 s). Full inherited CTest, the full
+Python engine suite, fresh-cache builds and other platforms were not rerun;
+no runtime code changed in this unit.

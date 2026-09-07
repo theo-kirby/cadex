@@ -137,6 +137,12 @@ live at the root: `NOTICE` and `THIRD_PARTY_LICENSES.md`.
 
 ## 3. Removal protocol and remaining boundaries
 
+**Microsoft GSL tail removed (2026-09-07, ADR-222).** Start was its only
+compiled consumer. After Start disable/delete, the GSL gitlink, submodule
+entry and three checkout references are removed. No retained CMake consumer
+exists; the Import DXF `gsl::owner` mention is only a TODO comment.
+OndselSolver and the shell library submodules remain.
+
 ### `src/Gui` (+ every `src/Mod/*/Gui`, `tests/src/Gui`) — Phase 8
 
 **Disable commit: `d2c8bcc5` — Phase 7 C6b (ADR-022).** Release and package

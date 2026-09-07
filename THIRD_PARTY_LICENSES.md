@@ -1,6 +1,6 @@
 # THIRD_PARTY_LICENSES.md — the component-level license map
 
-Verified against source: 2026-08-29
+Verified against source: 2026-09-07
 
 What third-party material this repository contains and redistributes, under
 which license, and where each obligation is satisfied in the shipped
@@ -31,7 +31,6 @@ record for them.
 | `3Dconnexion` | LGPL (3DxWare SDK, per file headers) | **none** — the headers reference a `LICENSE` file the partial vendoring did not carry |
 | `Clipper2` | BSL-1.0 | `LICENSE` |
 | `FastSignals` | MIT | `LICENSE` |
-| `GSL` (Microsoft Guidelines Support Library, submodule) | MIT | `LICENSE` + `ThirdPartyNotices.txt` |
 | `json` (nlohmann/json) | MIT | **none** — in-file SPDX tags in both headers |
 | `lazy_loader` | Apache-2.0 (TensorFlow-descended, per file header) | **none** — stated in `lazy_loader.py`'s header |
 | `libE57Format` | BSL-1.0 | `LICENSE.md` |
