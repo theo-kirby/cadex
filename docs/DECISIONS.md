@@ -20061,3 +20061,23 @@ whole-tree engine removals. This GSL tail is not a third module removal.
 The four Cadex CTests also pass (17.47 s). Full inherited CTest, the full
 Python engine suite, fresh-cache builds and other platforms were not rerun;
 no runtime code changed in this unit.
+
+## ADR-223 — Define BLDC coverage and block unqualified RI50 delivery (2026-09-07)
+
+[Cadex-new] Adopt robot-prototype BLDC set A: one qualified winding in each
+of shafted 28xx, hollow frameless 50 and hollow frameless 80 classes, for
+compact reduction inputs, small cable-through joints and larger proximal
+joints. This is a reversible sampling contract, not market prevalence.
+Every member needs mounting evidence, kV, a thermally qualified torque point,
+independent placed/canonical geometry proof and packaged publication.
+
+The [source audit](L3-COVERAGE.md#additional-bldc-source-audit--ri50-kv100-adr-223)
+cites the inspected CubeMars product page, parameter sheet, no-Hall drawing
+and fixture archive. RI50 KV100 without Hall sensors remains unqualified:
+ratings lack cooling/duration conditions and a revision link to its drawing;
+the older Hall sheet differs in tolerances and overhang. Do not invent a
+shaft/collar or promote the conditional geometry/delivery dispatch. Inspect
+new fixture/test evidence once, or park it and qualify a shafted alternative.
+No API, runtime, asset or charter change. Risk: this proposed sampling set
+may need revision with better robot requirements. Documentation checks and
+hypergraph validation are the gates; no build or runtime suite is required.

@@ -2,11 +2,12 @@
 
 Verified against source: 2026-09-07
 
-This is the remaining-scope audit requested by `true-fox-1464`, against
-ROADMAP Phase 17 and source revision `333c805788e6`. It audits recorded
+The original remaining-scope audit requested by `true-fox-1464`, against
+ROADMAP Phase 17 and source revision `333c805788e6`, audits recorded
 manufacturer evidence in PROVENANCE §§8b–8f, the catalog, LibraryAPI and
 `cadex_tests/test_library.py`; it does not refresh outside sources or qualify
-another part. **Full L3 remains open.** Four families each expose one SKU;
+another part. The dated additional audit below inspects new sources.
+**Full L3 remains open.** Four families each expose one SKU;
 solenoids expose none. A catalog value is not a powered assembly.
 
 ## Coverage matrix
@@ -101,3 +102,80 @@ staging exits 0 in stage-only mode, but this is not a shippable bundle.
 Powered assemblies, physical inertia, installed fit, further N20/L12/joint
 variants and compound mechanisms are distinct future units with their own
 source and test prerequisites. They are not hidden completions of this audit.
+
+## Additional BLDC source audit — RI50 KV100 (ADR-223)
+
+**2026-09-07: qualification blocked; no geometry experiment or delivery.**
+This section refreshes outside evidence for one candidate only; the coverage
+matrix above still describes the delivered catalog.
+
+### Common-size acceptance set
+
+Adopt **robot-prototype BLDC set A** as an explicit engineering sampling
+contract, not a claim about market share or a universal motor-size standard:
+
+| Required member | Robot design reason | Current evidence |
+|---|---|---|
+| 28xx-class shafted outrunner | Compact belt/reduction input for a small robot | Existing Skywalker 2820 SL 550KV envelope; torque qualification still missing |
+| 50-class hollow frameless motor | Small integrated joint with a central cable passage | RI50 KV100 without Hall sensors audited below; blocked |
+| 80-class hollow frameless motor | Larger proximal joint packaging for the same robot | No SKU/winding qualified; separate future audit |
+
+These are nominal class names, not interchangeable mounting standards. Require
+one named winding in **each** row, manufacturer interface dimensions, kV and
+at least one torque operating point tied to voltage, current definition,
+speed, duration/duty, cooling and temperature conditions. Each then needs
+independent canonical/placed worker interface proof and packaged publication.
+Three envelopes alone do not pass; the existing winding counts only after its
+missing rating evidence lands. Powered mechanisms and the rest of L3 remain
+separate. This reversible acceptance decision serves mission 4 without
+claiming that two catalog values finish plural coverage.
+
+### Inspected manufacturer evidence
+
+Sources retrieved 2026-09-07; PDFs visually inspected after rendering with
+PyMuPDF in an isolated `uv run --with pymupdf` environment (system Poppler
+was unavailable). No dependency or binary source is added to the repository.
+
+- [RI50 product page](https://www.cubemars.com/product/ri50-kv100-frameless-inrunner-torque-motor.html):
+  selects KV100 and with/without-Hall variants. Lists 100 rpm/V, 0.58 N·m
+  rated torque at 4.8 ADC, 24/36/48 V and respective 1090/1860/2600 rpm;
+  1.67 N·m peak at 14.8 ADC. FOC, ambient −20 to 50°C. It calls the rated
+  torque continuous but gives no cooling arrangement, winding temperature,
+  test duration or peak duty. ADC is retained as printed, not converted to
+  phase RMS current. No torque is inferred from kV.
+- [One-page parameter sheet, printed page 22](https://img.cubemars.com/products/cubemars-product-parameter/RI50-KV100.pdf):
+  corroborates the rating table; its drawing includes Hall wiring, 8 mm
+  maximum upper overhang, Ø54±0.03 and Ø22±0.02 mm. No revision/date is
+  printed. SHA256 `9533f3b3869dfd9540693d91fac55a24345205753871684ab905ff67fe290ddf`.
+- [Without-Hall drawing](https://www.cubemars.com/data/cms/202602/ri50-frameless-torque-motor-without-hall-sensor-2d-drawing.pdf):
+  download index dated 2026-02-06; no drawing revision printed. Ø54 with
+  +0/−0.08 tolerance, Ø22±0.03 bore, 19 +0.1/0 rotor length, 16 mm stack,
+  upper/lower overhangs 5/3 mm maximum, Ø25 maximum locating shoulder.
+  Thus the older Hall sheet cannot supply this variant's tolerances or
+  overhang. SHA256 `39c27addcdee7fe8a224bb2cb4505d6d3f15e2e041f65b1985b2453180bc4e16`.
+- [Test fixture ZIP](https://www.cubemars.com/data/cms/202602/ri50-frameless-torque-motor-test-fixture.zip):
+  index dated 2026-02-06. Retrieved and listed only: Hall test-base DWG/STEP,
+  pivot fixture DWG/STEP, pivot BOM XLSX. Contents were not geometrically
+  inspected and do not establish the rating's thermal setup in this audit.
+  SHA256 `41dff1a5e8848aedf9c5aba2efc2259e4046da56557f424e01e92ff8e37ad1fb`.
+
+The page's relative download links resolve under `/product/data/` and return
+404; the `/data/` URLs above downloaded successfully with `curl -fLsS`.
+An update-index date and a content hash identify inspected bytes, **not** a
+manufacturer revision match between the rating and the no-Hall drawing.
+
+### Exact blocker and next decision
+
+The no-Hall rotor/stator interfaces are partly dimensioned, but there is no
+qualified thermal operating point or documented revision link to the rating
+sheet. A frameless motor has no supplied output shaft/collar or rear M3 mount;
+forcing it through the present shafted BLDC recipe would invent interfaces.
+Retention method, customer housing/bearings and installed fit are unqualified.
+
+**Do not dispatch short item 2 or 3 for this candidate.** A bounded next source
+unit may inspect the already-downloaded fixture/BOM and manufacturer test
+instructions for a winding/variant-linked thermal setup and duration. Proceed
+only if that new evidence exists; otherwise park RI50 and audit one shafted
+alternative for set A's first row. Do not repeat the same product-page search
+or silently relax torque qualification. Full L3 and fresh-machine portability
+remain open; this docs-only audit changes no local payload relocation result.

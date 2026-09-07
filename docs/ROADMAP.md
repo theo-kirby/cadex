@@ -2119,7 +2119,10 @@ field, and every client gets it through the surface it already reads.
 - [x] **L3 remaining-coverage audit.** [Coverage/evidence matrix](L3-COVERAGE.md)
       distinguishes four delivered SKUs from missing BLDC size/torque scope,
       deferred solenoid interfaces and separate compound gearing (ADR-212).
-      Full L3 stays open; Phase 8 readiness audit is next.
+      Full L3 stays open; Phase 8 deletion has since landed.
+- [x] **L3 additional BLDC source audit.** Set A defines three required
+      classes; RI50 KV100 no-Hall qualification is blocked on thermal and
+      revision evidence (ADR-223, `docs/L3-COVERAGE.md`). No delivery claimed.
 - [ ] **L3 — motors and mechanisms.** Common BLDC sizes with kV/torque
       data, N20 gearmotor, linear actuator, solenoid, joints; gears and
       rack-and-pinion need involute profiles and are their own slice.
