@@ -876,6 +876,10 @@ Not a phase that "completes" — a standing mode of work.
 - [x] Separately delete the disabled Test Tk runner after verified disable
       evidence (2026-09-07); repeat build/install/stage and retained headless
       tests (ADR-230).
+- [ ] Audit only the inherited translation updater offline (ADR-232,
+      2026-09-07): qualify at most one subtractive boundary with retained App
+      translation consumers and removal gates explicit; no network execution
+      or implementation is authorized by the planning evidence alone.
 - [ ] Engine side: Phase 8's audited GUI directory boundary is deleted
       (ADR-214); broader residual GUI-lineage source remains open. Further
       candidates: Help is deleted (ADR-217, ADR-218);

@@ -20376,3 +20376,26 @@ product code or inherited diff added. Documentation-only validation uses the
 licensing suite, diff check and hypergraph check; the installed Part.read probe
 is not a packaged lifecycle or offline project-rebuild gate. Both category
 criteria remain open.
+
+## ADR-232 — Replan to an offline translation-updater dependency audit (2026-09-07)
+
+[Cadex-new] After ADR-231 qualified neither manufacturer accessory, close the
+conditional delivery bet and preserve its rights, interface and import-path
+blockers. No additional candidates or importer work follow from that audit.
+File lifecycle and the bounded robot walk have working state evidence; the
+next open mission is inherited-tree reduction. Bet on an offline audit of
+`src/Tools/updatecrowdin.py` alone, already named as residual maintenance debt
+in `HELP-AUDIT.md` and already in the inherited modification manifest.
+
+Static AST inspection finds 27 location rows, only two with both paths present
+(duplicate App rows); the hard-coded `src/Gui/Language/Translator.cpp` target
+is absent. These facts qualify an audit, not removal: App translations still
+exist, upload discovers files independently, and external users are unmeasured.
+The next unit must inventory retained consumers, command branches, build/install
+references and maintenance entry points without importing or executing the
+updater, reading credentials, or contacting Crowdin. Select at most one
+subtractive boundary and its disable/delete protocol and gates, or record that
+none qualifies. Preserve App resources and Qt; no replacement translation
+tool, shell change, broad cleanup or runtime compatibility claim. This decision
+changes no code or manifest membership. A contributor records the bet; separate
+maintainer/planner passes project it into state and plan.
