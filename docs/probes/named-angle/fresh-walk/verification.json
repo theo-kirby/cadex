@@ -1,0 +1,40 @@
+{
+  "accepted_revision": "6ebea031c261333a679d269c318298f4ccb826219dc9a0b56d86aefc18e0d089",
+  "digest": "0c74e228cc723dea636a707cbbc5debcae53604d7ee68a4eb9268346fe1e0d68",
+  "project_head": "ee81cafc9591862bbcb4a6b38134294c960f230f",
+  "working_tree_clean": true,
+  "verified_in_HEAD": [
+    "ARCHITECTURE.md",
+    "DECISIONS.md",
+    "PROGRESS.md",
+    "docs/inventory.md",
+    "docs/clearance.md",
+    "runs/baseline/review.json",
+    "review/render/6ebea031c261333a679d269c318298f4ccb826219dc9a0b56d86aefc18e0d089/summary.json",
+    "review/render/6ebea031c261333a679d269c318298f4ccb826219dc9a0b56d86aefc18e0d089/front.svg",
+    "review/render/6ebea031c261333a679d269c318298f4ccb826219dc9a0b56d86aefc18e0d089/iso.svg",
+    "review/render/6ebea031c261333a679d269c318298f4ccb826219dc9a0b56d86aefc18e0d089/right.svg",
+    "review/render/6ebea031c261333a679d269c318298f4ccb826219dc9a0b56d86aefc18e0d089/top.svg"
+  ],
+  "images": {
+    "front": {
+      "png_sha256": "fc93a6622906be25c192a1c5d642a37ee0bfaeca0a64f11c2aad90ce89f14d09",
+      "covered_pixels": 23678
+    },
+    "iso": {
+      "png_sha256": "c4778da68c1a11f9dabe84088d450eb9eca16f39b6d1b599697bf73b78243608",
+      "covered_pixels": 75694
+    },
+    "right": {
+      "png_sha256": "d7b6817b55021c181029d572c723923802ba2ca9e2d0bbada25ee9f4e7b346a7",
+      "covered_pixels": 23700
+    },
+    "top": {
+      "png_sha256": "4bd0d84825dd3745f3bbaf1952ac896be60f554b64d7cb85038238ffa5e86ea9",
+      "covered_pixels": 91348
+    }
+  },
+  "whole_command_seconds": 17.07,
+  "sampled_peak_tree_rss_bytes": 1054818304,
+  "cutoff": false
+}
