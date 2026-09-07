@@ -882,6 +882,11 @@ Not a phase that "completes" — a standing mode of work.
       or implementation is authorized by the planning evidence alone.
       Evidence: TRANSLATION-UPDATER-AUDIT.md; only the deleted GUI translator
       writer qualifies, pending a later bet and separate disable/delete commits.
+- [x] Dispose of the updater audit as evidence only (2026-09-07, ADR-232):
+      only the deleted GUI writer qualifies; exact files, retained behavior,
+      compatibility cost and separate disable/delete gates are recorded in
+      TRANSLATION-UPDATER-AUDIT.md. Maintainer reconciliation and a later
+      planner bet are required before either implementation stage.
 - [ ] Engine side: Phase 8's audited GUI directory boundary is deleted
       (ADR-214); broader residual GUI-lineage source remains open. Further
       candidates: Help is deleted (ADR-217, ADR-218);

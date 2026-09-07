@@ -20413,3 +20413,14 @@ the separate disable/delete stages and retained-translation checks before
 implementation. Whole-tool deletion, resource/Qt removal, gather repairs and
 location cleanup are not qualified. Documentation-only audit; no source,
 manifest, translation-resource or fork-delta change and no runtime/build claim.
+
+
+**Evidence-only disposition (2026-09-07).** Accept only the deleted GUI
+translator writer boundary from the completed audit. TRANSLATION-UPDATER-AUDIT.md
+now pins the single inherited source file, supporting test/doc files, retained
+App/Base and Qt behavior, external-maintenance compatibility cost and gates
+for separate disable/delete commits. Keep startup behavior during disable;
+retain the retired-command diagnostic after delete. No implementation is
+authorized by this disposition. The unreconciled tail has reached the threshold:
+maintainer reconciliation, then a later planner bet, must precede implementation.
+No new audit, whole-updater removal, source change or fork-delta saving.

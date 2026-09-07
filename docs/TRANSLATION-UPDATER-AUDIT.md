@@ -117,8 +117,9 @@ retiring this tail cannot certify the full network workflow. Other commands,
 locations, duplicate entries, QRC helpers and gather remain outside this
 boundary. No whole-tool, App resource, Qt library or shell removal qualifies.
 
-A later evidence-only disposition must mint the implementation bet first.
-If selected, use two commits:
+The evidence-only disposition below hands this boundary to the maintainer and
+planner. A later planner bet is required before implementation. If selected,
+use two commits:
 
 1. Disable the GUI-writing call paths, retaining the helper/source dependency
    until the separate delete stage. Give updateTranslator an explicit retired
@@ -155,3 +156,62 @@ not set. `git diff --check` passed. Hypergraph export/check passed with zero
 violations and warnings. No engine build, full engine suite, packaged
 lifecycle, shell gate or translation runtime probe was run. Code, translation
 resources, inherited manifest and fork measurements remain unchanged.
+
+## Evidence-only disposition and role handoff (2026-09-07)
+
+Short rank 2 accepts exactly the boundary qualified above. This disposition
+is not an implementation dispatch. The sole future inherited source edit is
+`src/Tools/updatecrowdin.py`: its `updateTranslatorCpp` definition (411–452
+at the audited revision), apply/install tail (642–644), updateTranslator
+branch (646–655), and exclusive PySide6/PySide2 import block (88–91).
+`src/Gui/Language/Translator.cpp` is an absent output, not a file to restore
+or delete. No whole-file saving is claimed.
+
+The later bet must name two separately gated commits:
+
+- **Disable:** remove the apply/install GUI-writing tail and replace the
+  updateTranslator branch with an explicit retired-command diagnostic, with
+  no language-progress request. Keep the helper and PySide import until the
+  delete commit. Preserve existing startup credential/project checks; moving
+  them or repairing unrelated commands is outside this boundary. Isolated
+  tests must stub imports, credentials and service calls before dispatch.
+- **Delete:** after the disable commit's evidence passes, remove only the
+  unreachable helper and exclusive PySide import. Retain the retired-command
+  diagnostic. No temporary production scaffolding is proposed for removal.
+  Direct external imports of the helper cease to work at this stage; external
+  use is unknown, including users who restore a GUI tree. The first stage
+  already retires GUI registration through the two CLI paths.
+
+Supporting files for that later bet: add isolated regression coverage in
+`src/Mod/cadex/cadex_tests/test_translation_updater.py`; update this audit,
+`docs/DECISIONS.md`, `docs/ROADMAP.md` and `docs/FREECAD.md`, plus one record
+per unit. Verify `docs/inherited-modifications.json` and the updater's existing
+modification notice; change them only if accuracy requires it. No other
+inherited source, build rule or shell file belongs to the proposed pair.
+
+Retain `applyTranslations`, `doLanguage`, `doFile`, `updateqrc`, all locations
+and mappings, and every other command. In particular, preserve App/Base's
+39 TS files each, TS installation and Swedish filename mapping, App's
+compilation of both translation families, generated QM/QRC resources,
+`Application.cpp` bridge installation, `TranslationQtBridge.cpp`,
+`src/Base/Translate.cpp` and `SetupQt.cmake` LinguistTools behavior. Losing
+GUI registration is the compatibility cost; it does not justify removing
+Qt, App/Base resources or fixing gather or absent translation destinations.
+
+For **each** future stage, run isolated regressions for the retired command
+and retained dispatch/copy/mapping/archive/QRC behavior, full engine pytest,
+licensing checks against committed HEAD, one release build at most, and
+inherited CTest against its recorded baseline. Check unchanged App/Base TS
+hashes, generated QM/QRC resources, and installed FreeCAD.Qt
+load/translate/remove using a known translation. If payload/staging changes,
+run the packaged lifecycle gate against the new stage. Report skipped gates
+and existing-stage limits explicitly; stub success proves no network workflow.
+No live Crowdin execution or shell gate is part of this boundary.
+
+**Next owners:** the overseer reports three unreconciled records; the supplied
+snapshot lists two. This work adds one more, so the reconciliation threshold
+is reached under either count. The maintainer must fold the actual tail first;
+the planner must then write the later bounded disable bet with these files,
+retained behavior, compatibility cost and gates. Actors must not implement
+from this disposition alone, reconcile, or edit state/plan. Qualification is
+complete; implementation and the separate delete dispatch remain pending.
