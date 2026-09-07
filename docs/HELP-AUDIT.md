@@ -86,6 +86,36 @@ whole deleted files are not M entries. Do not widen the change to Start, Test,
 Measure App, required Assembly publishers or retained Qt. A successful Help
 sequence counts as one whole-tree removal, not two because it has two commits.
 
+## Disable landed
+
+The disable commit is `a04ca822` (the forced-OFF cache entry, ledger and
+ROADMAP lines) and its ADR-217 entry is `504b46bc`. Both landed without a
+record node and without any gate output. The gates below ran two units later
+(iteration 31, 2026-09-07) on macOS, against those commits unchanged; the
+stale `build/{debug,release}/Mod/Help`, shared-install `Mod/Help` and
+bytecode listed under "Generated and installed state" were **already absent**
+when this unit began, so no quarantine was performed here and it is not known
+which of the two unrecorded units removed them.
+
+| Gate | Command | Result |
+|---|---|---|
+| Explicit ON over the Release cache | `pixi run sh -c 'CFLAGS= CXXFLAGS= cmake -S . -B build/release -DBUILD_HELP=ON'` | exit 0; `BUILD_HELP:BOOL=OFF` in the cache; 0 `Mod/Help` rules in `build.ninja`; no Help include in `src/Mod/cmake_install.cmake`; no `build/release/src/Mod/Help`; final report `BUILD_HELP: OFF` |
+| Explicit ON over the Debug cache | same with `-B build/debug` | same: OFF, 0 rules, no install include, report OFF |
+| Release build | `pixi run build-release` | exit 0, 690 Ninja steps |
+| Install and stage | `pixi run install-release`; `pixi run stage-engine` | both exit 0; no `Mod/Help` in `.pixi/envs/default/Mod` or in `build/engine/cadex-engine-0.0.0-macos-arm64/Mod` (Start and Test still install; the payload prunes them as before) |
+| Installed headless probe | `.pixi/envs/default/bin/FreeCADCmd -c` importing Help and the retained modules | `import Help` → `No module named 'Help'`; Measure, MassProperties, Part, Assembly, Sketcher, PartDesign, Mesh, MeshPart, Material import; no `Mod/Help` under the home path |
+| Full engine suite | `pixi run test-engine` | **2,022 passed, 52 skipped** in 267.6 s, exit 0 |
+| Cadex ctests | `pixi run ctest --test-dir build/release -R '^Cadex' --output-on-failure` | **4/4 passed** (CadexProjectRebuildDigest, CadexdLifecycle, CadexSubshapeEnumeration, CadexResponseSchemas), 18.4 s |
+| Serial inherited CTest | `pixi run ctest --test-dir build/release -j 1` | 162 failed of 1,537 run (1,544 registered, 8 skipped). By name: **0 failures outside `build/ctest_baseline_failures.txt`**; 2 baseline names absent (`SpreadsheetRenameProperty.renameProperty`, `DlgVersionMigrator_Tests_run`), both binaries deleted under ADR-214 |
+| Packaged lifecycle and licensing | `CADEX_ENGINE_ROOT=$PWD/build/engine/cadex-engine-0.0.0-macos-arm64 pixi run python -m pytest -q src/Mod/cadex/cadex_tests/test_licensing_compliance.py src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py` | **26 passed** in 18.1 s against the freshly staged payload, including committed-HEAD manifest equality |
+
+Logs are local under `/tmp/cadex-help-disable-*.log`. Not run: a
+fresh-cache configure (both real caches were exercised instead), and no
+Linux or Windows configuration. Manifest-scoped M metrics at these commits
+are FreeCAD 56 / 1,638 / 1,797 and Blender 44 / 1,046 / 129 — the disable
+adds six lines to an already-manifested file and reduces nothing yet. The
+delete commit remains a separate unit under "Separate disable, then delete".
+
 ## Evidence and limits
 
 Existing-payload check, after Measure deletion was committed:

@@ -19852,16 +19852,27 @@ modification notice covers the edit and manifest membership is unchanged.
 Measure App, the required Assembly publishers, retained App translations and
 QtCore/QtXml are untouched. Start and Test are not disabled by this commit.
 
-**Evidence.** The code landed in `a04ca822` without this entry; the gate
-evidence was completed and recorded in the following unit and is in
-`docs/HELP-AUDIT.md` §"Disable landed": OFF in both regenerated caches and a
-fresh explicit-ON configure; one release build; stale Help copies, generated
-install scripts and the shared install's Help sources, `Help_rc.py` and
-bytecode quarantined; install and stage with no `Mod/Help`; an installed
-headless probe with Help absent and Measure/Assembly intact; the full engine
-suite; the four cadex ctests; serial inherited CTest against the 164-failure
-baseline; and the fresh packaged lifecycle/licensing gate. Manifest-scoped
-FreeCAD M totals are 56 files / 1,638 inserted / 1,797 deleted against nt2
-start 47 / 1,804 / 1,907; this disable adds six lines, so the fork-delta
-criterion is not advanced by it. One whole-tree removal is complete only when
-the delete commit lands.
+**Evidence.** The code landed in `a04ca822` and this entry in `504b46bc`,
+both without a record node and without running a gate. The gates ran two
+units later (iteration 31, 2026-09-07); the commands and logs are in
+`docs/HELP-AUDIT.md` §"Disable landed". What actually ran: an explicit
+`-DBUILD_HELP=ON` reconfigure over each existing Release and Debug cache,
+both leaving `BUILD_HELP:BOOL=OFF`, no `Mod/Help` rule in either
+`build.ninja`, no Help include in `src/Mod/cmake_install.cmake` and the final
+report printing OFF; one release build (690 Ninja steps, exit 0), then
+`install-release` and `stage-engine`, with no `Mod/Help` in the shared install
+or the payload; an installed `FreeCADCmd` probe in which `import Help` fails
+while Measure, MassProperties, Part, Assembly, Sketcher, PartDesign, Mesh,
+MeshPart and Material import; the full engine suite (2,022 passed, 52
+skipped); the four Cadex ctests (4/4); serial inherited CTest (162 failed of
+1,537 run, every failure by name in the 164-name baseline, the two baseline
+names not present being test binaries deleted under ADR-214); and the packaged
+lifecycle/licensing gate against that fresh payload (26 passed, including
+committed-HEAD manifest equality). Not done: no fresh-cache configure was run,
+and no quarantine was performed, because the stale Help copies, install files
+and bytecode the audit listed were already absent when the unit began — which
+of the two unrecorded units removed them is not known. macOS only.
+Manifest-scoped FreeCAD M totals are 56 files / 1,638 inserted / 1,797 deleted
+against nt2 start 47 / 1,804 / 1,907; this disable adds six lines, so the
+fork-delta criterion is not advanced by it. One whole-tree removal is complete
+only when the delete commit lands.
