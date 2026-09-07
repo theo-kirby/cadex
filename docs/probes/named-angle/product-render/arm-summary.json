@@ -1,0 +1,225 @@
+{
+  "revision": "de0dae7f91cb701274254132f3855ae23b2e3d40085165c946233fad4e847cc6",
+  "digest": "8b676fdca572d644aba62da1171f0765ba907924b60af21db30d7205a8a5a32e",
+  "objects": {
+    "base": {
+      "source": "plate",
+      "placement": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "color": [
+        91,
+        157,
+        205
+      ],
+      "bounds_mm": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          60.0,
+          60.0,
+          6.0
+        ]
+      ]
+    },
+    "swing": {
+      "source": "arm",
+      "placement": [
+        1.0,
+        0.0,
+        0.0,
+        12.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        6.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "color": [
+        230,
+        151,
+        76
+      ],
+      "bounds_mm": [
+        [
+          12.0,
+          0.0,
+          6.0
+        ],
+        [
+          92.0,
+          8.0,
+          14.0
+        ]
+      ]
+    }
+  },
+  "triangles": 24,
+  "snapshot_bytes": 2602,
+  "approximation": "Opaque standard tessellation, initial solved pose; 512px pixel-center depth, flat lighting, no transparency, edges, dimensions or subpixel guarantees. Shell-only visibility is not carried by the protocol. Placed source copies are excluded; all other published triangle geometry is shown.",
+  "limits": {
+    "buffer_bytes": 33554432,
+    "triangles": 100000,
+    "vertices_per_source": 300000,
+    "placed_vertices": 600000,
+    "pixel_visits_per_view": 20000000,
+    "image_size": 512
+  },
+  "acquisition_seconds": 0.4908123330096714,
+  "views": {
+    "front": {
+      "projection_bounds_mm": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          92.0,
+          14.0
+        ]
+      ],
+      "pixel_visits": 101756,
+      "covered_pixels": 23678,
+      "basis": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          -1,
+          0
+        ]
+      ],
+      "path": "review/render/front.svg"
+    },
+    "top": {
+      "projection_bounds_mm": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          92.0,
+          60.0
+        ]
+      ],
+      "pixel_visits": 411044,
+      "covered_pixels": 91348,
+      "basis": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ]
+      ],
+      "path": "review/render/top.svg"
+    },
+    "right": {
+      "projection_bounds_mm": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          60.0,
+          14.0
+        ]
+      ],
+      "pixel_visits": 99540,
+      "covered_pixels": 23700,
+      "basis": [
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          0
+        ]
+      ],
+      "path": "review/render/right.svg"
+    },
+    "iso": {
+      "projection_bounds_mm": [
+        [
+          0.0,
+          -32.65986323710904
+        ],
+        [
+          84.85281374238569,
+          29.39387691339814
+        ]
+      ],
+      "pixel_visits": 1004750,
+      "covered_pixels": 75694,
+      "basis": [
+        [
+          0.7071067811865475,
+          0.7071067811865475,
+          0
+        ],
+        [
+          -0.4082482904638631,
+          0.4082482904638631,
+          0.8164965809277261
+        ],
+        [
+          0.5773502691896258,
+          -0.5773502691896258,
+          0.5773502691896258
+        ]
+      ],
+      "path": "review/render/iso.svg"
+    }
+  },
+  "render_seconds": 0.5268949999590404
+}

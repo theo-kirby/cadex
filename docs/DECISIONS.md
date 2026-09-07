@@ -20823,3 +20823,26 @@ visually inspected SVGs, and graph export/check. No product code changed and no
 zone suite/full build ran. Rendering, section views and their walk integration
 remain open; the stale local bundle remains a packaging observation to resolve
 before claiming an ordinary bundled run.
+
+
+**Product follow-up (2026-09-08).** `cadex render` now writes the four
+revision-bearing SVGs and a summary under `review/render/`. Replace the probe's
+centroid-order assumption with an independently authored per-pixel depth buffer;
+SVG wraps a lossless 512px PNG generated with the standard library. This avoids
+a graphics dependency and bounds image work, but does not claim analytic vector
+edges or subpixel visibility. Read and validate accepted buffers before another
+request can invalidate them, apply solved matrices once, suppress definition
+copies and expose component identities/bounds. Shell-only visibility is absent
+from the protocol and explicitly outside this review. Malformed/excessive inputs
+fail; limits include overdraw work, not just triangle count. No engine, protocol,
+payload or shell edit. Walk wiring and section views remain separate units.
+
+Verification: `cli/tests/test_render.py` covers crossing depth, complete occlusion,
+placement/rotation, buffer invalidation, malformed/empty/excessive input and
+real-engine arm, curved assembly and standalone part images, revision identity
+and project commits. Product images and measurements are retained in
+[the product render evidence](probes/named-angle/product-render/README.md).
+
+Final full CLI gate: 180 passed, zero skipped, 172.71 s; externally bounded
+at 900 s / 3 GiB for the suite, observed peak tree RSS 1,160,167,424 bytes
+with no cutoff. Graph export/check passed; no build was needed for CLI edits.

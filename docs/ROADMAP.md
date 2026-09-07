@@ -1973,7 +1973,11 @@ What makes them experimental, and what would settle it:
 - [x] **Named-angle headless rendering route probed** (ADR-239). Valid
   background blueprint calls refuse after accepted hydration; independent CPU
   tessellation projection produced and inspected front/top/right/iso SVGs.
-  Product rendering, section views and walk integration remain open.
+  The product render call follows below; section views and walk integration remain open.
+- [x] **Named-angle CPU render CLI** (ADR-239 follow-up). `cadex render`
+  writes revision-bearing front/top/right/iso SVGs and a summary in the
+  project. Bounded accepted buffers, solved placements and pixel depth;
+  real arm/curved assembly image tests. Walk wiring and sections remain open.
 - [x] **The agent can name what it assembled, headlessly** (ADR-236,
   `docs/CLI.md` §2). `cadex inventory` writes `docs/inventory.md` in the
   project: one row per component with the output it places, its catalog

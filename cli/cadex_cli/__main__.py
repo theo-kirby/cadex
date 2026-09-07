@@ -49,6 +49,7 @@ from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine
 from .export import ExportError, export_blueprints, export_outputs, parse_formats
 from .inventory import InventoryError, write_inventory
+from .render import write_render
 from .clearance import MAXIMUM_COMMON_VOLUME_MM3, MINIMUM_CLEARANCE_MM, write_clearance
 from .project_docs import (
     append_progress_row,
@@ -179,6 +180,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="The assembly output to inventory. A project publishes at most "
         "one, so this is only ever a check that you are looking at it.",
     )
+
+    render_parser = subparsers.add_parser(
+        "render", help="Write accepted front/top/right/iso views to review/render/.")
+    _common(render_parser, inherit=True)
 
     clearance_parser = subparsers.add_parser(
         "clearance", help="Check accepted assembly pairs; write docs/clearance.md.",
@@ -796,6 +801,16 @@ def command_export(args: argparse.Namespace, report: RunReport) -> int:
         return EXIT_OK
 
 
+def command_render(args: argparse.Namespace, report: RunReport) -> int:
+    with _engine_session(args, report) as (_engine, client):
+        path, value = write_render(client, report.project_root)
+        report.revision = report.accepted_revision = value["revision"]
+        report.digest = value["digest"] or ""
+        report.notes.append(f"render: {value['triangles']} triangles, four views; {path}.")
+        report.ok = True
+        return EXIT_OK
+
+
 def command_clearance(args: argparse.Namespace, report: RunReport) -> int:
     with _engine_session(args, report, restore=False) as (_engine, client):
         path, value = write_clearance(
@@ -1405,6 +1420,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_params(args, report)
         elif command == "export":
             code = command_export(args, report)
+        elif command == "render":
+            code = command_render(args, report)
         elif command == "clearance":
             code = command_clearance(args, report)
         elif command == "inventory":
@@ -1473,6 +1490,8 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
         return f"script --set {Path(args.source_file).name}"
     if command == "export":
         return f"export → {args.out}"
+    if command == "render":
+        return "render → review/render/ (front, top, right, iso)"
     if command == "clearance":
         return "clearance → docs/clearance.md"
     if command == "inventory":

@@ -52,6 +52,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex script` | Print the project script. | no |
 | `cadex script --set FILE` | Replace the script from a file and rebuild. | no |
 | `cadex export` | Rebuild the accepted script and write its outputs. | no |
+| `cadex render` | Rebuild accepted display and write front/top/right/iso SVG previews plus `review/render/summary.json`, bearing the full accepted revision (ADR-239). CPU only; no graphics runtime. | no |
 | `cadex clearance` | Write `docs/clearance.md` naming every component pair, labels and catalog ids, minimum distance (mm), common volume (mm³) and verdict. Reads published measurements at the initial solved pose with no rebuild or tokens; not a swept-motion check (ADR-237). Missing measurements remain unknown. Exit 0 means the report was written, not that all pairs are clear. | no |
 | `cadex inventory` | List the parts of the accepted assembly with catalog ids: one row per component with the output it places, its catalog family and part number where a `lib.*` generator built it, and the pose the solver settled on. Writes `docs/inventory.md` in the project (ADR-236). Reads the pinned accepted attempt — no rebuild. Resolves all inspection pages and previews, including catalog totals, uncatalogued names and large component rows. | no |
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
@@ -494,6 +495,43 @@ Progress goes to **stderr**; the report goes to **stdout**. `--json` is
 always safe to pipe. `cadex script` with no `--set` prints the script and
 nothing else, so `cadex script > model.py` works.
 
+
+### Named-angle review
+
+`./cadex render --project ./robot --json` writes `review/render/front.svg`,
+`top.svg`, `right.svg`, `iso.svg` and `summary.json`. These generated files
+are overwritten on success and included in the ordinary project commit.
+The JSON envelope and each SVG name the accepted revision; the summary also
+records digest, component/source names, colors, transformed bounds in mm,
+camera bases, projected bounds, coverage, limits and acquisition/render timing.
+A failed command must not be treated as a fresh report: old successful files
+can remain, and their revision identifies what they describe.
+
+Front looks along +Y with Z up; top along -Z with Y up; right along -X with
+Z up; iso views from (1,-1,1) with Z upright. Each orthographic view fits its
+own extent. Solved component matrices are applied once; unposed source
+outputs used by components are excluded. Other published triangle outputs
+are included. The protocol carries no shell-only visibility toggles, materials
+or transparency. These are initial-pose geometry previews, not the GUI scene.
+
+SVGs contain lossless 512×512 CPU images with pixel-center depth testing and
+flat directional lighting. Crossing triangles occlude per pixel; equal-depth
+ties follow sorted output/triangle order. Standard tessellation approximates
+curves. Thin/subpixel features can disappear; no dimensions, analytic edges,
+transparency, smooth shading or engineering-drawing accuracy is promised.
+Limits are 4,096 display entries, 32 MiB total binary/sidecar input, 4 MiB per
+sidecar, 300,000 vertices per source, 600,000 placed vertices, 100,000 placed triangles and 20 million
+bounding-box pixel visits **per view**, including overdraw. Excessive, missing
+or malformed buffers, missing solved poses and empty geometry fail explicitly.
+Dense assemblies can exceed the pixel budget even below the triangle cap.
+
+The CLI snapshots buffers while holding its project lock, before any further
+engine request can invalidate attempt paths. The shell does not share this
+lock: follow the documented GUI-attached coordination rules. Read failures
+are refusals, never a fallback to guessed poses. This call is separate from
+`cadex walk`; adding its artifacts to walk review and implementing sections
+remain open.
+
 ## 3. The `--json` envelope
 
 ```json
@@ -571,6 +609,7 @@ cli/cadex_cli/
   mcp.py               the MCP stdio server `claude` spawns
   agent.py             one `claude -p` turn; the system prompt
   export.py            STEP/STL/BREP out of the display block; the rest copied
+  render.py            accepted tessellation -> depth-tested named-angle SVG previews
   clearance.py         inspect scope=clearance -> docs/clearance.md; read-time thresholds
   inventory.py         inspect scope=inventory -> the project's docs/inventory.md
   train.py             the offboard trainer as a subprocess, local or remote
