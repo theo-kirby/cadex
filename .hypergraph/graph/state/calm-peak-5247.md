@@ -38,6 +38,8 @@ Noted, not chased [rec: keen-sail-4481] [rec: odd-fern-7024] [rec: sunny-fern-80
 
 **The GUI-mode scaffold matches the corrected walk guidance** (ADR-201): `ARCHITECTURE.md`'s Training section is pinned to `docs/CLI.md` by `cli/tests/test_project_docs.py`. It requires Rebuild Model or reopening after CLI acceptance and before the next GUI edit, explaining that the shell's automatic retry can silently overwrite accepted script or parameter values. GUI use is documented, not exercised [rec: red-comet-9710] [rec: grand-fjord-0624].
 
+**Walk review now includes inventory.** After rollout, the existing reader writes `docs/inventory.md` and an inventory block in `review.json` containing availability, component and catalogued counts, and the project-relative report path; both reports join the project commit. Real arm/carriage tests and local versus remote-flag CPU stand-in parity cover this, with no GUI or actual remote dispatch. No assembly is explicitly unavailable at the review boundary without relaxing walk prerequisites. Full CLI gate: 150 passed, no skips; the documented hinged-arm run completed in 14.39 s with two uncatalogued components and verified rollout reward -27.109384220927513. This is bounded toy pipeline evidence, not control-quality qualification [rec: happy-dune-3481].
+
 ## Negative knowledge
 
 - [scope: a parameter sweep on a project with a policy declared, without the switch convention | confidence: high | evidence: sweet-light-3396, keen-sail-4481] `cadex params --set` is refused at exit 3 when the change moves the task digest, because the declared policy no longer fits, and nothing is written. Iterate cannot be a plain sweep; the ADR-192 answer is a script that declares the policy behind a `policy_on` switch the sweep blanks. A `params --drop-policy` flag and an engine op were considered and not taken.
@@ -64,3 +66,5 @@ Noted, not chased [rec: keen-sail-4481] [rec: odd-fern-7024] [rec: sunny-fern-80
 - red-comet-9710 — ADR-201: GUI-attached walk and lock scope documented; scaffold/doc wording pinned; false shell file-tools claim corrected
 - grand-fjord-0624 — corrects ADR-201: retry can silently overwrite CLI acceptance; refresh required before GUI edits; 137 CLI tests and 15 final scaffold tests passed
 - sage-peak-2689 — unchanged walk qualified on slider/force and revolute/torque mechanisms; reward definitions separated and reproduction examples versioned
+
+- happy-dune-3481 — inventory report, availability/count/path review block and project commit wired into the walk; bounded documented hinged-arm run passes
