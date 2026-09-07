@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-09-07
+Verified against source: 2026-09-08
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -1945,6 +1945,10 @@ What makes them experimental, and what would settle it:
   before the next GUI edit. The in-app agent has no shell or file tool;
   project docs stay the CLI's and a person's. **GUI not exercised.**
   *Three modes, one shape* is headless exercised, remote scripted, GUI documented.
+- [x] **Inventory resolves large inspection previews** (ADR-236 follow-up).
+  Page catalog totals and uncatalogued outputs as well as components; expand
+  previewed rows and their fields before rendering. Regression uses the real
+  inspection pager with 60 catalog entries and names over the 1 KiB budget.
 - [x] **The agent can name what it assembled, headlessly** (ADR-236,
   `docs/CLI.md` §2). `cadex inventory` writes `docs/inventory.md` in the
   project: one row per component with the output it places, its catalog

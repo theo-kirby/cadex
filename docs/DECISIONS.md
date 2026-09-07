@@ -20667,3 +20667,17 @@ it, and asserts the rendered doc names `bolt m3x12-socket`,
 asks for render-from-named-angles, a section view and a clearance and
 intersection check. Those are three more units; this is the one that had a
 join already waiting to be made.
+
+**2026-09-08 follow-up — complete inventory paging (critic fix).** Replace
+the component-only paging loop with one reader that follows preview pointers
+and page offsets for mappings, lists and strings. Catalog totals and
+uncatalogued sources can exceed the same 1 KiB budget as components, and a
+component row can itself be a preview. Rendering a catalog preview previously
+raised `ValueError` on `/catalog_counts`; large rows silently lost their names.
+The CLI regression uses `CadexInspection._bounded_page` with 60 distinct
+catalog ids and oversized component/output names, and checks complete rows,
+counts and names. Both cases fail on the old reader. No engine, protocol or
+payload change; the lifecycle walk and its scaffold are unchanged.
+
+Verification: inventory tests 5 passed (including real-engine checks); full
+CLI gate 147 passed, no skips or failures.

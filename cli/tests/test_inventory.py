@@ -140,3 +140,64 @@ def test_a_component_with_no_catalog_row_still_gets_a_row() -> None:
     # An unsolved or artifact-less component reports em dashes rather than
     # inventing a pose or a volume.
     assert "| `bolt` | `m3` | bolt `m3x12-socket` | — | — |" in text
+
+
+@pytest.mark.parametrize("large_rows", [False, True])
+def test_inventory_expands_real_inspection_previews(monkeypatch, tmp_path, large_rows):
+    """Exercise the engine's 1 KiB previews and 50-entry pages, not a mock pager."""
+    from conftest import SOURCE_MODULE_DIR
+
+    monkeypatch.syspath_prepend(str(SOURCE_MODULE_DIR))
+    import CadexInspection
+    from cadex_cli.inventory import write_inventory
+
+    suffix = "x" * 1400 if large_rows else ""
+    rows = [
+        {
+            "component": f"component_{i:02d}{suffix}",
+            "source_output": f"output_{i:02d}",
+            "catalog": {"family": "bolt", "part_number": f"catalog-part-{i:02d}"},
+            "placement": {"position_mm": [1.0, 2.0, 3.0]},
+            "source_facts": {"volume_mm3": 10.0},
+        }
+        for i in range(60)
+    ]
+    raw = {
+        "ok": True,
+        "revision": "f" * 64,
+        "assembly": "asm",
+        "components": rows,
+        "catalog_counts": {f"bolt/catalog-part-{i:02d}": i + 1 for i in range(60)},
+        "uncatalogued_sources": [f"hand_modelled_output_{i:02d}{suffix}" for i in range(60)],
+    }
+    calls = []
+
+    class Client:
+        def request(self, op, arguments):
+            assert op == "inspect"
+            assert arguments["scope"] == "inventory"
+            assert arguments["target"] == "asm"
+            calls.append(arguments)
+            return CadexInspection._bounded_page(raw, {"limit": 50, **arguments})
+
+    preview = Client().request("inspect", {"scope": "inventory", "target": "asm"})
+    for key in ("components", "catalog_counts", "uncatalogued_sources"):
+        assert preview["value"][key]["inspect_path"] == f"/{key}"
+    if large_rows:
+        page = CadexInspection._bounded_page(raw, {"path": "/components", "limit": 50})
+        assert page["value"][0]["inspect_path"] == "/components/0"
+
+    path, value = write_inventory(Client(), tmp_path, target="asm")
+    text = path.read_text(encoding="utf-8")
+    assert "60 component(s)" in text
+    for row in rows:
+        assert f'| `{row["component"]}` | `{row["source_output"]}` |' in text
+        assert f'bolt `{row["catalog"]["part_number"]}` | 1.000, 2.000, 3.000 | 10.000 |' in text
+    for key, count in raw["catalog_counts"].items():
+        assert f"- `{key}` × {count}\n" in text
+    for name in raw["uncatalogued_sources"]:
+        assert f"- `{name}`\n" in text
+    for key in ("components", "catalog_counts", "uncatalogued_sources"):
+        assert value[key] == raw[key]
+        assert any(call.get("path") == f"/{key}" and call.get("offset", 0) > 0
+                   for call in calls)

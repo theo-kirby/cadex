@@ -129,42 +129,51 @@ def _ask(client: Any, arguments: Mapping[str, Any]) -> dict[str, Any]:
     return dict(reply)
 
 
-def read_inventory(client: Any, *, target: str = "") -> dict[str, Any]:
-    """The whole inventory, however many pages its component list is.
+def _read_path(client: Any, base: Mapping[str, Any], path: str) -> Any:
+    """Join bounded pages and recursively resolve their preview pointers."""
 
-    The summary comes back whole; ``components`` arrives as a preview stub
-    the moment the list outgrows the per-key preview budget, which is the
-    ordinary ``inspect`` contract and the reason this pages ``/components``
-    rather than trusting the first reply.
-    """
+    def expand(value: Any) -> Any:
+        if isinstance(value, Mapping):
+            pointer = value.get("inspect_path")
+            if isinstance(pointer, str) and value.get("type") in {"object", "array", "string"}:
+                return _read_path(client, base, pointer)
+            return {key: expand(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [expand(item) for item in value]
+        return value
+
+    result = None
+    offset = 0
+    while True:
+        reply = _ask(client, {**base, "path": path, "offset": offset, "limit": _PAGE_LIMIT})
+        value = expand(reply.get("value"))
+        if offset == 0:
+            result = value
+        elif isinstance(result, dict):
+            result.update(value)
+        elif isinstance(result, list):
+            result.extend(value)
+        else:
+            result += value  # Strings are paged by character offset.
+        next_offset = (reply.get("page") or {}).get("next_offset")
+        if not isinstance(next_offset, int) or next_offset <= offset:
+            return result
+        offset = next_offset
+
+
+def read_inventory(client: Any, *, target: str = "") -> dict[str, Any]:
+    """Read all inventory pages, including summaries and previewed row fields."""
 
     base: dict[str, Any] = {"scope": "inventory"}
     if target:
         base["target"] = target
-    value = _ask(client, base).get("value")
+    value = _read_path(client, base, "")
     if not isinstance(value, Mapping):
         raise InventoryError("inspect scope=inventory returned no value.")
     if value.get("ok") is False:
         raise InventoryError(str(value.get("error") or "no accepted revision."))
     result = dict(value)
-    components: list[dict[str, Any]] = []
-    offset = 0
-    while True:
-        reply = _ask(
-            client,
-            {**base, "path": "/components", "offset": offset, "limit": _PAGE_LIMIT},
-        )
-        page_value = reply.get("value")
-        if isinstance(page_value, list):
-            components.extend(
-                dict(item) for item in page_value if isinstance(item, Mapping)
-            )
-        next_offset = (reply.get("page") or {}).get("next_offset")
-        if not isinstance(next_offset, int) or next_offset <= offset:
-            break
-        offset = next_offset
-    result["components"] = components
-    result["component_count"] = len(components)
+    result["component_count"] = len(result.get("components") or [])
     return result
 
 
