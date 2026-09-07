@@ -863,6 +863,9 @@ Not a phase that "completes" — a standing mode of work.
 - [x] Audit all 56 surviving FreeCAD modifications (2026-09-07, ADR-227,
       `docs/SURVIVING-DIFF-AUDIT.md`); qualify only the redundant JointObject
       Preferences import guard with a GUI-denied retained-behavior probe.
+- [x] Remove only the qualified Preferences guard (2026-09-07, ADR-227);
+      retain headless solver dispatch and all Qt/Coin guards. Verification
+      and separate surviving-diff measures: `SURVIVING-DIFF-AUDIT.md`.
 - [ ] Remove that qualified guard and run fresh implementation gates;
       expected saving is three inserted lines, with no file-count change.
 - [ ] Engine side: Phase 8's audited GUI directory boundary is deleted

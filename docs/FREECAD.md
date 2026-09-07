@@ -139,8 +139,10 @@ live at the root: `NOTICE` and `THIRD_PARTY_LICENSES.md`.
 
 **Surviving modification audit (2026-09-07, ADR-227).**
 [SURVIVING-DIFF-AUDIT.md](SURVIVING-DIFF-AUDIT.md) inventories all 56 FreeCAD
-M entries and qualifies only JointObject's redundant Preferences import guard.
-No source changes landed in the audit; the broader reduction remains open.
+M entries; the qualified JointObject Preferences guard removal has landed.
+FreeCAD M totals fall from 56/1637/1819 to 56/1634/1819; inherited remaining
+stays 3434. Manifest membership and ledger-only notice remain accurate.
+The broader reduction remains open; the audit records verification.
 
 
 **Microsoft GSL tail removed (2026-09-07, ADR-222).** Start was its only

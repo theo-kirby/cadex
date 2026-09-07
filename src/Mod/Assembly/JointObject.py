@@ -76,10 +76,7 @@ except ImportError:
 # engine builds GUI-off, cadex ADR-022), so a coin ImportError silently
 # turned Preferences into None and every joint failed to derive connector
 # frames. Preferences.py carries the same warning about its own GUI import.
-try:
-    import Preferences
-except ImportError:
-    Preferences = None
+import Preferences
 
 translate = App.Qt.translate
 

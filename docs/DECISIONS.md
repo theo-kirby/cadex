@@ -20253,3 +20253,17 @@ FreeCAD remains 56/1637/1819 M files/inserted/deleted with 3434 inherited files
 remaining; the proposed change saves three inserted lines only. Existing
 packaged lifecycle/licensing: 26 passed. Broader fork-delta and GUI-source
 claims remain open; no Windows launcher or formatter change is authorized.
+
+**Implementation (2026-09-07).** Replace exactly the four-line Preferences
+wrapper with `import Preferences`; retain the explanation, Qt/Coin guards and
+Preferences.py. No usable fallback or supported feature is removed. A broken
+installation now fails at import. FreeCAD M totals are 56/1634/1819 and 3434
+inherited files remaining; Blender stays 44/1046/129 and 19052. Manifest
+membership and ledger-only notice are unchanged. The GUI-denied dispatch
+probe passes on tracked and staged modules; one release build/install and
+local stage pass, and fresh packaged lifecycle/licensing passes all 26 tests,
+including the real jointed assembly. CTest reports 162 failures, all in the
+164-name baseline (the retired DlgVersionMigrator and SpreadsheetRenameProperty
+cases are absent). Full source-suite evidence is in SURVIVING-DIFF-AUDIT.md.
+Broader reduction claims stay open; no GUI, Windows or relocatable-release
+verification is claimed.

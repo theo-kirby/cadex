@@ -3,10 +3,9 @@
 Verified against source: 2026-09-07
 
 [Cadex-new] ADR-227; audit baseline `870150b8`, after the Material and Main
-subsets. This unit changes documentation only. The selected implementation
-boundary is the four-line Preferences import guard in
-`src/Mod/Assembly/JointObject.py:79`, replaced by `import Preferences`.
-Keep its surrounding explanation, all Qt/Coin guards, and Preferences.py intact.
+subsets. The subsequent implementation removes only the four-line Preferences
+import guard in `src/Mod/Assembly/JointObject.py:79`, replacing it with `import Preferences`.
+Its surrounding explanation, all Qt/Coin guards, and Preferences.py remain intact.
 
 ## Measurement and finite scope
 
@@ -22,10 +21,10 @@ manifest-scoped M measurements as the existing ledger, not a rename audit.
 |---|---:|---:|---:|---:|
 | FreeCAD nt2 start `7dd3d045` | 47 | 1804 | 1907 | 7277 |
 | FreeCAD audit HEAD | 56 | 1637 | 1819 | 3434 |
-| FreeCAD proposed guard removal | 56 | 1634 | 1819 | 3434 |
-| Blender start, HEAD and proposed | 44 | 1046 | 129 | 19052 |
+| FreeCAD implemented guard removal | 56 | 1634 | 1819 | 3434 |
+| Blender start, audit and implementation | 44 | 1046 | 129 | 19052 |
 
-Actual delta this audit: zero. Proposed delta: 0 M files, -3 inserted,
+Documentation audit delta: zero. Implementation delta: 0 M files, -3 inserted,
 0 deleted, 0 inherited remaining. JointObject alone changes from 42/5 to
 39/5 inserted/deleted. Its ledger-only notice remains valid; manifest membership
 is unchanged. Neither the broader fork-delta nor GUI-source criterion closes.
@@ -170,5 +169,38 @@ src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py`: **26 passed in 14.19 s**,
 exit 0. Local output: `/tmp/cadex-50-packaged.log`; import/dispatch output:
 `/tmp/cadex-50-probe.log`. No full build, install/stage, full engine suite,
 full inherited CTest or GUI execution in this documentation-only audit.
-Next actor unit may implement exactly the qualified guard removal, subject to
-the checks above. Do not widen it to other guards, comments or GUI classes.
+The qualified guard removal is implemented. Verification follows below; other
+guards, comments and GUI classes are unchanged.
+
+## Implementation verification (2026-09-07)
+
+Only the qualified Preferences guard changed in inherited code. Repeated the
+probe above on tracked source (without the candidate substitution), then on
+staged Assembly modules, both under `pixi run FreeCADCmd`: GUI imports denied,
+Preferences present, coin=None, solver calls `[False, True]` with no further
+call when disabled. Both exited 0; this probe uses the installed FreeCADCmd,
+while the lifecycle gate below runs the staged engine itself.
+
+`pixi run build-engine` completed one release build plus install, and
+`pixi run stage-engine` completed. Source and staged JointObject.py compare
+byte-for-byte equal. Stage-only reports external library paths by design;
+this is local verification, not a relocatable release. The same packaged
+command as above on this **fresh** payload passed **26 tests in 18.67 s**,
+including `test_cadexd_solves_a_jointed_assembly` and simulation/rollout cases.
+
+`pixi run test-release`: **162 failures out of 1526 run**, 148.93 s, exit 8.
+Comparing failure names (including SEGFAULT entries, excluding disabled/skipped
+lists) against `build/ctest_baseline_failures.txt`: **zero new failures**;
+162 of 164 baseline names remain. The already-retired DlgVersionMigrator and
+SpreadsheetRenameProperty cases are absent; this change did not fix them.
+
+Local logs: `/tmp/cadex-51-{probe,staged-probe,build,stage,packaged,ctest}.log`
+and `/tmp/cadex-51-ctest-comparison.txt`. No shell or GUI run, Windows check,
+formatter-policy change or further reduction was attempted. No installed
+pre-commit hook requires a broader formatting change. Manifest membership and
+its JointObject ledger-only notice remain accurate; the table separates actual
+surviving M savings from unchanged inherited-file counts.
+
+Full source gate: `pixi run python -m pytest -q src/Mod/cadex/cadex_tests`
+passed **2023 tests, 52 skipped in 272.43 s**, exit 0; output is in
+`/tmp/cadex-51-engine.log`. Skips are not claimed as verification.
