@@ -51,6 +51,7 @@ from .engine import Engine, EngineError, resolve_engine
 from .export import ExportError, export_blueprints, export_outputs, parse_formats
 from .inventory import InventoryError, write_inventory
 from .render import write_render
+from .section import write_section
 from .clearance import MAXIMUM_COMMON_VOLUME_MM3, MINIMUM_CLEARANCE_MM, write_clearance
 from .project_docs import (
     append_progress_row,
@@ -185,6 +186,10 @@ def build_parser() -> argparse.ArgumentParser:
     render_parser = subparsers.add_parser(
         "render", help="Write accepted front/top/right/iso views to review/render/.")
     _common(render_parser, inherit=True)
+    section_parser = subparsers.add_parser("section", help="Cut accepted geometry through a named world plane.")
+    _common(section_parser, inherit=True)
+    section_parser.add_argument("--plane", choices=("XY", "XZ", "YZ"), required=True)
+    section_parser.add_argument("--offset-mm", type=float, default=0.0)
 
     clearance_parser = subparsers.add_parser(
         "clearance", help="Check accepted assembly pairs; write docs/clearance.md.",
@@ -812,6 +817,16 @@ def command_render(args: argparse.Namespace, report: RunReport) -> int:
         return EXIT_OK
 
 
+def command_section(args: argparse.Namespace, report: RunReport) -> int:
+    with _engine_session(args, report) as (_engine, client):
+        path, value = write_section(client, report.project_root, plane=args.plane, offset=args.offset_mm)
+        report.revision = report.accepted_revision = value["revision"]
+        report.digest = value["digest"] or ""
+        report.notes.append(f"section: {value['status']}; {path}.")
+        report.ok = True
+        return EXIT_OK
+
+
 def command_clearance(args: argparse.Namespace, report: RunReport) -> int:
     with _engine_session(args, report, restore=False) as (_engine, client):
         path, value = write_clearance(
@@ -1433,6 +1448,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_params(args, report)
         elif command == "export":
             code = command_export(args, report)
+        elif command == "section":
+            code = command_section(args, report)
         elif command == "render":
             code = command_render(args, report)
         elif command == "clearance":
@@ -1503,6 +1520,8 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
         return f"script --set {Path(args.source_file).name}"
     if command == "export":
         return f"export → {args.out}"
+    if command == "section":
+        return f"section → review/section/ ({args.plane}, {args.offset_mm:g} mm)"
     if command == "render":
         return "render → review/render/ (front, top, right, iso)"
     if command == "clearance":

@@ -129,7 +129,7 @@ def snapshot(reply):
                 continue
             color = PALETTE[len(objects) % len(PALETTE)]
             triangles.extend((color, tuple(points[i] for i in tri)) for tri in indices)
-            objects[name] = {'source': source, 'placement': matrix, 'color': color,
+            objects[name] = {'triangles': len(indices), 'source': source, 'placement': matrix, 'color': color,
                              'bounds_mm': [[fn(p[j] for p in points) for j in range(3)]
                                            for fn in (min, max)]}
     except (OSError, KeyError, TypeError, ValueError, struct.error) as exc:

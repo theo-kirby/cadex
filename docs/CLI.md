@@ -52,6 +52,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex script` | Print the project script. | no |
 | `cadex script --set FILE` | Replace the script from a file and rebuild. | no |
 | `cadex export` | Rebuild the accepted script and write its outputs. | no |
+| `cadex section --plane XY --offset-mm 8` | Cut accepted tessellation through a world plane; revision-bearing SVG and JSON under `review/section/` (ADR-240). | no |
 | `cadex render` | Rebuild accepted display and write front/top/right/iso SVG previews plus `review/render/summary.json`, bearing the full accepted revision (ADR-239). CPU only; no graphics runtime. | no |
 | `cadex clearance` | Write `docs/clearance.md` naming every component pair, labels and catalog ids, minimum distance (mm), common volume (mm³) and verdict. Reads published measurements at the initial solved pose with no rebuild or tokens; not a swept-motion check (ADR-237). Missing measurements remain unknown. Exit 0 means the report was written, not that all pairs are clear. | no |
 | `cadex inventory` | List the parts of the accepted assembly with catalog ids: one row per component with the output it places, its catalog family and part number where a `lib.*` generator built it, and the pose the solver settled on. Writes `docs/inventory.md` in the project (ADR-236). Reads the pinned accepted attempt — no rebuild. Resolves all inspection pages and previews, including catalog totals, uncatalogued names and large component rows. | no |
@@ -508,6 +509,33 @@ always safe to pipe. `cadex script` with no `--set` prints the script and
 nothing else, so `cadex script > model.py` works.
 
 
+### Named-plane section review
+
+`./cadex section --project ./robot --plane XY --offset-mm 8 --json`
+writes `review/section/<accepted-revision>/XY-8/section.svg` and
+`summary.json`, and commits both with a PROGRESS row. XY means z=offset,
+XZ means y=offset, YZ means x=offset, in world millimetres. The JSON carries
+accepted revision/digest, solved object placements, closed planar contours,
+units, approximation, limits and separate acquisition/section timings.
+
+This is a cut of the accepted standard tessellation, not an exact BREP section
+or a projected silhouette. SVG fills each object's contours using even-odd
+parity so interior cavities remain holes; objects are not boolean-unioned.
+Endpoints snap to a 1e-6 mm grid. `status: ok` means closed cut contours;
+`empty` means no triangles meet the plane; `unsupported` (`available: false`)
+means a vertex/edge/face contact within tolerance or an open, branched,
+duplicate or collapsed cut. Per-object reasons remain in JSON. Move the plane
+slightly for a degenerate contact. This does not certify solid validity or
+absence of self-intersections. Unsupported reports can show other objects'
+valid cuts and are visibly labeled unsupported, never complete geometry.
+
+All three statuses are successful *reports* (exit 0); inspect `status` before
+using geometry. Rebuild, revision, malformed input, work-budget and write
+failures return nonzero and never reinterpret old artifacts as current success.
+The renderer's accepted-buffer/triangle/placement budgets apply. An absent
+model is an error, distinct from an empty cut of a model. The walk's section
+block remains unavailable until the separate integration unit lands.
+
 ### Named-angle review
 
 `./cadex render --project ./robot --json` writes `review/render/front.svg`,
@@ -541,8 +569,7 @@ The CLI snapshots buffers while holding its project lock, before any further
 engine request can invalidate attempt paths. The shell does not share this
 lock: follow the documented GUI-attached coordination rules. Read failures
 are refusals, never a fallback to guessed poses. `cadex walk` reuses this renderer in its review session, checks the rollout
-revision and commits views under a revision directory. Named-plane sections
-remain open.
+revision and commits views under a revision directory. Named-plane sections are available above; their walk integration remains open.
 
 ## 3. The `--json` envelope
 

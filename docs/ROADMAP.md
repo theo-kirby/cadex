@@ -1978,6 +1978,10 @@ What makes them experimental, and what would settle it:
   writes revision-bearing front/top/right/iso SVGs and a summary in the
   project. Bounded accepted buffers, solved placements and pixel depth;
   real arm/curved assembly image tests. Walk wiring follows below; sections remain open.
+- [x] **Named-plane tessellation section CLI** (ADR-240). World XY/XZ/YZ
+  cuts write revision-bearing SVG/JSON with closed contours and cavity fills,
+  solved placements, offsets, explicit empty/unsupported statuses and limits.
+  Real-kernel cavity/rotation tests; walk integration remains a separate unit.
 - [x] **Walk review commits named-angle previews** (ADR-239 follow-up).
   One review session snapshots accepted display before inventory/clearance,
   checks rollout revision, commits four SVGs and summary under that revision,

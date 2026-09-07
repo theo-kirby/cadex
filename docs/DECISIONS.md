@@ -20855,3 +20855,27 @@ committed with project docs. This removes the manual render leg; acquisition,
 rasterization and total entry-point time are separate fields. Render failures
 remain command failures, and sections remain explicitly unavailable. No engine,
 protocol, payload, graphics runtime or training dependency changes.
+
+
+## ADR-240 — Named-plane sections cut accepted tessellation (2026-09-08)
+
+Use the existing bounded world-space display snapshot for `cadex section`.
+The headless contract has no exact section operation; adding one would cross
+engine/protocol/payload boundaries for a review that can explicitly qualify its
+approximation. Closed cut contours become even-odd filled SVG paths per object,
+preserving cavities without introducing a triangulation or graphics dependency.
+One small snapshot metadata field counts each object's triangles; no engine,
+shell or protocol changes. This is independently authored LGPL client code.
+
+Conservatively report unsupported for near-plane vertices, open/branched cuts,
+duplicate or grid-collapsed segments; an outside cut is empty, while acquisition,
+revision and invalid-input failures remain errors. The 1e-6 mm endpoint grid and
+standard tessellation limits are explicit, as is the lack of solid-validity or
+self-intersection certification. Revision/plane/offset directories preserve
+other reviews. This delivers only the CLI; walk integration and full two-model
+review evidence remain separate units before the headless-review criterion closes.
+
+Verification: analytic box cuts in all planes, cavity contours and offsets,
+open/degenerate contacts, refusal with retained old files; real-kernel rotated
+and translated bored block, revision/digest and committed artifacts. Full CLI
+gate and retained output inspection are reported in the unit's record.
