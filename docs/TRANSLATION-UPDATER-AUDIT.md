@@ -215,3 +215,49 @@ the planner must then write the later bounded disable bet with these files,
 retained behavior, compatibility cost and gates. Actors must not implement
 from this disposition alone, reconcile, or edit state/plan. Qualification is
 complete; implementation and the separate delete dispatch remain pending.
+
+
+## GUI-writer disable implementation (2026-09-07)
+
+The maintainer reconciliation and planner bet `damp-sand-1115` have landed,
+satisfying the handoff above. Apply/install now ends after applyTranslations;
+updateTranslator reports retirement without calling status. The helper and
+exclusive PySide import remain for the separate delete commit. The earlier
+inventory describes the audited revision; all other listed behavior remains.
+Only src/Tools/updatecrowdin.py changes inherited source: +1/-12 lines against
+the previous HEAD, zero whole files removed. Existing notice and manifest
+membership remain accurate. Surviving FreeCAD M files/inserted/deleted are
+56/1635/1832 (previously 56/1634/1820); Blender stays 44/1046/129.
+
+Offline tests stub PySide, credentials, service and GUI writer before running
+the original AST dispatch. Synthetic filesystem tests use only pytest's temp
+directory, including App/Base copies without QM generation, Swedish filenames,
+archive extraction and Tux QRC insertion/idempotence. No live credentials,
+Crowdin call or repository resource write occurs. Eleven tests pass; running
+the same tests against the previous source yields exactly three failures
+(retired command, apply, install), with eight retained-behavior tests passing.
+
+The single `pixi run build-release` passed. All 78 App/Base TS files are
+byte-identical to pre-change HEAD; the generated App_translation.qrc references
+76 existing QM files. Installed `pixi run FreeCADCmd -c` with a headless
+PySide6 QCoreApplication loads App_de.qm, translates QObject/Unnamed to
+Unbenannt, removes translators and restores Unnamed. A bare pixi Python
+FreeCAD import initially exited 139; FreeCADCmd without a QCoreApplication
+returned false from installTranslator. The successful probe explicitly creates
+the required headless Qt application; it launches no GUI and changes no code.
+No install, payload staging, packaged lifecycle or shell gate ran: this updater
+has no build/install rule, and existing payload freshness is not claimed.
+
+Inherited `pixi run test-release` exits 8: 162 failures of 1526 enabled tests
+in 133.10 seconds, zero new failing names against the 164-name baseline.
+The two absent baseline tests are the already-retired DlgVersionMigrator and
+SpreadsheetRenameProperty; seven disabled and three skipped tests are not
+failures. Licensing initially caught the new test's missing SPDX line; adding
+the LGPL-2.1-or-later declaration resolves it (combined isolated/licensing:
+21 passed, 1 packaged-license skip). Manifest membership requires no edit.
+
+Full engine suite: `pixi run python -m pytest src/Mod/cadex/cadex_tests`
+passes **2034 passed, 52 skipped in 258.56 seconds**. Licensing/manifest
+checks are repeated at committed HEAD after the single work commit; their
+pre-commit result is 10 passed, 1 packaged-license skip. The separate delete
+unit remains conditional on that committed-HEAD check passing.

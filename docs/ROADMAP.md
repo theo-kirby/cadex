@@ -887,6 +887,11 @@ Not a phase that "completes" — a standing mode of work.
       compatibility cost and separate disable/delete gates are recorded in
       TRANSLATION-UPDATER-AUDIT.md. Maintainer reconciliation and a later
       planner bet are required before either implementation stage.
+- [x] Disable only the translation updater's deleted GUI writer dispatch
+      (2026-09-07, ADR-232); preserve App/Base installation and retain the
+      helper/PySide import for the separate delete stage.
+- [ ] Separately delete updateTranslatorCpp and its exclusive PySide import
+      after committed disable evidence passes (ADR-232).
 - [ ] Engine side: Phase 8's audited GUI directory boundary is deleted
       (ADR-214); broader residual GUI-lineage source remains open. Further
       candidates: Help is deleted (ADR-217, ADR-218);

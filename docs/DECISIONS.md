@@ -20424,3 +20424,19 @@ retain the retired-command diagnostic after delete. No implementation is
 authorized by this disposition. The unreconciled tail has reached the threshold:
 maintainer reconciliation, then a later planner bet, must precede implementation.
 No new audit, whole-updater removal, source change or fork-delta saving.
+
+
+**GUI-writer disable (2026-09-07).** After reconciliation and planner bet
+`damp-sand-1115`, remove only apply/install's updateTranslatorCpp tail and
+replace updateTranslator dispatch with an explicit retirement diagnostic,
+without requesting progress. Keep credential/project startup, the helper,
+PySide import and every other command/resource path. External maintenance
+users lose GUI registration; direct helper imports still work until the
+separate delete stage. No App/Base or Qt removal and no whole-file saving.
+Isolated regressions cover both disabled paths and retained commands,
+App/Base TS copies, Swedish mapping and synthetic archive/QRC handling.
+Three regressions fail on the old source; all eleven pass after disable.
+Per-stage build, suite and translation evidence is recorded in
+TRANSLATION-UPDATER-AUDIT.md. The existing notice/manifest membership is
+unchanged; surviving FreeCAD M files/inserted/deleted are 56/1635/1832,
+versus 56/1634/1820 before this unit. Blender remains 44/1046/129.

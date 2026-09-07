@@ -639,20 +639,9 @@ if __name__ == "__main__":
             item["languageId"] for item in status if item["translationProgress"] > THRESHOLD
         ]
         applyTranslations(languages)
-        print("Updating Translator.cpp...")
-        for ln in languages:
-            updateTranslatorCpp(ln)
 
     elif command == "updateTranslator":
-        print("retrieving list of languages...")
-        status = updater.status()
-        status = sorted(status, key=lambda item: item["translationProgress"], reverse=True)
-        languages = [
-            item["languageId"] for item in status if item["translationProgress"] > THRESHOLD
-        ]
-        print("Updating Translator.cpp...")
-        for ln in languages:
-            updateTranslatorCpp(ln)
+        print("updateTranslator is retired: the GUI Translator.cpp was removed.")
 
     elif command == "gather":
         import updatets
