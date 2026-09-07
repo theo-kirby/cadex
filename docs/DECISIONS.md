@@ -20299,3 +20299,15 @@ criteria stay open; no inherited files, protocol or payload changed.
 Full headless `pixi run gate`: exit 0, `ok: true`, bundled engine, 372/372
 picks, slider median 0.527 s (bar 0.65), one object on reopen. Source startup
 code was reloaded by the suite; no build or installed-copy refresh is claimed.
+
+## ADR-229 — Stop fifth-servo qualification at incompatible interfaces (2026-09-07)
+
+[Cadex-new] Inspect exactly two positional manufacturer candidates, HS-311
+and HS-422. Neither qualifies for unchanged ServoPart: its circular drills
+leave mounting mouths closed, and the output shoulder datums need further
+source evidence. HS-422 also has conflicting dimension labels.
+`docs/FIFTH-SERVO-AUDIT.md` pins sources, hashes, acceptance limits and the
+conditional independent-worker/publication checks. Do not invent interface
+values or add a public row. Replan before proof/delivery; four servos remain.
+Existing local packaged lifecycle/library baseline: 91 passed, no skips;
+no build, candidate geometry, portable-release or physical-fit claim.

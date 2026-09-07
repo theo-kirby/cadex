@@ -2101,6 +2101,9 @@ field, and every client gets it through the surface it already reads.
 - [x] **L0 — framework, fasteners, bearings.** `CadexCatalog.py` +
       `cadex_library_api.py`; metric bolts/nuts/washers/inserts, clearance
       and tap-drill data, the common ball bearings, parametric bushing.
+- [x] **Fifth-servo bounded source audit.** Two Hitec candidates inspected;
+      neither qualifies for unchanged ServoPart. Interface blockers and next
+      acceptance checks in `FIFTH-SERVO-AUDIT.md` (ADR-229); no fifth SKU delivered.
 - [x] **L1 — servos.** SG90 / MG90S / MG996R / DS3218: datasheet mounting
       interfaces, measured micro horns, effective density for
       `assembly.body`, `.actuator(...)` bounded by real stall torque.

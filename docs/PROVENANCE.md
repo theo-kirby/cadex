@@ -787,3 +787,11 @@ The commands for delivery verification are the full engine suite,
 `pixi run build-engine`, completed `pixi run stage-engine`, then the packaged
 lifecycle/library gate; ADR-211 records the result. Full L3 and the solenoid
 interface gaps remain open.
+
+### Fifth servo candidates (2026-09-07; ADR-229)
+
+[Cadex-new] The [bounded source audit](FIFTH-SERVO-AUDIT.md) pins two Hitec
+manufacturer sheets by URL, revision and SHA-256. Neither HS-311 nor HS-422
+qualifies for the unchanged recipe: mounting-slot and output-datum evidence
+must be resolved before delivery. No source assets or public SKU were added;
+the four existing servo identities remain the catalog's coverage.
