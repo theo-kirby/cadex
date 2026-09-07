@@ -20326,3 +20326,18 @@ Tk/unittestgui/FreeCADGui imports denied; existing packaged lifecycle/licensing
 baseline 26 passed. No build or removal is claimed; manifest and fork deltas
 are unchanged. Servo qualification remains stopped under ADR-229; no catalog
 counts or evidence requirements change.
+
+
+**Copy/install disable (2026-09-07).** Remove only the unittestgui.py row
+from Test_SRCS; retain the source, TestSources and every other Test consumer.
+Both configurations omit its generated copy/install rules. Quarantine the
+two stale local copies; fresh release build, install and stage pass and
+leave no runner source/bytecode in the four inventoried output roots.
+Full engine: 2,023 passed / 52 skipped; fresh packaged lifecycle/licensing:
+26 passed; GUI-denied installed text runner: 12 passed; Cadex CTests: 4/4.
+Inherited CTest: 162 failures, all within the 164-name baseline, unchanged
+1,533-entry inventory, seven disabled and three skipped names. Existing
+manifest membership/notice remain appropriate. Unsupported installed Tk
+runner usage loses its entry point; source deletion remains a separate
+commit. Local-stage external-library limitations remain; no GUI or portable
+release claim. Full evidence is in TEST-TK-AUDIT.md.

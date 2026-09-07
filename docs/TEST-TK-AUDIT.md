@@ -4,7 +4,8 @@ Verified against source: 2026-09-07
 
 [Cadex-new] ADR-230, source baseline `c8d99e61`. This audit qualifies only
 `src/Mod/Test/unittestgui.py` for a separate copy/install-disable commit,
-then a source-delete commit. No runtime or inherited file changes here.
+then a source-delete commit. The copy/install disable is now implemented;
+its fresh verification is recorded below. The source is retained.
 
 ## Boundary and dependency evidence
 
@@ -86,3 +87,47 @@ and repeat applicable gates. Preserve its upstream licence in history; no
 licence/header rewrite is part of this work. Measure whole-file savings
 separately from surviving-file M deltas. Neither whole-Test removal nor the
 broad fork-delta criterion is established by this audit.
+
+## Copy/install disable (2026-09-07)
+
+Removed only unittestgui.py from Test_SRCS; the 399-line source retains its
+audited SHA-256. TestSources, MainCmd dependencies, headless registration and
+every other Test file are unchanged. Both debug/release configure commands
+passed, and neither regenerated build.ninja nor Test/cmake_install.cmake
+mentions the runner. The complete 1,533-entry CTest inventory (including
+commands and properties) is identical before and after configuration.
+
+Quarantined the release and pixi-install copies, each matching the audited
+source hash; debug and stage had no copy, and none of the four roots had
+matching bytecode. One `pixi run build-release`, `pixi run install-release`
+and completed `pixi run stage-engine` passed. Afterwards all four Mod/Test
+roots contain no unittestgui source or bytecode. Test remains excluded from
+the payload by the pre-existing keep_mods policy.
+
+Verification source parent: `862cb137`; changed Test/CMakeLists.txt SHA-256:
+`b6c1d03c5d20fb9d643f7a0021f49fecb69b509bb9cbb14a11219a51e48a7523`.
+Source and fresh staged cadexd.py still share the audit's
+`aadb8d25a4046b5ebdacd0bcd73bd7917bb6ac6c9642052853eb177d3553dd9e` hash.
+This identifies those files, not the whole payload. The 2.4 GB local stage
+reports external library paths and is not a relocatable release.
+
+Fresh packaged lifecycle/licensing: **26 passed in 18.07 s**, exit 0, using
+the command above. The installed GUI-denied TestApp probe again reports
+**12 UnitTests passed**, exit 0. `pixi run ctest --test-dir build/release
+-R Cadex --output-on-failure`: **4/4 passed**, 19.12 s.
+`pixi run test-release`: **162 failures out of 1,526 run**, 131.15 s, exit 8.
+All failure names occur in the 164-name recorded baseline; the two absent
+names are the already-retired DlgVersionMigrator and SpreadsheetRenameProperty
+cases. The seven disabled and three skipped names match iteration 51 exactly.
+No new failure, skip or inventory change is attributed to this disable.
+
+Full source engine suite: `pixi run python -m pytest -q
+src/Mod/cadex/cadex_tests`: **2,023 passed, 52 skipped in 262.59 s**, exit 0.
+The existing inherited modification notice and manifest membership cover
+Test/CMakeLists.txt; this change adds no modified-file member and removes
+no source file. Recheck licensing against committed HEAD at close.
+Local verification logs use `/tmp/cadex-56-` with configure-debug,
+configure-release, build, install, stage, engine, packaged, probe, cadex-ctest
+and ctest suffixes. No shell, GUI, Windows or portable-release gate ran.
+The next unit may delete only the retained runner after this disable is
+committed; repeat the audit's fresh gates and stale-copy checks.

@@ -870,9 +870,11 @@ Not a phase that "completes" — a standing mode of work.
       expected saving is three inserted lines, with no file-count change.
 - [x] Audit Test's standalone Tk runner (2026-09-07, ADR-230,
       `docs/TEST-TK-AUDIT.md`); qualify only unittestgui.py and preserve the
-      MainCmd/TestSources text-runner dependency. Disable/delete remain pending.
-- [ ] Disable, then separately delete the qualified Test Tk runner, with fresh
-      build/install/stage and retained headless-test evidence (ADR-230).
+      MainCmd/TestSources text-runner dependency.
+- [x] Disable the qualified Test Tk runner copy/install row (2026-09-07),
+      retaining its source and the headless Test harness (ADR-230).
+- [ ] Separately delete the disabled Test Tk runner after verified disable
+      evidence; repeat build/install/stage and retained headless tests (ADR-230).
 - [ ] Engine side: Phase 8's audited GUI directory boundary is deleted
       (ADR-214); broader residual GUI-lineage source remains open. Further
       candidates: Help is deleted (ADR-217, ADR-218);

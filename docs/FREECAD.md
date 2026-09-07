@@ -233,8 +233,9 @@ itself, in the Phase 7 Qt-shell deletion (ADR-021).
   `Start` is also deleted after its separate disable (ADR-219..221,
   [START-AUDIT.md](START-AUDIT.md)); it has no App or MainCmd dependant.
   `Test` is retained: `MainCmd` depends on `TestSources` and Test installs
-  the App tests. Only its standalone Tk runner is qualified for separate
-  copy/install disable and deletion (ADR-230, [TEST-TK-AUDIT.md](TEST-TK-AUDIT.md)).
+  the App tests. Its standalone Tk runner is disabled in the copy/install
+  list; its source remains for a separate verified deletion (ADR-230,
+  [TEST-TK-AUDIT.md](TEST-TK-AUDIT.md)).
   The rest of Test remains unaudited; payload exclusion alone is insufficient.
 - Which `tests/` subtrees cover removed workbenches and go with them?
 - `cadex_assembly_worker.py` imported `CommandCreateView` — GUI-lineage
