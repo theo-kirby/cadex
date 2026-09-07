@@ -188,7 +188,9 @@ returned library part's spec. No request op or client dispatch changes.
 The `describe_api.library.catalog.gears` family (ADR-233) adds
 `preferred_modules_mm`, `pressure_angle_degrees`, `teeth_range` and `notes`;
 `lib.spur_gear` and `lib.rack` are discovered through the existing library
-exports. No request op or client dispatch changes.
+exports. No request op or client dispatch changes. ADR-234 adds
+`lib.rack_and_pinion` to those exports and names it in the `gears` notes
+string; the family's shape and the golden are unchanged.
 
 `restore` reports what the open re-proved. A stored script that runs but
 produces a different digest is a **restore failure** — the user changed the

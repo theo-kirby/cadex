@@ -1245,6 +1245,59 @@ class LibraryAPI:
                            self._place(operation, body, origin, direction, roll_degrees),
                            spec)
 
+    def rack_and_pinion(
+        self, module: float, pinion_teeth: int, rack_teeth: int, face_width: float, *,
+        backlash: float = 0.0, bore: float | None = None,
+        rack_height: float | None = None, rotation_degrees: float = 0.0,
+        origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> LibraryPart:
+        """An ISO 53 pinion meshed with an ISO 53 rack, as a two-solid compound.
+
+        Datum: the pinion axis is +Z through the origin with its base face
+        in the datum plane; the rack runs along X with its pitch line at
+        Y = -centre_distance (pitch radius plus the backlash shift) and a
+        tooth space under the axis; pinion tooth 0 points at that space.
+        rotation_degrees turns the pinion counter-clockwise about +Z and
+        slides the rack +X by the matching travel, so one value can be
+        published at any phase. rack_height defaults to 3.5 module. .spec
+        carries centre distance, travel per revolution, root clearance, the
+        rack X range and both members' specs. Geometric mesh only: no
+        contact ratio, load, stiffness or efficiency.
+        """
+        operation = "rack_and_pinion"
+        spec = catalog.rack_and_pinion_spec(module, pinion_teeth, rack_teeth, backlash=backlash)
+        if isinstance(rotation_degrees, bool) or not isinstance(rotation_degrees, (int, float)) \
+                or not math.isfinite(rotation_degrees):
+            raise LibraryError("lib.rack_and_pinion: rotation_degrees must be a finite number.")
+        m = spec["module_mm"]
+        height = 3.5 * m if rack_height is None else rack_height
+        pitch = spec["pinion"]["circular_pitch_mm"]
+        travel = spec["travel_per_degree_mm"] * float(rotation_degrees)
+        rack_x0 = -(rack_teeth // 2) * pitch + travel
+        pinion = self.spur_gear(m, pinion_teeth, face_width, bore=bore,
+                                roll_degrees=-90.0 + float(rotation_degrees))
+        rack = self.rack(m, rack_teeth, face_width, height,
+                         origin=(rack_x0, -spec["centre_distance_mm"], 0.0))
+        spec.update({
+            "face_width_mm": pinion.spec["face_width_mm"],
+            "bore_mm": pinion.spec["bore_mm"],
+            "rack_height_mm": rack.spec["height_mm"],
+            "rotation_degrees": float(rotation_degrees),
+            "rack_travel_mm": travel,
+            "rack_x_range_mm": [rack_x0, rack_x0 + spec["rack_length_mm"]],
+            "datums": {
+                "pinion_axis": "+Z through the origin, base face in the datum plane",
+                "rack_pitch_line": f"Y = {-spec['centre_distance_mm']:g}, along X",
+                "rack_travel_direction": "+X for counter-clockwise pinion rotation about +Z",
+            },
+        })
+        body = self._part.compound([pinion.body, rack.body], label=label)
+        return LibraryPart("rack_and_pinion", f"m{m:g}z{pinion_teeth}r{rack_teeth}",
+                           self._place(operation, body, origin, direction, roll_degrees),
+                           spec)
+
     # -- browsing ----------------------------------------------------------
 
     def catalog(self) -> dict[str, Any]:

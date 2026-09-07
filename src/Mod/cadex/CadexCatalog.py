@@ -49,6 +49,7 @@ __all__ = [
     "joint_spec",
     "GEAR_STANDARD",
     "gear_spec",
+    "rack_and_pinion_spec",
     "GEARMOTORS",
     "gearmotor_spec",
     "MICRO_HORNS",
@@ -885,6 +886,48 @@ def gear_spec(module: Any, teeth: Any, *, rack: bool = False) -> dict[str, Any]:
     return spec
 
 
+def rack_and_pinion_spec(module: Any, pinion_teeth: Any, rack_teeth: Any, *,
+                         backlash: Any = 0.0) -> dict[str, Any]:
+    """The meshing numbers for an ISO 53 pinion on an ISO 53 rack.
+
+    Both members come from ``gear_spec`` on the same module. ``backlash``
+    is the circumferential play at the pitch line in mm, in
+    [0, 0.1 module]; it is realised as a radial shift of the rack away
+    from the pinion by ``backlash / (2 tan alpha)`` (no tooth thinning),
+    which the centre distance and both root clearances carry.
+    """
+    pinion = gear_spec(module, pinion_teeth)
+    rack = gear_spec(module, rack_teeth, rack=True)
+    m = pinion["module_mm"]
+    if (isinstance(backlash, bool) or not isinstance(backlash, (int, float))
+            or not math.isfinite(backlash) or not 0.0 <= backlash <= 0.1 * m):
+        raise CatalogError(f"Rack-and-pinion backlash must be in [0, {0.1 * m:g}] mm "
+                           f"(0.1 module), not {backlash!r}.")
+    tangent = math.tan(math.radians(pinion["pressure_angle_degrees"]))
+    radial_shift = float(backlash) / (2.0 * tangent)
+    pitch_radius = pinion["pitch_diameter_mm"] / 2.0
+    spec: dict[str, Any] = {
+        "module_mm": m, "pinion_teeth": pinion_teeth, "rack_teeth": rack_teeth,
+        "pressure_angle_degrees": pinion["pressure_angle_degrees"],
+        "pitch_radius_mm": pitch_radius,
+        "backlash_mm": float(backlash),
+        "radial_shift_mm": radial_shift,
+        "centre_distance_mm": pitch_radius + radial_shift,
+        "root_clearance_mm": pinion["root_clearance_mm"] + radial_shift,
+        "travel_per_revolution_mm": math.pi * m * pinion_teeth,
+        "travel_per_degree_mm": math.pi * m * pinion_teeth / 360.0,
+        "rack_length_mm": rack["length_mm"],
+        "pinion": pinion, "rack": rack,
+        "standard": pinion["standard"],
+        "sources": list(pinion["sources"]),
+        "approximate": list(pinion["approximate"]) + [
+            "Backlash is a radial shift of the rack by backlash / (2 tan 20 degrees); teeth are not thinned.",
+            "No contact ratio, load sharing, stiffness or efficiency; the mesh is geometric only.",
+        ],
+    }
+    return spec
+
+
 def catalog_families() -> dict[str, Any]:
     """The browsable catalog: every family, its part numbers, key specs.
 
@@ -947,7 +990,7 @@ def catalog_families() -> dict[str, Any]:
             "preferred_modules_mm": list(GEAR_STANDARD["preferred_modules_mm"]),
             "pressure_angle_degrees": GEAR_STANDARD["pressure_angle_degrees"],
             "teeth_range": [GEAR_STANDARD["minimum_teeth"], GEAR_STANDARD["maximum_teeth"]],
-            "notes": "lib.spur_gear(module, teeth, face_width, bore=None) and lib.rack(module, teeth, face_width, height): ISO 53 type A profile on ISO 54 series I modules, one sampled-involute polygon extruded; spec carries the pitch, base, root and tip diameters and the undercut warning below 17 teeth. No fillets, backlash, strength rating or density.",
+            "notes": "lib.spur_gear(module, teeth, face_width, bore=None) and lib.rack(module, teeth, face_width, height): ISO 53 type A profile on ISO 54 series I modules, one sampled-involute polygon extruded; spec carries the pitch, base, root and tip diameters and the undercut warning below 17 teeth. No fillets, backlash, strength rating or density. lib.rack_and_pinion(module, pinion_teeth, rack_teeth, face_width, backlash=0, bore=None, rack_height=None, rotation_degrees=0) composes both at the standard centre distance as one compound; spec carries centre distance, travel per revolution and the datums.",
         },
         "boards": {
             "skus": sorted(BOARDS),

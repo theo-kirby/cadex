@@ -835,6 +835,20 @@ trapezoid sum. Placed instances keep their volume. cadexd publication of
 canonical and placed gear and rack outputs is in
 `test_the_library_builds_on_the_real_kernel`; ADR-233 records the gates.
 
+**Rack and pinion (ADR-234).** `lib.rack_and_pinion` composes the two
+values above with no new profile: centre distance = pinion pitch radius
+plus a backlash shift of `backlash / (2 tan 20°)` (ISO 53's pressure angle;
+the shift is the standard relation between a radial adjustment and the
+circumferential play it opens, not a vendor number), travel per revolution
+π·m·z, root clearance 0.25 m plus the shift on both sides.
+`test_rack_and_pinion_real_kernel_mesh_and_clearance` measures on the built
+solids, at nine phases for three configurations, zero common volume, both
+root clearances, and a flank gap of `backlash·cos 20°/2` within the chord
+sag; its negative controls measure a half-pitch collision and the
+interference of an unshifted 12-tooth pinion, so the undercut warning in
+`spec["approximate"]` is backed by a number (0.061 mm³ at m2z12r10, face
+width 8) rather than a citation.
+
 ### Fifth servo candidates (2026-09-07; ADR-229)
 
 [Cadex-new] The [bounded source audit](FIFTH-SERVO-AUDIT.md) pins two Hitec

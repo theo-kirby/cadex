@@ -586,6 +586,35 @@ rack = lib.rack(1, 30, 5, 4, origin=(0, -pinion.spec["pitch_diameter_mm"] / 2, 0
 result = {"pinion": pinion.body, "rack": rack.body}
 ```
 
+#### Rack and pinion `[ADR-234]`
+
+`lib.rack_and_pinion(module, pinion_teeth, rack_teeth, face_width,
+backlash=0, bore=None, rack_height=None, rotation_degrees=0, origin=...,
+direction=..., roll_degrees=...)` composes the two values above as one
+two-solid compound that meshes. The pinion axis is +Z through the origin
+with its base face in the datum plane; the rack runs along X with its pitch
+line at `Y = -centre_distance` and a tooth space under the axis, and pinion
+tooth 0 points at that space. `rotation_degrees` turns the pinion
+counter-clockwise about +Z and slides the rack +X by
+`travel_per_degree_mm` times the angle, so the same value publishes at any
+phase. `backlash` (mm, at most 0.1 module) is realised as a radial shift of
+the rack by `backlash / (2 tan 20°)`; `rack_height` defaults to 3.5 module.
+
+`.spec` carries `centre_distance_mm`, `radial_shift_mm`,
+`root_clearance_mm`, `travel_per_revolution_mm`, `travel_per_degree_mm`,
+`rack_travel_mm`, `rack_x_range_mm`, `datums`, and the nested `pinion` and
+`rack` specs. The mesh is geometric only: no contact ratio, load sharing,
+stiffness or efficiency, and a pinion under 17 teeth interferes with the
+rack tip below its base circle (the undercut ADR-233 warns about, measured
+in ADR-234). The real-kernel test holds the common volume at zero over nine
+phases and the root clearance at 0.25 module plus the shift.
+
+```python
+drive = lib.rack_and_pinion(1, 24, 30, 5, bore=3, rotation_degrees=45)
+result = {"drive": drive.body}
+# drive.spec["rack_travel_mm"] is the rack's slide at 45 degrees.
+```
+
 #### L12 linear actuator `[ADR-207]`
 
 `lib.linear_actuator("l12-50-210-12-s", extension=0, origin=...,

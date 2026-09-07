@@ -783,6 +783,9 @@ result = {
     "rack": lib.rack(2, 10, 10, 8).body,
     "rack_placed": lib.rack(1.5, 4, 6, 5, origin=(100, 30, 20),
                             direction=(0, 1, 0), roll_degrees=90).body,
+    "rack_and_pinion": lib.rack_and_pinion(2, 20, 10, 8, rotation_degrees=7).body,
+    "rack_and_pinion_placed": lib.rack_and_pinion(1, 24, 12, 5, backlash=0.05, bore=4,
+        origin=(100, 30, 20), direction=(1, 0, 0), roll_degrees=30).body,
     "joint": lib.joint("skf-ge-6-c").body,
     "joint_placed": lib.joint("skf-ge-6-c", tilt_degrees=13,
         origin=(100,30,20), direction=(1,0,0), roll_degrees=90).body,
@@ -844,6 +847,7 @@ def test_the_library_builds_on_the_real_kernel() -> None:
         names = {output["name"] for output in written["outputs"]}
         assert names == {
             "spur_gear", "spur_gear_placed", "rack", "rack_placed",
+            "rack_and_pinion", "rack_and_pinion_placed",
             "joint", "joint_placed", "bldc", "bldc_placed", "linear_actuator", "linear_actuator_placed",
             "gearmotor", "gearmotor_placed",
             "esp_board", "pi_board", "pwm_board",
@@ -860,7 +864,8 @@ def test_the_library_builds_on_the_real_kernel() -> None:
             "bushing",
         }
         for output in written["outputs"]:
-            expected_type = "compound" if output["name"] in {"joint", "joint_placed"} else "solid"
+            expected_type = "compound" if output["name"] in {
+                "joint", "joint_placed", "rack_and_pinion", "rack_and_pinion_placed"} else "solid"
             assert output["type"] == expected_type, output
     finally:
         if client is not None:
@@ -1236,6 +1241,188 @@ def test_gears_listing():
     assert {"spur_gear", "rack"} <= names
     entry = next(row for row in library_listing()["exports"] if row["name"] == "spur_gear")
     assert "bore" in entry["signature"] and "ISO 53" in entry["description"]
+
+
+# -- rack and pinion (ADR-234) ----------------------------------------------
+
+
+def test_rack_and_pinion_spec_numbers():
+    spec = catalog.rack_and_pinion_spec(2, 20, 10)
+    assert (spec["pitch_radius_mm"], spec["centre_distance_mm"], spec["radial_shift_mm"]) == (20, 20, 0)
+    assert (spec["backlash_mm"], spec["root_clearance_mm"]) == (0, 0.5)
+    assert abs(spec["travel_per_revolution_mm"] - 40 * math.pi) < 1e-9
+    assert abs(spec["travel_per_degree_mm"] * 360 - spec["travel_per_revolution_mm"]) < 1e-9
+    assert abs(spec["rack_length_mm"] - 20 * math.pi) < 1e-9
+    assert spec["pinion"]["tip_diameter_mm"] == 44 and spec["rack"]["teeth"] == 10
+    assert "ISO 53" in spec["standard"] and len(spec["approximate"]) == 4
+    played = catalog.rack_and_pinion_spec(2, 20, 10, backlash=0.2)
+    shift = 0.2 / (2 * math.tan(math.radians(20)))
+    assert abs(played["radial_shift_mm"] - shift) < 1e-12
+    assert abs(played["centre_distance_mm"] - (20 + shift)) < 1e-12
+    assert abs(played["root_clearance_mm"] - (0.5 + shift)) < 1e-12
+    assert "undercut" in catalog.rack_and_pinion_spec(2, 12, 10)["approximate"][2]
+
+
+@pytest.mark.parametrize("module,pinion,rack,backlash", [
+    (2, 20, 10, 0.21), (2, 20, 10, -0.01), (2, 20, 10, True), (2, 20, 10, "0"),
+    (2, 20, 10, float("inf")), (2, 5, 10, 0), (2, 20, 0, 0), (7, 20, 10, 0), (1.1, 20, 10, 0)])
+def test_rack_and_pinion_spec_refusals(module, pinion, rack, backlash):
+    with pytest.raises(CatalogError):
+        catalog.rack_and_pinion_spec(module, pinion, rack, backlash=backlash)
+
+
+def test_rack_and_pinion_recipe_and_spec():
+    lib = _lib()
+    pair = lib.rack_and_pinion(2, 20, 10, 8)
+    assert (pair.family, pair.part_number) == ("rack_and_pinion", "m2z20r10")
+    assert pair.body.operation == "compound" and len(pair.body.arguments[0]) == 2
+    pinion_body, rack_body = pair.body.arguments[0]
+    # The pinion is rolled so tooth 0 points at the rack; the rack sits one
+    # pitch radius below the axis with a tooth space under the axis.
+    pinion_transform = _ops(pinion_body, "transform")[0]
+    assert pinion_transform.properties["rotation_degrees"] == pytest.approx(90)
+    assert list(pinion_transform.properties["rotation_axis"]) == pytest.approx([0, 0, -1])
+    rack_transform = _ops(rack_body, "transform")[0]
+    assert list(rack_transform.properties["translation"]) == pytest.approx([-5 * 2 * math.pi, -20, 0])
+    assert pair.spec["rack_height_mm"] == 7 and pair.spec["bore_mm"] is None
+    assert pair.spec["face_width_mm"] == 8 and pair.spec["rotation_degrees"] == 0
+    assert pair.spec["rack_x_range_mm"] == pytest.approx([-10 * math.pi, 10 * math.pi])
+    assert pair.spec["datums"]["rack_pitch_line"] == "Y = -20, along X"
+    assert pair.spec["centre_distance_mm"] == 20
+    # A phase turns the pinion and slides the rack by the matching travel.
+    turned = lib.rack_and_pinion(2, 20, 10, 8, rotation_degrees=9, bore=6, rack_height=10,
+                                 backlash=0.2)
+    shift = 0.2 / (2 * math.tan(math.radians(20)))
+    travel = 40 * math.pi * 9 / 360
+    assert turned.spec["rack_travel_mm"] == pytest.approx(travel)
+    assert turned.spec["rack_x_range_mm"][0] == pytest.approx(-10 * math.pi + travel)
+    assert turned.spec["bore_mm"] == 6 and turned.spec["rack_height_mm"] == 10
+    pinion_body, rack_body = turned.body.arguments[0]
+    pinion_transform = _ops(pinion_body, "transform")[0]
+    assert pinion_transform.properties["rotation_degrees"] == pytest.approx(81)
+    assert list(_ops(rack_body, "transform")[0].properties["translation"]) == pytest.approx(
+        [-10 * math.pi + travel, -20 - shift, 0])
+    assert len(_ops(turned.body, "cut")) == 1
+    placed = lib.rack_and_pinion(2, 20, 10, 8, origin=(100, 30, 20), direction=(1, 0, 0))
+    assert placed.body.operation == "transform"
+    with pytest.raises(LibraryError, match="rotation_degrees"):
+        lib.rack_and_pinion(2, 20, 10, 8, rotation_degrees=float("nan"))
+    with pytest.raises(LibraryError, match="whole depth"):
+        lib.rack_and_pinion(2, 20, 10, 8, rack_height=4)
+    with pytest.raises(LibraryError, match="root diameter"):
+        lib.rack_and_pinion(2, 20, 10, 8, bore=40)
+    with pytest.raises(CatalogError, match="backlash"):
+        lib.rack_and_pinion(2, 20, 10, 8, backlash=1)
+    names = {entry["name"] for entry in library_listing()["exports"]}
+    assert "rack_and_pinion" in names
+    assert "rack_and_pinion" in _lib().catalog()["gears"]["notes"]
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle").FREECADCMD is None,
+    reason="No FreeCADCmd binary available for mesh checks.",
+)
+def test_rack_and_pinion_real_kernel_mesh_and_clearance(tmp_path):
+    import subprocess
+    from test_cadexd_lifecycle import CADEX_ROOT, FREECADCMD
+    driver = tmp_path / "mesh_checks.py"
+    driver.write_text(RACK_AND_PINION_KERNEL_DRIVER)
+    completed = subprocess.run(
+        [str(FREECADCMD), "-c",
+         f"import sys; sys.path.insert(0, {str(CADEX_ROOT)!r}); exec(open({str(driver)!r}).read())"],
+        capture_output=True, text=True, timeout=600,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "RACK-AND-PINION-OK" in completed.stdout, completed.stdout + completed.stderr
+
+
+RACK_AND_PINION_KERNEL_DRIVER = r"""
+import json
+import math
+import FreeCAD as App
+import Part
+from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
+from cadex_domain_api import create_domain_api
+from cadex_library_api import create_library_api
+from cadex_part_worker import build_part_shape
+pack = XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
+lib = create_library_api(create_domain_api(pack.domain, pack.api_exports, pack.output_types))
+MESH_TOLERANCE_MM3 = 1e-6
+
+
+def members(pair):
+    shape = build_part_shape(pair.body.to_payload())
+    assert shape.isValid() and shape.ShapeType == "Compound" and len(shape.Solids) == 2
+    spec = pair.spec
+    probe_radius = ((0 if spec["bore_mm"] is None else spec["bore_mm"] / 2)
+                    + spec["pinion"]["root_diameter_mm"] / 2) / 2
+    probe = App.Vector(0, probe_radius, spec["face_width_mm"] / 2)
+    pinion, rack = sorted(shape.Solids, key=lambda solid: not solid.isInside(probe, 1e-7, True))
+    assert pinion.isInside(probe, 1e-7, True) and not rack.isInside(probe, 1e-7, True)
+    return shape, pinion, rack
+
+
+for module, pinion_teeth, rack_teeth, width, bore, backlash in (
+        (2, 20, 10, 8, None, 0.0), (1, 24, 12, 5, 4, 0.05), (2, 20, 10, 8, 6, 0.2)):
+    pitch_angle = 360.0 / pinion_teeth
+    spec = lib.rack_and_pinion(module, pinion_teeth, rack_teeth, width, bore=bore, backlash=backlash).spec
+    shift = spec["radial_shift_mm"]
+    expected_flank_gap = backlash * math.cos(math.radians(20)) / 2
+    commons, gaps = [], []
+    phases = [pitch_angle * k / 7 for k in range(7)] + [2.5 * pitch_angle, -1.3 * pitch_angle]
+    for rotation in phases:
+        pair = lib.rack_and_pinion(module, pinion_teeth, rack_teeth, width, bore=bore,
+                                   backlash=backlash, rotation_degrees=rotation)
+        shape, pinion, rack = members(pair)
+        # Clearance: the pinion tip clears the rack root, and the rack tip the
+        # pinion root, by 0.25 m plus the backlash shift, measured on the solids.
+        tip_radius = max(math.hypot(v.X, v.Y) for v in pinion.Vertexes)
+        root_radius = min(r for r in (math.hypot(v.X, v.Y) for v in pinion.Vertexes)
+                          if bore is None or r > bore / 2 + 1e-6)
+        rack_ys = sorted({round(v.Y, 6) for v in rack.Vertexes})
+        rack_root_y, rack_tip_y = rack_ys[1], rack_ys[2]
+        assert abs((-rack_root_y - tip_radius) - (0.25 * module + shift)) < 1e-6
+        assert abs((-rack_tip_y - root_radius) - (0.25 * module + shift)) < 1e-6
+        assert abs(rack.BoundBox.XMin - pair.spec["rack_x_range_mm"][0]) < 1e-6
+        # Mesh: no common volume at any phase, and the flanks apart by the
+        # backlash's normal gap backlash*cos(20)/2, never less (the sampled
+        # chords sit inside the involute) and over it by at most the chord sag.
+        common = pinion.common(rack).Volume
+        gap = pinion.distToShape(rack)[0]
+        commons.append(common)
+        gaps.append(gap)
+        assert common < MESH_TOLERANCE_MM3, (module, pinion_teeth, rotation, common)
+        assert expected_flank_gap - 1e-6 <= gap <= expected_flank_gap + 1e-3 * module, (
+            module, pinion_teeth, rotation, gap)
+    print("MESH " + json.dumps({"module": module, "pinion_teeth": pinion_teeth, "backlash_mm": backlash,
+                                "phases": len(phases), "max_common_mm3": max(commons),
+                                "flank_gap_mm": [round(min(gaps), 5), round(max(gaps), 5)],
+                                "expected_flank_gap_mm": round(expected_flank_gap, 5)}))
+
+# Negative controls: the mesh test must see a bad mesh. A rack shifted by half a
+# pitch collides tooth on tooth, and an unshifted 12-tooth pinion (undercut is
+# warned, not generated) interferes with the rack tip below its base circle.
+base = lib.rack_and_pinion(2, 20, 10, 8)
+_shape, pinion, rack = members(base)
+rack.translate(App.Vector(math.pi, 0, 0))
+collision = pinion.common(rack).Volume
+assert collision > 10.0, collision
+worst = 0.0
+for rotation in [18.0 * k / 7 for k in range(7)]:
+    _shape, pinion, rack = members(lib.rack_and_pinion(2, 12, 10, 8, rotation_degrees=rotation))
+    worst = max(worst, pinion.common(rack).Volume)
+assert worst > MESH_TOLERANCE_MM3, worst
+print("CONTROLS " + json.dumps({"half_pitch_collision_mm3": round(collision, 3),
+                                "z12_interference_mm3": round(worst, 6)}))
+
+# Placement keeps the compound's volume and its member count.
+canonical = build_part_shape(lib.rack_and_pinion(1, 24, 12, 5, bore=4, backlash=0.05).body.to_payload())
+placed = build_part_shape(lib.rack_and_pinion(1, 24, 12, 5, bore=4, backlash=0.05, origin=(100, 30, 20),
+                                              direction=(1, 0, 0), roll_degrees=30).body.to_payload())
+assert len(placed.Solids) == 2 and abs(placed.Volume - canonical.Volume) < 1e-6
+assert abs(placed.BoundBox.XMin - 100) < 1e-6 and abs(placed.BoundBox.XLength - 5) < 1e-6
+print("RACK-AND-PINION-OK")
+"""
 
 
 @pytest.mark.skipif(

@@ -20501,3 +20501,61 @@ gate with `CADEX_ENGINE_ROOT` on that payload: 107 passed, no skips,
 verified: no shell gate (no `shell/` line changed) and no ctest (no C++
 changed). The next two units compose the rack-and-pinion and the planetary
 with mesh and clearance tests; this one claims standalone values only.
+
+## ADR-234 — Rack and pinion composed as a library value, with mesh and clearance evidence (2026-09-07)
+
+[Cadex-new] ADR-233 delivered the involute spur gear and the rack as
+standalone values and claimed nothing about how they mesh. Mission 4's
+compound-mechanisms criterion asks for a rack and pinion "with a mesh and
+clearance test", and the short plan (`placid-delta-6677`, rank 2) sized it
+as one composition over the existing generator with no new geometry.
+
+**Decision.** `CadexCatalog.rack_and_pinion_spec(module, pinion_teeth,
+rack_teeth, backlash=0)` derives both members from `gear_spec` and carries
+the meshing numbers: pitch radius, centre distance, root clearance, travel
+per revolution (π·m·z) and per degree, rack length and the nested member
+specs. Backlash is accepted in [0, 0.1 m] and realised as a radial shift of
+the rack away from the pinion by `backlash / (2 tan 20°)`, which the centre
+distance and both root clearances carry; teeth are not thinned. `lib.rack_and_pinion(module,
+pinion_teeth, rack_teeth, face_width, backlash=0, bore=None,
+rack_height=None, rotation_degrees=0)` builds the pinion through
+`lib.spur_gear` rolled so tooth 0 points at the rack, and the rack through
+`lib.rack` with its pitch line at Y = −centre distance and a tooth space
+under the pinion axis; `rotation_degrees` turns the pinion about +Z and
+slides the rack +X by the matching travel so one value can be published at
+any phase; `rack_height` defaults to 3.5 m. The result is one two-solid
+`part.compound`, placed by the same origin/direction/roll as every other
+library value, in a `rack_and_pinion` family with part number
+`m<module>z<pinion>r<rack>`. The `gears` catalog family's notes name the
+composition; the family's shape, the `describe_api` golden, the protocol
+and the shell are unchanged. Out of scope, and said so in
+`spec["approximate"]`: contact ratio, load sharing, stiffness, efficiency,
+tooth thinning and the undercut below 17 teeth (which ADR-233 warns about
+and this unit measures as real interference, see below).
+
+**Evidence.** Stubbed tests pin the spec arithmetic, the refusals (backlash
+out of band or non-numeric, non-finite rotation, rack height under the
+whole depth, bore over the root circle) and the recipe: a two-member
+compound, the pinion rolled −90° plus the phase, the rack translated to
+(−⌊z_rack/2⌋·π·m + travel, −centre distance). The actual part worker
+(`test_rack_and_pinion_real_kernel_mesh_and_clearance`) builds m2z20r10
+(backlash 0), m1z24r12 (backlash 0.05, bore 4) and m2z20r10 (backlash 0.2,
+bore 6) at nine phases each — seven across one pitch angle plus 2.5 and
+−1.3 pitches — and at every phase the pinion∩rack common volume is 0 mm³
+(bound 1e-6), the pinion tip clears the rack root and the rack tip clears
+the pinion root by exactly 0.25 m plus the backlash shift, and the minimum
+flank distance equals backlash·cos 20°/2 (0, 0.02349, 0.09397 mm) never by
+less and over it by at most 4.5e-4·m of chord sag, because the sampled
+flank is inscribed in the involute. Two negative controls prove the test
+can fail: the rack slid half a pitch collides at 182.0 mm³, and an
+unshifted m2z12 pinion interferes with the rack tip at 0.061 mm³ at phase 0
+— the undercut ADR-233 warns about, measured. Placement keeps the compound
+volume and both members; cadexd publishes a canonical and a placed
+composition as compounds in `test_the_library_builds_on_the_real_kernel`.
+Full engine suite before the build: 1 failed, 2061 passed, 52 skipped, 315.82 s — the one failure being the cadexd publication test against the not-yet-rebuilt installed engine, which passed alone after the build. One `pixi run
+build-engine`, `pixi run stage-engine` to completion, then the fresh
+packaged lifecycle/library gate with `CADEX_ENGINE_ROOT` on that payload:
+119 passed, no skips, 80.77 s. Not verified: no shell gate (no `shell/` line changed)
+and no ctest (no C++ changed). The planetary gearbox (rank 3) is the next
+unit and needs an internal ring from the same generator; nothing here
+claims it.

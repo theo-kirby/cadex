@@ -2206,7 +2206,15 @@ field, and every client gets it through the surface it already reads.
       one sampled-involute generator, real-kernel diameter/volume/probe
       tests and packaged publication (PROVENANCE §8g, ADR-233). Standalone
       values: rack-and-pinion and planetary composition are the next units.
+- [x] **L3 rack and pinion composed.** `lib.rack_and_pinion` over
+      `CadexCatalog.rack_and_pinion_spec`: a two-solid compound at the
+      standard centre distance, backlash as a radial shift, any phase by
+      `rotation_degrees`; real-kernel mesh test (zero common volume at nine
+      phases, three configurations), root clearance 0.25 m plus shift both
+      ways, flank gap equal to the backlash's normal gap, and two negative
+      controls (ADR-234). The planetary gearbox is the remaining unit.
 - [ ] **L3 — motors and mechanisms.** Common BLDC sizes with kV/torque
       data, N20 gearmotor, linear actuator, solenoid, joints; involute gear
-      and rack values exist (ADR-233), but rack-and-pinion and planetary
-      compositions with mesh and clearance evidence are still their own slice.
+      and rack values exist (ADR-233) and the rack and pinion is composed
+      with mesh and clearance evidence (ADR-234); the planetary gearbox is
+      still its own slice.
