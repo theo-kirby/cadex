@@ -164,7 +164,9 @@ unconditional GUI Python install lists and other sources outside the audited
 directories remain. ADR-215 and PHASE8-AUDIT.md trace the named consumers:
 Assembly App proxies are required. Measure/MassPropertiesGui.py was disabled
 in the shared copy/install list, then deleted separately (ADR-215). The other four Measure scripts and App identity are retained.
-Material GUI scripts still survive in the payload. MeshPart/InitGui.py
+Material GUI scripts still survive in the payload. ADR-225 qualifies only
+InitGui.py, MaterialEditor.py and TestMaterialsGui.py for a later shared
+copy/install disable; App/tests/resources and TestMaterialDocument.py remain. MeshPart/InitGui.py
 was deleted after the separately verified install disable; App, Init.py,
 meshFromShape and export macros remain (ADR-224, PHASE8-AUDIT.md);
 Help is deleted (ADR-217, ADR-218). Start is deleted after its separate disable (ADR-220, ADR-221); neither `Mod/Start` nor `lib/Start.so` installs or stages. Test still builds and installs; its `Mod/` directory is pruned from the payload.

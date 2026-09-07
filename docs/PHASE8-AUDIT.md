@@ -658,3 +658,75 @@ in future units because the engine suite reads build/engine implicitly.
 Full engine rerun after completed staging: **2,023 passed, 52 skipped in
 251.30 s**, exit 0. `git diff --check` passes. Committed-HEAD manifest
 equality is checked again after the source-delete commit.
+
+
+## Material GUI registration audit (2026-09-07, ADR-225)
+
+Documentation-only audit at `847c03b9`, following the MeshPart disable/delete
+pair. The safe next disable set is exactly three entries in
+`src/Mod/Material/CMakeLists.txt`'s `MaterialScripts_Files`: **InitGui.py,
+MaterialEditor.py, TestMaterialsGui.py**. Retain all source in that disable
+commit; deletion requires a later unit after its gates pass.
+
+| Candidate | Consumer and startup evidence | Disposition |
+|---|---|---|
+| InitGui.py | Unconditionally imports FreeCADGui, registers MaterialWorkbench, imports MatGui on Initialize and registers TestMaterialsGui. App's directory loader uses Init.py (`FreeCADInit.py`, `DirModule.INIT_PY`); it does not execute this GUI initializer. | Disable shared copy/install entry. |
+| MaterialEditor.py | Unconditional PySide/FreeCADGui imports and widget implementation. Repository-wide source search finds no outside consumer; self-import examples at the end are inside a triple-quoted string. Its imports of importFCMat and cardutils point outward, not back into the editor. | Disable shared copy/install entry. |
+| TestMaterialsGui.py | Only runtime registration is InitGui.py; imports DocumentTestCases from materialtests.TestMaterialDocument. TestApp consumes FreeCAD.__unit_test__, not arbitrary GUI-named files. | Disable shared copy/install entry. |
+| materialtests/TestMaterialDocument.py | Separately copied by MaterialTest and installed via MaterialTest_Files. Three document tests guard their appearance assertions on GuiUp (and BUILD_PART); a headless pass would exercise no appearance assertions. TestMaterialsApp imports four other test modules, not this one. | Retain source and registrations; do not enlarge this three-entry change to test pruning. |
+
+Search scope: repository-wide `rg` for MaterialEditor, TestMaterialsGui and
+TestMaterialDocument, excluding documentation, JSON and translations; inspected
+all matches plus Material's initializers, importFCMat, TestMaterialsApp,
+materialtests/__init__.py, App CMake and tests/src/Mod/Material. There is no
+product/worker/CLI/package consumer of the three scripts. Static searches do
+not prove absence of arbitrary external imports; FreeCAD GUI compatibility is
+outside the product contract.
+
+**Retained boundary.** Keep add_subdirectory(App), Materials and its
+FreeCADApp/QtConcurrent/yaml-cpp dependencies, App metatypes and all required
+Assembly proxies. Keep Init.py's FCMat importer and TestMaterialsApp
+registration, importFCMat (its QtGui import is guarded by GuiUp),
+materialtools, MaterialAPI, Templatematerial.yml, all cards/models/resources,
+all MaterialTest_Files and Python/C++ App tests. GUI-looking branches in mixed
+helpers are separate obligations. No Qt, App or resource removal is qualified.
+
+**Copy/install evidence.** Unlike MeshPart's install-only initializer, all
+three scripts are MaterialScripts ALL target inputs, passed to
+fc_target_copy_resource and INSTALL(FILES). FreeCadMacros.cmake defines actual
+per-file copy commands. Both debug and release generated install scripts name
+all three; release build.ninja has each custom copy output. Debug is configured
+BUILD_GUI=OFF but has none of the four audited script copies. Release,
+`.pixi/envs/default/Mod/Material` and
+`build/engine/cadex-engine-0.0.0-macos-arm64/Mod/Material` each carry byte-identical
+source copies: 2,399 / 39,810 / 1,708 bytes respectively; the retained document
+test is 5,129 bytes. No matching bytecode was present in those four roots.
+Both build caches install into the pixi environment.
+
+**Next-unit stale-copy and gate contract.** Remove only the three shared-list
+entries. Quarantine their nine current release/install/stage copies (and any
+new debug copies or matching bytecode) outside active roots; never delete the
+source in the disable unit. Regenerate debug rules without building and do at
+most one full `pixi run build-release`, then `pixi run install-release` and
+`pixi run stage-engine`. Check generated copy/install rules and every active
+root for absence of the three candidates, while asserting the retained files,
+resources and Materials library survive. Finish staging before any payload
+reader: then run the full engine pytest suite, `pixi run test-release` with
+actual failure-name comparison to `build/ctest_baseline_failures.txt`, packaged
+lifecycle/licensing, and the installed TestMaterialsApp startup probe below.
+Preserve manifest equality and the existing CMake notice; check licensing
+again against committed HEAD. Any regression or incomplete gate blocks source
+deletion. No fresh-payload or fork-delta improvement is claimed by this audit.
+
+**Executed baseline.** Existing payload command:
+`CADEX_ENGINE_ROOT="$PWD/build/engine/cadex-engine-0.0.0-macos-arm64" pixi run python -m pytest -q src/Mod/cadex/cadex_tests/test_licensing_compliance.py src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py`
+— **26 passed in 14.45 s**, exit 0. Installed FreeCADCmd ran an explicit Python
+script importing FreeCAD, Materials, importFCMat and TestMaterialsApp; it
+asserted GuiUp=false, TestMaterialsApp registered, TestMaterialsGui unregistered,
+and FreeCADGui absent from sys.modules. unittest loaded TestMaterialsApp:
+**15 tests passed in 0.180 s, no failures/errors/skips**. Require the explicit
+result marker, not launcher exit alone. Local logs:
+`/tmp/cadex-material-audit-{packaged,probe}.log`; probe script is
+`/tmp/cadex-material-audit-probe.py`. No configure/build/install/stage, full
+engine suite, inherited CTest or GUI launch in this audit-only unit. Broader
+GUI-source and fork-delta claims remain open; BLDC searches remain stopped.

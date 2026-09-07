@@ -338,6 +338,14 @@ this phase.
 - [x] Delete the disabled MeshPart/InitGui.py source in a separate verified
       commit; preserve App, Init.py and export macros (ADR-224, 2026-09-07).
 
+- [x] Audit Material's GUI copy/install registrations and retained consumers;
+      qualify only InitGui.py, MaterialEditor.py and TestMaterialsGui.py
+      (ADR-225, PHASE8-AUDIT.md, 2026-09-07).
+- [ ] Disable those three Material registrations, retaining source and App/
+      tests/resources, with stale-copy cleanup and fresh gates (ADR-225).
+- [ ] Separately delete the qualified Material sources after verified disable
+      and replan; retain TestMaterialDocument.py (ADR-225).
+
 **Exit criteria:** the tree contains no GUI source, `pixi run configure`
 (debug) still configures, and both cadex ctests stay green.
 

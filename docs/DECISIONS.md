@@ -20155,3 +20155,20 @@ Full engine rerun after staging: **2,023 passed, 52 skipped in 251.30 s**;
 packaged gates 26 passed, CTest 162 baseline failures with no additions. The
 first engine run overlapped staging and saw ccx before pruning; its failure
 and the required serialization are recorded in PHASE8-AUDIT.md.
+
+
+## ADR-225 — Qualify Material's three GUI script registrations (2026-09-07)
+
+[Cadex-new] The bounded audit in PHASE8-AUDIT.md qualifies only InitGui.py,
+MaterialEditor.py and TestMaterialsGui.py for a separate shared copy/install
+list disable. Retain their sources until that disable passes fresh gates.
+Keep materialtests/TestMaterialDocument.py and its independent registrations,
+Material App/tests, Init.py, importFCMat, materialtools, cards/model resources,
+retained Qt and Assembly proxies. GUI-looking names do not justify expanding
+the boundary. The next unit must quarantine stale copies, regenerate rules,
+build/install/stage and verify the retained headless behavior before deletion
+can be planned. Risk is limited to unsupported external GUI consumers; static
+searches cannot prove those absent. Existing-payload baseline: 26 lifecycle/
+licensing tests passed; installed Material App: 15 passed, GuiUp false. No
+implementation changed or fresh-build proof claimed. Broader GUI-source and
+fork-delta criteria remain open; BLDC searches remain stopped.
