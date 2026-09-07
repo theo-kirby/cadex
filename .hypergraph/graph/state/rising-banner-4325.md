@@ -29,7 +29,9 @@ Open charter criterion: **L3 motors and mechanisms families exist** over `CadexC
 
 **BLDC acceptance set A defined:** a reversible robot-prototype sampling set comprises shafted 28xx and hollow frameless 50 and 80 classes, not a claim of market prevalence. Each needs an independently qualified winding plus real-worker and packaged evidence; the delivered single winding does not complete this set [rec: slender-harbor-9625].
 
-**RI50 qualification parked (ADR-223):** the manufacturer source audit and fixture follow-up add evidence in `docs/L3-COVERAGE.md`, with source URLs and hashes, but no catalog entry. Inspected ratings, fixture BOM/STEP headers and support text establish neither RI50-specific cooling, winding temperature and test duration/duty nor linkage between the rating sheet and no-Hall drawing revision. Geometry proof and delivery remain gated; full L3 stays open [rec: slender-harbor-9625] [rec: shy-hill-8139]. The follow-up requests a manufacturer dynamometer-report/mounting-drawing audit for a shafted 28xx winding while retaining thermal/current/revision requirements; no alternative is prequalified. This records the evidence-based recommendation without changing the planner's view [rec: shy-hill-8139].
+**RI50 qualification parked (ADR-223):** the manufacturer source audit and fixture follow-up add evidence in `docs/L3-COVERAGE.md`, with source URLs and hashes, but no catalog entry. Inspected ratings, fixture BOM/STEP headers and support text establish neither RI50-specific cooling, winding temperature and test duration/duty nor linkage between the rating sheet and no-Hall drawing revision. Geometry proof and delivery remain gated; full L3 stays open [rec: slender-harbor-9625] [rec: shy-hill-8139].
+
+**AT2814 alternative qualification blocked (ADR-223):** the T-MOTOR AT2814 Long Shaft KV900 manufacturer bench report and V2.0 drawing were audited in `docs/L3-COVERAGE.md`. The selected row reports 0.291 N m at 7601 rpm, 11.05 V and 27.02 A, with 68 C surface temperature after three minutes; ambient, current definition, cooling and test-to-drawing revision linkage remain unresolved. No winding qualified and no geometry proof or catalog delivery followed. Set A remains unchanged, RI50 stays parked, and full L3 remains open. The bounded motor-search sequence stops; the recorded recommendation is to replan toward residual GUI work. This documentation audit supplies no fresh runtime or payload verification [rec: mild-harvest-8460].
 
 ## Negative knowledge
 
@@ -64,3 +66,4 @@ Open charter criterion: **L3 motors and mechanisms families exist** over `CadexC
 - windy-lily-2895 — independent N20 interface measurements and probes in source/staged workers; passing suites and local relocation limits
 - slender-harbor-9625 — BLDC set A and hashed RI50 source audit; thermal/revision qualification blocks delivery
 - shy-hill-8139 — bounded fixture/support follow-up leaves qualification gaps; RI50 parked with unread-source limits
+- mild-harvest-8460 — AT2814 source audit leaves current/thermal/revision gaps; no qualified winding or catalog delivery, bounded motor searches stopped

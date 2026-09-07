@@ -33,6 +33,8 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 
 **RI50 qualification parked (ADR-223):** the manufacturer source audit and fixture follow-up add evidence in `docs/L3-COVERAGE.md`, with source URLs and hashes, but no catalog entry. Inspected ratings, fixture BOM/STEP headers and support text establish neither RI50-specific cooling, winding temperature and test duration/duty nor linkage between the rating sheet and no-Hall drawing revision. Geometry proof and delivery remain gated; full L3 stays open [rec: slender-harbor-9625] [rec: shy-hill-8139]. The fixture's populated sheet lists a pivot, rear cover, two MR148 bearings and six M2.5x4 screws; the other two sheets are empty. These documentation-only audits add no common-size completion or fresh runtime/payload verification [rec: slender-harbor-9625] [rec: shy-hill-8139].
 
+**AT2814 alternative qualification blocked (ADR-223):** the T-MOTOR AT2814 Long Shaft KV900 manufacturer bench report and V2.0 drawing were audited in `docs/L3-COVERAGE.md`. The selected row reports 0.291 N m at 7601 rpm, 11.05 V and 27.02 A, with 68 C surface temperature after three minutes; ambient, current definition, cooling and test-to-drawing revision linkage remain unresolved. No winding qualified and no geometry proof or catalog delivery followed. Set A remains unchanged, RI50 stays parked, and full L3 remains open. The bounded motor-search sequence stops; the recorded recommendation is to replan toward residual GUI work. This documentation audit supplies no fresh runtime or payload verification [rec: mild-harvest-8460].
+
 ## Negative knowledge
 
 - [scope: Pololu #2367 dimensions and packaged verification | confidence: high | evidence: idle-dawn-5426] The envelope uses the drawing’s 25.6 mm rear maximum amid conflicting product-page lengths. Filled rear geometry, 1 mm bore depth and shaft-flat transition are approximate; bore depth is not screw engagement permission. The tested stage-only payload retains local dependencies and is not a portable release.
@@ -64,3 +66,4 @@ Catalogued hardware is available as the **lib script namespace** over `CadexCata
 - windy-lily-2895 — independent N20 interface measurements and probes in source/staged workers; passing suites and local relocation limits
 - slender-harbor-9625 — BLDC set A and hashed RI50 source audit; thermal/revision qualification blocks delivery
 - shy-hill-8139 — bounded fixture/support follow-up leaves qualification gaps; RI50 parked with unread-source limits
+- mild-harvest-8460 — AT2814 source audit leaves current/thermal/revision gaps; no qualified winding or catalog delivery, bounded motor searches stopped
