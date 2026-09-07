@@ -137,6 +137,12 @@ live at the root: `NOTICE` and `THIRD_PARTY_LICENSES.md`.
 
 ## 3. Removal protocol and remaining boundaries
 
+**Surviving modification audit (2026-09-07, ADR-227).**
+[SURVIVING-DIFF-AUDIT.md](SURVIVING-DIFF-AUDIT.md) inventories all 56 FreeCAD
+M entries and qualifies only JointObject's redundant Preferences import guard.
+No source changes landed in the audit; the broader reduction remains open.
+
+
 **Microsoft GSL tail removed (2026-09-07, ADR-222).** Start was its only
 compiled consumer. After Start disable/delete, the GSL gitlink, submodule
 entry and three checkout references are removed. No retained CMake consumer

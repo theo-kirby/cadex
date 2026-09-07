@@ -20237,3 +20237,19 @@ and limits. Manifest/notices and surviving M totals remain FreeCAD
 remaining fall 3,435 to 3,434; Blender stays 19,052. Whole-file deletion is a
 separate measure, not surviving-file delta savings. Windows execution,
 relocatable packaging and broader GUI-source/fork-delta closure remain unproved.
+
+
+## ADR-227 — Qualify one redundant Assembly import guard (2026-09-07)
+
+[Cadex-new] Audit the 56 surviving FreeCAD manifest modifications after the
+Material/Main deletions; qualify only JointObject.py's four-line Preferences
+ImportError guard for replacement with an unconditional import. Preferences
+already imports headlessly and solveIfAllowed requires it, so None is not a
+usable fallback. Current and proposed source pass the same GUI-denied import
+and solver-dispatch probe. Missing-module errors would surface earlier.
+`docs/SURVIVING-DIFF-AUDIT.md` records consumers, all 56 dispositions, exact
+boundary and required implementation gates. This is documentation only:
+FreeCAD remains 56/1637/1819 M files/inserted/deleted with 3434 inherited files
+remaining; the proposed change saves three inserted lines only. Existing
+packaged lifecycle/licensing: 26 passed. Broader fork-delta and GUI-source
+claims remain open; no Windows launcher or formatter change is authorized.

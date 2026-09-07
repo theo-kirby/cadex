@@ -860,6 +860,11 @@ Not a phase that "completes" — a standing mode of work.
       ADR-222): no retained consumer or CMake reference; engine and app setup
       plus the legacy build helper no longer request its checkout. Setup,
       release configure/build and licensing/purity verification pass.
+- [x] Audit all 56 surviving FreeCAD modifications (2026-09-07, ADR-227,
+      `docs/SURVIVING-DIFF-AUDIT.md`); qualify only the redundant JointObject
+      Preferences import guard with a GUI-denied retained-behavior probe.
+- [ ] Remove that qualified guard and run fresh implementation gates;
+      expected saving is three inserted lines, with no file-count change.
 - [ ] Engine side: Phase 8's audited GUI directory boundary is deleted
       (ADR-214); broader residual GUI-lineage source remains open. Further
       candidates: Help is deleted (ADR-217, ADR-218);
