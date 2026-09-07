@@ -20768,3 +20768,32 @@ passed **24 packaged lifecycle/clearance tests**, no skips (17.12 s).
 This is local staging evidence, not a relocatable release claim. Remove the
 obsolete inventory-only generated-document wording now that clearance also
 writes a generated report.
+
+## ADR-238 — The lifecycle walk reviews accepted pair clearance (2026-09-08)
+
+**Decision.** Reuse `write_clearance` in the walk's inventory inspection
+session, with the same default thresholds and no additional rebuild. Commit
+`docs/clearance.md` together with `review.json` and a walk-specific
+`PROGRESS.md` row. The review includes initial-solved-pose scope, accepted
+revision, thresholds, checked/offending/unknown counts, offending pairs with
+labels and catalog identities, unknown pairs with errors, and the
+project-relative report path. Unavailable counts are null, never zero;
+unknown distances and volumes remain null and are not classified as clear.
+An offending pair is a review finding; an inspection error still fails the
+walk. Remove the walk's progress-row suppression: its new row reports only
+clearance, leaving the legs' reward comparisons intact. The mode-artifact
+table, walk docs, recipe architecture docs and scaffold share this contract.
+
+**Limits.** These are initial-pose findings, not swept-motion checks or
+large-assembly qualification. The headless-review charter criterion remains
+open for named-angle rendering and section views, each with walk integration.
+
+Verification: full built-engine CLI suite **161 passed**, no skips (165.42 s;
+monitored process-tree peak RSS 1.14 GB). Fresh documented public recipe walks
+also passed: arm 14.52 s, reward -27.109384, witness error 1.384e-09,
+base/swing distance 0 mm and common volume 0 mm³ (one below-clearance finding);
+carriage 13.18 s, reward -24159.195356, witness error 5.419e-09 (one clear pair).
+Both had zero unknown pairs, two inventory components and clean project trees
+with the reports, review and progress tracked in HEAD. Combined recipe monitor:
+29.66 s, peak RSS 1.07 GB; no resource cutoff. Local/remote-flag parity uses a
+local CPU dispatcher stand-in only. No engine/protocol or shell code changed.

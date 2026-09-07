@@ -11,6 +11,10 @@ from typing import Any
 from .inventory import InventoryError, _cell, _read_path
 
 
+MINIMUM_CLEARANCE_MM = 0.1
+MAXIMUM_COMMON_VOLUME_MM3 = 1.0e-6
+
+
 def pair_status(row: dict[str, Any], minimum: float, maximum_volume: float) -> str:
     distance, volume = row.get("distance_mm"), row.get("common_volume_mm3")
     if row.get("error") or any(
@@ -27,7 +31,8 @@ def pair_status(row: dict[str, Any], minimum: float, maximum_volume: float) -> s
 
 def write_clearance(
     client: Any, root: Path | str, *, target: str = "",
-    minimum: float = 0.1, maximum_volume: float = 1.0e-6,
+    minimum: float = MINIMUM_CLEARANCE_MM,
+    maximum_volume: float = MAXIMUM_COMMON_VOLUME_MM3,
 ) -> tuple[Path, dict[str, Any]]:
     for value in (minimum, maximum_volume):
         if not math.isfinite(value) or value < 0:

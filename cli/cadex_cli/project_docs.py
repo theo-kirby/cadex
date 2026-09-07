@@ -116,7 +116,12 @@ The artifacts are the same project-relative paths in both modes: the
 bundle and the policy under `runs/<name>/train/`, the verified rollout
 under `runs/<name>/rollout/`, the numbers in `runs/<name>/review.json`
 and the generated `{docs}/inventory.md` component report (also summarized
-in the review's `inventory` block), and as a `{progress}` row, so rows
+in the review's `inventory` block), plus `{docs}/clearance.md` and the
+review's `clearance` block. Clearance covers only the initial solved pose,
+at 0.1 mm minimum distance and 1e-6 mm³ maximum common volume. Its own
+`{progress}` row carries offending, unknown and checked pair counts;
+unavailable measurements stay unavailable. Training and rollout rows
+retain their numbers, so rows
 from either mode compare line for line. **Remote runs are cold runs only:** the dispatcher carries the
 bundle and the model out and nothing else, so a warm start
 (`--init-from`) trains locally. With the GUI attached the same commands

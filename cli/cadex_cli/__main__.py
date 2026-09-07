@@ -49,7 +49,7 @@ from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine
 from .export import ExportError, export_blueprints, export_outputs, parse_formats
 from .inventory import InventoryError, write_inventory
-from .clearance import write_clearance
+from .clearance import MAXIMUM_COMMON_VOLUME_MM3, MINIMUM_CLEARANCE_MM, write_clearance
 from .project_docs import (
     append_progress_row,
     commit_project,
@@ -185,8 +185,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _common(clearance_parser, inherit=True)
     clearance_parser.add_argument("--assembly", default="", metavar="OUTPUT")
-    clearance_parser.add_argument("--min-clearance-mm", type=float, default=0.1)
-    clearance_parser.add_argument("--max-common-volume-mm3", type=float, default=1.0e-6)
+    clearance_parser.add_argument("--min-clearance-mm", type=float, default=MINIMUM_CLEARANCE_MM)
+    clearance_parser.add_argument("--max-common-volume-mm3", type=float, default=MAXIMUM_COMMON_VOLUME_MM3)
 
     script_parser = subparsers.add_parser(
         "script", help="Print the project script, or replace it from a file."
@@ -1197,7 +1197,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     policy_on=1`` for the verified rollout, and the review read off the
     exported trace and accepted inventory. Each child ``cadex`` leg lands
     its own ``PROGRESS.md`` row and commit; the walk commits the review
-    and inventory report together. ``--remote`` (ADR-200) goes to
+    and inventory/clearance reports together. ``--remote`` (ADR-200) goes to
     the train leg and nowhere else: the trainer runs on the box, the
     artifacts and every later leg are unchanged.
     """
@@ -1342,11 +1342,29 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     review["sha256"] = sha256
     with _engine_session(args, RunReport(), restore=False) as (_engine, client):
         path, inventory = write_inventory(client, report.project_root)
+        clearance_path, clearance = write_clearance(client, report.project_root)
     review["inventory"] = {
         "available": bool(inventory.get("assembly")),
         "component_count": inventory["component_count"],
         "catalogued_count": sum(inventory.get("catalog_counts", {}).values()),
         "path": path.relative_to(Path(report.project_root)).as_posix(),
+    }
+    pairs = clearance["pairs"]
+    available = bool(clearance.get("available"))
+    offending = [row for row in pairs if row["status"] in ("intersection", "below clearance")]
+    unknown = [row for row in pairs if row["status"] == "unknown"]
+    review["clearance"] = {
+        "available": available,
+        "scope": "initial solved pose",
+        "revision": clearance["revision"],
+        "minimum_clearance_mm": MINIMUM_CLEARANCE_MM,
+        "maximum_common_volume_mm3": MAXIMUM_COMMON_VOLUME_MM3,
+        "pairs_checked": len(pairs) if available else None,
+        "offending_pair_count": len(offending) if available else None,
+        "offending_pairs": offending,
+        "unknown_pair_count": len(unknown) if available else None,
+        "unknown_pairs": unknown,
+        "path": clearance_path.relative_to(Path(report.project_root)).as_posix(),
     }
     report.walk["review"] = review
     review_path = write_review(
@@ -1495,8 +1513,6 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command == "walk":
-        return  # its legs landed their rows; a row on top would repeat their numbers
     try:
         append_progress_row(
             report.project_root,
@@ -1504,7 +1520,12 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
             what=_progress_what(command, args, report),
             revision=report.accepted_revision,
             digest=report.digest,
-            numbers=progress_numbers(
+            numbers=(
+                "clearance unavailable" if not report.walk["review"]["clearance"]["available"]
+                else "clearance offending {offending_pair_count}; unknown {unknown_pair_count}; "
+                     "pairs checked {pairs_checked} (initial solved pose; {minimum_clearance_mm:g} mm / {maximum_common_volume_mm3:g} mm³)".format(
+                         **report.walk["review"]["clearance"])
+            ) if command == "walk" else progress_numbers(
                 training=report.training,
                 outputs=report.outputs,
                 previous=previous_numbers(report.project_root),

@@ -7,7 +7,12 @@ different joint and actuator types. Both passed the unchanged headless
 entry point from xscript geometry through assembly, MJCF/task export,
 local CPU training, policy verification, rollout and numerical review.
 The walk also writes `docs/inventory.md`; `runs/baseline/review.json`
-includes its project-relative path and component/catalogued counts.
+includes its project-relative path and component/catalogued counts. It also
+commits `docs/clearance.md` with the review's `clearance` summary and a
+`PROGRESS.md` row of offending/unknown/checked pair counts. At the default
+0.1 mm / 1e-6 mm³ thresholds the arm has one below-clearance pair; the
+carriage's pair is clear. These are initial-pose findings, not motion checks;
+unknown and unavailable measurements remain explicit.
 The projects' `PROGRESS.md` files preserve the same metric definitions and
 both sets of measured numbers. The carriage's poor height score is recorded,
 not a claim of learned control or printable hardware.

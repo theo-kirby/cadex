@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 import subprocess
@@ -203,7 +204,18 @@ def fake_cadex(tmp_path, monkeypatch, request) -> Path:
 
     class InventoryClient:
         def request(self, op, args):
-            assert op == "inspect" and args["scope"] == "inventory"
+            assert op == "inspect"
+            if args["scope"] == "clearance":
+                outcome = os.environ.get("FAKE_CLEARANCE", "")
+                if outcome == "failure":
+                    return {"ok": False, "error": "clearance inspection failed"}
+                pairs = [{"first": "a", "second": "b", "distance_mm": None,
+                          "common_volume_mm3": None, "error": "measurement failed"}] if outcome == "unknown" else []
+                return {"ok": True, "value": {
+                    "revision": "test", "assembly": getattr(request, "param", "asm"),
+                    "available": bool(getattr(request, "param", "asm")), "pairs": pairs,
+                }}
+            assert args["scope"] == "inventory"
             return {"ok": True, "value": {"assembly": getattr(request, "param", "asm"), "components": [],
                                           "catalog_counts": {}}}
 
@@ -415,6 +427,7 @@ def test_the_same_walk_handles_a_linear_carriage(engine, tmp_path, capsys) -> No
     review = json.loads((out / REVIEW_FILENAME).read_text())
     assert review["sha256"] == envelope["walk"]["review"]["policy_sha256"]
     _assert_inventory(root, review)
+    _assert_clearance(root, review, "clear")
     assert math.isfinite(review["total_reward"])
     assert {row["label"] for row in review["reward_totals"]} == {"lift", "control_cost"}
     progress = (root / "PROGRESS.md").read_text()
@@ -471,6 +484,7 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     review1 = json.loads((out1 / REVIEW_FILENAME).read_text())
     assert review1["sha256"] == sha1 == envelope["walk"]["review"]["policy_sha256"]
     _assert_inventory(root, review1)
+    _assert_clearance(root, review1, "below clearance")
     reward1 = float(review1["total_reward"])
     assert reward1 == reward1  # not NaN
     assert {row["label"] for row in review1["reward_totals"]} == {"lift", "control_cost"}
@@ -521,6 +535,7 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     # is the last one.
     rows = [line for line in (root / "PROGRESS.md").read_text().splitlines()
             if line.startswith("| 2")]
+    assert "clearance offending 1; unknown 0; pairs checked 1" in rows.pop()
     assert rows[-1].split(" | ")[1] == "params"
     assert f"total_reward {reward2:.1f} (Δ " in rows[-1] and f"at {reward1:.1f})" in rows[-1]
     assert _git(root, "log", "-1", "--format=%s") == f"cadex walk 1 it × 4 envs → {out2}"
@@ -594,6 +609,7 @@ def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
         assert (out / review["trace"]).is_file()
         tracked = set(_git(root, "ls-files").splitlines())
         _assert_inventory(root, review)
+        _assert_clearance(root, review, "below clearance")
         expected = {"docs/inventory.md", "assets/job.cxpolicy", "runs/baseline/review.json",
                     "runs/baseline/train/job-task.json", "runs/baseline/script.py",
                     "ARCHITECTURE.md", "DECISIONS.md", "PROGRESS.md"}
@@ -608,6 +624,11 @@ def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
         reviews.append(review)
     assert paths[0] == paths[1]
     assert reviews[0]["inventory"] == reviews[1]["inventory"]
+    # Policy asset hashes (and thus accepted revisions) vary across training runs.
+    assert all(review["clearance"]["revision"] for review in reviews)
+    assert {k: v for k, v in reviews[0]["clearance"].items() if k != "revision"} == {
+        k: v for k, v in reviews[1]["clearance"].items() if k != "revision"
+    }
     assert reviews[0]["trace"] == reviews[1]["trace"]
     assert reviews[0]["training"].keys() == reviews[1]["training"].keys()
     argv = json.loads(dispatch_log.read_text())
@@ -638,3 +659,49 @@ def test_walk_review_without_published_assembly(fake_cadex, toy_root, capsys):
         "path": "docs/inventory.md",
     }
     assert "Inventory unavailable" in (toy_root / "docs/inventory.md").read_text()
+    assert review["clearance"]["available"] is False
+    assert review["clearance"]["pairs_checked"] is None
+    assert review["clearance"]["offending_pair_count"] is None
+    assert review["clearance"]["unknown_pair_count"] is None
+    assert "Measurements unavailable" in (toy_root / "docs/clearance.md").read_text()
+
+
+def _assert_clearance(root, review, verdict):
+    summary = review["clearance"]
+    assert summary["available"] is True
+    assert summary["pairs_checked"] == 1
+    assert summary["unknown_pair_count"] == 0
+    assert summary["offending_pair_count"] == int(verdict != "clear")
+    assert summary["scope"] == "initial solved pose"
+    assert summary["minimum_clearance_mm"] == 0.1
+    assert summary["maximum_common_volume_mm3"] == 1e-6
+    assert summary["path"] == "docs/clearance.md"
+    text = (root / summary["path"]).read_text()
+    assert verdict in text
+    for row in summary["offending_pairs"]:
+        assert row["status"] == verdict
+        assert row["first_label"] in text and row["second_label"] in text
+    assert "docs/clearance.md" in _git(root, "ls-tree", "-r", "--name-only", "HEAD").splitlines()
+    assert "clearance offending " + str(summary["offending_pair_count"]) in (root / "PROGRESS.md").read_text()
+
+
+@pytest.mark.parametrize("outcome", ["unknown", "failure"])
+def test_walk_preserves_unknown_clearance_and_inspection_failures(
+    fake_cadex, toy_root, capsys, monkeypatch, outcome,
+):
+    monkeypatch.setenv("FAKE_CLEARANCE", outcome)
+    out = toy_root / "runs" / outcome
+    code, report = _run(capsys, "walk", "--project", str(toy_root), "--out", str(out))
+    if outcome == "failure":
+        assert code != EXIT_OK
+        assert "clearance inspection failed" in report["error"]
+        assert not (out / REVIEW_FILENAME).exists()
+        return
+    assert code == EXIT_OK, report
+    summary = json.loads((out / REVIEW_FILENAME).read_text())["clearance"]
+    assert summary["available"] is True
+    assert summary["unknown_pair_count"] == summary["pairs_checked"] == 1
+    assert summary["offending_pair_count"] == 0
+    assert summary["unknown_pairs"][0]["distance_mm"] is None
+    assert summary["unknown_pairs"][0]["error"] == "measurement failed"
+    assert "unknown" in (toy_root / "docs/clearance.md").read_text()

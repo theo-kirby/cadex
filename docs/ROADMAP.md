@@ -1932,6 +1932,10 @@ What makes them experimental, and what would settle it:
   counts and project-relative path, committed together in every mode.
   No published assembly yields an explicit unavailable report; the walk
   retains its dynamics prerequisites. Real toy and carriage walks test it.
+- [x] **Clearance is part of the walk review** (ADR-238).
+  Commit `docs/clearance.md`, the review summary and comparable progress
+  counts together; preserve unavailable and unknown measurements. Initial
+  solved pose only. Arm/carriage walks and CPU mode parity pin the result.
 - [x] **The walk's remote-training handoff is scripted** (ADR-200,
   `docs/CLI.md` §2). `cadex train --remote` and `cadex walk --remote` run
   the train leg through `training/remote_train.sh train <bundle> <out> --
@@ -1976,8 +1980,8 @@ What makes them experimental, and what would settle it:
   outputs — written beside the definition, so the content digest cannot
   move. No protocol change and no `shell/` diff. Qualified against a real
   engine building a plate with two catalogued M3 bolts. **The first of the
-  four headless review calls**; render-from-angles, section view and
-  clearance/intersection walk wiring remain open.
+  four headless review calls**; render-from-angles and section view, each
+  with walk integration, remain open.
 - [x] **Stale shell mutations preserve accepted work** (ADR-204).
   Remove automatic revision adoption/replay after `STALE_PROGRAM_REVISION`.
   Script and parameter edits remain refused until explicit refresh; headless
