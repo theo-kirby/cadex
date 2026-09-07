@@ -85,11 +85,6 @@ from urllib.request import Request
 from urllib.request import urlopen
 from urllib.request import urlretrieve
 
-try:
-    from PySide6 import QtCore
-except ImportError:
-    from PySide2 import QtCore
-
 TsFile = namedtuple("TsFile", ["filename", "src_path"])
 
 LEGACY_NAMING_MAP = {"Draft.ts": "draft.ts"}
@@ -406,50 +401,6 @@ def updateqrc(qrcpath, lncode):
         f.write(r)
     f.close()
     print("successfully updated ", qrcpath)
-
-
-def updateTranslatorCpp(lncode):
-    "updates the Translator.cpp file with the given translation entry"
-
-    cppfile = os.path.join(os.path.dirname(__file__), "..", "Gui", "Language", "Translator.cpp")
-    l = QtCore.QLocale(lncode)
-    lnname = QtCore.QLocale.languageToString(l.language())
-
-    # read file contents
-    f = open(cppfile, "r")
-    cppcode = []
-    for l in f.readlines():
-        cppcode.append(l)
-    f.close()
-
-    # checking for existing entry
-    lastentry = 0
-    for i, l in enumerate(cppcode):
-        if l.startswith("    d->mapLanguageTopLevelDomain[QT_TR_NOOP("):
-            lastentry = i
-            _filecode = LANGUAGE_CODE_MAP.get(lncode, lncode)
-            if '"' + lncode + '"' in l or '"' + _filecode + '"' in l:
-                # print(lnname+" ("+lncode+") already exists in Translator.cpp")
-                return
-
-    # find the position to insert
-    pos = lastentry + 1
-    if pos == 1:
-        print("ERROR: couldn't update Translator.cpp")
-        sys.exit()
-
-    # inserting new entry just before the above line
-    # Use mapped language code for the domain (e.g. sv-SE -> sv)
-    filecode = LANGUAGE_CODE_MAP.get(lncode, lncode)
-    line = '    d->mapLanguageTopLevelDomain[QT_TR_NOOP("' + lnname + '")] = "' + filecode + '";\n'
-    cppcode.insert(pos, line)
-    print(lnname + " (" + filecode + ") added Translator.cpp")
-
-    # writing the file
-    f = open(cppfile, "w")
-    for r in cppcode:
-        f.write(r)
-    f.close()
 
 
 def doFile(tsfilepath, targetpath, lncode, qrcpath):

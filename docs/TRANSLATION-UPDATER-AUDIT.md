@@ -261,3 +261,51 @@ passes **2034 passed, 52 skipped in 258.56 seconds**. Licensing/manifest
 checks are repeated at committed HEAD after the single work commit; their
 pre-commit result is 10 passed, 1 packaged-license skip. The separate delete
 unit remains conditional on that committed-HEAD check passing.
+
+
+## GUI-writer delete implementation (2026-09-07)
+
+Accepted disable commit `95c1286d` passes committed-HEAD licensing (10 passed,
+1 packaged-license skip). Following the existing bounded planner bet, remove
+only the helper and exclusive PySide import block: 49 lines deleted, no other
+inherited source touched. Retired-command diagnostic, credential/project
+startup, all other dispatch, locations, mappings and App/Base behavior remain.
+Direct external helper imports now fail; external usage remains unknown.
+No manifest membership or modification-notice change is needed. Surviving
+FreeCAD M files/inserted/deleted: 56/1635/1881, versus disable's 56/1635/1832
+and nt2 start's 47/1804/1907. This reduces inserted/deleted line totals from
+run start while increasing M file count; zero whole-file saving this unit.
+Blender stays 44/1046/129.
+
+All eleven isolated regressions pass with both PySide modules blocked and
+helper absence asserted before installing the forbidden-writer sentinel.
+Against the committed disable source these tests produce eleven fixture
+errors from the blocked PySide import, establishing the removed dependency;
+this is distinct from the prior stage's three dispatch regression failures.
+The single `pixi run build-release` exits 0. All 78 tracked App/Base TS files
+are byte-identical to disable HEAD. Parsing
+`build/release/src/App/Resources/App_translation.qrc` finds 76 existing QM
+files. Installed `pixi run FreeCADCmd -c` with a headless PySide6
+QCoreApplication verifies FreeCAD.Qt load/translate/remove on App_de.qm:
+QObject/Unnamed → Unbenannt → Unnamed.
+
+No install, stage, packaged lifecycle or shell gate is run: the updater has
+no build/install rule and payload is untouched. These checks do not establish
+fresh payload provenance or live Crowdin success. Work-iteration rules forbid
+the overseer's requested reconciliation; the accepted disable and existing
+planner bet authorize this second stage. Next owners are the maintainer
+(actual unreconciled tail reaches three with this record) and then planner;
+no expansion of the completed pair is authorized here.
+
+Retained updater AST is identical to disable HEAD after excluding exactly
+the helper and import block. Combined isolated/licensing checks: 21 passed,
+1 packaged-license skip. `pixi run test-release` exits 8: 162 failures of
+1526 enabled tests in 132.66 seconds, zero new failing names against the
+164-name baseline. The absent baseline names remain DlgVersionMigrator_Tests_run
+and SpreadsheetRenameProperty.renameProperty. Seven disabled and three skipped
+registrations are separate from failures.
+
+Full engine `pixi run python -m pytest src/Mod/cadex/cadex_tests`: **2034
+passed, 52 skipped in 255.92 seconds**, exit 0. `git diff --check` passes.
+Hypergraph export/check and committed-HEAD licensing are final commit gates;
+the latter repeats the already-passing manifest check against the landed tree.

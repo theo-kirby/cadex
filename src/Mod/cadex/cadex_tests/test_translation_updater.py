@@ -15,11 +15,13 @@ SOURCE = Path(__file__).resolve().parents[3] / 'Tools' / 'updatecrowdin.py'
 @pytest.fixture
 def updater(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setitem(sys.modules, 'PySide6', SimpleNamespace(QtCore=Mock()))
+    monkeypatch.setitem(sys.modules, 'PySide6', None)
+    monkeypatch.setitem(sys.modules, 'PySide2', None)
     tree = ast.parse(SOURCE.read_text())
     dispatch = tree.body.pop()
     ns = {'__name__': 'offline_updater', '__file__': str(SOURCE)}
     exec(compile(tree, str(SOURCE), 'exec'), ns)
+    assert 'updateTranslatorCpp' not in ns
     ns['load_token'] = Mock(return_value='synthetic-token')
     ns['urlopen'] = Mock(side_effect=AssertionError('network forbidden'))
     ns['urlretrieve'] = Mock(side_effect=AssertionError('network forbidden'))

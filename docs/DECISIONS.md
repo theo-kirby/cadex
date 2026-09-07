@@ -20440,3 +20440,17 @@ Per-stage build, suite and translation evidence is recorded in
 TRANSLATION-UPDATER-AUDIT.md. The existing notice/manifest membership is
 unchanged; surviving FreeCAD M files/inserted/deleted are 56/1635/1832,
 versus 56/1634/1820 before this unit. Blender remains 44/1046/129.
+
+
+**GUI-writer delete (2026-09-07).** After accepted disable commit `95c1286d`
+and its passing committed-HEAD licensing check, delete only updateTranslatorCpp
+and its exclusive PySide6/PySide2 import block (49 lines). Keep the retired
+command diagnostic, startup and every retained command/resource behavior.
+External direct helper imports cease to work; their use is unknown. The
+isolated suite now blocks both PySide imports and asserts helper absence
+before installing the forbidden-writer sentinel. All eleven regressions pass.
+No inherited manifest membership or notice change is needed; FreeCAD surviving
+M files/inserted/deleted are 56/1635/1881, Blender remains 44/1046/129, and
+whole-file saving is zero. Translation/resource, build and suite evidence is
+in TRANSLATION-UPDATER-AUDIT.md. This completes only the bounded pair;
+maintainer reconciliation and planner re-planning are the next role handoff.

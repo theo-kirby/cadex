@@ -228,7 +228,8 @@ itself, in the Phase 7 Qt-shell deletion (ADR-021).
 
 - The offline translation-updater audit qualifies only its deleted GUI
   translator writer. Its apply/install tail and updateTranslator dispatch are
-  disabled; the helper and PySide import await a separate verified delete
+  disabled; the helper and exclusive PySide import are now deleted in a
+  separate verified commit
   (ADR-232, [TRANSLATION-UPDATER-AUDIT.md](TRANSLATION-UPDATER-AUDIT.md)).
   App and Base translations and their headless Qt consumers remain live;
   no whole-tool removal is qualified.
