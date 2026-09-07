@@ -135,6 +135,16 @@
      "str"
     ]
    },
+   "gears": {
+    "notes": "str",
+    "preferred_modules_mm": [
+     "float"
+    ],
+    "pressure_angle_degrees": "float",
+    "teeth_range": [
+     "int"
+    ]
+   },
    "heat_set_inserts": {
     "rows": [
      {

@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-09-06
+Verified against source: 2026-09-07
 
 **Optional Blender recipe runtime (ADR-185).** A shell-owned cadexd child
 receives `CADEX_BLENDER_EXECUTABLE` naming the shell's own binary. The engine
@@ -184,6 +184,11 @@ The `describe_api.library.catalog.boards` family (ADR-202) adds `skus` and
 `notes` through the existing browsable catalog. Generator signatures remain
 in `library.exports`; board dimensions and pin rows are read from the
 returned library part's spec. No request op or client dispatch changes.
+
+The `describe_api.library.catalog.gears` family (ADR-233) adds
+`preferred_modules_mm`, `pressure_angle_degrees`, `teeth_range` and `notes`;
+`lib.spur_gear` and `lib.rack` are discovered through the existing library
+exports. No request op or client dispatch changes.
 
 `restore` reports what the open re-proved. A stored script that runs but
 produces a different digest is a **restore failure** — the user changed the

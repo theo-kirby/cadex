@@ -20454,3 +20454,43 @@ M files/inserted/deleted are 56/1635/1881, Blender remains 44/1046/129, and
 whole-file saving is zero. Translation/resource, build and suite evidence is
 in TRANSLATION-UPDATER-AUDIT.md. This completes only the bounded pair;
 maintainer reconciliation and planner re-planning are the next role handoff.
+
+## ADR-233 — Involute spur gear and rack as library values (2026-09-07)
+
+[Cadex-new] Mission 4's compound-mechanisms criterion needs gear teeth
+before a rack-and-pinion or a planetary can exist, and the L3 coverage audit
+(ADR-212) named involute profiles as their own slice with no library value.
+Every sourced servo, motor and accessory search is stopped (ADR-223,
+ADR-229, ADR-231); a standard has none of the blockers those hit — no vendor
+archive, revision page, licence or dimension conflict — so this slice lands
+where they could not.
+
+**Decision.** `CadexCatalog.GEAR_STANDARD` pins the ISO 53:1998 type A basic
+rack (20°, addendum 1.0 m, dedendum 1.25 m, clearance 0.25 m) and the ISO 54
+series I modules 1–50 mm; `gear_spec(module, teeth, rack=False)` refuses any
+other module and tooth counts outside [6, 200] (racks [1, 200]), and computes
+the pitch, base, root and tip diameters, circular pitch and pitch-circle
+tooth thickness. `lib.spur_gear(module, teeth, face_width, bore=None)` and
+`lib.rack(module, teeth, face_width, height)` build through the existing
+part API from one generator: eight sampled involute points per flank joined
+by tip and root arcs (straight 20° flanks for the rack) into one closed
+polygon, one face, one extrude, an optional bore cut. A `gears` family joins
+the browsable catalog. Root fillets, tip relief, backlash, profile shift,
+helix, undercut generation, density and any strength or torque rating are
+out of scope and are said so in `spec["approximate"]`, with the undercut
+warning added below 17 teeth. No new dependency, protocol op, shell line or
+walk change. Provenance: PROVENANCE §8g; coverage: L3-COVERAGE.
+
+**Evidence.** Stubbed recipe tests walk the outline (vertex radii exactly
+at root and tip, counter-clockwise area between the root and tip circles,
+rack tips and roots at +m and −1.25 m); the actual part worker builds four
+gears and two racks as valid single solids with tip radius m(z+2)/2 and root
+radius m(z−2.5)/2 within 1e-7, volume between the root and tip cylinders,
+the bore as the only cylindrical surface, pitch-circle probes bracketing
+π·m/2, rack pitch π·m, tooth height 2.25 m and the exact trapezoid volume;
+placed instances keep their volume; cadexd publishes canonical and placed
+outputs of both. Full engine suite: ENGINE_RESULT. One `pixi run
+build-engine`, completed `pixi run stage-engine`, fresh packaged
+lifecycle/library gate: PACKAGED_RESULT. The next two units compose the
+rack-and-pinion and the planetary with mesh and clearance tests; this one
+claims standalone values only.

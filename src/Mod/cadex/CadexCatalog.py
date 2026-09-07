@@ -26,6 +26,7 @@ digest is what detects the drift (ADR-181).
 
 from __future__ import annotations
 
+import math
 from typing import Any, Mapping
 from copy import deepcopy
 
@@ -46,6 +47,8 @@ __all__ = [
     "bldc_spec",
     "linear_actuator_spec",
     "joint_spec",
+    "GEAR_STANDARD",
+    "gear_spec",
     "GEARMOTORS",
     "gearmotor_spec",
     "MICRO_HORNS",
@@ -807,6 +810,81 @@ def joint_spec(sku: Any) -> dict[str, Any]:
     return deepcopy(JOINTS[sku.strip().lower()])
 
 
+GEAR_STANDARD = {
+    # ISO 53:1998 basic rack, type A, and the ISO 54:1996 series I modules.
+    # Values are the standard's coefficients of the module; nothing here is
+    # a vendor dimension, so no download, hash or revision applies.
+    "basic_rack": "ISO 53:1998 type A",
+    "module_series": "ISO 54:1996 series I",
+    "pressure_angle_degrees": 20.0,
+    "addendum_coefficient": 1.0,
+    "dedendum_coefficient": 1.25,
+    "root_clearance_coefficient": 0.25,
+    "whole_depth_coefficient": 2.25,
+    "preferred_modules_mm": [1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0,
+                             8.0, 10.0, 12.0, 16.0, 20.0, 25.0, 32.0, 40.0, 50.0],
+    "minimum_teeth": 6,
+    "maximum_teeth": 200,
+    "undercut_teeth": 17,
+    "sources": [
+        "https://cdn.standards.iteh.ai/samples/22643/1587e6ac15ea488b913773116bac2dad/ISO-53-1998.pdf",
+        "https://cdn.standards.iteh.ai/samples/3691/837505f27cd8409f92ab7d0ff304eee5/ISO-54-1977.pdf",
+    ],
+}
+
+
+def gear_spec(module: Any, teeth: Any, *, rack: bool = False) -> dict[str, Any]:
+    """ISO 53 tooth numbers for one module and tooth count.
+
+    ``module`` must be an ISO 54 series I value; ``teeth`` an integer within
+    the generator's documented bounds (a rack needs at least one tooth). The
+    returned row carries the pitch-circle numbers a design reads and the
+    ``approximate`` list every gear recipe inherits.
+    """
+    std = GEAR_STANDARD
+    if (isinstance(module, bool) or not isinstance(module, (int, float))
+            or not math.isfinite(module)
+            or not any(abs(module - m) < 1.0e-9 for m in std["preferred_modules_mm"])):
+        raise CatalogError(f"Unknown gear module {module!r}; ISO 54 series I modules: "
+                           + ", ".join(f"{m:g}" for m in std["preferred_modules_mm"]))
+    if isinstance(teeth, bool) or not isinstance(teeth, int):
+        raise CatalogError(f"Gear teeth must be an integer, not {teeth!r}.")
+    low = 1 if rack else std["minimum_teeth"]
+    if not low <= teeth <= std["maximum_teeth"]:
+        raise CatalogError(f"Gear teeth must be in [{low}, {std['maximum_teeth']}], not {teeth}.")
+    m = float(module)
+    spec: dict[str, Any] = {
+        "module_mm": m, "teeth": teeth,
+        "pressure_angle_degrees": std["pressure_angle_degrees"],
+        "addendum_mm": std["addendum_coefficient"] * m,
+        "dedendum_mm": std["dedendum_coefficient"] * m,
+        "root_clearance_mm": std["root_clearance_coefficient"] * m,
+        "whole_depth_mm": std["whole_depth_coefficient"] * m,
+        "circular_pitch_mm": math.pi * m,
+        "tooth_thickness_mm": math.pi * m / 2.0,
+        "standard": f"{std['basic_rack']}; modules {std['module_series']}",
+        "sources": list(std["sources"]),
+        "approximate": [
+            "Flanks are sampled involutes (or straight 20 degree rack flanks) joined into one polygon; no root fillet, tip relief or backlash.",
+            "No material, strength, wear or torque rating; density is not supplied.",
+        ],
+    }
+    if rack:
+        spec["length_mm"] = teeth * math.pi * m
+        return spec
+    pitch = m * teeth
+    spec.update({
+        "pitch_diameter_mm": pitch,
+        "base_diameter_mm": pitch * math.cos(math.radians(std["pressure_angle_degrees"])),
+        "tip_diameter_mm": m * (teeth + 2),
+        "root_diameter_mm": m * (teeth - 2.5),
+    })
+    if teeth < std["undercut_teeth"]:
+        spec["approximate"].append(
+            f"{teeth} teeth is below the {std['undercut_teeth']}-tooth undercut limit for an unshifted 20 degree gear; the profile below the base circle is a radial line, not a generated undercut.")
+    return spec
+
+
 def catalog_families() -> dict[str, Any]:
     """The browsable catalog: every family, its part numbers, key specs.
 
@@ -864,6 +942,12 @@ def catalog_families() -> dict[str, Any]:
         "gearmotors": {
             "skus": sorted(GEARMOTORS),
             "notes": "lib.gearmotor(sku): N20 envelope, D shaft and mounting bores; spec carries manufacturer dimensions, 6 V ratings and approximations. No continuous torque or inertia model.",
+        },
+        "gears": {
+            "preferred_modules_mm": list(GEAR_STANDARD["preferred_modules_mm"]),
+            "pressure_angle_degrees": GEAR_STANDARD["pressure_angle_degrees"],
+            "teeth_range": [GEAR_STANDARD["minimum_teeth"], GEAR_STANDARD["maximum_teeth"]],
+            "notes": "lib.spur_gear(module, teeth, face_width, bore=None) and lib.rack(module, teeth, face_width, height): ISO 53 type A profile on ISO 54 series I modules, one sampled-involute polygon extruded; spec carries the pitch, base, root and tip diameters and the undercut warning below 17 teeth. No fillets, backlash, strength rating or density.",
         },
         "boards": {
             "skus": sorted(BOARDS),

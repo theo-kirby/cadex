@@ -2201,6 +2201,12 @@ field, and every client gets it through the surface it already reads.
       bench report and V2.0 drawing inspected; current definition, thermal
       conditions and revision linkage still block qualification (ADR-223).
       Stop motor searches and replan toward bounded residual GUI work.
+- [x] **L3 involute spur gear and rack.** `lib.spur_gear` and `lib.rack`
+      over `CadexCatalog.GEAR_STANDARD` (ISO 53 type A, ISO 54 series I),
+      one sampled-involute generator, real-kernel diameter/volume/probe
+      tests and packaged publication (PROVENANCE §8g, ADR-233). Standalone
+      values: rack-and-pinion and planetary composition are the next units.
 - [ ] **L3 — motors and mechanisms.** Common BLDC sizes with kV/torque
-      data, N20 gearmotor, linear actuator, solenoid, joints; gears and
-      rack-and-pinion need involute profiles and are their own slice.
+      data, N20 gearmotor, linear actuator, solenoid, joints; involute gear
+      and rack values exist (ADR-233), but rack-and-pinion and planetary
+      compositions with mesh and clearance evidence are still their own slice.

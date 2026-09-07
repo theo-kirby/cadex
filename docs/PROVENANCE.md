@@ -788,6 +788,53 @@ The commands for delivery verification are the full engine suite,
 lifecycle/library gate; ADR-211 records the result. Full L3 and the solenoid
 interface gaps remain open.
 
+### 8g. L3 involute gearing — ISO 53 / ISO 54 (2026-09-07)
+
+**Source identity.** ISO 53:1998 *Cylindrical gears for general and heavy
+engineering — Standard basic rack tooth profile*, type A: 20° pressure
+angle, addendum 1.0 m, dedendum 1.25 m, bottom clearance 0.25 m, whole depth
+2.25 m. ISO 54:1996 *Cylindrical gears for general engineering and for heavy
+engineering — Modules*, series I: 1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10,
+12, 16, 20, 25, 32, 40 and 50 mm. The public iTeh preview pages (ISO 53:1998
+and the ISO 54:1977 edition, both linked from
+`CadexCatalog.GEAR_STANDARD["sources"]`) were read for the coefficients and
+the module series; the standards themselves were not purchased, downloaded
+or vendored, so no file hash applies. A standard has no vendor, revision
+page or licence question: every number is a coefficient of the module, and
+the series II modules and the sub-millimetre modules are deliberately not
+accepted until a design needs them.
+
+**Nominal contract (mm).** For a spur gear of module m and z teeth: pitch
+diameter m·z, base diameter m·z·cos 20°, tip diameter m(z+2), root diameter
+m(z−2.5), circular pitch π·m and tooth thickness π·m/2 at the pitch circle.
+Datum is the gear axis (+Z) with the base face in the datum plane; tooth 0
+is centred on +X. For a rack of z teeth: length z·π·m along +X from X=0,
+pitch line on Y=0, tips at Y=+m, roots at Y=−1.25 m, straight 20° flanks;
+the back face sits `height` below the tips, `height` must exceed 2.25 m.
+Tooth counts are bounded to [6, 200] for gears and [1, 200] for racks; a
+gear under 17 teeth carries the undercut warning in `spec["approximate"]`.
+
+**Independent construction.** One generator in `cadex_library_api.py`
+samples the involute of the base circle eight times per flank between the
+base (or root, when larger) circle and the tip circle, joins the flanks with
+tip and root arcs into one counter-clockwise polygon, and extrudes the face;
+below the base circle the flank is a radial line. Root fillets, tip relief,
+backlash, profile shift and helix are omitted, and no density, strength or
+torque rating is supplied. Tip and root vertices lie exactly on their
+circles, so the real-kernel test measures the standard's diameters from the
+built solid's vertices rather than from the recipe.
+
+**Reproduce and result.** `test_gear_real_kernel_diameters_and_volumes`
+builds m2z20 (bore 6), m2z8, m1z60 (bore 4) and m1z6 gears plus m2z10 and
+m1.5z4 racks through the actual part worker: each is one valid solid, tip
+and root radii match m(z+2)/2 and m(z−2.5)/2 within 1e-7, the volume lies
+between the root and tip cylinders, the bore is the only cylindrical
+surface, pitch-circle probes bracket the π·m/2 thickness, the rack pitch is
+π·m and its tooth height 2.25 m, and the rack volume equals the exact
+trapezoid sum. Placed instances keep their volume. cadexd publication of
+canonical and placed gear and rack outputs is in
+`test_the_library_builds_on_the_real_kernel`; ADR-233 records the gates.
+
 ### Fifth servo candidates (2026-09-07; ADR-229)
 
 [Cadex-new] The [bounded source audit](FIFTH-SERVO-AUDIT.md) pins two Hitec

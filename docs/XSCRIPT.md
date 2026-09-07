@@ -558,6 +558,34 @@ Coincident nominal spherical surfaces omit running clearance, chamfers,
 liner and seams. No fit, installed motion, manufacturing or conservative
 collision guarantee follows. See PROVENANCE §8f.
 
+#### Involute spur gear and rack `[ADR-233]`
+
+`lib.spur_gear(module, teeth, face_width, bore=None, origin=..., direction=...,
+roll_degrees=...)` and `lib.rack(module, teeth, face_width, height, ...)`
+return `LibraryPart` values cut to the ISO 53 type A basic rack (20°,
+addendum 1.0 m, dedendum 1.25 m) on an ISO 54 series I module; any other
+module is refused with the accepted list. A gear stands on its base face
+with its axis along +Z and tooth 0 centred on +X; `bore` must stay inside
+the root circle. A rack runs along +X from X=0 for `teeth · π · module`,
+pitch line on Y=0, tips at Y=+m, roots at Y=−1.25 m, back face `height`
+below the tips, so a pinion meshes with its centre one pitch radius above
+the rack's Y=0 plane.
+
+`.spec` carries module, tooth count, pressure angle, the pitch, base, root
+and tip diameters, circular pitch, pitch-circle tooth thickness, the
+standard citation and `approximate`: the flanks are sampled involutes (or
+straight rack flanks) in one polygon with no root fillet, tip relief,
+backlash, profile shift or helix, and a gear under 17 teeth is warned that
+its undercut is not generated. No density, strength or torque follows.
+`lib.catalog()["gears"]` lists the accepted modules and tooth range.
+See PROVENANCE §8g.
+
+```python
+pinion = lib.spur_gear(1, 12, 5, bore=3)
+rack = lib.rack(1, 30, 5, 4, origin=(0, -pinion.spec["pitch_diameter_mm"] / 2, 0))
+result = {"pinion": pinion.body, "rack": rack.body}
+```
+
 #### L12 linear actuator `[ADR-207]`
 
 `lib.linear_actuator("l12-50-210-12-s", extension=0, origin=...,

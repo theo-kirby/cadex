@@ -267,6 +267,95 @@ class BoardPart(LibraryPart):
                 for row in self.spec["terminals"]]
 
 
+
+# -- involute gearing ----------------------------------------------------------
+
+_FLANK_SAMPLES = 8
+
+
+def _involute_function(angle: float) -> float:
+    return math.tan(angle) - angle
+
+
+def _spur_gear_outline(spec: Mapping[str, Any]) -> list[tuple[float, float, float]]:
+    """One counter-clockwise polygon around an ISO 53 spur gear, in the XY plane.
+
+    Each tooth is: root arc, rising flank, tip arc, falling flank, root arc.
+    The flank is the involute of the base circle sampled ``_FLANK_SAMPLES``
+    times between the base (or root, when that is larger) and tip circles;
+    below the base circle it is a radial line down to the root circle. Tip
+    and root vertices lie exactly on their circles, so a bound or a vertex
+    radius measures the standard's diameters directly.
+    """
+
+    teeth = spec["teeth"]
+    base_radius = spec["base_diameter_mm"] / 2.0
+    tip_radius = spec["tip_diameter_mm"] / 2.0
+    root_radius = spec["root_diameter_mm"] / 2.0
+    pressure = math.radians(spec["pressure_angle_degrees"])
+    half_pitch_angle = math.pi / (2.0 * teeth)
+
+    def half_angle(radius: float) -> float:
+        # Half the tooth's angular thickness at ``radius`` on the involute.
+        pressure_at_radius = math.acos(base_radius / radius) if radius > base_radius else 0.0
+        return half_pitch_angle + _involute_function(pressure) - _involute_function(pressure_at_radius)
+
+    flank_start = max(base_radius, root_radius)
+    radii = [flank_start + (tip_radius - flank_start) * index / (_FLANK_SAMPLES - 1)
+             for index in range(_FLANK_SAMPLES)]
+    if root_radius < base_radius:
+        radii.insert(0, root_radius)
+    half_at_root = half_angle(radii[0])
+    half_at_tip = half_angle(tip_radius)
+    if half_at_tip <= 0.0 or half_at_root >= math.pi / teeth:
+        raise LibraryError(
+            f"lib.spur_gear: {teeth} teeth on module {spec['module_mm']:g} leaves no tip land or no root space."
+        )
+
+    def polar(radius: float, angle: float) -> tuple[float, float, float]:
+        return (radius * math.cos(angle), radius * math.sin(angle), 0.0)
+
+    points: list[tuple[float, float, float]] = []
+    for tooth in range(teeth):
+        centre = 2.0 * math.pi * tooth / teeth
+        space_edge = centre - math.pi / teeth
+        points.append(polar(root_radius, space_edge))
+        points.append(polar(root_radius, (space_edge + centre - half_at_root) / 2.0))
+        for radius in radii:
+            points.append(polar(radius, centre - half_angle(radius)))
+        points.append(polar(tip_radius, centre))
+        for radius in reversed(radii):
+            points.append(polar(radius, centre + half_angle(radius)))
+        points.append(polar(root_radius, (centre + half_at_root + centre + math.pi / teeth) / 2.0))
+    return points
+
+
+def _rack_outline(spec: Mapping[str, Any], height: float) -> list[tuple[float, float, float]]:
+    """One counter-clockwise polygon around an ISO 53 rack, pitch line on Y=0.
+
+    Teeth point along +Y with tips at ``addendum`` and roots at
+    ``-dedendum``; the back face sits ``height`` below the tips. Tooth ``i``
+    is centred on ``(i + 1/2)`` pitches from X=0.
+    """
+
+    pitch = spec["circular_pitch_mm"]
+    tip_y = spec["addendum_mm"]
+    root_y = -spec["dedendum_mm"]
+    tangent = math.tan(math.radians(spec["pressure_angle_degrees"]))
+    half_at_tip = pitch / 4.0 - tip_y * tangent
+    half_at_root = pitch / 4.0 - root_y * tangent
+    length = spec["length_mm"]
+    points = [(0.0, tip_y - height, 0.0), (length, tip_y - height, 0.0), (length, root_y, 0.0)]
+    for tooth in reversed(range(spec["teeth"])):
+        centre = (tooth + 0.5) * pitch
+        points.append((centre + half_at_root, root_y, 0.0))
+        points.append((centre + half_at_tip, tip_y, 0.0))
+        points.append((centre - half_at_tip, tip_y, 0.0))
+        points.append((centre - half_at_root, root_y, 0.0))
+    points.append((0.0, root_y, 0.0))
+    return points
+
+
 class LibraryAPI:
     """The ``lib`` global staged into every project script."""
 
@@ -1087,6 +1176,74 @@ class LibraryAPI:
             label=label,
             **extra,
         )
+
+    def spur_gear(
+        self, module: float, teeth: int, face_width: float, *,
+        bore: float | None = None,
+        origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> LibraryPart:
+        """ISO 53 involute spur gear on an ISO 54 series I module.
+
+        Datum: gear axis +Z with the base face in the datum plane and the
+        body extending face_width along +Z; tooth 0 is centred on +X. Bore
+        (optional) must stay inside the root circle. .spec carries pitch,
+        base, root and tip diameters, tooth thickness at the pitch circle
+        and the undercut warning below 17 teeth. Sampled involute polygon:
+        no fillets, backlash, strength rating or density.
+        """
+        operation = "spur_gear"
+        spec = catalog.gear_spec(module, teeth)
+        width = _positive(operation, "face_width", face_width)
+        spec["face_width_mm"] = width
+        spec["bore_mm"] = None
+        outline = self._part.wire(_spur_gear_outline(spec), closed=True)
+        blank = self._part.face(outline)
+        if bore is None:
+            body = self._part.extrude(blank, (0.0, 0.0, width), label=label)
+        else:
+            clean_bore = _positive(operation, "bore", bore)
+            if clean_bore >= spec["root_diameter_mm"]:
+                raise LibraryError("lib.spur_gear: bore must be smaller than the root diameter.")
+            spec["bore_mm"] = clean_bore
+            hole = self._part.cylinder(clean_bore / 2.0, width + 2.0, origin=(0.0, 0.0, -1.0))
+            body = self._part.cut(self._part.extrude(blank, (0.0, 0.0, width)), hole, label=label)
+        part_number = f"m{spec['module_mm']:g}z{teeth}"
+        return LibraryPart("gear", part_number,
+                           self._place(operation, body, origin, direction, roll_degrees),
+                           spec)
+
+    def rack(
+        self, module: float, teeth: int, face_width: float, height: float, *,
+        origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> LibraryPart:
+        """ISO 53 basic rack on an ISO 54 series I module, teeth counted.
+
+        Datum: pitch line along +X on Y=0 from X=0 to teeth*pi*module, teeth
+        pointing +Y (tips at +module, roots at -1.25 module), back face
+        height below the tips, face in the datum plane extending face_width
+        along +Z. height must exceed the 2.25 module whole depth. Straight
+        20 degree flanks: no fillets, backlash, strength rating or density.
+        """
+        operation = "rack"
+        spec = catalog.gear_spec(module, teeth, rack=True)
+        width = _positive(operation, "face_width", face_width)
+        clean_height = _positive(operation, "height", height)
+        if clean_height <= spec["whole_depth_mm"]:
+            raise LibraryError(
+                f"lib.rack: height must exceed the whole depth {spec['whole_depth_mm']:g} mm."
+            )
+        spec["face_width_mm"] = width
+        spec["height_mm"] = clean_height
+        outline = self._part.wire(_rack_outline(spec, clean_height), closed=True)
+        body = self._part.extrude(self._part.face(outline), (0.0, 0.0, width), label=label)
+        part_number = f"m{spec['module_mm']:g}z{teeth}"
+        return LibraryPart("rack", part_number,
+                           self._place(operation, body, origin, direction, roll_degrees),
+                           spec)
 
     # -- browsing ----------------------------------------------------------
 

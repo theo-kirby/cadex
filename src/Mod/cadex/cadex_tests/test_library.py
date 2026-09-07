@@ -777,6 +777,12 @@ b = boards({"esp": board(esp.body, terminals=esp.terminals()),
             "pwm": board(pwm.body, terminals=pwm.terminals())})
 n = nets(ports=b, wires={})
 result = {
+    "spur_gear": lib.spur_gear(2, 20, 10, bore=6).body,
+    "spur_gear_placed": lib.spur_gear(1, 8, 5, origin=(100, 30, 20),
+                                      direction=(1, 0, 0), roll_degrees=30).body,
+    "rack": lib.rack(2, 10, 10, 8).body,
+    "rack_placed": lib.rack(1.5, 4, 6, 5, origin=(100, 30, 20),
+                            direction=(0, 1, 0), roll_degrees=90).body,
     "joint": lib.joint("skf-ge-6-c").body,
     "joint_placed": lib.joint("skf-ge-6-c", tilt_degrees=13,
         origin=(100,30,20), direction=(1,0,0), roll_degrees=90).body,
@@ -837,6 +843,7 @@ def test_the_library_builds_on_the_real_kernel() -> None:
         assert written["ok"] is True, written
         names = {output["name"] for output in written["outputs"]}
         assert names == {
+            "spur_gear", "spur_gear_placed", "rack", "rack_placed",
             "joint", "joint_placed", "bldc", "bldc_placed", "linear_actuator", "linear_actuator_placed",
             "gearmotor", "gearmotor_placed",
             "esp_board", "pi_board", "pwm_board",
@@ -1128,3 +1135,205 @@ for tilt in (-13, 0, 6.5, 13):
           'canonical_and_placed_probes': 24}))
 print('GE6C-NOMINAL-OK')
 '''
+
+
+# -- involute gearing (ADR-233) ---------------------------------------------
+
+
+def test_gear_standard_pins():
+    std = catalog.GEAR_STANDARD
+    assert (std["pressure_angle_degrees"], std["addendum_coefficient"],
+            std["dedendum_coefficient"], std["root_clearance_coefficient"],
+            std["whole_depth_coefficient"]) == (20, 1, 1.25, 0.25, 2.25)
+    assert std["preferred_modules_mm"][:9] == [1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6]
+    assert std["preferred_modules_mm"][-1] == 50 and len(std["preferred_modules_mm"]) == 18
+    assert (std["minimum_teeth"], std["undercut_teeth"], std["maximum_teeth"]) == (6, 17, 200)
+    assert std["basic_rack"].startswith("ISO 53") and std["module_series"].startswith("ISO 54")
+    assert len(std["sources"]) == 2
+
+
+def test_gear_spec_numbers_and_undercut_note():
+    spec = catalog.gear_spec(2, 20)
+    assert [spec[k] for k in ("pitch_diameter_mm", "tip_diameter_mm", "root_diameter_mm")] == [40, 44, 35]
+    assert abs(spec["base_diameter_mm"] - 40 * math.cos(math.radians(20))) < 1e-9
+    assert abs(spec["tooth_thickness_mm"] - math.pi) < 1e-9
+    assert abs(spec["circular_pitch_mm"] - 2 * math.pi) < 1e-9
+    assert (spec["addendum_mm"], spec["dedendum_mm"], spec["whole_depth_mm"]) == (2, 2.5, 4.5)
+    assert "ISO 53" in spec["standard"] and len(spec["approximate"]) == 2
+    assert "undercut" in catalog.gear_spec(2, 12)["approximate"][-1]
+    rack = catalog.gear_spec(1.5, 4, rack=True)
+    assert abs(rack["length_mm"] - 6 * math.pi) < 1e-9 and "tip_diameter_mm" not in rack
+    spec["sources"].clear()
+    assert catalog.gear_spec(2, 20)["sources"]
+
+
+@pytest.mark.parametrize("module,teeth", [(1.1, 20), (0.5, 20), (True, 20), ("2", 20),
+                                          (float("nan"), 20), (2, 5), (2, 201), (2, 20.0),
+                                          (2, True), (2, "20")])
+def test_gear_spec_refusals(module, teeth):
+    with pytest.raises(CatalogError):
+        catalog.gear_spec(module, teeth)
+
+
+def _outline_points(part):
+    wire = _ops(part.body, "wire")[0]
+    assert wire.properties["closed"] is True
+    return wire.arguments[0]
+
+
+def test_spur_gear_recipe_and_spec():
+    gear = _lib().spur_gear(2, 20, 10, bore=6)
+    assert (gear.family, gear.part_number) == ("gear", "m2z20")
+    assert gear.spec["face_width_mm"] == 10 and gear.spec["bore_mm"] == 6
+    points = _outline_points(gear)
+    radii = [math.hypot(x, y) for x, y, z in points]
+    assert all(z == 0 for _, _, z in points)
+    assert abs(min(radii) - 17.5) < 1e-9 and abs(max(radii) - 22) < 1e-9
+    assert sum(abs(r - 22) < 1e-9 for r in radii) == 3 * 20
+    assert points[0] == pytest.approx((17.5 * math.cos(-math.pi / 20), 17.5 * math.sin(-math.pi / 20), 0))
+    area = sum(x0 * y1 - x1 * y0 for (x0, y0, _), (x1, y1, _) in zip(points, points[1:] + points[:1])) / 2
+    assert math.pi * 17.5 ** 2 < area < math.pi * 22 ** 2
+    assert list(_ops(gear.body, "extrude")[0].arguments[1]) == [0, 0, 10]
+    assert len(_ops(gear.body, "face")) == 1 and len(_ops(gear.body, "cut")) == 1
+    assert _ops(gear.body, "cylinder")[0].arguments[0] == 3
+    plain = _lib().spur_gear(1, 8, 5)
+    assert plain.spec["bore_mm"] is None and not _ops(plain.body, "cut")
+    assert plain.body.operation == "extrude"
+    assert "undercut" in plain.spec["approximate"][-1]
+    with pytest.raises(LibraryError, match="root diameter"):
+        _lib().spur_gear(2, 20, 10, bore=35)
+    with pytest.raises(LibraryError):
+        _lib().spur_gear(2, 20, 0)
+    with pytest.raises(CatalogError):
+        _lib().spur_gear(2, 3, 10)
+
+
+def test_rack_recipe_and_spec():
+    rack = _lib().rack(2, 10, 10, 8)
+    assert (rack.family, rack.part_number) == ("rack", "m2z10")
+    assert rack.spec["height_mm"] == 8 and abs(rack.spec["length_mm"] - 20 * math.pi) < 1e-9
+    points = _outline_points(rack)
+    ys = sorted({round(y, 9) for _, y, _ in points})
+    assert ys == [-6, -2.5, 2]
+    assert sum(y == 2 for _, y, _ in points) == 20
+    assert min(x for x, _, _ in points) == 0
+    assert abs(max(x for x, _, _ in points) - 20 * math.pi) < 1e-9
+    tips = [x for x, y, _ in points if y == 2]
+    assert abs(tips[-1] - (math.pi - (math.pi / 2 - 2 * math.tan(math.radians(20))))) < 1e-9
+    area = sum(x0 * y1 - x1 * y0 for (x0, y0, _), (x1, y1, _) in zip(points, points[1:] + points[:1])) / 2
+    assert 20 * math.pi * 3.5 < area < 20 * math.pi * 8
+    assert rack.body.operation == "extrude"
+    with pytest.raises(LibraryError, match="whole depth"):
+        _lib().rack(2, 10, 10, 4.5)
+    with pytest.raises(CatalogError):
+        _lib().rack(2, 0, 10, 8)
+
+
+def test_gears_listing():
+    families = _lib().catalog()["gears"]
+    assert families["preferred_modules_mm"][0] == 1 and families["teeth_range"] == [6, 200]
+    names = {entry["name"] for entry in library_listing()["exports"]}
+    assert {"spur_gear", "rack"} <= names
+    entry = next(row for row in library_listing()["exports"] if row["name"] == "spur_gear")
+    assert "bore" in entry["signature"] and "ISO 53" in entry["description"]
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle").FREECADCMD is None,
+    reason="No FreeCADCmd binary available for gear checks.",
+)
+def test_gear_real_kernel_diameters_and_volumes(tmp_path):
+    import subprocess
+    from test_cadexd_lifecycle import CADEX_ROOT, FREECADCMD
+    driver = tmp_path / "gear_checks.py"
+    driver.write_text(GEAR_KERNEL_DRIVER)
+    completed = subprocess.run(
+        [str(FREECADCMD), "-c",
+         f"import sys; sys.path.insert(0, {str(CADEX_ROOT)!r}); exec(open({str(driver)!r}).read())"],
+        capture_output=True, text=True, timeout=300,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "GEARS-OK" in completed.stdout, completed.stdout + completed.stderr
+
+
+GEAR_KERNEL_DRIVER = r"""
+import json
+import math
+import FreeCAD as App
+import Part
+from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
+from cadex_domain_api import create_domain_api
+from cadex_library_api import create_library_api
+from cadex_part_worker import build_part_shape
+pack = XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
+lib = create_library_api(create_domain_api(pack.domain, pack.api_exports, pack.output_types))
+
+
+def build(part):
+    shape = build_part_shape(part.body.to_payload())
+    assert shape.isValid() and shape.ShapeType == "Solid" and len(shape.Solids) == 1
+    return shape
+
+
+for module, teeth, width, bore in ((2, 20, 10, 6), (2, 8, 4, None), (1, 60, 6, 4), (1, 6, 3, None)):
+    gear = lib.spur_gear(module, teeth, width, bore=bore)
+    shape = build(gear)
+    tip = module * (teeth + 2) / 2
+    root = module * (teeth - 2.5) / 2
+    assert abs(shape.BoundBox.XMax - tip) < 1e-7 and abs(shape.BoundBox.XMin + tip) < 1e-7
+    assert abs(shape.BoundBox.ZLength - width) < 1e-7 and abs(shape.BoundBox.ZMin) < 1e-7
+    radii = sorted(math.hypot(v.X, v.Y) for v in shape.Vertexes)
+    outer = [r for r in radii if bore is None or r > bore / 2 + 1e-6]
+    assert abs(outer[0] - root) < 1e-7 and abs(outer[-1] - tip) < 1e-7
+    bore_volume = 0.0 if bore is None else math.pi * (bore / 2) ** 2 * width
+    assert math.pi * root ** 2 * width - bore_volume < shape.Volume < math.pi * tip ** 2 * width
+    cylinders = [f.Surface for f in shape.Faces if isinstance(f.Surface, Part.Cylinder)]
+    if bore is None:
+        assert not cylinders
+    else:
+        assert len(cylinders) == 1 and abs(cylinders[0].Radius - bore / 2) < 1e-7
+        assert not shape.isInside(App.Vector(0, 0, width / 2), 1e-7, True)
+    # Pitch-circle tooth thickness: the chord across tooth 0 at the pitch
+    # radius spans the standard's pi*m/2 arc, measured on the built solid.
+    pitch = module * teeth / 2
+    half = math.pi / (2 * teeth)
+    assert shape.isInside(App.Vector(pitch * math.cos(half * 0.98), pitch * math.sin(half * 0.98), width / 2), 1e-7, True)
+    assert not shape.isInside(App.Vector(pitch * math.cos(half * 1.02), pitch * math.sin(half * 1.02), width / 2), 1e-7, True)
+    assert shape.isInside(App.Vector(tip - 1e-3, 0, width / 2), 1e-7, True)
+    assert not shape.isInside(App.Vector(tip + 1e-3, 0, width / 2), 1e-7, True)
+    placed = build(lib.spur_gear(module, teeth, width, bore=bore, origin=(100, 30, 20),
+                                 direction=(1, 0, 0), roll_degrees=30))
+    assert abs(placed.Volume - shape.Volume) < 1e-6
+    assert abs(placed.BoundBox.XMin - 100) < 1e-7 and abs(placed.BoundBox.XLength - width) < 1e-7
+    print("GEAR " + json.dumps({"module": module, "teeth": teeth, "volume_mm3": round(shape.Volume, 3),
+                                "faces": len(shape.Faces)}))
+
+for module, teeth, width, height in ((2, 10, 10, 8), (1.5, 4, 6, 5)):
+    rack = lib.rack(module, teeth, width, height)
+    shape = build(rack)
+    length = teeth * math.pi * module
+    assert abs(shape.BoundBox.XMin) < 1e-7 and abs(shape.BoundBox.XLength - length) < 1e-7
+    assert abs(shape.BoundBox.YMax - module) < 1e-7 and abs(shape.BoundBox.YLength - height) < 1e-7
+    assert abs(shape.BoundBox.ZLength - width) < 1e-7
+    ys = sorted({round(v.Y, 6) for v in shape.Vertexes})
+    assert ys == [round(module - height, 6), round(-1.25 * module, 6), round(module, 6)]
+    assert abs((ys[-1] - ys[1]) - 2.25 * module) < 1e-7
+    tips = sorted({round(v.X, 6) for v in shape.Vertexes if abs(v.Y - module) < 1e-6})
+    assert len(tips) == 2 * teeth
+    # Pitch: consecutive tooth centres are pi*m apart; thickness at the
+    # pitch line is pi*m/2, probed just inside and outside a flank.
+    centres = [(tips[i] + tips[i + 1]) / 2 for i in range(0, len(tips), 2)]
+    assert all(abs((b - a) - math.pi * module) < 1e-5 for a, b in zip(centres, centres[1:]))
+    quarter = math.pi * module / 4
+    assert shape.isInside(App.Vector(centres[0] + quarter * 0.98, 0, width / 2), 1e-7, True)
+    assert not shape.isInside(App.Vector(centres[0] + quarter * 1.02, 0, width / 2), 1e-7, True)
+    # Exact area: back strip plus one trapezoid per tooth (flank sum from ISO 53).
+    flank_sum = math.pi * module / 2 + 0.25 * module * math.tan(math.radians(20))
+    area = length * (height - 2.25 * module) + teeth * 2.25 * module * flank_sum
+    assert abs(shape.Volume - area * width) < 1e-6
+    placed = build(lib.rack(module, teeth, width, height, origin=(100, 30, 20),
+                            direction=(0, 1, 0), roll_degrees=90))
+    assert abs(placed.Volume - shape.Volume) < 1e-6
+    print("RACK " + json.dumps({"module": module, "teeth": teeth, "volume_mm3": round(shape.Volume, 3)}))
+print("GEARS-OK")
+"""
