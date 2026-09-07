@@ -23,6 +23,8 @@ The earlier Preferences guard removal passed both source and staged GUI-denied i
 
 The Test runner deletion passed release build/install/stage, **2,023 engine tests / 52 skips**, **26 fresh packaged lifecycle/licensing tests**, **12 GUI-denied UnitTests** and **4/4 Cadex CTests**. Inherited CTest exited 8 with **162 failures / 1,526 run**, unchanged from the disable and with no new names against baseline; all 1,533 registrations and disabled/skipped names were unchanged. These gates cover the local stage, not a portable release or GUI, shell, Windows or remote execution [rec: silver-lodge-1952].
 
+The translation-updater audit and disposition changed documentation only: inherited source and manifest remain unchanged, so the measurements above are unchanged and no fork-delta saving is credited. Only the deleted GUI translator writer, two dispatch sites and exclusive import qualify for a future separately verified disable/delete pair; implementation still requires a later planner bet. Reconcile judgement: retain **open** [rec: eager-garden-8009] [rec: cold-clover-8123].
+
 ## Negative knowledge
 
 - [scope: crediting a whole-tree deletion against the fork delta | confidence: medium | evidence: sleepy-stone-2956] The manifest M metric cannot show a tree deletion: deleted whole files are not M entries, and the file count rose 47 → 57 while whole trees left. Credit deletions against inherited files remaining and report both numbers; a proposal, not yet criterion text.
@@ -46,3 +48,6 @@ The Test runner deletion passed release build/install/stage, **2,023 engine test
 - proud-branch-1079 — ADR-227: finite audit of 56 surviving FreeCAD modifications and GUI-denied qualification of the Preferences guard
 - proud-moon-9023 — ADR-227: exact guard removal, three inserted lines saved, fresh source/build/stage/packaged verification and unchanged inherited failure baseline
 - silver-lodge-1952 — ADR-230: one inherited file / 399 lines / 15,021 bytes removed, current M and remaining-file counts, fresh gates and criterion kept open
+
+- eager-garden-8009 — updater audit qualifies a bounded future writer removal without changing inherited source or manifest
+- cold-clover-8123 — documentation-only disposition claims no fork-delta saving and requires a later implementation bet
