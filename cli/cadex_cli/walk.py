@@ -260,6 +260,9 @@ def write_review(
     payload: dict[str, Any] = {
         "schema": "cadex-walk-review-v1",
         "inventory": dict(review.get("inventory") or {}),
+        "render": dict(review.get("render") or {}),
+        "section": dict(review.get("section") or {}),
+        "walk_seconds": review.get("walk_seconds"),
         "clearance": dict(review.get("clearance") or {}),
         "weights": review.get("weights"),
         "sha256": review.get("sha256"),

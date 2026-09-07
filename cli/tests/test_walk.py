@@ -204,6 +204,16 @@ def fake_cadex(tmp_path, monkeypatch, request) -> Path:
 
     class InventoryClient:
         def request(self, op, args):
+            if op == "rebuild":
+                from test_render import buffer_reply
+                reply = buffer_reply(tmp_path)
+                reply.update(revision="r" * 64, accepted_revision="r" * 64, digest="d" * 64)
+                failure = os.environ.get("FAKE_RENDER_FAIL")
+                if failure:
+                    reply["accepted_revision"] = "z" * 64
+                if failure == "rollout":
+                    reply["revision"] = "z" * 64
+                return reply
             assert op == "inspect"
             if args["scope"] == "clearance":
                 outcome = os.environ.get("FAKE_CLEARANCE", "")
@@ -212,7 +222,7 @@ def fake_cadex(tmp_path, monkeypatch, request) -> Path:
                 pairs = [{"first": "a", "second": "b", "distance_mm": None,
                           "common_volume_mm3": None, "error": "measurement failed"}] if outcome == "unknown" else []
                 return {"ok": True, "value": {
-                    "revision": "test", "assembly": getattr(request, "param", "asm"),
+                    "revision": "r" * 64, "assembly": getattr(request, "param", "asm"),
                     "available": bool(getattr(request, "param", "asm")), "pairs": pairs,
                 }}
             assert args["scope"] == "inventory"
@@ -629,6 +639,12 @@ def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
     assert {k: v for k, v in reviews[0]["clearance"].items() if k != "revision"} == {
         k: v for k, v in reviews[1]["clearance"].items() if k != "revision"
     }
+    from test_render import image_bytes
+    for angle in ("front", "top", "right", "iso"):
+        first, second = (review["render"] for review in reviews)
+        assert image_bytes(tmp_path / "local" / first["views"][angle]["path"], first["revision"]) == image_bytes(
+            tmp_path / "remote" / second["views"][angle]["path"], second["revision"])
+    assert reviews[0]["render"]["limits"] == reviews[1]["render"]["limits"]
     assert reviews[0]["trace"] == reviews[1]["trace"]
     assert reviews[0]["training"].keys() == reviews[1]["training"].keys()
     argv = json.loads(dispatch_log.read_text())
@@ -667,6 +683,7 @@ def test_walk_review_without_published_assembly(fake_cadex, toy_root, capsys):
 
 
 def _assert_clearance(root, review, verdict):
+    _assert_render(root, review)
     summary = review["clearance"]
     assert summary["available"] is True
     assert summary["pairs_checked"] == 1
@@ -705,3 +722,36 @@ def test_walk_preserves_unknown_clearance_and_inspection_failures(
     assert summary["unknown_pairs"][0]["distance_mm"] is None
     assert summary["unknown_pairs"][0]["error"] == "measurement failed"
     assert "unknown" in (toy_root / "docs/clearance.md").read_text()
+
+
+def _assert_render(root, review):
+    from test_render import image_bytes
+    summary = review["render"]
+    assert summary["available"] is True
+    assert summary["revision"] == review["clearance"]["revision"]
+    assert summary["digest"] and summary["limits"] and summary["approximation"]
+    assert set(summary["views"]) == {"front", "top", "right", "iso"}
+    tracked = set(_git(root, "ls-tree", "-r", "--name-only", "HEAD").splitlines())
+    assert summary["path"] in tracked
+    stored = json.loads((root / summary["path"]).read_text())
+    assert stored["revision"] == summary["revision"]
+    for view in summary["views"].values():
+        assert view["path"] in tracked
+        assert view["covered_pixels"] > 0
+        image_bytes(root / view["path"], summary["revision"])
+    assert review["section"]["available"] is False
+    assert review["walk_seconds"] > summary["acquisition_seconds"] + summary["render_seconds"]
+
+
+@pytest.mark.parametrize("failure", ["snapshot", "rollout"])
+def test_walk_render_failure_cannot_reuse_old_success(fake_cadex, toy_root, capsys, monkeypatch, failure):
+    out = toy_root / "runs/render-failure"
+    code, report = _run(capsys, "walk", "--project", str(toy_root), "--out", str(out))
+    assert code == EXIT_OK, report
+    old = (out / REVIEW_FILENAME).read_bytes()
+    monkeypatch.setenv("FAKE_RENDER_FAIL", failure)
+    code, report = _run(capsys, "walk", "--project", str(toy_root), "--out", str(out))
+    assert code != EXIT_OK
+    assert "accepted revision" in report["error"]
+    assert (out / REVIEW_FILENAME).read_bytes() == old
+    assert not report["walk"].get("review")

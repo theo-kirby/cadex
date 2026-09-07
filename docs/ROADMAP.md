@@ -1977,7 +1977,11 @@ What makes them experimental, and what would settle it:
 - [x] **Named-angle CPU render CLI** (ADR-239 follow-up). `cadex render`
   writes revision-bearing front/top/right/iso SVGs and a summary in the
   project. Bounded accepted buffers, solved placements and pixel depth;
-  real arm/curved assembly image tests. Walk wiring and sections remain open.
+  real arm/curved assembly image tests. Walk wiring follows below; sections remain open.
+- [x] **Walk review commits named-angle previews** (ADR-239 follow-up).
+  One review session snapshots accepted display before inventory/clearance,
+  checks rollout revision, commits four SVGs and summary under that revision,
+  and reports render/acquisition and whole-walk timings. Sections stay unavailable.
 - [x] **The agent can name what it assembled, headlessly** (ADR-236,
   `docs/CLI.md` §2). `cadex inventory` writes `docs/inventory.md` in the
   project: one row per component with the output it places, its catalog

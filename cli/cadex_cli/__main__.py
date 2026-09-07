@@ -35,6 +35,7 @@ import os
 from pathlib import Path
 import signal
 import sys
+import time
 from typing import Any, Iterator, Sequence
 
 from .agent import (
@@ -1212,11 +1213,12 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     policy_on=1`` for the verified rollout, and the review read off the
     exported trace and accepted inventory. Each child ``cadex`` leg lands
     its own ``PROGRESS.md`` row and commit; the walk commits the review
-    and inventory/clearance reports together. ``--remote`` (ADR-200) goes to
+    and render/inventory/clearance reports together. ``--remote`` (ADR-200) goes to
     the train leg and nowhere else: the trainer runs on the box, the
     artifacts and every later leg are unchanged.
     """
 
+    walk_started = time.monotonic()
     if not args.out:
         report.error = "walk needs --out: the bundle, the policy and the rollout land there."
         return EXIT_USAGE
@@ -1356,8 +1358,19 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     review["weights"] = weights
     review["sha256"] = sha256
     with _engine_session(args, RunReport(), restore=False) as (_engine, client):
+        render_path, rendering = write_render(
+            client, report.project_root, expected_revision=report.accepted_revision,
+        )
         path, inventory = write_inventory(client, report.project_root)
         clearance_path, clearance = write_clearance(client, report.project_root)
+    if clearance["revision"] != rendering["revision"]:
+        raise InventoryError("review: clearance revision differs from rendered rollout")
+    review["render"] = {
+        "available": True, **rendering,
+        "path": render_path.relative_to(Path(report.project_root)).as_posix(),
+    }
+    review["section"] = {"available": False, "reason": "Named-plane section views are not implemented."}
+    review["walk_seconds"] = time.monotonic() - walk_started
     review["inventory"] = {
         "available": bool(inventory.get("assembly")),
         "component_count": inventory["component_count"],
@@ -1566,7 +1579,7 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
     if command == "asset" and not getattr(args, "put_files", None):
         return
     # A walk's legs each committed; what is left is its review.json, when
-    # --out lies under the project. Outside it, nothing changed, no commit.
+    # --out lies under the project, plus generated project review artifacts.
     try:
         sha = commit_project(
             report.project_root, f"cadex {_progress_what(command, args, report)}"

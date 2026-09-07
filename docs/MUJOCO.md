@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-09-06
+Verified against source: 2026-09-08
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -3017,6 +3017,16 @@ documented and unexercised (ADR-201). **Remote training is scripted, not run**
 day): `--remote` on `train` and `walk` puts the one leg on the box through
 `remote_train.sh` and leaves every artifact where the local walk puts it;
 the dispatch itself stays a person's decision, and the box was not touched.
+
+**Named-angle review, 2026-09-08 (ADR-239).** The walk now rebuilds and
+snapshots accepted display in its review session and commits front/top/right/iso
+SVG previews plus a summary under `review/render/<accepted-revision>/`.
+`review.json` carries revision/digest, project-relative paths, approximation,
+limits and acquisition/render timings alongside inventory, clearance and reward.
+A revision mismatch or rendering error fails the walk. The shared mode artifact
+table in `docs/CLI.md` applies unchanged to local, GUI-attached and remote-flag
+walks; sections remain explicitly unavailable. These previews show the initial
+solved pose, not rollout frames or swept clearance.
 
 ## 8. Live mode: watching it, rather than reading about it
 

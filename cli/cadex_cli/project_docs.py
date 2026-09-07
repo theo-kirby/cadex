@@ -117,7 +117,13 @@ bundle and the policy under `runs/<name>/train/`, the verified rollout
 under `runs/<name>/rollout/`, the numbers in `runs/<name>/review.json`
 and the generated `{docs}/inventory.md` component report (also summarized
 in the review's `inventory` block), plus `{docs}/clearance.md` and the
-review's `clearance` block. Clearance covers only the initial solved pose,
+review's `clearance` block. Named front/top/right/iso previews and their
+summary live in `review/render/<accepted-revision>/`; the `render` block
+carries project-relative paths, revision/digest, approximation, limits and
+acquisition/render timings. The walk refuses rendering failures or a revision
+that differs from the rollout; old files are never a successful fallback.
+`walk_seconds` measures the entry point through review (before final commit).
+The `section` block remains explicitly unavailable. Clearance covers only the initial solved pose,
 at 0.1 mm minimum distance and 1e-6 mm³ maximum common volume. Its own
 `{progress}` row carries offending, unknown and checked pair counts;
 unavailable measurements stay unavailable. Training and rollout rows

@@ -192,10 +192,13 @@ def png(pixels):
             chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
 
 
-def write_render(client, root):
+def write_render(client, root, *, expected_revision=None):
     start = time.perf_counter()
     reply = client.request('rebuild', {'display': {'quality': 'standard', 'edges': False}})
     triangles, summary = snapshot(reply)
+    if expected_revision is not None:
+        _require(summary['revision'] == expected_revision, 'accepted revision differs from rollout')
+    relative_dir = 'review/render' + (f'/{expected_revision}' if expected_revision else '')
     summary['acquisition_seconds'] = time.perf_counter() - start
     start = time.perf_counter()
     files, summary['views'] = {}, {}
@@ -208,11 +211,11 @@ def write_render(client, root):
                                f'<image width="512" height="512" href="data:image/png;base64,{encoded}"/>'
                                f'<text x="16" y="536" font-family="sans-serif" font-size="12">'
                                f'{name} | {summary["revision"][:12]} | tessellation preview</text></svg>\n')
-        summary['views'][name] = {**details, 'basis': basis, 'path': f'review/render/{name}.svg'}
+        summary['views'][name] = {**details, 'basis': basis, 'path': f'{relative_dir}/{name}.svg'}
     summary['render_seconds'] = time.perf_counter() - start
     files['summary.json'] = json.dumps(summary, indent=2) + '\n'
     # Do not leave partial new views on geometry/render refusal.
-    directory = Path(root) / 'review' / 'render'
+    directory = Path(root) / relative_dir
     try:
         directory.mkdir(parents=True, exist_ok=True)
         for name, content in files.items():

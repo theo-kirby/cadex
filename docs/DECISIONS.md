@@ -20846,3 +20846,12 @@ and project commits. Product images and measurements are retained in
 Final full CLI gate: 180 passed, zero skipped, 172.71 s; externally bounded
 at 900 s / 3 GiB for the suite, observed peak tree RSS 1,160,167,424 bytes
 with no cutoff. Graph export/check passed; no build was needed for CLI edits.
+
+**Walk integration (2026-09-08).** The lifecycle review reuses the CPU renderer
+in its inspection session, snapshots before later requests invalidate buffers,
+and refuses a revision differing from the rollout or clearance. Revision-named
+image directories preserve earlier walk references; four SVGs and summary are
+committed with project docs. This removes the manual render leg; acquisition,
+rasterization and total entry-point time are separate fields. Render failures
+remain command failures, and sections remain explicitly unavailable. No engine,
+protocol, payload, graphics runtime or training dependency changes.

@@ -1,0 +1,303 @@
+{
+  "clearance": {
+    "available": true,
+    "maximum_common_volume_mm3": 1e-06,
+    "minimum_clearance_mm": 0.1,
+    "offending_pair_count": 0,
+    "offending_pairs": [],
+    "pairs_checked": 1,
+    "path": "docs/clearance.md",
+    "revision": "121a1f10523debad33cc3d5d9e802776ea076c1ec0852415f04a799b4225b47d",
+    "scope": "initial solved pose",
+    "unknown_pair_count": 0,
+    "unknown_pairs": []
+  },
+  "inventory": {
+    "available": true,
+    "catalogued_count": 0,
+    "component_count": 2,
+    "path": "docs/inventory.md"
+  },
+  "legs": [
+    {
+      "accepted_revision": "777aa87817cac5cfce86357820558aeea3f2064edbc67490f382f6a14d95868f",
+      "digest": "e9773d5cc1231056c65728da31a3231f0f46c8f2d0d7c04bd9ed46b42926cb54",
+      "exit": 0,
+      "leg": "train",
+      "seconds": 9.59
+    },
+    {
+      "accepted_revision": "abd7a98ce5ea39773c9dab84409e5d454655f9f3927cfa1475786a372cfe6703",
+      "digest": "e9773d5cc1231056c65728da31a3231f0f46c8f2d0d7c04bd9ed46b42926cb54",
+      "exit": 0,
+      "leg": "declare",
+      "seconds": 1.23
+    },
+    {
+      "accepted_revision": "121a1f10523debad33cc3d5d9e802776ea076c1ec0852415f04a799b4225b47d",
+      "digest": "2c372e3ce18fa1a8f00e4ebff55061c790a8851e6ae7a448d8632532c8a793a8",
+      "exit": 0,
+      "leg": "rollout",
+      "seconds": 1.4
+    }
+  ],
+  "params": {
+    "lift_weight": 0.0001,
+    "policy_on": 1.0
+  },
+  "render": {
+    "acquisition_seconds": 0.6915354579687119,
+    "approximation": "Opaque standard tessellation, initial solved pose; 512px pixel-center depth, flat lighting, no transparency, edges, dimensions or subpixel guarantees. Shell-only visibility is not carried by the protocol. Placed source copies are excluded; all other published triangle geometry is shown.",
+    "available": true,
+    "digest": "2c372e3ce18fa1a8f00e4ebff55061c790a8851e6ae7a448d8632532c8a793a8",
+    "limits": {
+      "buffer_bytes": 33554432,
+      "image_size": 512,
+      "pixel_visits_per_view": 20000000,
+      "placed_vertices": 600000,
+      "triangles": 100000,
+      "vertices_per_source": 300000
+    },
+    "objects": {
+      "base": {
+        "bounds_mm": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            60.0,
+            60.0,
+            6.0
+          ]
+        ],
+        "color": [
+          91,
+          157,
+          205
+        ],
+        "placement": [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "source": "plate"
+      },
+      "slide": {
+        "bounds_mm": [
+          [
+            12.0,
+            0.0,
+            40.0
+          ],
+          [
+            32.0,
+            20.0,
+            60.0
+          ]
+        ],
+        "color": [
+          230,
+          151,
+          76
+        ],
+        "placement": [
+          1.0,
+          0.0,
+          0.0,
+          12.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          40.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "source": "carriage"
+      }
+    },
+    "path": "review/render/121a1f10523debad33cc3d5d9e802776ea076c1ec0852415f04a799b4225b47d/summary.json",
+    "render_seconds": 0.6354429579805583,
+    "revision": "121a1f10523debad33cc3d5d9e802776ea076c1ec0852415f04a799b4225b47d",
+    "snapshot_bytes": 2615,
+    "triangles": 24,
+    "views": {
+      "front": {
+        "basis": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ],
+          [
+            0,
+            -1,
+            0
+          ]
+        ],
+        "covered_pixels": 42361,
+        "path": "review/render/121a1f10523debad33cc3d5d9e802776ea076c1ec0852415f04a799b4225b47d/front.svg",
+        "pixel_visits": 173820,
+        "projection_bounds_mm": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            60.0,
+            60.0
+          ]
+        ]
+      },
+      "iso": {
+        "basis": [
+          [
+            0.7071067811865475,
+            0.7071067811865475,
+            0
+          ],
+          [
+            -0.4082482904638631,
+            0.4082482904638631,
+            0.8164965809277261
+          ],
+          [
+            0.5773502691896258,
+            -0.5773502691896258,
+            0.5773502691896258
+          ]
+        ],
+        "covered_pixels": 88809,
+        "path": "review/render/121a1f10523debad33cc3d5d9e802776ea076c1ec0852415f04a799b4225b47d/iso.svg",
+        "pixel_visits": 599893,
+        "projection_bounds_mm": [
+          [
+            0.0,
+            -24.494897427831784
+          ],
+          [
+            84.85281374238569,
+            52.25578117937447
+          ]
+        ]
+      },
+      "right": {
+        "basis": [
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ],
+          [
+            1,
+            0,
+            0
+          ]
+        ],
+        "covered_pixels": 42361,
+        "path": "review/render/121a1f10523debad33cc3d5d9e802776ea076c1ec0852415f04a799b4225b47d/right.svg",
+        "pixel_visits": 173820,
+        "projection_bounds_mm": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            60.0,
+            60.0
+          ]
+        ]
+      },
+      "top": {
+        "basis": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ],
+        "covered_pixels": 200704,
+        "path": "review/render/121a1f10523debad33cc3d5d9e802776ea076c1ec0852415f04a799b4225b47d/top.svg",
+        "pixel_visits": 897608,
+        "projection_bounds_mm": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            60.0,
+            60.0
+          ]
+        ]
+      }
+    }
+  },
+  "reward_totals": [
+    {
+      "label": "lift",
+      "total": -24159.195354023715
+    },
+    {
+      "label": "control_cost",
+      "total": -2.280743878508681e-06
+    }
+  ],
+  "schema": "cadex-walk-review-v1",
+  "section": {
+    "available": false,
+    "reason": "Named-plane section views are not implemented."
+  },
+  "sha256": "8f4005a17bffbf327fecca4da263dc0d97b66a9e1a91afa6df53ab2a338a11a7",
+  "total_reward": -24159.19535630446,
+  "trace": "rollout/assembly-simulation-trace.json",
+  "training": {
+    "device": "cpu",
+    "parameters": 4609,
+    "reward_per_step": -82.31990814208984,
+    "task_sha256": "d71677f3623df34e1c6c1fb125f8e970cbcfa1cd962ed8477d821e9feb9c9193",
+    "wall_time_s": 0.9867329160333611,
+    "witness_error": 5.41889473917867e-09
+  },
+  "walk_seconds": 14.390672875044402,
+  "weights": "job.cxpolicy"
+}

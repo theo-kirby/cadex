@@ -243,6 +243,18 @@ of doing any of them:
    records comparable offending/unknown/checked counts at these thresholds.
    This is neither swept-motion coverage nor large-assembly qualification.
 
+   The same review session rebuilds standard display once and snapshots it
+   before inspection requests. The `render` block carries availability,
+   accepted revision and digest, front/top/right/iso views, approximation and
+   limits, acquisition/render seconds, and project-relative image/summary paths
+   under `review/render/<accepted-revision>/`. The walk commits these SVG
+   previews (embedded lossless CPU images) with the review and project docs.
+   Rendering or revision mismatch failures fail the walk; retained files from
+   an older run are never reported as current success. `walk_seconds` measures
+   the whole entry point through review, excluding its final progress/commit.
+   Sections remain explicitly unavailable in `section`; previews do not prove
+   section topology or motion clearance.
+
 **Shared mode artifacts** (paths relative to the project, with
 `DIR = runs/<name>`). This table applies to headless local training,
 GUI-attached terminal use, and `--remote`; only the training location changes.
@@ -254,7 +266,7 @@ The scaffold's `## Training` section carries this same path convention.
 | MJCF / task / training | `runs/<name>/train/` (model, task bundle, returned policy) |
 | Store / declare | `assets/<name>.cxpolicy`, `runs/<name>/script.py` |
 | Verify / rollout | `runs/<name>/rollout/` (including the simulation trace) |
-| Review | `docs/inventory.md`, `docs/clearance.md`, `runs/<name>/review.json` (inventory and clearance summaries with project-relative report paths), `PROGRESS.md` (numbers; remote training rows marked `(remote)`) |
+| Review | `docs/inventory.md`, `docs/clearance.md`, `runs/<name>/review.json` (inventory and clearance summaries with project-relative report paths), `review/render/<accepted-revision>/{front,top,right,iso}.svg` and `summary.json`, `PROGRESS.md` (numbers; remote training rows marked `(remote)`) |
 
 `cli/tests/test_walk.py` checks local/remote artifact parity through policy
 verification and rollout using a local CPU stand-in for the dispatcher.
@@ -528,8 +540,8 @@ Dense assemblies can exceed the pixel budget even below the triangle cap.
 The CLI snapshots buffers while holding its project lock, before any further
 engine request can invalidate attempt paths. The shell does not share this
 lock: follow the documented GUI-attached coordination rules. Read failures
-are refusals, never a fallback to guessed poses. This call is separate from
-`cadex walk`; adding its artifacts to walk review and implementing sections
+are refusals, never a fallback to guessed poses. `cadex walk` reuses this renderer in its review session, checks the rollout
+revision and commits views under a revision directory. Named-plane sections
 remain open.
 
 ## 3. The `--json` envelope
@@ -786,8 +798,10 @@ about a payload (ADR-023).
 
 - **Linux and macOS.** The lockfile is POSIX `flock` and the bridge is a unix
   socket. Windows is not supported.
-- **No pictures.** `inspect scope=image`, `resolve_pin` and offscreen
-  rendering are all absent, deliberately (§4). One caveat since ADR-150:
+- **No picture tool in the model bridge.** `inspect scope=image` and
+  `resolve_pin` remain absent (§4). The caller can use `cadex render` or the
+  walk's CPU previews (§2); the model bridge does not expose those commands.
+  Since ADR-150:
   blueprint *sheets* the shell already rendered and stored are readable —
   `inspect scope=blueprint` lists them and `export --blueprints` copies
   them out — because a stored deliverable is not a render. Making one
