@@ -28,7 +28,7 @@ Status: working
 
 - **Headless native recipe projects require `CADEX_BLENDER_EXECUTABLE`**; the visible shell supplies its own absolute binary path. Ordinary engine-only projects still need no Blender. Recipe execution was verified on macOS with Blender 5.3.0 Alpha; Linux bubblewrap is implemented but untested on a Linux host, and Windows refuses [rec: simple-bramble-8616].
 
-**The local bundle remains unverified after the named-angle probe.** Its ordinary launch failed importing `library_catalog_identity` from the stale bundled `cadex_library_api.py`. The supported `MESH_CADEX_ENGINE` override to the fresh staged payload restored and hydrated the accepted model, enabling the separate background-render refusal measurement. No bundle refresh was attempted; this override result does not qualify ordinary bundled lifecycle operation. Reconcile judgement: retain this orientation node as `working` while preserving the local bundle verification limitation [rec: zesty-aspen-6846].
+**The ordinary local bundle now passes the headless lifecycle after a supported refresh.** The installed design route reproduced the missing `library_catalog_identity` refusal at exit 3 before acceptance; the failing API and binary resolved inside the bundle, but the worker import closure was unqualified [rec: northern-hill-9362]. With the existing installed engine API matching source, `pixi run build-shell` staged the engine and performed one shell build, then `bash package/app/build_app.sh install` refreshed the ordinary application without manual copying or a source fix. Fresh installed-engine design and the complete CPU walk passed; same-root packaged lifecycle tests passed 15 and the full CLI suite passed 195 with no skips. The matching built bundle passed `pixi run gate` in background mode. Reconcile judgement: the stale-packaging limitation is resolved and status stays `working`; the selected repair is exhausted. The payload remains local-only with development-prefix dynamic linking, not a portable or hermetic qualification; interactive GUI and remote execution remain unqualified [rec: strong-raven-3067].
 
 **Agent onboarding now defers live status to generated `STATE.md` and its cited nodes.** `.hypergraph/AGENTS.md` no longer duplicates obsolete lifecycle/RL statuses or a fixed state-node count; ADR-137 records the prose-only correction and verification. The earlier actor/maintainer handoff is resolved [rec: lean-union-6426].
 
@@ -65,9 +65,11 @@ Status: working
 - simple-bramble-8616 — native geometry runtime setup and platform validation limits
 - stormy-quill-5350 — concurrent staging caused a transient exclusion failure; completed-payload and sequential suite passed
 - floral-stone-2866 — staging overlap reproduced the transient exclusion failure; stable rerun passed, development payload remains nonportable
-- zesty-aspen-6846 — stale local bundled engine import observed; fresh-stage override restores correctly, ordinary bundle verification awaits refresh
+- zesty-aspen-6846 — historical stale bundled import and successful fresh-stage override; superseded by supported refresh evidence below
 - careful-sand-9714 — actor/maintainer dispatch mismatch and separate maintainer-to-planner handoff; no product gap asserted
 - lean-union-6426 — onboarding defers live frontier and counts to generated state; ADR-137 prose correction landed and dispatch handoff resolved
 - lucky-canyon-6724 — GPU-only VISION rationale contradicts the supported CPU path; bounded prose correction selected, not implemented
 - polished-moss-9358 — VISION principle 5 corrected to the offboard dependency boundary and supported CPU path; no runtime rerun
 - neat-summit-3586 — VISION principle 3 policy-asset rationale corrected without changing the asset contract or runtime evidence
+- northern-hill-9362 — installed design route reproduces stale API refusal before acceptance; worker import closure unqualified
+- strong-raven-3067 — supported bundle refresh resolves refusal; installed-engine walk and packaged/CLI gates plus matching built-bundle background gate pass; local-only limitation remains

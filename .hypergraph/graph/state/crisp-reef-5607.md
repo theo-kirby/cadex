@@ -35,6 +35,8 @@ Reconcile judgement: flipped `open` → `working` on the second clean prompt wal
 
 **Documentation corrections landed:** VISION principles 5 and 3 now agree with the supported CPU walk: offboard training is a dependency/payload boundary, and policy asset status follows the script rebuild boundary rather than GPU duration. Reconcile judgement: retain `working` on the existing toy CPU evidence; neither prose correction reran or recertified the runtime, identified a missing leg, or expanded GUI/remote qualification [rec: polished-moss-9358] [rec: neat-summit-3586].
 
+**Ordinary installed-bundle qualification now passes.** The baseline design refused the stale bundled API import before acceptance, training or review; this deployment failure did not invalidate the prior working lifecycle evidence [rec: northern-hill-9362]. Supported staging, one shell build and bundle installation resolved it without a source fix. Fresh hinged-arm design and the full CPU walk then passed in 16.04 s at 1,054,588,928 bytes peak process-tree RSS, with one iteration, four environments and seed 0. Witness error was 1.3841167412209642e-09 and rollout total reward -27.109384220927513. Same installed-root packaged lifecycle and full CLI gates passed 15 and 195 tests respectively, with no skips; the matching built-bundle background shell gate also passed. Reconcile judgement: retain `working`; the packaging direction is exhausted. This qualifies the local installed-engine route at toy scale, not useful learned control, a new prompt reliability trial, hermetic portability, GUI-attached lifecycle or remote training [rec: strong-raven-3067].
+
 ## Negative knowledge
 
 - [scope: what the walk commits from a training leg | confidence: medium | evidence: shy-cabin-0798] Before ADR-199 the `train` leg's commit carried `job.cxpolicy`, `job.best.cxpolicy` and the store copy — three copies of one policy. The store's asset is the project (ADR-194); checkpoints and traces are not, and the `.gitignore` says so. Reversible per project, because the file is editable.
@@ -57,3 +59,5 @@ Reconcile judgement: flipped `open` → `working` on the second clean prompt wal
 - lucky-canyon-6724 — preserve working CPU-walk evidence while tracking the unimplemented VISION rationale correction
 - polished-moss-9358 — VISION principle 5 corrected to the offboard dependency boundary and supported CPU path; no runtime rerun
 - neat-summit-3586 — VISION principle 3 policy-asset rationale corrected without changing the asset contract or runtime evidence
+- northern-hill-9362 — installed-bundle baseline stops at design; prior working lifecycle evidence preserved
+- strong-raven-3067 — refreshed installed engine accepts design and full bounded CPU walk; same-root lifecycle/CLI gates and matching background shell gate pass
