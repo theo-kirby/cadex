@@ -214,3 +214,97 @@ def test_part_only_inventory_is_explicitly_unavailable(engine, tmp_path, capsys)
     text = (root / "docs/inventory.md").read_text()
     assert "0 component(s)" in text
     assert "Inventory unavailable: no published assembly." in text
+
+
+#: The same rig, with a third catalogued bolt fused into the plate rather
+#: than placed (ADR-243). Nothing downstream of the fuse carries a catalog
+#: row, so this is the design decision — "weld the bought part in" — that
+#: the inventory used to lose entirely.
+FUSED_RIG = """
+bolt_c = lib.bolt("M3", 12.0, origin=[20.0, 10.0, 4.0]).body
+plate = part.fuse([part.box(40.0, 20.0, 4.0), bolt_c])
+bolt_a = lib.bolt("M3", 12.0, origin=[10.0, 10.0, 4.0]).body
+base = assembly.component(plate, grounded=True)
+first = assembly.component(bolt_a)
+asm = assembly.assembly([base, first])
+diag = assembly.solve(asm)
+result = {"plate": plate, "bolt_a": bolt_a, "base": base,
+          "first": first, "asm": asm, "diag": diag}
+"""
+
+
+def test_inventory_names_the_catalogued_bolt_the_design_fused_away(
+    engine, tmp_path, capsys
+) -> None:
+    script = tmp_path / "fused.py"
+    script.write_text(FUSED_RIG, encoding="utf-8")
+    root = tmp_path / "fused"
+    code, envelope = _run(capsys, "script", "--set", str(script), "--project", str(root))
+    assert code == EXIT_OK, envelope
+
+    code, envelope = _run(capsys, "inventory", "--project", str(root))
+    assert code == EXIT_OK, envelope
+
+    text = (Path(root) / "docs" / INVENTORY_DOC_NAME).read_text(encoding="utf-8")
+    assert "## Catalogued, but not placed" in text, text
+    assert "| bolt `m3x12-socket` | 2 | 1 | 1 |" in text, text
+    assert any("1 catalogued but not placed" in note for note in envelope["notes"]), (
+        envelope
+    )
+
+
+def test_the_render_names_the_unplaced_catalog_rows() -> None:
+    text = render_inventory(
+        {
+            "revision": "f" * 64,
+            "assembly": "asm",
+            "components": [],
+            "catalog_counts": {"servo/mg90s": 1},
+            "catalog_generated": {"servo/mg90s": 3},
+            "catalog_calls_known": True,
+            "unplaced_catalog": [
+                {"family": "servo", "part_number": "mg90s",
+                 "generated": 3, "placed": 1, "unplaced": 2},
+            ],
+        },
+        name="rig",
+    )
+
+    assert "## Catalogued, but not placed" in text
+    assert "| servo `mg90s` | 3 | 1 | 2 |" in text, text
+
+
+def test_a_revision_from_before_the_roll_call_says_unknown_not_none() -> None:
+    """Absent is not zero — the doc says so rather than implying a clean bill."""
+
+    text = render_inventory(
+        {
+            "revision": "f" * 64,
+            "assembly": "asm",
+            "components": [],
+            "catalog_counts": {},
+            "catalog_calls_known": False,
+            "unplaced_catalog": [],
+        },
+        name="rig",
+    )
+
+    assert "## Catalogued, but not placed" in text
+    assert "Unknown: this revision was accepted before" in text, text
+
+
+def test_a_fully_placed_assembly_gets_no_unplaced_section() -> None:
+    text = render_inventory(
+        {
+            "revision": "f" * 64,
+            "assembly": "asm",
+            "components": [],
+            "catalog_counts": {"bolt/m3x12-socket": 1},
+            "catalog_generated": {"bolt/m3x12-socket": 1},
+            "catalog_calls_known": True,
+            "unplaced_catalog": [],
+        },
+        name="rig",
+    )
+
+    assert "## Catalogued, but not placed" not in text

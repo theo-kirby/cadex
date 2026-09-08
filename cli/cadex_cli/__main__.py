@@ -36,7 +36,7 @@ from pathlib import Path
 import signal
 import sys
 import time
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 from .agent import (
     ClaudeTurn,
@@ -852,10 +852,15 @@ def command_inventory(args: argparse.Namespace, report: RunReport) -> int:
         path, value = write_inventory(
             client, report.project_root, target=str(args.assembly or "")
         )
+        unplaced = sum(
+            int(row.get("unplaced") or 0) for row in value.get("unplaced_catalog") or []
+        )
         report.notes.append(
-            "inventory: {:d} component(s), {:d} catalogued, written to {:s}.".format(
+            "inventory: {:d} component(s), {:d} catalogued, {:s} catalogued but "
+            "not placed, written to {:s}.".format(
                 int(value.get("component_count") or 0),
                 sum(int(count) for count in dict(value.get("catalog_counts") or {}).values()),
+                str(unplaced) if value.get("catalog_calls_known", True) else "unknown",
                 str(path),
             )
         )
@@ -1400,6 +1405,15 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         "available": bool(inventory.get("assembly")),
         "component_count": inventory["component_count"],
         "catalogued_count": sum(inventory.get("catalog_counts", {}).values()),
+        # ADR-243: catalogued parts the design bought and the assembly does
+        # not place. `None` where the accepted revision predates the roll
+        # call, which is not the same fact as zero.
+        "unplaced_catalog_count": (
+            sum(int(row.get("unplaced") or 0)
+                for row in inventory.get("unplaced_catalog") or [])
+            if inventory.get("catalog_calls_known", True) else None
+        ),
+        "unplaced_catalog": list(inventory.get("unplaced_catalog") or []),
         "path": path.relative_to(Path(report.project_root)).as_posix(),
     }
     pairs = clearance["pairs"]
@@ -1563,6 +1577,33 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
     return command
 
 
+def _walk_numbers(review: Mapping[str, Any]) -> str:
+    """The walk's `PROGRESS.md` Numbers cell: clearance, then inventory.
+
+    The inventory half is ADR-243's: a design that fuses a bought servo into
+    a bracket places no catalogued component, so the counts row is where a
+    later visit sees that the catalogue was used at all. Written even when
+    clearance is unavailable — the two facts are independent.
+    """
+
+    clearance = dict(review.get("clearance") or {})
+    inventory = dict(review.get("inventory") or {})
+    if clearance.get("available"):
+        text = (
+            "clearance offending {offending_pair_count}; unknown {unknown_pair_count}; "
+            "pairs checked {pairs_checked} (initial solved pose; "
+            "{minimum_clearance_mm:g} mm / {maximum_common_volume_mm3:g} mm³)"
+        ).format(**clearance)
+    else:
+        text = "clearance unavailable"
+    unplaced = inventory.get("unplaced_catalog_count")
+    return text + "; inventory {:d} component(s), {:d} catalogued, {:s} catalogued but not placed".format(
+        int(inventory.get("component_count") or 0),
+        int(inventory.get("catalogued_count") or 0),
+        "unknown" if unplaced is None else str(int(unplaced)),
+    )
+
+
 def _record_progress(command: str, args: argparse.Namespace, report: RunReport) -> None:
     """One `PROGRESS.md` row per accepted run (ADR-193).
 
@@ -1581,12 +1622,8 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
             what=_progress_what(command, args, report),
             revision=report.accepted_revision,
             digest=report.digest,
-            numbers=(
-                "clearance unavailable" if not report.walk["review"]["clearance"]["available"]
-                else "clearance offending {offending_pair_count}; unknown {unknown_pair_count}; "
-                     "pairs checked {pairs_checked} (initial solved pose; {minimum_clearance_mm:g} mm / {maximum_common_volume_mm3:g} mm³)".format(
-                         **report.walk["review"]["clearance"])
-            ) if command == "walk" else progress_numbers(
+            numbers=_walk_numbers(report.walk["review"]) if command == "walk"
+            else progress_numbers(
                 training=report.training,
                 outputs=report.outputs,
                 previous=previous_numbers(report.project_root),

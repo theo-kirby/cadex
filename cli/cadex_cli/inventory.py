@@ -104,6 +104,32 @@ def render_inventory(value: Mapping[str, Any], *, name: str) -> str:
         text += "\n## Catalog roll-up\n\n"
         for key in sorted(counts):
             text += f"- `{key}` × {int(counts[key])}\n"
+    unplaced = [
+        row for row in list(value.get("unplaced_catalog") or []) if isinstance(row, Mapping)
+    ]
+    if unplaced:
+        text += (
+            "\n## Catalogued, but not placed\n\n"
+            "Parts a `lib.*` generator built during the accepted run that no "
+            "component places — fused into another solid, cut with, or "
+            "published loose. A design that welds a bought servo into a "
+            "bracket still owes that servo a part number:\n\n"
+            "| catalog | generated | placed | unplaced |\n|---|---|---|---|\n"
+        )
+        for row in unplaced:
+            text += "| {:s} `{:s}` | {:d} | {:d} | {:d} |\n".format(
+                _cell(row.get("family")),
+                str(row.get("part_number") or ""),
+                int(row.get("generated") or 0),
+                int(row.get("placed") or 0),
+                int(row.get("unplaced") or 0),
+            )
+    elif not value.get("catalog_calls_known", True):
+        text += (
+            "\n## Catalogued, but not placed\n\n"
+            "Unknown: this revision was accepted before the run's `lib.*` "
+            "roll call was recorded. Re-accept the project to learn it.\n"
+        )
     uncatalogued = [str(item) for item in list(value.get("uncatalogued_sources") or [])]
     if uncatalogued:
         text += (

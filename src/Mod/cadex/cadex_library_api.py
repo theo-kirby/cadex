@@ -45,6 +45,7 @@ __all__ = [
     "LibraryPart",
     "LibraryAPI",
     "create_library_api",
+    "library_catalog_calls",
     "library_catalog_identity",
     "library_listing",
 ]
@@ -65,6 +66,18 @@ __all__ = [
 #: *join key*, exactly as
 #: ``artifact_by_definition`` already joins a component source to its output.
 _CATALOG_IDENTITY: dict[str, dict[str, str]] = {}
+
+#: ``{"family/part_number": generator calls}`` for THIS run (ADR-243).
+#:
+#: The identity table above is keyed by definition, so it answers "what
+#: catalogue row is this solid" and cannot answer "how many did the script
+#: build" — two identical MG90S collapse to one key, and a servo that was
+#: fused into a plate has no surviving definition to key on at all. That is
+#: the case the pan-tilt walk missed: the design bought two catalogued
+#: servos, welded them into hand-authored solids, and the inventory had
+#: nothing to report because nothing catalogued reached the outputs. Counting
+#: the calls is the only place that fact still exists.
+_CATALOG_CALLS: dict[str, int] = {}
 
 
 def _definition_key(body: Any) -> str:
@@ -87,6 +100,17 @@ def library_catalog_identity() -> dict[str, dict[str, str]]:
     """Catalog identity by canonical definition, for the run just executed."""
 
     return {key: dict(value) for key, value in _CATALOG_IDENTITY.items()}
+
+
+def library_catalog_calls() -> dict[str, int]:
+    """How many parts each catalog row generated in the run just executed.
+
+    Every ``lib.*`` generator call, whatever became of the body afterwards:
+    published, placed, fused into something else, or cut with and dropped.
+    The inventory subtracts what the assembly places to name what it did not.
+    """
+
+    return dict(sorted(_CATALOG_CALLS.items()))
 
 
 class LibraryError(ValueError):
@@ -120,6 +144,11 @@ class LibraryPart:
                 "family": str(family),
                 "part_number": str(part_number),
             }
+        # Counted whether or not the body has a usable definition key, and
+        # counted here rather than in each generator, so a new generator is
+        # tallied by construction rather than by remembering to.
+        tally = f"{str(family)}/{str(part_number)}"
+        _CATALOG_CALLS[tally] = _CATALOG_CALLS.get(tally, 0) + 1
 
     def __setattr__(self, _name: str, _value: Any) -> None:
         raise TypeError("A library part is immutable; build another instead.")
@@ -1370,6 +1399,7 @@ def create_library_api(part_api: Any, assembly_api: Any = None) -> LibraryAPI:
     # One staging per run, so the side table is emptied here rather than
     # carried across scripts by a module that outlives one of them.
     _CATALOG_IDENTITY.clear()
+    _CATALOG_CALLS.clear()
     return LibraryAPI(part_api, assembly_api)
 
 
