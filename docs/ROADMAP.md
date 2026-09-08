@@ -2041,6 +2041,25 @@ What makes them experimental, and what would settle it:
   `policy_on=1`: **300.0 s / exit 3 → 2.0 s**; the full dynamics layer with
   collisions, actuator, joint dynamics, observations, reward, termination,
   randomisation and both ranged disturbances accepts in **1.2 s**.
+- [x] **The prompt walk runs end to end on the Linux GPU box** (2026-09-08,
+  the evidence ADR-249 and ADR-250 were cleared for). `cadex walk --prompt`
+  took a one-servo swing-arm rig from a prompt to a verified policy with no
+  human step past documented flags: **exit 0, 17:43 wall clock, 2,640 MB peak
+  RSS**, into a durable project outside this repository. Legs, all exit 0 —
+  design 1,014.2 s (one turn, `--model` from `$CADEX_MODEL`), train 38.3 s,
+  declare 2.2 s, rollout 2.4 s; `walk_seconds` 1,063.1 through review.
+  Training was local CPU inside the run bound: 5 iterations x 16 envs, 8.7 s,
+  4,673 parameters, reward/step **-0.1254**, witness error 7.2e-09 against a
+  1e-4 tolerance. The rollout the engine verified scored **total_reward
+  -0.1765** over 4 legs. The review step used all four headless eyes: render
+  (front/top/right/iso, 13,432 triangles, 3.4 s), section (XZ at 3.125 mm),
+  inventory (10 components, 7 catalogued), and the clearance bounds check
+  (**pass**, 90 comparisons over 45 pairs, 13 pairs inside the 0.1 mm
+  advisory band). The project landed as a codebase: five commits, five
+  `PROGRESS.md` rows, and `docs/{actuators,clearance,inventory,sensors}.md`.
+  The only host-specific input was `CADEX_MODEL=claude-opus-5`, because the
+  `claude-fable-5` default is out of usage credit on this login; the
+  trainer, engine and venv resolved themselves.
 - [x] **Fresh walk survives a cold public CLI revisit** (2026-09-08).
   Accepted revision/digest, policy assets, trace and review geometry survive
   separate script/asset/inventory/clearance/render/section processes. Expected
