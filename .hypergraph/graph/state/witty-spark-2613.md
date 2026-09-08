@@ -7,11 +7,15 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: working
+Status: open
 
 ## Current
 
 Charter criterion: **Three modes, one shape.** The walk runs headless (exercised), with the GUI attached (documented, not exercised while the headless-only constraint holds), and with training on a remote machine (the handoff is documented and scripted, not executed while the local-only constraint holds). The loop's steps and artifacts are the same in all three. Declared target `gap-three-modes-one-shape-walk` [rec: empty-wolf-3962]. The nt3 operator directive re-seeds the same criterion, unticked, and its ladder places "the walk's third mode: the remote handoff, scripted and documented, not executed" on the medium rung [rec: modest-summit-8554].
+
+**Reopened for ot4 (2026-09-08).** The ot4 operator directive re-seeds this criterion unticked as part of this run's frontier, and its constraints keep the other two modes where they were: the run is headless-only and must not dispatch off its own machine [rec: humble-forest-6896]. The substantive change is that the run's machine is new — `sb1x`, Ubuntu 24.04, RTX 5090, 32 cores — and **the headless mode is not yet exercised on it**: the first `cadex walk --prompt` there exited 3 at the train leg [rec: open-hollow-2140]. So the mode the criterion calls "exercised" currently has no evidence on this machine, while the GUI-attached and remote modes stand exactly as documented and scripted below.
+
+Reconcile judgement: `working` → `open`, folding the directive's declared status. Nothing below is withdrawn or was reopened; the parity audit, the remote handoff (ADR-200) and the GUI-attached doc (ADR-201) all still hold as written. What is missing is one clean headless walk on this run's machine, tracked in detail on `crisp-reef-5607` [rec: humble-forest-6896] [rec: open-hollow-2140].
 
 - **Headless, exercised — now including from `--prompt`**: `cadex walk` qualified on the repo-owned toy (ADR-199) [rec: shy-cabin-0798]; exercised again in nt3 on both example mechanisms under the charter's guards (0.2 s process-tree RSS sampling, 2.9 GB and 850 s cutoffs) with peaks about 1 GB and walls under 16 s [rec: misty-rain-9048]; and then twice from a prompt on agent-designed mechanisms, the second at 1.115 GB peak and 189.4 s wall [rec: placid-sky-7374]. Tracked in detail on `crisp-reef-5607`, now `working`.
 - **Remote training, scripted and not run** (ADR-200, commit 5143099c) [rec: green-delta-7130]: `--remote` on `cadex train` and `cadex walk` puts the train leg on the box through `training/remote_train.sh` (ADR-089) in place of the venv's interpreter, and nothing else moves: the bundle and model are exported into `DIR/train`, the policy comes home to `DIR/train/<name>.cxpolicy`, the receipt is the same last JSON line, and the store, the digest edit, the verified rollout and `review.json` cannot tell the modes apart. The returned file is verified against the receipt's sha256, and a dispatcher `FAIL:` reaches the envelope's `error`. Offline-tested against a stand-in dispatcher with the real script's argv contract, plus `cadex train --remote --put` end to end against the real engine: 134 CLI tests, no skips. **Not executed**: no dispatch, no ssh, no GPU run.
@@ -46,3 +50,5 @@ Reconcile judgement: `working`, folding the explicit MET verdict against the cri
 - placid-sky-7374 — headless mode exercised from a prompt under the guards (1.115 GB peak, 189.4 s wall); GUI-attached and remote modes unchanged, documented-not-exercised
 - gilded-basin-9946 — criterion MET under its stated limits; whole-walk local/remote-flag CPU stand-in artifact parity and scaffold table verified; CLI gate 148 passed
 - lucid-pebble-4000 — ADR-245: the domain-note channel is the closing-text convention in every mode, written by the CLI beside the three project documents; no shell or engine surface touched
+- humble-forest-6896 — the ot4 operator directive re-seeds the criterion unticked on a new, headless-only machine; the remote and GUI modes stay where ADR-200 and ADR-201 left them
+- open-hollow-2140 — the headless mode has no clean run yet on that machine: the first prompt walk exits 3 at the train leg

@@ -7,11 +7,15 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: working
+Status: open
 
 ## Current
 
 Charter criterion: **The agent can see its work without a screen.** One CLI call each, with outputs landing in the project directory: render from named angles, section view through a named plane, list the parts of an assembly with catalog ids, and a clearance and intersection check that names the offending pairs. The lifecycle walk's review step uses them [rec: empty-wolf-3962]. The nt3 operator directive re-seeds the same criterion, unticked, as the second half of this run's frontier ("the lifecycle walk and the eyes it reviews itself with"); its ladder puts the four calls on the medium rung, one CLI call at a time, each wired into the walk's review step as it lands [rec: modest-summit-8554]. Declared target: `gap-agent-can-see-work-without`.
+
+**Reopened for ot4 (2026-09-08).** The ot4 operator directive re-seeds this criterion unticked as the second half of this run's frontier [rec: humble-forest-6896]. **Nothing below is withdrawn**: all four calls exist, are wired into the walk's review step, and are pinned by real-engine tests. What has changed is the machine — `sb1x`, Ubuntu 24.04, RTX 5090, 32 cores — on which none of the four has been exercised: the run's first walk exited 3 at the train leg and never reached its review [rec: open-hollow-2140].
+
+Reconcile judgement: `working` → `open`, folding the directive's declared status rather than a defect. Unlike `crisp-reef-5607`, this criterion's wording carries no "on this machine" clause, so the reopening rests on the operator's re-seed alone; the honest reading is that the surface is delivered and awaiting re-verification on this run's machine, and the cheapest way to get it is the walk's own review step once `crisp-reef-5607` moves [rec: humble-forest-6896] [rec: open-hollow-2140].
 
 **All four review calls and their walk integration have landed:** inventory, clearance/intersection, named-angle rendering and named-plane sections. Their implementation evidence is now followed by separate fresh arm and carriage complete-review rehearsals [rec: first-branch-9614] [rec: quiet-vine-3426]. The inventory carries catalog ids. `inspect scope="inventory"` joins accepted assembly components to their source outputs, catalog identities, solved placements and source facts, with catalog totals and uncatalogued sources. `cadex inventory` writes the generated project document `docs/inventory.md` without AI or a rebuild. Real-engine assembly tests qualify the inventory; the original engine suite recorded 2070 passed / 52 skipped and the packaged lifecycle gate 15 passed, with no protocol change or `shell/` diff [rec: fair-rose-5950].
 
@@ -128,3 +132,5 @@ Joining a fresh evaluation's identity map to the unchanged historical pan-tilt d
 - fond-star-1809 — the same leg re-reviewed after its findings were designed out: four views and the XZ section inspected at the accepted revision, 45 pairs / 9 offending all zero-volume face contacts / 0 unknown, 90/90 bound comparisons at 1e-3 mm with a 3.05e-6 mm worst discrepancy; the agent wrote the actuator and sensor notes
 - lucid-snow-0350 — inspected named previews and section metadata, truthful inventory/contact finding, matching rollout identity
 - scarlet-journey-0203 — scratch index repair preserves tracked review artifacts byte-for-byte without rerunning review
+- humble-forest-6896 — the ot4 operator directive re-seeds the criterion unticked as the second half of this run's frontier
+- open-hollow-2140 — none of the four calls exercised yet on this run's machine; the first walk never reached its review leg

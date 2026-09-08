@@ -7,11 +7,15 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: working
+Status: open
 
 ## Current
 
 Charter criterion: **The walk holds on a second mechanism.** The same entry point, with no code change specific to the mechanism, takes a second mechanism through the whole loop, and both projects' `PROGRESS.md` carry comparable numbers. Declared target `gap-walk-holds-second-mechanism-same` [rec: empty-wolf-3962]. The nt3 operator directive re-seeded it unticked: "finish and evidence it rather than restarting it" [rec: modest-summit-8554].
+
+**Reopened for ot4 (2026-09-08).** The ot4 operator directive re-seeds this criterion unticked [rec: humble-forest-6896], and the run's machine is new — `sb1x`, Ubuntu 24.04, RTX 5090, 32 cores. **No mechanism has completed the walk on it**: the first attempt exited 3 at the train leg, so there is not yet a first mechanism there, let alone a second [rec: open-hollow-2140]. The five nt3 mechanisms below are not withdrawn; they are evidence from a different machine, and the entry point is unchanged.
+
+Reconcile judgement: `working` → `open`, folding the directive's declared status. This criterion is now gated behind `crisp-reef-5607`: it cannot be re-evidenced until one mechanism completes on this machine [rec: humble-forest-6896] [rec: open-hollow-2140].
 
 **Met, 2026-09-07: the same `cadex walk --prompt` entry point took a second prompt-designed mechanism through the whole loop — design included — with no code change of any kind** [rec: placid-sky-7374]. The tree was unchanged at `dfeccc9f` with `git status` clean, and both prompt-walk projects' `PROGRESS.md` files carry the same rows with the same metric definitions:
 
@@ -58,3 +62,5 @@ Reconcile judgement: flipped `open` → `working` on the declared MET impact [re
 - morning-summit-7848 — a fourth variant (the pan-tilt prompt redesigned with fused servos) through the unchanged entry point on the refreshed installed bundle; six project commits, comparable PROGRESS rows, no code change
 - silent-mist-5233 — quota-blocked two-servo rehearsal supplies no comparable mechanism numbers; working status retained
 - proud-beacon-8002 — a fifth prompt-designed mechanism (two-servo hip-and-knee leg with separately placed catalog servos and M3 hardware) through the unchanged entry point on the qualified payload; comparable PROGRESS rows, no code change
+- humble-forest-6896 — the ot4 operator directive re-seeds the criterion unticked on a new machine
+- open-hollow-2140 — no mechanism has yet completed the walk on that machine; the first attempt exits 3 at the train leg
