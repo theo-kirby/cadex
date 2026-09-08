@@ -144,6 +144,12 @@ A refused walk does not roll that bookkeeping back or create a failure commit.
 The walk's `{progress}` row and project commit subject name the output
 relative to this project, or by basename for an external output, so the
 recorded run label contains no absolute machine path.
+Before the first leg, `walk.engine_source_comparison` in the JSON envelope
+and stderr report matching, different or unavailable top-level Python bytes
+against the checkout. Dev runs compare the binary prefix's `Mod/cadex`;
+payload runs compare the manifest's module directory. Name lists stop at ten,
+with full counts. This does not certify binary or loaded-module provenance,
+determine which copy is newer, refuse a run, or rebuild the engine.
 The artifacts are the same project-relative paths in both modes: the
 bundle and the policy under `runs/<name>/train/`, the verified rollout
 under `runs/<name>/rollout/`, the numbers in `runs/<name>/review.json`

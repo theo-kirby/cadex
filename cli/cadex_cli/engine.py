@@ -76,6 +76,40 @@ class Engine:
         }
 
 
+def source_comparison(engine: Engine) -> dict:
+    """Compare top-level Python bytes, without claiming loaded/binary provenance."""
+
+    runtime = (engine.freecadcmd.parent.parent / "Mod" / "cadex"
+               if engine.source == "dev-tree" else engine.module_dir)
+    result = {
+        "status": "unavailable", "source_dir": str(DEV_MODULE_DIR),
+        "comparison_dir": str(runtime),
+        "scope": "top-level Python files only; not binary or loaded-module provenance",
+    }
+    try:
+        if not DEV_MODULE_DIR.is_dir() or not runtime.is_dir():
+            result["reason"] = "source or comparison directory is absent"
+            return result
+        source = {p.name: p for p in DEV_MODULE_DIR.glob("*.py")}
+        installed = {p.name: p for p in runtime.glob("*.py")}
+        if not source or not installed:
+            result["reason"] = "source or comparison directory has no Python files"
+            return result
+        changed = sorted(name for name in source.keys() & installed.keys()
+                         if source[name].read_bytes() != installed[name].read_bytes())
+        missing = sorted(source.keys() - installed.keys())
+        extra = sorted(installed.keys() - source.keys())
+        result.update(
+            status="different" if changed or missing or extra else "match",
+            compared_files=len(source.keys() & installed.keys()),
+            changed_count=len(changed), missing_count=len(missing), extra_count=len(extra),
+            changed=changed[:10], missing=missing[:10], extra=extra[:10],
+        )
+    except OSError as exc:
+        result["reason"] = f"comparison could not be read: {exc}"
+    return result
+
+
 def _from_manifest(root: Path, source: str) -> Engine:
     manifest_path = root / MANIFEST_NAME
     if not manifest_path.is_file():

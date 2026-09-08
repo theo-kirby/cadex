@@ -830,3 +830,36 @@ def test_walk_section_status_and_failure_preserve_old_review(
         assert review["section"]["status"] == outcome
         assert review["section"]["available"] == (outcome == "empty")
         assert not any(o["contours_mm"] for o in review["section"]["objects"].values())
+
+
+@pytest.mark.parametrize("status", ["match", "different", "unavailable"])
+def test_walk_reports_engine_source_evidence_without_refusing(
+    fake_cadex, toy_root, capsys, monkeypatch, tmp_path, status
+):
+    from cadex_cli import __main__ as main_module, engine as engine_module
+
+    source = tmp_path / "source"
+    installed = tmp_path / "prefix" / "Mod" / "cadex"
+    source.mkdir()
+    installed.mkdir(parents=True)
+    (source / "CadexScriptedProcess.py").write_text("current")
+    if status != "unavailable":
+        (installed / "CadexScriptedProcess.py").write_text(
+            "old" if status == "different" else "current")
+    engine = engine_module.Engine(
+        tmp_path / "prefix" / "bin" / "FreeCADCmd", source, "dev-tree")
+    monkeypatch.setattr(engine_module, "DEV_MODULE_DIR", source)
+    monkeypatch.setattr(main_module, "resolve_engine", lambda _: engine)
+    code = main_module.main([
+        "--project", str(toy_root), "walk", "--out", str(toy_root / "runs" / status),
+        "--json",
+    ])
+    captured = capsys.readouterr()
+    envelope = json.loads(captured.out)
+    assert code == EXIT_OK, envelope
+    evidence = envelope["walk"]["engine_source_comparison"]
+    assert evidence["status"] == status
+    assert evidence["comparison_dir"] == str(installed)
+    assert json.dumps(evidence, sort_keys=True) in captured.err
+    if status == "different":
+        assert evidence["changed"] == ["CadexScriptedProcess.py"]

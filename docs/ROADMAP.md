@@ -2092,6 +2092,11 @@ What makes them experimental, and what would settle it:
   the totals never rank the two designs against each other.
   `--trainer-python` was dropped from this invocation: the documented
   fallback resolved `~/cadex-train-venv` on its own.
+- [x] **Walk reports engine/source differences** (2026-09-08, ADR-251).
+  Before its first leg, JSON and stderr carry a bounded Python-file comparison
+  with match/different/unavailable evidence; no refusal, rebuild or binary
+  provenance claim. Offline walk regressions and the CLI suite verify it.
+
 - [x] **Fresh walk survives a cold public CLI revisit** (2026-09-08).
   Accepted revision/digest, policy assets, trace and review geometry survive
   separate script/asset/inventory/clearance/render/section processes. Expected

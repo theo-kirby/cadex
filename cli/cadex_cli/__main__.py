@@ -30,6 +30,7 @@ pipe.
 from __future__ import annotations
 
 import argparse
+import json
 from contextlib import contextmanager
 import os
 from pathlib import Path
@@ -48,7 +49,7 @@ from .agent import (
 )
 from .bridge import Bridge, ToolCall
 from .client import CadexdClient, CadexdError, open_project
-from .engine import Engine, EngineError, resolve_engine
+from .engine import Engine, EngineError, resolve_engine, source_comparison
 from .export import ExportError, export_blueprints, export_outputs, parse_formats
 from .inventory import InventoryError, write_inventory
 from .render import acquire_snapshot, write_render
@@ -1287,6 +1288,15 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     common = _walk_common(args)
     legs: list[dict[str, Any]] = []
     report.walk = {"legs": legs, "review": {}}
+
+    try:
+        engine = resolve_engine(args.engine or None)
+        report.engine = engine.describe()
+        comparison = source_comparison(engine)
+    except EngineError as exc:
+        comparison = {"status": "unavailable", "reason": str(exc)}
+    report.walk["engine_source_comparison"] = comparison
+    _progress(" · walk engine/source comparison: " + json.dumps(comparison, sort_keys=True))
 
     def failed(leg: Any, what: str) -> int:
         legs.append(leg.to_json())

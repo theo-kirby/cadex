@@ -301,6 +301,17 @@ of doing any of them:
    is shared with rendering (count it once); section timing covers contour
    generation, excluding SVG serialization and writes.
 
+Before the first leg, the JSON envelope's `walk.engine_source_comparison`
+and stderr report `match`, `different`, or `unavailable` (ADR-251). This
+compares top-level Python file bytes against `src/Mod/cadex`: for a dev
+engine, the comparison directory is `Mod/cadex` beside the binary's `bin`
+directory; for an explicit/environment payload it is the manifest's module
+directory. Counts cover all compared names; changed, missing and extra name
+lists each stop at ten. Missing directories, empty sets or unreadable files
+mean unavailable evidence. Differences do not establish which copy is newer,
+and matching Python does not certify binary or loaded-module provenance.
+The report does not refuse, rebuild, or change engine selection.
+
 **Shared mode artifacts** (paths relative to the project, with
 `DIR = runs/<name>`). This table applies to headless local training,
 GUI-attached terminal use, and `--remote`; only the training location changes.

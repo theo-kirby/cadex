@@ -21352,3 +21352,18 @@ remains is `Policy output 'swing_policy' names no staged asset
 produces that asset and the script re-declares it. Engine zone plus two
 regressions in `cadex_tests/test_scripted_process.py`; no protocol op, no
 payload change, no `shell/` diff.
+
+
+## ADR-251 — The walk reports engine/source differences before its first leg (2026-09-08)
+
+The dev CLI selects checkout source for cadexd, while FreeCADCmd can preload
+installed Python modules. A source-tree test therefore cannot certify the
+installed runtime. The walk now reports a bounded top-level Python byte
+comparison in `walk.engine_source_comparison` and stderr: dev binary-prefix
+`Mod/cadex` or the selected payload module directory versus checkout source.
+It distinguishes match, measured difference and unavailable evidence, with
+full counts and at most ten names per difference category. This is an
+observation, not freshness ordering or binary/loaded-module provenance.
+Selection, refusal and rebuilding rules stay unchanged; no payload or
+protocol change. CLI regressions cover all three statuses without refusing
+the walk, external differences, bounded lists and missing/unreadable evidence.
