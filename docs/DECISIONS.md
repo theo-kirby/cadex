@@ -4334,6 +4334,10 @@ here so the next person does not re-diagnose it.
 
 ## ADR-061 — Cadex has a headless CLI (2026-07-31)
 
+**2026-09-08 correction:** Remove the payload-coherence guarantee from CLI §6
+and its resolver comment: schema agreement permits absent worker modules
+(`tiny-haven-0347`). Runtime unchanged.
+
 **Decision.** A new top-level `cli/` and a `./cadex` shim: a **third client
 of the cadexd protocol**, peer to the Blender shell, with no Blender, no
 display and no shell code. Four subcommands over one project —

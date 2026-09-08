@@ -104,9 +104,7 @@ def _from_manifest(root: Path, source: str) -> Engine:
         raise EngineError(f"{manifest_path} names a missing module dir: {module_dir}")
 
     engine = Engine(binary, module_dir, source, root=base)
-    # The payload states the protocol it speaks; the module dir carries the
-    # implementation. Disagreement here means a payload assembled out of two
-    # trees, which is worth failing on before a single frame is sent.
+    # Reject nonempty schema disagreement; agreement does not certify the payload.
     declared = str(manifest.get("protocol") or "")
     actual = str(getattr(engine.protocol, "PROTOCOL_SCHEMA", ""))
     if declared and actual and declared != actual:

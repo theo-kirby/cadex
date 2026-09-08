@@ -782,11 +782,10 @@ through its `cadex-engine.json` manifest, which is the payload's discovery
 contract (ADR-020) — the same resolution the shell and
 `test_cadexd_lifecycle.py` use.
 
-The manifest's declared `protocol` is checked against the module directory's
-own `CadexdProtocol.PROTOCOL_SCHEMA`, so a payload assembled out of two trees
-fails before a frame is sent. The resolved engine names itself in the
-envelope, because two runs against two engines have to be tellable apart in
-a log.
+Resolution rejects unequal, nonempty manifest `protocol` and module
+`CadexdProtocol.PROTOCOL_SCHEMA` strings. Agreement proves neither worker
+completeness nor shared source provenance. The envelope identifies the resolved
+engine.
 
 Every reply is shape-checked against **that engine's own**
 `OP_RESPONSE_SPECS`, and a violation is an error rather than a warning. A
