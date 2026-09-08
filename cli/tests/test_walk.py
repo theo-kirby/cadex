@@ -410,7 +410,7 @@ def test_the_walk_runs_train_declare_rollout_and_lands_the_review(
     # cross-check and says so (ADR-248) beside the walk's own note.
     assert envelope["notes"] == [
         "clearance bounds check: unavailable, 0 comparison(s) over 0 pair(s).",
-        "motion: 0 mm (swing), 60° (swing) over 2 solved frame(s).",
+        "motion: travel_mm 0 on swing, travel_deg 60 on swing over 2 solved frame(s).",
         "walk: job.cxpolicy ({:s}) verified; total_reward -12.5 over 3 legs.".format(sha[:12]),
     ]
     # The travel, in both channels and in the file: this toy rotates 60°
@@ -427,8 +427,12 @@ def test_the_walk_runs_train_declare_rollout_and_lands_the_review(
     assert motion["largest_rotation"]["degrees"] == pytest.approx(60.0)
     assert motion["components"]["swing"]["position_range_mm"] == [0.0, 0.0, 0.0]
     assert motion["ranking"].startswith("declined:")
-    assert "motion 0 mm (swing), 60° (swing) over 2 solved frame(s)" in (
+    # Labelled, not unit-suffixed, so a later walk of this project can read
+    # the figure back and carry a delta (ADR-260). This is the project's
+    # first walk, so there is nothing to compare against and no delta.
+    assert "motion travel_mm 0 on swing, travel_deg 60 on swing over 2 solved frame(s)" in (
         toy_root / "PROGRESS.md").read_text()
+    assert "(Δ " not in (toy_root / "PROGRESS.md").read_text().splitlines()[-1]
 
 
 def test_the_iterate_walk_sweeps_first_and_carries_the_warm_start(
@@ -794,6 +798,23 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     assert "clearance offending 1; unknown 0; pairs checked 1" in rows.pop()
     assert rows[-1].split(" | ")[1] == "params"
     assert f"total_reward {reward2:.1f} (Δ " in rows[-1] and f"at {reward1:.1f})" in rows[-1]
+
+    # Both travel channels are comparable across walks (ADR-260). The first
+    # walk had nothing to compare against; the second carries a delta on
+    # each channel against it, so an iterate that held its travel while its
+    # reward moved can say both in one row. Neither delta is a verdict.
+    walk_rows = [line for line in (root / "PROGRESS.md").read_text().splitlines()
+                 if line.startswith("| 2") and line.split(" | ")[1] == "walk"]
+    assert len(walk_rows) == 2, walk_rows
+    assert "; motion travel_mm " in walk_rows[0] and "(Δ " not in walk_rows[0]
+    for label in ("travel_mm", "travel_deg"):
+        assert re.search(
+            label + r" -?[\d.]+(?:e[-+]?\d+)? \(Δ [-+±][\d.]+ vs [0-9a-f]{8} at ",
+            walk_rows[1],
+        ), walk_rows[1]
+    # The row still fits PROGRESS_NUMBERS_LIMIT with both deltas on it: the
+    # documentation finding is last in the cell and is what truncation eats.
+    assert "…" not in walk_rows[1] and "docs notes 1, no actuators" in walk_rows[1]
     assert _git(root, "log", "-1", "--format=%s") == "cadex walk 1 it × 4 envs → runs/walk-2"
     assert {"assets/job2.cxpolicy", "runs/walk-2/review.json"} <= set(
         _git(root, "ls-files").splitlines()

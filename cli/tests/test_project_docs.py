@@ -549,6 +549,43 @@ def test_a_number_a_previous_row_carried_is_written_with_its_change(tmp_path) ->
     assert previous_numbers(root)["reward/step"] == (1.52, "369a0dd5")
 
 
+def test_a_walk_row_s_travel_reads_back_off_the_row_on_both_channels(tmp_path) -> None:
+    """The unit is in the label, so the figure survives the round trip.
+
+    `motion 103.3 mm` cannot be read back — `_NUMBER_RE` wants
+    `<label> <number>` — so before ADR-260 a walk's travel could be
+    written and never compared. Four significant figures, not one
+    decimal: a rig that moved 0.0004 mm did not stand still.
+    """
+
+    from cadex_cli.project_docs import compared_number, previous_numbers
+
+    root = tmp_path / "project"
+    first = "; motion {:s} on carriage, {:s} on carriage over 61 solved frame(s)".format(
+        compared_number("travel_mm", 103.298, {}),
+        compared_number("travel_deg", 0.0, {}),
+    )
+    assert first.startswith("; motion travel_mm 103.3 on carriage, travel_deg 0 on")
+    append_progress_row(root, run="walk", what="walk 5 it × 16 envs → runs/walk-1",
+                        digest="4b0a1c2d" + "0" * 56, numbers="clearance unavailable" + first)
+    assert previous_numbers(root) == {
+        "travel_mm": (103.3, "4b0a1c2d"), "travel_deg": (0.0, "4b0a1c2d")}
+
+    # The iterate walk: the travel held while (elsewhere on the row's own
+    # train leg) the reward fell. The row says the first half; it makes no
+    # claim about which of the two mattered.
+    previous = previous_numbers(root)
+    second = compared_number("travel_mm", 103.719, previous)
+    assert second == "travel_mm 103.7 (Δ +0.419 vs 4b0a1c2d at 103.3)"
+    assert compared_number("travel_deg", 0.0, previous) == (
+        "travel_deg 0 (Δ ±0 vs 4b0a1c2d at 0)")
+    append_progress_row(root, run="walk", what="walk 5 it × 16 envs → runs/walk-2",
+                        digest="9e10f3a4" + "0" * 56, numbers="clearance unavailable; motion "
+                        + second + " on carriage over 61 solved frame(s)")
+    # The delta text is not mistaken for the next row's own value.
+    assert previous_numbers(root)["travel_mm"] == (103.7, "9e10f3a4")
+
+
 def _git(root: Path, *argv: str) -> str:
     import subprocess
 

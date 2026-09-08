@@ -308,8 +308,21 @@ of doing any of them:
    do. A trace whose frames are all identical reports **zero** travel, not
    unavailable; a trace with no frames, no solved frames or no placements
    is `available: false` with a `reason`. The walk's `PROGRESS.md` row and
-   run notes carry both figures — `motion N mm (component), N° (component)
-   over N solved frame(s)`.
+   run notes carry both figures, in one spelling — `motion travel_mm N on
+   <component>, travel_deg N on <component> over N solved frame(s)`. The
+   unit lives in the label rather than after the number because that is
+   the shape `previous_numbers` reads back off a row (ADR-260): a later
+   walk of the same project writes each channel with its change against
+   the last walk that carried it, `travel_mm 103.7 (Δ +0.419 vs 4b0a1c2d
+   at 103.3) on carriage`. The change is measured against the row **as
+   written**, four significant figures and all, because the row is the
+   record; the raw float is in the run's `review.json`. **A delta is not a verdict.** The carriage
+   iterate held its travel at 103 mm while its `total_reward` fell from
+   3.296 to 2.760, and the row now says both; which of the two mattered is
+   the design turn's to decide. Before ADR-260 no walk row carried a delta
+   for any figure — `_record_progress` never passed `previous` on the walk
+   branch — so the reward deltas on a walk's **train** leg row and the
+   travel figure on its **walk** row could not be read together.
 
    The `documentation` block reads the note convention back (ADR-256). The
    walk parses the MJCF it trained on — `DIR/train/<name>-model.xml` — and

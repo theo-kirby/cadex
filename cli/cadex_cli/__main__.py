@@ -37,7 +37,7 @@ from pathlib import Path
 import signal
 import sys
 import time
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 from .agent import (
     ClaudeTurn,
@@ -63,6 +63,7 @@ from .clearance import (
 from .project_docs import (
     append_progress_row,
     commit_project,
+    compared_number,
     documentation_status,
     ensure_project_repo,
     previous_numbers,
@@ -1515,9 +1516,16 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     )
     # Whether the mechanism moved at all, on both channels, so a reader of
     # the run does not have to open review.json to find out that a revolute
-    # rig travelled 0 mm because all of its motion was rotation.
+    # rig travelled 0 mm because all of its motion was rotation. One
+    # spelling for the note and the row (ADR-260): the note carries the
+    # same delta the row does, off the same read of PROGRESS.md, so a
+    # reader of the run never has to reconcile two wordings of one figure.
     report.notes.append(
-        "motion: " + _motion_cell(review["motion"]).removeprefix("; motion ") + "."
+        "motion: "
+        + _motion_cell(
+            review["motion"], previous_numbers(report.project_root)
+        ).removeprefix("; motion ")
+        + "."
     )
     # A model that declares nothing asks the project for nothing, and the
     # run says nothing rather than reporting an empty check.
@@ -1694,8 +1702,11 @@ def _documentation_cell(documentation: dict[str, Any]) -> str:
     )
 
 
-def _motion_cell(motion: dict[str, Any]) -> str:
-    """The walk row's motion half: did the mechanism move, and how.
+def _motion_cell(
+    motion: dict[str, Any], previous: Mapping[str, tuple[float, str]]
+) -> str:
+    """The walk row's motion half: did the mechanism move, and how — and
+    how that compares with the last walk of this project (ADR-260).
 
     Both channels every time. A row that carried millimetres alone would
     report the repository's own hinged-arm example — a working revolute
@@ -1703,15 +1714,28 @@ def _motion_cell(motion: dict[str, Any]) -> str:
     178.8334°. Neither figure is a score and they are not ranked against
     each other, so the row names the largest mover on each channel and
     says over how many frames.
+
+    Spelled `travel_mm N`/`travel_deg N` rather than `N mm`/`N°`, because
+    that is what :data:`COMPARED_NUMBERS` can read back off a row: the
+    unit moved into the label so a later walk can carry a delta. The
+    review JSON keeps `millimetres` and `degrees` under their own keys and
+    is unaffected; the run note is this same cell, so there is one
+    spelling to learn. Neither delta is a verdict: the carriage iterate
+    held its travel at 103 mm while its reward fell, and the row can now
+    say both without saying which mattered.
     """
 
     if not motion.get("available"):
         return "; motion unavailable"
     translation = motion.get("largest_translation") or {}
     rotation = motion.get("largest_rotation") or {}
-    return "; motion {:.4g} mm ({:s}), {:.4g}° ({:s}) over {:d} solved frame(s)".format(
-        float(translation.get("millimetres") or 0.0), str(translation.get("component") or "?"),
-        float(rotation.get("degrees") or 0.0), str(rotation.get("component") or "?"),
+    return "; motion {:s} on {:s}, {:s} on {:s} over {:d} solved frame(s)".format(
+        compared_number(
+            "travel_mm", float(translation.get("millimetres") or 0.0), previous
+        ),
+        str(translation.get("component") or "?"),
+        compared_number("travel_deg", float(rotation.get("degrees") or 0.0), previous),
+        str(rotation.get("component") or "?"),
         int(motion.get("frames_counted") or 0),
     )
 
@@ -1727,6 +1751,10 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
+    # Read once, before the row is appended: both branches compare against
+    # the last row that carried each number, and the walk branch is why
+    # travel figures are comparable at all (ADR-260).
+    previous = previous_numbers(report.project_root)
     try:
         append_progress_row(
             report.project_root,
@@ -1739,12 +1767,12 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
                  else "clearance offending {offending_pair_count}; unknown {unknown_pair_count}; "
                       "pairs checked {pairs_checked} (initial solved pose; {minimum_clearance_mm:g} mm / {maximum_common_volume_mm3:g} mm³)".format(
                           **report.walk["review"]["clearance"]))
-                + _motion_cell(report.walk["review"].get("motion") or {})
+                + _motion_cell(report.walk["review"].get("motion") or {}, previous)
                 + _documentation_cell(report.walk["review"].get("documentation") or {})
             ) if command == "walk" else progress_numbers(
                 training=report.training,
                 outputs=report.outputs,
-                previous=previous_numbers(report.project_root),
+                previous=previous,
             ),
         )
     except OSError as exc:

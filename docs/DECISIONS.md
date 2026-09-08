@@ -21650,3 +21650,63 @@ unavailable reasons), plus the end-to-end walk assertions on the review
 file, the notes and the `PROGRESS.md` row. The real-engine lifecycle test
 reports the hinged arm at `motion 0 mm (swing), 178.8° (swing) over 26
 solved frame(s)`.
+
+## ADR-260 — The walk's `PROGRESS.md` row carries a delta, and travel is spelled so it can (2026-09-08)
+
+**Context.** ADR-194 gave a project's `PROGRESS.md` row the comparison a
+later run is judged by: `previous_numbers()` reads the last row that
+carried each of `COMPARED_NUMBERS`, and `progress_numbers()` writes the new
+value with its change against it. ADR-259 then put both travel channels on
+the walk's row. Measuring the two together found that neither half worked
+for a walk:
+
+1. `_record_progress()` branches on the command, and only the **non-walk**
+   branch passed `previous=previous_numbers(...)`. **No walk row had ever
+   carried a delta, for any figure** — the reward deltas landed on the
+   walk's *train* leg row and the travel figure on its *walk* row, written
+   by different branches, and nothing read them together.
+2. `_motion_cell()` spelled the travel `motion 0 mm (swing), 178.8°
+   (swing)`. `_NUMBER_RE` is built from `COMPARED_NUMBERS` as
+   `<label> <number>`, so a unit-suffixed figure is unreadable by
+   construction: even with the label registered, nothing could be parsed
+   back off the row.
+
+The worked example is the linear carriage: baseline 103.298 mm travel at
+`total_reward` 3.296298, iterate 103.719 mm at 2.760187. The travel held
+while the reward fell — the exact thing an iterate run exists to notice —
+and the walk could not say it.
+
+**Decision.** Move the unit into the label and thread `previous` through
+the walk branch. The cell is now `motion travel_mm N on <component>,
+travel_deg N on <component> over N solved frame(s)`, `COMPARED_NUMBERS`
+gains `travel_mm` and `travel_deg`, and `_record_progress()` reads
+`previous_numbers()` once, before the row is appended, for **both**
+branches. A second walk of the same project writes `travel_mm 103.7 (Δ
++0.419 vs 4b0a1c2d at 103.3) on carriage` — the change measured against
+the row as written, since the row is what a later run can read.
+
+One spelling, not two: the run note is the same cell with its prefix
+stripped, so a reader of a run and a reader of the file learn one wording
+and see the same delta. The review JSON is untouched — it keeps
+`millimetres` and `degrees` under their own keys, and nothing parses it off
+a line of prose.
+
+`_compared` became the public `compared_number`, and its per-label spelling
+became `spelled_number`: one decimal for `total_reward`, four significant
+figures for everything else. A travel of 0.0004 mm is not the claim
+0.0 mm, and the old `.1f` fallback would have erased the difference.
+
+**What this does not decide.** A delta is not a verdict and travel is not a
+score (ADR-259). The two channels are still not ranked against each other,
+and a row that reports more travel and less reward makes no claim about
+which mattered; that is the next design turn's to decide. `PROGRESS.md`'s
+numbers column stays at `PROGRESS_NUMBERS_LIMIT = 320`: both deltas fit
+beside the clearance and documentation cells, and the lifecycle regression
+asserts the row is not truncated and still ends in its documentation
+finding.
+
+**Evidence.** `cli/tests/test_walk.py` — the offline walk pins the new
+spelling and asserts a project's *first* walk carries no delta; the
+real-engine lifecycle test asserts both channels of the second walk carry
+`(Δ ... vs <digest> at ...)` against the first, that the row is not
+truncated, and that the train leg's `total_reward` delta is unchanged.

@@ -407,8 +407,12 @@ def trace_total_reward(outputs: Iterable[ExportedOutput]) -> float | None:
 
 
 #: The numbers a row carries that a later row is compared against, as
-#: they are spelled in the column: the label, then the value.
-COMPARED_NUMBERS = ("total_reward", "reward/step")
+#: they are spelled in the column: the label, then the value. The two
+#: travel labels are why the motion cell is spelled with a label rather
+#: than a unit (ADR-260): `motion 103.3 mm` is unparseable here, and a
+#: walk row that carries no delta cannot say the travel held while the
+#: reward fell — which is the one thing an iterate run is for.
+COMPARED_NUMBERS = ("total_reward", "reward/step", "travel_mm", "travel_deg")
 
 _NUMBER_RE = {
     label: re.compile(re.escape(label) + r" (-?\d+(?:\.\d+)?(?:e[-+]?\d+)?)")
@@ -447,19 +451,33 @@ def previous_numbers(root: Path | str) -> dict[str, tuple[float, str]]:
     return found
 
 
-def _compared(
+def spelled_number(label: str, value: float) -> str:
+    """How a compared number is written in the column.
+
+    One decimal for a reward total, four significant figures for the
+    rest — a travel of 0.0004 mm is not the same claim as a travel of 0.0,
+    and a rounding that erased the difference would be the row lying.
+    """
+
+    return f"{value:.1f}" if label == "total_reward" else f"{value:.4g}"
+
+
+def compared_number(
     label: str,
     value: float,
-    spelled: str,
     previous: Mapping[str, tuple[float, str]],
 ) -> str:
+    """One compared number, with its change against the last row that
+    carried it (ADR-194). Without a previous row, the number alone."""
+
+    spelled = spelled_number(label, value)
     before = previous.get(label)
     if before is None:
         return f"{label} {spelled}"
     was, digest = before
     delta = value - was
-    was_spelled = f"{was:.4g}" if label == "reward/step" else f"{was:.1f}"
-    delta_spelled = f"{abs(delta):.4g}" if label == "reward/step" else f"{abs(delta):.1f}"
+    was_spelled = spelled_number(label, was)
+    delta_spelled = spelled_number(label, abs(delta))
     # The sign of what is shown, not of the float: a change that rounds
     # to nothing is "±0.0", never "-0.0".
     if float(delta_spelled) == 0.0:
@@ -486,13 +504,13 @@ def progress_numbers(
     previous = previous or {}
     reward = trace_total_reward(outputs)
     if reward is not None:
-        items.append(_compared("total_reward", reward, f"{reward:.1f}", previous))
+        items.append(compared_number("total_reward", reward, previous))
     if training:
         per_step = training.get("reward_per_step")
         if per_step is not None:
             try:
                 value = float(per_step)
-                items.append(_compared("reward/step", value, f"{value:.4g}", previous))
+                items.append(compared_number("reward/step", value, previous))
             except (TypeError, ValueError):
                 pass
         wall = training.get("wall_time_s")

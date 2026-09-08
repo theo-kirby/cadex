@@ -2129,6 +2129,20 @@ What makes them experimental, and what would settle it:
   entry point, the two regressions and both projects' comparable numbers side
   by side. Verified by mutation: a `--label` added for scripts containing
   `slider` fails the first test.
+- [x] **A walk's `PROGRESS.md` row carries a delta** (2026-09-08, ADR-260).
+  Measuring ADR-259's motion cell against ADR-194's comparison found neither
+  half worked for a walk: `_record_progress` passed `previous=` only on the
+  non-walk branch, so **no walk row had ever carried a delta for any figure**,
+  and `motion N mm (component)` was unreadable by `_NUMBER_RE`, which wants
+  `<label> <number>`. The cell is now `motion travel_mm N on <component>,
+  travel_deg N on <component>`, `COMPARED_NUMBERS` gains both travel labels,
+  and the walk branch reads `previous_numbers()` like every other. The
+  carriage pair is the worked example: travel held at 103 mm while
+  `total_reward` fell 3.296 → 2.760, and the row can now say both — without
+  ranking them, since a delta is not a verdict. One spelling for row and
+  note; `review.json` untouched. The real-engine lifecycle regression asserts
+  the first walk carries no delta, the second carries one on each channel,
+  and the row still fits 320 characters with its documentation finding.
 - [x] **The walk reports whether the mechanism moved** (2026-09-08, ADR-259).
   `review.json` gains a `motion` block beside `clearance`, and the walk's
   `PROGRESS.md` row and notes gain a motion cell: per component the per-axis
