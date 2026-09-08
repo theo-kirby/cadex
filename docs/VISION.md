@@ -1,6 +1,6 @@
 # VISION.md — What Cadex Is Becoming
 
-Verified against source: 2026-09-05
+Verified against source: 2026-09-08
 
 This document is the product vision. It is authoritative: when a change
 conflicts with this document, the change is wrong or the vision needs an
@@ -311,11 +311,11 @@ returning it.
   covers both solvers and the shell never has to choose between two bakes.
 - ~~Whether there is a **train** button~~ — answered 2026-07-31 (ADR-084):
   **no, and there is nothing to press.** Recorded in principle 5 above.
-- **How a project migrates when the solver moves.** A retained artifact's
-  digest is part of the project's identity (ADR-068), so a MuJoCo or OCCT
-  upgrade makes an existing project refuse to open — and nothing tells the
-  user that `open_project restore=false` and a re-accept is the way through.
-  The rule is right; the migration path is missing.
+- ~~How a project migrates when the solver moves~~ — answered 2026-09-06
+  (ADR-187): restore refuses a changed accepted digest. The chat panel's
+  **Re-accept Stored Script** action explicitly accepts what the engine-stored
+  script builds now, via `open_project restore=false` then `write_script`.
+  This also accepts any external edits to that stored script.
 - ~~Whether interactive mesh editing ever arrives, and if so as engine ops
   rather than shell tools~~ — answered 2026-08-05 (ADR-127): **as engine ops,
   on a declared table, with the shell supplying only the gesture.** A shape

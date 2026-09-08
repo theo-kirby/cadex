@@ -18346,6 +18346,11 @@ refuses a project that stores no script.
 - A digest-moving change no longer ships with a manual recovery. It still
   moves digests, and the box says so rather than hiding it.
 
+**Documentation correction (2026-09-08).** Removed VISION's obsolete claim
+that solver-change recovery is missing; its resolved question now describes
+this shipped action, verified against the backend, chat panel and existing
+lockout regression. Runtime unchanged; no runtime gate rerun for this prose fix.
+
 ## ADR-188 — Save-As carries a trained policy with its provenance (2026-09-06)
 
 **Status:** accepted. **Zone:** `shell/scripts/startup/mesh_agent/` and

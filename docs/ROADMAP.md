@@ -1893,7 +1893,8 @@ What makes them experimental, and what would settle it:
   state, and offered in place of Rebuild Model in the parameters panel's
   alert row. The gate's `test_a_locked_out_project_is_reaccepted_from_the_chat`
   moves the accepted digest with the script untouched and drives the
-  operator from the locked-out state.
+  operator from the locked-out state. VISION's obsolete missing-recovery
+  claim was corrected against this shipped behavior on 2026-09-08 (ADR-187).
 - [x] **Qualify assembly camera visibility** (2026-09-07, ADR-228):
       actual hydration and EEVEE render reproduce unposed source leakage;
       `ASSEMBLY-VISIBILITY-AUDIT.md` defines ownership and regression gates.
