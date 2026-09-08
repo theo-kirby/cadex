@@ -11,15 +11,18 @@ Status: open
 
 ## Current
 
-1. **Remaining lifecycle interpretation, in order (missions 1/2).** The retention and identity units are delivered and the history-aware design turn is capacity-blocked. Promote the already-conditional seed measurement to short: establish a current fixed-geometry reference, then measure three additional seeds. Its only question is descriptive reward/travel variability under unchanged declared conditions. A failure takes precedence as one bounded repair; otherwise stop after the selected four runs. Do not create a fourth mechanism or more measurement work to fill the run budget [rec: easy-beacon-3803] [rec: modest-prairie-3356] [rec: easy-delta-3016].
+1. **Remaining lifecycle interpretation, in order (missions 1/2).** Seed 0 is delivered with fixed geometry, verified objective/actions, training seed 0 and rollout seed 7, all review outputs and preserved artifacts. Complete only the selected seeds 1–3 next, then the history-guided live iterate if supplied capacity permits. The only seed question is descriptive reward/travel variability under unchanged conditions; a failed leg takes precedence as one bounded repair. The resumed-context regression also landed: it proves delivery/persistence, not live provider understanding or Claude resume transport. No repeated reference, regression or fourth mechanism follows [rec: floral-grotto-1463] [rec: humble-sky-8445] [rec: first-creek-7901].
 
-2. **Delivered work leaves dispatch.** Fresh scaffolds exclude root review output; explicit policy exclusions must follow the root default negation, and tracked/pre-staged output retains ordinary Git semantics. Train/walk rows now identify training and rollout seeds, objective and actions; legacy rows stay unavailable and metric delta references may differ from same-kind identity references. CLI gate: 244 passed, no skips. No automatic migration, untracking or adjacent standalone-rollout reporting change follows [rec: easy-beacon-3803] [rec: modest-prairie-3356].
+2. **Delivered work leaves dispatch.** Fresh scaffolds exclude root review output; explicit policy exclusions must follow the root default negation, and tracked/pre-staged output retains ordinary Git semantics. Train/walk rows now identify training and rollout seeds, objective and actions; legacy rows stay unavailable and metric delta references may differ from same-kind identity references. Latest CLI gate: 245 passed, no skips [rec: floral-grotto-1463]. No automatic migration, untracking or adjacent standalone-rollout reporting change follows [rec: easy-beacon-3803] [rec: modest-prairie-3356].
 
 3. **Keep the quill result qualified.** Stroke 40 to 60 passed in 24.61 s at about 1.98 GB peak RSS, exact reward delta +250.279186 and travel +9.794917 mm / 0 degrees; displayed +9.798 uses a rounded prior row. Baseline bytes survived and generated commits remain in history after forward untracking. Matching objective identity is not equivalent control difficulty; changing action midpoint can explain favorable travel. The new seed measurement cannot remove that confound. Timeout descendant cleanup and the parameter iterate are complete, not dispatch targets [rec: young-timber-2761] [rec: lucky-creek-4303] [rec: modest-prairie-3356].
 
 4. **Keep the charter boundary.** Four seeded criteria are working in the projection, and CLI retention is repaired within its documented scope. Remote handoff remains scripted/documented and GUI attachment documented under execution constraints. Keep mode rehearsals, inherited-removal campaigns, catalog, fleet, report rendering and gait training parked. The bounding-box screen is retired, kernel rollout clearance remains unselected on long, and quill overlap is deliberate; initial-pose review does not prove swept fit. No charter gap is deleted, retired or marked done by this pass [rec: western-grotto-7499] [rec: sleepy-hollow-9498] [rec: chilly-crest-2100] [rec: easy-beacon-3803] [rec: easy-delta-3016].
 
 ## Negative knowledge
+
+- [scope: delivered reference and offline context regression | confidence: high | evidence: first-creek-7901] Seed-0 reference and resumed-context regression have landed; older prerequisite dispatch is historical. Neither proves learned improvement or live provider understanding. Only seeds 1–3 remain in the finite measurement; capacity stays conditional on supplied signals [rec: floral-grotto-1463] [rec: humble-sky-8445].
+
 
 - [scope: delivered prerequisites and finite continuation | confidence: high | evidence: easy-delta-3016] Retention repair and comparison identities have landed; older instructions to repair them are historical. Existing tracked/staged artifacts are preserved, not automatically excluded. Seed spread describes variability, not learned improvement or equivalent control difficulty. Claude capacity remains blocked by supplied signals; no provider probe or repeated hold dispatch [rec: easy-beacon-3803] [rec: modest-prairie-3356].
 
@@ -261,3 +264,5 @@ Status: open
 - square-light-7067 — fold quill iterate and retention defect, prioritize repair and preserve parked scope.
 
 - easy-delta-3016 — fold delivered retention and identity; promote finite seed measurement and preserve capacity and charter limits.
+
+- first-creek-7901 — fold delivered reference and context regression; advance finite seed continuation and preserve parked scope.
