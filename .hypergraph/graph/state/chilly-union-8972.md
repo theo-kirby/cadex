@@ -45,6 +45,8 @@ Walk sections share the named-view snapshot, retain explicit outcomes and rollou
 
 **Walk output labels are portable (ADR-246).** Progress rows and project commit subjects use a project-relative output path, or the basename for external outputs. Four persisted-row/commit regressions failed on the old formatter and now pass; the full CLI run recorded 200 passed and one stale absolute-path assertion, then the corrected real toy-walk/iterate test passed alone with no skips. This is regression and toy evidence, not a live durable-run verification; historical rows and commits are unchanged, and external outputs sharing a basename can share a label [rec: twilight-snow-9071].
 
+**The six-process output-loss consent transition is qualified on the existing staged engine.** Initial two-output acceptance, asset storage, refusal without `--replace`, cold script read, explicit replacement and final cold read exited 0, 0, 3, 0, 0, 0. Refusal retained the original accepted source/revision/digest and two-output contract; `--replace` accepted the single-output contract, and both cold reads succeeded. `PROJECT_OUTPUTS_DROPPED` is structured in `script.json.latest_candidate`; the refusal envelope reports the incumbent revision but blank accepted revision/digest and `outputs: []`, with the reason in its error string. Empty exported outputs do not establish lost accepted geometry. `script` prints source even with `--json`. Protected docs/assets were unchanged, and only accepted operations added progress rows; the existing recovery suite passed 14 with no skips. Reconcile judgement: retain `working`; no consent/recovery mismatch or corrective unit is justified, and blank failure-envelope fields alone do not establish a new reporting requirement [rec: silver-rain-7333].
+
 ## Negative knowledge
 
 - [scope: cli/ on macOS | confidence: medium | evidence: jolly-walrus-3692] Nothing in the CLI is macOS-hostile, but it has never been run there by hand and 'should work' is not evidence. Expect the macOS CI job to be the thing that finds anything.
@@ -91,3 +93,4 @@ Walk sections share the named-view snapshot, retain explicit outcomes and rollou
 
 - fresh-flint-1505 — three staged first-visit acceptances qualify Git ownership, ignore preservation and root versus nested index behavior
 - little-fern-0464 — qualified guidance/scaffold mismatch corrected without changing Git behavior; full CLI gate 206 passed with no skips
+- silver-rain-7333 — six real staged CLI processes qualify consent and cold recovery, including exit 3 and the failure-envelope reporting limit
