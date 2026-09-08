@@ -1924,6 +1924,9 @@ What makes them experimental, and what would settle it:
   The domain-doc convention is exercised by the caller (`docs/sensors.md`),
   not generated. The second mechanism is qualified below; the GUI-attached
   mode is documented in ADR-201, below.
+- [x] **Portable walk output labels** (ADR-246). `PROGRESS.md` and the
+  project commit subject use a project-relative output path, or its basename
+  outside the project; absolute `--out` no longer records a machine path.
 - [x] **The same walk on a second mechanism** (ADR-203).
   `examples/lifecycle/linear-carriage` uses a slider and force motor through
   the unchanged entry point, at the arm's 1 iteration × 4 environments.

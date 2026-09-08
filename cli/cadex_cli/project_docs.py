@@ -136,6 +136,9 @@ leg on the box `training/remote_train.sh` names.) Fill in which, and
 why; `{progress}` marks each remote row `(remote)`.
 
 The shared mode artifacts table in `docs/CLI.md` is the walk contract.
+The walk's `{progress}` row and project commit subject name the output
+relative to this project, or by basename for an external output, so the
+recorded run label contains no absolute machine path.
 The artifacts are the same project-relative paths in both modes: the
 bundle and the policy under `runs/<name>/train/`, the verified rollout
 under `runs/<name>/rollout/`, the numbers in `runs/<name>/review.json`

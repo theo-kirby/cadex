@@ -1554,8 +1554,13 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
             Path(str(item)).name for item in args.put_files
         )
     if command == "walk":
+        out = Path(args.out).expanduser()
+        try:
+            label = str(out.resolve().relative_to(Path(report.project_root).resolve()))
+        except (ValueError, OSError):
+            label = out.name
         return "walk {:d} it × {:d} envs → {:s}".format(
-            int(args.iterations), int(args.envs), str(args.out)
+            int(args.iterations), int(args.envs), label
         )
     if command == "train":
         # The mode is part of what happened: a row trained on the box says

@@ -477,6 +477,40 @@ def _git(root: Path, *argv: str) -> str:
     ).stdout.strip()
 
 
+@pytest.mark.parametrize("location", ["inside", "outside", "relative", "home"])
+def test_walk_records_portable_output_in_row_and_commit(tmp_path, monkeypatch, location) -> None:
+    from cadex_cli.__main__ import _commit_run, _record_progress
+    from cadex_cli.project_docs import ensure_project_repo
+
+    root = tmp_path / "project"
+    scaffold_project_docs(root)
+    ensure_project_repo(root)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    out = {
+        "inside": str(root / "runs" / "repair-2"),
+        "outside": str(tmp_path / "external" / "repair-2"),
+        "relative": "project/runs/repair-2",
+        "home": "~/project/runs/repair-2",
+    }[location]
+    label = "repair-2" if location == "outside" else "runs/repair-2"
+    args = argparse.Namespace(iterations=1, envs=4, out=out)
+    report = RunReport(
+        project_root=str(root), accepted_revision="r2", digest="a" * 64,
+        walk={"review": {"clearance": {"available": False}}},
+    )
+    _record_progress("walk", args, report)
+    _commit_run("walk", args, report)
+
+    progress = _git(root, "show", "HEAD:PROGRESS.md")
+    subject = _git(root, "log", "-1", "--format=%s")
+    what = f"walk 1 it × 4 envs → {label}"
+    assert what in progress
+    assert subject == f"cadex {what}"
+    assert str(tmp_path) not in progress + subject
+    assert _git(root, "status", "--porcelain") == ""
+
+
 def test_the_project_owns_a_repository_and_a_run_is_a_commit(tmp_path) -> None:
     from cadex_cli.project_docs import GITIGNORE_NAME, commit_project, ensure_project_repo
 

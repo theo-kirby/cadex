@@ -507,7 +507,7 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     # review; the policy in the store and the sensors doc tracked; the
     # training checkpoints, the policy copies and the trace not.
     subjects = _git(root, "log", "--format=%s").splitlines()
-    assert subjects[0] == f"cadex walk 1 it × 4 envs → {out1}"
+    assert subjects[0] == "cadex walk 1 it × 4 envs → runs/walk-1"
     assert subjects[1] == "cadex params policy_on=1"
     assert "cadex train 1 it × 4 envs → job.cxpolicy (stored)" in subjects
     tracked = set(_git(root, "ls-files").splitlines())
@@ -550,7 +550,7 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     assert "clearance offending 1; unknown 0; pairs checked 1" in rows.pop()
     assert rows[-1].split(" | ")[1] == "params"
     assert f"total_reward {reward2:.1f} (Δ " in rows[-1] and f"at {reward1:.1f})" in rows[-1]
-    assert _git(root, "log", "-1", "--format=%s") == f"cadex walk 1 it × 4 envs → {out2}"
+    assert _git(root, "log", "-1", "--format=%s") == "cadex walk 1 it × 4 envs → runs/walk-2"
     assert {"assets/job2.cxpolicy", "runs/walk-2/review.json"} <= set(
         _git(root, "ls-files").splitlines()
     )

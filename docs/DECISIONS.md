@@ -21154,3 +21154,18 @@ the walk's design leg gets it through the same `cadex -p` child.
 Verification: CLI suite, reported with its skips in the commit. Not verified:
 no design turn was run under this instruction, so that a model actually emits
 `NOTE` lines is the next walk's evidence, not this commit's.
+
+
+## ADR-246 — Walk history records a portable output label (2026-09-08)
+
+Remove verbatim `--out` from the walk branch of the shared progress/commit
+subject formatter. Resolve the output relative to the project when it lies
+inside; otherwise retain its basename. Expand `~` and resolve relative inputs
+using the same working directory as the walk. This keeps `runs/repair-2` useful
+in version-controlled history without carrying the operator's home directory.
+External outputs with equal basenames can share a label; no historical rewrite
+or general path scrub is part of this fix. The CLI doc and project architecture
+scaffold state the convention. Four regressions write real progress rows and Git
+commits for absolute internal/external, relative and home-relative outputs; all
+four fail on the old formatter. The existing real-walk assertion now expects
+the portable subject. CLI suite evidence is recorded with this unit.

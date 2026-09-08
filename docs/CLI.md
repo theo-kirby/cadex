@@ -253,6 +253,10 @@ of doing any of them:
    errors, never clear. An offending pair is a finding, not a walk failure;
    inspection failures fail the command. A walk-specific `PROGRESS.md` row
    records comparable offending/unknown/checked counts at these thresholds.
+   Its output label, shared with the project commit subject, is relative to
+   the project when `--out` lies inside it, otherwise just the output basename
+   (ADR-246). Absolute machine paths do not enter that label; the project
+   architecture scaffold documents this convention.
    This is neither swept-motion coverage nor large-assembly qualification.
 
    The same review session rebuilds standard display once and snapshots it
