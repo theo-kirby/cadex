@@ -1023,7 +1023,11 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
 
     rows = [line for line in (root / "PROGRESS.md").read_text().splitlines()
             if line.startswith("| 2")]
-    assert "clearance offending 1; unknown 0; pairs checked 1" in rows.pop()
+    # The second walk's clearance finding count carries its delta against
+    # the first (ADR-271): unchanged here, and a geometry iterate that
+    # answers a finding is the case the delta exists for.
+    assert ("clearance offending 1 (Δ ±0 vs " in rows[-1]
+            and "at 1); unknown 0; pairs checked 1" in rows.pop())
     assert rows[-1].split(" | ")[1] == "params"
     assert f"total_reward {reward2:.1f} (Δ " in rows[-1] and f"at {reward1:.1f})" in rows[-1]
 

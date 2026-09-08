@@ -266,7 +266,11 @@ of doing any of them:
    Unavailable counts are null; unknown measurements remain null with their
    errors, never clear. An offending pair is a finding, not a walk failure;
    inspection failures fail the command. A walk-specific `PROGRESS.md` row
-   records comparable offending/unknown/checked counts at these thresholds.
+   records comparable offending/unknown/checked counts at these thresholds,
+   the offending count **with the change against the last walk row that
+   carried one** (ADR-271) — the number a geometry iterate answering a
+   clearance finding turns. Unknown and checked counts stay plain: they say
+   what the check could reach, not what it found.
 
    The block also carries `bounds_check` (ADR-248): the same pairs re-read
    against the render snapshot's independently placed world bounds, two

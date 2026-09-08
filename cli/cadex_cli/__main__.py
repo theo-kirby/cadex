@@ -1741,6 +1741,39 @@ def _documentation_cell(documentation: dict[str, Any]) -> str:
     )
 
 
+def _clearance_cell(
+    clearance: Mapping[str, Any], previous: Mapping[str, tuple[float, str]]
+) -> str:
+    """The walk row's clearance half: how many pairs the check found, and
+    how that compares with the last walk of this project (ADR-271).
+
+    The offending count is the number a geometry iterate exists to turn.
+    `ot4-quill` reported the same 960 mm³ housing/quill intersection on
+    every walk row for a day; the design turn that answered it wrote a
+    row saying `clearance offending 0`, which on its own is
+    indistinguishable from a rig that never had a finding. The count
+    carries its delta now, spelled by the same machinery as the travel
+    figures, and reads back off the older rows unchanged because the
+    label was always in front of the number.
+
+    `unknown` and `pairs checked` stay plain: they say what the check
+    could reach, not what it found, and a delta on either without the
+    other would read as a claim about the mechanism.
+    """
+
+    if not clearance.get("available"):
+        return "clearance unavailable"
+    return "{:s}; unknown {:d}; pairs checked {:d} (initial solved pose; {:g} mm / {:g} mm³)".format(
+        compared_number(
+            "clearance offending", float(clearance["offending_pair_count"]), previous
+        ),
+        int(clearance["unknown_pair_count"]),
+        int(clearance["pairs_checked"]),
+        float(clearance["minimum_clearance_mm"]),
+        float(clearance["maximum_common_volume_mm3"]),
+    )
+
+
 def _motion_cell(
     motion: dict[str, Any], previous: Mapping[str, tuple[float, str]]
 ) -> str:
@@ -1802,10 +1835,7 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
             revision=report.accepted_revision,
             digest=report.digest,
             numbers=((
-                ("clearance unavailable" if not report.walk["review"]["clearance"]["available"]
-                 else "clearance offending {offending_pair_count}; unknown {unknown_pair_count}; "
-                      "pairs checked {pairs_checked} (initial solved pose; {minimum_clearance_mm:g} mm / {maximum_common_volume_mm3:g} mm³)".format(
-                          **report.walk["review"]["clearance"]))
+                _clearance_cell(report.walk["review"]["clearance"], previous)
                 + _motion_cell(report.walk["review"].get("motion") or {}, previous)
                 + _documentation_cell(report.walk["review"].get("documentation") or {})
             ) if command == "walk" else progress_numbers(

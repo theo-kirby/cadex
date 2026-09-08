@@ -22068,3 +22068,29 @@ lying in the cut plane, which has no thickness to step off into. The
 skip-a-candidate test keeps its assertions and gains the siblings in its
 candidate list. `cli/tests` run in full: 261 passed. No new flag, op, protocol
 change, engine or shell diff.
+
+## ADR-271 — The clearance finding count is a compared number (2026-09-08)
+
+The walk row's motion and reward figures carry a delta against the last row
+that had one (ADR-194, ADR-260); its clearance half did not. `ot4-quill`
+reported the same 960 mm³ `housing`/`quill` intersection on every walk row it
+had ever written. A live design turn read that repetition out of the project's
+own `PROGRESS.md`, disputed the attribution its `DECISIONS.md` gave it, stood
+the bore axis off the column by the head's full swept radius and tied it back
+with a web — and the walk that followed (`runs/live-iterate-43`, exit 0 in
+23.62 s) wrote `clearance offending 0`. A bare zero is indistinguishable from
+a rig that never had a finding, so the row could not say the one thing the
+iterate was for.
+
+`clearance offending` joins `COMPARED_NUMBERS`, and the walk's clearance cell
+is built by `_clearance_cell` through the same `compared_number` machinery as
+the travel figures. No re-spelling was needed: the cell already put the label
+in front of the count, so every row ever written reads back and the first row
+of the new behaviour carries a real delta.
+
+`unknown` and `pairs checked` stay plain, deliberately. They say what the check
+could reach rather than what it found, and only mean anything beside each
+other; a delta on `unknown` alone would read as a claim about the mechanism.
+The thresholds, the initial-solved-pose scope, `review.json`'s `clearance`
+block and the rule that an offending pair is a finding rather than a walk
+failure are unchanged. `cli/tests`: 262 passed.

@@ -695,6 +695,45 @@ def test_a_walk_row_s_travel_reads_back_off_the_row_on_both_channels(tmp_path) -
     assert previous_numbers(root)["travel_mm"] == (103.7, "9e10f3a4")
 
 
+def test_a_walk_row_s_clearance_finding_count_carries_its_delta(tmp_path) -> None:
+    """The number an iterate turns, said as a change (ADR-271).
+
+    A walk that answers a clearance finding writes `clearance offending
+    0`, which alone is indistinguishable from a rig that never had one.
+    The label was always in front of the count, so every row already
+    written reads back and the very first row of the new spelling carries
+    a real delta.
+    """
+
+    from cadex_cli.project_docs import compared_number, previous_numbers
+
+    root = tmp_path / "project"
+    # A row in the old spelling: no delta text, and never re-written.
+    append_progress_row(
+        root, run="walk", what="walk 5 it × 16 envs → runs/before",
+        digest="f08ff7ef" + "0" * 56,
+        numbers="clearance offending 1; unknown 0; pairs checked 1 "
+                "(initial solved pose; 0.1 mm / 1e-06 mm³)",
+    )
+    assert previous_numbers(root)["clearance offending"] == (1.0, "f08ff7ef")
+
+    previous = previous_numbers(root)
+    answered = compared_number("clearance offending", 0.0, previous)
+    assert answered == "clearance offending 0 (Δ -1 vs f08ff7ef at 1)"
+    append_progress_row(
+        root, run="walk", what="walk 5 it × 16 envs → runs/after",
+        digest="ef8662ad" + "0" * 56,
+        numbers=answered + "; unknown 0; pairs checked 1 "
+                "(initial solved pose; 0.1 mm / 1e-06 mm³)",
+    )
+    # The delta text is not mistaken for the next row's own value, and a
+    # walk that finds nothing twice running says so rather than going
+    # quiet.
+    assert previous_numbers(root)["clearance offending"] == (0.0, "ef8662ad")
+    assert compared_number("clearance offending", 0.0, previous_numbers(root)) == (
+        "clearance offending 0 (Δ ±0 vs ef8662ad at 0)")
+
+
 def _git(root: Path, *argv: str) -> str:
     import subprocess
 

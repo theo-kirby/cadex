@@ -450,7 +450,18 @@ def trace_total_reward(outputs: Iterable[ExportedOutput]) -> float | None:
 #: than a unit (ADR-260): `motion 103.3 mm` is unparseable here, and a
 #: walk row that carries no delta cannot say the travel held while the
 #: reward fell — which is the one thing an iterate run is for.
-COMPARED_NUMBERS = ("total_reward", "reward/step", "travel_mm", "travel_deg")
+#: ``clearance offending`` joins them for the same reason and reads back
+#: off every row ever written, because the cell already spelled the label
+#: before the count (ADR-271): a geometry iterate that answers a clearance
+#: finding turns exactly this number, and a bare ``0`` cannot say that the
+#: pair it replaced was there. ``unknown`` is deliberately not compared —
+#: it is a coverage figure that only means anything beside ``pairs
+#: checked``, and a delta on it alone would read as a verdict on the
+#: mechanism rather than on what the check could reach.
+COMPARED_NUMBERS = (
+    "total_reward", "reward/step", "travel_mm", "travel_deg",
+    "clearance offending",
+)
 
 _NUMBER_RE = {
     label: re.compile(re.escape(label) + r" (-?\d+(?:\.\d+)?(?:e[-+]?\d+)?)")
