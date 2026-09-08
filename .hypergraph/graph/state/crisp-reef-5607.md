@@ -87,7 +87,7 @@ Reconcile judgement: retain `working`; the cleanup correction strengthens the ex
 
 **Resumed-turn history is regression-qualified.** Two scripted model turns through the real engine and bridge preserve session/project identity, deliver current architecture, decisions, domain notes and between-visit sensor/progress edits, then accept changed geometry and append notes without losing prior text. Removing project-doc delivery makes the regression fail. This proves context delivery and persistence, not model understanding or live Claude resume; the provider-guided geometry/train/review iterate remains unmeasured. No runtime change; CLI gate: **245 passed, no skips** [rec: humble-sky-8445].
 
-**Fixed-stroke quill reference now carries current comparison identities.** One provider-free CPU walk at stroke 60, training seed 0, rollout seed 7 and 5 iterations × 16 environments completed all three legs and review: exit 0, **24.84 s wall, 1.99 GB peak tree RSS**, witness error 2.0915e-08. Canonical objective/action hashes, unchanged parameters, byte-identical MJCF and full task equality were verified against the earlier stroke-60 run; 56 installed/source Python files match. Prior artifacts remain intact and new generated outputs stay local. CLI gate: **245 passed**. Retain `working`: this establishes the current reference, with seed continuation outstanding; it proves neither learned control nor live provider understanding [rec: floral-grotto-1463].
+**The fixed-stroke quill seed measurement is complete.** The retained stroke-60 reference uses CPU 5 × 16 training, training seed 0 and rollout seed 7; its parameters, MJCF and full task match the earlier stroke-60 run, with independently verified objective/action identities [rec: floral-grotto-1463]. Exactly three further walks, training seeds 1–3 at the same inputs and rollout seed, pass all nine legs in 23.78–25.47 s each at less than 2 GB peak tree RSS. Prior artifacts and project history survive, with new generated outputs excluded throughout the new commits. Recorded CLI gate: **245 passed, no skips**. Retain `working`: this finite seed direction is exhausted; it supplies lifecycle repeatability evidence, not learned control or live provider understanding [rec: honest-banner-0821].
 
 ## Negative knowledge
 
@@ -164,3 +164,5 @@ Reconcile judgement: retain `working`; the cleanup correction strengthens the ex
 
 - humble-sky-8445 — real-engine resumed context and note persistence regression, negative control and 245-test CLI gate; live provider iterate remains unmeasured
 - floral-grotto-1463 — bounded fixed-stroke seed-0 CPU walk with verified comparison identities, artifact retention and 245-test CLI gate
+
+- honest-banner-0821 — three fixed-input CPU walks pass all legs and retention checks; finite seed direction exhausted; CLI 245 passed

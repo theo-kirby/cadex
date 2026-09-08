@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+**Durable project history survives tested update failures (ADR-264).** Progress, decisions and domain-note updates write a complete sibling temporary file before replacement. Six partial-write/refused-replacement and retry regressions preserve earlier bytes, permissions and file inventory; the recorded full CLI gate is **251 passed, no skips**. Protection is per file, with no multi-document transaction, concurrency or power-loss guarantee; an uncatchable termination can leave a hidden scratch file. First-visit scaffolding is unchanged. Retain `working`: this repairs project-as-codebase persistence without establishing live provider understanding [rec: solar-snow-8543].
+
 Declared by the audit under the working name `robot-lifecycle-walk`; this node is that target [rec: sweet-light-3396].
 
 The agent-driven robot lifecycle walk as a state of its own: design → assembly → MJCF → task → local CPU training → policy verify → rollout → review → **iterate** → compare and record, driven from the CLI with no human in the loop, artifacts landing in the project directory with docs/reports versioned and generated reviews local under fresh defaults; policy/run retention follows explicit Git rules [rec: easy-beacon-3803]. It is the goal's second priority and the `docs/MUJOCO.md` §7b rehearsal re-run as an audit; the training loop's own facts (venv, gate, mg-legs, B7) stay on the RL node [rec: sweet-light-3396].
@@ -84,7 +86,7 @@ The separate fresh two-mechanism complete-review rehearsal remains open on `damp
 
 **Project history reaches resumed agent turns with current edits.** The real-engine two-turn regression checks existing decisions and domain notes plus between-visit architecture, sensor and progress edits at the resumed factory boundary; it retains the session id/project cwd and verifies changed geometry plus appended decisions/notes without losing existing text. Its negative control fails when project-doc delivery is removed. No runtime omission was found. Retain `working`: delivery and persistence are pinned by **245 passing CLI tests**, while actual provider understanding and a live history-guided geometry/train/review iterate remain unmeasured [rec: humble-sky-8445].
 
-**The retained quill seed-0 reference reproduces the prior result at fixed stroke 60.** With CPU 5 × 16 training, training seed 0 and rollout seed 7, verified reward is **175.487211145051**, travel **30.078469436328 mm / 0 degrees**, over 200 steps / 4 s. Parameters, MJCF and full task match the previous stroke-60 run; independently recomputed objective/action identities agree with current metadata. Legacy prior-row identities remain unavailable, and displayed deltas use rounded prior numbers, so exact agreement is no improvement claim. Project PROGRESS is committed; all 48 prior run files retain their bytes, prior history and unrelated tracked content survive, and new run/policy/review outputs are absent from the committed tree. Retain `working`: the reference supplies retention and identity evidence, but seed spread remains unmeasured and the 30 mm action midpoint remains a confound [rec: floral-grotto-1463].
+**The four-seed quill comparison is measured at fixed stroke 60.** The retained training-seed-0 reference reproduces reward **175.487211145051** and travel **30.078469436328 mm / 0 degrees** at rollout seed 7 [rec: floral-grotto-1463]. Training seeds 1–3 retain full parameters, byte-identical MJCF/task and canonical objective/action identities. Across seeds 0–3, reward ranges **170.952827–175.935972** (span 4.983145), travel **30.078469–31.421760 mm** (span 1.343291), and angular travel remains zero; each rollout is 200 steps / 4 s. These descriptive results and exact review references are in docs/CLI.md and committed project PROGRESS. The 30 mm target is the action midpoint, so near-zero normalized actions already command it: no significance, winner or learned improvement is established. Prior run/policy bytes, history and unrelated content survive; new generated outputs remain excluded throughout new project commits. Retain `working`; the selected seed measurement is exhausted [rec: honest-banner-0821].
 
 ## Negative knowledge
 
@@ -150,3 +152,6 @@ The separate fresh two-mechanism complete-review rehearsal remains open on `damp
 
 - humble-sky-8445 — resumed decisions/domain notes and fresh between-visit context delivered and preserved; no runtime omission; CLI 245 passed
 - floral-grotto-1463 — fixed-stroke seed-0 reference reproduces exact reward/travel, verifies identities and preserves 48 prior run files plus project history
+
+- honest-banner-0821 — fixed-input four-seed descriptive ranges and preserved project history, with action-midpoint caveat
+- solar-snow-8543 — document history survives tested write/replacement errors; per-file limits; CLI 251 passed

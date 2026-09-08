@@ -69,7 +69,7 @@ Joining a fresh evaluation's identity map to the unchanged historical pan-tilt d
 
 Reconcile judgement: retain `working`. This is the criterion's first evidence on a third mechanism and the documentation eye's first live read, and it is what the eye was built for. Unchanged and still not claimed: swept or animated clearance (initial-pose views and tessellation cuts only), exact OCCT volume validation, GUI and actual remote qualification, and a named inventory snapshot inside the saved review [rec: chilly-crest-2100].
 
-**The fixed-stroke quill reference verifies all four review outputs locally.** Four named views and all four review paths exist; the XZ section at Y = 3.125 mm cuts the housing but misses the quill, inventory lists two uncatalogued components, and clearance names the known housing/quill intersection of **960 mm³**, with no unknown pairs. New review outputs remain local and absent from the committed tree; historical tracked reviews and all 48 prior run files are preserved. CLI gate: **245 passed**. Retain `working` within the existing initial-pose/tessellation scope: file/output checks do not establish swept clearance, quill interior coverage or learned control [rec: floral-grotto-1463].
+**All four review outputs are verified for the fixed-stroke quill reference and seeds 1–3.** The seed-0 reference established four named views, an XZ section at Y = 3.125 mm that cuts the housing but misses the quill, two uncatalogued components and the known **960 mm³** housing/quill intersection with no unknown pairs [rec: floral-grotto-1463]. Each continuation verifies all four review paths and every named render, retaining those findings. All preceding run bytes (75/102/129 files), stored policies and prior history survive; new run/policy/review outputs remain excluded throughout new project commits. Recorded CLI gate: **245 passed, no skips**. Retain `working` within the existing initial-pose/tessellation scope: these checks establish neither swept clearance, quill interior coverage nor learned control [rec: honest-banner-0821].
 
 ## Negative knowledge
 
@@ -144,3 +144,5 @@ Reconcile judgement: retain `working`. This is the criterion's first evidence on
 - chilly-crest-2100 — all four eyes on a third mechanism (render 1,404 triangles / 0.49 s, section XZ ok, inventory 2 components 0 catalogued, clearance 1 offending pair); the ADR-256 documentation eye's first read of a real design turn's unprompted notes (docs notes 2, none missing) and the ADR-259 motion block's first two-channel report on a joint offering both (20.28 mm / 0°); the offending pair is deliberate per the project's own ADR-005
 
 - floral-grotto-1463 — all four fixed-stroke reference review outputs verified locally, with known intersection and quill-missing section explicit; prior artifacts preserved
+
+- honest-banner-0821 — all four seed-continuation review outputs verified, known geometry limits retained, new generated output excluded throughout history
