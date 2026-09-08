@@ -41,6 +41,8 @@ Each rehearsal's full built-engine CLI gate recorded **195 passed, zero skipped*
 
 **Reconcile judgement: `open` → `working`.** The two fresh rehearsals discharge the previously explicit missing evidence unit: inspected named views, meaningful sections, truthful inventory, named-pair checks, accepted identity and committed comparisons. Together with the delivered calls and integration, they cover the headless-review criterion. This assessment follows the declared request for maintainer judgement; it does not claim swept safety, exact solid sections, hardware validation or useful learned control, and it does not edit the charter or select the next plan [rec: first-branch-9614] [rec: quiet-vine-3426].
 
+**Cold revisit preserves the committed review.** Separate public inventory, clearance, render and section processes retain accepted identity and object geometry; all four named SVGs and the interior section match committed baseline bytes. Inventory/clearance bytes are unchanged: two synthetic uncatalogued components, base–swing contact at 0 mm / 0 mm³, one offending pair and zero unknowns. Inspected section areas remain 360/640 mm². Restore re-stages attempts, review commands commit progress rows, and standalone section refreshes timing fields; these expected writes are not persistence defects. No recovery was needed, so status remains `working` and no conditional repair is warranted. Initial-pose/tessellation and toy-policy limits remain; GUI is documented-only and remote scripted-only [rec: fair-cedar-7455].
+
 ## Negative knowledge
 
 - [scope: named-angle probe using the existing background Blender renderer after accepted hinged-arm hydration | confidence: high | evidence: zesty-aspen-6846] All four valid blueprint views and `render_views` explicitly refuse background mode. The override probe's exit 0 records returned errors, not a rendered PNG. CPU projection must snapshot revision-dependent display buffers before another rebuild invalidates their paths.
@@ -67,3 +69,4 @@ Each rehearsal's full built-engine CLI gate recorded **195 passed, zero skipped*
 
 - first-branch-9614 — fresh arm complete-review rehearsal, inspected artifacts and committed identity audit; CLI 195 passed without skips
 - quiet-vine-3426 — fresh carriage completes the paired rehearsal with committed comparisons; evidence supports working status within initial-pose and toy-policy limits
+- fair-cedar-7455 — cold public review matches committed baseline identity, geometry and SVG bytes with truthful contact counts; no persistence defect

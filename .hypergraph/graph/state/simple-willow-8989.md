@@ -27,6 +27,8 @@ Three failures here were measured rather than suspected [rec: western-badger-302
 
 **Stale shell mutations require explicit refresh** (ADR-204). Script and parameter mutations retain their old revision guard and return Rebuild Model/reopen guidance. Dormant guard adoption and replay are removed: a synthetic stale response carrying a newer guard cannot trigger replay, while real two-engine repeat attempts preserve accepted source, values and metadata, then recover after Rebuild Model. Real-engine overwrite was not reproduced; current stale precondition failures omit the model_state needed by the old retry. The shell build and full headless bundle gate pass; simultaneous acceptance/rebuilds still require sequential use [rec: still-badger-2386].
 
+**Documentation gap remains open; runtime stays `working`.** `docs/VISION.md` Open questions incorrectly says solver-migration recovery is missing, despite ADR-187 and the existing `reaccept_stored_script` / locked-out chat-panel implementation. The recorded bet selects a bounded correction of that paragraph; the correction has not landed. This source observation supplies no new GUI test result and does not reopen the shipped recovery feature or justify a persistence repair [rec: weathered-haven-8656].
+
 ## Negative knowledge
 
 - [scope: Save-As, and an unsaved scene's temporary root | confidence: high | evidence: twilight-isle-0370] Do not assume a file open hydrates the model in these two cases. Hydrate-on-open (ADR-186) queues only for a saved `.blend` whose `.cadex` directory exists; Save-As is deliberately not queued (it would repaint the viewport with the other model on the spot) and the unsaved temp root is guarded out. The former blanket rule from western-badger-3023 is retired for the ordinary open.
@@ -46,3 +48,4 @@ Three failures here were measured rather than suspected [rec: western-badger-302
 - small-hawk-3973 — the lockout re-accept box (ADR-187): drawn off the cached failure code, wired to write_script through one accept path, the gate test that drives the operator from the locked-out state (1136 checks, 0 FAIL), and the unsaved-scene test-isolation trap
 - wild-grotto-5497 — Save-As carries a trained policy (ADR-188), verified and recorded: the shell's carry list equals the engine's seven stored suffixes, the gate at 1142 checks and 0 FAIL, and the equality test deliberately not taken across the licence boundary
 - still-badger-2386 — ADR-204: dormant stale replay removed, repeat-refusal and refresh recovery verified with synthetic and real-engine tests; shell build and gate pass
+- weathered-haven-8656 — source-verified stale VISION recovery claim; bounded documentation correction selected but not landed, runtime status unchanged
