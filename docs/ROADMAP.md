@@ -2112,6 +2112,12 @@ What makes them experimental, and what would settle it:
 - [x] **Explicit CPU toy-walk setup** (2026-09-08, ADR-253). Rehearsed the
   public walk with a CUDA-capable venv and explicit CPU selection; setup,
   CLI guide and project scaffold share the measured invocation contract.
+- [x] **The walk checks its domain-note convention** (2026-09-08, ADR-256).
+  The review reads the MJCF it trained on and names the note subjects the
+  mechanism declares — `<actuator>` → `docs/actuators.md`, `<sensor>` →
+  `docs/sensors.md` — against the notes the project keeps. `review.json`
+  gains `documentation` and the walk's `PROGRESS.md` row the same finding.
+  Reported, never written and never fatal: the notes are the design turn's.
 - [x] **Walk inventory history contract** (2026-09-08, ADR-254). Measured
   a component rename after a public walk: latest report advances, saved counts
   stay fixed and Git retains original rows; guide and scaffold distinguish them.

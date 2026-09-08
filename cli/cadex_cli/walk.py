@@ -33,6 +33,9 @@ import subprocess
 import sys
 import time
 from typing import Any, Sequence
+import xml.etree.ElementTree as ElementTree
+
+from .project_docs import DECLARED_NOTE_SUBJECTS
 
 #: The switch parameter the iterate convention names (ADR-192): the policy
 #: is declared only while it reads 1, so a sweep can blank it and the walk
@@ -203,6 +206,41 @@ def declare_policy(source: str, weights: str, sha256: str) -> str:
     return source[:start] + call + source[end:]
 
 
+#: The MJCF the training bundle names, as it lands under ``--out/train``
+#: (``docs/CLI.md`` §2: ``<name>-model.xml`` beside ``<name>-task.json``).
+MODEL_GLOB = "*-model.xml"
+
+
+def declared_note_subjects(train_dir: Path | str) -> tuple[list[str], Path | None]:
+    """The domain-note subjects the model the walk trained on declares.
+
+    Read from the exported MJCF rather than from the script, because that
+    file is what the trainer and the rollout actually ran: an ``<actuator>``
+    section with children means the mechanism is driven, a ``<sensor>``
+    section means it is observed, and each asks the project for the note
+    the authoring contract names (``docs/actuators.md``, ``docs/sensors.md``
+    -- ADR-245, ADR-256). No bundle, no declaration and no finding: the
+    subjects are empty and the walk says nothing rather than guessing.
+    """
+
+    try:
+        models = sorted(Path(train_dir).glob(MODEL_GLOB))
+    except OSError:
+        return [], None
+    for path in models:
+        try:
+            root = ElementTree.parse(path).getroot()
+        except (OSError, ElementTree.ParseError):
+            continue
+        subjects = [
+            subject
+            for section, subject in DECLARED_NOTE_SUBJECTS.items()
+            if any(len(node) for node in root.iter(section))
+        ]
+        return subjects, path
+    return [], None
+
+
 def review_from_outputs(outputs: Sequence[dict[str, Any]]) -> dict[str, Any]:
     """The rollout's numbers, read from the exported trace.
 
@@ -257,8 +295,13 @@ def write_review(
         except (ValueError, OSError):
             return value
 
+    documentation = dict(review.get("documentation") or {})
+    if documentation.get("model"):
+        documentation["model"] = relative(documentation["model"])
+
     payload: dict[str, Any] = {
         "schema": "cadex-walk-review-v1",
+        "documentation": documentation,
         "inventory": dict(review.get("inventory") or {}),
         "render": dict(review.get("render") or {}),
         "section": dict(review.get("section") or {}),

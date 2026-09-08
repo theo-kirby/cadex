@@ -281,6 +281,21 @@ of doing any of them:
    architecture scaffold documents this convention.
    This is neither swept-motion coverage nor large-assembly qualification.
 
+   The `documentation` block reads the note convention back (ADR-256). The
+   walk parses the MJCF it trained on — `DIR/train/<name>-model.xml` — and
+   takes each declared section as a note subject: an `<actuator>` section
+   with children asks the project for `docs/actuators.md`, a `<sensor>`
+   section for `docs/sensors.md`. It carries the project's agent-authored
+   notes (`notes`, the CLI's own generated reports excluded), the subjects
+   the model declares (`expected`), the ones with no note (`missing`), and
+   the `model` it read, relative to `DIR`. A missing note is a finding for
+   the next design turn — which reads the notes back in its prompt — never
+   a walk failure, and the CLI never writes the note itself: what drives a
+   joint and what a sensor measures are the design turn's to say. A run
+   that exported no model declares nothing and reports nothing. The walk's
+   `PROGRESS.md` row carries the same finding, as `docs notes N, none
+   missing` or `docs notes N, no <subjects>`.
+
    The same review session rebuilds standard display once and snapshots it
    before inspection requests. The `render` block carries availability,
    accepted revision and digest, front/top/right/iso views, approximation and

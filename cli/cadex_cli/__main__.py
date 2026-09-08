@@ -63,6 +63,7 @@ from .clearance import (
 from .project_docs import (
     append_progress_row,
     commit_project,
+    documentation_status,
     ensure_project_repo,
     previous_numbers,
     progress_numbers,
@@ -109,6 +110,7 @@ from .walk import (
     TRAIN_DIRNAME,
     WalkError,
     declare_policy,
+    declared_note_subjects,
     review_from_outputs,
     run_leg,
     write_review,
@@ -1462,6 +1464,15 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     review["section"] = {
         **section, "summary_path": section_path.relative_to(Path(report.project_root)).as_posix(),
     }
+    # What the mechanism declares, against what the project documents:
+    # a driven joint asks for docs/actuators.md and an observed one for
+    # docs/sensors.md (ADR-245's convention, ADR-256's check). The notes
+    # are the design turn's to write, so a gap is reported, never filled.
+    subjects, model_path = declared_note_subjects(out_dir / TRAIN_DIRNAME)
+    documentation = documentation_status(report.project_root, subjects)
+    if model_path is not None:
+        documentation["model"] = str(model_path)
+    review["documentation"] = documentation
     review["walk_seconds"] = time.monotonic() - walk_started
     review["inventory"] = {
         "available": bool(inventory.get("assembly")),
@@ -1498,6 +1509,16 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             else ", {:d} FAILURE(S)".format(int(check["failure_count"])),
         )
     )
+    # A model that declares nothing asks the project for nothing, and the
+    # run says nothing rather than reporting an empty check.
+    if documentation["expected"]:
+        report.notes.append(
+            "documentation: {:d} domain note(s) for {:d} declared subject(s); {:s}.".format(
+                len(documentation["notes"]), len(documentation["expected"]),
+                "none missing" if not documentation["missing"]
+                else "no note for " + ", ".join(documentation["missing"]),
+            )
+        )
     report.walk["review"] = review
     review_path = write_review(
         out_dir, review=review, legs=legs, training=report.training,
@@ -1647,6 +1668,22 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
     return command
 
 
+def _documentation_cell(documentation: dict[str, Any]) -> str:
+    """The walk row's documentation half: notes kept, subjects missing.
+
+    Empty when the run read no model declaration at all, so a row only
+    claims a documentation finding where there was something to check.
+    """
+
+    if not documentation.get("expected"):
+        return ""
+    missing = list(documentation.get("missing") or [])
+    return "; docs notes {:d}, {:s}".format(
+        len(documentation.get("notes") or []),
+        "none missing" if not missing else "no " + ", ".join(missing),
+    )
+
+
 def _record_progress(command: str, args: argparse.Namespace, report: RunReport) -> None:
     """One `PROGRESS.md` row per accepted run (ADR-193).
 
@@ -1666,10 +1703,11 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
             revision=report.accepted_revision,
             digest=report.digest,
             numbers=(
-                "clearance unavailable" if not report.walk["review"]["clearance"]["available"]
-                else "clearance offending {offending_pair_count}; unknown {unknown_pair_count}; "
-                     "pairs checked {pairs_checked} (initial solved pose; {minimum_clearance_mm:g} mm / {maximum_common_volume_mm3:g} mm³)".format(
-                         **report.walk["review"]["clearance"])
+                ("clearance unavailable" if not report.walk["review"]["clearance"]["available"]
+                 else "clearance offending {offending_pair_count}; unknown {unknown_pair_count}; "
+                      "pairs checked {pairs_checked} (initial solved pose; {minimum_clearance_mm:g} mm / {maximum_common_volume_mm3:g} mm³)".format(
+                          **report.walk["review"]["clearance"]))
+                + _documentation_cell(report.walk["review"].get("documentation") or {})
             ) if command == "walk" else progress_numbers(
                 training=report.training,
                 outputs=report.outputs,

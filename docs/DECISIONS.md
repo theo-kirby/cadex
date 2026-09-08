@@ -21446,3 +21446,51 @@ in `cli/cadex_cli/train.py`, the Python of what the dispatcher does inline; a
 bundle whose model is beside neither is a refusal here rather than a failure on
 the box after the copy started. LGPL CLI zone and docs only: no engine, no
 protocol op, no payload, no `shell/` diff.
+
+## ADR-256 — The walk checks the domain-note convention against what the model declares (2026-09-08)
+
+**Context.** ADR-245 gave a design turn a way to write a domain note without a
+file tool: a closing `NOTE <subject>:` line lands `docs/<subject>.md`, and the
+notes come back in the next visit's prompt. The authoring contract asks for two
+of them by name — `NOTE actuators:` for what drives each joint, `NOTE sensors:`
+for what each sensor measures — and the `ARCHITECTURE.md` scaffold says where
+they live. Nothing read the convention back. A walk on a driven, observed
+mechanism whose turn wrote neither note produced a review that said the same
+thing as a walk on a fully documented one, and the gap was visible only to a
+person who opened `docs/` and knew what to expect there. The charter asks for
+the convention *exercised by the walk*, not described.
+
+**Decision.** The walk's review reports it. After the rollout, the walk parses
+the MJCF it actually trained on — `DIR/train/<name>-model.xml`, the file the
+trainer and the rollout both ran — and reads each declared section as a note
+subject through `DECLARED_NOTE_SUBJECTS`: an `<actuator>` section with children
+asks for `docs/actuators.md`, a `<sensor>` section for `docs/sensors.md`.
+`documentation_status` puts that beside the notes the project keeps, and
+`review.json` gains a `documentation` block — `notes`, `expected`, `missing`,
+and the `model` read, relative to `DIR`. The walk's `PROGRESS.md` row carries
+the same finding after the clearance half: `docs notes N, none missing`, or
+`docs notes N, no actuators`.
+
+**Read from the model, not the script**, because the script is what was asked
+for and the MJCF is what ran: a declaration behind a parameter switch that
+evaluated false is not a mechanism the reviewer should demand a note for. A
+bundle that was never exported, an unparseable file, or an empty `<sensor/>`
+section declares nothing, and the block reports nothing rather than inventing a
+subject.
+
+**Reported, never written, never fatal.** The CLI does not author the note: what
+drives a joint and what a sensor measures are the design turn's to say, and a
+generated placeholder would be pasted back into the next prompt as if it were
+knowledge. A missing note is a finding for the next turn, which reads
+`docs/` back in its own prompt; it does not fail the walk, the way an offending
+clearance pair does not (ADR-238). `docs/inventory.md` and `docs/clearance.md`
+stay out of it, as they already do everywhere else the notes are read.
+
+**Evidence.** `cli/tests/test_walk.py` pins the reader on an MJCF fixture — both
+sections, an empty section, and a file that is not XML — and the real-engine toy
+walk asserts the whole finding: the toy declares both subjects, the project
+carries only `docs/sensors.md`, and `review.json` and the `PROGRESS.md` row both
+say `actuators` is missing. `cli/tests/test_project_docs.py` pins
+`documentation_status` and the `docs/CLI.md` §2 sentence that documents it.
+LGPL CLI zone and docs only: no engine, no protocol op, no payload, no `shell/`
+diff.

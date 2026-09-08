@@ -615,6 +615,36 @@ def domain_note_paths(root: Path | str) -> dict[str, Path]:
     }
 
 
+#: The note subjects a mechanism's own declaration asks for, by the MJCF
+#: section that declares them (ADR-256). The CLI never writes these notes --
+#: what drives a joint and what a sensor measures are the design turn's to
+#: say -- but a walk can read what the model it trained on declares and
+#: report which of those subjects the project keeps no note for.
+DECLARED_NOTE_SUBJECTS = {"actuator": "actuators", "sensor": "sensors"}
+
+
+def documentation_status(
+    root: Path | str, expected: Iterable[str] = ()
+) -> dict[str, Any]:
+    """The project's domain notes, and the subjects its model asks for.
+
+    ``expected`` is what the mechanism declares, as note subjects
+    (:data:`DECLARED_NOTE_SUBJECTS`). ``missing`` is the subjects with no
+    ``docs/<subject>.md`` -- a finding for the next design turn, which
+    reads the notes back in its prompt, and never a failure: the CLI does
+    not write a note whose content it would have to invent.
+    """
+
+    notes = domain_note_paths(root)
+    stems = {Path(relative).stem for relative in notes}
+    wanted = list(dict.fromkeys(str(subject) for subject in expected if subject))
+    return {
+        "notes": list(notes),
+        "expected": wanted,
+        "missing": [subject for subject in wanted if subject not in stems],
+    }
+
+
 def _next_adr_number(text: str) -> int:
     numbers = [int(match) for match in re.findall(r"^## ADR-(\d+)", text, re.MULTILINE)]
     return (max(numbers) + 1) if numbers else 1

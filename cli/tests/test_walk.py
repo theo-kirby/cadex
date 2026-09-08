@@ -30,6 +30,7 @@ from cadex_cli.walk import (
     SCRIPT_FILENAME,
     WalkError,
     declare_policy,
+    declared_note_subjects,
     review_from_outputs,
 )
 
@@ -289,6 +290,10 @@ def test_the_walk_runs_train_declare_rollout_and_lands_the_review(
     assert on_disk["training"]["reward_per_step"] == 0.5
     assert [leg["leg"] for leg in on_disk["legs"]] == ["train", "declare", "rollout"]
     assert "argv" not in on_disk["legs"][0]
+    # No training bundle was exported here, so the model declares nothing and
+    # the review reports no documentation finding rather than an empty one.
+    assert on_disk["documentation"]["expected"] == []
+    assert "model" not in on_disk["documentation"]
     # This toy walk publishes no assembly, so the review has nothing to
     # cross-check and says so (ADR-248) beside the walk's own note.
     assert envelope["notes"] == [
@@ -407,6 +412,42 @@ def test_usage_errors_are_refused_before_any_leg_runs(
     assert not fake_cadex.exists()
 
 
+# -- what the model declares, against what the project documents (ADR-256) ---
+
+
+DRIVEN_AND_OBSERVED = """\
+<mujoco model="toy">
+  <worldbody><body name="arm"><joint name="hinge" type="hinge"/>
+    <geom type="box" size="1 1 1"/></body></worldbody>
+  <actuator><motor name="hinge/motor" joint="hinge"/></actuator>
+  <sensor><jointpos name="angle" joint="hinge"/></sensor>
+</mujoco>
+"""
+
+
+def test_declared_note_subjects_reads_the_model_the_walk_trained_on(tmp_path) -> None:
+    train = tmp_path / "train"
+    train.mkdir()
+    assert declared_note_subjects(train) == ([], None)  # nothing exported yet
+
+    path = train / "job-model.xml"
+    path.write_text(DRIVEN_AND_OBSERVED, encoding="utf-8")
+    subjects, model = declared_note_subjects(train)
+    assert subjects == ["actuators", "sensors"] and model == path
+
+    # An empty section is not a declaration, and a file that is not MJCF is
+    # not a finding: neither invents a subject for the project to document.
+    path.write_text(
+        DRIVEN_AND_OBSERVED.replace(
+            '<sensor><jointpos name="angle" joint="hinge"/></sensor>', "<sensor/>"
+        ),
+        encoding="utf-8",
+    )
+    assert declared_note_subjects(train)[0] == ["actuators"]
+    path.write_text("not xml at all", encoding="utf-8")
+    assert declared_note_subjects(train) == ([], None)
+
+
 # -- real lifecycle walks ---------------------------------------------------
 
 
@@ -492,6 +533,18 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     assert reward1 == reward1  # not NaN
     assert {row["label"] for row in review1["reward_totals"]} == {"lift", "control_cost"}
     assert f'sha256="{sha1}"' in (root / "script.py").read_text()
+
+    # The walk read the model it trained on against the project's notes:
+    # the toy is driven and observed, and only docs/sensors.md is written.
+    documentation = review1["documentation"]
+    assert documentation["expected"] == ["actuators", "sensors"]
+    assert documentation["notes"] == ["docs/sensors.md"]
+    assert documentation["missing"] == ["actuators"]
+    assert documentation["model"] == "train/" + next(
+        (out1 / "train").glob("*-model.xml")
+    ).name
+    assert "docs notes 1, no actuators" in (root / "PROGRESS.md").read_text()
+    assert any("no note for actuators" in note for note in envelope["notes"])
 
     # Track the policy and domain docs; exclude checkpoints and traces.
     subjects = _git(root, "log", "--format=%s").splitlines()

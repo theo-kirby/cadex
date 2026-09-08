@@ -28,6 +28,7 @@ from cadex_cli.project_docs import (
     PROJECT_DOC_NAMES,
     append_progress_row,
     decision_lines,
+    documentation_status,
     note_lines,
     progress_numbers,
     read_project_docs,
@@ -312,6 +313,42 @@ def test_note_lines_land_one_file_per_subject_and_come_back_next_visit(tmp_path)
     assert "--- docs/clearance.md ---" not in prompt_docs
     assert "| pair | mm |" not in prompt_docs
     assert "the knee stalls at 40 deg." in prompt_docs
+
+
+def test_documentation_status_names_the_subjects_a_project_has_no_note_for(
+    tmp_path,
+) -> None:
+    """The convention is checked, not only offered (ADR-256).
+
+    A walk hands in what the model declares; the status says which of
+    those subjects the project documents and which it does not. The
+    generated reports never count as a note, and a project with nothing
+    declared has nothing missing.
+    """
+
+    assert documentation_status(tmp_path) == {
+        "notes": [], "expected": [], "missing": []
+    }
+    assert documentation_status(tmp_path, ["actuators", "sensors"])["missing"] == [
+        "actuators", "sensors"
+    ]
+
+    record_notes(tmp_path, "NOTE sensors: the hinge angle, in degrees.")
+    (tmp_path / "docs" / "clearance.md").write_text("| pair | mm |\n", encoding="utf-8")
+    status = documentation_status(tmp_path, ["actuators", "sensors", "sensors", ""])
+    assert status["notes"] == ["docs/sensors.md"]
+    assert status["expected"] == ["actuators", "sensors"]
+    assert status["missing"] == ["actuators"]
+    assert documentation_status(tmp_path, ["sensors"])["missing"] == []
+
+    # ...and the guide says which declaration asks for which note.
+    walk_doc = " ".join(
+        (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text().split()
+    )
+    assert (
+        "an `<actuator>` section with children asks the project for "
+        "`docs/actuators.md`" in walk_doc
+    )
 
 
 def test_the_scaffold_and_the_overlay_ask_for_the_notes_the_walk_exercises(tmp_path) -> None:
