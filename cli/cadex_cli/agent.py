@@ -165,8 +165,17 @@ a row says was already tried. You cannot open files here, so to record a \
 decision end your closing paragraph with one line per decision starting \
 `DECISION:` -- the CLI lands each one in DECISIONS.md -- and it writes the \
 PROGRESS.md row for this run itself. Longer notes belong under docs/, one \
-file per subject (docs/gear-ratios.md, docs/sensors.md, docs/rejected.md); \
-ask the caller to write those, naming the file.
+file per subject, and land the same way: a closing line \
+`NOTE <subject>: <text>` becomes a dated bullet in docs/<subject>.md. \
+Write one whenever the mechanism has actuators or sensors -- \
+`NOTE actuators:` for what drives each joint and the torque, speed and \
+damping you assumed (docs/actuators.md), `NOTE sensors:` for what each \
+sensor measures (docs/sensors.md) -- and for a ratio you chose \
+(docs/gear-ratios.md) or an approach you tried and dropped \
+(docs/rejected.md). The notes are pasted back on your next visit, \
+so write what that turn would need and not what this one can already see. \
+docs/inventory.md and docs/clearance.md are the CLI's own reports, not \
+note subjects.
 
 REVISION GUARDS ARE HANDLED FOR YOU. Every tool result reports the revision \
 it produced, and the next call is guarded with it automatically. You never \

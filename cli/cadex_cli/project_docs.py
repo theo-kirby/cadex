@@ -20,7 +20,10 @@ are read on every visit and updated as the work goes:
   a reader lines up by eye (ADR-194, row 9).
 
 Longer notes go under ``docs/``, one file per subject, named by the subject
-(``docs/gear-ratios.md``, ``docs/sensors.md``, ``docs/rejected.md``).
+(``docs/gear-ratios.md``, ``docs/sensors.md``, ``docs/rejected.md``). They
+land the same way a decision does — a closing line ``NOTE <subject>: …``
+(ADR-245) — and are pasted back on the next visit, so the convention the
+walk documents is one a design turn can actually reach.
 
 **The CLI scaffolds and appends; the agent reads and decides.** The CLI's
 agent runs with no built-in tools — its whole world is the engine (see
@@ -72,6 +75,21 @@ DOMAIN_DOCS_DIRNAME = "docs"
 
 #: A closing line of a turn that starts with this is a decision.
 DECISION_PREFIX = "DECISION:"
+
+#: A closing line of a turn that starts with this is a domain note:
+#: ``NOTE <subject>: <text>`` lands in ``docs/<subject>.md``. The same
+#: convention as ``DECISION:``, for the notes too long for an ADR line.
+NOTE_PREFIX = "NOTE"
+
+#: Subjects under ``docs/`` the CLI writes itself. A note never appends to
+#: a generated report, so ``inventory.md`` and ``clearance.md`` stay what
+#: the last run measured.
+GENERATED_DOC_STEMS = ("inventory", "clearance")
+
+#: How much of each domain note the agent is shown back. Smaller than a
+#: project document's share: there is one of each of those and there can
+#: be many notes.
+NOTE_DOC_LIMIT = 2_000
 
 #: How much of each document the agent is shown. The head for the two it
 #: reasons from, the tail for the log, because the latest rows are the ones
@@ -159,6 +177,14 @@ acceptance and concurrent rebuilds still require sequential use.
 Longer notes go under `{docs}/`, one file per subject, named by the
 subject — `{docs}/gear-ratios.md`, `{docs}/sensors.md`,
 `{docs}/actuators.md`, `{docs}/rejected.md` — and are linked from here.
+
+A design turn writes one by ending a closing line with
+`{note_prefix} <subject>: <text>`, which the CLI appends as a dated bullet
+in `{docs}/<subject>.md`, the way a `{prefix}` line lands an ADR. Every
+note is pasted back into the next turn's prompt, so a mechanism with
+actuators or sensors should leave `{docs}/actuators.md` and
+`{docs}/sensors.md` behind. `{docs}/inventory.md` and
+`{docs}/clearance.md` are the CLI's generated reports, not note subjects.
 """
 
 _DECISIONS_TEMPLATE = """\
@@ -176,6 +202,14 @@ commits after every accepted run. `.gitignore` keeps out what a rebuild
 recreates (`script_artifacts/`), what is bulk (`frames/`, renders) and
 what is transient (the lock, `.blend1` backups); the script, its history,
 the stored assets and these documents are the project.
+"""
+
+_NOTE_TEMPLATE = """\
+# {title}
+
+One bullet per note, newest last. Written by the `cadex` CLI from a turn's
+closing `NOTE {title}:` lines, and read back to the agent on its next
+visit. Edit it freely; it is the project's, not the CLI's.
 """
 
 _PROGRESS_TEMPLATE = """\
@@ -233,6 +267,7 @@ def scaffold_project_docs(root: Path | str) -> list[str]:
         "name": name,
         "docs": DOMAIN_DOCS_DIRNAME,
         "prefix": DECISION_PREFIX,
+        "note_prefix": NOTE_PREFIX,
         "date": _today(),
         "architecture": ARCHITECTURE_NAME,
         "progress": PROGRESS_NAME,
@@ -263,11 +298,13 @@ def _bounded(text: str, limit: int, *, keep: str) -> str:
 
 
 def read_project_docs(root: Path | str, *, limit: int = PROMPT_DOC_LIMIT) -> str:
-    """The three documents as one prompt section, each bounded.
+    """The three documents and the domain notes as one prompt section.
 
-    Empty when none exist — a project that predates the scaffold and was
-    never visited by a run that creates it says nothing rather than
-    inventing headings.
+    Each is bounded. Empty when none exist — a project that predates the
+    scaffold and was never visited by a run that creates it says nothing
+    rather than inventing headings. The notes are pasted with the
+    documents because the agent has no file tool: a note it writes on one
+    visit is only worth writing if it reads it on the next.
     """
 
     parts: list[str] = []
@@ -278,6 +315,13 @@ def read_project_docs(root: Path | str, *, limit: int = PROMPT_DOC_LIMIT) -> str
             continue
         keep = "tail" if doc_name == PROGRESS_NAME else "head"
         parts.append(f"--- {doc_name} ---\n{_bounded(text.strip(), limit, keep=keep)}")
+    for relative, path in domain_note_paths(root).items():
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        bounded = _bounded(text.strip(), NOTE_DOC_LIMIT, keep="tail")
+        parts.append(f"--- {relative} ---\n{bounded}")
     return "\n\n".join(parts)
 
 
@@ -463,6 +507,87 @@ def decision_lines(text: str) -> list[str]:
             if body:
                 found.append(body)
     return found
+
+
+def _note_stem(subject: str) -> str:
+    """``docs/<stem>.md`` for a note's subject, or ``""`` if it names none."""
+
+    slug = re.sub(r"[^a-z0-9]+", "-", str(subject or "").lower()).strip("-")
+    return slug[:48].strip("-")
+
+
+def note_lines(text: str) -> list[tuple[str, str]]:
+    """The ``NOTE <subject>:`` lines of a turn's closing text.
+
+    Each is a ``(stem, body)`` pair, the stem slugged for
+    ``docs/<stem>.md``. A line naming no subject, carrying no body, or
+    aimed at a report the CLI generates itself is not a note.
+    """
+
+    found: list[tuple[str, str]] = []
+    for line in str(text or "").splitlines():
+        stripped = line.strip().lstrip("-*• ").strip()
+        if stripped[: len(NOTE_PREFIX)].upper() != NOTE_PREFIX:
+            continue
+        rest = stripped[len(NOTE_PREFIX):]
+        if rest[:1] not in (" ", "\t") or ":" not in rest:
+            continue
+        subject, body = rest.split(":", 1)
+        stem, body = _note_stem(subject), body.strip()
+        if stem and body and stem not in GENERATED_DOC_STEMS:
+            found.append((stem, body))
+    return found
+
+
+def record_notes(root: Path | str, text: str) -> list[str]:
+    """Land a turn's ``NOTE <subject>:`` lines under ``docs/``.
+
+    One file per subject, each note appended as a dated bullet, the file
+    created with a title when the subject is new. Returns the
+    project-relative paths written, so a report can say so. Nothing to
+    land, nothing touched.
+    """
+
+    notes = note_lines(text)
+    if not notes:
+        return []
+    directory = Path(root) / DOMAIN_DOCS_DIRNAME
+    directory.mkdir(parents=True, exist_ok=True)
+    date = _today()
+    written: list[str] = []
+    for stem, body in notes:
+        path = directory / f"{stem}.md"
+        if path.exists():
+            existing = path.read_text(encoding="utf-8")
+        else:
+            existing = _NOTE_TEMPLATE.format(title=stem.replace("-", " "))
+        if not existing.endswith("\n"):
+            existing += "\n"
+        path.write_text(f"{existing}\n- ({date}) {body}\n", encoding="utf-8")
+        relative = f"{DOMAIN_DOCS_DIRNAME}/{path.name}"
+        if relative not in written:
+            written.append(relative)
+    return written
+
+
+def domain_note_paths(root: Path | str) -> dict[str, Path]:
+    """The project's agent-authored domain notes, by project-relative path.
+
+    The generated reports are excluded: they are the last run's
+    measurements and the run that made them already reported their
+    numbers.
+    """
+
+    directory = Path(root) / DOMAIN_DOCS_DIRNAME
+    try:
+        entries = sorted(directory.glob("*.md"))
+    except OSError:
+        return {}
+    return {
+        f"{DOMAIN_DOCS_DIRNAME}/{path.name}": path
+        for path in entries
+        if path.stem not in GENERATED_DOC_STEMS
+    }
 
 
 def _next_adr_number(text: str) -> int:

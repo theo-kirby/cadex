@@ -458,14 +458,23 @@ first visit and never overwritten by it:
 | `ARCHITECTURE.md` | What the project is, what the script declares and why, how it trains, where the domain docs are. | the agent (through its caller) or a person |
 | `DECISIONS.md` | The project's own ADR log — what was chosen, over what, why. Newest last. | a turn's closing `DECISION:` lines, or a person |
 | `PROGRESS.md` | One row per accepted run: time, command, revision, digest, what, numbers. | **the CLI**, after every accepted run |
-| `docs/<subject>.md` | Longer notes, one file per subject: `docs/gear-ratios.md`, `docs/sensors.md`, `docs/actuators.md`, `docs/rejected.md`. | the agent's caller, or a person |
+| `docs/<subject>.md` | Longer notes, one file per subject: `docs/gear-ratios.md`, `docs/sensors.md`, `docs/actuators.md`, `docs/rejected.md`. | a turn's closing `NOTE <subject>:` lines, or a person |
 
 The agent reads all three on every `cadex -p` turn — they are pasted into
 its system prompt, bounded (the head of the first two, the tail of the
-log) — and it has no file tool, so what it decides comes back by
+log), and the project's domain notes with them, so a note is worth
+writing — and it has no file tool, so what it decides comes back by
 convention rather than by a new op: a line of its closing paragraph that
 starts `DECISION:` lands in `DECISIONS.md` as the next numbered entry, and
-the envelope's `notes` say so. `PROGRESS.md` is the CLI's, so it records
+the envelope's `notes` say so. **A longer note lands the same way**
+(ADR-245): a closing line `NOTE <subject>: <text>` becomes a dated bullet
+in `docs/<subject>.md`, created with a title when the subject is new, and
+the envelope names the file. The design instruction asks for
+`docs/actuators.md` and `docs/sensors.md` from any mechanism that has
+actuators or sensors, which is how the walk exercises the convention
+rather than only documenting it. `docs/inventory.md` and
+`docs/clearance.md` are the CLI's own generated reports and are not note
+subjects — a note never appends to a measurement. `PROGRESS.md` is the CLI's, so it records
 what happened rather than what a model said would: `params`, `script
 --set`, `export`, `link`, `asset --put`, `train` and a turn each land one
 row, with the exported trace's `total_reward` and the trainer's

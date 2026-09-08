@@ -28,9 +28,11 @@ from cadex_cli.project_docs import (
     PROJECT_DOC_NAMES,
     append_progress_row,
     decision_lines,
+    note_lines,
     progress_numbers,
     read_project_docs,
     record_decisions,
+    record_notes,
     scaffold_project_docs,
 )
 from cadex_cli.report import EXIT_OK, RunReport
@@ -233,6 +235,82 @@ def test_decision_lines_are_found_and_land_as_numbered_entries(tmp_path) -> None
     assert "## ADR-003 — keep the bore at 6 mm (" in decisions
     assert record_decisions(tmp_path, "nothing decided") == []
     assert record_decisions(tmp_path, "DECISION: one more") == ["ADR-004"]
+
+
+def test_note_lines_land_one_file_per_subject_and_come_back_next_visit(tmp_path) -> None:
+    """A design turn's longer notes reach `docs/` (ADR-245).
+
+    The convention was documented and unreachable: the agent has no file
+    tool, and a headless walk has no caller to ask. A closing `NOTE
+    <subject>:` line lands the same way a `DECISION:` line does.
+    """
+
+    text = (
+        "Built the leg.\n"
+        "- NOTE actuators: MG90S at 1.8 kg-cm stall; damping = stall / no-load.\n"
+        "note Gear Ratios: 4:1, in two stages.\n"
+        "NOTE clearance: the review's own report is not a note subject.\n"
+        "NOTE: no subject here.\n"
+        "NOTE sensors:\n"
+        "Nothing to note.\n"
+    )
+    assert note_lines(text) == [
+        ("actuators", "MG90S at 1.8 kg-cm stall; damping = stall / no-load."),
+        ("gear-ratios", "4:1, in two stages."),
+    ]
+
+    assert record_notes(tmp_path, text) == ["docs/actuators.md", "docs/gear-ratios.md"]
+    actuators = (tmp_path / "docs" / "actuators.md").read_text()
+    assert actuators.startswith("# actuators\n")
+    assert "- (" in actuators and "MG90S at 1.8 kg-cm stall" in actuators
+    assert not (tmp_path / "docs" / "clearance.md").exists()
+
+    # A second note on the same subject appends; the first survives.
+    assert record_notes(tmp_path, "NOTE actuators: the knee stalls at 40 deg.") == [
+        "docs/actuators.md"
+    ]
+    actuators = (tmp_path / "docs" / "actuators.md").read_text()
+    assert "MG90S at 1.8 kg-cm stall" in actuators
+    assert "the knee stalls at 40 deg." in actuators
+    assert record_notes(tmp_path, "nothing noted") == []
+
+    # ...and the next turn reads them back beside the three documents,
+    # while the CLI's own generated reports stay out of the prompt.
+    scaffold_project_docs(tmp_path)
+    (tmp_path / "docs" / "clearance.md").write_text("| pair | mm |\n", encoding="utf-8")
+    prompt_docs = read_project_docs(tmp_path)
+    assert "--- docs/actuators.md ---" in prompt_docs
+    assert "--- docs/gear-ratios.md ---" in prompt_docs
+    assert "--- docs/clearance.md ---" not in prompt_docs
+    assert "| pair | mm |" not in prompt_docs
+    assert "the knee stalls at 40 deg." in prompt_docs
+
+
+def test_the_scaffold_and_the_overlay_ask_for_the_notes_the_walk_exercises(tmp_path) -> None:
+    """The convention is asked for, not only described (ADR-245).
+
+    `docs/CLI.md`, the `ARCHITECTURE.md` scaffold and the design
+    instruction are one ticket: a mechanism with actuators or sensors
+    leaves those two notes behind, and the generated reports are not
+    note subjects.
+    """
+
+    assert "NOTE actuators:" in CLI_OVERLAY
+    assert "NOTE sensors:" in CLI_OVERLAY
+    assert "docs/inventory.md and docs/clearance.md are the CLI's own reports" in (
+        " ".join(CLI_OVERLAY.split())
+    )
+
+    scaffold_project_docs(tmp_path)
+    architecture = " ".join((tmp_path / ARCHITECTURE_NAME).read_text().split())
+    assert "NOTE <subject>: <text>" in architecture
+    assert "actuators.md" in architecture and "sensors.md" in architecture
+
+    walk_doc = " ".join(
+        (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text().split()
+    )
+    assert "a closing line `NOTE <subject>: <text>` becomes a dated bullet" in walk_doc
+    assert "a turn's closing `NOTE <subject>:` lines, or a person" in walk_doc
 
 
 def test_the_overlay_names_the_convention_and_the_prompt_carries_the_docs() -> None:

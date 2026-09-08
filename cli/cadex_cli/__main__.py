@@ -61,6 +61,7 @@ from .project_docs import (
     progress_numbers,
     read_project_docs,
     record_decisions,
+    record_notes,
     scaffold_project_docs,
 )
 from .report import (
@@ -715,6 +716,12 @@ def command_prompt(
             report.notes.append(
                 "recorded " + ", ".join(landed) + " in DECISIONS.md."
             )
+        # ...and its longer notes land beside them, one file per subject
+        # (ADR-245): a closing line `NOTE <subject>:`. The same convention
+        # rather than a second mechanism, and read back on the next visit.
+        noted = record_notes(report.project_root, result.text)
+        if noted:
+            report.notes.append("wrote " + ", ".join(noted) + ".")
 
         accepted = bridge.state.last_accepted
         report.revision = bridge.state.revision or report.revision

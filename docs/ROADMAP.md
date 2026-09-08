@@ -2065,6 +2065,16 @@ What makes them experimental, and what would settle it:
   lines into numbered `DECISIONS.md` entries; `docs/<subject>.md` is the
   domain-doc convention. No engine change, no file tool for the agent.
   §7c row 10 closes.
+- [x] **A domain note lands the way a decision does** (ADR-245). The
+  `docs/<subject>.md` convention was documented and unreachable — the
+  agent has no file tool and the instruction told it to ask its caller,
+  and a headless walk has no caller. A closing `NOTE <subject>: <text>`
+  line now appends a dated bullet to `docs/<subject>.md`, the notes are
+  pasted back into the next turn beside the three documents, and the
+  design instruction asks for `docs/actuators.md` and `docs/sensors.md`
+  from any mechanism with actuators or sensors. `inventory.md` and
+  `clearance.md` are the CLI's generated reports and are refused as
+  subjects. CLI suite 197 passed, no skips.
 - [x] **Compare and record, in a repository the project owns** (ADR-194).
   A `PROGRESS.md` number an earlier row carried is written with its
   change against that row (delta, digest, value), so the comparison is

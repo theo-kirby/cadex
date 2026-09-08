@@ -21120,3 +21120,37 @@ Six new regression cases fail against the previous implementation. A real
 payload worker accepts/rebuilds a box with identical digest; 20 warm bundle
 lookups measured 2.49 ms median locally. Stage-only output is not a relocatable
 release; the installed application was not refreshed.
+
+## ADR-245 — A domain note lands the way a decision does (2026-09-08)
+
+`docs/CLI.md` and the `ARCHITECTURE.md` scaffold have documented the project's
+domain-doc convention since ADR-193 — one file per subject under `docs/`,
+`gear-ratios.md`, `sensors.md`, `actuators.md`, `rejected.md` — but no design
+turn could reach it. The CLI's agent has no file tool, and the design
+instruction ended that paragraph with *ask the caller to write those, naming
+the file*; a headless walk has no caller to ask. The two-servo leg rehearsal is
+the measurement: the agent modelled two MG90S servos with torque-limited
+position actuators, a damping assumption and a joint-angle sensor per axis, and
+left no `docs/actuators.md` or `docs/sensors.md` behind, because it had no way
+to.
+
+A note now lands the same way a decision does, through the closing text rather
+than through a new tool or op: a line `NOTE <subject>: <text>` appends a dated
+bullet to `docs/<subject>.md`, created with a title when the subject is new, and
+the envelope's `notes` name the file. The subject is slugged, so it cannot
+escape `docs/`. `inventory.md` and `clearance.md` are refused as subjects: they
+are the CLI's generated reports, and a note must never append to a measurement.
+The notes are pasted back into the next turn's prompt beside the three project
+documents, bounded at 2,000 characters each, tail-first — a note the agent
+cannot read again is not worth writing. The design instruction now asks for
+`docs/actuators.md` and `docs/sensors.md` from any mechanism with actuators or
+sensors, which is how the walk exercises the convention rather than only
+documenting it.
+
+No protocol op, no engine change, no shell change; the parsing and writing are
+in `cli/cadex_cli/project_docs.py` and one call beside `record_decisions`, so
+the walk's design leg gets it through the same `cadex -p` child.
+
+Verification: CLI suite, reported with its skips in the commit. Not verified:
+no design turn was run under this instruction, so that a model actually emits
+`NOTE` lines is the next walk's evidence, not this commit's.
