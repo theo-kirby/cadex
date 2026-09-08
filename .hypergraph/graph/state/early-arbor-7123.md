@@ -34,7 +34,11 @@ Status: working
 
 **VISION training guidance is corrected.** Principle 5 explains offboard training as the trainer/JAX/MJX dependency and payload boundary, with supported local CPU toy training and GPU paths for larger runs. Principle 3 explains policy assets through the script rebuild boundary, without a GPU-duration premise; asset identity, engine verification and deterministic rollout contracts remain intact. ADR-084 records both prose corrections and the removed obsolete dispatch history. Reconcile judgement: retain `working`; these documentation changes add no runtime qualification or wider audit [rec: polished-moss-9358] [rec: neat-summit-3586].
 
+**Scratch cache diagnosis distinguishes in-place mutation from the tested build operations.** In-place writes through hardlinked module inputs reproduce the previously observed `project-b816c82c107e41400932d3a4` bundle name and corrected/stale hashes. On this machine, CMake 4.2.3 `-E copy` and `file(INSTALL)` each replace the destination inode and preserve cached bytes; neither reproduces the mismatch. The historical writer remains unidentified. This is isolated file-identity evidence, not an end-to-end build qualification, product fix or refreshed application bundle; orientation/build status stays `working` [rec: nimble-basin-8423].
+
 ## Negative knowledge
+
+- [scope: scratch worker-cache trials using CMake 4.2.3 on this machine | confidence: high | evidence: nimble-basin-8423] Build-copy and install replace inodes; in-place truncation mutates linked cache bytes. These trials do not identify the historical writer, test races or qualify the complete build.
 
 - [scope: stage-engine concurrent with payload-inspecting engine tests | confidence: high | evidence: stormy-quill-5350, floral-stone-2866] Finish staging before running the engine suite: isolation tests can observe transient `bin/ccx` before pruning. This scheduling failure recurred during BLDC verification; after staging completed the targeted check passed and the stable full rerun passed 1987 tests with 52 skips. Packaged lifecycle/library passed 61 tests with no skips. The local development payload still reports 248 external-path relocation violations and is not a portable release. [rec: floral-stone-2866]
 
@@ -73,3 +77,4 @@ Status: working
 - neat-summit-3586 — VISION principle 3 policy-asset rationale corrected without changing the asset contract or runtime evidence
 - northern-hill-9362 — installed design route reproduces stale API refusal before acceptance; worker import closure unqualified
 - strong-raven-3067 — supported bundle refresh resolves refusal; installed-engine walk and packaged/CLI gates plus matching built-bundle background gate pass; local-only limitation remains
+- nimble-basin-8423 — isolated hardlink mutation reproduces mismatch; tested CMake copy/install preserve cache; historical cause unknown

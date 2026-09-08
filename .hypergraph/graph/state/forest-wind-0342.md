@@ -7,7 +7,7 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: working
+Status: broken
 
 ## Current
 
@@ -36,7 +36,11 @@ The engine is a FreeCAD fork at the repository root, stripped to one AI-native m
 - **A linked component is measured where the assembly puts it** (ADR-241, ADR-242). `App::Link.Shape` *replaces* the linked object's placement with the link's own instead of composing them, and every `lib.*` part carries its transform on the shape, so both clearance readers in `cadex_assembly_worker.py` used to measure catalog bodies in their authored frame. Now `_linked_source_shape` is the one reader of a linked body's own shape; `_component_world_shape` composes `component.Placement * shape.Placement` for the pair check, and `_clearance_prepare` builds one re-placeable composed copy per component **before** the simulation-trace frame loop, which then writes only a placement per frame. The sweep got no slower (faster under box rejection, since one copy replaces one `Link.Shape` build per pair). No published field, protocol op, payload contract or content digest changed [rec: southern-otter-5999].
 - **Native Blender recipes are an explicit runtime exception** (ADR-185): `mesh.blender` keeps bpy source inside xscript and evaluates it in an OS-sandboxed child. Independently authored LGPL adapters are staged by filename; cadexd imports neither adapter nor bpy. Named mesh inputs and JSON values bridge CAD to evaluated triangles through the existing acceptance, rollback, store and protocol paths. Runtime/source/input identity and canonical topology participate in the digest; ordinary engine-only projects need no Blender, while recipe projects retain that runtime dependency after a future UI replacement [rec: simple-bramble-8616].
 
+**Worker-bundle identity is broken under in-place source mutation.** `shared_worker_bundle` names bundles from member names, lengths and bytes, but hardlinks module inputs and validates reuse only by file presence. An isolated two-root probe mutates source A to B through the linked inode, then requests immutable A: the A-named bundle returns B. No fix has landed. The identified correction boundary is module snapshot creation/reuse, including already-present mismatched bundles; the asset helper has a separate atomic-source contract. Historical cause and hash/read/link races remain unproved. Reconcile judgement: `working` → `broken` for this reproduced cache-integrity defect; prior pipeline qualifications remain evidence within their tested scope [rec: nimble-basin-8423].
+
 ## Negative knowledge
+
+- [scope: shared_worker_bundle with module inputs mutated in place after hardlink publication | confidence: high | evidence: nimble-basin-8423] Member presence is insufficient for content identity: an A-named bundle can contain and return B. Atomic initial publication does not isolate later writes through source inodes.
 
 - [scope: mesh domain outputs | confidence: high | evidence: civic-horizon-2730] Kernel output ordering is not a contract. FreeCAD's native mesh set operations return run-dependent orderings and triangulations, so a mesh output is not digest-stable without canonical vertex/facet reordering plus a vertex-set fingerprint.
 - [scope: the 33 ms preview worker | confidence: high | evidence: open-dew-7293] The preview cannot serve a parameter that changes a definition — a placement-only reply for part.box(p.width, ...) would be a lie. The 33 ms headline applies to a subset of sliders only; the rest pay the ~0.42 s accepting path.
@@ -82,3 +86,4 @@ The engine is a FreeCAD fork at the repository root, stripped to one AI-native m
 - fierce-moss-6382 — ADR-195: the INSPECTION_FAILED frame built by `tool_failure`, a validator test and the `inspect.failure` golden, §7c item 5 closed, suite at 1967/52, the broken reason removed
 - first-moss-9524 — ADR-197: the worker computes exploded views itself, FreeCAD's rule ported and equal to the native readback to 1e-12, the radial rule pinned under a real kernel, the `CommandCreateView` import gone from the worker
 - southern-otter-5999 — ADR-242: `_clearance_prepare` and `_linked_source_shape`; the swept and pair clearance readers share one linked-shape reader; measured no slower; engine 2077/52, CLI 195, packaged gate 15 on a rebuilt and staged payload
+- nimble-basin-8423 — two-root stale-reuse reproduction proves presence-only cache integrity defect; no implementation fix

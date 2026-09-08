@@ -48,6 +48,8 @@ Both arm and carriage pass with tracked positive-area contours and matching geom
 
 The separate fresh two-mechanism complete-review rehearsal remains open on `damp-moon-9297`; this integration does not close that criterion [rec: copper-timber-8947].
 
+**Purchased-hardware placement guidance is delivered.** The shared CLI design overlay used by `cadex walk --prompt` and fresh project ARCHITECTURE.md scaffolds require published catalog bodies and separate purchased assembly instances, kept separate from printed solids; transformed catalog bodies may serve as clearance cutters without implying another purchase. Existing project documents are not migrated. The full built-engine CLI suite passed 195 tests with no skips; this proves instruction delivery, not agent compliance. The fresh two-servo rehearsal remains outstanding, with baseline lifecycle status retained as `working` [rec: misty-tide-6394].
+
 ## Negative knowledge
 
 - [scope: a parameter sweep on a project with a policy declared, without the switch convention | confidence: high | evidence: sweet-light-3396, keen-sail-4481] `cadex params --set` is refused at exit 3 when the change moves the task digest, because the declared policy no longer fits, and nothing is written. Iterate cannot be a plain sweep; the ADR-192 answer is a script that declares the policy behind a `policy_on` switch the sweep blanks. A `params --drop-policy` flag and an engine op were considered and not taken.
@@ -80,3 +82,4 @@ The separate fresh two-mechanism complete-review rehearsal remains open on `damp
 - square-path-1173 — walk integrates committed revision-bearing previews; arm/carriage and CPU stand-in parity pass; sections remain unavailable
 - modest-sun-6068 — separate fresh arm rehearsal verifies committed previews, preserved clearance and reward; full CLI gate 182 passed with zero skips
 - copper-timber-8947 — walk sections share accepted preview snapshot; scaffold/docs agree, final CLI 195 passed; fresh complete-review rehearsal remains
+- misty-tide-6394 — placement and cutter guidance delivered in overlay/scaffold; CLI 195 passed, agent compliance unmeasured

@@ -63,6 +63,8 @@ Each rehearsal's full built-engine CLI gate recorded **195 passed, zero skipped*
 
 **Reconcile judgement: retain `working`.** The correction preserves the established review criterion while removing an unsupported inference. It establishes neither fused catalog identity nor an agent's adherence to separate-component placement guidance; no additional charter criterion closes. Initial failures were resolved before the recorded final gates, including quarantine of one stale temporary worker bundle; the underlying cache invalidation issue was not fixed [rec: snowy-cove-0032] [rec: windy-dune-3488].
 
+**Review guidance now pairs the script with placed inventory.** The design overlay and fresh scaffold teach separate purchased components and transformed clearance cutters, and ask for script review alongside inventory; neither construction calls nor inventory absence establish purchases or absence of fused catalog geometry. CLI 195 passed with no skips proves delivery only. Retain `working` on existing review evidence; fresh two-servo rehearsal and agent adherence remain unmeasured [rec: misty-tide-6394].
+
 ## Negative knowledge
 
 - [scope: removed generator-minus-placement tally and audited declarative definitions | confidence: high | evidence: snowy-cove-0032, windy-dune-3488] Construction counts do not identify physical quantities, unplaced hardware or surviving boolean inputs. Dependency paths alone do not establish catalog provenance or material survival; the discovery bet must stop if it requires new persistent metadata or geometry semantics.
@@ -110,3 +112,4 @@ Each rehearsal's full built-engine CLI gate recorded **195 passed, zero skipped*
 - odd-ridge-9607 — accepted pan-tilt outputs contain neither fused servo nor catalog stamp; output-only diagnostic infeasible; inherited tally unverified
 - snowy-cove-0032 — audited tally semantics and bounded a separate dependency-path discovery experiment; no diagnostic qualified
 - windy-dune-3488 — ADR-243 removes unsupported tally, preserves repeated placed catalog instances and passes full engine/CLI plus fresh packaged gates; bundle remains unrefreshed
+- misty-tide-6394 — script-plus-inventory guidance delivered; no purchase inference, fused-identity claim or fresh compliance qualification
