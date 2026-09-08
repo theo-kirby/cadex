@@ -228,10 +228,17 @@ target; it is standing work on the long rung and nothing more.
   entry point with no dispatch change, and both projects carry comparable
   baseline numbers); finish and evidence it rather than restarting it.
 - **long-term:** (directions, and the standing work that never ends) Toward the
-  north star: the robot prompt unattended, print-ready export, then G-code, then
-  the rollout video, each as one more leg of the same walk. Pull a criterion up
-  from `## Later criteria` only by asking the human — the planner may not target
-  a parked criterion on its own.
+  north star, in this order, one rung opened at a time:
+  **(1)** the four criteria above — this run's whole frontier;
+  **(2)** a fresh Linux machine runs the walk after one documented install
+  script, headlessly, with no step that needs a person;
+  **(3)** a biped the loop designed from a prompt, trained end to end on that
+  machine's GPU.
+  Then print-ready export, G-code, the rollout video, each as one more leg of the
+  same walk. **Rungs 2 and 3 are parked in `## Later criteria` and are not on the
+  frontier.** The planner may not target a parked criterion, and may not treat
+  this list as permission to start one: the human promotes a rung by editing this
+  file between runs, and the loop picks the new gaps up at the next run start.
   Standing work, always open: keep every gate green, every doc true to the code,
   the delta manifest honest, the project docs current, and the frontier short.
   Inherited-tree reduction lives here now: take a removal only when a change
@@ -260,7 +267,10 @@ target; it is standing work on the long rung and nothing more.
   LGPL/GPL boundary AGENTS.md draws; reimplement the idea.
 - Never commit `shell/lib/<platform>` contents. Never commit secrets or machine
   paths. Never commit training checkpoints or rollouts; `PROGRESS.md` carries
-  the numbers. Never hand-edit `STATE.md`. Never write state nodes; the
+  the numbers. **The same goes for generated review and probe output** -- a
+  record cites the numbers that matter and where the run wrote them, and does
+  not carry the dump. nt3 committed 9,321 lines of probe JSON across 129 files,
+  42% of its whole diff, which no one will ever read. Never hand-edit `STATE.md`. Never write state nodes; the
   maintainer pass reconciles.
 - Builds are long. One unit includes at most one full build. If a gate cannot
   finish inside the iteration, record exactly what was verified and what was
@@ -271,6 +281,19 @@ target; it is standing work on the long rung and nothing more.
   reverts on reject, so read the must-fix, close it in a new commit, and say in
   the record which rejection it answers. Every one of nt2's six rejections was
   closed this way.
+- **Never gate a unit on the wall clock.** No plan item, record, or handoff may
+  say "not before 06:30 UTC", "after the quota resets", or "wait for" anything a
+  clock decides. The loop has no way to sleep on a clock: it re-reads the time,
+  finds it too early, stops, and does it again a minute later. nt3 spent 113
+  iterations and two hours doing exactly this. If a unit genuinely cannot start
+  yet, it is not the unit -- pick a different one from the frontier and say in
+  one line why the first was skipped.
+- **Writing about the work is not the work.** A record describes a change; it is
+  not one. Neither is an audit, a qualification, a plan, or a handoff addressed
+  to a maintainer or planner -- those roles are the same loop and run on their
+  own schedule, so an iteration that only asks for them has done nothing. If a
+  unit produces no diff outside `.hypergraph/` and `.ouroboros/`, it was not a
+  unit.
 - Do not edit `.ouroboros/`. Do not edit `.hypergraph/graph/state/`.
 
 **This run (the human lifts these by editing this file):**
@@ -324,6 +347,11 @@ no such direction exists, the long-term rung's standing work is the work.
   is still missing before that criterion can be ticked.** A unit that advances
   no criterion on the frontier is not a unit of work: ticking a ROADMAP box is
   not progress by itself. nt2 ticked 58 of them and closed no criterion.
+- **The unit changes code, a test, or a document, not only a record.** Naming a
+  criterion in prose is not advancing it. The critic rejects a unit whose whole
+  diff is under `.hypergraph/` or `.ouroboros/`, unless the unit is a maintainer
+  or planner pass, which are the only two that are allowed to be bookkeeping.
+  nt3 wrote 22,437 lines over 201 iterations and moved one node on the frontier.
 
 ## Reconcile
 

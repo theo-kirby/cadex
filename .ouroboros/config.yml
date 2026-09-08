@@ -1,4 +1,4 @@
-run: nt3
+run: ot4
 goal: .ouroboros/goal.md
 memory: auto            # -> hypergraph (config + CLI present)
 backend: headless       # tmux: one streaming window per harness call in the run session
@@ -39,7 +39,7 @@ roles:
     fallback:
       - { harness: codex, model: gpt-6-astra }
 git:
-  branch: null            # -> ouroboros/nt3
+  branch: null            # -> ouroboros/ot4
   tag_on_accept: true
   revert_on_reject: false # fix forward: the charter forbids reverting this run's own
                           # commits, and the critic's must_fix reaches the next actor
@@ -47,12 +47,16 @@ git:
                           # and every reject was completed by a later iteration.
   allow_dirty: false
 stop:
-  after: 15h
+  after: 48h              # the only thing that ends this run
   max_iterations: null
-  max_cost_usd: null      # subscription; the number is API-equivalent, not a bill
-  max_usage: 0.9          # stop at 90% of a subscription window (Codex reports no dollars)
+  max_cost_usd: null      # subscriptions; nothing here is billed per call
+  max_usage: null         # a window crossing a line must not end a two-day run: the
+                          # window resets while the run is still going, and the loop
+                          # waits it out by itself. `limits.reserve` blocks the harness
+                          # instead, which is what leaves Claude for the operator.
   until: null
   on_done_accepted: null
+  max_stuck: 25           # `stuck` is a loop that changed nothing; backoff makes 25 ~3.8h
 handoff:
   recent: 3
 hypergraph:
@@ -63,6 +67,19 @@ limits:
   cooldown: 30m           # block a limited harness this long when it does not say when it resets; doubles
   max_cooldown: 3h
   transient_strikes: 3
+  reserve:
+    claude: 0.85          # stop using Claude at 85% of its 7-day window, until that
+                          # window resets. Codex carries the run meanwhile; the 15%
+                          # left over is what the operator works out of on Monday.
+loop:                     # motion without progress (ouroboros DESIGN.md section 6b)
+  product_after: 8        # iterations changing only records, plans and STATE.md
+  frontier_after: 30      # iterations with no node moving and no criterion ticked
+  repeat_bet_after: 3     # planner bets restating a recent bet
+  escalate_every: 5
+  rotate: true            # rung 3: hand the actor's turn to Codex for a while
+                          # Nothing here stops the run. Replayed on nt3, `no_product`
+                          # first fires at iteration #50 -- one into the 113-iteration
+                          # stall -- against zero firings in the productive stretches.
 plan:
   enabled: true           # the plan view (short / medium / long) and the planner after each maintainer pass
   every: 5
