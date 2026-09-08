@@ -22020,3 +22020,51 @@ engine, protocol, payload or `shell/` diff.
 **Not claimed**: that a GUI-attached walk was run. It remains documented and
 unexercised under this run's headless-only constraint, and concurrent
 mutation by two engines remains unguarded (ADR-204).
+
+## ADR-270 — A seam on the best section candidate costs millimetres, not the part (2026-09-08)
+
+ADR-267 replaced the walk's constant XZ offset with one derived from the
+accepted snapshot's own bounds, and claimed the ot4-quill cut went from one of
+two parts to two of two. The first token-free walk to run the derivation
+against live geometry — `runs/derived-section-41`, exit 0 in 23.82 s — shows
+that claim was wrong. `review.json` carried `offset_source: derived` and
+`offset_candidates_mm: [-21.2, 0.0]`, so the derivation ran and ranked the
+quill's own centre first as designed; but the chosen `offset_mm` was **0.0**
+and `quill_component` was still `empty`. ADR-267's per-mechanism numbers were
+measured against stored bounds with box stand-ins for the parts, and a box has
+no seam on its own centre plane.
+
+The cause is that the candidate set is adversarial to the test that filters it.
+A bounding-box centre is the plane a part is most likely to be symmetric about,
+and a tessellation puts vertices and edges exactly on its own symmetry plane —
+so `contours` refuses the best-coverage candidate for plane contact
+(`plane contacts a tessellation vertex/edge/face`, verified directly at
+Y = -21.2 mm on the live accepted revision), and `derived_section` falls
+through to a candidate that is supported precisely because it misses the part.
+That is the same failure ADR-267 set out to remove, reached by a different
+road.
+
+Give each centre two quarter-span siblings. `offset_candidates` now offers, for
+the whole geometry and for each object, the bounding-box centre and that centre
+± a quarter of the same span — still strictly inside the same bounds, so still
+certain to cross them — ranked by coverage first, then centres before siblings,
+then nearness to the overall centre. The centre stays the drawing of choice;
+a seam on it now costs a few millimetres of offset rather than the part. The
+eight-candidate bound, `offset_source`, `offset_candidates_mm`, the artifact
+path and the explicit `--offset-mm` path are all unchanged.
+
+Measured on the same live quill revision
+`8788efa6553ecb092dc041125e74f7ec1b04b128dbb9e5cfe6ddf3e44aa34bc1`: the
+sibling at Y = -15.7 mm cuts the housing in three loops (the bore walls appear)
+and the quill in one, against one housing loop and an empty quill at the
+derived Y = 0. The quill mechanism is one of two of two, for the first time,
+against live tessellation rather than stand-in bounds.
+
+Two regressions in `cli/tests/test_section.py`: the live failure reproduced
+with a tessellated prism whose seams land on its symmetry plane, asserting the
+centre is still ranked first, still refused, and now recovered a quarter span
+away rather than at Y = 0; and the no-candidate-works case rebuilt on a plate
+lying in the cut plane, which has no thickness to step off into. The
+skip-a-candidate test keeps its assertions and gains the siblings in its
+candidate list. `cli/tests` run in full: 261 passed. No new flag, op, protocol
+change, engine or shell diff.

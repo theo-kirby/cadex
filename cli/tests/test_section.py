@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 import json
+import math
 from pathlib import Path
 import subprocess
 import xml.etree.ElementTree as ET
@@ -156,16 +157,56 @@ def test_derived_offset_skips_a_candidate_the_cut_cannot_support():
     # plane, which `contours` refuses; the next candidate is taken instead.
     stack = slab((0, 10), (-10, 0), (0, 10)) + slab((0, 10), (0, 10), (0, 10))
     triangles, source = accepted([('stack', stack), ('solid', slab((0, 10), (-6, 10), (0, 10)))])
-    assert offset_candidates(source, 'XZ') == [0.0, 2.0]
+    assert offset_candidates(source, 'XZ') == [0.0, 2.0, -2.0, -5.0, 5.0, 6.0]
     assert section_snapshot(triangles, source, 'XZ', 0.0)['status'] == 'unsupported'
     derived = derived_section(triangles, source, 'XZ')
     assert derived['offset_mm'] == 2.0 and derived['status'] == 'ok'
-    assert derived['offset_candidates_mm'] == [0.0, 2.0]
+    assert derived['offset_candidates_mm'] == [0.0, 2.0, -2.0, -5.0, 5.0, 6.0]
+
+
+def prism(cx, cy, radius, sides, z):
+    """A tessellated cylinder about a vertical axis.
+
+    Unlike a box, its facet seams land on its own symmetry planes -- which is
+    why the live quill refused the cut at its bounding-box centre and a slab
+    standing in for it did not.
+    """
+    ring = [(cx + radius*math.cos(2*math.pi*i/sides), cy + radius*math.sin(2*math.pi*i/sides))
+            for i in range(sides)]
+    walls = [((1, 2, 3), tri)
+             for i in range(sides)
+             for tri in (((*ring[i], z[0]), (*ring[(i+1) % sides], z[0]), (*ring[(i+1) % sides], z[1])),
+                         ((*ring[i], z[0]), (*ring[(i+1) % sides], z[1]), (*ring[i], z[1])))]
+    caps = [((1, 2, 3), ((*ring[0], zk), (*ring[i], zk), (*ring[i+1], zk)))
+            for zk in z for i in range(1, sides - 1)]
+    return walls + caps
+
+
+def test_a_seam_on_the_best_candidate_costs_millimetres_not_the_part():
+    # The live ot4-quill failure (ADR-270): the quill's bounding-box centre is
+    # the one plane that crosses both parts, and the tessellation puts vertices
+    # on it. Before the quarter-span siblings the derivation fell all the way
+    # back to Y=0, which cuts the housing and misses the quill entirely.
+    triangles, source = accepted([
+        ('housing', slab((-46, 46), (-42, 42), (0, 164))),
+        ('quill', prism(8, -21, 11, 8, (16, 152))),
+    ])
+    candidates = offset_candidates(source, 'XZ')
+    assert candidates[0] == -21.0  # still the best drawing, and still first
+    assert section_snapshot(triangles, source, 'XZ', -21.0)['status'] == 'unsupported'
+
+    derived = derived_section(triangles, source, 'XZ')
+    assert derived['offset_source'] == 'derived' and derived['status'] == 'ok'
+    assert derived['offset_mm'] == -15.5  # a quarter span off the same centre
+    assert all(obj['status'] == 'ok' for obj in derived['objects'].values())
+    assert 0.0 in candidates and candidates.index(0.0) > candidates.index(-15.5)
 
 
 def test_derived_offset_reports_the_unsupported_cut_when_no_candidate_works():
-    stack = slab((0, 10), (-10, 0), (0, 10)) + slab((0, 10), (0, 10), (0, 10))
-    triangles, source = accepted([('stack', stack)])
+    # A plate lying in the cut plane has no thickness to step off into: every
+    # sibling collapses onto the centre, and the first cut is what is reported.
+    triangles, source = accepted([('plate', slab((0, 10), (0, 0), (0, 10)))])
+    assert offset_candidates(source, 'XZ') == [0.0]
     derived = derived_section(triangles, source, 'XZ')
     assert derived['offset_mm'] == 0.0 and derived['status'] == 'unsupported'
     assert derived['available'] is False and derived['offset_source'] == 'derived'

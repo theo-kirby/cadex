@@ -352,13 +352,19 @@ of doing any of them:
    The `section` block uses the same accepted snapshot for a world XZ cut
    whose offset is **derived from that snapshot's own bounds** (ADR-267),
    not fixed: the candidates are each object's bounding-box centre on the
-   cut axis plus the whole geometry's, ordered by how many objects' bounds
-   the plane crosses and then by nearness to the overall centre, and the
-   first candidate whose cut is supported is the one written. `offset_mm`
-   is the chosen plane, `offset_source` is `derived`, and
-   `offset_candidates_mm` is the ordered list it came from. A constant
+   cut axis plus the whole geometry's, **each with two quarter-span
+   siblings** (ADR-270), ordered by how many objects' bounds the plane
+   crosses, then centres before siblings, then by nearness to the overall
+   centre, and the first candidate whose cut is supported is the one
+   written. `offset_mm` is the chosen plane, `offset_source` is `derived`,
+   and `offset_candidates_mm` is the ordered list it came from. A constant
    offset cuts whatever happens to lie on it and reports `ok` while a part
-   is missing from the drawing; `cadex section --plane/--offset-mm` is
+   is missing from the drawing — and a centre alone is not enough, because a
+   centre is the plane a part is most likely to be symmetric about and a
+   tessellation puts a seam exactly there: the best-coverage candidate is
+   systematically the one the plane-contact refusal rejects. The siblings
+   are what turn that seam into a few millimetres of offset rather than a
+   missing part. `cadex section --plane/--offset-mm` is
    unchanged and reports `offset_source: explicit`. It carries
    status, availability, revision/digest, plane/offset/units, approximation,
    limits, acquisition/section timings and project-relative `path` (SVG) and

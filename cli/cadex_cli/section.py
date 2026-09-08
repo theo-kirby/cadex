@@ -95,21 +95,39 @@ def offset_candidates(summary, plane):
     then by nearness to the overall centre. Bounds are not the solid: a
     candidate can still cut a cavity and come back empty, which is why the
     caller checks the cut rather than trusting the ordering.
+
+    A centre is also the plane a part is most likely to be symmetric about,
+    and a tessellation puts vertices and edges exactly on its own symmetry
+    plane -- so the candidate with the best coverage is systematically the
+    one `contours` refuses for plane contact, and the derivation falls back
+    to a plane that misses the part it was reaching for (ADR-270). Each
+    centre therefore travels with two quarter-span siblings, still strictly
+    inside the same bounds and so still certain to cross them, ranked after
+    the centre they came from: the centre stays the drawing of choice, and a
+    seam on it costs a few millimetres rather than the part.
     """
     normal = PLANES[plane][2]
     spans = [(obj['bounds_mm'][0][normal], obj['bounds_mm'][1][normal])
              for obj in summary['objects'].values() if obj.get('bounds_mm')]
     if not spans:
         raise InventoryError('section: no accepted bounds to derive an offset from')
-    centre = (min(lo for lo, _ in spans) + max(hi for _, hi in spans)) / 2
+    overall = (min(lo for lo, _ in spans), max(hi for _, hi in spans))
+    centre = (overall[0] + overall[1]) / 2
 
     def coverage(offset):
         return sum(1 for lo, hi in spans if lo < offset < hi)
 
     # Rounded to a micron so the artifact directory a run writes is readable
-    # and two runs of the same geometry agree on it.
-    candidates = {round(centre, 3)} | {round((lo + hi) / 2, 3) for lo, hi in spans}
-    ordered = sorted(candidates, key=lambda offset: (-coverage(offset), abs(offset - centre), offset))
+    # and two runs of the same geometry agree on it. A candidate reached both
+    # as a centre and as a sibling keeps the centre's rank.
+    candidates = {}
+    for lo, hi in (overall, *spans):
+        middle, quarter = (lo + hi) / 2, (hi - lo) / 4
+        for sibling, offset in enumerate((middle, middle - quarter, middle + quarter)):
+            offset = round(offset, 3)
+            candidates[offset] = min(candidates.get(offset, 1), min(sibling, 1))
+    ordered = sorted(candidates, key=lambda offset: (-coverage(offset), candidates[offset],
+                                                     abs(offset - centre), offset))
     return ordered[:MAX_DERIVED_CANDIDATES]
 
 
