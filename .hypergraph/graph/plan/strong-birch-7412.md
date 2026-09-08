@@ -11,10 +11,10 @@ Status: open
 
 ## Current
 
-1. **Preserve completed lifecycle and review evidence (missions 1, 2 and 6).** Both fresh mechanisms passed full review and the cold revisit preserved accepted identity, policy assets, restored trace and review contents. These remain working criteria, not replay targets; the VISION CPU-training and policy-asset contradictions are now corrected [rec: first-branch-9614] [rec: quiet-vine-3426] [rec: fair-cedar-7455] [rec: polished-moss-9358] [rec: neat-summit-3586].
-2. **Resolve only the selected bundled-engine qualification (missions 1, 2 and 6).** Short first measures the existing ordinary bundle; only proven stale packaging permits its conditional refresh. Historical import failure and dev-tree success cannot establish today's bundled behavior. No broader runtime gap is alleged; source defects or multiple-build prerequisites need evidence and a later bet. Clean qualification exhausts this direction [rec: zesty-aspen-6846] [rec: empty-rain-5162].
+1. **Preserve completed lifecycle and review criteria (missions 1, 2 and 6).** Both fresh mechanisms and cold persistence remain working; the ordinary installed-engine route now also passes the complete arm walk and same-root packaged/CLI gates after supported refresh. Background shell gate uses the matching built bundle. No further packaging repair, training replay or second-mechanism repeat is selected [rec: first-branch-9614] [rec: quiet-vine-3426] [rec: fair-cedar-7455] [rec: strong-raven-3067].
+2. **Bound the public payload-identity claim (missions 1, 2 and 6).** Short qualifies resolution's schema-only boundary, then removes the corresponding docs/CLI.md overclaim if confirmed. This single maintenance direction removes an unsupported guarantee without adding a validator or changing policy. A contrary probe or clean correction ends it; no broader documentation audit follows [rec: spring-wolf-7431].
 
-No new charter gaps, feature checkboxes or Later promotions are selected. A broader documentation audit and another persistence probe were considered and left unqueued. GUI stays documented-only and remote scripted-only; CLI success against a bundled engine does not prove shell startup or a portable release. Toy policy verification, initial-pose clearance and tessellation sections retain their limits [rec: modest-summit-8554] [rec: quiet-vine-3426] [rec: empty-rain-5162].
+No new charter gaps, feature checkboxes or Later promotions are selected. Repeating carriage or cold-persistence qualification was considered and left unqueued. The refreshed application remains a local unrelocated deployment; GUI-attached lifecycle and remote execution remain unexercised. Policy witness success is toy execution evidence, clearance is initial-pose and sections are tessellated [rec: strong-raven-3067] [rec: modest-summit-8554] [rec: spring-wolf-7431].
 
 ## Negative knowledge
 
@@ -145,3 +145,5 @@ No new charter gaps, feature checkboxes or Later promotions are selected. A broa
 - civic-snow-4700 — fold completed orientation work and dispatch only the selected offboard-training guidance correction
 
 - empty-rain-5162 — fold completed VISION corrections; select one bounded bundled-engine qualification direction, retaining all charter obligations
+
+- spring-wolf-7431 — fold clean bundle refresh; select only bounded schema-check guidance maintenance, retaining all charter obligations
