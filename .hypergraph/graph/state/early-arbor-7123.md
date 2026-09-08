@@ -32,7 +32,7 @@ Status: working
 
 **Agent onboarding now defers live status to generated `STATE.md` and its cited nodes.** `.hypergraph/AGENTS.md` no longer duplicates obsolete lifecycle/RL statuses or a fixed state-node count; ADR-137 records the prose-only correction and verification. The earlier actor/maintainer handoff is resolved [rec: lean-union-6426].
 
-**Pending documentation correction:** `docs/VISION.md` principle 5 still incorrectly makes a GPU necessary for training. The supported local CPU path shows that offboard training is a dependency boundary, while GPU availability is a scale choice. A bounded rationale correction and ADR-084 note are selected but have not landed. Reconcile judgement: retain `working`; this is a documented guidance defect, with no runtime repair or wider audit implied [rec: lucky-canyon-6724].
+**VISION training guidance is corrected.** Principle 5 explains offboard training as the trainer/JAX/MJX dependency and payload boundary, with supported local CPU toy training and GPU paths for larger runs. Principle 3 explains policy assets through the script rebuild boundary, without a GPU-duration premise; asset identity, engine verification and deterministic rollout contracts remain intact. ADR-084 records both prose corrections and the removed obsolete dispatch history. Reconcile judgement: retain `working`; these documentation changes add no runtime qualification or wider audit [rec: polished-moss-9358] [rec: neat-summit-3586].
 
 ## Negative knowledge
 
@@ -69,3 +69,5 @@ Status: working
 - careful-sand-9714 — actor/maintainer dispatch mismatch and separate maintainer-to-planner handoff; no product gap asserted
 - lean-union-6426 — onboarding defers live frontier and counts to generated state; ADR-137 prose correction landed and dispatch handoff resolved
 - lucky-canyon-6724 — GPU-only VISION rationale contradicts the supported CPU path; bounded prose correction selected, not implemented
+- polished-moss-9358 — VISION principle 5 corrected to the offboard dependency boundary and supported CPU path; no runtime rerun
+- neat-summit-3586 — VISION principle 3 policy-asset rationale corrected without changing the asset contract or runtime evidence

@@ -33,7 +33,7 @@ Reconcile judgement: flipped `open` → `working` on the second clean prompt wal
 
 **Latest bounded recipe and cold-revisit evidence:** a fresh hinged-arm CPU walk completed in 16.80 s at sampled peak process-tree RSS 1,056,636,928 bytes. Its verified 50-step rollout retained total reward -27.109384220927513 and witness error 1.3841167412209642e-09. After the producing process exited, six separate public CLI commands (script, asset, inventory, clearance, render and section) preserved accepted revision/digest, policy assets and a byte-identical restored trace. Full built-engine CLI gate: **195 passed, zero skipped** (218.91 s). No persistence defect or recovery was found; this maintenance direction is exhausted and status remains `working`. This is toy CPU evidence, not useful learned control, a prompt reliability trial, GUI/remote execution or packaged qualification; timings overlapped the gate and are observations, not benchmarks [rec: fair-cedar-7455].
 
-**Documentation follow-up only:** VISION principle 5's GPU-only rationale conflicts with the supported CPU walk. Its bounded prose correction is selected but not implemented; existing CPU evidence and `working` status stand. This decision neither replays nor recertifies the walk and identifies no runtime gap [rec: lucky-canyon-6724].
+**Documentation corrections landed:** VISION principles 5 and 3 now agree with the supported CPU walk: offboard training is a dependency/payload boundary, and policy asset status follows the script rebuild boundary rather than GPU duration. Reconcile judgement: retain `working` on the existing toy CPU evidence; neither prose correction reran or recertified the runtime, identified a missing leg, or expanded GUI/remote qualification [rec: polished-moss-9358] [rec: neat-summit-3586].
 
 ## Negative knowledge
 
@@ -55,3 +55,5 @@ Reconcile judgement: flipped `open` → `working` on the second clean prompt wal
 - brave-delta-4193 — bounded documented arm walk refreshes CPU training, verified baseline rollout and committed review evidence; CLI 161 passed without skips
 - fair-cedar-7455 — fresh CPU walk and six cold public commands preserve accepted identity, policy assets and restored trace; CLI 195 passed without skips
 - lucky-canyon-6724 — preserve working CPU-walk evidence while tracking the unimplemented VISION rationale correction
+- polished-moss-9358 — VISION principle 5 corrected to the offboard dependency boundary and supported CPU path; no runtime rerun
+- neat-summit-3586 — VISION principle 3 policy-asset rationale corrected without changing the asset contract or runtime evidence
