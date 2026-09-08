@@ -454,6 +454,30 @@ See [ADR-251](DECISIONS.md#adr-251--the-walk-reports-enginesource-differences-be
 and the [immutable rehearsal record](../.hypergraph/graph/record/mellow-quartz-8093.md)
 for timings, policy witness, component volumes and project commit evidence.
 
+**A third mechanism, and what its second coordinate measured (2026-09-08).**
+The unchanged entry point also ran a *quill lift* rig on the durable
+`ot4-quill` project: one **cylindrical** joint — a slide and a hinge on the
+same axis — driven by a **position servo on its linear coordinate**, which
+is the fourth and last `(kind, motion)` pair the engine derives an action
+range for. A **velocity** actuator cannot be the third variable: the engine
+refuses one at `action_range_underivable`, because a joint states position
+limits and nothing in an assembly states a speed. Exit 0 in 10:53 at 5
+iterations x 16 envs, seed 0, `total_reward` -74.79 over 200 steps. The
+motion block read **`travel_mm 20.28`, `travel_deg 0` on the same
+component**: the joint offers both channels and the rollout used one, since
+gravity exerts no torque about a vertical axis. A zero in a channel is a
+fact about that rollout, not a missing measurement, which is why both are
+always written. No delta rendered on that row, correctly — a project's
+first walk has no previous row carrying either label. The clearance eye
+returned its first offending pair on an agent-authored design: `housing`
+against `quill`, verdict `intersection`, 960 mm3 of common volume. That one
+is deliberate and the project says so itself — its ADR-005 records that the
+shaft is modelled inside a solid bore cylinder and that the joint, not
+contact, constrains the quill — so the report is a known choice read back
+rather than a defect found. The walk still exits 0, as the table above says
+it should: the report was written, and reading it is the next design turn's
+job.
+
 **Training on a remote machine is the same walk with one flag** (ADR-200).
 `cadex train --remote` and `cadex walk --remote` run the train leg through
 `training/remote_train.sh train` (ADR-089, `training/SETUP.md` §d) instead

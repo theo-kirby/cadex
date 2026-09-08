@@ -2104,6 +2104,38 @@ What makes them experimental, and what would settle it:
   the totals never rank the two designs against each other.
   `--trainer-python` was dropped from this invocation: the documented
   fallback resolved `~/cadex-train-venv` on its own.
+- [x] **The walk holds on a third mechanism, whose joint carries two
+  coordinates** (2026-09-08). The same `cadex walk --prompt` entry point,
+  again with **no code change of any kind**, took a *quill lift* rig — one
+  **cylindrical** joint (a slide and a hinge on one axis) driven by a
+  **position servo on the linear coordinate** — from a prompt to a verified
+  policy: **exit 0, 10:53 wall clock, 1,946 MB peak RSS**, into a third
+  durable project outside this repository. Legs, all exit 0 — design 629.6 s
+  (one turn), train 19.6 s, declare 0.9 s, rollout 1.0 s; `walk_seconds`
+  652.9. Local CPU training at the same 5 iterations x 16 envs and seed 0:
+  3.7 s, 4,801 parameters, reward/step **-0.5796**, witness error 2.9e-08
+  against a 1e-4 tolerance; the verified rollout scored **total_reward
+  -74.79** over 4 terms. The joint is the point: `(position, linear)` is the
+  fourth and last pair in the engine's action-source table and the only one
+  no earlier walk had driven, and a **velocity** actuator cannot be the
+  variable instead — the engine refuses it at `action_range_underivable`
+  because a joint states position limits and no speed. Two review findings
+  the two earlier walks could not produce: the motion block reported
+  **`travel_mm 20.28`, `travel_deg 0`** on the same component, so a
+  two-coordinate joint moved in one channel only (gravity exerts no torque
+  about a vertical axis — a fact about the rollout, not a missing
+  measurement), and the clearance eye reported its **first offending pair on
+  an agent-authored design**: `housing`/`quill`, verdict `intersection`, 960
+  mm3 of common volume. The project's own ADR-005 says why and says it was
+  deliberate — the shaft is modelled inside a solid bore cylinder, the joint
+  rather than contact constrains the quill, and the two collision groups are
+  disjoint — so the eye is reporting a known modelling choice back, not
+  catching an unnoticed defect. Exit 0 remains correct: the report was
+  written, not "all pairs are clear". The ADR-260 delta did not
+  render and could not: a project's first walk has no previous row carrying
+  either label. Five commits, five `PROGRESS.md` rows, and
+  `docs/{actuators,sensors,inventory,clearance}.md`, all written by the
+  walk's child commands.
 - [x] **Walk reports engine/source differences** (2026-09-08, ADR-251).
   Before its first leg, JSON and stderr carry a bounded Python-file comparison
   with match/different/unavailable evidence; no refusal, rebuild or binary
