@@ -45,6 +45,8 @@ Each rehearsal's full built-engine CLI gate recorded **195 passed, zero skipped*
 
 **The refreshed ordinary installed-engine walk also qualifies its review artifacts.** All four named views were inspected, along with the interior XZ section at Y = 3.125 mm, whose two closed contours span base X=0..60/Z=0..6 and swing X=12..92/Z=6..14 mm. Inventory truthfully reports two uncatalogued components. The named base/swing pair is below the 0.1 mm clearance minimum, with distance 0, common volume 0, one checked pair and zero unknowns. Project documents, review JSON, inventory, clearance, four views and section files match HEAD in a clean five-commit scratch project. Reconcile judgement: retain `working`; this extends review evidence to the refreshed local bundle, retaining initial-pose and tessellation limits, toy-policy scope, and unexercised GUI-attached/remote modes [rec: strong-raven-3067].
 
+**Engine-selection guidance is bounded to its verified check.** The CLI resolver's schema agreement no longer claims payload completeness or shared provenance (`docs/CLI.md` §6, commit c84fd306); the review calls' evidence and their initial-pose, tessellation and toy-policy limits are unchanged, and the full installed-engine CLI gate passed **195 with zero skips**. Reconcile judgement: retain `working`; prose-only, no review artifact reran [rec: tiny-haven-0347] [rec: keen-pebble-3574].
+
 ## Negative knowledge
 
 - [scope: named-angle probe using the existing background Blender renderer after accepted hinged-arm hydration | confidence: high | evidence: zesty-aspen-6846] All four valid blueprint views and `render_views` explicitly refuse background mode. The override probe's exit 0 records returned errors, not a rendered PNG. CPU projection must snapshot revision-dependent display buffers before another rebuild invalidates their paths.
@@ -73,3 +75,5 @@ Each rehearsal's full built-engine CLI gate recorded **195 passed, zero skipped*
 - quiet-vine-3426 — fresh carriage completes the paired rehearsal with committed comparisons; evidence supports working status within initial-pose and toy-policy limits
 - fair-cedar-7455 — cold public review matches committed baseline identity, geometry and SVG bytes with truthful contact counts; no persistence defect
 - strong-raven-3067 — refreshed installed-engine walk produces inspected views, interior section, truthful inventory and named clearance with committed project bytes
+- tiny-haven-0347 — resolver-only probe bounds the payload schema check; review evidence untouched
+- keen-pebble-3574 — payload guidance corrected; installed-engine CLI gate 195 passed, zero skips; criterion preserved
