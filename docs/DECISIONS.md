@@ -21388,3 +21388,12 @@ the runnable command, reward comparison, baseline and limitations remain.
 Replace export-only coverage with the measured CPU retry after exit 7; consolidate
 recovery prose and assertions. Pin preserved history, verified policy, four reviews
 and last-success comparisons. Runtime is unchanged; the CLI suite gates the change.
+
+
+## ADR-253 — Explicit CPU selection for toy lifecycle runs (2026-09-08)
+
+Replace the CPU-only installation assumption and lengthy sizing prose in
+`training/SETUP.md` §b with an explicit `JAX_PLATFORMS=cpu` walk invocation.
+The CLI guide and project scaffold refer to that contract. A discovered CUDA
+venv completed the public toy walk on CPU in 14.6 s, peak tree RSS 1.54 GB;
+all four reviews and policy verification passed. Backend defaults stay unchanged.

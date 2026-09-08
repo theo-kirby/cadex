@@ -1,6 +1,6 @@
 # Training a policy: the four ways
 
-Verified against source: 2026-09-06. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-09-08. Provenance: `[Cadex-new]`. See
 ADR-084 (training is offboard) and ADR-089
 (remote dispatch).
 
@@ -90,17 +90,10 @@ it. If it reads as `envs × unroll` exactly, no episode is ending at all.
 
 ## (b) CPU only
 
-Supported, deliberately, and it is what the live training gate exercises
-(`test_dynamics_policy_live`, which runs wherever jax does — the pixi CI
-environment deliberately lacks it, so a venv run is what actually proves
-it). But understand what you are buying: that gate converges a *tiny* task
-(one hinge, swing-up) in seconds per attempt on an M4 Mac Mini. The
-published reference for a real gait is a Unitree G1 walking policy
-converging in ~90 minutes at 4096 parallel environments on an RTX 4090. On
-CPU that is days. This path is for toy tasks and for proving a task *runs*
-— that the reward expression compiles, the observation channels are the
-ones you meant, the episode does not immediately terminate — before
-renting something. It is not for producing a gait.
+Use CPU for toy tasks and lifecycle verification; it does not establish a
+learned gait. Set `JAX_PLATFORMS=cpu` explicitly even when the discovered
+venv also supports CUDA. Installing the base requirements does not remove
+an existing CUDA plugin. Confirm the trainer receipt reports `device: cpu`.
 
 **Python ≥ 3.12**, and that is a floor, not a preference: the pinned
 `numpy==2.5.1` has no wheels below cp312. The pixi environment's 3.11
@@ -110,34 +103,39 @@ for cp312/cp313/cp314:
 
 ```bash
 /opt/homebrew/bin/python3.13 -m venv .venv           # repo root; gitignored
-.venv/bin/pip install -r training/requirements.txt   # the CPU jax, as pinned
+.venv/bin/pip install -r training/requirements.txt   # pinned trainer dependencies
 .venv/bin/pip install pytest                         # to run the venv-gated suites
 ```
 
 `pytest` is a convenience for running the trainer's own gates from this
 venv, not a fifth pin — nothing about a training run needs it.
 
-From here `cadex train --project P --out ./run --iterations 300 --envs 32
---put` (`docs/CLI.md` §2, ADR-191) does the export, this trainer invocation
-and the store write as one command; it finds this venv at `<repo>/.venv` or
-`~/cadex-train-venv`, or wherever `--trainer-python` / `$CADEX_TRAIN_PYTHON`
-points, and never builds one. The direct invocation below is what it runs.
+The CLI discovers `<repo>/.venv`, then `~/cadex-train-venv`, or uses
+`--trainer-python` / `$CADEX_TRAIN_PYTHON`; it never creates a venv.
+For an existing toy project with a task, run from the repository root:
 
 ```bash
-.venv/bin/python training/cadex_train.py <outputs>/walk-task.json \
-    --out walk.cxpolicy --envs 32 --iterations 300 \
-    --checkpoint-every 50 \
-    --progress <project>/training-progress.json
+JAX_PLATFORMS=cpu ./cadex walk --project "$PROJECT" \
+    --out "$PROJECT/runs/cpu-baseline" --name cpu-baseline.cxpolicy \
+    --iterations 1 --envs 4 --seed 0 --timeout 600 --json
 ```
 
-Drop `--envs` hard. The default of 256 is sized for a GPU, and on CPU it
-mostly buys memory traffic — the model is shared but every environment is
-one more row of batched simulation state stepped on the same cores, so
-16–64 is the right band for a toy on a 16 GB machine. `--checkpoint-every
-50` (up to 100 on longer runs) costs about one
-iteration each and every checkpoint is a complete, playable `.cxpolicy` —
-on CPU, where a run you would rather not repeat is measured in minutes,
-that is cheap insurance.
+Use fresh output and policy names. This runs export, training, storage,
+policy verification, rollout and all four reviews (`docs/CLI.md` §2).
+`examples/lifecycle/README.md` supplies the model-free project setup.
+`--timeout` bounds the trainer only; under a strict resource budget also
+monitor process-tree memory and elapsed time, as that example documents.
+The direct trainer invocation uses the same backend selection:
+
+```bash
+JAX_PLATFORMS=cpu .venv/bin/python training/cadex_train.py <outputs>/walk-task.json \
+    --out walk.cxpolicy --envs 32 --iterations 300 \
+    --checkpoint-every 50 --progress <project>/training-progress.json
+```
+
+Keep toy environment counts small: the default 256 is sized for a GPU.
+Checkpoints are complete, playable policies; `--checkpoint-every 50`
+costs about one extra iteration per checkpoint.
 
 **`--progress` is how a local run lights up the shell.** The Training
 panel polls `<project>/training-progress.json`; on paths (c) and (d) it is

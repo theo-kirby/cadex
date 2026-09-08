@@ -193,6 +193,9 @@ or refuse them. A Python change under
 *previous* runtime and the walk still exits 0. On a fresh checkout, or after
 any engine edit, build first.
 
+For a toy CPU walk, follow [training setup §b](../training/SETUP.md#b-cpu-only):
+select `JAX_PLATFORMS=cpu` even in a CUDA-capable trainer venv.
+
 **The walk is one command** (ADR-199). `cadex walk --out DIR` runs the
 legs above in order, each as a **child `cadex` command** — so each lands
 the `PROGRESS.md` row and the project commit it always lands, writes the

@@ -2097,6 +2097,9 @@ What makes them experimental, and what would settle it:
   with match/different/unavailable evidence; no refusal, rebuild or binary
   provenance claim. Offline walk regressions and the CLI suite verify it.
 
+- [x] **Explicit CPU toy-walk setup** (2026-09-08, ADR-253). Rehearsed the
+  public walk with a CUDA-capable venv and explicit CPU selection; setup,
+  CLI guide and project scaffold share the measured invocation contract.
 - [x] **Failed retraining preserves history and retries successfully**
   (2026-09-08, ADR-252). Real-engine regression injects partial output/exit 7,
   then resumes the retained sweep with the prior successful policy/task. It
