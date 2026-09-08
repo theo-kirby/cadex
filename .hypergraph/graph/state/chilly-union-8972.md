@@ -7,9 +7,13 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: working
+Status: broken
 
 ## Current
+
+**Open defect: automatic walk commits do not honor the quill project's artifact-retention intent.** The stroke iterate explicitly staged a new stored policy despite local policy exclusion and committed new review outputs, although its new run directory stayed ignored. Project commit `076ac50` untracked those new outputs forward and kept the files locally; generated artifacts remain in earlier project history, and all baseline bytes remain intact. A subsequent retention fix is required before another walk under this run's no-generated-commits constraint. Reconcile judgement: mark `broken` to expose this observed persistence defect in the frontier; this does not negate the successful lifecycle execution or establish failure for every ignore configuration [rec: young-timber-2761].
+
+**Travel comparisons use the rounded previous row.** The quill walk displays +9.798 mm against prior 20.28 mm, whereas the exact reviews differ by +9.7949169555 mm. Read the row as a rounded comparison, not the exact review delta [rec: young-timber-2761].
 
 `cli/` plus the `./cadex` shim is a second **front end** and the third client of the cadexd protocol: no Blender, no display, no shell code. Ordinary projects need a built engine alone [rec: jolly-walrus-3692]; native Blender recipe projects additionally require `CADEX_BLENDER_EXECUTABLE` [rec: simple-bramble-8616].
 
@@ -105,3 +109,4 @@ Walk sections share the named-view snapshot, retain explicit outcomes and rollou
 - open-hollow-2140 — ADR-249: `--model` reads `$CADEX_MODEL` before `DEFAULT_MODEL` so a credit-less default cannot stop the walk; CLI 217 passed, no skips
 - narrow-wing-0418 — `cadex walk` reports bounded engine/source comparison evidence (ADR-251)
 - candid-otter-2615 — ADR-255: the `train --dry-run` flag and the `training_plan` envelope field; real-engine local/remote artifact parity and the copy-out/copy-back difference pinned; CLI gate 225 passed, 0 skipped
+- young-timber-2761 — observed automatic policy/review commits despite local retention intent, forward untracking, and rounded travel comparison
