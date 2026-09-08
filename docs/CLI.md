@@ -539,6 +539,34 @@ initial pose; the XZ section misses the quill. All 19 baseline run files
 retained their bytes. New generated artifacts remain local after a forward
 project commit removed outputs that the CLI had automatically staged.
 
+**Fixed-geometry quill seed reference (2026-09-08).** The same project,
+already at stroke 60, ran the command above without `--set`, using fresh
+`runs/stroke60-seed0-33` and `quill_stroke60_seed0_33.cxpolicy` names.
+CPU 5 × 16, training seed 0, rollout seed 7, trainer timeout 600 s and
+leg timeout 120 s; the same external 0.2 s watchdog retained its
+2.9 GB / 850 s cutoffs. Exit 0, 24.835810 s wall (24.685678 s reported
+walk), peak tree RSS 1,986,134,016 bytes. Trainer time 3.773088 s,
+reward/step -1.019690990448, witness error 2.092e-08.
+
+The reference total reward is **175.487211145051**, travel
+**30.078469436328 mm / 0 degrees**, over 200 steps / 4 s.
+Parameters, exported MJCF bytes and full task JSON match the stroke-60
+iterate; only policy filename and digest changed in the script. Recomputed
+comparison hashes match: objective `v1:ddee1f6a0bae7c4753c06a17fa09dd3db9799de30d823c4e4586e41868a937dc`,
+actions `770b4e2f0899853fed23b8727ea08f607ceef3c383189357f27c02179cc30882`.
+Both seeds and identities are recorded in project `PROGRESS.md`; prior-row
+identity remains `unavailable (legacy row)`.
+
+All four render views exist; the XZ section still misses the quill;
+inventory lists two uncatalogued components; clearance names the same
+960 mm³ housing/quill intersection. The engine/source comparison matches
+56 Python files. All 48 earlier run files retain their bytes. Explicit
+root exclusions after the policy negation kept every new run, stored policy
+and review output out of project commits; historical tracked output stays
+untouched. This is the seed reference, with the 30 mm action-midpoint
+confound unchanged, not evidence of learned improvement. Seeds 1–3 remain
+the selected continuation; no additional runs were made here.
+
 **Training on a remote machine is the same walk with one flag** (ADR-200).
 `cadex train --remote` and `cadex walk --remote` run the train leg through
 `training/remote_train.sh train` (ADR-089, `training/SETUP.md` §d) instead

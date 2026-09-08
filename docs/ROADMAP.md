@@ -2262,6 +2262,12 @@ What makes them experimental, and what would settle it:
   reward +250.279186, travel +9.794917 mm / 0 degrees. Objective fields
   match; geometry and action bounds differ. Evidence and limits: CLI §2.
 
+- [x] **Fixed-geometry quill reference with current comparison identities**
+  (2026-09-08). CPU 5 × 16, training seed 0 / rollout seed 7; unchanged
+  stroke 60, MJCF and task. Exit 0, 24.84 s, peak 1.99 GB; all review
+  outputs local and new generated artifacts excluded. CLI §2 carries
+  exact reward/travel and identity hashes; seeds 1–3 remain unmeasured.
+
 - [x] **Fresh walk survives a cold public CLI revisit** (2026-09-08).
   Accepted revision/digest, policy assets, trace and review geometry survive
   separate script/asset/inventory/clearance/render/section processes. Expected
