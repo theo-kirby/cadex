@@ -30,9 +30,11 @@ Status: working
 
 **The local bundle remains unverified after the named-angle probe.** Its ordinary launch failed importing `library_catalog_identity` from the stale bundled `cadex_library_api.py`. The supported `MESH_CADEX_ENGINE` override to the fresh staged payload restored and hydrated the accepted model, enabling the separate background-render refusal measurement. No bundle refresh was attempted; this override result does not qualify ordinary bundled lifecycle operation. Reconcile judgement: retain this orientation node as `working` while preserving the local bundle verification limitation [rec: zesty-aspen-6846].
 
-## Negative knowledge
+**Agent onboarding now defers live status to generated `STATE.md` and its cited nodes.** `.hypergraph/AGENTS.md` no longer duplicates obsolete lifecycle/RL statuses or a fixed state-node count; ADR-137 records the prose-only correction and verification. The earlier actor/maintainer handoff is resolved [rec: lean-union-6426].
 
-- [scope: Ouroboros iteration 23 actor dispatch on ouroboros/nt3 | confidence: high | evidence: careful-sand-9714] The requested reconciliation could not run under that dispatch's explicit contributor prohibition. Dispatch the maintainer separately, then the planner; do not send another actor merely to repeat the handoff. Reconcile judgement: this is a role-dispatch boundary, not a product defect, so orientation remains `working` [rec: careful-sand-9714].
+**Pending documentation correction:** `docs/VISION.md` principle 5 still incorrectly makes a GPU necessary for training. The supported local CPU path shows that offboard training is a dependency boundary, while GPU availability is a scale choice. A bounded rationale correction and ADR-084 note are selected but have not landed. Reconcile judgement: retain `working`; this is a documented guidance defect, with no runtime repair or wider audit implied [rec: lucky-canyon-6724].
+
+## Negative knowledge
 
 - [scope: stage-engine concurrent with payload-inspecting engine tests | confidence: high | evidence: stormy-quill-5350, floral-stone-2866] Finish staging before running the engine suite: isolation tests can observe transient `bin/ccx` before pruning. This scheduling failure recurred during BLDC verification; after staging completed the targeted check passed and the stable full rerun passed 1987 tests with 52 skips. Packaged lifecycle/library passed 61 tests with no skips. The local development payload still reports 248 external-path relocation violations and is not a portable release. [rec: floral-stone-2866]
 
@@ -65,3 +67,5 @@ Status: working
 - floral-stone-2866 — staging overlap reproduced the transient exclusion failure; stable rerun passed, development payload remains nonportable
 - zesty-aspen-6846 — stale local bundled engine import observed; fresh-stage override restores correctly, ordinary bundle verification awaits refresh
 - careful-sand-9714 — actor/maintainer dispatch mismatch and separate maintainer-to-planner handoff; no product gap asserted
+- lean-union-6426 — onboarding defers live frontier and counts to generated state; ADR-137 prose correction landed and dispatch handoff resolved
+- lucky-canyon-6724 — GPU-only VISION rationale contradicts the supported CPU path; bounded prose correction selected, not implemented
