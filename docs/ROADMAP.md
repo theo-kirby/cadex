@@ -1991,6 +1991,11 @@ What makes them experimental, and what would settle it:
   explicit empty/unsupported/error semantics and committed SVG/JSON. Both
   mechanisms and local/remote-flag CPU stand-in parity are tested; a separate
   fresh complete-review rehearsal remains required.
+- [x] **Fresh hinged-arm complete-review rehearsal** (2026-09-08).
+  Public walk, bounded CPU training, four inspected views and interior section,
+  accepted identity, tracked artifacts and explicit contact/unknown counts;
+  evidence in `docs/probes/complete-review/hinged-arm/`. Fresh carriage comparison
+  remains required before the headless-review criterion can close.
 - [x] **The agent can name what it assembled, headlessly** (ADR-236,
   `docs/CLI.md` §2). `cadex inventory` writes `docs/inventory.md` in the
   project: one row per component with the output it places, its catalog
