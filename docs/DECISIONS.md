@@ -21397,3 +21397,7 @@ Replace the CPU-only installation assumption and lengthy sizing prose in
 The CLI guide and project scaffold refer to that contract. A discovered CUDA
 venv completed the public toy walk on CPU in 14.6 s, peak tree RSS 1.54 GB;
 all four reviews and policy verification passed. Backend defaults stay unchanged.
+
+Test follow-up: replace duplicate walk CPU pins with a requested shared fixture
+for real train/iterate/walk and local dispatch stand-ins; assert CPU receipts.
+Condense stale test prose. Production backend choice and fake GPU cases stay intact.

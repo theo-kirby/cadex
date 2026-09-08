@@ -465,10 +465,9 @@ actuator force, N·mm). Written by the walk's caller, by the convention
     reason="No training venv with jax and mujoco (training/SETUP.md).",
 )
 def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
-    engine, tmp_path, capsys, monkeypatch
+    engine, tmp_path, capsys, cpu_training
 ) -> None:
     """Verify, iterate, fail, recover: real CPU legs preserve project history."""
-    monkeypatch.setenv("JAX_PLATFORMS", "cpu")
 
     root = tmp_path / "project"
     toy = tmp_path / "toy.py"
@@ -487,6 +486,7 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     assert [leg["leg"] for leg in envelope["walk"]["legs"]] == ["train", "declare", "rollout"]
     sha1 = envelope["training"]["sha256"]
     review1 = json.loads((out1 / REVIEW_FILENAME).read_text())
+    assert review1["training"]["device"] == "cpu"
     assert review1["sha256"] == sha1 == envelope["walk"]["review"]["policy_sha256"]
     reward1 = float(review1["total_reward"])
     assert reward1 == reward1  # not NaN
@@ -524,6 +524,7 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     sha2 = envelope["training"]["sha256"]
     assert sha2 != sha1
     review2 = json.loads((out2 / REVIEW_FILENAME).read_text())
+    assert review2["training"]["device"] == "cpu"
     assert review2["weights"] == "job2.cxpolicy" and review2["sha256"] == sha2
     assert review2["params"] == envelope["params"] == {"policy_on": 1.0, "lift_weight": 2.0e-4}
     assert review2["training"]["task_sha256"] != review1["training"]["task_sha256"]
@@ -599,6 +600,7 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     )
     assert code == EXIT_OK, report
     review = json.loads((recovered / REVIEW_FILENAME).read_text())
+    assert review["training"]["device"] == "cpu"
     assert [(leg["leg"], leg["exit"]) for leg in review["legs"]] == [
         ("train", 0), ("declare", 0), ("rollout", 0),
     ]
@@ -628,16 +630,11 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
 )
 @pytest.mark.parametrize("mechanism", ["hinged-arm", "linear-carriage"])
 def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
-    engine, tmp_path, capsys, monkeypatch, mechanism
+    engine, tmp_path, capsys, monkeypatch, mechanism, cpu_training
 ) -> None:
-    """Real legs and witness verification; only the dispatcher is replaced.
-
-    Its argv is the remote_train.sh contract pinned in test_train.py. It
-    trains locally at toy scale and never invokes the remote script or ssh.
-    """
+    """Real CPU legs through the pinned remote argv; no SSH or remote run."""
     from test_train import TRAINER_SOURCE
 
-    monkeypatch.setenv("JAX_PLATFORMS", "cpu")
     dispatcher = tmp_path / "dispatch.py"
     dispatch_log = tmp_path / "dispatch.json"
     dispatcher.write_text(
@@ -679,6 +676,7 @@ def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
         )
         assert code == EXIT_OK, report
         review = json.loads((out / REVIEW_FILENAME).read_text())
+        assert review["training"]["device"] == "cpu"
         assert [leg["leg"] for leg in review["legs"]] == ["train", "declare", "rollout"]
         assert all(leg["exit"] == 0 for leg in review["legs"])
         assert review["sha256"] == report["walk"]["review"]["policy_sha256"]

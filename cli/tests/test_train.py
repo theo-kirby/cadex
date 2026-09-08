@@ -3,17 +3,8 @@
 
 """``cadex train``: the dispatcher for the offboard trainer (ADR-191).
 
-The lifecycle audit (``docs/MUJOCO.md`` §7c, row 4) found the training
-leg reachable only by a person who knew the trainer's flags — and caught
-the agent guessing them twice. These pin three things: the flags this
-dispatcher emits are the trainer's own (read back out of its source);
-the receipt reaches the envelope as the trainer printed it; and the whole
-leg — rebuild, bundle out, train, policy home — runs as one command.
-
-Most run against a *fake* trainer, a few lines of Python standing in for
-``training/cadex_train.py``, because the leg's shape does not depend on
-jax. The last one runs the real trainer in the training venv and skips,
-saying so, when there is none.
+Pin trainer flags, receipts and the rebuild → bundle → train → policy leg.
+Fake trainers cover dispatch contracts; real CPU tests skip without a venv.
 """
 
 from __future__ import annotations
@@ -608,11 +599,9 @@ REAL_TRAINER_PYTHON = _real_trainer_python()
     reason="No training venv with jax and mujoco (training/SETUP.md).",
 )
 def test_the_real_trainer_trains_the_toy_and_the_engine_digests_agree(
-    task_project, tmp_path, capsys
+    task_project, tmp_path, capsys, cpu_training
 ) -> None:
-    """One iteration, four environments: a policy the engine's own
-    ``put_asset`` digests to the same sha256 the trainer printed. Bounded
-    by ``--timeout`` well under the night's fifteen-minute rule."""
+    """Bounded CPU training: stored policy and trainer digests agree."""
 
     out = tmp_path / "real"
     code, envelope = _run(
@@ -621,7 +610,7 @@ def test_the_real_trainer_trains_the_toy_and_the_engine_digests_agree(
     )
     assert code == EXIT_OK, envelope
     receipt = envelope["training"]
-    assert receipt["device"] and receipt["task_sha256"], receipt
+    assert receipt["device"] == "cpu" and receipt["task_sha256"], receipt
     assert receipt["bytes"] == (out / "job.cxpolicy").stat().st_size
     (stored,) = envelope["assets"]
     assert stored["sha256"] == receipt["sha256"] == hashlib.sha256(
@@ -676,15 +665,12 @@ def _task_digest(bundle: Path) -> str:
     reason="No training venv with jax and mujoco (training/SETUP.md).",
 )
 def test_iterate_blanks_the_policy_retrains_across_the_change_and_redeclares(
-    engine, tmp_path, capsys
+    engine, tmp_path, capsys, cpu_training
 ) -> None:
-    """The lifecycle audit's row 8, closed (ADR-192, ``docs/MUJOCO.md``
-    §7c): a sweep that moves the task is refused while a policy is
-    declared — correctly — so the policy sits behind a switch the sweep
-    blanks. Blank it, sweep, retrain warm across the change, re-declare,
-    switch it back on: four commands and one digest edit, no human step,
-    and the trace at the end is the comparison. Two real trainer runs at
-    1 it × 4 envs, each bounded far under the fifteen-minute rule."""
+    """Blank policy, sweep, warm retrain and re-declare (ADR-192).
+
+    Two bounded 1 × 4 CPU runs verify the changed task and rollout.
+    """
 
     root = tmp_path / "project"
     placeholder = "0" * 64
@@ -703,6 +689,7 @@ def test_iterate_blanks_the_policy_retrains_across_the_change_and_redeclares(
         "--iterations", "1", "--envs", "4", "--put", "--timeout", "600",
     )
     assert code == EXIT_OK, envelope
+    assert envelope["training"]["device"] == "cpu"
     sha1 = envelope["training"]["sha256"]
     digest1 = _task_digest(run1 / "job-task.json")
     assert envelope["training"]["task_sha256"] == digest1
@@ -756,6 +743,7 @@ def test_iterate_blanks_the_policy_retrains_across_the_change_and_redeclares(
         "--init-from-task-change", "lift weight doubled",
     )
     assert code == EXIT_OK, envelope
+    assert envelope["training"]["device"] == "cpu"
     sha2 = envelope["training"]["sha256"]
     assert sha2 != sha1
     assert envelope["training"]["task_sha256"] == digest2
