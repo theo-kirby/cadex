@@ -353,6 +353,28 @@ two real walks — a placeholder digest to a verified rollout, then a reward
 change with a warm start — with the real engine and trainer at 1 it × 4
 envs, about 30 s in all.
 
+**Recovery rehearsal (2026-09-08).** After the real-engine test's two
+successful runs and injected trainer exit 7, this public call completed from
+its retained `lift_weight=0.0003`, `policy_on=0` sweep, without another `--set`
+(`P` is that isolated test project):
+
+```bash
+JAX_PLATFORMS=cpu ./cadex --project "$P" walk --out "$P/runs/walk-recovered" \
+  --name job3.cxpolicy --init-from "$P/runs/walk-2/train/job2.cxpolicy" \
+  --init-from-parent-task "$P/runs/walk-2/train/job-task.json" \
+  --init-from-task-change "lift weight increased from 0.0002 to retained 0.0003" \
+  --iterations 1 --envs 4 --timeout 600 --json
+```
+
+All 46 prior run/asset file hashes and the existing progress history survived.
+Verification, rollout and all four review outputs passed; clearance still
+reported the toy's one offending pair. The new rollout reward was −83.7819,
+compared with the last successful rollout's −55.3476 (displayed delta −28.5).
+The trainer comparison likewise used the last successful training row,
+−0.6151 → −1.116 reward/step. This is recovery evidence, not improvement across
+the changed reward function. The command took 16.45 s with peak resident memory
+1,521,004 KiB; CPU training reported 1.39 s and witness error 4.88e-9.
+
 The same entry point also runs the vertical linear carriage in
 `examples/lifecycle/` (ADR-203), with a real slide joint and a force motor.
 That directory gives reproduction commands and both projects' `PROGRESS.md`

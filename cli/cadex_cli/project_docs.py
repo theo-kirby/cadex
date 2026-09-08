@@ -145,6 +145,9 @@ Use a fresh `--out` directory for each retry. A trainer that exits unsuccessfull
 may leave a partial output there; it is not stored or declared. Previous policies,
 run artifacts and comparison rows survive. An accepted sweep stays applied with
 `policy_on=0`; failure does not roll the project back.
+Retry that retained sweep with a fresh policy `--name`, warm-starting from the
+last successful policy and its parent task; declare the task change. The CPU
+recovery command and measured comparison reference are in `docs/CLI.md` §2.
 The walk's `{progress}` row and project commit subject name the output
 relative to this project, or by basename for an external output, so the
 recorded run label contains no absolute machine path.

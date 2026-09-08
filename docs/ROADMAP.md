@@ -2102,6 +2102,11 @@ What makes them experimental, and what would settle it:
   write: prior policies, run artifacts and comparison rows survive; the accepted
   sweep stays applied and no declaration or successful review follows failure.
 
+- [x] **Rehearse successful retry after failed retraining** (2026-09-08).
+  Public walk resumes the retained sweep with the prior successful policy/task,
+  preserves 46 artifact hashes and history, and completes all four reviews.
+  Comparisons reference the last successful run; measured command in CLI §2.
+
 - [x] **Correct the walk progress-row guide** (2026-09-08, ADR-238).
   Child reward/delta rows and the successful walk's clearance row are distinct;
   failed legs add no walk review row. Existing CLI behavior and tests retained.
