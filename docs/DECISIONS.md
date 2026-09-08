@@ -21852,3 +21852,18 @@ contract. No retention changes: tracked/staged user outputs stay under Git's
 existing semantics, and no existing repository is silently untracked or migrated.
 CLI tests pin objective stability across seed/model changes, sensitivity to reward
 changes, separate action bounds, legacy handling and real CPU review propagation.
+
+
+## ADR-264 — Failed project-document writes preserve earlier history (2026-09-08)
+
+Replace the three in-place rewrite sites for progress rows, decisions and domain
+notes with one sibling-temporary-file replacement. An interrupted write previously
+truncated the authoritative document before reporting failure. Complete the new
+text before replacing the destination; preserve existing permissions and follow
+existing document symlinks. Ordinary failures clean up the temporary file and
+propagate the error. No cross-document transaction, concurrent-writer protection
+or power-loss durability is claimed; uncatchable termination may leave a hidden
+scratch file. First-visit scaffolding is unchanged.
+
+Failure-injection regressions cover partial writes and refused replacements for
+all three update paths, byte-preserved history, cleanup and successful retry.

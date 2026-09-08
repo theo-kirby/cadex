@@ -2185,6 +2185,9 @@ What makes them experimental, and what would settle it:
   alive so it stays addressable after the reap, and the final drain is
   bounded at 10 s. A second regression whose grandchild sets `SIGTERM` to
   `SIG_IGN` fails against the previous stop.
+- [x] **Preserve project docs on failed updates** (2026-09-08, ADR-264).
+  Progress, decisions and domain notes replace only fully written files; partial
+  write and replacement-failure regressions preserve history and verify retry.
 - [x] **Pin project history on resumed agent turns** (2026-09-08). Real-engine
   regression delivers prior decisions/domain notes and between-visit edits to
   the resumed prompt, and preserves old notes when new decisions/notes land.

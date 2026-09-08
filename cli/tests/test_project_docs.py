@@ -760,3 +760,45 @@ def test_objective_evidence_ignores_seeds_and_model_but_names_action_changes(tmp
     assert "training_seed 0; rollout_seed 7" in later
     path.write_text('{}')
     assert task_comparison(path)["objective_id"] is None
+
+
+@pytest.mark.parametrize("kind", ["progress", "decision", "note"])
+@pytest.mark.parametrize("failure", ["write", "replace"])
+def test_failed_document_write_preserves_history_and_retry(
+    tmp_path, monkeypatch, kind, failure
+):
+    scaffold_project_docs(tmp_path)
+    record_notes(tmp_path, "NOTE sensors: original sensor rationale")
+    path, update = {
+        "progress": (tmp_path / PROGRESS_NAME,
+                     lambda: append_progress_row(tmp_path, run="walk", what="new result")),
+        "decision": (tmp_path / DECISIONS_NAME,
+                     lambda: record_decisions(tmp_path, "DECISION: new result")),
+        "note": (tmp_path / "docs/sensors.md",
+                 lambda: record_notes(tmp_path, "NOTE sensors: new result")),
+    }[kind]
+    path.chmod(0o640)
+    original = path.read_bytes()
+    files = set(tmp_path.rglob("*"))
+    write_text = Path.write_text
+
+    def interrupted_write(target, text, *args, **kwargs):
+        write_text(target, text[:12], *args, **kwargs)
+        raise OSError("injected disk write failure")
+
+    with monkeypatch.context() as patch:
+        if failure == "write":
+            patch.setattr(Path, "write_text", interrupted_write)
+        else:
+            def refused_replace(*args):
+                raise OSError("injected disk write failure")
+            patch.setattr("cadex_cli.project_docs.os.replace", refused_replace)
+        with pytest.raises(OSError, match="injected disk write failure"):
+            update()
+    assert path.read_bytes() == original
+    assert set(tmp_path.rglob("*")) == files
+    update()
+    assert path.read_bytes().startswith(original)
+    assert path.read_text().count("new result") == (2 if kind == "decision" else 1)
+    assert path.stat().st_mode & 0o777 == 0o640
+    assert set(tmp_path.rglob("*")) == files

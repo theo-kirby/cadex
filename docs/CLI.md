@@ -848,6 +848,13 @@ difficulty. Prior evidence refers to the previous train/walk row of that kind;
 metric deltas still refer to the last row carrying each metric, which may differ.
 Standalone rollout rows retain their existing numeric format.
 
+Progress rows, decisions and domain-note updates replace their files only after
+writing succeeds (ADR-264). A failed write or replacement preserves the previous
+document and removes the temporary file on ordinary exception cleanup. Existing
+file permissions and document symlinks are preserved. This is per-file protection,
+not a transaction across documents or a power-loss guarantee; a killed process
+may leave a hidden temporary file.
+
 **Project history depends on repository ownership** (ADR-194).
 
 - **Fresh root outside another work tree:** the CLI runs `git init` and

@@ -58,10 +58,12 @@ from __future__ import annotations
 import datetime as _datetime
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import tempfile
 from typing import Any, Iterable, Mapping
 
 from .export import ExportedOutput
@@ -105,6 +107,9 @@ _ARCHITECTURE_TEMPLATE = """\
 
 Read on every visit; keep it true. Maintained by the agent and the
 `cadex` CLI (ADR-193 in the Cadex repository).
+Progress rows, decisions and domain-note updates replace their files only after
+writing succeeds, so a failed update preserves the previous document. This is
+per-file protection, not a transaction across documents or a power-loss guarantee.
 
 ## What this project is
 
@@ -594,6 +599,22 @@ def progress_numbers(
     return ", ".join(items)
 
 
+def _replace_document(path: Path, text: str) -> None:
+    """Keep the previous document intact until its replacement is complete."""
+
+    path = path.resolve()  # Preserve an existing document symlink.
+    handle, name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    scratch = Path(name)
+    try:
+        os.close(handle)
+        scratch.write_text(text, encoding="utf-8")
+        if path.exists():
+            shutil.copymode(path, scratch)
+        os.replace(scratch, path)
+    finally:
+        scratch.unlink(missing_ok=True)
+
+
 def append_progress_row(
     root: Path | str,
     *,
@@ -626,7 +647,7 @@ def append_progress_row(
         text = text.rstrip("\n") + f"\n\n{PROGRESS_HEADER}\n{PROGRESS_RULE}\n"
     if not text.endswith("\n"):
         text += "\n"
-    path.write_text(text + row + "\n", encoding="utf-8")
+    _replace_document(path, text + row + "\n")
     return row
 
 
@@ -697,7 +718,7 @@ def record_notes(root: Path | str, text: str) -> list[str]:
             existing = _NOTE_TEMPLATE.format(title=stem.replace("-", " "))
         if not existing.endswith("\n"):
             existing += "\n"
-        path.write_text(f"{existing}\n- ({date}) {body}\n", encoding="utf-8")
+        _replace_document(path, f"{existing}\n- ({date}) {body}\n")
         relative = f"{DOMAIN_DOCS_DIRNAME}/{path.name}"
         if relative not in written:
             written.append(relative)
@@ -787,7 +808,7 @@ def record_decisions(root: Path | str, text: str) -> list[str]:
         number += 1
     if not existing.endswith("\n"):
         existing += "\n"
-    path.write_text(existing + "".join(chunks), encoding="utf-8")
+    _replace_document(path, existing + "".join(chunks))
     return entries
 
 
