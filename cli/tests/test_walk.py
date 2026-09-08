@@ -3,16 +3,9 @@
 
 """``cadex walk``: the lifecycle walk as one command (ADR-199).
 
-Three layers. The digest edit and the review reader, on strings. The
-orchestration, against a **fake ``cadex``** that answers each leg in
-envelopes and logs what it was asked — no engine, no trainer, so the leg
-order, the flags carried to each leg and the refusals are pinned on any
-machine. And the real thing: the repository's plate-and-arm toy through
-the whole walk twice — the first from a placeholder digest to a verified
-rollout, the second across a reward change with a warm start — with the
-real engine and the real trainer, one iteration by four environments,
-bounded far under the fifteen-minute rule. A third attempt injects a trainer
-failure after writing a partial policy and checks preservation of both runs.
+Offline tests pin digest edits, review parsing and orchestration. Real CPU walks
+verify, iterate, fail after partial trainer output, then recover with preserved
+artifacts and comparison history (one iteration × four environments per run).
 """
 
 from __future__ import annotations
@@ -414,7 +407,7 @@ def test_usage_errors_are_refused_before_any_leg_runs(
     assert not fake_cadex.exists()
 
 
-# -- the real thing: the toy, twice ------------------------------------------
+# -- real lifecycle walks ---------------------------------------------------
 
 
 @pytest.mark.skipif(
@@ -472,14 +465,10 @@ actuator force, N·mm). Written by the walk's caller, by the convention
     reason="No training venv with jax and mujoco (training/SETUP.md).",
 )
 def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
-    engine, tmp_path, capsys
+    engine, tmp_path, capsys, monkeypatch
 ) -> None:
-    """The charter's walk on the repository's own toy: one command from a
-    placeholder digest to a verified rollout, then one more across a reward
-    change with a warm start. Everything lands under the project — the
-    review as a file the walk commits, the numbers as `PROGRESS.md` rows
-    with their deltas — and what a rebuild or a retrain re-makes stays
-    out of the project's history."""
+    """Verify, iterate, fail, recover: real CPU legs preserve project history."""
+    monkeypatch.setenv("JAX_PLATFORMS", "cpu")
 
     root = tmp_path / "project"
     toy = tmp_path / "toy.py"
@@ -499,17 +488,12 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     sha1 = envelope["training"]["sha256"]
     review1 = json.loads((out1 / REVIEW_FILENAME).read_text())
     assert review1["sha256"] == sha1 == envelope["walk"]["review"]["policy_sha256"]
-    _assert_inventory(root, review1)
-    _assert_clearance(root, review1, "below clearance")
     reward1 = float(review1["total_reward"])
     assert reward1 == reward1  # not NaN
     assert {row["label"] for row in review1["reward_totals"]} == {"lift", "control_cost"}
-    assert (root / "assets" / "job.cxpolicy").is_file()
     assert f'sha256="{sha1}"' in (root / "script.py").read_text()
 
-    # The project's history: the legs' commits, then the walk's own for the
-    # review; the policy in the store and the sensors doc tracked; the
-    # training checkpoints, the policy copies and the trace not.
+    # Track the policy and domain docs; exclude checkpoints and traces.
     subjects = _git(root, "log", "--format=%s").splitlines()
     assert subjects[0] == "cadex walk 1 it × 4 envs → runs/walk-1"
     assert subjects[1] == "cadex params policy_on=1"
@@ -537,18 +521,15 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     assert [leg["leg"] for leg in envelope["walk"]["legs"]] == [
         "sweep", "train", "declare", "rollout"
     ]
-    assert envelope["params"] == {"policy_on": 1.0, "lift_weight": 2.0e-4}
     sha2 = envelope["training"]["sha256"]
     assert sha2 != sha1
     review2 = json.loads((out2 / REVIEW_FILENAME).read_text())
     assert review2["weights"] == "job2.cxpolicy" and review2["sha256"] == sha2
-    assert review2["params"] == {"policy_on": 1.0, "lift_weight": 2.0e-4}
+    assert review2["params"] == envelope["params"] == {"policy_on": 1.0, "lift_weight": 2.0e-4}
     assert review2["training"]["task_sha256"] != review1["training"]["task_sha256"]
     reward2 = float(review2["total_reward"])
     assert reward2 == reward2
 
-    # The comparison is one recorded row (ADR-194), and the walk's commit
-    # is the last one.
     rows = [line for line in (root / "PROGRESS.md").read_text().splitlines()
             if line.startswith("| 2")]
     assert "clearance offending 1; unknown 0; pairs checked 1" in rows.pop()
@@ -559,8 +540,7 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
         _git(root, "ls-files").splitlines()
     )
 
-    # A failed retry uses the current asset name but a fresh run directory.
-    # It must preserve both policies and the successful comparison history.
+    # Fail under the current asset name, preserving both successful runs.
     preserved = {
         path: hashlib.sha256(path.read_bytes()).hexdigest()
         for folder in (out1, out2, root / "assets")
@@ -592,8 +572,7 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     assert "injected retraining failure" in failed["error"]
     assert [leg["leg"] for leg in failed["walk"]["legs"]] == ["sweep", "train"]
     assert not failed["walk"].get("review")
-    assert not (out3 / REVIEW_FILENAME).exists()
-    assert not (out3 / SCRIPT_FILENAME).exists()
+    assert not any((out3 / name).exists() for name in (REVIEW_FILENAME, SCRIPT_FILENAME))
     assert (out3 / "train/job2.cxpolicy").read_bytes() == b"partial policy"
     assert all(hashlib.sha256(path.read_bytes()).hexdigest() == digest
                for path, digest in preserved.items())
@@ -605,12 +584,42 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     assert len(new_rows) == 1 and new_rows[0].split(" | ")[1] == "params"
     assert _git(root, "log", f"{head_before}..HEAD", "--format=%s") == (
         "cadex params lift_weight=0.0003, policy_on=0")
-    # The accepted sweep survives; the failed walk is not a rollback.
-    code, current = _run(
-        capsys, "export", "--project", str(root), "--out", str(out3 / "revisit"),
+    assert json.loads((root / "script.json").read_text())["param_values"] == {
+        "policy_on": 0.0, "lift_weight": 3.0e-4,
+    }
+
+    # Retry the retained sweep, without --set or the partial failed policy.
+    recovered = root / "runs/walk-recovered"
+    code, report = _run(
+        capsys, "walk", "--project", str(root), "--out", str(recovered),
+        "--name", "job3.cxpolicy", "--init-from", str(out2 / "train/job2.cxpolicy"),
+        "--init-from-parent-task", str(out2 / "train/job-task.json"),
+        "--init-from-task-change", "lift weight increased from 0.0002 to retained 0.0003",
+        "--iterations", "1", "--envs", "4", "--timeout", "600",
     )
-    assert code == EXIT_OK, current
-    assert current["params"] == {"policy_on": 0.0, "lift_weight": 3.0e-4}
+    assert code == EXIT_OK, report
+    review = json.loads((recovered / REVIEW_FILENAME).read_text())
+    assert [(leg["leg"], leg["exit"]) for leg in review["legs"]] == [
+        ("train", 0), ("declare", 0), ("rollout", 0),
+    ]
+    assert review["params"] == {"policy_on": 1.0, "lift_weight": 3.0e-4}
+    assert review["weights"] == "job3.cxpolicy"
+    assert review["sha256"] == report["walk"]["review"]["policy_sha256"] == hashlib.sha256(
+        (root / "assets/job3.cxpolicy").read_bytes()).hexdigest()
+    _assert_inventory(root, review)
+    _assert_clearance(root, review, "below clearance")  # includes render and section
+    assert all(hashlib.sha256(path.read_bytes()).hexdigest() == digest
+               for path, digest in preserved.items())
+    progress = (root / "PROGRESS.md").read_text()
+    assert progress.startswith(progress_after)
+    added = progress[len(progress_after):]
+    for label in ("total_reward", "reward/step"):
+        prior = next(line.split(" | ") for line in reversed(progress_before.splitlines())
+                     if line.startswith("| 2") and label in line)
+        value = re.search(rf"{label} ([^ ]+)", prior[5]).group(1)
+        row = next(line for line in added.splitlines() if label in line)
+        assert f"vs {prior[3]} at {value})" in row
+    assert _git(root, "status", "--porcelain") == ""
 
 
 @pytest.mark.skipif(

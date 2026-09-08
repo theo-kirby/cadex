@@ -21381,3 +21381,10 @@ comparison and preserves the binary-provenance limitation.
 Guide maintenance (2026-09-08): removed duplicated carriage rehearsal details
 from `docs/CLI.md`, linking this ADR and record `mellow-quartz-8093` instead;
 the runnable command, reward comparison, baseline and limitations remain.
+
+
+## ADR-252 — Pin successful walk recovery (2026-09-08)
+
+Replace export-only coverage with the measured CPU retry after exit 7; consolidate
+recovery prose and assertions. Pin preserved history, verified policy, four reviews
+and last-success comparisons. Runtime is unchanged; the CLI suite gates the change.

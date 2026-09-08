@@ -141,13 +141,10 @@ attempt. A refused turn still saves changed identity for resumption; unchanged
 identity leaves that file untouched. Opening may refresh accepted restore
 attempt metadata in `script.json`, even when the subsequent turn fails.
 A refused walk does not roll that bookkeeping back or create a failure commit.
-Use a fresh `--out` directory for each retry. A trainer that exits unsuccessfully
-may leave a partial output there; it is not stored or declared. Previous policies,
-run artifacts and comparison rows survive. An accepted sweep stays applied with
-`policy_on=0`; failure does not roll the project back.
-Retry that retained sweep with a fresh policy `--name`, warm-starting from the
-last successful policy and its parent task; declare the task change. The CPU
-recovery command and measured comparison reference are in `docs/CLI.md` §2.
+After failed retraining, the accepted sweep stays applied with `policy_on=0`;
+prior artifacts and history survive. Retry with a fresh `--out` and `--name`,
+the last successful policy/parent task and an explicit task-change reason.
+`docs/CLI.md` §2 gives the tested recovery command and comparison contract.
 The walk's `{progress}` row and project commit subject name the output
 relative to this project, or by basename for an external output, so the
 recorded run label contains no absolute machine path.

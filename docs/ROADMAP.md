@@ -2097,15 +2097,11 @@ What makes them experimental, and what would settle it:
   with match/different/unavailable evidence; no refusal, rebuild or binary
   provenance claim. Offline walk regressions and the CLI suite verify it.
 
-- [x] **Failed retraining preserves successful walk history** (2026-09-08).
-  Real-engine iterate regression injects a trainer exit after a partial policy
-  write: prior policies, run artifacts and comparison rows survive; the accepted
-  sweep stays applied and no declaration or successful review follows failure.
-
-- [x] **Rehearse successful retry after failed retraining** (2026-09-08).
-  Public walk resumes the retained sweep with the prior successful policy/task,
-  preserves 46 artifact hashes and history, and completes all four reviews.
-  Comparisons reference the last successful run; measured command in CLI §2.
+- [x] **Failed retraining preserves history and retries successfully**
+  (2026-09-08, ADR-252). Real-engine regression injects partial output/exit 7,
+  then resumes the retained sweep with the prior successful policy/task. It
+  pins prior hashes/history, verified new policy, all four reviews and the
+  last successful comparison references; CLI §2 gives the tested command.
 
 - [x] **Correct the walk progress-row guide** (2026-09-08, ADR-238).
   Child reward/delta rows and the successful walk's clearance row are distinct;

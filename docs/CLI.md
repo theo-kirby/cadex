@@ -343,20 +343,15 @@ than "the turn finished without the engine accepting a script" — which was
 true of both and told nt3 nothing. Child legs record reward/delta rows
 (ADR-194); a successful walk adds the clearance review row described above
 (ADR-238). A failed leg leaves earlier rows intact but adds no walk review row.
-Use a fresh `--out` directory for each retry. If retraining exits unsuccessfully,
-a partial policy may remain there, but it is not stored or declared: previous
-stored policies, run artifacts and comparison rows survive. An accepted sweep
-stays applied with `policy_on=0`; failure does not roll the project back.
-`--set policy_on=…` is a usage error: the walk owns the switch. `cli/tests/test_walk.py` pins the leg order and the flags
-against a fake `cadex`, and runs the repository's plate-and-arm toy through
-two real walks — a placeholder digest to a verified rollout, then a reward
-change with a warm start — with the real engine and trainer at 1 it × 4
-envs, about 30 s in all.
 
-**Recovery rehearsal (2026-09-08).** After the real-engine test's two
-successful runs and injected trainer exit 7, this public call completed from
-its retained `lift_weight=0.0003`, `policy_on=0` sweep, without another `--set`
-(`P` is that isolated test project):
+**Retry after failed retraining.** The accepted sweep stays applied with
+`policy_on=0`. Previous policies, run artifacts and progress rows survive;
+partial trainer output is not stored or declared. Use a fresh `--out` and
+policy `--name`, warm-start from the last successful policy and parent task,
+and declare any task change. Do not pass `--set policy_on=…`: the walk owns it.
+The real-engine regression in `cli/tests/test_walk.py` runs two successful
+CPU walks, injects trainer exit 7, then retries the retained `lift_weight=0.0003`
+sweep with this command (`P` is the test project):
 
 ```bash
 JAX_PLATFORMS=cpu ./cadex --project "$P" walk --out "$P/runs/walk-recovered" \
@@ -366,14 +361,9 @@ JAX_PLATFORMS=cpu ./cadex --project "$P" walk --out "$P/runs/walk-recovered" \
   --iterations 1 --envs 4 --timeout 600 --json
 ```
 
-All 46 prior run/asset file hashes and the existing progress history survived.
-Verification, rollout and all four review outputs passed; clearance still
-reported the toy's one offending pair. The new rollout reward was −83.7819,
-compared with the last successful rollout's −55.3476 (displayed delta −28.5).
-The trainer comparison likewise used the last successful training row,
-−0.6151 → −1.116 reward/step. This is recovery evidence, not improvement across
-the changed reward function. The command took 16.45 s with peak resident memory
-1,521,004 KiB; CPU training reported 1.39 s and witness error 4.88e-9.
+The test pins preserved artifacts/history, verified policy, all four reviews and
+last-success comparison references. The [measured rehearsal](../.hypergraph/graph/record/dusty-vale-2809.md)
+reported reward −83.7819 versus −55.3476 under changed weights: recovery, not improvement.
 
 The same entry point also runs the vertical linear carriage in
 `examples/lifecycle/` (ADR-203), with a real slide joint and a force motor.
