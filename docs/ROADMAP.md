@@ -2060,6 +2060,30 @@ What makes them experimental, and what would settle it:
   The only host-specific input was `CADEX_MODEL=claude-opus-5`, because the
   `claude-fable-5` default is out of usage credit on this login; the
   trainer, engine and venv resolved themselves.
+- [x] **The walk holds on a second mechanism, on the same machine**
+  (2026-09-08). The same `cadex walk --prompt` entry point, **no code change
+  of any kind** (`git status` clean at `526d43fb`), took a *vertical linear
+  carriage* rig — **prismatic** joint, **force motor**, against the swing
+  arm's revolute joint and position servo — from a prompt to a verified
+  policy: **exit 0, 5:59.8 wall clock, 1,721 MB peak RSS**, into a second
+  durable project outside this repository. Legs, all exit 0 — design 340.7 s
+  (one turn), train 15.8 s, declare 0.9 s, rollout 1.0 s; `walk_seconds`
+  359.7 through review. Training local CPU at the same 5 iterations x 16 envs
+  and seed 0: 2.8 s, 4,673 parameters, reward/step **0.02347** (best
+  iteration 0.16748), witness error 2.8e-09 against a 1e-4 tolerance. The
+  verified rollout scored **total_reward 3.2963** over 4 legs (`height`
+  +3.3085, `effort` -0.0122). All four review eyes again: render
+  (front/top/right/iso, 60 triangles, 0.32 s), section (XZ at 3.125 mm),
+  inventory (2 components, 0 catalogued — this rig is printed, not
+  purchased), clearance bounds check **pass** (2 comparisons over 1 pair, 0
+  offending). Five commits, five `PROGRESS.md` rows and five project ADRs,
+  all written by the walk's child commands. **The two projects' rows are
+  comparable line for line** — same columns, same metric definitions, same
+  toy scale — and, per the standing caveat `PROGRESS.md` itself carries,
+  their reward expressions are different objectives in different units, so
+  the totals never rank the two designs against each other.
+  `--trainer-python` was dropped from this invocation: the documented
+  fallback resolved `~/cadex-train-venv` on its own.
 - [x] **Fresh walk survives a cold public CLI revisit** (2026-09-08).
   Accepted revision/digest, policy assets, trace and review geometry survive
   separate script/asset/inventory/clearance/render/section processes. Expected

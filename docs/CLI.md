@@ -186,6 +186,12 @@ per-term `reward_totals`), and the CLI records it: the second run's
 `PROGRESS.md` row carries its `total_reward` **with the change against the
 last row that had one** (ADR-194, below).
 
+**Build the engine before you walk.** The walk resolves the installed
+engine and does not check that it matches the tree, so a Python change under
+`src/Mod/cadex/` that has not been through `pixi run build-engine` runs the
+*previous* runtime and the walk still exits 0. On a fresh checkout, or after
+any engine edit, build first.
+
 **The walk is one command** (ADR-199). `cadex walk --out DIR` runs the
 legs above in order, each as a **child `cadex` command** — so each lands
 the `PROGRESS.md` row and the project commit it always lands, writes the
