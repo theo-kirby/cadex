@@ -662,18 +662,10 @@ def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
 def _assert_inventory(root, review):
     assert review["inventory"] == {
         "available": True, "component_count": 2, "catalogued_count": 0,
-        # ADR-243: the toy is hand-modelled, so it buys nothing and leaves
-        # nothing unplaced -- but the run recorded the roll call, so this is
-        # a measured zero rather than an unknown.
-        "unplaced_catalog_count": 0, "unplaced_catalog": [],
         "path": "docs/inventory.md",
     }
     text = (root / review["inventory"]["path"]).read_text()
     assert "2 component(s)" in text
-    assert "## Catalogued, but not placed" not in text
-    assert "inventory 2 component(s), 0 catalogued, 0 catalogued but not placed" in (
-        root / "PROGRESS.md"
-    ).read_text()
     assert "docs/inventory.md" in _git(root, "ls-files").splitlines()
 
 
@@ -685,7 +677,6 @@ def test_walk_review_without_published_assembly(fake_cadex, toy_root, capsys):
     review = json.loads((out / REVIEW_FILENAME).read_text())
     assert review["inventory"] == {
         "available": False, "component_count": 0, "catalogued_count": 0,
-        "unplaced_catalog_count": 0, "unplaced_catalog": [],
         "path": "docs/inventory.md",
     }
     assert "Inventory unavailable" in (toy_root / "docs/inventory.md").read_text()

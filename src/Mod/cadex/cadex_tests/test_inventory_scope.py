@@ -285,193 +285,49 @@ def test_a_project_with_no_accepted_revision_is_refused(tmp_path) -> None:
     assert "no accepted revision" in value["error"]
 
 
-# --------------------------------------------------------------------------
-# the roll call: catalogued parts the assembly does not place (ADR-243)
-# --------------------------------------------------------------------------
-
-
-def _stage_library():
-    """Stage a fresh ``lib``, which is what empties the run's side tables."""
-
-    from cadex_domain_api import create_domain_api
-    from cadex_library_api import create_library_api
-    from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
-
-    pack = XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
-    return create_library_api(
-        create_domain_api(pack.domain, pack.api_exports, pack.output_types)
-    )
-
-
-def test_the_run_tallies_every_generator_call_not_every_definition() -> None:
-    """Two identical servos are one definition and two purchases.
-
-    The identity table is keyed by definition, so a design that builds the
-    same part twice looks like one part to it. The roll call is the only
-    place the second one still exists.
-    """
-
-    from cadex_library_api import library_catalog_calls
-
-    _stage_library()  # module-level side tables; a run stages once
-    body = _solid("fuse", [3.0, 12.0])
-    LibraryPart("bolt", "m3x12-socket", body, {})
-    LibraryPart("bolt", "m3x12-socket", body, {})
-    LibraryPart("nut", "m3-hex", _solid("box", [5.5, 5.5, 2.4]), {})
-
-    assert library_catalog_calls() == {"bolt/m3x12-socket": 2, "nut/m3-hex": 1}
-    # ...and two definitions for those three purchases, which is the gap.
-    assert len(library_catalog_identity()) == 2
-
-
-def test_staging_a_library_empties_the_roll_call() -> None:
-    """One staging per run, so a run never inherits the last one's purchases."""
-
-    from cadex_library_api import library_catalog_calls
-
-    LibraryPart("bolt", "m3x12-socket", _solid("fuse", [3.0, 12.0]), {})
-    assert library_catalog_calls()
-
-    _stage_library()
-    assert library_catalog_calls() == {}
-
-
-def _project_with_roll_call(tmp_path, calls: dict) -> object:
-    """The fixture above, plus the report key a post-ADR-243 run writes.
-
-    The second m3x12 is fused into the plate rather than placed: no output
-    carries its definition, so the stamp cannot see it and only the call
-    count says it was bought.
-    """
-
-    bolt_body = _solid("fuse", [3.0, 12.0])
-    LibraryPart("bolt", "m3x12-socket", bolt_body, {})
-    plate = _solid("box", [40.0, 20.0, 4.0])
-    outputs = [
-        _part_output("plate", plate),
-        _part_output("m3a", bolt_body),
-        _component_output("base", "plate", position=(0.0, 0.0, 0.0), grounded=True),
-        _component_output("boltA", "m3a", position=(6.0, 0.0, 4.0)),
-        {
-            "name": "asm",
-            "type": "assembly",
-            "domain": "assembly",
-            "definition": {
-                "domain": "assembly",
-                "operation": "assembly",
-                "output_type": "assembly",
-                "arguments": [],
-                "properties": {},
-            },
-        },
-    ]
-    cadex_project_worker._stamp_catalog_identity(outputs)
-    report = {"ok": True, "digest": DIGEST, "outputs": outputs}
-    if calls is not None:
-        report["catalog_calls"] = calls
-    return _store(tmp_path, report)
-
-
-def test_the_inventory_names_catalogued_parts_the_assembly_does_not_place(
-    tmp_path,
-) -> None:
-    root = _project_with_roll_call(tmp_path, {"bolt/m3x12-socket": 2})
-    value = _inventory(root)["value"]
-
-    assert value["catalog_calls_known"] is True
-    assert value["catalog_generated"] == {"bolt/m3x12-socket": 2}
-    assert value["catalog_counts"] == {"bolt/m3x12-socket": 1}
-    assert value["unplaced_catalog"] == [
-        {
-            "family": "bolt",
-            "part_number": "m3x12-socket",
-            "generated": 2,
-            "placed": 1,
-            "unplaced": 1,
-        }
-    ]
-
-
-def test_a_catalogued_part_the_assembly_places_is_not_reported_unplaced(
-    tmp_path,
-) -> None:
-    value = _inventory(_project_with_roll_call(tmp_path, {"bolt/m3x12-socket": 1}))[
-        "value"
-    ]
-
-    assert value["catalog_calls_known"] is True
-    assert value["unplaced_catalog"] == []
-
-
-def test_a_revision_accepted_before_the_roll_call_reports_unknown(tmp_path) -> None:
-    """Absent is not zero: an old accepted report knows nothing either way."""
-
-    value = _inventory(_project_with_roll_call(tmp_path, None))["value"]
-
-    assert value["catalog_calls_known"] is False
-    assert value["catalog_generated"] == {}
-    assert value["unplaced_catalog"] == []
-
-
-#: Two catalogued MG90S: one placed as a component, one fused into a plate.
-#: This is the pan-tilt walk's finding, reduced to the smallest script that
-#: reproduces it — the fused servo leaves no catalogued output behind, so
-#: before ADR-243 the review said the assembly held one uncatalogued plate
-#: and one servo, and nothing at all about the second purchase.
-FUSED_SERVO_SCRIPT = """
-placed = lib.servo("mg90s")
-fused = lib.servo("mg90s", origin=[40, 0, 0])
-plate = part.fuse([part.box(60, 30, 4, origin=[-10, -15, -4]), fused.body])
-mount = assembly.component(plate, grounded=True)
-arm = assembly.component(placed.body)
-asm = assembly.assembly([mount, arm])
-diag = assembly.solve(asm)
-result = {"plate": plate, "servo": placed.body, "mount": mount,
-          "arm": arm, "asm": asm, "diag": diag}
-"""
-
-
 @pytest.mark.skipif(
     __import__("test_cadexd_lifecycle").FREECADCMD is None,
     reason="No FreeCADCmd binary available for the real-kernel inventory.",
 )
-def test_the_real_engine_names_the_servo_the_design_fused_away() -> None:
-    """The whole join, on the real kernel, over the protocol.
-
-    The stubbed halves above can only prove the arithmetic. What this proves
-    is the part the walk actually needs: that a real ``lib.servo`` fused into
-    a real solid by a real worker still reaches the inventory as a purchase,
-    and that the one placed beside it is still counted as placed.
-    """
-
-    import tempfile
-    from pathlib import Path
-
+def test_one_catalog_body_placed_twice_counts_two_instances(tmp_path) -> None:
     from test_cadexd_lifecycle import _spawn_cadexd, _stop
 
-    root = Path(tempfile.mkdtemp(prefix="cadexd-inventory-ci-"))
+    source = """
+bolt = lib.bolt("M3", 12.0).body
+first = assembly.component(bolt, grounded=True)
+second = assembly.component(bolt)
+asm = assembly.assembly([first, second])
+diag = assembly.solve(asm)
+result = {"bolt": bolt, "first": first, "second": second,
+          "asm": asm, "diag": diag}
+"""
     client = None
     try:
         client = _spawn_cadexd()
-        assert client.request("open_project", {"project_root": str(root)})["ok"] is True
-        written = client.request(
-            "write_script", {"source": FUSED_SERVO_SCRIPT, "expected_revision": ""}
-        )
-        assert written["ok"] is True, written
-
+        assert client.request("open_project", {"project_root": str(tmp_path)})["ok"]
+        written = client.request("write_script", {"source": source, "expected_revision": ""})
+        assert written["ok"], written
         reply = client.request("inspect", {"scope": "inventory"})
-        assert reply["ok"] is True, reply
+        assert reply["ok"], reply
         value = reply["value"]
-
-        assert value["catalog_calls_known"] is True
-        assert value["catalog_generated"] == {"servo/mg90s": 2}
-        # One placed component carries the catalogue row...
-        assert value["catalog_counts"] == {"servo/mg90s": 1}
-        # ...and the one welded into the plate is named rather than lost.
-        assert value["unplaced_catalog"] == [
-            {"family": "servo", "part_number": "mg90s",
-             "generated": 2, "placed": 1, "unplaced": 1}
-        ]
-        assert value["uncatalogued_sources"] == ["plate"]
+        assert value["component_count"] == 2
+        assert value["catalog_counts"] == {"bolt/m3x12-socket": 2}
+        # Component facts can exceed the preview budget; read leaf paths.
+        names = set()
+        for index in range(2):
+            for field in ("component", "source_output", "catalog"):
+                leaf = client.request("inspect", {
+                    "scope": "inventory", "path": f"/components/{index}/{field}",
+                })
+                assert leaf["ok"], leaf
+                if field == "component":
+                    names.add(leaf["value"])
+                elif field == "source_output":
+                    assert leaf["value"] == "bolt"
+                else:
+                    assert leaf["value"] == {"family": "bolt", "part_number": "m3x12-socket"}
+        assert names == {"first", "second"}
+        assert value["uncatalogued_sources"] == []
+        assert not {"catalog_generated", "catalog_calls_known", "unplaced_catalog"} & value.keys()
     finally:
         _stop(client)

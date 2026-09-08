@@ -229,6 +229,9 @@ of doing any of them:
    Inventory reads the accepted assembly without a rebuild or tokens. The
    `inventory` block carries `available`, `component_count`, `catalogued_count`
    and `path` (relative to the **project**, always `docs/inventory.md`).
+   Catalog totals count placed instances, including repeated links to one body.
+   They do not infer purchases or identify catalog bodies consumed by booleans
+   or used only as cutters (ADR-243).
    No published assembly yields an explicit unavailable report with zero
    components; inspection failures still fail the command. This does not
    relax the walk's existing task, policy and training prerequisites.

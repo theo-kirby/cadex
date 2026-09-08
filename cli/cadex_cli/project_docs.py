@@ -116,7 +116,9 @@ The artifacts are the same project-relative paths in both modes: the
 bundle and the policy under `runs/<name>/train/`, the verified rollout
 under `runs/<name>/rollout/`, the numbers in `runs/<name>/review.json`
 and the generated `{docs}/inventory.md` component report (also summarized
-in the review's `inventory` block), plus `{docs}/clearance.md` and the
+in the review's `inventory` block). Catalog totals count placed instances;
+they cannot identify hardware fused into other solids or infer purchases.
+The review also writes `{docs}/clearance.md` and the
 review's `clearance` block. Named front/top/right/iso previews and their
 summary live in `review/render/<accepted-revision>/`; the `render` block
 carries project-relative paths, revision/digest, approximation, limits and

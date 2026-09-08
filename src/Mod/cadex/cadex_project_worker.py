@@ -352,21 +352,6 @@ def _stamp_catalog_identity(outputs: list[dict[str, Any]]) -> None:
             item["catalog"] = dict(found)
 
 
-def _catalog_calls() -> dict[str, int]:
-    """The run's ``lib.*`` roll call, for the report (ADR-243).
-
-    The stamp above can only mark a body that survived to be a published
-    output under its own definition. A generated part that was fused into
-    another solid, cut with, or simply not returned leaves no trace there —
-    and "the design bought two catalogued servos and welded them into a
-    plate" is exactly what an assembly review must be able to say.
-    """
-
-    from cadex_library_api import library_catalog_calls
-
-    return library_catalog_calls()
-
-
 def _stamp_measurement_subjects(
     outputs: list[dict[str, Any]],
     artifact_by_definition: Mapping[str, dict[str, Any]],
@@ -867,7 +852,6 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
         # so is the catalog stamp (ADR-236) — which is why it is applied here,
         # after every domain has appended, and reads nothing the digest hashes.
         _stamp_catalog_identity(outputs)
-        catalog_calls = _catalog_calls()
         digest = compute_project_digest(root, outputs)
         _attach_routes(outputs)
         display_request = validate_display_request(request.get("display"))
@@ -892,11 +876,6 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
             "board_rows_converted": list(boards.converted),
             "mount_rows_converted": list(mounts.converted),
             "wiring": _wiring_registry(nets, result, boards),
-            # Every lib.* call this run made, whatever became of the body
-            # (ADR-243). Derived data on the same footing as the stamp and
-            # the wiring registry: read after every domain has appended, and
-            # feeding nothing the digest hashes.
-            "catalog_calls": catalog_calls,
             "digest": digest,
             "validations": validations,
             "component_sources": component_sources,

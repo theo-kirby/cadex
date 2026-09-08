@@ -1194,24 +1194,6 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
             "pose": "initial solved pose (not swept motion)",
             "pairs": pairs,
         }
-    generated = {
-        str(key): int(count)
-        for key, count in dict(report.get("catalog_calls") or {}).items()
-    }
-    unplaced = []
-    for key in sorted(generated):
-        family, _, part_number = key.partition("/")
-        placed = int(catalogued.get(key, 0))
-        if generated[key] > placed:
-            unplaced.append(
-                {
-                    "family": family,
-                    "part_number": part_number,
-                    "generated": generated[key],
-                    "placed": placed,
-                    "unplaced": generated[key] - placed,
-                }
-            )
     return {
         "revision": revision,
         "assembly": assembly,
@@ -1219,23 +1201,12 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
         "components": components,
         "catalog_counts": dict(sorted(catalogued.items())),
         "uncatalogued_sources": sorted(set(uncatalogued)),
-        # ADR-243: what the script *bought* against what the assembly
-        # *places*. Absent from a report accepted before ADR-243, which is
-        # reported as unknown rather than as nothing.
-        "catalog_generated": dict(sorted(generated.items())),
-        "catalog_calls_known": "catalog_calls" in report,
-        "unplaced_catalog": unplaced,
         "note": (
             "One row per component of the accepted assembly. 'catalog' is "
             "present only where the placed output was built by a lib.* "
             "generator; an output modelled by hand has no catalogue row to "
             "name, and its source output name is listed under "
-            "'uncatalogued_sources' instead. 'catalog_generated' counts "
-            "every lib.* call the accepted run made, and 'unplaced_catalog' "
-            "is what it generated but the assembly does not place -- a part "
-            "fused into another solid, cut with, or published loose; both "
-            "are empty and 'catalog_calls_known' is false on a revision "
-            "accepted before this was recorded. 'placement' is the pose the "
+            "'uncatalogued_sources' instead. 'placement' is the pose the "
             "assembly solver settled on, not the pose the script declared. "
             "For the full measurement of any one part, ask "
             "inspect scope=\"output\" with that source_output as the target."

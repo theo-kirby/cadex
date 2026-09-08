@@ -21061,3 +21061,24 @@ through `cadexd` — is unchanged and green. A first run of the suite failed 34
 tests because the new helper was called `_component_local_shape`, which
 already existed with a different signature in the same module; the rename to
 `_linked_source_shape` is why the name reads the way it does.
+
+
+---
+
+## ADR-243 — Inventory counts placed instances, not generator calls (2026-09-08)
+
+Remove the unqualified catalog tally introduced in 997293b8 in a new corrective
+commit. Its code cited this ADR before a decision existed. A generator call can
+produce an unused value or a clearance cutter, and one generated body can be
+placed repeatedly. Subtracting placed instances from calls therefore cannot name
+missing hardware, purchases, or parts fused into a solid.
+
+Delete the call registry, worker report field, generated-minus-placed inspection
+fields, CLI prose and walk counts, and tests dedicated to those claims. Retain
+ADR-236 catalog identity and inventory of actually placed components. Existing
+accepted reports may carry the old field; readers ignore it without reacceptance
+or digest changes. A real-kernel regression places one catalog body twice and
+requires two catalogued instances. Inventory still cannot identify catalog parts
+inside boolean results; absence of a catalog row does not prove their absence.
+CLI, integration and walk scaffold documentation state that boundary. No protocol
+operation or argument, shell client, or inherited source changes.

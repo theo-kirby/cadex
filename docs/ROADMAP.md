@@ -1928,6 +1928,9 @@ What makes them experimental, and what would settle it:
   numbers. The carriage reaches a verified 50-step rollout but does not learn
   to hold height in one iteration. `cli/tests/test_walk.py` pins the slide
   joint, policy digest and review with the real engine and trainer.
+- [x] **Remove unsupported inventory purchase inference** (ADR-243).
+  Keep catalog identity and placed-instance totals, including repeated links;
+  remove generator-call tally and generated-minus-placed reports.
 - [x] **Inventory is part of the walk review** (ADR-236 follow-up).
   After rollout, write `docs/inventory.md` and the `review.json` inventory
   counts and project-relative path, committed together in every mode.
