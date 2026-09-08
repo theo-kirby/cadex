@@ -11,14 +11,10 @@ Status: open
 
 ## Current
 
-The seeded lifecycle criteria are satisfied in the reconciled state; no charter-derived gap is retired and the human-owned checkboxes are unchanged. Reporting and its iterate verification are complete, so the former medium direction is spent [rec: narrow-wing-0418] [rec: mellow-quartz-8093] [rec: frosty-wolf-4770].
-
-1. **Selected direction: subtractive lifecycle-guide maintenance (missions 2/6).** Resolve the observed progress-row contradiction first, then shorten the exact rehearsal block whose details already live in ADR-251 and the work record. This bounded standing maintenance removes obsolete and duplicated prose; it opens no runtime surface or qualification campaign. The short horizon defines both units and their existing CLI gate [rec: frosty-wolf-4770].
-2. **Satisfied criteria retained as evidence.** Swing-arm and carriage prompt walks prove the pipeline on this machine. Carriage width iteration preserves objective and baseline while recording a lower reward; it does not qualify mechanical quality or learned gait. Reporting compares Python bytes only. Headless is exercised, remote uses a local dispatcher stand-in in tests, GUI attachment is documented and unexercised [rec: wandering-jasper-6102] [rec: rare-cliff-9595] [rec: early-quill-3654] [rec: narrow-wing-0418] [rec: mellow-quartz-8093].
-3. **Alternatives rejected.** Additional mode parity (mission 2) repeats an existing test; shell lifecycle qualification (mission 1) lacks a usable bundle here. Neither becomes fallback work when the selected direction ends. The guide correction is the one new direction selected this pass [rec: western-reef-4119] [rec: frosty-wolf-4770].
-4. **Standing and parked frontier.** round-glacier-2865 remains standing-only reduction, never an iteration target. brave-stone-9609 and late-pond-2851 remain open but unselected: catalog breadth and RL scale are Later criteria requiring human promotion. Fleet, report rendering, variant studies and outside-source mechanisms likewise remain parked. A large remaining budget does not change that boundary [rec: modest-summit-8554] [rec: frosty-wolf-4770].
-
-No further medium unit is dispatchable without new concrete evidence. Completed worker, consent, linked-part, provider metadata and OpenBLAS corrections remain completed; preserve the durable projects and do not rerun their qualifications [rec: lawful-dune-3795] [rec: ready-otter-2700] [rec: lawful-wolf-9205] [rec: frosty-wolf-4770].
+1. **Selected standing direction: evidence-triggered lifecycle maintenance (missions 1/2/6).** The two concrete guide corrections are complete. Preserve working behavior and correct the next observed contradiction or failure with the smallest subtractive change and the zone's gate. There is no current repair to promote into short; this is a standing policy, not an audit assignment [rec: still-harvest-7242] [rec: floral-canyon-9424] [rec: sharp-garden-2483].
+2. **Three candidates compared.** Select standing maintenance; reject another rehearsal/mode qualification because the full iterate and parity gate already supply evidence; reject further guide compression because no new exact target was established. No additional direction or conditional actor slot is opened [rec: mellow-quartz-8093] [rec: frosty-wolf-4770] [rec: sharp-garden-2483].
+3. **Satisfied criteria retain their limits.** Swing-arm and carriage prompt walks establish the local toy pipeline. Width iteration preserves the baseline and fixed task while decreasing reward; it does not establish learned gait or mechanical quality. Runtime reporting compares Python bytes only. Headless is exercised; remote uses a local dispatcher stand-in; GUI attachment is documented and unexercised [rec: wandering-jasper-6102] [rec: rare-cliff-9595] [rec: early-quill-3654] [rec: narrow-wing-0418] [rec: mellow-quartz-8093].
+4. **Open but unselected.** round-glacier-2865 is standing-only reduction; brave-stone-9609 and late-pond-2851 do not authorize catalog breadth or RL scale. Fleet, report rendering, variant studies and outside-source mechanisms remain Later criteria requiring human promotion. No charter-derived gap is retired and no charter checkbox is changed [rec: modest-summit-8554] [rec: sharp-garden-2483].
 
 ## Negative knowledge
 
@@ -221,3 +217,5 @@ No further medium unit is dispatchable without new concrete evidence. Completed 
 
 - western-reef-4119 — fold completed criteria; retain reporting first and bounded iterate verification; keep Later criteria parked
 - frosty-wolf-4770 — fold completed reporting and iterate evidence; select bounded subtractive guide maintenance
+
+- sharp-garden-2483 — both guide units folded; evidence-triggered standing maintenance selected with no actor dispatch.
