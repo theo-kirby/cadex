@@ -50,6 +50,8 @@ Joining a fresh evaluation's identity map to the unchanged historical pan-tilt d
 
 **The wider-carriage iterate has consistent initial-pose review evidence.** Four inspected front/top/right/iso renders show the carriage around its rail (60 triangles, Y bounds ±40 mm). The world XZ section at Y = 3.125 mm reports `ok`, with one closed base contour and two carriage contours. Inventory has two uncatalogued components and carriage volume 231950 mm³. Clearance is 0.5 mm, common volume 0, one pair, zero offending/unknown; bounds agreement passes two comparisons. Review outputs agree with the accepted revision/digest. Retain `working`: these are initial-pose and tessellation checks, not motion coverage; CLI gate: 223 passed without skips. [rec: mellow-quartz-8093]
 
+**Review documentation agrees with its existing output.** The guide's obsolete denial of the walk clearance review row is removed; runtime and the accurate project scaffold are unchanged [rec: still-harvest-7242]. The condensed carriage rehearsal retains initial-pose and single-seed limitations and links immutable four-eye evidence instead of repeating it. Reconcile judgement: retain `working` within the existing review limits; documentation maintenance supplies no new review execution [rec: floral-canyon-9424].
+
 ## Negative knowledge
 
 - [scope: early-gate-3510 scratch definition traversal and unchanged historical pan-tilt report | confidence: high | evidence: early-gate-3510] Fresh evaluation identity enables syntactic matches for measured fuse/transform/cut inputs, but cold pan-tilt stamps supply no identity. Equal definitions lose occurrence provenance; unknown operations are not traversed, so zero matches there proves no absence. Paths establish neither purchases nor surviving material.
@@ -109,3 +111,5 @@ Joining a fresh evaluation's identity map to the unchanged historical pan-tilt d
 - open-hollow-2140 — the ot4 machine's first walk never reached its review leg, so none of the four calls had been exercised there; superseded by the clean walk below
 - wandering-jasper-6102 — the clean ot4 walk's review step exercises all four eyes on this machine in one run: render front/top/right/iso over 13,432 triangles, section XZ at Y = 3.125 mm, inventory 10 components / 7 catalogued, clearance bounds check pass over 90 comparisons across 45 pairs
 - mellow-quartz-8093 — The wider-carriage iterate has consistent initial-pose review evidence
+- still-harvest-7242 — guide corrected to distinguish child progress rows from successful walk clearance review; CLI 223 passed, no skips
+- floral-canyon-9424 — carriage iterate guide shortened while preserving command, comparison and review limits; CLI 223 passed, no skips
