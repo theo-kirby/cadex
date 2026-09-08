@@ -250,15 +250,12 @@ of doing any of them:
    relative to `DIR`). Run the walk **under the project** — `--out
    <project>/runs/<name>` — and the review is in the project: the walk's
    own commit includes that file, `docs/inventory.md` and `docs/clearance.md`, after the legs' commits.
-   Inventory reads the accepted assembly without a rebuild or tokens. The
-   `inventory` block carries `available`, `component_count`, `catalogued_count`
-   and `path` (relative to the **project**, always `docs/inventory.md`).
-   Catalog totals count placed instances, including repeated links to one body.
-   They do not infer purchases or identify catalog bodies consumed by booleans
-   or used only as cutters (ADR-243).
-   No published assembly yields an explicit unavailable report with zero
-   components; inspection failures still fail the command. This does not
-   relax the walk's existing task, policy and training prerequisites.
+   The `inventory` block saves `available`, `component_count`, `catalogued_count`
+   and a project-relative `path` to the **latest** `docs/inventory.md`.
+   Later inventory calls overwrite that report's revision and named rows;
+   the old inventory block retains counts but no named rows or revision.
+   Read the report at the walk's Git commit for its historical inventory.
+   Unavailable assemblies have zero counts; inspection errors fail the command.
 
    Clearance reuses the accepted pair reader without another rebuild (ADR-238).
    Its `clearance` block records availability, revision, initial-solved-pose

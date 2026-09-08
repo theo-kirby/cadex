@@ -159,9 +159,9 @@ determine which copy is newer, refuse a run, or rebuild the engine.
 The artifacts are the same project-relative paths in both modes: the
 bundle and the policy under `runs/<name>/train/`, the verified rollout
 under `runs/<name>/rollout/`, the numbers in `runs/<name>/review.json`
-and the generated `{docs}/inventory.md` component report (also summarized
-in the review's `inventory` block). Catalog totals count placed instances;
-they cannot identify hardware fused into other solids or infer purchases.
+and the latest `{docs}/inventory.md` report. The review saves inventory counts
+and its latest-report link; recover historical rows from the walk's Git commit
+(see the CLI guide's walk review contract).
 The review also writes `{docs}/clearance.md` and the
 review's `clearance` block. Named front/top/right/iso previews and their
 summary live in `review/render/<accepted-revision>/`; the `render` block

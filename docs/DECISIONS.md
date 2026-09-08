@@ -21401,3 +21401,10 @@ all four reviews and policy verification passed. Backend defaults stay unchanged
 Test follow-up: replace duplicate walk CPU pins with a requested shared fixture
 for real train/iterate/walk and local dispatch stand-ins; assert CPU receipts.
 Condense stale test prose. Production backend choice and fake GPU cases stay intact.
+
+
+## ADR-254 — Distinguish latest inventory from saved walk counts (2026-09-08)
+
+Replace repeated guide/scaffold inventory prose with the measured contract:
+a `swing` → `rocker` rename updates the latest report, saved counts stay at two,
+and Git retains original rows. Self-contained historical inventory is next.
