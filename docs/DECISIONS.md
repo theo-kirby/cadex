@@ -20999,3 +20999,65 @@ and in the head plate (73.500 mm³). Those are the project's design business,
 not this fix's; what matters here is that the surface no longer hides a
 contact by measuring the part somewhere else. CLI gate: 195 passed, no skips.
 
+
+---
+
+## ADR-242 — The swept clearance check measures a component where the assembly puts it (2026-09-08)
+
+ADR-241 fixed the static measurement and left its sibling standing, with the
+reason written down: `_clearance_at_frame`, the swept check inside the
+simulation trace, reads the same `App::Link.Shape` and so measures a body
+whose transform rides on the shape — every `lib.*` part — back in the frame it
+was authored in. It runs per pair per frame over thousands of frames, so
+composing a copy in that loop was a cost that needed its own measurement
+before the fix could be chosen.
+
+**What it cost, measured first.** A three-component sweep under `FreeCADCmd`,
+world-authored throughout so both versions see identical geometry and spend
+identical distance queries, with the placements moved every frame the way
+`updateForFrame` moves them:
+
+| case | frames | pre-fix ms/frame | post-fix ms/frame |
+|---|---|---|---|
+| box-rejected (286 queries) | 2000 | 0.429 / 0.422 | 0.374 / 0.378 |
+| distance-queried (900 queries) | 300 | 2.999 / 3.015 | 3.043 / 3.044 |
+
+Run-to-run noise is ~3% on the first row and ~1% on the second. The sweep gets
+**faster** where box rejection dominates — which is the case the check is
+designed around — because a `Link.Shape` read builds a shape and the fix reads
+one composed copy per component instead of one per pair. Where a real distance
+query dominates, the difference is ~1%, inside the noise of the query itself.
+So the cost the ADR-241 note was worried about is not there, and the cheap
+shape is the one that keeps it away: `_clearance_prepare` makes **one copy per
+component before the frame loop**, and the loop only writes its placement
+(`component.Placement * shape.Placement`, a `TopLoc_Location`, not geometry).
+A container source has no readable shape of its own and is read live, exactly
+as in ADR-241.
+
+`_component_world_shape` and the new `_clearance_prepare` now share
+`_linked_source_shape`, so there is one place that knows how to read a linked
+body's own shape rather than two.
+
+**The defect, in numbers.** A real-kernel regression
+in `test_swept_clearance.py`
+(`test_a_shape_placed_component_is_swept_where_the_assembly_puts_it`)
+swings an arm whose transform rides on the shape — its
+geometry stands 20–50 mm out along its own +X, which is what `part.transform`
+produces — past a post authored in world coordinates at y 36–44, in 5° steps
+through 180°. After the fix: the rest pose reads 36.674 mm (the arm's near
+corner to the post's, `sqrt(16² + 33²)`), and the arm intersects the post at
+0.0 mm across frames 16–20, the quarter turn. On the pre-fix source the same
+driver reports a rest distance of **33.0 mm** and an **empty breach list** —
+the arm sweeps straight through the post and the clearance promise the script
+made is reported as kept, because the check measured the arm back at 0–30 mm.
+That is the strongest form the defect takes: not a wrong number but a silent
+pass.
+
+No published field, protocol op, payload contract or content digest changes;
+`clearance_mm` and the refusal's `details` are as they were. Verification:
+engine suite 2077 passed, 52 skipped (2076 before, plus the new regression);
+the pre-existing live sweep test — an arm that really does swing into a post
+through `cadexd` — is unchanged and green. A first run of the suite failed 34
+tests because the new helper was called `_component_local_shape`, which
+already existed with a different signature in the same module; the rename to
+`_linked_source_shape` is why the name reads the way it does.
