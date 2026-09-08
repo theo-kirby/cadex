@@ -11,10 +11,10 @@ Status: open
 
 ## Current
 
-1. **Preserve completed lifecycle and review evidence (missions 1, 2 and 6).** Both fresh mechanisms passed complete review; the subsequent cold arm revisit also preserved accepted identity, policy assets, restored trace and review contents with 195 built-engine CLI tests passing without skips. No further persistence repair or second-mechanism replay is warranted by that evidence [rec: first-branch-9614] [rec: quiet-vine-3426] [rec: fair-cedar-7455].
-2. **Resolve demonstrated documentation maintenance before considering another direction (mission 1).** The stale solver-migration paragraph is the one concrete finding, now selected in short. No multi-unit implementation gap is declared. Promote further work only from a specific failure, critic must-fix or new directive after short resolves; a clean correction exhausts this bounded direction [rec: weathered-haven-8656] [rec: green-wolf-7549].
+1. **Preserve completed lifecycle and review evidence (missions 1, 2 and 6).** Both fresh mechanisms passed complete review; the cold arm revisit preserved accepted identity, policy assets, restored trace and review contents with 195 built-engine CLI tests passing without skips. No further persistence repair or second-mechanism replay is warranted [rec: first-branch-9614] [rec: quiet-vine-3426] [rec: fair-cedar-7455].
+2. **Finish the bounded orientation correction before considering another direction (mission 1).** VISION recovery guidance is corrected and accepted. The only newly selected finding is obsolete live-state prose in .hypergraph/AGENTS.md, promoted to short after the former short unit landed. No multi-unit implementation gap is declared; acceptance without a finding exhausts this direction [rec: twilight-key-7506] [rec: careful-sand-9714] [rec: first-wing-3387].
 
-Active run criteria remain reconciled working; wider catalog/reduction/RL nodes do not authorize Later criteria. Ordinary-bundle qualification and a broad documentation audit were considered but are not queued. GUI is documented-only, remote scripted-only; toy policy verification, initial-pose clearance and tessellation sections retain their limits. Do not retick the charter or consume budget with repeated no-change evidence [rec: modest-summit-8554] [rec: fair-cedar-7455] [rec: green-wolf-7549].
+Active criteria remain reconciled working; wider open catalog/reduction/RL nodes do not authorize Later criteria. Ordinary-bundle qualification and a broader documentation audit were considered but are not queued. GUI remains documented-only, remote scripted-only; toy policy verification, initial-pose clearance and tessellation sections retain their limits. Do not retick the charter or consume budget with repeated no-change evidence [rec: modest-summit-8554] [rec: fair-cedar-7455] [rec: first-wing-3387].
 
 ## Negative knowledge
 
@@ -139,3 +139,5 @@ Active run criteria remain reconciled working; wider catalog/reduction/RL nodes 
 - modest-grotto-1192 — fold paired rehearsal evidence and select bounded persistence maintenance; preserve parked scope
 
 - green-wolf-7549 — fold clean cold revisit; select demonstrated recovery documentation correction and preserve parked scope
+
+- first-wing-3387 — fold accepted recovery correction and reconciled handoff; select only narrow orientation snapshot maintenance
