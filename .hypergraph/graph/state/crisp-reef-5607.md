@@ -54,6 +54,8 @@ All at 1 iteration × 4 environments (seeds 0, 1, 0, 0, 0 and 0), `--timeout 600
 
 **Walk engine/source evidence is now reported before the first leg (ADR-251).** JSON and stderr distinguish `match`, `different` and `unavailable` for top-level installed/payload Python bytes versus source, with full counts and at most ten names per list. Reporting changes neither selection nor refusal and proves no binary currency or loaded-module provenance. CLI gate: 223 passed without skips; all three new walk cases fail on the old source at the missing report key. Retain `working`: this qualifies reporting without independently repeating the full lifecycle. [rec: narrow-wing-0418]
 
+**Failed retraining is regression-qualified after two successful toy walks.** The real-engine iterate test injects a trainer exit 7 after partial output in a fresh directory. The walk exits 1 after sweep/train, without failed-run policy declaration or review; both successful run directories, stored policy assets, script bytes and prior comparison history survive unchanged. Exactly one accepted sweep row/commit remains, also on a public CLI revisit. The full CLI gate recorded **223 passed, zero skips**. Reconcile judgement: retain `working`; this closes failure-path coverage without demonstrating a production defect, control quality, live conversation repair, GUI or actual remote execution. [rec: dawn-sky-3891]
+
 ## Negative knowledge
 
 - [scope: what the walk commits from a training leg | confidence: medium | evidence: shy-cabin-0798] Before ADR-199 the `train` leg's commit carried `job.cxpolicy`, `job.best.cxpolicy` and the store copy — three copies of one policy. The store's asset is the project (ADR-194); checkpoints and traces are not, and the `.gitignore` says so. Reversible per project, because the file is editable.
@@ -105,3 +107,4 @@ All at 1 iteration × 4 environments (seeds 0, 1, 0, 0, 0 and 0), `--timeout 600
 - wandering-jasper-6102 — one clean `cadex walk --prompt` end to end on this machine: exit 0 in 17:43 at 2,640 MB peak, all four legs and the four-eye review, local CPU training at 5x16 (reward/step -0.1254, witness 7.2e-09), verified rollout -0.1765, cli/tests 217 passed 0 skipped
 - rare-cliff-9595 — a second unattended end-to-end walk on this machine, on an unseen mechanism, with no build and no retry: exit 0 in 5:59.8, cli/tests 217 passed 0 skipped; the stale-engine gap stated in docs/CLI.md
 - narrow-wing-0418 — Walk engine/source evidence is now reported before the first leg (ADR-251)
+- dawn-sky-3891 — failed fresh-directory retraining preserves prior policies and comparison history, retains the accepted sweep; CLI 223 passed, no skips

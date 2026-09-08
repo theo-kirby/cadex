@@ -66,6 +66,8 @@ The separate fresh two-mechanism complete-review rehearsal remains open on `damp
 
 **Lifecycle guide maintenance preserves the tested contract.** `docs/CLI.md` distinguishes child reward/delta rows from the successful walk's clearance review row; failed legs preserve earlier rows without adding a walk review row. Runtime and scaffold are unchanged [rec: still-harvest-7242]. The carriage iterate account is 16 lines shorter, retaining its runnable command, fixed task and rollout settings, reward decrease and baseline preservation, with detailed evidence linked through ADR-251 and the immutable rehearsal record. Both documentation units recorded 223 CLI passes, zero skips. Reconcile judgement: retain `working`; these corrections add no runtime qualification [rec: floral-canyon-9424].
 
+**Failed iterate retries preserve completed evidence while retaining the accepted sweep.** A third toy retry accepts `lift_weight=0.0003` with `policy_on=0`, then its trainer stand-in writes a partial policy in a fresh output directory and exits 7. The walk stops at train (exit 1), leaving both successful runs, stored policies, script bytes and prior comparison history unchanged; only the accepted sweep adds a progress row and commit. A public CLI revisit retains that sweep. The CLI guide and new-project architecture scaffold document this boundary; full CLI gate: **223 passed, zero skips**. Reconcile judgement: retain `working`; failure preservation is qualified for this fresh-directory retry, with no production behavior change or new GUI, remote or live-resume evidence. [rec: dawn-sky-3891]
+
 ## Negative knowledge
 
 - [scope: a parameter sweep on a project with a policy declared, without the switch convention | confidence: high | evidence: sweet-light-3396, keen-sail-4481] `cadex params --set` is refused at exit 3 when the change moves the task digest, because the declared policy no longer fits, and nothing is written. Iterate cannot be a plain sweep; the ADR-192 answer is a script that declares the policy behind a `policy_on` switch the sweep blanks. A `params --drop-policy` flag and an engine op were considered and not taken.
@@ -114,3 +116,4 @@ The separate fresh two-mechanism complete-review rehearsal remains open on `damp
 - mellow-quartz-8093 — Model-free iterate is verified on the durable ot4 carriage
 - still-harvest-7242 — guide corrected to distinguish child progress rows from successful walk clearance review; CLI 223 passed, no skips
 - floral-canyon-9424 — carriage iterate guide shortened while preserving command, comparison and review limits; CLI 223 passed, no skips
+- dawn-sky-3891 — failed fresh-directory retraining preserves prior policies and comparison history, retains the accepted sweep; CLI 223 passed, no skips
