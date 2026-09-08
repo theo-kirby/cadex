@@ -22129,3 +22129,67 @@ recovers the same way a hand-locked one does, through `script --set`.
 No new flag, no op, no protocol change, no engine or `shell/` diff. The
 regression asserts the contract with a real engine, recording the `restore`
 argument each form asks for; it fails on the old source in both.
+
+## ADR-273 — The derived section chooses its plane by what it cuts (2026-09-08)
+
+The section eye derived its offset from the accepted bounds (ADR-267) and
+carried quarter-span siblings so a tessellation seam cost millimetres rather
+than the part (ADR-270). On `ot4-swing2` it still could not draw
+`cmp_swing_arm`, the moving part the rig exists to look at. Two independent
+causes, both of them the same mistake — trusting a bounding box to stand for
+a solid:
+
+**The choice was indifferent to which objects came back.** `derived_section`
+returned the first candidate whose *overall* status was `ok`, and `ok` means
+only that *some* object was cut. Candidates were ordered by `coverage`, which
+counts objects whose **bounds** the plane strictly crosses. A plane can cross
+a box and cut nothing of it — through a cavity, or through the gap between
+two lobes — so both halves of the derivation could prefer a plane that draws
+one object over a plane that draws four, and neither would notice.
+
+**The candidate list was truncated by that same proxy.** The bound was eight.
+Measured live on `ot4-swing2`, the base plate and the mount-hardware cluster
+produced eight candidates of coverage 6 and 5, and the four planes that cut
+the swing arm — 12.75, 13.4, 14.525, 18.4 mm — were never evaluated. The arm
+lost the ranking it was never entered in. Ranking the eight better could not
+have reached it.
+
+So: every candidate is cut, and the cut that reaches the most objects wins,
+with an available cut beating an unavailable one whatever the count and the
+bounds ordering demoted to a tiebreak. And **no object's own centre plane is
+ever dropped** — the bound is a work bound, it applies to the sibling planes,
+and it rises to 48 (a few dozen contour passes; one pass measured 4.3 ms over
+13,432 triangles, so the whole sweep of a ten-object rig costs under 0.1 s).
+
+Measured live on both rigs afterwards, in objects cut:
+
+| Rig | Objects | Chosen plane | Cut | Was |
+|---|---:|---:|---:|---:|
+| `ot4-swing2` | 10 | XZ −9.2 mm | 6 of 10 | 6, same plane, 8 candidates |
+| `ot4-carriage` | 2 | XZ 0.0 mm | 2 of 2 | 2, same plane, 5 candidates |
+
+`ot4-swing2` now cuts all 20 of its candidates rather than 8; `ot4-carriage`
+has only 5 and every one of them cuts both parts, so it is the control that
+shows the change costs nothing where the old heuristic was already right.
+
+**The honest half: this does not make the swing arm visible, and no ranking
+could.** With all 20 candidates cut rather than 8, the best plane still cuts
+6 of 10 and `cmp_swing_arm` is still `empty`. The arm and its pinch fastener
+sit at y 10.9–20.9 mm; the mount cluster sits at −12.1–8.9 mm; the only
+planes that reach the arm (13.4 mm cuts 5, with the pinch bolt and nut) reach
+neither mount nut nor bolt. **One plane through that mechanism does not
+exist.** The premise that a good enough derivation would find one is what did
+not survive the measurement.
+
+What the run gets instead is the fact stated rather than hidden: the summary
+carries `objects_cut`, and the SVG label reads `6/10 objects cut` beside the
+status. `ok` alone told a reviewing agent that four of ten parts were missing
+from the page by saying nothing at all. Asking for the missing part is now
+one `--offset-mm 13.4` away, and knowing to ask is the whole of it.
+
+No new flag, no op, no protocol change, no engine or `shell/` diff.
+`cadex section --plane/--offset-mm` is unchanged. Two regressions fail on the
+old source: one where three two-lobed rings and a post share a centre plane
+that has the best coverage available and cuts the post alone, and one on the
+`ot4-swing2` shape asserting that the arm's own planes are candidates at all
+— and that the best drawing still omits it. 265 CLI tests pass.

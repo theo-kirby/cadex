@@ -357,11 +357,22 @@ of doing any of them:
    whose offset is **derived from that snapshot's own bounds** (ADR-267),
    not fixed: the candidates are each object's bounding-box centre on the
    cut axis plus the whole geometry's, **each with two quarter-span
-   siblings** (ADR-270), ordered by how many objects' bounds the plane
-   crosses, then centres before siblings, then by nearness to the overall
-   centre, and the first candidate whose cut is supported is the one
-   written. `offset_mm` is the chosen plane, `offset_source` is `derived`,
-   and `offset_candidates_mm` is the ordered list it came from. A constant
+   siblings** (ADR-270). **Every candidate is cut, and the one that cuts
+   the most objects is the one written** (ADR-273): an available cut beats
+   an unavailable one whatever the count, and the bounds ordering — most
+   objects' bounds crossed, then centres before siblings, then nearness to
+   the overall centre — survives only as the tiebreak and as the order the
+   sibling planes are dropped in when an assembly has more of them than the
+   work bound allows. **No object's own centre plane is ever dropped**: on
+   `ot4-swing2` a dense mount cluster filled all eight places the old bound
+   allowed and the four planes cutting the moving arm were never cut at all.
+   `offset_mm` is the chosen plane, `offset_source` is `derived`,
+   `offset_candidates_mm` is the ordered list it came from, and
+   `objects_cut` is how many of them came back with contours — which the
+   SVG label also carries, because a section is as much a claim about what
+   it did not reach as about what it shows. A plane that reaches every part
+   of a spread-out mechanism may not exist; the count is how a reader sees
+   that rather than reading `ok` and assuming the drawing is complete. A constant
    offset cuts whatever happens to lie on it and reports `ok` while a part
    is missing from the drawing — and a centre alone is not enough, because a
    centre is the plane a part is most likely to be symmetric about and a

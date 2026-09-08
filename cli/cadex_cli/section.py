@@ -12,7 +12,7 @@ from .render import acquire_snapshot
 
 PLANES = {'XY': (0, 1, 2), 'XZ': (0, 2, 1), 'YZ': (1, 2, 0)}
 TOLERANCE = 1e-6  # mm; endpoint grid, also conservative plane-contact refusal
-MAX_DERIVED_CANDIDATES = 8  # bounds one derivation to a handful of contour passes
+MAX_DERIVED_CANDIDATES = 48  # a work bound on the sibling planes, never on the centres
 APPROXIMATION = ('Standard tessellation cut in the initial solved world pose, mm; not exact BREP. '
                  'Closed contours filled even-odd per object preserve cavities. No union across objects. '
                  'Plane contacts within 1e-6 mm and open/branched cuts are unsupported; '
@@ -78,13 +78,14 @@ def section_snapshot(triangles, summary, plane, offset):
     status = 'unsupported' if 'unsupported' in statuses else ('ok' if 'ok' in statuses else 'empty')
     return {**summary, 'plane': plane, 'offset_mm': offset, 'units': 'mm',
             'axes': list(plane.lower()), 'status': status, 'available': status != 'unsupported', 'objects': objects,
+            'objects_cut': sum(1 for o in objects.values() if o['status'] == 'ok'),
             'approximation': APPROXIMATION,
             'limits': {**summary['limits'], 'endpoint_grid_mm': TOLERANCE},
             'section_seconds': time.perf_counter() - start}
 
 
 def offset_candidates(summary, plane):
-    """Offsets worth cutting at, best first, read off the accepted bounds.
+    """Offsets worth cutting at, read off the accepted bounds; caller ranks.
 
     A constant offset cuts whatever happens to be there: on a mechanism whose
     moving part sits entirely off the chosen plane, the cut is real, the
@@ -93,8 +94,10 @@ def offset_candidates(summary, plane):
     passes through *that* object, so the candidates are those centres plus the
     whole geometry's, ordered by how many objects' bounds the plane crosses,
     then by nearness to the overall centre. Bounds are not the solid: a
-    candidate can still cut a cavity and come back empty, which is why the
-    caller checks the cut rather than trusting the ordering.
+    candidate can still cut a cavity and come back empty, so this ordering
+    decides nothing -- `derived_section` cuts every candidate and compares
+    the cuts (ADR-273). What it is still fit for is a tiebreak, and the
+    order the sibling planes are dropped in when there are too many.
 
     A centre is also the plane a part is most likely to be symmetric about,
     and a tessellation puts vertices and edges exactly on its own symmetry
@@ -128,21 +131,42 @@ def offset_candidates(summary, plane):
             candidates[offset] = min(candidates.get(offset, 1), min(sibling, 1))
     ordered = sorted(candidates, key=lambda offset: (-coverage(offset), candidates[offset],
                                                      abs(offset - centre), offset))
-    return ordered[:MAX_DERIVED_CANDIDATES]
+    # Every centre is kept, however poorly its plane covers the rest (ADR-273).
+    # Truncating this list by coverage undoes the whole point of deriving it:
+    # on ot4-swing2 the mount-hardware cluster filled all eight places a
+    # narrower bound allowed, and the four planes that cut `cmp_swing_arm` --
+    # the moving part the rig exists to look at -- were never cut at all. The
+    # bound is a work bound, so it applies to the siblings, and only once an
+    # assembly has more distinct centres than a few dozen contour passes.
+    centres = [offset for offset in ordered if not candidates[offset]]
+    siblings = [offset for offset in ordered if candidates[offset]]
+    keep = set(centres) | set(siblings[:max(0, MAX_DERIVED_CANDIDATES - len(centres))])
+    return [offset for offset in ordered if offset in keep]
 
 
 def derived_section(triangles, summary, plane):
-    """The first candidate offset whose cut is supported, best coverage first."""
+    """The candidate offset that cuts the most objects, ties to the best-ranked.
+
+    The ordering above is read off bounding boxes, and bounds are not the
+    solid: a plane can cross an object's box and come back `empty` because it
+    passed through a cavity, or through the gap between two lobes. Taking the
+    first candidate whose *overall* status is `ok` inherits that blindness
+    twice over, because `ok` means only that *some* object was cut -- so a
+    plane through a dense cluster of fasteners beat a plane through the one
+    moving part, and nothing in the derivation noticed (ADR-273).
+
+    So every candidate is cut, and the cuts are compared on the one thing a
+    reader of the drawing can check: how many objects actually came back with
+    contours. A cut `contours` refuses is not a drawing, so an available cut
+    wins over an unavailable one regardless of count; the bounds ordering
+    survives only as the tiebreak it was always fit to be. This costs one
+    contour pass per candidate, each the pass the caller used to run anyway.
+    """
     candidates = offset_candidates(summary, plane)
-    first = None
-    for offset in candidates:
-        cut = {**section_snapshot(triangles, summary, plane, offset),
-               'offset_source': 'derived', 'offset_candidates_mm': candidates}
-        if cut['status'] == 'ok':
-            return cut
-        if first is None:
-            first = cut
-    return first
+    cuts = [{**section_snapshot(triangles, summary, plane, offset),
+             'offset_source': 'derived', 'offset_candidates_mm': candidates}
+            for offset in candidates]
+    return max(enumerate(cuts), key=lambda c: (c[1]['available'], c[1]['objects_cut'], -c[0]))[1]
 
 
 def svg(summary):
@@ -161,7 +185,11 @@ def svg(summary):
         if commands:
             paths.append(f'<path d="{" ".join(commands)}" fill="rgb{tuple(obj["color"])}" '
                          f'fill-rule="evenodd" stroke="#172332" stroke-width="1"><title>{html.escape(name)}</title></path>')
-    label = html.escape(f'{summary["plane"]} {summary["offset_mm"]:g} mm | {summary["status"]} | tessellation cut')
+    # The count is on the face of the drawing because a section is as much a
+    # claim about what it did not reach as about what it shows: `ok` alone
+    # cannot tell a reader that four of ten parts are missing from the page.
+    label = html.escape(f'{summary["plane"]} {summary["offset_mm"]:g} mm | {summary["status"]} | '
+                        f'{summary["objects_cut"]}/{len(summary["objects"])} objects cut | tessellation cut')
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="512" height="552" viewBox="0 0 512 552">'
             f'<title>{label} | accepted {summary["revision"]}</title><rect width="512" height="552" fill="#f6f7fa"/>'
             + ''.join(paths) + f'<text x="16" y="536" font-size="12">{label}</text></svg>\n')

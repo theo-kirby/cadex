@@ -210,3 +210,48 @@ def test_derived_offset_reports_the_unsupported_cut_when_no_candidate_works():
     derived = derived_section(triangles, source, 'XZ')
     assert derived['offset_mm'] == 0.0 and derived['status'] == 'unsupported'
     assert derived['available'] is False and derived['offset_source'] == 'derived'
+
+
+def test_derived_offset_prefers_the_plane_that_cuts_over_the_plane_that_crosses():
+    # Bounds are not the solid (ADR-273). Three two-lobed rings and one post
+    # all span y -10..10, so the shared centre plane has the best coverage any
+    # candidate can have -- and it passes through all three gaps, cutting the
+    # post alone. Taking the first candidate whose overall status was `ok`
+    # accepted that one-object drawing; counting what came back does not.
+    def ring():
+        return slab((0, 10), (-10, -4), (0, 10)) + slab((0, 10), (4, 10), (0, 10))
+    triangles, source = accepted([('post', slab((0, 10), (-10, 10), (0, 10))),
+                                  ('ring_a', ring()), ('ring_b', ring()), ('ring_c', ring())])
+    assert offset_candidates(source, 'XZ') == [0.0, -5.0, 5.0]
+    crossing = section_snapshot(triangles, source, 'XZ', 0.0)
+    assert crossing['status'] == 'ok' and crossing['objects_cut'] == 1
+
+    derived = derived_section(triangles, source, 'XZ')
+    assert derived['offset_mm'] == -5.0 and derived['objects_cut'] == 4
+    assert all(obj['status'] == 'ok' for obj in derived['objects'].values())
+
+
+def test_every_object_keeps_its_own_candidate_plane():
+    # The live ot4-swing2 shape (ADR-273): a long base plate, a dense cluster
+    # of mount hardware at one end, and the moving arm with its pinch fastener
+    # at the other. The cluster's planes cover more bounds and sit nearer the
+    # overall centre, so under a cap of eight they filled every place and the
+    # arm's own centre plane was never cut at all -- the derivation could not
+    # have chosen it however it ranked what it had.
+    def part(lo, hi):
+        return slab((0, 10), (lo, hi), (0, 10))
+    triangles, source = accepted([
+        ('plate', part(-45, 32)), ('bolt_l', part(-12.1, 8.9)), ('bolt_r', part(-12.1, 8.9)),
+        ('nut_l', part(-10.4, -8)), ('nut_r', part(-10.4, -8)), ('retainer', part(0, 5.9)),
+        ('servo', part(-18.5, 13.9)), ('pinch', part(13.15, 18.65)), ('arm', part(10.9, 20.9)),
+    ])
+    candidates = offset_candidates(source, 'XZ')
+    assert candidates[:8] == [-9.2, -8.6, -9.8, 2.95, 1.475, 3.65, 4.425, 5.8]  # the old eight
+    assert 13.4 in candidates and 18.4 in candidates  # the arm's own, now cut too
+    assert section_snapshot(triangles, source, 'XZ', 13.4)['objects']['arm']['status'] == 'ok'
+
+    # ...and the honest half of the same measurement: no plane reaches both
+    # ends, so the best drawing is still the cluster's and still omits the arm.
+    derived = derived_section(triangles, source, 'XZ')
+    assert derived['offset_mm'] == -9.2 and derived['objects_cut'] == 6
+    assert derived['objects']['arm']['status'] == 'empty'
