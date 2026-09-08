@@ -26,6 +26,8 @@ Both at 1 iteration × 4 environments (seeds 0 and 1), both `--timeout 600`, bot
 
 Reconcile judgement: flipped `open` → `working` on the declared MET impact [rec: placid-sky-7374]; the node had been held open only because the walk did not yet complete from `--prompt` on any mechanism, and it now completes on two (`crisp-reef-5607`). The honest caveat is carried as negative knowledge: comparable columns, incomparable objectives.
 
+**Fresh complete-review corroboration (2026-09-08).** The carriage again passes the unchanged public script/walk route with the arm's bounded CPU settings (one iteration, four environments, seed 0, timeout 600). Both projects commit comparable reward, witness and review measurements and inspected named views/sections, truthful inventory and named-pair results. Carriage/arm witness errors are 5.4189e-09/1.3841e-09; rollout totals are -24159.1953563/-27.1093842 over 50 steps. Both source projects are clean and retained artifacts match committed bytes. The carriage's full built-engine CLI gate records 195 passed, zero skipped. This corroborates the existing working status at toy pipeline scale: carriage still falls under gravity, force and torque costs use different units, and GUI/SSH were not exercised [rec: quiet-vine-3426].
+
 ## Negative knowledge
 
 - [scope: one-iteration linear-carriage qualification | confidence: high | evidence: sage-peak-2689] Working-level evidence denotes pipeline qualification, not control quality or hardware validation: the carriage falls to origin z=-4699.378313 mm at 1 s on an ideal unlimited guide. Torque and force costs use different units, so these rewards do not rank designs. Only source, docs and numbers are versioned in the parent repository; policy assets, checkpoints, traces and accepted caches remain untracked.
@@ -38,3 +40,5 @@ Reconcile judgement: flipped `open` → `working` on the declared MET impact [re
 - modest-summit-8554 — nt3 operator directive re-seeds the criterion unticked: finish and evidence it rather than restarting it
 - cool-fountain-2483 — the first prompt-designed mechanism (pendulum rig) through the walk, the baseline the second is compared against
 - placid-sky-7374 — a second prompt-designed mechanism (vertical carriage, prismatic, force motor) through the unchanged entry point, both PROGRESS.md files comparable; the criterion declared met with the objectives-differ caveat
+
+- quiet-vine-3426 — fresh carriage and arm complete-review comparison through the unchanged public walk; committed measurements and 195 passing CLI tests
