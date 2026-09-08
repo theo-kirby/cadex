@@ -27,7 +27,7 @@ Three failures here were measured rather than suspected [rec: western-badger-302
 
 **Stale shell mutations require explicit refresh** (ADR-204). Script and parameter mutations retain their old revision guard and return Rebuild Model/reopen guidance. Dormant guard adoption and replay are removed: a synthetic stale response carrying a newer guard cannot trigger replay, while real two-engine repeat attempts preserve accepted source, values and metadata, then recover after Rebuild Model. Real-engine overwrite was not reproduced; current stale precondition failures omit the model_state needed by the old retry. The shell build and full headless bundle gate pass; simultaneous acceptance/rebuilds still require sequential use [rec: still-badger-2386].
 
-**Documentation gap remains open; runtime stays `working`.** `docs/VISION.md` Open questions incorrectly says solver-migration recovery is missing, despite ADR-187 and the existing `reaccept_stored_script` / locked-out chat-panel implementation. The recorded bet selects a bounded correction of that paragraph; the correction has not landed. This source observation supplies no new GUI test result and does not reopen the shipped recovery feature or justify a persistence repair [rec: weathered-haven-8656].
+**Recovery documentation now matches ADR-187; runtime stays `working`.** VISION documents restore refusal when the accepted digest changes and explicit re-acceptance of the engine-stored script through the shipped action. The obsolete missing-recovery question is removed, with matching ADR and ROADMAP notes. This was a source-inspected prose correction: no runtime suite, build or GUI regression was rerun, and existing runtime evidence is unchanged [rec: twilight-key-7506].
 
 ## Negative knowledge
 
@@ -49,3 +49,4 @@ Three failures here were measured rather than suspected [rec: western-badger-302
 - wild-grotto-5497 — Save-As carries a trained policy (ADR-188), verified and recorded: the shell's carry list equals the engine's seven stored suffixes, the gate at 1142 checks and 0 FAIL, and the equality test deliberately not taken across the licence boundary
 - still-badger-2386 — ADR-204: dormant stale replay removed, repeat-refusal and refresh recovery verified with synthetic and real-engine tests; shell build and gate pass
 - weathered-haven-8656 — source-verified stale VISION recovery claim; bounded documentation correction selected but not landed, runtime status unchanged
+- twilight-key-7506 — obsolete solver-change recovery guidance corrected against shipped ADR-187 behavior; documentation-only verification

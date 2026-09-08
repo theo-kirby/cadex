@@ -32,6 +32,8 @@ Status: working
 
 ## Negative knowledge
 
+- [scope: Ouroboros iteration 23 actor dispatch on ouroboros/nt3 | confidence: high | evidence: careful-sand-9714] The requested reconciliation could not run under that dispatch's explicit contributor prohibition. Dispatch the maintainer separately, then the planner; do not send another actor merely to repeat the handoff. Reconcile judgement: this is a role-dispatch boundary, not a product defect, so orientation remains `working` [rec: careful-sand-9714].
+
 - [scope: stage-engine concurrent with payload-inspecting engine tests | confidence: high | evidence: stormy-quill-5350, floral-stone-2866] Finish staging before running the engine suite: isolation tests can observe transient `bin/ccx` before pruning. This scheduling failure recurred during BLDC verification; after staging completed the targeted check passed and the stable full rerun passed 1987 tests with 52 skips. Packaged lifecycle/library passed 61 tests with no skips. The local development payload still reports 248 external-path relocation violations and is not a portable release. [rec: floral-stone-2866]
 
 - [scope: building the shell | confidence: high | evidence: merry-eagle-4093] Never route the shell build around package/app/build_app.sh. Conda on PATH during a shell configure silently resolves the wrong zlib, libpng, OpenSSL and Python, and fails at link time or misbehaves at runtime.
@@ -62,3 +64,4 @@ Status: working
 - stormy-quill-5350 — concurrent staging caused a transient exclusion failure; completed-payload and sequential suite passed
 - floral-stone-2866 — staging overlap reproduced the transient exclusion failure; stable rerun passed, development payload remains nonportable
 - zesty-aspen-6846 — stale local bundled engine import observed; fresh-stage override restores correctly, ordinary bundle verification awaits refresh
+- careful-sand-9714 — actor/maintainer dispatch mismatch and separate maintainer-to-planner handoff; no product gap asserted
