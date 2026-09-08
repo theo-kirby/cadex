@@ -648,6 +648,53 @@ def test_a_stopped_leg_kills_the_grandchild_that_ignored_the_term(
         pytest.fail(f"the leg's stubborn grandchild {pid} outlived the walk")
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX process groups")
+def test_stopped_leg_preserves_descendant_cleanup_grace(tmp_path, monkeypatch) -> None:
+    """Reaping a fast parent must not cut short its descendant's cleanup."""
+
+    ready = tmp_path / "ready"
+    cleaned = tmp_path / "cleaned"
+    descendant = tmp_path / "descendant.py"
+    descendant.write_text(textwrap.dedent("""
+        import signal, sys, time
+        from pathlib import Path
+
+        def cleanup(*_):
+            time.sleep(0.3)
+            Path(sys.argv[2]).write_text("cleanup complete")
+            sys.exit(0)
+
+        signal.signal(signal.SIGTERM, cleanup)
+        Path(sys.argv[1]).touch()
+        time.sleep(30)
+    """))
+    parent = subprocess.Popen(
+        [sys.executable, "-c",
+         "import subprocess, sys, time; "
+         "subprocess.Popen(sys.argv[1:]); time.sleep(30)",
+         sys.executable, str(descendant), str(ready), str(cleaned)],
+        start_new_session=True,
+    )
+    monkeypatch.setattr(walk_module, "LEG_TERMINATION_GRACE_S", 1.0)
+    try:
+        deadline = time.monotonic() + 10
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert ready.exists(), "descendant did not install its cleanup handler"
+        started = time.monotonic()
+        walk_module._stop_leg(parent, parent.pid)
+        elapsed = time.monotonic() - started
+        assert parent.returncode == -signal.SIGTERM
+        assert cleaned.exists(), "group kill interrupted descendant cleanup"
+        assert elapsed >= 1.0, "direct child exit shortened the group's grace"
+    finally:
+        try:
+            os.killpg(parent.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        parent.wait(timeout=5)
+
+
 def test_the_walk_reports_the_bound_it_ran_under_and_the_trainer_s_margin(
     fake_cadex, toy_root, capsys
 ) -> None:

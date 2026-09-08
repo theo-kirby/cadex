@@ -21799,3 +21799,13 @@ a fake `cadex` whose grandchild sets `SIGTERM` to `SIG_IGN` and holds the
 captured pipe. The walk returns inside 40 s and the grandchild is gone;
 against the previous `_stop_leg` the same test fails, with the survivor still
 alive after the walk returned.
+
+**Correction (2026-09-08) — preserve the full group cleanup grace.** The
+amendment's unconditional kill still followed `process.wait()` returning
+immediately when the parent exited. That shortened the promised five seconds
+and could interrupt a descendant closing its engine session. `_stop_leg` now
+uses a monotonic deadline and sleeps the remaining grace before the group kill.
+A regression gives the descendant a delayed SIGTERM cleanup marker and an
+immediately exiting parent; it fails on the prior implementation. This closes
+the critic rejection of `tidy-cove-8382`, without changing the timeout or drain
+bounds.

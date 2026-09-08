@@ -2183,6 +2183,10 @@ What makes them experimental, and what would settle it:
   alive so it stays addressable after the reap, and the final drain is
   bounded at 10 s. A second regression whose grandchild sets `SIGTERM` to
   `SIG_IGN` fails against the previous stop.
+- [x] **Preserve stopped descendants' cleanup grace** (2026-09-08, ADR-261
+  correction). A monotonic deadline keeps the full grace when the direct child
+  exits immediately; a delayed descendant cleanup regression fails on the old
+  code. The final group kill remains unconditional.
 - [x] **A walk's `PROGRESS.md` row carries a delta** (2026-09-08, ADR-260).
   Measuring ADR-259's motion cell against ADR-194's comparison found neither
   half worked for a walk: `_record_progress` passed `previous=` only on the

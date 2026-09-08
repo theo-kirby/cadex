@@ -197,10 +197,15 @@ def _stop_leg(process: "subprocess.Popen[str]", pgid: int | None = None) -> None
     if pgid is None:
         pgid = leg_pgid(process)
     _signal_leg(process, signal.SIGTERM, pgid)
+    deadline = time.monotonic() + LEG_TERMINATION_GRACE_S
     try:
         process.wait(timeout=LEG_TERMINATION_GRACE_S)
     except subprocess.TimeoutExpired:
         pass
+    # Reaping the parent says nothing about descendants still cleaning up.
+    remaining = deadline - time.monotonic()
+    if remaining > 0:
+        time.sleep(remaining)
     _signal_leg(process, signal.SIGKILL, pgid)
     try:
         process.wait(timeout=LEG_TERMINATION_GRACE_S)

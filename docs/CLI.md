@@ -412,7 +412,8 @@ its own and is sent `SIGTERM`, then `SIGKILL` to the group five seconds
 later **whether or not the direct child died on the term** — because the
 thing that hangs is usually not the child `cadex` but the agent CLI or the
 trainer under it, and a grandchild that ignores `SIGTERM` outlives its
-parent. The group id is read while the child is alive, so it stays
+parent. The full five-second cleanup grace remains even when the direct
+child exits immediately. The group id is read while the child is alive, so it stays
 addressable after the child is reaped, and the walk waits at most ten
 seconds to drain the stopped leg's stdout: a pipe still held open past that
 is abandoned rather than allowed to hang the walk the bound was there to

@@ -136,6 +136,8 @@ leg on the box `training/remote_train.sh` names.) Fill in which, and
 why; `{progress}` marks each remote row `(remote)`.
 
 The shared mode artifacts table in `docs/CLI.md` is the walk contract.
+On a leg timeout, the process group gets a full five-second SIGTERM cleanup
+grace even if its direct child exits early, then an unconditional SIGKILL.
 For toy CPU runs, use `JAX_PLATFORMS=cpu`; `training/SETUP.md` §b gives
 the invocation and resource bounds, including for a CUDA-capable venv.
 `agent.json.updated_at` records changed session identity or model, not every
