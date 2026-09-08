@@ -564,8 +564,53 @@ inventory lists two uncatalogued components; clearance names the same
 root exclusions after the policy negation kept every new run, stored policy
 and review output out of project commits; historical tracked output stays
 untouched. This is the seed reference, with the 30 mm action-midpoint
-confound unchanged, not evidence of learned improvement. Seeds 1–3 remain
-the selected continuation; no additional runs were made here.
+confound unchanged, not evidence of learned improvement. Seeds 1–3 were
+the selected continuation, measured below.
+
+**Fixed-geometry seed continuation (2026-09-08).** Seeds 1, 2 and 3 each
+completed all three walk legs and four review calls. The command is the
+reference command with `--seed N`, `--out "$PROJECT/runs/stroke60-seedN-34"`
+and `--name quill_stroke60_seedN_34.cxpolicy`, substituting N = 1, 2, 3.
+CPU 5 iterations × 16 environments, rollout seed 7, trainer timeout 600 s,
+leg timeout 120 s and the 0.2 s tree-RSS watchdog (2.9 GB / 850 s) were fixed.
+
+| Training seed | Total reward | Travel mm | Travel deg | Wall s | Peak tree RSS bytes |
+|---:|---:|---:|---:|---:|---:|
+| 0 | 175.487211145051 | 30.078469436328 | 0 | 24.835810 | 1986134016 |
+| 1 | 175.935971673601 | 31.421759939733 | 0 | 23.783088 | 1994547200 |
+| 2 | 170.952826823611 | 31.360988060147 | 0 | 24.625217 | 1986662400 |
+| 3 | 172.081298535925 | 31.085486620484 | 0 | 25.470796 | 1997832192 |
+
+Comparison references are `runs/stroke60-seed0-33/review.json` and
+`runs/stroke60-seed{1,2,3}-34/review.json` in the same quill project.
+Across these four seeds, reward ranges **170.952826823611–175.935971673601**
+(span 4.983144849990), translational travel **30.078469436328–31.421759939733 mm**
+(span 1.343290503405 mm), and angular travel stays **0 degrees**.
+These are descriptive ranges, not significance, a winner or learned
+improvement: the 30 mm target remains the action midpoint, which near-zero
+normalized actions already command. No further seeds follow this measurement.
+
+Every exported MJCF and full task JSON is byte-identical to seed 0; the
+full parameter map, objective and actions match the reference hashes above.
+Both training and review comparison metadata carry the requested training
+seed, and review carries rollout seed 7. Script changes are confined to
+policy filename/digest. Project PROGRESS rows retain explicit previous
+comparison identities; rounded row deltas are not the full-precision ranges.
+Trainer durations for seeds 1/2/3 were 3.628307/3.878131/3.883964 s;
+reward/step -1.016377091408/-1.313315391541/-1.432229399681 and witness
+errors 2.700e-08/2.926e-08/3.163e-08. These training batch rewards differ
+from the verified 200-step, 4 s rollout totals in the table.
+
+All named render files and section/inventory/clearance outputs exist locally.
+The XZ section at 3.125 mm still misses the quill, inventory has two
+uncatalogued components, and initial-pose clearance still reports the
+960 mm³ housing/quill intersection with no unknown pairs. Each run verified
+all preceding run files unchanged (75/102/129 files respectively); prior
+policy hashes, script history and unrelated tracked content are preserved.
+Fresh root output and policy exclusions follow the default policy negation;
+new run/policy/review paths are absent from the index and committed trees.
+This is additional evidence for the existing headless walk and review
+criteria, with no runtime, entry-point or project-scaffold behavior change.
 
 **Training on a remote machine is the same walk with one flag** (ADR-200).
 `cadex train --remote` and `cadex walk --remote` run the train leg through

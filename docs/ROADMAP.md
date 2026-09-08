@@ -2266,7 +2266,14 @@ What makes them experimental, and what would settle it:
   (2026-09-08). CPU 5 × 16, training seed 0 / rollout seed 7; unchanged
   stroke 60, MJCF and task. Exit 0, 24.84 s, peak 1.99 GB; all review
   outputs local and new generated artifacts excluded. CLI §2 carries
-  exact reward/travel and identity hashes; seeds 1–3 remain unmeasured.
+  exact reward/travel and identity hashes; continuation is recorded below.
+
+- [x] **Fixed-geometry quill seed spread, seeds 1–3 against seed 0**
+  (2026-09-08). All legs pass at CPU 5 × 16 and rollout seed 7;
+  inputs/identities match, each walk <26 s and <2 GB peak tree RSS.
+  Four-seed reward range 170.952827–175.935972, travel 30.078469–31.421760 mm
+  / 0 degrees; CLI §2 and project PROGRESS retain individual measurements,
+  explicit references and the action-midpoint caveat. This direction is spent.
 
 - [x] **Fresh walk survives a cold public CLI revisit** (2026-09-08).
   Accepted revision/digest, policy assets, trace and review geometry survive
