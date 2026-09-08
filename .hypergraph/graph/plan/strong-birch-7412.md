@@ -11,10 +11,10 @@ Status: open
 
 ## Current
 
-1. **Preserve completed lifecycle and review criteria (missions 1, 2 and 6).** Both fresh mechanisms and cold persistence remain working; the ordinary installed-engine route now also passes the complete arm walk and same-root packaged/CLI gates after supported refresh. Background shell gate uses the matching built bundle. No further packaging repair, training replay or second-mechanism repeat is selected [rec: first-branch-9614] [rec: quiet-vine-3426] [rec: fair-cedar-7455] [rec: strong-raven-3067].
-2. **Bound the public payload-identity claim (missions 1, 2 and 6).** Short qualifies resolution's schema-only boundary, then removes the corresponding docs/CLI.md overclaim if confirmed. This single maintenance direction removes an unsupported guarantee without adding a validator or changing policy. A contrary probe or clean correction ends it; no broader documentation audit follows [rec: spring-wolf-7431].
+1. **Preserve completed lifecycle and review criteria (missions 1, 2 and 6).** Both fresh mechanisms and cold persistence remain working; the ordinary installed-engine route passes the complete arm walk and same-root packaged/CLI gates after supported refresh, and the engine-selection guidance now states only the verified schema check. Background shell gate uses the matching built bundle. No packaging repair, training replay or same-mechanism repeat is selected [rec: first-branch-9614] [rec: quiet-vine-3426] [rec: fair-cedar-7455] [rec: strong-raven-3067] [rec: keen-pebble-3574].
+2. **The ladder-rule walk on an unwalked topology (missions 1, 2 and 6).** Short runs the documented entry point from a design prompt for a two-servo mechanism the walk has not carried, against the refreshed bundle, and records which leg needs a person or a guess. A clean run corroborates the three working walk and review criteria and ends the direction; a named leg gets one closing unit and one rerun. No third-mechanism criterion is claimed; the charter's second-mechanism box already stands on the carriage [rec: salty-nest-8235] [rec: quiet-vine-3426].
 
-No new charter gaps, feature checkboxes or Later promotions are selected. Repeating carriage or cold-persistence qualification was considered and left unqueued. The refreshed application remains a local unrelocated deployment; GUI-attached lifecycle and remote execution remain unexercised. Policy witness success is toy execution evidence, clearance is initial-pose and sections are tessellated [rec: strong-raven-3067] [rec: modest-summit-8554] [rec: spring-wolf-7431].
+No new charter gaps, feature checkboxes or Later promotions are selected. The payload-identity guidance direction is exhausted; no broader documentation audit follows. The refreshed application remains a local unrelocated deployment; GUI-attached lifecycle and remote execution remain unexercised. Policy witness success is toy execution evidence, clearance is initial-pose and sections are tessellated [rec: strong-raven-3067] [rec: modest-summit-8554] [rec: keen-pebble-3574].
 
 ## Negative knowledge
 
@@ -147,3 +147,5 @@ No new charter gaps, feature checkboxes or Later promotions are selected. Repeat
 - empty-rain-5162 — fold completed VISION corrections; select one bounded bundled-engine qualification direction, retaining all charter obligations
 
 - spring-wolf-7431 — fold clean bundle refresh; select only bounded schema-check guidance maintenance, retaining all charter obligations
+
+- salty-nest-8235 — preserve working criteria; replace the exhausted payload-guidance direction with the ladder-rule walk direction
