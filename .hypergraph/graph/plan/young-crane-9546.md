@@ -11,78 +11,56 @@ Status: open
 
 ## Current
 
-1. **The model-free `--set` iterate walk on `ot4-quill`, the third
-   mechanism's own project (missions 2/5/8).** Promoted from third, and it
-   leads for two reasons that point the same way. It **spends no tokens** —
-   `walk`'s `--prompt` defaults to an empty list and the design loop
-   iterates over it, so a walk with only `--set` runs no design turn — and
-   Claude's five-hour window went 29% → 84% this run, so the cheapest unit
-   on the rung is also the one least likely to be refused
-   [rec: chilly-crest-2100]. And it is the only thing in existence that can
-   exercise ADR-260 where it was built to work: the threading of
-   `previous_numbers()` through the walk branch and the `travel_mm` /
-   `travel_deg` labels are pinned by an offline round-trip and the toy
-   iterate lifecycle regression, and by nothing on real geometry
-   [rec: northern-comet-5917]. `ot4-quill`'s first walk could render no
-   delta at all — it was the project's first row [rec: chilly-crest-2100].
-   Re-walk it with `--set` on one parameter its own `params(...)` block
-   actually declares (`quill_dia`, `bore_len`, `stroke`, `head_len` and the
-   rest are real), no `--prompt`, same 5 × 16 × seed 0 and `--timeout 600`,
-   explicit CPU, into `runs/<name>` beside the baseline. Report the first
-   comparison row that carries **both** travel channels against a previous
-   walk on geometry no fixture has seen, and say whether the delta reads as
-   a finding or as noise at toy scale. It is a real iterate rather than a
-   re-roll: the parameter changes, the prompt does not
-   [rec: morning-summit-7848]. Nothing generated enters this repository.
+1. **Run the unspent parameter-only iterate on `ot4-quill` (mission 2).**
+   Same entry point, `--set stroke=60`, no `--prompt`, explicit CPU,
+   5 iterations × 16 environments, seed 0, `--timeout 600`, finite
+   `--leg-timeout`, into a new `runs/<name>` beside the baseline. Verify the
+   actual parameters and exported reward expressions, weights, units and
+   horizon against the baseline before interpreting reward deltas. Increasing
+   stroke from 40 to 60 preserves the clamped target of 30 but changes geometry
+   and action bounds. Report both travel deltas in the walk row and reward
+   delta in the rollout row; they currently belong to different rows. Update
+   the existing lifecycle doc with the concise rehearsal result and verified
+   date, alongside the work record; generated artifacts stay in the project.
+   One sample cannot establish significance or control quality. This remains
+   first because it spends no provider tokens and exercises the landed
+   comparison and bounded entry point on real geometry
+   [rec: amber-glade-2813] [rec: northern-comet-5917]
+   [rec: chilly-crest-2100] [rec: tidy-cove-8382].
 
-2. **Bound the walk's legs in wall clock (mission 2, and mission 9's
-   premise).** The new direction this pass, and the last thing
-   `crisp-reef-5607`'s own evidence asks for: the third mechanism's record
-   named the unbounded design turn — 629.6 s there, 1,014.2 s on the swing
-   arm — as "the one place the entry point can outrun a caller's budget"
-   [rec: chilly-crest-2100]. Source-checked and worse than the record says:
-   `run_leg` (`cli/cadex_cli/walk.py:114`) calls `subprocess.run` with **no
-   `timeout=` at all**, so every leg is unbounded — design, sweep, train,
-   script, declare, rollout — and the walk's own `--timeout`
-   (`__main__.py:454`) is forwarded only into the `train` leg's argv
-   (`__main__.py:1377`), where it is the trainer's internal bound and says
-   so in its help text. The charter wants the loop to run with no human in
-   it and a team to run one machine per experiment; a provider that stalls
-   rather than refusing hangs such a machine forever and nothing notices.
-   `cli/` only, offline, testable with a stub child. Not a refusal semantic
-   and not a clearance question: a leg that runs out of time fails the walk
-   through the existing `failed(...)` path, the way a non-zero leg does.
-   Correct `--timeout`'s help and `docs/CLI.md` in the same commit, because
-   both currently read as though the walk were bounded. ADR, ROADMAP bullet,
-   verified dates, and the full `pixi run python -m pytest cli/tests`.
+2. **Make the comparison identify what varied (mission 2).** The one new
+   direction is a bounded CLI change: record seed and stable objective identity
+   using the exported task. The generated preamble asks for seeds but the
+   rows omit them; a script digest cannot distinguish geometry from reward
+   changes. Prefer existing task metadata over a new store or protocol, and
+   document the identity's fields and limits. Pin unchanged objective identity
+   across seed changes and changed identity across reward changes; identify
+   legacy rows lacking that evidence. If the objective cannot be identified
+   from existing exports within this unit, ship the seed half and record the
+   missing input. Update CLI docs, project-doc scaffold, ADR and ROADMAP;
+   run full `pixi run python -m pytest cli/tests`. Matching objectives are
+   necessary, not sufficient, for comparing control quality. No variant study,
+   ranking or report renderer follows [rec: amber-glade-2813].
 
-3. **A prompt-driven iterate on a project that already has a history
-   (missions 2/7).** Only after units 1 and 2, and the first thing to drop
-   if the provider refuses on credit. Every iterate this run has produced is
-   a parameter assignment; what has never run on this machine is a **design
-   turn against a project with a past** — `ot4-quill` carries an
-   `ARCHITECTURE.md`, six ADRs, five `PROGRESS.md` rows and four domain
-   notes it wrote itself [rec: chilly-crest-2100], and mission 2's "project
-   as codebase … read on every visit" is exactly that turn. One
-   `cadex walk --prompt … --resume` naming something the project's own
-   review found, changing geometry rather than a number, at the same toy
-   scale and bounds. Report whether the turn read the project's own
-   documents back, whether it appended an ADR and a domain note without
-   being told to, and what the row's travel and reward deltas did across a
-   geometry change rather than a parameter change. If the provider refuses,
-   record the refusal and stop; do not probe [rec: western-grotto-7499].
-
-4. **Ranking rule and scope, unchanged.** The frontier metric cannot move
-   from this rung — all four seeded criteria are `working`, the three open
-   nodes are standing work or parked under `## Later criteria`, and
-   promotion is a human edit — so the rung is ranked by what it adds to the
-   product [rec: western-grotto-7499]. No charter checkbox or gap node is
-   retired, blocked or superseded here. Spare budget is no mandate and no
-   bookkeeping-only dispatch is valid [rec: sleepy-hollow-9498]. Budget as
-   the loop reports it: 25 iterations, 7.4 h elapsed, 40.6 h left; Claude
-   five-hour 84%, seven-day 67%; Codex seven-day 79% [rec: hollow-cliff-1217].
+3. **A bounded prompt-driven iterate against the project's own history
+   (mission 2), after the first two units.** Choose one geometry change from
+   its review and run `walk --prompt ... --resume` at the same toy scale,
+   explicit CPU and finite leg bounds. Report actual evidence of reading the
+   architecture, decisions and domain docs, and what the turn updates; do not
+   infer reads from success. Preserve objective-comparison caveats across a
+   redesign. Land a useful lifecycle-doc update with the measured outcome and
+   limitations, not a record-only iteration. Claude five-hour usage is 97%,
+   so this remains last: a refusal ends the attempt, with no retries, quota
+   probes, waiting-for-reset dispatch or bookkeeping substitute. Loop signals:
+   27 iterations, 8.1 h elapsed, 39.9 h left; Claude seven-day 68%, Codex
+   seven-day 79%. Budget ranks work; it does not authorize parked criteria
+   [rec: amber-glade-2813] [rec: western-grotto-7499].
 
 ## Negative knowledge
+
+- [scope: current timeout and comparison evidence | confidence: high | evidence: tidy-cove-8382] Historical entries below describing every leg as unbounded and walk rows as lacking travel deltas are superseded by ADR-261 and ADR-260. The bound covers child legs with train allowance and termination/drain overhead, not a total walk deadline. The regression proves the stated process-group case, not all detached descendants [rec: honest-river-1137] [rec: northern-comet-5917].
+
+- [scope: qualifications of this pass's inherited Bet | confidence: high | evidence: amber-glade-2813] Its predicted 20–30 mm travel is a hypothesis, not a physical requirement: a five-iteration policy need not hold its reward target, and wider action bounds change exploration. `min(30, 30)` remains 30, so stroke=30 alone does not change that target literal. Source inspection shows total_reward in the rollout/params row while the walk row carries travel; do not require a pre-existing combined row. Objective identity must cover weights, units and horizon as well as expression text and cannot establish equal dynamics. These qualifications constrain dispatch without rewriting the immutable Bet.
 
 - [scope: the walk's time bounds, source-checked | confidence: high | evidence: hollow-cliff-1217] The walk is **not time-bounded anywhere**. `run_leg` (`cli/cadex_cli/walk.py:114`) passes no `timeout=` to `subprocess.run`, so design, sweep, train, script, declare and rollout are all unbounded in wall clock; `walk --timeout` (`__main__.py:454`) is forwarded only into the `train` leg's argv (`__main__.py:1377`) and is the trainer's own internal bound. Do not describe the entry point as bounded, do not cite a completed walk's `--timeout 600` as a wall-clock guarantee, and do not read the fix as a refusal semantic — a leg that runs out of time fails through the existing `failed(...)` path.
 
@@ -199,3 +177,4 @@ Status: open
 - solemn-journey-9731 — correct the travel unit's premises and require both a millimetre and a degree channel; keep the rung's three units and their order
 - western-grotto-7499 — promote the third-mechanism walk to first now that the travel eye landed; re-scope the travel carry as walk-row comparison plumbing and add a model-free --set iterate walk
 - hollow-cliff-1217 — the rung's first two units landed; promote the token-free --set iterate on the third mechanism's own project, add the wall-clock leg bound as the new direction, and rank a prompt-driven iterate last
+- amber-glade-2813 — fold completed timeout work; rank iterate, comparison identity and project-history turn with source-checked qualifications.

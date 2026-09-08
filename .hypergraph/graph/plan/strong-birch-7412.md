@@ -11,105 +11,48 @@ Status: open
 
 ## Current
 
-1. **The selected direction — make the review step say whether the mechanism
-   moved — is landed on both halves and closes here (missions 2/6).**
-   Measurement: `review.json`'s `motion` block and the `PROGRESS.md` walk row
-   carry, per component, the per-axis position range, the largest
-   displacement from the first solved frame and the largest rotation swing
-   `2·acos(|q₀·q|)` — millimetres and degrees both, ranking neither and
-   saying so in a `ranking` field (ADR-259, `19549da9`)
-   [rec: square-bay-3436]. Comparison: `_record_progress` now reads
-   `previous_numbers()` for **both** branches, `_motion_cell` spells
-   `travel_mm N on <component>, travel_deg N on <component>` in the shape
-   `_NUMBER_RE` parses, and `COMPARED_NUMBERS` carries both labels
-   (ADR-260, `2b0c1678`, `cli/tests` 233 passed) [rec: northern-comet-5917].
-   And a third mechanism has exercised both on real geometry:
-   `travel_mm 20.28, travel_deg 0` on a cylindrical joint where nobody knew
-   in advance which channel would hold the motion, with the physics rather
-   than the design explaining the zero [rec: chilly-crest-2100]. It cost no
-   engine, protocol, payload or `shell/` change, as predicted. What it does
-   **not** claim is unchanged: no swept-motion safety, no control quality,
-   and a delta is not a verdict [rec: sleepy-hollow-9498].
+1. **Finish the existing iterate work before promoting another unit
+   (mission 2).** Parameter-only comparison on the third mechanism, comparison
+   identity, then the project-history design turn remain, in that order.
+   They exercise landed travel comparison, remove ambiguity in reading it,
+   and test revisiting agent-maintained documents. A fourth mechanism ranks
+   below this work [rec: amber-glade-2813] [rec: falling-willow-7995].
 
-2. **The direction that replaces it: nothing in the walk is bounded in wall
-   clock (missions 2/9).** Selected finite direction, one unit on short. The
-   third mechanism's record named the unbounded design turn as the entry
-   point's one remaining way to outrun a caller's budget
-   [rec: chilly-crest-2100]; the source is worse than that — `run_leg` passes
-   no `timeout=` to `subprocess.run` at all, and `walk --timeout` reaches
-   only the `train` leg's argv, where it is the trainer's internal bound
-   [rec: hollow-cliff-1217]. The charter's mission 2 wants the loop to run
-   with no human in it and mission 9 wants a team to run one machine per
-   experiment; a stalled provider hangs such a machine forever and nothing
-   in the entry point notices. `cli/`-only, offline, one unit, no refusal
-   semantic and no new gap.
+2. **Conditional follow-through on comparison identity: seed spread
+   (mission 2).** Only after short lands or is blocked, and only if the first
+   iterate leaves a concrete question about its delta, consider the same fixed
+   geometry at three further seeds within the same bounded toy budget. Record
+   descriptive reward and travel spread in existing lifecycle documentation,
+   not a significance claim or variant study. Seed-identifying rows must land
+   first. A product defect revealed by the first run outranks this measurement
+   [rec: amber-glade-2813].
 
-3. **What the open gaps still want, in the order they should fall.** The
-   walk's remaining evidence is *iterate*, not breadth: three mechanisms
-   already read side by side and the no-mechanism-specific-branch claim is
-   pinned by two offline regressions [rec: falling-willow-7995], while every
-   iterate this run produced was a parameter assignment. So the order is the
-   token-free `--set` iterate on unseen geometry, then the leg bound, then a
-   design-turn iterate against a project that already has a history — which
-   is also the only untested half of mission 2's "project as codebase … read
-   on every visit" [rec: chilly-crest-2100]. A fourth fresh mechanism on the
-   last unused action-source pair ranks below all three
-   [rec: hollow-cliff-1217].
+3. **Completed directions leave dispatch.** ADR-259/260 landed travel
+   measurement and comparison; the third mechanism reports both channels.
+   ADR-261 and its critic follow-up bound child legs and post-stop draining,
+   with a mutation-verified stubborn-grandchild regression and 239 passing
+   CLI tests. Neither timeout record ran the outstanding quill iterate.
+   These units are complete; no charter checkbox or state status is changed
+   by this planning judgement [rec: square-bay-3436]
+   [rec: northern-comet-5917] [rec: chilly-crest-2100]
+   [rec: honest-river-1137] [rec: tidy-cove-8382].
 
-4. **The successor that stays on the long rung.** Extending
-   `_clearance_at_frame` over the dynamics rollout is the kernel-accurate
-   answer to swept clearance and is unaffected by the bounding-box screen's
-   retirement — it was always the successor and is now the only candidate.
-   It stays parked: engine-zone work with the packaged gate behind it, and a
-   refusal semantic this rung has declined four times. The engine's existing
-   `clearance=` on `assembly.simulation` **raises** on a breach
-   (`cadex_assembly_worker.py:3248`) and is the kinematic OndselSolver trace,
-   not the MuJoCo rollout the walk reviews; do not auto-declare pairs into an
-   accepted script to reach it [rec: strong-falcon-1463]
-   [rec: morning-summit-7848]. `ot4-quill`'s deliberate `housing`/`quill`
-   intersection is a reason to leave the reporting semantic alone, not to
-   change it [rec: chilly-crest-2100].
-
-5. **The direction retired unbuilt, kept because it cost nothing to learn.**
-   The bounding-box motion-clearance screen was an earlier pass's selection
-   and is retired on measurement rather than deferred. Its data premise held;
-   its verdict did not. Twenty-two of the swing rig's forty-five pairs
-   already overlap in world AABB at the accepted pose — bolts in plates, nuts
-   on bolts, servo in retainer, everything against the base plate — so it
-   would read `not proven clear` at every frame for precisely the pairs a
-   person asks about. Axis-aligned boxes over jointed assemblies cannot do
-   better and no threshold fixes it [rec: sleepy-hollow-9498]
-   [rec: strong-falcon-1463].
-
-6. **Spent directions, off this rung.** CPU selection, recovery, the
-   remote-training preflight, the inventory-boundary measurement and the
-   inventory retention tail are all closed or declined. The domain-note
-   **write** half is exercised on this machine four times over, and the
-   ADR-256 read-back eye has now read a real design turn's unprompted notes
-   — `docs notes 2, none missing` on `ot4-quill`, whose `docs/actuators.md`
-   carries the servo's stiffness, its near-critical damping with the
-   arithmetic, and why one coordinate is deliberately unactuated
-   [rec: chilly-crest-2100]. **"Three modes, one shape" stays declined for
-   promotion**: both unexercised limbs are unexercised by this run's standing
-   constraints rather than by missing work, and the charter's other named
-   short-rung legs are delivered [rec: western-grotto-7499]. No CUDA
-   diagnosis, backend matrix, repeated recovery, adjacent inventory campaign
-   or re-proof of the note-writing convention follows
-   [rec: floral-arrow-7365] [rec: keen-field-4379] [rec: placid-ember-6741]
-   [rec: candid-otter-2615] [rec: soft-crane-2369] [rec: sleepy-hollow-9498].
-
-7. **Evidence and scope limits.** No charter checkbox or gap node is retired,
-   blocked or superseded here, and no `## Later criteria` item may be
-   targeted. GUI stays documented and unexercised, remote stays a local
-   stand-in with an offline plan, clearance stays initial-pose, sections stay
-   tessellation cuts. Toy pipeline success proves neither policy improvement
-   nor swept-motion safety, and travel proves neither — it proves only that
-   something moved, and how far. Three reward expressions in three unit
-   systems are three objectives, so no ranking follows from the three rows
-   [rec: chilly-crest-2100] [rec: mellow-quartz-8093] [rec: early-quill-3654]
-   [rec: narrow-wing-0418] [rec: candid-otter-2615] [rec: sleepy-hollow-9498].
+4. **Keep the charter boundary.** Four seeded criteria are working in the
+   projection. Remote handoff is scripted and documented, GUI attachment is
+   documented, and unexercised modes reflect this run's constraints. Do not
+   promote another mode rehearsal, inherited-removal campaign, catalog work,
+   fleet setup, report rendering or gait training. The bounding-box clearance
+   screen remains retired; kernel clearance over dynamics stays on long.
+   Preserve reporting semantics for the quill's deliberate overlap. No
+   charter-derived gap is deleted or marked done here
+   [rec: western-grotto-7499] [rec: sleepy-hollow-9498]
+   [rec: strong-falcon-1463] [rec: chilly-crest-2100].
 
 ## Negative knowledge
+
+- [scope: current timeout and comparison evidence | confidence: high | evidence: tidy-cove-8382] Historical entries below describing every leg as unbounded and walk rows as lacking travel deltas are superseded by ADR-261 and ADR-260. The bound covers child legs with train allowance and termination/drain overhead, not a total walk deadline. The regression proves the stated process-group case, not all detached descendants [rec: honest-river-1137] [rec: northern-comet-5917].
+
+- [scope: qualifications of this pass's inherited Bet | confidence: high | evidence: amber-glade-2813] Its predicted 20–30 mm travel is a hypothesis, not a physical requirement: a five-iteration policy need not hold its reward target, and wider action bounds change exploration. `min(30, 30)` remains 30, so stroke=30 alone does not change that target literal. Source inspection shows total_reward in the rollout/params row while the walk row carries travel; do not require a pre-existing combined row. Objective identity must cover weights, units and horizon as well as expression text and cannot establish equal dynamics. These qualifications constrain dispatch without rewriting the immutable Bet.
 
 - [scope: the measurement/plumbing split inside the selected direction | confidence: high | evidence: western-grotto-7499] The travel figure is measured and reported and still cannot be compared: the walk row and the compared-numbers row are written by different branches of `_record_progress`, and the walk branch is never given `previous`. Do not read ADR-259 as closing this direction, and do not size its remainder as a measurement problem — the numbers exist, the plumbing does not.
 
@@ -340,3 +283,4 @@ Status: open
 - solemn-journey-9731 — correct item 1's frame-0 premises and record the two-channel motion measurement that makes a displacement-only travel report wrong rather than partial
 - western-grotto-7499 — record the selected direction as half-landed (ADR-259 measured, the comparison plumbing outstanding) and order short to run the walk before reporting on it; decline promoting "Three modes, one shape"
 - hollow-cliff-1217 — the motion direction closes on both halves and on a third mechanism; select the unbounded-leg bound in its place and order the remaining gaps around iterate rather than breadth
+- amber-glade-2813 — fold completed timeout work; rank iterate, comparison identity and project-history turn with source-checked qualifications.
