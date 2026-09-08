@@ -256,8 +256,11 @@ target; it is standing work on the long rung and nothing more.
 - **Training is offboard by design and stays so.** `training/` never enters
   CMake, a payload, or `pixi.toml`. The engine verifies policies; it never
   produces them.
-- **Never dispatch to the GPU box** (B7 stays blocked) and never touch its
-  checkout.
+- **This run's machine is the GPU box** (`sb1x`: Ubuntu 24.04, RTX 5090, 32
+  cores, 60 GB). The loop runs on it and owns the checkout at `~/cadex`. The old
+  "never dispatch to the GPU box" rule described a machine the loop could not
+  reach; it can, it is running on it, and B7 is no longer blocked by that rule.
+  Do not touch any other machine, and do not dispatch work off this one.
 - **Do not start a replacement engine or shell** (Phases 11 and 12 are
   unscheduled by decision).
 - **Never provision cloud machines or spend money.** The fleet is a script and
@@ -302,9 +305,13 @@ target; it is standing work on the long rung and nothing more.
   launch the GUI. Use `pixi run build-shell`, `pixi run gate`, `pixi run
   build-release`, and the pytest suites. The GUI-attached mode is documented,
   not exercised.
-- **Training is local CPU, toy scale, bounded**: at most 15 minutes of wall
-  clock and 3 GB of memory per training run, in the `training/` venv per
-  `training/SETUP.md`. Remote training is documented and scripted, not run.
+- **Training stays bounded, even though the GPU is right here**: at most 15
+  minutes of wall clock and 3 GB of memory per training run, per
+  `training/SETUP.md`. The 5090 may be used inside that bound; `jax` with the
+  CUDA plugin and `mujoco-mjx` are installed in `~/cadex-train-venv`. Training a
+  policy for real is rung 3 of the horizon ladder and is **parked** — the GPU is
+  available to this run, and it is not this run's target. A long training job is
+  not a unit of work and never fits in an iteration.
 
 ## Question policy
 
