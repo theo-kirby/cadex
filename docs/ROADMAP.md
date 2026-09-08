@@ -2185,6 +2185,10 @@ What makes them experimental, and what would settle it:
   alive so it stays addressable after the reap, and the final drain is
   bounded at 10 s. A second regression whose grandchild sets `SIGTERM` to
   `SIG_IGN` fails against the previous stop.
+- [x] **Pin project history on resumed agent turns** (2026-09-08). Real-engine
+  regression delivers prior decisions/domain notes and between-visit edits to
+  the resumed prompt, and preserves old notes when new decisions/notes land.
+  Provider behavior and a history-guided trained iterate remain unmeasured.
 - [x] **Identify comparison seeds, objective and action scaling** (2026-09-08,
   ADR-263). Train/walk rows carry current and prior evidence; review JSON keeps
   exported objective fields and actions. Legacy rows remain explicitly unknown.

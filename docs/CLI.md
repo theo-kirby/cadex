@@ -733,6 +733,13 @@ nor a shell (the Mesh tools are its whole world), so with the GUI
 attached the three files are still the CLI's and a person's; the files
 are what make the modes one shape.
 
+The resumed prompt path is also tested without a provider: two scripted agent
+turns use the real engine and bridge. The second receives the stored session id,
+existing decisions and domain notes, plus architecture, sensor and progress
+updates made between visits; its new decision and sensor note append to the
+existing files. This checks context delivery and persistence, not whether a
+real model follows the recorded constraints. Runtime and scaffold are unchanged.
+
 **The comparison is one recorded row** (ADR-194). A number an earlier
 row also carried is written with its change against that row — the
 delta, the digest of the run compared against, and that run's value:
