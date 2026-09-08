@@ -270,9 +270,9 @@ CLI from what actually happened; read by the agent on every visit. A
 number a previous row also carried shows its change against that row,
 as `total_reward 127.8 (Δ -1602.1 vs 2996fb73 at 1729.9)`: the delta,
 the digest of the run compared against, and that run's value. In a
-project-root repository, the CLI attempts a commit after each accepted run;
-`committed <sha>.` in the command's notes confirms success. Rows still land
-without Git or when the project is nested beneath another repository root
+project-root repository, the CLI attempts a commit after each accepted run.
+Only `committed <sha>.` in the command's notes confirms success; a row alone
+does not prove a commit. Rows still land without Git or in a nested project
 without its own `.git`; those rows have no automatic commit.
 
 For lifecycle comparisons, record iterations, environment count and seeds.

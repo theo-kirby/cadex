@@ -21882,3 +21882,12 @@ Four regression cases failed before the repair: exact bounded selection at 4,000
 and 8,000 characters, and real-engine fresh/resumed turns receiving a newest ADR
 beyond the limit. Scripted turns verify context delivery and appended history;
 they do not claim live provider understanding.
+
+## ADR-266 — Lifecycle history instructions follow repository ownership (2026-09-08)
+
+Bounded maintenance bet: remove §7c's unconditional first-visit repository and
+per-run commit promises, replacing duplicate instructions with the CLI's existing
+ownership contract. `ensure_project_repo` preserves existing ignore files and
+refuses nested initialization; `commit_project` can return no commit after an
+accepted run. Keep the measured historical commits, clarify the scaffold's
+success signal, and verify with the full CLI suite. No Git behavior changes.
