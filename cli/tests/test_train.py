@@ -24,9 +24,11 @@ from cadex_cli.__main__ import main
 from cadex_cli.export import ExportedOutput
 from cadex_cli.report import EXIT_FAILURE, EXIT_OK, EXIT_REJECTED, EXIT_USAGE
 from cadex_cli.train import (
+    REMOTE_TRANSPORT_STEPS,
     TrainError,
     find_task,
     remote_trainer_command,
+    resolve_bundle_model,
     resolve_trainer_python,
     run_trainer,
     trainer_command,
@@ -518,6 +520,77 @@ def test_the_remote_leg_lands_the_same_artifacts_as_the_local_one(
         out / "job.cxpolicy"
     ).read_bytes()
     assert any("trained job" in note for note in envelope["notes"]), envelope
+
+
+def test_the_dry_run_plans_the_leg_in_both_modes_and_runs_neither(
+    task_project, fake_trainer, fake_remote, tmp_path, capsys
+) -> None:
+    """``--dry-run`` (ADR-255) against the real engine: the export really
+    happens, the trainer does not, and the local and remote plans name the
+    same files. This is the offline half of the claim ADR-200 makes — that
+    the box's leg lands what this machine's would — checked without a box.
+    """
+
+    out = tmp_path / "run-plan"
+    common = (
+        "train", "--project", str(task_project), "--out", str(out),
+        "--iterations", "2", "--envs", "4", "--label", "toy", "--put",
+        "--dry-run",
+    )
+    code, local = _run(capsys, *common, "--trainer-python", sys.executable)
+    assert code == EXIT_OK, local
+    code, remote = _run(capsys, *common, "--remote", "--allow-cpu")
+    assert code == EXIT_OK, remote
+
+    # The bundle and the model are on disk; the policy and the asset are not,
+    # and neither trainer ran: the fake dispatcher never wrote its argv log.
+    assert (out / "job-task.json").is_file() and (out / "model-model.xml").is_file()
+    assert not (out / "job.cxpolicy").exists()
+    assert not (task_project / "assets" / "job.cxpolicy").exists()
+    assert not fake_remote.exists()
+    assert "training" not in local and "training" not in remote
+
+    plans = (local["training_plan"], remote["training_plan"])
+    for plan in plans:
+        assert plan["executed"] is False
+        assert plan["artifacts"] == {
+            "bundle": str(out / "job-task.json"),
+            "model": str(out / "model-model.xml"),
+            "policy": str(out / "job.cxpolicy"),
+            "stored_asset": "job.cxpolicy",
+        }
+    # Same steps, plus the transport the box needs and nothing else.
+    steps = [[str(step["step"]) for step in plan["steps"]] for plan in plans]
+    assert steps[0] == ["export", "train", "verify", "store"]
+    assert [name for name in steps[1] if name not in REMOTE_TRANSPORT_STEPS] == steps[0]
+    assert set(steps[1]) - set(steps[0]) == set(REMOTE_TRANSPORT_STEPS)
+    # ...and the trainer's own flags are the same wherever it runs.
+    local_command, remote_command = (plan["command"] for plan in plans)
+    assert local["training_plan"]["mode"] == "local"
+    assert remote["training_plan"]["mode"] == "remote"
+    assert remote_command[:4] == [
+        remote["training_plan"]["runner"], "train",
+        str(out / "job-task.json"), str(out / "job.cxpolicy"),
+    ]
+    assert local_command[local_command.index("--out") + 2:] == (
+        remote_command[remote_command.index("--") + 1:]
+    )
+
+
+def test_a_bundle_whose_model_is_missing_is_a_planning_failure(tmp_path) -> None:
+    """The model resolution the plan shares with ``remote_train.sh``: the
+    recorded relative path, then the basename beside the bundle, then a
+    refusal — a dispatch that would have failed after the copy started."""
+
+    bundle = tmp_path / "run" / "job-task.json"
+    bundle.parent.mkdir()
+    bundle.write_text(json.dumps({"model": {"path": "model/model-model.xml"}}))
+    with pytest.raises(TrainError) as refused:
+        resolve_bundle_model(bundle)
+    assert "beside neither" in str(refused.value)
+    beside = bundle.parent / "model-model.xml"
+    beside.write_text("<mujoco/>")
+    assert resolve_bundle_model(bundle) == beside
 
 
 def test_the_curriculum_pair_reaches_the_trainer_as_given(

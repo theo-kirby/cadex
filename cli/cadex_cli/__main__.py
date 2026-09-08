@@ -95,6 +95,7 @@ from .train import (
     TrainError,
     find_task,
     remote_trainer_command,
+    training_plan,
     resolve_trainer_python,
     verify_returned_policy,
     run_trainer,
@@ -360,6 +361,16 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="The training venv's interpreter. Default: $CADEX_TRAIN_PYTHON, "
         "then <repo>/.venv, then ~/cadex-train-venv.",
+    )
+    train_parser.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        default=False,
+        help="Rebuild and export the bundle, then report the plan instead "
+        "of training: the files the leg would touch and the steps it would "
+        "take, here or on the box. Runs no trainer, reaches no box, stores "
+        "nothing. The preflight for `walk --remote`.",
     )
     _remote_flags(train_parser)
     walk_parser = subparsers.add_parser(
@@ -1162,6 +1173,31 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
     else:
         command = trainer_command(python, task.files["json"], policy_path, **flags)
         where = str(python)
+    if args.dry_run:
+        # The export above was real -- the bundle and the model are on
+        # disk, and the plan names them by the path a dispatch would read.
+        # Everything after this point is what the plan describes instead of
+        # doing (ADR-255).
+        report.training_plan = training_plan(
+            command,
+            bundle=task.files["json"],
+            out=policy_path,
+            remote=bool(args.remote),
+            allow_cpu=bool(args.allow_cpu),
+            store_as=policy_path.name if args.put else "",
+        )
+        _progress(f" · plan   {task.name}  ({where}, not run)")
+        report.notes.append(
+            "dry run: the {:s} leg would {:s}. Nothing was trained{:s}.".format(
+                str(report.training_plan["mode"]),
+                " -> ".join(
+                    str(step["step"]) for step in report.training_plan["steps"]
+                ),
+                " or stored" if args.put else "",
+            )
+        )
+        report.ok = True
+        return EXIT_OK
     _progress(
         f" · train  {task.name}  {args.iterations} it × {args.envs} envs"
         f"  ({where})"

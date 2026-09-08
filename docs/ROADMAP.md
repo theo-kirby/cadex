@@ -1966,6 +1966,18 @@ What makes them experimental, and what would settle it:
   project-relative paths, committed review and comparable progress rows.
   The shared table in `docs/CLI.md` is pinned to the project scaffold.
   Remote transport and GUI attachment remain unexercised by constraint.
+- [x] **The remote training leg can be planned instead of dispatched**
+  (ADR-255, `docs/CLI.md` §2, `training/SETUP.md` §d). `cadex train
+  --dry-run` rebuilds and exports for real, then reports `training_plan`
+  — the four files the leg would touch and the ordered steps that touch
+  them, `executed: false` — instead of training. The local and remote
+  plans carry the same `artifacts`; the remote `steps` are the local ones
+  with `copy-out`/`copy-back` around the trainer, which is the whole
+  difference between the modes and is now checkable from the command line
+  offline. It is the preflight for `cadex walk --remote`, whose train leg
+  otherwise fails after the design and assembly legs have run. **Still not
+  a substitute for `remote_train.sh check`**: a plan proves the shape of
+  the leg, never that the box is reachable, and nothing here does ssh.
 - [x] **The walk with the GUI attached is documented against the client
   code** (ADR-201, `docs/CLI.md` §2, `docs/MUJOCO.md` §7c row 11). It is
   the same `cadex` commands from a terminal beside the open `.blend`:

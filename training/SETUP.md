@@ -262,6 +262,28 @@ copies two files and the parent policy is not one of them. Run `check`
 first: the CLI reads none of `.remote.env` and repairs nothing.
 `docs/CLI.md` §2 is the contract.
 
+**Plan it before you dispatch it** (ADR-255). `check` tells you the box is
+ready; `--dry-run` tells you what would be sent to it, without sending
+anything:
+
+```bash
+./cadex train --project ./b --out ./b/runs/r1/train --remote --put --dry-run     --iterations 400 --envs 4096 --json
+```
+
+That rebuilds and exports for real, then reports `training_plan` instead of
+training: the four files the leg touches — the bundle, the model beside it,
+the policy, the stored asset — and the ordered `steps` that touch them,
+with `executed: false`. Run it with and without `--remote` and the
+`artifacts` are the same object both times; the remote `steps` are the
+local ones (`export → train → verify → store`) with `copy-out` and
+`copy-back` around the trainer. That is the whole difference between
+training here and training on the box, and it is checkable on a machine
+that never opens an ssh. It runs no trainer, stores nothing and reads none
+of `.remote.env` — it is a plan, not a pre-flight, and it is no substitute
+for `check`. Use it in front of `cadex walk --remote`, whose train leg
+would otherwise fail only after the design and assembly legs have already
+run.
+
 `training/remote_train.sh shell` opens an interactive session with the same
 configuration — use it once to accept the host key, since `check` and
 `train` run under `BatchMode` where any prompt reads as a connection

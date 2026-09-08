@@ -21408,3 +21408,41 @@ Condense stale test prose. Production backend choice and fake GPU cases stay int
 Replace repeated guide/scaffold inventory prose with the measured contract:
 a `swing` → `rocker` rename updates the latest report, saved counts stay at two,
 and Git retains original rows. Self-contained historical inventory is next.
+
+## ADR-255 — The remote training leg can be planned instead of dispatched (2026-09-08)
+
+`cadex train --dry-run` rebuilds, exports the bundle, and then reports what the
+training leg *would* do instead of doing it: `training_plan` in the `--json`
+envelope names the four files the leg touches — bundle, the model beside it,
+policy, stored asset — and the ordered steps that touch them, with
+`executed: false` so nothing can mistake a plan for a receipt.
+
+**Why.** ADR-200 put the remote leg on `training/remote_train.sh` and claimed
+the two modes land the same artifacts. Until now that claim was checkable only
+by a test with an injected dispatcher, or by dispatching to a box. A dry run
+checks it from the command line, offline, on a machine that may not be allowed
+to reach a box at all — and it is the preflight to put in front of `cadex walk
+--remote`, whose remote leg otherwise fails only after the design and assembly
+legs have already run.
+
+**The shape.** The artifacts are identical in both modes by construction (the
+remote leg writes the policy to the very path the local trainer would have);
+the remote steps are the local steps with `REMOTE_TRANSPORT_STEPS` —
+`copy-out`, `copy-back` — around the trainer, because the trainer runs
+somewhere else. `cli/tests/test_train.py` asserts exactly that against the real
+engine: same `artifacts`, remote steps minus the transport equal the local
+steps, and the trainer's own flags identical after `--`.
+
+**Limits, stated rather than implied.** A plan proves the shape of the leg, not
+that the box is reachable, that its venv exists, or that its trainer matches:
+that is `training/remote_train.sh check`, which does ssh and which the CLI
+still neither runs nor configures. `--dry-run` runs no subprocess and reads no
+`.remote.env`, so it is exactly as offline as `--json`. It is on `train` only;
+`walk` gains no flag, because a half-run walk is not a preflight.
+
+The model resolution the plan needs — the bundle's recorded relative path
+against its grandparent, then the basename beside it — is `resolve_bundle_model`
+in `cli/cadex_cli/train.py`, the Python of what the dispatcher does inline; a
+bundle whose model is beside neither is a refusal here rather than a failure on
+the box after the copy started. LGPL CLI zone and docs only: no engine, no
+protocol op, no payload, no `shell/` diff.

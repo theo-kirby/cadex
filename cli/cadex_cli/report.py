@@ -60,6 +60,11 @@ class RunReport:
     #: from a stream is a receipt something else can write into (ADR-093),
     #: so this is the one the trainer meant as data.
     training: dict[str, Any] = field(default_factory=dict)
+    #: ``cadex train --dry-run`` (ADR-255): what the training leg *would*
+    #: do — the files it would touch and the steps it would take, here or
+    #: on the box. Never a receipt: it carries `executed: false` and no
+    #: run produced it.
+    training_plan: dict[str, Any] = field(default_factory=dict)
     #: ``cadex walk``: the legs it ran, in order, and the review it read
     #: off the verified rollout's trace (ADR-199).
     walk: dict[str, Any] = field(default_factory=dict)
@@ -89,6 +94,8 @@ class RunReport:
             payload["assets"] = [dict(item) for item in self.assets]
         if self.training:
             payload["training"] = dict(self.training)
+        if self.training_plan:
+            payload["training_plan"] = dict(self.training_plan)
         if self.walk:
             payload["walk"] = dict(self.walk)
         if self.notes:
@@ -187,6 +194,19 @@ def human_lines(report: RunReport) -> list[str]:
                 str(report.training.get("sha256") or ""),
             )
         )
+    if report.training_plan:
+        plan = report.training_plan
+        lines.append(
+            "plan   {:s} training, not run: {:s}".format(
+                str(plan.get("mode") or ""),
+                " -> ".join(
+                    str(step.get("step") or "") for step in plan.get("steps") or []
+                ),
+            )
+        )
+        for name, path in sorted((plan.get("artifacts") or {}).items()):
+            if path:
+                lines.append(f"  file {name:<13s} {path}")
     for leg in report.walk.get("legs") or []:
         lines.append(
             "leg    {:<8s} exit {:d}  {:.1f} s".format(

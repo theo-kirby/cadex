@@ -30,6 +30,14 @@ receipt — the store, the digest edit, the verified rollout — never learns
 where the trainer ran. What this module adds for both is the check the
 remote script already makes and the local path never needed: the file at
 ``--out`` hashes to the sha256 the receipt claims, or the leg fails.
+
+**And the leg can be planned rather than run** (ADR-255). ``--dry-run``
+stops after the export and reports :func:`training_plan`: the files the
+leg would touch and the steps it would take, in either mode. It is how the
+claim that the two modes land the same artifacts is checked on a machine
+that may not dispatch to a box at all — and it is the preflight to put in
+front of ``cadex walk --remote``, whose remote leg otherwise fails only
+after the design and assembly legs have already run.
 """
 
 from __future__ import annotations
@@ -234,6 +242,128 @@ def remote_trainer_command(
     if allow_cpu:
         command.append("--allow-cpu")
     return [*command, "--", *trainer_flags(**flags)]
+
+
+#: The two steps a remote leg has and a local one does not (ADR-089): the
+#: transport either side of the trainer. Everything else about the leg —
+#: which files it reads, which file it writes, what is verified and what is
+#: stored — is the same, and :func:`training_plan` is what lets a person
+#: check that offline rather than by dispatching.
+REMOTE_TRANSPORT_STEPS = ("copy-out", "copy-back")
+
+
+def resolve_bundle_model(bundle: Path | str) -> Path:
+    """The model file a training bundle names, resolved the way the trainer
+    and ``remote_train.sh`` resolve it: the recorded relative path against
+    the bundle's grandparent, then its basename beside the bundle.
+
+    The remote leg copies exactly these two files out and nothing else, so
+    a plan that cannot name the model is a dispatch that would fail on the
+    box after the copy started.
+    """
+
+    path = Path(bundle)
+    try:
+        task = json.loads(path.read_text(encoding="utf-8"))
+        relative = Path(str(task["model"]["path"]))
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise TrainError(
+            f"{path}: not a training bundle naming a model ({exc})."
+        ) from exc
+    for candidate in (path.parent.parent / relative, path.parent / relative.name):
+        if candidate.exists():
+            return candidate
+    raise TrainError(
+        f"the model {relative} this bundle references is beside neither "
+        f"{path.parent.parent} nor {path.parent}."
+    )
+
+
+def training_plan(
+    command: Sequence[str],
+    *,
+    bundle: Path | str,
+    out: Path | str,
+    remote: bool,
+    allow_cpu: bool = False,
+    store_as: str = "",
+) -> dict[str, Any]:
+    """What the training leg would do, without doing any of it (``--dry-run``).
+
+    This answers the one question ``--remote`` raises that nothing offline
+    could otherwise answer: does the box's leg land the same artifacts as
+    this machine's? The plan names the files the leg touches — the bundle,
+    the model beside it, the policy, and the stored asset — and the ordered
+    steps that touch them. **The artifacts are identical in both modes by
+    construction**, because the remote leg writes the policy to the very
+    path the local trainer would have; the remote mode's steps are the
+    local mode's with :data:`REMOTE_TRANSPORT_STEPS` around the trainer,
+    because the trainer runs somewhere else.
+
+    Nothing here runs a subprocess, reads ``training/.remote.env`` or
+    reaches a box: a dry run is exactly as offline as ``--json``. That is
+    also its limit — it proves the shape of the leg, never that the box is
+    reachable, which is what ``training/remote_train.sh check`` is for.
+    """
+
+    bundle_path = Path(bundle)
+    policy = Path(out)
+    model = resolve_bundle_model(bundle_path)
+    runner = Path(command[0])
+    steps: list[dict[str, str]] = [
+        {
+            "step": "export",
+            "where": "this machine",
+            "detail": f"{bundle_path} and the model it names, {model}",
+        }
+    ]
+    if remote:
+        steps.append({
+            "step": "copy-out",
+            "where": "this machine -> the box",
+            "detail": (
+                f"{runner.name} copies {bundle_path.name} and {model.name} "
+                "into the box's run directory"
+            ),
+        })
+    steps.append({
+        "step": "train",
+        "where": f"the box, through {runner.name}" if remote else str(runner),
+        "detail": " ".join(str(item) for item in command),
+    })
+    if remote:
+        steps.append({
+            "step": "copy-back",
+            "where": "the box -> this machine",
+            "detail": f"{runner.name} brings the policy home to {policy}",
+        })
+    steps.append({
+        "step": "verify",
+        "where": "this machine",
+        "detail": f"{policy} hashes to the sha256 the receipt claims",
+    })
+    if store_as:
+        steps.append({
+            "step": "store",
+            "where": "this machine",
+            "detail": f"put_asset {store_as} into the project store",
+        })
+    return {
+        "mode": "remote" if remote else "local",
+        "runner": str(runner),
+        "allow_cpu": bool(allow_cpu and remote),
+        "command": [str(item) for item in command],
+        "artifacts": {
+            "bundle": str(bundle_path),
+            "model": str(model),
+            "policy": str(policy),
+            "stored_asset": store_as,
+        },
+        "steps": steps,
+        #: Always false. The field is here so a pipeline reading a plan can
+        #: never mistake it for a receipt.
+        "executed": False,
+    }
 
 
 def verify_returned_policy(out: Path | str, receipt: dict[str, Any]) -> None:

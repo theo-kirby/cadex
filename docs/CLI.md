@@ -58,7 +58,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex inventory` | List the parts of the accepted assembly with catalog ids: one row per component with the output it places, its catalog family and part number where a `lib.*` generator built it, and the pose the solver settled on. Writes `docs/inventory.md` in the project (ADR-236). Reads the pinned accepted attempt — no rebuild. Resolves all inspection pages and previews, including catalog totals, uncatalogued names and large component rows. | no |
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
 | `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
-| `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. With `--remote`, the trainer runs on the box through `training/remote_train.sh`; the artifacts do not move. | no |
+| `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. With `--remote`, the trainer runs on the box through `training/remote_train.sh`; the artifacts do not move. With `--dry-run`, report the plan — the files the leg would touch and the steps it would take, in either mode — and train nothing. | no |
 | `cadex walk --out DIR` | The lifecycle walk as one command: optional design turns (`--prompt`, repeatable), an optional change (`--set`), train and store (locally, or on the box with `--remote`), re-declare the policy in the script, verify and roll out, review. Every leg is a child `cadex` command; `review.json` lands in `--out`. Spends tokens only for `--prompt`. | only with `--prompt` |
 
 Flags, valid on either side of the subcommand:
@@ -414,7 +414,22 @@ verified rollout and `review.json` never learn where the trainer ran, so
 a remote walk's `PROGRESS.md` rows and `review.json` are comparable with a
 local walk's line for line. What the flag changes and what it refuses:
 
-- **Run `training/remote_train.sh check` first.** The CLI adds no
+- **Plan the leg before you walk it** (ADR-255). `cadex train --remote
+  --dry-run` rebuilds, exports the bundle, and then reports what the leg
+  *would* do instead of doing it: `training_plan` in the envelope names
+  the files it touches (`bundle`, `model`, `policy`, `stored_asset` — the
+  same four in both modes) and the ordered `steps` that touch them, with
+  `executed: false`. The local mode's steps are `export → train → verify
+  → store`; the remote mode's are those with `copy-out` and `copy-back`
+  around the trainer, which is the whole difference between the modes.
+  It runs no trainer, stores nothing, and reaches no box, so it is the
+  preflight for `cadex walk --remote`, whose remote leg would otherwise
+  fail only after the design and assembly legs have already run. It is a
+  `train` flag; `walk` has none, because a half-run walk is not a
+  preflight.
+- **Run `training/remote_train.sh check` first.** A dry run proves the
+  shape of the leg, never that the box is reachable — that is `check`,
+  and it is the one that does ssh. The CLI adds no
   configuration and reads no `.remote.env`; an unreachable or stale box
   is the script's `FAIL:` line, which reaches the envelope's `error`
   (exit 1) together with the last lines the script printed.
