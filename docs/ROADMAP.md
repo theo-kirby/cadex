@@ -1986,6 +1986,14 @@ What makes them experimental, and what would settle it:
   before the next GUI edit. The in-app agent has no shell or file tool;
   project docs stay the CLI's and a person's. **GUI not exercised.**
   *Three modes, one shape* is headless exercised, remote scripted, GUI documented.
+- [x] **...and leg by leg, with the difference column pinned** (ADR-269,
+  `docs/CLI.md` §2). Every leg the walk spawns, plus the review it runs
+  itself, with its command, its artifacts and what an open window changes:
+  nothing the walk writes, one refresh after `declare`, one model
+  resolution. Two tests hold the table's leg column equal to
+  `__main__.py`'s `run_leg` names and pin the four `mesh_agent` facts
+  beneath it. Reading the source corrected the handler count from two to
+  four. **GUI still not exercised.**
 - [x] **Inventory resolves large inspection previews** (ADR-236 follow-up).
   Page catalog totals and uncatalogued outputs as well as components; expand
   previewed rows and their fields before rendering. Regression uses the real

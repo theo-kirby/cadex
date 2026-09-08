@@ -791,6 +791,35 @@ and when:
   `cli/tests/test_project_docs.py` holds that sentence and this
   paragraph together.
 
+**Leg by leg, and where the GUI-attached run differs.** The list is read
+off `cli/cadex_cli/__main__.py`'s `run_leg` calls and the shell's own
+`cadex_backend.py`, `cadexd_client.py` and `__init__.py`, in that order, so
+it is the code's list rather than an intended one. The shell **watches
+nothing in the project**: it registers four handlers and no more —
+`save_pre` and `save_post` (which file this model belongs to, and dropping
+the old file's engine child), `load_post` (the open path above), and
+`frame_change_post`, which tags the Cadex editors for redraw and writes no
+property — and none of them, and no timer, reads the project directory. So
+an open window neither sees nor blocks what a leg writes, and the
+difference column is empty for every leg but one.
+
+| Leg | The child command | What it lands in the project | With the GUI attached |
+|---|---|---|---|
+| `design` | `cadex -p PROMPT --project P` (skipped without `--prompt`) | an accepted `script.py` revision, `agent.json`, the turn's `DECISION:` and `NOTE <subject>:` lines, a `PROGRESS.md` row | Artifacts identical. This is the one leg either window can run, and the windows are **not** interchangeable for it: the in-app turn is the shell's transcript in the `.blend` (`history.py`), spends its own model (bullet above), and writes none of the three project documents — `PROGRESS.md` and `DECISIONS.md` are named nowhere under `mesh_agent`. |
+| `sweep` | `cadex params --set K=V --out DIR` (only with `--set`) | a new accepted revision, `DIR/` outputs, a `PROGRESS.md` row | No difference. The open scene keeps the values it last read until Rebuild Model or reopen. |
+| `train` | `cadex train --out DIR/train`; `--remote` swaps the venv interpreter for `remote_train.sh` and nothing else | `DIR/train/` (bundle, model, returned policy), `assets/<name>.cxpolicy`, a `PROGRESS.md` row marked `(remote)` when the box trained | No difference. The shell runs no trainer — no `mesh_agent` source imports mujoco, and `test_the_shell_never_learns_about_mujoco` pins that for `shell/` as a whole — and it takes no part in this leg in any of the three modes. |
+| `script` | `cadex script` | Nothing: the source is read and printed, no revision, no row. | No difference. |
+| `declare` | `cadex script --set script.py --json` | the digest edit — the same source accepted at a new revision behind the trained policy | **The one leg whose aftermath a window must be refreshed for.** A GUI edit issued against the pre-walk revision is refused `STALE_PROGRAM_REVISION`, without replay or revision adoption; Rebuild Model or reopen, then edit. |
+| `rollout` | `cadex params --set policy_on=1 --out DIR/rollout` | `DIR/rollout/` — the verified policy's simulation trace and outputs — and a `PROGRESS.md` row | No difference. |
+| review (no child leg: the walk's own `_engine_session`) | — | `review/render/<accepted-revision>/`, `review/section/<accepted-revision>/`, `docs/inventory.md`, `docs/clearance.md`, `DIR/review.json`, the walk's own `PROGRESS.md` row, and the project commit | No difference. The four eyes render, section, inventory and clearance-check the **accepted revision** through an engine of their own; they never read the viewport, so an open window cannot change what the review says. |
+
+So the honest answer to *where a GUI-attached run differs* is: nowhere in
+what the walk writes, once in what the window may do next (`declare`), and
+once in what a turn costs (the model bullet). `cli/tests/test_project_docs.py`
+holds this table's leg column equal to the walk's `run_leg` names in order —
+a new leg fails the doc rather than quietly outdating it — and pins the
+four shell facts the difference column rests on.
+
 **The project is a codebase** (ADR-193). Every project root carries the
 documents an engineer keeps beside a model, created by the CLI on the
 first visit and never overwritten by it:

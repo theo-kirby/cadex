@@ -21979,3 +21979,44 @@ no CMake rule, no payload and nothing in `pixi.toml`.
 **Not claimed**: that a real box was dispatched to. The remote mode remains
 scripted and unexecuted under this run's constraints, and `--detach` still
 does not travel through the CLI's walk.
+
+## ADR-269 — The GUI-attached mode is documented leg by leg, and pinned (2026-09-08)
+
+ADR-201 documented the GUI-attached walk as a paragraph of prose: same
+commands, same store, sequential by convention, refresh before the next
+edit. True, and read against the criterion it serves — *three modes, one
+shape* — it did not answer the question the criterion actually asks, which
+is per leg: for each step of the walk, what lands in the project, and where
+a run with a window open differs.
+
+`docs/CLI.md` §2 gains that table. Seven rows: the six legs the walk spawns
+(`design`, `sweep`, `train`, `script`, `declare`, `rollout`) and the review
+the walk runs in its own engine session, each with the child command, the
+artifacts at their project-relative paths, and the difference an open window
+makes. The answer is **nowhere in what the walk writes**. It differs once in
+what the window may do *next* — after `declare`'s digest edit, a GUI edit
+against the pre-walk revision is refused `STALE_PROGRAM_REVISION` and needs
+Rebuild Model or reopen (ADR-204) — and once in what a turn costs, since the
+two windows resolve the turn model separately (ADR-249's correction).
+
+Derived from the code on both sides rather than from intent, and the reading
+corrected one sentence of this doc as it was written: the shell registers
+**four** application handlers, not two — `save_pre`, `save_post`, `load_post`
+and `frame_change_post`, the last of which tags the Cadex editors for redraw
+and writes no property. None of them, and no timer, reads the project
+directory. That is why an open window neither sees nor blocks a leg.
+
+Two tests in `cli/tests/test_project_docs.py` hold it. The first parses the
+table's leg column and asserts it equals the `run_leg("…")` names in
+`cli/cadex_cli/__main__.py` in order, with the in-process review last, and
+that `declare` is the only row asking for a refresh — so a seventh leg fails
+the doc rather than quietly outdating it. The second pins the four
+`mesh_agent` facts the difference column rests on: no source under it names
+`flock` or `.cadex-cli.lock`, the handler set is exactly those four, neither
+`PROGRESS.md` nor `DECISIONS.md` is named anywhere on that side, and nothing
+imports mujoco. Documentation and tests only: LGPL CLI zone and `docs/`, no
+engine, protocol, payload or `shell/` diff.
+
+**Not claimed**: that a GUI-attached walk was run. It remains documented and
+unexercised under this run's headless-only constraint, and concurrent
+mutation by two engines remains unguarded (ADR-204).

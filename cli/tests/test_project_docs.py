@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -174,6 +175,102 @@ def test_the_gui_mode_doc_is_still_true_about_which_window_names_the_model() -> 
     named = [source.name for source in mesh_agent.rglob("*.py")
              if MODEL_ENV in source.read_text()]
     assert named == [], named
+
+
+# -- the GUI-attached mode, leg by leg -----------------------------------
+#
+# The doc's table is the criterion "three modes, one shape" made checkable:
+# it names every leg of the walk and what a GUI-attached run does
+# differently. These two tests hold it to the code on both sides -- the
+# CLI's `run_leg` calls, and the `mesh_agent` facts the difference column
+# rests on -- so a new leg, or a shell that learns to watch the project,
+# fails the doc rather than quietly outdating it.
+
+GUI_TABLE_HEADER = "| Leg | The child command |"
+
+
+def _gui_leg_table_rows() -> list[list[str]]:
+    """The GUI-attached leg table in `docs/CLI.md` §2, as cell lists."""
+
+    doc = (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text()
+    assert GUI_TABLE_HEADER in doc, "the GUI-attached leg table is gone"
+    body = doc.split(GUI_TABLE_HEADER, 1)[1].split("\n\n", 1)[0]
+    cells = [[cell.strip() for cell in line.strip().strip("|").split("|")]
+             for line in body.splitlines() if line.startswith("|")]
+    return [row for row in cells if set("".join(row)) != {"-"}]
+
+
+def test_the_gui_leg_table_names_the_walks_legs_in_order() -> None:
+    """Every leg the walk spawns has a row, in the order it runs, and the
+    in-process review is last. Read off `run_leg("...")` in `__main__.py`
+    rather than a list kept beside it: adding a leg without saying what an
+    open window does about it fails here."""
+
+    source = (Path(__file__).resolve().parents[1]
+              / "cadex_cli" / "__main__.py").read_text()
+    spawned = re.findall(r'run_leg\(\s*"([a-z]+)"', source)
+    assert spawned, "no run_leg calls found -- has the walk moved?"
+
+    rows = _gui_leg_table_rows()
+    documented = [row[0] for row in rows]
+    assert documented[:-1] == [f"`{name}`" for name in spawned], documented
+    assert documented[-1].startswith("review"), documented[-1]
+    assert "_engine_session" in documented[-1]
+    assert all(len(row) == 4 for row in rows), rows
+
+    # The one leg with a real difference is the digest edit, and it is the
+    # only row that asks for a refresh.
+    difference = {row[0]: row[3] for row in rows}
+    assert "STALE_PROGRAM_REVISION" in difference["`declare`"]
+    assert "Rebuild Model or reopen" in difference["`declare`"]
+    refreshing = [name for name, cell in difference.items()
+                  if "Rebuild Model" in cell and "keeps the values" not in cell]
+    assert refreshing == ["`declare`"], refreshing
+
+
+def test_the_gui_leg_tables_difference_column_rests_on_shell_facts() -> None:
+    """Pin the four `mesh_agent` facts the table's difference column
+    claims, not only its sentences: the shell takes no lock, watches no
+    file, writes none of the project's documents, and runs no trainer. If
+    any of them stops being true, `docs/CLI.md` §2's leg table is the thing
+    to fix -- not this assertion."""
+
+    mesh_agent = (Path(__file__).resolve().parents[2]
+                  / "shell" / "scripts" / "startup" / "mesh_agent")
+    if not mesh_agent.is_dir():  # a checkout without the shell tree
+        pytest.skip("no shell/ tree in this checkout")
+    sources = {source.name: source.read_text()
+               for source in mesh_agent.rglob("*.py")}
+
+    # 1. The lock is the CLI's alone: the shell never takes it.
+    holding = [name for name, text in sources.items()
+               if "flock" in text or ".cadex-cli.lock" in text]
+    assert holding == [], holding
+
+    # 2. It watches nothing in the project. These four are the whole set:
+    #    three about the open file and one that tags editors for redraw. A
+    #    fifth handler has to be read against the table's claim before this
+    #    line is widened -- a watcher on the project directory would make a
+    #    GUI-attached run a different shape.
+    handlers = set(re.findall(r"bpy\.app\.handlers\.(\w+)\.append",
+                              sources["__init__.py"]))
+    assert handlers == {"save_pre", "save_post", "load_post",
+                        "frame_change_post"}, handlers
+
+    # 3. The three project documents are the CLI's and a person's.
+    writing = [name for name, text in sources.items()
+               if "PROGRESS.md" in text or "DECISIONS.md" in text]
+    assert writing == [], writing
+
+    # 4. No trainer on this side, in any mode.
+    importing = [name for name, text in sources.items()
+                 if re.search(r"^\s*(?:import|from)\s+mujoco", text, re.M)]
+    assert importing == [], importing
+
+    # ...and the project root the terminal's --project names is derived
+    # from the open file every time, which is why one store has one meaning
+    # for both windows.
+    assert "never cached" in sources["cadex_backend.py"]
 
 
 def test_a_train_row_names_the_mode_it_ran_in() -> None:
