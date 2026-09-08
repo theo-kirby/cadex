@@ -11,19 +11,14 @@ Status: open
 
 ## Current
 
-The seeded lifecycle frontier is satisfied in the reconciled state; the human-owned charter remains unchanged. No remaining seeded gap is invented, and no Later criterion is promoted. Standing maintenance is bounded to the observed runtime-reporting hole and one iterate comparison [rec: wandering-jasper-6102] [rec: rare-cliff-9595] [rec: early-quill-3654] [rec: western-reef-4119].
+The seeded lifecycle criteria are satisfied in the reconciled state; no charter-derived gap is retired and the human-owned checkboxes are unchanged. Reporting and its iterate verification are complete, so the former medium direction is spent [rec: narrow-wing-0418] [rec: mellow-quartz-8093] [rec: frosty-wolf-4770].
 
-1. **Selected direction: evidence the walk can report itself (missions 1, 2, 6).** The installed runtime can differ from this checkout without a signal in the walk result. Finish that existing short unit first, then use the model-free iterate run to exercise it on real artifacts. Report only what comparison establishes. No binary-provenance framework, automatic build, or audit campaign follows. Future units require an actual failure or missing evidence from these runs [rec: wandering-jasper-6102] [rec: rare-cliff-9595] [rec: western-reef-4119].
+1. **Selected direction: subtractive lifecycle-guide maintenance (missions 2/6).** Resolve the observed progress-row contradiction first, then shorten the exact rehearsal block whose details already live in ADR-251 and the work record. This bounded standing maintenance removes obsolete and duplicated prose; it opens no runtime surface or qualification campaign. The short horizon defines both units and their existing CLI gate [rec: frosty-wolf-4770].
+2. **Satisfied criteria retained as evidence.** Swing-arm and carriage prompt walks prove the pipeline on this machine. Carriage width iteration preserves objective and baseline while recording a lower reward; it does not qualify mechanical quality or learned gait. Reporting compares Python bytes only. Headless is exercised, remote uses a local dispatcher stand-in in tests, GUI attachment is documented and unexercised [rec: wandering-jasper-6102] [rec: rare-cliff-9595] [rec: early-quill-3654] [rec: narrow-wing-0418] [rec: mellow-quartz-8093].
+3. **Alternatives rejected.** Additional mode parity (mission 2) repeats an existing test; shell lifecycle qualification (mission 1) lacks a usable bundle here. Neither becomes fallback work when the selected direction ends. The guide correction is the one new direction selected this pass [rec: western-reef-4119] [rec: frosty-wolf-4770].
+4. **Standing and parked frontier.** round-glacier-2865 remains standing-only reduction, never an iteration target. brave-stone-9609 and late-pond-2851 remain open but unselected: catalog breadth and RL scale are Later criteria requiring human promotion. Fleet, report rendering, variant studies and outside-source mechanisms likewise remain parked. A large remaining budget does not change that boundary [rec: modest-summit-8554] [rec: frosty-wolf-4770].
 
-2. **Closed criteria retained as evidence, not work.** The prismatic force-motor carriage completed through the same entry point in 359.8 s without mechanism-specific code, after the swing arm's 17:43. Headless is exercised; remote remains scripted and offline-tested, GUI attached remains documented and unexercised. The model-selection divergence is now documented, and the latest CLI gate passed 218 with zero skips. Neither criterion needs another qualification pass [rec: rare-cliff-9595] [rec: early-quill-3654].
-
-3. **Alternatives considered when the seeded frontier ran dry.** File-lifecycle gate qualification (mission 1) is not selected because this machine has no usable shell bundle; source reading cannot replace its gate. Inherited-tree reduction (mission 3) is not selected because the charter explicitly made it standing work after nt2. The one selected direction is the observed walk-reporting hole, not either alternative [rec: western-reef-4119] [rec: modest-summit-8554].
-
-4. **Parked catalog and RL gaps.** `brave-stone-9609` (mission 4) and `late-pond-2851` (mission 5) remain open in the state graph and unselected under Later criteria. Catalog breadth, compound mechanisms, manufacturer STEP sourcing and gait-scale training require human promotion. An empty short queue or exhausted model credit grants no authority to dispatch them [rec: modest-summit-8554] [rec: western-reef-4119].
-
-5. **Inherited-tree reduction (`round-glacier-2865`, mission 3), standing only.** No new removal target or dependency audit is selected. Retain the two-commit protocol for a removal made necessary by authorized work; this does not authorize resuming nt2's campaign [rec: autumn-arrow-3125] [rec: modest-summit-8554].
-
-Previously qualified repairs and lifecycle checks remain closed, including worker identity, refusal metadata, first-visit Git, consent, linked-part restore and the OpenBLAS stall. Preserve the durable projects and their evidence. No repeated hold record or bookkeeping actor unit follows if the selected work is exhausted [rec: lawful-dune-3795] [rec: ready-otter-2700] [rec: fond-star-1809] [rec: lawful-wolf-9205] [rec: western-reef-4119].
+No further medium unit is dispatchable without new concrete evidence. Completed worker, consent, linked-part, provider metadata and OpenBLAS corrections remain completed; preserve the durable projects and do not rerun their qualifications [rec: lawful-dune-3795] [rec: ready-otter-2700] [rec: lawful-wolf-9205] [rec: frosty-wolf-4770].
 
 ## Negative knowledge
 
@@ -225,3 +220,4 @@ Previously qualified repairs and lifecycle checks remain closed, including worke
 - glad-mesa-6299 — items 1 and 2 closed and folded to working; reorder the remaining gaps, unblock the second mechanism and narrow three-modes to a currency audit
 
 - western-reef-4119 — fold completed criteria; retain reporting first and bounded iterate verification; keep Later criteria parked
+- frosty-wolf-4770 — fold completed reporting and iterate evidence; select bounded subtractive guide maintenance
