@@ -11,37 +11,51 @@ Status: open
 
 ## Current
 
-1. **Report the rollout's travel in the walk's review (missions 2/6).** `cli/`
-   and `docs/` only. From the rollout trace the walk already locates, compute
-   per component the position travel (per-axis range and the largest
-   displacement from frame 0) and the rotation swing (the largest angle between
-   frame 0's quaternion and any frame's), plus the trace's frame count and
-   duration; report them as a `motion` block in `review.json` beside the
-   clearance one, and put the largest-moving component and its travel into the
-   `PROGRESS.md` row the walk already writes. The join is proven on real data,
-   not assumed: the trace's per-frame `component_placements` keys equal the
-   render summary's `objects` keys and frame 0 is the identity, so travel is
-   read straight off the deltas with no composition against the accepted pose
-   needed [rec: sleepy-hollow-9498]. Two regressions on real traces — one where
-   a component moves and one all-identity trace, which must report zero travel
-   rather than unavailable. Reuse the existing review serialization and trace
-   locator; no engine, protocol, payload or `shell/` diff. ADR, ROADMAP bullet,
-   verified dates, and the full `pixi run python -m pytest cli/tests` on the
-   shared `cpu_training` fixture with no outer backend override.
+1. **Report the rollout's travel in the walk's review, in two channels
+   (missions 2/6).** `cli/` and `docs/` only. From the rollout trace the walk
+   already locates, compute per component the **position travel** (per-axis
+   range and the largest displacement from frame 0's pose) **and the rotation
+   swing** (the largest angle `2·acos(|q0·q|)` between frame 0's quaternion and
+   any frame's), and report both as a `motion` block in `review.json` beside the
+   clearance one. The `PROGRESS.md` row the walk already writes carries **both
+   figures, millimetres and degrees** — either naming the largest mover under a
+   stated rule that can rank a pure rotation against a pure translation, or
+   declining to rank and naming both. A displacement-only row is not a partial
+   answer, it is a wrong one: the repository's own hinged-arm example travels
+   **0.0000 mm and rotates 178.8334°** [rec: solemn-journey-9731]. Three premise
+   corrections the unit must honour rather than rediscover: frame 0 is **not**
+   the identity (placements are absolute world poses — `swing` starts at
+   `[12, 0, 6]`, `base` at the origin), frame 0 is `frame_kind: "input"` with
+   `nominal_time_s: None` so a duration read from it is `None`, and the raw
+   frame count mixes that one pre-solve pose into the solved ones (27 = 1 + 26
+   on both examples) — say which frames are counted [rec: solemn-journey-9731].
+   The component join is proven on real data: the trace's per-frame
+   `component_placements` keys equal the render summary's `objects` keys
+   [rec: sleepy-hollow-9498]. Two regressions on real traces, and the material
+   already exists — `examples/lifecycle/{hinged-arm,linear-carriage}` reproduce
+   in 13–15 s with no model call [rec: western-gate-9567] and give one rotating
+   and one translating case — plus an all-identity trace, which must report zero
+   travel rather than unavailable. Reuse the existing review serialization and
+   trace locator; no engine, protocol, payload or `shell/` diff. ADR, ROADMAP
+   bullet, verified dates, and the full `pixi run python -m pytest cli/tests` on
+   the shared `cpu_training` fixture with no outer backend override.
 
-2. **Carry travel into the iterate comparison (missions 2/5).** Only after unit
-   1 lands. The comparison the walk writes into `PROGRESS.md` reports
-   `total_reward` and nothing about whether the mechanism moved, so a retrain
-   that killed the motion and a retrain that merely scored worse read the same.
-   Add the travel figure beside the reward in the comparison row and in its
-   `review`/history record, and extend the existing iterate lifecycle
-   regression rather than adding a matrix. The carriage pair is the worked
-   example and the reason: baseline 103.298 mm travel at `total_reward`
+2. **Carry travel into the iterate comparison, both channels (missions 2/5).**
+   Only after unit 1 lands. The comparison the walk writes into `PROGRESS.md`
+   reports `total_reward` and nothing about whether the mechanism moved, so a
+   retrain that killed the motion and a retrain that merely scored worse read
+   the same. Add the travel figures beside the reward in the comparison row and
+   in its `review`/history record, carrying the millimetre **and** the degree
+   channel for the same reason unit 1 does — a revolute rig's whole motion is in
+   the second one [rec: solemn-journey-9731]. Extend the existing iterate
+   lifecycle regression rather than adding a matrix. The carriage pair is the
+   worked example and the reason: baseline 103.298 mm travel at `total_reward`
    3.296298, iterate 103.719 mm at 2.760187 — the reward fell while the travel
    held, and the walk could not say so [rec: sleepy-hollow-9498]
    [rec: mellow-quartz-8093]. No ranking claim follows: travel is a fact about
-   the rollout, never a score, and two projects' travels do not compare any
-   more than their rewards do.
+   the rollout, never a score, and two projects' travels do not compare any more
+   than their rewards do — 4,739 mm of a carriage free-falling on an ideal guide
+   outranks 178.8° of a swing arm working [rec: solemn-journey-9731].
 
 3. **One fresh prompt walk, third mechanism, reviewed by both new eyes
    (missions 2/6).** Only after units 1 and 2. One `cadex walk --prompt` on this
@@ -53,12 +67,18 @@ Status: open
    600`, `$CADEX_MODEL=claude-opus-5`, explicit CPU, ≤18 min and ≤3 GB, nothing
    generated committed to this repository. What makes it a unit rather than
    re-evidence: it is the first walk whose review carries the ADR-256
-   documentation eye reading a real design turn's own notes back, and the first
-   carrying a travel figure. Report both, plus whether the design turn wrote
-   `NOTE` lines unprompted. If the provider refuses on credit, record the
-   refusal and stop; do not probe.
+   documentation eye reading a real design turn's own notes back — the two
+   documented example walks are *recipe* walks and run no design turn at all
+   [rec: western-gate-9567] — and the first carrying a travel figure. Report
+   both, plus whether the design turn wrote `NOTE` lines unprompted. If the
+   provider refuses on credit, record the refusal and stop; do not probe.
 
 ## Negative knowledge
+
+- [scope: what a displacement-only travel figure gets wrong | confidence: high | evidence: solemn-journey-9731] Reading position alone is not a partial motion report, it is an inverted one. Measured on the two documented example rollouts on this machine: the hinged arm's `swing` holds `[12, 0, 6]` for all 27 frames and turns **178.8334°** — travel `0.0000 mm`, indistinguishable from a dead rollout — while the linear carriage's `slide` travels **4739.3783 mm**, all of it the free fall on an ideal unlimited guide that `crisp-reef-5607` already records as `z = -4699 mm at 1 s`, and rotates `0.0000°`. Across the four real traces this run has produced, both revolute rigs have near-zero displacement. Do not ship a single-number travel figure, do not rank projects by it, and do not treat the rotation channel as completeness work.
+
+- [scope: three premises the rung asserted and measurement falsified | confidence: high | evidence: solemn-journey-9731] Frame 0 is **not** the identity — placements are absolute world poses, so travel is a delta from frame 0 and the "no composition needed" licence was read off a false premise. Frame 0 is **not** a rollout frame — it is `frame_kind: "input"` with `nominal_time_s: None`, so a duration taken from it is `None` and a raw frame count (27) mixes one pre-solve pose into 26 `solver_output` ones. What survives unchanged is the component join: `component_placements` keys equal the render summary's `objects` keys. Do not restate the identity claim, and do not let a test pin it as an invariant.
+
 
 - [scope: the rollout motion-clearance screen, retired unbuilt | confidence: high | evidence: sleepy-hollow-9498] The screen's own stop condition is met before a line of it exists. The join holds — the trace's `component_placements` keys equal the render summary's `objects` keys and frame 0 is the identity — but the verdict would be vacuous: on the swing rig **22 of 45 pairs already overlap in world AABB at the accepted pose** (every bolt in its plate, both nuts on their bolts, the servo in the retainer, all nine pairs against the base plate whose AABB is the whole envelope), so those pairs read `not proven clear` at every frame whatever the policy does, and they are exactly the pairs a person asks about. The other 23 are the ones nobody worries about, and the motion cannot reach them: 1.094 mm of travel over 152 frames on the swing, 103.298 mm on the carriage whose single pair overlaps throughout because the block rides a column inside the base's AABB. This is a property of axis-aligned boxes over jointed assemblies, not of toy scale, and no threshold fixes it. Do not rebuild it, do not tune it, and do not read the retirement as authority for the engine-zone swept check, which stays on the long rung.
 
@@ -153,3 +173,4 @@ Status: open
 - scarlet-ocean-2920 — fold completed CPU work and select bounded historical inventory maintenance
 - strong-falcon-1463 — fold the measured inventory boundary and the offline training plan; lead the rung with motion coverage over the rollout trace and demote inventory retention to its tail
 - sleepy-hollow-9498 — retire the motion screen on measurement; re-rank onto the rollout travel report, the iterate carry and a deferred third-mechanism walk
+- solemn-journey-9731 — correct the travel unit's premises and require both a millimetre and a degree channel; keep the rung's three units and their order

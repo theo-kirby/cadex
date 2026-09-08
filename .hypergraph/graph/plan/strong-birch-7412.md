@@ -18,10 +18,19 @@ Status: open
    mechanism moved from one in which it sat still**. Measured: the swing rig's
    baseline rollout travels 1.094 mm over 152 frames with no measurable
    rotation, the carriage's travels 103.298 mm, and the two reviews read
-   identically in shape. The number is already in the file the walk opens —
-   per-frame `component_placements`, keys equal to the render summary's
-   `objects`, frame 0 the identity — so a travel report costs no engine,
-   protocol, payload or `shell/` change and lands in the LGPL CLI zone. Short
+   identically in shape. **And motion has two channels, not one.** The two
+   documented example rollouts on this machine settle it: the hinged arm's
+   `swing` travels `0.0000 mm` and turns `178.8334°`, the linear carriage's
+   `slide` travels `4739.3783 mm` and turns `0.0000°`. A displacement-only
+   report would call the working arm motionless and the falling carriage the
+   run's biggest mover, so the report carries millimetres and degrees both
+   [rec: solemn-journey-9731]. The numbers are already in the file the walk
+   opens — per-frame `component_placements`, keys equal to the render summary's
+   `objects` — so a travel report costs no engine, protocol, payload or `shell/`
+   change and lands in the LGPL CLI zone. What was asserted here and is now
+   withdrawn: frame 0 is **not** the identity, and it is not a rollout frame
+   (`frame_kind: "input"`, `nominal_time_s: None`); travel is a delta from it
+   and the unit says which frames it counts [rec: solemn-journey-9731]. Short
    lands the report, carries it into the iterate comparison, and then spends one
    model turn on the third mechanism whose review is the first to carry it. This
    maintains the headless-review criterion; it claims no swept-motion safety and
@@ -61,10 +70,13 @@ Status: open
    [rec: floral-arrow-7365] [rec: keen-field-4379] [rec: placid-ember-6741]
    [rec: candid-otter-2615] [rec: soft-crane-2369] [rec: sleepy-hollow-9498].
 
-5. **Budget, and the loop's own signal.** 19 iterations, 5.7 h elapsed, 42.3 h
-   left; thirteen iterations with the frontier unmoved, an overseer `looping`
+5. **Budget, and the loop's own signal.** 21 iterations, 6.2 h elapsed, 41.8 h
+   left; fifteen iterations with the frontier unmoved, an overseer `looping`
    verdict at #16 and a hard steer to a third-mechanism walk at #19; Claude
-   seven-day 63%, Codex seven-day 76%. Two model-free units and one model-gated
+   seven-day 64%, Codex seven-day 0%. The two iterations since the last bet were
+   both prose repairs and neither touched unit 1, so the rung is unchanged in
+   direction and corrected in its premises [rec: western-gate-9567]
+   [rec: blue-quill-9477] [rec: solemn-journey-9731]. Two model-free units and one model-gated
    walk fit with room. The frontier metric itself cannot move from this rung —
    all four seeded criteria are `working`, the three open nodes are standing work
    or parked under `## Later criteria`, and promotion is a human edit — so the
@@ -82,6 +94,10 @@ Status: open
    [rec: narrow-wing-0418] [rec: candid-otter-2615] [rec: sleepy-hollow-9498].
 
 ## Negative knowledge
+
+- [scope: motion has two channels and one of them is usually the only one | confidence: high | evidence: solemn-journey-9731] A revolute mechanism that works has **zero** position travel. Measured on the documented examples: hinged arm `swing`, `0.0000 mm` displacement over 27 frames and `178.8334°` of rotation; linear carriage `slide`, `4739.3783 mm` and `0.0000°`, the whole displacement being the free fall on an ideal unlimited guide. Across the four real traces this run has produced, both revolute rigs sit at near-zero displacement. So a single travel number is not a smaller answer than two, it is a wrong one — and it inverts precisely the two cases a person cares about. This also forecloses ranking by travel: 4,739 mm of falling would outrank 178.8° of working swing.
+
+- [scope: the trace's own frame conventions | confidence: high | evidence: solemn-journey-9731] Frame 0 is an absolute world pose, not the identity (`swing` at `[12, 0, 6]`), and it is `frame_kind: "input"` with `nominal_time_s: None` rather than a solved frame. A duration or a frame count read naively off the trace is therefore wrong in two ways. The component join survives: `component_placements` keys equal the render summary's `objects` keys. Do not reinstate the identity premise anywhere on this rung.
 
 - [scope: the review step's blind spot, measured | confidence: high | evidence: sleepy-hollow-9498] Every eye the review has looks at the **initial solved pose** or at a scalar the trainer reported; none reads the rollout's own motion. Two real projects on this machine make the gap concrete: the swing rig's baseline rollout moves three of ten components by 1.094 mm with no measurable rotation over 152 frames, the carriage's moves 103.298 mm over 202 frames, and both reviews have the same shape and the same fields. The carriage's iterate makes it sharper — travel 103.298 → 103.719 mm while `total_reward` fell 3.296298 → 2.760187, and the comparison row reported only the reward. This is a reporting gap in the CLI zone, not a defect in the engine, the trainer or the policy.
 
@@ -301,3 +317,4 @@ Status: open
 - scarlet-ocean-2920 — fold completed CPU work and select bounded historical inventory maintenance
 - strong-falcon-1463 — select review motion coverage over two rejected candidates; record the spent CPU, recovery, preflight and inventory-measurement directions
 - sleepy-hollow-9498 — retire the bounding-box motion screen on measurement and select the rollout travel report in its place
+- solemn-journey-9731 — correct item 1's frame-0 premises and record the two-channel motion measurement that makes a displacement-only travel report wrong rather than partial
