@@ -21710,3 +21710,65 @@ spelling and asserts a project's *first* walk carries no delta; the
 real-engine lifecycle test asserts both channels of the second walk carry
 `(Δ ... vs <digest> at ...)` against the first, that the row is not
 truncated, and that the train leg's `total_reward` delta is unchanged.
+
+## ADR-261 — The walk bounds its legs in wall clock, subtree and all (2026-09-08)
+
+**Context.** `cadex walk` runs each leg as a child `cadex` command, and
+`run_leg` called `subprocess.run` with no `timeout=` at all — every leg was
+unbounded: design, sweep, train, script, declare, rollout. `walk --timeout`
+looked like the bound and is not: it is forwarded into the train leg's argv,
+where it is the *trainer's* internal limit (`run_trainer`, `train.py`), and
+its help text said "stop the trainer" while `docs/CLI.md` listed it among the
+trainer's flags without saying what it did not cover.
+
+Every leg spawns something the walk does not control: the design turn spawns
+the agent CLI (`agent.py` uses `Popen` with no timeout of its own), the train
+leg spawns the trainer or an ssh to the box. The charter wants a walk that
+runs with no human in it, and a team that runs one experiment per machine. A
+provider that stalls rather than refusing — or an ssh that never returns —
+hung such a machine forever, with nothing to notice it. Measured legs on this
+run: 629.6 s and 1,014.2 s for design turns, the longest anything has
+legitimately taken.
+
+**Decision.** `run_leg` takes a `timeout`, and `cadex walk` takes
+`--leg-timeout SECONDS` (default `DEFAULT_LEG_TIMEOUT_S` = 3600, `0` for no
+limit) that bounds **every** leg. Three properties:
+
+1. **A leg that runs out of time is an ordinary failed leg.** It comes back
+   at exit 124 — GNU `timeout`'s code — with the reason in its envelope's
+   `error`, and the walk ends through the existing `failed(...)` path at
+   `EXIT_FAILURE`. This is not a new refusal semantic and not a clearance
+   question: a leg that did not finish did not succeed.
+2. **The stop is a subtree kill.** The leg is started with
+   `start_new_session=True` and stopped with `SIGTERM` then `SIGKILL` to its
+   session, because killing only the direct `cadex` child would leave the
+   agent CLI or the trainer — the process that was actually hanging — alive
+   and holding the project. It is also what lets the walk drain the captured
+   stdout the grandchild inherited; a direct-child kill would block there.
+   The cost is that the leg leaves the terminal's foreground group, so the
+   walk relays `SIGINT` and `SIGTERM` to the leg's session while one runs:
+   Ctrl-C reaches the leg as it did before, and now reaches what is under it
+   too.
+3. **The train leg is never bounded under the trainer's own limit.**
+   `train_leg_timeout` gives it `max(--leg-timeout, --timeout + 300 s)`, so a
+   caller who asks for a long training run does not have it shot at the hour
+   by a default they never typed, and the trainer keeps the margin its receipt
+   and its `--put` copy need.
+
+`walk.leg_timeout_s` and `walk.train_leg_timeout_s` go in the envelope beside
+the legs they bound, so a run says what it was measured against. `--timeout`'s
+help and `docs/CLI.md` §2 now say which of the two each one is.
+
+**Why an hour and not a tighter default.** The default has to be above every
+leg that has ever legitimately run and below "forever"; an hour is roughly
+3.5× the longest measured design turn. A tighter number would have to be
+guessed per leg, and guessing wrong turns a bound into a flake. Callers who
+know their budget pass `--leg-timeout`; `0` restores the old behaviour
+exactly, which is what makes this reversible.
+
+**Evidence.** `cli/tests/test_walk.py`: a fake `cadex` that hangs *and*
+spawns a grandchild that hangs, inheriting the captured pipe — the walk fails
+at `EXIT_FAILURE` naming the leg and the flag, the leg reports exit 124, and
+the test polls the grandchild's pid until it is gone, so a direct-child kill
+fails it. Plus the `train_leg_timeout` table, the envelope's two numbers on a
+walk that finished, and `--leg-timeout -1` in the usage-error table.

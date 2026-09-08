@@ -2161,6 +2161,21 @@ What makes them experimental, and what would settle it:
   entry point, the two regressions and both projects' comparable numbers side
   by side. Verified by mutation: a `--label` added for scripts containing
   `slider` fails the first test.
+- [x] **Every walk leg is bounded in wall clock** (2026-09-08, ADR-261).
+  `run_leg` called `subprocess.run` with no `timeout=`, so every leg —
+  design, sweep, train, script, declare, rollout — was unbounded, while
+  `walk --timeout` bounded only the trainer's internals inside the train
+  leg and its help text implied otherwise. `--leg-timeout SECONDS` (default
+  3600, `0` for no limit) stops any one leg and fails the walk through the
+  existing `failed(...)` path at exit 1, the leg reporting 124. The stop is
+  a **subtree kill** — the leg is its own session, `SIGTERM` then `SIGKILL`
+  to the group — because the process that hangs is the agent CLI or the
+  trainer under the child, not the child; `SIGINT`/`SIGTERM` to the walk are
+  relayed to the leg so Ctrl-C still reaches it. The train leg gets
+  `max(--leg-timeout, --timeout + 300 s)`, so a long training run asked for
+  by name is never shot by a default. The regression hangs *and* spawns a
+  grandchild holding the captured pipe, then polls that pid until it is
+  gone: a direct-child kill fails it.
 - [x] **A walk's `PROGRESS.md` row carries a delta** (2026-09-08, ADR-260).
   Measuring ADR-259's motion cell against ADR-194's comparison found neither
   half worked for a walk: `_record_progress` passed `previous=` only on the

@@ -59,7 +59,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
 | `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
 | `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. With `--remote`, the trainer runs on the box through `training/remote_train.sh`; the artifacts do not move. With `--dry-run`, report the plan — the files the leg would touch and the steps it would take, in either mode — and train nothing. | no |
-| `cadex walk --out DIR` | The lifecycle walk as one command: optional design turns (`--prompt`, repeatable), an optional change (`--set`), train and store (locally, or on the box with `--remote`), re-declare the policy in the script, verify and roll out, review. Every leg is a child `cadex` command; `review.json` lands in `--out`. Spends tokens only for `--prompt`. | only with `--prompt` |
+| `cadex walk --out DIR` | The lifecycle walk as one command: optional design turns (`--prompt`, repeatable), an optional change (`--set`), train and store (locally, or on the box with `--remote`), re-declare the policy in the script, verify and roll out, review. Every leg is a child `cadex` command, each bounded by `--leg-timeout` (default 3600 s); `review.json` lands in `--out`. Spends tokens only for `--prompt`. | only with `--prompt` |
 
 Flags, valid on either side of the subcommand:
 
@@ -219,7 +219,8 @@ of doing any of them:
    is accepted and the bundle exported at its new digest.
 3. `cadex train --out DIR/train --put` with the trainer's flags carried by
    name (`--iterations`, `--envs`, `--seed`, `--label`, `--name`,
-   `--task`, `--timeout`, `--trainer-python`, and the warm-start triple
+   `--task`, `--timeout` (the trainer's own bound, not the walk's — see
+   `--leg-timeout` below), `--trainer-python`, and the warm-start triple
    `--init-from`, `--init-from-parent-task`, `--init-from-task-change`) —
    and `--remote` / `--allow-cpu`, which go to this leg and nowhere else.
 4. **The digest edit**, which was the one leg that was a person's: the
@@ -402,6 +403,23 @@ true of both and told nt3 nothing. Child legs record reward/delta rows
 (ADR-194); a successful walk adds the clearance review row described above
 (ADR-238). A failed leg leaves earlier rows intact but adds no walk review row.
 
+**Every leg is bounded in wall clock** (ADR-261). `--leg-timeout SECONDS`
+(default 3600, `0` for no limit) stops any one leg that runs longer and
+fails the walk there, through the same path a refusing leg does: the leg
+reports exit **124**, `error` names the leg and the flag, and the walk's
+exit is `1`. The stop is a **subtree kill** — the leg runs in a session of
+its own and is sent `SIGTERM` then `SIGKILL` as a group — because the thing
+that hangs is usually not the child `cadex` but the agent CLI or the trainer
+under it. `SIGINT` and `SIGTERM` to the walk are relayed to the running leg's
+session, so Ctrl-C still reaches it. The envelope carries
+`walk.leg_timeout_s` and `walk.train_leg_timeout_s`.
+
+`--timeout` and `--leg-timeout` are **not** the same bound. `--timeout` is
+the *trainer's* internal limit, forwarded into the train leg's argv and no
+further; `--leg-timeout` bounds the child commands the walk itself runs. The
+train leg gets `max(--leg-timeout, --timeout + 300 s)`, so a long training
+run asked for by name is never shot by the walk's default.
+
 **Retry after failed retraining.** The accepted sweep stays applied with
 `policy_on=0`. Previous policies, run artifacts and progress rows survive;
 partial trainer output is not stored or declared. Use a fresh `--out` and
@@ -528,7 +546,9 @@ local walk's line for line. What the flag changes and what it refuses:
 - **`--timeout` is local.** It ends the ssh that holds the run, not the
   run; a long run belongs to `remote_train.sh train --detach` and
   `pull`, outside the walk, which then continues from `cadex asset --put`
-  and `cadex script --set` (§2 above).
+  and `cadex script --set` (§2 above). `--leg-timeout` is local in the
+  same way and for the same reason: it kills the train leg's session
+  here, including the ssh, and the box keeps computing.
 - **The project's docs say which mode it trains in.** The
   `ARCHITECTURE.md` scaffold carries a `## Training` section for the
   agent to fill in — local venv or `--remote`, and why — that states the

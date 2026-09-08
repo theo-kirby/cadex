@@ -18,6 +18,7 @@ from pathlib import Path
 import subprocess
 import sys
 import textwrap
+import time
 
 import pytest
 
@@ -25,6 +26,8 @@ from cadex_cli.agent import CLI_OVERLAY
 from cadex_cli import walk as walk_module
 from cadex_cli.report import EXIT_FAILURE, EXIT_OK, EXIT_REJECTED, EXIT_USAGE
 from cadex_cli.walk import (
+    DEFAULT_LEG_TIMEOUT_S,
+    EXIT_LEG_TIMEOUT,
     POLICY_SWITCH,
     REVIEW_FILENAME,
     SCRIPT_FILENAME,
@@ -33,6 +36,7 @@ from cadex_cli.walk import (
     declared_note_subjects,
     motion_from_trace,
     review_from_outputs,
+    train_leg_timeout,
 )
 
 from test_train import ITERATE_SCRIPT, REAL_TRAINER_PYTHON, _run
@@ -512,6 +516,101 @@ def test_a_leg_that_refuses_stops_the_walk_there_with_its_name(
     assert len(_legs(fake_cadex)) == 1  # nothing ran after the refusal
 
 
+# -- the walk's own wall clock (ADR-261) --------------------------------------
+
+#: A ``cadex`` that never answers, and that has spawned something of its own
+#: which never answers either — the shape of every real leg, where the child
+#: is a ``cadex`` command that has itself started the agent CLI or the
+#: trainer. The grandchild writes its pid and inherits the captured stdout,
+#: so a walk that killed only its direct child would still block draining
+#: the pipe: this fake fails a timeout that is not a subtree kill.
+HANGING_CADEX = textwrap.dedent(
+    """
+    import os, subprocess, sys, time
+
+    subprocess.Popen([sys.executable, "-c",
+        "import os, sys, time; "
+        "open(sys.argv[1], 'w').write(str(os.getpid())); "
+        "time.sleep(600)", os.environ["HANG_MARKER"]])
+    time.sleep(600)
+    """
+)
+
+
+def test_a_leg_that_runs_out_of_time_fails_the_walk_and_kills_its_subtree(
+    toy_root, capsys, monkeypatch, tmp_path
+) -> None:
+    """The hazard the walk shipped with: a leg that hangs hangs the machine.
+
+    ``run_leg`` had no bound at all, on any leg, and ``--timeout`` reached
+    only the trainer's own internals — so an agent CLI that stalled rather
+    than refusing left an unattended walk waiting forever with nothing to
+    notice it. The bound ends the leg through the ordinary failure path.
+    """
+
+    script = tmp_path / "hanging_cadex.py"
+    script.write_text(HANGING_CADEX, encoding="utf-8")
+    marker = tmp_path / "grandchild.pid"
+    monkeypatch.setenv("HANG_MARKER", str(marker))
+    monkeypatch.setattr(walk_module, "cadex_command", lambda: [sys.executable, str(script)])
+
+    out = toy_root / "runs" / "hang"
+    started = time.monotonic()
+    code, envelope = _run(
+        capsys, "--project", str(toy_root), "walk", "--out", str(out),
+        "--leg-timeout", "2",
+    )
+    elapsed = time.monotonic() - started
+
+    assert code == EXIT_FAILURE, envelope
+    assert "leg train" in envelope["error"] and "--leg-timeout" in envelope["error"]
+    assert envelope["walk"]["legs"][-1]["exit"] == EXIT_LEG_TIMEOUT
+    assert envelope["walk"]["leg_timeout_s"] == 2.0
+    # It really stopped: well inside the fake's ten minutes, and nothing was
+    # declared into the project.
+    assert elapsed < 60.0
+    assert PLACEHOLDER in (toy_root / "script.py").read_text()
+
+    # ...and the grandchild went with it, rather than being orphaned onto a
+    # machine nobody is watching.
+    pid = int(marker.read_text())
+    for _ in range(100):
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            break
+        time.sleep(0.1)
+    else:  # pragma: no cover - only on a failure
+        pytest.fail(f"the leg's grandchild {pid} outlived the walk")
+
+
+def test_the_walk_reports_the_bound_it_ran_under_and_the_trainer_s_margin(
+    fake_cadex, toy_root, capsys
+) -> None:
+    """A walk that finished says what it was measured against."""
+
+    code, envelope = _run(
+        capsys, "--project", str(toy_root), "walk",
+        "--out", str(toy_root / "runs" / "bounded"), "--timeout", "30",
+    )
+    assert code == EXIT_OK, envelope
+    assert envelope["walk"]["leg_timeout_s"] == DEFAULT_LEG_TIMEOUT_S
+    assert envelope["walk"]["train_leg_timeout_s"] == DEFAULT_LEG_TIMEOUT_S
+
+
+def test_the_train_leg_is_never_bounded_under_the_trainer_s_own_limit() -> None:
+    """``--timeout`` is the trainer's; ``--leg-timeout`` is the walk's.
+
+    A caller who asks for a long training run must not have it shot by a
+    default they never typed, and a leg with no bound stays unbounded.
+    """
+
+    assert train_leg_timeout(3600.0, 0.0) == 3600.0
+    assert train_leg_timeout(3600.0, 600.0) == 3600.0
+    assert train_leg_timeout(3600.0, 7200.0) == 7200.0 + 300.0
+    assert train_leg_timeout(0.0, 600.0) == 0.0
+
+
 def test_a_script_without_the_convention_is_refused_after_training(
     fake_cadex, toy_root, capsys
 ) -> None:
@@ -533,6 +632,7 @@ def test_a_script_without_the_convention_is_refused_after_training(
         (["--out", "o", "--set", f"{POLICY_SWITCH}=1"], "owns the switch"),
         (["--out", "o", "--name", "job.txt"], ".cxpolicy"),
         (["--out", "o", "--iterations", "0"], "at least 1"),
+        (["--out", "o", "--leg-timeout", "-1"], "--leg-timeout must be"),
         (["--out", "o", "--init-from-task-change", "why"], "--init-from POLICY"),
     ],
 )

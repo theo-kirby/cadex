@@ -24,14 +24,17 @@ shape because they share the legs, not because they share this file.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 import json
 import math
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
+import threading
 import time
 from typing import Any, Sequence
 import xml.etree.ElementTree as ElementTree
@@ -95,13 +98,127 @@ class Leg:
         return payload
 
 
-def run_leg(name: str, argv: Sequence[str], *, capture: bool = True) -> Leg:
+#: How long any one leg may run before the walk stops it, in seconds.
+#: The two design turns this run measured took 629.6 s and 1,014.2 s, so an
+#: hour is far above anything a leg has ever legitimately needed and still
+#: bounds a machine that would otherwise wait forever on a provider that
+#: stalls rather than refusing. ``--leg-timeout 0`` restores no limit.
+DEFAULT_LEG_TIMEOUT_S = 3600.0
+
+#: How long a stopped leg has to die on ``SIGTERM`` before it is killed.
+LEG_TERMINATION_GRACE_S = 5.0
+
+#: A trainer bounded by ``--timeout`` still has to write its policy and its
+#: receipt afterwards, so the walk's own bound never undercuts the trainer's.
+TRAIN_LEG_GRACE_S = 300.0
+
+#: The exit code a stopped leg is reported with — GNU ``timeout``'s, so a
+#: reader who knows one knows the other. It is not ``EXIT_USAGE`` or
+#: ``EXIT_REJECTED``, so the walk fails through its ordinary ``failed(...)``
+#: path at ``EXIT_FAILURE``: running out of time is a leg that did not
+#: succeed, not a new kind of refusal.
+EXIT_LEG_TIMEOUT = 124
+
+
+def train_leg_timeout(leg_timeout: float, trainer_timeout: float) -> float:
+    """The train leg's bound: the walk's, but never under the trainer's.
+
+    ``--timeout`` is the trainer's internal limit and ``--leg-timeout`` is
+    the walk's limit on the whole child command; a caller who asks for a
+    45-minute training run should not have it shot at the hour by a default
+    they never typed, so the train leg gets whichever is larger, plus the
+    grace the receipt and the ``--put`` copy need.
+    """
+
+    if leg_timeout <= 0:
+        return 0.0
+    if trainer_timeout <= 0:
+        return leg_timeout
+    return max(leg_timeout, trainer_timeout + TRAIN_LEG_GRACE_S)
+
+
+def _signal_leg(process: "subprocess.Popen[str]", number: int) -> None:
+    """Signal the leg's whole session, or the leg alone where there is none."""
+
+    try:
+        os.killpg(os.getpgid(process.pid), number)
+    except (AttributeError, OSError):
+        try:
+            process.send_signal(number)
+        except OSError:
+            pass
+
+
+def _stop_leg(process: "subprocess.Popen[str]") -> None:
+    """End a leg that ran out of time, and everything under it.
+
+    ``SIGTERM`` to the session first, so a leg that has a chance to close
+    its engine session takes it; ``SIGKILL`` to whatever is still there
+    after the grace. The group is the point: the child is a ``cadex``
+    command that has itself spawned the agent CLI or the trainer, and
+    killing only the child would leave the process that was actually
+    hanging alive and holding the project.
+    """
+
+    _signal_leg(process, signal.SIGTERM)
+    try:
+        process.wait(timeout=LEG_TERMINATION_GRACE_S)
+    except subprocess.TimeoutExpired:
+        _signal_leg(process, signal.SIGKILL)
+        try:
+            process.wait(timeout=LEG_TERMINATION_GRACE_S)
+        except subprocess.TimeoutExpired:
+            pass
+
+
+@contextmanager
+def _relaying_signals(process: "subprocess.Popen[str]") -> Any:
+    """Ctrl-C still reaches a leg that is a session of its own.
+
+    ``start_new_session`` is what lets the timeout stop the leg's whole
+    subtree, and it also takes the leg out of the terminal's foreground
+    group, so an interactive ``SIGINT`` would no longer reach it. Relaying
+    the two signals a person or a supervisor actually sends puts that back,
+    and puts it back wider than it was: the relay goes to the session, so
+    the agent CLI or trainer under the leg stops too.
+    """
+
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    previous: dict[int, Any] = {}
+
+    def relay(number: int, frame: Any) -> None:
+        _signal_leg(process, number)
+        signal.signal(number, previous.get(number, signal.SIG_DFL))
+        os.kill(os.getpid(), number)
+
+    try:
+        for number in (signal.SIGINT, signal.SIGTERM):
+            previous[number] = signal.signal(number, relay)
+        yield
+    finally:
+        for number, handler in previous.items():
+            signal.signal(number, handler)
+
+
+def run_leg(
+    name: str, argv: Sequence[str], *, capture: bool = True, timeout: float = 0.0
+) -> Leg:
     """Run one leg and return it with its envelope (or its printed text).
 
     Stderr passes straight through — the legs' progress lines and the
     trainer's reward curve belong there. Stdout is the leg's ``--json``
     envelope, or with ``capture`` false the raw text (``cadex script``
     prints the source and nothing else), kept under ``"text"``.
+
+    ``timeout`` bounds the leg in wall clock; zero is no limit. A leg that
+    runs out of time is stopped, subtree and all, and comes back as an
+    ordinary failed leg — exit :data:`EXIT_LEG_TIMEOUT`, the reason in its
+    envelope's ``error`` — so the walk ends through the same path a
+    refusing leg ends it through. This is what makes the walk safe to run
+    with nobody watching: every leg spawns something the walk does not
+    control, and before this each of them could hang the run forever.
     """
 
     command = [*cadex_command(), *argv]
@@ -111,26 +228,42 @@ def run_leg(name: str, argv: Sequence[str], *, capture: bool = True) -> Leg:
     )
     started = time.monotonic()
     try:
-        completed = subprocess.run(
-            command, stdout=subprocess.PIPE, stderr=None, text=True, env=env
+        process = subprocess.Popen(
+            command, stdout=subprocess.PIPE, stderr=None, text=True, env=env,
+            start_new_session=True,
         )
     except OSError as exc:
         raise WalkError(f"{name}: could not run {command[0]}: {exc}") from exc
-    leg = Leg(name=name, argv=list(argv), code=completed.returncode,
+    stopped = False
+    with _relaying_signals(process):
+        try:
+            stdout, _ = process.communicate(timeout=timeout or None)
+        except subprocess.TimeoutExpired:
+            stopped = True
+            _stop_leg(process)
+            stdout, _ = process.communicate()
+    leg = Leg(name=name, argv=list(argv), code=process.returncode,
               seconds=time.monotonic() - started)
+    if stopped:
+        leg.code = EXIT_LEG_TIMEOUT
+        leg.envelope = {"error": (
+            f"the {name} leg was stopped after {timeout:g}s (--leg-timeout); "
+            "it and everything under it were killed."
+        )}
+        return leg
     if not capture:
-        leg.envelope = {"text": completed.stdout}
+        leg.envelope = {"text": stdout}
         return leg
     try:
-        parsed = json.loads(completed.stdout)
+        parsed = json.loads(stdout)
     except ValueError:
         parsed = None
     if isinstance(parsed, dict):
         leg.envelope = parsed
-    elif completed.returncode == 0:
+    elif process.returncode == 0:
         raise WalkError(
             f"{name}: the leg exited 0 but printed no envelope: "
-            + completed.stdout.strip()[-400:]
+            + stdout.strip()[-400:]
         )
     return leg
 

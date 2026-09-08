@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 from contextlib import contextmanager
+import math
 import os
 from pathlib import Path
 import signal
@@ -104,6 +105,7 @@ from .train import (
     trainer_command,
 )
 from .walk import (
+    DEFAULT_LEG_TIMEOUT_S,
     POLICY_SWITCH,
     ROLLOUT_DIRNAME,
     SCRIPT_FILENAME,
@@ -114,6 +116,7 @@ from .walk import (
     declared_note_subjects,
     review_from_outputs,
     run_leg,
+    train_leg_timeout,
     write_review,
 )
 
@@ -452,7 +455,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     walk_parser.add_argument(
         "--timeout", type=float, default=0.0,
-        help="Stop the trainer after this many seconds (0: no limit).",
+        help="Stop the TRAINER after this many seconds (0: no limit). It "
+        "bounds the trainer inside the train leg and nothing else; "
+        "--leg-timeout bounds the legs themselves.",
+    )
+    walk_parser.add_argument(
+        "--leg-timeout", dest="leg_timeout", type=float,
+        default=DEFAULT_LEG_TIMEOUT_S, metavar="SECONDS",
+        help="Stop any one leg after this many seconds and fail the walk "
+        "there, killing the leg and everything under it (0: no limit). "
+        "The train leg is never bounded below --timeout plus a margin. "
+        "Default: %(default)g.",
     )
     walk_parser.add_argument(
         "--trainer-python", dest="trainer_python", default="", metavar="PATH",
@@ -1304,6 +1317,9 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     if args.policy_name and not str(args.policy_name).endswith(".cxpolicy"):
         report.error = "--name must end in .cxpolicy."
         return EXIT_USAGE
+    if not math.isfinite(args.leg_timeout) or args.leg_timeout < 0:
+        report.error = "--leg-timeout must be a nonnegative number of seconds (0: no limit)."
+        return EXIT_USAGE
     if (args.init_from_task_change or args.init_from_parent_task) and not (
         args.init_from and args.init_from_parent_task and args.init_from_task_change
     ):
@@ -1326,7 +1342,16 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     report.out_dir = str(out_dir)
     common = _walk_common(args)
     legs: list[dict[str, Any]] = []
-    report.walk = {"legs": legs, "review": {}}
+    # The walk's own wall-clock bound, in the envelope beside the legs it
+    # bounds: a run that was stopped and a run that finished are told apart
+    # by the leg's exit code, and by this number saying what it was measured
+    # against. The train leg carries its own, never under ``--timeout``.
+    leg_timeout = float(args.leg_timeout)
+    train_timeout = train_leg_timeout(leg_timeout, float(args.timeout))
+    report.walk = {
+        "legs": legs, "review": {},
+        "leg_timeout_s": leg_timeout, "train_leg_timeout_s": train_timeout,
+    }
 
     try:
         engine = resolve_engine(args.engine or None)
@@ -1352,7 +1377,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         if args.claude:
             argv += ["--claude", args.claude]
         _progress(f" · walk  design turn {index + 1}/{len(args.prompts)}")
-        leg = run_leg("design", argv)
+        leg = run_leg("design", argv, timeout=leg_timeout)
         if leg.code != EXIT_OK:
             return failed(leg, "the design turn was not accepted")
         legs.append(leg.to_json())
@@ -1365,7 +1390,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             argv += ["--set", f"{name}={value}"]
         argv += ["--out", str(out_dir / SWEEP_DIRNAME), "--json"]
         _progress(" · walk  sweep")
-        leg = run_leg("sweep", argv)
+        leg = run_leg("sweep", argv, timeout=leg_timeout)
         if leg.code != EXIT_OK:
             return failed(leg, "the change was refused")
         legs.append(leg.to_json())
@@ -1390,7 +1415,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         if on:
             argv.append(flag)
     _progress(" · walk  train" + (" (remote)" if args.remote else ""))
-    leg = run_leg("train", argv)
+    leg = run_leg("train", argv, timeout=train_timeout)
     if leg.code != EXIT_OK:
         return failed(leg, "training did not produce a policy")
     legs.append(leg.to_json())
@@ -1407,7 +1432,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
 
     # Declare: the digest edit, then the script write.
     _progress(" · walk  declare")
-    leg = run_leg("script", [*common, "script"], capture=False)
+    leg = run_leg("script", [*common, "script"], capture=False, timeout=leg_timeout)
     if leg.code != EXIT_OK:
         return failed(leg, "the script could not be read")
     try:
@@ -1418,7 +1443,8 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         return EXIT_REJECTED
     script_path = out_dir / SCRIPT_FILENAME
     script_path.write_text(source, encoding="utf-8")
-    leg = run_leg("declare", [*common, "script", "--set", str(script_path), "--json"])
+    leg = run_leg("declare", [*common, "script", "--set", str(script_path), "--json"],
+                  timeout=leg_timeout)
     if leg.code != EXIT_OK:
         return failed(leg, "the re-declared script was refused")
     legs.append(leg.to_json())
@@ -1428,7 +1454,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     leg = run_leg("rollout", [
         *common, "params", "--set", f"{POLICY_SWITCH}=1",
         "--out", str(out_dir / ROLLOUT_DIRNAME), "--json",
-    ])
+    ], timeout=leg_timeout)
     if leg.code != EXIT_OK:
         return failed(leg, "the policy did not verify")
     legs.append(leg.to_json())
