@@ -21367,3 +21367,8 @@ observation, not freshness ordering or binary/loaded-module provenance.
 Selection, refusal and rebuilding rules stay unchanged; no payload or
 protocol change. CLI regressions cover all three statuses without refusing
 the walk, external differences, bounded lists and missing/unreadable evidence.
+
+The 2026-09-08 model-free carriage iterate exercised the report end to end:
+JSON and stderr both matched 56 files with zero differences; all four legs
+and review passed. `docs/CLI.md` records the unchanged-objective reward
+comparison and preserves the binary-provenance limitation.

@@ -2097,6 +2097,13 @@ What makes them experimental, and what would settle it:
   with match/different/unavailable evidence; no refusal, rebuild or binary
   provenance claim. Offline walk regressions and the CLI suite verify it.
 
+- [x] **Model-free iterate comparison on the durable carriage** (2026-09-08).
+  Width 70 → 80 mm through unchanged `walk --set`, cold CPU 5 × 16 seed 0:
+  exit 0 in 20.89 s; same reward and 200-step horizon, total 3.296298 →
+  2.760187, comparison automatically committed to project `PROGRESS.md`.
+  All four review eyes inspected; 56-file engine report matches. Baseline
+  bytes preserved. Single-seed toy evidence and command in `docs/CLI.md` §2.
+
 - [x] **Fresh walk survives a cold public CLI revisit** (2026-09-08).
   Accepted revision/digest, policy assets, trace and review geometry survive
   separate script/asset/inventory/clearance/render/section processes. Expected
