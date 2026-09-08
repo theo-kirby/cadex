@@ -62,6 +62,8 @@ The separate fresh two-mechanism complete-review rehearsal remains open on `damp
 
 **Linked-part standing maintenance found no missing walk leg.** The source-absent consumer cold restore/export qualification passed with accepted identity, exact solid, linked bytes and project docs preserved. Its conditional correction is unwarranted; the completed qualification returns to separate planning without repetition or expansion into refresh, path repair or catalog identity. Reconcile judgement: retain `working` and existing criterion evidence; this closes no new charter criterion and supplies no new walk or successful live-conversation repair evidence [rec: calm-sky-2656].
 
+**Model-free iterate is verified on the durable ot4 carriage.** `cadex walk --set carriage_wid=80` changed width from 70 mm, trained cold on CPU at 5 iterations × 16 environments, seed 0, and completed sweep/train/declare/rollout/review in 20.89 s, exit 0. Task bundles differ only in model; both verified rollouts use seed 7, 200 steps and 4 seconds with identical randomisation and no early termination. Reward decreased **3.296298 → 2.760187** (delta -0.536111); the walk automatically recorded the rounded comparison in `PROGRESS.md` and produced five project commits. All 21 baseline files, including its stored policy, stayed byte-identical. CLI gate: 223 passed without skips. Retain `working`: this is one cold-seed toy-scale comparison, not design qualification or a live `--resume` repair turn; GUI and remote execution were not exercised. [rec: mellow-quartz-8093]
+
 ## Negative knowledge
 
 - [scope: a parameter sweep on a project with a policy declared, without the switch convention | confidence: high | evidence: sweet-light-3396, keen-sail-4481] `cadex params --set` is refused at exit 3 when the change moves the task digest, because the declared policy no longer fits, and nothing is written. Iterate cannot be a plain sweep; the ADR-192 answer is a script that declares the policy behind a `policy_on` switch the sweep blanks. A `params --drop-policy` flag and an engine op were considered and not taken.
@@ -107,3 +109,4 @@ The separate fresh two-mechanism complete-review rehearsal remains open on `damp
 - little-fern-0464 — qualified guidance/scaffold mismatch corrected without changing Git behavior; full CLI gate 206 passed with no skips
 - silver-rain-7333 — bounded consent and cold-recovery qualification preserves completed walk evidence; no missing leg or corrective unit
 - calm-sky-2656 — linked-part qualification holds; no conditional correction or missing lifecycle leg, return to separate planning
+- mellow-quartz-8093 — Model-free iterate is verified on the durable ot4 carriage

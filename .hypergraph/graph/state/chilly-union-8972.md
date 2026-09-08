@@ -51,6 +51,8 @@ Walk sections share the named-view snapshot, retain explicit outcomes and rollou
 
 **Source-independent linked-part export is qualified on the existing staged engine.** Four fresh ordinary CLI processes initialized a source solid, linked it into a consumer, accepted/exported the import, then cold-exported with the recorded source path absent; all four exited 0. The consumer retained accepted identity, linked bytes and byte-identical BREP for a valid six-face solid of approximately 600 mm³. Protected docs were unchanged and progress appended one ordinary export row. The focused CLI/container suite passed **25 tests, zero skips**. Reconcile judgement: retain `working`; this is bounded real-kernel snapshot evidence, with no refresh, full-suite or new build claim [rec: calm-sky-2656].
 
+**`cadex walk` reports bounded engine/source comparison evidence (ADR-251).** The `engine_source_comparison` JSON field and stderr report `match`, `different` or `unavailable` before the first leg. Dev runs compare binary-prefix `Mod/cadex`; explicit/environment payloads compare their declared module directory. Top-level Python byte comparisons retain full changed/missing/extra counts and cap each name list at ten; they establish neither age ordering, binary provenance nor loaded-module closure. CLI guidance and project architecture scaffold document the report. Engine selection and refusal behavior are unchanged; CLI gate: 223 passed, no skips; three walk regressions fail against old source. [rec: narrow-wing-0418]
+
 ## Negative knowledge
 
 - [scope: cli/ on macOS | confidence: medium | evidence: jolly-walrus-3692] Nothing in the CLI is macOS-hostile, but it has never been run there by hand and 'should work' is not evidence. Expect the macOS CI job to be the thing that finds anything.
@@ -100,3 +102,4 @@ Walk sections share the named-view snapshot, retain explicit outcomes and rollou
 - silver-rain-7333 — six real staged CLI processes qualify consent and cold recovery, including exit 3 and the failure-envelope reporting limit
 - calm-sky-2656 — four staged CLI processes and 25 focused passes qualify source-independent linked-part export
 - open-hollow-2140 — ADR-249: `--model` reads `$CADEX_MODEL` before `DEFAULT_MODEL` so a credit-less default cannot stop the walk; CLI 217 passed, no skips
+- narrow-wing-0418 — `cadex walk` reports bounded engine/source comparison evidence (ADR-251)
