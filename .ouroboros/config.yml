@@ -68,9 +68,11 @@ limits:
   max_cooldown: 3h
   transient_strikes: 3
   reserve:
-    claude: 0.85          # stop using Claude at 85% of its 7-day window, until that
-                          # window resets. Codex carries the run meanwhile; the 15%
-                          # left over is what the operator works out of on Monday.
+    claude: 0.99          # this is the quarry account and the run may have all of it.
+                          # Kept just under 1.0 so the loop steps aside a moment before
+                          # the hard limit and falls back to Codex, instead of spending
+                          # an actor turn discovering the wall. The 7-day window resets
+                          # 2026-09-09 anyway.
 loop:                     # motion without progress (ouroboros DESIGN.md section 6b)
   product_after: 8        # iterations changing only records, plans and STATE.md
   frontier_after: 30      # iterations with no node moving and no criterion ticked
