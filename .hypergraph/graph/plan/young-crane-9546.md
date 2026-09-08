@@ -11,69 +11,89 @@ Status: open
 
 ## Current
 
-1. **Report the rollout's travel in the walk's review, in two channels
-   (missions 2/6).** `cli/` and `docs/` only. From the rollout trace the walk
-   already locates, compute per component the **position travel** (per-axis
-   range and the largest displacement from frame 0's pose) **and the rotation
-   swing** (the largest angle `2·acos(|q0·q|)` between frame 0's quaternion and
-   any frame's), and report both as a `motion` block in `review.json` beside the
-   clearance one. The `PROGRESS.md` row the walk already writes carries **both
-   figures, millimetres and degrees** — either naming the largest mover under a
-   stated rule that can rank a pure rotation against a pure translation, or
-   declining to rank and naming both. A displacement-only row is not a partial
-   answer, it is a wrong one: the repository's own hinged-arm example travels
-   **0.0000 mm and rotates 178.8334°** [rec: solemn-journey-9731]. Three premise
-   corrections the unit must honour rather than rediscover: frame 0 is **not**
-   the identity (placements are absolute world poses — `swing` starts at
-   `[12, 0, 6]`, `base` at the origin), frame 0 is `frame_kind: "input"` with
-   `nominal_time_s: None` so a duration read from it is `None`, and the raw
-   frame count mixes that one pre-solve pose into the solved ones (27 = 1 + 26
-   on both examples) — say which frames are counted [rec: solemn-journey-9731].
-   The component join is proven on real data: the trace's per-frame
-   `component_placements` keys equal the render summary's `objects` keys
-   [rec: sleepy-hollow-9498]. Two regressions on real traces, and the material
-   already exists — `examples/lifecycle/{hinged-arm,linear-carriage}` reproduce
-   in 13–15 s with no model call [rec: western-gate-9567] and give one rotating
-   and one translating case — plus an all-identity trace, which must report zero
-   travel rather than unavailable. Reuse the existing review serialization and
-   trace locator; no engine, protocol, payload or `shell/` diff. ADR, ROADMAP
-   bullet, verified dates, and the full `pixi run python -m pytest cli/tests` on
-   the shared `cpu_training` fixture with no outer backend override.
+1. **One fresh prompt walk, third mechanism, reviewed by both new eyes
+   (missions 2/6).** Promoted from third: it was ranked behind the two
+   reporting units only because its review would have carried nothing the two
+   earlier prompt walks did not, and ADR-259 removed that reason
+   [rec: square-bay-3436]. One `cadex walk --prompt` on this machine into a
+   durable project **outside this repository**, on a mechanism whose named
+   joint and actuator differ from the swing arm (revolute, position servo) and
+   the carriage (prismatic, force motor) — not a re-roll of either prompt,
+   which is not evidence [rec: morning-summit-7848]. No code change specific
+   to the mechanism; the dispatch is now pinned against one by two offline
+   regressions, so a change that would break the claim fails a test rather
+   than passing silently [rec: falling-willow-7995]. Toy scale, ≤5 iterations
+   × 16 envs, `--timeout 600`, `$CADEX_MODEL=claude-opus-5`, explicit CPU,
+   ≤18 min and ≤3 GB, nothing generated committed to this repository. What
+   makes it a unit rather than re-evidence: it is the first walk whose review
+   carries the ADR-256 documentation eye reading a **real design turn's own
+   notes** back — the two documented example walks are *recipe* walks and run
+   no design turn at all [rec: western-gate-9567] — and the first carrying an
+   ADR-259 travel figure, on a mechanism where nobody knows in advance which
+   of the two channels holds the motion. Report both channels, the
+   documentation finding, and whether the design turn wrote `NOTE` lines
+   unprompted. This is also the charter's own leading short-rung instruction,
+   which says to run the entry point end to end before anything else whenever
+   the rung is empty. If the provider refuses on credit, record the refusal
+   and stop; do not probe — unit 2 is the fallback and the order degrades
+   safely [rec: western-grotto-7499].
 
-2. **Carry travel into the iterate comparison, both channels (missions 2/5).**
-   Only after unit 1 lands. The comparison the walk writes into `PROGRESS.md`
-   reports `total_reward` and nothing about whether the mechanism moved, so a
-   retrain that killed the motion and a retrain that merely scored worse read
-   the same. Add the travel figures beside the reward in the comparison row and
-   in its `review`/history record, carrying the millimetre **and** the degree
-   channel for the same reason unit 1 does — a revolute rig's whole motion is in
-   the second one [rec: solemn-journey-9731]. Extend the existing iterate
-   lifecycle regression rather than adding a matrix. The carriage pair is the
-   worked example and the reason: baseline 103.298 mm travel at `total_reward`
-   3.296298, iterate 103.719 mm at 2.760187 — the reward fell while the travel
-   held, and the walk could not say so [rec: sleepy-hollow-9498]
-   [rec: mellow-quartz-8093]. No ranking claim follows: travel is a fact about
-   the rollout, never a score, and two projects' travels do not compare any more
-   than their rewards do — 4,739 mm of a carriage free-falling on an ideal guide
-   outranks 178.8° of a swing arm working [rec: solemn-journey-9731].
+2. **Make the walk's `PROGRESS.md` row comparable at all, motion first
+   (missions 2/5).** Re-scoped by measurement, and the scope is larger and
+   plumbier than the previous rung said. The finding: `_record_progress`
+   (`cli/cadex_cli/__main__.py:1735`) branches on the command, and the
+   `command == "walk"` branch builds its numbers cell from clearance +
+   `_motion_cell` + `_documentation_cell` and **never passes
+   `previous=previous_numbers(...)`** — only the non-walk branch calls
+   `progress_numbers(..., previous=...)`. So **no walk row has ever carried a
+   delta against the previous walk of the same project**, for any figure.
+   Compounding it, `_motion_cell` spells `motion 0 mm (swing), 178.8°
+   (swing)`, which `_NUMBER_RE` (`project_docs.py:413`, built from
+   `COMPARED_NUMBERS = ("total_reward", "reward/step")`) cannot parse: the
+   regex wants `<label> <number>`. The reward deltas live on the **train**
+   leg's row and the travel figure on the **walk** row, written by different
+   branches [rec: western-grotto-7499]. So the unit is three parts — a
+   parseable spelling for each channel, the two labels in `COMPARED_NUMBERS`,
+   and threading `previous` into the walk branch — and the row must stay
+   inside `PROGRESS_NUMBERS_LIMIT`, which ADR-259 already had to raise from
+   160 to 320 when the motion cell pushed the documentation finding off the
+   end [rec: square-bay-3436]. Carry the millimetre **and** the degree channel
+   for the same reason unit 1 of the previous rung did: a revolute rig's whole
+   motion is in the second one [rec: solemn-journey-9731]. Extend the existing
+   iterate lifecycle regression rather than adding a matrix. The carriage pair
+   is the worked example and the reason: baseline 103.298 mm travel at
+   `total_reward` 3.296298, iterate 103.719 mm at 2.760187 — the reward fell
+   while the travel held, and the walk could not say so
+   [rec: sleepy-hollow-9498] [rec: mellow-quartz-8093]. No ranking claim
+   follows: travel is a fact about the rollout, never a score, and two
+   projects' travels do not compare any more than their rewards do — 4,739 mm
+   of a carriage free-falling on an ideal guide outranks 178.8° of a swing arm
+   working [rec: solemn-journey-9731]. `cli/` and `docs/` only; ADR, ROADMAP
+   bullet, verified dates, and the full `pixi run python -m pytest cli/tests`
+   on the shared `cpu_training` fixture with no outer backend override.
 
-3. **One fresh prompt walk, third mechanism, reviewed by both new eyes
-   (missions 2/6).** Only after units 1 and 2. One `cadex walk --prompt` on this
-   machine into a durable project outside this repository, on a mechanism whose
-   named joint and actuator differ from the swing arm (revolute, position
-   servo) and the carriage (prismatic, force motor) — not a re-roll of either
-   prompt, which is not evidence [rec: morning-summit-7848]. No code change
-   specific to the mechanism. Toy scale, ≤5 iterations × 16 envs, `--timeout
-   600`, `$CADEX_MODEL=claude-opus-5`, explicit CPU, ≤18 min and ≤3 GB, nothing
-   generated committed to this repository. What makes it a unit rather than
-   re-evidence: it is the first walk whose review carries the ADR-256
-   documentation eye reading a real design turn's own notes back — the two
-   documented example walks are *recipe* walks and run no design turn at all
-   [rec: western-gate-9567] — and the first carrying a travel figure. Report
-   both, plus whether the design turn wrote `NOTE` lines unprompted. If the
-   provider refuses on credit, record the refusal and stop; do not probe.
+3. **One model-free `--set` iterate walk on the third mechanism's own project
+   (missions 2/5/8).** Only after units 1 and 2. Unit 2 makes the walk row
+   comparable; nothing in this repository then exercises it on a mechanism
+   that is not one of the two examples. Re-walk the durable project unit 1
+   created with `--set` on one parameter it actually has, no `--prompt`, so it
+   **spends no tokens**, and record the first comparison row that carries both
+   travel channels against a previous walk on unseen geometry — plus whether
+   the delta reads as a finding or as noise at toy scale. This is the cheapest
+   possible proof that unit 2 works where it is meant to work, and it is a
+   real iterate rather than a re-roll: the parameter changes, the prompt does
+   not [rec: western-grotto-7499] [rec: morning-summit-7848]. If unit 1 was
+   refused at the provider, this unit falls back to one of the two example
+   projects and says so; it does not become a reason to retry the model call.
 
 ## Negative knowledge
+
+- [scope: the walk row and the comparison machinery, measured | confidence: high | evidence: western-grotto-7499] `_record_progress`'s `command == "walk"` branch does not pass `previous=previous_numbers(...)`; only the non-walk branch does. No walk row has ever shown a delta against a previous walk, for clearance, documentation or motion. And `_motion_cell`'s spelling (`motion 0 mm (swing), 178.8° (swing)`) is not in the `<label> <number>` shape `_NUMBER_RE` is built to find, so adding labels to `COMPARED_NUMBERS` alone would parse nothing. Do not plan the travel carry as a one-line constant change, and do not assume the reward deltas and the travel figure share a row — they are written by different branches for different commands.
+
+- [scope: what the second-mechanism regressions do and do not prove | confidence: high | evidence: falling-willow-7995] The two offline tests pin that the dispatch has **no mechanism-specific branch**: both example recipes produce byte-identical child argv once the project path is substituted out, and `declare_policy` rewrites the same two literals on both. That is a property of the tree, replacing a claim about the past. It is not evidence that a *third* mechanism walks, and it is not evidence about control: the carriage's policy falls 4,699 mm in a second on an ideal unlimited guide, one PPO iteration is a smoke test, and the two `total_reward` columns are different objectives in different units. Do not cite these tests in place of running unit 1, and do not rank the two designs by their rewards.
+
+- [scope: "Three modes, one shape", considered for promotion and declined | confidence: high | evidence: western-grotto-7499] Both unexercised limbs are unexercised by this run's standing constraints rather than by missing work, and the criterion's own wording asks the GUI mode to be documented and the remote mode documented and scripted *while those constraints hold*. Remote is ADR-200 plus the ADR-255 offline `train --dry-run` preflight with local/remote artifact parity pinned; GUI is ADR-201 with its one stale turn-model claim already corrected in doc, source comment, two ADRs and two test pins. The charter's other two named short-rung legs — the domain-doc convention (ADR-245, ADR-256) and the handoff doc — are delivered. Do not open a unit here; the only charter short-rung item outstanding is running the walk.
+
 
 - [scope: what a displacement-only travel figure gets wrong | confidence: high | evidence: solemn-journey-9731] Reading position alone is not a partial motion report, it is an inverted one. Measured on the two documented example rollouts on this machine: the hinged arm's `swing` holds `[12, 0, 6]` for all 27 frames and turns **178.8334°** — travel `0.0000 mm`, indistinguishable from a dead rollout — while the linear carriage's `slide` travels **4739.3783 mm**, all of it the free fall on an ideal unlimited guide that `crisp-reef-5607` already records as `z = -4699 mm at 1 s`, and rotates `0.0000°`. Across the four real traces this run has produced, both revolute rigs have near-zero displacement. Do not ship a single-number travel figure, do not rank projects by it, and do not treat the rotation channel as completeness work.
 
@@ -88,7 +108,7 @@ Status: open
 
 - [scope: the inventory retention tail, dropped | confidence: high | evidence: sleepy-hollow-9498] Removed from this rung rather than deferred. Five iterations went to inventory report prose and fixtures against an unmoved frontier and the overseer's verdict at #16 was `looping`; the boundary is already stated in `docs/CLI.md`, in the generated scaffold and as negative knowledge on `damp-moon-9297`, and every superseded report survives in its project's own Git. It is not blocked and not a defect — it is a sixth pass that the rung declines. Do not reinstate it and do not open anything adjacent to it [rec: soft-crane-2369] [rec: scarlet-ocean-2920].
 
-- [scope: the overseer's third-mechanism steer, honoured and re-ordered | confidence: high | evidence: sleepy-hollow-9498] The #19 verdict hard-commits the next unit to a fresh mechanism walk because the frontier has been unmoved thirteen iterations. The frontier cannot move from this rung: all four seeded criteria are `working`, the three open nodes are standing work or parked under `## Later criteria`, and the charter reserves promotion to a human edit. So the walk is kept and ranked third rather than dropped or led with — after the two eyes that make it more than a fourth pass at the same review shape [rec: rare-cliff-9595] [rec: proud-beacon-8002].
+- [scope: the overseer's third-mechanism steer, honoured and re-ordered | confidence: high | evidence: sleepy-hollow-9498] The #19 verdict hard-commits the next unit to a fresh mechanism walk because the frontier has been unmoved thirteen iterations. The frontier cannot move from this rung: all four seeded criteria are `working`, the three open nodes are standing work or parked under `## Later criteria`, and the charter reserves promotion to a human edit. The deferral is now **spent**: ADR-259 landed the travel eye and ADR-256 the documentation eye, so the walk is promoted to first on this rung rather than kept third [rec: square-bay-3436] [rec: western-grotto-7499]. What survives from that entry is the reason it was never dropped, and the reason the frontier metric is not the rung's ranking rule [rec: rare-cliff-9595] [rec: proud-beacon-8002].
 
 - [scope: the engine's swept check versus the walk's own motion | confidence: high | evidence: strong-falcon-1463] ADR-130/ADR-242's `clearance=` is an argument of `assembly.simulation` — the kinematic OndselSolver trace, capped at 32 pairs — and a breach **raises** (`cadex_assembly_worker.py:3248`). The walk's motion is `assembly.rollout`, a MuJoCo dynamics trace with no clearance surface at all, which is why that path is exercised only by its regression [rec: morning-summit-7848]. Do not auto-declare pairs into the accepted script to reach it: a breach would kill a walk after its training is already spent, and this rung has already declined refusal in favour of reporting. The kernel check over the dynamics rollout is an engine-zone successor on the long rung, not this unit.
 
@@ -160,6 +180,7 @@ Status: open
 
 
 
+
 - lone-wood-3732 — retain the short horizon without invention or retirement
 - ancient-key-7299 — replace nt3's spent conditional slots with three dispatchable units on the trigger the first failed walk supplied
 - glad-mesa-6299 — the short rung's three units all landed; re-rank onto the second mechanism, the stale-engine report and the three-modes currency audit, with a credit-refusal fallback order
@@ -174,3 +195,4 @@ Status: open
 - strong-falcon-1463 — fold the measured inventory boundary and the offline training plan; lead the rung with motion coverage over the rollout trace and demote inventory retention to its tail
 - sleepy-hollow-9498 — retire the motion screen on measurement; re-rank onto the rollout travel report, the iterate carry and a deferred third-mechanism walk
 - solemn-journey-9731 — correct the travel unit's premises and require both a millimetre and a degree channel; keep the rung's three units and their order
+- western-grotto-7499 — promote the third-mechanism walk to first now that the travel eye landed; re-scope the travel carry as walk-row comparison plumbing and add a model-free --set iterate walk
