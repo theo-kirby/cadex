@@ -29,6 +29,12 @@ The durable nt3-leg adds a sixth clean prompt walk: 630.22 s wall, 1,115,717,632
 
 **What is standing in its place, as a class rather than a bug:** the walk is the product's own integration test, and each clean run exposes the next thing that quietly needed a person. The live one is that the walk cannot tell when the installed engine predates the tree — it reports exit 0 on a stale runtime, and `cli/` has no engine-versus-tree staleness notion at all [rec: wandering-jasper-6102] [rec: glad-mesa-6299].
 
+**This run's seeded frontier is now satisfied in state, with the charter left read-only.** The second mechanism is a prismatic force-motor carriage: exit 0 in 359.8 s, 1,721 MB peak RSS, design 340.7 s, train 15.8 s, declare 0.9 s and rollout 1.0 s. The 5 × 16 seed-0 baseline scored total_reward 3.2963; review covered four views, an XZ section, two components (zero catalogued) and one clearance pair with zero offending. This and the swing arm are pipeline evidence; their differing reward definitions do not rank mechanisms. A same-objective iterate comparison is the bounded follow-up [rec: rare-cliff-9595] [rec: western-reef-4119].
+
+**Mode and gate limits remain explicit.** Remote dispatch is scripted and offline-tested; GUI attachment is documented and unexercised. CLI `$CADEX_MODEL` does not select the shell's model; that divergence is now documented, with 218 CLI tests passing and zero skips. This machine has no usable shell bundle for the file-lifecycle gate, so the plan selects no shell qualification or Linux shell build [rec: early-quill-3654] [rec: western-reef-4119].
+
+**One bounded direction:** report the observed installed-engine/source discrepancy, then exercise it through the iterate walk. The unchanged charter keeps catalog, fleet, reports, outside-source mechanisms and gait ambitions parked; runtime reporting does not authorize those directions. Corrections to the unfinished Bet's wording and ordering are in short: the charter boxes are not ticked, and the reporting unit was never spent [rec: western-reef-4119].
+
 ## Negative knowledge
 
 - [scope: cross-machine measurement | confidence: high | evidence: wandering-jasper-6102] The walk timings, peak-RSS figures and bundle observations recorded below and above were taken on the previous machine and are not this machine's baseline. This machine's baseline is now the exit-0 walk: 17:43 wall, 2,640 MB peak, design 1,014.2 s [rec: wandering-jasper-6102]. Cite that one here, and do not mix the two sets — the design leg alone differs by a factor of three between machines, so a cross-machine wall-clock comparison measures the hardware and the model turn, not the product.
@@ -180,3 +186,5 @@ The durable nt3-leg adds a sixth clean prompt walk: 630.22 s wall, 1,115,717,632
 - ancient-key-7299 — retire nt3's provider-credit parking under ADR-249, mark this machine as a fresh measurement baseline, and name the standing thing to prove: assembly.mjcf must return for a rig the design agent actually produces
 
 - glad-mesa-6299 — record this machine's clean walk baseline, retire the assembly.mjcf thing-to-prove as proved, and put walk-exposed reliability in its place as standing work
+
+- western-reef-4119 — fold second-mechanism and mode evidence; bound evidence reporting and retain parked directions
