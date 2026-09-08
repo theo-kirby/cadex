@@ -11,10 +11,10 @@ Status: open
 
 ## Current
 
-1. **Selected standing direction: evidence-triggered lifecycle maintenance (missions 1/2/6).** The two concrete guide corrections are complete. Preserve working behavior and correct the next observed contradiction or failure with the smallest subtractive change and the zone's gate. There is no current repair to promote into short; this is a standing policy, not an audit assignment [rec: still-harvest-7242] [rec: floral-canyon-9424] [rec: sharp-garden-2483].
-2. **Three candidates compared.** Select standing maintenance; reject another rehearsal/mode qualification because the full iterate and parity gate already supply evidence; reject further guide compression because no new exact target was established. No additional direction or conditional actor slot is opened [rec: mellow-quartz-8093] [rec: frosty-wolf-4770] [rec: sharp-garden-2483].
-3. **Satisfied criteria retain their limits.** Swing-arm and carriage prompt walks establish the local toy pipeline. Width iteration preserves the baseline and fixed task while decreasing reward; it does not establish learned gait or mechanical quality. Runtime reporting compares Python bytes only. Headless is exercised; remote uses a local dispatcher stand-in; GUI attachment is documented and unexercised [rec: wandering-jasper-6102] [rec: rare-cliff-9595] [rec: early-quill-3654] [rec: narrow-wing-0418] [rec: mellow-quartz-8093].
-4. **Open but unselected.** round-glacier-2865 is standing-only reduction; brave-stone-9609 and late-pond-2851 do not authorize catalog breadth or RL scale. Fleet, report rendering, variant studies and outside-source mechanisms remain Later criteria requiring human promotion. No charter-derived gap is retired and no charter checkbox is changed [rec: modest-summit-8554] [rec: sharp-garden-2483].
+1. **Selected finite direction: failure-to-success recovery (missions 1/2/6).** Failed retraining preserves policies and comparison history but leaves the changed sweep accepted. The existing regression stops at export; successful continuation is unproved, not known broken. Short rehearses precisely that continuation, then replaces the terminal coverage and consolidates its documentation. No general recovery machinery is authorized [rec: dawn-sky-3891] [rec: northern-sage-7087].
+2. **Three candidates compared.** Select recovery; reject empty dispatch because it already produced rejected actor bookkeeping; reject broad failure injection because no observation selects other boundaries. Only one direction opens. Standing maintenance resumes after the finite sequence, with fresh evidence required before further dispatch [rec: careful-union-7585] [rec: dawn-sky-3891] [rec: northern-sage-7087].
+3. **Satisfied criteria retain their limits.** Both mechanisms establish the local toy pipeline; the width iterate preserves its baseline but decreases reward. Preservation passed 223 CLI tests without skips and proves neither successful retry nor automatic rollback. Runtime reporting compares Python bytes only; GUI remains documented and unexercised, remote parity uses a local stand-in [rec: wandering-jasper-6102] [rec: rare-cliff-9595] [rec: mellow-quartz-8093] [rec: narrow-wing-0418] [rec: early-quill-3654] [rec: dawn-sky-3891].
+4. **Open but unselected.** Reduction stays standing-only. Catalog breadth, RL scale, fleet, reports, variant studies and outside-source mechanisms require human promotion from Later. No charter gap is retired or checkbox changed [rec: modest-summit-8554] [rec: northern-sage-7087].
 
 ## Negative knowledge
 
@@ -219,3 +219,5 @@ Status: open
 - frosty-wolf-4770 — fold completed reporting and iterate evidence; select bounded subtractive guide maintenance
 
 - sharp-garden-2483 — both guide units folded; evidence-triggered standing maintenance selected with no actor dispatch.
+
+- northern-sage-7087 — fold failed-retraining preservation; select finite recovery continuation and retain parked scope.
