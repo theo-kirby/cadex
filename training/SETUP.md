@@ -256,11 +256,41 @@ the verified rollout, `review.json`) is unchanged. `cadex walk --remote`
 is the whole walk with that one leg on the box. `--allow-cpu` passes
 through; `--detach` does not (a walk waits for its leg — a run too long
 to hold an ssh open for is dispatched by hand, above, and continued with
-`cadex asset --put`). The CLI carries no warm start to the box
-(`--init-from` with `--remote` is a usage error), because this script
-copies two files and the parent policy is not one of them. Run `check`
+`cadex asset --put`). A warm start goes too (below). Run `check`
 first: the CLI reads none of `.remote.env` and repairs nothing.
 `docs/CLI.md` §2 is the contract.
+
+### A warm start, on the box (ADR-268)
+
+The curriculum pair (ADR-161) names two files on **this** machine, and the
+box has seen neither:
+
+```bash
+training/remote_train.sh train ./runs/r2/walk-task.json ./runs/r2/walk.cxpolicy \
+    -- --iterations 400 --envs 4096 \
+       --init-from ./runs/r1/walk.cxpolicy \
+       --init-from-parent-task ./runs/r1/walk-task.json \
+       --init-from-task-change "a wider shove band"
+```
+
+The script lifts those two paths out of the flags after `--`, copies both
+files into a `warm/` subdirectory of the run directory — a subdirectory, so
+a parent bundle named like the child cannot overwrite it — and re-emits the
+two flags pointing at the copies. Everything else after `--` is passed
+through untouched, so what the box's trainer is handed is the same argument
+list you would have run here. The parent bundle arrives byte-identical
+because the trainer ties its digest to the policy's header and refuses
+otherwise.
+
+It refuses before it copies anything when a warm file is missing, when the
+joined `--init-from=PATH` form is used (that path would reach the box
+unrewritten, naming a file that is not there), or when the two warm files
+share a basename and would collide in one flat `warm/`. Same rule as the
+rest of this script: fail loudly rather than repair.
+
+The same applies through the CLI — `cadex train --remote --init-from …` and
+an iterate walk are no longer usage errors — which is what makes an iterate
+the same shape locally and on the box.
 
 **Plan it before you dispatch it** (ADR-255). `check` tells you the box is
 ready; `--dry-run` tells you what would be sent to it, without sending

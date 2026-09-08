@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -248,12 +249,24 @@ def test_the_remote_command_is_the_dispatcher_with_the_same_flags_after_the_dash
     assert "train <bundle.json> <out.cxpolicy> [--allow-cpu] [--detach] [-- trainer args]" in source
     assert 'seen_dashdash' in source and '--allow-cpu) allow_cpu=1' in source
 
-    # A warm start is refused here: the script carries two files out and
-    # the --init-from policy is not one of them.
-    with pytest.raises(TrainError, match="trains cold"):
-        remote_trainer_command(
-            "b/t-task.json", "b/t.cxpolicy", script="r", init_from="p.cxpolicy", **kwargs
-        )
+    # A warm start is not refused and not rewritten here (ADR-268): the
+    # flags leave this machine as the local trainer's own, and the
+    # dispatcher is what lifts the two local paths out and re-points them.
+    warm = remote_trainer_command(
+        "b/t-task.json", "b/t.cxpolicy", script="r", init_from="p.cxpolicy",
+        init_from_parent_task="b0/t-task.json",
+        init_from_task_change="a harder band", **kwargs
+    )
+    local_warm = trainer_command(
+        "python", "b/t-task.json", "b/t.cxpolicy", script="train.py",
+        init_from="p.cxpolicy", init_from_parent_task="b0/t-task.json",
+        init_from_task_change="a harder band", **kwargs
+    )
+    assert warm[warm.index("--") + 1:] == local_warm[5:]
+    assert warm[warm.index("--init-from") + 1] == "p.cxpolicy"
+    # ...and the lifting is in the script, by the names it parses on.
+    assert "--init-from|--init-from-parent-task)" in source
+    assert 'remote_dir}/warm/' in source
 
 
 def test_a_returned_policy_is_verified_against_the_receipt(
@@ -428,13 +441,12 @@ def test_usage_errors_come_before_any_engine_or_trainer(tmp_path, capsys) -> Non
         )
         assert code == EXIT_USAGE, (apart, envelope)
         assert "--init-from-parent-task" in envelope["error"], envelope
-    # --remote's company (ADR-200): the box has its own venv, --allow-cpu
-    # is the dispatcher's flag, and a warm start is not carried out.
+    # --remote's company (ADR-200): the box has its own venv and
+    # --allow-cpu is the dispatcher's flag. A warm start is not in this
+    # list any more -- since ADR-268 the dispatcher carries its files out.
     for wrong, word in (
         (["--remote", "--trainer-python", sys.executable], "CADEX_TRAIN_VENV"),
         (["--allow-cpu"], "--remote"),
-        (["--remote", "--init-from", "p.cxpolicy", "--init-from-parent-task", "t.json",
-          "--init-from-task-change", "why"], "trains cold"),
     ):
         code, envelope = _run(
             capsys, "train", "--project", str(project), "--out",
@@ -844,3 +856,171 @@ def test_iterate_blanks_the_policy_retrains_across_the_change_and_redeclares(
     # Both numbers exist and are the comparison; which is larger is the
     # toy's business after one iteration each, not this test's.
     assert reward1 == reward1 and reward2 == reward2  # not NaN
+
+
+# -- the dispatcher itself, offline (ADR-268) -------------------------------
+
+#: A stand-in `ssh` that runs the box's side here. It answers the three
+#: things `remote_train.sh train` asks a box before it trains -- `$HOME`,
+#: `mkdir -p`, and the trainer's sha256 -- by running them locally, and
+#: intercepts the trainer itself: it logs the argv it was handed, writes a
+#: policy at the `--out` path, and prints the receipt the real trainer
+#: prints. Nothing here is a network.
+FAKE_SSH = """#!@PYTHON@
+import hashlib, json, os, pathlib, shlex, subprocess, sys
+
+args = sys.argv[1:]
+while args and args[0].startswith("-"):
+    flag = args.pop(0)
+    if flag in ("-o", "-p", "-i"):    # each takes a value; the target does not
+        args.pop(0)
+args = args[1:]                       # drop the target
+command = " ".join(args)
+if "cadex_train.py" in command and "--out" in command:   # not the sha256sum
+    # The remote shell is what splits this line, so split it the same way.
+    words = shlex.split(command)
+    pathlib.Path(os.environ["FAKE_SSH_LOG"]).write_text(
+        json.dumps(words), encoding="utf-8")
+    out = words[words.index("--out") + 1]
+    pathlib.Path(out).write_bytes(b"policy-bytes")
+    print(json.dumps({
+        "device": "gpu", "out": out,
+        "sha256": hashlib.sha256(b"policy-bytes").hexdigest(),
+    }))
+    raise SystemExit(0)
+raise SystemExit(subprocess.call(["sh", "-c", command]))
+"""
+
+#: A stand-in `rsync` that copies. `host:/path` becomes `/path`, because the
+#: box in these tests is this filesystem.
+FAKE_RSYNC = """#!@PYTHON@
+import pathlib, shutil, sys
+
+paths = []
+args = sys.argv[1:]
+while args:
+    item = args.pop(0)
+    if item in ("-e",):
+        args.pop(0); continue
+    if item.startswith("-"):
+        continue
+    head, sep, tail = item.partition(":")
+    paths.append(tail if sep and "/" not in head else item)
+sources, destination = paths[:-1], pathlib.Path(paths[-1])
+if str(destination).endswith("/") or destination.is_dir():
+    destination.mkdir(parents=True, exist_ok=True)
+    for source in sources:
+        shutil.copy2(source, destination / pathlib.Path(source).name)
+else:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(sources[0], destination)
+"""
+
+
+@pytest.fixture
+def box(tmp_path, monkeypatch) -> Path:
+    """`remote_train.sh` pointed at this filesystem: fake ssh and rsync on
+    PATH, the repo's own checkout as the box's, and no `.remote.env` read."""
+
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    for name, source in (("ssh", FAKE_SSH), ("rsync", FAKE_RSYNC)):
+        path = binaries / name
+        path.write_text(source.replace("@PYTHON@", sys.executable), encoding="utf-8")
+        path.chmod(0o755)
+    log = tmp_path / "trainer-argv.json"
+    monkeypatch.setenv("FAKE_SSH_LOG", str(log))
+    monkeypatch.setenv("PATH", f"{binaries}:{os.environ['PATH']}")
+    monkeypatch.setenv("CADEX_TRAIN_ENV", str(tmp_path / "absent.env"))
+    monkeypatch.setenv("CADEX_TRAIN_SSH_HOST", "box.invalid")
+    monkeypatch.setenv("CADEX_TRAIN_SSH_USER", "")
+    monkeypatch.setenv("CADEX_TRAIN_SSH_KEY", "")
+    monkeypatch.setenv("CADEX_TRAIN_REPO", str(REPO_ROOT))
+    monkeypatch.setenv("CADEX_TRAIN_VENV", str(tmp_path / "venv"))
+    monkeypatch.setenv("CADEX_TRAIN_WORK", str(tmp_path / "work"))
+    return log
+
+
+def _warm_start_job(tmp_path) -> tuple[Path, Path, Path, Path]:
+    run = tmp_path / "run"
+    run.mkdir()
+    bundle = run / "job-task.json"
+    bundle.write_text(json.dumps({"model": {"path": "x/model-model.xml"}}))
+    (run / "model-model.xml").write_text("<mujoco/>")
+    parent = tmp_path / "run0" / "parent-task.json"
+    parent.parent.mkdir()
+    parent.write_text(json.dumps({"model": {"path": "x/model-model.xml"}}))
+    policy = tmp_path / "run0" / "parent.cxpolicy"
+    policy.write_bytes(b"parent-weights")
+    return bundle, run / "job.cxpolicy", policy, parent
+
+
+def _dispatch(*argv: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["bash", str(REMOTE_SOURCE), "train", *argv],
+        capture_output=True, text=True, cwd=REPO_ROOT,
+    )
+
+
+def test_the_dispatcher_carries_the_warm_start_out_and_re_points_it(
+    box, tmp_path
+) -> None:
+    """ADR-268. The curriculum pair names files on this machine, so the
+    dispatcher copies both into the run directory's `warm/` and rewrites
+    the two flags to the copies. Everything else after `--` is untouched,
+    the parent bundle arrives byte-identical (the trainer ties its digest
+    to the policy header), and the policy still comes home verified."""
+
+    bundle, out, policy, parent = _warm_start_job(tmp_path)
+    result = _dispatch(
+        str(bundle), str(out), "--",
+        "--iterations", "2", "--init-from", str(policy),
+        "--init-from-parent-task", str(parent),
+        "--init-from-task-change", "a harder band",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    flags = json.loads(box.read_text(encoding="utf-8"))
+    carried_policy = Path(flags[flags.index("--init-from") + 1])
+    carried_parent = Path(flags[flags.index("--init-from-parent-task") + 1])
+    # Re-pointed at the box's copies, in `warm/` rather than beside the
+    # bundle -- a parent task named like the child cannot overwrite it.
+    assert carried_policy.parent.name == "warm"
+    assert carried_parent.parent == carried_policy.parent
+    assert carried_policy.parent.parent.name.startswith("job-task-")
+    assert carried_policy.read_bytes() == policy.read_bytes()
+    assert carried_parent.read_bytes() == parent.read_bytes()
+    # The local paths did not travel, and the sentence-valued flag did.
+    assert str(policy) not in flags and str(parent) not in flags
+    assert flags[flags.index("--init-from-task-change") + 1] == "a harder band"
+    assert flags[flags.index("--iterations") + 1] == "2"
+    # The bundle and its model are still beside each other, flat.
+    run_directory = carried_policy.parent.parent
+    assert (run_directory / bundle.name).is_file()
+    assert (run_directory / "model-model.xml").is_file()
+    # ...and the leg ends the way a cold one does: the policy is here.
+    assert out.read_bytes() == b"policy-bytes"
+    assert "==> warm" in result.stdout and "==> parent" in result.stdout
+
+
+def test_the_dispatcher_refuses_a_warm_start_it_cannot_carry(box, tmp_path) -> None:
+    """Loudly, and before anything is copied: a file that is not there, the
+    joined `--flag=path` form whose path would not be rewritten, and two
+    warm files that would collide in one flat `warm/`."""
+
+    bundle, out, policy, parent = _warm_start_job(tmp_path)
+    missing = _dispatch(str(bundle), str(out), "--",
+                        "--init-from", str(tmp_path / "nope.cxpolicy"))
+    assert missing.returncode == 1 and "does not exist" in missing.stdout
+
+    joined = _dispatch(str(bundle), str(out), "--", f"--init-from={policy}")
+    assert joined.returncode == 2 and "with a space, not =PATH" in joined.stdout
+
+    twin = tmp_path / "twin" / parent.name
+    twin.parent.mkdir()
+    twin.write_bytes(parent.read_bytes())
+    collision = _dispatch(str(bundle), str(out), "--",
+                          "--init-from", str(parent),
+                          "--init-from-parent-task", str(twin))
+    assert collision.returncode == 1 and "share the basename" in collision.stdout
+    assert not box.exists(), "the trainer ran despite a refusal"

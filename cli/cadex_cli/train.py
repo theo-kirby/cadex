@@ -25,7 +25,10 @@ there fails here.
 <out> -- <the same trainer flags>`` (ADR-089) instead of the venv's
 interpreter: the bundle and the model go out from ``--out``, the policy
 comes back to the very path the local trainer would have written, and
-the receipt is read off the same last JSON line. Everything after the
+the receipt is read off the same last JSON line. A warm start goes out
+beside the bundle and the flags are re-pointed at the copies, by the
+dispatcher rather than here (ADR-268), so an iterate has the same shape in
+both modes. Everything after the
 receipt — the store, the digest edit, the verified rollout — never learns
 where the trainer ran. What this module adds for both is the check the
 remote script already makes and the local path never needed: the file at
@@ -222,21 +225,16 @@ def remote_trainer_command(
     fell back to CPU unless ``allow_cpu`` — a policy from a silent CPU run
     is real and costs hours it did not need to.
 
-    A warm start is refused here rather than on the box: the script carries
-    two files out, the bundle and the model, and the ``--init-from`` policy
-    and its parent bundle are local paths the box has never seen. Carrying
-    them is a change to the dispatcher, its own unit; until then the remote
-    leg trains cold.
+    A warm start travels (ADR-268). ``--init-from`` and
+    ``--init-from-parent-task`` name files on this machine, and the
+    dispatcher lifts those two out of the trailing flags, copies them into
+    the run directory's ``warm/`` and re-emits the flags pointing at the
+    copies. Nothing changes here: the flags this builds are still the local
+    trainer's, byte for byte, which is what makes the two legs the same
+    argument list. The rewriting is transport, and transport is the
+    dispatcher's job (ADR-089).
     """
 
-    if flags.get("init_from") or flags.get("init_from_parent_task") or (
-        flags.get("init_from_task_change")
-    ):
-        raise TrainError(
-            "--remote trains cold: remote_train.sh carries the bundle and the "
-            "model and nothing else, so --init-from's policy would not be on "
-            "the box. Drop the warm start, or train locally."
-        )
     command = [str(script if script is not None else REMOTE_SCRIPT),
                "train", str(bundle), str(out)]
     if allow_cpu:
@@ -251,15 +249,42 @@ def remote_trainer_command(
 #: check that offline rather than by dispatching.
 REMOTE_TRANSPORT_STEPS = ("copy-out", "copy-back")
 
+#: The warm-start flags whose values are local file paths, and which the
+#: remote leg therefore has to carry (ADR-268). ``--init-from-task-change``
+#: is a sentence and is not here.
+WARM_START_PATH_FLAGS = {
+    "--init-from": "warm_start_policy",
+    "--init-from-parent-task": "warm_start_parent_task",
+}
+
+
+def warm_start_files(command: Sequence[str]) -> dict[str, str]:
+    """The warm start's local files named in ``command``, keyed by artifact
+    name, or an empty mapping for a cold run.
+
+    Read back out of the built command rather than passed in beside it, so
+    the plan cannot disagree with the argument list it describes — and so
+    both modes derive the same answer from the same flags.
+    """
+
+    items = [str(item) for item in command]
+    found: dict[str, str] = {}
+    for flag, name in WARM_START_PATH_FLAGS.items():
+        if flag in items:
+            index = items.index(flag)
+            if index + 1 < len(items):
+                found[name] = items[index + 1]
+    return found
+
 
 def resolve_bundle_model(bundle: Path | str) -> Path:
     """The model file a training bundle names, resolved the way the trainer
     and ``remote_train.sh`` resolve it: the recorded relative path against
     the bundle's grandparent, then its basename beside the bundle.
 
-    The remote leg copies exactly these two files out and nothing else, so
-    a plan that cannot name the model is a dispatch that would fail on the
-    box after the copy started.
+    The remote leg copies these two out for every run — and a warm start's
+    two more beside them (ADR-268) — so a plan that cannot name the model
+    is a dispatch that would fail on the box after the copy started.
     """
 
     path = Path(bundle)
@@ -317,13 +342,18 @@ def training_plan(
             "detail": f"{bundle_path} and the model it names, {model}",
         }
     ]
+    warm = warm_start_files(command)
     if remote:
+        carried = f"{bundle_path.name} and {model.name}"
+        if warm:
+            carried += ", and " + " and ".join(
+                Path(value).name for value in warm.values()
+            ) + " into its warm/"
         steps.append({
             "step": "copy-out",
             "where": "this machine -> the box",
             "detail": (
-                f"{runner.name} copies {bundle_path.name} and {model.name} "
-                "into the box's run directory"
+                f"{runner.name} copies {carried} into the box's run directory"
             ),
         })
     steps.append({
@@ -358,6 +388,10 @@ def training_plan(
             "model": str(model),
             "policy": str(policy),
             "stored_asset": store_as,
+            #: Present in both modes for a warm start (ADR-268), and in
+            #: neither for a cold one: the files are the leg's inputs
+            #: wherever the trainer runs.
+            **warm,
         },
         "steps": steps,
         #: Always false. The field is here so a pipeline reading a plan can

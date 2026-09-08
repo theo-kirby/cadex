@@ -10,8 +10,8 @@ are read on every visit and updated as the work goes:
 
 - ``ARCHITECTURE.md`` — what the project is, what its script declares,
   how it trains (locally from the venv or ``--remote`` on the box, the
-  same project-relative artifacts either way, cold runs only when remote —
-  ADR-200), and where the domain docs are.
+  same project-relative artifacts either way, a warm start carried out to
+  the box since ADR-268), and where the domain docs are.
 - ``DECISIONS.md`` — the project's own ADR log: what was chosen, over what,
   and why. Newest last.
 - ``PROGRESS.md`` — one row per run the CLI accepted, with the numbers.
@@ -193,9 +193,9 @@ at 0.1 mm minimum distance and 1e-6 mm³ maximum common volume. Its own
 `{progress}` row carries offending, unknown and checked pair counts;
 unavailable measurements stay unavailable. Training and rollout rows
 retain their numbers, so rows
-from either mode compare line for line. **Remote runs are cold runs only:** the dispatcher carries the
-bundle and the model out and nothing else, so a warm start
-(`--init-from`) trains locally. With the GUI attached the same commands
+from either mode compare line for line. **A warm start travels (ADR-268):** the dispatcher carries the
+bundle and the model out, and `--init-from`'s policy and its parent
+bundle beside them, so an iterate has the same shape in either mode. With the GUI attached the same commands
 run from a terminal beside the open file, one at a time while no rebuild
 is in flight; the shell's own agent cannot run them, and it sees an
 accepted run on the next Rebuild Model or reopen. Rebuild Model or

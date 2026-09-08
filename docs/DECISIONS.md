@@ -21927,3 +21927,55 @@ moving part `empty`) against the derived plane cutting both; a candidate that
 contacts its own tessellation being skipped for the next; and a geometry where
 no candidate is supported reporting the refusal rather than a false success.
 `cli/tests` run in full.
+
+## ADR-268 — A warm start travels to the box (2026-09-08)
+
+`remote_train.sh` carried two files out, the bundle and the model. The
+curriculum pair (ADR-161) is two more — `--init-from`'s policy and
+`--init-from-parent-task`'s bundle — and both are paths on the dispatching
+machine, so ADR-200 refused a warm start with `--remote` before any leg ran
+and called carrying them its own unit. That refusal is the one place the
+three modes were not one shape: an *iterate*, which is the whole point of the
+lifecycle loop's second half, trained locally or not at all.
+
+The dispatcher carries them. While parsing the flags after `--` it lifts
+those two out, checks both files exist before it contacts the box, copies
+them into a `warm/` subdirectory of the run directory, and re-emits the two
+flags pointing at the copies. A subdirectory rather than beside the bundle,
+because a parent task named like the child would otherwise overwrite it in
+the flat layout the trainer's model fallback needs. Everything else after
+`--` passes through untouched, so the argument list the box's trainer sees is
+the one the local trainer would have seen. The parent bundle arrives
+byte-identical, which it must: the trainer ties its digest to the policy
+header and refuses a bundle that merely parses.
+
+The CLI loses the refusal and gains no rewriting. `remote_trainer_command`
+builds the local trainer's flags byte for byte in both modes — the test that
+pins that is now run with the warm-start triple as well — and path rewriting
+stays transport, which is the dispatcher's job (ADR-089). `train --dry-run`
+names the warm files in `artifacts` and in the `copy-out` step, in both
+modes, derived from the built command rather than passed in beside it, so a
+plan cannot disagree with the argument list it describes.
+
+Three refusals, all before anything is copied: a warm file that is not there;
+the joined `--init-from=PATH` form, whose path would reach the box unrewritten
+and name a file that is not on it; and two warm files sharing a basename,
+which would collide in one flat `warm/`.
+
+Evidence is offline and, for the first time on this leg, against the **real**
+script: stand-in `ssh` and `rsync` make this filesystem the box, so
+`training/remote_train.sh train` really parses, really copies and really
+re-points, and the test reads the trainer's argv as the remote shell would
+split it. Both warm files land in `warm/` byte-identical, the re-pointed flags
+are what the trainer is handed, the local paths do not travel, the bundle and
+model stay flat beside them, and the policy still comes home verified. The
+three refusals exit before the trainer is reached. No dispatch, no network, no
+`.remote.env` read, no engine, protocol, payload or `shell/` diff.
+
+`docs/CLI.md` §2, `training/SETUP.md` (d), `docs/MUJOCO.md` §7 row 12 and the
+project-doc scaffold are updated in the same commit; `training/` still enters
+no CMake rule, no payload and nothing in `pixi.toml`.
+
+**Not claimed**: that a real box was dispatched to. The remote mode remains
+scripted and unexecuted under this run's constraints, and `--detach` still
+does not travel through the CLI's walk.

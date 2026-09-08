@@ -2186,6 +2186,12 @@ What makes them experimental, and what would settle it:
   alive so it stays addressable after the reap, and the final drain is
   bounded at 10 s. A second regression whose grandchild sets `SIGTERM` to
   `SIG_IGN` fails against the previous stop.
+- [x] **A warm start travels to the box** (2026-09-08, ADR-268).
+  `remote_train.sh` lifts `--init-from` and `--init-from-parent-task` out of
+  the trailing flags, copies both files into the run directory's `warm/` and
+  re-points the flags, so `--remote` is no longer a cold-run-only mode and an
+  iterate has the same shape locally and on the box. Tested against the real
+  script with stand-in `ssh`/`rsync`; still no dispatch.
 - [x] **The walk's section cuts where the geometry is** (2026-09-08, ADR-267).
   The review's offset is derived from the accepted snapshot's own bounds --
   most objects' bounds crossed, first supported cut wins -- instead of a

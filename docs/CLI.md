@@ -662,13 +662,19 @@ local walk's line for line. What the flag changes and what it refuses:
 - **A run the box reports as `device: cpu` fails** — the dispatcher's own
   rule — unless `--allow-cpu` is given. `--allow-cpu` without `--remote`
   is a usage error: it is the dispatcher's flag.
-- **Cold runs only.** `remote_train.sh` carries two files out, the bundle
-  and the model; `--init-from`'s policy and its parent bundle are local
-  paths the box has never seen, so `--remote` with the warm-start triple
-  is a usage error before any leg runs, and the iterate walk (`--set`
-  with a warm start) trains locally until the dispatcher carries them —
-  its own unit. `--trainer-python` with `--remote` is a usage error too:
-  the box's venv is `CADEX_TRAIN_VENV`.
+- **A warm start travels** (ADR-268). `remote_train.sh` carries four
+  files out for one: the bundle, the model, and — lifted out of the flags
+  after `--` — `--init-from`'s policy and `--init-from-parent-task`'s
+  bundle, into a `warm/` subdirectory of the run directory, with the two
+  flags re-pointed at the copies. The flags this CLI builds are the local
+  trainer's, byte for byte, in both modes; the rewriting is transport and
+  belongs to the dispatcher (ADR-089). So an iterate has the same shape
+  in both modes. The dispatcher refuses loudly, before it copies
+  anything, when a warm file is missing, when the joined `--init-from=PATH`
+  form is used (its path would not be rewritten), or when the two warm
+  files share a basename and would collide in one flat `warm/`.
+  `--trainer-python` with `--remote` is a usage error: the box's venv is
+  `CADEX_TRAIN_VENV`.
 - **`--timeout` is local.** It ends the ssh that holds the run, not the
   run; a long run belongs to `remote_train.sh train --detach` and
   `pull`, outside the walk, which then continues from `cadex asset --put`
@@ -687,7 +693,12 @@ local walk's line for line. What the flag changes and what it refuses:
   end to end — real engine, real export, real store — against a stand-in
   dispatcher with the same argv contract and the same printed shape
   (`warp` noise before the receipt, `==>` trailer after), including the
-  three refusals: wrong bytes, nothing returned, CPU fallback.
+  three refusals: wrong bytes, nothing returned, CPU fallback. The
+  warm-start transport is tested against the **real** script instead, with
+  stand-in `ssh` and `rsync` that make this filesystem the box: the two
+  files land in `warm/`, byte-identical, the re-pointed flags are what the
+  trainer is handed, and the three refusals above exit before the trainer
+  is reached. No network, no box, no `.remote.env`.
 
 **With the GUI attached, it is the same walk from a terminal beside the
 open file** (ADR-201). The shell is a client of the same store: a saved

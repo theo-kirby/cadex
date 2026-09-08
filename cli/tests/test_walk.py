@@ -493,15 +493,24 @@ def test_the_remote_walk_carries_the_flags_to_the_train_leg_only(
     assert [leg["leg"] for leg in envelope["walk"]["legs"]] == ["train", "declare", "rollout"]
     assert (out / REVIEW_FILENAME).is_file()
 
-    # A warm start with --remote is a usage error before any leg runs.
-    fake_cadex.unlink()
+    # A warm start rides along with --remote (ADR-268): the triple reaches
+    # the train leg beside --remote, and the dispatcher carries its two
+    # files out. It is no longer a usage error.
+    out2 = toy_root / "runs" / "walk-remote-warm"
     code, envelope = _run(
-        capsys, "--project", str(toy_root), "walk", "--out", str(out), "--remote",
+        capsys, "--project", str(toy_root), "walk", "--out", str(out2), "--remote",
         "--init-from", "p.cxpolicy", "--init-from-parent-task", "t.json",
         "--init-from-task-change", "why",
     )
-    assert code == EXIT_USAGE and "trains cold" in envelope["error"], envelope
-    assert not fake_cadex.exists()
+    assert code == EXIT_OK, envelope
+    train, read, declare, rollout = _legs(fake_cadex)[-4:]
+    assert "--remote" in train
+    for flag, value in (("--init-from", "p.cxpolicy"),
+                        ("--init-from-parent-task", "t.json"),
+                        ("--init-from-task-change", "why")):
+        assert train[train.index(flag) + 1] == value, train
+    for other in (read, declare, rollout):
+        assert "--init-from" not in other
 
 
 def test_a_leg_that_refuses_stops_the_walk_there_with_its_name(

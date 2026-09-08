@@ -85,9 +85,11 @@ def test_scaffold_creates_the_three_and_never_overwrites(tmp_path) -> None:
 def test_the_scaffold_states_the_training_mode_and_the_walk_doc_agrees(tmp_path) -> None:
     """ADR-200's three facts reach the project's own docs: which mode trains
     (the venv here, or ``--remote`` on the box), that the artifacts land at
-    the same project-relative paths either way, and that a remote run is a
-    cold run. The walk's doc and the scaffold are one ticket: `docs/CLI.md`
-    must say the scaffold carries the section, so neither moves alone."""
+    the same project-relative paths either way, and — since ADR-268 — that a
+    warm start travels with the bundle rather than pinning an iterate to
+    this machine. The walk's doc and the scaffold are one ticket:
+    `docs/CLI.md` must say the scaffold carries the section, so neither
+    moves alone."""
 
     scaffold_project_docs(tmp_path)
     architecture = (tmp_path / ARCHITECTURE_NAME).read_text()
@@ -98,7 +100,7 @@ def test_the_scaffold_states_the_training_mode_and_the_walk_doc_agrees(tmp_path)
         "same project-relative paths in both modes",
         "runs/<name>/train/",
         "runs/<name>/review.json",
-        "cold runs only",
+        "A warm start travels",
         "`--init-from`",
         "(remote)",
     ):
@@ -106,7 +108,7 @@ def test_the_scaffold_states_the_training_mode_and_the_walk_doc_agrees(tmp_path)
 
     walk_doc = (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text()
     assert "`ARCHITECTURE.md` scaffold carries a `## Training` section" in walk_doc
-    assert "Cold runs only" in walk_doc
+    assert "A warm start travels" in walk_doc
     assert "shared mode artifacts table in `docs/CLI.md`" in architecture
     assert "**Shared mode artifacts**" in walk_doc
     assert "review/section/<accepted-revision>/XZ-<derived-offset>/" in architecture

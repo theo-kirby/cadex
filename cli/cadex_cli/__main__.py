@@ -490,7 +490,8 @@ def _remote_flags(parser: argparse.ArgumentParser) -> None:
         help="Train on the remote box through training/remote_train.sh "
         "(configured by training/.remote.env; run its `check` first). The "
         "bundle goes out from --out and the policy comes back to it; every "
-        "later step is unchanged. Cold runs only: no --init-from.",
+        "later step is unchanged. A warm start travels too (ADR-268): its "
+        "two files go out beside the bundle.",
     )
     parser.add_argument(
         "--allow-cpu",
@@ -1268,7 +1269,9 @@ def _remote_usage_error(args: argparse.Namespace) -> str:
     leg rather than after a design turn spent tokens. ``--trainer-python``
     names a venv on this machine and the box has its own
     (``CADEX_TRAIN_VENV``); ``--allow-cpu`` is the dispatcher's flag and
-    means nothing locally; a warm start's files are not carried out.
+    means nothing locally. A warm start is no longer refused here: since
+    ADR-268 the dispatcher carries its two files out and re-points the
+    flags, so an iterate has the same shape in both modes.
     """
 
     if not args.remote:
@@ -1279,12 +1282,6 @@ def _remote_usage_error(args: argparse.Namespace) -> str:
         return (
             "--trainer-python names a venv on this machine; with --remote the "
             "box's CADEX_TRAIN_VENV trains (training/remote.env.example)."
-        )
-    if args.init_from or args.init_from_parent_task or args.init_from_task_change:
-        return (
-            "--remote trains cold: remote_train.sh carries the bundle and the "
-            "model and nothing else, so --init-from's policy would not be on "
-            "the box. Drop the warm start, or train locally."
         )
     return ""
 
