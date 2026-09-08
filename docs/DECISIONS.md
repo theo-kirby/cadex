@@ -21563,6 +21563,43 @@ are unaffected — the same interpreter ran in either case — but a reproductio
 note that overstates which path was exercised is worse than no note, so the
 distinction is stated wherever the reproduction is described.
 
+## ADR-260 — The walk's mechanism-blindness is a test, not a claim (2026-09-08)
+
+**Decision.** Two regressions in `cli/tests/test_walk.py` pin the shape the
+second-mechanism criterion depends on, and `examples/lifecycle/README.md`
+gains a section that names the entry point, the two regressions and the two
+projects' comparable numbers side by side.
+
+`test_the_two_example_mechanisms_dispatch_the_identical_legs` installs both
+repository-owned recipes, walks each through `command_walk` with identical
+flags against the fake `cadex`, and requires the child argv to be **equal**
+once the project path is substituted out. `test_the_digest_edit_treats_both_example_mechanisms_alike`
+covers the one leg that reads a script the walk did not write: `declare_policy` rewrites the same two literals on both recipes and
+leaves every other byte alone.
+
+**Why.** "The same entry point, with no code change specific to the mechanism"
+had been evidenced only by narrative — five prompt walks and two recipe walks
+that happened not to need one (ADR-203, ADR-257). Narrative does not fail when
+the property does. The way this decays is not a rewrite, it is one `if` on the
+joint kind added by an agent in a hurry, and nothing in the tree would have
+noticed. Now something does: the mutation `if "slider" in script: argv +=
+["--label", "slider-rig"]` on the train leg fails the first test with both
+argv lists printed.
+
+**Why two real recipes rather than a synthetic pair.** The two examples differ
+where the claim needs them to — `hinged-arm` is a revolute joint driven by a
+torque motor in N·mm, `linear-carriage` a slider joint driven by a force motor
+in N — and they are the same files the documented reproduction and the real
+CPU walk already use. A synthetic second script would pin the test against
+itself.
+
+**Scope.** No implementation changed: this is a test and a document. The
+regressions are offline, run against the fake `cadex`, and need no engine and
+no trainer. They pin that the dispatch is mechanism-blind; they claim nothing
+about learned control, and the README section says so — the carriage's policy
+still lets it fall to -4699 mm in one second on an ideal guide, and the two
+`total_reward` columns are different objectives in different units.
+
 ## ADR-259 — The walk's review reports travel in two channels, and ranks neither (2026-09-08)
 
 **Decision.** `cadex walk`'s review gains a `motion` block beside `clearance`,

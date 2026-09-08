@@ -2120,6 +2120,15 @@ What makes them experimental, and what would settle it:
   Reported, never written and never fatal: the notes are the design turn's,
   and the generated `ARCHITECTURE.md` scaffold says so where the project's
   next agent reads it.
+- [x] **The walk's mechanism-blindness is pinned by a test** (2026-09-08,
+  ADR-260). Two offline regressions in `cli/tests/test_walk.py`: the two
+  example recipes — revolute/torque against slider/force — walk through
+  `command_walk` with identical flags and must dispatch byte-identical child
+  argv once the project path is substituted out, and the digest edit rewrites
+  the same two literals on both. `examples/lifecycle/README.md` names the
+  entry point, the two regressions and both projects' comparable numbers side
+  by side. Verified by mutation: a `--label` added for scripts containing
+  `slider` fails the first test.
 - [x] **The walk reports whether the mechanism moved** (2026-09-08, ADR-259).
   `review.json` gains a `motion` block beside `clearance`, and the walk's
   `PROGRESS.md` row and notes gain a motion cell: per component the per-axis

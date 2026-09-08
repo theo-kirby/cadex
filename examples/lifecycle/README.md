@@ -1,6 +1,6 @@
 # Two mechanisms through the same lifecycle walk
 
-Verified against source: 2026-09-08. [Cadex-new]. ADR-203, ADR-257.
+Verified against source: 2026-09-08. [Cadex-new]. ADR-203, ADR-257, ADR-260.
 
 The hinged arm and vertical linear carriage are synthetic mechanisms with
 different joint and actuator types. Both passed the unchanged headless
@@ -73,6 +73,58 @@ The examples' sensor notes demonstrate the domain-doc convention.
 `cli/tests/test_walk.py` exercises the carriage with the real engine and
 trainer and asserts an actual MJCF slide joint and a verified policy trace;
 the existing arm test still exercises retraining.
+
+## One entry point, and no branch that knows which mechanism (ADR-260)
+
+The criterion these two examples exist to answer is "the same entry point,
+with no code change specific to the mechanism". Both halves are checkable
+here rather than taken on trust.
+
+**The entry point** is `cadex walk`, dispatched by `command_walk` in
+`cli/cadex_cli/__main__.py`. It runs each leg as a child `cadex` command
+through `run_leg` (`cli/cadex_cli/walk.py`), so what the walk decides is
+which legs run and with which flags — nothing else. The legs are `train`,
+`declare` (a script read, the digest edit, a `script --set`) and `rollout`,
+with a `sweep` leg in front of them only when `--set` asks for one, and
+design turns in front of that only when `--prompt` does. Which mechanism
+the project holds is not an input to any of those decisions.
+
+**The absence of a mechanism-specific path** is pinned by two regressions
+in `cli/tests/test_walk.py`:
+
+- `test_the_two_example_mechanisms_dispatch_the_identical_legs` installs
+  both recipes below, walks each with identical flags, and requires the
+  child argv to be **equal** once the project path is substituted out. A
+  single `if` on the joint kind, the actuator kind or the component count
+  changes a leg or a flag and fails it. (Checked by mutation: adding
+  `--label slider-rig` to the train leg for scripts containing `slider`
+  fails the test with the two argv lists printed side by side.)
+- `test_the_digest_edit_treats_both_example_mechanisms_alike` covers the
+  one leg that reads a script the walk did not write: `declare_policy`
+  rewrites the same two string literals on both recipes and leaves every
+  other byte alone.
+
+The two mechanisms differ where it matters for the claim: the hinged arm
+is a **revolute** joint driven by a torque motor in N·mm, the linear
+carriage a **slider** joint driven by a force motor in N. The comparable
+numbers for both are in each project's `PROGRESS.md` — the same columns,
+the same metric definitions, and the caveat that they do not rank designs:
+
+| Mechanism | Joint, actuator | Rollout `total_reward` | Rollout reward/step | Trainer reward/step | Walk wall s | Peak tree RSS |
+|---|---|---:|---:|---:|---:|---:|
+| hinged-arm | revolute, torque motor (N·mm) | -27.1093842209 | -0.542187684419 | -0.380198150873 | 15.22 | 986,218,496 |
+| linear-carriage | slider, force motor (N) | -24159.1953563 | -483.183907126 | -82.3199081421 | 13.52 | 979,582,976 |
+
+Both at 1 PPO iteration × 4 environments, training seed 0, verified rollout
+seed 3, 1 s at 50 Hz, CPU. The `sb1x` re-runs of the same rows are in the
+section below and in each `PROGRESS.md`.
+
+**What this does not settle.** The dispatch is mechanism-blind and two
+mechanisms prove the loop runs for both; neither is a claim about learned
+control. The carriage's policy still lets it fall to -4699 mm in one
+second on an ideal guide, and the two `total_reward` columns are different
+objectives in different units, so they compare runs of one project and
+never rank the designs against each other.
 
 ## Reproduced on a second machine — 2026-09-08 (ADR-257)
 

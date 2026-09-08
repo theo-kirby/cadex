@@ -577,6 +577,82 @@ def test_declared_note_subjects_reads_the_model_the_walk_trained_on(tmp_path) ->
     assert declared_note_subjects(train) == ([], None)
 
 
+# -- one entry point, no mechanism-specific path ------------------------------
+
+#: The two repository-owned example mechanisms, and what makes them
+#: different walks of the same loop: one turns, one slides, and their
+#: actuators are declared in different units (ADR-203, ADR-260).
+EXAMPLE_MECHANISMS = {
+    "hinged-arm": "revolute joint, torque motor (N·mm)",
+    "linear-carriage": "slider joint, force motor (N)",
+}
+
+
+def _example_script(name: str) -> str:
+    path = Path(__file__).resolve().parents[2] / "examples/lifecycle" / name / "script.py"
+    return path.read_text(encoding="utf-8")
+
+
+def test_the_two_example_mechanisms_dispatch_the_identical_legs(
+    fake_cadex, tmp_path, capsys
+) -> None:
+    """The dispatch is a function of the flags, never of the mechanism.
+
+    The criterion the walk has to hold is "the same entry point, with no
+    code change specific to the mechanism" — and the way that decays is
+    not a rewrite, it is one ``if`` on the joint type. So this feeds
+    ``command_walk`` the two real example recipes, which differ in joint
+    (revolute against slider) and in actuator units, gives both the same
+    flags, and requires the child ``cadex`` argv to come out **equal**
+    once the project and output paths are substituted out. A branch on
+    anything the script says — a joint kind, an actuator kind, a
+    component count — changes a leg or its flags and fails here.
+    """
+
+    dispatched: dict[str, list[list[str]]] = {}
+    for name in EXAMPLE_MECHANISMS:
+        root = tmp_path / name / "project"
+        root.mkdir(parents=True)
+        (root / "script.py").write_text(_example_script(name), encoding="utf-8")
+        before = len(_legs(fake_cadex)) if fake_cadex.exists() else 0
+        code, envelope = _run(
+            capsys, "--project", str(root), "walk", "--out", str(root / "runs/walk"),
+            "--iterations", "1", "--envs", "4", "--seed", "0", "--timeout", "600",
+        )
+        assert code == EXIT_OK, envelope
+        assert [leg["leg"] for leg in envelope["walk"]["legs"]] == [
+            "train", "declare", "rollout"]
+        dispatched[name] = [
+            [argument.replace(str(root), "<project>") for argument in leg]
+            for leg in _legs(fake_cadex)[before:]
+        ]
+
+    arm, carriage = (dispatched[name] for name in EXAMPLE_MECHANISMS)
+    assert arm == carriage, "the walk dispatched differently for the two mechanisms"
+    # ...and it really did dispatch the whole walk, so equality is not
+    # two empty lists agreeing.
+    assert [leg[2] for leg in arm] == ["train", "script", "script", "params"]
+
+
+def test_the_digest_edit_treats_both_example_mechanisms_alike() -> None:
+    """The one leg that reads the mechanism's source reads it the same way.
+
+    ``declare_policy`` is where a mechanism-specific path would be
+    cheapest to introduce, because it is the only place the walk opens a
+    script it did not write. On both examples it rewrites the same two
+    string literals and leaves every other byte alone.
+    """
+
+    sha = "ab" * 32
+    for name, shape in EXAMPLE_MECHANISMS.items():
+        source = _example_script(name)
+        declared = declare_policy(source, "job2.cxpolicy", sha)
+        assert f'weights="job2.cxpolicy"' in declared, shape
+        assert f'sha256="{sha}"' in declared, shape
+        undone = declared.replace("job2.cxpolicy", "job.cxpolicy").replace(sha, PLACEHOLDER)
+        assert undone == source, name
+
+
 # -- real lifecycle walks ---------------------------------------------------
 
 
